@@ -313,7 +313,7 @@ asserts rather than reports — a wrong platform plugin or an invisible widget e
 | UI tests pass headless on both | 27 passed on each runner under `QT_QPA_PLATFORM=offscreen` |
 | **Carried from `T-002`:** PySide6 + `QApplication` on Windows | Python 3.14.6 (MSC v.1944, AMD64), PySide6 6.11.1, shiboken6 6.11.1, Qt 6.11.1, `QWidget` `visible=True` offscreen |
 | **Carried from `T-003`:** `QIcon` reads all seven `.ico` frames on Windows | `test_ico_exposes_every_frame_to_qt` PASSED on `windows-latest` |
-| Windows artifacts retained and downloadable | 30-day retention; the full failure traceback was retrieved from the failed Windows job with no Windows machine |
+| Windows artifacts retained and downloadable | 30-day retention. Corrected after review — see below |
 | Total run under ~10 minutes | Linux 37–54 s, Windows 1 m 3 s – 1 m 16 s |
 
 **Both Windows carries are now discharged**, with artifact evidence rather than a green tick.
@@ -327,6 +327,31 @@ both runners), and the actions were on the deprecated Node 20 runtime — bumped
 libfontconfig1`. This list was derived from what the offscreen plugin links, not from a
 minimality experiment; it may be broader than strictly needed. It is correct, not necessarily
 minimal.
+
+#### Review corrections — 2026-07-25
+
+**`T006-R1`, evidence retention.** The artifact retention claim was only ever true for the
+steps that happened to be piped. Lint, format, and mypy wrote to the Actions job log and
+nothing else, so the artifact from the failed lint run contained `environment.txt` alone —
+directly contradicting the claim that these artifacts carry failure output and are the only
+Windows debugging material available under `OPS-003`. All four checks now tee into
+`reports/`. The Qt baseline and pytest steps additionally gained `2>&1`: both write failure
+detail to stderr, which the original pipe silently dropped, so they carried the same defect
+in a less visible form.
+
+Re-verified rather than assumed. Run `30180163074` reintroduced the lint error; the
+`windows-latest` artifact now contains `lint.txt` with the full `F401` diagnostic, including
+the Windows path separator in `tests\unit\test_ci_gate_check.py`, confirming it is the
+runner's own output and not a replayed local result. Reverted in `30180215713`, whose passing
+artifact carries all seven evidence files.
+
+**`T006-R2`, coordination truth.** The `T-002` and `T-003` completion notes still described
+their Windows checks as unverified and carried into `T-006`, while `T-006`'s own record in the
+same file said those carries were discharged. `TASKS.md` is current truth (`AGENTS.md` §6), so
+both notes now state the discharge and cite the evidence. `T-002`'s "explicitly still
+unverified" list was also audited item by item: one item was genuinely resolved by `T-001` and
+had never been marked so; the cancellation-timing item remains open and is now labeled as
+such rather than sitting in an undifferentiated list.
 
 **Not yet extended toward the rest of `OPS-003`'s automatable list** — orphaned-process
 assertions, path-safety checks, artifact-install-and-launch, screenshot capture. Those depend
