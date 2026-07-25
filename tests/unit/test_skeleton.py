@@ -1,0 +1,58 @@
+"""Verifies T-001's own acceptance criteria: the skeleton is importable and runnable.
+
+These are structural checks, not behavior tests. They exist so that a regression in packaging
+or entry-point wiring fails here rather than at launch.
+"""
+
+import subprocess
+import sys
+from pathlib import Path
+
+import tracks_and_trails
+
+
+def test_package_exposes_a_version() -> None:
+    assert tracks_and_trails.__version__
+    assert isinstance(tracks_and_trails.__version__, str)
+
+
+def test_module_entry_point_runs_and_exits_zero() -> None:
+    """`python -m tracks_and_trails` must resolve and exit cleanly."""
+    result = subprocess.run(
+        [sys.executable, "-m", "tracks_and_trails"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=False,
+    )
+    assert result.returncode == 0, f"stderr: {result.stderr}"
+
+
+def test_entry_point_import_does_not_pull_in_qt() -> None:
+    """Importing __main__ must not import Qt.
+
+    ARC-002 requires worker processes to inherit no Qt, and ARCHITECTURE.md §3 relies on
+    freeze_support() running before any Qt import. A module-level `from ... app import run`
+    would quietly break both once app.py starts constructing a QApplication (T-007).
+
+    Run in a subprocess: the pytest session itself may already have Qt loaded.
+    """
+    code = (
+        "import sys; import tracks_and_trails.__main__; "
+        "print(any(m.startswith(('PySide6', 'shiboken6')) for m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        check=True,
+    )
+    assert result.stdout.strip() == "False", "importing __main__ pulled in Qt"
+
+
+def test_layout_matches_architecture() -> None:
+    """The four layers named in ARCHITECTURE.md §4 exist as packages."""
+    pkg_root = Path(tracks_and_trails.__file__).parent
+    for layer in ("core", "downloader", "persistence", "ui"):
+        assert (pkg_root / layer / "__init__.py").is_file(), f"missing layer: {layer}"
