@@ -1,0 +1,63 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Environments
+.venv/
+venv/
+env/
+.python-version
+
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Qt / PySide
+*.qmlc
+*.jsc
+ui_*.py
+qrc_*.py
+
+# Packaging
+*.spec.bak
+Output/
+
+# Editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+
+# Local overrides
+.env
+.env.local
+*.local.toml
+
+# NEVER COMMIT — user data, credentials, and downloaded media (AGENTS.md §7)
+cookies.txt
+*.cookies
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+downloads/
+*.mp4
+*.mkv
+*.webm
+*.m4a
+*.mp3
+*.opus
+*.flac
+*.part
+*.ytdl
