@@ -1,0 +1,1 @@
+"""JobRepository and HistoryRepository."""

@@ -1,0 +1,129 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "tracks-and-trails"
+description = "A desktop GUI for yt-dlp, for Linux and Windows."
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "Sean Kottman" }]
+requires-python = ">=3.14"
+dynamic = ["version"]
+classifiers = [
+    "Development Status :: 1 - Planning",
+    "Environment :: X11 Applications :: Qt",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Multimedia :: Video",
+]
+
+# Runtime dependencies. Per AGENTS.md §7, each is backed by an accepted decision:
+#   PySide6      ARC-001    platformdirs  DAT-001
+#   yt-dlp       ARC-002 / OPS-002
+# yt-dlp is pinned exactly, not floated: OPS-002 requires a pinned, tested baseline so
+# behavior is reproducible. Users update their own copy out-of-band instead.
+dependencies = [
+    "PySide6>=6.11,<7",
+    "platformdirs>=4.0",
+    "yt-dlp==2026.7.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "mypy>=1.14",
+    "pytest>=8.0",
+    "pytest-cov>=6.0",
+    "pytest-qt>=4.4",
+    "ruff>=0.9",
+]
+build = ["pyinstaller>=6.21"]
+
+[project.scripts]
+tracks-and-trails = "tracks_and_trails.__main__:main"
+
+[project.urls]
+Repository = "https://github.com/kottmans/tracks-and-trails"
+Issues = "https://github.com/kottmans/tracks-and-trails/issues"
+
+[tool.hatch.version]
+path = "src/tracks_and_trails/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/tracks_and_trails"]
+
+
+# ---------------------------------------------------------------------------
+# Lint / format
+# ---------------------------------------------------------------------------
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = [
+    "A",    # flake8-builtins
+    "B",    # flake8-bugbear
+    "C4",   # flake8-comprehensions
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "PTH",  # flake8-use-pathlib -- cross-platform path handling matters here (NFR-004)
+    "RUF",  # ruff-specific
+    "S",    # flake8-bandit
+    "SIM",  # flake8-simplify
+    "UP",   # pyupgrade
+    "W",    # pycodestyle warnings
+]
+ignore = [
+    "S101",  # assert: fine in tests, and used for invariants
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Qt's API is camelCase; overridden virtuals cannot be renamed to satisfy N802.
+"src/tracks_and_trails/ui/*" = ["N802"]
+# Tests deliberately shell out to the interpreter under test and touch the network.
+"tests/*" = ["S603", "S607"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["tracks_and_trails"]
+
+
+# ---------------------------------------------------------------------------
+# Types
+# ---------------------------------------------------------------------------
+[tool.mypy]
+python_version = "3.14"
+files = ["src", "tests"]
+strict = true
+warn_unreachable = true
+enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
+
+[[tool.mypy.overrides]]
+# yt-dlp ships no type information. Confined here deliberately: only worker.py and
+# ytdlp_adapter.py may import it (ARCHITECTURE.md §6), so the untyped surface stays small.
+module = ["yt_dlp.*"]
+ignore_missing_imports = true
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Network tests are excluded by default (TESTING.md §2). An explicit `-m` on the command
+# line overrides this, which is how `pytest -m network` opts back in.
+addopts = "-m 'not network' --strict-markers --strict-config"
+markers = [
+    "network: hits the real network and real sites; excluded from the default run",
+]
+
+[tool.coverage.run]
+source = ["src/tracks_and_trails"]
+branch = true
