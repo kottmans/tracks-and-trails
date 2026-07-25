@@ -25,33 +25,38 @@
 - **`T-002` complete** — Python 3.14 baseline confirmed (PySide6 ships `abi3` wheels)
 - **`T-001` complete** — `pyproject.toml`, 27-module skeleton per `ARCHITECTURE.md` §4,
   `tests/` tree, `docs/DEVELOPMENT.md`. All four checks green from a simulated clean checkout.
+- **`T-003` + `T-022` complete and approved** — icon set derived from the maintainer's
+  1024×1024 source; brand swatches fixed in `ARCHITECTURE.md` §8; resource invariant tests
+  added. Codex requested changes, then approved the corrections on re-review; no open
+  findings. Two standing caveats: no SVG exists (no vector source), and 16 px is legible only
+  narrowly — `T-021` filed as an optional improvement that blocks nothing
+- **First review completed** — the review process in `AGENTS.md` §3 has now been exercised
+  end to end (implement → review → correct → focused re-review) and works
 - Verified 2026-07-25 that yt-dlp 2026.06.09 is pure Python (1046 `.py`, no compiled
   extensions), which is what makes the `OPS-002` pip-free updater viable
 
 ## In progress
 
-*(nothing — no task has been started)*
-
-## In progress
-
-*(nothing active)*
+*(nothing active — the `T-003` + `T-022` change unit is approved and awaiting commit)*
 
 ## Next
 
-Both are Ready and independent — either order.
+All three are Ready and independent — any order.
 
 1. **`T-006`** — CI on Linux and Windows. Higher priority than its phase position suggests:
-   per `OPS-003` it is the only Windows environment that exists, and it carries `T-002`'s
-   unfinished Windows verification.
+   per `OPS-003` it is the only Windows environment that exists, and it now carries the
+   unfinished Windows verification from `T-002` and `T-003` both.
 2. **`T-005`** — layering enforcement test. Cheap, and the longer the skeleton sits without
    it the more chance a layer rule gets broken unnoticed.
+3. **`T-007`** — application shell window. Unblocked as of 2026-07-25 now that the icon
+   exists.
 
-Then `T-020` (frozen smoke test) once `T-006` exists, and `T-007` once `T-003` is unblocked.
+Then `T-020` (frozen smoke test), which needs both `T-006` and `T-007`.
 
 ## Blockers
 
-- **`T-003` needs the logo file.** The icon exists only as an image held by the maintainer;
-  it must be placed in the repository before `T-007`.
+*(none — the `T-003` logo blocker cleared on 2026-07-25 when the maintainer supplied the
+source asset)*
 
 ## Repository
 
@@ -75,7 +80,7 @@ Development machine, verified 2026-07-25:
 | Project venv | `.venv/` — editable install; PySide6 6.11.1, yt-dlp 2026.7.4, platformdirs 4.11.0 |
 | Dev tools | ruff 0.16.0, mypy 2.3.0, pytest 9.1.1, pytest-qt 4.5.0, PyInstaller 6.21.0 |
 | ffmpeg | present |
-| git | branch `main`, 2 commits, not yet pushed |
+| git | branch `main` tracking `origin/main`; pushed 2026-07-25 |
 | Repository path | `/mnt/storage/software_projects/tracks-and-trails` |
 | Windows environment | **CI runners only** — no Windows machine or VM is available (`OPS-003`) |
 

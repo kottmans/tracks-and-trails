@@ -12,7 +12,8 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-005` or `T-006` (both unblocked). `T-001`, `T-002`, `T-004` are complete.
+**Start here:** `T-005`, `T-006`, or `T-007` — all Ready and independent. `T-001`, `T-002`,
+`T-003`, `T-004`, `T-022` are complete. Nothing is blocked.
 
 ---
 
@@ -83,6 +84,10 @@ workflow toward it as those features arrive in later phases.
   and a `QApplication` + `QWidget` constructs offscreen on the pinned baseline. `T-002`
   verified this on Linux only; CI is the only place it can be confirmed for Windows
   (`OPS-003`).
+- **Carried from `T-003`:** `tests/ui/test_resources.py` passes on the Windows runner — every
+  asset non-null through `QIcon`, and `icon.ico` reporting all seven embedded sizes. The test
+  exists (added by `T-022`) and passes on Linux; CI is the only place it can be confirmed for
+  Windows (`OPS-003`).
 - Windows runner artifacts (logs, failure output, screenshots when added) are retained and
   downloadable — with no local Windows machine, CI output is the only debugging evidence
   available for Windows failures
@@ -95,11 +100,88 @@ workflow toward it as those features arrive in later phases.
 
 ---
 
+### T-022 — Close T-003 review findings
+
+**Status:** Complete
+**Completed:** 2026-07-25 — focused re-review approved; `T003-R1`, `T003-R2`, `T003-R3` all
+Resolved, no new findings
+**Owner:** Planner (documentation correction) + Implementer (resource test)
+**Priority:** High
+**Phase:** Phase 0
+**Depends on:** `T-003`
+**Relevant context:** `ai/REVIEWS.md` findings `T003-R1` through `T003-R3`
+**Affected surfaces:** `ai/ARCHITECTURE.md` §8, the `T-003` completion note, resource tests
+**Risk:** Low — documentation accuracy and regression coverage for a fixed asset set
+
+#### Scope
+
+Make the palette evidence reproducible or describe the three hex values honestly as adopted
+brand swatches rather than uniquely derived measurements. Correct the `T-003` completion note
+so its status agrees with the review's judgment that the 16 px criterion is met narrowly, with
+`T-021` retained as an optional visual improvement. Add a default-suite resource test for the
+delivered PNG and ICO invariants.
+
+#### Acceptance criteria
+
+- The palette table either links to a deterministic algorithm whose radius-40 output matches
+  every published hex and share, or drops the measurement-dependent shares and labels the
+  hexes as the canonical swatches selected from the source artwork
+- The `T-003` completion note no longer says a completed task left its 16 px acceptance
+  criterion unmet; it preserves the marginal visual result and the rationale for `T-021`
+- A default-suite test fails when a required PNG is missing or has the wrong dimensions, and
+  fails when `icon.ico` is null or does not report 16/24/32/48/64/128/256 through `QIcon`
+- The test passes on Linux offscreen; `T-006` runs the same assertion on Windows
+- `T003-R1`, `T003-R2`, and `T003-R3` receive a focused re-review
+
+#### Out of scope
+
+- Changing the artwork, choosing new brand colors, implementing `T-021`, or consuming the
+  icon in the application shell (`T-007`)
+
+#### Work completed — 2026-07-25
+
+**`T003-R1` — palette evidence.** Took the second option: the shares are gone and the hexes
+are labeled adopted canonical swatches in `ARCHITECTURE.md` §8. No deterministic algorithm was
+supplied because none exists to supply — the artwork has no flat fills, every colored region
+is a cloud spanning roughly ±2 per channel, so the modal color is as unstable as the cluster
+center (the gold's two most frequent exact values, `#D8A14C` and `#D8A24C`, are within 1.07%
+and 0.94% of opaque pixels of each other). §8 now says so explicitly and forbids re-deriving
+the values. **The three hex values are unchanged** — only the claim about them. The source
+master's SHA-256 is recorded there as the provenance anchor (`T003-R5`).
+
+**`T003-R2` — task truth.** The review's reading is adopted: the criterion is narrowly met.
+The `T-003` note now says so, keeps the marginal 16 px assessment verbatim, and states that
+`T-021` blocks nothing. `T-021` was itself reworded — it had inherited the overstated premise
+that the trail collapses, and its acceptance criterion "distinguishable from a generic green
+square" was already satisfied by the current asset, making it unfalsifiable. It now requires a
+side-by-side improvement over the existing downscale.
+
+**`T003-R3` — test coverage.** `tests/unit/test_resources.py` (11 assertions, stdlib only —
+PNG `IHDR` and `.ico` directory parsing, since the project has no image library and adding one
+for a test is not worth it) and `tests/ui/test_resources.py` (12 assertions through `QIcon`,
+using pytest-qt's `qapp`). `tests/ui/conftest.py` sets `QT_QPA_PLATFORM=offscreen` by default
+so a plain `pytest` reproduces CI.
+
+Negative-tested rather than assumed — each failure mode was injected, confirmed to fail the
+suite, and reverted, with the asset directory hashed before and after to prove restoration:
+
+| Injected failure | Caught by |
+|---|---|
+| `icon-48.png` deleted | `test_no_unexpected_files_in_the_icon_directory` |
+| `icon-32.png` resized to 31×31 | `test_derived_png_exists_at_its_declared_size[32]` |
+| `icon.ico` truncated to 200 bytes | `test_ico_exposes_every_frame_to_qt` |
+| `icon.ico` rebuilt with only 16/32/48 | `test_ico_declares_every_required_frame` + the Qt test |
+| stray `icon-99.png` added | `test_no_unexpected_files_in_the_icon_directory` |
+
+Suite: 27 passed, 1 deselected (was 4 passed). `ruff`, `ruff format --check`, `mypy src` green.
+
+---
+
 ## Proposed — Phase 0
 
 ### T-007 — Application shell window
 
-**Status:** Proposed — blocked in practice on `T-003` (the logo file)
+**Status:** Ready — `T-003` delivered the icon set, so this is no longer blocked
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 0
@@ -129,40 +211,43 @@ warnings on stderr. No download functionality.
 
 ---
 
-### T-003 — Add the application icon asset
+### T-021 — Simplified small-size icon glyph
 
-**Status:** Blocked — needs the maintainer to place the logo file in the repository
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 0
-**Depends on:** none
-**Relevant context:** `T-007`
+**Status:** Proposed
+**Owner:** Implementer (needs a design decision from the maintainer first)
+**Priority:** Low
+**Phase:** Phase 4 (theming) — not a Phase 0 exit condition
+**Depends on:** `T-003`
+**Relevant context:** `T-003` completion note, `ARCHITECTURE.md` §8
 **Affected surfaces:** `src/tracks_and_trails/resources/icons/`
-**Risk:** Low
+**Risk:** Low — cosmetic only
 
 #### Scope
 
-The project logo — a musical note over a forest trail, deep forest green with a gold trail —
-exists as a raster image held by the maintainer and is **not yet in the repository**. Add it
-at `resources/icons/` and derive the required sizes: PNG at 16/24/32/48/64/128/256/512,
-a Windows `.ico` containing the standard sizes, and an SVG if a vector source is available.
+**This is an enhancement, not a defect fix.** `T-003`'s 16 px asset meets its acceptance
+criterion — the note and gold trail stay recognizable (`T003-R2`). What it loses is the
+landscape: the trees and mountain collapse into the green mass. That is a property of the
+artwork's detail level, not of the scaling method, so no better downscale recovers it.
 
-Record the exact brand hex values in the same commit; the greens and golds cited in
-`ARCHITECTURE.md` §8 are approximate until sampled from the source asset.
+Draw a reduced glyph for 16 px and 24 px that keeps only the elements that still read at that
+size — the note head and stem plus the gold trail sweep — dropping the trees and mountain.
+Ship it as a separate size-specific asset so Qt picks it for small requests.
 
 #### Acceptance criteria
 
-- Source asset committed with all derived sizes
-- Icon renders correctly at 16 px without becoming unreadable mush
-- Windows `.ico` contains at least 16/32/48/256
-- Exact brand hex values recorded for Phase 4 theming
-- Loads via Qt resources on both platforms
+- At 16 px and 24 px the glyph is **more legible than the current downscale**, judged
+  side by side — not merely legible, which the current asset already is
+- The glyph is recognizably the same mark as the full logo, not a different one
+- The Windows `.ico` embeds the simplified glyph at 16/24 and the full logo at 32 and above
+- The `T-022` resource tests still pass, with their expected frame set updated if it changes
 
 #### Out of scope
 
-- Full theme palette (Phase 4), installer icons (Phase 5), redesigning the logo
+- Redesigning the logo itself
+- Any change to the brand hex values fixed by `T-003`
 
-**Blocker note:** requires the maintainer to place the source image file in the repository.
+**Note:** this is a judgment call about brand appearance, so it needs the maintainer's
+agreement on the reduced form before implementation.
 
 ---
 
@@ -241,6 +326,71 @@ criteria, and a review base before it moves to Ready.
 *(none)*
 
 ## Complete
+
+### T-003 — Add the application icon asset
+
+**Status:** Complete
+**Completed:** 2026-07-25
+**Owner:** Implementer (source asset supplied by Sean Kottman)
+**Phase:** Phase 0
+**Relevant context:** `T-007`, `ARCHITECTURE.md` §8
+
+**Source asset:** `icon.png`, 1024×1024 RGBA, placed by the maintainer. No vector source
+exists, so **no SVG was produced** — that half of the scope is not deferred, it is
+unavailable. If a vector original surfaces later, regenerating from it would be an
+improvement, not a correction.
+
+**Brand swatches, adopted from the asset.** Recorded canonically in `ARCHITECTURE.md` §8:
+`#1E5E47` forest green, `#D9A24C` trail gold, `#083122` deep green.
+
+Originally published here as measurements — hexes plus a share of the logo, said to be
+"exact", from clustering opaque pixels at a Euclidean radius of 40. `T003-R1` showed that was
+wrong: the artwork has no flat fills, so different reasonable clusterings give different
+centers and shares. Corrected by `T-022` to adopted canonical swatches with no share claims.
+The values themselves did not change; the claim made about them did.
+
+**Framing decision.** The source artwork occupies only ~9% of its canvas: a 498×743 opaque
+box inside 1024×1024, padded 260 left / 192 top / 266 right / 89 bottom — horizontally
+centered but sitting low. Scaled as-is, a 16 px icon would carry roughly 8×12 px of actual
+artwork. On the maintainer's instruction the derived sizes are **trimmed to the content box
+and recentered in a square canvas with a 6% margin**, so the derived assets do not reproduce
+the source's framing. `icon.png` is kept unmodified as the master.
+
+**Delivered:** `icon-{16,24,32,48,64,128,256,512}.png` and `icon.ico` (embedding
+16/24/32/48/64/128/256), all derived by Lanczos downsampling from an 844×844 master.
+The directory's `.gitkeep` was removed, its purpose discharged.
+
+**Checks run:**
+
+| Check | Result |
+|---|---|
+| `.ico` embedded sizes | `[16, 24, 32, 48, 64, 128, 256]` — exceeds the required 16/32/48/256 |
+| `QIcon` load, Linux offscreen | all assets non-null; `icon.ico` reports all 7 sizes to Qt |
+| Visual inspection, 16–128 px | see below |
+| Resource invariant tests | added by `T-022`; 23 assertions, negative-tested against five failure modes |
+| `ruff`, `ruff format`, `mypy`, `pytest` | green |
+
+**All acceptance criteria met.** The 16 px criterion — "renders correctly at 16 px without
+becoming unreadable mush" — is met **narrowly**. Judged by eye at 8× nearest-neighbour zoom:
+
+- **128/64/48 px** — fully legible; trees, mountain, trail, and note all distinct
+- **32 px** — good; the note and trail read clearly, the trees begin to merge
+- **24 px** — acceptable; note and gold trail read, the trees are one blob
+- **16 px** — **marginal but legible.** The note and gold trail stay recognizable; only the
+  landscape detail collapses. It reads as this mark, not as a green blob
+
+The implementer first recorded 16 px as failing the criterion while still marking the task
+Complete, which is a contradictory state (`T003-R2`). Independent review judged the criterion
+narrowly met and that reading is adopted here. The marginal result stands as recorded — the
+cause is the artwork's detail density, not the scaling — and the simplified small-size glyph
+remains worth doing as an **optional enhancement, `T-021`**, which does not block this task,
+`T-007`, or Phase 0 exit.
+
+**Windows unverified.** "Loads via Qt resources on both platforms" was confirmed on Linux
+only. Per `OPS-003` the Windows half is confirmable only in CI; it is carried into `T-006`,
+alongside the same carry from `T-002`.
+
+---
 
 ### T-001 — Establish the project skeleton and toolchain
 
