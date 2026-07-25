@@ -12,8 +12,9 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-005` or `T-007` — both Ready and independent. `T-006` is In Review.
-`T-001`, `T-002`, `T-003`, `T-004`, `T-022` are complete. Nothing is blocked.
+**Start here:** `T-023` to close the `T-006` review findings, then `T-005` or `T-007` —
+both Ready and independent. `T-001`, `T-002`, `T-003`, `T-004`, `T-022` are complete.
+Nothing is blocked.
 
 ---
 
@@ -81,6 +82,45 @@ Statically analyze the import graph (via `ast`, not by importing) and assert:
 #### Out of scope
 
 - Enforcing anything beyond the two rules in `ARCHITECTURE.md` §4
+
+---
+
+### T-023 — Close T-006 review findings
+
+**Status:** Ready
+**Owner:** Implementer (workflow evidence) + Planner (coordination correction)
+**Priority:** High
+**Phase:** Phase 0
+**Depends on:** `T-006`
+**Relevant context:** `ai/REVIEWS.md` findings `T006-R1`, `T006-R2`; `OPS-003`
+**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md`, `ai/TASKS.md`, `ai/STATUS.md`
+**Risk:** Low — evidence completeness and current-truth accuracy
+
+#### Scope
+
+Ensure a failed lint, format, or type-check command leaves its diagnostic in the uploaded
+Windows evidence rather than only in the GitHub Actions job log. Make the documentation
+distinguish retained artifacts from Actions-owned logs instead of calling the artifact the
+only debugging material. Update the completed `T-002` and `T-003` notes to record that their
+Windows carries were discharged by `T-006`.
+
+#### Acceptance criteria
+
+- The controllable project gates write stdout and stderr to `reports/` while preserving their
+  non-zero exit status; a locally injected lint failure proves both properties
+- `if: always()` still uploads the reports on both runners, and the evidence model states
+  honestly which early action/setup failures remain available only through Actions job logs
+- The `T-002` and `T-003` completion notes no longer say their Windows checks are unverified
+  or still carried to `T-006`; they link to the verified `T-006` evidence
+- `T-006` and `STATUS.md` reflect the review outcome and subsequent correction state
+- The final Linux and Windows matrix remains green
+- `T006-R1` and `T006-R2` receive a focused re-review
+
+#### Out of scope
+
+- Re-running the already-proven lint and pytest gate experiments unless needed to validate
+  the evidence-capture correction
+- Adding behavior-dependent `OPS-003` checks assigned to later phases
 
 ---
 
@@ -433,9 +473,11 @@ cause is the artwork's detail density, not the scaling — and the simplified sm
 remains worth doing as an **optional enhancement, `T-021`**, which does not block this task,
 `T-007`, or Phase 0 exit.
 
-**Windows unverified.** "Loads via Qt resources on both platforms" was confirmed on Linux
-only. Per `OPS-003` the Windows half is confirmable only in CI; it is carried into `T-006`,
-alongside the same carry from `T-002`.
+**Windows verified 2026-07-25 — carry discharged.** At completion this criterion, "loads via
+Qt resources on both platforms", was confirmed on Linux only and carried into `T-006` as the
+only place `OPS-003` allows it to be confirmed. `T-006` has since run it:
+`test_ico_exposes_every_frame_to_qt` passed on `windows-latest`, so `QIcon` reads all seven
+embedded frames there. This note is no longer an open carry.
 
 ---
 
@@ -494,7 +536,7 @@ item. `pyproject.toml` carries the MIT license metadata, closing `T-004`'s carri
 
 ### T-002 — Confirm the Python baseline against PySide6 wheel availability
 
-**Status:** Complete (Linux) — Windows confirmation carried into `T-006`
+**Status:** Complete — Linux at completion; Windows discharged by `T-006` on 2026-07-25
 **Completed:** 2026-07-25
 **Owner:** Implementer
 **Phase:** Phase 0
@@ -529,13 +571,18 @@ inherited and returned structured info (title, extractor, 33 formats) over an `m
 1.62 s; `terminate()` on a hung worker returned in 0.001 s with exit code -15, no orphan, and
 the parent healthy. The central architectural bet behaves as designed.
 
-**Explicitly still unverified:**
+**Unverified at completion, and their current standing:**
 
-- Everything above is **Linux only**. The Windows half of this task's acceptance criteria is
-  transferred to `T-006`, which is the only Windows environment available (`OPS-003`).
-- The 2-second cancellation criterion (`REQUIREMENTS.md` §11) was probed against a *sleeping*
-  worker, not a real in-flight download. Real cancellation is Phase 1 (`T-019`).
-- No `pyproject.toml` exists yet, so `requires-python` is a recommendation, not yet recorded.
+- **Resolved 2026-07-25.** Everything above was **Linux only**, with the Windows half
+  transferred to `T-006` as the only Windows environment available (`OPS-003`). `T-006` has
+  since run it: on `windows-latest`, Python 3.14.6 (MSC v.1944, AMD64), PySide6 6.11.1,
+  shiboken6 6.11.1, Qt 6.11.1, and a `QWidget` visible offscreen. The Windows baseline is
+  confirmed and this is no longer a carry.
+- **Still open.** The 2-second cancellation criterion (`REQUIREMENTS.md` §11) was probed
+  against a *sleeping* worker, not a real in-flight download. Real cancellation is Phase 1
+  (`T-019`).
+- **Resolved by `T-001`.** No `pyproject.toml` existed yet, so `requires-python` was a
+  recommendation; `T-001` recorded `>=3.14`.
 
 ---
 

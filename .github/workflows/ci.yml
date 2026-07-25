@@ -88,23 +88,29 @@ jobs:
             python -m pip list
           } | tee "reports/environment.txt"
 
+      # Every check below tees into reports/ as well as the job log. The job log is readable
+      # in the Actions UI, but the artifact is what survives as a downloadable unit, and
+      # under OPS-003 that artifact is the only Windows debugging material that exists. A
+      # check whose diagnostic reaches only the log is a check whose failure cannot be
+      # analyzed offline. `shell: bash` runs with pipefail, so teeing does not mask the
+      # non-zero exit that fails the step.
       - name: Lint
-        run: ruff check .
+        run: ruff check . 2>&1 | tee "reports/lint.txt"
 
       - name: Format check
-        run: ruff format --check .
+        run: ruff format --check . 2>&1 | tee "reports/format.txt"
 
       - name: Types
-        run: mypy src
+        run: mypy src 2>&1 | tee "reports/mypy.txt"
 
       - name: Qt baseline
         # Discharges the Windows half of T-002, which was verified on Linux only: PySide6
         # installs, imports, and constructs a QApplication + QWidget offscreen.
-        run: python .github/scripts/qt_baseline.py | tee "reports/qt-baseline.txt"
+        run: python .github/scripts/qt_baseline.py 2>&1 | tee "reports/qt-baseline.txt"
 
       - name: Tests
         # Network tests stay excluded by the addopts in pyproject.toml (ai/TESTING.md §10).
-        run: pytest -v --junitxml="reports/pytest.xml" | tee "reports/pytest.txt"
+        run: pytest -v --junitxml="reports/pytest.xml" 2>&1 | tee "reports/pytest.txt"
 
       - name: Upload evidence
         if: always()
