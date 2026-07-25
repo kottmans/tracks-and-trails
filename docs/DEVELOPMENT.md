@@ -24,7 +24,21 @@ End users need none of this — released builds bundle their own interpreter (`R
 
 ## Setup
 
-From a clean checkout:
+```bash
+git clone https://github.com/kottmans/tracks-and-trails.git
+cd tracks-and-trails
+```
+
+Set your commit identity **for this repository**. The project keeps personal addresses out of
+a history that will eventually be public — use a GitHub `noreply` address:
+
+```bash
+git config user.email "<id>+<username>@users.noreply.github.com"
+```
+
+Repo-local config does not survive a fresh clone, so this is a per-clone step.
+
+Then:
 
 ```bash
 python3 -m venv .venv
