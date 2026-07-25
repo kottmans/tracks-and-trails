@@ -3,4 +3,6 @@
 Deleted once both failure modes are confirmed red. Do not keep this file.
 """
 
-import os  # deliberate unused import: ruff F401
+
+def test_deliberate_failure_should_turn_ci_red() -> None:
+    assert 1 == 2, "deliberate failure: CI must report this as red"
