@@ -55,9 +55,14 @@ Then `T-020` (frozen smoke test) once `T-006` exists, and `T-007` once `T-003` i
 
 ## Repository
 
-Private for now; intended to go public later. Two things to do at that transition: state that
-contributions are accepted under MIT (`LIC-001`), and re-check that no personal paths or
-local configuration reached the history.
+`github.com/kottmans/tracks-and-trails` — **private** for now, intended to go public later.
+
+Commits are authored as `40611149+kottmans@users.noreply.github.com`, set in **repo-local**
+git config so the maintainer's personal address never enters a history that will eventually be
+public. This is per-repository, not global: a fresh clone, or a new repo, needs it set again.
+
+To do when it goes public: state that contributions are accepted under MIT (`LIC-001`), and
+re-check that no personal paths or local configuration reached the history.
 
 ## Environment baseline
 
@@ -70,8 +75,8 @@ Development machine, verified 2026-07-25:
 | Project venv | `.venv/` — editable install; PySide6 6.11.1, yt-dlp 2026.7.4, platformdirs 4.11.0 |
 | Dev tools | ruff 0.16.0, mypy 2.3.0, pytest 9.1.1, pytest-qt 4.5.0, PyInstaller 6.21.0 |
 | ffmpeg | present |
-| git | present; repository initialized, **no commits yet** |
-| ruff / mypy / pytest | not yet installed — `T-001` |
+| git | branch `main`, 2 commits, not yet pushed |
+| Repository path | `/mnt/storage/software_projects/tracks-and-trails` |
 | Windows environment | **CI runners only** — no Windows machine or VM is available (`OPS-003`) |
 
 ## Current risks
