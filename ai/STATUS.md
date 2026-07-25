@@ -1,0 +1,91 @@
+# STATUS.md — Tracks & Trails
+
+**Purpose:** Concise snapshot of where the project stands right now.
+**Authority:** Canonical for current project state.
+**Owner:** Planner / Implementer
+**Maintainer:** Sean Kottman
+**Status:** Active
+**Last updated:** 2026-07-25
+**Last verified against repository:** 2026-07-25
+**Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
+**Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
+
+---
+
+**Current phase:** Phase 0 — Foundation
+**Overall state:** Skeleton in place and green; no application behavior yet
+
+## Completed
+
+- Documentation system bootstrapped: `DOC-001` (convention rev 2026-07-18.1, Standard profile)
+- Requirements, architecture, phases, and Phase 0 tasks defined
+- Foundational decisions accepted: `ARC-001`, `ARC-002`, `DAT-001`, `OPS-001`, `OPS-002`,
+  `OPS-003`, `SEC-001`, `REL-001`, `LIC-001`
+- **`T-004` complete** — licensed MIT; `LICENSE` written
+- **`T-002` complete** — Python 3.14 baseline confirmed (PySide6 ships `abi3` wheels)
+- **`T-001` complete** — `pyproject.toml`, 27-module skeleton per `ARCHITECTURE.md` §4,
+  `tests/` tree, `docs/DEVELOPMENT.md`. All four checks green from a simulated clean checkout.
+- Verified 2026-07-25 that yt-dlp 2026.06.09 is pure Python (1046 `.py`, no compiled
+  extensions), which is what makes the `OPS-002` pip-free updater viable
+
+## In progress
+
+*(nothing — no task has been started)*
+
+## In progress
+
+*(nothing active)*
+
+## Next
+
+Both are Ready and independent — either order.
+
+1. **`T-006`** — CI on Linux and Windows. Higher priority than its phase position suggests:
+   per `OPS-003` it is the only Windows environment that exists, and it carries `T-002`'s
+   unfinished Windows verification.
+2. **`T-005`** — layering enforcement test. Cheap, and the longer the skeleton sits without
+   it the more chance a layer rule gets broken unnoticed.
+
+Then `T-020` (frozen smoke test) once `T-006` exists, and `T-007` once `T-003` is unblocked.
+
+## Blockers
+
+- **`T-003` needs the logo file.** The icon exists only as an image held by the maintainer;
+  it must be placed in the repository before `T-007`.
+
+## Repository
+
+Private for now; intended to go public later. Two things to do at that transition: state that
+contributions are accepted under MIT (`LIC-001`), and re-check that no personal paths or
+local configuration reached the history.
+
+## Environment baseline
+
+Development machine, verified 2026-07-25:
+
+| Item | State |
+|---|---|
+| Python | 3.14.6 (`/usr/bin/python3`) — the only interpreter; **confirmed sufficient** (`T-002`) |
+| `pip` | 26.0.1, installed via `ensurepip --user` into `~/.local` (no sudo, no PEP 668 marker on F44) |
+| Project venv | `.venv/` — editable install; PySide6 6.11.1, yt-dlp 2026.7.4, platformdirs 4.11.0 |
+| Dev tools | ruff 0.16.0, mypy 2.3.0, pytest 9.1.1, pytest-qt 4.5.0, PyInstaller 6.21.0 |
+| ffmpeg | present |
+| git | present; repository initialized, **no commits yet** |
+| ruff / mypy / pytest | not yet installed — `T-001` |
+| Windows environment | **CI runners only** — no Windows machine or VM is available (`OPS-003`) |
+
+## Current risks
+
+| Risk | Impact | Standing |
+|---|---|---|
+| ~~PySide6 may lack Python 3.14 wheels~~ | — | **Closed** by `T-002`: PySide6 ships `abi3` wheels serving all Python ≥3.10 |
+| No Windows machine — CI only | Interactive Windows behavior (screen reader, dialogs, keyboard, theming, installer) is **known-unverified**, not merely untested | `OPS-003`: push everything automatable into `T-006`/`T-020`; one real Windows session blocks first public release |
+| `ARC-002` process model is unproven | It is the project's central architectural bet | **Mechanics validated on Linux** by a `T-002` probe (spawn under a live `QApplication`, structured progress over `mp.Queue`, instant terminate with no orphan). Phase 1 still proves it under a real download. |
+| `ARC-002` may break once frozen — `spawn` from a frozen binary relaunches the app | Recursive launch; invisible until Phase 5 without a guard | `freeze_support()` + `T-020` frozen smoke test in Phase 0 CI |
+| yt-dlp upstream churn | Ongoing maintenance cost | Confined to two modules (`NFR-008`); pinned fixtures |
+
+## Notes
+
+Nothing in `ARCHITECTURE.md` or `TESTING.md` has been implemented. Both describe the approved
+target, not reality. Treat any claim of implemented behavior as false until this section says
+otherwise.

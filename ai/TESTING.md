@@ -1,0 +1,197 @@
+# TESTING.md — Tracks & Trails
+
+**Purpose:** Define how the project is verified.
+**Authority:** Canonical for validation policy, required checks, gates, and coverage expectations.
+**Owner:** Reviewer (Codex) — policy; Implementer may add checks a change introduces.
+**Maintainer:** Sean Kottman
+**Status:** Active
+**Last updated:** 2026-07-25
+**Last reviewed:** 2026-07-25
+**Update when:** A test type, CI requirement, mandatory command, coverage rule, or gate changes.
+**Does not contain:** Local setup instructions (`docs/DEVELOPMENT.md`, once created).
+
+> **Status note:** The toolchain and commands below are live as of `T-001` (2026-07-25) and
+> pass. The suite itself is near-empty: only structural tests of the skeleton exist. Sections
+> §7 (mandatory high-risk coverage) and §8 (release gate) describe the approved target, not
+> current coverage. `ai/STATUS.md` is authoritative for what actually runs today.
+
+---
+
+## 1. Philosophy
+
+Three things drive the test strategy, and they come straight from the architecture:
+
+1. **The logic lives in `core/`, so most tests are fast, headless, and Qt-free.** If a rule is
+   hard to test, it is probably in the wrong layer.
+2. **yt-dlp and the network are not under our control.** They are mocked or replayed from
+   recorded fixtures in every default-run test. Real-network tests exist, are marked, and
+   are opt-in — a test that fails because a site changed teaches us nothing about our code.
+3. **The dangerous parts are the boundaries.** Process lifecycle, cancellation, crash
+   recovery, filename safety, and log redaction get disproportionate attention, because
+   those are where failures are silent, destructive, or both.
+
+## 2. Test types
+
+| Type | Location | Runs by default | What it covers |
+|---|---|---|---|
+| Unit | `tests/unit/` | yes | `core/` domain logic, state machine, presets, path rendering, error classification, `ytdlp_adapter` projection against recorded fixtures, persistence repositories against a temp DB |
+| Layering | `tests/unit/test_layering.py` | yes | The import rules in `ARCHITECTURE.md` §4 |
+| UI | `tests/ui/` | yes (offscreen) | Widget behavior, signal wiring, keyboard navigation, accessible names — via `pytest-qt` with `QT_QPA_PLATFORM=offscreen` |
+| Integration | `tests/integration/` | yes | Real child processes and real IPC, with yt-dlp faked at the adapter seam: progress delivery, cancellation, worker-crash handling, migrations, crash recovery |
+| Network | `tests/network/` | **no** — `-m network` | A small set of real URLs against real yt-dlp. Run before a release and when diagnosing extractor issues |
+
+## 3. Required checks by change type
+
+| Change | Required before "complete" |
+|---|---|
+| Documentation only — `ai/`, `docs/`, `README.md`, comments | **None.** No behavior changed. |
+| Source change | `ruff check`, `ruff format --check`, `mypy src`, plus the tests relevant to the change |
+| Change in `core/`, `downloader/`, or `persistence/` | The above, plus the **full** `tests/unit` and `tests/integration` suites — these layers have cross-cutting effects |
+| Dependency add/remove/major bump | Full default suite on **both** platforms, plus a recorded `DECISIONS.md` entry (`AGENTS.md` §7) |
+| Anything toward a tagged release or distributed build | The full suite **and** §8's release gate, regardless of how small the change looks |
+
+Never report a check as passing without running it. Report the real result, including
+failures (`AGENTS.md` §8).
+
+## 4. Commands
+
+Established by `T-001`; kept in sync here as the authoritative list.
+`docs/DEVELOPMENT.md` may repeat them as convenience shortcuts but must not redefine policy.
+
+```bash
+ruff check .                 # lint
+ruff format --check .        # formatting
+mypy src                     # static types
+pytest                       # default suite (excludes network)
+pytest tests/unit            # fast headless loop
+pytest -m network            # opt-in, real network
+pytest --cov=tracks_and_trails --cov-report=term-missing
+```
+
+## 5. Fixtures and test data
+
+- **Recorded `info_dict` fixtures** in `tests/fixtures/infodicts/` are the pinned contract
+  between yt-dlp and `ytdlp_adapter.py`. Each records the yt-dlp version and capture date.
+  Refreshing one is a deliberate act with its own task — a silently refreshed fixture hides
+  exactly the breakage it exists to catch.
+- **Filename fixtures** must include titles with characters illegal on NTFS, Windows
+  reserved device names (`CON`, `NUL`, `LPT1`), trailing dots and spaces, emoji, RTL text,
+  and path-traversal attempts (`../`, absolute paths).
+- No test may write outside `tmp_path`. No test may download real media into the repository.
+- Tests must not read or write the developer's real config, data, or cache directories —
+  `platformdirs` paths are redirected to `tmp_path` by an autouse fixture.
+
+## 6. Mocking policy
+
+- **Never mock `core/`.** It is pure; test it directly. A mock in a `core/` unit test means
+  the code has a dependency it should not have.
+- **Always fake yt-dlp** in default-run tests, at the `ytdlp_adapter` seam — not by patching
+  yt-dlp internals, which would couple tests to yt-dlp's private structure.
+- **Never mock the process boundary in integration tests.** The entire point of
+  `tests/integration/` is that real processes are spawned, real messages cross a real queue,
+  and real terminations are issued. A mocked subprocess cannot fail the way a real one does.
+- Do not mock SQLite. Use a real database in `tmp_path`; it is fast and catches actual SQL
+  and migration errors.
+
+## 7. Mandatory test coverage for high-risk behavior
+
+These require an explicit test before the owning phase can exit. Each exists because the
+failure mode is silent, destructive, or both.
+
+| Area | Must be proven |
+|---|---|
+| Layering | `core/` importing Qt fails the suite; `ui/` importing `yt_dlp` fails the suite |
+| Cancellation | Cancel terminates the worker within 2 s and leaves no orphan process |
+| Worker crash | `SIGKILL`/`TerminateProcess` on a worker yields `WORKER_CRASH`, app survives (`REQ-028`) |
+| Crash recovery | A DB with jobs stuck in `RUNNING` is recovered to a retryable state at startup |
+| State machine | Every illegal transition raises; no silent state corruption |
+| Path safety | No rendered output template escapes the output directory; Windows-illegal names are sanitized on both platforms |
+| Log redaction | Cookie paths/contents, proxy credentials, and token-like query parameters never reach any log (`NFR-007`) |
+| DRM | `DRM_PROTECTED` is never auto-retried and has no bypass path (`REQ-EXCL-001`, `SEC-001`) |
+| Migrations | Every migration runs forward from every prior schema version with data intact |
+| Settings freeze | A settings change mid-flight does not alter a running job's `DownloadRequest` |
+
+## 8. Release gate
+
+All of the following, **on Linux and Windows**, before any tag or distributed build:
+
+1. `ruff check`, `ruff format --check`, `mypy src` — clean
+2. Full default suite — green
+3. `pytest -m network` — green against the current pinned yt-dlp baseline
+4. Every §7 mandatory test — present and passing
+5. Migration check — the previous release's database opens, migrates, and retains data
+6. `REQUIREMENTS.md` §11 MVP acceptance criteria — manually verified and recorded
+7. Built artifact installs and runs on a **clean** machine with **no Python and no
+   development toolchain** installed (`REQ-029`, `REL-001`)
+8. Frozen-build smoke test passes: launch, run one real download to completion, cancel
+   another, exit — confirming no recursive launch and no orphaned processes
+   (`freeze_support()`, `REL-001`)
+9. yt-dlp purity re-check: the pinned baseline still contains no compiled extensions, so the
+   `OPS-002` wheel-extraction update path remains viable
+10. In-app yt-dlp update works **from the frozen artifact** — download, extract, resolve the
+    new version, and revert to baseline
+11. Qt confirmed dynamically linked in the artifact (`NFR-009`, `LIC-001`)
+12. License texts for Qt, ffmpeg, and yt-dlp present in the distribution
+13. No secrets, cookies, or personal paths in the artifact or the repository
+14. Cold start under 3 seconds on the reference machine (`NFR-002`)
+15. **Windows manual verification session completed** — the §9 list performed on a real
+    Windows desktop and recorded in `REVIEWS.md`. Blocking for the first public release;
+    CI green is not a substitute (`OPS-003`).
+
+## 9. Manual verification
+
+Some things cannot be automated and are checked by hand, recorded in `REVIEWS.md` with the
+date and platform:
+
+- Screen-reader announcement quality (Orca on Linux, Narrator on Windows)
+- Native file dialogs, "reveal in file manager", and "open file" on both desktops
+- Visual correctness of light and dark themes
+- Installer flow on a clean machine
+- Real-world download of a large file, watching memory and responsiveness
+
+### Windows manual verification is currently impossible (`OPS-003`)
+
+There is no Windows machine and no Windows VM available. Every item above can be performed on
+Linux only. On Windows they are **known-unverified**, not merely untested — do not record
+them as passed, and do not infer them from a green Windows CI run.
+
+This is discharged by one real Windows session — the maintainer's, a tester's, or a rented
+cloud desktop — which is a **blocking item before the first public release** (§8, item 15).
+Until then, CI carries as much of the load as can be automated; see `OPS-003` for the split
+between what CI genuinely covers and what it cannot.
+
+## 10. CI
+
+Runs on every push and pull request, on **Linux and Windows matrix runners from Phase 0**.
+Platform-specific breakage in `spawn` behavior, path handling, and packaging is the expected
+failure mode of this project; discovering it late is the thing CI exists to prevent.
+
+CI runs lint, format check, types, and the default suite. Network tests do not run in CI.
+A red CI run blocks merge.
+
+## 11. Coverage
+
+Coverage is a signal, not a target — no build fails on a percentage. Expectations:
+
+- `core/` — near-complete. It is pure logic with no excuse for untested branches.
+- `persistence/`, `downloader/protocol.py`, `ytdlp_adapter.py` — high.
+- `ui/` — behavior and wiring, not pixels. Low line coverage here is acceptable and expected.
+- Anything in §7 — no gaps, ever.
+
+## 12. Known gaps
+
+Tracked honestly; each should become a task or be accepted deliberately.
+
+- **The suite is essentially empty.** `T-001` established the toolchain and structural checks
+  only. Nothing in §7 is covered yet; those arrive with the phases that introduce the
+  behavior.
+- **Windows has automated coverage only** (`OPS-003`). Screen readers, native dialogs, real
+  keyboard interaction, theming, and installer UX are unverified there. Discharged by the
+  pre-release session in §8 item 15.
+- **macOS is untested and unsupported** (`REQUIREMENTS.md` §3).
+- **Network tests are inherently flaky** — sites change. Failures are triaged as "our bug" vs
+  "site changed" before being acted on.
+- **Concurrent-instance behavior is unverified** until the Phase 2 single-instance guard
+  (`A-004`).
+- **Long-running stability** (multi-hour queues, hundreds of jobs) has no automated coverage;
+  currently manual only.
