@@ -50,9 +50,9 @@ jobs:
       PIP_DISABLE_PIP_VERSION_CHECK: "1"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           # ARC-001 / T-002: the pinned baseline. PySide6 ships abi3 wheels, so this is a
           # project choice, not a PySide6 constraint.
@@ -108,7 +108,7 @@ jobs:
 
       - name: Upload evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: evidence-${{ matrix.os }}
           path: reports/
