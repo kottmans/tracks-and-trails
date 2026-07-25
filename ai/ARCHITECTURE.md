@@ -284,8 +284,27 @@ classification. Classification is a hint, not a replacement.
   characters illegal on NTFS, trailing dots/spaces, and path-length limits. A title-derived
   filename must never escape the configured output directory: reject `..` and absolute
   components after template rendering.
-- **Theme.** Brand palette derived from the project logo (deep forest green + gold) with
-  light and dark variants; never color-only signaling (`NFR-005`).
+- **Theme.** Brand palette with light and dark variants; never color-only signaling
+  (`NFR-005`). These three hexes are the project's **adopted canonical swatches**, selected
+  from the source logo on 2026-07-25 (`T-003`; corrected by `T-022` after `T003-R1`):
+
+  | Role | Hex |
+  |---|---|
+  | Forest green — primary | `#1E5E47` |
+  | Trail gold — accent | `#D9A24C` |
+  | Deep green — shading | `#083122` |
+
+  **They are adopted, not measured.** The artwork contains no flat fills — each colored region
+  is a cloud spanning roughly ±2 per channel — so clustering it recovers a different center for
+  every reasonable algorithm and radius, and no percentage-of-the-logo figure is stable either
+  (`T003-R1`). These values are the definition; the artwork is their origin, not their proof.
+  Do not re-derive them from `icon.png`, and do not cite a measurement as evidence for them.
+
+  Source of record: `resources/icons/icon.png`, SHA-256
+  `f0e202c714ac316fdaa75b4cccbc0b46fee4686129ac09d0d276446abfe74b8d` (`T003-R5`). Changing a
+  swatch is a deliberate brand decision, not a measurement update.
+
+  Derived light/dark ramps are Phase 4 work; only these three are fixed.
 
 ## 9. Security boundaries
 
