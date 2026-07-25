@@ -170,6 +170,17 @@ failure mode of this project; discovering it late is the thing CI exists to prev
 CI runs lint, format check, types, and the default suite. Network tests do not run in CI.
 A red CI run blocks merge.
 
+Implemented by `T-006` as `.github/workflows/ci.yml`. Two properties are load-bearing rather
+than stylistic, both following from `OPS-003`: `fail-fast` is **off**, so a Linux failure
+never cancels the Windows job, and every job uploads its `reports/` evidence **whether it
+passed or failed**, because with no Windows machine those artifacts are the only Windows
+debugging material that exists. Do not "tidy" either away.
+
+`.github/scripts/qt_baseline.py` runs before the suite and verifies the Qt stack itself —
+PySide6 imports, and a `QApplication` + `QWidget` construct offscreen. It is not a pytest test
+on purpose: if Qt is broken on a runner, every UI test failure is that same failure reported
+less clearly.
+
 ## 11. Coverage
 
 Coverage is a signal, not a target — no build fails on a percentage. Expectations:

@@ -12,12 +12,44 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-005`, `T-006`, or `T-007` — all Ready and independent. `T-001`, `T-002`,
-`T-003`, `T-004`, `T-022` are complete. Nothing is blocked.
+**Start here:** `T-005` or `T-007` — both Ready and independent. `T-006` is In Review.
+`T-001`, `T-002`, `T-003`, `T-004`, `T-022` are complete. Nothing is blocked.
 
 ---
 
 ## Ready
+
+### T-007 — Application shell window
+
+**Status:** Ready — `T-003` delivered the icon set, so this is no longer blocked
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 0
+**Depends on:** `T-001`, `T-003`
+**Relevant context:** `ARCHITECTURE.md` §4, `NFR-002`, `NFR-005`
+**Affected surfaces:** `app.py`, `ui/main_window.py`, `resources/`
+**Risk:** Low
+**Required checks:** default suite; manual launch on both platforms
+
+#### Scope
+
+A `QApplication` and `MainWindow` that opens with the app icon and title, has a menu bar with
+File → Quit and Help → About, restores window geometry, and shuts down cleanly with no
+warnings on stderr. No download functionality.
+
+#### Acceptance criteria
+
+- Launches and exits cleanly on Linux and Windows with a zero exit code and no Qt warnings
+- App icon appears in the title bar, taskbar, and About dialog on both platforms
+- Geometry persists across restarts
+- Cold start under 3 seconds on the reference machine (`NFR-002`, measured and recorded)
+- A `pytest-qt` test constructs and closes the window offscreen
+
+#### Out of scope
+
+- Queue view, settings, theming (Phase 4), any yt-dlp interaction
+
+---
 
 ### T-005 — Layering enforcement test
 
@@ -52,164 +84,7 @@ Statically analyze the import graph (via `ast`, not by importing) and assert:
 
 ---
 
-### T-006 — CI on Linux and Windows
-
-**Status:** Ready
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 0
-**Depends on:** `T-001`
-**Relevant context:** `ai/TESTING.md` §10, `REQUIREMENTS.md` §3, `C-003`, **`OPS-003`**
-**Affected surfaces:** CI workflow config
-**Risk:** **High** — per `OPS-003` this is the *only* Windows environment that exists. Anything
-it does not check is genuinely unverified on Windows, not merely unautomated.
-
-#### Scope
-
-A matrix workflow on Linux and Windows running lint, format check, mypy, and the default
-pytest suite on the `T-002` baseline. UI tests run with `QT_QPA_PLATFORM=offscreen`. Network
-tests excluded.
-
-This is deliberately **larger than a standard lint-and-test pipeline**. Because there is no
-Windows machine (`OPS-003`), CI carries verification load that manual testing would normally
-carry, so treat the automatable list in `OPS-003` as this task's real target and extend the
-workflow toward it as those features arrive in later phases.
-
-#### Acceptance criteria
-
-- Both platforms run green on push and pull request
-- A deliberate lint error and a deliberate test failure each turn CI red (verified once, then reverted)
-- UI tests pass headless on both runners
-- **Carried from `T-002`:** on the Windows runner, PySide6 installs, `import PySide6` works,
-  and a `QApplication` + `QWidget` constructs offscreen on the pinned baseline. `T-002`
-  verified this on Linux only; CI is the only place it can be confirmed for Windows
-  (`OPS-003`).
-- **Carried from `T-003`:** `tests/ui/test_resources.py` passes on the Windows runner — every
-  asset non-null through `QIcon`, and `icon.ico` reporting all seven embedded sizes. The test
-  exists (added by `T-022`) and passes on Linux; CI is the only place it can be confirmed for
-  Windows (`OPS-003`).
-- Windows runner artifacts (logs, failure output, screenshots when added) are retained and
-  downloadable — with no local Windows machine, CI output is the only debugging evidence
-  available for Windows failures
-- Total run under ~10 minutes
-
-#### Out of scope
-
-- Release/packaging pipelines (Phase 5), coverage gates, network tests
-- The frozen build — that is `T-020`
-
----
-
-### T-022 — Close T-003 review findings
-
-**Status:** Complete
-**Completed:** 2026-07-25 — focused re-review approved; `T003-R1`, `T003-R2`, `T003-R3` all
-Resolved, no new findings
-**Owner:** Planner (documentation correction) + Implementer (resource test)
-**Priority:** High
-**Phase:** Phase 0
-**Depends on:** `T-003`
-**Relevant context:** `ai/REVIEWS.md` findings `T003-R1` through `T003-R3`
-**Affected surfaces:** `ai/ARCHITECTURE.md` §8, the `T-003` completion note, resource tests
-**Risk:** Low — documentation accuracy and regression coverage for a fixed asset set
-
-#### Scope
-
-Make the palette evidence reproducible or describe the three hex values honestly as adopted
-brand swatches rather than uniquely derived measurements. Correct the `T-003` completion note
-so its status agrees with the review's judgment that the 16 px criterion is met narrowly, with
-`T-021` retained as an optional visual improvement. Add a default-suite resource test for the
-delivered PNG and ICO invariants.
-
-#### Acceptance criteria
-
-- The palette table either links to a deterministic algorithm whose radius-40 output matches
-  every published hex and share, or drops the measurement-dependent shares and labels the
-  hexes as the canonical swatches selected from the source artwork
-- The `T-003` completion note no longer says a completed task left its 16 px acceptance
-  criterion unmet; it preserves the marginal visual result and the rationale for `T-021`
-- A default-suite test fails when a required PNG is missing or has the wrong dimensions, and
-  fails when `icon.ico` is null or does not report 16/24/32/48/64/128/256 through `QIcon`
-- The test passes on Linux offscreen; `T-006` runs the same assertion on Windows
-- `T003-R1`, `T003-R2`, and `T003-R3` receive a focused re-review
-
-#### Out of scope
-
-- Changing the artwork, choosing new brand colors, implementing `T-021`, or consuming the
-  icon in the application shell (`T-007`)
-
-#### Work completed — 2026-07-25
-
-**`T003-R1` — palette evidence.** Took the second option: the shares are gone and the hexes
-are labeled adopted canonical swatches in `ARCHITECTURE.md` §8. No deterministic algorithm was
-supplied because none exists to supply — the artwork has no flat fills, every colored region
-is a cloud spanning roughly ±2 per channel, so the modal color is as unstable as the cluster
-center (the gold's two most frequent exact values, `#D8A14C` and `#D8A24C`, are within 1.07%
-and 0.94% of opaque pixels of each other). §8 now says so explicitly and forbids re-deriving
-the values. **The three hex values are unchanged** — only the claim about them. The source
-master's SHA-256 is recorded there as the provenance anchor (`T003-R5`).
-
-**`T003-R2` — task truth.** The review's reading is adopted: the criterion is narrowly met.
-The `T-003` note now says so, keeps the marginal 16 px assessment verbatim, and states that
-`T-021` blocks nothing. `T-021` was itself reworded — it had inherited the overstated premise
-that the trail collapses, and its acceptance criterion "distinguishable from a generic green
-square" was already satisfied by the current asset, making it unfalsifiable. It now requires a
-side-by-side improvement over the existing downscale.
-
-**`T003-R3` — test coverage.** `tests/unit/test_resources.py` (11 assertions, stdlib only —
-PNG `IHDR` and `.ico` directory parsing, since the project has no image library and adding one
-for a test is not worth it) and `tests/ui/test_resources.py` (12 assertions through `QIcon`,
-using pytest-qt's `qapp`). `tests/ui/conftest.py` sets `QT_QPA_PLATFORM=offscreen` by default
-so a plain `pytest` reproduces CI.
-
-Negative-tested rather than assumed — each failure mode was injected, confirmed to fail the
-suite, and reverted, with the asset directory hashed before and after to prove restoration:
-
-| Injected failure | Caught by |
-|---|---|
-| `icon-48.png` deleted | `test_no_unexpected_files_in_the_icon_directory` |
-| `icon-32.png` resized to 31×31 | `test_derived_png_exists_at_its_declared_size[32]` |
-| `icon.ico` truncated to 200 bytes | `test_ico_exposes_every_frame_to_qt` |
-| `icon.ico` rebuilt with only 16/32/48 | `test_ico_declares_every_required_frame` + the Qt test |
-| stray `icon-99.png` added | `test_no_unexpected_files_in_the_icon_directory` |
-
-Suite: 27 passed, 1 deselected (was 4 passed). `ruff`, `ruff format --check`, `mypy src` green.
-
----
-
 ## Proposed — Phase 0
-
-### T-007 — Application shell window
-
-**Status:** Ready — `T-003` delivered the icon set, so this is no longer blocked
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 0
-**Depends on:** `T-001`, `T-003`
-**Relevant context:** `ARCHITECTURE.md` §4, `NFR-002`, `NFR-005`
-**Affected surfaces:** `app.py`, `ui/main_window.py`, `resources/`
-**Risk:** Low
-**Required checks:** default suite; manual launch on both platforms
-
-#### Scope
-
-A `QApplication` and `MainWindow` that opens with the app icon and title, has a menu bar with
-File → Quit and Help → About, restores window geometry, and shuts down cleanly with no
-warnings on stderr. No download functionality.
-
-#### Acceptance criteria
-
-- Launches and exits cleanly on Linux and Windows with a zero exit code and no Qt warnings
-- App icon appears in the title bar, taskbar, and About dialog on both platforms
-- Geometry persists across restarts
-- Cold start under 3 seconds on the reference machine (`NFR-002`, measured and recorded)
-- A `pytest-qt` test constructs and closes the window offscreen
-
-#### Out of scope
-
-- Queue view, settings, theming (Phase 4), any yt-dlp interaction
-
----
 
 ### T-021 — Simplified small-size icon glyph
 
@@ -323,9 +198,181 @@ criteria, and a review base before it moves to Ready.
 
 ## In Review
 
-*(none)*
+### T-006 — CI on Linux and Windows
+
+**Status:** In Review — implemented and verified 2026-07-25 on branch `t-006-ci` (PR #1);
+awaiting Codex
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 0
+**Depends on:** `T-001`
+**Relevant context:** `ai/TESTING.md` §10, `REQUIREMENTS.md` §3, `C-003`, **`OPS-003`**
+**Affected surfaces:** CI workflow config
+**Risk:** **High** — per `OPS-003` this is the *only* Windows environment that exists. Anything
+it does not check is genuinely unverified on Windows, not merely unautomated.
+
+#### Scope
+
+A matrix workflow on Linux and Windows running lint, format check, mypy, and the default
+pytest suite on the `T-002` baseline. UI tests run with `QT_QPA_PLATFORM=offscreen`. Network
+tests excluded.
+
+This is deliberately **larger than a standard lint-and-test pipeline**. Because there is no
+Windows machine (`OPS-003`), CI carries verification load that manual testing would normally
+carry, so treat the automatable list in `OPS-003` as this task's real target and extend the
+workflow toward it as those features arrive in later phases.
+
+#### Acceptance criteria
+
+- Both platforms run green on push and pull request
+- A deliberate lint error and a deliberate test failure each turn CI red (verified once, then reverted)
+- UI tests pass headless on both runners
+- **Carried from `T-002`:** on the Windows runner, PySide6 installs, `import PySide6` works,
+  and a `QApplication` + `QWidget` constructs offscreen on the pinned baseline. `T-002`
+  verified this on Linux only; CI is the only place it can be confirmed for Windows
+  (`OPS-003`).
+- **Carried from `T-003`:** `tests/ui/test_resources.py` passes on the Windows runner — every
+  asset non-null through `QIcon`, and `icon.ico` reporting all seven embedded sizes. The test
+  exists (added by `T-022`) and passes on Linux; CI is the only place it can be confirmed for
+  Windows (`OPS-003`).
+- Windows runner artifacts (logs, failure output, screenshots when added) are retained and
+  downloadable — with no local Windows machine, CI output is the only debugging evidence
+  available for Windows failures
+- Total run under ~10 minutes
+
+#### Out of scope
+
+- Release/packaging pipelines (Phase 5), coverage gates, network tests
+- The frozen build — that is `T-020`
+
+#### Implementation record — 2026-07-25
+
+**Delivered:** `.github/workflows/ci.yml` and `.github/scripts/qt_baseline.py`; `reports/`
+added to `.gitignore`.
+
+The workflow encodes two `OPS-003` consequences rather than leaving them to convention.
+`fail-fast: false`, so a Linux failure can never cancel the Windows job — Windows evidence is
+the scarce resource. Evidence uploads `if: always()`, because with no Windows machine those
+artifacts are the only Windows debugging material that will ever exist. Concurrency cancels
+superseded runs, since Windows minutes bill at 2× against a private repository's allowance.
+
+`qt_baseline.py` is deliberately **not** a pytest test. It answers whether the Qt stack works
+at all on the runner, which is the question worth asking before trusting a suite that imports
+Qt: if it fails, every downstream UI failure is that same failure reported less clearly. It
+asserts rather than reports — a wrong platform plugin or an invisible widget exits non-zero.
+
+**Every acceptance criterion, with the run that evidences it.** All runs on `t-006-ci`:
+
+| Criterion | Evidence |
+|---|---|
+| Both platforms green on push | `30179359072` |
+| Both platforms green on pull request | `30179407050` (PR #1) |
+| Deliberate lint error turns CI red | `30179263484` — both runners failed at `Lint` |
+| Deliberate test failure turns CI red | `30179308976` — both runners failed at `Tests` |
+| Both reverted after verification | `30179359072` is the reverted tree, green |
+| UI tests pass headless on both | 27 passed on each runner under `QT_QPA_PLATFORM=offscreen` |
+| **Carried from `T-002`:** PySide6 + `QApplication` on Windows | Python 3.14.6 (MSC v.1944, AMD64), PySide6 6.11.1, shiboken6 6.11.1, Qt 6.11.1, `QWidget` `visible=True` offscreen |
+| **Carried from `T-003`:** `QIcon` reads all seven `.ico` frames on Windows | `test_ico_exposes_every_frame_to_qt` PASSED on `windows-latest` |
+| Windows artifacts retained and downloadable | 30-day retention; the full failure traceback was retrieved from the failed Windows job with no Windows machine |
+| Total run under ~10 minutes | Linux 37–54 s, Windows 1 m 3 s – 1 m 16 s |
+
+**Both Windows carries are now discharged**, with artifact evidence rather than a green tick.
+`T-002` and `T-003` should no longer be read as carrying unverified Windows claims.
+
+**Two defects were caught before CI ever ran**, by executing each step's command locally
+first: `QT_VERSION_STR` does not exist in PySide6 (the baseline script would have crashed on
+both runners), and the actions were on the deprecated Node 20 runtime — bumped to v7.
+
+**Assumption recorded:** the Linux job installs `libegl1 libgl1 libxkbcommon0 libdbus-1-3
+libfontconfig1`. This list was derived from what the offscreen plugin links, not from a
+minimality experiment; it may be broader than strictly needed. It is correct, not necessarily
+minimal.
+
+**Not yet extended toward the rest of `OPS-003`'s automatable list** — orphaned-process
+assertions, path-safety checks, artifact-install-and-launch, screenshot capture. Those depend
+on behavior that does not exist yet; the task says to extend the workflow as those features
+arrive, which is future-phase work rather than a gap in this one.
+
+---
 
 ## Complete
+
+### T-022 — Close T-003 review findings
+
+**Status:** Complete
+**Completed:** 2026-07-25 — focused re-review approved; `T003-R1`, `T003-R2`, `T003-R3` all
+Resolved, no new findings
+**Owner:** Planner (documentation correction) + Implementer (resource test)
+**Priority:** High
+**Phase:** Phase 0
+**Depends on:** `T-003`
+**Relevant context:** `ai/REVIEWS.md` findings `T003-R1` through `T003-R3`
+**Affected surfaces:** `ai/ARCHITECTURE.md` §8, the `T-003` completion note, resource tests
+**Risk:** Low — documentation accuracy and regression coverage for a fixed asset set
+
+#### Scope
+
+Make the palette evidence reproducible or describe the three hex values honestly as adopted
+brand swatches rather than uniquely derived measurements. Correct the `T-003` completion note
+so its status agrees with the review's judgment that the 16 px criterion is met narrowly, with
+`T-021` retained as an optional visual improvement. Add a default-suite resource test for the
+delivered PNG and ICO invariants.
+
+#### Acceptance criteria
+
+- The palette table either links to a deterministic algorithm whose radius-40 output matches
+  every published hex and share, or drops the measurement-dependent shares and labels the
+  hexes as the canonical swatches selected from the source artwork
+- The `T-003` completion note no longer says a completed task left its 16 px acceptance
+  criterion unmet; it preserves the marginal visual result and the rationale for `T-021`
+- A default-suite test fails when a required PNG is missing or has the wrong dimensions, and
+  fails when `icon.ico` is null or does not report 16/24/32/48/64/128/256 through `QIcon`
+- The test passes on Linux offscreen; `T-006` runs the same assertion on Windows
+- `T003-R1`, `T003-R2`, and `T003-R3` receive a focused re-review
+
+#### Out of scope
+
+- Changing the artwork, choosing new brand colors, implementing `T-021`, or consuming the
+  icon in the application shell (`T-007`)
+
+#### Work completed — 2026-07-25
+
+**`T003-R1` — palette evidence.** Took the second option: the shares are gone and the hexes
+are labeled adopted canonical swatches in `ARCHITECTURE.md` §8. No deterministic algorithm was
+supplied because none exists to supply — the artwork has no flat fills, every colored region
+is a cloud spanning roughly ±2 per channel, so the modal color is as unstable as the cluster
+center (the gold's two most frequent exact values, `#D8A14C` and `#D8A24C`, are within 1.07%
+and 0.94% of opaque pixels of each other). §8 now says so explicitly and forbids re-deriving
+the values. **The three hex values are unchanged** — only the claim about them. The source
+master's SHA-256 is recorded there as the provenance anchor (`T003-R5`).
+
+**`T003-R2` — task truth.** The review's reading is adopted: the criterion is narrowly met.
+The `T-003` note now says so, keeps the marginal 16 px assessment verbatim, and states that
+`T-021` blocks nothing. `T-021` was itself reworded — it had inherited the overstated premise
+that the trail collapses, and its acceptance criterion "distinguishable from a generic green
+square" was already satisfied by the current asset, making it unfalsifiable. It now requires a
+side-by-side improvement over the existing downscale.
+
+**`T003-R3` — test coverage.** `tests/unit/test_resources.py` (11 assertions, stdlib only —
+PNG `IHDR` and `.ico` directory parsing, since the project has no image library and adding one
+for a test is not worth it) and `tests/ui/test_resources.py` (12 assertions through `QIcon`,
+using pytest-qt's `qapp`). `tests/ui/conftest.py` sets `QT_QPA_PLATFORM=offscreen` by default
+so a plain `pytest` reproduces CI.
+
+Negative-tested rather than assumed — each failure mode was injected, confirmed to fail the
+suite, and reverted, with the asset directory hashed before and after to prove restoration:
+
+| Injected failure | Caught by |
+|---|---|
+| `icon-48.png` deleted | `test_no_unexpected_files_in_the_icon_directory` |
+| `icon-32.png` resized to 31×31 | `test_derived_png_exists_at_its_declared_size[32]` |
+| `icon.ico` truncated to 200 bytes | `test_ico_exposes_every_frame_to_qt` |
+| `icon.ico` rebuilt with only 16/32/48 | `test_ico_declares_every_required_frame` + the Qt test |
+| stray `icon-99.png` added | `test_no_unexpected_files_in_the_icon_directory` |
+
+Suite: 27 passed, 1 deselected (was 4 passed). `ruff`, `ruff format --check`, `mypy src` green.
+
+---
 
 ### T-003 — Add the application icon asset
 
