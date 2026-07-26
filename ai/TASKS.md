@@ -122,6 +122,80 @@ specified, but Windows startup time is unmeasured.
 
 ---
 
+### T-025 — Phase 0 exit preparation
+
+**Status:** In Review — completed and verified 2026-07-25; awaiting Codex
+**Owner:** Implementer + Documentation Maintainer
+**Priority:** High
+**Phase:** Phase 0
+**Depends on:** `T-007`, `T-020`
+**Relevant context:** `IMPLEMENTATION_PLAN.md` Phase 0 exit criteria, `OPS-003`
+**Affected surfaces:** `docs/DEVELOPMENT.md`
+**Risk:** Low
+
+#### Scope
+
+Discharge the Phase 0 exit criteria that are not any single task's responsibility: bring
+`docs/DEVELOPMENT.md` back in line with what the code now does, and re-run the clean-checkout
+verification the exit criteria require, which has not been done since `T-001` — before the
+window existed.
+
+#### Acceptance criteria
+
+- `docs/DEVELOPMENT.md` describes the application as it is, and every command in it is
+  verified to work verbatim from a clean checkout
+- The four gates pass from a checkout containing only git-tracked files
+- The window launches and exits cleanly from that checkout on Linux
+- Windows remains explicitly unverified (`OPS-003`), not quietly assumed
+
+#### Out of scope
+
+- The Windows interactive launch, which needs a real Windows session and blocks first release
+- The Phase 0 exit review itself, which is Codex's
+
+#### Implementation record — 2026-07-25
+
+**Stale documentation corrected.** `docs/DEVELOPMENT.md` still said "It prints a version
+banner and exits 0. There is no window yet — that is `T-007`." `T-007` had shipped, so the one
+file the exit criteria name as the thing to follow was describing an application that no
+longer existed. It now documents `--version` and the real window, the frozen build (`T-020`),
+and `packaging/` and `_freeze_probe.py` in the layout.
+
+**Clean-checkout verification, from 73 git-tracked files only** — no `.venv`, no `.git`, no
+caches, no egg-info. Following the document verbatim:
+
+| Step | Result |
+|---|---|
+| `python3 -m venv .venv`, `pip install -e ".[dev]"` | installed cleanly |
+| `ruff check .` | All checks passed |
+| `ruff format --check .` | 58 files already formatted |
+| `mypy` | Success: no issues in 44 source files |
+| `pytest` | 158 passed, 1 deselected |
+| `python -m tracks_and_trails --version` | `0.1.0.dev0`, exit 0 |
+| `python -m tracks_and_trails` | window opened and exited 0, **stderr 0 bytes**, geometry written at the 960×640 default |
+| `pip install -e ".[dev,build]"` + the documented PyInstaller invocation | built |
+| `python packaging/frozen_smoke.py dist/tracks-and-trails` | OK: one top-level start, no orphan |
+
+Every command in the document was executed as written rather than read for plausibility.
+
+**Phase 0 exit criteria standing after this:**
+
+| Criterion | Standing |
+|---|---|
+| Gates pass locally and in CI | **Met** |
+| Layering test fails on a deliberate `core/` Qt import | **Met** (`T-005`, five real injections) |
+| Window launches from a clean checkout on **Linux** | **Met** — above |
+| Window launches from a clean checkout on **Windows** | **NOT met.** Blocked by `OPS-003`; needs a real Windows session. CI proves it constructs offscreen and that the frozen artifact runs, which is not the same claim. |
+| Frozen artifact spawns without relaunching, both platforms | **Met** (`T-020`) |
+| `LIC-001` Accepted and `LICENSE` exists | **Met** (`T-004`) |
+
+Phase 0 cannot be declared fully exited on the letter of its own criteria until someone
+launches the window on Windows. That is the same gap `OPS-003` records and `ai/TESTING.md` §9
+lists as blocking first release; it is not newly discovered here, and everything automatable
+around it is done.
+
+---
+
 ## Proposed — Phase 0
 
 ### T-021 — Simplified small-size icon glyph

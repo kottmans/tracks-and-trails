@@ -53,10 +53,15 @@ python -m pip install -e ".[dev]"
 Verify:
 
 ```bash
-python -m tracks_and_trails
+python -m tracks_and_trails --version    # prints the version, exits 0, needs no display
+python -m tracks_and_trails              # opens the application window
 ```
 
-It prints a version banner and exits 0. There is no window yet — that is `T-007`.
+The window is the Phase 0 shell (`T-007`): a title, the app icon, and File → Quit plus
+Help → About. It remembers its size and position, and nothing downloads yet.
+
+On a machine with no display, use `QT_QPA_PLATFORM=offscreen` — `--version` and `--help` work
+without one either way, because they are handled before Qt is imported.
 
 ## Everyday commands
 
@@ -70,6 +75,18 @@ pytest tests/unit            # fast headless loop
 pytest -m network            # opt-in; hits real sites
 pytest --cov --cov-report=term-missing
 ```
+
+Building the frozen artifact, which CI does on both platforms every run (`T-020`):
+
+```bash
+python -m pip install -e ".[dev,build]"
+cd packaging && pyinstaller --noconfirm --clean \
+    --distpath ../dist --workpath ../build tracks-and-trails.spec && cd ..
+python packaging/frozen_smoke.py dist/tracks-and-trails
+```
+
+The smoke test asserts the frozen build spawns a child without relaunching itself. It is a
+Phase 0 build for that check only — not the release build, which is Phase 5.
 
 Run all four before considering a source change done:
 
@@ -86,6 +103,7 @@ this file, `ai/TESTING.md` wins.
 ```
 src/tracks_and_trails/
   __main__.py     entry point -- read the freeze_support() comment before editing
+  _freeze_probe.py  T-020's frozen-build self-test; not a layer
   app.py          application wiring
   core/           pure domain logic; no Qt, no yt-dlp, no I/O
   downloader/     process pool, IPC, worker, yt-dlp adapter
@@ -98,6 +116,7 @@ tests/
   network/        opt-in, real network (excluded by default)
 ai/               coordination documents -- start with ai/TASKS.md
 docs/             developer and operator documentation
+packaging/        PyInstaller spec and the frozen smoke test (T-020)
 ```
 
 ## Rules that will bite you
