@@ -22,6 +22,7 @@ syntax (`ARCHITECTURE.md` §6). It writes nothing. It answers one question: *giv
 path and a target directory, what is the safe path inside that directory, or is there none?*
 """
 
+import hashlib
 import unicodedata
 from pathlib import Path, PureWindowsPath
 from typing import Final
@@ -33,12 +34,23 @@ from typing import Final
 #: directory the user asked for.
 _ILLEGAL_CHARACTERS: Final = frozenset('<>:"/\\|?*')
 
+#: Digits Windows accepts in a device name. **Includes `0` and the superscript forms**
+#: (`T034-R4`): Microsoft's file-naming rules reserve `COM0` to `COM9`, `COM¹`, `COM²`, `COM³` and
+#: the matching `LPT` names. An earlier version listed `1` to `9` only, so six reserved names —
+#: `COM¹`, `COM²`, `COM³`, `LPT¹`, `LPT²`, `LPT³` — passed through unchanged.
+#:
+#: Derived from this string rather than written out, so the set cannot drift from the digits it
+#: is supposed to cover.
+_DEVICE_DIGITS: Final = "0123456789¹²³"
+
 #: Windows reserved device names. Reserved with **any** extension: `CON.mp4` is as unusable as
 #: `CON`, which is the case usually missed — the check must run against the stem, not the name.
+#:
+#: Source: Microsoft, *Naming Files, Paths, and Namespaces*.
 _RESERVED_NAMES: Final = frozenset(
     {"CON", "PRN", "AUX", "NUL"}
-    | {f"COM{digit}" for digit in "123456789"}
-    | {f"LPT{digit}" for digit in "123456789"}
+    | {f"COM{digit}" for digit in _DEVICE_DIGITS}
+    | {f"LPT{digit}" for digit in _DEVICE_DIGITS}
 )
 
 #: Substituted for anything illegal. A visible marker beats silent deletion: a user who sees
@@ -79,12 +91,43 @@ def _strip_control_characters(text: str) -> str:
     return "".join(char for char in text if unicodedata.category(char) != "Cc")
 
 
+#: Length of the digest appended to a truncated name, plus its separator.
+_MARKER_LENGTH: Final = 9
+
+
+def _marker(text: str) -> str:
+    """A short, stable digest of `text`, used to keep truncated names distinct.
+
+    `T034-R2`: prefix truncation alone collides. Two 401-character stems sharing their first
+    400 characters produced the same 200-byte filename, so two different downloads would have
+    fought over one path. The earlier collision test differed near the *start*, exactly where
+    naive truncation already preserves the distinction, so it proved nothing.
+
+    `blake2b` at 4 bytes is not a security choice — it is a short, deterministic, dependency-free
+    way to carry the discarded tail's identity. Determinism matters because sanitizing must be
+    idempotent and reproducible across processes and platforms.
+    """
+    return "-" + hashlib.blake2b(text.encode("utf-8"), digest_size=4).hexdigest()
+
+
 def _truncate_to_bytes(text: str, limit: int) -> str:
-    """Shorten `text` so its UTF-8 encoding fits `limit` bytes, never splitting a character."""
+    """Shorten `text` to `limit` UTF-8 bytes, never splitting a character.
+
+    A truncated result carries a digest of the original so two inputs sharing a prefix do not
+    collapse onto one name. Text that already fits is returned untouched, which is what keeps
+    the operation idempotent — a second pass sees a short string and changes nothing.
+    """
     encoded = text.encode("utf-8")
     if len(encoded) <= limit:
         return text
-    return encoded[:limit].decode("utf-8", errors="ignore")
+
+    marker = _marker(text)
+    budget = limit - len(marker.encode("utf-8"))
+    if budget <= 0:
+        # No room for both; the digest alone is more useful than an arbitrary prefix, because
+        # it is what distinguishes this name from its neighbours.
+        return marker[:limit]
+    return encoded[:budget].decode("utf-8", errors="ignore").rstrip(". ") + marker
 
 
 def sanitize_component(name: str) -> str:
@@ -232,21 +275,42 @@ def safe_output_path(directory: Path, candidate: str) -> Path:
             )
         result = result.parent / _shorten_to(result.name, room)
 
-    # Defence in depth at a security boundary. Every escape is already neutralised above, so no
-    # input reaches this raise — mutation testing confirms removing it fails nothing, and that
-    # is recorded rather than hidden. It stays because the cost is one comparison and the thing
-    # it guards is "a file written somewhere the user was never told about"; `is_contained()`
-    # itself is directly tested, including the sibling-prefix and symlink cases.
+    # **Reachable, and load-bearing** (`T034-R1`). An earlier comment here claimed no input
+    # could reach this raise. That was wrong: neutralising the *candidate string* says nothing
+    # about the *filesystem*, and an existing symlink under the output directory pointing
+    # outside it makes the joined path resolve elsewhere. `safe_output_path(out, "link/clip.mp4")`
+    # raises here when `out/link` is such a symlink.
+    #
+    # The mutation that "proved" it dead only looked green because no test drove a symlink
+    # through this entry point — `is_contained()` was tested directly instead. It is now driven
+    # from here, and removing this branch fails the suite.
     if not is_contained(result, directory):
         raise UnsafePathError(f"{candidate!r} would write outside {str(directory)!r}")
     return result
 
 
 def _shorten_to(name: str, limit: int) -> str:
-    """Shorten `name` to `limit` characters, keeping its extension."""
+    """Shorten `name` to `limit` characters, keeping its extension.
+
+    Raises `UnsafePathError` when the extension cannot fit (`T034-R3`). The earlier fallback
+    returned `name[:limit]`, so a directory leaving two characters turned `clip.mp4` into `cl` —
+    an extensionless path that every tool reading the file would misidentify, produced silently
+    while the acceptance criterion says shortening keeps the extension. Failing is the honest
+    outcome: the user picked a directory too deep for the name, and can be told so.
+    """
     if len(name) <= limit:
         return name
+
     stem, dot, extension = name.rpartition(".")
-    if not dot or len(extension) + 1 >= limit:
-        return name[:limit]
-    return f"{stem[: limit - len(extension) - 1].rstrip('. ') or _FALLBACK_STEM}.{extension}"
+    suffix = f".{extension}" if dot else ""
+    marker = _marker(name)
+    room = limit - len(suffix) - len(marker)
+    if not dot:
+        if limit - len(marker) < 1:
+            raise UnsafePathError(f"no room to shorten {name!r} to {limit} characters")
+        return name[: limit - len(marker)].rstrip(". ") + marker
+    if room < 1:
+        raise UnsafePathError(
+            f"no room for {name!r} within {limit} characters while keeping {suffix!r}"
+        )
+    return f"{stem[:room].rstrip('. ') or _FALLBACK_STEM}{marker}{suffix}"

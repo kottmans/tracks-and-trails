@@ -960,6 +960,23 @@ created a fake binary named `ffmpeg`; Windows resolves executables through `PATH
 `shutil.which` did not find it and the test failed there while passing on Linux. The production
 code was right — the fixture assumed POSIX semantics. Second time this session a test has
 carried a Linux assumption into the Windows job.
+
+**Reviewed 2026-07-26 — changes requested; two blocking Medium findings plus one Low, all
+corrected:**
+
+- **`T035-R1`** — `ytdlp_candidates()` always returned two entries, contradicting the criterion
+  that with no user copy the list is *the baseline alone*. Worse, my test had quietly weakened
+  itself to "the only **present** candidate" to match. Absent candidates are no longer listed,
+  the `exists` flag is gone, and the test asserts the tuple rather than a filtered projection.
+- **`T035-R2`** — an override was accepted on `is_file()` alone, so a mode-0644 file was
+  reported available while the summary claimed every feature worked. `shutil.which` now applies
+  the platform's own executable semantics, matching what the `PATH` branch already got. **The
+  positive fixture itself created a non-executable file**, enshrining the bug.
+- **`T035-R3` (Low)** — the ownership test named six forbidden strings, so `get_ytdlp_version()`
+  slipped through. Replaced with a reviewed-API allowlist: guessing the names a future author
+  picks is unwinnable, and forcing any new export to be justified is the conversation worth having.
+
+All three weakenings now fail: absent candidate 2, non-executable override 1, new export 1.
 **Owner:** Implementer
 **Priority:** High — `T-012` cannot honour `OPS-002` without it, and `REQ-024` is owned by
 nothing else
@@ -1064,6 +1081,29 @@ comparison and what it guards is a file written somewhere the user was never tol
 `is_contained()` itself is directly tested, including the sibling-prefix and symlink cases.
 Recorded rather than hidden, since `ARC-003` argued the opposite about unreachable checks and
 the distinction deserves a reviewer's eye.
+
+**Reviewed 2026-07-26 — changes requested; four blocking Medium findings, all corrected:**
+
+- **`T034-R1`** — I claimed the final containment check was unreachable. **It is not.** An
+  existing symlink under the output directory pointing outside makes the joined path resolve
+  elsewhere, so the branch fires. My mutation only looked green because no test drove a symlink
+  through `safe_output_path` — `is_contained` was tested directly instead. Both directions are
+  now driven from the public entry point, and the comment is corrected.
+- **`T034-R2`** — prefix truncation collided: two 401-character stems sharing 400 characters
+  produced one filename. A stable `blake2b` digest now differentiates them. The old collision
+  test differed at character 7, inside the retained prefix, so it proved nothing.
+- **`T034-R3`** — a tight budget silently returned `cl` for `clip.mp4`. It raises now. Tested
+  against `_shorten_to` directly, because the filesystem-level version could not construct a
+  tight enough budget on every host and took its `else` branch against the bug.
+- **`T034-R4`** — the device-name set omitted `COM0`, `LPT0` and the six superscript forms
+  Microsoft documents. Derived from a digit string now, so it cannot drift.
+
+**The `T010-R1` vacuity recurred and was caught by mutation:** my first fix for `R4` asserted
+against production's own `_RESERVED_NAMES`, so shrinking production shrank the expectation and
+all tests stayed green. The expectation is now transcribed by hand from Microsoft's rules.
+
+All five weakenings now fail: containment 1, differentiator 1, extension 1, superscripts 9,
+`COM0`/`LPT0` 3.
 **Owner:** Implementer
 **Priority:** **High** — a `ai/TESTING.md` §7 mandatory area, and `T-012` cannot write a file
 without it
@@ -1136,24 +1176,11 @@ contained within the target directory.
 
 ---
 
+## Complete
+
 ### T-042 — Make the model audit enforce nullability and boolean rejection
 
-**Status:** Implemented 2026-07-26, awaiting review.
-
-Both gaps closed and mutation-verified. The tests are **annotation-driven**: optionality and
-numeric-ness are read from each model's own type hints, so a field added later is covered
-without editing a list — `T041-R2`'s lesson applied before it could bite a third time.
-
-- deleting the `bool` guard from either count validator now fails 4 tests (was 0)
-- letting a required counter accept `None` again fails 2 tests
-- **adding a new required numeric field with no test edited fails 5 tests** — the check that the
-  generalisation actually generalises
-
-The vacuous `None` entry is removed from the container sweep rather than left beside the real
-tests, so nobody reads it as coverage.
-
-**Out-of-scope check performed:** `downloader/protocol.py` has the same class of gap, narrower.
-Filed as `T-043`.
+**Status:** **Complete — approved** 2026-07-26, mutation-verified independently.
 **Owner:** Implementer
 **Priority:** Low — production behavior is already correct; this is test strength, not a defect
 **Phase:** Phase 1
@@ -1198,21 +1225,7 @@ Two gaps in `tests/unit/test_models.py`, both confirmed by mutation on 2026-07-2
 
 ### T-043 — Protect `protocol.py`'s remaining boolean guards
 
-**Status:** Implemented 2026-07-26, awaiting review. Folded in with `T-042` at the maintainer's
-direction, since it is the same fix pattern.
-
-Mutation-verified, each guard in isolation:
-
-- removing only the `_require_optional_rate` bool guard fails 1 test (was 0)
-- removing only `WorkerFinished.exit_code`'s bool guard fails 1 test (was 0)
-- letting a required field accept `None` fails 2 tests
-- **adding a new numeric field with no test edited fails 2 tests**
-
-**Scope widened by one test, deliberately.** Nullability was scoped out because the reviewer
-verified it sound — and it is. But "correct and untested" is precisely the condition `T-042`
-existed to fix, and the annotation-driven helpers made the guard one extra test rather than a
-separate effort. Filing a third task for a single test would have been process for its own sake.
-Recorded here rather than done quietly.
+**Status:** **Complete — approved** 2026-07-26, mutation-verified independently.
 **Owner:** Implementer
 **Priority:** Low — production behavior is correct; the guards are simply untested
 **Phase:** Phase 1
@@ -1252,8 +1265,6 @@ parametrize list: derive the numeric fields from each message's type hints.
 - Any production change to `protocol.py`
 
 ---
-
-## Complete
 
 ### T-041 — Validate nested payloads in `core/models.py`
 

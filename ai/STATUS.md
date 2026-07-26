@@ -78,33 +78,27 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-034`** — filename safety and output-path containment. Closes `TESTING.md` §7's **Path
-  safety** mandatory area.
-- **`T-035`** — yt-dlp and ffmpeg environment resolution. **`T-012`'s last prerequisite**: with
-  `T-011`, `T-034` and `T-035` all implemented, the Phase 1 chokepoint is unblocked once the
-  review clears.
-- **`T-042`** and **`T-043`** — test-strength fixes for guards that were correct but
-  unprotected, so a regression would have been silent.
-
-All three await review.
+- **`T-034`** and **`T-035`** — reviewed 2026-07-26, **changes requested**; all six blocking
+  findings and both non-blocking ones corrected, awaiting the focused re-review.
 
 ## Next
 
-Six tasks are Ready. Recommended order:
+1. **Focused re-review of `T-034` and `T-035`.** Six blocking Medium findings, all corrected
+   and mutation-verified. `T-042` and `T-043` were **approved** in the same pass and are
+   complete.
 
-1. **`T-041`** — nested payload validation in `core/models.py`. Small, **High** severity, and it
-   restores a guarantee `downloader/protocol.py` already advertises. Carried from `T011-R8`.
-2. **`T-034`** — filename safety and output-path containment. A `TESTING.md` §7 mandatory area
-   still uncovered, with a security failure mode: a title-derived filename escaping the output
-   directory, driven by attacker-influenced data.
-3. **`T-035`** — yt-dlp and ffmpeg environment resolution. Newly unblocked, and the third of
-   `T-012`'s three prerequisites alongside `T-034`.
-4. **`T-038`**, **`T-014`**, **`T-015`** — Ready, off the critical path.
+2. **`T-012` — yt-dlp in a spawned worker.** The Phase 1 chokepoint, with six tasks behind it.
+   Its three prerequisites — `T-011`, `T-034`, `T-035` — are all implemented; `T-011` is
+   approved and the other two are in the re-review above. **`T-033` must land with it**: the
+   frozen artifact bundles no yt-dlp, and the failure looks like ordinary site breakage.
 
-`T-012` needs `T-011` (done), `T-034` and `T-035`; six tasks depend on it.
+3. **`T-038` — logging with handler-level redaction.** The only task Ready right now, and a
+   `TESTING.md` §7 mandatory area (log redaction, `NFR-007`).
 
-Phase 0's formal exit is **recorded**, and the Phase 1 prerequisite amendment is **withdrawn as
-moot** — exactly as the amendment itself predicted once the Windows criterion was met.
+4. **`T-014` and `T-015`** were consumed into the reviewed batch's dependencies — both remain
+   Proposed behind nothing and can start whenever.
+
+5. **A human Windows session** — `OPS-004`'s subjective residue only. Blocks first release.
 
 ## Known gaps not yet scheduled
 

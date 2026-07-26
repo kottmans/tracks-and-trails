@@ -44,6 +44,28 @@ ESCAPE_ATTEMPTS = [
     "clip/../../../evil.mp4",
 ]
 
+#: Transcribed by hand from Microsoft's *Naming Files, Paths, and Namespaces*.
+#:
+#: **Not** imported from `core.paths` (`T010-R1`'s lesson, which this file relearned): deriving
+#: the expectation from `_RESERVED_NAMES` made the test shrink whenever production did, so
+#: removing the superscript digits left every test green.
+MICROSOFT_RESERVED_NAMES = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{d}" for d in "0123456789"}
+    | {f"LPT{d}" for d in "0123456789"}
+    | {f"COM{d}" for d in "\u00b9\u00b2\u00b3"}
+    | {f"LPT{d}" for d in "\u00b9\u00b2\u00b3"}
+)
+
+
+def test_production_covers_every_reserved_name_microsoft_documents() -> None:
+    """`T034-R4`. Checked against the transcribed list, not against production's own set."""
+    from tracks_and_trails.core.paths import _RESERVED_NAMES
+
+    missing = MICROSOFT_RESERVED_NAMES - _RESERVED_NAMES
+    assert not missing, f"unhandled reserved device names: {sorted(missing)}"
+
+
 #: `ai/TESTING.md` §5's required fixture set.
 HOSTILE_TITLES = [
     'Artist - Song: "Live" <2024>',
@@ -121,6 +143,36 @@ def test_a_symlink_out_of_the_directory_is_not_contained(tmp_path: Path) -> None
     assert not is_contained(target / "link" / "clip.mp4", target)
 
 
+def test_a_symlink_escape_is_rejected_through_the_public_entry_point(tmp_path: Path) -> None:
+    """`T034-R1`. The security gate must be exercised through `safe_output_path`, not only
+    through `is_contained`.
+
+    Neutralising the candidate *string* says nothing about the *filesystem*. An existing symlink
+    under the output directory pointing outside it makes the joined path resolve elsewhere, so
+    the final containment check is genuinely reachable — contrary to what an earlier comment
+    here claimed, and contrary to a mutation that only looked green because nothing drove a
+    symlink through this entry point.
+    """
+    target = tmp_path / "Downloads"
+    target.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (target / "link").symlink_to(outside)
+
+    with pytest.raises(UnsafePathError):
+        safe_output_path(target, "link/clip.mp4")
+
+
+def test_a_symlink_inside_the_directory_is_still_allowed(tmp_path: Path) -> None:
+    """The rejection must be about *where it resolves*, not about symlinks as such."""
+    target = tmp_path / "Downloads"
+    (target / "real").mkdir(parents=True)
+    (target / "link").symlink_to(target / "real")
+
+    result = safe_output_path(target, "link/clip.mp4")
+    assert is_contained(result, target)
+
+
 def test_an_ordinary_subdirectory_is_allowed(output_dir: Path) -> None:
     """Containment must not be so strict that legitimate templates break.
 
@@ -157,7 +209,26 @@ def test_every_ntfs_illegal_character_is_replaced(char: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "name", ["CON", "con", "CoN", "CON.mp4", "aux.mkv", "NUL.webm", "COM1.mp4", "LPT9.mp3"]
+    "name",
+    [
+        "CON",
+        "con",
+        "CoN",
+        "CON.mp4",
+        "aux.mkv",
+        "NUL.webm",
+        "COM1.mp4",
+        "LPT9.mp3",
+        # `T034-R4`: Microsoft reserves these too, and all six passed through unchanged.
+        "COM0",
+        "LPT0.mp4",
+        "COM\u00b9",
+        "COM\u00b2",
+        "COM\u00b3",
+        "LPT\u00b9.mp4",
+        "LPT\u00b2.mkv",
+        "LPT\u00b3",
+    ],
 )
 def test_reserved_device_names_are_defused_including_with_extensions(name: str) -> None:
     """`CON.mp4` is as unusable as `CON` on Windows — the case usually missed.
@@ -166,7 +237,9 @@ def test_reserved_device_names_are_defused_including_with_extensions(name: str) 
     """
     result = sanitize_component(name)
     stem = result.partition(".")[0]
-    assert stem.upper() not in {"CON", "AUX", "NUL", "COM1", "LPT9"}
+    assert stem.upper() not in MICROSOFT_RESERVED_NAMES, (
+        f"{name!r} sanitized to {result!r}, whose stem is still a reserved device name"
+    )
 
 
 @pytest.mark.parametrize("name", ["CONCERT.mp4", "AUXILIARY.mkv", "NULL_POINTER.mp4", "COMET.mp4"])
@@ -310,6 +383,33 @@ def test_an_over_long_assembled_path_is_shortened(tmp_path: Path) -> None:
     assert is_contained(result, deep)
 
 
+def test_shortening_raises_rather_than_dropping_the_extension() -> None:
+    """`T034-R3`, exercised directly and deterministically.
+
+    `_shorten_to` is private, but it encodes the rule the acceptance criterion states, and the
+    filesystem-level version of this test cannot reliably construct a budget tight enough on
+    every host — the first attempt took its `else` branch and passed against the bug.
+
+    The earlier fallback returned `name[:limit]`, so a two-character budget turned `clip.mp4`
+    into `cl`: an extensionless path every tool would misidentify, produced silently.
+    """
+    from tracks_and_trails.core.paths import _shorten_to
+
+    with pytest.raises(UnsafePathError):
+        _shorten_to("clip.mp4", 2)
+    with pytest.raises(UnsafePathError):
+        _shorten_to("clip.mp4", 5)
+
+
+def test_shortening_keeps_the_extension_whenever_it_can() -> None:
+    """The counterpart, so the rule above cannot be satisfied by always raising."""
+    from tracks_and_trails.core.paths import _shorten_to
+
+    result = _shorten_to("a" * 200 + ".mp4", 40)
+    assert result.endswith(".mp4")
+    assert len(result) <= 40
+
+
 def test_a_directory_leaving_no_room_for_a_filename_raises(tmp_path: Path) -> None:
     """Better a clear error than a zero-length filename or a silent write elsewhere."""
     # Sized past the budget from wherever tmp_path happens to start, so this holds on both
@@ -323,15 +423,33 @@ def test_a_directory_leaving_no_room_for_a_filename_raises(tmp_path: Path) -> No
         safe_output_path(long_dir, "clip.mp4")
 
 
-def test_shortening_two_similar_long_names_does_not_collide() -> None:
-    """An acceptance criterion: shortening must not merge two distinct neighbours.
+def test_shortening_two_names_differing_only_past_the_cut_does_not_collide() -> None:
+    """`T034-R2`. The acceptance criterion, tested where it actually bites.
 
-    Both are truncated to the same budget, so the distinguishing part must survive — here the
-    difference is early enough in the stem to be kept.
+    The earlier version differed at character 7 — inside the retained prefix, where naive
+    truncation already preserves the distinction — so it passed against an implementation that
+    collided. These differ only in their **final** character, well beyond anything a prefix
+    keeps, and two downloads fighting over one path is the failure it prevents.
     """
-    first = sanitize_filename("Album A - " + "x" * 400 + ".mp4")
-    second = sanitize_filename("Album B - " + "x" * 400 + ".mp4")
+    first = sanitize_filename("x" * 400 + "A.mp4")
+    second = sanitize_filename("x" * 400 + "B.mp4")
     assert first != second
+    assert first.endswith(".mp4") and second.endswith(".mp4")
+
+
+def test_the_differentiator_is_stable_across_calls_and_processes() -> None:
+    """It must be a digest, not a counter or anything else with state.
+
+    A path that changes between the `REQ-011` preview and the write would make the preview a
+    lie, and one that differs between the GUI and worker processes would be worse.
+    """
+    name = "y" * 400 + ".mp4"
+    assert len({sanitize_filename(name) for _ in range(20)}) == 1
+
+
+def test_two_identical_long_names_still_produce_one_path() -> None:
+    """The differentiator distinguishes *different* inputs; it must not split identical ones."""
+    assert sanitize_filename("z" * 400 + ".mp4") == sanitize_filename("z" * 400 + ".mp4")
 
 
 # --- layering ---------------------------------------------------------------------------------

@@ -73,37 +73,41 @@ class YtdlpCandidate:
     """One place yt-dlp might be, in resolution order.
 
     Carries no version and no usability verdict — both need an import, which belongs to
-    `worker.py`. `exists` reports only what is on disk.
+    `worker.py`.
+
+    There is no `exists` flag (`T035-R1`). An earlier version always returned two entries and
+    marked the user copy absent, which contradicted the acceptance criterion that with no user
+    copy "the candidate list contains the baseline alone" — and the test quietly weakened itself
+    to "the only *present* candidate" to match. **Only real candidates are listed**, so a caller
+    walking the tuple needs no filtering and cannot forget to.
     """
 
     #: `None` means "already importable from the environment" — the bundled baseline, or the
     #: development virtualenv. `worker.py` imports without touching `sys.path` in that case.
     path: Path | None
     source: str
-    exists: bool
 
 
 def ytdlp_candidates(user_directory: Path | None = None) -> tuple[YtdlpCandidate, ...]:
     """Candidate locations in the order `worker.py` must try them (`ARCHITECTURE.md` §6).
 
-    The user-managed copy first, then the bundled baseline. A user copy is listed **even when
-    the directory is empty or holds no `yt_dlp` package**: deciding it is unusable requires
-    importing it, and `worker.py` owns that. Filtering here on a `yt_dlp/` directory check
-    would be this module quietly forming the verdict it is not allowed to form — and it would
-    be wrong for a wheel layout this code has not anticipated.
+    The user-managed copy first, then the bundled baseline. **Only candidates that exist are
+    listed** (`T035-R1`), so with no user copy the tuple is the baseline alone.
+
+    A user copy *is* listed when the directory exists but is empty or holds no `yt_dlp`
+    package: deciding it unusable requires importing it, and `worker.py` owns that. Filtering
+    here on a `yt_dlp/` directory check would be this module forming the verdict it may not
+    form, and would be wrong for a wheel layout this code has not anticipated. The distinction
+    is between "there is nothing here" — which the filesystem answers — and "what is here does
+    not work", which only an import answers.
     """
     directory = user_ytdlp_directory() if user_directory is None else user_directory
+    baseline = YtdlpCandidate(path=None, source="bundled baseline")
+    if not directory.is_dir():
+        return (baseline,)
     return (
-        YtdlpCandidate(
-            path=directory,
-            source="user-managed copy (OPS-002)",
-            exists=directory.is_dir(),
-        ),
-        YtdlpCandidate(
-            path=None,
-            source="bundled baseline",
-            exists=True,
-        ),
+        YtdlpCandidate(path=directory, source="user-managed copy (OPS-002)"),
+        baseline,
     )
 
 
@@ -146,14 +150,21 @@ def find_ffmpeg(
     stop the application (`REQ-024`).
     """
     if override is not None:
-        # An override that does not exist is reported as missing rather than silently ignored
-        # in favour of `PATH`. Silently falling back would mean the user's explicit setting had
-        # no effect and nothing said so.
-        if override.is_file():
-            return FfmpegReport(path=override, source="explicit override (OPS-001)")
+        # An override that does not exist, or cannot be executed, is reported as missing rather
+        # than silently ignored in favour of `PATH`. Silently falling back would mean the user's
+        # explicit setting had no effect and nothing said so.
+        #
+        # `T035-R2`: presence alone is not enough. A regular file with mode 0644 was previously
+        # reported available, and the summary claimed every post-processing feature worked when
+        # nothing could run. `shutil.which` on a concrete path applies the platform's own
+        # executable-discovery semantics — `F_OK | X_OK` on POSIX, `PATHEXT` on Windows — which
+        # is exactly the check the `PATH` branch below already gets for free.
+        resolved = shutil.which(str(override)) if override.is_file() else None
+        if resolved is not None:
+            return FfmpegReport(path=Path(resolved), source="explicit override (OPS-001)")
         return FfmpegReport(
             path=None,
-            source="explicit override, not found",
+            source="explicit override, not usable",
             unavailable_features=FFMPEG_DEPENDENT_FEATURES,
         )
 
@@ -176,7 +187,4 @@ def describe_candidates(candidates: Sequence[YtdlpCandidate]) -> str:
     home, so logging it leaks a username into a file that may be attached to a bug report. The
     source label carries the useful information — *which* candidate was chosen — without it.
     """
-    return ", ".join(
-        f"{candidate.source} ({'present' if candidate.exists else 'absent'})"
-        for candidate in candidates
-    )
+    return ", ".join(candidate.source for candidate in candidates)

@@ -32,13 +32,18 @@ from tracks_and_trails.downloader.environment import (
 # --- resolution order (OPS-002, ARCHITECTURE.md §6) -----------------------------------------
 
 
-def test_with_no_user_copy_the_baseline_is_the_only_present_candidate(tmp_path: Path) -> None:
-    """`OPS-002`'s default: a fresh install runs the pinned baseline."""
+def test_with_no_user_copy_the_candidate_list_is_the_baseline_alone(tmp_path: Path) -> None:
+    """`T035-R1`. The acceptance criterion, asserted against the tuple itself.
+
+    The earlier version filtered to "present" candidates and asserted on the projection, which
+    silently weakened the criterion from *the list contains the baseline alone* to *the baseline
+    is the only present entry* — and passed against an implementation that always returned two.
+    A caller walking the tuple would have had to know to filter.
+    """
     candidates = ytdlp_candidates(tmp_path / "absent")
-    present = [c for c in candidates if c.exists]
-    assert len(present) == 1
-    assert present[0].path is None
-    assert "baseline" in present[0].source
+    assert len(candidates) == 1
+    assert candidates[0].path is None
+    assert "baseline" in candidates[0].source
 
 
 def test_a_user_copy_is_ordered_ahead_of_the_baseline(tmp_path: Path) -> None:
@@ -47,10 +52,9 @@ def test_a_user_copy_is_ordered_ahead_of_the_baseline(tmp_path: Path) -> None:
     user_copy.mkdir()
     candidates = ytdlp_candidates(user_copy)
 
+    assert len(candidates) == 2
     assert candidates[0].path == user_copy
-    assert candidates[0].exists
     assert candidates[1].path is None
-    assert [c.exists for c in candidates] == [True, True]
 
 
 @pytest.mark.parametrize("layout", ["empty", "no yt_dlp package", "unexpected wheel layout"])
@@ -70,14 +74,16 @@ def test_a_user_directory_is_listed_even_when_it_looks_unusable(
     elif layout == "unexpected wheel layout":
         (user_copy / "yt_dlp-2026.7.4.dist-info").mkdir()
 
-    assert ytdlp_candidates(user_copy)[0].exists
+    candidates = ytdlp_candidates(user_copy)
+    assert len(candidates) == 2
+    assert candidates[0].path == user_copy
 
 
 def test_a_file_where_the_user_directory_should_be_is_not_present(tmp_path: Path) -> None:
     """`is_dir()`, not `exists()`: a stray file cannot be prepended to `sys.path` usefully."""
     stray = tmp_path / "ytdlp"
     stray.write_text("not a directory", encoding="utf-8")
-    assert not ytdlp_candidates(stray)[0].exists
+    assert ytdlp_candidates(stray) == (ytdlp_candidates(tmp_path / "absent"))
 
 
 def test_the_default_user_directory_is_not_doubled() -> None:
@@ -99,12 +105,37 @@ def test_the_module_exposes_no_version_and_no_usability_verdict() -> None:
     """An acceptance criterion: the split must not erode back into this module by accident.
 
     Both a version and a "does it work" answer require importing yt-dlp, which §6 permits only
-    in `worker.py` and `ytdlp_adapter.py`. A future helper named `version()` here would be a
-    layering violation wearing a friendly name.
+    in `worker.py` and `ytdlp_adapter.py`. A helper named `version()` here would be a layering
+    violation wearing a friendly name.
+
+    **An allowlist, not a denylist** (`T035-R3`). The earlier version named six forbidden
+    strings, so an ordinary `get_ytdlp_version()` export passed all 20 tests while violating
+    exactly the split this test claims to protect. Guessing the names a future author will
+    choose is unwinnable; pinning the reviewed API means *any* new export has to be justified,
+    which is the conversation worth forcing.
     """
-    exported = {name for name in vars(environment) if not name.startswith("_")}
-    forbidden = {"version", "ytdlp_version", "resolved_version", "verify", "validate", "is_usable"}
-    assert not exported & forbidden, f"{exported & forbidden} belongs to worker.py, not here"
+    reviewed_api = {
+        "APP_SLUG",
+        "FFMPEG_DEPENDENT_FEATURES",
+        "FfmpegReport",
+        "YtdlpCandidate",
+        "describe_candidates",
+        "find_ffmpeg",
+        "user_ytdlp_directory",
+        "ytdlp_candidates",
+    }
+    exported = {
+        name
+        for name, value in vars(environment).items()
+        if not name.startswith("_") and getattr(value, "__module__", None) == environment.__name__
+    }
+
+    added = exported - reviewed_api
+    assert not added, (
+        f"{sorted(added)} is not in this module's reviewed public API. Adding an export here is "
+        "how the locate/import split erodes: anything answering 'what version?' or 'does it "
+        "work?' needs an import and belongs to worker.py (ARCHITECTURE.md §6)."
+    )
 
     candidate = ytdlp_candidates()[0]
     assert not hasattr(candidate, "version")
@@ -152,18 +183,20 @@ def test_the_module_imports_no_qt() -> None:
     assert "shiboken6" not in roots
 
 
-def make_fake_ffmpeg(directory: Path) -> Path:
-    """Create a discoverable fake ffmpeg for the host platform.
+def make_fake_ffmpeg(directory: Path, name: str = "ffmpeg", executable: bool = True) -> Path:
+    """Create a fake ffmpeg for the host platform, executable unless asked otherwise.
 
     Windows resolves executables through `PATHEXT`, so a file simply named `ffmpeg` is not
     found by `shutil.which` there — the Windows job failed on exactly that while Linux passed.
     The production code was right; the fixture assumed POSIX semantics.
+
+    `executable` exists because the positive override fixture used to create a mode-0644 file
+    and assert it was available, enshrining the bug `T035-R2` found.
     """
     directory.mkdir(parents=True, exist_ok=True)
-    binary = directory / ("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
+    binary = directory / (f"{name}.exe" if sys.platform == "win32" else name)
     binary.write_text("#!/bin/sh\n", encoding="utf-8")
-    if sys.platform != "win32":
-        binary.chmod(0o755)
+    binary.chmod(0o755 if executable else 0o644)
     return binary
 
 
@@ -193,8 +226,7 @@ def test_ffmpeg_absent_names_every_feature_that_stops_working(tmp_path: Path) ->
 
 def test_an_explicit_override_is_honoured_first(tmp_path: Path) -> None:
     """`OPS-001` allows an override on both platforms."""
-    override = tmp_path / "custom-ffmpeg"
-    override.write_text("#!/bin/sh\n", encoding="utf-8")
+    override = make_fake_ffmpeg(tmp_path / "custom", name="custom-ffmpeg")
     on_path = make_fake_ffmpeg(tmp_path / "onpath").parent
 
     report = find_ffmpeg(override=override, search_path=str(on_path))
@@ -213,6 +245,29 @@ def test_a_missing_override_is_reported_not_silently_ignored(tmp_path: Path) -> 
     report = find_ffmpeg(override=tmp_path / "nope", search_path=str(on_path))
     assert not report.available
     assert "override" in report.source
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX execute bits")
+def test_a_non_executable_override_is_rejected(tmp_path: Path) -> None:
+    """`T035-R2`. Presence is not capability.
+
+    A mode-0644 regular file was reported available, and the summary claimed every
+    post-processing feature worked when nothing could run. The `PATH` branch already got this
+    right through `shutil.which`; the override branch checked only `is_file()`.
+    """
+    override = make_fake_ffmpeg(tmp_path / "custom", name="ffmpeg", executable=False)
+    report = find_ffmpeg(override=override)
+
+    assert not report.available
+    assert report.unavailable_features == FFMPEG_DEPENDENT_FEATURES
+    assert "merging" in report.summary()
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="POSIX execute bits")
+def test_a_non_executable_binary_on_path_is_not_found(tmp_path: Path) -> None:
+    """The two branches must agree; `shutil.which` already enforces this one."""
+    make_fake_ffmpeg(tmp_path / "onpath", executable=False)
+    assert not find_ffmpeg(search_path=str(tmp_path / "onpath")).available
 
 
 def test_a_directory_named_ffmpeg_is_not_mistaken_for_the_binary(tmp_path: Path) -> None:
@@ -247,7 +302,7 @@ def test_the_candidate_description_leaks_no_user_path(tmp_path: Path) -> None:
     description = describe_candidates(ytdlp_candidates(user_copy))
     assert "seans-secret-home" not in description
     assert str(user_copy) not in description
-    assert "user-managed" in description and "present" in description
+    assert "user-managed" in description and "baseline" in description
 
 
 def test_the_ffmpeg_summary_leaks_no_override_path(tmp_path: Path) -> None:
@@ -267,4 +322,4 @@ def test_reports_are_immutable_and_carry_tuples() -> None:
 
     candidate = ytdlp_candidates()[0]
     with pytest.raises(AttributeError):
-        candidate.exists = False  # type: ignore[misc]
+        candidate.source = "elsewhere"  # type: ignore[misc]
