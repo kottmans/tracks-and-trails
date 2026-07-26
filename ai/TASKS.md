@@ -21,7 +21,7 @@ Everything else in Phase 0 is complete except `T-020`, which `T-007` unblocks.
 
 ### T-007 — Application shell window
 
-**Status:** Ready — `T-003` delivered the icon set, so this is no longer blocked
+**Status:** In Review — implemented and verified 2026-07-25; awaiting Codex
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 0
@@ -48,6 +48,57 @@ warnings on stderr. No download functionality.
 #### Out of scope
 
 - Queue view, settings, theming (Phase 4), any yt-dlp interaction
+
+#### Implementation record — 2026-07-25
+
+**Delivered:** `ui/main_window.py` (menu bar, About box, geometry), `app.py` (`QApplication`
+setup, argument handling, event loop), `tests/ui/test_main_window.py` (17 cases),
+`tests/ui/test_app_launch.py` (4 cases, subprocess). Suite 154 passed, 1 deselected.
+
+**Two consequences this task forced that its text did not mention.**
+
+1. **`ARCHITECTURE.md` §5's data-ownership table has no row for window geometry.** §5 assigns
+   `settings.toml` to `core/settings.py`, which does not exist and is not this task's to
+   build. Geometry is not a user setting — nobody edits it deliberately and losing it costs
+   nothing — so it went to its own `user_config_dir/tracksandtrails/window.toml`, consistent
+   with `DAT-001` (TOML, `platformdirs`, inspectable) and leaving the real settings layer
+   free to arrive without a migration. **Reported, not decided:** §5 needs a row for window
+   state, which is a Planner call.
+2. **`test_module_entry_point_runs_and_exits_zero` could not survive a real window.** It ran
+   `python -m tracks_and_trails` and expected exit 0; with a GUI it blocked until the 60 s
+   timeout. `app.py`'s placeholder anticipated this ("unused until `T-007` parses
+   arguments"), so `run` now handles `--version` and `--help` **before** constructing a
+   `QApplication` — they must work with no display — and the test uses `--version`.
+
+**Acceptance criteria:**
+
+| Criterion | Evidence |
+|---|---|
+| Launches and exits cleanly, zero exit code, no Qt warnings | Verified under a **real Wayland session**: exit 0, stderr exactly 0 bytes |
+| App icon in title bar and About dialog | `QIcon` from `icon.ico`, all seven frames asserted; About box screenshotted |
+| Geometry persists across restarts | Round-trip test, plus a subprocess launch/quit confirming the file is written |
+| Cold start under 3 s (`NFR-002`), measured and recorded | **median 0.178 s**, min 0.146, max 0.181, 10/10 runs on the reference machine |
+| `pytest-qt` test constructs and closes offscreen | `test_window_constructs_and_closes_offscreen` |
+
+**The "no Qt warnings" criterion needed care.** Headless runs emit `This plugin does not
+support propagateSizeHints()`. Rather than relax the assertion, this was traced: it comes from
+the `offscreen` and `minimal` plugins, reproduces with a bare `QMainWindow` plus a menu bar
+and no project code, and does **not** occur under a real platform plugin, where stderr is
+empty. It is allowlisted by exact string so the check still fails on anything else.
+
+**A Qt threading defect in the test harness, found and fixed.** The first launch harness
+polled `topLevelWidgets()` and `isVisible()` from a watcher thread — the "Qt object touched
+off the GUI thread" violation in `ai/REVIEWS.md`'s standing risk list. It was intermittently
+unreliable: 2 of 8 runs never saw the window and one took 18 s. The harness now touches only
+`QApplication.instance()` and the thread-safe `QMetaObject.invokeMethod(..., QueuedConnection)`,
+relying on `run` calling `show()` before `exec()` for ordering. 10/10 clean afterwards. The
+instability was the harness, never the application.
+
+**Known-unverified.** Whether the icon appears correctly in the **Windows** taskbar and title
+bar, and how the About box renders there, are not automatable and remain `OPS-003` gaps —
+CI proves the assets load and the window constructs, not that they look right. Cold start was
+measured on Linux only; `NFR-002` names the reference Linux machine, so this is complete as
+specified, but Windows startup time is unmeasured.
 
 ---
 
