@@ -28,6 +28,50 @@ for a Phase 5 installer; `T-040` for the first focusable widgets.
 
 ## Ready
 
+### T-045 — Defused reserved names can collide with a legal neighbour
+
+**Status:** **Ready** — found while correcting `T034-R4`, 2026-07-26
+**Owner:** Implementer
+**Priority:** Low — needs a directory containing both names; no data loss, one file would
+overwrite or be rejected by the caller
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T034-R2`, `T034-R4`, `ARCHITECTURE.md` §8
+**Affected surfaces:** `src/tracks_and_trails/core/paths.py`, `tests/unit/test_paths.py`
+**Risk:** Low
+
+#### Scope
+
+`sanitize_component` defuses a Windows reserved name by appending `_`, so `COM1` becomes
+`COM1_` — which is exactly what a file legitimately named `COM1_` also produces. Both land on
+one path.
+
+Same class as the `COM0` defect corrected in `T034-R4`'s second round, but narrower and not the
+same mistake: `COM0` was never reserved and should never have been touched, whereas `COM1` is
+genuinely reserved and *must* be renamed. The collision is a consequence of the renaming
+strategy, not of renaming something that did not need it.
+
+Found while writing the `COM0` regression test, and deliberately **not** fixed there: the
+maintainer authorized a single exception pass limited to two named corrections, and this is a
+third. Pinned by `test_defusing_a_genuinely_reserved_name_still_collides_see_t_045` so the
+current behavior cannot change unnoticed.
+
+#### Acceptance criteria
+
+- Defusing a reserved name cannot produce a path that a legal filename also produces —
+  for example by appending the `_MARKER_BYTES` digest rather than a bare `_`
+- Idempotence survives: sanitizing an already-defused name returns it unchanged
+- The pinning test above is replaced by one asserting the names differ
+- A mutation reverting to the bare `_` suffix fails the suite
+
+#### Out of scope
+
+- Any change to which names are treated as reserved — `T034-R4` settled that against
+  Microsoft's list, in both directions
+- Collision policy when the target file already exists — Phase 2, alongside resume
+
+---
+
 ### T-038 — Logging with handler-level redaction
 
 **Status:** **Ready** — `T-011` complete, 2026-07-26
@@ -1143,6 +1187,25 @@ the distinction deserves a reviewer's eye.
   tight enough budget on every host and took its `else` branch against the bug.
 - **`T034-R4`** — the device-name set omitted `COM0`, `LPT0` and the six superscript forms
   Microsoft documents. Derived from a digit string now, so it cannot drift.
+
+**Exception pass, 2026-07-26 — maintainer-authorized, limited to two corrections:**
+
+- **`T034-R2`, second round.** The 4-byte digest is 32 bits, so a birthday collision arrives
+  around 2^16; the reviewer found a concrete pair at 96,718 candidates, which I reproduced
+  exactly. Widened to 8 bytes (~2^32), with a 20,000-name behavioural test that would have
+  caught the original.
+- **`T034-R4`, second round — a regression I introduced.** `COM0` and `LPT0` are **not** on
+  Microsoft's list. I added them in the previous pass, reasoning that auditing the class beat
+  listing instances. That was wrong where the authority is explicit and finite: there was no
+  class to generalise, and the result mangled two legal filenames into `COM0_`/`LPT0_` —
+  colliding with exactly the names a user might already have. **I introduced a collision while
+  fixing a collision finding.** The test now asserts an **equality** with the transcribed list,
+  so inventing a rule fails as loudly as missing one.
+
+**A third defect was found and deliberately not fixed:** `COM1` and a legal `COM1_` both
+sanitize to `COM1_`. Same class, but narrower and not the same mistake — `COM1` genuinely must
+be renamed. Fixing it would exceed the authorized scope, so it is filed as **`T-045`** and
+pinned by a test, because an unpinned known defect is one nobody notices changing.
 
 **The `T010-R1` vacuity recurred and was caught by mutation:** my first fix for `R4` asserted
 against production's own `_RESERVED_NAMES`, so shrinking production shrank the expectation and

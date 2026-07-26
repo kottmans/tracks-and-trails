@@ -51,19 +51,51 @@ ESCAPE_ATTEMPTS = [
 #: removing the superscript digits left every test green.
 MICROSOFT_RESERVED_NAMES = frozenset(
     {"CON", "PRN", "AUX", "NUL"}
-    | {f"COM{d}" for d in "0123456789"}
-    | {f"LPT{d}" for d in "0123456789"}
-    | {f"COM{d}" for d in "\u00b9\u00b2\u00b3"}
-    | {f"LPT{d}" for d in "\u00b9\u00b2\u00b3"}
+    | {f"COM{d}" for d in "123456789\u00b9\u00b2\u00b3"}
+    | {f"LPT{d}" for d in "123456789\u00b9\u00b2\u00b3"}
 )
 
+#: Names that merely *look* reserved and must pass through untouched.
+#:
+#: `COM0`/`LPT0` are here because a correction pass wrongly added them to production, which
+#: mangled them into `COM0_`/`LPT0_` — colliding with the exact names a user might already have.
+NOT_RESERVED_BY_MICROSOFT = ("COM0", "LPT0", "COM10", "LPT10", "COM", "LPT", "CONS", "NULL")
 
-def test_production_covers_every_reserved_name_microsoft_documents() -> None:
-    """`T034-R4`. Checked against the transcribed list, not against production's own set."""
+
+def test_production_matches_microsofts_reserved_set_exactly() -> None:
+    """`T034-R4`. An **equality**, checked against the transcribed list.
+
+    Both directions matter, and the second was learned the hard way. Missing a reserved name
+    ships an unopenable file; *inventing* one mangles a legal filename and, worse, collides —
+    `COM0` became `COM0_`, which is what a real `COM0_` also produces.
+    """
     from tracks_and_trails.core.paths import _RESERVED_NAMES
 
-    missing = MICROSOFT_RESERVED_NAMES - _RESERVED_NAMES
-    assert not missing, f"unhandled reserved device names: {sorted(missing)}"
+    assert _RESERVED_NAMES == MICROSOFT_RESERVED_NAMES, (
+        f"missing: {sorted(MICROSOFT_RESERVED_NAMES - _RESERVED_NAMES)}; "
+        f"invented: {sorted(_RESERVED_NAMES - MICROSOFT_RESERVED_NAMES)}"
+    )
+
+
+@pytest.mark.parametrize("name", NOT_RESERVED_BY_MICROSOFT)
+def test_names_that_only_look_reserved_pass_through_untouched(name: str) -> None:
+    """Mangling a legal name is not a safe default — it creates the collision it avoids."""
+    assert sanitize_component(name) == name
+    assert sanitize_component(f"{name}.mp4") == f"{name}.mp4"
+
+
+def test_defusing_a_genuinely_reserved_name_still_collides_see_t_045() -> None:
+    """**Known limitation, pinned rather than fixed** — `T-045`.
+
+    `COM1` is genuinely reserved and must be renamed, and the `_` suffix makes it collide with a
+    legal file named `COM1_`. That is the same class as the `COM0` defect, but narrower: it needs
+    a directory holding both names, and unlike `COM0` the mangling itself is unavoidable.
+
+    Found while writing the `COM0` regression test. Fixing it is outside the single exception
+    pass the maintainer authorized, so it is filed as `T-045` and pinned here — an unpinned
+    known defect is one nobody notices changing.
+    """
+    assert sanitize_component("COM1") == sanitize_component("COM1_") == "COM1_"
 
 
 #: `ai/TESTING.md` §5's required fixture set.
@@ -435,6 +467,25 @@ def test_shortening_two_names_differing_only_past_the_cut_does_not_collide() -> 
     second = sanitize_filename("x" * 400 + "B.mp4")
     assert first != second
     assert first.endswith(".mp4") and second.endswith(".mp4")
+
+
+def test_the_differentiator_is_wide_enough_to_resist_collisions() -> None:
+    """`T034-R2`, second round. A 32-bit digest collided at 96,718 candidates.
+
+    Asserted as a property of the marker rather than by searching, because a search test would
+    be slow and would only prove the bound it happened to reach. 64 bits puts the birthday
+    bound around 2^32, far beyond any plausible directory.
+    """
+    from tracks_and_trails.core.paths import _MARKER_BYTES, _marker
+
+    assert _MARKER_BYTES >= 8, "a 32-bit digest has a demonstrated collision at ~10^5 names"
+    assert len(_marker("x")) == 1 + 2 * _MARKER_BYTES
+
+
+def test_many_long_names_differing_only_past_the_cut_stay_distinct() -> None:
+    """The behavioural counterpart, at a scale that would have caught the 4-byte digest."""
+    names = {sanitize_filename("x" * 400 + str(i) + ".mp4") for i in range(20_000)}
+    assert len(names) == 20_000
 
 
 def test_the_differentiator_is_stable_across_calls_and_processes() -> None:

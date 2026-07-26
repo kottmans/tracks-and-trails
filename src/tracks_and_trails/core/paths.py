@@ -34,14 +34,18 @@ from typing import Final
 #: directory the user asked for.
 _ILLEGAL_CHARACTERS: Final = frozenset('<>:"/\\|?*')
 
-#: Digits Windows accepts in a device name. **Includes `0` and the superscript forms**
-#: (`T034-R4`): Microsoft's file-naming rules reserve `COM0` to `COM9`, `COM¹`, `COM²`, `COM³` and
-#: the matching `LPT` names. An earlier version listed `1` to `9` only, so six reserved names —
-#: `COM¹`, `COM²`, `COM³`, `LPT¹`, `LPT²`, `LPT³` — passed through unchanged.
+#: Digits Windows accepts in a device name: `1` to `9` plus the three superscript forms.
 #:
-#: Derived from this string rather than written out, so the set cannot drift from the digits it
-#: is supposed to cover.
-_DEVICE_DIGITS: Final = "0123456789¹²³"
+#: **`0` is deliberately absent.** Microsoft's list runs `COM1` to `COM9`, `COM¹`, `COM²`, `COM³`
+#: and the matching `LPT` names — `COM0` and `LPT0` are *not* reserved. A correction pass added
+#: them anyway, reasoning that auditing the class beat listing instances. That was wrong here:
+#: the authority is explicit and finite, so there was no class to generalise, and the result
+#: mangled two legal filenames while colliding with the very thing it produced — `COM0` became
+#: `COM0_`, which is what a file legitimately named `COM0_` also sanitizes to. Fixing a
+#: collision finding introduced a collision (`T034-R4`, second round).
+#:
+#: The superscripts are the part that *was* missing, and they are real.
+_DEVICE_DIGITS: Final = "123456789¹²³"
 
 #: Windows reserved device names. Reserved with **any** extension: `CON.mp4` is as unusable as
 #: `CON`, which is the case usually missed — the check must run against the stem, not the name.
@@ -91,8 +95,13 @@ def _strip_control_characters(text: str) -> str:
     return "".join(char for char in text if unicodedata.category(char) != "Cc")
 
 
-#: Length of the digest appended to a truncated name, plus its separator.
-_MARKER_LENGTH: Final = 9
+#: Bytes of digest appended to a truncated name.
+#:
+#: 8, not 4 (`T034-R2`, second round). Four bytes is 32 bits, so a birthday collision arrives
+#: around 2^16 — the reviewer found a concrete pair at 96,718 candidates, which this project's
+#: own acceptance criterion ("shortening must not collide with a neighbouring file") does not
+#: permit. Eight bytes moves that to roughly 2^32 for the cost of eight more characters.
+_MARKER_BYTES: Final = 8
 
 
 def _marker(text: str) -> str:
@@ -107,7 +116,7 @@ def _marker(text: str) -> str:
     way to carry the discarded tail's identity. Determinism matters because sanitizing must be
     idempotent and reproducible across processes and platforms.
     """
-    return "-" + hashlib.blake2b(text.encode("utf-8"), digest_size=4).hexdigest()
+    return "-" + hashlib.blake2b(text.encode("utf-8"), digest_size=_MARKER_BYTES).hexdigest()
 
 
 def _truncate_to_bytes(text: str, limit: int) -> str:
