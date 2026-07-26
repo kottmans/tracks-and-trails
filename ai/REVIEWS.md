@@ -767,3 +767,73 @@ base. Before downstream code binds to it, the contract needs a coherent successf
 sequence, strict runtime payload validation, honest required-field signatures, and an
 explicit terminal-once acceptance gate in T-013. The decision and coordination conflicts
 should be reconciled in the same correction pass.
+
+## 2026-07-26 — T-011 final focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-011`; dispositions for `T011-R1`–`T011-R6`
+**Base:** `6663c9ea2ddc1b3f9a0aac601827c928c2a06be9`
+**Head:** `8fbbb2d439f4041f235deb193d57ad0af00bffac`
+**Platforms verified:** Linux locally; Windows CI run `30213417231` was reported green in the
+handoff, but the reviewer could not independently query it because the installed `gh`
+credential remains invalid
+**Verdict:** Changes requested — final review disposition
+
+### Finding dispositions
+
+| ID | Result | Evidence |
+|---|---|---|
+| `T011-R1` | **Resolved** | The contract now distinguishes probe/download sessions, makes `Probed` an outcome, retains `WorkerFinished` as non-outcome stream completion, declares kind-specific legal outcomes, and validates the four success/failure sequences plus missing, duplicate, illegal, misplaced, mixed-ID and undeclared cases. A successful probe now has exactly one outcome. |
+| `T011-R2` | **Partially resolved — Open** | All five original reproductions are fixed: wrapped dict media, string stage/kind, mutable context, and an undeclared subclass are rejected or normalized correctly. `normalise_context()` is shared with `FailureDetail`, avoiding a second implementation. The runtime shape is still incomplete: `Progress.speed_bytes_per_second` and `Succeeded.total_bytes` accept mutable dictionaries, pass `is_message()`, survive pickle, and can change after construction. Replacing the representative values with those dicts left all 100 protocol tests green. The same typed-boundary and feeder-thread invariant therefore remains open on two fields. |
+| `T011-R3` | **Resolved** | All message dataclasses are keyword-only; `Probed.media`, `Progress.stage`, `Succeeded.output_path`, and `Failed.kind/message` are required and non-optional in the inspected signatures. Omitting the stage no longer constructs. |
+| `T011-R4` | **Resolved** | T-013 now explicitly requires one outcome per job ID, suppresses a second state transition/signal, applies `validate_sequence()` per completed session, and tests the duplicate. Enforcement is owned by the correct stateful layer. |
+| `T011-R5` | **Open — maintainer decision required** | The module narrowed its claim to no runtime negotiation and `STATUS.md` accurately raises the authority question. The accepted `ARC-002` wording has not been clarified or superseded, and the T-011 task still says “No protocol versioning.” The Implementer correctly did not decide an accepted decision's intent, but this means the finding is parked rather than resolved. |
+| `T011-R6` | **Resolved** | T-011 is under `In Review` with canonical status, the task metadata and start-here text are current, and `STATUS.md` now reports the active review accurately. Its statements that all six findings are corrected should be read subject to the explicitly parked R5 above. |
+
+### New finding
+
+| ID | Severity | Area | Finding | Recommendation | Status |
+|---|---|---|---|---|---|
+| `T011-R7` | **Medium** | Executable session grammar | The module declares the probe grammar as `Progress(PROBING)*` followed by its outcome and sentinel, and says `validate_sequence()` is the executable form. In fact, a probe sequence containing `Progress(stage=MERGING)` validates. Full download-stage ordering can reasonably remain outside this contract because yt-dlp pipelines skip and repeat stages, but a probe reporting merge/download/post-processing is impossible and misreports `REQ-014` state. | Enforce `Stage.PROBING` as the only progress stage in a probe session and add a rejection test. If probe sessions are intentionally allowed to report every stage, change the declared grammar and justify that broader contract instead. | Open |
+
+### Final review judgments
+
+- The strict choice that a download session cannot emit `Probed` is sound for the current
+  vertical slice: probing and downloading are separate worker operations, and the UI obtains
+  media metadata from the probe session first.
+- Full download-stage monotonicity need not be enforced in T-011. Real yt-dlp pipelines can
+  omit or repeat stages; T-012 maps its hooks and the later end-to-end gate owns observed
+  progression. `T011-R7` is narrower: the known probe operation cannot merge or download.
+- A real `multiprocessing.Queue` remains properly out of scope. Pickle and sequence validation
+  are sufficient here; T-012/T-013 own transport behavior and process lifetime.
+- The correction to the original fixture mutation is non-vacuous. It fails during invalid
+  construction as well as in the explicit sample-validity guard; the 28 failures are expected
+  fan-out from a shared invalid fixture, not 28 independent proofs.
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Correction boundary | Clean `main` at exact head `8fbbb2d`; `6663c9e..8fbbb2d` is two commits and 6 files, with 797 insertions and 297 deletions. Commit `90abde5` records the prior review unchanged; the implementation correction is `90abde5..8fbbb2d`, 5 files. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: 65 files already formatted. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| Bare `mypy` | Passed: no issues in 50 source files. |
+| `mypy --platform win32` | Passed: no issues in 50 source files. |
+| `pytest -q` | Passed: 342 passed, 2 skipped, 1 deselected in 0.46 s. |
+| Focused protocol baseline | Passed: 100 tests. |
+| Layering | Passed: 109 cases; the protocol imports neither Qt nor yt-dlp. |
+| Original malformed-sample mutation | Replaced `Probed.media` with a raw dict and omitted `Progress.stage`: 28 failed, 72 passed. Both invalid constructors were reached through the shared fixture. Restored. |
+| Residual payload mutation | Replaced representative progress speed and success byte count with mutable dictionaries: all 100 protocol tests passed. Restored. |
+| Direct residual probes | Both mutable dictionaries constructed, passed `is_message()`, survived where pickled, and retained mutable state. A probe reporting `Stage.MERGING` passed `validate_sequence(SessionKind.PROBE, ...)`. |
+| `git diff --check 6663c9e..8fbbb2d` | Passed. |
+| Windows CI | Not independently checked: `gh auth status` reports the configured token invalid. The handoff reports run `30213417231` with all five jobs green. |
+
+### Readiness
+
+T-011 is not approved at `8fbbb2d` and should not unblock T-035 or T-038. The two original
+High-level design failures are substantially corrected, and R1, R3, R4 and R6 are closed.
+Strict runtime validation remains incomplete under R2, the advertised probe grammar is not
+fully enforced, and R5 still requires the maintainer to interpret or supersede `ARC-002`.
+This is the requested last review pass: these are the final reviewer dispositions at this
+head, and no additional Codex re-review is implied.
