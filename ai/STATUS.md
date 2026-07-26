@@ -12,13 +12,15 @@
 
 ---
 
-**Current phase:** Phase 0 — Foundation, **exit blocked**
-**Overall state:** Every deliverable is built and green on both platforms, and all eight exit-review
-findings are closed (`T-027` … `T-032`). One exit criterion is still unmet: "the window launches
-from a clean checkout on Windows". It is **not** unmeetable — the `OPS-004` spike showed the
-Windows runner has a real desktop — but the merged CI job forces `QT_QPA_PLATFORM=offscreen`, so
-nothing has yet checked it. `T-026` closes it, and is **Ready** since `OPS-004` was accepted on
-2026-07-26.
+**Current phase:** Phase 0 — Foundation, **every exit criterion now met; formal exit is the
+maintainer's call**
+**Overall state:** Every deliverable is built and green on both platforms, all eight exit-review
+findings are closed (`T-027` … `T-032`), and the last open criterion — "the window launches from
+a clean checkout on Windows" — was closed on 2026-07-26 by `T-026`, verified in CI run
+`30208677607`. Phase 1 has also started: `T-010` is implemented and awaiting review.
+
+Both are **unreviewed**. Phase 0's exit criteria include "reviewed and signed off", so the phase
+is not exited until `T-026` has had its independent pass (`AGENTS.md` §3).
 
 ## Completed
 
@@ -73,33 +75,29 @@ nothing has yet checked it. `T-026` closes it, and is **Ready** since `OPS-004` 
 
 ## Next
 
-Phase 0's build work and every exit-review finding are merged. **The phase still has not
-exited**, for one reason only: the documented criterion "the window launches from a clean
-checkout on Windows" has not been checked. Everything else passes.
+Phase 0's exit criteria are **all met**. The `windows desktop` job closed the last one on
+2026-07-26 (run `30208677607`, 15 passed): the window launched under the real `windows`
+platform plugin with a native `HWND`, and `GetWindowTextW` read its title back as
+`Tracks & Trails`.
 
-That criterion is reachable in CI, contrary to what this file said before 2026-07-26. Today's
-Windows job sets `QT_QPA_PLATFORM=offscreen` for the whole workflow and `qt_baseline.py`
-*asserts* the offscreen plugin, so CI proves PySide6 imports and builds a `QWidget` headlessly
-and never touches a desktop. The `OPS-004` spike ran without that override on `windows-latest`
-and got the real `windows` plugin, a 1024×768 display, a native `HWND` whose title the Win32
-API reads back as `Tracks & Trails`, and a screenshot with native font rendering. The runner
-has a desktop; nothing is wired to use it yet.
+Nothing is blocked on hardware any more. What Phase 0 still needs is a **review**.
 
-Two tasks are Ready, and they are independent — `T-010` moves Phase 1 forward, `T-026` closes
-Phase 0.
+1. **Review `T-026` and `T-010`** — both are implemented, pushed and green, and neither has had
+   an independent pass. `AGENTS.md` §3 requires a different agent than the implementer, and
+   Phase 0's exit criteria include "reviewed and signed off", so this is what stands between
+   the project and a formally exited Phase 0. Review base `4a2a1e6`, head `4172fd0`.
 
-1. **`T-010`** — the Phase 1 entry point; every other Phase 1 task imports it. Phase 1 is
-   **15 tasks** after an informal plan critique found six further gaps: application composition
-   (`T-036`), proof that a download ever *succeeds* (`T-037`), and logging with redaction
-   (`T-038`) were all unowned, and `T-034`/`T-035` had to be rewritten because they violated
-   the layering rule as originally written. All of Phase 1 is now planned in full.
+2. **Formally exit Phase 0** once that review clears — a maintainer decision, not an automatic
+   consequence. `IMPLEMENTATION_PLAN.md`'s Phase 1 prerequisite amendment becomes moot at that
+   point and should be reduced back to "Phase 0 complete".
 
-2. **`T-026`** — now Ready, and the second of the two. `OPS-004` was accepted on 2026-07-26, so
-   the real-plugin Windows job, focus-order gates and UI Automation assertions are unblocked.
-   This is what closes Phase 0's last exit criterion.
-3. **A human Windows session** — a cloud desktop, a local VM, or a person with a machine. Now
-   scoped to `OPS-004`'s subjective residue only. It blocks **first release**; it does **not**
-   block Phase 0's exit, which `T-026` can close on its own.
+3. **Phase 1 continues from `T-010`.** `T-011`, `T-014`, `T-015` and `T-034` all become Ready
+   once it merges. `T-012` is the chokepoint: three tasks must land before it and six depend on
+   it. Phase 1 is **15 tasks**, all planned in full.
+
+4. **A human Windows session** — scoped to `OPS-004`'s subjective residue only: whether it looks
+   right, sounds coherent, feels normal, plus shell foreground behavior and long-running
+   stability. It blocks **first release**. It no longer blocks Phase 0.
 
 ## Known gaps not yet scheduled
 
@@ -178,14 +176,19 @@ Help → About — and it remembers its size and position. That is the whole of 
 reality — treat any claim of implemented *behavior* as false until this section says
 otherwise.
 
-Precisely, recomputed at `2d06153`: of the **31** modules under `src/`, **26 are
-docstring-only stubs**. The five with code are `__init__.py` (the version string),
+Precisely, recomputed at `4172fd0`: of the **31** modules under `src/`, **23 are
+docstring-only stubs**. The eight with code are `__init__.py` (the version string),
 `__main__.py` (`freeze_support()` and `main()`), `_freeze_probe.py` (`T-020`'s frozen-build
-diagnostics), `app.py` (argument handling and `QApplication` setup), and `ui/main_window.py`
-(the shell window). `app.run` is no longer a placeholder — it builds and runs the real
-application.
+diagnostics), `app.py` (argument handling and `QApplication` setup), `ui/main_window.py`
+(the shell window), and — new with `T-010` — `core/models.py`, `core/job_state.py` and
+`core/errors.py`.
+
+The three `core/` modules are **domain vocabulary, not behavior**. They define what a job,
+a request and a failure *are*, and the rules for moving between states. Nothing calls them yet:
+no job is created, persisted, or run. The statement above still holds — nothing downloads.
 
 What *has* been built is the scaffolding that guards that behavior when it arrives, and those
 parts of `TESTING.md` are real: CI on both platforms (`T-006`), the shipped-asset invariants
-(`T-022`), and the layering enforcement test (`T-005`). Of `TESTING.md` §7's ten
-mandatory areas, exactly one — Layering — is covered.
+(`T-022`), the layering enforcement test (`T-005`), and the Windows desktop and accessibility
+gates (`T-026`). Of `TESTING.md` §7's ten mandatory areas, **two** are now covered — Layering,
+and the State machine (`T-010`, asserted over every ordered pair of statuses).

@@ -144,22 +144,38 @@ All of the following, **on Linux and Windows**, before any tag or distributed bu
 Some things cannot be automated and are checked by hand, recorded in `REVIEWS.md` with the
 date and platform:
 
-- Screen-reader announcement quality (Orca on Linux, Narrator on Windows)
-- Native file dialogs, "reveal in file manager", and "open file" on both desktops
+- Screen-reader announcement *quality* — whether Orca and Narrator say something **coherent**.
+  That the accessibility tree exposes a correct name and role for every control is no longer
+  manual on Windows: `T-026`'s UI Automation gate gives that, and it is green
+- Native file dialogs, "reveal in file manager", and "open file" on both desktops — the
+  foreground and file-association half. Per `OPS-004` the request, path handling and shell verb
+  are automatable, but none of that exists to test yet; revisit when the feature lands
 - Visual correctness of light and dark themes
-- Installer flow on a clean machine
+- Installer flow on a clean machine — until `T-039` automates placement and removal, at which
+  point only whether it *feels* normal stays here
 - Real-world download of a large file, watching memory and responsiveness
 
-### Windows manual verification is currently impossible (`OPS-003`)
+### What Windows CI does and does not cover (`OPS-004`)
 
-There is no Windows machine and no Windows VM available. Every item above can be performed on
-Linux only. On Windows they are **known-unverified**, not merely untested — do not record
-them as passed, and do not infer them from a green Windows CI run.
+`OPS-003` held that Windows manual verification was impossible and that everything above was
+**known-unverified** there. Half of that is no longer true. The runner has a real desktop, and
+since 2026-07-26 the `windows desktop` job asserts against it: the window launches under the
+real platform plugin with a native `HWND` Windows reports by title, menus are keyboard
+reachable, and the UI Automation tree exposes a correct name and role for every control.
 
-This is discharged by one real Windows session — the maintainer's, a tester's, or a rented
-cloud desktop — which is a **blocking item before the first public release** (§8, item 15).
-Until then, CI carries as much of the load as can be automated; see `OPS-003` for the split
-between what CI genuinely covers and what it cannot.
+What remains genuinely manual is the **subjective** residue listed above — whether it looks
+right, sounds coherent, and feels normal. That still needs a person, still cannot be done from
+the current development environment, and is still a **blocking item before the first public
+release** (§8, item 15).
+
+Two gaps in the automation are worth naming rather than discovering later:
+
+- **Widget tab order is not gated.** The shell window has no focusable controls yet, so a
+  focus-chain assertion would pass over zero widgets. It arrives with Phase 1's first widgets
+  (`T-016`, `T-017`); until then Windows keyboard use beyond the menu bar stays unverified.
+- **Installer behavior is not gated.** `T-039`, once Phase 5 produces an installer.
+
+Do not record a manual item as passed because this job is green. It covers what it covers.
 
 ## 10. CI
 

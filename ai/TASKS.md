@@ -115,9 +115,26 @@ Two properties are load-bearing and easy to lose:
 
 ### T-026 — Verify Windows behavior against the runner's real desktop
 
-**Status:** Implemented 2026-07-26, **unverified** — every Windows-specific code path in it has
-only ever run on Linux, where it skips. Nothing here may be treated as passing, and no manual
-item may be retired, until the `windows desktop` job has run green on a Windows runner.
+**Status:** Implemented and **verified green on Windows** 2026-07-26 — run `30208677607`,
+15 passed. Awaiting review. **Closes Phase 0's last exit criterion:** the window launched under
+the real `windows` platform plugin with native `HWND`, and `GetWindowTextW` read the title back
+as `Tracks & Trails`.
+
+**Incomplete against its own scope, deliberately.** The widget tab-order gate is not here: the
+shell window has no focusable controls, so a focus-chain assertion would pass over zero widgets
+— the vacuous check this task exists to avoid. It lands with `T-016`/`T-017`. The installer half
+became `T-039`. `ai/TESTING.md` §9 and `REQUIREMENTS.md` §3 record both gaps rather than
+implying full coverage.
+
+**Three CI rounds were needed, and each failure was real rather than flaky:**
+1. `findChildren(QMenu)` also returns an untitled internal `QMenu` Qt creates for the menu bar.
+2. UI Automation returned an empty tree and `COMError 0x80040201`. A UIA client inspecting its
+   own process must not call from the thread owning the window — Qt builds its accessibility
+   bridge in response to `WM_GETOBJECT`, which that thread must handle. Queries now run in an
+   MTA worker thread while the main thread pumps events.
+3. `QMenu` wrappers died mid-test. The `QAction` list is what keeps them alive, so collecting
+   menus in one loop and asserting in a second releases the actions and kills the menus. The
+   first fix for this was wrong — it blamed the number of `menu()` calls, not the lifetime.
 **Owner:** Implementer
 **Priority:** High — this is what closes Phase 0's last exit criterion
 **Phase:** Phase 0 follow-up; must land before the first public release

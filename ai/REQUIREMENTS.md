@@ -48,10 +48,18 @@ deployment, no account system.
 A change is not complete if it works on only one primary platform. Where a behavior cannot
 be verified on both, that must be stated as unverified rather than assumed.
 
-**Current verification constraint** (`OPS-003`): there is no Windows machine available, so
-Windows is verified by CI only. Interactive behavior there — screen readers, native dialogs,
-keyboard use, theming, installer flow — is *known-unverified* and must be reported as such.
-A single real Windows session discharges this and blocks the first public release.
+**Current verification constraint** (`OPS-004`, narrowing `OPS-003`): there is no Windows
+machine available, so Windows is verified by CI — but the runner provides a real desktop, and
+since 2026-07-26 the `windows desktop` job asserts against it. The window launches under the
+real platform plugin, menus are keyboard reachable, and the UI Automation tree exposes a
+correct name and role for every control.
+
+What is still *known-unverified* on Windows, and must be reported as such: whether rendering
+**looks** right, whether Narrator **sounds** coherent, whether the installer **feels** normal,
+shell foreground and file-association behavior, and long-running stability. Also not yet
+covered by automation: widget tab order (no focusable widgets exist yet — `T-016`, `T-017`) and
+installer placement and removal (`T-039`). A single real Windows session discharges the
+subjective residue and blocks the first public release.
 
 ## 4. Functional requirements
 
