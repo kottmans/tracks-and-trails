@@ -45,17 +45,12 @@
 
 ## In progress
 
-*(nothing active)*
+- **`T-005`** — In Review. Layering enforcement test implemented and verified; awaiting Codex.
 
 ## Next
 
-Both are Ready and independent — either order.
-
-1. **`T-005`** — layering enforcement test. Cheap, and the longer the skeleton sits without
-   it the more chance a layer rule gets broken unnoticed. It also gains real value now that
-   CI runs it on both platforms.
-2. **`T-007`** — application shell window. Unblocked as of 2026-07-25 now that the icon
-   exists, and the first task that produces something visible.
+1. **`T-007`** — application shell window. The only Ready task, and the first that produces
+   something visible. It consumes the `T-003` icon set.
 
 Then `T-020` (frozen smoke test), which needs `T-007` — its `T-006` dependency is met.
 
@@ -102,6 +97,18 @@ Development machine, verified 2026-07-25:
 
 ## Notes
 
-Nothing in `ARCHITECTURE.md` or `TESTING.md` has been implemented. Both describe the approved
-target, not reality. Treat any claim of implemented behavior as false until this section says
+**No application behavior exists yet.** Nothing downloads, probes, persists, or renders
+anything, and there is no window. `ARCHITECTURE.md` describes the approved target, not
+reality — treat any claim of implemented *behavior* as false until this section says
 otherwise.
+
+Precisely: of the 30 modules under `src/`, **27 are docstring-only stubs**. Three carry code,
+all of it `T-001`'s runnable entry-point scaffold — `__init__.py` (the version string),
+`__main__.py` (`freeze_support()` and a `main()` that delegates to `app.run`), and `app.py`
+(a placeholder `run()` that prints a banner and returns 0, importing no Qt). `T-007` replaces
+`app.run`.
+
+What *has* been built is the scaffolding that guards that behavior when it arrives, and those
+parts of `TESTING.md` are real: CI on both platforms (`T-006`), the shipped-asset invariants
+(`T-022`), and the layering enforcement test (`T-005`, in review). Of `TESTING.md` §7's ten
+mandatory areas, exactly one — Layering — is covered.
