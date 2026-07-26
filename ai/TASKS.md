@@ -27,7 +27,17 @@ for a Phase 5 installer; `T-040` for the first focusable widgets.
 
 ### T-011 — IPC message contract
 
-**Status:** **Ready** — `T-010` approved and complete, 2026-07-26
+**Status:** Implemented 2026-07-26, awaiting review. All checks green; the contract's
+guarantees were mutation-checked rather than asserted:
+
+- adding a message type without a test sample fails **6** tests
+- making the sentinel terminal fails the terminal-classification tests
+- letting the validator accept a bare `dict` fails the rejection test
+
+**Design note for review:** `WorkerFinished` is deliberately *not* terminal. It ends the
+stream, not the job — conflating them would make a worker that crashed after reporting success
+indistinguishable from one that shut down cleanly. `is_terminal()` covers `Succeeded` and
+`Failed` only.
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 1
