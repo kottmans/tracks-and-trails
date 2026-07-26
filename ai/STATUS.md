@@ -45,17 +45,12 @@
 
 ## In progress
 
-*(nothing active)*
+- **`T-005`** — In Review. Layering enforcement test implemented and verified; awaiting Codex.
 
 ## Next
 
-Both are Ready and independent — either order.
-
-1. **`T-005`** — layering enforcement test. Cheap, and the longer the skeleton sits without
-   it the more chance a layer rule gets broken unnoticed. It also gains real value now that
-   CI runs it on both platforms.
-2. **`T-007`** — application shell window. Unblocked as of 2026-07-25 now that the icon
-   exists, and the first task that produces something visible.
+1. **`T-007`** — application shell window. The only Ready task, and the first that produces
+   something visible. It consumes the `T-003` icon set.
 
 Then `T-020` (frozen smoke test), which needs `T-007` — its `T-006` dependency is met.
 

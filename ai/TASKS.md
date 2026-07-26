@@ -12,9 +12,8 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-023` to close the `T-006` review findings, then `T-005` or `T-007` —
-both Ready and independent. `T-001`, `T-002`, `T-003`, `T-004`, `T-022` are complete.
-Nothing is blocked.
+**Start here:** `T-007` — the only Ready task. `T-005` is In Review. `T-001` through
+`T-004`, `T-006`, `T-022` and `T-023` are complete. Nothing is blocked.
 
 ---
 
@@ -49,39 +48,6 @@ warnings on stderr. No download functionality.
 #### Out of scope
 
 - Queue view, settings, theming (Phase 4), any yt-dlp interaction
-
----
-
-### T-005 — Layering enforcement test
-
-**Status:** Ready
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 0
-**Depends on:** `T-001`
-**Relevant context:** `ARCHITECTURE.md` §4, `AGENTS.md` §7 (Layering), `ai/TESTING.md` §7
-**Affected surfaces:** `tests/unit/test_layering.py`
-**Risk:** Low — but its absence lets the central architectural rule erode invisibly
-
-#### Scope
-
-Statically analyze the import graph (via `ast`, not by importing) and assert:
-`core/**` and `downloader/worker.py` never import `PySide6`/`shiboken6`;
-`ui/**` never imports `yt_dlp`; only `downloader/worker.py` and
-`downloader/ytdlp_adapter.py` import `yt_dlp` at all.
-
-#### Acceptance criteria
-
-- The test passes on the current tree
-- Adding `import PySide6` to any `core/` module fails it, with a message naming the file and
-  the rule
-- Adding `import yt_dlp` to a `ui/` module fails it
-- Uses static analysis — importing modules to check would defeat the purpose and could
-  execute side effects
-
-#### Out of scope
-
-- Enforcing anything beyond the two rules in `ARCHITECTURE.md` §4
 
 ---
 
@@ -199,7 +165,83 @@ criteria, and a review base before it moves to Ready.
 
 ## In Review
 
-*(none)*
+### T-005 — Layering enforcement test
+
+**Status:** In Review — implemented and verified 2026-07-25; awaiting Codex
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 0
+**Depends on:** `T-001`
+**Relevant context:** `ARCHITECTURE.md` §4, `AGENTS.md` §7 (Layering), `ai/TESTING.md` §7
+**Affected surfaces:** `tests/unit/test_layering.py`
+**Risk:** Low — but its absence lets the central architectural rule erode invisibly
+
+#### Scope
+
+Statically analyze the import graph (via `ast`, not by importing) and assert:
+`core/**` and `downloader/worker.py` never import `PySide6`/`shiboken6`;
+`ui/**` never imports `yt_dlp`; only `downloader/worker.py` and
+`downloader/ytdlp_adapter.py` import `yt_dlp` at all.
+
+#### Acceptance criteria
+
+- The test passes on the current tree
+- Adding `import PySide6` to any `core/` module fails it, with a message naming the file and
+  the rule
+- Adding `import yt_dlp` to a `ui/` module fails it
+- Uses static analysis — importing modules to check would defeat the purpose and could
+  execute side effects
+
+#### Out of scope
+
+- Enforcing anything beyond the two rules in `ARCHITECTURE.md` §4
+
+#### Implementation record — 2026-07-25
+
+**Delivered:** `tests/unit/test_layering.py`, 45 tests. Static `ast` analysis, no imports
+executed — importing to inspect `sys.modules` would run module-level code, and a module
+importing Qt lazily inside a function would pass while still breaking the frozen worker.
+
+**Four rules, not two.** This task's Scope enumerates four checks while its Out of scope line
+says "the two rules in `ARCHITECTURE.md` §4". Read as: implement the enumerated four, and do
+not invent a fifth. All four are stated in the linked context — §4's diagram gives the two
+headline rules, §4's bullets add "`worker.py` … never Qt", and §6 with `NFR-008` confines
+`yt_dlp` to two modules. Flagged rather than silently resolved.
+
+**A documentation imprecision, not a conflict.** §4's structure block calls `worker.py` "the
+ONLY module that calls `yt_dlp`", while §6 permits both `worker.py` and `ytdlp_adapter.py` to
+import it. These are consistent if "calls" is read as §6's "the only place `YoutubeDL` is
+instantiated". The test follows §6, which is explicit. Not worth a task; noted so the next
+reader does not have to re-derive it.
+
+**Verification — five real violations injected into the actual tree**, each confirmed to fail
+with a message naming both the file and the rule, then reverted with `src/` hashed before and
+after to prove restoration:
+
+| Injected | Caught by |
+|---|---|
+| `import PySide6` in `core/models.py` | core/ must not import Qt |
+| `from PySide6.QtCore import QObject` in `core/job_state.py` | core/ must not import Qt |
+| `import yt_dlp` in `ui/main_window.py` | both the `ui/` rule and the two-owner rule |
+| `import PySide6` in `downloader/worker.py` | worker.py must not import Qt |
+| `import yt_dlp` in `persistence/db.py` | only `worker.py` and `ytdlp_adapter.py` may import yt-dlp |
+
+**The guard is itself guarded.** `ai/REVIEWS.md` names layering as an area where "the
+enforcement test can be weakened as easily as bypassed" — narrowing a rule's `applies_to` or
+dropping a package from `forbidden` leaves the tree passing and nothing else notices. Thirteen
+synthetic cases assert the analyzer still catches what it must and still permits what the
+architecture allows; a `test_source_tree_is_not_empty` guard catches the glob silently
+matching nothing.
+
+**Known limit, stated in the module docstring rather than left implicit:** only `import`
+statements are analyzed. `importlib.import_module("PySide6")` and `__import__` are not
+detected. Accepted, not overlooked — a dynamic import of Qt is conspicuous in review in a way
+a plain one is not.
+
+**Checks:** `ruff check`, `ruff format --check`, `mypy src`, and `pytest` all green; suite is
+now 72 passed, 1 deselected (was 27).
+
+---
 
 ## Complete
 
