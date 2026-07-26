@@ -17,15 +17,23 @@ def test_package_exposes_a_version() -> None:
 
 
 def test_module_entry_point_runs_and_exits_zero() -> None:
-    """`python -m tracks_and_trails` must resolve and exit cleanly."""
+    """`python -m tracks_and_trails --version` must resolve and exit cleanly.
+
+    Bare `python -m tracks_and_trails` opened a window and returned once `T-007` landed, so
+    it can no longer stand in for "the entry point resolves". `--version` is the headless
+    path: it must work with no display and without constructing a `QApplication`, which is
+    what makes it usable here and in a packaging smoke test.
+    """
     result = subprocess.run(
-        [sys.executable, "-m", "tracks_and_trails"],
+        [sys.executable, "-m", "tracks_and_trails", "--version"],
         capture_output=True,
         text=True,
         timeout=60,
         check=False,
     )
     assert result.returncode == 0, f"stderr: {result.stderr}"
+    assert result.stdout.strip() == tracks_and_trails.__version__
+    assert result.stderr == "", f"unexpected stderr: {result.stderr}"
 
 
 def test_entry_point_import_does_not_pull_in_qt() -> None:
