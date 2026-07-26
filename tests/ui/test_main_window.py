@@ -15,6 +15,7 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox
 
 from tracks_and_trails import __version__
 from tracks_and_trails.ui.main_window import (
+    _MAX_COORD,
     APP_NAME,
     APP_SLUG,
     DEFAULT_SIZE,
@@ -199,14 +200,44 @@ def test_hostile_geometry_falls_back_without_raising(
     assert MainWindow(geometry_file=path).size() == DEFAULT_SIZE
 
 
-def test_int32_boundary_values_are_accepted(qapp: QApplication, tmp_path: Path) -> None:
-    """The limit is Qt's, so the largest values Qt accepts must still round-trip."""
+@pytest.mark.parametrize(
+    ("case", "x", "y"),
+    [
+        ("x-at-int32-min", -(2**31), 0),
+        ("x-at-int32-max", 2**31 - 1, 0),
+        ("y-at-int32-min", 0, -(2**31)),
+        ("y-at-int32-max", 0, 2**31 - 1),
+        ("both-extreme", -(2**31), 2**31 - 1),
+        ("just-past-the-bound", _MAX_COORD + 1, 0),
+    ],
+)
+def test_extreme_coordinates_never_strand_the_window(
+    qapp: QApplication, tmp_path: Path, case: str, x: int, y: int
+) -> None:
+    """Restoration, not just loading — which is what the earlier boundary test missed.
+
+    `P0-R1`: values inside int32 individually still overflow Qt's own rectangle arithmetic.
+    At `y = 2**31 - 1`, `QRect.bottom()` wrapped to a large *negative*, `intersects()` reported
+    the rectangle as touching a screen, the recovery never fired, and the window was restored
+    where it could never be clicked. Asserting on `load_geometry` alone could not see that,
+    because the damage happened after loading succeeded.
+    """
     path = tmp_path / "window.toml"
-    path.write_text(
-        f"[window]\nx = {-(2**31)}\ny = {2**31 - 1}\nwidth = 640\nheight = 480\n",
-        encoding="utf-8",
-    )
-    assert load_geometry(path) == {"x": -(2**31), "y": 2**31 - 1, "width": 640, "height": 480}
+    path.write_text(f"[window]\nx = {x}\ny = {y}\nwidth = 640\nheight = 480\n", encoding="utf-8")
+    geometry = MainWindow(geometry_file=path).geometry()
+    assert any(
+        screen.availableGeometry().intersects(geometry) for screen in QGuiApplication.screens()
+    ), f"{case} restored to {geometry}, which no screen can show"
+
+
+def test_the_largest_usable_coordinate_still_round_trips(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """The bound must not be so tight that legitimate multi-monitor offsets are discarded."""
+    path = tmp_path / "window.toml"
+    x = _MAX_COORD - 640
+    path.write_text(f"[window]\nx = {x}\ny = 0\nwidth = 640\nheight = 480\n", encoding="utf-8")
+    assert load_geometry(path) == {"x": x, "y": 0, "width": 640, "height": 480}
 
 
 def test_ordinary_negative_coordinates_still_restore(qapp: QApplication, tmp_path: Path) -> None:

@@ -20,6 +20,204 @@ review findings and the real Windows launch criterion are discharged.
 
 ## Ready
 
+### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
+
+**Status:** Proposed
+**Owner:** Implementer
+**Priority:** High — blocks any usable release, and fails in a way that looks like a site bug
+**Phase:** lands with `T-012`; verified by `T-020`'s CI job; gates Phase 5
+**Depends on:** `T-012` (the worker is the first thing to import `yt_dlp`)
+**Relevant context:** `OPS-002`, `REL-001`, `ARCHITECTURE.md` §6 and §12, `NFR-008`, `C-002`
+**Affected surfaces:** `packaging/tracks-and-trails.spec`, `packaging/frozen_smoke.py`,
+`.github/workflows/ci.yml`
+**Risk:** **High** — the failure mode is silent at build time and total at run time
+
+#### Scope
+
+`OPS-002` says every release bundles a pinned yt-dlp baseline. The frozen artifact currently
+contains **none of it**: a search of the built `dist/tracks-and-trails` for `yt_dlp` returns
+zero files. That is correct today — nothing imports it, because `worker.py` and
+`ytdlp_adapter.py` are still stubs — but it will not self-correct when `T-012` lands.
+
+PyInstaller's analysis follows *static* imports. yt-dlp resolves its extractors dynamically:
+1046 package files, **972 of them extractor modules**, reached through `lazy_extractors`
+rather than by direct import. Static analysis will therefore collect the yt-dlp core and miss
+essentially every extractor.
+
+The resulting failure is the dangerous kind: the artifact **builds and launches normally**,
+`import yt_dlp` succeeds, and then every real URL fails to find an extractor — which reads
+exactly like the site-breakage `C-002` teaches everyone to expect, so it will be misdiagnosed.
+
+Collect the package explicitly in the spec, and prove it from inside the artifact.
+
+#### Acceptance criteria
+
+- The frozen artifact contains the yt-dlp package, and the bundled version **equals the pin in
+  `pyproject.toml`** — asserted, not eyeballed, so a stale build cannot pass
+- A probe **inside the frozen artifact** imports `yt_dlp` and resolves a named extractor for a
+  stable URL pattern, without network access
+- Removing the collection from the spec makes that probe fail — the mutation is exercised once
+  and reverted, as `T-020`'s negative proof was
+- The `OPS-002` resolution order is honoured: with a directory present at
+  `user_data_dir/tracksandtrails/ytdlp/`, the worker reports **that** version; with it absent
+  or unimportable, it reports the baseline and says why
+- Both the Linux and Windows frozen jobs stay green, and the artifact-size change is recorded
+
+#### Out of scope
+
+- The in-app update action itself (`OPS-002`, Phase 4) — this task bundles the baseline and
+  proves the resolution order; downloading and extracting a wheel is separate
+- Trimming the bundle. 972 extractor modules is a size cost worth measuring, but excluding
+  extractors to save space would re-create this defect deliberately
+- Any change to the pin
+
+**Note:** `ai/TESTING.md` §8's release gate re-checks that yt-dlp is still pure Python. This
+task is the other half — that the pure-Python package actually *ships*. Purity without
+inclusion still yields an application that cannot download anything.
+
+---
+
+## Proposed — Phase 0
+
+### T-026 — Verify Windows behavior against the runner's real desktop
+
+**Status:** Proposed — blocked on `OPS-004` being accepted
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 0 follow-up; must land before the first public release
+**Depends on:** `T-006`, `T-007`, `OPS-004`
+**Relevant context:** `OPS-004`, `OPS-003` (superseded classification), `NFR-005`,
+`ai/TESTING.md` §9, `REQUIREMENTS.md` §3
+**Affected surfaces:** `.github/workflows/ci.yml`, `tests/ui/`, `ai/TESTING.md`,
+`REQUIREMENTS.md` §3
+**Risk:** Medium — it converts release-blocking manual work into automation, so a weak
+implementation would retire a gate without replacing it
+
+#### Scope
+
+`OPS-003` assumed a CI runner has no desktop and wrote off most Windows verification as
+human-only. A spike disproved that: `windows-latest` reports `platformName == 'windows'`,
+a 1024×768 display, a native `HWND` whose title the Win32 API reads back, and captures
+screenshots with native font rendering.
+
+Move the objective half of Windows verification into CI:
+
+1. **Real-plugin rendering.** Run the UI suite on Windows without `QT_QPA_PLATFORM=offscreen`
+   as well as with it, and retain screenshots of each key window as artifacts.
+2. **Focus and keyboard.** Assert tab order and focus chain through synthetic key events on a
+   real window, not an offscreen one.
+3. **Accessibility tree.** Assert every control's name and role as exposed to UI Automation —
+   what a screen reader reads (`NFR-005`). Needs a dev-only dependency such as `comtypes`.
+4. **Installer**, once one exists (Phase 5): silent install, files, shortcuts, uninstall,
+   removal — on a runner, which is a genuinely clean machine.
+
+#### Acceptance criteria
+
+- The Windows job runs the UI suite under the real `windows` platform plugin and uploads a
+  screenshot of every key window. **A screenshot is retained evidence, not a gate**: it is
+  uploaded for a human to look at and does not turn the build red on its own. Any claim that
+  a broken layout "fails" must be backed by a separate objective assertion — a widget's
+  geometry, visibility, or size — not by the image (`T031-R2`).
+- Tab order and focus chain are asserted on Windows, and reordering two widgets fails the test
+- Every interactive control exposes a non-empty accessible name and a correct role through UI
+  Automation; removing a label fails the test
+- `ai/TESTING.md` §9's manual Windows list is rewritten to only what remains subjective, and
+  `REQUIREMENTS.md` §3's "known-unverified" wording is narrowed to match — **each item moved
+  only once its replacement automation has landed and is green**, never on the strength of
+  this task's intent
+- Native file dialogs, reveal-in-file-manager and open-file behavior are handled per
+  `OPS-004`'s split: the request, path handling and shell verb are asserted; foreground and
+  file-association behavior stay on the manual list
+- Both the offscreen and real-plugin runs stay green, and the added time is recorded against
+  `T-006`'s budget
+
+#### Out of scope
+
+- Pixel-perfect screenshot diffing — retain screenshots as evidence first; baselines are a
+  separate decision, and a brittle image gate is worse than none
+- The subjective residue in `OPS-004`: whether rendering looks right, whether Narrator sounds
+  coherent, installer feel, long-running stability. Those still need a person and still block
+  first release
+- Buying or renting a cloud Windows desktop — complementary, not part of this
+
+**Note:** this is the rare task that *reduces* release-blocking manual work. The risk is doing
+it shallowly: a screenshot nobody looks at and an accessibility assertion that passes on an
+empty tree would retire a real gate and replace it with theatre.
+
+The criteria are therefore of two kinds, and conflating them is exactly the failure mode
+(`P0-R7`). **Gates** — focus order, accessibility names and roles, installer placement — are
+each stated as a mutation that must turn the suite red, and only those may retire a manual
+item. **Retained evidence** — the screenshots — is uploaded for a human to look at and fails
+nothing on its own; it supports a judgement rather than replacing one.
+
+---
+
+### T-021 — Simplified small-size icon glyph
+
+**Status:** Proposed
+**Owner:** Implementer (needs a design decision from the maintainer first)
+**Priority:** Low
+**Phase:** Phase 4 (theming) — not a Phase 0 exit condition
+**Depends on:** `T-003`
+**Relevant context:** `T-003` completion note, `ARCHITECTURE.md` §8
+**Affected surfaces:** `src/tracks_and_trails/resources/icons/`
+**Risk:** Low — cosmetic only
+
+#### Scope
+
+**This is an enhancement, not a defect fix.** `T-003`'s 16 px asset meets its acceptance
+criterion — the note and gold trail stay recognizable (`T003-R2`). What it loses is the
+landscape: the trees and mountain collapse into the green mass. That is a property of the
+artwork's detail level, not of the scaling method, so no better downscale recovers it.
+
+Draw a reduced glyph for 16 px and 24 px that keeps only the elements that still read at that
+size — the note head and stem plus the gold trail sweep — dropping the trees and mountain.
+Ship it as a separate size-specific asset so Qt picks it for small requests.
+
+#### Acceptance criteria
+
+- At 16 px and 24 px the glyph is **more legible than the current downscale**, judged
+  side by side — not merely legible, which the current asset already is
+- The glyph is recognizably the same mark as the full logo, not a different one
+- The Windows `.ico` embeds the simplified glyph at 16/24 and the full logo at 32 and above
+- The `T-022` resource tests still pass, with their expected frame set updated if it changes
+
+#### Out of scope
+
+- Redesigning the logo itself
+- Any change to the brand hex values fixed by `T-003`
+
+**Note:** this is a judgment call about brand appearance, so it needs the maintainer's
+agreement on the reduced form before implementation.
+
+---
+
+## Proposed — Phase 1 (outline; to be expanded when Phase 0 exits)
+
+These are placeholders so the vertical slice is visible. Each gets full scope, acceptance
+criteria, and a review base before it moves to Ready.
+
+| ID | Title | Depends on |
+|---|---|---|
+| T-010 | `core/models.py` + `core/job_state.py` — domain models and state machine | T-001 |
+| T-011 | `downloader/protocol.py` — IPC message contract | T-010 |
+| T-012 | `downloader/worker.py` + `ytdlp_adapter.py` — yt-dlp in a spawned worker | T-011 |
+| T-013 | `downloader/manager.py` + `result_pump.py` — pool of one, progress to Qt signals | T-012 |
+| T-014 | `persistence/` — schema, migration runner, `JobRepository` | T-010 |
+| T-015 | Built-in presets and preset → yt-dlp options translation | T-010 |
+| T-016 | Add-URL dialog with probe results | T-013, T-015 |
+| T-017 | Single-job progress view with cancel | T-013, T-014 |
+| T-018 | Recorded `info_dict` fixtures + adapter projection tests | T-012 |
+| T-019 | Cancellation and worker-crash integration tests | T-013 |
+
+---
+
+## Blocked
+
+*(none)*
+
+## In Review
+
 ### T-027 — Reject unsafe stored window geometry
 
 **Status:** In Review — addressed 2026-07-25; awaiting re-review
@@ -186,6 +384,8 @@ artifact, which now contains the log.
 
 ---
 
+## Complete
+
 ### T-007 — Application shell window
 
 **Status:** Complete
@@ -287,145 +487,44 @@ CI proves the assets load and the window constructs, not that they look right. C
 measured on Linux only; `NFR-002` names the reference Linux machine, so this is complete as
 specified, but Windows startup time is unmeasured.
 
+
+#### Re-review corrections — 2026-07-25
+
+**`P0-R1`, the fix was incomplete and its test enshrined the gap.** Validating each of the
+four numbers against int32 was not enough: `QRect` computes `right()` and `bottom()` as
+`x + width - 1`, and Qt's `intersects()` normalises internally. At `y = 2**31 - 1`, `bottom()`
+wrapped to **-2147483170**, so an off-screen rectangle was reported as touching a screen, the
+recovery never fired, and the window was restored where it could never be clicked. At
+`x = -2**31` the same thing happened through a different overflow, even with both edges
+representable.
+
+`test_int32_boundary_values_are_accepted` asserted precisely those values were acceptable —
+and only exercised `load_geometry`, so it could not see damage that happened *after* loading
+succeeded. It has been replaced by `test_extreme_coordinates_never_strand_the_window`, which
+asserts on the **restored** geometry across six extreme inputs.
+
+Rather than chase which Qt operation overflows where, stored coordinates are now bounded to
+`_MAX_COORD` (`2**24 - 1`), matching Qt's own `QWIDGETSIZE_MAX`. No real display arrangement
+approaches 16.7 million pixels, and inside that range none of Qt's geometry arithmetic can
+wrap. `test_the_largest_usable_coordinate_still_round_trips` guards against the bound being
+tightened so far that legitimate multi-monitor offsets are discarded.
+
+**`P0-R6`** — the contradiction was introduced by the previous fix. §4 listed the module while
+§12 and its docstring both said it was outside §4. Corrected everywhere to the accurate
+statement: it is listed in §4's structure and belongs to none of the four **layers**.
+
+**`P0-R7`** — `T-026`'s closing note claimed every criterion was a failing mutation, while the
+criteria themselves had just been corrected to make screenshots evidence-only. The note now
+separates **gates** (focus order, accessibility names and roles, installer placement — each a
+mutation that must turn the suite red, and only these may retire a manual item) from
+**retained evidence** (screenshots, which fail nothing on their own). `OPS-004` remains
+formally **Proposed**; accepting it is the maintainer's call and is surfaced in `STATUS.md`.
+
+**`P0-R8`** — eight heading/status mismatches, now zero, verified by a script rather than by
+reading. `STATUS.md` said seven findings where there were eight, claimed `main` was the only
+branch while PR #7 was open, and still called `T-005` and `T-007` "in review" after both had
+merged.
 ---
-
-### T-026 — Verify Windows behavior against the runner's real desktop
-
-**Status:** Proposed — blocked on `OPS-004` being accepted
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 0 follow-up; must land before the first public release
-**Depends on:** `T-006`, `T-007`, `OPS-004`
-**Relevant context:** `OPS-004`, `OPS-003` (superseded classification), `NFR-005`,
-`ai/TESTING.md` §9, `REQUIREMENTS.md` §3
-**Affected surfaces:** `.github/workflows/ci.yml`, `tests/ui/`, `ai/TESTING.md`,
-`REQUIREMENTS.md` §3
-**Risk:** Medium — it converts release-blocking manual work into automation, so a weak
-implementation would retire a gate without replacing it
-
-#### Scope
-
-`OPS-003` assumed a CI runner has no desktop and wrote off most Windows verification as
-human-only. A spike disproved that: `windows-latest` reports `platformName == 'windows'`,
-a 1024×768 display, a native `HWND` whose title the Win32 API reads back, and captures
-screenshots with native font rendering.
-
-Move the objective half of Windows verification into CI:
-
-1. **Real-plugin rendering.** Run the UI suite on Windows without `QT_QPA_PLATFORM=offscreen`
-   as well as with it, and retain screenshots of each key window as artifacts.
-2. **Focus and keyboard.** Assert tab order and focus chain through synthetic key events on a
-   real window, not an offscreen one.
-3. **Accessibility tree.** Assert every control's name and role as exposed to UI Automation —
-   what a screen reader reads (`NFR-005`). Needs a dev-only dependency such as `comtypes`.
-4. **Installer**, once one exists (Phase 5): silent install, files, shortcuts, uninstall,
-   removal — on a runner, which is a genuinely clean machine.
-
-#### Acceptance criteria
-
-- The Windows job runs the UI suite under the real `windows` platform plugin and uploads a
-  screenshot of every key window. **A screenshot is retained evidence, not a gate**: it is
-  uploaded for a human to look at and does not turn the build red on its own. Any claim that
-  a broken layout "fails" must be backed by a separate objective assertion — a widget's
-  geometry, visibility, or size — not by the image (`T031-R2`).
-- Tab order and focus chain are asserted on Windows, and reordering two widgets fails the test
-- Every interactive control exposes a non-empty accessible name and a correct role through UI
-  Automation; removing a label fails the test
-- `ai/TESTING.md` §9's manual Windows list is rewritten to only what remains subjective, and
-  `REQUIREMENTS.md` §3's "known-unverified" wording is narrowed to match — **each item moved
-  only once its replacement automation has landed and is green**, never on the strength of
-  this task's intent
-- Native file dialogs, reveal-in-file-manager and open-file behavior are handled per
-  `OPS-004`'s split: the request, path handling and shell verb are asserted; foreground and
-  file-association behavior stay on the manual list
-- Both the offscreen and real-plugin runs stay green, and the added time is recorded against
-  `T-006`'s budget
-
-#### Out of scope
-
-- Pixel-perfect screenshot diffing — retain screenshots as evidence first; baselines are a
-  separate decision, and a brittle image gate is worse than none
-- The subjective residue in `OPS-004`: whether rendering looks right, whether Narrator sounds
-  coherent, installer feel, long-running stability. Those still need a person and still block
-  first release
-- Buying or renting a cloud Windows desktop — complementary, not part of this
-
-**Note:** this is the rare task that *reduces* release-blocking manual work. The risk is doing
-it shallowly: a screenshot nobody looks at and an accessibility assertion that passes on an
-empty tree would retire a real gate and replace it with theatre. Each criterion above is
-therefore stated as a mutation that must fail.
-
----
-
-## Proposed — Phase 0
-
-### T-021 — Simplified small-size icon glyph
-
-**Status:** Proposed
-**Owner:** Implementer (needs a design decision from the maintainer first)
-**Priority:** Low
-**Phase:** Phase 4 (theming) — not a Phase 0 exit condition
-**Depends on:** `T-003`
-**Relevant context:** `T-003` completion note, `ARCHITECTURE.md` §8
-**Affected surfaces:** `src/tracks_and_trails/resources/icons/`
-**Risk:** Low — cosmetic only
-
-#### Scope
-
-**This is an enhancement, not a defect fix.** `T-003`'s 16 px asset meets its acceptance
-criterion — the note and gold trail stay recognizable (`T003-R2`). What it loses is the
-landscape: the trees and mountain collapse into the green mass. That is a property of the
-artwork's detail level, not of the scaling method, so no better downscale recovers it.
-
-Draw a reduced glyph for 16 px and 24 px that keeps only the elements that still read at that
-size — the note head and stem plus the gold trail sweep — dropping the trees and mountain.
-Ship it as a separate size-specific asset so Qt picks it for small requests.
-
-#### Acceptance criteria
-
-- At 16 px and 24 px the glyph is **more legible than the current downscale**, judged
-  side by side — not merely legible, which the current asset already is
-- The glyph is recognizably the same mark as the full logo, not a different one
-- The Windows `.ico` embeds the simplified glyph at 16/24 and the full logo at 32 and above
-- The `T-022` resource tests still pass, with their expected frame set updated if it changes
-
-#### Out of scope
-
-- Redesigning the logo itself
-- Any change to the brand hex values fixed by `T-003`
-
-**Note:** this is a judgment call about brand appearance, so it needs the maintainer's
-agreement on the reduced form before implementation.
-
----
-
-## Proposed — Phase 1 (outline; to be expanded when Phase 0 exits)
-
-These are placeholders so the vertical slice is visible. Each gets full scope, acceptance
-criteria, and a review base before it moves to Ready.
-
-| ID | Title | Depends on |
-|---|---|---|
-| T-010 | `core/models.py` + `core/job_state.py` — domain models and state machine | T-001 |
-| T-011 | `downloader/protocol.py` — IPC message contract | T-010 |
-| T-012 | `downloader/worker.py` + `ytdlp_adapter.py` — yt-dlp in a spawned worker | T-011 |
-| T-013 | `downloader/manager.py` + `result_pump.py` — pool of one, progress to Qt signals | T-012 |
-| T-014 | `persistence/` — schema, migration runner, `JobRepository` | T-010 |
-| T-015 | Built-in presets and preset → yt-dlp options translation | T-010 |
-| T-016 | Add-URL dialog with probe results | T-013, T-015 |
-| T-017 | Single-job progress view with cancel | T-013, T-014 |
-| T-018 | Recorded `info_dict` fixtures + adapter projection tests | T-012 |
-| T-019 | Cancellation and worker-crash integration tests | T-013 |
-
----
-
-## Blocked
-
-*(none)*
-
-## In Review
-
-## Complete
 
 ### T-020 — Frozen-build smoke test in CI
 
@@ -514,8 +613,9 @@ which is a better outcome than the task assumed — the guard is not Windows-spe
 exits 0 in 0.3 s, exactly one top-level start, both parent and child report `frozen=True`, no
 orphan. Build 15 s locally.
 
-**Deliberate deviation, reported.** `_freeze_probe.py` is not in `ARCHITECTURE.md` §4's
-structure. It is underscore-prefixed to mark it as infrastructure rather than a layer, imports
+**Deliberate deviation, reported.** `_freeze_probe.py` belongs to none of
+`ARCHITECTURE.md` §4's four layers (it is listed in §4's structure and described in §12 as
+frozen-build infrastructure). It is underscore-prefixed to mark it as infrastructure rather than a layer, imports
 no Qt so a spawned child inherits none, and is reachable only through an explicit argument.
 The alternative — a separate frozen entry point — would not have tested `__main__.py`'s
 ordering, which is the only thing that matters here. `--spawn-probe` is listed in `--help`

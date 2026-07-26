@@ -46,11 +46,13 @@ unmet and unmeetable here (`OPS-003`).
   the maintainer's direction — not a waived re-review, no first pass; recorded in its task.
 - **`T-020` + `T-025` complete** — frozen-build smoke test and the Phase 0 exit preparation,
   merged as `4d6ad3c`. A frozen artifact spawns a child without relaunching itself on both
-  platforms; the clean-checkout verification passes on Linux. The **negative** proof, that
-  removing `freeze_support()` breaks it, was run on Linux only — `T-029` carries the Windows
-  half.
-- **Phase 0 exit review complete — changes requested.** Seven findings, three Medium; tracked
-  as `T-027` … `T-032`. `T005-R1` and `T005-R3` are now formally Resolved.
+  platforms; the clean-checkout verification passes on Linux. The **negative** proof — that
+  removing `freeze_support()` breaks it — has now been run on Windows too (`T-029`, run
+  `30186080950`).
+- **Phase 0 exit review complete — changes requested.** **Eight** findings (`P0-R1` …
+  `P0-R8`), three Medium; tracked as `T-027` … `T-032`. `T005-R1` and `T005-R3` are now
+  formally Resolved. A re-review then closed `T-028` and all of `T-029`, leaving `P0-R1`,
+  `P0-R6`, `P0-R7` and `P0-R8` open — all four addressed on `t-027-032-review-fixes`.
 - **Windows is no longer entirely unverified.** `T-006`'s runners confirmed, with downloadable
   artifact evidence: Python 3.14.6 (MSC v.1944, AMD64), PySide6/shiboken6/Qt 6.11.1, a
   `QWidget` visible offscreen, and the full 27-test suite passing. This discharges the Windows
@@ -61,7 +63,8 @@ unmet and unmeetable here (`OPS-003`).
 
 ## In progress
 
-*(nothing active — all branches merged and deleted; `main` is the only branch)*
+- **`T-027` … `T-032`** — In Review on branch `t-027-032-review-fixes` (PR #7), covering the
+  Phase 0 exit-review findings and the re-review's four remaining ones.
 
 ## Next
 
@@ -76,6 +79,14 @@ phase has not exited.
    (`OPS-003`), and `OPS-004`/`T-026` decide how much of the surrounding gap CI can close.
 4. **Phase 1** — `T-010` … `T-019` are outlines needing full scope, acceptance criteria and
    review bases before any moves to Ready. Planner work, and not started.
+
+## Known gaps not yet scheduled
+
+- **`T-033` — the frozen artifact contains no yt-dlp.** Verified against the built artifact:
+  zero `yt_dlp` files. Correct today (nothing imports it yet) but it will not self-correct
+  when `T-012` lands, because 972 of yt-dlp's 1046 modules are extractors resolved
+  dynamically and PyInstaller follows static imports. The artifact would build, launch, and
+  fail every URL in a way that looks like ordinary site breakage.
 
 ## Open questions for the maintainer
 
@@ -129,7 +140,7 @@ Development machine, verified 2026-07-25:
 ## Notes
 
 **Almost no application behavior exists yet.** Nothing downloads, probes, or persists a
-job. There is now a window (`T-007`, in review) — titled, icon-bearing, with File → Quit and
+job. There is now a window (`T-007`, merged) — titled, icon-bearing, with File → Quit and
 Help → About — and it remembers its size and position. That is the whole of it. `ARCHITECTURE.md` describes the approved target, not
 reality — treat any claim of implemented *behavior* as false until this section says
 otherwise.
@@ -143,5 +154,5 @@ application.
 
 What *has* been built is the scaffolding that guards that behavior when it arrives, and those
 parts of `TESTING.md` are real: CI on both platforms (`T-006`), the shipped-asset invariants
-(`T-022`), and the layering enforcement test (`T-005`, in review). Of `TESTING.md` §7's ten
+(`T-022`), and the layering enforcement test (`T-005`). Of `TESTING.md` §7's ten
 mandatory areas, exactly one — Layering — is covered.

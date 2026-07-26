@@ -370,8 +370,9 @@ recursive-launch regression fails a pipeline instead of shipping.
 
 That smoke test needs code **inside** the artifact, because the failure only exists there:
 `src/tracks_and_trails/_freeze_probe.py` spawns one child, exchanges one message, and records
-each top-level application start. It is **frozen-build diagnostic infrastructure, not a
-product layer**, and is deliberately outside §4's structure — hence the underscore. It imports
+each top-level application start. It is listed in §4's structure so the tree is documented
+completely, but it belongs to **none of the four layers** — it is frozen-build diagnostic
+infrastructure, which is what the leading underscore marks. It imports
 no Qt, so a spawned child inherits none (`ARC-002`), and is reachable only through an explicit
 `--spawn-probe` argument.
 

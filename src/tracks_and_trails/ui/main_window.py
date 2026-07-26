@@ -36,6 +36,15 @@ DEFAULT_SIZE: Final = QSize(960, 640)
 _INT32_MIN: Final = -(2**31)
 _INT32_MAX: Final = 2**31 - 1
 
+#: The bound actually enforced on stored coordinates, and it is far tighter than int32 on
+#: purpose (`P0-R1`). Merely keeping `x`, `y` and the derived edges inside int32 is not enough:
+#: `QRect.intersects` performs its own normalisation arithmetic internally, and at coordinates
+#: near `INT32_MIN` that overflows, so an off-screen rectangle is reported as intersecting a
+#: screen and the recovery below never fires. Rather than chase which Qt operation overflows
+#: where, keep stored coordinates inside a range where none of it can — this matches Qt's own
+#: `QWIDGETSIZE_MAX`, and no real display arrangement comes close to 16.7 million pixels.
+_MAX_COORD: Final = 2**24 - 1
+
 #: A restored window smaller than this is unusable — the menu bar alone needs more.
 MIN_SIZE: Final = QSize(240, 160)
 
@@ -109,6 +118,18 @@ def load_geometry(path: Path | None = None) -> dict[str, int] | None:
         geometry[key] = coordinate
 
     if geometry["width"] < MIN_SIZE.width() or geometry["height"] < MIN_SIZE.height():
+        return None
+
+    # Reject the rectangle, not just its four numbers (`P0-R1`). Each value can be in range
+    # while the rectangle they describe is not, and Qt's own geometry arithmetic overflows
+    # long before int32 does — see `_MAX_COORD`.
+    if any(abs(geometry[key]) > _MAX_COORD for key in ("x", "y")):
+        return None
+    if geometry["width"] > _MAX_COORD or geometry["height"] > _MAX_COORD:
+        return None
+    if abs(geometry["x"] + geometry["width"]) > _MAX_COORD:
+        return None
+    if abs(geometry["y"] + geometry["height"]) > _MAX_COORD:
         return None
     return geometry
 
