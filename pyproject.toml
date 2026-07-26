@@ -96,7 +96,10 @@ ignore = [
 # Qt's API is camelCase; overridden virtuals cannot be renamed to satisfy N802.
 "src/tracks_and_trails/ui/*" = ["N802"]
 # Tests deliberately shell out to the interpreter under test and touch the network.
-"tests/*" = ["S603", "S607"]
+# S301: round-tripping models through pickle is not incidental — ARC-002 sends every domain
+# type to a spawned worker, so T-010 requires it asserted per type. The data is constructed in
+# the test one line above; there is no untrusted input anywhere near it.
+"tests/*" = ["S301", "S603", "S607"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tracks_and_trails"]
@@ -117,6 +120,17 @@ enable_error_code = ["ignore-without-code", "redundant-expr", "truthy-bool"]
 # ytdlp_adapter.py may import it (ARCHITECTURE.md §6), so the untyped surface stays small.
 module = ["yt_dlp.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+# T-026's Windows-only test modules. On a Linux checkout mypy correctly proves everything after
+# their `sys.platform != "win32"` guard unreachable, then reports the Windows-only `ctypes.windll`
+# and `comtypes` as missing and their `type: ignore`s as unused. All three are artefacts of
+# checking Windows code on Linux and say nothing about whether the code is right — that question
+# is answered by the `windows desktop` CI job, not here.
+module = ["tests.ui.test_windows_desktop", "tests.ui.test_windows_accessibility"]
+ignore_missing_imports = true
+warn_unreachable = false
+disable_error_code = ["unused-ignore", "import-not-found", "unreachable"]
 
 
 # ---------------------------------------------------------------------------

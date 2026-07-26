@@ -28,7 +28,14 @@ merges; `T-039` waits for a Phase 5 installer.
 
 ### T-010 — Domain models, job state machine, and error taxonomy
 
-**Status:** Ready
+**Status:** Implemented 2026-07-26, awaiting review. All four checks green locally; the
+guarantees were mutation-checked rather than assumed (see the record below).
+
+**Reported, not decided:** this task's acceptance criterion says the taxonomy covers "exactly
+the ten kinds in `ARCHITECTURE.md` §7". §7 has ten *rows*, but one declares two kinds
+(`FFMPEG_MISSING` / `FFMPEG_ERROR`), so there are **eleven**. All eleven are implemented, since
+dropping one to match a count would lose a real distinction. The criterion's wording needs
+correcting to eleven — a Planner edit, not an Implementer one (`AGENTS.md` §4).
 **Owner:** Implementer
 **Priority:** High — every other Phase 1 task imports this
 **Phase:** Phase 1
