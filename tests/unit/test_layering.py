@@ -150,13 +150,18 @@ def test_the_owner_allowlist_matches_the_architecture() -> None:
     )
 
 
+def effective_forbidden(rel_path: str) -> frozenset[str]:
+    """Everything `RULES` will actually reject for `rel_path` — the analyzer's real behavior."""
+    return frozenset().union(*(r.forbidden for r in RULES if r.applies_to(rel_path)), frozenset())
+
+
 @pytest.mark.parametrize("path", source_files(), ids=rel)
 def test_every_module_is_actually_guarded(path: Path) -> None:
     """For every real module, the analyzer must catch every import the architecture forbids.
 
-    This is the check that closes `T005-R1`. It sweeps the real tree rather than a fixture
-    list, so narrowing any rule's `applies_to` leaves some module unguarded and fails here,
-    and dropping a package from `QT` or `YTDLP` leaves that package uncaught and fails here.
+    The behavioral half of `T005-R1`: it exercises `check()` end to end over the real tree
+    rather than a fixture list, so narrowing any rule's `applies_to` leaves some module
+    unguarded and fails here, as does dropping a package from `QT` or `YTDLP`.
     """
     rel_path = rel(path)
     for package in sorted(architecture_forbids(rel_path)):
@@ -165,6 +170,28 @@ def test_every_module_is_actually_guarded(path: Path) -> None:
             f"{rel_path} may not import {package} per ARCHITECTURE.md §4/§6, but no rule in "
             f"RULES would catch it. The enforcement has a hole at this path."
         )
+
+
+@pytest.mark.parametrize("path", source_files(), ids=rel)
+def test_every_module_is_guarded_no_more_than_the_architecture_requires(path: Path) -> None:
+    """The two statements of the architecture must agree **exactly**, in both directions.
+
+    `test_every_module_is_actually_guarded` proves no required prohibition is missing. This
+    proves no *surplus* prohibition has been added — the one-way gap the first fix left open.
+    Adding an architecture-allowed package such as `typing` to `QT`, or widening a rule onto a
+    layer where its package is permitted, changes what the analyzer rejects without changing
+    what `ARCHITECTURE.md` forbids, and that disagreement fails here.
+
+    Surplus prohibitions matter as much as missing ones: a rule that rejects legitimate code
+    gets loosened or deleted by whoever it blocks, taking the real protection with it.
+    """
+    rel_path = rel(path)
+    assert effective_forbidden(rel_path) == architecture_forbids(rel_path), (
+        f"RULES and ARCHITECTURE.md disagree about {rel_path}.\n"
+        f"  RULES reject:        {sorted(effective_forbidden(rel_path))}\n"
+        f"  ARCHITECTURE forbids: {sorted(architecture_forbids(rel_path))}\n"
+        "Changing what a layer may import is an architecture decision, not a test edit."
+    )
 
 
 def test_source_tree_is_not_empty() -> None:

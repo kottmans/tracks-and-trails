@@ -22,7 +22,8 @@ blocked.
 
 ### T-024 — Close T-005 review findings
 
-**Status:** Ready
+**Status:** In Review — all findings addressed 2026-07-25 across two passes; awaiting focused
+re-review
 **Owner:** Implementer (test correction) + Planner (coordination correction)
 **Priority:** High
 **Phase:** Phase 0
@@ -46,11 +47,14 @@ package under test. Correct the stale blanket statement in `STATUS.md` that noth
 - Adding any third existing module to `YTDLP_OWNERS` makes the suite red
 - Dropping `shiboken6`, emptying `YTDLP_OWNERS`, or making `check()` return `[]` makes the
   suite red
+- Adding an architecture-allowed package such as `typing` to a forbidden set, or widening a
+  rule onto a layer where that package is allowed, makes the suite red
 - The five real-tree violation probes from `T-005` still fail with the offending file and
   rule in the message, and the source tree is restored byte-for-byte
 - The test locates and parses the repository source tree without importing
   `tracks_and_trails`; every Python module under that tree is swept
-- `STATUS.md` accurately distinguishes implemented tests from approved future coverage
+- `STATUS.md` accurately distinguishes the implemented `T-001` entry-point scaffold,
+  implemented test infrastructure, and approved future application behavior
 - The default suite and Linux/Windows matrix are green
 - `T005-R1` through `T005-R3` receive focused re-review
 
@@ -58,6 +62,44 @@ package under test. Correct the stale blanket statement in `STATUS.md` that noth
 
 - Detecting dynamic `importlib.import_module()` or `__import__()` calls
 - Changing the layer boundaries or adding a fifth rule
+
+#### Work completed — 2026-07-25
+
+**Pass 1** closed the false-negative half of `T005-R1` (an independent
+`architecture_forbids()` plus a real-tree sweep), `T005-R2` (source discovery via
+`Path(__file__)`, importing nothing), and the blanket half of `T005-R3`.
+
+**Pass 2 — the one-way comparison.** Re-review found the fix proved only that *required*
+prohibitions exist, never that no *surplus* ones had been added: putting `typing` into `QT`
+left all 76 tests green. Required-only agreement is not agreement.
+
+`test_every_module_is_guarded_no_more_than_the_architecture_requires` now asserts set
+**equality** between what `RULES` reject and what `ARCHITECTURE.md` forbids, per module, in
+both directions. Surplus prohibitions matter as much as missing ones: a rule that rejects
+legitimate code gets loosened or deleted by whoever it blocks, taking the real protection
+with it.
+
+**Pass 2 — `T005-R3`.** The claim "not one module in §4's structure has an implementation"
+was still false: `__main__.py` and `app.py` carry `T-001`'s entry-point scaffold. Counted
+rather than estimated — of 30 modules under `src/`, **27 are docstring-only stubs** and three
+hold code (`__init__.py`, `__main__.py`, `app.py`, all `T-001`). `STATUS.md` now says exactly
+that.
+
+**Every weakening in `T-024`'s acceptance criteria, probed and reverted:**
+
+| Weakening | Suite |
+|---|---|
+| Add `typing` to `QT` | 8 failed |
+| Add `typing` to `YTDLP` | 28 failed |
+| Widen the Qt rule onto `downloader/`, where Qt is allowed | 7 failed |
+| Widen the Qt rule onto `ui/`, where Qt is allowed | 10 failed |
+| Narrow `core/` to the two sampled files | 10 failed |
+| Add a third `YTDLP_OWNERS` entry | 3 failed |
+| Empty `YTDLP_OWNERS` | 5 failed |
+| Drop `shiboken6` | 17 failed |
+
+The five real-tree violation probes still fail with the file and rule named, and `src/` was
+hashed before and after: byte-identical. Suite 133 passed, 1 deselected.
 
 ---
 

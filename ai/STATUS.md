@@ -97,10 +97,16 @@ Development machine, verified 2026-07-25:
 
 ## Notes
 
-**No application behavior exists yet.** `ARCHITECTURE.md` describes the approved target, not
-reality: not one module in §4's structure has an implementation, and nothing downloads,
-persists, or renders anything. Treat any claim of implemented *behavior* as false until this
-section says otherwise.
+**No application behavior exists yet.** Nothing downloads, probes, persists, or renders
+anything, and there is no window. `ARCHITECTURE.md` describes the approved target, not
+reality — treat any claim of implemented *behavior* as false until this section says
+otherwise.
+
+Precisely: of the 30 modules under `src/`, **27 are docstring-only stubs**. Three carry code,
+all of it `T-001`'s runnable entry-point scaffold — `__init__.py` (the version string),
+`__main__.py` (`freeze_support()` and a `main()` that delegates to `app.run`), and `app.py`
+(a placeholder `run()` that prints a banner and returns 0, importing no Qt). `T-007` replaces
+`app.run`.
 
 What *has* been built is the scaffolding that guards that behavior when it arrives, and those
 parts of `TESTING.md` are real: CI on both platforms (`T-006`), the shipped-asset invariants

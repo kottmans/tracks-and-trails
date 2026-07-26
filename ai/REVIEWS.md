@@ -312,6 +312,58 @@ Linux/Windows evidence is genuine. PR #2 is not ready to merge because the analy
 be weakened around its synthetic samples while remaining fully green. `T-024` tracks the
 three open corrections; focused re-review is required before merge.
 
+## 2026-07-25 — T-024 focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-024`; re-review of `T005-R1`, `T005-R2`, `T005-R3`
+**Base:** `00b610f3a48ac280b8ca77841746bb20f1786b28`
+**Correction boundary:** `655f53d6fcb616d0691b1aefc229fb41393a8a69` to
+`d6af9d92e49388eff0f9917b0e79de10687d37d9`
+**Platforms verified:** Linux locally; Linux and Windows through GitHub-hosted runner
+artifacts and logs
+**Verdict:** Changes requested
+
+### Finding dispositions
+
+| ID | Result | Evidence |
+|---|---|---|
+| `T005-R1` | Partially resolved | The original High false-negative bypass is closed. Narrowing the core predicate to the two former fixture paths now produces 5 failures; adding `downloader/environment.py` as a third owner produces 2; dropping `shiboken6` produces 9; emptying the owners produces 3; and returning `[]` from `check()` produces 36. Every real path is checked against an independently stated required set. The comparison is still one-way, however: adding architecture-allowed `typing` to `QT` leaves all 76 tests green. `test_every_module_is_actually_guarded` proves every required prohibition exists but not that the analyzer has no extra prohibitions, despite the correction claiming the two statements agree and the `T-024` scope requiring complete rule semantics. Compare both directions for every real path over the union of architecture packages and all packages present in `RULES`. |
+| `T005-R2` | Resolved | `SRC` is derived from the test file's resolved path. A fresh-process load with an import guard reached the checkout's exact `src/tracks_and_trails` directory and attempted no `tracks_and_trails` import. Isolated mypy now passes too. |
+| `T005-R3` | Partially resolved | Separating unimplemented product behavior from implemented testing scaffolding is the right correction, and the CI/resource/layering claims are exact. The replacement still overstates the first half: `STATUS.md:101` says not one module in §4 has an implementation, but `__main__.py` and `app.py` implement the runnable T-001 placeholder entry point (`freeze_support()`, dispatch, version output, exit zero). Say that no product features exist beyond the entry-point scaffold rather than that no module is implemented. |
+
+### New findings
+
+None.
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Corrected baseline | Layering suite passed: 76 tests. Full suite passed: 103 passed, 1 deselected. |
+| Former core-predicate bypass | Narrowed to `core/models.py` and `core/paths.py`: 5 failed, 71 passed; every excluded current core module was named as an enforcement hole. |
+| Former owner bypass | Added `downloader/environment.py` as a third owner: 2 failed, 74 passed; both the exact allowlist check and the path sweep failed. |
+| Other weakening probes | Dropped `shiboken6`: 9 failed, 67 passed. Emptied owners: 3 failed, 73 passed. `check()` returning `[]`: 36 failed, 40 passed. |
+| Surplus-prohibition probe | Added architecture-allowed `typing` to `QT`: **76 passed**. This is the remaining one-way-comparison gap in `T005-R1`. |
+| Five real-tree violations | Injected together; exactly five module cases failed with the offending file and rule, including both yt-dlp rules for `ui/main_window.py`. |
+| Restoration | Test file returned to SHA-256 `bc4b530b...f1211`; aggregate source-tree hash returned to `e83a37b4...9ce`; no experimental mutation remains. |
+| Static source discovery | A guarded fresh-process load resolved `SRC` to this checkout and attempted zero project-package imports. |
+| CI | Push run `30182191197` and the current PR run passed on Linux and Windows at `d6af9d9`. The downloaded Windows push artifact lists all 76 layering cases and reports 103 passed, 1 deselected. |
+| Current PR | PR #2 is open, non-draft, mergeable, and `CLEAN` at `d6af9d9`; all four current check runs passed. |
+| `ruff check .` | Passed: "All checks passed!" |
+| `ruff format --check .` | Passed: 54 files already formatted. |
+| `mypy src` | Passed: no issues in 30 source files. |
+| Bare `mypy` | Passed: no issues in 41 source files. |
+| `mypy tests/unit/test_layering.py` | Passed: no issues in one source file. |
+| `pytest -q` | Passed: 103 passed, 1 deselected in 0.17s. |
+| `git diff --check 00b610f d6af9d9` | Passed. |
+
+### Readiness
+
+The original High false-negative defect is corrected, but PR #2 is not ready to merge while
+the self-check still permits silent over-constraint and the current-truth note still denies
+the implemented T-001 entry-point scaffold. Both remaining corrections are small and stay
+inside `T-024`; focused re-review is still required.
+
 ## Open findings
 
-- `T005-R1`, `T005-R2`, `T005-R3` — tracked by `T-024`
+- `T005-R1`, `T005-R3` — remaining corrections tracked by `T-024`
