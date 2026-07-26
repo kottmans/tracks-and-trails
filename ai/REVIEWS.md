@@ -891,3 +891,69 @@ and R7 are closed. No further T-011 re-review is requested. T-011 still must not
 T-035/T-038 until the maintainer resolves R5; the newly identified recursive projection hole
 is explicitly carried to the following task, as directed, rather than starting another
 correction pass here.
+
+## 2026-07-26 — T-041 nested payload validation
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-041`; carried finding `T011-R8`
+**Base:** `766c4ba651a4f687c0291385ba801695a21e7d81`
+**Head:** `fa62d9789e1e817b33d819b1cb051235452afd8c`
+**Platforms verified:** Linux locally; Windows CI run `30215562522` was reported green in the
+handoff, but the reviewer could not independently query it because the installed `gh`
+credential remains invalid
+**Verdict:** Changes requested
+
+### Findings
+
+| ID | Severity | Area | Finding | Recommendation | Status |
+|---|---|---|---|---|---|
+| `T041-R1` | **Medium** | Job counter invariants | `_require_optional_count()` is used for non-optional `Job.bytes_done` and `Job.attempts`. Both now accept and store `None` despite their `int` annotations and defaults. This can move an invalid value toward persistence and makes `Job.progress` fail when a total is present. The systematic hostile-container audit does not try `None`, so all 54 model tests remain green. | Add a non-optional count validator and use it for `bytes_done` and `attempts`; retain the optional validator for `bytes_total`, `queue_position`, and other genuinely optional fields. Test `None`, booleans, wrong scalar types, and negative values against both paths. | Open |
+| `T041-R2` | **Medium** | Audit anti-vacuity | `test_every_model_in_the_module_is_covered` compares `valid_kwargs()` with `MODELS`, but both are hand-maintained in the same test file. Adding a sixth frozen dataclass with an unvalidated mutable payload to `core/models.py` without editing either list left all 54 model tests green. The test therefore does not guard the condition its name and docstring claim. The field-level loop is effective for models already in `MODELS`: adding an unvalidated field to `FormatInfo` failed all three hostile payload cases. | Derive the production-side set independently by discovering dataclasses defined by `tracks_and_trails.core.models` (excluding imported classes and enums), then compare that set with the sample map. Keep the current field loop for the independently discovered types. Mutation-check both a new model and a new field. | Open |
+| `T041-R3` | **Medium** | Declared-model boundary | `_as_tuple_of()` and `_require_model()` use `isinstance`. A frozen `FormatInfo` subclass with an extra mutable-dict field is accepted inside `MediaInfo.formats`, and mutating the original dict changes the already-constructed media graph. The same bypass applies to a `DownloadRequest` subclass stored by `Job`. This repeats the reason T-011 changed message validation from `isinstance` to exact declared types: a subclass can add fields outside the reviewed projection. | Require exact declared model types at IPC-reachable model boundaries, or recursively validate the complete dataclass graph. Add adversarial subclasses carrying a mutable mapping for `FormatInfo` and `DownloadRequest`, and verify construction rejects them. | Open |
+| `T041-R4` | **Low** | Exception contract | The stated TypeError/ValueError split is not implemented consistently. Wrong types for required text fields such as `DownloadRequest.url` and `Job.id` raise `ValueError` from bespoke truthiness checks, while `_require_text()` correctly raises `TypeError` for wrong types and `ValueError` only for empty strings. Existing tests cover empty strings but not wrong types on these required fields. | Route every required text field through `_require_text()` and add a representative wrong-type matrix. Preserve `ValueError` for validly typed empty strings and negativity. | Open |
+| `T041-R5` | **Low** | Current truth / coordination | T-041 remains under the `Ready` heading with a non-canonical “Implemented, awaiting review” status, while `In Review` is elsewhere. `STATUS.md` says `T011-R8` is closed before independent approval. | Move T-041 to `In Review` with the canonical status and describe R8 as implemented/awaiting review until the functional findings close. | Open |
+
+### Review judgments
+
+- Keeping collection annotations as `tuple[...]` while safely accepting broader runtime
+  sequences is acceptable. The annotation describes the stable stored/read shape, and the
+  mismatch is safe in the opposite direction from T011-R3: static callers are restricted to
+  tuples while untyped callers receive extra normalization, rather than the signature
+  advertising an invalid omission. Rejecting strings explicitly is necessary and reachable.
+- The small validator duplication with `downloader/protocol.py` is acceptable at this scope.
+  Importing private downloader helpers into `core/` would invert the layer boundary; the
+  helpers are simple enough that sharing is not worth a new cross-layer API.
+- PEP 695 type parameters are appropriate on the established Python 3.14 baseline.
+- The exact `T011-R8` list-of-format-dicts reproduction now raises with the intended
+  `ARC-002` diagnostic, and correct `FormatInfo` lists are copied into tuples. The remaining
+  findings concern the broader guarantee T-041 adds around that fix.
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Review boundary | Clean `main` at exact head `fa62d97`; `766c4ba..fa62d97` is one commit touching 4 files, with 346 insertions and 24 deletions. All review mutations were restored. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: 65 files already formatted. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| Bare `mypy` | Passed: no issues in 50 source files. |
+| `mypy --platform win32` | Passed: no issues in 50 source files. |
+| `pytest -q` | Passed: 379 passed, 2 skipped, 1 deselected in 0.67 s. |
+| Focused models | Passed: 54 tests. |
+| Layering | Passed: 109 cases; `core/` imports neither Qt nor yt-dlp. |
+| Exact R8 regression | Passed: raw format dictionaries are rejected with an `ARC-002` message; a valid caller list becomes a detached tuple and survives pickle with `FormatInfo` elements. |
+| New-field mutation | Added an unvalidated field to `FormatInfo`: the systematic audit failed its raw-dict, list-of-dicts, and mutable-string-list cases; 3 failed, 12 passed, 39 deselected. Restored. |
+| New-model mutation | Added a sixth frozen dataclass with an unvalidated payload but did not edit the two test lists: all 54 model tests passed. Restored. |
+| Direct invariant probes | `Job(bytes_done=None, attempts=None)` constructed and stored both `None` values. Required text fields given dictionaries raised `ValueError`, not the documented `TypeError`. |
+| Subclass probe | A frozen `FormatInfo` subclass carrying a mutable dictionary was accepted in `MediaInfo.formats`; mutating the source dictionary changed the stored graph. |
+| `git diff --check 766c4ba..fa62d97` | Passed. |
+| Windows CI | Not independently checked: `gh auth status` reports the configured token invalid. The handoff reports run `30215562522` with all five jobs green. |
+
+### Readiness
+
+T-041 is not approved at `fa62d97`, and `T011-R8` should not yet be recorded as fully closed.
+The direct raw-format-dictionary defect is fixed, the collection normalization strategy is
+sound, and the field audit is useful for known models. Approval still requires restoring the
+non-optional Job invariants, making the model-set guard independent, closing declared-model
+subclass bypasses, and aligning the documented exception contract. Coordination can then
+reflect the independently verified result.
