@@ -22,8 +22,12 @@ blocked.
 
 ### T-024 — Close T-005 review findings
 
-**Status:** In Review — all findings addressed 2026-07-25 across two passes; awaiting focused
-re-review
+**Status:** Complete
+**Completed:** 2026-07-25. **The focused re-review was waived by the maintainer**, who
+authorized the merge after two review rounds on `T-005`. Recorded rather than implied: the
+acceptance criterion "`T005-R1` through `T005-R3` receive focused re-review" was **not** met
+for this second pass. The set-equality fix and the `STATUS.md` module count are therefore
+maintainer-accepted, not reviewer-verified.
 **Owner:** Implementer (test correction) + Planner (coordination correction)
 **Priority:** High
 **Phase:** Phase 0
