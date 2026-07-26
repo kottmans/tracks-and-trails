@@ -113,6 +113,10 @@ failure mode is silent, destructive, or both.
 | Migrations | Every migration runs forward from every prior schema version with data intact |
 | Settings freeze | A settings change mid-flight does not alter a running job's `DownloadRequest` |
 
+**Each of these must be proven by mutation, not by a passing run** — remove the guard and watch
+the suite fail. §13 explains why that is not pedantry: five tests in this project have passed
+while the behavior they protected was deleted.
+
 ## 8. Release gate
 
 All of the following, **on Linux and Windows**, before any tag or distributed build:
@@ -282,3 +286,64 @@ Tracked honestly; each should become a task or be accepted deliberately.
   (`A-004`).
 - **Long-running stability** (multi-hour queues, hundreds of jobs) has no automated coverage;
   currently manual only.
+
+## 13. Test validity: does the test actually test anything?
+
+A passing test proves nothing until you know it can fail. This section exists because the
+project has now produced **five** tests that passed while the thing they protected was removed
+— each written deliberately, each believed to be the strong version, each wrong in a different
+way.
+
+**The rule: derive the expectation from the specification, never from the code under test.**
+
+`ARCHITECTURE.md`, `REQUIREMENTS.md`, a task's acceptance criteria, or an external authority
+like Microsoft's file-naming rules — transcribe from those by hand. The moment a test asks
+production what to expect, it stops being a test and becomes a mirror.
+
+### The five, and what each one teaches
+
+| # | Test | What it did | Why it passed anyway |
+|---|---|---|---|
+| `T010-R1` | Exhaustive state transitions | Asked `can_transition()` which pairs were illegal, then checked `apply()` rejected them | Both read one table, so it compared production with itself. An undocumented edge was silently reclassified as legal and skipped. |
+| `T041-R2` | "Every model is covered" | Compared `valid_kwargs()` with a hand-written `MODELS` list | Two views of one hand-maintained set. A sixth model appeared in neither. |
+| `T041-R6` | Hostile-payload sweep including `None` | Asserted `not isinstance(stored, dict \| list)` | `None` is neither, so the case passed unconditionally. The sweep grew a column that could never fail. |
+| `T034-R4` | Reserved device names | Asserted the sanitized stem was not in production's `_RESERVED_NAMES` | Shrinking the production set shrank the expectation with it. |
+| `T035-R3` | Reviewed public API | Filtered runtime attributes by `value.__module__` | A constant has no `__module__`, so it was dropped before comparison. Inspected values where it needed definitions. |
+
+### What to do instead
+
+- **Transcribe the expectation.** If `ARCHITECTURE.md` §5 has a state diagram, write the
+  transition relation out by hand in the test. If Microsoft documents thirteen reserved device
+  names, write thirteen. Duplication between spec and test is the point: the test fails when
+  they diverge, which is the whole job.
+- **Never compare two things you maintain by hand.** Derive one side from the module — parse
+  it, enumerate its annotations, walk its dataclass fields — and transcribe the other.
+- **Check the assertion can fail for the case you added.** A new parametrize entry that no
+  assertion can reject is decoration.
+- **Inspect definitions, not values,** when asking what a module exposes. `ast` sees a `def`, a
+  `class` and an assignment; `vars()` sees objects whose metadata varies by type.
+- **Prefer equalities to subsets** where the specification is finite. A subset check stays green
+  when something is deleted, duplicated, or mis-typed.
+
+### Mutation is the evidence, and it has a trap
+
+Before claiming a guard is covered, remove the guard and watch the suite fail. Record the count
+in the task. `AGENTS.md` §9 requires this of every correction batch.
+
+Two things that have bitten here:
+
+- **Mutate content, not just shape.** Adding a new `JobStatus` broke the transition table's
+  lookups and failed loudly — which felt like proof, but adding an *undocumented edge* to the
+  existing table changed nothing. The shape mutation was easy and uninformative; the content
+  mutation was the real test.
+- **A surviving mutation means one of two things, and choosing wrong causes bugs.** Either the
+  code is genuinely redundant, or a test is missing. Assume redundancy and you delete a live
+  guard: `sanitize_component` lost a `rstrip` that way, which let `"CON "` through as an
+  unopenable Windows filename and broke idempotence. **Default to "a test is missing"** and
+  prove redundancy before acting on it.
+
+### Where this is enforced
+
+Nowhere automatically — this is a discipline, not a gate. §7's mandatory areas are the places
+it matters most, and their tests should carry a comment naming the specification they were
+transcribed from.
