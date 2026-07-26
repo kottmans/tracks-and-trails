@@ -54,6 +54,21 @@ Everything after Phase 1 is breadth on a proven spine.
 - A frozen artifact spawns a child process without relaunching itself, on both platforms
 - `LIC-001` is Accepted and `LICENSE` exists
 
+**Exited 2026-07-26.** All five criteria verified rather than asserted:
+
+| Criterion | Evidence |
+|---|---|
+| Four checks pass locally and in CI | Green locally; CI run `30215160820`, all five jobs |
+| Layering test fails on a deliberate `PySide6` import in `core/` | Mutation run 2026-07-26: `test_module_respects_the_layer_rules[core/models.py]` failed, 108 others passed; restored |
+| Window launches on Linux **and** Windows from a clean checkout | Linux: `T-007`. Windows: `T-026`'s `windows desktop` job runs the real `app.run` entry point under the real `windows` platform plugin and asserts the native `HWND`, visibility and title through the Win32 API |
+| Frozen artifact spawns a child without relaunching itself, both platforms | `T-020`; `frozen ubuntu-latest` and `frozen windows-latest` green |
+| `LIC-001` Accepted and `LICENSE` exists | Accepted; `LICENSE` present, MIT |
+
+**What the phase exits with, named rather than hidden:** the subjective half of Windows
+verification (`OPS-004`) — whether rendering *looks* right, whether Narrator *sounds* coherent,
+whether the installer *feels* normal — is unverified and blocks first release, not this phase.
+Widget tab order (`T-040`) and installer behavior (`T-039`) have no automated gate yet.
+
 **Risk retired:** PySide6 wheel availability on Python 3.14 was the phase's headline risk.
 `T-002` closed it — PySide6 ships stable-ABI (`abi3`) wheels covering every Python ≥3.10, so
 the baseline is not tied to PySide6's release cadence at all. Baseline is Python 3.14.
@@ -71,30 +86,14 @@ Phase 5 discovery on top of a finished application.
 **Goal:** Paste a URL, probe it, pick a preset, download it with live progress, cancel it.
 Prove `ARC-002`.
 
-**Prerequisites:** Phase 0's **deliverables** complete, merged, and reviewed.
+**Prerequisites:** Phase 0 complete. **Satisfied 2026-07-26.**
 
-> **Amended 2026-07-25; rationale revised 2026-07-26. Still needs the maintainer's
-> confirmation.** This previously read "Phase 0 complete", which `ai/TASKS.md` then
-> contradicted by treating `T-010` as startable. This document outranks `TASKS.md`
-> (`AGENTS.md` §5), so the plan was right and the task file was wrong.
->
-> The distinction drawn is between Phase 0's *deliverables*, which are all built, merged and
-> reviewed, and its *exit criteria*, one of which — "the window launches from a clean checkout
-> on **Windows**" — has not yet been checked.
->
-> **The original rationale for this amendment no longer holds, and the amendment survives it.**
-> It argued that the Windows criterion "cannot be met without hardware nobody has", so a strict
-> reading would block every subsequent phase indefinitely on an environmental constraint.
-> `OPS-004` (accepted 2026-07-26) disproved the premise: the CI runner has a real Windows
-> desktop, and `T-026` — now Ready — closes the criterion without any new hardware. So the gap
-> is short and owned, not indefinite. The amendment is still worth keeping, because `T-026` and
-> `T-010` are independent work and there is no reason to serialize them; but it is now a
-> convenience, not a rescue from a permanent blocker.
->
-> **What this does not do:** the Windows launch criterion is not waived. It still blocks
-> Phase 0's formal exit, and it is still recorded as unmet. This change lets implementation
-> proceed; it does not declare the phase exited. Once `T-026` lands green, Phase 0 exits and
-> this amendment becomes moot — at which point it should be reduced back to "Phase 0 complete".
+> The 2026-07-25 amendment that distinguished Phase 0's *deliverables* from its *exit criteria*
+> is **withdrawn as moot**, exactly as it said it would be once the Windows criterion was met.
+> Phase 0 has formally exited, so the plain reading is now the true one and no distinction is
+> needed. The episode is preserved in `ai/REVIEWS.md` and in `OPS-004`/`T-026`: the amendment
+> existed because the criterion was believed unreachable without hardware, and `OPS-004`
+> disproved that premise rather than the criterion being waived.
 
 ### Deliverables
 

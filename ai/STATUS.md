@@ -12,17 +12,22 @@
 
 ---
 
-**Current phase:** Phase 0 complete; **Phase 1 in progress**. The formal exit has not been
-recorded — a maintainer act, and nothing blocks it.
-**Overall state:** `T-010`, `T-026` and now **`T-011` are complete**. `ARC-003` was accepted on
-2026-07-26, closing `T011-R5` — the last open finding against `T-011` — so the IPC contract is
-settled and `T-035` and `T-038` are unblocked.
+**Current phase:** **Phase 1 — Vertical slice.** Phase 0 **formally exited 2026-07-26**.
+**Overall state:** Phase 0's five exit criteria were each verified rather than asserted, and the
+evidence is recorded in `IMPLEMENTATION_PLAN.md` §Phase 0 — including a fresh mutation run
+proving the layering test still fails on a deliberate `PySide6` import in `core/`.
 
-**One known hole is live at this head.** `T011-R8`, carried into `T-041`: a `MediaInfo` can hold
-a mutable list of raw yt-dlp format dicts, so raw upstream data crosses the process boundary
-inside a message that validates (`ARC-002`). `protocol.py`'s own validation is correct; the
-layer beneath it is not yet. Recorded rather than glossed, because the protocol currently
-advertises a guarantee it does not fully have.
+`T-010`, `T-011` and `T-026` are complete. `ARC-003` settled the IPC versioning question.
+
+**Two things the phase exits with, named rather than hidden:**
+
+- The **subjective** half of Windows verification (`OPS-004`) — whether rendering *looks* right,
+  whether Narrator *sounds* coherent, whether the installer *feels* normal. Unverified, needs a
+  person, and blocks **first release**, not this phase. `T-040` (tab order) and `T-039`
+  (installer) have no automated gate yet either.
+- **`T011-R8` is live**: a `MediaInfo` can hold a mutable list of raw yt-dlp format dicts, so raw
+  upstream data crosses the process boundary inside a message that validates (`ARC-002`).
+  `T-041` closes it and is in progress.
 
 ## Completed
 
@@ -73,7 +78,7 @@ advertises a guarantee it does not fully have.
 
 ## In progress
 
-*(nothing active — `main` is the only branch)*
+- **`T-041`** — nested payload validation in `core/models.py`, closing `T011-R8`.
 
 ## Next
 
@@ -90,9 +95,8 @@ Six tasks are Ready. Recommended order:
 
 `T-012` needs `T-011` (done), `T-034` and `T-035`; six tasks depend on it.
 
-Also outstanding, both maintainer acts: **recording Phase 0's formal exit**, and confirming the
-`IMPLEMENTATION_PLAN.md` Phase 1 prerequisite amendment — which becomes moot once the exit is
-recorded.
+Phase 0's formal exit is **recorded**, and the Phase 1 prerequisite amendment is **withdrawn as
+moot** — exactly as the amendment itself predicted once the Windows criterion was met.
 
 ## Known gaps not yet scheduled
 
