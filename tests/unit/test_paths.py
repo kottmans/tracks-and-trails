@@ -287,8 +287,23 @@ def test_shortening_never_splits_a_character() -> None:
 
 
 def test_an_over_long_assembled_path_is_shortened(tmp_path: Path) -> None:
-    deep = tmp_path / ("d" * 80) / ("e" * 80)
+    """A long name inside a deep directory is shortened to fit, keeping its extension.
+
+    The directory is sized **from the remaining budget** rather than hard-coded. An earlier
+    version used a fixed 80+80 depth, which left room under Linux's short `tmp_path` and none
+    under the Windows runner's much longer one (a `Users/runneradmin/AppData/Local/Temp/...`
+    prefix) — so the module correctly raised and the test failed on Windows only. The defect was
+    the test's platform assumption, not the module's behavior. CI caught it, which is what the
+    two-platform matrix is for.
+    """
+    room_for_filename = 50
+    padding = MAX_PATH_CHARACTERS - len(str(tmp_path)) - 1 - room_for_filename
+    if padding < 1:
+        pytest.skip(f"tmp_path is already {len(str(tmp_path))} characters; no room to construct")
+
+    deep = tmp_path / ("d" * min(padding, 100))
     deep.mkdir(parents=True)
+
     result = safe_output_path(deep, "f" * 300 + ".mp4")
     assert len(str(result)) <= MAX_PATH_CHARACTERS
     assert result.suffix == ".mp4"
@@ -297,7 +312,12 @@ def test_an_over_long_assembled_path_is_shortened(tmp_path: Path) -> None:
 
 def test_a_directory_leaving_no_room_for_a_filename_raises(tmp_path: Path) -> None:
     """Better a clear error than a zero-length filename or a silent write elsewhere."""
-    long_dir = tmp_path / ("d" * 120) / ("e" * 120)
+    # Sized past the budget from wherever tmp_path happens to start, so this holds on both
+    # platforms rather than only where tmp_path is short.
+    overshoot = MAX_PATH_CHARACTERS - len(str(tmp_path)) + 20
+    long_dir = tmp_path / ("d" * min(max(overshoot, 1), 100))
+    while len(str(long_dir)) < MAX_PATH_CHARACTERS:
+        long_dir = long_dir / ("e" * 60)
     long_dir.mkdir(parents=True)
     with pytest.raises(UnsafePathError):
         safe_output_path(long_dir, "clip.mp4")

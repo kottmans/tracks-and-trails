@@ -1019,6 +1019,13 @@ at first, and both were real:
 - **Removing a trailing dot/space strip survived**, because a second strip later in the same
   function already did the work. Redundancy, not a gap — the duplicate is gone.
 
+**A Windows-only test defect, caught by CI and worth recording.** The two length tests built a
+fixed 80+80 directory under `tmp_path`. That leaves room under Linux's short temp path and none
+under the Windows runner's much longer one, so `safe_output_path` correctly refused and the test
+failed — on Windows only. **The module was right; the tests encoded a platform assumption.** Both
+now size the directory from the remaining budget and skip when the scenario cannot be
+constructed. Verified locally against a deliberately long `--basetemp` as well as the default.
+
 **One mutation is knowingly uncaught and documented in the module:** removing the final
 `is_contained()` call in `safe_output_path` fails nothing, because every escape is already
 neutralised before it. It stays as defence in depth at a security boundary — the cost is one
