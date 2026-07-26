@@ -12,12 +12,12 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-041` — nested payloads in `core/models.py` cross the process boundary
-unvalidated (`T011-R8`), which is a live `ARC-002` hole and small to close. Then `T-034`,
-a `TESTING.md` §7 mandatory area still uncovered.
+**Start here:** `T-012` — yt-dlp in a spawned worker. Its three prerequisites (`T-011`,
+`T-034`, `T-035`) are all approved, and six tasks sit behind it. **`T-033` must land with it**,
+or the frozen artifact ships without yt-dlp and fails every URL like ordinary site breakage.
 
-`T-011` is complete, so `T-035` and `T-038` are Ready too. `T-012` is the chokepoint: it needs
-`T-011` (done), `T-034` and `T-035`, and six tasks depend on it.
+Also Ready and independent of it: `T-038` (log redaction), `T-014` (persistence), `T-015`
+(presets). `T-045` is in review and blocks nothing.
 
 Phase 0's work is complete: `T-026` closed the Windows launch criterion and its third-round
 re-review was waived by the maintainer. Recording the phase's **formal exit** is a separate
@@ -207,52 +207,6 @@ the thing this task exists to avoid.
 - A log viewer in the UI — Phase 3
 - Rotation and retention policy — Phase 4
 - Crash reporting of any kind; there is none (`NFR-007`)
-
----
-
-### T-044 — Close the non-blocking T-035 review follow-ups
-
-**Status:** **Ready** — filed from the final `T-034`/`T-035` focused re-review, 2026-07-26
-**Owner:** Implementer
-**Priority:** Low — current production behavior is correct; this closes a future-regression
-gap and repairs current-truth navigation
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `T035-R3`, `T035-R4`, `P1-R1`; `AGENTS.md` §9;
-`ARCHITECTURE.md` §6
-**Affected surfaces:** `tests/unit/test_environment.py`, optionally
-`downloader/environment.py` public-API metadata, `ai/TASKS.md`, `ai/STATUS.md`
-**Risk:** Low
-**Review base:** `51e37f0`
-
-#### Scope
-
-Two non-blocking findings were carried rather than keeping `T-035` in review:
-
-1. The replacement for `T035-R3` catches a new module-defined function such as
-   `get_ytdlp_version()`, but its purported reviewed-API allowlist filters candidates by
-   `value.__module__`. Constants have no `__module__`, so adding
-   `YTDLP_VERSION = "unreviewed"` leaves all 22 environment tests green. Make the public API
-   explicit and test it independently, including constants.
-2. `P1-R1` is only partly corrected. `T-042`/`T-043` moved to Complete, but `TASKS.md` still
-   starts implementers at completed `T-041`, and `STATUS.md` says `T-038` is the only Ready
-   task while `T-014` and `T-015` are both canonically Ready.
-
-#### Acceptance criteria
-
-- Adding a public function **or constant** not in the independently transcribed reviewed API
-  fails the environment test
-- The test does not ask production's own list what the expected public API is; if `__all__` is
-  introduced, compare it with an independent expectation
-- `TASKS.md` and `STATUS.md` agree on which tasks are Ready, In Review, and Complete, and the
-  start-here text names current work
-- No environment-resolution behavior change
-
-#### Out of scope
-
-- The two blocking T-034 findings from the final focused pass; the maintainer must choose
-  another authorized pass, accepted risk, scope change, or carry-forward work for those
-- Logging behavior (`T-038`) or any worker implementation (`T-012`)
 
 ---
 
@@ -975,6 +929,65 @@ Assert, on `windows-latest`:
 ---
 
 ## In Review
+
+### T-044 — Close the non-blocking T-035 review follow-ups
+
+**Status:** Implemented 2026-07-26, awaiting review.
+
+**`T035-R3`, second round.** The previous fix caught a new *function* but filtered runtime
+attributes by `value.__module__` to exclude imports — and a constant has no `__module__`, so
+`YTDLP_VERSION = "unreviewed"` was filtered out with them and all 22 tests stayed green. A
+denylist of names missed a function; a runtime allowlist missed a constant. The check now parses
+the module's top level, where a `def`, a `class` and an assignment are all visible and an
+`ImportFrom` is not.
+
+Mutation-verified across every shape: a public constant, function, class and annotated constant
+each fail 1 test; a private name is correctly allowed; renaming a reviewed export away fails.
+
+**`P1-R1`, second round.** `TASKS.md`'s start-here still pointed at completed `T-041`/`T-034`,
+and `STATUS.md` implied `T-038` was the only Ready task. Both now name the canonical set.
+**Owner:** Implementer
+**Priority:** Low — current production behavior is correct; this closes a future-regression
+gap and repairs current-truth navigation
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T035-R3`, `T035-R4`, `P1-R1`; `AGENTS.md` §9;
+`ARCHITECTURE.md` §6
+**Affected surfaces:** `tests/unit/test_environment.py`, optionally
+`downloader/environment.py` public-API metadata, `ai/TASKS.md`, `ai/STATUS.md`
+**Risk:** Low
+**Review base:** `51e37f0`
+
+#### Scope
+
+Two non-blocking findings were carried rather than keeping `T-035` in review:
+
+1. The replacement for `T035-R3` catches a new module-defined function such as
+   `get_ytdlp_version()`, but its purported reviewed-API allowlist filters candidates by
+   `value.__module__`. Constants have no `__module__`, so adding
+   `YTDLP_VERSION = "unreviewed"` leaves all 22 environment tests green. Make the public API
+   explicit and test it independently, including constants.
+2. `P1-R1` is only partly corrected. `T-042`/`T-043` moved to Complete, but `TASKS.md` still
+   starts implementers at completed `T-041`, and `STATUS.md` says `T-038` is the only Ready
+   task while `T-014` and `T-015` are both canonically Ready.
+
+#### Acceptance criteria
+
+- Adding a public function **or constant** not in the independently transcribed reviewed API
+  fails the environment test
+- The test does not ask production's own list what the expected public API is; if `__all__` is
+  introduced, compare it with an independent expectation
+- `TASKS.md` and `STATUS.md` agree on which tasks are Ready, In Review, and Complete, and the
+  start-here text names current work
+- No environment-resolution behavior change
+
+#### Out of scope
+
+- The two blocking T-034 findings from the final focused pass; the maintainer must choose
+  another authorized pass, accepted risk, scope change, or carry-forward work for those
+- Logging behavior (`T-038`) or any worker implementation (`T-012`)
+
+---
 
 ### T-045 — Defused reserved names can collide with a legal neighbour
 

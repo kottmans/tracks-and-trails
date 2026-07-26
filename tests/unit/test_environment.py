@@ -101,6 +101,48 @@ def test_the_default_user_directory_is_not_doubled() -> None:
 # --- the ownership boundary (ARCHITECTURE.md §6) ---------------------------------------------
 
 
+#: The public API this module is reviewed to have, transcribed by hand.
+#:
+#: Not derived from the module (`T010-R1`'s recurring lesson): asking production what it exports
+#: and then checking that against itself proves nothing.
+REVIEWED_PUBLIC_API = frozenset(
+    {
+        "APP_SLUG",
+        "FFMPEG_DEPENDENT_FEATURES",
+        "FfmpegReport",
+        "YtdlpCandidate",
+        "describe_candidates",
+        "find_ffmpeg",
+        "user_ytdlp_directory",
+        "ytdlp_candidates",
+    }
+)
+
+
+def defined_public_names(module: object) -> set[str]:
+    """Public names the module *defines*, found by parsing its top level.
+
+    Parsed rather than read from `vars()` (`T035-R3`, second round). The earlier version
+    filtered runtime attributes by `value.__module__` to exclude imports — but a constant has
+    no `__module__`, so `YTDLP_VERSION = "unreviewed"` was filtered out along with the imports
+    and all 22 tests stayed green. A denylist of names missed a function; a runtime allowlist
+    missed a constant.
+
+    The AST sees definitions rather than values: `def`, `class`, and top-level assignment all
+    count, while `from platformdirs import user_data_dir` is an `ImportFrom` and does not.
+    """
+    tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))  # type: ignore[attr-defined]
+    names: set[str] = set()
+    for node in tree.body:
+        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
+            names.add(node.name)
+        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
+            names.add(node.target.id)
+        elif isinstance(node, ast.Assign):
+            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
+    return {name for name in names if not name.startswith("_")}
+
+
 def test_the_module_exposes_no_version_and_no_usability_verdict() -> None:
     """An acceptance criterion: the split must not erode back into this module by accident.
 
@@ -114,28 +156,14 @@ def test_the_module_exposes_no_version_and_no_usability_verdict() -> None:
     choose is unwinnable; pinning the reviewed API means *any* new export has to be justified,
     which is the conversation worth forcing.
     """
-    reviewed_api = {
-        "APP_SLUG",
-        "FFMPEG_DEPENDENT_FEATURES",
-        "FfmpegReport",
-        "YtdlpCandidate",
-        "describe_candidates",
-        "find_ffmpeg",
-        "user_ytdlp_directory",
-        "ytdlp_candidates",
-    }
-    exported = {
-        name
-        for name, value in vars(environment).items()
-        if not name.startswith("_") and getattr(value, "__module__", None) == environment.__name__
-    }
-
-    added = exported - reviewed_api
+    added = defined_public_names(environment) - REVIEWED_PUBLIC_API
     assert not added, (
         f"{sorted(added)} is not in this module's reviewed public API. Adding an export here is "
         "how the locate/import split erodes: anything answering 'what version?' or 'does it "
         "work?' needs an import and belongs to worker.py (ARCHITECTURE.md §6)."
     )
+    removed = REVIEWED_PUBLIC_API - defined_public_names(environment)
+    assert not removed, f"{sorted(removed)} disappeared from the module's public API"
 
     candidate = ytdlp_candidates()[0]
     assert not hasattr(candidate, "version")

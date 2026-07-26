@@ -85,13 +85,13 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 **`T-012` is unblocked.** `T-011`, `T-034` and `T-035` are all approved, so the Phase 1
 chokepoint — six tasks behind it — is Ready.
 
-1. **`T-044`** — `T-035`'s Low follow-ups. Small; clears the decks first.
-2. **`T-012` — yt-dlp in a spawned worker.** The first code to import `yt_dlp`, the first to run
+1. **`T-012` — yt-dlp in a spawned worker.** The first code to import `yt_dlp`, the first to run
    in a spawned process, and the first to write a file. `ARC-002` stops being a design here.
    **`T-033` must land with it**: the frozen artifact bundles no yt-dlp today, and the failure
    looks exactly like ordinary site breakage.
-3. **`T-038`** — log redaction, a §7 mandatory area. Independent of the above.
-4. **`T-014`, `T-015`** — persistence and presets. Also independent.
+2. **`T-038`, `T-014`, `T-015`** — all Ready and independent of the above. `T-038` is one of
+   `ai/TESTING.md` §7's ten mandatory coverage areas (log redaction, `NFR-007`); `T-014` carries
+   three more (crash recovery, migrations, settings freeze).
 
 `T-045` needs a review pass at some point; it does not block anything.
 
