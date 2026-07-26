@@ -97,6 +97,13 @@ checkout on Windows" is unmet and cannot be met here (`OPS-003`). Everything els
 
 ## Open questions for the maintainer
 
+- **Confirm the Phase 1 prerequisite amendment.** `IMPLEMENTATION_PLAN.md` said "Phase 0
+  complete" while `TASKS.md` treated `T-010` as startable — and the plan outranks `TASKS.md`
+  (`AGENTS.md` §5), so `T-010` was formally blocked. The prerequisite now reads "Phase 0's
+  **deliverables** complete, merged and reviewed", separating those from the exit criteria,
+  one of which needs a Windows machine. The Windows criterion is **not** waived; it still
+  blocks Phase 0's formal exit and first release.
+
 - **`OPS-004` needs accepting or rejecting.** A spike showed `OPS-003`'s "not automatable on
   Windows" list was written on a false assumption: the CI runner has a real desktop
   (`platformName == 'windows'`, a native `HWND`, working screenshots). `OPS-003`'s core

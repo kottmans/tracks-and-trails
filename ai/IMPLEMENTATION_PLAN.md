@@ -71,7 +71,23 @@ Phase 5 discovery on top of a finished application.
 **Goal:** Paste a URL, probe it, pick a preset, download it with live progress, cancel it.
 Prove `ARC-002`.
 
-**Prerequisites:** Phase 0 complete.
+**Prerequisites:** Phase 0's **deliverables** complete, merged, and reviewed.
+
+> **Amended 2026-07-25, and it needs the maintainer's confirmation.** This previously read
+> "Phase 0 complete", which `ai/TASKS.md` then contradicted by treating `T-010` as startable.
+> This document outranks `TASKS.md` (`AGENTS.md` §5), so the plan was right and the task file
+> was wrong.
+>
+> The distinction now drawn is between Phase 0's *deliverables*, which are all built, merged
+> and reviewed, and its *exit criteria*, one of which — "the window launches from a clean
+> checkout on **Windows**" — cannot be met without hardware nobody has (`OPS-003`). Reading
+> the original wording strictly would block every subsequent phase indefinitely on an
+> environmental constraint, which is plainly not what it was for.
+>
+> **What this does not do:** the Windows launch criterion is not waived. It still blocks
+> Phase 0's formal exit and the first public release (`ai/TESTING.md` §9), and it is still
+> recorded as unmet. This change lets implementation proceed; it does not declare the phase
+> exited.
 
 ### Deliverables
 
