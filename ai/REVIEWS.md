@@ -702,3 +702,68 @@ the application-owned controls it claims to pin, and its current-truth cleanup i
 Because Phase 0 requires independent sign-off, it should not be recorded as formally exited
 at this head. This is the requested final re-review; no further verification is implied by
 this entry.
+
+## 2026-07-26 — T-011 IPC message contract
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-011`
+**Base:** `db8ab66fcf4c90d93a12390baed0756b1bf42a75`
+**Head:** `6663c9ea2ddc1b3f9a0aac601827c928c2a06be9`
+**Platforms verified:** Linux locally; Windows CI run `30212659385` was reported green in the
+handoff, but the reviewer could not independently query it because the installed `gh`
+credential is invalid
+**Verdict:** Changes requested
+
+### Findings
+
+| ID | Severity | Area | Finding | Recommendation | Status |
+|---|---|---|---|---|---|
+| `T011-R1` | **High** | Probe outcome semantics | A successful probe has no terminal outcome under this contract. `T-012` runs one probe or one download; the natural successful probe sequence is `Probed`, then `WorkerFinished`. Neither is terminal, so `is_terminal()` counts zero. `T-013` simultaneously requires a worker exiting 0 without a terminal message to become `WORKER_CRASH`. As written, the planned receiver either misclassifies every successful probe or special-cases a rule the protocol does not express. Keeping `WorkerFinished` separate from the job outcome is correct; success/failure is not the only outcome distinction the receiver needs. | Specify complete legal sequences for probe success/failure and download success/failure. Give the receiver an explicit way to recognize a successful probe outcome—such as a separate outcome predicate/type distinction or a documented probe-session rule—while retaining `WorkerFinished` as clean stream completion. Test every sequence and the missing/duplicate/out-of-order cases before T-012 consumes the contract. | Open |
+| `T011-R2` | **High** | Runtime boundary validation / immutability | The runtime contract validates only the outer class. `Probed(job_id="j", media={"formats": []})` is accepted by both its constructor and `is_message()`, pickles with the raw dict intact, and directly violates `ARC-002`'s load-bearing projection rule. A string stage and string failure kind are also accepted. `Failed.context` accepts a dict and remains mutable after construction, reproducing the exact feeder-thread race `T010-R2` fixed. Finally, `isinstance(candidate, MESSAGE_TYPES)` accepts an undeclared subclass even though the contract says only declared types cross. The positive projection and tuple-sample tests do not exercise any of these rejection paths. | Validate payload types and nested immutable shapes in `__post_init__` (or reuse a fully validated `FailureDetail`), and make declared-type validation exact rather than subclass-based if “declared” is the invariant. Add negative tests for a wrapped raw dict, wrong enum types, mutable/malformed context, and an undeclared subclass; pickle the rejected/adversarial cases where relevant. | Open |
+| `T011-R3` | **Medium** | Required-field API | The runtime and type-level contracts disagree. `Probed.media` and `Failed.kind` are typed optional and default to `None`; `Succeeded.output_path` and `Failed.message` default to invalid empty strings. Their constructors reject those defaults only after construction starts. More importantly, `Progress.stage` silently defaults to `PROBING`, so forgetting the required stage creates a valid but false progress report. The public signatures therefore advertise optional fields that the task calls required and conceal an omission that changes meaning. | Use keyword-only dataclasses (or another inheritance shape) so required payloads have no defaults and honest non-optional annotations. Make `Progress.stage` required. Keep runtime validation as protection against `Any` and deserialized/untyped inputs. | Open |
+| `T011-R4` | **Medium** | Terminal-once ownership | The rule is not completely ownerless: the T-011 entry explicitly assigns enforcement to `T-013`, which is the right layer. However, T-013's own scope and acceptance criteria never require rejecting or reporting a second terminal outcome for the same job. It can currently meet every listed criterion without implementing the promised terminal-once rule. | Add an explicit T-013 acceptance criterion and test: after one outcome for a job ID, a second success/failure outcome is a protocol violation and cannot produce a second state transition or signal. Tie it to the protocol predicate after `T011-R1` resolves the meaning of probe outcomes. | Open |
+| `T011-R5` | **Low** | Accepted-decision consistency | Accepted decision `ARC-002` says the IPC protocol is a “versioned internal contract.” The T-011 task and module instead say “No protocol versioning, deliberately.” Avoiding runtime negotiation between two ends of one artifact is reasonable, but that narrower claim does not resolve the direct authority conflict over whether the contract is versioned. | Clarify whether `ARC-002` meant release/version-control evolution or an explicit protocol version. Preserve the historical decision and add an accepted clarification/superseding decision if “versioned” is being withdrawn; otherwise narrow T-011 to “no runtime negotiation” and implement the versioning the decision requires. | Open |
+| `T011-R6` | **Low** | Current truth / coordination | `ai/TASKS.md` changes T-011 to implemented/awaiting review but leaves it under `Ready`, uses a status phrase outside the canonical status list, leaves the “Start here” paragraph saying it is Ready, and retains `Last updated: 2026-07-25`. `STATUS.md` calls it Started while its In-progress section says nothing is active. | Move T-011 to `In Review` with the canonical status, update the metadata and start-here text, and reconcile the concise status snapshot. | Open |
+
+### Review judgments
+
+- `WorkerFinished` should **not** be folded into `is_terminal()`. Job outcome and clean stream
+  completion are genuinely different facts. `T011-R1` means the protocol needs a richer
+  outcome model, not that the sentinel should pretend to be success or failure.
+- Terminal-once enforcement belongs to the stateful receiver, not a dataclass constructor.
+  The missing piece is an explicit T-013 gate, not enforcement inside T-011.
+- Carrying `Failed.kind` and `Failed.message` as separate fields is acceptable. It maps
+  directly to the durable `Job` shape. Reusing `FailureDetail` is optional, but duplicating
+  the shape requires duplicating its runtime validation and immutability guarantees correctly.
+- A real multiprocessing queue is reasonably out of scope here. Pickle round-tripping is the
+  right T-011-level proof; T-012 and T-013 own the actual send and receive seams.
+- The independently transcribed `REQ_014_STAGES` set is a good anti-vacuity check. The
+  `MESSAGE_TYPES`/sample equality also detects a declared tuple entry with no sample, but does
+  not prove that each sample is a valid, meaningful contract instance.
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Review boundary | Clean `main` at exact head `6663c9e`; `db8ab66..6663c9e` is one commit touching 3 files, with 497 insertions and 2 deletions. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: 65 files already formatted. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| Bare `mypy` | Passed: no issues in 50 source files. |
+| `mypy --platform win32` | Passed: no issues in 50 source files. |
+| `pytest -q` | Passed: 290 passed, 2 skipped, 1 deselected in 0.44 s. |
+| Focused protocol baseline | Passed: 48 tests. |
+| Layering | Passed: 109 cases; the protocol imports neither Qt nor yt-dlp. |
+| Malformed-sample mutation | Replaced the representative `Probed.media` with a raw dict and omitted the representative `Progress.stage`; all 48 protocol tests still passed. Restored. |
+| Direct runtime probes | A wrapped raw dict survived pickle and passed `is_message`; invalid string stage/kind values passed; a dict `Failed.context` remained mutable; an undeclared `Progress` subclass passed `is_message`; a successful-probe sequence contained zero terminal messages. |
+| `git diff --check db8ab66..6663c9e` | Passed. |
+| Windows CI | Not independently checked: `gh auth status` reports the configured token invalid. The handoff reports run `30212659385` with all five jobs green. |
+
+### Readiness
+
+T-011 is not approved and should not unblock T-035 or T-038 at this head. The message shapes,
+stage enumeration, pickling coverage, layering, and outcome/stream distinction form a good
+base. Before downstream code binds to it, the contract needs a coherent successful-probe
+sequence, strict runtime payload validation, honest required-field signatures, and an
+explicit terminal-once acceptance gate in T-013. The decision and coordination conflicts
+should be reconciled in the same correction pass.
