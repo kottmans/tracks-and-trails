@@ -36,6 +36,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    # T-026: reads the UI Automation tree — what Narrator actually announces — rather than Qt's
+    # own QAccessible view, which would be Qt reporting on itself. Windows-only by nature.
+    # Dev-only tooling, so no DECISIONS entry is required (AGENTS.md §7).
+    "comtypes>=1.4; sys_platform == 'win32'",
     "mypy>=1.14",
     # Used only by packaging/frozen_smoke.py, to assert no process survives the T-020 frozen
     # run. Dev-only tooling, so no DECISIONS entry is required (AGENTS.md §7).
@@ -122,9 +126,17 @@ ignore_missing_imports = true
 testpaths = ["tests"]
 # Network tests are excluded by default (TESTING.md §2). An explicit `-m` on the command
 # line overrides this, which is how `pytest -m network` opts back in.
-addopts = "-m 'not network' --strict-markers --strict-config"
+#
+# windows_desktop is excluded for a different reason. Those tests require the real `windows`
+# platform plugin and *fail* rather than skip under the offscreen one, which is deliberate —
+# a silent skip would leave their job green while proving nothing. But the default suite runs
+# offscreen everywhere, including on the Windows `check` job, where the off-Windows module
+# skip does not apply. Without this they would run offscreen there and fail correctly but
+# uselessly. `pytest -m windows_desktop` opts back in, and is what the dedicated job runs.
+addopts = "-m 'not network and not windows_desktop' --strict-markers --strict-config"
 markers = [
     "network: hits the real network and real sites; excluded from the default run",
+    "windows_desktop: requires a real Windows desktop session (no offscreen platform plugin)",
 ]
 
 [tool.coverage.run]

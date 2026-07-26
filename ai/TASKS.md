@@ -108,7 +108,9 @@ Two properties are load-bearing and easy to lose:
 
 ### T-026 — Verify Windows behavior against the runner's real desktop
 
-**Status:** Ready — `OPS-004` accepted 2026-07-26
+**Status:** Implemented 2026-07-26, **unverified** — every Windows-specific code path in it has
+only ever run on Linux, where it skips. Nothing here may be treated as passing, and no manual
+item may be retired, until the `windows desktop` job has run green on a Windows runner.
 **Owner:** Implementer
 **Priority:** High — this is what closes Phase 0's last exit criterion
 **Phase:** Phase 0 follow-up; must land before the first public release

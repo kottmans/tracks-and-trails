@@ -195,6 +195,28 @@ PySide6 imports, and a `QApplication` + `QWidget` construct offscreen. It is not
 on purpose: if Qt is broken on a runner, every UI test failure is that same failure reported
 less clearly.
 
+### The `windows desktop` job (`T-026`, `OPS-004`)
+
+Every job above pins `QT_QPA_PLATFORM=offscreen`, which is correct for a headless suite and is
+why none of them can satisfy Phase 0's "the window launches ... on Windows" exit criterion.
+The `windows-desktop` job is the one place that override is absent, so Qt loads the real
+`windows` platform plugin and the window reaches an actual desktop.
+
+Windows only: the Linux runner has no display server, and Linux launch is verified on the
+maintainer's own desktop — which Windows has never had.
+
+Three rules keep this job from going green while proving nothing, which is its only real
+failure mode:
+
+1. Tests marked `windows_desktop` **fail rather than skip** when the platform plugin is not
+   `windows`. A skip would be silent; a failure is not.
+2. They are excluded from the default suite by `addopts`, and the job opts back in with
+   `pytest -m windows_desktop`. Collecting none of them exits 5, so a marker typo or a
+   swallowed module turns the job red rather than passing vacuously.
+3. Screenshots in `reports/screenshots/` are **retained evidence, not a gate** (`T031-R2`).
+   Nothing asserts on their content; they exist for a human to look at. Every claim that
+   turns the build red is a separate objective assertion.
+
 ## 11. Coverage
 
 Coverage is a signal, not a target — no build fails on a percentage. Expectations:
