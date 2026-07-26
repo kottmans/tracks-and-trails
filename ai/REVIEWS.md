@@ -957,3 +957,76 @@ sound, and the field audit is useful for known models. Approval still requires r
 non-optional Job invariants, making the model-set guard independent, closing declared-model
 subclass bypasses, and aligning the documented exception contract. Coordination can then
 reflect the independently verified result.
+
+## 2026-07-26 — T-041 focused correction re-review (final)
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-041`; carried finding `T011-R8`
+**Re-review base:** `fa62d9789e1e817b33d819b1cb051235452afd8c`
+**Head:** `c693ec6da74004e37fbc92d5c7f84ffbcbba1a47`
+**Platforms verified:** Linux locally; Linux, Windows, frozen Linux, frozen Windows, and
+Windows desktop in independently queried CI run `30216176642`
+**Verdict:** **Approved.** One Low test-hardening finding is carried into the next Phase 1
+implementation at the maintainer's direction; it does not leave any current model accepting
+the invalid values or nested carriers found in the first pass.
+
+### Finding dispositions
+
+| ID | Disposition | Evidence |
+|---|---|---|
+| `T041-R1` | **Resolved** | `Job.bytes_done` and `Job.attempts` now use the non-optional `_require_count`; both reject `None`, while `bytes_total` and `queue_position` retain their legitimate `None`. Reverting `bytes_done` to `_require_optional_count` fails its dedicated regression test. |
+| `T041-R2` | **Resolved** | The production-side model set is independently discovered from dataclasses defined by `core.models`, with imported types excluded by `__module__`. A sixth module-defined dataclass now produces five failures, and an unvalidated field on an existing model produces three. The acknowledged re-export and non-dataclass cases do not describe any current `core.models` model or violate this task's current acceptance boundary. |
+| `T041-R3` | **Resolved** | Both nested boundaries require exact declared types. Reverting `_require_model` and `_as_tuple_of` to `isinstance` makes the two adversarial subclass tests fail. Rejecting subclasses is the right constraint for these declared IPC projections; future tasks must add a declared model rather than smuggle extra state through inheritance. |
+| `T041-R4` | **Resolved** | The eleven formerly bespoke required-text checks now route through `_require_text`; the matrix distinguishes `TypeError` for a wrong type from `ValueError` for an empty string on every changed field. Existing helper-routed required fields remain unchanged. |
+| `T041-R5` | **Resolved** | T-041 is under `In Review` with canonical status, and `STATUS.md` correctly describes `T011-R8` as implemented but awaiting this approval rather than already closed. |
+
+### Review judgments
+
+- `_require_count(None)` raising `ValueError` is acceptable here. The implementation treats
+  explicit `None` as absence of a required value; other wrong scalar types still take the
+  `TypeError` path. No requirement or caller-facing contract assigns a different exception.
+- Excluding enums from model discovery is correct for this audit. They declare members, not
+  dataclass payload fields capable of storing the nested mutable data T-041 governs.
+- Exact-type checks at `FormatInfo` and `DownloadRequest` boundaries deliberately prohibit
+  subclass extension. That matches `ARC-002`'s declared-projection rule and is preferable to
+  accepting unreviewed fields.
+- The first-pass judgments remain unchanged: tuple annotations with safe runtime
+  normalization, local validator duplication, explicit string rejection, and PEP 695 syntax
+  are all accepted.
+
+### Carry-forward finding
+
+| ID | Severity | Area | Finding | Recommendation | Status |
+|---|---|---|---|---|---|
+| `T041-R6` | **Low** | Counter-test anti-vacuity | Adding `("none", None)` to `test_no_field_accepts_raw_or_mutable_payloads` does not make that sweep police nullability. If construction accepts `None`, the only postcondition is `not isinstance(stored, dict \| list)`, which `None` satisfies. With `bytes_done` deliberately routed back through the optional validator, all five generic `None` cases passed; only the dedicated two-field test caught the regression. Separately, removing `_require_optional_count`'s explicit `bool` rejection left all 76 model tests green, although R1 requested boolean coverage. Production behavior is correct and the two current required counters are explicitly protected, so this does not block T-041; it does mean the handoff's stronger claim that the sweep protects the class or future count fields is unproven. | In the next Phase 1 implementation, make nullability coverage derive required/optional status independently from the model annotations (or maintain an explicit invariant table with its own completeness check), add boolean cases for required and optional counters, and narrow the comments so they state what the mapping/container sweep actually proves. | Open — carry forward to the next Phase 1 task per maintainer instruction; no further T-041 pass requested |
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Correction boundary | Clean `main` at exact head `c693ec6`; `fa62d97..c693ec6` is the advertised two commits and five files. Commit `4ef32fa` records the first review; `c693ec6` contains the four-file correction. All reviewer mutations were restored. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: 65 files already formatted. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| Bare `mypy` | Passed: no issues in 50 source files. |
+| `mypy --platform win32` | Passed: no issues in 50 source files. |
+| `.venv/bin/pytest -q` | Passed: 401 passed, 2 skipped, 1 deselected in 0.53 s. |
+| Full unit suite | Passed: 347 tests. |
+| Integration suite | No tests collected; `tests/integration/` currently contains only `__init__.py`, so the direct command exited 5. The default suite above passed. |
+| Focused models | Passed: 76 tests. |
+| Layering | Passed: 109 cases. |
+| System-interpreter focused attempt | Not a product failure: the first `pytest` invocation used the system interpreter and stopped at collection because the `src/` package was not installed there. Re-running through the repository `.venv` passed all 76 tests. |
+| New-model mutation | Added a sixth module-defined dataclass without sample kwargs: 5 failed, 75 passed. Restored. |
+| New-field mutation | Added an unvalidated field to `FormatInfo`: the raw-dict, list-of-dicts, and mutable-string-list cases failed; 3 failed, 73 passed. Restored. |
+| Required-counter mutation | Routed `bytes_done` through the optional validator: its dedicated regression failed, while the generic `None` sweep still passed all 5 model cases. Restored. |
+| Boolean mutation | Removed `_require_optional_count`'s explicit `bool` rejection: all 76 model tests passed. Restored; recorded as `T041-R6`. |
+| Exact-boundary mutation | Reverted both declared-model boundaries to `isinstance`: both adversarial subclass tests failed. Restored. |
+| `git diff --check fa62d97..c693ec6` | Passed. |
+| CI `30216176642` | Independently verified successful at exact head `c693ec6`; all five jobs green. |
+
+### Readiness
+
+T-041 is approved at `c693ec6`, and the functional `T011-R8` payload/immutability defect is
+independently verified closed. The task is ready for the implementer or maintainer to move to
+Complete. Per the explicit final-pass instruction, `T041-R6` is carried into the next Phase 1
+implementation and does not request another T-041 re-review.
