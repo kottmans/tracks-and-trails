@@ -78,8 +78,11 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-034`** — filename safety and output-path containment. Implemented; closes `TESTING.md`
-  §7's **Path safety** mandatory area and is one of `T-012`'s two remaining prerequisites.
+- **`T-034`** — filename safety and output-path containment. Closes `TESTING.md` §7's **Path
+  safety** mandatory area.
+- **`T-035`** — yt-dlp and ffmpeg environment resolution. **`T-012`'s last prerequisite**: with
+  `T-011`, `T-034` and `T-035` all implemented, the Phase 1 chokepoint is unblocked once the
+  review clears.
 - **`T-042`** and **`T-043`** — test-strength fixes for guards that were correct but
   unprotected, so a regression would have been silent.
 

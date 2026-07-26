@@ -28,82 +28,6 @@ for a Phase 5 installer; `T-040` for the first focusable widgets.
 
 ## Ready
 
-### T-035 — Resolve the yt-dlp and ffmpeg environment
-
-**Status:** **Ready** — `T-011` complete, 2026-07-26
-**Owner:** Implementer
-**Priority:** High — `T-012` cannot honour `OPS-002` without it, and `REQ-024` is owned by
-nothing else
-**Phase:** Phase 1
-**Depends on:** `T-011`
-**Relevant context:** `ARCHITECTURE.md` §6 (resolution order), §4; `OPS-002`, `OPS-001`,
-`REQ-024`, `REQ-025`, `NFR-007`
-**Affected surfaces:** `downloader/environment.py`, `tests/unit/`, `tests/integration/`
-**Risk:** Medium — a wrong answer here is misattributed to yt-dlp or to the site
-**Review base:** the `T-011` merge commit
-
-#### Scope
-
-**Filed during Phase 1 planning: `downloader/environment.py` was claimed by no task, and
-`REQ-024` by nothing at all.** `ARCHITECTURE.md` §4 assigns this module "locating yt-dlp and
-ffmpeg; version reporting; update", and `ARCHITECTURE.md` §6 puts yt-dlp resolution at *worker
-start* — so `T-012` needs it from its first line, and without it the worker would import
-whatever yt-dlp happens to be on `sys.path`, which is precisely what `OPS-002` rejects.
-
-Two jobs:
-
-1. **Locate yt-dlp candidates** per `OPS-002` — and *only* locate them. This module returns
-   an ordered list of candidate paths: the user-managed copy in
-   `user_data_dir/tracksandtrails/ytdlp/` first, then the bundled baseline. It reports what
-   exists on disk and answers nothing about whether a candidate works.
-
-   **It must not import yt-dlp**, and the earlier draft of this task required exactly that —
-   "fail loudly if the user copy does not import cleanly" and "report the resolved version"
-   are both unimplementable without importing it. `ARCHITECTURE.md` §6 permits that import in
-   `worker.py` and `ytdlp_adapter.py` alone, and `T-005`'s layering guard enforces it after
-   being deliberately mutation-tested. Reaching for `importlib` to slip past the guard would
-   be worse than the violation, because it defeats a check the project spent two review
-   rounds hardening.
-
-   So the split is: **`environment.py` locates, `worker.py` imports.** `worker.py` walks the
-   candidate list, prepends the first entry to `sys.path`, imports, and on `ImportError` falls
-   back to the next candidate — reporting which one it used and why any earlier candidate was
-   rejected (`ARCHITECTURE.md` §6: fail loudly, never silently ignore an override). The
-   version comes from the imported module, so only the importer can report it (`REQ-025`).
-
-   If a third module ever genuinely needs to import yt-dlp, that is an architecture change:
-   amend `ARCHITECTURE.md` §6 and the layering rule deliberately, in a reviewed change.
-2. **Detect ffmpeg** at startup and report which features are unavailable without it
-   (`REQ-024`, `OPS-001`) — rather than failing at merge time, after a download has already
-   consumed the user's bandwidth.
-
-Resolution runs in the worker, so this module must not import Qt.
-
-#### Acceptance criteria
-
-- With no user copy present, the candidate list contains the baseline alone
-- With a user copy present, it is ordered ahead of the baseline
-- A candidate directory that exists but is empty, or contains no `yt_dlp` package, is still
-  *listed* — deciding it is unusable requires importing it, which is `worker.py`'s job
-- `environment.py` does not import `yt_dlp`, asserted by the layering test **and** by a test
-  that the module can be imported with `yt_dlp` absent from `sys.modules` entirely
-- **Ownership boundary asserted:** a test confirms `environment.py` exposes no version and no
-  usability verdict, so the split cannot erode back into this module by accident
-- ffmpeg presence and absence both yield a correct feature report; the absent case names what
-  will not work (`REQ-024`)
-- Detection never executes a shell (`ARCHITECTURE.md` §9) and never blocks the GUI thread
-- No user path, cookie, or credential reaches a log line from this module (`NFR-007`)
-- `environment.py` imports no Qt
-
-#### Out of scope
-
-- Downloading and extracting the yt-dlp wheel — Phase 4; this task resolves what is already
-  present
-- Bundling either dependency into the frozen artifact — `T-033` for yt-dlp, Phase 5 for ffmpeg
-- Any UI for showing the version or the ffmpeg state — `T-016`/`T-017` consume the report
-
----
-
 ### T-038 — Logging with handler-level redaction
 
 **Status:** **Ready** — `T-011` complete, 2026-07-26
@@ -362,7 +286,7 @@ agreement on the reduced form before implementation.
 
 ### T-012 — yt-dlp in a spawned worker
 
-**Status:** Proposed — Ready once **all three** of `T-011`, `T-034` and `T-035` merge
+**Status:** Ready once the current review clears — all three prerequisites (`T-011`, `T-034`, `T-035`) are implemented; `T-011` is approved and the other two await review
 **Owner:** Implementer
 **Priority:** High — this is where `ARC-002` stops being a design
 **Phase:** Phase 1
@@ -1001,6 +925,113 @@ Assert, on `windows-latest`:
 ---
 
 ## In Review
+
+### T-035 — Resolve the yt-dlp and ffmpeg environment
+
+**Status:** Implemented 2026-07-26, awaiting review. **`T-012`'s last prerequisite** — with
+`T-011` and `T-034` also done, the Phase 1 chokepoint is unblocked.
+
+**The ownership split is the substance of this task, and it is asserted, not just described.**
+`environment.py` locates; `worker.py` imports. A test parses the module's AST and fails if it
+imports `yt_dlp` **or `importlib`** — the latter matters because `test_layering.py` looks for an
+`import yt_dlp` statement, and `importlib.import_module("yt_dlp")` is not one while violating §6
+exactly as much. A second test asserts the module exposes no `version`/`verify`/`is_usable`, so
+the split cannot erode back by someone adding a helpful-looking function.
+
+Mutation-checked, eight weakenings; seven fail:
+
+- reordering baseline ahead of the user copy — 2 fail
+- filtering out a user copy with no `yt_dlp/` directory — 4 fail
+- silently falling back to `PATH` when an override is missing — 2 fail
+- a vague "some features are unavailable" summary — 1 fail
+- logging the user path instead of the source label — 1 fail
+- accepting a *directory* named `ffmpeg` — 1 fail
+- adding a `version()` that reaches for `importlib` — 2 fail
+
+**The eighth is invisible on Linux by nature and that is recorded rather than papered over:**
+dropping `appauthor=False` changes nothing on Linux — both spellings resolve to
+`~/.local/share/tracksandtrails` — while on Windows it inserts an author segment and doubles the
+directory. `test_the_default_user_directory_is_not_doubled` is a real gate, but only the Windows
+job can fail it. That is what `T-006`'s matrix is for, and the same trap `T-007` hit for
+`window.toml`.
+
+**A Windows-only test defect, caught by CI.** `test_ffmpeg_found_on_path_reports_available`
+created a fake binary named `ffmpeg`; Windows resolves executables through `PATHEXT`, so
+`shutil.which` did not find it and the test failed there while passing on Linux. The production
+code was right — the fixture assumed POSIX semantics. Second time this session a test has
+carried a Linux assumption into the Windows job.
+**Owner:** Implementer
+**Priority:** High — `T-012` cannot honour `OPS-002` without it, and `REQ-024` is owned by
+nothing else
+**Phase:** Phase 1
+**Depends on:** `T-011`
+**Relevant context:** `ARCHITECTURE.md` §6 (resolution order), §4; `OPS-002`, `OPS-001`,
+`REQ-024`, `REQ-025`, `NFR-007`
+**Affected surfaces:** `downloader/environment.py`, `tests/unit/`, `tests/integration/`
+**Risk:** Medium — a wrong answer here is misattributed to yt-dlp or to the site
+**Review base:** the `T-011` merge commit
+
+#### Scope
+
+**Filed during Phase 1 planning: `downloader/environment.py` was claimed by no task, and
+`REQ-024` by nothing at all.** `ARCHITECTURE.md` §4 assigns this module "locating yt-dlp and
+ffmpeg; version reporting; update", and `ARCHITECTURE.md` §6 puts yt-dlp resolution at *worker
+start* — so `T-012` needs it from its first line, and without it the worker would import
+whatever yt-dlp happens to be on `sys.path`, which is precisely what `OPS-002` rejects.
+
+Two jobs:
+
+1. **Locate yt-dlp candidates** per `OPS-002` — and *only* locate them. This module returns
+   an ordered list of candidate paths: the user-managed copy in
+   `user_data_dir/tracksandtrails/ytdlp/` first, then the bundled baseline. It reports what
+   exists on disk and answers nothing about whether a candidate works.
+
+   **It must not import yt-dlp**, and the earlier draft of this task required exactly that —
+   "fail loudly if the user copy does not import cleanly" and "report the resolved version"
+   are both unimplementable without importing it. `ARCHITECTURE.md` §6 permits that import in
+   `worker.py` and `ytdlp_adapter.py` alone, and `T-005`'s layering guard enforces it after
+   being deliberately mutation-tested. Reaching for `importlib` to slip past the guard would
+   be worse than the violation, because it defeats a check the project spent two review
+   rounds hardening.
+
+   So the split is: **`environment.py` locates, `worker.py` imports.** `worker.py` walks the
+   candidate list, prepends the first entry to `sys.path`, imports, and on `ImportError` falls
+   back to the next candidate — reporting which one it used and why any earlier candidate was
+   rejected (`ARCHITECTURE.md` §6: fail loudly, never silently ignore an override). The
+   version comes from the imported module, so only the importer can report it (`REQ-025`).
+
+   If a third module ever genuinely needs to import yt-dlp, that is an architecture change:
+   amend `ARCHITECTURE.md` §6 and the layering rule deliberately, in a reviewed change.
+2. **Detect ffmpeg** at startup and report which features are unavailable without it
+   (`REQ-024`, `OPS-001`) — rather than failing at merge time, after a download has already
+   consumed the user's bandwidth.
+
+Resolution runs in the worker, so this module must not import Qt.
+
+#### Acceptance criteria
+
+- With no user copy present, the candidate list contains the baseline alone
+- With a user copy present, it is ordered ahead of the baseline
+- A candidate directory that exists but is empty, or contains no `yt_dlp` package, is still
+  *listed* — deciding it is unusable requires importing it, which is `worker.py`'s job
+- `environment.py` does not import `yt_dlp`, asserted by the layering test **and** by a test
+  that the module can be imported with `yt_dlp` absent from `sys.modules` entirely
+- **Ownership boundary asserted:** a test confirms `environment.py` exposes no version and no
+  usability verdict, so the split cannot erode back into this module by accident
+- ffmpeg presence and absence both yield a correct feature report; the absent case names what
+  will not work (`REQ-024`)
+- Detection never executes a shell (`ARCHITECTURE.md` §9) and never blocks the GUI thread
+- No user path, cookie, or credential reaches a log line from this module (`NFR-007`)
+- `environment.py` imports no Qt
+
+#### Out of scope
+
+- Downloading and extracting the yt-dlp wheel — Phase 4; this task resolves what is already
+  present
+- Bundling either dependency into the frozen artifact — `T-033` for yt-dlp, Phase 5 for ffmpeg
+- Any UI for showing the version or the ffmpeg state — `T-016`/`T-017` consume the report
+
+---
 
 ### T-034 — Filename safety and output-path containment
 

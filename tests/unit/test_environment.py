@@ -14,6 +14,7 @@ not necessarily see as an `import yt_dlp`.
 """
 
 import ast
+import sys
 from pathlib import Path
 
 import pytest
@@ -151,13 +152,26 @@ def test_the_module_imports_no_qt() -> None:
     assert "shiboken6" not in roots
 
 
+def make_fake_ffmpeg(directory: Path) -> Path:
+    """Create a discoverable fake ffmpeg for the host platform.
+
+    Windows resolves executables through `PATHEXT`, so a file simply named `ffmpeg` is not
+    found by `shutil.which` there — the Windows job failed on exactly that while Linux passed.
+    The production code was right; the fixture assumed POSIX semantics.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    binary = directory / ("ffmpeg.exe" if sys.platform == "win32" else "ffmpeg")
+    binary.write_text("#!/bin/sh\n", encoding="utf-8")
+    if sys.platform != "win32":
+        binary.chmod(0o755)
+    return binary
+
+
 # --- ffmpeg detection (REQ-024, OPS-001) -----------------------------------------------------
 
 
 def test_ffmpeg_found_on_path_reports_available(tmp_path: Path) -> None:
-    fake = tmp_path / "ffmpeg"
-    fake.write_text("#!/bin/sh\n", encoding="utf-8")
-    fake.chmod(0o755)
+    fake = make_fake_ffmpeg(tmp_path)
 
     report = find_ffmpeg(search_path=str(tmp_path))
     assert report.available
@@ -181,10 +195,7 @@ def test_an_explicit_override_is_honoured_first(tmp_path: Path) -> None:
     """`OPS-001` allows an override on both platforms."""
     override = tmp_path / "custom-ffmpeg"
     override.write_text("#!/bin/sh\n", encoding="utf-8")
-    on_path = tmp_path / "onpath"
-    on_path.mkdir()
-    (on_path / "ffmpeg").write_text("#!/bin/sh\n", encoding="utf-8")
-    (on_path / "ffmpeg").chmod(0o755)
+    on_path = make_fake_ffmpeg(tmp_path / "onpath").parent
 
     report = find_ffmpeg(override=override, search_path=str(on_path))
     assert report.path == override
@@ -197,10 +208,7 @@ def test_a_missing_override_is_reported_not_silently_ignored(tmp_path: Path) -> 
     `ARCHITECTURE.md` §6's rule for yt-dlp — never silently ignore an override — is the same
     principle, and a user who set a path deserves to be told it was wrong.
     """
-    on_path = tmp_path / "onpath"
-    on_path.mkdir()
-    (on_path / "ffmpeg").write_text("#!/bin/sh\n", encoding="utf-8")
-    (on_path / "ffmpeg").chmod(0o755)
+    on_path = make_fake_ffmpeg(tmp_path / "onpath").parent
 
     report = find_ffmpeg(override=tmp_path / "nope", search_path=str(on_path))
     assert not report.available

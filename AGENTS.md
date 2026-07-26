@@ -5,8 +5,8 @@
 **Owner:** Claude Code (Documentation Maintainer role).
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-25
-**Last reviewed:** 2026-07-25
+**Last updated:** 2026-07-26
+**Last reviewed:** 2026-07-26
 **Update when:** Agent responsibilities, roles, ownership, validation gates, or repository-wide rules change.
 **Does not contain:** Product requirements, architecture detail, current progress, review history.
 
@@ -129,7 +129,62 @@ non-negotiable invariant. If an instruction appears to require that, say so and 
 
 Never report a check as passing without having run it. Paste or summarize the real result.
 
-## 9. End-of-task report
+## 9. Review convergence
+
+Tracks & Trails uses the Standard review budget:
+
+1. One comprehensive initial review.
+2. One focused correction re-review.
+
+A third pass requires explicit maintainer authorization and a remaining blocking defect,
+failed acceptance criterion, failed required check, or regression introduced by the
+correction. The budget never requires approval of unsafe or knowingly incorrect work. When
+it is exhausted, stop the Claude/Codex loop and ask the maintainer to choose another pass,
+accepted risk, scope change, or carry-forward work.
+
+Every finding records both **severity** and **Blocks approval: Yes | No**:
+
+- Critical and High findings normally block.
+- Medium findings block when they violate an acceptance criterion, required check, approved
+  architecture invariant, security boundary, data-integrity rule, or observable correctness.
+- Low and Note findings normally do not block.
+- Mechanical documentation, status, cleanup, and test-hardening findings do not block unless
+  they materially misstate safety, behavior, release readiness, or a required gate.
+
+Use these verdicts:
+
+| Verdict | Meaning |
+|---|---|
+| **Approved** | No open blocking findings remain. |
+| **Approved with follow-ups** | No blocking findings remain; non-blocking findings have an owner and target task. |
+| **Changes requested** | At least one blocking finding can be corrected in the current task. |
+| **Blocked** | Approval requires a maintainer decision, external dependency, or scope change. |
+
+The initial review should inspect the complete bounded change and report the full finding set
+it can reasonably establish. Do not intentionally stop at the first defect and leave the
+remaining changed surfaces for later rounds.
+
+A focused re-review verifies the original blocking findings and checks the correction diff for
+regressions; it is not a new unbounded audit. A new Critical or High defect, failed acceptance
+criterion/check, correction regression, or direct continuation showing an original blocker is
+not resolved may block. Other new, pre-existing, adjacent, Low, or non-blocking Medium findings
+become follow-up work and do not reopen the reviewed task.
+
+Before returning a correction batch, the Implementer must:
+
+- map every blocking finding to its code and test evidence;
+- reproduce the defect with a failing test or deterministic probe when practical;
+- mutation-check or otherwise demonstrate that weakening the correction makes the evidence
+  fail;
+- audit sibling fields, variants, and call paths when the finding represents a defect class;
+  and
+- address all in-scope blocking findings in one batch.
+
+Only the Reviewer marks a finding **Resolved** after independent verification. The Implementer
+records it as corrected and awaiting re-review. An Open non-blocking finding gets a `TASKS.md`
+owner/target and does not keep the original task in `In Review`.
+
+## 10. End-of-task report
 
 Every task ends with:
 
@@ -143,7 +198,7 @@ Every task ends with:
    clearly bounded uncommitted diff)
 8. Which coordination files were updated
 
-## 10. Where things go
+## 11. Where things go
 
 | Fact | Canonical home |
 |---|---|
@@ -164,5 +219,7 @@ completion note for routine work. Routine fixes belong in `ai/TASKS.md` and `CHA
 ---
 
 *Documentation system: AI-Assisted Project Documentation Convention rev 2026-07-18.1,
-Standard profile. See `DOC-001` in `ai/DECISIONS.md`. The convention document itself lives
-outside this repository; this file is self-contained and does not depend on it.*
+Standard profile. The review-convergence policy in §9 was adopted by direct maintainer
+instruction from convention rev 2026-07-26.1. See `DOC-001` in `ai/DECISIONS.md`. The
+convention document itself lives outside this repository; this file is self-contained and
+does not depend on it.*
