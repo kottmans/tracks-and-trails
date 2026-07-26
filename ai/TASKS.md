@@ -1142,8 +1142,8 @@ Assert, on `windows-latest`:
 
 ### T-010 — Domain models, job state machine, and error taxonomy
 
-**Status:** Reviewed 2026-07-26 — **changes requested**, all four findings corrected the same
-day, awaiting focused re-review.
+**Status:** **Complete — approved** on final re-review, 2026-07-26 (`ai/REVIEWS.md`). All four
+findings resolved and verified by the reviewer. Unblocks `T-011`, `T-014`, `T-015`, `T-034`.
 
 - **`T010-R1` (High), closed.** The exhaustive test asked `can_transition()` which pairs were
   illegal, so it compared the table with itself. The reviewer's `QUEUED → READY` mutation left
@@ -1158,11 +1158,6 @@ day, awaiting focused re-review.
   reviewer's recommendation to keep production unchanged. The `FAILED` exclusion is now an
   explicit `CANCELLABLE` set rather than a silent `continue`.
 
-**Reported, not decided:** this task's acceptance criterion says the taxonomy covers "exactly
-the ten kinds in `ARCHITECTURE.md` §7". §7 has ten *rows*, but one declares two kinds
-(`FFMPEG_MISSING` / `FFMPEG_ERROR`), so there are **eleven**. All eleven are implemented, since
-dropping one to match a count would lose a real distinction. The criterion's wording needs
-correcting to eleven — a Planner edit, not an Implementer one (`AGENTS.md` §4).
 **Owner:** Implementer
 **Priority:** High — every other Phase 1 task imports this
 **Phase:** Phase 1
@@ -1251,9 +1246,28 @@ Two properties are load-bearing and easy to lose:
 
 ### T-026 — Verify Windows behavior against the runner's real desktop
 
-**Status:** Reviewed 2026-07-26 — **changes requested**, all five findings corrected and
-**verified green on Windows** the same day: run `30210954363`, `windows desktop` job, 19 passed.
-Awaiting focused re-review.
+**Status:** Final re-review 2026-07-26 — **changes requested**. `T026-R1`, `R3` and `R4` are
+resolved; `T026-R2` and `T026-R5` remain and are corrected below, pending a third round.
+**Phase 0 must not be recorded as exited until this is approved.**
+
+**`T026-R2`, second round.** The contract was still satisfiable by Windows' own furniture: a
+name-and-role match cannot tell the application's menu bar from the System menu, nor the About
+dialog's Close button from the title bar's. The reviewer proved both with fabricated trees.
+
+Part of the cause was mine and worth recording: the `File`/`Help` equality written in the first
+correction round was **deleted by accident** when a scripted block replacement spanned past it,
+and the follow-up edit meant to scope it silently matched nothing. Three scripted edits in this
+task failed that way; the ones that asserted on their own match did not.
+
+The snapshot now walks the UIA control view and records each node's ancestor roles, so
+`application_controls()` excludes the title bar's subtree. The equality is restored and scoped
+to it, and the About dialog requires a Close button of its own. Verified locally against the
+reviewer's three adversarial trees — all now rejected, and a healthy tree still passes.
+
+**`T026-R5`, second round.** A stray duplicated copy of the `windows desktop` section sat
+*before* `TESTING.md`'s document title — introduced by the same class of scripted edit. Removed;
+metadata dated; the Windows-environment row in `STATUS.md` corrected; the obsolete ten-kind
+paragraph deleted.
 
 **The Phase 0 exit criterion was claimed too early, and is now genuinely met.** The new
 subprocess launch test passed on Windows, so the application — not merely a widget — has been

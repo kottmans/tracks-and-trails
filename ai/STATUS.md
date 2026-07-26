@@ -12,19 +12,22 @@
 
 ---
 
-**Current phase:** Phase 0 — Foundation, **awaiting focused re-review**
-**Overall state:** Both tasks were reviewed on 2026-07-26 and both came back **changes
-requested** — nine findings, four High (`ai/REVIEWS.md`). All nine are corrected, and the
-corrections are green: CI run `30210954363`, `windows desktop` job, **19 passed**.
+**Current phase:** Phase 0 — Foundation, **not exited**
+**Overall state:** Final re-review 2026-07-26 (`ai/REVIEWS.md`): **`T-010` approved**,
+**`T-026` changes requested**. Phase 0 must **not** be recorded as formally exited at head
+`918c50c`.
 
-Phase 0's Windows clean-checkout criterion **is now met**, and was not before. `T026-R1` was
-right: the earlier job constructed a `MainWindow` inside pytest and never touched `app.run`, so
-it proved a widget can be created on a real desktop rather than that the application launches.
-A subprocess test now drives the real entry point under the real `windows` plugin, and the
-launched process reports its own `IsWindow`, `IsWindowVisible` and `GetWindowTextW` results.
+`T-010` is approved and unblocks its Phase 1 dependents — `T-011`, `T-014`, `T-015`, `T-034`.
 
-The phase still does not exit until the re-review clears — its criteria include "reviewed and
-signed off".
+`T-026` has two findings left. `T026-R2` is the substantive one: the accessibility contract
+could still be satisfied by Windows' own title-bar furniture, because a name-and-role match
+cannot tell the application's menu bar from the System menu, nor the About dialog's Close
+button from the title bar's. The reviewer demonstrated both with fabricated trees. Part of the
+cause was self-inflicted — the `File`/`Help` equality written in the first correction round was
+**deleted by accident** when a scripted edit spanned past it.
+
+Corrections are implemented and verified against the reviewer's own adversarial harness; they
+are **not yet confirmed on Windows CI**.
 
 ## Completed
 
@@ -79,27 +82,22 @@ signed off".
 
 ## Next
 
-1. **Focused re-review of `T-010` and `T-026`.** All nine findings are corrected, pushed, and
-   green on Windows (run `30210954363`, 19 passed). Each High finding was reproduced before
-   fixing and re-checked after:
-   - `T010-R1` — the exhaustive transition test consulted the table it was policing. It now
-     checks against a relation transcribed independently from `ARCHITECTURE.md` §5. The
-     reviewer's `QUEUED → READY` mutation, which previously left 48 tests green, now fails 2.
-   - `T010-R2` — `FailureDetail.context` is a sorted tuple of pairs with a read-only mapping
-     view, so in-place mutation raises. `mappingproxy` was rejected: it cannot be pickled.
-   - `T026-R1` — a subprocess test now drives the real `app.run` entry point under the real
-     `windows` plugin, with the launched process reporting its own Win32 evidence.
-   - `T026-R2` — the accessibility contract is an equality over names and roles, and opens the
-     File menu, the Help menu and the About dialog, each queried by its own window handle.
+1. **`T-026` re-review, third round.** Two findings corrected:
+   - `T026-R2` — the UIA snapshot now walks the control view and records each node's ancestor
+     roles, so application controls are distinguishable from title-bar furniture. The deleted
+     `File`/`Help` equality is restored and scoped to application-owned controls; the About
+     dialog requires a Close button of its own. All three of the reviewer's adversarial trees
+     are now rejected, verified locally.
+   - `T026-R5` — the stray duplicated section before `TESTING.md`'s title is removed, metadata
+     dated, the Windows-environment row corrected, and the obsolete ten-kind paragraph deleted.
 
-2. **Formally exit Phase 0** once the re-review clears. `T026-R1` means the exit criterion
-   cannot be recorded as met until the new launch test is green on Windows.
+2. **Phase 0 formally exits** only after `T-026` is approved. Its criteria require independent
+   sign-off, and one task is unapproved.
 
-3. **Phase 1 continues from `T-010`.** `T-011`, `T-014`, `T-015` and `T-034` become Ready once
-   it merges. `T-012` is the chokepoint: three tasks land before it, six depend on it.
+3. **Phase 1 can proceed now.** `T-010` is approved, so `T-011`, `T-014`, `T-015` and `T-034`
+   are unblocked. `T-012` remains the chokepoint.
 
-4. **A human Windows session** — `OPS-004`'s subjective residue only. Blocks first release, not
-   Phase 0.
+4. **A human Windows session** — `OPS-004`'s subjective residue only. Blocks first release.
 
 ## Known gaps not yet scheduled
 
@@ -158,7 +156,7 @@ Development machine, verified 2026-07-25:
 | ffmpeg | present |
 | git | branch `main` tracking `origin/main`; CI green on every push and PR (`T-006`) |
 | Repository path | `/mnt/projects/software_projects/tracks-and-trails` (corrected 2026-07-26; the recorded `/mnt/storage/...` path does not exist) |
-| Windows environment | **CI runners only** — no local Windows machine or VM. The runner is a real desktop, not a bare headless box (`OPS-004`), though CI currently forces `QT_QPA_PLATFORM=offscreen` and so does not use it |
+| Windows environment | **CI runners only** — no local Windows machine or VM. The runner is a real desktop, not a bare headless box (`OPS-004`), and the dedicated `windows desktop` job uses it: the other jobs pin `QT_QPA_PLATFORM=offscreen`, that one does not |
 
 ## Current risks
 

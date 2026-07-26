@@ -627,3 +627,78 @@ unverified at this head. The real-plugin job is a strong foundation, its marker/
 are meaningful, and the screenshot evidence is correctly classified. It still needs an
 end-to-end startup assertion, a non-vacuous complete accessibility contract, and a concrete
 owner for the deferred tab-order gate, followed by focused Windows re-review.
+
+## 2026-07-26 — T-010 and T-026 final focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-010`, `T-026`; dispositions for `T010-R1`–`T010-R4` and
+`T026-R1`–`T026-R5`
+**Base:** `e2becc0f1153f9fca078c9ed10e8955eb5bc1b2f`
+**Head:** `918c50c9a06daed854f347b94202b4d4b2d096d2`
+**Platforms verified:** Linux locally; Windows run `30210954363` was reported green with
+19 desktop tests, but the reviewer could not independently query or download it because the
+installed `gh` credential remains invalid
+**Verdict:** `T-010` — **Approved** · `T-026` — **Changes requested**
+
+### Finding dispositions
+
+| ID | Result | Evidence |
+|---|---|---|
+| `T010-R1` | **Resolved** | `EXPECTED` is independent of production and covers every `JobStatus`. The reviewer's original `QUEUED → READY` mutation now fails both `test_production_matches_the_architecture_relation_exactly` and `test_every_ordered_pair_agrees_with_the_architecture`: 2 failed, 40 passed. |
+| `T010-R2` | **Resolved** | Context is normalized to a sorted tuple of string pairs; both the tuple and `context_map` reject writes, and pickle restores an equal immutable value. The runtime validation also rejects malformed non-string pairs. |
+| `T010-R3` | **Resolved** | The task now names the exact cancellable states, and the tests pin `CANCELLABLE` by equality. `FAILED` remains retryable only through `QUEUED`, with the reviewer-approved semantics preserved. |
+| `T010-R4` | **Resolved** | The acceptance criterion now says status defaults to valid `QUEUED`, and the taxonomy criterion says eleven kinds. The older “reported, not decided” paragraph remains stale, but that is current-truth cleanup under `T026-R5`, not an unresolved model contract. |
+| `T026-R1` | **Resolved** | The new test starts a fresh interpreter, invokes `app.run`, creates its own `QApplication` and event loop under the `windows` plugin, probes Win32 only after a zero-delay event-loop turn, and asserts native handle, visibility, title, clean exit and clean stderr. Reported Windows CI is green. |
+| `T026-R2` | **Open** | The popup-menu equalities are a real improvement, and leaving `TitleBar`/`MenuBar` containers unnamed is acceptable. The overall contract is still not an equality. The main-window checks pass with only Windows' native System menu bar/items—no `File` or `Help` header—and the About check passes when its only button is the native title-bar `Close`. Therefore a missing/mis-roled application menu bar or missing QMessageBox Close button can still leave the suite green. |
+| `T026-R3` | **Resolved** | `T-040` is a concrete blocked task tied to the first focusable controls. It explicitly extends the existing real-plugin suite and requires a demonstrated reorder mutation before retiring the gap. No vacuous test was added now. |
+| `T026-R4` | **Resolved** | The desktop job runs config-scoped `mypy --platform win32`. A fresh deliberate post-guard `int = "not an int"` mutation is caught as one assignment error across the 49-file scope and was restored. |
+| `T026-R5` | **Open** | Task placement, §7 coverage count, and repository path were corrected, but current truth is not reconciled. `ai/TESTING.md` now has a duplicate Windows-desktop section at lines 1–35 before its document title and again in §10; its update metadata remains 2026-07-25. `STATUS.md` still says CI forces offscreen and does not use the real desktop, contradicting the dedicated job. `TASKS.md` still says the ten-kind wording “needs correcting” directly above the corrected eleven-kind criterion. |
+
+### Remaining findings
+
+| ID | Severity | Area | Finding | Recommendation |
+|---|---|---|---|---|
+| `T026-R2` | **High** | Accessibility anti-vacuity | The test does not distinguish the application menu bar from Windows' System menu and does not distinguish the About content button from the native title-bar Close button. The current `REQUIREMENTS.md` and `TESTING.md` claims still outrun the gate. | Require `File` and `Help` with `MenuItem` roles in the main-window tree and identify the application menu-bar contract independently of the System menu. For About, require the content Close control in addition to title-bar furniture—an exact multiset/count or richer node identity/hierarchy is sufficient. Re-run missing/wrong-role mutations on Windows. |
+| `T026-R5` | **Low** | Current truth / coordination | The finding response introduced a duplicated pre-header section and retained contradictory task/status statements. | Remove the stray pre-header copy, retain the corrected §10 subsection once, update document metadata, correct the Windows-environment row, and delete the obsolete ten-kind paragraph. |
+
+### Review judgments
+
+- An unnamed `MenuBar` or `TitleBar` container is not itself an `NFR-005` defect. Containers
+  can be announced by role while their operated children carry names. The remaining finding
+  is identity and coverage, not a demand to invent labels Windows or Qt does not expose.
+- Excluding Windows' System menu and checking title-bar buttons separately is the right model.
+  The application-owned controls still need assertions that cannot be satisfied by that
+  excluded furniture.
+- Moving the visibility probe from `showEvent` to a zero-delay timer is correct: it observes
+  the mapped window after the event loop starts rather than asserting premature visibility.
+- `T-040` is an adequate split of the currently impossible tab-order criterion. It remains a
+  named gap and does not block the Phase 0 launch evidence.
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Correction boundary | Clean `main` at exact head `918c50c`; correction diff is 12 files, 1,023 insertions and 334 deletions. All temporary mutations were restored. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: 64 files already formatted. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| Bare `mypy` | Passed: no issues in 49 source files. |
+| `mypy --platform win32` | Passed: no issues in 49 source files. |
+| `pytest -q` | Passed: 242 passed, 2 skipped, 1 deselected in 0.44 s. |
+| Focused T-010 baseline | Passed: 64 model, state and error tests. |
+| T010 transition mutation | Added `QUEUED → READY`: failed the two independent architecture assertions; 40 other state/model tests passed. Restored. |
+| T010 context probe | Tuple and read-only mapping writes raised; pickle produced an equal immutable copy. |
+| T026 type mutation | A post-guard incompatible assignment failed `mypy --platform win32` with exactly the intended assignment error. Restored. |
+| T026 accessibility adversarial harness | A fabricated main tree containing only an unnamed native menu bar, `System`, and title-bar buttons passed both main-tree guards. A fabricated About tree whose only button was the native title-bar `Close` passed `test_the_about_dialog_and_its_close_button_are_announced`. This reproduces the remaining anti-vacuity holes without needing to emulate UI Automation itself. |
+| Desktop collection guard, Linux | `pytest -q -m windows_desktop` reported 2 skipped and 243 deselected, then exited 5. |
+| `git diff --check e2becc0..918c50c` | Passed. |
+| Windows CI/artifacts | Not independently checked: `gh auth status` reports the configured token invalid. The handoff reports run `30210954363` and all five jobs green, with 19 desktop tests. |
+
+### Readiness
+
+`T-010` is approved and ready to unblock its Phase 1 dependents. `T-026` is not approved:
+`T026-R1`, R3 and R4 are genuinely resolved, but the accessibility gate can still pass without
+the application-owned controls it claims to pin, and its current-truth cleanup is incomplete.
+Because Phase 0 requires independent sign-off, it should not be recorded as formally exited
+at this head. This is the requested final re-review; no further verification is implied by
+this entry.

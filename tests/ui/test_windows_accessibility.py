@@ -66,19 +66,22 @@ ROLE_NAMES = {
 
 #: Contributed by the native title bar, not by this application.
 #:
-#: Discovered on the first CI run of the strict contract: `ElementFromHandle` on a top-level
-#: window returns the whole frame, so the tree also carries Windows' own System menu and the
-#: Minimize/Maximize/Close buttons. Asserting an equality over *everything* therefore asserts
-#: Windows' furniture as much as ours. These are excluded from the application contract and
-#: checked separately below.
-SYSTEM_MENU = "System"
+#: `ElementFromHandle` on a top-level window returns the whole frame, so the tree also carries
+#: Windows' own System menu and the Minimize/Maximize/Close buttons. Asserting over everything
+#: therefore asserts Windows' furniture as much as ours.
+#:
+#: Furniture is identified by **parentage**, via `Node.is_title_bar_furniture` — not by name.
+#: An earlier version excluded the System menu by matching the string `"System"`, which is both
+#: locale-dependent and unable to distinguish the About dialog's `Close` button from the title
+#: bar's, since those share a name *and* a role. This constant is only the positive check that
+#: the furniture is present and announced.
 TITLE_BAR_BUTTONS = frozenset({"Minimize", "Maximize", "Close"})
 
 #: `CLSID_CUIAutomation`.
 CUIAUTOMATION = "{ff48dba4-60ef-4201-aa87-54103eef594e}"
 
-#: `TreeScope_Descendants`.
-TREE_DESCENDANTS = 4
+#: Fails a malformed or cyclic tree instead of recursing until CI times out.
+MAX_TREE_DEPTH = 32
 
 #: Generous: the tree is tiny, but a first call has to build Qt's accessibility bridge and
 #: generate the comtypes typelib wrapper. A timeout here fails the test rather than hanging CI.
@@ -87,10 +90,25 @@ QUERY_TIMEOUT_SECONDS = 30.0
 
 @dataclass(frozen=True)
 class Node:
-    """One accessibility element, reduced to the data a screen reader would use."""
+    """One accessibility element, reduced to the data a screen reader would use.
+
+    `ancestor_roles` is what makes the contract non-vacuous (`T026-R2`, second round). A flat
+    name-and-role list cannot tell the application's menu bar from the one Windows puts in the
+    title bar, nor the About dialog's Close button from the title bar's — both pairs share a
+    name and a role. The reviewer's adversarial harness passed the old checks using nothing but
+    native furniture. Position in the tree is the distinguishing fact, so it is recorded.
+    """
 
     name: str
     control_type: int
+
+    #: Control types of every ancestor, nearest first, up to but excluding the queried root.
+    ancestor_roles: tuple[int, ...] = ()
+
+    @property
+    def is_title_bar_furniture(self) -> bool:
+        """Whether Windows contributed this, rather than the application."""
+        return UIA_TITLE_BAR in self.ancestor_roles
 
 
 @dataclass(frozen=True)
@@ -103,9 +121,23 @@ class Tree:
     def of_type(self, control_type: int) -> tuple[Node, ...]:
         return tuple(node for node in self.descendants if node.control_type == control_type)
 
+    def application_controls(self) -> tuple[Node, ...]:
+        """Everything the application owns — the tree minus the native title bar's subtree.
+
+        Every assertion about *this project's* accessibility goes through here. Asserting over
+        `descendants` lets Windows' own controls satisfy the contract, which is exactly how the
+        previous version could pass with no `File` or `Help` at all.
+        """
+        return tuple(node for node in self.descendants if not node.is_title_bar_furniture)
+
 
 def _read_tree(hwnd: int) -> Tree:
-    """Snapshot the UI Automation tree for `hwnd`. Runs on the calling (worker) thread."""
+    """Snapshot the UI Automation tree for `hwnd`. Runs on the calling (worker) thread.
+
+    Walks the control view rather than calling `FindAll(TreeScope_Descendants)`: `FindAll`
+    returns a flat collection with no parent information, and parentage is precisely what
+    distinguishes an application control from title-bar furniture.
+    """
     # COINIT_MULTITHREADED. A UIA client belongs in the MTA; an STA worker would reintroduce
     # the message-pump dependency this thread exists to escape.
     ctypes.windll.ole32.CoInitializeEx(None, 0)
@@ -116,21 +148,34 @@ def _read_tree(hwnd: int) -> Tree:
         automation = comtypes.client.CreateObject(
             CUIAUTOMATION, interface=UIAutomationClient.IUIAutomation
         )
-        element = automation.ElementFromHandle(ctypes.c_void_p(hwnd))
-        if element is None:
+        root = automation.ElementFromHandle(ctypes.c_void_p(hwnd))
+        if root is None:
             raise AssertionError("UI Automation cannot see the window at all")
 
-        found = element.FindAll(TREE_DESCENDANTS, automation.CreateTrueCondition())
-        descendants = tuple(
-            Node(
-                name=found.GetElement(index).CurrentName or "",
-                control_type=found.GetElement(index).CurrentControlType,
-            )
-            for index in range(found.Length)
-        )
+        walker = automation.ControlViewWalker
+        collected: list[Node] = []
+
+        def walk(element: object, ancestors: tuple[int, ...], depth: int) -> None:
+            # A depth cap so a malformed or cyclic tree fails the test rather than hanging CI.
+            if depth > MAX_TREE_DEPTH:
+                raise AssertionError(f"accessibility tree deeper than {MAX_TREE_DEPTH} levels")
+            child = walker.GetFirstChildElement(element)
+            while child:
+                role = child.CurrentControlType
+                collected.append(
+                    Node(
+                        name=child.CurrentName or "",
+                        control_type=role,
+                        ancestor_roles=ancestors,
+                    )
+                )
+                walk(child, (role, *ancestors), depth + 1)
+                child = walker.GetNextSiblingElement(child)
+
+        walk(root, (), 0)
         return Tree(
-            window=Node(name=element.CurrentName or "", control_type=element.CurrentControlType),
-            descendants=descendants,
+            window=Node(name=root.CurrentName or "", control_type=root.CurrentControlType),
+            descendants=tuple(collected),
         )
     finally:
         ctypes.windll.ole32.CoUninitialize()
@@ -211,15 +256,47 @@ def test_the_window_is_published_with_its_name_and_role(tree: Tree) -> None:
     assert tree.window.control_type == UIA_WINDOW
 
 
-def test_a_menu_bar_role_is_published(tree: Tree) -> None:
-    """A menu bar absent from the tree, or published under another role, is one Narrator
-    cannot navigate as a menu bar.
+def test_the_application_publishes_its_own_menu_bar(tree: Tree) -> None:
+    """`T026-R2`. The application's menu bar, not Windows'.
 
-    Not an exact count: the native title bar contributes its own `MenuBar` (the System menu),
-    so requiring exactly one would assert Windows' furniture rather than this application's.
+    The native title bar contributes a `MenuBar` of its own — the System menu. Asserting that
+    *a* menu bar exists is therefore satisfied by furniture this project did not write, which
+    is what the reviewer's adversarial harness demonstrated. The distinguishing fact is
+    parentage, so the check is scoped to controls outside the title bar's subtree.
     """
-    bars = tree.of_type(UIA_MENU_BAR)
-    assert bars, f"no menu bar in the tree: {describe(tree.descendants)}"
+    bars = [node for node in tree.application_controls() if node.control_type == UIA_MENU_BAR]
+    assert len(bars) == 1, (
+        f"expected exactly one application-owned menu bar, found {len(bars)}. "
+        f"Application controls: {describe(tree.application_controls())}"
+    )
+
+
+def test_the_application_menu_bar_exposes_exactly_file_and_help(tree: Tree) -> None:
+    """`T026-R2`. An **equality** over the application's own menu items.
+
+    This assertion existed in the first correction round and was **deleted by accident** while
+    reworking the neighbouring tests — a scripted block replacement spanned past it. Its
+    absence is precisely why the suite could pass on native furniture alone. Restored here,
+    and now scoped so the System menu cannot satisfy it.
+
+    An equality rather than a subset: a subset stays green when a menu is added unlabelled,
+    duplicated, or published under the wrong role.
+
+    Mnemonic markup must not survive into the tree either — Qt strips `&` when publishing to
+    the platform bridge, and a regression there has Narrator saying "ampersand File".
+    """
+    items = [node for node in tree.application_controls() if node.control_type == UIA_MENU_ITEM]
+    names = sorted(node.name for node in items)
+
+    assert names == ["File", "Help"], (
+        f"the application menu bar exposes {names}; expected exactly ['File', 'Help']. "
+        f"Application controls: {describe(tree.application_controls())}"
+    )
+    assert all(node.ancestor_roles[:1] == (UIA_MENU_BAR,) for node in items), (
+        "File and Help must sit directly under a menu bar; "
+        f"got {[(n.name, n.ancestor_roles[:1]) for n in items]}"
+    )
+    assert not any("&" in name for name in names), f"mnemonic markup reached the tree: {names}"
 
 
 def test_the_title_bar_controls_are_announced(tree: Tree) -> None:
@@ -306,6 +383,12 @@ def test_the_about_dialog_and_its_close_button_are_announced(window: MainWindow)
 
     A dialog a screen reader cannot name, containing a button it cannot name, is unusable —
     and it is the one modal surface the application currently has.
+
+    **The dialog's own Close button, not the title bar's.** Both are `Button` role and both are
+    named "Close", so a name-and-role match alone is satisfied by the window furniture — the
+    reviewer's harness passed this check with the title-bar Close as the only button present.
+    The `QMessageBox` button lives outside the title bar's subtree, and that is what is
+    asserted.
     """
     about = window.show_about()
     QApplication.processEvents()
@@ -317,9 +400,12 @@ def test_the_about_dialog_and_its_close_button_are_announced(window: MainWindow)
         )
         assert subtree.window.control_type == UIA_WINDOW
 
-        buttons = [node.name for node in subtree.of_type(UIA_BUTTON)]
-        assert any("close" in name.lower() for name in buttons), (
-            f"the About dialog exposes no Close button to Narrator; buttons: {buttons}. "
+        content_buttons = [
+            node.name for node in subtree.application_controls() if node.control_type == UIA_BUTTON
+        ]
+        assert any("close" in name.lower() for name in content_buttons), (
+            "the About dialog exposes no Close button of its own to Narrator — the title "
+            f"bar's Close does not count. Content buttons: {content_buttons}. "
             f"Full subtree: {describe(subtree.descendants)}"
         )
     finally:

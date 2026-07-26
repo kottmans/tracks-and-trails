@@ -1,39 +1,3 @@
-### The `windows desktop` job (`T-026`, `OPS-004`)
-
-Every other job pins `QT_QPA_PLATFORM=offscreen`, which is correct for a headless suite and is
-why none of them can satisfy Phase 0's "the window launches ... on Windows" exit criterion.
-This job is the one place that override is absent, so Qt loads the real `windows` platform
-plugin and the window reaches an actual desktop.
-
-Windows only: the Linux runner has no display server, and Linux launch is verified on the
-maintainer's own desktop — which Windows has never had.
-
-**The criterion is the application launching, not a widget existing** (`T026-R1`). Constructing
-a `MainWindow` inside pytest skips argument handling, `QApplication` construction and the event
-loop, so it cannot answer the question the criterion asks. The gate is a subprocess that runs
-the real `app.run` entry point under the real plugin and reports its own Win32 evidence —
-`IsWindow`, `IsWindowVisible`, `GetWindowTextW` — from inside the launched process. The
-in-process widget checks are kept alongside it, to isolate Qt window creation from application
-startup, but they are not the criterion.
-
-Three rules keep this job from going green while proving nothing, which is its only real
-failure mode:
-
-1. Tests marked `windows_desktop` **fail rather than skip** when the platform plugin is not
-   `windows`. A skip would be silent; a failure is not.
-2. They are excluded from the default suite by `addopts`, and the job opts back in with
-   `pytest -m windows_desktop`. Collecting none of them exits 5, so a marker typo or a
-   swallowed module turns the job red rather than passing vacuously.
-3. Screenshots in `reports/screenshots/` are **retained evidence, not a gate** (`T031-R2`).
-   Nothing asserts on their content; they exist for a human to look at.
-
-The accessibility contract is an **equality over names and roles**, not a subset check
-(`T026-R2`). A subset stays green when a control is deleted, duplicated, or published under
-the wrong role. Menus and dialogs are their own top-level windows on Windows, so the File
-menu, the Help menu and the About dialog are each opened and queried by their own handle —
-querying only the main window's handle can never see `Quit`, `About`, or the dialog's Close
-button.
-
 # TESTING.md — Tracks & Trails
 
 **Purpose:** Define how the project is verified.
@@ -41,8 +5,8 @@ button.
 **Owner:** Reviewer (Codex) — policy; Implementer may add checks a change introduces.
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-25
-**Last reviewed:** 2026-07-25
+**Last updated:** 2026-07-26
+**Last reviewed:** 2026-07-26
 **Update when:** A test type, CI requirement, mandatory command, coverage rule, or gate changes.
 **Does not contain:** Local setup instructions (`docs/DEVELOPMENT.md`, once created).
 
