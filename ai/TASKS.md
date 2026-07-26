@@ -1251,10 +1251,15 @@ Two properties are load-bearing and easy to lose:
 
 ### T-026 — Verify Windows behavior against the runner's real desktop
 
-**Status:** Reviewed 2026-07-26 — **changes requested**, all five findings corrected the same
-day, awaiting focused re-review on Windows.
+**Status:** Reviewed 2026-07-26 — **changes requested**, all five findings corrected and
+**verified green on Windows** the same day: run `30210954363`, `windows desktop` job, 19 passed.
+Awaiting focused re-review.
 
-**The Phase 0 exit criterion was claimed too early.** Run `30208677607` was genuinely green and
+**The Phase 0 exit criterion was claimed too early, and is now genuinely met.** The new
+subprocess launch test passed on Windows, so the application — not merely a widget — has been
+observed starting on a real desktop through its real entry point.
+
+**The original over-claim, kept as the record:** Run `30208677607` was genuinely green and
 its `HWND` evidence real, but `T026-R1` is right that it proved a *widget* reaches a real
 desktop, not that the *application* launches: every test constructed `MainWindow` inside pytest
 and none touched `app.run`. The criterion is **not** met until the new subprocess launch test is

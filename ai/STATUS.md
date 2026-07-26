@@ -12,17 +12,19 @@
 
 ---
 
-**Current phase:** Phase 0 — Foundation, **exit blocked on review findings**
-**Overall state:** Both implemented tasks were reviewed on 2026-07-26 and both came back
-**changes requested** (`ai/REVIEWS.md`). Nine findings, four of them High.
+**Current phase:** Phase 0 — Foundation, **awaiting focused re-review**
+**Overall state:** Both tasks were reviewed on 2026-07-26 and both came back **changes
+requested** — nine findings, four High (`ai/REVIEWS.md`). All nine are corrected, and the
+corrections are green: CI run `30210954363`, `windows desktop` job, **19 passed**.
 
-Phase 0's Windows clean-checkout criterion is **not** met, contrary to what this file claimed
-earlier the same day. `T026-R1` is the reason: the desktop job constructed a `MainWindow`
-inside pytest and never exercised `app.run`, so it proved a widget can be created on a real
-desktop, not that the *application* launches. Native `HWND` evidence was real; the conclusion
-drawn from it was too broad.
+Phase 0's Windows clean-checkout criterion **is now met**, and was not before. `T026-R1` was
+right: the earlier job constructed a `MainWindow` inside pytest and never touched `app.run`, so
+it proved a widget can be created on a real desktop rather than that the application launches.
+A subprocess test now drives the real entry point under the real `windows` plugin, and the
+launched process reports its own `IsWindow`, `IsWindowVisible` and `GetWindowTextW` results.
 
-The corrections are implemented and awaiting focused re-review.
+The phase still does not exit until the re-review clears — its criteria include "reviewed and
+signed off".
 
 ## Completed
 
@@ -77,9 +79,9 @@ The corrections are implemented and awaiting focused re-review.
 
 ## Next
 
-1. **Focused re-review of `T-010` and `T-026`.** All nine findings have corrections implemented
-   locally. The two High findings on each task were reproduced before fixing and re-checked
-   after:
+1. **Focused re-review of `T-010` and `T-026`.** All nine findings are corrected, pushed, and
+   green on Windows (run `30210954363`, 19 passed). Each High finding was reproduced before
+   fixing and re-checked after:
    - `T010-R1` — the exhaustive transition test consulted the table it was policing. It now
      checks against a relation transcribed independently from `ARCHITECTURE.md` §5. The
      reviewer's `QUEUED → READY` mutation, which previously left 48 tests green, now fails 2.
