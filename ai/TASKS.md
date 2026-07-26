@@ -76,6 +76,52 @@ the thing this task exists to avoid.
 
 ---
 
+### T-044 — Close the non-blocking T-035 review follow-ups
+
+**Status:** **Ready** — filed from the final `T-034`/`T-035` focused re-review, 2026-07-26
+**Owner:** Implementer
+**Priority:** Low — current production behavior is correct; this closes a future-regression
+gap and repairs current-truth navigation
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T035-R3`, `T035-R4`, `P1-R1`; `AGENTS.md` §9;
+`ARCHITECTURE.md` §6
+**Affected surfaces:** `tests/unit/test_environment.py`, optionally
+`downloader/environment.py` public-API metadata, `ai/TASKS.md`, `ai/STATUS.md`
+**Risk:** Low
+**Review base:** `51e37f0`
+
+#### Scope
+
+Two non-blocking findings were carried rather than keeping `T-035` in review:
+
+1. The replacement for `T035-R3` catches a new module-defined function such as
+   `get_ytdlp_version()`, but its purported reviewed-API allowlist filters candidates by
+   `value.__module__`. Constants have no `__module__`, so adding
+   `YTDLP_VERSION = "unreviewed"` leaves all 22 environment tests green. Make the public API
+   explicit and test it independently, including constants.
+2. `P1-R1` is only partly corrected. `T-042`/`T-043` moved to Complete, but `TASKS.md` still
+   starts implementers at completed `T-041`, and `STATUS.md` says `T-038` is the only Ready
+   task while `T-014` and `T-015` are both canonically Ready.
+
+#### Acceptance criteria
+
+- Adding a public function **or constant** not in the independently transcribed reviewed API
+  fails the environment test
+- The test does not ask production's own list what the expected public API is; if `__all__` is
+  introduced, compare it with an independent expectation
+- `TASKS.md` and `STATUS.md` agree on which tasks are Ready, In Review, and Complete, and the
+  start-here text names current work
+- No environment-resolution behavior change
+
+#### Out of scope
+
+- The two blocking T-034 findings from the final focused pass; the maintainer must choose
+  another authorized pass, accepted risk, scope change, or carry-forward work for those
+- Logging behavior (`T-038`) or any worker implementation (`T-012`)
+
+---
+
 ### T-014 — Persistence: schema, migrations, and the job repository
 
 **Status:** **Ready** — `T-010` approved and complete, 2026-07-26

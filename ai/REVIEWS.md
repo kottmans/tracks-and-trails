@@ -1137,3 +1137,93 @@ remaining standard budget is one focused correction re-review covering the findi
 regressions introduced by their corrections; it is not another unbounded audit. The
 Implementer should return all blocking corrections in one batch with failing regressions and
 mutation evidence, then update the coordination documents.
+
+## 2026-07-26 — T-034 and T-035 focused correction re-review (final standard pass)
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-034`, `T-035`; non-blocking coordination finding `P1-R1`
+**Re-review base:** `666c4be1edd0cb5a54727ec6b30104b0beca27aa`
+**Head:** `51e37f0987f4effd974b223a0acc2879ef8f08a3`
+**Functional correction diff:** `08787ff..51e37f0` — one commit, six files
+**Platforms verified:** Linux locally; Linux, Windows, frozen Linux, frozen Windows, and
+Windows desktop in independently queried CI run `30219285036`
+**Overall verdict:** **Changes requested**
+
+### Per-task verdicts
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-034` | **Changes requested** | `T034-R2` remains open with a concrete 32-bit digest collision, and the R4 correction introduced a false `COM0`/`LPT0` Windows rule that also creates legal-name collisions. |
+| `T-035` | **Approved with follow-ups** | Both functional blockers are resolved. The new Low reviewed-API gap and remaining coordination cleanup are owned by `T-044` and do not keep T-035 in review. |
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---|---|
+| `T034-R1` | **Medium** | **No** | **Resolved.** Both directions now go through `safe_output_path()`: an outward symlink raises and an inward symlink remains allowed. Disabling only the final containment branch produced 1 failed and 129 passed path tests. The comment and task record now accurately say the branch is reachable and load-bearing. |
+| `T034-R2` | **Medium** | **Yes** | **Open — the submitted correction does not establish the acceptance criterion.** Removing `_marker()` makes the late-difference regression fail, so that test is no longer vacuous. The marker itself is only a 4-byte/32-bit digest, however. A bounded probe found two distinct overlong stems with the same retained prefix at suffixes `68297` and `96718`; both sanitize to the exact same filename. The collision was found in 0.2 seconds, so the differentiator does not make attacker-influenced neighbouring names practically collision-resistant. Use a materially longer digest (at least 128 bits is reasonable within the 200-byte budget), retain the known 32-bit collision pair as a regression, and mutation-check shrinking it back to 4 bytes. |
+| `T034-R3` | **Medium** | **No** | **Resolved.** `_shorten_to()` now raises when the suffix and marker cannot fit and keeps the suffix when they can. Replacing the raise with the old `name[:limit]` fallback produced 1 failed and 129 passed path tests. Directly testing this private boundary is justified because the public filesystem setup cannot construct the same tiny budget reliably on every host; the public positive and no-room paths remain covered separately. |
+| `T034-R4` | **Medium** | **No** | **Resolved as originally reported.** The six Microsoft-documented superscript forms are sanitized, and the expectation is now independent of production. Removing only the superscript digits produced 7 failed and 123 passed tests: one independent completeness case plus six behavioral cases. The handoff's “9” applies only when the two separately added zero forms are removed too, not to the superscript-only mutation. |
+| `T034-R5` | **Medium** | **Yes** | **Open — correction regression.** The new table and its supposedly Microsoft-transcribed expectation add `COM0` and `LPT0`, but Microsoft's reserved filename list is `COM1`–`COM9`, `LPT1`–`LPT9`, and the six superscript forms; it does not include zero. Production therefore changes legal titles (`COM0` → `COM0_`) and makes legal neighbours collide (`COM0` and `COM0_` sanitize identically). Removing zero is a correctness fix even though the current false expectation makes 3 tests fail. Transcribe the [actual Microsoft list](https://learn.microsoft.com/en-us/windows/win32/fileio/naming-a-file), add `COM0`/`LPT0` to the allowed-neighbour cases, and remove the false claims from source, tests, and task records. |
+| `T035-R1` | **Medium** | **No** | **Resolved.** An absent or non-directory user path now returns the baseline tuple alone, while an existing empty directory remains first for worker-side import validation. Reintroducing an absent user entry produced 2 failed and 20 passed environment tests. Removing the redundant `exists` flag makes the returned tuple itself the candidate contract. |
+| `T035-R2` | **Medium** | **No** | **Resolved.** The override branch now uses `shutil.which()` on the concrete path, the positive fixture is executable, and a mode-0644 regular file is unavailable on POSIX. Reverting the branch to file-presence semantics produced 1 failed and 21 passed environment tests. CI independently verifies the Windows fixture/path behavior. |
+| `T035-R3` | **Low** | **No** | **Resolved for the original finding.** Adding the exact `get_ytdlp_version()` mutation now produces 1 failed and 21 passed tests. The denylist has been replaced with an independently spelled expected function/class API. The broader constant hole is separated below because it is a new Low test-strength issue and cannot reopen T-035 during this focused pass. |
+| `T035-R4` | **Low** | **No** | **Open — carry-forward.** The test calls itself a reviewed public-API allowlist and includes constants in `reviewed_api`, but the discovery side filters on `value.__module__`; constants have no such attribute and are never compared. Adding `YTDLP_VERSION = "unreviewed"` left all 22 environment tests green. `T-044` owns making the public API explicit and independently testing functions and constants. |
+| `P1-R1` | **Low** | **No** | **Partially resolved — carry-forward.** T-042/T-043 correctly moved to Complete and T-034/T-035 remained in review. Current-truth navigation is still inconsistent: `TASKS.md` starts at completed T-041, while `STATUS.md` says T-038 is the only Ready task even though T-014 and T-015 are canonically Ready. Owner Implementer; target `T-044`. |
+
+### Review judgments
+
+- The R1 correction directly addresses the failed security gate and is non-vacuous. The
+  implementer's explicit correction of the earlier false dead-code claim is accurate.
+- A digest is a reasonable way to preserve a differentiator while retaining deterministic,
+  idempotent shortening. The issue under R2 is its 32-bit size, not the choice of a digest.
+  No finite shortening can be mathematically injective, but a collision found in fewer than
+  100,000 ordinary attempts is not a practical interpretation of “without colliding.”
+- Independently transcribing an external platform rule is the right anti-vacuity design for
+  R4. It does not protect against mistranscribing the source; the zero forms are exactly that
+  failure, and the correction's mutation evidence currently rewards the wrong behavior.
+- The T-035 locate/import split, absent-candidate representation, and override executable
+  semantics are accepted. No open production defect remains in T-035 at this head.
+- `T035-R4` and `P1-R1` are Low and non-blocking under `AGENTS.md` §9. Filing `T-044` gives
+  them an owner and target without serializing T-035 behind another review round.
+
+### Checks and adversarial evidence
+
+| Check | Result |
+|---|---|
+| Correction boundary | Clean `main` at exact head `51e37f0` before reviewer documentation. `666c4be..51e37f0` contains the two previously excluded `AGENTS.md` commits, the committed initial review, and correction commit `51e37f0`; the functional correction is the one-commit `08787ff..51e37f0` diff. |
+| `.venv/bin/ruff check .` | Passed: “All checks passed!” |
+| `.venv/bin/ruff format --check .` | Passed: 67 files already formatted. |
+| `.venv/bin/mypy src` | Passed: no issues in 31 source files. |
+| `.venv/bin/mypy` | Passed: no issues in 52 source files. |
+| `.venv/bin/mypy --platform win32` | Passed: no issues in 52 source files. |
+| `.venv/bin/pytest -q` | Passed: 570 passed, 5 skipped, 1 deselected in 0.82 s. |
+| Full unit suite | Passed: 516 passed, 3 skipped. |
+| Focused paths + environment | Passed: 152 tests. |
+| Layering | Passed: 109 cases. |
+| R1 containment mutation | Disabled the final `safe_output_path()` containment branch: 1 failed, 129 passed. Restored. |
+| R2 differentiator-removal mutation | Removed `_marker()`: 2 failed, 128 passed; the late-difference collision case was one of the two. Restored. |
+| R2 direct collision | Distinct names ending in `68297.mp4` and `96718.mp4` after the same 400-character prefix share the 4-byte BLAKE2b digest `ede58bb2` and sanitize to the same output. |
+| R3 extension-loss mutation | Replaced the tight-budget raise with `name[:limit]`: 1 failed, 129 passed. Restored. |
+| R4 superscript-only mutation | Removed `¹²³` from production: 7 failed, 123 passed. Restored. |
+| R5 zero-form correction probe | `COM0` and `LPT0` are not in Microsoft's reserved filename list and `PureWindowsPath.is_reserved()` also reports them false, but production returns `COM0_`/`LPT0_`. Removing zero from production makes 3 current tests fail because the independent expectation contains the same transcription error. Restored. |
+| R1 absent-candidate mutation | Reintroduced an absent user entry: 2 failed, 20 passed. Restored. |
+| R2 override-presence mutation | Accepted any regular override file: 1 failed, 21 passed. Restored. |
+| R3 function-export mutation | Added `get_ytdlp_version()`: 1 failed, 21 passed. Restored. |
+| R4 constant-export mutation | Added `YTDLP_VERSION`: all 22 environment tests passed. Restored; assigned to `T-044`. |
+| `git diff --check 666c4be..51e37f0` | Passed. |
+| CI `30219285036` | Independently verified successful at exact head `51e37f0`; all five jobs green. |
+| Worktree after mutations | All temporary source/test mutations were restored. The only local changes are this reviewer-owned entry and the `T-044` follow-up in `ai/TASKS.md`. |
+
+### Readiness and exhausted budget
+
+`T-035` is **Approved with follow-ups** at `51e37f0`; it can move to Complete, and `T-044`
+owns the two Low carry-forwards. `T-034` remains **Changes requested**, so `T-012` remains
+blocked on path safety.
+
+This was the one focused re-review allowed by the Standard budget. The review found a direct
+continuation of R2 and a regression introduced by the R4 correction, both against T-034's
+acceptance boundary. No further implementer/reviewer loop is implied or authorized. The
+maintainer must choose: authorize one additional focused pass, accept the two risks, change
+the acceptance scope, or carry the work forward under a new task and approve T-034 with that
+explicit exception.
