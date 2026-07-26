@@ -559,7 +559,7 @@ Dependency order: `T-010`; then `T-011`, `T-014`, `T-015`, `T-034` in parallel; 
 and `T-038`; then `T-012`; then `T-013`; then `T-016`, `T-017`, `T-018`, `T-019`; then `T-036`;
 then `T-037`.
 
-### T-034 — Output path rendering and filename safety
+### T-034 — Filename safety and output-path containment
 
 **Status:** Proposed — Ready once `T-010` merges
 **Owner:** Implementer
