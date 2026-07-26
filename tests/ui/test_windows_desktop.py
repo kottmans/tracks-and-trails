@@ -221,12 +221,20 @@ def test_every_menu_action_is_reachable_by_a_keyboard_mnemonic(shown_window: Mai
     returns an untitled internal `QMenu` that Qt creates for the menu bar itself, which is not
     a menu the user can reach and has no mnemonic to check — the first run of this test failed
     on exactly that.
+
+    `menu()` is called **once per action** and the result held. Calling it twice — once in a
+    comprehension's condition and again in its expression — hands back two Python wrappers for
+    one C++ object, and the discarded one takes the object with it: "Internal C++ object
+    (QMenu) already deleted", which is how the second run of this test failed.
     """
-    menus = [action.menu() for action in shown_window.menuBar().actions() if action.menu()]
+    menus = []
+    for action in shown_window.menuBar().actions():
+        menu = action.menu()
+        if menu is not None:
+            menus.append(menu)
     assert menus, "the menu bar exposes no menus"
 
     for menu in menus:
-        assert menu is not None
         assert "&" in menu.title(), f"menu {menu.title()!r} has no keyboard mnemonic"
         for action in menu.actions():
             if action.isSeparator():
