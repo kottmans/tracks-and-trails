@@ -154,7 +154,22 @@ the thing this task exists to avoid.
 
 ### T-041 — Validate nested payloads in `core/models.py`
 
-**Status:** **Ready** — carried from `T011-R8`, 2026-07-26
+**Status:** Implemented 2026-07-26, awaiting review.
+
+**The reported hole was one field; the audit found the whole module.** `T011-R8` named
+`MediaInfo.formats`. Enumerating every field of every model showed that **all of them** accepted
+an arbitrary dict or list — the only checks were emptiness and negativity, and a non-empty dict
+passes both. Fixing the named field alone would have repeated exactly what got `T011-R2`
+reopened, so the fix is a validation layer over all five models plus a systematic audit test.
+
+Verified after the change: a raw dict, a list of raw dicts, and a mutable list are now rejected
+by **every** field of every model; `T011-R8`'s exact reproduction raises with an `ARC-002`
+message; and a caller's list can no longer mutate a constructed model.
+
+**Note for review:** the field annotations still say `tuple[...]` while the constructors accept
+any non-`str` sequence and normalise it. That is deliberate — the annotation describes what is
+*stored*, which is what readers depend on — but it is the same signature/runtime divergence
+`T011-R3` objected to in `protocol.py`, so it is worth a second opinion rather than my say-so.
 **Owner:** Implementer
 **Priority:** **High** — it falsifies a guarantee `downloader/protocol.py` currently advertises
 **Phase:** Phase 1

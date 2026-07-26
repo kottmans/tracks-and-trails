@@ -23,13 +23,127 @@ silently disagrees with its own database.
 record* rather than live domain state, so it belongs with the schema that stores it (`T-014`).
 """
 
+from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
-from enum import StrEnum
-from typing import Self
+from enum import Enum, StrEnum
+from typing import Any, Self
 
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, apply
+
+# --- field validation -----------------------------------------------------------------------
+#
+# `T011-R8` found that `MediaInfo(formats=[{...}])` stored a mutable list of raw yt-dlp format
+# dicts — so raw upstream data crossed the process boundary inside a `Probed` message that
+# validated, and could still be mutated afterwards. `downloader/protocol.py` correctly rejects a
+# non-`MediaInfo`; nothing checked what a `MediaInfo` contained.
+#
+# The audit that followed found the hole was not one field. **Every** field of every model here
+# accepted an arbitrary dict or list: the only checks were emptiness and negativity, and a
+# non-empty dict passes both. These helpers close the class rather than the instance, which is
+# the lesson `T011-R2` had to be reopened to teach.
+#
+# Deliberately duplicated in miniature from `downloader/protocol.py` rather than shared:
+# `T-041`'s scope puts that module out of bounds, and exporting private validators across a
+# layer boundary to save ten lines is a worse trade. `normalise_context()` *is* shared, because
+# there the risk was two hand-written copies of one subtle normalisation drifting apart.
+
+
+def _fail(owner: str, name: str, value: object, expected: str) -> None:
+    raise TypeError(f"{owner}.{name} must be {expected}, not {type(value).__name__}")
+
+
+def _require_text(owner: str, name: str, value: object) -> None:
+    """A non-empty string."""
+    if not isinstance(value, str):
+        _fail(owner, name, value, "a string")
+    if not value:
+        raise ValueError(f"{owner}.{name} cannot be empty")
+
+
+def _require_optional_text(owner: str, name: str, value: object) -> None:
+    if value is not None and not isinstance(value, str):
+        _fail(owner, name, value, "a string or None")
+
+
+def _require_optional_count(owner: str, name: str, value: object) -> None:
+    """A non-negative `int` or `None`. `bool` is rejected: it is an `int` subclass."""
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, int):
+        _fail(owner, name, value, "an int or None")
+    if value < 0:  # type: ignore[operator]
+        raise ValueError(f"{owner}.{name} cannot be negative")
+
+
+def _require_optional_duration(owner: str, name: str, value: object) -> None:
+    """A non-negative real number or `None`. Durations are legitimately fractional."""
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        _fail(owner, name, value, "a number or None")
+    if value < 0:  # type: ignore[operator]
+        raise ValueError(f"{owner}.{name} cannot be negative")
+
+
+def _require_flag(owner: str, name: str, value: object) -> None:
+    """Strictly `bool` — not merely truthy. A non-empty dict is truthy."""
+    if not isinstance(value, bool):
+        _fail(owner, name, value, "a bool")
+
+
+def _require_enum[E: Enum](owner: str, name: str, value: object, enum: type[E]) -> None:
+    """An actual enum member.
+
+    `StrEnum` members compare equal to their string values, so a bare string mostly works
+    until something does an identity check — the failure mode `T011-R2` recorded.
+    """
+    if not isinstance(value, enum):
+        _fail(owner, name, value, f"a {enum.__name__} member")
+
+
+def _require_optional_enum[E: Enum](owner: str, name: str, value: object, enum: type[E]) -> None:
+    if value is not None and not isinstance(value, enum):
+        _fail(owner, name, value, f"a {enum.__name__} member or None")
+
+
+def _require_model[T](owner: str, name: str, value: object, model: type[T]) -> None:
+    if not isinstance(value, model):
+        _fail(owner, name, value, f"a {model.__name__}")
+
+
+def _require_optional_datetime(owner: str, name: str, value: object) -> None:
+    if value is not None and not isinstance(value, datetime):
+        _fail(owner, name, value, "a datetime or None")
+
+
+def _as_tuple_of[T](owner: str, name: str, value: object, element: type[T]) -> tuple[T, ...]:
+    """Return `value` as a tuple, rejecting a non-sequence or a wrong element type.
+
+    Normalising a list to a tuple is deliberate: the element types are what matter, and a
+    caller passing a list is not making a mistake. Storing it as a tuple is what stops the
+    caller's list from mutating a model that has already been sent (`T010-R2`) — a frozen
+    dataclass holding a list is only shallowly frozen.
+
+    A `str` is a `Sequence` and is rejected explicitly, or `"abc"` would silently become
+    `("a", "b", "c")`.
+    """
+    if isinstance(value, str) or not isinstance(value, Sequence):
+        _fail(owner, name, value, f"a sequence of {element.__name__}")
+    items: tuple[Any, ...] = tuple(value)  # type: ignore[arg-type]
+    for index, item in enumerate(items):
+        if not isinstance(item, element):
+            raise TypeError(
+                f"{owner}.{name}[{index}] must be a {element.__name__}, "
+                f"not {type(item).__name__}"
+                + (
+                    " — a raw yt-dlp dict must never reach a domain model (ARC-002)"
+                    if isinstance(item, dict)
+                    else ""
+                )
+            )
+    return items
 
 
 class MediaKind(StrEnum):
@@ -66,8 +180,14 @@ class FormatInfo:
     note: str | None = None
 
     def __post_init__(self) -> None:
-        if not self.format_id:
+        identifier: Any = self.format_id
+        if not isinstance(identifier, str) or not identifier:
             raise ValueError("FormatInfo requires a format_id; it is how a format is selected")
+        _require_text("FormatInfo", "extension", self.extension)
+        for name in ("height", "width", "filesize"):
+            _require_optional_count("FormatInfo", name, getattr(self, name))
+        for name in ("video_codec", "audio_codec", "note"):
+            _require_optional_text("FormatInfo", name, getattr(self, name))
 
     @property
     def is_audio_only(self) -> bool:
@@ -94,13 +214,25 @@ class MediaInfo:
     is_live: bool = False
 
     def __post_init__(self) -> None:
-        if not self.url:
+        url: Any = self.url
+        if not isinstance(url, str) or not url:
             raise ValueError("MediaInfo requires the url it describes")
-        if not self.title:
+        title: Any = self.title
+        if not isinstance(title, str) or not title:
             raise ValueError(
                 "MediaInfo requires a title; when the extractor supplies none, the caller "
                 "substitutes something displayable rather than storing an empty string"
             )
+        # `T011-R8`, the finding that opened this task: a list of raw yt-dlp format dicts used
+        # to be stored verbatim, so upstream data crossed the process boundary inside an
+        # otherwise valid `Probed` message and could still mutate afterwards.
+        object.__setattr__(
+            self, "formats", _as_tuple_of("MediaInfo", "formats", self.formats, FormatInfo)
+        )
+        _require_optional_duration("MediaInfo", "duration_seconds", self.duration_seconds)
+        _require_optional_text("MediaInfo", "uploader", self.uploader)
+        _require_optional_text("MediaInfo", "thumbnail_url", self.thumbnail_url)
+        _require_flag("MediaInfo", "is_live", self.is_live)
 
 
 @dataclass(frozen=True, slots=True)
@@ -134,17 +266,30 @@ class DownloadRequest:
     cookies_from_browser: str | None = None
 
     def __post_init__(self) -> None:
-        if not self.url:
+        url: Any = self.url
+        if not isinstance(url, str) or not url:
             raise ValueError("DownloadRequest requires a url")
-        if not self.output_directory:
+        directory: Any = self.output_directory
+        if not isinstance(directory, str) or not directory:
             raise ValueError("DownloadRequest requires an output directory")
-        if not self.format_selector:
+        selector: Any = self.format_selector
+        if not isinstance(selector, str) or not selector:
             raise ValueError(
                 "DownloadRequest requires a format selector; an empty one silently means "
                 "yt-dlp's default, which is not the same as the preset the user chose"
             )
-        if not self.output_template:
+        template: Any = self.output_template
+        if not isinstance(template, str) or not template:
             raise ValueError("DownloadRequest requires an output template")
+        _require_enum("DownloadRequest", "media_kind", self.media_kind, MediaKind)
+        for name in ("post_processors", "subtitle_languages"):
+            object.__setattr__(
+                self, name, _as_tuple_of("DownloadRequest", name, getattr(self, name), str)
+            )
+        _require_flag("DownloadRequest", "embed_subtitles", self.embed_subtitles)
+        _require_optional_text("DownloadRequest", "proxy", self.proxy)
+        _require_optional_text("DownloadRequest", "cookies_from_browser", self.cookies_from_browser)
+        _require_optional_count("DownloadRequest", "rate_limit_bytes", self.rate_limit_bytes)
 
 
 @dataclass(frozen=True, slots=True)
@@ -168,10 +313,20 @@ class Preset:
     built_in: bool = False
 
     def __post_init__(self) -> None:
-        if not self.name:
+        name_value: Any = self.name
+        if not isinstance(name_value, str) or not name_value:
             raise ValueError("Preset requires a name; it is what the user selects it by")
-        if not self.format_selector:
+        selector: Any = self.format_selector
+        if not isinstance(selector, str) or not selector:
             raise ValueError("Preset requires a format selector")
+        _require_enum("Preset", "media_kind", self.media_kind, MediaKind)
+        _require_text("Preset", "output_template", self.output_template)
+        object.__setattr__(
+            self,
+            "post_processors",
+            _as_tuple_of("Preset", "post_processors", self.post_processors, str),
+        )
+        _require_flag("Preset", "built_in", self.built_in)
 
 
 @dataclass(frozen=True, slots=True)
@@ -207,16 +362,24 @@ class Job:
     finished_at: datetime | None = None
 
     def __post_init__(self) -> None:
-        if not self.id:
+        identifier: Any = self.id
+        if not isinstance(identifier, str) or not identifier:
             raise ValueError("Job requires an id")
-        if not self.url:
+        job_url: Any = self.url
+        if not isinstance(job_url, str) or not job_url:
             raise ValueError("Job requires a url")
-        if self.bytes_done < 0:
-            raise ValueError("Job.bytes_done cannot be negative")
-        if self.bytes_total is not None and self.bytes_total < 0:
-            raise ValueError("Job.bytes_total cannot be negative")
-        if self.attempts < 0:
-            raise ValueError("Job.attempts cannot be negative")
+        _require_optional_count("Job", "bytes_done", self.bytes_done)
+        _require_optional_count("Job", "bytes_total", self.bytes_total)
+        _require_optional_count("Job", "attempts", self.attempts)
+        _require_model("Job", "request", self.request, DownloadRequest)
+        _require_enum("Job", "status", self.status, JobStatus)
+        _require_optional_enum("Job", "error_kind", self.error_kind, ErrorKind)
+        _require_optional_text("Job", "title", self.title)
+        _require_optional_text("Job", "output_path", self.output_path)
+        _require_optional_text("Job", "error_message", self.error_message)
+        _require_optional_count("Job", "queue_position", self.queue_position)
+        for name in ("created_at", "started_at", "finished_at"):
+            _require_optional_datetime("Job", name, getattr(self, name))
 
     def with_status(self, target: JobStatus) -> Self:
         """Return a copy in `target`, raising `IllegalTransitionError` if the move is not legal.

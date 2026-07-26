@@ -170,6 +170,149 @@ def test_optional_probe_fields_stay_optional() -> None:
     assert fmt.is_audio_only
 
 
+# --- nested payload validation (T-041, from T011-R8) ----------------------------------------
+
+
+def valid_kwargs(request_: DownloadRequest) -> dict[type, dict[str, object]]:
+    """Minimal valid constructor arguments for every model in this module."""
+    return {
+        FormatInfo: {"format_id": "137", "extension": "mp4"},
+        MediaInfo: {"url": "https://example.com/x", "title": "T"},
+        DownloadRequest: {
+            "url": "https://example.com/x",
+            "output_directory": "/downloads",
+            "format_selector": "best",
+            "output_template": "%(title)s.%(ext)s",
+        },
+        Preset: {
+            "name": "p",
+            "media_kind": MediaKind.VIDEO,
+            "format_selector": "best",
+            "output_template": "%(title)s.%(ext)s",
+        },
+        Job: {"id": "j", "url": "https://example.com/x", "request": request_},
+    }
+
+
+MODELS = [FormatInfo, MediaInfo, DownloadRequest, Preset, Job]
+
+
+def test_every_model_in_the_module_is_covered(request_: DownloadRequest) -> None:
+    """Guards the guard: a model added without sample kwargs escapes every audit below."""
+    assert set(valid_kwargs(request_)) == set(MODELS)
+
+
+@pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
+@pytest.mark.parametrize(
+    ("label", "payload"),
+    [
+        ("raw dict", {"title": "Example", "formats": []}),
+        ("list of raw dicts", [{"format_id": "137"}]),
+        ("mutable list of strings", ["a"]),
+    ],
+)
+def test_no_field_accepts_raw_or_mutable_payloads(
+    request_: DownloadRequest, model: type, label: str, payload: object
+) -> None:
+    """`T-041`, from `T011-R8` — the **systematic** audit.
+
+    `T011-R8` was reported as one field, `MediaInfo.formats`. Auditing the module found that
+    *every* field of *every* model accepted an arbitrary dict or list: the only checks were
+    emptiness and negativity, and a non-empty dict passes both. Fixing the reported field alone
+    would have repeated the mistake that got `T011-R2` reopened.
+
+    This walks every field of every model, so a field added later without validation fails here
+    without anyone remembering to extend a list.
+
+    A field may legitimately **normalise** a sequence — a list of the right element type becomes
+    a tuple — but it may never *store* a mutable container, and it may never accept a raw dict
+    where a declared model belongs (`ARC-002`).
+    """
+    fields: dict[str, object] = model.__dataclass_fields__  # type: ignore[attr-defined]
+    for name in fields:
+        kwargs = dict(valid_kwargs(request_)[model])
+        kwargs[name] = payload
+        try:
+            stored = getattr(model(**kwargs), name)
+        except TypeError, ValueError:
+            continue
+        assert not isinstance(stored, dict | list), (
+            f"{model.__name__}.{name} accepted and stored a {type(stored).__name__} "
+            f"({label}); a mutable payload reachable from a sent model can change after "
+            "put() and before the feeder thread serializes it"
+        )
+
+
+def test_media_info_rejects_raw_yt_dlp_format_dicts() -> None:
+    """`T011-R8`'s exact reproduction, kept as a regression test.
+
+    Before `T-041`, this constructed, passed `is_message()` inside a `Probed`, survived pickle
+    with the dicts intact, and still mutated afterwards — a CDN URL from raw yt-dlp data
+    crossing the process boundary inside a message that validated.
+    """
+    raw = [{"format_id": "137", "ext": "mp4", "url": "https://cdn.example/secret"}]
+    with pytest.raises(TypeError, match="ARC-002"):
+        MediaInfo(url="https://example.com/x", title="T", formats=raw)  # type: ignore[arg-type]
+
+
+def test_a_list_of_the_right_type_is_normalised_to_a_tuple() -> None:
+    """Normalising is fine; storing the caller's list is not.
+
+    A frozen dataclass holding a list is only shallowly frozen, so the caller could mutate a
+    model that has already been sent (`T010-R2`).
+    """
+    formats = [FormatInfo(format_id="137", extension="mp4")]
+    # A list is deliberately passed: the point is that it is normalised, not stored.
+    media = MediaInfo(url="https://example.com/x", title="T", formats=formats)  # type: ignore[arg-type]
+    assert isinstance(media.formats, tuple)
+
+    formats.append(FormatInfo(format_id="140", extension="m4a"))
+    assert len(media.formats) == 1, "the model tracked the caller's list after construction"
+
+
+def test_string_fields_do_not_silently_become_character_tuples() -> None:
+    """A `str` is a `Sequence`, so `post_processors="abc"` would become `("a", "b", "c")`."""
+    with pytest.raises(TypeError):
+        DownloadRequest(
+            url="https://example.com/x",
+            output_directory="/downloads",
+            format_selector="best",
+            output_template="%(title)s.%(ext)s",
+            post_processors="FFmpegExtractAudio",  # type: ignore[arg-type]
+        )
+
+
+@pytest.mark.parametrize(
+    ("label", "kwargs"),
+    [
+        ("status", {"status": "queued"}),
+        ("error_kind", {"error_kind": "network"}),
+        ("request", {"request": {"url": "x"}}),
+        ("created_at", {"created_at": "2026-07-26"}),
+    ],
+)
+def test_job_rejects_stringly_typed_fields(
+    request_: DownloadRequest, label: str, kwargs: dict[str, object]
+) -> None:
+    """`StrEnum` members compare equal to their values, so a bare string mostly works — until
+    something does an identity check, which is the failure `T011-R2` recorded."""
+    base = {"id": "j", "url": "https://example.com/x", "request": request_}
+    with pytest.raises(TypeError):
+        Job(**{**base, **kwargs})  # type: ignore[arg-type]
+
+
+def test_nested_validation_survives_pickle(request_: DownloadRequest) -> None:
+    """A restored model must carry declared types and immutable collections, not raw data."""
+    media = MediaInfo(
+        url="https://example.com/x",
+        title="T",
+        formats=[FormatInfo(format_id="137", extension="mp4")],  # type: ignore[arg-type]
+    )
+    restored = pickle.loads(pickle.dumps(media))
+    assert isinstance(restored.formats, tuple)
+    assert isinstance(restored.formats[0], FormatInfo)
+
+
 # --- immutability: the settings-freeze guarantee --------------------------------------------
 
 
