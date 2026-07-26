@@ -95,16 +95,25 @@ again and is the natural place to close it.
 
    **`T011-R5` is not addressed and cannot be** — it needs the `ARC-002` reading below.
 
-2. **`T-034` — filename safety and output-path containment.** Ready, and the best use of time
-   while `T-011` is in review: a `TESTING.md` §7 mandatory area that is still uncovered, with a
+   Verified 2026-07-26: `R2` and `R7` **resolved**. `T-011` remains unapproved solely because
+   `R5` is parked.
+
+2. **`T-041` — validate nested payloads in `core/models.py`.** Carried out of `T-011` as
+   `T011-R8` (High), and **the hole is live right now**: `Probed.media` rejects a non-`MediaInfo`,
+   but a `MediaInfo` can hold a mutable list of raw yt-dlp format dicts, so raw upstream data
+   still crosses the process boundary inside a message that validates (`ARC-002`). Recommended
+   next, ahead of `T-034`: it is small, High severity, and it restores a guarantee the protocol
+   currently advertises but does not have.
+
+3. **`T-034` — filename safety and output-path containment.** Ready: a `TESTING.md` §7 mandatory area that is still uncovered, with a
    security failure mode (a title-derived filename escaping the output directory). It does not
    depend on `T-011`.
 
-3. **`T-014` and `T-015`** — also Ready, off the critical path.
+4. **`T-014` and `T-015`** — also Ready, off the critical path.
 
-4. **Record Phase 0's formal exit** — a maintainer act; nothing blocks it.
+5. **Record Phase 0's formal exit** — a maintainer act; nothing blocks it.
 
-5. **A human Windows session** — `OPS-004`'s subjective residue only. Blocks first release.
+6. **A human Windows session** — `OPS-004`'s subjective residue only. Blocks first release.
 
 ## Known gaps not yet scheduled
 

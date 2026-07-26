@@ -26,6 +26,72 @@ for a Phase 5 installer; `T-040` for the first focusable widgets.
 
 ## Ready
 
+### T-041 — Validate nested payloads in `core/models.py`
+
+**Status:** **Ready** — carried from `T011-R8`, 2026-07-26
+**Owner:** Implementer
+**Priority:** **High** — it falsifies a guarantee `downloader/protocol.py` currently advertises
+**Phase:** Phase 1
+**Depends on:** nothing; `core/models.py` exists and is approved (`T-010`)
+**Relevant context:** `T011-R8`, `T011-R2`, `T010-R2`; `ARC-002`; `ARCHITECTURE.md` §3 and §5;
+`NFR-008`
+**Affected surfaces:** `src/tracks_and_trails/core/models.py`, `tests/unit/test_models.py`
+**Risk:** Medium to fix, **High to leave** — the failure is silent and the data is
+attacker-influenced
+
+#### Scope
+
+`T-011` made `Probed.media` reject anything that is not a `MediaInfo`. It did not check what a
+`MediaInfo` *contains*, and `T011-R8` found the hole that leaves:
+
+```python
+raw = [{"format_id": "137", "url": "https://cdn.example/secret"}]
+msg = Probed(job_id="j", media=MediaInfo(url=..., title="T", formats=raw))
+is_message(msg)          # True
+msg.media.formats[0]     # {'format_id': '137', 'url': '...'} — a raw yt-dlp dict
+raw.append({...})        # and it still mutates after construction
+```
+
+Two invariants break at once. Raw yt-dlp data crosses the process boundary inside a message
+that validates (`ARC-002`, `NFR-008`), and a mutable list reachable from a sent message can
+change after `put()` and before the feeder thread serializes it — the `T010-R2` hazard.
+
+**Fix the class, not the instance.** `T011-R2` had to be reopened precisely because the first
+correction validated the fields the review named. Every collection and nested model field in
+`core/models.py` needs checking, not just `MediaInfo.formats`:
+
+- `MediaInfo.formats` — a tuple of `FormatInfo`
+- `DownloadRequest.post_processors`, `.subtitle_languages` — tuples of `str`
+- `Preset.post_processors` — a tuple of `str`
+- `Job.request` — a `DownloadRequest`
+- `Job.error_kind` — an `ErrorKind` or `None`
+
+Normalising a list to a tuple is acceptable where the element types are right; passing raw
+dicts where models belong is not, and must raise.
+
+#### Acceptance criteria
+
+- `MediaInfo(formats=[{...}])` **raises**; a raw yt-dlp format dict cannot reach a `Probed`
+- Every collection field is stored as a tuple, whatever sequence type was passed, and mutating
+  the original afterwards does not change the model
+- A **systematic** test walks every field of every model in `core/models.py` and asserts that a
+  raw `dict`, and a `list` of raw dicts, are rejected or normalised — modelled on
+  `test_no_field_accepts_and_stores_a_mutable_mapping`, so a field added later is covered
+  without anyone extending a list by hand
+- Nested validation survives `pickle`: a restored `MediaInfo` carries `FormatInfo` instances
+  and immutable collections
+- `T011-R8`'s exact reproduction is a regression test
+- The layering test still passes: `core/` imports no Qt and no `yt_dlp`
+
+#### Out of scope
+
+- Any change to `downloader/protocol.py` — its own validation is correct; this is the layer
+  beneath it
+- Projecting an `info_dict` into `MediaInfo` — `T-012` owns the adapter that does it
+- Retro-fitting the same audit to `persistence/` — nothing exists there yet (`T-014`)
+
+---
+
 ### T-034 — Filename safety and output-path containment
 
 **Status:** **Ready** — `T-010` approved and complete, 2026-07-26
@@ -1107,6 +1173,20 @@ Do **not** read this entry as "all findings corrected"; `R5` is open by design.
   raised in `STATUS.md` — not something this task may decide.**
 - **`T011-R6` (Low), corrected.** Task placement, status vocabulary, metadata and `STATUS.md`
   reconciled.
+
+**Verified 2026-07-26:** the reviewer confirmed `T011-R2`'s reopened fields and `T011-R7`
+**resolved**, with mutation evidence — the dict speed/byte-count substitution fails 33 tests, an
+added unvalidated field is caught specifically by the generic audit, and disabling probe-stage
+enforcement fails the four intended tests.
+
+**`T-011` is still not approved**, for one reason: `T011-R5` is parked on a maintainer reading
+of `ARC-002`. Nothing an Implementer does can close it.
+
+**`T011-R8` (High) was carried out of this task into `T-041`**, not fixed here. `Probed.media`
+correctly rejects a non-`MediaInfo`, but a `MediaInfo` can itself hold a mutable list of raw
+yt-dlp format dicts — so raw upstream data still crosses the boundary inside a message that
+validates. The hole is **live at this head**; `protocol.py`'s guarantee is only as strong as
+`core/models.py` beneath it.
 
 **Third pass, 2026-07-26 (`T011-R2` reopened, `T011-R7` new):**
 
