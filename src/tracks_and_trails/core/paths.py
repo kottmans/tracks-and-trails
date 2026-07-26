@@ -157,6 +157,24 @@ def sanitize_component(name: str) -> str:
         return _FALLBACK_STEM
 
     stem, dot, extension = cleaned.partition(".")
+
+    # **Strip the stem before deciding reserved-ness**, not only at the end of the function.
+    #
+    # Windows discards trailing dots and spaces when creating a file, and matches a device name
+    # ignoring them, so `"CON "` and `"CON .mp4"` *are* `CON` there. Testing the unstripped stem
+    # let `"CON "` through undefused, and the final strip then produced a bare `"CON"` anyway —
+    # an unopenable file. It also broke idempotence: a second pass saw `CON` and defused it, so
+    # the `REQ-011` preview and the eventual write disagreed.
+    #
+    # One guard, not two. An earlier correction had a strip here *and* before this block, then
+    # deleted one as "redundant" on mutation evidence — and the deletion caused this bug,
+    # because no test covered a decorated reserved name. The tests now do, so the redundancy is
+    # resolved deliberately rather than by mutation roulette: reverting this line fails them.
+    #
+    # The marker is taken over the *stripped* stem, so `"CON"` and `"CON "` produce one name.
+    # That is correct — Windows considers them one file — and it is the only place this module
+    # deliberately merges two inputs.
+    stem = stem.rstrip(". ")
     if stem.upper() in _RESERVED_NAMES:
         # Suffixed with a digest, not a bare `_` (`T-045`). The user's title stays readable and
         # the result stays unique: `COM1` and a legal file named `COM1_` both produced `COM1_`,
@@ -265,7 +283,14 @@ def safe_output_path(directory: Path, candidate: str) -> Path:
         # surprising interpretation of an absolute path.
         if part in (".", "", ".."):
             continue
-        if index == 0 and PureWindowsPath(part).drive:
+        # Drop a component that *is* a drive specifier (`C:` from `C:\\Windows\\evil.mp4`).
+        #
+        # A component that merely *begins* with one is sanitized normally instead of discarded:
+        # `"A: The Movie.mp4"` is a perfectly ordinary title, and rejecting the whole candidate
+        # meant a legal download failed outright. The colon is illegal anyway, so it becomes
+        # `"A_ The Movie.mp4"` — the same treatment `"Artist: Song.mp4"` already got, and
+        # equally contained.
+        if index == 0 and PureWindowsPath(part).drive == part:
             continue
         raw_parts.append(part)
 

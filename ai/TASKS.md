@@ -1077,6 +1077,33 @@ the distinction deserves a reviewer's eye.
 - **`T034-R4`** — the device-name set omitted `COM0`, `LPT0` and the six superscript forms
   Microsoft documents. Derived from a digit string now, so it cannot drift.
 
+**Second exception pass, 2026-07-26 — maintainer-authorized, two defects found by
+implementer verification rather than review:**
+
+- **Trailing whitespace bypassed reserved-name defusing.** `"CON "` came out as `"CON"` — an
+  unopenable Windows file — because the reserved check ran on the unstripped stem and the final
+  strip then produced the bare name anyway. It also broke idempotence: `"CON "` gave `"CON"`
+  while `"CON"` gave `"CON-<hex>"`, so the `REQ-011` preview and the write would disagree.
+
+  **Caused by the first correction pass.** I removed an early `rstrip` there as "redundant" on
+  mutation evidence — and it was only redundant because no test covered a decorated reserved
+  name. **The mutation was reporting a missing test, not a useless guard**, and I read it the
+  other way. The fix strips the *stem* before the check, which also catches `"CON .mp4"` that
+  the original line missed.
+
+  The first attempt at this fix added *two* strips, and each alone sufficed, so single mutations
+  survived — the identical redundancy trap. Resolved to one guard, deliberately, now that tests
+  cover it: reverting it fails **21** tests.
+
+- **A legal title beginning `X:` was rejected outright.** `"A: The Movie.mp4"` parses as a
+  Windows drive, and discarding the whole component left nothing usable, so the download failed
+  entirely. Only a component that *is* a drive specifier is dropped now; one that merely begins
+  with one is sanitized like any other colon — `"A_ The Movie.mp4"`, matching what
+  `"Artist: Song.mp4"` already produced. `"C:\\Windows\\evil.mp4"` still loses its drive.
+
+**Thirteen mutations, none surviving** — including both new fixes, and the ten from earlier
+passes re-verified at this head.
+
 **Exception pass, 2026-07-26 — maintainer-authorized, limited to two corrections:**
 
 - **`T034-R2`, second round.** The 4-byte digest is 32 bits, so a birthday collision arrives

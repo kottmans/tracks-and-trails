@@ -98,6 +98,48 @@ def test_defusing_a_reserved_name_cannot_collide_with_a_legal_neighbour(reserved
     assert sanitize_component(defused) == defused, "defusing must stay idempotent"
 
 
+@pytest.mark.parametrize("reserved", ["CON", "AUX", "NUL", "COM1", "LPT9", "\u0043\u004f\u004e"])
+@pytest.mark.parametrize("decoration", ["", " ", "  ", ".", ". ", " .", "\t"])
+def test_trailing_whitespace_cannot_smuggle_a_reserved_name_through(
+    reserved: str, decoration: str
+) -> None:
+    """Found by verification, not by review: `"CON "` came out as `"CON"`, undefused.
+
+    Windows discards trailing dots and spaces when creating a file, so `"CON "` *is* `CON` —
+    an unopenable file. The reserved check ran on the unstripped stem, missed it, and the final
+    strip then produced the bare reserved name anyway.
+
+    Every decoration of every reserved form is checked, because the bug was invisible for the
+    one spelling the suite happened to use.
+    """
+    from tracks_and_trails.core.paths import _RESERVED_NAMES
+
+    result = sanitize_component(f"{reserved}{decoration}")
+    bare = result.partition(".")[0].rstrip(". ").upper()
+    assert bare not in _RESERVED_NAMES, f"{reserved + decoration!r} sanitized to {result!r}"
+
+
+@pytest.mark.parametrize("decorated", ["CON ", "AUX  ", "COM1.", "CON .mp4", "NUL. "])
+def test_decorated_reserved_names_are_idempotent(decorated: str) -> None:
+    """The second half of the same defect.
+
+    `sanitize("CON ")` returned `"CON"` while `sanitize("CON")` returned `"CON-<hex>"`, so two
+    passes disagreed — and `T-012` sanitizes once for the `REQ-011` preview and again before
+    writing, which would have made the preview a lie.
+    """
+    once = sanitize_component(decorated)
+    assert sanitize_component(once) == once
+
+
+def test_a_reserved_name_and_its_padded_form_produce_one_path() -> None:
+    """`CON` and `CON ` are the same file on Windows, so collapsing them is correct.
+
+    Recorded deliberately: this is the one place the module *merges* two inputs rather than
+    keeping them distinct, and it is the conservative choice under the cross-platform rule.
+    """
+    assert sanitize_component("CON") == sanitize_component("CON ") == sanitize_component("CON.")
+
+
 def test_a_defused_reserved_name_keeps_its_extension() -> None:
     """The rename must not cost the extension — the `T034-R3` property, at a different seam."""
     assert sanitize_component("CON.mp4").endswith(".mp4")
@@ -225,6 +267,38 @@ def test_an_ordinary_subdirectory_is_allowed(output_dir: Path) -> None:
     assert is_contained(result, output_dir)
     assert result.parent.name == "Some Channel"
     assert result.name == "Some Video.mp4"
+
+
+@pytest.mark.parametrize(
+    ("title", "expected"),
+    [
+        ("A: The Movie.mp4", "A_ The Movie.mp4"),
+        ("E: Live at Wembley.mp4", "E_ Live at Wembley.mp4"),
+        ("C:file.mp4", "C_file.mp4"),
+        ("Artist: Song.mp4", "Artist_ Song.mp4"),
+    ],
+)
+def test_a_title_beginning_with_a_letter_and_colon_is_sanitized_not_rejected(
+    output_dir: Path, title: str, expected: str
+) -> None:
+    """Found by verification: `"A: The Movie.mp4"` was rejected outright.
+
+    A single letter plus colon parses as a Windows drive, and discarding the whole component
+    left nothing usable — so a legal title failed the download entirely. Only a component that
+    *is* a drive specifier is dropped now; one that merely begins with one is sanitized like any
+    other colon, which is what `"Artist: Song.mp4"` already got.
+    """
+    result = safe_output_path(output_dir, title)
+    assert result.name == expected
+    assert is_contained(result, output_dir)
+
+
+def test_a_real_drive_prefixed_path_still_loses_its_drive(output_dir: Path) -> None:
+    """The security half must not regress: an absolute Windows path stays contained."""
+    for candidate in ("C:\\Windows\\evil.mp4", "C:/Windows/evil.mp4"):
+        result = safe_output_path(output_dir, candidate)
+        assert result.relative_to(output_dir).parts == ("Windows", "evil.mp4")
+        assert is_contained(result, output_dir)
 
 
 @pytest.mark.parametrize("candidate", ["", "   ", "\x00", ".", "..", "../..", "/", "C:\\"])
