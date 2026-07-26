@@ -122,6 +122,14 @@ module = ["yt_dlp.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# comtypes ships no type information (T-026, dev-only, Windows-only). Two distinct failures
+# needed covering: on Linux it is absent entirely, and on Windows under `--platform win32` it
+# is installed but unstubbed. `ignore_missing_imports` covers both; disabling only
+# `import-not-found` on the importing module covered just the first.
+module = ["comtypes", "comtypes.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 # T-026's Windows-only test modules. On a Linux checkout mypy correctly proves everything after
 # their `sys.platform != "win32"` guard unreachable, then reports the Windows-only `ctypes.windll`
 # and `comtypes` as missing and their `type: ignore`s as unused. All three are artefacts of
