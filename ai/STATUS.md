@@ -71,9 +71,9 @@ Phase 0's build work and every exit-review finding are merged. **The phase still
 exited**, for one reason only: the documented criterion "the window launches from a clean
 checkout on Windows" is unmet and cannot be met here (`OPS-003`). Everything else passes.
 
-1. **Phase 1 planning** — `T-010` … `T-019` are one-line outlines. Each needs scope,
-   observable acceptance criteria, an out-of-scope list and a review base before it can move
-   to Ready. This is the next real work and it is Planner work.
+1. **`T-010`** — Ready. Domain models, job state machine and error taxonomy. `T-011` (IPC
+   contract) and `T-012` (yt-dlp in a spawned worker) are planned in full behind it;
+   `T-013`–`T-019` are still outlines awaiting the same treatment.
 2. **A Windows session** — a cloud desktop, a local VM, or a person with a Windows machine.
    It closes the last exit criterion and it blocks first release either way.
 3. **`OPS-004`** — accept or reject; it unblocks `T-026`. See the open question below.

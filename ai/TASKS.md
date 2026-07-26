@@ -12,15 +12,93 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** nothing is Ready. Phase 0 is built, reviewed, and its eight exit-review
-findings are closed — but the phase has **not exited**, because one criterion cannot be met
-without a Windows machine (`OPS-003`). The next work is **Phase 1 planning**: bringing
-`T-010`–`T-019` from outlines to Ready. `T-026` and `T-033` are Proposed; `T-026` needs a
-maintainer decision on `OPS-004` first.
+**Start here:** `T-010` — the domain models, state machine and error taxonomy that every
+other Phase 1 task imports. `T-011` and `T-012` are planned in full and become Ready as their
+dependency merges; `T-013`–`T-019` are still outlines.
+
+Phase 0 is built and reviewed, but has **not formally exited**: one criterion needs a Windows
+machine (`OPS-003`). That does not block Phase 1. `T-026` awaits a maintainer decision on
+`OPS-004`; `T-033` becomes Ready once `T-012` merges.
 
 ---
 
 ## Ready
+
+### T-010 — Domain models, job state machine, and error taxonomy
+
+**Status:** Ready
+**Owner:** Implementer
+**Priority:** High — every other Phase 1 task imports this
+**Phase:** Phase 1
+**Depends on:** `T-001`
+**Relevant context:** `ARCHITECTURE.md` §4 (layers), §5 (data ownership), §7 (error taxonomy),
+§8 (settings propagation); `REQ-005`, `REQ-012`, `REQ-015`, `REQ-018`, `REQ-028`, `NFR-006`,
+`REQ-EXCL-001`; `ai/TESTING.md` §7 (State machine)
+**Affected surfaces:** `core/models.py`, `core/job_state.py`, `core/errors.py`,
+`tests/unit/`
+**Risk:** Medium — cheap to write, expensive to change once four other modules import it
+**Review base:** `ce7cec4`
+
+#### Scope
+
+The pure-domain foundation of the vertical slice. No Qt, no yt-dlp, no I/O beyond the standard
+library — `core/` is the layer that stays testable headless and gets reused by both the GUI
+process and the spawned worker.
+
+Three modules, deliberately together because they are one design and splitting them would
+mean three reviews of the same decisions:
+
+1. **`models.py`** — `Job`, `JobStatus`, `MediaInfo`, `FormatInfo`, `Preset`,
+   `DownloadRequest`. Plain dataclasses.
+2. **`job_state.py`** — the legal-transition table and the single function that applies a
+   transition. `ai/TESTING.md` §7 requires that every illegal transition raises; this is where
+   that guarantee lives.
+3. **`errors.py`** — the `ARCHITECTURE.md` §7 taxonomy as an enum, plus a `classify()` seam.
+   The module *defines* the taxonomy and how a classified failure is carried; `T-012` supplies
+   the yt-dlp-specific mapping into it, because that is the only place that may import
+   `yt_dlp` (§6).
+
+`errors.py` is pulled forward into this task rather than left to `T-012` for two reasons: it
+is pure `core/` code, and `T-012` needs to classify from its first line, so writing it there
+would put a `core/` design decision inside a task reviewed for its yt-dlp handling.
+
+Two properties are load-bearing and easy to lose:
+
+- **Everything here crosses a process boundary** (`ARC-002`). Every type must be picklable:
+  plain dataclasses and enums, no lambdas, no open handles, no `functools.partial`.
+- **`DownloadRequest` is frozen at job-creation time** (`ARCHITECTURE.md` §8). A running job
+  never observes a mid-flight settings change, which is what makes the worker's behavior
+  reproducible from the request alone.
+
+#### Acceptance criteria
+
+- Every model round-trips through `pickle` unchanged, asserted per type — this is what makes
+  `T-011`'s IPC possible, and it fails loudly the day someone adds an unpicklable field
+- `DownloadRequest` is immutable; attempting to mutate a field raises
+- The state machine accepts every transition in the legal table and **raises on every
+  transition outside it** — asserted exhaustively over the full `JobStatus × JobStatus`
+  product, not over a sampled list, so a newly added status cannot silently acquire
+  permissive behavior
+- Adding a `JobStatus` member without adding its transitions fails the suite
+- `CANCELLED` is reachable from every non-terminal state; no state is reachable *from* a
+  terminal state
+- The taxonomy covers exactly the ten kinds in `ARCHITECTURE.md` §7 — asserted against that
+  list, so the table and the code cannot drift apart
+- A classified failure preserves the original message verbatim alongside the classification
+  (`NFR-006`); the classification is additive and never replaces the text
+- `DRM_PROTECTED` and `CANCELLED` are marked non-retryable, and `NETWORK` is the only kind
+  marked auto-retryable (`REQ-018`, `REQ-EXCL-001`)
+- The layering test still passes: no Qt, no `yt_dlp` anywhere in `core/`
+
+#### Out of scope
+
+- Any yt-dlp exception mapping — `T-012`, and it is the only place that may import `yt_dlp`
+- Persistence of any of these types — `T-014` owns the schema
+- Preset *content* and selector translation — `T-015`; this task defines the `Preset` shape
+  only
+- Retry scheduling and backoff policy — Phase 2, though the retryable flag is defined here
+
+---
 
 ## Proposed — Phase 0
 
@@ -194,16 +272,142 @@ agreement on the reduced form before implementation.
 
 ---
 
-## Proposed — Phase 1 (outline; to be expanded when Phase 0 exits)
+## Proposed — Phase 1
 
-These are placeholders so the vertical slice is visible. Each gets full scope, acceptance
-criteria, and a review base before it moves to Ready.
+### T-011 — IPC message contract
+
+**Status:** Proposed — Ready once `T-010` merges
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 1
+**Depends on:** `T-010`
+**Relevant context:** `ARCHITECTURE.md` §3 (process model), §6 (yt-dlp boundary), §7;
+`ARC-002`, `NFR-008`, `REQ-014`, `REQ-028`
+**Affected surfaces:** `downloader/protocol.py`, `tests/unit/`
+**Risk:** Medium — this is the parent/child contract; a gap here shows up as a hang, not an
+exception
+**Review base:** the `T-010` merge commit
+
+#### Scope
+
+The typed messages that cross the `multiprocessing.Queue` between the GUI process and a
+worker, and nothing else. One module, no behavior beyond construction and validation.
+
+Cover the message kinds the vertical slice needs: a probe result, progress updates carrying
+the stages `REQ-014` names (probing, downloading video, downloading audio, merging,
+post-processing), a terminal success carrying the final path and byte count, and a terminal
+failure carrying a `core.errors` classification plus the verbatim message.
+
+The rule this module exists to enforce: **a raw yt-dlp `info_dict` never crosses the
+boundary** (`ARCHITECTURE.md` §3). The dict's shape belongs to yt-dlp and changes without
+notice (`NFR-008`); the parent must only ever see declared types projected by
+`ytdlp_adapter.py`.
+
+**No protocol versioning.** Both ends ship in the same artifact and are always the same build,
+even when the user updates yt-dlp underneath (`OPS-002`) — that changes the *engine*, not the
+contract. Recording this now so nobody later adds negotiation machinery for a skew that cannot
+occur.
+
+#### Acceptance criteria
+
+- Every message type round-trips through `pickle` unchanged
+- Sending a `dict` where a declared message is expected is rejected at the seam rather than
+  silently accepted — a test constructs the wrong thing and asserts the failure
+- Progress messages carry every stage named in `REQ-014`, asserted against that list
+- A terminal failure carries both a `core.errors` kind **and** the original text; neither is
+  optional, and a message with a classification but no text fails construction (`NFR-006`)
+- Exactly one terminal message per job is representable — success and failure cannot both be
+  expressed for one job, so a partially-consumed queue cannot leave a job in two end states
+- `protocol.py` imports no Qt and no `yt_dlp`, enforced by the layering test
+- Every message type is exercised by at least one test; an unexercised type fails the suite
+
+#### Out of scope
+
+- Sending or receiving anything — `T-012` (child side) and `T-013` (parent side)
+- Queue lifetime, draining, and backpressure — `T-013`
+- Any type that only Phase 2's queue needs
+
+---
+
+### T-012 — yt-dlp in a spawned worker
+
+**Status:** Proposed — Ready once `T-011` merges
+**Owner:** Implementer
+**Priority:** High — this is where `ARC-002` stops being a design
+**Phase:** Phase 1
+**Depends on:** `T-011`
+**Relevant context:** `ARCHITECTURE.md` §3, §6, §7; `ARC-002`, `OPS-002`, `NFR-008`,
+`REQ-002`, `REQ-005`, `REQ-025`, `REQ-028`, `NFR-006`; `ai/TESTING.md` §5 (fixtures)
+**Affected surfaces:** `downloader/worker.py`, `downloader/ytdlp_adapter.py`,
+`tests/unit/`, `tests/integration/`, `tests/fixtures/infodicts/`
+**Risk:** **High** — the first code to run in a spawned process, the only code that may import
+`yt_dlp`, and the seam every future upstream change lands on
+**Review base:** the `T-011` merge commit
+
+#### Scope
+
+Two modules, and they are the **only** two in the project permitted to `import yt_dlp`
+(`ARCHITECTURE.md` §6, enforced by `T-005`'s layering test):
+
+1. **`ytdlp_adapter.py`** — builds the yt-dlp options dict from a `DownloadRequest`, projects
+   `info_dict` into `MediaInfo`/`FormatInfo`, and maps yt-dlp exceptions onto the `core.errors`
+   taxonomy. Pure translation: no process handling, no I/O of its own.
+2. **`worker.py`** — the child-process entry point. Import-safe under `spawn` (no side effects
+   at import time), resolves yt-dlp per `OPS-002`, runs one probe or one download, converts
+   `progress_hooks` and `postprocessor_hooks` into `T-011` messages, and exits.
+
+Neither may import Qt: the worker runs with no display and must inherit no Qt (`ARC-002`).
+
+**Fixtures.** `T-018` broadens fixture coverage, but this task cannot be tested without at
+least one recorded `info_dict`, so it captures the first ones itself — recording the yt-dlp
+version and capture date alongside each, per `ai/TESTING.md` §5. Adapter projection is tested
+against recorded fixtures, never against the live network.
+
+**`T-033` stays separate, deliberately.** This task makes the worker import `yt_dlp` from
+source; `T-033` makes the *frozen artifact* actually contain it. Folding them together would
+mean one review covering both a domain seam and a packaging change, and would let a green
+source-mode suite imply a working release. `T-012` therefore claims nothing about the frozen
+build, and `T-033` becomes Ready the moment this merges.
+
+#### Acceptance criteria
+
+- A probe of a recorded fixture yields a `MediaInfo` with title, uploader, duration and
+  format list, asserted field by field
+- Every taxonomy kind in `ARCHITECTURE.md` §7 that yt-dlp can raise has a mapping, asserted
+  against the §7 table; an unmapped exception classifies as the explicit unknown case rather
+  than crashing the worker
+- The extractor's own message survives classification verbatim (`REQ-005`, `NFR-006`) —
+  asserted by string equality against the fixture, not by substring
+- **`DRM_PROTECTED` is never retried and has no bypass path** (`REQ-EXCL-001`, `SEC-001`);
+  a test asserts no retry is attempted and no alternative extraction is tried
+- The worker runs headless: a test spawns it with no display and it completes (`ARC-002`)
+- The worker module imports cleanly under `spawn` with no side effects — asserted by importing
+  it in a fresh interpreter and observing no work performed
+- A worker killed mid-run produces `WORKER_CRASH` at the parent with the exit code logged, and
+  no orphan survives (`REQ-028`)
+- yt-dlp's resolved version is reported through a message (`REQ-025`), so a bug report can
+  state which engine actually ran
+- Changing a projected `info_dict` key in a fixture fails the projection test — the fixture is
+  a contract, not a sample
+- The layering test still passes, and `yt_dlp` appears in exactly these two modules
+
+#### Out of scope
+
+- The process pool, scheduling, and Qt signals — `T-013`
+- Bundling yt-dlp into the frozen artifact — `T-033`
+- Broadening fixture coverage across sites — `T-018`
+- Cancellation and crash *integration* tests — `T-019`; this task covers the worker side, and
+  the 2-second cancellation criterion is measured there
+- The in-app yt-dlp updater — Phase 4; this task only *resolves* what `OPS-002` describes
+
+---
+
+`T-010` … `T-012` are planned in full below. `T-013` … `T-019` are still placeholders so the
+vertical slice stays visible; each gets scope, acceptance criteria and a review base before it
+moves to Ready.
 
 | ID | Title | Depends on |
 |---|---|---|
-| T-010 | `core/models.py` + `core/job_state.py` — domain models and state machine | T-001 |
-| T-011 | `downloader/protocol.py` — IPC message contract | T-010 |
-| T-012 | `downloader/worker.py` + `ytdlp_adapter.py` — yt-dlp in a spawned worker | T-011 |
 | T-013 | `downloader/manager.py` + `result_pump.py` — pool of one, progress to Qt signals | T-012 |
 | T-014 | `persistence/` — schema, migration runner, `JobRepository` | T-010 |
 | T-015 | Built-in presets and preset → yt-dlp options translation | T-010 |
