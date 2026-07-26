@@ -12,8 +12,9 @@
 
 ---
 
-**Current phase:** Phase 0 — Foundation
-**Overall state:** Skeleton in place and green; no application behavior yet
+**Current phase:** Phase 0 — Foundation, at its exit
+**Overall state:** Every Phase 0 deliverable is built and green on both platforms. One exit
+criterion is unmet and cannot be met here: launching the window on Windows (`OPS-003`).
 
 ## Completed
 
@@ -38,6 +39,10 @@
 - **`T-005` + `T-024` complete** — layering enforcement test, squash-merged as `88b810f`.
   The analyser is guarded against being weakened, verified by eight distinct weakenings. Two
   review rounds; the second re-review was waived by the maintainer.
+- **`T-007` complete** — the application shell window, merged as `ef12f02`. Opens with the
+  icon and title, File → Quit and Help → About, geometry across restarts, clean exit. Cold
+  start 0.178 s median against `NFR-002`'s 3 s. **Merged without any independent review** at
+  the maintainer's direction — not a waived re-review, no first pass; recorded in its task.
 - **Windows is no longer entirely unverified.** `T-006`'s runners confirmed, with downloadable
   artifact evidence: Python 3.14.6 (MSC v.1944, AMD64), PySide6/shiboken6/Qt 6.11.1, a
   `QWidget` visible offscreen, and the full 27-test suite passing. This discharges the Windows
@@ -48,13 +53,20 @@
 
 ## In progress
 
-- **`T-007`** — In Review on branch `t-007-shell`. The application shell window: it opens,
-  carries the icon, remembers its geometry and exits cleanly. Awaiting Codex.
+- **`T-020`** — In Review (PR #4). Frozen-build smoke test; all four CI jobs green on both
+  platforms.
+- **`T-025`** — In Review (stacked on #4). Phase 0 exit preparation: `docs/DEVELOPMENT.md`
+  corrected, clean-checkout verification re-run.
 
 ## Next
 
-1. **`T-007`** — application shell window. The only Ready task, and the first that produces
-   something visible. It consumes the `T-003` icon set.
+Phase 0's build work is done. What remains is not implementation:
+
+1. **Merge `T-020` and `T-025`**, then the **Phase 0 exit review** — the first full review of
+   the phase (`ai/REVIEWS.md`). Worth doing rather than waiving: `T-007` reached `main` with
+   no independent review at all.
+2. **Phase 1** — `T-010` … `T-019` are outlines and need full scope, acceptance criteria and
+   review bases before any moves to Ready. That is Planner work.
 
 Then `T-020` (frozen smoke test), which needs `T-007` — its `T-006` dependency is met.
 
