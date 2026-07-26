@@ -43,6 +43,9 @@ criterion is unmet and cannot be met here: launching the window on Windows (`OPS
   icon and title, File → Quit and Help → About, geometry across restarts, clean exit. Cold
   start 0.178 s median against `NFR-002`'s 3 s. **Merged without any independent review** at
   the maintainer's direction — not a waived re-review, no first pass; recorded in its task.
+- **`T-020` + `T-025` complete** — frozen-build smoke test and the Phase 0 exit preparation,
+  merged as `4d6ad3c`. A frozen artifact spawns a child without relaunching itself on both
+  platforms; the clean-checkout verification passes on Linux.
 - **Windows is no longer entirely unverified.** `T-006`'s runners confirmed, with downloadable
   artifact evidence: Python 3.14.6 (MSC v.1944, AMD64), PySide6/shiboken6/Qt 6.11.1, a
   `QWidget` visible offscreen, and the full 27-test suite passing. This discharges the Windows
@@ -53,10 +56,7 @@ criterion is unmet and cannot be met here: launching the window on Windows (`OPS
 
 ## In progress
 
-- **`T-020`** — In Review (PR #4). Frozen-build smoke test; all four CI jobs green on both
-  platforms.
-- **`T-025`** — In Review (stacked on #4). Phase 0 exit preparation: `docs/DEVELOPMENT.md`
-  corrected, clean-checkout verification re-run.
+*(nothing active — all branches merged and deleted; `main` is the only branch)*
 
 ## Next
 
