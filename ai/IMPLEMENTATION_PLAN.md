@@ -5,8 +5,8 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-25
-**Last reviewed:** 2026-07-25
+**Last updated:** 2026-07-26
+**Last reviewed:** 2026-07-26
 **Update when:** Phase scope, delivery order, dependencies, or exit criteria change.
 **Does not contain:** Individual coding tasks (`TASKS.md`), progress (`STATUS.md`).
 
@@ -73,21 +73,28 @@ Prove `ARC-002`.
 
 **Prerequisites:** Phase 0's **deliverables** complete, merged, and reviewed.
 
-> **Amended 2026-07-25, and it needs the maintainer's confirmation.** This previously read
-> "Phase 0 complete", which `ai/TASKS.md` then contradicted by treating `T-010` as startable.
-> This document outranks `TASKS.md` (`AGENTS.md` §5), so the plan was right and the task file
-> was wrong.
+> **Amended 2026-07-25; rationale revised 2026-07-26. Still needs the maintainer's
+> confirmation.** This previously read "Phase 0 complete", which `ai/TASKS.md` then
+> contradicted by treating `T-010` as startable. This document outranks `TASKS.md`
+> (`AGENTS.md` §5), so the plan was right and the task file was wrong.
 >
-> The distinction now drawn is between Phase 0's *deliverables*, which are all built, merged
-> and reviewed, and its *exit criteria*, one of which — "the window launches from a clean
-> checkout on **Windows**" — cannot be met without hardware nobody has (`OPS-003`). Reading
-> the original wording strictly would block every subsequent phase indefinitely on an
-> environmental constraint, which is plainly not what it was for.
+> The distinction drawn is between Phase 0's *deliverables*, which are all built, merged and
+> reviewed, and its *exit criteria*, one of which — "the window launches from a clean checkout
+> on **Windows**" — has not yet been checked.
+>
+> **The original rationale for this amendment no longer holds, and the amendment survives it.**
+> It argued that the Windows criterion "cannot be met without hardware nobody has", so a strict
+> reading would block every subsequent phase indefinitely on an environmental constraint.
+> `OPS-004` (accepted 2026-07-26) disproved the premise: the CI runner has a real Windows
+> desktop, and `T-026` — now Ready — closes the criterion without any new hardware. So the gap
+> is short and owned, not indefinite. The amendment is still worth keeping, because `T-026` and
+> `T-010` are independent work and there is no reason to serialize them; but it is now a
+> convenience, not a rescue from a permanent blocker.
 >
 > **What this does not do:** the Windows launch criterion is not waived. It still blocks
-> Phase 0's formal exit and the first public release (`ai/TESTING.md` §9), and it is still
-> recorded as unmet. This change lets implementation proceed; it does not declare the phase
-> exited.
+> Phase 0's formal exit, and it is still recorded as unmet. This change lets implementation
+> proceed; it does not declare the phase exited. Once `T-026` lands green, Phase 0 exits and
+> this amendment becomes moot — at which point it should be reduced back to "Phase 0 complete".
 
 ### Deliverables
 
@@ -198,9 +205,11 @@ one-button downloader.
 ### Exit criteria
 
 - Every function is reachable by keyboard alone, verified end to end **on Linux**
-- A screen reader announces every control meaningfully **on Linux (Orca)**. The Narrator
-  equivalent is deferred to the pre-release Windows session (`OPS-003`) and recorded as
-  unverified until then — this phase may exit with that gap named, but not hidden.
+- A screen reader announces every control meaningfully **on Linux (Orca)**. On Windows this
+  splits per `OPS-004`: that the UI Automation tree exposes a correct name and role for every
+  control is automated by `T-026`; whether Narrator's announcements are *coherent* is
+  subjective, stays with the pre-release Windows session, and is recorded as unverified until
+  then — this phase may exit with that gap named, but not hidden.
 - No information is conveyed by color alone
 - Logs contain no cookie contents, cookie paths, proxy credentials, or token-like query
   parameters — verified by an automated redaction test (`NFR-007`)
@@ -232,10 +241,14 @@ the first build.
 
 - A clean Windows 10/11 machine with no Python installs and runs the app successfully
 - A clean Linux machine installs and runs it successfully
+- Installer behavior is verified on the runner by `T-039` — silent install, file and shortcut
+  placement, launch, uninstall and removal (`OPS-004`)
 - **The Windows manual verification session is complete** and recorded in `REVIEWS.md`
-  (`OPS-003`, `ai/TESTING.md` §8 item 15). This requires access to a real Windows desktop and
-  is the one Phase 5 item that cannot be satisfied from the current development environment —
-  arrange it before the phase starts, not at its end.
+  (`ai/TESTING.md` §8 item 15). `OPS-004` shrank this to the subjective residue — whether the
+  rendering *looks* right, whether Narrator *sounds* coherent, whether the installer *feels*
+  normal, shell foreground and file-association behavior, and long-running stability. It still
+  requires a real Windows desktop and is still the one Phase 5 item that cannot be satisfied
+  from the current development environment — arrange it before the phase starts, not at its end.
 - Qt is dynamically linked in every artifact (`NFR-009`)
 - The full test suite and the release gate pass on both platforms
 - Cold start under 3 seconds on the reference machine (`NFR-002`)
@@ -258,7 +271,7 @@ being added here first.
 | ~~PySide6 has no wheel for Python 3.14~~ | 0 | **Closed** by `T-002` — `abi3` wheels serve all Python ≥3.10 |
 | `ARC-002` process model proves unworkable | 1 | Vertical slice first; failure is cheap and early |
 | Windows `spawn` behaves differently than Linux | 1 | `spawn` everywhere from the start; CI on both from Phase 0 |
-| No Windows machine exists — CI is the only Windows environment | all | `OPS-003`: maximize what CI asserts, name what it cannot, discharge in one pre-release session |
+| No Windows machine exists — CI is the only Windows environment | all | `OPS-004` narrowed this: the runner is a real desktop, so `T-026`/`T-039` automate the objective half. Name what CI cannot assert and discharge that subjective residue in one pre-release session |
 | yt-dlp changes option or `info_dict` shape | ongoing | Churn confined to two modules (`NFR-008`); fixtures pin the contract |
 | Format-selection UI becomes unusably complex | 3 | Presets are the default path; the table is progressive disclosure |
 | Windows packaging of a Qt app proves painful | 5 | Prototype the build in Phase 0 CI (`T-020`), not first at Phase 5 |

@@ -16,9 +16,11 @@ IDs are never reused. Completed tasks move to `ai/archive/` once they bury the l
 other Phase 1 task imports. `T-011` and `T-012` are planned in full and become Ready as their
 dependency merges; `T-013`–`T-019` and `T-034` are planned in full behind them.
 
-Phase 0 is built and reviewed, but has **not formally exited**: one criterion needs a Windows
-machine (`OPS-003`). That does not block Phase 1. `T-026` awaits a maintainer decision on
-`OPS-004`; `T-033` becomes Ready once `T-012` merges.
+Phase 0 is built and reviewed, but has **not formally exited**: the Windows launch criterion
+has not been checked. It does **not** need a Windows machine — `OPS-004` (accepted 2026-07-26)
+established that the CI runner has a real desktop — it needs `T-026`, which is now Ready and is
+the other place to start. That does not block Phase 1. `T-033` becomes Ready once `T-012`
+merges; `T-039` waits for a Phase 5 installer.
 
 ---
 
@@ -104,6 +106,82 @@ Two properties are load-bearing and easy to lose:
 
 ---
 
+### T-026 — Verify Windows behavior against the runner's real desktop
+
+**Status:** Ready — `OPS-004` accepted 2026-07-26
+**Owner:** Implementer
+**Priority:** High — this is what closes Phase 0's last exit criterion
+**Phase:** Phase 0 follow-up; must land before the first public release
+**Depends on:** `T-006`, `T-007`, `OPS-004`
+**Relevant context:** `OPS-004`, `OPS-003` (superseded classification), `NFR-005`,
+`ai/TESTING.md` §9, `REQUIREMENTS.md` §3
+**Affected surfaces:** `.github/workflows/ci.yml`, `tests/ui/`, `ai/TESTING.md`,
+`REQUIREMENTS.md` §3
+**Risk:** Medium — it converts release-blocking manual work into automation, so a weak
+implementation would retire a gate without replacing it
+
+#### Scope
+
+`OPS-003` assumed a CI runner has no desktop and wrote off most Windows verification as
+human-only. A spike disproved that: `windows-latest` reports `platformName == 'windows'`,
+a 1024×768 display, a native `HWND` whose title the Win32 API reads back, and captures
+screenshots with native font rendering.
+
+Move the objective half of Windows verification into CI:
+
+1. **Real-plugin rendering.** Run the UI suite on Windows without `QT_QPA_PLATFORM=offscreen`
+   as well as with it, and retain screenshots of each key window as artifacts.
+2. **Focus and keyboard.** Assert tab order and focus chain through synthetic key events on a
+   real window, not an offscreen one.
+3. **Accessibility tree.** Assert every control's name and role as exposed to UI Automation —
+   what a screen reader reads (`NFR-005`). Needs a dev-only dependency such as `comtypes`.
+
+The fourth item `OPS-004` reclassified — installer behavior — is **`T-039`**, not this task.
+An installer only exists in Phase 5, and this task must be completable now because it is what
+closes Phase 0's remaining exit criterion.
+
+#### Acceptance criteria
+
+- The Windows job runs the UI suite under the real `windows` platform plugin and uploads a
+  screenshot of every key window. **A screenshot is retained evidence, not a gate**: it is
+  uploaded for a human to look at and does not turn the build red on its own. Any claim that
+  a broken layout "fails" must be backed by a separate objective assertion — a widget's
+  geometry, visibility, or size — not by the image (`T031-R2`).
+- Tab order and focus chain are asserted on Windows, and reordering two widgets fails the test
+- Every interactive control exposes a non-empty accessible name and a correct role through UI
+  Automation; removing a label fails the test
+- `ai/TESTING.md` §9's manual Windows list is rewritten to only what remains subjective **plus
+  installer behavior**, which stays manual until `T-039` lands; `REQUIREMENTS.md` §3's
+  "known-unverified" wording is narrowed to match — **each item moved only once its replacement
+  automation has landed and is green**, never on the strength of this task's intent
+- Native file dialogs, reveal-in-file-manager and open-file behavior are handled per
+  `OPS-004`'s split: the request, path handling and shell verb are asserted; foreground and
+  file-association behavior stay on the manual list
+- Both the offscreen and real-plugin runs stay green, and the added time is recorded against
+  `T-006`'s budget
+
+#### Out of scope
+
+- Pixel-perfect screenshot diffing — retain screenshots as evidence first; baselines are a
+  separate decision, and a brittle image gate is worse than none
+- The subjective residue in `OPS-004`: whether rendering looks right, whether Narrator sounds
+  coherent, installer feel, long-running stability. Those still need a person and still block
+  first release
+- Installer verification — `T-039`, once Phase 5 produces an installer
+- Buying or renting a cloud Windows desktop — complementary, not part of this
+
+**Note:** this is the rare task that *reduces* release-blocking manual work. The risk is doing
+it shallowly: a screenshot nobody looks at and an accessibility assertion that passes on an
+empty tree would retire a real gate and replace it with theatre.
+
+The criteria are therefore of two kinds, and conflating them is exactly the failure mode
+(`P0-R7`). **Gates** — focus order, accessibility names and roles — are each stated as a
+mutation that must turn the suite red, and only those may retire a manual item. **Retained
+evidence** — the screenshots — is uploaded for a human to look at and fails nothing on its
+own; it supports a judgement rather than replacing one.
+
+---
+
 ## Proposed — Phase 0
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -160,79 +238,6 @@ Collect the package explicitly in the spec, and prove it from inside the artifac
 **Note:** `ai/TESTING.md` §8's release gate re-checks that yt-dlp is still pure Python. This
 task is the other half — that the pure-Python package actually *ships*. Purity without
 inclusion still yields an application that cannot download anything.
-
----
-
-### T-026 — Verify Windows behavior against the runner's real desktop
-
-**Status:** Proposed — blocked on `OPS-004` being accepted
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 0 follow-up; must land before the first public release
-**Depends on:** `T-006`, `T-007`, `OPS-004`
-**Relevant context:** `OPS-004`, `OPS-003` (superseded classification), `NFR-005`,
-`ai/TESTING.md` §9, `REQUIREMENTS.md` §3
-**Affected surfaces:** `.github/workflows/ci.yml`, `tests/ui/`, `ai/TESTING.md`,
-`REQUIREMENTS.md` §3
-**Risk:** Medium — it converts release-blocking manual work into automation, so a weak
-implementation would retire a gate without replacing it
-
-#### Scope
-
-`OPS-003` assumed a CI runner has no desktop and wrote off most Windows verification as
-human-only. A spike disproved that: `windows-latest` reports `platformName == 'windows'`,
-a 1024×768 display, a native `HWND` whose title the Win32 API reads back, and captures
-screenshots with native font rendering.
-
-Move the objective half of Windows verification into CI:
-
-1. **Real-plugin rendering.** Run the UI suite on Windows without `QT_QPA_PLATFORM=offscreen`
-   as well as with it, and retain screenshots of each key window as artifacts.
-2. **Focus and keyboard.** Assert tab order and focus chain through synthetic key events on a
-   real window, not an offscreen one.
-3. **Accessibility tree.** Assert every control's name and role as exposed to UI Automation —
-   what a screen reader reads (`NFR-005`). Needs a dev-only dependency such as `comtypes`.
-4. **Installer**, once one exists (Phase 5): silent install, files, shortcuts, uninstall,
-   removal — on a runner, which is a genuinely clean machine.
-
-#### Acceptance criteria
-
-- The Windows job runs the UI suite under the real `windows` platform plugin and uploads a
-  screenshot of every key window. **A screenshot is retained evidence, not a gate**: it is
-  uploaded for a human to look at and does not turn the build red on its own. Any claim that
-  a broken layout "fails" must be backed by a separate objective assertion — a widget's
-  geometry, visibility, or size — not by the image (`T031-R2`).
-- Tab order and focus chain are asserted on Windows, and reordering two widgets fails the test
-- Every interactive control exposes a non-empty accessible name and a correct role through UI
-  Automation; removing a label fails the test
-- `ai/TESTING.md` §9's manual Windows list is rewritten to only what remains subjective, and
-  `REQUIREMENTS.md` §3's "known-unverified" wording is narrowed to match — **each item moved
-  only once its replacement automation has landed and is green**, never on the strength of
-  this task's intent
-- Native file dialogs, reveal-in-file-manager and open-file behavior are handled per
-  `OPS-004`'s split: the request, path handling and shell verb are asserted; foreground and
-  file-association behavior stay on the manual list
-- Both the offscreen and real-plugin runs stay green, and the added time is recorded against
-  `T-006`'s budget
-
-#### Out of scope
-
-- Pixel-perfect screenshot diffing — retain screenshots as evidence first; baselines are a
-  separate decision, and a brittle image gate is worse than none
-- The subjective residue in `OPS-004`: whether rendering looks right, whether Narrator sounds
-  coherent, installer feel, long-running stability. Those still need a person and still block
-  first release
-- Buying or renting a cloud Windows desktop — complementary, not part of this
-
-**Note:** this is the rare task that *reduces* release-blocking manual work. The risk is doing
-it shallowly: a screenshot nobody looks at and an accessibility assertion that passes on an
-empty tree would retire a real gate and replace it with theatre.
-
-The criteria are therefore of two kinds, and conflating them is exactly the failure mode
-(`P0-R7`). **Gates** — focus order, accessibility names and roles, installer placement — are
-each stated as a mutation that must turn the suite red, and only those may retire a manual
-item. **Retained evidence** — the screenshots — is uploaded for a human to look at and fails
-nothing on its own; it supports a judgement rather than replacing one.
 
 ---
 
@@ -1183,7 +1188,60 @@ survives; and no orphan outlives the test session.
 
 ## Blocked
 
-*(none)*
+### T-039 — Verify Windows installer behavior on the runner
+
+**Status:** Proposed — blocked until Phase 5 produces an installer
+**Owner:** Implementer
+**Priority:** Medium now, High once Phase 5 starts — it must land before the first public release
+**Phase:** Phase 5
+**Depends on:** the Phase 5 installer, `T-026` (establishes the real-plugin Windows job)
+**Relevant context:** `OPS-004`, `REL-001`, `ai/TESTING.md` §9, `REQUIREMENTS.md` §3
+**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md` §9, `REQUIREMENTS.md` §3
+**Risk:** Medium — same failure mode as `T-026`: a shallow check would retire a
+release-blocking manual item without replacing it
+
+#### Scope
+
+Split out of `T-026` when `OPS-004` was accepted on 2026-07-26. `OPS-004` reclassified four
+things as automatable on the Windows runner; three of them `T-026` does now, but installer
+verification cannot be written before an installer exists, and `T-026` had to stay completable
+because it is what closes Phase 0's last exit criterion.
+
+A CI runner is a genuinely clean machine, which is what makes this worth automating at all:
+installing onto a box that has never held the application is exactly the case a developer
+machine cannot reproduce.
+
+Assert, on `windows-latest`:
+
+1. **Silent install** completes with a success exit code and no interactive prompt.
+2. **File and shortcut placement** — the installed tree, the Start Menu entry, and any
+   registered association land where the installer claims.
+3. **The installed application launches** under the real `windows` platform plugin, reusing
+   `T-026`'s harness rather than a second one.
+4. **Uninstall and removal** — the uninstaller exits clean and leaves nothing behind except
+   what is deliberately preserved (user settings and the job database, per `DAT-001`).
+
+#### Acceptance criteria
+
+- Each of the four is a **gate**, stated as a mutation that turns the suite red: a missing
+  shortcut, a file placed outside the install root, a non-zero silent-install exit code, and a
+  leftover file after uninstall each fail the job. Screenshots, if any, stay retained evidence
+  and fail nothing on their own (`T031-R2`, `P0-R7`)
+- Uninstall leaving user data behind is asserted as **intended** behavior, not tolerated as a
+  leftover — the test distinguishes the two
+- `ai/TESTING.md` §9's manual list drops installer placement and removal, and
+  `REQUIREMENTS.md` §3 narrows to match — **only once this job is landed and green**
+- The added CI time is recorded against `T-006`'s budget
+
+#### Out of scope
+
+- Whether the installer *feels* normal — `OPS-004`'s subjective residue, still human, still
+  blocks first release
+- Upgrade-over-existing-install and downgrade paths — real, but a separate task once the
+  versioning story exists
+- Any non-Windows packaging
+
+---
 
 ## In Review
 

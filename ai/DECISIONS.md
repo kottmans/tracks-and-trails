@@ -405,7 +405,7 @@ distributing a Python desktop application and the only one that meets the requir
 
 ## OPS-004 — Windows CI runners provide a real desktop; verify against it
 
-**Status:** Proposed — needs maintainer acceptance
+**Status:** **Accepted** (2026-07-26) — accepted as proposed, without amendment
 **Date:** 2026-07-25
 **Supersedes:** the automatable / not-automatable classification in `OPS-003`
 
@@ -487,7 +487,9 @@ no other coverage.
 
 ### Consequences
 
-- `T-026` implements the expanded verification.
+- `T-026` implements the expanded verification, less the installer half. On acceptance that
+  half was split into `T-039`, because an installer only exists in Phase 5 and `T-026` is what
+  closes Phase 0's remaining exit criterion — it has to be completable now.
 - The pre-release manual Windows session (`ai/TESTING.md` §9) shrinks to the subjective list
   above, and should be rewritten when `T-026` lands.
 - `REQUIREMENTS.md` §3's "known-unverified" wording for Windows becomes too broad once the

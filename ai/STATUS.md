@@ -5,17 +5,20 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-25
-**Last verified against repository:** 2026-07-25
+**Last updated:** 2026-07-26
+**Last verified against repository:** 2026-07-26
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
 ---
 
 **Current phase:** Phase 0 — Foundation, **exit blocked**
-**Overall state:** Every deliverable is built and green on both platforms, but the exit review
-requested changes (`T-027` … `T-032`), and the documented Windows launch criterion remains
-unmet and unmeetable here (`OPS-003`).
+**Overall state:** Every deliverable is built and green on both platforms, and all eight exit-review
+findings are closed (`T-027` … `T-032`). One exit criterion is still unmet: "the window launches
+from a clean checkout on Windows". It is **not** unmeetable — the `OPS-004` spike showed the
+Windows runner has a real desktop — but the merged CI job forces `QT_QPA_PLATFORM=offscreen`, so
+nothing has yet checked it. `T-026` closes it, and is **Ready** since `OPS-004` was accepted on
+2026-07-26.
 
 ## Completed
 
@@ -57,7 +60,10 @@ unmet and unmeetable here (`OPS-003`).
   artifact evidence: Python 3.14.6 (MSC v.1944, AMD64), PySide6/shiboken6/Qt 6.11.1, a
   `QWidget` visible offscreen, and the full 27-test suite passing. This discharges the Windows
   carries from `T-002` and `T-003`. The `OPS-003` interactive gaps (screen reader, native
-  dialogs, keyboard, theming, installer) remain untouched and still block first release.
+  dialogs, keyboard, theming, installer) remain untouched. They no longer all need a person:
+  `OPS-004` splits them into an objective half CI can assert (`T-026`) and a subjective
+  residue — whether it *looks* right, whether Narrator *sounds* coherent, installer feel,
+  shell foreground behavior, long-running stability — which is what still blocks first release.
 - Verified 2026-07-25 that yt-dlp 2026.06.09 is pure Python (1046 `.py`, no compiled
   extensions), which is what makes the `OPS-002` pip-free updater viable
 
@@ -69,17 +75,31 @@ unmet and unmeetable here (`OPS-003`).
 
 Phase 0's build work and every exit-review finding are merged. **The phase still has not
 exited**, for one reason only: the documented criterion "the window launches from a clean
-checkout on Windows" is unmet and cannot be met here (`OPS-003`). Everything else passes.
+checkout on Windows" has not been checked. Everything else passes.
 
-1. **`T-010`** — Ready, and the only one that is. Phase 1 is **15 tasks** after an informal
-   plan critique found six further gaps: application composition (`T-036`), proof that a
-   download ever *succeeds* (`T-037`), and logging with redaction (`T-038`) were all unowned,
-   and `T-034`/`T-035` had to be rewritten because they violated the layering rule as
-   originally written. All of Phase 1 is now planned in full:
+That criterion is reachable in CI, contrary to what this file said before 2026-07-26. Today's
+Windows job sets `QT_QPA_PLATFORM=offscreen` for the whole workflow and `qt_baseline.py`
+*asserts* the offscreen plugin, so CI proves PySide6 imports and builds a `QWidget` headlessly
+and never touches a desktop. The `OPS-004` spike ran without that override on `windows-latest`
+and got the real `windows` plugin, a 1024×768 display, a native `HWND` whose title the Win32
+API reads back as `Tracks & Trails`, and a screenshot with native font rendering. The runner
+has a desktop; nothing is wired to use it yet.
 
-2. **A Windows session** — a cloud desktop, a local VM, or a person with a Windows machine.
-   It closes the last exit criterion and it blocks first release either way.
-3. **`OPS-004`** — accept or reject; it unblocks `T-026`. See the open question below.
+Two tasks are Ready, and they are independent — `T-010` moves Phase 1 forward, `T-026` closes
+Phase 0.
+
+1. **`T-010`** — the Phase 1 entry point; every other Phase 1 task imports it. Phase 1 is
+   **15 tasks** after an informal plan critique found six further gaps: application composition
+   (`T-036`), proof that a download ever *succeeds* (`T-037`), and logging with redaction
+   (`T-038`) were all unowned, and `T-034`/`T-035` had to be rewritten because they violated
+   the layering rule as originally written. All of Phase 1 is now planned in full.
+
+2. **`T-026`** — now Ready, and the second of the two. `OPS-004` was accepted on 2026-07-26, so
+   the real-plugin Windows job, focus-order gates and UI Automation assertions are unblocked.
+   This is what closes Phase 0's last exit criterion.
+3. **A human Windows session** — a cloud desktop, a local VM, or a person with a machine. Now
+   scoped to `OPS-004`'s subjective residue only. It blocks **first release**; it does **not**
+   block Phase 0's exit, which `T-026` can close on its own.
 
 ## Known gaps not yet scheduled
 
@@ -106,11 +126,8 @@ checkout on Windows" is unmet and cannot be met here (`OPS-003`). Everything els
   one of which needs a Windows machine. The Windows criterion is **not** waived; it still
   blocks Phase 0's formal exit and first release.
 
-- **`OPS-004` needs accepting or rejecting.** A spike showed `OPS-003`'s "not automatable on
-  Windows" list was written on a false assumption: the CI runner has a real desktop
-  (`platformName == 'windows'`, a native `HWND`, working screenshots). `OPS-003`'s core
-  decision stands; its classification does not. `T-026` implements the correction and is
-  blocked until this is decided.
+*(`OPS-004` was accepted on 2026-07-26 and is no longer open. Its installer half became
+`T-039`, blocked until Phase 5 produces an installer.)*
 
 ## Blockers
 
@@ -141,14 +158,14 @@ Development machine, verified 2026-07-25:
 | ffmpeg | present |
 | git | branch `main` tracking `origin/main`; CI green on every push and PR (`T-006`) |
 | Repository path | `/mnt/storage/software_projects/tracks-and-trails` |
-| Windows environment | **CI runners only** — no Windows machine or VM is available (`OPS-003`) |
+| Windows environment | **CI runners only** — no local Windows machine or VM. The runner is a real desktop, not a bare headless box (`OPS-004`), though CI currently forces `QT_QPA_PLATFORM=offscreen` and so does not use it |
 
 ## Current risks
 
 | Risk | Impact | Standing |
 |---|---|---|
 | ~~PySide6 may lack Python 3.14 wheels~~ | — | **Closed** by `T-002`: PySide6 ships `abi3` wheels serving all Python ≥3.10 |
-| No Windows machine — CI only | Interactive Windows behavior (screen reader, dialogs, keyboard, theming, installer) is **known-unverified**, not merely untested | `OPS-003`: push everything automatable into `T-006`/`T-020`; one real Windows session blocks first public release |
+| No Windows machine — CI only | Interactive Windows behavior (screen reader, dialogs, keyboard, theming, installer) is **known-unverified**, not merely untested | Narrowed by `OPS-004`: the runner has a real desktop, so the objective half is automatable and `T-026` owns it. Only the subjective residue needs a person, and that still blocks first public release |
 | `ARC-002` process model is unproven | It is the project's central architectural bet | **Mechanics validated on Linux** by a `T-002` probe (spawn under a live `QApplication`, structured progress over `mp.Queue`, instant terminate with no orphan). Phase 1 still proves it under a real download. |
 | `ARC-002` may break once frozen — `spawn` from a frozen binary relaunches the app | Recursive launch; invisible until Phase 5 without a guard | `freeze_support()` + `T-020` frozen smoke test in Phase 0 CI |
 | yt-dlp upstream churn | Ongoing maintenance cost | Confined to two modules (`NFR-008`); pinned fixtures |
