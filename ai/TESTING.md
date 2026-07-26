@@ -35,7 +35,7 @@ Three things drive the test strategy, and they come straight from the architectu
 | Type | Location | Runs by default | What it covers |
 |---|---|---|---|
 | Unit | `tests/unit/` | yes | `core/` domain logic, state machine, presets, path rendering, error classification, `ytdlp_adapter` projection against recorded fixtures, persistence repositories against a temp DB |
-| Layering | `tests/unit/test_layering.py` | yes | The import rules in `ARCHITECTURE.md` §4 |
+| Layering | `tests/unit/test_layering.py` | yes | The import rules in `ARCHITECTURE.md` §4 **and** §6, by static `ast` analysis: no Qt in `core/` or `downloader/worker.py`, no `yt_dlp` in `ui/`, and no `yt_dlp` anywhere but `worker.py` and `ytdlp_adapter.py` (`T-005`) |
 | Resources | `tests/unit/test_resources.py`, `tests/ui/test_resources.py` | yes | Shipped asset invariants: the icon PNGs exist at their declared dimensions, `icon.ico` declares and exposes its full frame set, and every asset loads through `QIcon` (`T-022`) |
 | UI | `tests/ui/` | yes (offscreen) | Widget behavior, signal wiring, keyboard navigation, accessible names — via `pytest-qt` with `QT_QPA_PLATFORM=offscreen` |
 | Integration | `tests/integration/` | yes | Real child processes and real IPC, with yt-dlp faked at the adapter seam: progress delivery, cancellation, worker-crash handling, migrations, crash recovery |
@@ -208,9 +208,10 @@ Coverage is a signal, not a target — no build fails on a percentage. Expectati
 
 Tracked honestly; each should become a task or be accepted deliberately.
 
-- **The suite is essentially empty.** `T-001` established the toolchain and structural checks
-  only. Nothing in §7 is covered yet; those arrive with the phases that introduce the
-  behavior.
+- **The suite is nearly empty.** `T-001` established the toolchain and structural checks;
+  `T-022` added asset invariants and `T-005` the layering guard. Of §7's ten mandatory areas
+  exactly **one** — Layering — is covered. The other nine arrive with the phases that
+  introduce the behavior they guard, and none of them are covered by anything today.
 - **Windows has automated coverage only** (`OPS-003`). Screen readers, native dialogs, real
   keyboard interaction, theming, and installer UX are unverified there. Discharged by the
   pre-release session in §8 item 15.
