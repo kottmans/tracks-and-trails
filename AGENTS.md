@@ -167,7 +167,8 @@ buying convergence; it defers the same work to a later task with less context.
 Convergence comes from **scope discipline**, not from counting passes:
 
 - A focused re-review verifies the original blocking findings and checks the correction diff for
-  regressions. It is not a new unbounded audit.
+  regressions. It is not a new unbounded audit — **except that a Critical defect is corrected in
+  whatever round finds it**, regardless of scope.
 - Non-blocking findings become follow-up work with an owner and target task; they do not keep
   the reviewed task in review, and they do not reopen it.
 - The absence of a cap is not licence to reopen settled ground. A finding that revisits a
@@ -177,9 +178,26 @@ Convergence comes from **scope discipline**, not from counting passes:
 blockers — that is a signal to change approach**, not to keep iterating. Say so, and put the
 choice to the maintainer: split the task, revisit the design, or accept a documented risk.
 
-Every finding records both **severity** and **Blocks approval: Yes | No**:
+Every finding records both **severity** and **Blocks approval: Yes | No**.
 
-- Critical and High findings normally block.
+Severity is anchored to **consequence if shipped**, not to how hard the fix looks — a one-line
+fix for a data-loss defect is still Critical:
+
+| Severity | Means |
+|---|---|
+| **Critical** | Shipping it causes harm the user cannot undo: data loss or corruption, a breached security or privacy boundary, exposed credentials or cookies, a defeated safety constraint, a licence violation. Also silent wrong results in what this product exists to do — downloading the wrong thing, or writing outside the directory the user chose. |
+| **High** | A stated requirement or acceptance criterion is unmet, a documented architecture invariant is violated, or a user hits a defect with no workaround. |
+| **Medium** | A correctness or robustness gap with a narrow trigger or a workaround — including a gate that does not actually gate what it claims to. |
+| **Low** | Quality, clarity, maintainability; test strength where the behavior under test is correct. |
+| **Note** | An observation. No action implied. |
+
+- **A Critical finding always blocks. There is no "normally."** It is fixed before approval,
+  however late it surfaces and however inconvenient the timing. It may **not** be closed as
+  *Accepted Risk* or *Won't Fix* by an agent — only the maintainer can choose to ship known
+  harm, and that belongs in `ai/DECISIONS.md` with its reasoning, not in a review table. Where
+  it touches a safety constraint, §5's safety exception applies: report the conflict and ask,
+  rather than complying silently.
+- High findings normally block. Downgrading one needs a stated reason recorded with the finding.
 - Medium findings block when they violate an acceptance criterion, required check, approved
   architecture invariant, security boundary, data-integrity rule, or observable correctness.
 - Low and Note findings normally do not block.
