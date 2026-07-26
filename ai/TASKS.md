@@ -363,6 +363,13 @@ least one recorded `info_dict`, so it captures the first ones itself — recordi
 version and capture date alongside each, per `ai/TESTING.md` §5. Adapter projection is tested
 against recorded fixtures, never against the live network.
 
+**`T-012` stays whole — settled, do not re-open.** Splitting the adapter from the worker was
+considered twice and rejected by the maintainer on 2026-07-25. The argument for splitting is
+that they fail differently: translation bugs versus process bugs. The argument against, which
+won, is that the adapter has no meaningful test surface without a worker to run it in, so a
+split would produce one task that cannot be verified and a second that carries all the risk
+anyway. Review it as one unit and expect it to be the largest review in the phase.
+
 **`T-033` stays separate, deliberately.** This task makes the worker import `yt_dlp` from
 source; `T-033` makes the *frozen artifact* actually contain it. Folding them together would
 mean one review covering both a domain seam and a packaging change, and would let a green
