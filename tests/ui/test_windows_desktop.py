@@ -216,8 +216,17 @@ def test_every_menu_action_is_reachable_by_a_keyboard_mnemonic(shown_window: Mai
 
     Asserted over whatever actions exist rather than a fixed list, so an action added later
     without a mnemonic fails here instead of silently becoming unreachable.
+
+    Walks `menuBar().actions()` rather than `findChildren(QMenu)`. On Windows the latter also
+    returns an untitled internal `QMenu` that Qt creates for the menu bar itself, which is not
+    a menu the user can reach and has no mnemonic to check — the first run of this test failed
+    on exactly that.
     """
-    for menu in shown_window.menuBar().findChildren(QMenu):
+    menus = [action.menu() for action in shown_window.menuBar().actions() if action.menu()]
+    assert menus, "the menu bar exposes no menus"
+
+    for menu in menus:
+        assert menu is not None
         assert "&" in menu.title(), f"menu {menu.title()!r} has no keyboard mnemonic"
         for action in menu.actions():
             if action.isSeparator():
