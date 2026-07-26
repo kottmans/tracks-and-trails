@@ -12,10 +12,12 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-034` — filename safety, a `TESTING.md` §7 mandatory area that is still
-uncovered. `T-014` and `T-015` are also Ready. `T-011` is **in review with corrections
-pending** and does not yet unblock `T-035` or `T-038`. `T-012` is the chokepoint: it needs
-`T-011`, `T-034` and `T-035`, and six tasks depend on it.
+**Start here:** `T-041` — nested payloads in `core/models.py` cross the process boundary
+unvalidated (`T011-R8`), which is a live `ARC-002` hole and small to close. Then `T-034`,
+a `TESTING.md` §7 mandatory area still uncovered.
+
+`T-011` is complete, so `T-035` and `T-038` are Ready too. `T-012` is the chokepoint: it needs
+`T-011` (done), `T-034` and `T-035`, and six tasks depend on it.
 
 Phase 0's work is complete: `T-026` closed the Windows launch criterion and its third-round
 re-review was waived by the maintainer. Recording the phase's **formal exit** is a separate
@@ -25,6 +27,130 @@ for a Phase 5 installer; `T-040` for the first focusable widgets.
 ---
 
 ## Ready
+
+### T-035 — Resolve the yt-dlp and ffmpeg environment
+
+**Status:** **Ready** — `T-011` complete, 2026-07-26
+**Owner:** Implementer
+**Priority:** High — `T-012` cannot honour `OPS-002` without it, and `REQ-024` is owned by
+nothing else
+**Phase:** Phase 1
+**Depends on:** `T-011`
+**Relevant context:** `ARCHITECTURE.md` §6 (resolution order), §4; `OPS-002`, `OPS-001`,
+`REQ-024`, `REQ-025`, `NFR-007`
+**Affected surfaces:** `downloader/environment.py`, `tests/unit/`, `tests/integration/`
+**Risk:** Medium — a wrong answer here is misattributed to yt-dlp or to the site
+**Review base:** the `T-011` merge commit
+
+#### Scope
+
+**Filed during Phase 1 planning: `downloader/environment.py` was claimed by no task, and
+`REQ-024` by nothing at all.** `ARCHITECTURE.md` §4 assigns this module "locating yt-dlp and
+ffmpeg; version reporting; update", and `ARCHITECTURE.md` §6 puts yt-dlp resolution at *worker
+start* — so `T-012` needs it from its first line, and without it the worker would import
+whatever yt-dlp happens to be on `sys.path`, which is precisely what `OPS-002` rejects.
+
+Two jobs:
+
+1. **Locate yt-dlp candidates** per `OPS-002` — and *only* locate them. This module returns
+   an ordered list of candidate paths: the user-managed copy in
+   `user_data_dir/tracksandtrails/ytdlp/` first, then the bundled baseline. It reports what
+   exists on disk and answers nothing about whether a candidate works.
+
+   **It must not import yt-dlp**, and the earlier draft of this task required exactly that —
+   "fail loudly if the user copy does not import cleanly" and "report the resolved version"
+   are both unimplementable without importing it. `ARCHITECTURE.md` §6 permits that import in
+   `worker.py` and `ytdlp_adapter.py` alone, and `T-005`'s layering guard enforces it after
+   being deliberately mutation-tested. Reaching for `importlib` to slip past the guard would
+   be worse than the violation, because it defeats a check the project spent two review
+   rounds hardening.
+
+   So the split is: **`environment.py` locates, `worker.py` imports.** `worker.py` walks the
+   candidate list, prepends the first entry to `sys.path`, imports, and on `ImportError` falls
+   back to the next candidate — reporting which one it used and why any earlier candidate was
+   rejected (`ARCHITECTURE.md` §6: fail loudly, never silently ignore an override). The
+   version comes from the imported module, so only the importer can report it (`REQ-025`).
+
+   If a third module ever genuinely needs to import yt-dlp, that is an architecture change:
+   amend `ARCHITECTURE.md` §6 and the layering rule deliberately, in a reviewed change.
+2. **Detect ffmpeg** at startup and report which features are unavailable without it
+   (`REQ-024`, `OPS-001`) — rather than failing at merge time, after a download has already
+   consumed the user's bandwidth.
+
+Resolution runs in the worker, so this module must not import Qt.
+
+#### Acceptance criteria
+
+- With no user copy present, the candidate list contains the baseline alone
+- With a user copy present, it is ordered ahead of the baseline
+- A candidate directory that exists but is empty, or contains no `yt_dlp` package, is still
+  *listed* — deciding it is unusable requires importing it, which is `worker.py`'s job
+- `environment.py` does not import `yt_dlp`, asserted by the layering test **and** by a test
+  that the module can be imported with `yt_dlp` absent from `sys.modules` entirely
+- **Ownership boundary asserted:** a test confirms `environment.py` exposes no version and no
+  usability verdict, so the split cannot erode back into this module by accident
+- ffmpeg presence and absence both yield a correct feature report; the absent case names what
+  will not work (`REQ-024`)
+- Detection never executes a shell (`ARCHITECTURE.md` §9) and never blocks the GUI thread
+- No user path, cookie, or credential reaches a log line from this module (`NFR-007`)
+- `environment.py` imports no Qt
+
+#### Out of scope
+
+- Downloading and extracting the yt-dlp wheel — Phase 4; this task resolves what is already
+  present
+- Bundling either dependency into the frozen artifact — `T-033` for yt-dlp, Phase 5 for ffmpeg
+- Any UI for showing the version or the ffmpeg state — `T-016`/`T-017` consume the report
+
+---
+
+### T-038 — Logging with handler-level redaction
+
+**Status:** **Ready** — `T-011` complete, 2026-07-26
+**Owner:** Implementer
+**Priority:** High — `NFR-007` is a privacy promise and worker diagnostics are where it leaks
+**Phase:** Phase 1
+**Depends on:** `T-011`
+**Relevant context:** `ARCHITECTURE.md` §8 (Logging); `REQ-026`, `NFR-007`, `NFR-004`
+**Affected surfaces:** `core/` logging setup, `downloader/worker.py`, `tests/unit/`
+**Risk:** **High** — a leak here is written to disk and survives
+**Review base:** the `T-011` merge commit
+
+#### Scope
+
+**Filed after review: nothing owned logging.** `ARCHITECTURE.md` §8 promises an application log
+in `user_cache_dir`, per-job logs, and redaction **at the handler level rather than at each
+call site** — precisely so a forgotten call site cannot leak. No Phase 1 task owned any of it,
+while `T-012` and `T-013` are about to generate the diagnostics most likely to carry a
+tokenized URL or a cookie path.
+
+Configure logging for both processes, add per-job log files, and implement the redacting
+handler: cookie file paths, cookie contents, proxy credentials, and token-like URL query
+parameters (`REQ-026`, `NFR-007`).
+
+Handler-level is the whole design. A redaction helper that call sites must remember to use is
+the thing this task exists to avoid.
+
+#### Acceptance criteria
+
+- A log record whose message contains a cookie path, cookie content, proxy credential, or a
+  token-like query parameter is redacted **in the emitted output**, asserted by writing through
+  a real handler rather than by calling a redaction function directly
+- Redaction survives every formatting route: `%`-style args, f-strings pre-formatted by the
+  caller, `extra=` fields, and an exception traceback carrying a URL in its message
+- A deliberately careless call site — logging a full request object — still produces redacted
+  output, which is the property that distinguishes handler-level from call-site redaction
+- Worker logs reach the parent's log without the child needing Qt
+- Logs are written under `platformdirs`, never beside the application (`NFR-004`)
+- A test scans a generated log for a known token and fails if it appears in any form
+
+#### Out of scope
+
+- A log viewer in the UI — Phase 3
+- Rotation and retention policy — Phase 4
+- Crash reporting of any kind; there is none (`NFR-007`)
+
+---
 
 ### T-041 — Validate nested payloads in `core/models.py`
 
@@ -47,9 +173,9 @@ attacker-influenced
 ```python
 raw = [{"format_id": "137", "url": "https://cdn.example/secret"}]
 msg = Probed(job_id="j", media=MediaInfo(url=..., title="T", formats=raw))
-is_message(msg)          # True
-msg.media.formats[0]     # {'format_id': '137', 'url': '...'} — a raw yt-dlp dict
-raw.append({...})        # and it still mutates after construction
+is_message(msg)  # True
+msg.media.formats[0]  # {'format_id': '137', 'url': '...'} — a raw yt-dlp dict
+raw.append({...})  # and it still mutates after construction
 ```
 
 Two invariants break at once. Raw yt-dlp data crosses the process boundary inside a message
@@ -374,82 +500,6 @@ agreement on the reduced form before implementation.
 ---
 
 ## Proposed — Phase 1
-
-### T-035 — Resolve the yt-dlp and ffmpeg environment
-
-**Status:** Proposed — Ready once `T-011` merges
-**Owner:** Implementer
-**Priority:** High — `T-012` cannot honour `OPS-002` without it, and `REQ-024` is owned by
-nothing else
-**Phase:** Phase 1
-**Depends on:** `T-011`
-**Relevant context:** `ARCHITECTURE.md` §6 (resolution order), §4; `OPS-002`, `OPS-001`,
-`REQ-024`, `REQ-025`, `NFR-007`
-**Affected surfaces:** `downloader/environment.py`, `tests/unit/`, `tests/integration/`
-**Risk:** Medium — a wrong answer here is misattributed to yt-dlp or to the site
-**Review base:** the `T-011` merge commit
-
-#### Scope
-
-**Filed during Phase 1 planning: `downloader/environment.py` was claimed by no task, and
-`REQ-024` by nothing at all.** `ARCHITECTURE.md` §4 assigns this module "locating yt-dlp and
-ffmpeg; version reporting; update", and `ARCHITECTURE.md` §6 puts yt-dlp resolution at *worker
-start* — so `T-012` needs it from its first line, and without it the worker would import
-whatever yt-dlp happens to be on `sys.path`, which is precisely what `OPS-002` rejects.
-
-Two jobs:
-
-1. **Locate yt-dlp candidates** per `OPS-002` — and *only* locate them. This module returns
-   an ordered list of candidate paths: the user-managed copy in
-   `user_data_dir/tracksandtrails/ytdlp/` first, then the bundled baseline. It reports what
-   exists on disk and answers nothing about whether a candidate works.
-
-   **It must not import yt-dlp**, and the earlier draft of this task required exactly that —
-   "fail loudly if the user copy does not import cleanly" and "report the resolved version"
-   are both unimplementable without importing it. `ARCHITECTURE.md` §6 permits that import in
-   `worker.py` and `ytdlp_adapter.py` alone, and `T-005`'s layering guard enforces it after
-   being deliberately mutation-tested. Reaching for `importlib` to slip past the guard would
-   be worse than the violation, because it defeats a check the project spent two review
-   rounds hardening.
-
-   So the split is: **`environment.py` locates, `worker.py` imports.** `worker.py` walks the
-   candidate list, prepends the first entry to `sys.path`, imports, and on `ImportError` falls
-   back to the next candidate — reporting which one it used and why any earlier candidate was
-   rejected (`ARCHITECTURE.md` §6: fail loudly, never silently ignore an override). The
-   version comes from the imported module, so only the importer can report it (`REQ-025`).
-
-   If a third module ever genuinely needs to import yt-dlp, that is an architecture change:
-   amend `ARCHITECTURE.md` §6 and the layering rule deliberately, in a reviewed change.
-2. **Detect ffmpeg** at startup and report which features are unavailable without it
-   (`REQ-024`, `OPS-001`) — rather than failing at merge time, after a download has already
-   consumed the user's bandwidth.
-
-Resolution runs in the worker, so this module must not import Qt.
-
-#### Acceptance criteria
-
-- With no user copy present, the candidate list contains the baseline alone
-- With a user copy present, it is ordered ahead of the baseline
-- A candidate directory that exists but is empty, or contains no `yt_dlp` package, is still
-  *listed* — deciding it is unusable requires importing it, which is `worker.py`'s job
-- `environment.py` does not import `yt_dlp`, asserted by the layering test **and** by a test
-  that the module can be imported with `yt_dlp` absent from `sys.modules` entirely
-- **Ownership boundary asserted:** a test confirms `environment.py` exposes no version and no
-  usability verdict, so the split cannot erode back into this module by accident
-- ffmpeg presence and absence both yield a correct feature report; the absent case names what
-  will not work (`REQ-024`)
-- Detection never executes a shell (`ARCHITECTURE.md` §9) and never blocks the GUI thread
-- No user path, cookie, or credential reaches a log line from this module (`NFR-007`)
-- `environment.py` imports no Qt
-
-#### Out of scope
-
-- Downloading and extracting the yt-dlp wheel — Phase 4; this task resolves what is already
-  present
-- Bundling either dependency into the frozen artifact — `T-033` for yt-dlp, Phase 5 for ffmpeg
-- Any UI for showing the version or the ffmpeg state — `T-016`/`T-017` consume the report
-
----
 
 ### T-012 — yt-dlp in a spawned worker
 
@@ -870,54 +920,6 @@ is checked against reality at least once. It stays excluded by default (`ai/TEST
 
 ---
 
-### T-038 — Logging with handler-level redaction
-
-**Status:** Proposed — Ready once `T-011` merges
-**Owner:** Implementer
-**Priority:** High — `NFR-007` is a privacy promise and worker diagnostics are where it leaks
-**Phase:** Phase 1
-**Depends on:** `T-011`
-**Relevant context:** `ARCHITECTURE.md` §8 (Logging); `REQ-026`, `NFR-007`, `NFR-004`
-**Affected surfaces:** `core/` logging setup, `downloader/worker.py`, `tests/unit/`
-**Risk:** **High** — a leak here is written to disk and survives
-**Review base:** the `T-011` merge commit
-
-#### Scope
-
-**Filed after review: nothing owned logging.** `ARCHITECTURE.md` §8 promises an application log
-in `user_cache_dir`, per-job logs, and redaction **at the handler level rather than at each
-call site** — precisely so a forgotten call site cannot leak. No Phase 1 task owned any of it,
-while `T-012` and `T-013` are about to generate the diagnostics most likely to carry a
-tokenized URL or a cookie path.
-
-Configure logging for both processes, add per-job log files, and implement the redacting
-handler: cookie file paths, cookie contents, proxy credentials, and token-like URL query
-parameters (`REQ-026`, `NFR-007`).
-
-Handler-level is the whole design. A redaction helper that call sites must remember to use is
-the thing this task exists to avoid.
-
-#### Acceptance criteria
-
-- A log record whose message contains a cookie path, cookie content, proxy credential, or a
-  token-like query parameter is redacted **in the emitted output**, asserted by writing through
-  a real handler rather than by calling a redaction function directly
-- Redaction survives every formatting route: `%`-style args, f-strings pre-formatted by the
-  caller, `extra=` fields, and an exception traceback carrying a URL in its message
-- A deliberately careless call site — logging a full request object — still produces redacted
-  output, which is the property that distinguishes handler-level from call-site redaction
-- Worker logs reach the parent's log without the child needing Qt
-- Logs are written under `platformdirs`, never beside the application (`NFR-004`)
-- A test scans a generated log for a known token and fails if it appears in any form
-
-#### Out of scope
-
-- A log viewer in the UI — Phase 3
-- Rotation and retention policy — Phase 4
-- Crash reporting of any kind; there is none (`NFR-007`)
-
----
-
 ### T-018 — Recorded `info_dict` fixtures and projection tests
 
 **Status:** Proposed — Ready once `T-012` merges
@@ -1141,14 +1143,29 @@ Assert, on `windows-latest`:
 
 ## In Review
 
+*(none)*
+
+## Complete
+
 ### T-011 — IPC message contract
 
-**Status:** In Review — two review rounds on 2026-07-26, both **changes requested**.
-`T011-R1`, `R3`, `R4`, `R6` are **reviewer-confirmed resolved**. `T011-R2` and the new
-`T011-R7` are corrected in the third pass below. **`T011-R5` is parked, not fixed** — it needs
-a maintainer decision on `ARC-002` and cannot be closed by an Implementer.
+**Status:** **Complete** — every finding resolved, 2026-07-26.
 
-Do **not** read this entry as "all findings corrected"; `R5` is open by design.
+Three review rounds, all recorded in `ai/REVIEWS.md`. `T011-R1`, `R2`, `R3`, `R4`, `R6` and
+`R7` were **reviewer-verified resolved**, each with mutation evidence. `T011-R5` closed when the
+maintainer **accepted `ARC-003`**, which settles that `ARC-002`'s "versioned internal contract"
+means version-*controlled*, not version-*negotiated* — so this task complies as written.
+
+**On the absence of a fourth Codex pass:** the reviewer's verification stated that `R5` was the
+only open item, that it awaited a maintainer decision, and that *"no further Codex re-review is
+implied"*. Nothing changed in the implementation between that verification and this status —
+only the decision it was waiting on. This is therefore not a waived review in the sense of
+`T-007` or `T-026`'s third round; the code at this head is the code Codex verified.
+
+`T011-R8` was carried out of this task into **`T-041`** and is **not** fixed here: a `MediaInfo`
+can still hold a mutable list of raw yt-dlp format dicts, so raw upstream data crosses the
+boundary inside a message that validates. `T-011`'s own validation is correct; the layer beneath
+it is not yet.
 
 - **`T011-R1` (High), corrected.** A successful probe produced *no outcome*: `Probed` then
   `WorkerFinished`, neither counted as terminal. A receiver applying `REQ-028`'s "exited 0 with
@@ -1285,8 +1302,6 @@ file (`AGENTS.md` §5), so if it meant the latter, this task is non-compliant as
 - Any type that only Phase 2's queue needs
 
 ---
-
-## Complete
 
 ### T-010 — Domain models, job state machine, and error taxonomy
 

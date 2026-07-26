@@ -38,11 +38,16 @@ immutable context. `validate_sequence()` validates a **whole session** and is wh
 enforces on receipt — including terminal-once, which no constructor can check because nothing
 in a dataclass knows what was sent before it.
 
-**No runtime version negotiation.** Both ends ship in the same artifact and are always the same
-build; updating yt-dlp in place (`OPS-002`) changes the *engine*, not this contract. `ARC-002`
-calls the protocol "a versioned internal contract", which reads as version-*controlled* rather
-than version-*negotiated* — but that is the accepted decision's wording and this module does not
-get to reinterpret it (`T011-R5`). The narrow claim here is only that there is no handshake.
+**No runtime version negotiation** — no version field, no handshake, no compatibility ranges.
+Both ends ship in the same artifact and are always the same build; updating yt-dlp in place
+(`OPS-002`) changes the *engine*, not this contract.
+
+`ARC-002` calls the protocol "a versioned internal contract"; `ARC-003` (accepted 2026-07-26,
+from `T011-R5`) settles that this means version-*controlled* — one module, declared types,
+changed only alongside its tests — rather than version-*negotiated*. That decision names its own
+expiry: **if parent and child ever become separately deployable** (a standalone worker binary, an
+external helper, a plugin model), skew becomes reachable and the question re-opens. Anyone
+proposing such a change should read `ARC-003` before touching this module.
 """
 
 from collections.abc import Sequence

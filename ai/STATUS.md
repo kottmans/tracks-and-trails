@@ -13,19 +13,16 @@
 ---
 
 **Current phase:** Phase 0 complete; **Phase 1 in progress**. The formal exit has not been
-recorded — see the open question below.
-**Overall state:** `T-010` was **approved** on final re-review. `T-026`'s five findings are all
-corrected, and its **third-round re-review was waived by the maintainer** on 2026-07-26.
+recorded — a maintainer act, and nothing blocks it.
+**Overall state:** `T-010`, `T-026` and now **`T-011` are complete**. `ARC-003` was accepted on
+2026-07-26, closing `T011-R5` — the last open finding against `T-011` — so the IPC contract is
+settled and `T-035` and `T-038` are unblocked.
 
-Phase 0's deliverables and exit criteria are all satisfied, including the Windows clean-checkout
-launch: the application starts through its real entry point under the real `windows` platform
-plugin, verified in CI run `30212152886` (20 desktop tests).
-
-**What the waiver leaves unverified**, recorded rather than glossed: nobody independently
-checked that `T-026`'s corrected accessibility assertions fail for the right reasons against a
-*real* UI Automation tree. The adversarial trees that validated them are fabricated node graphs,
-and no missing-control or wrong-role mutation was run on Windows. `T-040` will touch this suite
-again and is the natural place to close it.
+**One known hole is live at this head.** `T011-R8`, carried into `T-041`: a `MediaInfo` can hold
+a mutable list of raw yt-dlp format dicts, so raw upstream data crosses the process boundary
+inside a message that validates (`ARC-002`). `protocol.py`'s own validation is correct; the
+layer beneath it is not yet. Recorded rather than glossed, because the protocol currently
+advertises a guarantee it does not fully have.
 
 ## Completed
 
@@ -76,44 +73,26 @@ again and is the natural place to close it.
 
 ## In progress
 
-- **`T-011`** — IPC message contract. Two review rounds on 2026-07-26, both **changes
-  requested**. `T011-R1`/`R3`/`R4`/`R6` are reviewer-confirmed resolved; `T011-R2` (reopened on
-  two unvalidated fields) and the new `T011-R7` are corrected and awaiting re-review.
-  **`T011-R5` is parked pending a maintainer decision on `ARC-002`** — see the open question
-  below. `T-011` does **not** yet unblock `T-035` or `T-038`.
+*(nothing active — `main` is the only branch)*
 
 ## Next
 
-1. **`T-011` re-review, third round.** Two findings addressed:
-   - `T011-R2` reopened because the first correction validated only the fields the review
-     named, leaving `Progress.speed_bytes_per_second` and `Succeeded.total_bytes` accepting a
-     mutable dict. Both are fixed, and a new test now walks **every field of every message
-     type** so the class of gap cannot recur rather than just these two instances.
-   - `T011-R7` (new): the documented probe grammar `Progress(PROBING)*` was not enforced, so a
-     probe could report `MERGING`. Probe sessions now reject any other stage; download-stage
-     ordering stays deliberately unconstrained.
+Six tasks are Ready. Recommended order:
 
-   **`T011-R5` is not addressed and cannot be** — it needs the `ARC-002` reading below.
+1. **`T-041`** — nested payload validation in `core/models.py`. Small, **High** severity, and it
+   restores a guarantee `downloader/protocol.py` already advertises. Carried from `T011-R8`.
+2. **`T-034`** — filename safety and output-path containment. A `TESTING.md` §7 mandatory area
+   still uncovered, with a security failure mode: a title-derived filename escaping the output
+   directory, driven by attacker-influenced data.
+3. **`T-035`** — yt-dlp and ffmpeg environment resolution. Newly unblocked, and the third of
+   `T-012`'s three prerequisites alongside `T-034`.
+4. **`T-038`**, **`T-014`**, **`T-015`** — Ready, off the critical path.
 
-   Verified 2026-07-26: `R2` and `R7` **resolved**. `T-011` remains unapproved solely because
-   `R5` is parked.
+`T-012` needs `T-011` (done), `T-034` and `T-035`; six tasks depend on it.
 
-2. **`T-041` — validate nested payloads in `core/models.py`.** Carried out of `T-011` as
-   `T011-R8` (High), and **the hole is live right now**: `Probed.media` rejects a non-`MediaInfo`,
-   but a `MediaInfo` can hold a mutable list of raw yt-dlp format dicts, so raw upstream data
-   still crosses the process boundary inside a message that validates (`ARC-002`). Recommended
-   next, ahead of `T-034`: it is small, High severity, and it restores a guarantee the protocol
-   currently advertises but does not have.
-
-3. **`T-034` — filename safety and output-path containment.** Ready: a `TESTING.md` §7 mandatory area that is still uncovered, with a
-   security failure mode (a title-derived filename escaping the output directory). It does not
-   depend on `T-011`.
-
-4. **`T-014` and `T-015`** — also Ready, off the critical path.
-
-5. **Record Phase 0's formal exit** — a maintainer act; nothing blocks it.
-
-6. **A human Windows session** — `OPS-004`'s subjective residue only. Blocks first release.
+Also outstanding, both maintainer acts: **recording Phase 0's formal exit**, and confirming the
+`IMPLEMENTATION_PLAN.md` Phase 1 prerequisite amendment — which becomes moot once the exit is
+recorded.
 
 ## Known gaps not yet scheduled
 
@@ -133,16 +112,9 @@ again and is the natural place to close it.
 
 ## Open questions for the maintainer
 
-- **Accept or reject `ARC-003`.** It narrows one phrase in `ARC-002`'s consequences — "the IPC
-  protocol is now a versioned internal contract with its own tests" — to mean version-*controlled*
-  rather than version-*negotiated*, and records that `T-011` therefore complies as written.
-
-  Drafted 2026-07-26 in response to `T011-R5`, and **it is the only thing still blocking
-  `T-011`'s approval**; every code finding against that task is resolved. The reasoning: the
-  phrase sits among obligations rather than features, `ARC-002` never discusses version skew
-  anywhere, and skew is architecturally impossible while `REL-001` ships one artifact that
-  spawns its own children. `ARC-003` names the trigger that would expire it — any packaging in
-  which parent and child become separately deployable.
+- *(`ARC-003` was accepted on 2026-07-26, closing `T011-R5`. It narrows `ARC-002`'s "versioned
+  internal contract" to version-controlled, and names its own expiry: any packaging in which
+  parent and child become separately deployable re-opens the question.)*
 
 - **Confirm the Phase 1 prerequisite amendment.** `IMPLEMENTATION_PLAN.md` said "Phase 0
   complete" while `TASKS.md` treated `T-010` as startable — and the plan outranks `TASKS.md`

@@ -668,7 +668,7 @@ path-safety checks are more reliable as assertions than as a human watching Task
 
 ## ARC-003 — "Versioned" in `ARC-002` means version-controlled, not version-negotiated
 
-**Status:** Proposed — needs maintainer acceptance
+**Status:** **Accepted** (2026-07-26) — accepted as proposed, without amendment
 **Date:** 2026-07-26
 **Narrows:** one phrase in `ARC-002`'s consequences. The decision itself stands unchanged.
 
