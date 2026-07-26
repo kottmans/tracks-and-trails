@@ -86,7 +86,7 @@ checkout on Windows" is unmet and cannot be met here (`OPS-003`). Everything els
 - **`T-035` was missing from the plan.** `downloader/environment.py` was claimed by no task
   and `REQ-024` (ffmpeg detection) by nothing at all, though `ARCHITECTURE.md` §6 puts yt-dlp
   resolution at worker start and `T-012` therefore needs it immediately.
-- **`T-034` was missing from the plan.** Output-path rendering and filename safety
+- **`T-034` was missing from the plan.** Filename safety and output-path containment
   (`core/paths.py`) belonged to no task, despite `ARCHITECTURE.md` §8 requiring every output
   path to pass through it and `ai/TESTING.md` §7 listing path safety as mandatory. Found while
   planning Phase 1; now filed and blocking `T-012`.
