@@ -12,9 +12,11 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** the Phase 0 exit review found corrections. `T-027` through `T-032` are Ready;
-`T-026` remains blocked on the `OPS-004` correction in `T-031`. Phase 0 cannot exit until the
-review findings and the real Windows launch criterion are discharged.
+**Start here:** nothing is Ready. Phase 0 is built, reviewed, and its eight exit-review
+findings are closed — but the phase has **not exited**, because one criterion cannot be met
+without a Windows machine (`OPS-003`). The next work is **Phase 1 planning**: bringing
+`T-010`–`T-019` from outlines to Ready. `T-026` and `T-033` are Proposed; `T-026` needs a
+maintainer decision on `OPS-004` first.
 
 ---
 
