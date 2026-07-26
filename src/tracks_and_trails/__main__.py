@@ -14,7 +14,8 @@ import sys
 # In a frozen child process this call never returns: it runs the worker and exits. That is
 # also why it precedes the Qt import, which keeps ARC-002's "workers inherit no Qt" true.
 # It is a harmless no-op when running from source, so it is unconditional. Do not remove.
-multiprocessing.freeze_support()
+# TEMPORARY T-029 NEGATIVE PROOF: freeze_support() removed on purpose.
+# multiprocessing.freeze_support()
 
 
 def main() -> int:
