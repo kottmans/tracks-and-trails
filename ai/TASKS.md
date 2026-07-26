@@ -152,87 +152,6 @@ the thing this task exists to avoid.
 
 ---
 
-### T-041 — Validate nested payloads in `core/models.py`
-
-**Status:** Implemented 2026-07-26, awaiting review.
-
-**The reported hole was one field; the audit found the whole module.** `T011-R8` named
-`MediaInfo.formats`. Enumerating every field of every model showed that **all of them** accepted
-an arbitrary dict or list — the only checks were emptiness and negativity, and a non-empty dict
-passes both. Fixing the named field alone would have repeated exactly what got `T011-R2`
-reopened, so the fix is a validation layer over all five models plus a systematic audit test.
-
-Verified after the change: a raw dict, a list of raw dicts, and a mutable list are now rejected
-by **every** field of every model; `T011-R8`'s exact reproduction raises with an `ARC-002`
-message; and a caller's list can no longer mutate a constructed model.
-
-**Note for review:** the field annotations still say `tuple[...]` while the constructors accept
-any non-`str` sequence and normalise it. That is deliberate — the annotation describes what is
-*stored*, which is what readers depend on — but it is the same signature/runtime divergence
-`T011-R3` objected to in `protocol.py`, so it is worth a second opinion rather than my say-so.
-**Owner:** Implementer
-**Priority:** **High** — it falsifies a guarantee `downloader/protocol.py` currently advertises
-**Phase:** Phase 1
-**Depends on:** nothing; `core/models.py` exists and is approved (`T-010`)
-**Relevant context:** `T011-R8`, `T011-R2`, `T010-R2`; `ARC-002`; `ARCHITECTURE.md` §3 and §5;
-`NFR-008`
-**Affected surfaces:** `src/tracks_and_trails/core/models.py`, `tests/unit/test_models.py`
-**Risk:** Medium to fix, **High to leave** — the failure is silent and the data is
-attacker-influenced
-
-#### Scope
-
-`T-011` made `Probed.media` reject anything that is not a `MediaInfo`. It did not check what a
-`MediaInfo` *contains*, and `T011-R8` found the hole that leaves:
-
-```python
-raw = [{"format_id": "137", "url": "https://cdn.example/secret"}]
-msg = Probed(job_id="j", media=MediaInfo(url=..., title="T", formats=raw))
-is_message(msg)  # True
-msg.media.formats[0]  # {'format_id': '137', 'url': '...'} — a raw yt-dlp dict
-raw.append({...})  # and it still mutates after construction
-```
-
-Two invariants break at once. Raw yt-dlp data crosses the process boundary inside a message
-that validates (`ARC-002`, `NFR-008`), and a mutable list reachable from a sent message can
-change after `put()` and before the feeder thread serializes it — the `T010-R2` hazard.
-
-**Fix the class, not the instance.** `T011-R2` had to be reopened precisely because the first
-correction validated the fields the review named. Every collection and nested model field in
-`core/models.py` needs checking, not just `MediaInfo.formats`:
-
-- `MediaInfo.formats` — a tuple of `FormatInfo`
-- `DownloadRequest.post_processors`, `.subtitle_languages` — tuples of `str`
-- `Preset.post_processors` — a tuple of `str`
-- `Job.request` — a `DownloadRequest`
-- `Job.error_kind` — an `ErrorKind` or `None`
-
-Normalising a list to a tuple is acceptable where the element types are right; passing raw
-dicts where models belong is not, and must raise.
-
-#### Acceptance criteria
-
-- `MediaInfo(formats=[{...}])` **raises**; a raw yt-dlp format dict cannot reach a `Probed`
-- Every collection field is stored as a tuple, whatever sequence type was passed, and mutating
-  the original afterwards does not change the model
-- A **systematic** test walks every field of every model in `core/models.py` and asserts that a
-  raw `dict`, and a `list` of raw dicts, are rejected or normalised — modelled on
-  `test_no_field_accepts_and_stores_a_mutable_mapping`, so a field added later is covered
-  without anyone extending a list by hand
-- Nested validation survives `pickle`: a restored `MediaInfo` carries `FormatInfo` instances
-  and immutable collections
-- `T011-R8`'s exact reproduction is a regression test
-- The layering test still passes: `core/` imports no Qt and no `yt_dlp`
-
-#### Out of scope
-
-- Any change to `downloader/protocol.py` — its own validation is correct; this is the layer
-  beneath it
-- Projecting an `info_dict` into `MediaInfo` — `T-012` owns the adapter that does it
-- Retro-fitting the same audit to `persistence/` — nothing exists there yet (`T-014`)
-
----
-
 ### T-034 — Filename safety and output-path containment
 
 **Status:** **Ready** — `T-010` approved and complete, 2026-07-26
@@ -1158,7 +1077,109 @@ Assert, on `windows-latest`:
 
 ## In Review
 
-*(none)*
+### T-041 — Validate nested payloads in `core/models.py`
+
+**Status:** In Review — reviewed 2026-07-26, **changes requested**; all five findings corrected
+the same day, awaiting focused re-review.
+
+**The reported hole was one field; the audit found the whole module.** `T011-R8` named
+`MediaInfo.formats`. Enumerating every field of every model showed that **all of them** accepted
+an arbitrary dict or list — the only checks were emptiness and negativity, and a non-empty dict
+passes both. Fixing the named field alone would have repeated exactly what got `T011-R2`
+reopened, so the fix is a validation layer over all five models plus a systematic audit test.
+
+Verified after the change: a raw dict, a list of raw dicts, and a mutable list are now rejected
+by **every** field of every model; `T011-R8`'s exact reproduction raises with an `ARC-002`
+message; and a caller's list can no longer mutate a constructed model.
+
+**Second pass, 2026-07-26 — five findings corrected:**
+
+- **`T041-R1`** — `bytes_done` and `attempts` are `int` with a `0` default, but I routed them
+  through the *optional* validator, so both accepted `None`. A `_require_count` now separates
+  required from optional counters, and `None` is in the hostile-payload sweep — its absence is
+  why this stayed green.
+- **`T041-R2`** — the "guards the guard" test compared `valid_kwargs()` with a hand-written
+  `MODELS` list: **two views of one hand-maintained set**, so a sixth model left all 54 tests
+  green. That is the `T010-R1` vacuity reproduced inside the test written to prevent it. The
+  production side is now discovered by inspecting the module for dataclasses it defines.
+- **`T041-R3`** — `_require_model()` and `_as_tuple_of()` used `isinstance`, so a frozen
+  subclass carrying an extra mutable dict rode along inside a validated graph. Both now require
+  the exact declared type, matching what `T-011` did to `is_message()`.
+- **`T041-R4`** — required text fields now route through `_require_text()`: `TypeError` for the
+  wrong type, `ValueError` for a validly typed empty string. The explanatory messages survive
+  via a `reason` argument.
+- **`T041-R5`** — task placement, canonical status, and `STATUS.md`'s premature claim.
+
+**Mutation-checked, each against the finding it closes:** a sixth model fails 5 tests
+(previously 0); an unvalidated field on an existing model fails 3; reverting `bytes_done` to the
+optional validator fails 1; reverting either boundary to `isinstance` fails 2.
+
+**Note for review:** the field annotations still say `tuple[...]` while the constructors accept
+any non-`str` sequence and normalise it. That is deliberate — the annotation describes what is
+*stored*, which is what readers depend on — but it is the same signature/runtime divergence
+`T011-R3` objected to in `protocol.py`, so it is worth a second opinion rather than my say-so.
+**Owner:** Implementer
+**Priority:** **High** — it falsifies a guarantee `downloader/protocol.py` currently advertises
+**Phase:** Phase 1
+**Depends on:** nothing; `core/models.py` exists and is approved (`T-010`)
+**Relevant context:** `T011-R8`, `T011-R2`, `T010-R2`; `ARC-002`; `ARCHITECTURE.md` §3 and §5;
+`NFR-008`
+**Affected surfaces:** `src/tracks_and_trails/core/models.py`, `tests/unit/test_models.py`
+**Risk:** Medium to fix, **High to leave** — the failure is silent and the data is
+attacker-influenced
+
+#### Scope
+
+`T-011` made `Probed.media` reject anything that is not a `MediaInfo`. It did not check what a
+`MediaInfo` *contains*, and `T011-R8` found the hole that leaves:
+
+```python
+raw = [{"format_id": "137", "url": "https://cdn.example/secret"}]
+msg = Probed(job_id="j", media=MediaInfo(url=..., title="T", formats=raw))
+is_message(msg)  # True
+msg.media.formats[0]  # {'format_id': '137', 'url': '...'} — a raw yt-dlp dict
+raw.append({...})  # and it still mutates after construction
+```
+
+Two invariants break at once. Raw yt-dlp data crosses the process boundary inside a message
+that validates (`ARC-002`, `NFR-008`), and a mutable list reachable from a sent message can
+change after `put()` and before the feeder thread serializes it — the `T010-R2` hazard.
+
+**Fix the class, not the instance.** `T011-R2` had to be reopened precisely because the first
+correction validated the fields the review named. Every collection and nested model field in
+`core/models.py` needs checking, not just `MediaInfo.formats`:
+
+- `MediaInfo.formats` — a tuple of `FormatInfo`
+- `DownloadRequest.post_processors`, `.subtitle_languages` — tuples of `str`
+- `Preset.post_processors` — a tuple of `str`
+- `Job.request` — a `DownloadRequest`
+- `Job.error_kind` — an `ErrorKind` or `None`
+
+Normalising a list to a tuple is acceptable where the element types are right; passing raw
+dicts where models belong is not, and must raise.
+
+#### Acceptance criteria
+
+- `MediaInfo(formats=[{...}])` **raises**; a raw yt-dlp format dict cannot reach a `Probed`
+- Every collection field is stored as a tuple, whatever sequence type was passed, and mutating
+  the original afterwards does not change the model
+- A **systematic** test walks every field of every model in `core/models.py` and asserts that a
+  raw `dict`, and a `list` of raw dicts, are rejected or normalised — modelled on
+  `test_no_field_accepts_and_stores_a_mutable_mapping`, so a field added later is covered
+  without anyone extending a list by hand
+- Nested validation survives `pickle`: a restored `MediaInfo` carries `FormatInfo` instances
+  and immutable collections
+- `T011-R8`'s exact reproduction is a regression test
+- The layering test still passes: `core/` imports no Qt and no `yt_dlp`
+
+#### Out of scope
+
+- Any change to `downloader/protocol.py` — its own validation is correct; this is the layer
+  beneath it
+- Projecting an `info_dict` into `MediaInfo` — `T-012` owns the adapter that does it
+- Retro-fitting the same audit to `persistence/` — nothing exists there yet (`T-014`)
+
+---
 
 ## Complete
 

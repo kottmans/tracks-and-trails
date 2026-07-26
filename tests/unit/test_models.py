@@ -5,11 +5,13 @@ be satisfied by empty dataclasses — the vacuous pass `T-010` explicitly warns 
 every model's required fields and invariants are pinned as well.
 """
 
+import dataclasses
 import pickle
 from datetime import UTC, datetime
 
 import pytest
 
+from tracks_and_trails.core import models
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import IllegalTransitionError, JobStatus
 from tracks_and_trails.core.models import (
@@ -194,12 +196,43 @@ def valid_kwargs(request_: DownloadRequest) -> dict[type, dict[str, object]]:
     }
 
 
-MODELS = [FormatInfo, MediaInfo, DownloadRequest, Preset, Job]
+def discovered_models() -> set[type]:
+    """Every dataclass `core.models` itself defines, found by inspecting the module.
+
+    `T041-R2`: the previous version compared `valid_kwargs()` with a hand-written `MODELS`
+    list — two views of the same hand-maintained set, so adding a sixth model to the module
+    left all 54 tests green. That is precisely the `T010-R1` vacuity, reproduced inside the
+    test written to prevent it.
+
+    This derives the production side independently. Imported classes are excluded by comparing
+    `__module__`, so `ErrorKind` and `JobStatus` do not count, and enums are excluded because
+    they carry no payload fields to validate.
+    """
+    return {
+        obj
+        for obj in vars(models).values()
+        if isinstance(obj, type)
+        and dataclasses.is_dataclass(obj)
+        and obj.__module__ == models.__name__
+    }
 
 
-def test_every_model_in_the_module_is_covered(request_: DownloadRequest) -> None:
-    """Guards the guard: a model added without sample kwargs escapes every audit below."""
-    assert set(valid_kwargs(request_)) == set(MODELS)
+MODELS = sorted(discovered_models(), key=lambda m: m.__name__)
+
+
+def test_every_model_the_module_defines_is_covered(request_: DownloadRequest) -> None:
+    """Guards the guard, against the module rather than against another list.
+
+    A dataclass added to `core/models.py` without sample kwargs fails here, which is what the
+    previous version claimed to do and did not.
+    """
+    covered = set(valid_kwargs(request_))
+    missing = discovered_models() - covered
+    assert not missing, (
+        f"{sorted(m.__name__ for m in missing)} defined in core.models but absent from "
+        "valid_kwargs(), so no audit below touches them"
+    )
+    assert not covered - discovered_models(), "valid_kwargs() names something the module lost"
 
 
 @pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
@@ -209,6 +242,9 @@ def test_every_model_in_the_module_is_covered(request_: DownloadRequest) -> None
         ("raw dict", {"title": "Example", "formats": []}),
         ("list of raw dicts", [{"format_id": "137"}]),
         ("mutable list of strings", ["a"]),
+        # `T041-R1`: `None` was absent from this sweep, which is how two non-optional
+        # counters came to accept it while all 54 tests stayed green.
+        ("none", None),
     ],
 )
 def test_no_field_accepts_raw_or_mutable_payloads(
@@ -241,6 +277,101 @@ def test_no_field_accepts_raw_or_mutable_payloads(
             f"({label}); a mutable payload reachable from a sent model can change after "
             "put() and before the feeder thread serializes it"
         )
+
+
+@pytest.mark.parametrize("field_name", ["bytes_done", "attempts"])
+def test_required_job_counters_reject_none(request_: DownloadRequest, field_name: str) -> None:
+    """`T041-R1`. Both are `int` with a `0` default, and both accepted `None`.
+
+    That moves an invalid value toward persistence, and `Job.progress` raises rather than
+    returning a fraction when a total is present.
+    """
+    base = {"id": "j", "url": "https://example.com/x", "request": request_}
+    with pytest.raises(ValueError, match="cannot be None"):
+        Job(**base, **{field_name: None})  # type: ignore[arg-type]
+
+
+@pytest.mark.parametrize("field_name", ["bytes_total", "queue_position"])
+def test_genuinely_optional_job_counters_still_accept_none(
+    request_: DownloadRequest, field_name: str
+) -> None:
+    """The narrowing must not sweep up fields that are legitimately absent."""
+    base = {"id": "j", "url": "https://example.com/x", "request": request_}
+    assert getattr(Job(**base, **{field_name: None}), field_name) is None  # type: ignore[arg-type]
+
+
+def test_a_format_info_subclass_cannot_smuggle_fields_into_media_info() -> None:
+    """`T041-R3`: `isinstance` let a subclass carry undeclared mutable state.
+
+    A frozen subclass is still frozen, but nothing here validates fields it declares — so a
+    mutable dict rides along inside an otherwise valid `MediaInfo`, and mutating the original
+    changes an already-constructed graph that may already have been sent.
+    """
+
+    @dataclasses.dataclass(frozen=True, slots=True)
+    class SneakyFormat(FormatInfo):
+        payload: dict[str, str] = dataclasses.field(default_factory=dict)
+
+    smuggled = {"url": "https://cdn.example/secret"}
+    sneaky = SneakyFormat(format_id="137", extension="mp4", payload=smuggled)
+
+    assert isinstance(sneaky, FormatInfo), "the premise: it passes an isinstance check"
+    with pytest.raises(TypeError):
+        MediaInfo(url="https://example.com/x", title="T", formats=(sneaky,))
+
+
+def test_a_download_request_subclass_cannot_smuggle_fields_into_a_job() -> None:
+    """`T041-R3`, the other reachable boundary."""
+
+    @dataclasses.dataclass(frozen=True, slots=True)
+    class SneakyRequest(DownloadRequest):
+        payload: dict[str, str] = dataclasses.field(default_factory=dict)
+
+    sneaky = SneakyRequest(
+        url="https://example.com/x",
+        output_directory="/downloads",
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+        payload={"cookie": "secret"},
+    )
+    assert isinstance(sneaky, DownloadRequest)
+    with pytest.raises(TypeError):
+        Job(id="j", url="https://example.com/x", request=sneaky)
+
+
+@pytest.mark.parametrize(
+    ("model", "field_name"),
+    [
+        (FormatInfo, "format_id"),
+        (MediaInfo, "url"),
+        (MediaInfo, "title"),
+        (DownloadRequest, "url"),
+        (DownloadRequest, "output_directory"),
+        (DownloadRequest, "format_selector"),
+        (DownloadRequest, "output_template"),
+        (Preset, "name"),
+        (Preset, "format_selector"),
+        (Job, "id"),
+        (Job, "url"),
+    ],
+)
+def test_required_text_fields_raise_type_error_for_the_wrong_type(
+    request_: DownloadRequest, model: type, field_name: str
+) -> None:
+    """`T041-R4`: the exception contract, applied consistently.
+
+    `TypeError` for the wrong type, `ValueError` for a validly typed empty string. The bespoke
+    truthiness checks these replaced raised `ValueError` for both, so a caller could not tell
+    them apart — and only the empty case had tests.
+    """
+    kwargs = dict(valid_kwargs(request_)[model])
+    kwargs[field_name] = 7
+    with pytest.raises(TypeError):
+        model(**kwargs)
+
+    kwargs[field_name] = ""
+    with pytest.raises(ValueError):
+        model(**kwargs)
 
 
 def test_media_info_rejects_raw_yt_dlp_format_dicts() -> None:

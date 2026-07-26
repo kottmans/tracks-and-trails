@@ -54,17 +54,35 @@ def _fail(owner: str, name: str, value: object, expected: str) -> None:
     raise TypeError(f"{owner}.{name} must be {expected}, not {type(value).__name__}")
 
 
-def _require_text(owner: str, name: str, value: object) -> None:
-    """A non-empty string."""
+def _require_text(owner: str, name: str, value: object, reason: str = "") -> None:
+    """A non-empty string.
+
+    `TypeError` for the wrong type, `ValueError` for a validly typed empty string. `T041-R4`:
+    the bespoke truthiness checks these replace raised `ValueError` for both, so a caller could
+    not tell a type error from an empty one. `reason` keeps the explanatory messages those
+    checks carried — the *why* is often the useful half.
+    """
     if not isinstance(value, str):
         _fail(owner, name, value, "a string")
     if not value:
-        raise ValueError(f"{owner}.{name} cannot be empty")
+        raise ValueError(f"{owner}.{name} cannot be empty{'; ' + reason if reason else ''}")
 
 
 def _require_optional_text(owner: str, name: str, value: object) -> None:
     if value is not None and not isinstance(value, str):
         _fail(owner, name, value, "a string or None")
+
+
+def _require_count(owner: str, name: str, value: object) -> None:
+    """A non-negative `int`. **Not** optional.
+
+    `T041-R1`: `bytes_done` and `attempts` were routed through the *optional* validator, so both
+    accepted and stored `None` despite `int` annotations and `0` defaults. That moves an invalid
+    value toward persistence and makes `Job.progress` raise when a total is present.
+    """
+    if value is None:
+        raise ValueError(f"{owner}.{name} is required and cannot be None")
+    _require_optional_count(owner, name, value)
 
 
 def _require_optional_count(owner: str, name: str, value: object) -> None:
@@ -109,8 +127,15 @@ def _require_optional_enum[E: Enum](owner: str, name: str, value: object, enum: 
 
 
 def _require_model[T](owner: str, name: str, value: object, model: type[T]) -> None:
-    if not isinstance(value, model):
-        _fail(owner, name, value, f"a {model.__name__}")
+    """Exactly `model` — **not** a subclass (`T041-R3`).
+
+    A frozen subclass can declare extra fields that this module never validates, including a
+    mutable dict, and carry them through the process boundary inside an otherwise valid graph.
+    That is the same reason `T-011` moved `is_message()` from `isinstance` to an exact type
+    match: "declared" is the invariant, and a subclass is not declared.
+    """
+    if type(value) is not model:
+        _fail(owner, name, value, f"exactly a {model.__name__}")
 
 
 def _require_optional_datetime(owner: str, name: str, value: object) -> None:
@@ -133,7 +158,9 @@ def _as_tuple_of[T](owner: str, name: str, value: object, element: type[T]) -> t
         _fail(owner, name, value, f"a sequence of {element.__name__}")
     items: tuple[Any, ...] = tuple(value)  # type: ignore[arg-type]
     for index, item in enumerate(items):
-        if not isinstance(item, element):
+        # Exact type, not isinstance (`T041-R3`): a `FormatInfo` subclass carrying an extra
+        # mutable field would otherwise ride along inside a validated `MediaInfo`.
+        if type(item) is not element:
             raise TypeError(
                 f"{owner}.{name}[{index}] must be a {element.__name__}, "
                 f"not {type(item).__name__}"
@@ -180,9 +207,7 @@ class FormatInfo:
     note: str | None = None
 
     def __post_init__(self) -> None:
-        identifier: Any = self.format_id
-        if not isinstance(identifier, str) or not identifier:
-            raise ValueError("FormatInfo requires a format_id; it is how a format is selected")
+        _require_text("FormatInfo", "format_id", self.format_id, "it is how a format is selected")
         _require_text("FormatInfo", "extension", self.extension)
         for name in ("height", "width", "filesize"):
             _require_optional_count("FormatInfo", name, getattr(self, name))
@@ -214,15 +239,14 @@ class MediaInfo:
     is_live: bool = False
 
     def __post_init__(self) -> None:
-        url: Any = self.url
-        if not isinstance(url, str) or not url:
-            raise ValueError("MediaInfo requires the url it describes")
-        title: Any = self.title
-        if not isinstance(title, str) or not title:
-            raise ValueError(
-                "MediaInfo requires a title; when the extractor supplies none, the caller "
-                "substitutes something displayable rather than storing an empty string"
-            )
+        _require_text("MediaInfo", "url", self.url, "it is the url this describes")
+        _require_text(
+            "MediaInfo",
+            "title",
+            self.title,
+            "when the extractor supplies none, the caller substitutes something displayable "
+            "rather than storing an empty string",
+        )
         # `T011-R8`, the finding that opened this task: a list of raw yt-dlp format dicts used
         # to be stored verbatim, so upstream data crossed the process boundary inside an
         # otherwise valid `Probed` message and could still mutate afterwards.
@@ -266,21 +290,15 @@ class DownloadRequest:
     cookies_from_browser: str | None = None
 
     def __post_init__(self) -> None:
-        url: Any = self.url
-        if not isinstance(url, str) or not url:
-            raise ValueError("DownloadRequest requires a url")
-        directory: Any = self.output_directory
-        if not isinstance(directory, str) or not directory:
-            raise ValueError("DownloadRequest requires an output directory")
-        selector: Any = self.format_selector
-        if not isinstance(selector, str) or not selector:
-            raise ValueError(
-                "DownloadRequest requires a format selector; an empty one silently means "
-                "yt-dlp's default, which is not the same as the preset the user chose"
-            )
-        template: Any = self.output_template
-        if not isinstance(template, str) or not template:
-            raise ValueError("DownloadRequest requires an output template")
+        _require_text("DownloadRequest", "url", self.url)
+        _require_text("DownloadRequest", "output_directory", self.output_directory)
+        _require_text(
+            "DownloadRequest",
+            "format_selector",
+            self.format_selector,
+            "an empty one silently means yt-dlp's default, which is not the preset the user chose",
+        )
+        _require_text("DownloadRequest", "output_template", self.output_template)
         _require_enum("DownloadRequest", "media_kind", self.media_kind, MediaKind)
         for name in ("post_processors", "subtitle_languages"):
             object.__setattr__(
@@ -313,12 +331,8 @@ class Preset:
     built_in: bool = False
 
     def __post_init__(self) -> None:
-        name_value: Any = self.name
-        if not isinstance(name_value, str) or not name_value:
-            raise ValueError("Preset requires a name; it is what the user selects it by")
-        selector: Any = self.format_selector
-        if not isinstance(selector, str) or not selector:
-            raise ValueError("Preset requires a format selector")
+        _require_text("Preset", "name", self.name, "it is what the user selects it by")
+        _require_text("Preset", "format_selector", self.format_selector)
         _require_enum("Preset", "media_kind", self.media_kind, MediaKind)
         _require_text("Preset", "output_template", self.output_template)
         object.__setattr__(
@@ -362,15 +376,11 @@ class Job:
     finished_at: datetime | None = None
 
     def __post_init__(self) -> None:
-        identifier: Any = self.id
-        if not isinstance(identifier, str) or not identifier:
-            raise ValueError("Job requires an id")
-        job_url: Any = self.url
-        if not isinstance(job_url, str) or not job_url:
-            raise ValueError("Job requires a url")
-        _require_optional_count("Job", "bytes_done", self.bytes_done)
+        _require_text("Job", "id", self.id)
+        _require_text("Job", "url", self.url)
+        _require_count("Job", "bytes_done", self.bytes_done)
         _require_optional_count("Job", "bytes_total", self.bytes_total)
-        _require_optional_count("Job", "attempts", self.attempts)
+        _require_count("Job", "attempts", self.attempts)
         _require_model("Job", "request", self.request, DownloadRequest)
         _require_enum("Job", "status", self.status, JobStatus)
         _require_optional_enum("Job", "error_kind", self.error_kind, ErrorKind)

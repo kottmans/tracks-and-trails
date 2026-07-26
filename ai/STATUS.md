@@ -25,10 +25,10 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
   whether Narrator *sounds* coherent, whether the installer *feels* normal. Unverified, needs a
   person, and blocks **first release**, not this phase. `T-040` (tab order) and `T-039`
   (installer) have no automated gate yet either.
-- **`T011-R8` is closed** by `T-041` (implemented, awaiting review). The audit behind it found
-  the hole was not one field: every field of every model in `core/models.py` accepted an
-  arbitrary dict or list. All five models now validate their payloads, and a systematic test
-  walks every field so the class cannot recur.
+- **`T011-R8` is implemented but not yet approved.** `T-041` fixes it — the audit found the
+  hole was not one field but every field of every model in `core/models.py` — and its own review
+  then found five further gaps, since corrected. Described as closed here prematurely on the
+  first pass (`T041-R5`); it closes when the re-review does.
 
 ## Completed
 
@@ -79,7 +79,8 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-*(nothing active — `T-041` is implemented and awaiting review)*
+- **`T-041`** — nested payload validation. Reviewed, changes requested, all five findings
+  corrected; awaiting focused re-review.
 
 ## Next
 
