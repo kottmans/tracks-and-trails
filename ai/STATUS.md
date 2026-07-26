@@ -32,6 +32,9 @@
   narrowly — `T-021` filed as an optional improvement that blocks nothing
 - **First review completed** — the review process in `AGENTS.md` §3 has now been exercised
   end to end (implement → review → correct → focused re-review) and works
+- **`T-006` + `T-023` complete** — CI runs on Linux and Windows for every push and pull
+  request, squash-merged as `e36525e` and green on `main`. Reviewed twice; the final
+  documentation correction was maintainer-accepted with the focused re-review waived.
 - **Windows is no longer entirely unverified.** `T-006`'s runners confirmed, with downloadable
   artifact evidence: Python 3.14.6 (MSC v.1944, AMD64), PySide6/shiboken6/Qt 6.11.1, a
   `QWidget` visible offscreen, and the full 27-test suite passing. This discharges the Windows
@@ -42,8 +45,7 @@
 
 ## In progress
 
-- **`T-006`** — In Review on branch `t-006-ci` (PR #1). Implemented and fully verified against
-  its acceptance criteria on real runners; awaiting Codex. Not yet merged to `main`.
+*(nothing active)*
 
 ## Next
 
@@ -55,7 +57,7 @@ Both are Ready and independent — either order.
 2. **`T-007`** — application shell window. Unblocked as of 2026-07-25 now that the icon
    exists, and the first task that produces something visible.
 
-Then `T-020` (frozen smoke test), which needs `T-006` merged and `T-007` done.
+Then `T-020` (frozen smoke test), which needs `T-007` — its `T-006` dependency is met.
 
 ## Blockers
 
@@ -84,7 +86,7 @@ Development machine, verified 2026-07-25:
 | Project venv | `.venv/` — editable install; PySide6 6.11.1, yt-dlp 2026.7.4, platformdirs 4.11.0 |
 | Dev tools | ruff 0.16.0, mypy 2.3.0, pytest 9.1.1, pytest-qt 4.5.0, PyInstaller 6.21.0 |
 | ffmpeg | present |
-| git | branch `main` tracking `origin/main`; pushed 2026-07-25 |
+| git | branch `main` tracking `origin/main`; CI green on every push and PR (`T-006`) |
 | Repository path | `/mnt/storage/software_projects/tracks-and-trails` |
 | Windows environment | **CI runners only** — no Windows machine or VM is available (`OPS-003`) |
 

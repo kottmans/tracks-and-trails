@@ -85,76 +85,6 @@ Statically analyze the import graph (via `ast`, not by importing) and assert:
 
 ---
 
-### T-023 — Close T-006 review findings
-
-**Status:** In Review — `T006-R2` closed in the first pass, `T006-R1`'s documentation half
-closed in the second; awaiting focused re-review
-**Owner:** Implementer (workflow evidence) + Planner (coordination correction)
-**Priority:** High
-**Phase:** Phase 0
-**Depends on:** `T-006`
-**Relevant context:** `ai/REVIEWS.md` findings `T006-R1`, `T006-R2`; `OPS-003`
-**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md`, `ai/TASKS.md`, `ai/STATUS.md`
-**Risk:** Low — evidence completeness and current-truth accuracy
-
-#### Scope
-
-Ensure a failed lint, format, or type-check command leaves its diagnostic in the uploaded
-Windows evidence rather than only in the GitHub Actions job log. Make the documentation
-distinguish retained artifacts from Actions-owned logs instead of calling the artifact the
-only debugging material. Update the completed `T-002` and `T-003` notes to record that their
-Windows carries were discharged by `T-006`.
-
-#### Acceptance criteria
-
-- The controllable project gates write stdout and stderr to `reports/` while preserving their
-  non-zero exit status; a locally injected lint failure proves both properties
-- `if: always()` still uploads the reports on both runners, and the evidence model states
-  honestly which early action/setup failures remain available only through Actions job logs
-- The `T-002` and `T-003` completion notes no longer say their Windows checks are unverified
-  or still carried to `T-006`; they link to the verified `T-006` evidence
-- `T-006` and `STATUS.md` reflect the review outcome and subsequent correction state
-- The final Linux and Windows matrix remains green
-- `T006-R1` and `T006-R2` receive a focused re-review
-
-#### Out of scope
-
-- Re-running the already-proven lint and pytest gate experiments unless needed to validate
-  the evidence-capture correction
-- Adding behavior-dependent `OPS-003` checks assigned to later phases
-
-#### Work completed — 2026-07-25
-
-**Pass 1 — mechanism.** All four project gates now tee stdout *and* stderr into `reports/`
-while preserving exit status. The Qt baseline and pytest steps also gained `2>&1`; both write
-failure detail to stderr, so they carried the same defect in a less visible form than the
-three steps the finding named. Proven by run `30180163074` (lint failure, both platforms red,
-Windows `lint.txt` carrying the native `tests\unit\...` `F401` diagnostic) and reverted in
-`30180215713` (green, all seven evidence files per artifact).
-
-**Pass 1 — `T006-R2`.** The `T-002` and `T-003` notes now record their discharge and cite the
-`T-006` evidence. `T-002`'s "explicitly still unverified" list was audited item by item rather
-than only the flagged entry; a third item had been resolved by `T-001` and never marked.
-
-**Pass 2 — the documentation half of `T006-R1`, missed in pass 1.** Fixing the mechanism while
-leaving the description intact meant the docs still called the artifact the only Windows
-debugging material. It is not: checkout, `setup-python`, apt, and pip all run before
-`reports/` exists, and a failure in any of them is recorded only in the Actions job log.
-
-Corrected in all four places — `.github/workflows/ci.yml` (header and the tee comment),
-`ai/TESTING.md` §10, and the `T-006` implementation record. `ai/TESTING.md` §10 now carries a
-table stating which source covers what and with what retention, since that is the policy home
-and the other three should point at it rather than restate it. `ai/REVIEWS.md` was left
-untouched: it is a historical record (`AGENTS.md` §6), and its finding text quoting the old
-wording is evidence of what was found, not a claim to be corrected.
-
-**Standing distinction, recorded so it is not re-flattened:** the Actions job log is the
-complete record and the only source covering the setup steps; the `reports/` artifact covers
-this project's own gates and is the part that can be analyzed offline. Neither replaces the
-other, and only the second is ours to control.
-
----
-
 ## Proposed — Phase 0
 
 ### T-021 — Simplified small-size icon glyph
@@ -269,10 +199,14 @@ criteria, and a review base before it moves to Ready.
 
 ## In Review
 
+*(none)*
+
+## Complete
+
 ### T-006 — CI on Linux and Windows
 
-**Status:** In Review — implemented and verified 2026-07-25 on branch `t-006-ci` (PR #1);
-awaiting Codex
+**Status:** Complete
+**Completed:** 2026-07-25 — squash-merged as `e36525e` via PR #1; CI green on `main`
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 0
@@ -394,7 +328,80 @@ arrive, which is future-phase work rather than a gap in this one.
 
 ---
 
-## Complete
+### T-023 — Close T-006 review findings
+
+**Status:** Complete
+**Completed:** 2026-07-25 — `T006-R2` closed in the first pass, `T006-R1` across two.
+**The focused re-review was waived by the maintainer**, who judged three review rounds
+sufficient and authorized the merge. Recorded rather than implied: the acceptance criterion
+"`T006-R1` and `T006-R2` receive a focused re-review" was **not** met for the second-pass
+documentation correction. That correction is therefore maintainer-accepted, not
+reviewer-verified.
+**Owner:** Implementer (workflow evidence) + Planner (coordination correction)
+**Priority:** High
+**Phase:** Phase 0
+**Depends on:** `T-006`
+**Relevant context:** `ai/REVIEWS.md` findings `T006-R1`, `T006-R2`; `OPS-003`
+**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md`, `ai/TASKS.md`, `ai/STATUS.md`
+**Risk:** Low — evidence completeness and current-truth accuracy
+
+#### Scope
+
+Ensure a failed lint, format, or type-check command leaves its diagnostic in the uploaded
+Windows evidence rather than only in the GitHub Actions job log. Make the documentation
+distinguish retained artifacts from Actions-owned logs instead of calling the artifact the
+only debugging material. Update the completed `T-002` and `T-003` notes to record that their
+Windows carries were discharged by `T-006`.
+
+#### Acceptance criteria
+
+- The controllable project gates write stdout and stderr to `reports/` while preserving their
+  non-zero exit status; a locally injected lint failure proves both properties
+- `if: always()` still uploads the reports on both runners, and the evidence model states
+  honestly which early action/setup failures remain available only through Actions job logs
+- The `T-002` and `T-003` completion notes no longer say their Windows checks are unverified
+  or still carried to `T-006`; they link to the verified `T-006` evidence
+- `T-006` and `STATUS.md` reflect the review outcome and subsequent correction state
+- The final Linux and Windows matrix remains green
+- `T006-R1` and `T006-R2` receive a focused re-review
+
+#### Out of scope
+
+- Re-running the already-proven lint and pytest gate experiments unless needed to validate
+  the evidence-capture correction
+- Adding behavior-dependent `OPS-003` checks assigned to later phases
+
+#### Work completed — 2026-07-25
+
+**Pass 1 — mechanism.** All four project gates now tee stdout *and* stderr into `reports/`
+while preserving exit status. The Qt baseline and pytest steps also gained `2>&1`; both write
+failure detail to stderr, so they carried the same defect in a less visible form than the
+three steps the finding named. Proven by run `30180163074` (lint failure, both platforms red,
+Windows `lint.txt` carrying the native `tests\unit\...` `F401` diagnostic) and reverted in
+`30180215713` (green, all seven evidence files per artifact).
+
+**Pass 1 — `T006-R2`.** The `T-002` and `T-003` notes now record their discharge and cite the
+`T-006` evidence. `T-002`'s "explicitly still unverified" list was audited item by item rather
+than only the flagged entry; a third item had been resolved by `T-001` and never marked.
+
+**Pass 2 — the documentation half of `T006-R1`, missed in pass 1.** Fixing the mechanism while
+leaving the description intact meant the docs still called the artifact the only Windows
+debugging material. It is not: checkout, `setup-python`, apt, and pip all run before
+`reports/` exists, and a failure in any of them is recorded only in the Actions job log.
+
+Corrected in all four places — `.github/workflows/ci.yml` (header and the tee comment),
+`ai/TESTING.md` §10, and the `T-006` implementation record. `ai/TESTING.md` §10 now carries a
+table stating which source covers what and with what retention, since that is the policy home
+and the other three should point at it rather than restate it. `ai/REVIEWS.md` was left
+untouched: it is a historical record (`AGENTS.md` §6), and its finding text quoting the old
+wording is evidence of what was found, not a claim to be corrected.
+
+**Standing distinction, recorded so it is not re-flattened:** the Actions job log is the
+complete record and the only source covering the setup steps; the `reports/` artifact covers
+this project's own gates and is the part that can be analyzed offline. Neither replaces the
+other, and only the second is ours to control.
+
+---
 
 ### T-022 — Close T-003 review findings
 
