@@ -16,35 +16,48 @@ import sys
 
 import pytest
 
-#: Runs the real entry point, then quits the event loop from a watcher thread.
+#: Runs the real entry point and quits from the GUI thread, with no watcher thread at all.
 #:
-#: The watcher touches exactly two things: `QApplication.instance()`, and
-#: `QMetaObject.invokeMethod(..., QueuedConnection)`, which is documented thread-safe. It
-#: deliberately does **not** inspect `topLevelWidgets()` or `isVisible()` to decide when to
-#: quit — widget state belongs to the GUI thread, and reading it from here is the "Qt object
-#: touched off the GUI thread" violation in `ai/REVIEWS.md`'s standing risk list. An earlier
-#: version of this harness did exactly that and was intermittently unreliable, which is the
-#: symptom that rule exists to prevent.
+#: The previous version polled `QApplication.instance()` from a foreign thread. Qt documents
+#: `quit()` and `QMetaObject::invokeMethod(..., QueuedConnection)` as thread-safe; it does not
+#: document `instance()` as safe to call while the application object is being constructed on
+#: another thread, so the harness was relying on something Qt never promised (`T028-R1`).
 #:
-#: No widget check is needed for correctness: `run` calls `window.show()` before `app.exec()`,
-#: so a queued quit cannot be processed until after the window is up.
+#: Instead, `MainWindow` is subclassed so that `showEvent` — which Qt calls on the GUI thread,
+#: during `show()` — schedules the quit through a zero-delay timer. `app.py` imports
+#: `MainWindow` inside `run`, so replacing the module attribute first is enough to have the
+#: real entry point construct this subclass.
+#:
+#: The ordering proof survives and is now directly observable rather than argued: `show()`
+#: runs before `exec()`, a zero-delay timer cannot fire until the event loop is running, and
+#: both markers are printed in order for the test to assert on.
 LAUNCH_AND_QUIT = """
-import sys, threading, time
+import sys
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication
+
+import tracks_and_trails.ui.main_window as main_window
+
+
+class QuitOnceShown(main_window.MainWindow):
+    def showEvent(self, event):
+        super().showEvent(event)
+        print("WINDOW-SHOWN", flush=True)
+        QTimer.singleShot(0, self._request_quit)
+
+    def _request_quit(self):
+        print("QUIT-REQUESTED", flush=True)
+        app = QApplication.instance()
+        if app is None:
+            print("FAIL: no QApplication when the quit fired", file=sys.stderr, flush=True)
+            raise SystemExit(3)
+        app.quit()
+
+
+main_window.MainWindow = QuitOnceShown
+
 from tracks_and_trails.app import run
 
-def stop():
-    from PySide6.QtCore import QMetaObject, Qt
-    from PySide6.QtWidgets import QApplication
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        app = QApplication.instance()
-        if app is not None:
-            QMetaObject.invokeMethod(app, "quit", Qt.ConnectionType.QueuedConnection)
-            return
-        time.sleep(0.01)
-    raise SystemExit("the application never started")
-
-threading.Thread(target=stop, daemon=True).start()
 sys.exit(run(["tracks-and-trails"]))
 """
 
@@ -64,14 +77,22 @@ def run_headless(source: str, tmp_home: str) -> subprocess.CompletedProcess[str]
         "WIN_PD_OVERRIDE_APPDATA": tmp_home,
         "WIN_PD_OVERRIDE_LOCAL_APPDATA": tmp_home,
     }
-    return subprocess.run(
-        [sys.executable, "-c", source],
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=False,
-        env=env,
-    )
+    try:
+        return subprocess.run(
+            [sys.executable, "-c", source],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+            env=env,
+        )
+    except subprocess.TimeoutExpired as expired:
+        # A silent timeout is indistinguishable from CI flakiness. Say what actually happened.
+        raise AssertionError(
+            "the application never exited within 120s. It either never showed a window or "
+            f"never processed the queued quit.\nstdout: {expired.stdout!r}\n"
+            f"stderr: {expired.stderr!r}"
+        ) from expired
 
 
 #: Emitted by the `offscreen` and `minimal` platform plugins when a window carrying a menu bar
@@ -95,6 +116,13 @@ def test_application_launches_and_exits_cleanly(tmp_path: pytest.TempPathFactory
     """Zero exit code and no Qt warnings — the `T-007` criterion, on the real path."""
     result = run_headless(LAUNCH_AND_QUIT, str(tmp_path))
     assert result.returncode == 0, f"exit {result.returncode}\nstderr: {result.stderr}"
+    # Asserted, not assumed: a quit that never fired would otherwise surface as an opaque
+    # subprocess timeout, which reads like infrastructure flakiness rather than a defect.
+    assert "WINDOW-SHOWN" in result.stdout, "the window never reached showEvent"
+    assert "QUIT-REQUESTED" in result.stdout, "the window appeared but the quit never fired"
+    assert result.stdout.index("WINDOW-SHOWN") < result.stdout.index("QUIT-REQUESTED"), (
+        "the quit was processed before the window was shown, so show() did not precede exec()"
+    )
     assert unexpected_stderr(result.stderr) == [], (
         f"Qt wrote something unexpected to stderr during a clean run:\n{result.stderr}"
     )

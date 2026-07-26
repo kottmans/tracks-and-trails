@@ -115,6 +115,13 @@ def main() -> int:
     if probe.returncode != 0:
         fail("the spawn probe failed inside the frozen build", probe)
 
+    # Asserted rather than merely printed (`T029-R2`). Without this the smoke test would pass
+    # against a source run, which proves nothing about freezing — the entire point of T-020.
+    if "frozen           True" not in probe.stdout:
+        fail("the parent process does not report sys.frozen; this is not a frozen build", probe)
+    if "child frozen     True" not in probe.stdout:
+        fail("the spawned child does not report sys.frozen", probe)
+
     # The criterion, asserted rather than eyeballed. More than one start means the spawned
     # child re-executed the application instead of running the worker function.
     if len(starts) != 1:

@@ -11,9 +11,10 @@
 **Does not contain:** Task status, review history, local setup commands, rationale (see `DECISIONS.md`).
 
 > **Status note:** This describes the *approved design*, not implemented reality. As of
-> 2026-07-25 the §4 package skeleton exists (`T-001`) but every module is an empty stub —
-> the only executable code is the entry point and a placeholder `run()`. `ai/STATUS.md` is
-> authoritative for what is actually built.
+> 2026-07-25, of the 31 modules under `src/`, **26 are docstring-only stubs**; the five with
+> code are `__init__.py`, `__main__.py`, `_freeze_probe.py`, `app.py` and `ui/main_window.py`
+> — the entry point, the frozen-build probe, and the Phase 0 shell window. Nothing downloads,
+> probes, or persists a job. `ai/STATUS.md` is authoritative for what is actually built.
 
 ---
 
@@ -130,6 +131,7 @@ core/          Domain models, job state machine, settings, presets, path logic.
 ```
 src/tracks_and_trails/
   __main__.py            entry point
+  _freeze_probe.py       frozen-build diagnostics (T-020); infrastructure, not a layer
   app.py                 QApplication setup, wiring, single-instance guard
   core/
     models.py            Job, JobStatus, MediaInfo, FormatInfo, Preset, DownloadRequest
@@ -176,10 +178,21 @@ tests/
 | User settings, presets | `core/settings.py` (TOML) | `user_config_dir/tracksandtrails/settings.toml` |
 | Per-job logs | filesystem, one file per job | `user_cache_dir/tracksandtrails/logs/<job_id>.log` |
 | Managed yt-dlp copy | `downloader/environment.py` | `user_data_dir/tracksandtrails/ytdlp/` |
+| Window geometry | `ui/main_window.py` | `user_config_dir/tracksandtrails/window.toml` |
 | Downloaded media | the user | user-configured directory |
 
 Locations come from `platformdirs`. Nothing is written next to the installed application
-(`NFR-004`).
+(`NFR-004`). The `platformdirs` app slug is passed with `appauthor=False`; without it Windows
+inserts an author segment defaulting to the app name, producing a doubled
+`tracksandtrails\tracksandtrails\` directory that matches none of the paths above.
+
+**Window geometry is ephemeral UI state, not a user setting**, which is why it belongs to
+`ui/` rather than `core/settings.py`. Nobody edits it deliberately, nothing depends on it, and
+losing it costs a window position. It is therefore read defensively: any value that is not a
+32-bit integer, or a size below a usable minimum, is discarded in favour of the default rather
+than repaired, and geometry that intersects no available screen is moved back onto one. A
+separate file means the settings layer (`core/settings.py`, still unbuilt) arrives without a
+migration.
 
 **Why two stores:** the job queue needs transactional, crash-safe, concurrently-read
 row updates during downloads — that is SQLite's job. Settings need to be hand-editable and
@@ -354,6 +367,19 @@ Detail lives in `ai/TESTING.md`. The architectural commitments that make it poss
 Freezing is **not** a Phase 5 concern only. It interacts with §3 in one dangerous way —
 `freeze_support()` — so a smoke-level frozen build runs in CI from Phase 0 (`T-020`), where a
 recursive-launch regression fails a pipeline instead of shipping.
+
+That smoke test needs code **inside** the artifact, because the failure only exists there:
+`src/tracks_and_trails/_freeze_probe.py` spawns one child, exchanges one message, and records
+each top-level application start. It is listed in §4's structure so the tree is documented
+completely, but it belongs to **none of the four layers** — it is frozen-build diagnostic
+infrastructure, which is what the leading underscore marks. It imports
+no Qt, so a spawned child inherits none (`ARC-002`), and is reachable only through an explicit
+`--spawn-probe` argument.
+
+It must share the real entry point rather than live in a separate frozen script. The property
+under test is that `multiprocessing.freeze_support()` runs before anything else *in
+`__main__.py`*; a second entry point would have its own ordering and would prove nothing about
+the one users actually run.
 
 Qt must remain dynamically linked *inside the bundle*, verified against the built artifact
 rather than project metadata (`NFR-009`, `LIC-001`).

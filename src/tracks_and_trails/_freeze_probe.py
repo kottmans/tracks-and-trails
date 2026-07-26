@@ -8,10 +8,11 @@ program again instead of the worker function. The result is a recursive launch, 
 misbehavior. Testing it therefore requires code inside the frozen artifact, spawning a real
 child through the real entry point (`REL-001`, `ARCHITECTURE.md` §3 and §12).
 
-**Deliberate deviation, reported not hidden:** this module is not in `ARCHITECTURE.md` §4's
-structure. It is prefixed with an underscore to mark it as infrastructure rather than a layer,
-imports no Qt so a spawned child inherits none (`ARC-002`), and is reachable only via an
-explicit `--spawn-probe` argument. `T-012` replaces the real worker; this never becomes one.
+**This module belongs to none of `ARCHITECTURE.md` §4's four layers.** It is listed in §4's
+structure and described in §12, but as frozen-build diagnostic infrastructure rather than as
+product code — which is what the leading underscore marks. It imports no Qt so a spawned child
+inherits none (`ARC-002`), and is reachable only via an explicit `--spawn-probe` argument.
+`T-012` builds the real worker; this never becomes one.
 
 **How "exactly one top-level application process" is asserted.** `record_app_start` is called
 by `main()` in `__main__.py` — the first thing every top-level start reaches — and appends a
