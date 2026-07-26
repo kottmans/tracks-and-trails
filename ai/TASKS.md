@@ -74,6 +74,10 @@ Two properties are load-bearing and easy to lose:
 
 - Every model round-trips through `pickle` unchanged, asserted per type — this is what makes
   `T-011`'s IPC possible, and it fails loudly the day someone adds an unpicklable field
+- **Each model's required fields and invariants are pinned**, not merely its picklability: a
+  `Job` without an id, url or status fails construction; `MediaInfo` and `FormatInfo` declare
+  the fields `ARCHITECTURE.md` §5 names. Empty dataclasses would satisfy a pickle test alone,
+  which is exactly the vacuous pass to avoid
 - `DownloadRequest` is immutable; attempting to mutate a field raises
 - The state machine accepts every transition in the legal table and **raises on every
   transition outside it** — asserted exhaustively over the full `JobStatus × JobStatus`
@@ -303,6 +307,19 @@ boundary** (`ARCHITECTURE.md` §3). The dict's shape belongs to yt-dlp and chang
 notice (`NFR-008`); the parent must only ever see declared types projected by
 `ytdlp_adapter.py`.
 
+**Shutdown and identity are part of the contract, not details left to `T-013`.** The earlier
+draft specified only the message payloads, which leaves three ways to hang or lie:
+
+- **Every message carries a job ID.** Without it the parent cannot attribute a message, and
+  "exactly one terminal message per job" is unenforceable.
+- **A sentinel terminates the stream.** `ResultPump` does a blocking `Queue.get()`; with no
+  sentinel, shutdown depends on a timeout or on killing a thread mid-read. The protocol
+  defines the sentinel and the guarantee that it is the last thing sent.
+- **Terminal-once is a receiver obligation, stated here.** Message classes alone cannot
+  prevent a second terminal message being sent — an earlier draft claimed they could. The
+  protocol therefore *specifies* that a job has exactly one terminal outcome and that the
+  receiver must enforce it by job ID; `T-013` implements the enforcement.
+
 **No protocol versioning.** Both ends ship in the same artifact and are always the same build,
 even when the user updates yt-dlp underneath (`OPS-002`) — that changes the *engine*, not the
 contract. Recording this now so nobody later adds negotiation machinery for a skew that cannot
@@ -311,19 +328,26 @@ occur.
 #### Acceptance criteria
 
 - Every message type round-trips through `pickle` unchanged
-- Sending a `dict` where a declared message is expected is rejected at the seam rather than
-  silently accepted — a test constructs the wrong thing and asserts the failure
+- **Every message carries a job ID**, and constructing one without it fails
+- A declared `is_terminal` predicate identifies exactly the success and failure types, so the
+  receiver's terminal-once rule can be written against the protocol rather than a hardcoded
+  list that drifts as types are added
+- A sentinel type exists, is picklable, and is documented as the last item on the queue
 - Progress messages carry every stage named in `REQ-014`, asserted against that list
 - A terminal failure carries both a `core.errors` kind **and** the original text; neither is
   optional, and a message with a classification but no text fails construction (`NFR-006`)
-- Exactly one terminal message per job is representable — success and failure cannot both be
-  expressed for one job, so a partially-consumed queue cannot leave a job in two end states
+- A **validation helper** rejects anything that is not a declared message — including a bare
+  `dict` — and it lives here so both ends share one definition of "valid". This task tests the
+  helper directly; `T-013` applies it on receipt. The earlier draft promised rejection "at a
+  seam" while declaring both seams out of scope, which was unimplementable
 - `protocol.py` imports no Qt and no `yt_dlp`, enforced by the layering test
 - Every message type is exercised by at least one test; an unexercised type fails the suite
 
 #### Out of scope
 
-- Sending or receiving anything — `T-012` (child side) and `T-013` (parent side)
+- Sending or receiving anything — `T-012` (child side) and `T-013` (parent side). This task
+  defines and tests the validator; it does not call it across a real queue
+- Enforcing terminal-once — specified here, implemented and tested in `T-013`
 - Queue lifetime, draining, and backpressure — `T-013`
 - Any type that only Phase 2's queue needs
 
@@ -353,12 +377,27 @@ whatever yt-dlp happens to be on `sys.path`, which is precisely what `OPS-002` r
 
 Two jobs:
 
-1. **Resolve yt-dlp** per `OPS-002`: prefer a user-managed copy in
-   `user_data_dir/tracksandtrails/ytdlp/` by prepending it to `sys.path`, otherwise the
-   bundled baseline. Report the resolved version (`REQ-025`). **Fail loudly and fall back to
-   the baseline if the user copy does not import cleanly** — `ARCHITECTURE.md` §6 requires
-   this explicitly, and a silently ignored override is worse than a broken one because the
-   user believes their update took effect.
+1. **Locate yt-dlp candidates** per `OPS-002` — and *only* locate them. This module returns
+   an ordered list of candidate paths: the user-managed copy in
+   `user_data_dir/tracksandtrails/ytdlp/` first, then the bundled baseline. It reports what
+   exists on disk and answers nothing about whether a candidate works.
+
+   **It must not import yt-dlp**, and the earlier draft of this task required exactly that —
+   "fail loudly if the user copy does not import cleanly" and "report the resolved version"
+   are both unimplementable without importing it. `ARCHITECTURE.md` §6 permits that import in
+   `worker.py` and `ytdlp_adapter.py` alone, and `T-005`'s layering guard enforces it after
+   being deliberately mutation-tested. Reaching for `importlib` to slip past the guard would
+   be worse than the violation, because it defeats a check the project spent two review
+   rounds hardening.
+
+   So the split is: **`environment.py` locates, `worker.py` imports.** `worker.py` walks the
+   candidate list, prepends the first entry to `sys.path`, imports, and on `ImportError` falls
+   back to the next candidate — reporting which one it used and why any earlier candidate was
+   rejected (`ARCHITECTURE.md` §6: fail loudly, never silently ignore an override). The
+   version comes from the imported module, so only the importer can report it (`REQ-025`).
+
+   If a third module ever genuinely needs to import yt-dlp, that is an architecture change:
+   amend `ARCHITECTURE.md` §6 and the layering rule deliberately, in a reviewed change.
 2. **Detect ffmpeg** at startup and report which features are unavailable without it
    (`REQ-024`, `OPS-001`) — rather than failing at merge time, after a download has already
    consumed the user's bandwidth.
@@ -367,14 +406,14 @@ Resolution runs in the worker, so this module must not import Qt.
 
 #### Acceptance criteria
 
-- With no user copy present, the baseline is resolved and its version reported
-- With a valid user copy present, **that** version is resolved and reported — proven with two
-  genuinely different versions, not by mocking the lookup
-- With a **broken** user copy present (importable path, unimportable package), the failure is
-  reported and the baseline is used; a test asserts both the fallback and that it was not
-  silent
-- The reported version is what the worker actually imported, read from the imported module
-  rather than from a recorded string that could drift
+- With no user copy present, the candidate list contains the baseline alone
+- With a user copy present, it is ordered ahead of the baseline
+- A candidate directory that exists but is empty, or contains no `yt_dlp` package, is still
+  *listed* — deciding it is unusable requires importing it, which is `worker.py`'s job
+- `environment.py` does not import `yt_dlp`, asserted by the layering test **and** by a test
+  that the module can be imported with `yt_dlp` absent from `sys.modules` entirely
+- **Ownership boundary asserted:** a test confirms `environment.py` exposes no version and no
+  usability verdict, so the split cannot erode back into this module by accident
 - ffmpeg presence and absence both yield a correct feature report; the absent case names what
   will not work (`REQ-024`)
 - Detection never executes a shell (`ARCHITECTURE.md` §9) and never blocks the GUI thread
@@ -392,19 +431,20 @@ Resolution runs in the worker, so this module must not import Qt.
 
 ### T-012 — yt-dlp in a spawned worker
 
-**Status:** Proposed — Ready once `T-011` merges
+**Status:** Proposed — Ready once **all three** of `T-011`, `T-034` and `T-035` merge
 **Owner:** Implementer
 **Priority:** High — this is where `ARC-002` stops being a design
 **Phase:** Phase 1
 **Depends on:** `T-011`, `T-034` (no file write without a validated path), `T-035` (no
-yt-dlp without resolution)
+yt-dlp without a candidate list)
 **Relevant context:** `ARCHITECTURE.md` §3, §6, §7; `ARC-002`, `OPS-002`, `NFR-008`,
 `REQ-002`, `REQ-005`, `REQ-025`, `REQ-028`, `NFR-006`; `ai/TESTING.md` §5 (fixtures)
 **Affected surfaces:** `downloader/worker.py`, `downloader/ytdlp_adapter.py`,
 `tests/unit/`, `tests/integration/`, `tests/fixtures/infodicts/`
 **Risk:** **High** — the first code to run in a spawned process, the only code that may import
 `yt_dlp`, and the seam every future upstream change lands on
-**Review base:** the `T-011` merge commit
+**Review base:** the last of the `T-011`, `T-034` and `T-035` merge commits — *not* `T-011`
+alone, which an earlier draft said while already depending on the other two
 
 #### Scope
 
@@ -419,6 +459,18 @@ Two modules, and they are the **only** two in the project permitted to `import y
    `progress_hooks` and `postprocessor_hooks` into `T-011` messages, and exits.
 
 Neither may import Qt: the worker runs with no display and must inherit no Qt (`ARC-002`).
+
+**This task also owns yt-dlp's import and template rendering**, both moved here from
+neighbouring tasks after review:
+
+- **Importing yt-dlp and reporting its version.** `T-035` locates candidates; `worker.py`
+  walks them, prepends to `sys.path`, imports, falls back on `ImportError`, and reports which
+  candidate won and why any earlier one lost (`OPS-002`, `REQ-025`). Only the importer can
+  read the version, and only these two modules may import at all (§6).
+- **Output-template rendering and the `REQ-011` preview.** Rendering uses yt-dlp's own
+  template mechanism (`ARCHITECTURE.md` §9), so it cannot live in `core/`. The rendered result
+  is then passed through `T-034`'s sanitizing and containment check before anything is
+  written.
 
 **Fixtures.** `T-018` broadens fixture coverage, but this task cannot be tested without at
 least one recorded `info_dict`, so it captures the first ones itself — recording the yt-dlp
@@ -447,22 +499,32 @@ build, and `T-033` becomes Ready the moment this merges.
   than crashing the worker
 - The extractor's own message survives classification verbatim (`REQ-005`, `NFR-006`) —
   asserted by string equality against the fixture, not by substring
-- **`DRM_PROTECTED` is never retried and has no bypass path** (`REQ-EXCL-001`, `SEC-001`);
-  a test asserts no retry is attempted and no alternative extraction is tried
+- **`DRM_PROTECTED` is classified as non-retryable and no alternative extraction is
+  attempted** (`REQ-EXCL-001`, `SEC-001`). Asserted at *this* level as a property of the
+  classification and of the adapter's behavior — asserting "is never retried" here would be
+  vacuous, because no retry mechanism exists until Phase 2, which is where that assertion
+  belongs
 - The worker runs headless: a test spawns it with no display and it completes (`ARC-002`)
 - The worker module imports cleanly under `spawn` with no side effects — asserted by importing
   it in a fresh interpreter and observing no work performed
-- A worker killed mid-run produces `WORKER_CRASH` at the parent with the exit code logged, and
-  no orphan survives (`REQ-028`)
-- yt-dlp's resolved version is reported through a message (`REQ-025`), so a bug report can
-  state which engine actually ran
+- yt-dlp's resolved version is reported through a message (`REQ-025`), read from the imported
+  module rather than from a recorded string that could drift
+- With a **broken** user copy present — a path that exists holding an unimportable package —
+  the worker falls back to the baseline and **says so**; a test asserts both the fallback and
+  that it was not silent (`ARCHITECTURE.md` §6)
+- A rendered output template is passed through `T-034`'s containment check before use; a
+  template that renders outside the target directory is rejected, not written
+- The `REQ-011` preview equals the path actually used — asserted by rendering, previewing,
+  downloading to a temporary directory, and comparing the real result
 - Changing a projected `info_dict` key in a fixture fails the projection test — the fixture is
   a contract, not a sample
 - The layering test still passes, and `yt_dlp` appears in exactly these two modules
 
 #### Out of scope
 
-- The process pool, scheduling, and Qt signals — `T-013`
+- The process pool, scheduling, and Qt signals — `T-013`. In particular **`WORKER_CRASH`
+  cannot be asserted here**: it is produced by the parent observing a child's exit, and there
+  is no parent until `T-013`. An earlier draft claimed it as a criterion of this task
 - Bundling yt-dlp into the frozen artifact — `T-033`
 - Broadening fixture coverage across sites — `T-018`
 - Cancellation and crash *integration* tests — `T-019`; this task covers the worker side, and
@@ -475,12 +537,27 @@ Every Phase 1 task is now planned in full. `T-034` was filed during planning: ou
 rendering and filename safety belonged to no task, despite being a `ai/TESTING.md` §7
 mandatory area that `T-012` depends on.
 
-Two tasks were filed during planning rather than being new work: `T-034` (output-path safety)
-and `T-035` (yt-dlp and ffmpeg resolution). Both are `ARCHITECTURE.md` responsibilities that no
-outline task owned, and `T-012` depends on both.
+**Four requirements are cited in Phase 1 but only partly discharged here**, and are listed so
+raw citation counts are not mistaken for coverage:
 
-Dependency order: `T-010` first; then `T-011`, `T-014`, `T-015` and `T-034` in parallel; then
-`T-035`; then `T-012`; then `T-013`; then the UI and test tasks.
+| REQ | Cited by | Discharged in Phase 1? |
+|---|---|---|
+| `REQ-008` (select format IDs from the table) | `T-015` out-of-scope | **No.** The format table is Phase 3. `T-015` only notes the boundary. |
+| `REQ-021` (open / reveal a completed file) | `T-017` out-of-scope | **No.** Phase 2. |
+| `REQ-025` (report the yt-dlp version, update it in-app) | `T-012`, `T-035` | **Partly.** Reporting the resolved version, yes. Updating it in-app is Phase 4 (`OPS-002`). |
+| `REQ-026` (cookies for entitled content) | `T-014`, `T-038` | **Partly.** Only the promise that cookie material never reaches the database or a log. Cookie *input* is Phase 3. |
+
+**Five tasks were filed during planning, not created as new work.** `T-034` (path safety),
+`T-035` (environment resolution), `T-036` (application composition), `T-037` (end-to-end
+download and restart proof) and `T-038` (logging and redaction) are all `ARCHITECTURE.md` or
+`IMPLEMENTATION_PLAN.md` responsibilities that the original ten-row outline did not own. Two
+were found while writing dependencies, three by review. Without `T-036` and `T-037` in
+particular, every task could pass while the application still opened an empty window and no
+download was ever proven to complete.
+
+Dependency order: `T-010`; then `T-011`, `T-014`, `T-015`, `T-034` in parallel; then `T-035`
+and `T-038`; then `T-012`; then `T-013`; then `T-016`, `T-017`, `T-018`, `T-019`; then `T-036`;
+then `T-037`.
 
 ### T-034 — Output path rendering and filename safety
 
@@ -504,10 +581,24 @@ every output path to pass through `core/paths.py`, `ai/TESTING.md` §7 lists pat
 mandatory coverage, and `T-012` writes files — so the slice cannot be built without it, and
 nothing in the original outline owned it.
 
-Platform directory resolution, output-template rendering with the live preview `REQ-011`
-requires, and filename sanitizing enforcing the **intersection** of Linux and Windows rules:
-reserved device names (`CON`, `NUL`, `LPT1`…), characters illegal on NTFS, trailing dots and
-spaces, and path-length limits.
+**Corrected after review: this task no longer renders output templates.** The earlier draft
+put yt-dlp-compatible template rendering in `core/paths.py`, which cannot work —
+`ARCHITECTURE.md` §9 says rendering uses *yt-dlp's own template mechanism*, and `core/` may not
+import `yt_dlp` (§6). Reimplementing yt-dlp's template language in `core/` would be a second
+implementation of someone else's syntax, guaranteed to drift.
+
+The responsibility splits:
+
+- **`core/paths.py` (this task)** — pure, yt-dlp-free: platform directory resolution, filename
+  sanitizing, and the containment check. Given a candidate path and a target directory, it
+  answers *is this safe and legal on both platforms*, and returns a sanitized path.
+- **`ytdlp_adapter.py` (`T-012`)** — passes the output template to yt-dlp, which renders it,
+  then runs the result through this module before it is used. Rendering stays with the only
+  code allowed to know yt-dlp's syntax.
+
+Sanitizing enforces the **intersection** of Linux and Windows rules: reserved device names
+(`CON`, `NUL`, `LPT1`…), characters illegal on NTFS, trailing dots and spaces, and path-length
+limits.
 
 The security property, stated plainly: **a title-derived filename must never escape the
 configured output directory.** Titles come from media sites and are attacker-influenced data.
@@ -526,13 +617,17 @@ contained within the target directory.
   usually missed
 - Over-long paths are shortened without losing the extension or colliding with a neighbouring
   file
-- The `REQ-011` preview shows the path that will actually be used — asserted by rendering and
-  writing, not by comparing two calls to the same function
-- Rendering is deterministic: identical inputs produce identical output
+- Sanitizing is deterministic and idempotent: sanitizing an already-sanitized path returns it
+  unchanged, so passing a path through twice cannot corrupt it
+- The `REQ-011` live preview is **not** this task's — it needs a rendered template and
+  therefore belongs with `T-012`, which owns rendering. This task supplies the sanitizing step
+  the preview must pass through, and `T-012` asserts preview-equals-actual
 - `core/paths.py` imports no Qt and no `yt_dlp`
 
 #### Out of scope
 
+- **Output-template rendering** — `T-012`, because it uses yt-dlp's own mechanism
+- The `REQ-011` live preview — `T-012`, for the same reason
 - The settings UI for choosing a template — Phase 4
 - Collision policy when the target file already exists — Phase 2 alongside resume
 - Any actual file writing; this module computes and validates paths
@@ -570,6 +665,14 @@ it against.
 `manager.py` is the one `downloader/` module allowed to import Qt, because it emits signals.
 `worker.py` still may not.
 
+**Persistence is injected, not imported.** `ARCHITECTURE.md` §3 shows `DownloadManager` owning
+a repository, and Phase 1 promises durable transitions — so the dependency on `T-014` stays.
+But the manager must not know SQLite exists: it takes a **repository protocol**, is unit-tested
+against a fake implementation, and receives the concrete `JobRepository` from `app.py` at
+composition time (`T-036`). One integration test exercises the real repository. A widget is the
+wrong place to create this boundary; `T-017` consumes durable state, it does not construct the
+persistence seam.
+
 Cancellation is the sharp end (`REQ-015`): try the cooperative path first — `DownloadCancelled`
 raised from a progress hook, so partial files are left in a known state — then `terminate()`,
 then `kill()` on a timeout. The 2-second budget is measured against a **real in-flight
@@ -594,6 +697,16 @@ so.
   errors
 - Every `T-011` message type is routed to a signal; an unhandled type raises rather than being
   dropped
+- The manager is constructed with a fake repository in unit tests and never imports
+  `persistence` directly — asserted, so the injected boundary cannot quietly collapse
+- Every state transition the manager performs is persisted before the corresponding signal is
+  emitted, so a crash between the two cannot leave the UI ahead of the database
+- **Shutdown is deterministic:** the pump exits on a protocol sentinel rather than on a
+  timeout, and a test asserts no thread is left blocked in `Queue.get()` after shutdown
+- **The terminal-message/exit race is handled:** a worker that sends a terminal message and
+  then exits non-zero is reported by its message, not as `WORKER_CRASH`. A test forces that
+  ordering, because the naive implementation checks the exit code first and manufactures a
+  crash from a successful download
 - Killing the parent does not leave the child running
 
 #### Out of scope
@@ -696,8 +809,11 @@ output of translation, not an internal detail.
   actually uses — not a separately maintained label that could drift (`REQ-009`)
 - A raw user-supplied selector passes through unchanged, including strings the project does
   not understand — the escape hatch is not validated into uselessness (`REQ-009`)
-- A preset whose selector is empty or malformed fails at construction rather than at download
-  time
+- **The validation boundary is explicit**, because "accept anything unknown" and "reject
+  malformed" otherwise contradict each other. Only two structural conditions are rejected, and
+  only for **built-in presets**: an empty selector, and one that is not a string. A
+  user-supplied selector is never rejected for content — yt-dlp is the judge of whether it
+  resolves, and a test asserts a deliberately nonsensical user selector survives untouched
 - `core/presets.py` imports no `yt_dlp` and no Qt
 
 #### Out of scope
@@ -733,8 +849,12 @@ single item or a playlist. On failure, show the extractor's own message **verbat
 
 #### Acceptance criteria
 
-- A probe of a fixture-backed URL populates the dialog; the GUI thread is never blocked, and a
-  test asserts the dialog remains responsive while a probe is outstanding (`NFR-001`)
+- A probe of a fixture-backed URL populates **every field `REQ-002` names** — title,
+  uploader, duration, a thumbnail decoded to a real pixmap rather than a URL, and whether the
+  URL is a single item or a playlist — asserted field by field, since "populates the dialog"
+  would pass with four of five missing
+- The GUI thread is never blocked, and a test asserts the dialog stays responsive while a
+  probe is outstanding (`NFR-001`)
 - An unsupported URL shows the extractor's message character-for-character, asserted by
   equality against the fixture (`REQ-005`, `NFR-006`)
 - A probe that never returns can be cancelled and leaves no worker behind
@@ -776,9 +896,11 @@ retry affordance (`REQ-018`); nothing fails silently.
 
 - Every stage in `REQ-014` is displayed, driven by real `T-011` messages rather than a
   simulated sequence
-- Progress updates do not block or visibly stutter the GUI thread under a high message rate —
-  asserted by driving a burst, since a per-message repaint is the obvious naive implementation
-  and it degrades exactly when a download is fastest
+- Under a burst of progress messages the **event loop stays responsive by measurement**, not
+  by eye: either event-loop latency stays under a stated bound, or updates are coalesced to a
+  stated maximum repaint rate and a test asserts the coalescing. "Does not visibly stutter" is
+  not testable, and a per-message repaint is the obvious naive implementation — it degrades
+  exactly when a download is fastest
 - Cancel is actuable by keyboard and produces a cancelled job within the `REQ-015` budget
 - A failed job shows the extractor's verbatim message and remains in the view with a retry
   affordance (`REQ-018`, `NFR-006`)
@@ -791,6 +913,156 @@ retry affordance (`REQ-018`); nothing fails silently.
 - Multi-job queue view, reordering, bulk actions — Phase 2
 - Pause and resume — `REQ-015` includes them, but they need Phase 2's scheduler
 - Open-file and reveal-in-file-manager — `REQ-021`, Phase 2
+
+---
+
+### T-036 — Application composition and wiring
+
+**Status:** Proposed — Ready once `T-013` merges
+**Owner:** Implementer
+**Priority:** **High** — without it every component can pass while the product still opens an
+empty window
+**Phase:** Phase 1
+**Depends on:** `T-013`, `T-014`, `T-015`, `T-016`, `T-017`
+**Relevant context:** `ARCHITECTURE.md` §3, §4, §8; `NFR-001`, `NFR-002`, `REQ-024`
+**Affected surfaces:** `app.py`, `ui/main_window.py`, `tests/ui/`, `tests/integration/`
+**Risk:** **High** — the only task that can fail while every other task is green
+**Review base:** the last of its dependencies' merge commits
+
+#### Scope
+
+**Filed after review: nothing owned this.** `app.py`'s own docstring says `T-013` adds the
+download manager wiring, but `T-013` neither claims `app.py` nor proves the assembled path. So
+every Phase 1 task could pass in isolation while the application still did nothing — which is
+the failure the phase exists to prevent.
+
+Compose the object graph in one place: construct the repository, the manager, the result pump
+and the window; inject the concrete `JobRepository` into the manager through the protocol seam
+`T-013` defines; connect the add-URL dialog and the progress view to manager signals; and
+report the ffmpeg state `T-035` supplies at startup (`REQ-024`).
+
+Also own orderly shutdown: closing the window stops the pump on its sentinel, cancels any
+running job, reaps its process tree, and closes the database — in that order.
+
+#### Acceptance criteria
+
+- A test drives the **assembled application** — not components — from paste through to a queued
+  job, using `T-016`'s dialog and asserting the job reaches the repository
+- Wiring is asserted structurally too: the manager holds the concrete repository, and every
+  manager signal the UI needs has exactly one connection. A signal connected twice, producing
+  duplicate rows, must fail
+- Startup reports the ffmpeg state and names what will not work without it (`REQ-024`)
+- Closing the window with a job running exits with code 0, leaves no process in the tree, and
+  leaves the database consistent
+- Cold start stays inside `NFR-002`'s 3-second budget with the full graph constructed, and the
+  measurement is recorded — `T-007` measured an empty window
+- No component is constructed twice, asserted by identity, so a second manager cannot quietly
+  service a second queue
+
+#### Out of scope
+
+- Any new behavior; this task connects what the others built
+- The single-instance guard — `A-004`, Phase 2
+
+---
+
+### T-037 — End-to-end download and restart proof
+
+**Status:** Proposed — Ready once `T-036` merges
+**Owner:** Implementer
+**Priority:** **High** — two Phase 1 exit criteria are unowned without it
+**Phase:** Phase 1
+**Depends on:** `T-036`
+**Relevant context:** `IMPLEMENTATION_PLAN.md` Phase 1 exit criteria; `REQ-012`, `REQ-014`,
+`NFR-003`; `ai/TESTING.md` §7 (Crash recovery)
+**Affected surfaces:** `tests/integration/`
+**Risk:** **High** — it is the evidence for the phase
+**Review base:** the `T-036` merge commit
+
+#### Scope
+
+**Filed after review: the phase had no proof of success.** `T-012` tests probing and failure,
+`T-019` tests cancellation and crashes — nobody proved a download *completing*. Phase 1's first
+exit criterion is "a real URL downloads to disk with accurate live progress and correct final
+bytes", and its fourth is "job state survives an application restart mid-download". Both were
+unowned.
+
+Two integration tests against the assembled application, with yt-dlp faked at the adapter seam
+so they are deterministic and offline:
+
+1. **Success.** A job runs to completion: the file exists at the expected path, its byte count
+   matches what was reported, progress advanced monotonically through the `REQ-014` stages, and
+   the job's terminal state is success in both the UI and the repository.
+2. **Restart.** Kill the application mid-download, restart it, and assert the job is recovered
+   to a retryable state, visible in the UI, with its `DownloadRequest` intact — the assembled
+   equivalent of the database-level recovery `T-014` proves.
+
+A network-marked variant downloads one real, stable, small URL end to end, so the offline fake
+is checked against reality at least once. It stays excluded by default (`ai/TESTING.md` §2).
+
+#### Acceptance criteria
+
+- The completed file exists, and its size equals the total the final progress message reported
+  — a mismatch is exactly the bug this criterion is for
+- Progress is monotonic and reaches every `REQ-014` stage the job actually used
+- Success is recorded identically in the UI and the repository; disagreement fails
+- After a mid-download kill and restart, the job is recovered, visible, retryable, and its
+  stored `DownloadRequest` is byte-identical to the original (`REQ-012`, `NFR-003`)
+- Recovery is proven by killing a real process, not by closing the application cleanly
+- The `-m network` variant completes one real download and is **not** part of the default run
+
+#### Out of scope
+
+- Multiple concurrent jobs — Phase 2
+- Resume of a partial download — Phase 2
+
+---
+
+### T-038 — Logging with handler-level redaction
+
+**Status:** Proposed — Ready once `T-011` merges
+**Owner:** Implementer
+**Priority:** High — `NFR-007` is a privacy promise and worker diagnostics are where it leaks
+**Phase:** Phase 1
+**Depends on:** `T-011`
+**Relevant context:** `ARCHITECTURE.md` §8 (Logging); `REQ-026`, `NFR-007`, `NFR-004`
+**Affected surfaces:** `core/` logging setup, `downloader/worker.py`, `tests/unit/`
+**Risk:** **High** — a leak here is written to disk and survives
+**Review base:** the `T-011` merge commit
+
+#### Scope
+
+**Filed after review: nothing owned logging.** `ARCHITECTURE.md` §8 promises an application log
+in `user_cache_dir`, per-job logs, and redaction **at the handler level rather than at each
+call site** — precisely so a forgotten call site cannot leak. No Phase 1 task owned any of it,
+while `T-012` and `T-013` are about to generate the diagnostics most likely to carry a
+tokenized URL or a cookie path.
+
+Configure logging for both processes, add per-job log files, and implement the redacting
+handler: cookie file paths, cookie contents, proxy credentials, and token-like URL query
+parameters (`REQ-026`, `NFR-007`).
+
+Handler-level is the whole design. A redaction helper that call sites must remember to use is
+the thing this task exists to avoid.
+
+#### Acceptance criteria
+
+- A log record whose message contains a cookie path, cookie content, proxy credential, or a
+  token-like query parameter is redacted **in the emitted output**, asserted by writing through
+  a real handler rather than by calling a redaction function directly
+- Redaction survives every formatting route: `%`-style args, f-strings pre-formatted by the
+  caller, `extra=` fields, and an exception traceback carrying a URL in its message
+- A deliberately careless call site — logging a full request object — still produces redacted
+  output, which is the property that distinguishes handler-level from call-site redaction
+- Worker logs reach the parent's log without the child needing Qt
+- Logs are written under `platformdirs`, never beside the application (`NFR-004`)
+- A test scans a generated log for a known token and fails if it appears in any form
+
+#### Out of scope
+
+- A log viewer in the UI — Phase 3
+- Rotation and retention policy — Phase 4
+- Crash reporting of any kind; there is none (`NFR-007`)
 
 ---
 
@@ -823,9 +1095,12 @@ personal paths (`REQ-026`, `NFR-007`). They are committed, so a leak here is per
   `C:\Users` fails a sanitization check — asserted by a test that scans the fixture directory,
   not by review discipline
 - The projection test fails when a projected key changes shape, which is the whole purpose
-- Replacing a fixture requires stating what changed in the dict shape and why
-  (`ai/TESTING.md` §5), and the test names the field that moved rather than reporting a
-  generic mismatch
+- When a fixture changes shape the test **names the field that moved**, rather than reporting
+  a generic mismatch, so the diff is diagnosable
+- Fixture provenance is machine-checked: every fixture has a recorded yt-dlp version and
+  capture date, and one lacking either fails. *(Requiring a human to explain why a fixture
+  changed is a review convention from `ai/TESTING.md` §5, not an executable criterion — it is
+  stated there and deliberately not restated here as if a test enforced it.)
 - Fixtures cover at minimum: a normal video, an audio-only case, a playlist, `DRM_PROTECTED`,
   `UNSUPPORTED_URL`, and `EXTRACTOR_ERROR`
 - No test in this task touches the network
@@ -857,16 +1132,42 @@ nothing was really running would retire the guarantee rather than establish it.
 Real child processes, real IPC, yt-dlp faked at the adapter seam (`ai/TESTING.md` §2) so a
 download can be made to hang, crash, or run long on demand without the network.
 
-Prove, on **both platforms**: cancellation terminates a genuinely in-flight download within
-2 seconds leaving no orphan; a killed worker becomes `WORKER_CRASH` with its exit code and the
-application survives; and no orphan outlives the test session.
+**The fake must do observable work, or the whole task is vacuous.** A fake that returns
+immediately would let every assertion below pass against an implementation that cancels
+nothing. So the fake, running inside a **real spawned child**, must: signal that it has entered
+the download call, emit progress messages carrying its own PID, and grow a partial file on
+disk. Only once the test has observed all three may it cancel or kill. That sequencing is
+itself an acceptance criterion.
+
+**Descendants count.** Killing the Python worker does not necessarily kill the `ffmpeg` it
+spawned. The fake therefore spawns a real grandchild, and cleanup is asserted over the whole
+process tree — checking worker PIDs alone would report success while `ffmpeg` kept running and
+kept writing.
+
+Prove on **both platforms**: cancellation terminates genuinely in-flight work within 2 seconds
+leaving no surviving descendant; a killed worker becomes `WORKER_CRASH` and the application
+survives; and no orphan outlives the test session.
 
 #### Acceptance criteria
 
-- The cancellation test is asserted against a worker that is **actually downloading**, not
-  sleeping — the distinction `T-002` flagged and never closed
-- Orphan checks enumerate real processes and assert none survive; the check must fail if a
-  worker is deliberately leaked, proven once by leaking one
+- Before any cancel or kill, the test has observed **all three** signs of real work: the child
+  reported entering the download, progress arrived stamped with the child's PID, and the
+  partial file grew. A fake that skips any of them fails the test rather than passing it
+- Cancellation of that genuinely in-flight work completes within 2 seconds (`REQ-015`) — the
+  distinction `T-002` raised and never closed
+- **Cleanup is asserted over the process tree**, including a deliberately spawned grandchild
+  standing in for `ffmpeg`. Killing the worker while the grandchild survives must fail
+- **The orphan detector is permanently self-tested**: a test creates a real leaked child *and*
+  a leaked grandchild and asserts the detector finds both, then reaps them. This runs on every
+  suite run — a one-time manual leak would repeat exactly the Phase 0 evidence problem, where
+  a check nobody re-exercises looks identical to one that works
+- Exactly **one** terminal outcome is recorded per job; a cancelled job is `CANCELLED`, never
+  also a failure or a success
+- A cancelled download leaves **no completed-file rename** — the partial file stays partial,
+  so a cancel cannot be mistaken for a finished download
+- The job's persisted state after cancellation matches what the UI was told
+- The **GUI event loop is still running** after the kill, asserted by scheduling and observing
+  a timer — "the application survives" is otherwise unfalsifiable (`REQ-028`)
 - `SIGKILL` and `TerminateProcess` are both exercised on their own platform
 - A worker exiting 0 with no terminal message is reported as `WORKER_CRASH`
 - The tests run in CI on Linux **and** Windows, and are not skipped on either — a skip on one

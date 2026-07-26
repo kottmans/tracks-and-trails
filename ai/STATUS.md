@@ -71,10 +71,12 @@ Phase 0's build work and every exit-review finding are merged. **The phase still
 exited**, for one reason only: the documented criterion "the window launches from a clean
 checkout on Windows" is unmet and cannot be met here (`OPS-003`). Everything else passes.
 
-1. **`T-010`** — Ready, and the only one that is. All of Phase 1 is now planned in full:
-   `T-011`–`T-019` plus `T-034`, each with scope, observable acceptance criteria, an
-   out-of-scope list and a review base. Order: `T-010`, then `T-011`/`T-014`/`T-015`/`T-034`
-   in parallel, then `T-012`, then `T-013`, then the UI and integration tasks.
+1. **`T-010`** — Ready, and the only one that is. Phase 1 is **15 tasks** after an informal
+   plan critique found six further gaps: application composition (`T-036`), proof that a
+   download ever *succeeds* (`T-037`), and logging with redaction (`T-038`) were all unowned,
+   and `T-034`/`T-035` had to be rewritten because they violated the layering rule as
+   originally written. All of Phase 1 is now planned in full:
+
 2. **A Windows session** — a cloud desktop, a local VM, or a person with a Windows machine.
    It closes the last exit criterion and it blocks first release either way.
 3. **`OPS-004`** — accept or reject; it unblocks `T-026`. See the open question below.
