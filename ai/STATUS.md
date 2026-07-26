@@ -70,6 +70,14 @@ Phase 0's build work is done. What remains is not implementation:
 
 Then `T-020` (frozen smoke test), which needs `T-007` — its `T-006` dependency is met.
 
+## Open questions for the maintainer
+
+- **`OPS-004` needs accepting or rejecting.** A spike showed `OPS-003`'s "not automatable on
+  Windows" list was written on a false assumption: the CI runner has a real desktop
+  (`platformName == 'windows'`, a native `HWND`, working screenshots). `OPS-003`'s core
+  decision stands; its classification does not. `T-026` implements the correction and is
+  blocked until this is decided.
+
 ## Blockers
 
 *(none — the `T-003` logo blocker cleared on 2026-07-25 when the maintainer supplied the

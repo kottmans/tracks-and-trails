@@ -196,6 +196,66 @@ around it is done.
 
 ---
 
+### T-026 — Verify Windows behavior against the runner's real desktop
+
+**Status:** Proposed — blocked on `OPS-004` being accepted
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 0 follow-up; must land before the first public release
+**Depends on:** `T-006`, `T-007`, `OPS-004`
+**Relevant context:** `OPS-004`, `OPS-003` (superseded classification), `NFR-005`,
+`ai/TESTING.md` §9, `REQUIREMENTS.md` §3
+**Affected surfaces:** `.github/workflows/ci.yml`, `tests/ui/`, `ai/TESTING.md`,
+`REQUIREMENTS.md` §3
+**Risk:** Medium — it converts release-blocking manual work into automation, so a weak
+implementation would retire a gate without replacing it
+
+#### Scope
+
+`OPS-003` assumed a CI runner has no desktop and wrote off most Windows verification as
+human-only. A spike disproved that: `windows-latest` reports `platformName == 'windows'`,
+a 1024×768 display, a native `HWND` whose title the Win32 API reads back, and captures
+screenshots with native font rendering.
+
+Move the objective half of Windows verification into CI:
+
+1. **Real-plugin rendering.** Run the UI suite on Windows without `QT_QPA_PLATFORM=offscreen`
+   as well as with it, and retain screenshots of each key window as artifacts.
+2. **Focus and keyboard.** Assert tab order and focus chain through synthetic key events on a
+   real window, not an offscreen one.
+3. **Accessibility tree.** Assert every control's name and role as exposed to UI Automation —
+   what a screen reader reads (`NFR-005`). Needs a dev-only dependency such as `comtypes`.
+4. **Installer**, once one exists (Phase 5): silent install, files, shortcuts, uninstall,
+   removal — on a runner, which is a genuinely clean machine.
+
+#### Acceptance criteria
+
+- The Windows job runs the UI suite under the real `windows` platform plugin and uploads a
+  screenshot of every key window; a deliberately broken layout is visible in the artifact
+- Tab order and focus chain are asserted on Windows, and reordering two widgets fails the test
+- Every interactive control exposes a non-empty accessible name and a correct role through UI
+  Automation; removing a label fails the test
+- `ai/TESTING.md` §9's manual Windows list is rewritten to only what remains subjective, and
+  `REQUIREMENTS.md` §3's "known-unverified" wording is narrowed to match
+- Both the offscreen and real-plugin runs stay green, and the added time is recorded against
+  `T-006`'s budget
+
+#### Out of scope
+
+- Pixel-perfect screenshot diffing — retain screenshots as evidence first; baselines are a
+  separate decision, and a brittle image gate is worse than none
+- The subjective residue in `OPS-004`: whether rendering looks right, whether Narrator sounds
+  coherent, installer feel, long-running stability. Those still need a person and still block
+  first release
+- Buying or renting a cloud Windows desktop — complementary, not part of this
+
+**Note:** this is the rare task that *reduces* release-blocking manual work. The risk is doing
+it shallowly: a screenshot nobody looks at and an accessibility assertion that passes on an
+empty tree would retire a real gate and replace it with theatre. Each criterion above is
+therefore stated as a mutation that must fail.
+
+---
+
 ## Proposed — Phase 0
 
 ### T-021 — Simplified small-size icon glyph

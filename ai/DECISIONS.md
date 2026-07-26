@@ -403,6 +403,81 @@ distributing a Python desktop application and the only one that meets the requir
 
 ---
 
+## OPS-004 — Windows CI runners provide a real desktop; verify against it
+
+**Status:** Proposed — needs maintainer acceptance
+**Date:** 2026-07-25
+**Supersedes:** the automatable / not-automatable classification in `OPS-003`
+
+### Context
+
+`OPS-003` accepted that CI is the only Windows environment available, then split Windows
+verification into what CI could automate and what it could not. That split was reasoning, not
+measurement, and it assumed a CI runner has no desktop session — so anything involving real
+rendering, focus, or assistive technology was written off as human-only work blocking the
+first public release.
+
+A spike on `windows-latest` disproved the assumption:
+
+```
+platformName        'windows'          (the real platform plugin, not offscreen)
+screens             [('HyperVMonitor', 1024, 768)]
+native HWND         328186
+GetWindowTextW      'Tracks & Trails'  (the Windows API sees the window)
+IsWindowVisible     True
+screenshot          captured, with native Windows font rendering
+```
+
+### Decision
+
+Treat the Windows runner as a **real, if headless-in-practice, Windows desktop**, and move
+everything it can genuinely check out of the manual list and into CI. Specifically, these are
+now **automatable and therefore required**, not optional:
+
+- Rendering under the real `windows` platform plugin, with screenshots retained as evidence
+- Keyboard navigation and focus order, asserted through synthetic key events
+- Accessibility: every control's name and role as exposed to the UI Automation tree — the
+  data a screen reader actually reads (`NFR-005`)
+- Installer behavior: silent install, file and shortcut placement, uninstall and removal
+
+These remain **genuinely human** and continue to block first release:
+
+- Whether the rendering *looks* right, as opposed to matching a baseline
+- Whether Narrator's announcements are *coherent*, as opposed to the tree being correct
+- Whether the installer *feels* normal
+- Long-running stability under real use
+
+### Rationale
+
+The distinction that matters is not "GUI versus not". It is **objective versus subjective**.
+Almost everything `OPS-003` labelled human was objective and merely assumed unreachable:
+focus order is a sequence, an accessibility name is a string, an installed file either exists
+or does not. What genuinely needs a person is aesthetic and experiential judgment, and that is
+a far shorter list.
+
+Getting this wrong was expensive in the direction that matters: it inflated the release-blocking
+manual list and understated how much confidence CI could already provide on the platform with
+no other coverage.
+
+### Alternatives considered
+
+- **Leave `OPS-003` as written** — rejected. Its core decision is sound but its factual claim
+  is disproven, and `AGENTS.md` §7 forbids letting a known-wrong claim stand as project truth.
+- **Rewrite `OPS-003` in place** — rejected. It is a historical record (`AGENTS.md` §6);
+  superseding preserves what was believed and when.
+- **Buy a cloud Windows desktop instead** — not rejected, and still wanted for the subjective
+  residue. It is a complement, not a substitute: a rented desktop does not run on every push.
+
+### Consequences
+
+- `T-026` implements the expanded verification.
+- The pre-release manual Windows session (`ai/TESTING.md` §9) shrinks to the subjective list
+  above, and should be rewritten when `T-026` lands.
+- `REQUIREMENTS.md` §3's "known-unverified" wording for Windows becomes too broad once the
+  objective half is automated.
+
+---
+
 ## SEC-001 — No circumvention: DRM, paywalls, auth walls, and rate limits are out of scope
 
 **Status:** Accepted
@@ -497,8 +572,14 @@ distributed binary, not to our source.
 
 ## OPS-003 — Windows verification is CI-only until a real Windows machine exists
 
-**Status:** Accepted
+**Status:** Accepted — **classification lists superseded by `OPS-004`** (2026-07-25)
 **Date:** 2026-07-25
+
+> **Correction, 2026-07-25.** The decision below stands: CI remains the only Windows
+> verification mechanism. Its *classification* of what CI can verify does not. The
+> "not automatable" list was written on the assumption that a CI runner offers no desktop
+> session; a spike proved otherwise. See `OPS-004`. The original text is left intact as the
+> historical record.
 
 ### Context
 
