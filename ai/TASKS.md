@@ -20,6 +20,8 @@ review findings and the real Windows launch criterion are discharged.
 
 ## Ready
 
+## Proposed — Phase 0
+
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
 **Status:** Proposed
@@ -76,8 +78,6 @@ task is the other half — that the pure-Python package actually *ships*. Purity
 inclusion still yields an application that cannot download anything.
 
 ---
-
-## Proposed — Phase 0
 
 ### T-026 — Verify Windows behavior against the runner's real desktop
 
