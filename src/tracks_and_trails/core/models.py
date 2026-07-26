@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any, Self
+from typing import Any, Final, Self
 
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, apply
@@ -66,6 +66,15 @@ def _require_text(owner: str, name: str, value: object, reason: str = "") -> Non
         _fail(owner, name, value, "a string")
     if not value:
         raise ValueError(f"{owner}.{name} cannot be empty{'; ' + reason if reason else ''}")
+
+
+def _is_ytdlp_quality(value: str) -> bool:
+    """Whether `value` is something yt-dlp's `preferredquality` accepts.
+
+    Validated here rather than discovered at post-processing time: that happens *after* the
+    file has been downloaded, so a typo would cost the user the whole transfer before failing.
+    """
+    return value.isdigit()
 
 
 def _require_optional_text(owner: str, name: str, value: object) -> None:
@@ -184,6 +193,37 @@ class MediaKind(StrEnum):
     AUDIO = "audio"
 
 
+class AudioCodec(StrEnum):
+    """The audio codec a request asks for (`REQ-010`'s "chosen codec").
+
+    `REQ-006` requires **audio only (MP3)** and **audio only (best/original)** as two distinct
+    presets. Without this the two were indistinguishable: both installed yt-dlp's audio
+    extractor with its default `best`, which *keeps* the source codec — so the MP3 preset
+    delivered whatever the site served and silently never converted anything (`T012-R5`).
+
+    Values are yt-dlp's own `preferredcodec` vocabulary so translation is a lookup rather than
+    a mapping table that can drift. `ORIGINAL` is spelled for the user's benefit and carries
+    yt-dlp's `best`, which means "no conversion", not "the highest-quality codec".
+    """
+
+    ORIGINAL = "best"
+    MP3 = "mp3"
+    AAC = "aac"
+    M4A = "m4a"
+    OPUS = "opus"
+    VORBIS = "vorbis"
+    FLAC = "flac"
+    ALAC = "alac"
+    WAV = "wav"
+
+
+#: Codecs whose delivery requires a conversion step, and therefore ffmpeg (`REQ-024`).
+#:
+#: `ORIGINAL` is absent deliberately: it copies the source stream, so it is the one audio
+#: request that does not by itself demand ffmpeg.
+CONVERTING_AUDIO_CODECS: Final = frozenset(AudioCodec) - {AudioCodec.ORIGINAL}
+
+
 @dataclass(frozen=True, slots=True)
 class FormatInfo:
     """One selectable format from a probe — a projection of yt-dlp's format dict.
@@ -283,6 +323,14 @@ class DownloadRequest:
     subtitle_languages: tuple[str, ...] = ()
     embed_subtitles: bool = False
 
+    #: `REQ-010`'s chosen codec and quality. Only meaningful when `media_kind` is AUDIO.
+    #:
+    #: `audio_quality` is yt-dlp's `preferredquality`: either a VBR setting `0`-`9` or a target
+    #: bitrate in kbps such as `192`. Kept as a string because those two vocabularies share the
+    #: field upstream, and an int would silently make `0` (best VBR) mean 0 kbps.
+    audio_codec: AudioCodec = AudioCodec.ORIGINAL
+    audio_quality: str | None = None
+
     #: Network options are carried, never logged as-is. `T-038` redacts at the handler level
     #: (`NFR-007`), which is why a proxy URL may safely live in the model.
     proxy: str | None = None
@@ -305,6 +353,14 @@ class DownloadRequest:
                 self, name, _as_tuple_of("DownloadRequest", name, getattr(self, name), str)
             )
         _require_flag("DownloadRequest", "embed_subtitles", self.embed_subtitles)
+        _require_enum("DownloadRequest", "audio_codec", self.audio_codec, AudioCodec)
+        _require_optional_text("DownloadRequest", "audio_quality", self.audio_quality)
+        if self.audio_quality is not None and not _is_ytdlp_quality(self.audio_quality):
+            raise ValueError(
+                f"DownloadRequest.audio_quality must be a VBR setting 0-9 or a kbps bitrate, "
+                f"not {self.audio_quality!r}; yt-dlp rejects anything else at post-processing "
+                "time, which is after the download has already been paid for"
+            )
         _require_optional_text("DownloadRequest", "proxy", self.proxy)
         _require_optional_text("DownloadRequest", "cookies_from_browser", self.cookies_from_browser)
         _require_optional_count("DownloadRequest", "rate_limit_bytes", self.rate_limit_bytes)

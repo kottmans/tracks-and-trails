@@ -40,6 +40,15 @@ PROBE_LOG_ENV = "TT_PROBE_LOG"
 #: The single message the child sends back. Not a real IPC protocol — `T-011` defines that.
 PROBE_MESSAGE = "worker-alive"
 
+#: A well-formed URL for the extractor the probe names. The 11-character id is not cosmetic:
+#: yt-dlp's pattern requires it, and a shorter placeholder makes `suitable()` return False and
+#: the gate fail for the wrong reason. Never fetched — only pattern-matched (`T033-R2`).
+_KNOWN_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+#: A URL the same extractor must *not* claim. Without it, an extractor whose predicate always
+#: returned True would satisfy the check above.
+_UNRELATED_URL = "https://example.com/not-a-video"
+
 #: Generous: a cold frozen child on a loaded CI runner starts far slower than a source one.
 TIMEOUT_SECONDS = 120
 
@@ -113,4 +122,128 @@ def run_probe() -> int:
         return 1
 
     print("OK: spawned a child from this build, exchanged one message, and reaped it")
+    return 0
+
+
+def run_ytdlp_probe() -> int:
+    """Assert the frozen artifact actually carries a usable yt-dlp (`T-033`, `OPS-002`).
+
+    **Importing yt-dlp is not the test.** `import yt_dlp` succeeds against the core alone, which
+    is precisely what makes the packaging failure look like site breakage: the app launches, and
+    every URL fails to find an extractor. So this resolves an extractor *by name* through
+    yt-dlp's lazy machinery, which is the part static analysis cannot see.
+
+    Resolution goes through `downloader.worker`, the only module permitted to import yt-dlp
+    (`ARCHITECTURE.md` §6). That is not a workaround — it means the probe exercises the real
+    `OPS-002` resolution path inside the artifact rather than a parallel one.
+    """
+    from tracks_and_trails.downloader.environment import (
+        BASELINE_YTDLP_VERSION,
+        normalise_version,
+        ytdlp_candidates,
+    )
+    from tracks_and_trails.downloader.worker import _import_ytdlp
+
+    try:
+        resolved = _import_ytdlp(ytdlp_candidates(None))
+    except ImportError as error:
+        print(f"FAIL: no usable yt-dlp in the frozen artifact: {error}", file=sys.stderr)
+        return 1
+
+    print(f"ytdlp version   {resolved.version}")
+    print(f"ytdlp source    {resolved.source}")
+    print(f"ytdlp pin       {BASELINE_YTDLP_VERSION}")
+
+    # `T033-R1`: the first acceptance criterion. Printing the version is not asserting it — a
+    # stale or wrong yt-dlp passed every other check here, because "some yt-dlp with lots of
+    # extractors" is exactly what a wrongly-pinned build also produces. `OPS-002` promises a
+    # *pinned, tested* baseline, and this is the only place that promise is verifiable inside
+    # the artifact.
+    #
+    # Compared normalised: the pin reads `2026.7.4` and the package reports `2026.07.04`.
+    if normalise_version(resolved.version) != normalise_version(BASELINE_YTDLP_VERSION):
+        print(
+            f"FAIL: the artifact bundles yt-dlp {resolved.version}, but this build pins "
+            f"{BASELINE_YTDLP_VERSION}. The frozen baseline is not the tested one (T-033, "
+            "OPS-002).",
+            file=sys.stderr,
+        )
+        return 1
+
+    extractors = resolved.module.extractor.gen_extractor_classes()
+    names = [cls.IE_NAME for cls in extractors]
+    print(f"extractors      {len(names)}")
+
+    # A handful of extractors is what you get when only the core was bundled. A real yt-dlp has
+    # hundreds; the exact number changes upstream, so the bound is deliberately loose.
+    if len(names) < 100:
+        print(
+            f"FAIL: only {len(names)} extractors resolved. The artifact carries yt-dlp's core "
+            "without its extractors, so every URL would fail as if the site had changed "
+            "(T-033).",
+            file=sys.stderr,
+        )
+        return 1
+
+    # Resolution by name is the operation a download actually performs.
+    #
+    # `get_info_extractor` *raises* `KeyError` for an unknown name — it does not return None.
+    # An earlier `matched is None` check here was therefore dead code, and the failure it was
+    # written to explain escaped as a bare traceback instead. The job still went red, so the
+    # gate worked; but under `OPS-003` a Windows failure is diagnosed from this log and nothing
+    # else, and "KeyError: 'YoutubeIE'" does not say that the artifact shipped without its
+    # extractors. Found by mutation-checking the probe rather than by a failure.
+    try:
+        placeholder = resolved.module.extractor.get_info_extractor("Youtube")
+    except KeyError:
+        print(
+            "FAIL: yt-dlp is present and reports extractors, but a known extractor could not "
+            "be resolved by name. The lazy-extractor machinery did not survive freezing "
+            "(T-033).",
+            file=sys.stderr,
+        )
+        return 1
+
+    # `T033-R2`: **resolving the name is not the gate.** `get_info_extractor` hands back a class
+    # from `yt_dlp.extractor.lazy_extractors`, which is a generated stub table — it imports no
+    # extractor code at all. With `yt_dlp.extractor.youtube` made unimportable, this probe still
+    # reported 1751 extractors, "resolved youtube", and exit 0, while actually using the
+    # extractor failed with `ModuleNotFoundError`. That is precisely the shipped-but-broken
+    # artifact T-033 exists to catch, passing its own gate.
+    #
+    # Instantiating the placeholder is what triggers the real import: the lazy class swaps
+    # itself for the concrete one on construction.
+    try:
+        extractor = placeholder()
+    except ImportError as error:
+        print(
+            f"FAIL: the extractor's real module could not be imported: {error}. The artifact "
+            "carries yt-dlp's lazy extractor table but not the extractor code behind it, so "
+            "every matching URL would fail as if the site had changed (T-033).",
+            file=sys.stderr,
+        )
+        return 1
+
+    real = type(extractor)
+    print(f"resolved        {real.IE_NAME} from {real.__module__}")
+
+    if "lazy" in real.__module__:
+        print(
+            f"FAIL: {real.IE_NAME} is still the lazy placeholder ({real.__module__}); the "
+            "concrete extractor module was never loaded (T-033).",
+            file=sys.stderr,
+        )
+        return 1
+
+    # The stable, offline half of what an extractor does: decide whether it handles a URL. No
+    # network — a packaging gate that needs the internet is a gate that fails on a bad day.
+    if not real.suitable(_KNOWN_URL) or real.suitable(_UNRELATED_URL):
+        print(
+            f"FAIL: {real.IE_NAME} loaded but does not match its own URL pattern; the "
+            "extractor code in this artifact is not the one it claims to be (T-033).",
+            file=sys.stderr,
+        )
+        return 1
+
+    print("OK: the frozen artifact carries a usable yt-dlp with its extractors")
     return 0

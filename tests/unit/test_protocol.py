@@ -25,6 +25,7 @@ from tracks_and_trails.downloader.protocol import (
     Probed,
     Progress,
     ProtocolViolationError,
+    ResolutionReport,
     SessionKind,
     Stage,
     Succeeded,
@@ -65,6 +66,12 @@ def one_of_each() -> dict[type, Any]:
         Progress: Progress(job_id="j", stage=Stage.MERGING),
         Succeeded: Succeeded(job_id="j", output_path="/downloads/clip.mp4", total_bytes=10),
         Failed: Failed(job_id="j", kind=ErrorKind.NETWORK, message="timed out"),
+        ResolutionReport: ResolutionReport(
+            job_id="j",
+            ytdlp_version="2026.07.04",
+            ytdlp_source="bundled baseline",
+            rejected=("user-managed copy: ImportError: deliberately broken",),
+        ),
         WorkerFinished: WorkerFinished(job_id="j", exit_code=0),
     }
 
@@ -88,6 +95,8 @@ def test_the_samples_are_valid_contract_instances() -> None:
     assert isinstance(samples[Probed].media, MediaInfo)
     assert isinstance(samples[Progress].stage, Stage)
     assert isinstance(samples[Failed].kind, ErrorKind)
+    assert samples[ResolutionReport].ytdlp_version
+    assert samples[ResolutionReport].ytdlp_source
     assert samples[Succeeded].output_path
     assert samples[Failed].message
     for message in samples.values():
@@ -417,9 +426,15 @@ def test_the_validator_rejects_an_undeclared_subclass() -> None:
 
 
 def test_exactly_the_three_outcome_types_are_outcomes() -> None:
-    """`Probed` is an outcome — a successful probe otherwise reports nothing at all."""
+    """`Probed` is an outcome — a successful probe otherwise reports nothing at all.
+
+    `ResolutionReport` deliberately is **not** one: it says which yt-dlp is running, not what
+    the job achieved. Counting it would break the "exactly one outcome" rule on every session
+    that reports its resolution, which is every session that gets that far (`T012-R1`).
+    """
     outcomes = {t for t in MESSAGE_TYPES if is_outcome(one_of_each()[t])}
     assert outcomes == {Probed, Succeeded, Failed} == set(OUTCOME_TYPES)
+    assert not is_outcome(one_of_each()[ResolutionReport])
 
 
 def test_the_sentinel_is_not_an_outcome() -> None:

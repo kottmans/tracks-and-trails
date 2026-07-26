@@ -16,11 +16,12 @@ from tracks_and_trails import __version__
 USAGE = """\
 Tracks & Trails {version} — a desktop GUI for yt-dlp.
 
-usage: tracks-and-trails [--version] [--help] [--spawn-probe]
+usage: tracks-and-trails [--version] [--help] [--spawn-probe] [--ytdlp-probe]
 
   --version      print the version and exit
   --help, -h     print this message and exit
   --spawn-probe  self-test the process model and exit (T-020)
+  --ytdlp-probe  self-test the bundled yt-dlp and exit (T-033)
 
 Run with no arguments to open the application window.
 """
@@ -45,6 +46,12 @@ def run(argv: Sequence[str]) -> int:
         from tracks_and_trails._freeze_probe import run_probe
 
         return run_probe()
+    # Before Qt for the same reason as above: a frozen artifact missing its extractors must be
+    # diagnosable without a display (T-033).
+    if "--ytdlp-probe" in args:
+        from tracks_and_trails._freeze_probe import run_ytdlp_probe
+
+        return run_ytdlp_probe()
     if args:
         print(USAGE.format(version=__version__), end="")
         return 2

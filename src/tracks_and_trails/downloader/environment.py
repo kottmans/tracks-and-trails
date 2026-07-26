@@ -57,6 +57,32 @@ FFMPEG_DEPENDENT_FEATURES: Final = (
 )
 
 
+#: The pinned baseline from `pyproject.toml`, restated here so a frozen artifact can check
+#: itself (`OPS-002`, `T033-R1`).
+#:
+#: Duplicated deliberately rather than read from `pyproject.toml` at runtime: a frozen build
+#: does not ship `pyproject.toml`, and bundling it to answer one question would put build
+#: metadata inside the artifact. `tests/unit/test_environment.py` asserts the two agree, so the
+#: duplication cannot drift silently — which is the only thing that makes it acceptable.
+BASELINE_YTDLP_VERSION: Final = "2026.7.4"
+
+
+def normalise_version(version: str) -> tuple[int, ...]:
+    """Compare yt-dlp versions by value rather than by spelling (`T033-R1`).
+
+    The pin is written `2026.7.4` and the package reports `2026.07.04`. They are the same
+    release, so a string comparison would fail an artifact that is in fact correct — and, worse,
+    invite someone to "fix" it by loosening the check into one that passes for everything.
+
+    Non-numeric parts sort as `-1` rather than raising: a development or patched build should
+    fail the equality check loudly, not crash the probe that exists to report on it.
+    """
+    parts: list[int] = []
+    for piece in version.strip().split("."):
+        parts.append(int(piece) if piece.isdigit() else -1)
+    return tuple(parts)
+
+
 def user_ytdlp_directory() -> Path:
     """`user_data_dir/tracksandtrails/ytdlp/` — where a user-managed copy lives (`OPS-002`).
 

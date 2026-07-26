@@ -259,6 +259,47 @@ jobs:
             2>&1 | tee "../reports/pyinstaller.txt"
           echo "build seconds: $SECONDS" | tee -a "../reports/frozen-timing.txt"
 
+      - name: Record the artifact size
+        # T033-R1's size delta. **Deliberately before the probe, not after.**
+        #
+        # The delta is a comparison between two builds: the normal one and a collection-removal
+        # run whose probe is *expected* to fail. Ordered after the probe, that second run
+        # skipped this step entirely and could never supply the "without yt-dlp" half of the
+        # comparison — the step measuring the difference was skipped in exactly the run that
+        # defines it.
+        #
+        # `if: always()` as well as the ordering, so a probe failure for any other reason still
+        # leaves the size evidence behind.
+        if: always()
+        run: |
+          {
+            echo "platform: ${{ matrix.os }}"
+            echo "ref: ${{ github.sha }}"
+            du -sk dist/tracks-and-trails | awk '{print "artifact KiB: " $1}'
+            find dist/tracks-and-trails -path '*yt_dlp*' -type f \
+              | wc -l | awk '{print "yt_dlp files: " $1}'
+            find dist/tracks-and-trails -path '*yt_dlp*' -type f -exec du -k {} + \
+              | awk '{total += $1} END {print "yt_dlp KiB: " total+0}'
+          } 2>&1 | tee "reports/artifact-size.txt"
+
+      - name: Assert the frozen artifact carries yt-dlp and its extractors
+        # T-033. Importing yt_dlp is not the test: the core alone imports fine, and the
+        # artifact then fails every URL as if the site had broken. This resolves an extractor
+        # through the lazy machinery PyInstaller's static analysis cannot see.
+        #
+        # T033-R1: it also asserts the bundled version against the pin in pyproject.toml.
+        # Printing the version was not checking it — a stale or wrong yt-dlp produced exactly
+        # the same "lots of extractors" output that a correct one does.
+        #
+        # T033-R2: and it now *instantiates* the named extractor. Resolving the name returns a
+        # class from the generated lazy table, which imports no extractor code at all — with
+        # the real module unimportable this step still reported 1751 extractors and exit 0
+        # while every matching URL would have failed. Instantiation forces the real import.
+        run: |
+          BIN=dist/tracks-and-trails/tracks-and-trails
+          [ -f "$BIN" ] || BIN=dist/tracks-and-trails/tracks-and-trails.exe
+          "$BIN" --ytdlp-probe 2>&1 | tee "reports/ytdlp-probe.txt"
+
       - name: Smoke-test the frozen artifact
         # Asserts: launches, spawns a child, exchanges one message, exits zero, runs exactly
         # one top-level application process, and leaves no orphan behind.

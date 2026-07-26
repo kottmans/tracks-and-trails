@@ -14,6 +14,7 @@ not necessarily see as an `import yt_dlp`.
 """
 
 import ast
+import importlib.metadata
 import sys
 from pathlib import Path
 
@@ -108,11 +109,13 @@ def test_the_default_user_directory_is_not_doubled() -> None:
 REVIEWED_PUBLIC_API = frozenset(
     {
         "APP_SLUG",
+        "BASELINE_YTDLP_VERSION",
         "FFMPEG_DEPENDENT_FEATURES",
         "FfmpegReport",
         "YtdlpCandidate",
         "describe_candidates",
         "find_ffmpeg",
+        "normalise_version",
         "user_ytdlp_directory",
         "ytdlp_candidates",
     }
@@ -351,3 +354,65 @@ def test_reports_are_immutable_and_carry_tuples() -> None:
     candidate = ytdlp_candidates()[0]
     with pytest.raises(AttributeError):
         candidate.source = "elsewhere"  # type: ignore[misc]
+
+
+# --- the pinned baseline (OPS-002, T033-R1) ---------------------------------------------------
+
+
+def test_the_restated_pin_matches_pyproject() -> None:
+    """`BASELINE_YTDLP_VERSION` restates the pin so a frozen build can check itself.
+
+    Restating it is only acceptable because this test makes the duplication non-silent: bumping
+    `pyproject.toml` without bumping the constant would otherwise leave the frozen probe
+    asserting the *old* version and failing every build with a message blaming the artifact.
+
+    The pin is parsed from `pyproject.toml` rather than restated a third time here.
+    """
+    import tomllib
+
+    root = Path(__file__).parents[2]
+    data = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
+    pins = [d for d in data["project"]["dependencies"] if d.replace("_", "-").startswith("yt-dlp")]
+
+    assert len(pins) == 1, f"expected exactly one yt-dlp dependency, found {pins}"
+    assert "==" in pins[0], f"OPS-002 requires an exact pin, not {pins[0]!r}"
+    pinned = pins[0].split("==", 1)[1].strip()
+    assert pinned == environment.BASELINE_YTDLP_VERSION
+
+
+def test_the_installed_baseline_is_the_pinned_one() -> None:
+    """The constant is only useful if it describes what is actually installed."""
+    from tracks_and_trails.downloader.environment import normalise_version
+
+    installed = importlib.metadata.version("yt-dlp")
+    assert normalise_version(installed) == normalise_version(environment.BASELINE_YTDLP_VERSION)
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "equal"),
+    [
+        ("2026.7.4", "2026.07.04", True),
+        ("2026.07.04", "2026.7.4", True),
+        ("2026.7.4", "2026.7.5", False),
+        ("2026.7.4", "2025.7.4", False),
+        ("2026.7", "2026.7.0", False),
+    ],
+)
+def test_versions_compare_by_value_not_by_spelling(left: str, right: str, equal: bool) -> None:
+    """The pin reads `2026.7.4`; the package reports `2026.07.04`. Same release.
+
+    Expectations are transcribed from that fact rather than from the implementation
+    (`ai/TESTING.md` §13). The inequality cases matter more than the equality one: a
+    normalisation that returned a constant would satisfy the first two and is the failure mode
+    worth guarding.
+    """
+    from tracks_and_trails.downloader.environment import normalise_version
+
+    assert (normalise_version(left) == normalise_version(right)) is equal
+
+
+def test_a_non_numeric_version_does_not_crash_the_comparison() -> None:
+    """A patched or development build must fail the check loudly, not raise inside the probe."""
+    from tracks_and_trails.downloader.environment import normalise_version
+
+    assert normalise_version("2026.7.4dev") != normalise_version("2026.7.4")

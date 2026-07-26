@@ -1297,3 +1297,316 @@ head.
 T-034 has no open blocking finding and is **Approved with follow-ups** at `66a5542`. It may
 move to Complete, and its dependency edge no longer blocks T-012. T-045 remains separately
 In Review and T-044 remains Ready; neither requests or implies another T-034 pass.
+
+## 2026-07-26 — T-012 and T-033 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-012`, `T-033`
+**Review base:** `073aff830272d99282313f67fcf47e123f2869cd`
+**Head:** Bounded uncommitted working-tree snapshot from
+`ai/handoffs/T-012-T-033-review-handoff.md`; `AGENTS.md` and the handoff itself are excluded
+from the functional change
+**Platforms verified:** Linux locally. Frozen Linux and all Windows evidence remain pending
+because this snapshot is not committed or pushed.
+**Overall verdict:** **Changes requested**
+
+### Per-task verdicts
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-012` | **Changes requested** | Five High functional/contract defects remain in resolution reporting, fallback isolation, taxonomy mapping, output-path handling, and option translation; the playlist data-contract gap is a non-blocking Medium follow-up. |
+| `T-033` | **Changes requested** | The frozen probe does not assert the bundled version against the pin, and the required frozen/negative/size evidence is not yet present. |
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status / owner / target |
+|---|---|---|---|---|---|---|
+| `T012-R1` | **High** | **Yes** | Resolution reporting / IPC | Successful sessions never report the resolved yt-dlp version, source, or rejected override to the parent. `_run()` builds that context, but only attaches it while rebuilding a `Failed`; `Probed` and `Succeeded` have no context or resolution field. A direct successful probe emitted only `Progress`, `Probed(media=...)`, and `WorkerFinished`. Thus `REQ-025`'s version-reporting criterion and the broken-override criterion's “says so” half are both unmet even though `_import_ytdlp()` returns the information internally. The current tests inspect `ResolvedYtdlp` directly and therefore bypass the process contract the criteria require. | Extend the declared protocol so successful sessions carry one validated, picklable resolution report (or add an explicit message), then assert through `run_session()` that a normal success reports the actual version/source and a successful fallback reports the rejected candidate. Keep raw paths and credentials out of it. | **Open** — Implementer; `T-012` correction batch |
+| `T012-R2` | **High** | **Yes** | Broken-override fallback | A failed user import can leave `yt_dlp.*` submodules in `sys.modules`; the fallback removes the path but not those partial modules. A fresh-interpreter probe used a user package whose `__init__` imported its own `yt_dlp.version` and then raised `ImportError`. The baseline attempt reused that stale submodule and failed with `cannot import name 'CHANNEL'`, ending in `no usable yt-dlp`. The existing test raises before importing any submodule, so it proves only the cleanest broken-package shape. This violates `OPS-002` and the explicit requirement that a broken user copy fall back to the baseline. | Isolate each candidate attempt. On failure, remove the `yt_dlp` modules introduced by that attempt before trying the baseline, without replacing classes already bound by a successfully selected module. Add the partial-import reproduction in a fresh spawned interpreter and verify both fallback success and taxonomy identity. | **Open** — Implementer; `T-012` correction batch |
+| `T012-R3` | **High** | **Yes** | Error taxonomy | Real yt-dlp transport exceptions are absent from `_EXCEPTION_MAPPING`. `yt_dlp.networking.exceptions.TransportError`, `ProxyError`, `IncompleteRead`, `SSLError`, and `CertificateVerifyError` all classified locally as `EXTRACTOR_ERROR`; yt-dlp's networking layer raises these types directly. `NETWORK` is the only auto-retryable taxonomy kind, so a transient transport failure loses the behavior §7 assigns it. The test matrix covers built-in `ConnectionError`/`TimeoutError` but not yt-dlp's own networking hierarchy, despite the criterion claiming every yt-dlp-raised kind is accounted for. | Audit the pinned yt-dlp exception hierarchy, map concrete transport failures to `NETWORK` in most-specific-first order, and add direct plus wrapped cases. Treat HTTP/auth/unsupported subclasses by their actual consequence rather than mapping all `RequestError` instances indiscriminately. | **Open** — Implementer; `T-012` correction batch |
+| `T012-R4` | **High** | **Yes** | Output template, containment, and preview | The worker validates a different path contract from the one the user configured. `_validated_target()` reduces the rendered result to `Path(rendered).name`, so `nested/%(title)s.%(ext)s`, `../outside/%(title)s.%(ext)s`, and `/tmp/outside/%(title)s.%(ext)s` all became `/tmp/chosen/Clip.mp4`: directory control is discarded and the task's required rejection of an outside-rendering template never occurs. The advertised escape test calls `safe_output_path()` directly and never drives `_validated_target()` or `run_session()`, so it passes if the worker drops or bypasses the rendered path. Separately, the sanitized target is handed back to yt-dlp as another template: a title `%(uploader)s` previewed as a literal `%(uploader)s.mp4`, then yt-dlp rendered it again to a different filename. The reserved-name test does not exercise this drift. This breaks `REQ-011` and `ARCHITECTURE.md` §8's post-render path rule. | Preserve intended relative template components, reject absolute/traversal renderings at the worker seam as specified, and ensure the validated final path is passed to yt-dlp as a literal rather than interpreted as a second template. Add worker-entry tests for nested paths, absolute/traversal rejection, percent/template syntax in metadata, and preview equality against the path yt-dlp actually computes. | **Open** — Implementer; `T-012` correction batch |
+| `T012-R5` | **High** | **Yes** | Request/environment option translation | Several configured behaviors never reach the library call. `build_options(..., probe_only=True)` returns before adding proxy, cookie, or rate-limit settings, while every download performs that probe first; a URL that requires the configured proxy or cookies therefore fails before the actual download. `ffmpeg_override` is resolved and used to bypass `_ffmpeg_gap()`, but the resolved path is never passed as yt-dlp's `ffmpeg_location`. Finally, `DownloadRequest.post_processors` is ignored and `extractaudio=True`/`embedsubtitles=True` are CLI-parser flags, not sufficient `YoutubeDL` library configuration: constructing `YoutubeDL` from the submitted audio options produced an empty postprocessor list. Audio extraction/MP3 and embedded-subtitle presets would therefore be no-ops or failures. | Audit every `DownloadRequest` and resolved-environment field against `YoutubeDL`'s library API. Apply network options to probe and download, pass the resolved ffmpeg location, translate declared postprocessors into the dictionaries `YoutubeDL` consumes, and test behavior by constructing the library object or observing postprocessor execution—not by checking that an ignored key exists in the input dict. | **Open** — Implementer; `T-012` correction batch |
+| `T012-R6` | **Medium** | **No** | `REQ-002` playlist data contract | `REQ-002`, which T-012 cites, requires a probe to say whether the input is a single item or playlist. `MediaInfo` has no such field, `project_media()` cannot preserve it, and the options force `noplaylist=True`. T-016 later promises to display the distinction, but no typed value can reach it. This is adjacent Phase 1 contract work rather than a reason for another T-012-only review round once the blockers above close. | Add an explicit playlist/single-item projection before T-016. Amend `T-018` to own the fixture-backed adapter/model change (and make T-016 depend on it), or deliberately assign it to the current correction while the protocol seam is already changing. | **Open, non-blocking** — Planner/Implementer; target `T-018` before `T-016` |
+| `T033-R1` | **High** | **Yes** | Frozen artifact gate | The first acceptance criterion is not asserted: `run_ytdlp_probe()` prints `resolved.version` but never compares it with the exact `pyproject.toml` pin (`2026.7.4`; runtime reports `2026.07.04`). A stale or otherwise wrong bundled version can pass. The required negative proof that removing collection breaks the frozen probe, both-platform frozen results, and artifact-size delta are also absent; the handoff correctly labels only the source-mode probe as complete. PyInstaller is not installed in the local review environment, so an attempted independent local frozen build could not run. | Add a canonical expected-baseline value derived from the project pin at build time and fail the in-artifact probe on a normalized mismatch. Commit/push the corrected boundary, run both frozen jobs, exercise and revert the collection-removal mutation, and record the artifact-size change with the CI evidence. | **Open** — Implementer; `T-033` correction batch and CI |
+| `P1-R2` | **Low** | **No** | Coordination accuracy | `STATUS.md` lists T-033 under In progress and says its frozen evidence is pending, but its Known gaps section calls T-033 “closed 2026-07-26.” That is premature before review and before its own platform gate. | Keep T-033 In Review until `T033-R1` and both frozen jobs are verified; then describe it as closed in one consistent update. | **Open, non-blocking** — Implementer; coordination update with corrections |
+
+### Review judgments
+
+- Keeping `ai/handoffs/T-012-T-033-review-handoff.md` during the review is acceptable. It is
+  clearly a convenience artifact and does not replace `TASKS.md`, `STATUS.md`, or this review
+  record. Delete or archive it after the review closes unless the project deliberately gives
+  `ai/handoffs/` an owner, retention rule, and non-authoritative label.
+- `_origin_of()` is adequate for the supported baseline and extracted-wheel layouts: a bundled
+  baseline has no candidate path to compare, and the user-managed copy is an extracted
+  filesystem package with an ordinary origin. Frozen-platform evidence is still required.
+  The concrete importer defect is the partial-module contamination in `T012-R2`, not a
+  hypothetical synthetic `__file__`.
+- `_written_path()` falling back to the validated target is acceptable for an outcome that
+  lacks a more precise yt-dlp path. The blocking issue is that the target is currently stripped
+  and then reinterpreted before use.
+- The finding set is deliberately class-level. In particular, `T012-R5` requires a field audit
+  rather than five one-name patches, and `T012-R3` requires the pinned upstream exception
+  hierarchy rather than the two concrete types named by the first failing probe.
+
+### Checks and adversarial evidence
+
+| Check | Result |
+|---|---|
+| Review boundary | Base `073aff830272d99282313f67fcf47e123f2869cd`; 11 functional/coordination files in the bounded working-tree snapshot. `AGENTS.md` and `ai/handoffs/` excluded. Production blob IDs include worker `73ef6568`, adapter `4a571da6`, and freeze probe `026cdaf0`. |
+| `.venv/bin/ruff check .` | Passed: “All checks passed!” |
+| `.venv/bin/ruff format --check .` | Passed: 70 files already formatted. |
+| `.venv/bin/mypy src` | Passed: no issues in 31 source files. |
+| `.venv/bin/mypy` | Passed: no issues in 54 source files. |
+| `.venv/bin/mypy --platform win32` | Passed: no issues in 54 source files. |
+| `.venv/bin/pytest -q` | Passed: 700 passed, 5 skipped, 1 deselected in 1.62 s. |
+| Adapter + worker + layering | Passed: 169 tests. |
+| Source-mode `--ytdlp-probe` | Passed: runtime `2026.07.04`, 1751 extractors, `youtube` resolved. This is not frozen-artifact evidence. |
+| Successful-message probe | Emitted `Progress`, `Probed`, `WorkerFinished`; none carried version, source, or fallback context. |
+| Partial-import fallback probe | A broken override that imported its own `yt_dlp.version` before raising poisoned the baseline attempt; `_import_ytdlp()` raised `no usable yt-dlp` with the stale user module named in the baseline error. |
+| Networking taxonomy probe | `TransportError`, `ProxyError`, `IncompleteRead`, `SSLError`, and `CertificateVerifyError` each classified as `EXTRACTOR_ERROR`. |
+| Rendered-path probes | Nested, traversal, and absolute templates all silently collapsed to the same root-level chosen-directory filename. A percent-bearing title produced different first- and second-render results. |
+| Library-option probe | Probe options omitted configured proxy/cookies/rate limit. `YoutubeDL({"extractaudio": True})` constructed no audio postprocessor. |
+| Frozen build attempt | Not run: the repository venv lacks PyInstaller, so no local artifact was produced. The source probe above cannot substitute for CI. |
+| `git diff --check` | Passed for the tracked review diff excluding `AGENTS.md`; ruff/format covered the new Python files. |
+
+### Readiness and review budget
+
+Neither task is approved. T-012 has High defects in core user-visible behavior and its process
+contract; T-033 has an unmet High packaging gate. Under `AGENTS.md` §9 these findings remain
+blocking regardless of pass count. The Standard budget still provides one focused correction
+re-review; if any High/Critical finding remains after it, focused correction and independent
+verification continue until the serious defect is resolved or the maintainer makes an explicit
+scope/risk decision.
+
+## 2026-07-26 — T-012 and T-033 correction batch (Implementer)
+
+**Implementer:** Claude (Opus 5)
+**Responds to:** the 2026-07-26 T-012/T-033 initial review
+**Status:** all six blocking findings **corrected, awaiting re-review**. Nothing below is marked
+Resolved — only the Reviewer does that (`AGENTS.md` §9).
+
+The reviewer's findings table is left as written. This is appended rather than edited because
+`AGENTS.md` §6 classifies `REVIEWS.md` as a historical record.
+
+### Corrections
+
+| ID | Correction | Evidence that weakening it fails |
+|---|---|---|
+| `T012-R1` | New declared message `ResolutionReport` (version, source, rejected), emitted once after resolution and before the outcome, for **every** session that gets that far. Not an outcome, so the "exactly one outcome" rule is untouched; `validate_sequence` gains an at-most-one rule. Rejection reasons have the candidate directory replaced with its label (`NFR-007`). | Not emitting it: 4 failed. Dropping `rejected`: 1 failed. Removing the path redaction: 1 failed. Asserted through `run_session`, and the fallback case through a real spawned process. |
+| `T012-R2` | Each candidate import is snapshotted and, **on failure only**, the `yt_dlp` modules that attempt added are discarded. Also widened to `except Exception`: a broken user copy is arbitrary code and `SyntaxError`/`RuntimeError` shapes previously killed the worker instead of falling back. | Removing the cleanup: 2 failed. Narrowing back to `ImportError`: 4 failed. The reviewer's partial-import repro is now a parametrised shape in `BROKEN_SHAPES`, run in a fresh interpreter, and each shape also asserts the taxonomy still classifies after the fallback. |
+| `T012-R3` | `TransportError` mapped to `NETWORK`, covering `ProxyError`, `SSLError`, `CertificateVerifyError` and `IncompleteRead`. `HTTPError` classified by `.status`, since one class spans opposite retry consequences. | Dropping the mapping: 12 failed. Classifying HTTP by class: 6 failed. The test walks the pinned hierarchy rather than naming five types, so a new upstream subclass cannot reintroduce the defect. |
+| `T012-R4` | The rendered path keeps its directories; an escaping render is **rejected** (`escapes_directory`, new in `core/paths.py`) rather than neutralised; the validated path is handed to yt-dlp `%%`-escaped so it is data, not a second template. Rejection classifies as `DISK`, not `EXTRACTOR_ERROR`. | Restoring `Path(rendered).name`: 1 failed. Removing rejection: 6 failed. Passing the raw path as `outtmpl`: 1 failed. Neutering `escapes_directory`: 6 failed. All new tests drive `run_session`, not `safe_output_path`. |
+| `T012-R5` | Connection options (proxy, cookies, rate limit) and `ffmpeg_location` now apply to **both** phases; `postprocessors` built as the dicts the library consumes; `post_processors` names validated against yt-dlp's own registry, unknown ones raising `UnsupportedPostProcessorError` (→ `FFMPEG_ERROR`) instead of being dropped. | Six mutations, 1–5 failures each. Tests construct a real `YoutubeDL` and read `_pps`, per the reviewer's instruction not to assert on keys in the input dict. |
+| `T033-R1` | `BASELINE_YTDLP_VERSION` restated in `environment.py` and asserted against the `pyproject.toml` pin by test; the probe fails on a normalised mismatch (`2026.7.4` vs `2026.07.04`). CI now also records artifact size and yt-dlp's share of it. | Wrong pin: 2 failed **and** the probe exits 1 with an explicit message. `normalise_version` returning a constant: 4 failed. |
+
+### Non-blocking
+
+- `T012-R6` — assigned to `T-018`, which now owns the playlist/single-item projection and
+  **blocks `T-016`**; `T-016`'s dependency list updated. It needs a recorded playlist fixture,
+  which is `T-018`'s job.
+- `P1-R2` — `STATUS.md` no longer calls `T-033` closed; it stays In Review until both frozen
+  jobs pass.
+
+### Also found while correcting
+
+Not reported findings; recorded because they were defects in the same surfaces.
+
+- `preview_path` (`REQ-011`) had **no test at all** — found while auditing acceptance criteria
+  for the handoff, before this review arrived. Its first test was vacuous on Linux, because
+  yt-dlp's `prepare_filename` already maps `: " ?` to fullwidth forms and left `T-034` nothing
+  to change. A reserved device name diverges on every platform.
+- The frozen probe's `matched is None` branch was dead code: `get_info_extractor` raises
+  `KeyError`. The gate worked; its diagnostic did not.
+- `_discard_partial_ytdlp`'s `before` guard is **deliberately unverified** and says so in its
+  docstring. Removing it survives the suite, and that is honest: the cleanup runs only when
+  `import yt_dlp` failed, which cannot happen while any `yt_dlp` module is cached, so nothing
+  pre-existing can be protected and no reachable test distinguishes the two.
+
+### Checks — actual results
+
+| Check | Result |
+|---|---|
+| `ruff check .` / `ruff format --check .` | Passed; 70 files formatted |
+| `mypy`, `mypy --platform win32` | Passed: no issues in 54 source files |
+| `pytest -q` | **765 passed, 6 skipped, 1 deselected** |
+| Consolidated mutation sweep | **18 mutations, 18 killed** |
+| Source-mode `--ytdlp-probe` | Passed; version now asserted against the pin. Still not frozen evidence. |
+
+### Still outstanding on T-033
+
+`T033-R1`'s remaining evidence — the collection-removal negative proof, both-platform frozen
+results, and the size delta — **requires the frozen CI jobs**. PyInstaller is in the `build`
+extra and is not installed locally, and `AGENTS.md` §7 forbids committing or pushing without
+maintainer instruction. The CI machinery is in place; the run is not. `T-033` therefore cannot
+be approved on this batch alone.
+
+---
+
+## 2026-07-26 — T-012 and T-033 focused correction re-review
+
+**Reviewer:** Codex
+**Responds to:** the 2026-07-26 T-012/T-033 correction batch
+**Boundary:** the correction applied to the same uncommitted working tree reviewed from
+`073aff830272d99282313f67fcf47e123f2869cd`; there is still no head commit. Maintainer-owned
+`AGENTS.md` and `.gitmessage`, and the convenience handoff, remain excluded.
+**Overall verdict:** **Changes requested**
+
+### Verdict by task
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-012` | **Changes requested** | `T012-R1`, `T012-R3`, and `T012-R4` are resolved, but the broken-override fallback still has an unclean-import shape that bypasses fallback and `T012-R5` still cannot represent the MP3/quality half of the required audio behavior. Both are High functional continuations of the original findings. |
+| `T-033` | **Changes requested** | The pin comparison is corrected, but the frozen probe can pass without the real named extractor module and the workflow does not yet produce the required collection size delta. Frozen evidence is still pending. |
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Re-review evidence | Status |
+|---|---|---:|---|---|
+| `T012-R1` | **High** | **Yes** | `ResolutionReport` is a declared, validated, picklable message and `run_session()` emits it before work and before either successful outcome. Success and fallback tests observe it through the queue. Rejection text replaces the candidate root with its source label; the path-bearing package shape makes that assertion non-vacuous. The report remains outside `OUTCOME_TYPES`, preserving one-outcome semantics. | **Resolved** |
+| `T012-R2` | **High** | **Yes** | The per-attempt snapshot and failure-only cleanup resolve the reported partial-submodule contamination for ordinary exceptions, and the fresh-process tests verify taxonomy identity after fallback. The correction is still incomplete for an import that raises `SystemExit`: a deterministic first-attempt import finder raising `SystemExit("broken override exited during import")` escaped `_import_ytdlp()` instead of trying the baseline. `SystemExit` is not an `Exception`, but it is still a user copy that “does not import cleanly,” which `ARCHITECTURE.md` §6 requires to fail loudly **and fall back**. The same applies to arbitrary `BaseException` raised by that third-party module unless cancellation semantics deliberately reserve one. | **Open** — extend the candidate-failure boundary beyond `Exception`, retain failure-only namespace rollback, and add the `SystemExit` shape to the fresh-interpreter fallback/taxonomy matrix |
+| `T012-R3` | **High** | **Yes** | `TransportError` now covers the pinned transport hierarchy as `NETWORK`; `HTTPError` is classified structurally by status before the type table. Direct and wrapped cases, the hierarchy walk, retryable statuses, `401`, and permanent statuses all pass. The deliberate `403` treatment is consistent with the taxonomy's requirement not to invent authentication from ambiguous evidence. | **Resolved** |
+| `T012-R4` | **High** | **Yes** | Worker-entry tests now preserve nested template directories, reject POSIX/Windows absolute and traversal renders as `DISK`, retain containment against symlinks, and drive a percent-bearing title through a real second yt-dlp render. `as_literal_template()` prevents the validated path from being interpreted as another template, and the independently observed `Succeeded.output_path` agrees with the preview. | **Resolved** |
+| `T012-R5` | **High** | **Yes** | Proxy, browser cookies, and rate limit now reach both adapter phases; the resolved ffmpeg path reaches the actual download; named processors are no longer silently discarded; and real `YoutubeDL` construction proves that audio extraction and subtitle embedding processors are installed. However, constructing the submitted audio request produced `FFmpegExtractAudioPP.mapping == "best"` and no quality, and `DownloadRequest` has no codec, quality, container, or structured processor-argument field. Consequently the required **MP3** preset and best/original preset are indistinguishable: both preserve/choose the source codec rather than one requesting MP3 conversion. A processor class being installed is not proof that it is configured to deliver the selected output. This is the same functional half of R5, not an adjacent preset-only issue: `T-015` can translate only into the request shape and `ytdlp_adapter` options this correction defines. | **Open** — make the request carry the required processor parameters, translate them into real yt-dlp processor dictionaries, and assert on the constructed processor's codec/quality behavior for MP3 versus best/original; include known ffmpeg-dependent processors in the early ffmpeg gate |
+| `T012-R6` | **Medium** | **No** | `T-018` now explicitly owns the recorded playlist fixture and playlist/single-item projection, and `T-016` depends on it. | **Open, non-blocking follow-up** — owner `T-018` before `T-016` |
+| `T033-R1` | **High** | **Yes** | The restated baseline is tied to the exact `pyproject.toml` pin, numeric normalization distinguishes wrong releases, and the source probe now fails on a normalized mismatch. That half is verified. The required frozen negative proof and both-platform results still do not exist. The workflow's size step prints one artifact total and a pathname-based `yt_dlp` subtotal, not the **before/after artifact-size change** the criterion requires. Moreover, it runs after the probe, so the collection-removal run that is expected to fail skips the size step and cannot supply the no-collection comparison. | **Open, partially corrected** — retain the version check; arrange for both the normal and collection-removal builds to record total size (before the deliberately failing probe or under an appropriate condition), then record the actual delta with the two-platform frozen evidence |
+| `T033-R2` | **High** | **Yes** | The claimed extractor gate resolves only a class from `yt_dlp.extractor.lazy_extractors`; it never instantiates that class and therefore never imports the real dynamic module. With a meta-path finder deliberately making `yt_dlp.extractor.youtube` unimportable, `run_ytdlp_probe()` still reported 1,751 extractors, “resolved youtube,” and exit 0. Instantiating the returned class immediately afterward failed with `ModuleNotFoundError`. Thus an artifact can pass this gate while lacking the code needed to handle the named URL pattern—the exact failure T-033 exists to catch. | **Open** — instantiate the named lazy class (and exercise its stable URL-pattern predicate without network), fail with a diagnostic on dynamic-module import failure, and add the blocker reproduction so removing the real extractor module cannot leave the probe green |
+| `P1-R2` | **Low** | **No** | `STATUS.md` consistently leaves T-033 In Review and explicitly names its pending frozen evidence. | **Resolved** |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; 70 files already formatted |
+| `mypy src` | Passed; 31 source files |
+| `mypy` | Passed; 54 source files |
+| `mypy --platform win32` | Passed; 54 source files |
+| `pytest -q` | **765 passed, 6 skipped, 1 deselected** |
+| Source `--ytdlp-probe` | Passed for the installed baseline; still not frozen evidence |
+| Dynamic-extractor blocker probe | **Gate incorrectly exited 0** while actual `YoutubeIE` instantiation failed with `ModuleNotFoundError` |
+| Broken-override `SystemExit` probe | **Fallback did not run**; `SystemExit` escaped `_import_ytdlp()` |
+| Real audio postprocessor inspection | `FFmpegExtractAudioPP` installed, but with `mapping="best"` and no requested quality; no MP3 distinction exists |
+| `git diff --check -- ai/REVIEWS.md` | Passed after this entry |
+
+### Review decision and next boundary
+
+Do **not** commit or push this correction boundary yet. Fix the two remaining T-012 High
+continuations and make the T-033 probe load real extractor code; also make the size evidence
+step capable of recording the negative-run comparison. Those are focused continuations of
+unresolved High findings, so `AGENTS.md` §9 permits another verification pass without consuming
+a Medium-or-lower exception.
+
+After that focused correction is verified, commit under `AGENTS.md` §12 and push. T-012 may
+then be approved from source evidence; T-033 remains In Review until the collection-removal
+negative run and both Linux and Windows frozen jobs supply their actual results and size delta.
+
+## 2026-07-26 — T-012 and T-033 second correction batch (Implementer)
+
+**Implementer:** Claude (Opus 5)
+**Responds to:** the 2026-07-26 focused correction re-review
+**Status:** the three remaining High findings and the size-evidence ordering are **corrected,
+awaiting re-review**. Appended, not edited into the reviewer's table (`AGENTS.md` §6, §9).
+
+### Corrections
+
+| ID | Correction | Evidence that weakening it fails |
+|---|---|---|
+| `T033-R2` | The probe now **instantiates** the resolved class, which is what makes yt-dlp's lazy placeholder load the concrete module, then checks the resulting class is not from `lazy_extractors` and exercises its offline URL predicate in both directions. `ImportError` is caught with a diagnostic naming the packaging cause. | The reviewer's meta-path blocker is now a permanent test in the new `tests/integration/test_freeze_probe.py`, which did not exist — the probe had been CI-only, which is part of why this passed. Reverting instantiation: 4 failed. |
+| `T012-R2` (cont.) | Candidate failure widened from `Exception` to `BaseException`, with `KeyboardInterrupt` deliberately re-raised. `SystemExit` and a bare `BaseException` are now shapes in the fresh-interpreter fallback/taxonomy matrix. | Narrowing back to `Exception`: 4 failed. Swallowing `KeyboardInterrupt`: 1 failed. |
+| `T012-R5` (cont.) | `DownloadRequest` gains `audio_codec` (a new `AudioCodec` enum carrying yt-dlp's own `preferredcodec` vocabulary) and `audio_quality`, translated into the real processor dict. The early ffmpeg gate now consults **every** processor the request will install, deciding ffmpeg-dependence structurally via `issubclass(..., FFmpegPostProcessor)` rather than a name list. | MP3 now yields `mapping="mp3"`, quality `192`; original yields `mapping="best"`, quality `None`. Six mutations, 1–14 failures each. `Exec` is a control row in the gate table, since it is a real processor that needs no ffmpeg. |
+| `T033-R1` (size) | The size step moved **before** the probe and given `if: always()`, so the collection-removal run — whose probe is expected to fail — still records its total. | Ordering verified by inspection; the run itself still needs CI. |
+
+### Grounding for the new model fields
+
+`AudioCodec` and `audio_quality` are additions to an approved contract, so their basis is
+stated rather than assumed: `REQ-006` requires "audio only (MP3)" and "audio only
+(best/original)" as **two distinct presets**, and `REQ-010` requires "extract/convert audio to
+a chosen codec and quality". Without a field for it the two presets were byte-identical
+configuration. `ORIGINAL` carries yt-dlp's `best` — which means *no conversion*, not *highest
+quality* — and is spelled for the reader.
+
+### Three mutations survived and became tests
+
+Reported rather than smoothed over, per `ai/TESTING.md` §13.
+
+- Deleting the probe's `lazy` module check survived: instantiation already covers the blocked
+  module case, so nothing distinguished it. A class that constructs while remaining the
+  generated stub is constructible, and now is one.
+- Deleting the URL-predicate check survived for the same reason.
+- Dropping only the *negative* half of that predicate check (`suitable(_UNRELATED_URL)`)
+  survived even after the first two tests existed — an extractor claiming every URL passes
+  "does it match its own URL?" while being exactly as broken.
+
+### Checks — actual results
+
+| Check | Result |
+|---|---|
+| `ruff check .` / `ruff format --check .` | Passed; 71 files formatted |
+| `mypy`, `mypy --platform win32` | Passed: no issues in 55 source files |
+| `pytest -q` | **796 passed, 6 skipped, 1 deselected** |
+| Mutation sweep (this batch) | 14 mutations, 14 killed after the three above became tests |
+| Reviewer's blocked-extractor repro | Probe now exits 1 with "lazy extractor table" diagnostic |
+| Reviewer's `SystemExit` repro | Falls back to the baseline and reports the rejection |
+| Real audio processor | MP3 `mapping="mp3"` / quality `192`; original `mapping="best"` / `None` |
+
+### Still outstanding
+
+`T-033`'s frozen evidence — collection-removal negative run, both-platform results, actual size
+delta — still requires the CI jobs. Unchanged from the last batch: PyInstaller is in the
+`build` extra and absent locally, and `AGENTS.md` §7 forbids pushing without instruction.
+Nothing has been committed or pushed.
+
+---
+
+## 2026-07-26 — T-012 and T-033 second focused verification
+
+**Reviewer:** Codex
+**Responds to:** the 2026-07-26 T-012/T-033 second correction batch
+**Boundary:** the current uncommitted T-012/T-033 tree based on
+`073aff830272d99282313f67fcf47e123f2869cd`; maintainer-owned `AGENTS.md` and `.gitmessage`,
+and the convenience handoff, remain outside this reviewed task boundary.
+
+### Verdict by task
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-012` | **Approved with follow-ups** | All High blocking findings are independently resolved. The sole open finding, `T012-R6`, is non-blocking and has owner/target `T-018` before `T-016`. |
+| `T-033` | **Blocked** | The source and gate logic are ready to commit and run, but approval still requires the collection-removal negative proof, Linux and Windows frozen results, and their recorded artifact-size delta. Those are external CI evidence, not another source correction. |
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Verification evidence | Status |
+|---|---|---:|---|---|
+| `T012-R2` continuation | **High** | **Yes** | `_import_ytdlp()` now treats any candidate-raised `BaseException` other than `KeyboardInterrupt` as a failed candidate, performs the same failure-only namespace rollback, removes the candidate path, and tries the baseline. Replaying the reviewer's first-attempt `SystemExit` finder returned the pinned baseline and a `SystemExit` rejection report. Fresh-interpreter tests cover both `SystemExit` and bare `BaseException`, then re-check taxonomy identity. `KeyboardInterrupt` is explicitly re-raised and independently tested, so the widening does not turn an interruption into silent fallback. | **Resolved** |
+| `T012-R5` continuation | **High** | **Yes** | `DownloadRequest` now carries a validated `AudioCodec` and optional quality. A real constructed `YoutubeDL` produced `FFmpegExtractAudioPP.mapping == "mp3"` and quality `192.0` for MP3, versus `mapping == "best"` and no quality for original, so the two required behaviors are no longer the same configuration. The early missing-ffmpeg gate derives dependency from each installed processor's class hierarchy; worker-entry tests cover metadata, thumbnail, subtitle, audio, and merge cases, with non-ffmpeg `Exec` and a plain request as negative controls. | **Resolved** |
+| `T033-R2` | **High** | **Yes** | The probe now instantiates the lazy class, verifies the resulting class is concrete, and exercises its URL predicate positively and negatively without network access. Replaying the original meta-path blocker made the probe return 1 with the packaging-specific “lazy extractor table” diagnostic; the previous false success is now a permanent fresh-interpreter integration test. The normal source probe and the two predicate mutation cases also pass. | **Resolved** |
+| `T033-R1` | **High** | **Yes** | The version-against-pin logic remains verified. The artifact-size step now runs before the deliberately failing probe and uses `if: always()`, so both the normal and collection-removal builds can produce the totals needed for the delta. The required frozen runs and comparison have not happened yet. | **Open — externally blocked**; commit and push this exact reviewed boundary, then record the negative run, both-platform frozen results, and actual size delta |
+| `T012-R6` | **Medium** | **No** | Ownership remains explicit: `T-018` supplies the recorded playlist fixture and projection, and blocks `T-016`. | **Open, non-blocking follow-up** — `T-018` |
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Focused freeze-probe, worker, adapter, and model tests | **225 passed, 1 skipped** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; 71 files already formatted |
+| `mypy src` | Passed; 31 source files |
+| `mypy` | Passed; 55 source files |
+| `mypy --platform win32` | Passed; 55 source files |
+| `pytest -q` | **796 passed, 6 skipped, 1 deselected** |
+| Dynamic-extractor blocker replay | Probe returned **1** with a packaging diagnostic |
+| `SystemExit` fallback replay | Baseline `2026.07.04` selected; rejected override reported |
+| Real audio processor replay | MP3: `mp3` / `192.0`; original: `best` / no quality |
+| `git diff --check -- ai/REVIEWS.md` | Passed after this entry |
+
+### Commit and CI decision
+
+The reviewed T-012/T-033 task files and this review record are ready to commit under
+`AGENTS.md` §12 and push to `main` so the frozen jobs can run. Do not fold the excluded
+maintainer-policy files (`AGENTS.md`, `.gitmessage`) or the non-authoritative handoff directory
+into that task commit; handle those separately.
+
+The commit may close `T012-R1` through `T012-R5`, `T033-R2`, and `P1-R2`. It must not claim
+`T033-R1` or T-033 complete yet. After the green normal frozen run, exercise and revert the
+collection-removal mutation, retain both platforms' evidence, calculate the artifact-size
+delta from the two totals, and return only that external evidence for final T-033 verification.

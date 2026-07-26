@@ -1,4 +1,613 @@
 """Child-process entry point. The only module that instantiates YoutubeDL.
 
 Must not import Qt and must be import-safe under the 'spawn' start method
-(ARC-002, ARCHITECTURE.md §3)."""
+(`ARC-002`, `ARCHITECTURE.md` §3).
+
+**Import-safe means importing this module does nothing.** Under `spawn`, Python re-imports the
+child's module in a fresh interpreter before calling the target. Any work at import time runs
+again on every spawn — and in a frozen build (`REL-001`) it runs in a process that believes it
+is the application. `run_session()` is called explicitly; nothing happens on import.
+
+## yt-dlp is imported *here*, and only here
+
+`downloader/environment.py` locates candidates (`OPS-002`); this module walks them, puts the
+first on `sys.path`, imports, and falls back on `ImportError`. `ARCHITECTURE.md` §6 requires
+that a rejected override be **reported, never silently ignored** — a user who installed a
+broken copy and sees the baseline's behaviour with no explanation has been lied to.
+
+The import is deferred into `_import_ytdlp()` rather than done at module scope for the same
+reason `app.py` defers Qt: a module that imports yt-dlp at the top cannot be imported by a
+test, or by the layering analyser, without paying for it.
+
+## One session, one outcome
+
+A worker runs exactly one probe or one download, emits exactly one outcome, then the sentinel
+(`downloader/protocol.py`). Nothing here enforces "one" — that is `validate_sequence()`'s job
+on the receiving side — but the control flow is written so there is a single exit path.
+"""
+
+import sys
+import traceback
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any, Final, Protocol
+
+from tracks_and_trails.core.errors import ErrorKind, FailureDetail
+from tracks_and_trails.core.models import DownloadRequest
+from tracks_and_trails.core.paths import (
+    UnsafePathError,
+    escapes_directory,
+    safe_output_path,
+)
+from tracks_and_trails.downloader.environment import (
+    FfmpegReport,
+    YtdlpCandidate,
+    find_ffmpeg,
+    ytdlp_candidates,
+)
+from tracks_and_trails.downloader.protocol import (
+    Failed,
+    Probed,
+    Progress,
+    ResolutionReport,
+    SessionKind,
+    Stage,
+    Succeeded,
+    WorkerFinished,
+)
+
+
+class MessageSink(Protocol):
+    """Anything the worker can put messages on.
+
+    A `Protocol` rather than `queue.Queue`, because the real caller hands it a
+    `multiprocessing.Queue` — a different class with the same shape. Naming the shape rather
+    than the class is what lets the same code be driven by a plain queue in a unit test and by
+    a real IPC queue in a spawned process (`ARC-002`).
+    """
+
+    def put(self, item: Any, /) -> None: ...
+
+
+#: yt-dlp's own stage names, mapped onto `REQ-014`'s. Anything unrecognised keeps the previous
+#: stage rather than inventing one, because a wrong stage is worse than a stale stage.
+_POSTPROCESSOR_STAGES: Final[dict[str, Stage]] = {
+    "Merger": Stage.MERGING,
+    "FFmpegMerger": Stage.MERGING,
+    "FFmpegVideoRemuxer": Stage.MERGING,
+}
+
+
+@dataclass(frozen=True, slots=True)
+class ResolvedYtdlp:
+    """Which yt-dlp the worker actually imported, and what it had to reject to get there.
+
+    `rejected` is not decoration: `ARCHITECTURE.md` §6 requires a rejected override to be
+    reported. It is carried here so the caller can log it rather than discovering the fallback
+    by noticing that behaviour changed.
+    """
+
+    module: Any
+    version: str
+    source: str
+    rejected: tuple[str, ...] = ()
+
+
+def _origin_of(module: Any, candidate: YtdlpCandidate) -> str:
+    """Where the imported module *actually* came from, not where we hoped it would.
+
+    `import yt_dlp` returns whatever is already in `sys.modules`, ignoring `sys.path`. In a
+    spawned worker nothing has imported it yet so the candidate order decides — but if anything
+    ever does import it first, reporting the candidate we happened to be trying would be a lie:
+    the worker would claim "user-managed copy" while running the baseline.
+
+    So the source is derived from `__file__` rather than assumed. Deriving it also means the
+    report stays true if the resolution order changes later.
+
+    An earlier attempt purged `yt_dlp` from `sys.modules` instead. That was worse: re-importing
+    creates *new* exception classes, so `ytdlp_adapter`'s `isinstance` checks against the ones
+    it had already bound would all fail and every failure would classify as `EXTRACTOR_ERROR`.
+    A silent, total loss of the taxonomy — found because a classification test failed.
+    """
+    location = getattr(module, "__file__", None)
+    if candidate.path is not None and location is not None:
+        try:
+            Path(location).resolve().relative_to(Path(candidate.path).resolve())
+        except ValueError:
+            return f"{candidate.source} requested, but an already-imported yt-dlp was used"
+    return candidate.source
+
+
+def _import_ytdlp(candidates: tuple[YtdlpCandidate, ...]) -> ResolvedYtdlp:
+    """Import the first candidate that works, recording every one that did not.
+
+    Raises `ImportError` only if **no** candidate imports, which means the application is
+    broken rather than the user's copy being bad.
+    """
+    rejected: list[str] = []
+    for candidate in candidates:
+        # Snapshot before the attempt so failure can be rolled back precisely (`T012-R2`).
+        before = frozenset(sys.modules)
+        if candidate.path is not None:
+            path = str(candidate.path)
+            if path in sys.path:
+                sys.path.remove(path)
+            sys.path.insert(0, path)
+        try:
+            import yt_dlp  # deferred on purpose; see the module docstring
+        except KeyboardInterrupt:
+            # The one interruption that is not the candidate's fault. It means the user asked
+            # this process to stop, and swallowing it to go try the baseline would ignore them.
+            raise
+        except BaseException as error:
+            # Never silent (`ARCHITECTURE.md` §6). The reason travels with the result.
+            #
+            # `BaseException`, not `Exception` and certainly not `ImportError` (`T012-R2`). A
+            # user copy is arbitrary third-party code being *executed*, and §6's rule is about
+            # whether it "imports cleanly" — not about which base class it chose to fail with.
+            #
+            # `SyntaxError` and `AttributeError` shapes were the first widening. `SystemExit` is
+            # the second: a module calling `sys.exit()` at import time is not an `Exception` at
+            # all, so it escaped `_import_ytdlp` entirely and the baseline was never tried. A
+            # broken override thereby took the whole worker down — the exact outcome `OPS-002`'s
+            # fallback exists to prevent, reached by the one route the previous widening missed.
+            rejected.append(_redacted_reason(candidate, f"{error.__class__.__name__}: {error}"))
+            _discard_partial_ytdlp(before)
+            if candidate.path is not None:
+                sys.path.remove(str(candidate.path))
+            continue
+        return ResolvedYtdlp(
+            module=yt_dlp,
+            version=str(yt_dlp.version.__version__),
+            source=_origin_of(yt_dlp, candidate),
+            rejected=tuple(rejected),
+        )
+    raise ImportError(f"no usable yt-dlp: {'; '.join(rejected) or 'no candidates'}")
+
+
+def _redacted_reason(candidate: YtdlpCandidate, reason: str) -> str:
+    """Why a candidate was rejected, with its filesystem path replaced by its label.
+
+    The reason crosses to the parent and is shown and logged, and exception text from a broken
+    package routinely embeds the file that failed. `NFR-007` keeps user paths out of records
+    that travel and persist, and the *label* is what actually helps: "your yt-dlp folder" tells
+    the user which copy was refused, while the absolute path only repeats what they configured.
+    """
+    cleaned = reason
+    if candidate.path is not None:
+        cleaned = cleaned.replace(str(candidate.path), f"<{candidate.source}>")
+    return f"{candidate.source}: {cleaned}"
+
+
+def _discard_partial_ytdlp(before: frozenset[str]) -> None:
+    """Undo the `sys.modules` damage of one *failed* candidate import (`T012-R2`).
+
+    A package that raises partway through `__init__` leaves whatever it already imported behind
+    in `sys.modules`. The next candidate's `import yt_dlp` then reuses those half-initialised
+    submodules instead of loading its own, and the baseline fails with an error naming the
+    broken copy's internals — so a broken override took the baseline down with it and
+    `OPS-002`'s fallback did not happen at all.
+
+    Two constraints make this safe rather than a repeat of the purge that broke classification:
+
+    - **Only on failure.** A module that imported successfully is never touched, so the classes
+      `ytdlp_adapter` binds keep their identity and `isinstance` keeps working.
+    - **Only what this attempt added.** Anything already in `sys.modules` before the attempt
+      belongs to someone else and is left exactly as it was.
+
+    Scoped to the `yt_dlp` namespace: a broken copy may also have imported unrelated
+    third-party modules, and evicting those would break code that has nothing to do with us.
+
+    **The `before` guard is deliberately unverified.** Removing it survives the suite, and that
+    is honest rather than a coverage gap: this runs only when `import yt_dlp` *failed*, which
+    cannot happen while any `yt_dlp` module is already cached — so there is nothing pre-existing
+    to protect and no reachable test can distinguish the two. It stays because it states the
+    invariant the purge that broke classification violated, and because "only remove what this
+    attempt added" must remain true if candidate handling is ever reordered.
+    """
+    for name in [n for n in sys.modules if n == "yt_dlp" or n.startswith("yt_dlp.")]:
+        if name not in before:
+            del sys.modules[name]
+
+
+class _Reporter:
+    """Turns yt-dlp's hook callbacks into `T-011` messages on the result queue.
+
+    Holds the last stage so an unrecognised post-processor does not reset progress to a stage
+    the job is not in.
+    """
+
+    def __init__(self, job_id: str, queue: MessageSink) -> None:
+        self._job_id = job_id
+        self._queue = queue
+        self._stage = Stage.PROBING
+        #: Hook failures are swallowed so a reporting bug cannot kill a download — but they are
+        #: counted, and the count reaches the parent in the outcome's context. Swallowing
+        #: silently would make missing progress updates unexplainable.
+        self.hook_failures: list[str] = []
+
+    def send(self, message: Any) -> None:
+        self._queue.put(message)
+
+    def stage(self, stage: Stage) -> None:
+        self._stage = stage
+
+    def progress_hook(self, status: dict[str, Any]) -> None:
+        """yt-dlp's `progress_hooks` callback. Must not raise: it runs inside the download."""
+        try:
+            info = status.get("info_dict") or {}
+            if status.get("status") == "downloading":
+                self._stage = (
+                    Stage.DOWNLOADING_AUDIO
+                    if info.get("vcodec") == "none"
+                    else Stage.DOWNLOADING_VIDEO
+                )
+            self.send(
+                Progress(
+                    job_id=self._job_id,
+                    stage=self._stage,
+                    downloaded_bytes=_int_or_none(status.get("downloaded_bytes")),
+                    total_bytes=_int_or_none(
+                        status.get("total_bytes") or status.get("total_bytes_estimate")
+                    ),
+                    speed_bytes_per_second=_float_or_none(status.get("speed")),
+                    eta_seconds=_int_or_none(status.get("eta")),
+                )
+            )
+        except Exception as error:  # a reporting bug must not kill the download
+            self._record_hook_failure("progress", error)
+
+    def postprocessor_hook(self, status: dict[str, Any]) -> None:
+        try:
+            name = str(status.get("postprocessor") or "")
+            self._stage = _POSTPROCESSOR_STAGES.get(name, Stage.POST_PROCESSING)
+            self.send(Progress(job_id=self._job_id, stage=self._stage))
+        except Exception as error:
+            self._record_hook_failure("postprocessor", error)
+
+    def _record_hook_failure(self, hook: str, error: Exception) -> None:
+        """Keep at most a few, so a hook failing on every chunk cannot flood the outcome."""
+        if len(self.hook_failures) < 5:
+            self.hook_failures.append(f"{hook}: {type(error).__name__}: {error}")
+
+
+def run_session(
+    kind: SessionKind,
+    job_id: str,
+    request: DownloadRequest,
+    queue: MessageSink,
+    *,
+    user_ytdlp_directory: Path | None = None,
+    ffmpeg_override: Path | None = None,
+) -> int:
+    """Run one probe or one download and return the process exit code.
+
+    **Every path emits exactly one outcome and then `WorkerFinished`.** A worker that exits
+    without an outcome is indistinguishable from a crashed one to the parent (`REQ-028`), so
+    the sentinel is sent in a `finally` and the outcome is sent before it on every branch.
+    """
+    reporter = _Reporter(job_id, queue)
+    exit_code = 0
+    try:
+        resolved = _import_ytdlp(ytdlp_candidates(user_ytdlp_directory))
+        # Reported before the work starts, so it reaches the parent even if the job then fails
+        # (`T012-R1`, `REQ-025`, `ARCHITECTURE.md` §6).
+        reporter.send(
+            ResolutionReport(
+                job_id=job_id,
+                ytdlp_version=resolved.version,
+                ytdlp_source=resolved.source,
+                rejected=resolved.rejected,
+            )
+        )
+        outcome = _run(kind, job_id, request, reporter, resolved, ffmpeg_override)
+        reporter.send(outcome)
+        exit_code = 0 if not isinstance(outcome, Failed) else 1
+    except BaseException as error:  # the outcome must reach the parent whatever happened
+        detail = _classify_without_ytdlp(error)
+        reporter.send(
+            Failed(
+                job_id=job_id,
+                kind=detail.kind,
+                message=detail.message,
+                context=detail.context,
+            )
+        )
+        exit_code = 1
+    finally:
+        reporter.send(WorkerFinished(job_id=job_id, exit_code=exit_code))
+    return exit_code
+
+
+def _run(
+    kind: SessionKind,
+    job_id: str,
+    request: DownloadRequest,
+    reporter: _Reporter,
+    resolved: ResolvedYtdlp,
+    ffmpeg_override: Path | None,
+) -> Probed | Succeeded | Failed:
+    """The session body. Returns the outcome rather than sending it, so there is one send."""
+    from tracks_and_trails.downloader import ytdlp_adapter as adapter
+
+    context: dict[str, str] = {
+        "ytdlp_version": resolved.version,
+        "ytdlp_source": resolved.source,
+    }
+    if resolved.rejected:
+        # `ARCHITECTURE.md` §6: a rejected override is reported, never silently ignored.
+        context["ytdlp_rejected"] = "; ".join(resolved.rejected)
+
+    def with_hook_failures(outcome: Probed | Succeeded | Failed) -> Probed | Succeeded | Failed:
+        """Attach any swallowed hook failures, so missing progress is explainable."""
+        if reporter.hook_failures and isinstance(outcome, Failed):
+            merged = {**dict(outcome.context), "hook_failures": "; ".join(reporter.hook_failures)}
+            return Failed(
+                job_id=outcome.job_id,
+                kind=outcome.kind,
+                message=outcome.message,
+                context=tuple(sorted(merged.items())),
+            )
+        return outcome
+
+    ffmpeg = find_ffmpeg(override=ffmpeg_override)
+    directory = Path(request.output_directory)
+
+    try:
+        if kind is SessionKind.PROBE:
+            reporter.stage(Stage.PROBING)
+            reporter.send(Progress(job_id=job_id, stage=Stage.PROBING))
+            info = _extract(adapter, request, resolved, reporter, probe_only=True)
+            if adapter.has_drm(info):
+                return _drm_failure(job_id, request, context)
+            return with_hook_failures(Probed(job_id=job_id, media=adapter.project_media(info)))
+
+        # A download session probes first, so DRM and ffmpeg are caught before any bytes move.
+        reporter.stage(Stage.PROBING)
+        info = _extract(adapter, request, resolved, reporter, probe_only=True)
+        if adapter.has_drm(info):
+            return _drm_failure(job_id, request, context)
+
+        missing = _ffmpeg_gap(ffmpeg, request, info, adapter)
+        if missing is not None:
+            return Failed(
+                job_id=job_id,
+                kind=ErrorKind.FFMPEG_MISSING,
+                message=missing,
+                context=tuple(sorted(context.items())),
+            )
+
+        target = _validated_target(directory, request, adapter, resolved, info)
+        result = _extract(
+            adapter,
+            request,
+            resolved,
+            reporter,
+            probe_only=False,
+            # Literal, not a second template — see `as_literal_template`.
+            output_template=as_literal_template(target),
+            # `OPS-001`: yt-dlp must use the binary the worker gated on, not its own lookup.
+            ffmpeg_location=ffmpeg.path,
+        )
+        written = _written_path(result, target)
+        return with_hook_failures(
+            Succeeded(
+                job_id=job_id,
+                output_path=str(written),
+                total_bytes=_int_or_none((result or {}).get("filesize_approx")),
+            )
+        )
+    except UnsafePathError as error:
+        # Classified here rather than by the adapter, which maps *yt-dlp's* vocabulary. A
+        # rejected output template has nothing to do with an extractor, and `EXTRACTOR_ERROR`
+        # would tell the user the site failed when their own template is the problem.
+        #
+        # `DISK` is the taxonomy's filesystem bucket and its consequence — fail, pause the
+        # queue — is the right one: the template is shared by every queued job, so continuing
+        # would produce the identical failure once per job.
+        return with_hook_failures(
+            Failed(
+                job_id=job_id,
+                kind=ErrorKind.DISK,
+                message=str(error),
+                context=tuple(sorted(context.items())),
+            )
+        )
+    except BaseException as error:
+        detail = adapter.classify_exception(error)
+        return with_hook_failures(
+            Failed(
+                job_id=job_id,
+                kind=detail.kind,
+                message=detail.message,
+                context=tuple(sorted({**context, **dict(detail.context)}.items())),
+            )
+        )
+
+
+def _drm_failure(job_id: str, request: DownloadRequest, context: dict[str, str]) -> Failed:
+    """`REQ-EXCL-001`, `SEC-001`. Fail, and do not look for another way in.
+
+    There is deliberately no fallback selector, no retry with different options, and no attempt
+    to find a non-DRM format. `ErrorKind.DRM_PROTECTED` is non-retryable in `core.errors`, so
+    the UI will not offer a retry either.
+    """
+    return Failed(
+        job_id=job_id,
+        kind=ErrorKind.DRM_PROTECTED,
+        message=(
+            f"{request.url} is DRM-protected. Tracks & Trails does not download DRM-protected "
+            "content and will not attempt to work around it."
+        ),
+        context=tuple(sorted(context.items())),
+    )
+
+
+def _ffmpeg_gap(
+    report: FfmpegReport, request: DownloadRequest, info: dict[str, Any], adapter: Any
+) -> str | None:
+    """Whether this download needs ffmpeg that is not present (`REQ-024`, `OPS-001`).
+
+    Checked **before** downloading, which is the whole point of `REQ-024`: discovering it at
+    merge time means the user's bandwidth is already spent.
+    """
+    if report.available:
+        return None
+    needs_merge = "+" in request.format_selector
+    # Every post-processor the request will actually install is consulted, not just the two
+    # flags that used to be checked here (`T012-R5`). A request naming `FFmpegMetadata` or
+    # `EmbedThumbnail` needs ffmpeg exactly as much as an audio one, and previously sailed
+    # through this gate to fail after the download had completed.
+    if not (needs_merge or adapter.requires_ffmpeg(request)):
+        return None
+    return (
+        f"ffmpeg is required for this download but was not found ({report.source}). "
+        + report.summary()
+    )
+
+
+def _validated_target(
+    directory: Path,
+    request: DownloadRequest,
+    adapter: Any,
+    resolved: ResolvedYtdlp,
+    info: dict[str, Any],
+) -> Path:
+    """Render the output template through yt-dlp, then put it through `T-034`.
+
+    Rendering uses yt-dlp's own mechanism (`ARCHITECTURE.md` §9) because reimplementing its
+    template language would be a second implementation of someone else's syntax. The result is
+    then sanitized and contained — a title is attacker-influenced data, and this is the only
+    thing standing between it and a path outside the directory the user chose.
+
+    **The rendered path keeps its directories** (`T012-R4`). This previously reduced the result
+    to `Path(rendered).name`, which silently discarded the user's own template structure:
+    `nested/%(title)s.%(ext)s`, `../outside/%(title)s.%(ext)s` and `/tmp/outside/...` all
+    collapsed to the same file in the chosen folder. So a subdirectory layout was ignored, and
+    an escape attempt was neither honoured nor refused — it was quietly rewritten into
+    something that looked like it had worked.
+
+    Escapes are now **rejected rather than neutralized**, which is what the task requires of a
+    *template*. `safe_output_path` still neutralizes what comes from the title, because a video
+    named `../../etc/passwd` should download safely rather than fail.
+    """
+    rendered = resolved.module.YoutubeDL(
+        adapter.build_options(request, request.output_template, probe_only=True)
+    ).prepare_filename(info)
+
+    # The rendered path, made relative to the working directory yt-dlp rendered it against, so
+    # an absolute render is judged on what the user asked for rather than on where we are.
+    if escapes_directory(rendered):
+        raise UnsafePathError(
+            f"the output template rendered outside the chosen directory: {rendered!r}. "
+            "Templates may create subdirectories but may not leave the download folder."
+        )
+    return safe_output_path(directory, rendered)
+
+
+def as_literal_template(path: Path) -> str:
+    """Escape `path` so yt-dlp writes it **verbatim** instead of rendering it again.
+
+    The validated path is handed back to yt-dlp as its `outtmpl`, and `outtmpl` is a template:
+    a title containing `%(uploader)s` survived sanitisation as literal text, then yt-dlp
+    expanded it on the second pass and wrote a different file than the one that was validated
+    and previewed (`T012-R4`). Containment was checked against a path that was never used.
+
+    `%%` is yt-dlp's own escape for a literal percent, so this stays inside its template
+    language rather than fighting it. The whole path is escaped, not just the filename: a user's
+    download folder may legitimately contain a `%`.
+    """
+    return str(path).replace("%", "%%")
+
+
+def preview_path(request: DownloadRequest, info: dict[str, Any], resolved: ResolvedYtdlp) -> Path:
+    """The path a download *would* write (`REQ-011`).
+
+    Deliberately the same code as the real thing rather than a parallel implementation: a
+    preview computed differently from the write is a preview that will eventually lie.
+    """
+    from tracks_and_trails.downloader import ytdlp_adapter as adapter
+
+    return _validated_target(Path(request.output_directory), request, adapter, resolved, info)
+
+
+def _extract(
+    adapter: Any,
+    request: DownloadRequest,
+    resolved: ResolvedYtdlp,
+    reporter: _Reporter,
+    *,
+    probe_only: bool,
+    output_template: str | None = None,
+    ffmpeg_location: Path | None = None,
+) -> dict[str, Any]:
+    options = adapter.build_options(
+        request,
+        output_template if output_template is not None else request.output_template,
+        probe_only=probe_only,
+        progress_hooks=[reporter.progress_hook],
+        postprocessor_hooks=[reporter.postprocessor_hook],
+        ffmpeg_location=ffmpeg_location,
+    )
+    with resolved.module.YoutubeDL(options) as ydl:
+        info = ydl.extract_info(request.url, download=not probe_only)
+    return dict(info or {})
+
+
+def _written_path(result: dict[str, Any], target: Path) -> Path:
+    """Where the file actually landed.
+
+    yt-dlp reports the real path in `requested_downloads`, which differs from the template
+    target after a merge changes the container. Falling back to the target is honest rather
+    than wrong: it is what we asked for.
+    """
+    downloads = result.get("requested_downloads") or ()
+    for entry in downloads:
+        filepath = entry.get("filepath") or entry.get("_filename")
+        if filepath:
+            return Path(str(filepath))
+    filename = result.get("_filename")
+    return Path(str(filename)) if filename else target
+
+
+def _classify_without_ytdlp(error: BaseException) -> FailureDetail:
+    """Classify a failure that happened before yt-dlp could be imported.
+
+    `ytdlp_adapter` cannot help here — importing it would import yt-dlp, which is the thing
+    that just failed. Kept deliberately small: this path exists so an unimportable yt-dlp
+    reaches the parent as a classified failure rather than as a silent exit.
+    """
+    if isinstance(error, UnsafePathError):
+        return FailureDetail(kind=ErrorKind.DISK, message=str(error))
+    if isinstance(error, ImportError):
+        return FailureDetail(
+            kind=ErrorKind.EXTRACTOR_ERROR,
+            message=f"yt-dlp could not be loaded: {error}",
+        )
+    if isinstance(error, OSError):
+        return FailureDetail(kind=ErrorKind.DISK, message=str(error) or repr(error))
+    return FailureDetail(
+        kind=ErrorKind.EXTRACTOR_ERROR,
+        message=str(error) or "".join(traceback.format_exception_only(error)).strip(),
+    )
+
+
+def _int_or_none(value: object) -> int | None:
+    if value is None or isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return max(value, 0)
+    if isinstance(value, float):
+        return max(int(value), 0)
+    return None
+
+
+def _float_or_none(value: object) -> float | None:
+    if value is None or isinstance(value, bool) or not isinstance(value, int | float):
+        return None
+    return max(float(value), 0.0)
+
+
+# Deliberately no `if __name__ == "__main__"` block and no module-level work below this point.
+# See the module docstring: under `spawn` this module is re-imported in a fresh interpreter, and
+# in a frozen build that interpreter is the application binary (`T-020`).

@@ -12,155 +12,24 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-012` — yt-dlp in a spawned worker. Its three prerequisites (`T-011`,
-`T-034`, `T-035`) are all approved, and six tasks sit behind it. **`T-033` must land with it**,
-or the frozen artifact ships without yt-dlp and fails every URL like ordinary site breakage.
+**Start here:** `T-013` — download manager and result pump. `T-012` is complete, so this is
+now Ready and is the largest single item between here and a URL that actually downloads.
 
-Also Ready and independent of it: `T-038` (log redaction), `T-014` (persistence), `T-015`
-(presets). `T-045` is in review and blocks nothing.
+`T-012` was approved with follow-ups on 2026-07-26 after two review rounds. **`T-033` is
+Blocked**, not complete: its code is verified but approval needs frozen CI evidence this
+repository cannot produce locally. `T-044` and `T-045` are still awaiting review and block
+nothing.
 
-Phase 0's work is complete: `T-026` closed the Windows launch criterion and its third-round
-re-review was waived by the maintainer. Recording the phase's **formal exit** is a separate
-maintainer act and has not been done. `T-033` becomes Ready once `T-012` merges; `T-039` waits
-for a Phase 5 installer; `T-040` for the first focusable widgets.
+Also Ready and independent: `T-038` (log redaction — one of `ai/TESTING.md` §7's ten mandatory
+areas), `T-014` (persistence), `T-015` (presets). `T-018` now owns the playlist projection
+(`T012-R6`) and **blocks `T-016`**.
+
+Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; `T-040` for the
+first focusable widgets.
 
 ---
 
 ## Ready
-
-### T-012 — yt-dlp in a spawned worker
-
-**Status:** **Ready** — all three prerequisites approved: `T-011`, `T-034` (2026-07-26 at
-`66a5542`) and `T-035`. **`T-033` must land with this task**, or the frozen artifact ships
-without yt-dlp and fails every URL like ordinary site breakage.
-**Owner:** Implementer
-**Priority:** High — this is where `ARC-002` stops being a design
-**Phase:** Phase 1
-**Depends on:** `T-011`, `T-034` (no file write without a validated path), `T-035` (no
-yt-dlp without a candidate list)
-**Relevant context:** `ARCHITECTURE.md` §3, §6, §7; `ARC-002`, `OPS-002`, `NFR-008`,
-`REQ-002`, `REQ-005`, `REQ-025`, `REQ-028`, `NFR-006`; `ai/TESTING.md` §5 (fixtures)
-**Affected surfaces:** `downloader/worker.py`, `downloader/ytdlp_adapter.py`,
-`tests/unit/`, `tests/integration/`, `tests/fixtures/infodicts/`
-**Risk:** **High** — the first code to run in a spawned process, the only code that may import
-`yt_dlp`, and the seam every future upstream change lands on
-**Review base:** the last of the `T-011`, `T-034` and `T-035` merge commits — *not* `T-011`
-alone, which an earlier draft said while already depending on the other two
-
-#### Scope
-
-Two modules, and they are the **only** two in the project permitted to `import yt_dlp`
-(`ARCHITECTURE.md` §6, enforced by `T-005`'s layering test):
-
-1. **`ytdlp_adapter.py`** — builds the yt-dlp options dict from a `DownloadRequest`, projects
-   `info_dict` into `MediaInfo`/`FormatInfo`, and maps yt-dlp exceptions onto the `core.errors`
-   taxonomy. Pure translation: no process handling, no I/O of its own.
-2. **`worker.py`** — the child-process entry point. Import-safe under `spawn` (no side effects
-   at import time), resolves yt-dlp per `OPS-002`, runs one probe or one download, converts
-   `progress_hooks` and `postprocessor_hooks` into `T-011` messages, and exits.
-
-Neither may import Qt: the worker runs with no display and must inherit no Qt (`ARC-002`).
-
-**This task also owns yt-dlp's import and template rendering**, both moved here from
-neighbouring tasks after review:
-
-- **Importing yt-dlp and reporting its version.** `T-035` locates candidates; `worker.py`
-  walks them, prepends to `sys.path`, imports, falls back on `ImportError`, and reports which
-  candidate won and why any earlier one lost (`OPS-002`, `REQ-025`). Only the importer can
-  read the version, and only these two modules may import at all (§6).
-- **Output-template rendering and the `REQ-011` preview.** Rendering uses yt-dlp's own
-  template mechanism (`ARCHITECTURE.md` §9), so it cannot live in `core/`. The rendered result
-  is then passed through `T-034`'s sanitizing and containment check before anything is
-  written.
-
-**Fixtures.** `T-018` broadens fixture coverage, but this task cannot be tested without at
-least one recorded `info_dict`, so it captures the first ones itself — recording the yt-dlp
-version and capture date alongside each, per `ai/TESTING.md` §5. Adapter projection is tested
-against recorded fixtures, never against the live network.
-
-**`T-012` stays whole — settled, do not re-open.** Splitting the adapter from the worker was
-considered twice and rejected by the maintainer on 2026-07-25. The argument for splitting is
-that they fail differently: translation bugs versus process bugs. The argument against, which
-won, is that the adapter has no meaningful test surface without a worker to run it in, so a
-split would produce one task that cannot be verified and a second that carries all the risk
-anyway. Review it as one unit and expect it to be the largest review in the phase.
-
-**`T-033` stays separate, deliberately.** This task makes the worker import `yt_dlp` from
-source; `T-033` makes the *frozen artifact* actually contain it. Folding them together would
-mean one review covering both a domain seam and a packaging change, and would let a green
-source-mode suite imply a working release. `T-012` therefore claims nothing about the frozen
-build, and `T-033` becomes Ready the moment this merges.
-
-#### Acceptance criteria
-
-- A probe of a recorded fixture yields a `MediaInfo` with title, uploader, duration and
-  format list, asserted field by field
-- Every taxonomy kind in `ARCHITECTURE.md` §7 that yt-dlp can raise has a mapping, asserted
-  against the §7 table; an unmapped exception classifies as the explicit unknown case rather
-  than crashing the worker
-- The extractor's own message survives classification verbatim (`REQ-005`, `NFR-006`) —
-  asserted by string equality against the fixture, not by substring
-- **`DRM_PROTECTED` is classified as non-retryable and no alternative extraction is
-  attempted** (`REQ-EXCL-001`, `SEC-001`). Asserted at *this* level as a property of the
-  classification and of the adapter's behavior — asserting "is never retried" here would be
-  vacuous, because no retry mechanism exists until Phase 2, which is where that assertion
-  belongs
-- The worker runs headless: a test spawns it with no display and it completes (`ARC-002`)
-- The worker module imports cleanly under `spawn` with no side effects — asserted by importing
-  it in a fresh interpreter and observing no work performed
-- yt-dlp's resolved version is reported through a message (`REQ-025`), read from the imported
-  module rather than from a recorded string that could drift
-- With a **broken** user copy present — a path that exists holding an unimportable package —
-  the worker falls back to the baseline and **says so**; a test asserts both the fallback and
-  that it was not silent (`ARCHITECTURE.md` §6)
-- A rendered output template is passed through `T-034`'s containment check before use; a
-  template that renders outside the target directory is rejected, not written
-- The `REQ-011` preview equals the path actually used — asserted by rendering, previewing,
-  downloading to a temporary directory, and comparing the real result
-- Changing a projected `info_dict` key in a fixture fails the projection test — the fixture is
-  a contract, not a sample
-- The layering test still passes, and `yt_dlp` appears in exactly these two modules
-
-#### Out of scope
-
-- The process pool, scheduling, and Qt signals — `T-013`. In particular **`WORKER_CRASH`
-  cannot be asserted here**: it is produced by the parent observing a child's exit, and there
-  is no parent until `T-013`. An earlier draft claimed it as a criterion of this task
-- Bundling yt-dlp into the frozen artifact — `T-033`
-- Broadening fixture coverage across sites — `T-018`
-- Cancellation and crash *integration* tests — `T-019`; this task covers the worker side, and
-  the 2-second cancellation criterion is measured there
-- The in-app yt-dlp updater — Phase 4; this task only *resolves* what `OPS-002` describes
-
----
-
-Every Phase 1 task is now planned in full. `T-034` was filed during planning: output-path
-rendering and filename safety belonged to no task, despite being a `ai/TESTING.md` §7
-mandatory area that `T-012` depends on.
-
-**Four requirements are cited in Phase 1 but only partly discharged here**, and are listed so
-raw citation counts are not mistaken for coverage:
-
-| REQ | Cited by | Discharged in Phase 1? |
-|---|---|---|
-| `REQ-008` (select format IDs from the table) | `T-015` out-of-scope | **No.** The format table is Phase 3. `T-015` only notes the boundary. |
-| `REQ-021` (open / reveal a completed file) | `T-017` out-of-scope | **No.** Phase 2. |
-| `REQ-025` (report the yt-dlp version, update it in-app) | `T-012`, `T-035` | **Partly.** Reporting the resolved version, yes. Updating it in-app is Phase 4 (`OPS-002`). |
-| `REQ-026` (cookies for entitled content) | `T-014`, `T-038` | **Partly.** Only the promise that cookie material never reaches the database or a log. Cookie *input* is Phase 3. |
-
-**Five tasks were filed during planning, not created as new work.** `T-034` (path safety),
-`T-035` (environment resolution), `T-036` (application composition), `T-037` (end-to-end
-download and restart proof) and `T-038` (logging and redaction) are all `ARCHITECTURE.md` or
-`IMPLEMENTATION_PLAN.md` responsibilities that the original ten-row outline did not own. Two
-were found while writing dependencies, three by review. Without `T-036` and `T-037` in
-particular, every task could pass while the application still opened an empty window and no
-download was ever proven to complete.
-
-Dependency order: `T-010`; then `T-011`, `T-014`, `T-015`, `T-034` in parallel; then `T-035`
-and `T-038`; then `T-012`; then `T-013`; then `T-016`, `T-017`, `T-018`, `T-019`; then `T-036`;
-then `T-037`.
-
----
 
 ### T-038 — Logging with handler-level redaction
 
@@ -319,63 +188,6 @@ output of translation, not an internal detail.
 
 ## Proposed — Phase 0
 
-### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
-
-**Status:** Proposed
-**Owner:** Implementer
-**Priority:** High — blocks any usable release, and fails in a way that looks like a site bug
-**Phase:** lands with `T-012`; verified by `T-020`'s CI job; gates Phase 5
-**Depends on:** `T-012` (the worker is the first thing to import `yt_dlp`)
-**Relevant context:** `OPS-002`, `REL-001`, `ARCHITECTURE.md` §6 and §12, `NFR-008`, `C-002`
-**Affected surfaces:** `packaging/tracks-and-trails.spec`, `packaging/frozen_smoke.py`,
-`.github/workflows/ci.yml`
-**Risk:** **High** — the failure mode is silent at build time and total at run time
-
-#### Scope
-
-`OPS-002` says every release bundles a pinned yt-dlp baseline. The frozen artifact currently
-contains **none of it**: a search of the built `dist/tracks-and-trails` for `yt_dlp` returns
-zero files. That is correct today — nothing imports it, because `worker.py` and
-`ytdlp_adapter.py` are still stubs — but it will not self-correct when `T-012` lands.
-
-PyInstaller's analysis follows *static* imports. yt-dlp resolves its extractors dynamically:
-1046 package files, **972 of them extractor modules**, reached through `lazy_extractors`
-rather than by direct import. Static analysis will therefore collect the yt-dlp core and miss
-essentially every extractor.
-
-The resulting failure is the dangerous kind: the artifact **builds and launches normally**,
-`import yt_dlp` succeeds, and then every real URL fails to find an extractor — which reads
-exactly like the site-breakage `C-002` teaches everyone to expect, so it will be misdiagnosed.
-
-Collect the package explicitly in the spec, and prove it from inside the artifact.
-
-#### Acceptance criteria
-
-- The frozen artifact contains the yt-dlp package, and the bundled version **equals the pin in
-  `pyproject.toml`** — asserted, not eyeballed, so a stale build cannot pass
-- A probe **inside the frozen artifact** imports `yt_dlp` and resolves a named extractor for a
-  stable URL pattern, without network access
-- Removing the collection from the spec makes that probe fail — the mutation is exercised once
-  and reverted, as `T-020`'s negative proof was
-- The `OPS-002` resolution order is honoured: with a directory present at
-  `user_data_dir/tracksandtrails/ytdlp/`, the worker reports **that** version; with it absent
-  or unimportable, it reports the baseline and says why
-- Both the Linux and Windows frozen jobs stay green, and the artifact-size change is recorded
-
-#### Out of scope
-
-- The in-app update action itself (`OPS-002`, Phase 4) — this task bundles the baseline and
-  proves the resolution order; downloading and extracting a wheel is separate
-- Trimming the bundle. 972 extractor modules is a size cost worth measuring, but excluding
-  extractors to save space would re-create this defect deliberately
-- Any change to the pin
-
-**Note:** `ai/TESTING.md` §8's release gate re-checks that yt-dlp is still pure Python. This
-task is the other half — that the pure-Python package actually *ships*. Purity without
-inclusion still yields an application that cannot download anything.
-
----
-
 ### T-021 — Simplified small-size icon glyph
 
 **Status:** Proposed
@@ -515,11 +327,12 @@ so.
 
 ### T-016 — Add-URL dialog with probe results
 
-**Status:** Proposed — Ready once `T-013` and `T-015` merge
+**Status:** Proposed — Ready once `T-013`, `T-015` and `T-018` merge
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 1
-**Depends on:** `T-013`, `T-015`
+**Depends on:** `T-013`, `T-015`, `T-018` (the playlist/single-item projection this task
+displays does not exist until `T-018` adds it — `T012-R6`)
 **Relevant context:** `REQ-001`, `REQ-002`, `REQ-005`, `NFR-001`, `NFR-005`, `NFR-006`
 **Affected surfaces:** `ui/add_dialog.py`, `ui/main_window.py`, `tests/ui/`
 **Risk:** Medium — the first widget that talks to the manager, and the first place a blocking
@@ -715,16 +528,28 @@ is checked against reality at least once. It stays excluded by default (`ai/TEST
 **Phase:** Phase 1
 **Depends on:** `T-012`
 **Relevant context:** `ai/TESTING.md` §5 (fixtures), `NFR-008`, `C-002`, `REQ-026`, `NFR-007`
-**Affected surfaces:** `tests/fixtures/infodicts/`, `tests/unit/`
+**Affected surfaces:** `tests/fixtures/infodicts/`, `tests/unit/`, `core/models.py`,
+`downloader/ytdlp_adapter.py`
 **Risk:** Medium — a carelessly refreshed fixture hides the upstream breakage the fixture
 exists to catch
 **Review base:** the `T-012` merge commit
+**Blocks:** `T-016` — see the playlist scope below
 
 #### Scope
 
 Broaden the fixture set `T-012` bootstrapped: several sites, a playlist, an audio-only case,
 a DRM-protected case, an unsupported URL, and an extractor error. Each records the yt-dlp
 version and capture date (`ai/TESTING.md` §5).
+
+**Also owns the playlist/single-item projection** (`T012-R6`, carried from the `T-012` review).
+`REQ-002` requires a probe to say whether the input is a single item or a playlist, and today
+no typed value can express it: `MediaInfo` has no such field, `project_media()` cannot preserve
+one, and `build_options` sets `noplaylist=True`. `T-016` promises to *display* the distinction,
+so it cannot be built until something can carry it.
+
+Assigned here rather than to the `T-012` correction batch because it needs a recorded playlist
+fixture to be tested against at all, and this task is where that fixture is captured. **`T-016`
+therefore depends on this task**, not merely on `T-012`.
 
 Fixtures are **sanitized**: no cookies, tokens, session or auth query parameters, and no
 personal paths (`REQ-026`, `NFR-007`). They are committed, so a leak here is permanent.
@@ -823,6 +648,90 @@ survives; and no orphan outlives the test session.
 ---
 
 ## Blocked
+
+### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
+
+**Status:** **Blocked** — code corrections verified 2026-07-26 (`T033-R2` resolved, the
+version-against-pin half of `T033-R1` verified). Approval requires evidence this repository
+cannot produce locally: the collection-removal negative run, Linux **and** Windows frozen
+results, and the recorded artifact-size delta. `T033-R1` stays **Open — externally blocked**;
+it is deliberately *not* closed by the commit that lands this work.
+**What landed.** `collect_submodules("yt_dlp")` + `collect_data_files("yt_dlp")` in
+`packaging/tracks-and-trails.spec`; `run_ytdlp_probe()` in `_freeze_probe.py` behind a
+`--ytdlp-probe` flag; a CI step in the `frozen` job on both platforms.
+
+**The probe resolves an extractor by name rather than importing yt-dlp.** `import yt_dlp`
+succeeds against the core alone — which is exactly what makes this failure look like site
+breakage — so the probe goes through the lazy machinery PyInstaller's static analysis cannot
+see. Resolution runs through `downloader.worker`, so it exercises the real `OPS-002` path
+inside the artifact instead of a parallel one, and stays within `ARCHITECTURE.md` §6.
+
+**Defect found by mutation-checking the probe itself.** `get_info_extractor` *raises* `KeyError`
+for an unknown name; it does not return `None`. The `matched is None` branch was therefore dead
+code and the failure escaped as a bare traceback. The job still went red, so the gate worked —
+but under `OPS-003` a Windows failure is diagnosed from this log and nothing else, and
+`KeyError: 'YoutubeIE'` does not say the artifact shipped without its extractors.
+
+**Verified locally:** 1751 extractors, `youtube` resolved, exit 0. Both probe mutations
+(threshold above reality; unresolvable name) exit non-zero, so the gate is wired to the exit
+code and not vacuous. Frozen-artifact evidence on both platforms is pending CI — the local run
+is source-mode and deliberately claims nothing about the frozen build.
+
+**Owner:** Implementer
+**Priority:** High — blocks any usable release, and fails in a way that looks like a site bug
+**Phase:** lands with `T-012`; verified by `T-020`'s CI job; gates Phase 5
+**Depends on:** `T-012` (the worker is the first thing to import `yt_dlp`)
+**Relevant context:** `OPS-002`, `REL-001`, `ARCHITECTURE.md` §6 and §12, `NFR-008`, `C-002`
+**Affected surfaces:** `packaging/tracks-and-trails.spec`, `packaging/frozen_smoke.py`,
+`.github/workflows/ci.yml`
+**Risk:** **High** — the failure mode is silent at build time and total at run time
+
+#### Scope
+
+`OPS-002` says every release bundles a pinned yt-dlp baseline. The frozen artifact currently
+contains **none of it**: a search of the built `dist/tracks-and-trails` for `yt_dlp` returns
+zero files. That is correct today — nothing imports it, because `worker.py` and
+`ytdlp_adapter.py` are still stubs — but it will not self-correct when `T-012` lands.
+
+PyInstaller's analysis follows *static* imports. yt-dlp resolves its extractors dynamically:
+1046 package files, **972 of them extractor modules**, reached through `lazy_extractors`
+rather than by direct import. Static analysis will therefore collect the yt-dlp core and miss
+essentially every extractor.
+
+The resulting failure is the dangerous kind: the artifact **builds and launches normally**,
+`import yt_dlp` succeeds, and then every real URL fails to find an extractor — which reads
+exactly like the site-breakage `C-002` teaches everyone to expect, so it will be misdiagnosed.
+
+Collect the package explicitly in the spec, and prove it from inside the artifact.
+
+#### Acceptance criteria
+
+- The frozen artifact contains the yt-dlp package, and the bundled version **equals the pin in
+  `pyproject.toml`** — asserted, not eyeballed, so a stale build cannot pass
+- A probe **inside the frozen artifact** imports `yt_dlp` and resolves a named extractor for a
+  stable URL pattern, without network access
+- Removing the collection from the spec makes that probe fail — the mutation is exercised once
+  and reverted, as `T-020`'s negative proof was
+- The `OPS-002` resolution order is honoured: with a directory present at
+  `user_data_dir/tracksandtrails/ytdlp/`, the worker reports **that** version; with it absent
+  or unimportable, it reports the baseline and says why
+- Both the Linux and Windows frozen jobs stay green, and the artifact-size change is recorded
+
+#### Out of scope
+
+- The in-app update action itself (`OPS-002`, Phase 4) — this task bundles the baseline and
+  proves the resolution order; downloading and extracting a wheel is separate
+- Trimming the bundle. 972 extractor modules is a size cost worth measuring, but excluding
+  extractors to save space would re-create this defect deliberately
+- Any change to the pin
+
+**Note:** `ai/TESTING.md` §8's release gate re-checks that yt-dlp is still pure Python. This
+task is the other half — that the pure-Python package actually *ships*. Purity without
+inclusion still yields an application that cannot download anything.
+
+---
+
+
 
 ### T-040 — Extend the Windows desktop gate to widget focus order
 
@@ -1047,6 +956,192 @@ current behavior cannot change unnoticed.
 ---
 
 ## Complete
+
+### T-012 — yt-dlp in a spawned worker
+
+**Status:** **Complete** — Approved with follow-ups, 2026-07-26. Two review rounds; all five
+blocking findings (`T012-R1`..`T012-R5`) independently verified resolved. `T012-R6` is a
+non-blocking follow-up owned by `T-018`.
+**What landed.** `downloader/ytdlp_adapter.py` (pure translation: exception classification,
+`info_dict` projection, option building) and `downloader/worker.py` (spawn-safe entry, `OPS-002`
+resolution, one outcome message then `WorkerFinished` in a `finally`). No raw `info_dict`
+crosses the process boundary; `tests/unit/test_layering.py` still passes, so §6 holds.
+
+**Two defects found by the project's own tests rather than by review:**
+
+- The worker reported a yt-dlp *source* it had not used. `import yt_dlp` returns whatever is
+  already in `sys.modules` and ignores `sys.path`, so the resolution result was the candidate
+  we hoped for rather than the one loaded — making `OPS-002`'s guarantee unfalsifiable. The
+  source is now derived from the imported module's `__file__`.
+- The first fix for that purged `yt_dlp` from `sys.modules`, which was **worse**: re-importing
+  builds *new* exception classes, so `ytdlp_adapter`'s `isinstance` checks against the classes
+  it had already bound would all miss and every failure would classify as `EXTRACTOR_ERROR` — a
+  silent, total loss of the taxonomy. A classification test caught it. Both the reasoning and
+  the rejected approach are recorded in `_origin_of`'s docstring.
+
+**A third defect, found while auditing acceptance criteria for the review handoff.**
+`preview_path` (`REQ-011`) had **no test at all** — the criterion "the preview equals the path
+actually used" was unmet. The test now takes the preview, runs a real download session, and
+reads the path out of the `Succeeded` message, so the two are observed through different
+routes rather than by calling the same helper. Its first version was **vacuous on Linux**: the
+chosen title used `: " ?`, which yt-dlp's own `prepare_filename` already maps to fullwidth
+forms, leaving `T-034` nothing to change — a preview that skipped sanitisation entirely still
+matched. A reserved device name (`CON`) diverges on every platform, because yt-dlp does not
+handle those and `T-045` defuses them with a digest.
+
+**Correction batch (2026-07-26).** Five blocking findings, all reproduced before being
+fixed: successful sessions never told the parent which yt-dlp ran (`T012-R1`); a partially
+imported broken override poisoned the baseline fallback (`T012-R2`); yt-dlp's whole transport
+hierarchy classified as `EXTRACTOR_ERROR`, silently disabling auto-retry (`T012-R3`); the
+rendered template lost its directories and was then re-rendered as a second template, so
+containment was checked against a path that was never written (`T012-R4`); and proxy, cookies,
+rate limit, ffmpeg location, audio extraction, subtitle embedding and `post_processors` never
+reached the library call (`T012-R5`). 18 mutations, 18 killed.
+
+**Evidence.** 42 adapter tests, 17 worker integration tests including a real
+`mp.get_context("spawn")` child. The `ai/TESTING.md` §7 taxonomy is transcribed by hand rather
+than read from the code under test (§13). Fixture `archive_org_big_buck_bunny.json` is a real
+capture (public domain, stable) with `cookies`/`http_headers` redacted.
+
+**Mutation-checked (10 of 10 killed, after two survivors became tests).** Mapping order, `orig_msg` preference, `unwrap`, `has_drm`
+`all`→`any`, `_has_drm`, the `'none'` codec sentinel, `_origin_of` trusting its candidate — and
+`filesize_approx`, which **survived**: the archive.org fixture populates `filesize` on every
+format, so nothing exercised the fallback. Per §13 that defaults to "missing test", and it was
+one — YouTube's DASH formats commonly carry only `filesize_approx`, so the gap would have shown
+"unknown" for sizes yt-dlp knows, on the site that matters most. Test added; mutation now dies.
+
+**Checks.** `ruff check`, `ruff format --check`, `mypy`, `mypy --platform win32` all clean;
+**765 passed, 6 skipped**. Windows evidence pending CI.
+
+**Owner:** Implementer
+**Priority:** High — this is where `ARC-002` stops being a design
+**Phase:** Phase 1
+**Depends on:** `T-011`, `T-034` (no file write without a validated path), `T-035` (no
+yt-dlp without a candidate list)
+**Relevant context:** `ARCHITECTURE.md` §3, §6, §7; `ARC-002`, `OPS-002`, `NFR-008`,
+`REQ-002`, `REQ-005`, `REQ-025`, `REQ-028`, `NFR-006`; `ai/TESTING.md` §5 (fixtures)
+**Affected surfaces:** `downloader/worker.py`, `downloader/ytdlp_adapter.py`,
+`tests/unit/`, `tests/integration/`, `tests/fixtures/infodicts/`
+**Risk:** **High** — the first code to run in a spawned process, the only code that may import
+`yt_dlp`, and the seam every future upstream change lands on
+**Review base:** the last of the `T-011`, `T-034` and `T-035` merge commits — *not* `T-011`
+alone, which an earlier draft said while already depending on the other two
+
+#### Scope
+
+Two modules, and they are the **only** two in the project permitted to `import yt_dlp`
+(`ARCHITECTURE.md` §6, enforced by `T-005`'s layering test):
+
+1. **`ytdlp_adapter.py`** — builds the yt-dlp options dict from a `DownloadRequest`, projects
+   `info_dict` into `MediaInfo`/`FormatInfo`, and maps yt-dlp exceptions onto the `core.errors`
+   taxonomy. Pure translation: no process handling, no I/O of its own.
+2. **`worker.py`** — the child-process entry point. Import-safe under `spawn` (no side effects
+   at import time), resolves yt-dlp per `OPS-002`, runs one probe or one download, converts
+   `progress_hooks` and `postprocessor_hooks` into `T-011` messages, and exits.
+
+Neither may import Qt: the worker runs with no display and must inherit no Qt (`ARC-002`).
+
+**This task also owns yt-dlp's import and template rendering**, both moved here from
+neighbouring tasks after review:
+
+- **Importing yt-dlp and reporting its version.** `T-035` locates candidates; `worker.py`
+  walks them, prepends to `sys.path`, imports, falls back on `ImportError`, and reports which
+  candidate won and why any earlier one lost (`OPS-002`, `REQ-025`). Only the importer can
+  read the version, and only these two modules may import at all (§6).
+- **Output-template rendering and the `REQ-011` preview.** Rendering uses yt-dlp's own
+  template mechanism (`ARCHITECTURE.md` §9), so it cannot live in `core/`. The rendered result
+  is then passed through `T-034`'s sanitizing and containment check before anything is
+  written.
+
+**Fixtures.** `T-018` broadens fixture coverage, but this task cannot be tested without at
+least one recorded `info_dict`, so it captures the first ones itself — recording the yt-dlp
+version and capture date alongside each, per `ai/TESTING.md` §5. Adapter projection is tested
+against recorded fixtures, never against the live network.
+
+**`T-012` stays whole — settled, do not re-open.** Splitting the adapter from the worker was
+considered twice and rejected by the maintainer on 2026-07-25. The argument for splitting is
+that they fail differently: translation bugs versus process bugs. The argument against, which
+won, is that the adapter has no meaningful test surface without a worker to run it in, so a
+split would produce one task that cannot be verified and a second that carries all the risk
+anyway. Review it as one unit and expect it to be the largest review in the phase.
+
+**`T-033` stays separate, deliberately.** This task makes the worker import `yt_dlp` from
+source; `T-033` makes the *frozen artifact* actually contain it. Folding them together would
+mean one review covering both a domain seam and a packaging change, and would let a green
+source-mode suite imply a working release. `T-012` therefore claims nothing about the frozen
+build, and `T-033` becomes Ready the moment this merges.
+
+#### Acceptance criteria
+
+- A probe of a recorded fixture yields a `MediaInfo` with title, uploader, duration and
+  format list, asserted field by field
+- Every taxonomy kind in `ARCHITECTURE.md` §7 that yt-dlp can raise has a mapping, asserted
+  against the §7 table; an unmapped exception classifies as the explicit unknown case rather
+  than crashing the worker
+- The extractor's own message survives classification verbatim (`REQ-005`, `NFR-006`) —
+  asserted by string equality against the fixture, not by substring
+- **`DRM_PROTECTED` is classified as non-retryable and no alternative extraction is
+  attempted** (`REQ-EXCL-001`, `SEC-001`). Asserted at *this* level as a property of the
+  classification and of the adapter's behavior — asserting "is never retried" here would be
+  vacuous, because no retry mechanism exists until Phase 2, which is where that assertion
+  belongs
+- The worker runs headless: a test spawns it with no display and it completes (`ARC-002`)
+- The worker module imports cleanly under `spawn` with no side effects — asserted by importing
+  it in a fresh interpreter and observing no work performed
+- yt-dlp's resolved version is reported through a message (`REQ-025`), read from the imported
+  module rather than from a recorded string that could drift
+- With a **broken** user copy present — a path that exists holding an unimportable package —
+  the worker falls back to the baseline and **says so**; a test asserts both the fallback and
+  that it was not silent (`ARCHITECTURE.md` §6)
+- A rendered output template is passed through `T-034`'s containment check before use; a
+  template that renders outside the target directory is rejected, not written
+- The `REQ-011` preview equals the path actually used — asserted by rendering, previewing,
+  downloading to a temporary directory, and comparing the real result
+- Changing a projected `info_dict` key in a fixture fails the projection test — the fixture is
+  a contract, not a sample
+- The layering test still passes, and `yt_dlp` appears in exactly these two modules
+
+#### Out of scope
+
+- The process pool, scheduling, and Qt signals — `T-013`. In particular **`WORKER_CRASH`
+  cannot be asserted here**: it is produced by the parent observing a child's exit, and there
+  is no parent until `T-013`. An earlier draft claimed it as a criterion of this task
+- Bundling yt-dlp into the frozen artifact — `T-033`
+- Broadening fixture coverage across sites — `T-018`
+- Cancellation and crash *integration* tests — `T-019`; this task covers the worker side, and
+  the 2-second cancellation criterion is measured there
+- The in-app yt-dlp updater — Phase 4; this task only *resolves* what `OPS-002` describes
+
+---
+
+Every Phase 1 task is now planned in full. `T-034` was filed during planning: output-path
+rendering and filename safety belonged to no task, despite being a `ai/TESTING.md` §7
+mandatory area that `T-012` depends on.
+
+**Four requirements are cited in Phase 1 but only partly discharged here**, and are listed so
+raw citation counts are not mistaken for coverage:
+
+| REQ | Cited by | Discharged in Phase 1? |
+|---|---|---|
+| `REQ-008` (select format IDs from the table) | `T-015` out-of-scope | **No.** The format table is Phase 3. `T-015` only notes the boundary. |
+| `REQ-021` (open / reveal a completed file) | `T-017` out-of-scope | **No.** Phase 2. |
+| `REQ-025` (report the yt-dlp version, update it in-app) | `T-012`, `T-035` | **Partly.** Reporting the resolved version, yes. Updating it in-app is Phase 4 (`OPS-002`). |
+| `REQ-026` (cookies for entitled content) | `T-014`, `T-038` | **Partly.** Only the promise that cookie material never reaches the database or a log. Cookie *input* is Phase 3. |
+
+**Five tasks were filed during planning, not created as new work.** `T-034` (path safety),
+`T-035` (environment resolution), `T-036` (application composition), `T-037` (end-to-end
+download and restart proof) and `T-038` (logging and redaction) are all `ARCHITECTURE.md` or
+`IMPLEMENTATION_PLAN.md` responsibilities that the original ten-row outline did not own. Two
+were found while writing dependencies, three by review. Without `T-036` and `T-037` in
+particular, every task could pass while the application still opened an empty window and no
+download was ever proven to complete.
+
+Dependency order: `T-010`; then `T-011`, `T-014`, `T-015`, `T-034` in parallel; then `T-035`
+and `T-038`; then `T-012`; then `T-013`; then `T-016`, `T-017`, `T-018`, `T-019`; then `T-036`;
+then `T-037`.
+
+---
+
 
 ### T-034 — Filename safety and output-path containment
 

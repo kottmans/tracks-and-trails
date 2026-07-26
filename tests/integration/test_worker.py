@@ -1,0 +1,1002 @@
+"""The spawned worker (`T-012`).
+
+`ai/TESTING.md` §6: **the process boundary is never mocked here.** A real child process is
+spawned, real messages cross a real queue, and the worker imports the real yt-dlp. What is
+faked is the *network* — extraction is stubbed at the `ytdlp_adapter` seam or driven from the
+recorded fixture, because a test that fails when a site changes teaches nothing about our code.
+
+`ARC-002` is the bet this file exists to test: that a worker can run headless, in its own
+interpreter, and report structured results back.
+"""
+
+import json
+import multiprocessing as mp
+import subprocess
+import sys
+import textwrap
+from pathlib import Path
+from queue import Queue
+from typing import Any
+
+import pytest
+
+from tracks_and_trails.core.errors import ErrorKind
+from tracks_and_trails.core.models import DownloadRequest, MediaKind
+from tracks_and_trails.core.paths import UnsafePathError, is_contained, safe_output_path
+from tracks_and_trails.downloader import worker as worker_module
+from tracks_and_trails.downloader.environment import FfmpegReport, ytdlp_candidates
+from tracks_and_trails.downloader.protocol import (
+    Failed,
+    Probed,
+    ResolutionReport,
+    SessionKind,
+    Succeeded,
+    WorkerFinished,
+    validate_sequence,
+)
+
+REPO_ROOT = Path(__file__).parents[2]
+
+
+def request_for(tmp_path: Path, **overrides: Any) -> DownloadRequest:
+    base: dict[str, Any] = {
+        "url": "https://archive.org/details/BigBuckBunny_124",
+        "output_directory": str(tmp_path),
+        "format_selector": "best",
+        "output_template": "%(title)s.%(ext)s",
+    }
+    return DownloadRequest(**{**base, **overrides})
+
+
+def drain(queue: Queue[Any]) -> list[Any]:
+    messages = []
+    while not queue.empty():
+        messages.append(queue.get_nowait())
+    return messages
+
+
+# --- import safety under spawn (ARC-002, ARCHITECTURE.md §3) --------------------------------
+
+
+def test_importing_the_worker_performs_no_work() -> None:
+    """Under `spawn`, Python re-imports the child's module in a fresh interpreter.
+
+    Any work at import time therefore runs on *every* spawn — and in a frozen build it runs in
+    a process that believes it is the application (`T-020`). Asserted in a fresh interpreter,
+    because this one has already imported the module.
+    """
+    probe = textwrap.dedent(
+        """
+        import sys, json
+        before = set(sys.modules)
+        import tracks_and_trails.downloader.worker as w
+        after = set(sys.modules)
+        print(json.dumps({
+            "imported_ytdlp": "yt_dlp" in after,
+            "imported_qt": any(m.startswith("PySide6") for m in after),
+            "new_modules": len(after - before),
+        }))
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, cwd=REPO_ROOT, check=True
+    )
+    facts = json.loads(result.stdout.strip().splitlines()[-1])
+    assert not facts["imported_ytdlp"], "importing the worker must not import yt-dlp"
+    assert not facts["imported_qt"], "the worker must inherit no Qt (ARC-002)"
+
+
+def test_the_worker_imports_no_qt_even_transitively() -> None:
+    """`ARC-002`: the worker runs with no display and must not pull Qt in through a helper."""
+    probe = (
+        "import tracks_and_trails.downloader.worker, sys; "
+        "print(any(m.startswith('PySide6') for m in sys.modules))"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe], capture_output=True, text=True, cwd=REPO_ROOT, check=True
+    )
+    assert result.stdout.strip() == "False"
+
+
+# --- yt-dlp resolution and the loud fallback (OPS-002, ARCHITECTURE.md §6) -------------------
+
+
+def _resolve_in_fresh_interpreter(user_directory: Path) -> dict[str, Any]:
+    """Run `_import_ytdlp` in a **clean** interpreter and return what it reported.
+
+    A subprocess is not incidental here. This interpreter has already imported yt-dlp, so
+    `import yt_dlp` returns the cached module without consulting `sys.path` and the user
+    candidate is never actually attempted — in-process, the fallback cannot be observed at all.
+    A spawned worker starts clean, which is the condition these tests are about.
+
+    The probe also classifies a transport error *after* resolving, because `T012-R2`'s real
+    damage was to class identity: a fallback that leaves half-initialised modules behind can
+    return a working module whose exception classes are not the ones the adapter binds.
+    """
+    probe = textwrap.dedent(
+        """
+        import json, pathlib, sys
+        from tracks_and_trails.downloader.environment import ytdlp_candidates
+        from tracks_and_trails.downloader.worker import _import_ytdlp
+
+        resolved = _import_ytdlp(ytdlp_candidates(pathlib.Path(sys.argv[1])))
+
+        from tracks_and_trails.downloader import ytdlp_adapter as adapter
+        from tracks_and_trails.core.errors import ErrorKind
+        from yt_dlp.networking.exceptions import ProxyError
+
+        kind = adapter.classify_exception(ProxyError("proxy refused")).kind
+        print(json.dumps({
+            "version": resolved.version,
+            "source": resolved.source,
+            "rejected": list(resolved.rejected),
+            "classified": kind.value,
+            "network": ErrorKind.NETWORK.value,
+        }))
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe, str(user_directory)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=True,
+    )
+    return dict(json.loads(result.stdout.strip().splitlines()[-1]))
+
+
+#: Broken user copies, by the shape of their failure. Each is a real `__init__.py` body.
+#:
+#: `partial-import` is `T012-R2`'s reproduction and the reason this is a table: the package
+#: imports one of its own submodules *before* failing, leaving `yt_dlp.version` behind in
+#: `sys.modules`. The baseline attempt then reused that stale submodule and died with
+#: `cannot import name 'CHANNEL'` — so a broken override took the baseline down with it.
+#:
+#: The last two are not `ImportError` at all. A user copy is arbitrary third-party code, and
+#: catching only `ImportError` meant those shapes killed the worker instead of falling back.
+BROKEN_SHAPES: dict[str, str] = {
+    "clean-raise": "raise ImportError('deliberately broken')\n",
+    "partial-import": (
+        "import yt_dlp.version\nraise ImportError('broken after importing a submodule')\n"
+    ),
+    "syntax-error": "def (\n",
+    "runtime-error": "raise RuntimeError('not an ImportError at all')\n",
+    # Embeds its own location in the message, which many real packages do. This is the shape
+    # that makes `NFR-007` redaction observable — the others carry no path to leak.
+    "path-in-message": "raise ImportError('failed loading ' + __file__)\n",
+    # `SystemExit` is not an `Exception`, so it escaped the candidate boundary entirely and the
+    # baseline was never tried — a broken override taking the whole worker down with it. Real
+    # packages do call `sys.exit()` at import time on a failed environment check.
+    "system-exit": "import sys\nsys.exit('broken override exited during import')\n",
+    # Neither is a bare `BaseException`. §6's rule is about importing cleanly, not about which
+    # base class the failure chose.
+    "base-exception": "raise BaseException('not even an Exception')\n",
+}
+
+
+@pytest.mark.parametrize("shape", sorted(BROKEN_SHAPES))
+def test_a_broken_user_copy_falls_back_to_the_baseline_and_says_so(
+    tmp_path: Path, shape: str
+) -> None:
+    """An acceptance criterion, and the one §6 is emphatic about.
+
+    A user who installs a broken copy and silently gets the baseline's behaviour has been lied
+    to. The fallback must happen **and** be reported — for every way a copy can be broken, not
+    only the tidiest one.
+    """
+    broken = tmp_path / "ytdlp"
+    package = broken / "yt_dlp"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text(BROKEN_SHAPES[shape])
+    # A submodule the partial-import shape can import before it fails.
+    (package / "version.py").write_text("__version__ = '0.0.0-broken'\n")
+
+    facts = _resolve_in_fresh_interpreter(broken)
+
+    assert facts["version"], "the baseline should still have been imported"
+    assert facts["version"] != "0.0.0-broken", "the broken copy was used, not the baseline"
+    assert "baseline" in facts["source"]
+    assert facts["rejected"], "the rejected candidate must be reported, not silently skipped"
+
+
+@pytest.mark.parametrize("shape", sorted(BROKEN_SHAPES))
+def test_the_taxonomy_survives_a_fallback(tmp_path: Path, shape: str) -> None:
+    """`T012-R2`: falling back must not leave the adapter binding classes from a dead module.
+
+    A fallback that "succeeds" while `sys.modules` still holds the broken copy's submodules can
+    hand back a module whose exception classes are not the ones `ytdlp_adapter` compares
+    against — and every failure would then classify as `EXTRACTOR_ERROR`. Classification is
+    asserted after the fallback for exactly that reason.
+    """
+    broken = tmp_path / "ytdlp"
+    package = broken / "yt_dlp"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text(BROKEN_SHAPES[shape])
+    (package / "version.py").write_text("__version__ = '0.0.0-broken'\n")
+
+    facts = _resolve_in_fresh_interpreter(broken)
+
+    assert facts["classified"] == facts["network"], (
+        "after falling back, a transport error no longer classifies as NETWORK — "
+        "the adapter is bound to classes from the discarded copy"
+    )
+
+
+def test_the_reported_source_is_derived_from_what_was_loaded(tmp_path: Path) -> None:
+    """The worker must not claim a source it did not use.
+
+    In this interpreter yt-dlp is already imported, so a user-copy candidate cannot actually
+    win — and the report says so rather than repeating the candidate label. Reporting the
+    attempted candidate would make `OPS-002`'s guarantee unfalsifiable.
+    """
+    user_copy = tmp_path / "ytdlp"
+    user_copy.mkdir()
+
+    resolved = worker_module._import_ytdlp(ytdlp_candidates(user_copy))
+
+    assert "already-imported" in resolved.source or "baseline" in resolved.source
+
+
+def test_the_resolved_version_is_read_from_the_module_not_a_recorded_string() -> None:
+    """`REQ-025`. A recorded string would drift from what actually ran."""
+    import yt_dlp
+
+    resolved = worker_module._import_ytdlp(ytdlp_candidates(None))
+    assert resolved.version == yt_dlp.version.__version__
+
+
+def test_a_completely_unimportable_ytdlp_raises_rather_than_returning_nothing() -> None:
+    """No candidate importing means the application is broken, not the user's copy."""
+    with pytest.raises(ImportError, match="no usable yt-dlp"):
+        worker_module._import_ytdlp(())
+
+
+# --- session outcomes (T-011's grammar) -------------------------------------------------------
+
+
+def fake_extract(info: dict[str, Any]) -> Any:
+    """Replace extraction with a recorded result, leaving the rest of the worker real."""
+
+    def _extract(
+        _adapter: Any,
+        _request: Any,
+        _resolved: Any,
+        _reporter: Any,
+        *,
+        probe_only: bool,
+        output_template: str | None = None,
+        **_extra: Any,
+    ) -> dict[str, Any]:
+        return dict(info)
+
+    return _extract
+
+
+def test_a_probe_session_emits_probed_then_the_sentinel(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The `T011-R1` shape: a successful probe is a complete session with one outcome."""
+    from tests.unit.test_ytdlp_adapter import load_fixture
+
+    monkeypatch.setattr(worker_module, "_extract", fake_extract(load_fixture()))
+    queue: Queue[Any] = Queue()
+
+    code = worker_module.run_session(SessionKind.PROBE, "job-1", request_for(tmp_path), queue)
+
+    messages = drain(queue)
+    assert code == 0
+    validate_sequence(SessionKind.PROBE, messages)
+    assert isinstance(messages[-1], WorkerFinished)
+    assert any(isinstance(m, Probed) for m in messages)
+
+
+def test_a_probe_of_the_fixture_yields_the_expected_media(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from tests.unit.test_ytdlp_adapter import load_fixture
+
+    info = load_fixture()
+    monkeypatch.setattr(worker_module, "_extract", fake_extract(info))
+    queue: Queue[Any] = Queue()
+    worker_module.run_session(SessionKind.PROBE, "job-1", request_for(tmp_path), queue)
+
+    probed = next(m for m in drain(queue) if isinstance(m, Probed))
+    assert probed.media.title == info["title"]
+    assert len(probed.media.formats) == len(info["formats"])
+
+
+def test_a_failure_reaches_the_parent_classified_and_verbatim(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`REQ-018`, `NFR-006`: never fail silently, never paraphrase."""
+    from yt_dlp.utils import GeoRestrictedError
+
+    def explode(*_args: Any, **_kwargs: Any) -> Any:
+        raise GeoRestrictedError("This video is not available in your country")
+
+    monkeypatch.setattr(worker_module, "_extract", explode)
+    queue: Queue[Any] = Queue()
+
+    code = worker_module.run_session(SessionKind.DOWNLOAD, "job-1", request_for(tmp_path), queue)
+
+    messages = drain(queue)
+    assert code == 1
+    validate_sequence(SessionKind.DOWNLOAD, messages)
+    failed = next(m for m in messages if isinstance(m, Failed))
+    assert failed.kind is ErrorKind.GEO_RESTRICTED
+    assert failed.message == "This video is not available in your country"
+
+
+def test_every_session_ends_with_the_sentinel_even_when_everything_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Without it the parent blocks on `Queue.get()` forever (`ARCHITECTURE.md` §3)."""
+
+    def explode(*_args: Any, **_kwargs: Any) -> Any:
+        raise RuntimeError("something nobody anticipated")
+
+    monkeypatch.setattr(worker_module, "_import_ytdlp", explode)
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(SessionKind.PROBE, "job-1", request_for(tmp_path), queue)
+
+    messages = drain(queue)
+    assert isinstance(messages[-1], WorkerFinished)
+    assert isinstance(messages[0], Failed)
+
+
+# --- DRM (REQ-EXCL-001, SEC-001) --------------------------------------------------------------
+
+
+def test_a_drm_item_fails_without_attempting_extraction(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The acceptance criterion: classified non-retryable, and **no alternative attempted**.
+
+    Asserted by counting extraction calls: a download session probes once and must stop there.
+    A second call would be an attempt to find a way around the protection.
+    """
+    calls: list[bool] = []
+
+    def counting_extract(
+        _a: Any,
+        _r: Any,
+        _res: Any,
+        _rep: Any,
+        *,
+        probe_only: bool,
+        output_template: str | None = None,
+        **_extra: Any,
+    ) -> dict[str, Any]:
+        calls.append(probe_only)
+        return {"_has_drm": True, "title": "Protected", "webpage_url": "https://e.com/x"}
+
+    monkeypatch.setattr(worker_module, "_extract", counting_extract)
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(SessionKind.DOWNLOAD, "job-1", request_for(tmp_path), queue)
+
+    failed = next(m for m in drain(queue) if isinstance(m, Failed))
+    assert failed.kind is ErrorKind.DRM_PROTECTED
+    assert calls == [True], "extraction was retried after DRM was detected"
+
+
+# --- ffmpeg (REQ-024, OPS-001) ----------------------------------------------------------------
+
+
+def test_a_merge_without_ffmpeg_fails_before_downloading(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`REQ-024`'s whole point: told up front, not after the bandwidth is spent."""
+    calls: list[bool] = []
+
+    def counting_extract(
+        _a: Any,
+        _r: Any,
+        _res: Any,
+        _rep: Any,
+        *,
+        probe_only: bool,
+        output_template: str | None = None,
+        **_extra: Any,
+    ) -> dict[str, Any]:
+        calls.append(probe_only)
+        return {"title": "Clip", "webpage_url": "https://e.com/x", "formats": []}
+
+    monkeypatch.setattr(worker_module, "_extract", counting_extract)
+    monkeypatch.setattr(
+        worker_module,
+        "find_ffmpeg",
+        lambda **_: FfmpegReport(
+            path=None, source="not found on PATH", unavailable_features=("merging",)
+        ),
+    )
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(
+        SessionKind.DOWNLOAD,
+        "job-1",
+        request_for(tmp_path, format_selector="bestvideo+bestaudio"),
+        queue,
+    )
+
+    failed = next(m for m in drain(queue) if isinstance(m, Failed))
+    assert failed.kind is ErrorKind.FFMPEG_MISSING
+    assert calls == [True], "the download proceeded despite ffmpeg being unavailable"
+
+
+def test_a_plain_download_without_ffmpeg_is_not_blocked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only formats that *need* ffmpeg are gated; a single-file download is fine without it."""
+    monkeypatch.setattr(
+        worker_module,
+        "find_ffmpeg",
+        lambda **_: FfmpegReport(path=None, source="absent"),
+    )
+    monkeypatch.setattr(
+        worker_module,
+        "_extract",
+        fake_extract({"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4"}),
+    )
+    monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: tmp_path / "Clip.mp4")
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(
+        SessionKind.DOWNLOAD, "job-1", request_for(tmp_path, format_selector="best"), queue
+    )
+
+    assert any(isinstance(m, Succeeded) for m in drain(queue))
+
+
+# --- the preview tells the truth (REQ-011) ----------------------------------------------------
+
+
+def test_the_preview_equals_the_path_the_download_actually_uses(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`REQ-011`'s acceptance criterion: render, preview, and compare.
+
+    A preview is a promise about where the file will land. If it is computed by a different
+    route than the write, the two drift and the user is told one location while another is
+    written — silently, and only for the titles where the routes happen to disagree.
+
+    So this does not compare `preview_path` against the helper it calls, which would pass
+    however wrong both were (`ai/TESTING.md` §13). It takes the preview, then runs a real
+    download session and reads the path out of the `Succeeded` message the parent would
+    receive. The two must agree, having been observed through different paths.
+
+    The title is a **reserved device name**, chosen after a first attempt using `: " ?` proved
+    vacuous: yt-dlp's own `prepare_filename` already maps those to fullwidth forms, so `T-034`
+    had nothing left to change and a preview that skipped sanitisation entirely still matched.
+    Reserved names are a case yt-dlp does not handle and `T-045` defuses with a digest, so the
+    two routes genuinely diverge — on every platform, not only on Windows.
+    """
+    info = {"title": "CON", "webpage_url": "https://e.com/x", "ext": "mp4"}
+    resolved = worker_module._import_ytdlp(ytdlp_candidates(None))
+    request = request_for(tmp_path, format_selector="best")
+
+    preview = worker_module.preview_path(request, dict(info), resolved)
+
+    # Stands in for yt-dlp: reports back the very template it was handed, which is what a
+    # real single-file download does.
+    def extract_reporting_its_target(
+        _a: Any,
+        _r: Any,
+        _res: Any,
+        _rep: Any,
+        *,
+        probe_only: bool,
+        output_template: str | None = None,
+        **_extra: Any,
+    ) -> dict[str, Any]:
+        if probe_only:
+            return dict(info)
+        return {**info, "requested_downloads": [{"filepath": output_template}]}
+
+    monkeypatch.setattr(worker_module, "_extract", extract_reporting_its_target)
+    monkeypatch.setattr(
+        worker_module, "find_ffmpeg", lambda **_: FfmpegReport(path=None, source="absent")
+    )
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(SessionKind.DOWNLOAD, "job-1", request, queue)
+
+    succeeded = next(m for m in drain(queue) if isinstance(m, Succeeded))
+    assert succeeded.output_path == str(preview)
+    assert Path(succeeded.output_path).parent == tmp_path, (
+        "the preview and the write agreed, but on a location outside the chosen directory"
+    )
+
+
+def test_the_worker_hands_yt_dlp_the_ffmpeg_it_gated_on(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T012-R5`/`OPS-001`: resolving ffmpeg and then not telling yt-dlp is worse than not
+    resolving it.
+
+    The worker checks a specific binary exists and lets the download proceed on that basis. If
+    the path never reaches `YoutubeDL`, yt-dlp runs its own lookup and may use a different
+    ffmpeg — or none — so the gate the user passed was about a binary that was never used.
+
+    Written because a mutation replacing the forwarded path with `None` left the whole suite
+    green: `build_options` was tested for accepting the argument, but nothing checked that the
+    worker supplied it.
+    """
+    resolved_ffmpeg = tmp_path / "bin" / "ffmpeg"
+    resolved_ffmpeg.parent.mkdir()
+    resolved_ffmpeg.touch()
+    seen: list[Any] = []
+
+    def capturing_extract(
+        _a: Any,
+        _r: Any,
+        _res: Any,
+        _rep: Any,
+        *,
+        probe_only: bool,
+        output_template: str | None = None,
+        ffmpeg_location: Any = None,
+        **_extra: Any,
+    ) -> dict[str, Any]:
+        if not probe_only:
+            seen.append(ffmpeg_location)
+        return {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4"}
+
+    monkeypatch.setattr(worker_module, "_extract", capturing_extract)
+    monkeypatch.setattr(
+        worker_module,
+        "find_ffmpeg",
+        lambda **_: FfmpegReport(path=resolved_ffmpeg, source="resolved for the test"),
+    )
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(
+        SessionKind.DOWNLOAD, "job-1", request_for(tmp_path, format_selector="best"), queue
+    )
+
+    assert seen == [resolved_ffmpeg], "the download did not receive the gated ffmpeg path"
+
+
+def test_a_keyboard_interrupt_during_resolution_is_not_swallowed(tmp_path: Path) -> None:
+    """The one interruption that must **not** become a fallback (`T012-R2`).
+
+    Widening the candidate boundary to `BaseException` is right for a third-party module that
+    fails to import, but `KeyboardInterrupt` does not mean "this copy is broken" — it means the
+    user asked this process to stop. Falling back and carrying on would ignore them, and would
+    do so invisibly, since the baseline usually imports fine.
+    """
+    broken = tmp_path / "ytdlp"
+    package = broken / "yt_dlp"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("raise KeyboardInterrupt('user pressed ctrl-c')\n")
+
+    # Fresh interpreter for the same reason as the fallback matrix: in this one yt-dlp is
+    # already imported, so the broken candidate is never attempted and nothing would be raised.
+    probe = textwrap.dedent(
+        """
+        import pathlib, sys
+
+        from tracks_and_trails.downloader.environment import ytdlp_candidates
+        from tracks_and_trails.downloader.worker import _import_ytdlp
+
+        try:
+            _import_ytdlp(ytdlp_candidates(pathlib.Path(sys.argv[1])))
+        except KeyboardInterrupt:
+            print("PROPAGATED")
+        else:
+            print("SWALLOWED")
+        """
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe, str(broken)],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=True,
+    )
+
+    assert result.stdout.strip().splitlines()[-1] == "PROPAGATED", (
+        "a user interrupt was treated as a broken candidate and silently fell back"
+    )
+
+
+# --- what the parent actually learns (T012-R1, REQ-025) --------------------------------------
+
+
+def test_a_successful_session_reports_which_ytdlp_it_used(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`REQ-025`: the resolved version must reach the **parent**, not just the worker.
+
+    This is asserted through `run_session` on purpose. The previous tests read `ResolvedYtdlp`
+    directly, so they passed while a successful probe emitted only `Progress`, `Probed` and the
+    sentinel — the version was computed correctly and thrown away. A fact the parent cannot
+    observe is not reported (`ai/TESTING.md` §13).
+    """
+    from tests.unit.test_ytdlp_adapter import load_fixture
+
+    monkeypatch.setattr(worker_module, "_extract", fake_extract(load_fixture()))
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(SessionKind.PROBE, "job-1", request_for(tmp_path), queue)
+    messages = drain(queue)
+
+    report = next(m for m in messages if isinstance(m, ResolutionReport))
+    assert report.ytdlp_version == _resolved().version
+    assert report.ytdlp_source
+    validate_sequence(SessionKind.PROBE, messages)
+
+
+def test_a_successful_download_also_reports_its_resolution(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Both outcome types, since the report describes the environment rather than the result."""
+    info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4"}
+    messages = _run_download(tmp_path, monkeypatch, info)
+
+    assert any(isinstance(m, Succeeded) for m in messages)
+    assert any(isinstance(m, ResolutionReport) for m in messages)
+    validate_sequence(SessionKind.DOWNLOAD, messages)
+
+
+def test_the_report_precedes_the_outcome(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    """A report arriving after the outcome could not inform how the outcome is interpreted."""
+    from tests.unit.test_ytdlp_adapter import load_fixture
+
+    monkeypatch.setattr(worker_module, "_extract", fake_extract(load_fixture()))
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(SessionKind.PROBE, "job-1", request_for(tmp_path), queue)
+    messages = drain(queue)
+
+    kinds = [type(m).__name__ for m in messages]
+    assert kinds.index("ResolutionReport") < kinds.index("Probed")
+
+
+def test_a_successful_fallback_tells_the_parent_what_was_rejected(tmp_path: Path) -> None:
+    """The other half of the broken-override criterion: the fallback must "say so" *to the
+    parent*.
+
+    Run in a spawned process because a fallback cannot happen in an interpreter that has already
+    imported yt-dlp, and asserted on the queue because the worker's own local variable was never
+    the thing the criterion was about (`ARCHITECTURE.md` §6).
+    """
+    broken = tmp_path / "ytdlp"
+    package = broken / "yt_dlp"
+    package.mkdir(parents=True)
+    (package / "__init__.py").write_text("raise ImportError('deliberately broken')\n")
+
+    context = mp.get_context("spawn")
+    queue: Any = context.Queue()
+    process = context.Process(
+        target=_report_target, args=(queue, str(tmp_path / "out"), str(broken))
+    )
+    (tmp_path / "out").mkdir()
+    process.start()
+    process.join(timeout=120)
+
+    messages = []
+    while not queue.empty():
+        messages.append(queue.get_nowait())
+
+    report = next(m for m in messages if isinstance(m, ResolutionReport))
+    assert report.rejected, "the rejected override never reached the parent"
+    assert "baseline" in report.ytdlp_source
+
+
+def test_the_rejection_reason_carries_no_filesystem_path(tmp_path: Path) -> None:
+    """`NFR-007`: the reason travels to the parent and is logged, so it carries a label.
+
+    The user configured the directory; repeating its absolute path back tells them nothing and
+    puts a local path into records that persist.
+    """
+    broken = tmp_path / "ytdlp"
+    package = broken / "yt_dlp"
+    package.mkdir(parents=True)
+    # Deliberately the shape that puts its own absolute path in the message. Using a failure
+    # whose text contains no path would let this test pass with redaction removed entirely.
+    (package / "__init__.py").write_text(BROKEN_SHAPES["path-in-message"])
+
+    facts = _resolve_in_fresh_interpreter(broken)
+
+    assert facts["rejected"]
+    assert any("yt_dlp" in reason for reason in facts["rejected"]), (
+        "the reason no longer names what failed; this test would pass vacuously"
+    )
+    for reason in facts["rejected"]:
+        assert str(broken) not in reason, f"the candidate path leaked into: {reason!r}"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "gated"),
+    [
+        ({"post_processors": ("FFmpegMetadata",)}, True),
+        ({"post_processors": ("EmbedThumbnail",)}, True),
+        ({"subtitle_languages": ("en",), "embed_subtitles": True}, True),
+        ({"media_kind": MediaKind.AUDIO, "format_selector": "bestaudio"}, True),
+        ({"format_selector": "bestvideo+bestaudio"}, True),
+        ({"post_processors": ("Exec",)}, False),
+        ({}, False),
+    ],
+)
+def test_the_ffmpeg_gate_covers_every_processor_that_needs_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, overrides: dict[str, Any], gated: bool
+) -> None:
+    """`REQ-024`: told up front, not after the bandwidth is spent (`T012-R5`).
+
+    The gate previously checked two flags — audio kind and subtitle embedding — so a request
+    naming `FFmpegMetadata` or `EmbedThumbnail` passed it and then failed at post-processing,
+    with the whole download already paid for.
+
+    `Exec` is the control: it is a real post-processor that does **not** subclass
+    `FFmpegPostProcessor`, so a gate that simply answered "yes" to any named processor would
+    fail this row.
+    """
+    calls: list[bool] = []
+
+    def counting_extract(
+        _a: Any,
+        _r: Any,
+        _res: Any,
+        _rep: Any,
+        *,
+        probe_only: bool,
+        output_template: str | None = None,
+        **_extra: Any,
+    ) -> dict[str, Any]:
+        calls.append(probe_only)
+        return {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4"}
+
+    monkeypatch.setattr(worker_module, "_extract", counting_extract)
+    monkeypatch.setattr(
+        worker_module,
+        "find_ffmpeg",
+        lambda **_: FfmpegReport(path=None, source="not found on PATH"),
+    )
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(
+        SessionKind.DOWNLOAD, "job-1", request_for(tmp_path, **overrides), queue
+    )
+    messages = drain(queue)
+
+    if gated:
+        failed = next(m for m in messages if isinstance(m, Failed))
+        assert failed.kind is ErrorKind.FFMPEG_MISSING
+        assert calls == [True], "the download ran despite ffmpeg being unavailable"
+    else:
+        assert not any(
+            isinstance(m, Failed) and m.kind is ErrorKind.FFMPEG_MISSING for m in messages
+        ), "a download needing no ffmpeg was blocked"
+
+
+# --- output template, containment and preview (T-034, REQ-011, T012-R4) ----------------------
+
+
+def _resolved() -> Any:
+    """The real yt-dlp, resolved the way the worker resolves it."""
+    return worker_module._import_ytdlp(ytdlp_candidates(None))
+
+
+def _run_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, info: dict[str, Any], **overrides: Any
+) -> list[Any]:
+    """Drive a real download session, faking only the network.
+
+    Deliberately goes through `run_session` rather than calling `_validated_target` or
+    `safe_output_path`. The previous tests called `paths` directly while claiming to test "the
+    worker's own helper", so they passed whether or not the worker used the validated result at
+    all — which is exactly how `T012-R4` survived (`ai/TESTING.md` §13).
+    """
+
+    def extract_reporting_its_target(
+        _a: Any,
+        _r: Any,
+        _res: Any,
+        _rep: Any,
+        *,
+        probe_only: bool,
+        output_template: str | None = None,
+        **_extra: Any,
+    ) -> dict[str, Any]:
+        if probe_only:
+            return dict(info)
+        # Stands in for yt-dlp: renders the template it was handed, as a real download does.
+        rendered = (
+            worker_module._import_ytdlp(ytdlp_candidates(None))
+            .module.YoutubeDL({"outtmpl": output_template, "quiet": True})
+            .prepare_filename(info)
+        )
+        return {**info, "requested_downloads": [{"filepath": rendered}]}
+
+    monkeypatch.setattr(worker_module, "_extract", extract_reporting_its_target)
+    monkeypatch.setattr(
+        worker_module, "find_ffmpeg", lambda **_: FfmpegReport(path=None, source="absent")
+    )
+    queue: Queue[Any] = Queue()
+    worker_module.run_session(
+        SessionKind.DOWNLOAD,
+        "job-1",
+        request_for(tmp_path, format_selector="best", **overrides),
+        queue,
+    )
+    return drain(queue)
+
+
+def test_a_template_with_subdirectories_keeps_them(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T012-R4`: the user's template structure must survive validation.
+
+    Reducing the rendered path to its filename discarded this silently — a template asking for
+    `%(uploader)s/%(title)s.%(ext)s` wrote every file into one flat folder and never said so.
+    """
+    info = {"title": "Clip", "uploader": "Someone", "webpage_url": "https://e.com/x", "ext": "mp4"}
+    messages = _run_download(
+        tmp_path, monkeypatch, info, output_template="%(uploader)s/%(title)s.%(ext)s"
+    )
+
+    succeeded = next(m for m in messages if isinstance(m, Succeeded))
+    written = Path(succeeded.output_path)
+    assert written.parent.name == "Someone", "the template's subdirectory was discarded"
+    assert written.parent.parent == tmp_path
+
+
+@pytest.mark.parametrize(
+    "template",
+    [
+        "../outside/%(title)s.%(ext)s",
+        "../../outside/%(title)s.%(ext)s",
+        # S108: the absolute path is the input under test — it must be refused, never used.
+        "/tmp/outside/%(title)s.%(ext)s",  # noqa: S108
+        "nested/../../outside/%(title)s.%(ext)s",
+        "C:\\outside\\%(title)s.%(ext)s",
+        "\\\\host\\share\\%(title)s.%(ext)s",
+    ],
+)
+def test_a_template_that_renders_outside_is_rejected_not_written(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, template: str
+) -> None:
+    """The acceptance criterion, verbatim: "rejected, not written".
+
+    Previously each of these was silently rewritten into the chosen directory, so the user was
+    told their template worked when it had been discarded. Neutralising is right for a *title*
+    the user did not choose; for a template they typed, it hides the mistake.
+    """
+    info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4"}
+    messages = _run_download(tmp_path, monkeypatch, info, output_template=template)
+
+    failed = next(m for m in messages if isinstance(m, Failed))
+    assert failed.kind is ErrorKind.DISK
+    assert not any(isinstance(m, Succeeded) for m in messages)
+    assert list(tmp_path.rglob("*")) == [], "a file was written despite the template being rejected"
+
+
+def test_a_title_that_looks_like_a_template_is_not_rendered_twice(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T012-R4`: the validated path is handed to yt-dlp as data, not as a second template.
+
+    A title containing `%(uploader)s` survived sanitisation as literal text; yt-dlp then
+    expanded it on the second pass and wrote a *different* file than the one that was validated
+    and previewed. Containment had been checked against a path that was never used.
+    """
+    info = {
+        "title": "100% Real %(uploader)s",
+        "uploader": "SOMEONE-ELSE",
+        "webpage_url": "https://e.com/x",
+        "ext": "mp4",
+    }
+    preview = worker_module.preview_path(
+        request_for(tmp_path, format_selector="best"), dict(info), _resolved()
+    )
+    messages = _run_download(tmp_path, monkeypatch, info)
+
+    succeeded = next(m for m in messages if isinstance(m, Succeeded))
+    assert succeeded.output_path == str(preview), "the write drifted from the preview"
+    assert "SOMEONE-ELSE" not in succeeded.output_path, (
+        "the title was re-rendered as a template and picked up a second field"
+    )
+
+
+def test_a_traversal_title_lands_inside_the_output_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A hostile *title* is neutralised rather than rejected — it downloads, safely.
+
+    The distinction from the rejection cases above is deliberate: the user chose the template,
+    but the site chose the title.
+    """
+    info = {"title": "../../etc/passwd", "webpage_url": "https://e.com/x", "ext": "mp4"}
+    messages = _run_download(tmp_path, monkeypatch, info)
+
+    succeeded = next(m for m in messages if isinstance(m, Succeeded))
+    assert is_contained(Path(succeeded.output_path), tmp_path)
+
+
+def test_a_symlink_out_of_the_directory_is_still_refused(tmp_path: Path) -> None:
+    """`T-034`'s own guarantee, kept as a direct check because no template can express it."""
+    outside = tmp_path / "elsewhere"
+    outside.mkdir()
+    target = tmp_path / "Downloads"
+    target.mkdir()
+    (target / "link").symlink_to(outside)
+
+    with pytest.raises(UnsafePathError):
+        safe_output_path(target, "link/clip.mp4")
+
+
+# --- a real spawned process (ARC-002) ---------------------------------------------------------
+
+
+def _report_target(queue: Any, directory: str, user_ytdlp: str) -> None:
+    """Runs in the child: a full session against a broken override, reporting on the queue."""
+    from tracks_and_trails.core.models import DownloadRequest
+    from tracks_and_trails.downloader import worker as w
+    from tracks_and_trails.downloader.protocol import SessionKind
+
+    w._extract = lambda *a, **k: {
+        "title": "Spawned",
+        "webpage_url": "https://e.com/x",
+        "formats": [],
+    }
+    w.run_session(
+        SessionKind.PROBE,
+        "job-fallback",
+        DownloadRequest(
+            url="https://e.com/x",
+            output_directory=directory,
+            format_selector="best",
+            output_template="%(title)s.%(ext)s",
+        ),
+        queue,
+        user_ytdlp_directory=Path(user_ytdlp),
+    )
+
+
+def _spawn_target(queue: mp.Queue[Any], directory: str) -> None:
+    """Runs in the child. Module-level so it is picklable under `spawn`."""
+    from tracks_and_trails.core.models import DownloadRequest
+    from tracks_and_trails.downloader import worker as w
+    from tracks_and_trails.downloader.protocol import SessionKind
+
+    w._extract = lambda *a, **k: {
+        "title": "Spawned",
+        "webpage_url": "https://e.com/x",
+        "formats": [],
+    }
+    w.run_session(
+        SessionKind.PROBE,
+        "job-spawn",
+        DownloadRequest(
+            url="https://e.com/x",
+            output_directory=directory,
+            format_selector="best",
+            output_template="%(title)s.%(ext)s",
+        ),
+        queue,
+    )
+
+
+def test_the_worker_runs_in_a_real_spawned_process_with_no_display(tmp_path: Path) -> None:
+    """`ARC-002` end to end: `spawn`, a real `mp.Queue`, and a headless child.
+
+    Not mocked (`ai/TESTING.md` §6) — a mocked subprocess cannot fail the way a real one does,
+    and `spawn` re-importing the module is exactly the behaviour under test.
+    """
+    context = mp.get_context("spawn")
+    queue: Any = context.Queue()
+    process = context.Process(target=_spawn_target, args=(queue, str(tmp_path)))
+    process.start()
+    process.join(timeout=60)
+
+    assert process.exitcode == 0, "the spawned worker did not exit cleanly"
+
+    messages = []
+    while not queue.empty():
+        messages.append(queue.get_nowait())
+
+    validate_sequence(SessionKind.PROBE, messages)
+    probed = next(m for m in messages if isinstance(m, Probed))
+    assert probed.media.title == "Spawned"

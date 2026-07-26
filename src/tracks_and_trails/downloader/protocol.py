@@ -253,6 +253,52 @@ class Failed(_Message):
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
+class ResolutionReport(_Message):
+    """Which yt-dlp this session actually used, and what it rejected to get there (`T012-R1`).
+
+    `REQ-025` requires the resolved version to be reported, and `ARCHITECTURE.md` §6 requires a
+    rejected override to be **reported, never silently ignored**. Both facts were computed
+    correctly inside the worker and then reached the parent only when a session happened to
+    fail — a successful probe emitted `Progress`, `Probed` and the sentinel and nothing else. A
+    guarantee the parent cannot observe is not a guarantee, and "the fallback says so" was true
+    only of the worker's own local variable.
+
+    Its own message rather than fields on `Probed`/`Succeeded`: it describes the *environment*,
+    not the job's result, it is identical for both outcome types, and a session that fails
+    after resolving should carry it too.
+
+    **Not an outcome.** It reports what the worker is running, not what the job achieved, so it
+    must never satisfy the "exactly one outcome" rule.
+
+    Carries labels, never filesystem paths (`NFR-007`): `source` is a description such as
+    "bundled baseline", and `rejected` reasons have the candidate directory replaced before
+    they are attached.
+    """
+
+    ytdlp_version: str
+    ytdlp_source: str
+    rejected: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        for name in ("ytdlp_version", "ytdlp_source"):
+            value: Any = getattr(self, name)
+            if not isinstance(value, str) or not value.strip():
+                raise TypeError(
+                    f"ResolutionReport.{name} must be a non-empty string, not {value!r}. "
+                    "An empty one would report a resolution that never happened."
+                )
+        # Bound through `Any` deliberately, matching `Failed.message` above: these values arrive
+        # unpickled from another process, so the annotation is a claim about the sender rather
+        # than a guarantee about the bytes. Static narrowing would delete the check that matters.
+        rejected: Any = self.rejected
+        if not isinstance(rejected, tuple) or not all(isinstance(entry, str) for entry in rejected):
+            raise TypeError(
+                f"ResolutionReport.rejected must be a tuple of strings, not {rejected!r}"
+            )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class WorkerFinished(_Message):
     """The sentinel. **The last thing a worker puts on the queue, always.**
 
@@ -276,6 +322,7 @@ class WorkerFinished(_Message):
 MESSAGE_TYPES: Final[tuple[type[_Message], ...]] = (
     Probed,
     Progress,
+    ResolutionReport,
     Succeeded,
     Failed,
     WorkerFinished,
@@ -290,7 +337,7 @@ _LEGAL_OUTCOMES: Final[dict[SessionKind, tuple[type[_Message], ...]]] = {
     SessionKind.DOWNLOAD: (Succeeded, Failed),
 }
 
-Message = Probed | Progress | Succeeded | Failed | WorkerFinished
+Message = Probed | Progress | ResolutionReport | Succeeded | Failed | WorkerFinished
 
 
 def is_message(candidate: object) -> TypeGuard[Message]:
@@ -388,6 +435,16 @@ def validate_sequence(kind: SessionKind, messages: Sequence[object]) -> None:
     later = [type(m).__name__ for m in declared[outcome_at + 1 : -1]]
     if later:
         raise ProtocolViolationError(f"messages after the outcome: {later}")
+
+    # `T012-R1`: one session resolves yt-dlp once, so it reports that once. Two reports would
+    # mean either a second resolution or a duplicated message, and the parent would have no way
+    # to tell which one describes the run. (Ordering needs no separate rule: the check above
+    # already forbids anything between the outcome and the sentinel.)
+    reports = [m for m in declared if isinstance(m, ResolutionReport)]
+    if len(reports) > 1:
+        raise ProtocolViolationError(
+            f"{len(reports)} ResolutionReports for one session; a session resolves yt-dlp once"
+        )
 
     # `T011-R7`: the module documents the probe grammar as `Progress(PROBING)*`, and claims
     # this function is its executable form — but a probe reporting `MERGING` validated. A probe

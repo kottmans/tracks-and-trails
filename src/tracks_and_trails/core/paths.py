@@ -258,6 +258,32 @@ def is_contained(path: Path, directory: Path) -> bool:
     return resolved == base or base in resolved.parents
 
 
+def escapes_directory(candidate: str) -> bool:
+    """Whether `candidate` *tries* to leave the directory it will be joined to (`T012-R4`).
+
+    Distinct from `safe_output_path`, which **neutralizes** an escape by dropping the offending
+    components. Neutralizing is right for a filename derived from a title the user did not
+    choose: a video called `../../etc/passwd` should still download, just safely.
+
+    It is wrong for the *output template*, which the user typed. `T-012`'s criterion is that a
+    template rendering outside the target directory is "rejected, not written", and silently
+    rewriting `../elsewhere/%(title)s.%(ext)s` into a file in the chosen folder tells the user
+    their template worked when it did not. Detecting intent and refusing is the honest answer;
+    this function is the detection half.
+
+    Both separators are examined regardless of host, for the reason `_components` explains: a
+    Windows-style escape must not survive being read with POSIX rules.
+    """
+    if not candidate:
+        return False
+    normalised = candidate.replace("\\", "/")
+    pure = PureWindowsPath(normalised)
+    # A drive (`C:`) or a root (`/`, and `//host/share` after normalisation) is absolute intent.
+    if pure.drive or pure.root:
+        return True
+    return any(part == ".." for part in normalised.split("/"))
+
+
 def safe_output_path(directory: Path, candidate: str) -> Path:
     """Return the sanitized path for `candidate` inside `directory`, or raise `UnsafePathError`.
 

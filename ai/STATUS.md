@@ -78,27 +78,31 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-045`** — reserved-name defusing without collisions. Implemented, independently in review.
+- **`T-044`, `T-045`** — implemented, independently in review. Neither blocks anything.
 
 ## Next
 
-**`T-012` is unblocked.** `T-011`, `T-034` and `T-035` are all approved, so the Phase 1
-chokepoint — six tasks behind it — is Ready.
+**`T-012` is complete** (approved with follow-ups, 2026-07-26) — `ARC-002` is no longer a
+design. A spawned child imports yt-dlp, extracts, classifies failures against the real
+taxonomy, writes inside a validated path, and reports typed messages back.
 
-1. **`T-012` — yt-dlp in a spawned worker.** The first code to import `yt_dlp`, the first to run
-   in a spawned process, and the first to write a file. `ARC-002` stops being a design here.
-   **`T-033` must land with it**: the frozen artifact bundles no yt-dlp today, and the failure
-   looks exactly like ordinary site breakage.
-2. **`T-038`, `T-014`, `T-015`** — all Ready and independent of the above. `T-038` is one of
-   `ai/TESTING.md` §7's ten mandatory coverage areas (log redaction, `NFR-007`); `T-014` carries
-   three more (crash recovery, migrations, settings freeze).
+1. **`T-013` — download manager and result pump.** Now Ready, and the largest remaining item
+   between here and a URL that actually downloads.
+2. **`T-038` — logging with handler-level redaction.** One of `ai/TESTING.md` §7's ten
+   mandatory coverage areas; a leak here is written to disk and survives.
+3. **`T-014`, `T-015`** — Ready and independent. `T-014` carries three more mandatory areas.
 
-`T-045` needs a review pass at some point; it does not block anything.
+**What two review rounds cost, and what they bought.** Eight blocking findings across two
+passes, every one real. The pattern worth remembering: **five of them were things that
+computed the right answer and then failed to act on it** — the resolved yt-dlp version never
+left the worker, the rendered path was validated and then re-rendered, ffmpeg was located and
+never passed to the library, an audio codec was chosen and never requested, and the frozen
+probe resolved an extractor name without loading the extractor. Each looked correct in the
+code and produced no error.
 
-**A caution worth carrying into `T-012`.** The last three tasks each needed correction rounds,
-and the defects clustered in *test strength* rather than production logic — four times a
-"generic" test asked the thing it was policing. `T-012` has more surface for that than anything
-so far: real process spawning, real IPC, real yt-dlp.
+The tests that missed them shared a shape too: they asserted on the *input* to a boundary
+rather than on what came out the far side — a key present in an options dict, a local variable
+on the worker's side of the queue. `ai/TESTING.md` §13 now has the general form of this.
 
 ## Known gaps not yet scheduled
 
@@ -110,11 +114,12 @@ so far: real process spawning, real IPC, real yt-dlp.
   path to pass through it and `ai/TESTING.md` §7 listing path safety as mandatory. Found while
   planning Phase 1; now filed and blocking `T-012`.
 
-- **`T-033` — the frozen artifact contains no yt-dlp.** Verified against the built artifact:
-  zero `yt_dlp` files. Correct today (nothing imports it yet) but it will not self-correct
-  when `T-012` lands, because 972 of yt-dlp's 1046 modules are extractors resolved
-  dynamically and PyInstaller follows static imports. The artifact would build, launch, and
-  fail every URL in a way that looks like ordinary site breakage.
+- **`T-033` — implemented, not closed** (`P1-R2`). The spec collects yt-dlp's submodules and
+  data files; the probe resolves an extractor *by name* through the lazy machinery and asserts
+  the bundled version against the pin (`T033-R1`). It stays **In Review** until the frozen jobs
+  run on both platforms: the local probe is source-mode and proves nothing about the artifact,
+  which is the entire subject of the task. An earlier version of this file called it "closed"
+  here while listing it as pending above — the contradiction `P1-R2` reported.
 
 ## Open questions for the maintainer
 
@@ -134,8 +139,14 @@ so far: real process spawning, real IPC, real yt-dlp.
 
 ## Blockers
 
-*(none — the `T-003` logo blocker cleared on 2026-07-25 when the maintainer supplied the
-source asset)*
+- **`T-033` — blocked on CI evidence, not on code.** Its corrections are reviewed and verified,
+  but approval needs the collection-removal negative run, Linux **and** Windows frozen results,
+  and the recorded artifact-size delta. PyInstaller is in the `build` extra and absent from the
+  working venv, so none of it can be produced here. Clears when the frozen jobs run against the
+  pushed boundary.
+
+*(the `T-003` logo blocker cleared on 2026-07-25 when the maintainer supplied the source
+asset)*
 
 ## Repository
 
