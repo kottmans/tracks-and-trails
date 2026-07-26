@@ -48,7 +48,8 @@
 
 ## In progress
 
-*(nothing active)*
+- **`T-007`** — In Review on branch `t-007-shell`. The application shell window: it opens,
+  carries the icon, remembers its geometry and exits cleanly. Awaiting Codex.
 
 ## Next
 
@@ -100,8 +101,9 @@ Development machine, verified 2026-07-25:
 
 ## Notes
 
-**No application behavior exists yet.** Nothing downloads, probes, persists, or renders
-anything, and there is no window. `ARCHITECTURE.md` describes the approved target, not
+**Almost no application behavior exists yet.** Nothing downloads, probes, or persists a
+job. There is now a window (`T-007`, in review) — titled, icon-bearing, with File → Quit and
+Help → About — and it remembers its size and position. That is the whole of it. `ARCHITECTURE.md` describes the approved target, not
 reality — treat any claim of implemented *behavior* as false until this section says
 otherwise.
 
