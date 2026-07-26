@@ -12,9 +12,10 @@
 
 ---
 
-**Current phase:** Phase 0 — Foundation, at its exit
-**Overall state:** Every Phase 0 deliverable is built and green on both platforms. One exit
-criterion is unmet and cannot be met here: launching the window on Windows (`OPS-003`).
+**Current phase:** Phase 0 — Foundation, **exit blocked**
+**Overall state:** Every deliverable is built and green on both platforms, but the exit review
+requested changes (`T-027` … `T-032`), and the documented Windows launch criterion remains
+unmet and unmeetable here (`OPS-003`).
 
 ## Completed
 
@@ -45,7 +46,11 @@ criterion is unmet and cannot be met here: launching the window on Windows (`OPS
   the maintainer's direction — not a waived re-review, no first pass; recorded in its task.
 - **`T-020` + `T-025` complete** — frozen-build smoke test and the Phase 0 exit preparation,
   merged as `4d6ad3c`. A frozen artifact spawns a child without relaunching itself on both
-  platforms; the clean-checkout verification passes on Linux.
+  platforms; the clean-checkout verification passes on Linux. The **negative** proof, that
+  removing `freeze_support()` breaks it, was run on Linux only — `T-029` carries the Windows
+  half.
+- **Phase 0 exit review complete — changes requested.** Seven findings, three Medium; tracked
+  as `T-027` … `T-032`. `T005-R1` and `T005-R3` are now formally Resolved.
 - **Windows is no longer entirely unverified.** `T-006`'s runners confirmed, with downloadable
   artifact evidence: Python 3.14.6 (MSC v.1944, AMD64), PySide6/shiboken6/Qt 6.11.1, a
   `QWidget` visible offscreen, and the full 27-test suite passing. This discharges the Windows
@@ -60,15 +65,17 @@ criterion is unmet and cannot be met here: launching the window on Windows (`OPS
 
 ## Next
 
-Phase 0's build work is done. What remains is not implementation:
+Phase 0's build work is merged. The exit review happened and **requested changes**, so the
+phase has not exited.
 
-1. **Merge `T-020` and `T-025`**, then the **Phase 0 exit review** — the first full review of
-   the phase (`ai/REVIEWS.md`). Worth doing rather than waiving: `T-007` reached `main` with
-   no independent review at all.
-2. **Phase 1** — `T-010` … `T-019` are outlines and need full scope, acceptance criteria and
-   review bases before any moves to Ready. That is Planner work.
-
-Then `T-020` (frozen smoke test), which needs `T-007` — its `T-006` dependency is met.
+1. **`T-027` … `T-032`** — the exit-review follow-ups. `T-027` (unsafe stored geometry),
+   `T-029` (the frozen negative proof was never run on Windows) and `T-031` (correct `OPS-004`
+   before deciding it) are High.
+2. **Re-review**, then a second Phase 0 exit verdict.
+3. **The Windows launch criterion** stays unmet regardless — it needs a real Windows session
+   (`OPS-003`), and `OPS-004`/`T-026` decide how much of the surrounding gap CI can close.
+4. **Phase 1** — `T-010` … `T-019` are outlines needing full scope, acceptance criteria and
+   review bases before any moves to Ready. Planner work, and not started.
 
 ## Open questions for the maintainer
 
@@ -127,11 +134,12 @@ Help → About — and it remembers its size and position. That is the whole of 
 reality — treat any claim of implemented *behavior* as false until this section says
 otherwise.
 
-Precisely: of the 30 modules under `src/`, **27 are docstring-only stubs**. Three carry code,
-all of it `T-001`'s runnable entry-point scaffold — `__init__.py` (the version string),
-`__main__.py` (`freeze_support()` and a `main()` that delegates to `app.run`), and `app.py`
-(a placeholder `run()` that prints a banner and returns 0, importing no Qt). `T-007` replaces
-`app.run`.
+Precisely, recomputed at `2d06153`: of the **31** modules under `src/`, **26 are
+docstring-only stubs**. The five with code are `__init__.py` (the version string),
+`__main__.py` (`freeze_support()` and `main()`), `_freeze_probe.py` (`T-020`'s frozen-build
+diagnostics), `app.py` (argument handling and `QApplication` setup), and `ui/main_window.py`
+(the shell window). `app.run` is no longer a placeholder — it builds and runs the real
+application.
 
 What *has* been built is the scaffolding that guards that behavior when it arrives, and those
 parts of `TESTING.md` are real: CI on both platforms (`T-006`), the shipped-asset invariants

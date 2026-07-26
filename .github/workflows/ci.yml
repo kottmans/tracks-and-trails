@@ -195,8 +195,10 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: frozen-evidence-${{ matrix.os }}
+          # The raw probe log is written next to the artifact by frozen_smoke.py, not at the
+          # repository root — the previous path silently uploaded nothing (`T029-R3`).
           path: |
             reports/
-            frozen-probe.log
+            dist/frozen-probe.log
           retention-days: 30
           if-no-files-found: warn

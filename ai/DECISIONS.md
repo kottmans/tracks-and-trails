@@ -440,12 +440,29 @@ now **automatable and therefore required**, not optional:
   data a screen reader actually reads (`NFR-005`)
 - Installer behavior: silent install, file and shortcut placement, uninstall and removal
 
+**Native dialogs and shell integration are split, not dropped.** `OPS-003` listed "native file
+dialogs, reveal in file manager, open file behavior" as human-only. An earlier draft of this
+decision omitted them from both lists, which would have retired a tracked gap by accident
+(`T031-R1`). They divide:
+
+- **Automatable:** that the application *requests* the native dialog rather than Qt's
+  fallback; that a chosen path is handled correctly; that "reveal" and "open" invoke the
+  right shell verb with the right argument, asserted at the call boundary rather than by
+  watching Explorer.
+- **Human:** whether Explorer actually comes to the foreground, whether the dialog starts in
+  a sensible directory, and whether the association Windows picks is the one the user expects.
+
 These remain **genuinely human** and continue to block first release:
 
 - Whether the rendering *looks* right, as opposed to matching a baseline
 - Whether Narrator's announcements are *coherent*, as opposed to the tree being correct
 - Whether the installer *feels* normal
+- The foreground and shell-association half of native dialogs, reveal, and open
 - Long-running stability under real use
+
+**Nothing leaves the manual list until its replacement automation has landed and is green.**
+Moving an item here on the strength of a plan, rather than a passing check, would reduce the
+recorded gap without reducing the actual one.
 
 ### Rationale
 

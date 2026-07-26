@@ -9,7 +9,8 @@ automatable and stays an `OPS-003` known gap.
 from pathlib import Path
 
 import pytest
-from PySide6.QtGui import QAction
+from PySide6.QtCore import QRect
+from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox
 
 from tracks_and_trails import __version__
@@ -21,6 +22,7 @@ from tracks_and_trails.ui.main_window import (
     app_icon,
     geometry_path,
     load_geometry,
+    moved_onto_a_screen,
     save_geometry,
 )
 
@@ -162,3 +164,76 @@ def test_config_directory_is_not_doubled(qapp: QApplication) -> None:
     assert path.name == "window.toml"
     assert path.parent.name == APP_SLUG
     assert path.parent.parent.name != APP_SLUG, f"config directory is doubled: {path}"
+
+
+# --- T-027: stored geometry is untrusted input -------------------------------------------
+#
+# Every case below was confirmed to fail against 2d06153 before the fix: `inf`, the huge
+# integer and the int32 overflow all raised OverflowError out of a function documented never
+# to raise, TOML booleans were silently accepted as 1/0, and an off-screen rectangle was
+# restored verbatim, leaving the window unreachable.
+
+
+@pytest.mark.parametrize(
+    ("case", "content"),
+    [
+        ("inf-width", "[window]\nx = 0\ny = 0\nwidth = inf\nheight = 480\n"),
+        ("nan-x", "[window]\nx = nan\ny = 0\nwidth = 640\nheight = 480\n"),
+        ("huge-int", "[window]\nx = 0\ny = 0\nwidth = 99999999999999999999\nheight = 480\n"),
+        ("int32-overflow-x", "[window]\nx = 3000000000\ny = 0\nwidth = 640\nheight = 480\n"),
+        ("int32-underflow-y", "[window]\nx = 0\ny = -3000000000\nwidth = 640\nheight = 480\n"),
+        ("bool-coordinates", "[window]\nx = true\ny = false\nwidth = 640\nheight = 480\n"),
+        ("bool-size", "[window]\nx = 0\ny = 0\nwidth = true\nheight = true\n"),
+        ("float-size", "[window]\nx = 0\ny = 0\nwidth = 640.5\nheight = 480.5\n"),
+        ("string-size", '[window]\nx = 0\ny = 0\nwidth = "640"\nheight = "480"\n'),
+        ("unusably-small", "[window]\nx = 0\ny = 0\nwidth = 1\nheight = 1\n"),
+    ],
+)
+def test_hostile_geometry_falls_back_without_raising(
+    qapp: QApplication, tmp_path: Path, case: str, content: str
+) -> None:
+    """`load_geometry` must never raise, and must not hand Qt a value it cannot take."""
+    path = tmp_path / "window.toml"
+    path.write_text(content, encoding="utf-8")
+    assert load_geometry(path) is None, f"{case} should have been rejected"
+    assert MainWindow(geometry_file=path).size() == DEFAULT_SIZE
+
+
+def test_int32_boundary_values_are_accepted(qapp: QApplication, tmp_path: Path) -> None:
+    """The limit is Qt's, so the largest values Qt accepts must still round-trip."""
+    path = tmp_path / "window.toml"
+    path.write_text(
+        f"[window]\nx = {-(2**31)}\ny = {2**31 - 1}\nwidth = 640\nheight = 480\n",
+        encoding="utf-8",
+    )
+    assert load_geometry(path) == {"x": -(2**31), "y": 2**31 - 1, "width": 640, "height": 480}
+
+
+def test_ordinary_negative_coordinates_still_restore(qapp: QApplication, tmp_path: Path) -> None:
+    """A window on a monitor left of the primary has negative x. That is normal, not hostile."""
+    path = tmp_path / "window.toml"
+    path.write_text("[window]\nx = -40\ny = -20\nwidth = 800\nheight = 600\n", encoding="utf-8")
+    geometry = MainWindow(geometry_file=path).geometry()
+    assert (geometry.x(), geometry.y()) == (-40, -20)
+    assert (geometry.width(), geometry.height()) == (800, 600)
+
+
+def test_geometry_with_no_screen_left_to_show_it_is_recovered(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """Unplugging a monitor must not strand the only window where it cannot be clicked."""
+    path = tmp_path / "window.toml"
+    path.write_text(
+        "[window]\nx = 999999\ny = 999999\nwidth = 640\nheight = 480\n", encoding="utf-8"
+    )
+    geometry = MainWindow(geometry_file=path).geometry()
+    assert any(
+        screen.availableGeometry().intersects(geometry) for screen in QGuiApplication.screens()
+    ), f"restored at {geometry} which no screen can show"
+
+
+def test_a_rect_already_on_screen_is_left_alone(qapp: QApplication) -> None:
+    """The recovery must not move windows that were fine."""
+    available = QGuiApplication.primaryScreen().availableGeometry()
+    rect = QRect(available.x() + 10, available.y() + 10, 400, 300)
+    assert moved_onto_a_screen(rect) == rect

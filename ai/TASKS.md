@@ -12,13 +12,151 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** nothing is Ready. Phase 0's build work is complete and merged; what remains
-is the **Phase 0 exit review** (Codex), a decision on `OPS-004` which unblocks `T-026`, and
-Phase 1 planning to bring `T-010`–`T-019` up to Ready.
+**Start here:** the Phase 0 exit review found corrections. `T-027` through `T-032` are Ready;
+`T-026` remains blocked on the `OPS-004` correction in `T-031`. Phase 0 cannot exit until the
+review findings and the real Windows launch criterion are discharged.
 
 ---
 
 ## Ready
+
+### T-027 — Reject unsafe stored window geometry
+
+**Status:** In Review — addressed 2026-07-25; awaiting re-review
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 0 review correction
+**Depends on:** `T-007`
+**Relevant context:** Phase 0 finding `P0-R1`, `NFR-004`
+**Affected surfaces:** `ui/main_window.py`, `tests/ui/test_main_window.py`
+**Risk:** Medium — one damaged state file can prevent every subsequent application launch
+
+#### Scope
+
+Make window restoration honor its "never raises" contract for every TOML value and keep a
+previous monitor layout from restoring the only window entirely off-screen.
+
+#### Acceptance criteria
+
+- TOML `inf`, values outside Qt's signed 32-bit geometry range, booleans, and huge integers
+  fall back without an exception or Qt overflow warning
+- Stored geometry that intersects no available screen is moved onto an available screen
+- The existing round-trip remains green for ordinary negative coordinates and positive sizes
+- Each new adversarial case fails against `2d06153` before the production fix is applied
+
+---
+
+### T-028 — Remove undocumented cross-thread Qt access from the launch test
+
+**Status:** In Review — addressed 2026-07-25; awaiting re-review
+**Owner:** Reviewer / Implementer
+**Priority:** Medium
+**Phase:** Phase 0 review correction
+**Depends on:** `T-007`
+**Relevant context:** Phase 0 finding `P0-R2`, `ai/REVIEWS.md` standing Qt-threading risk
+**Affected surfaces:** `tests/ui/test_app_launch.py`
+**Risk:** Low — this is test reliability, but it guards the phase's real startup path
+
+#### Acceptance criteria
+
+- The watcher uses only Qt APIs documented thread-safe from a foreign thread; it does not
+  poll `QApplication.instance()` during construction
+- A failed quit request cannot silently turn into a subprocess timeout
+- The launch/quit test passes repeatedly on Linux and in the Windows matrix
+- The ordering proof still establishes that `window.show()` runs before the queued quit
+
+---
+
+### T-029 — Complete the frozen-probe negative and evidence gates
+
+**Status:** In Progress — smoke assertions and log path done; Windows negative proof running in CI
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 0 review correction
+**Depends on:** `T-020`
+**Relevant context:** Phase 0 findings `P0-R3`, `P0-R4`, `P0-R5`, `REL-001`, `ARC-002`
+**Affected surfaces:** `_freeze_probe.py`, `packaging/frozen_smoke.py`, CI workflow
+**Risk:** High — the probe guards recursive application launch in the distributed artifact
+
+#### Acceptance criteria
+
+- A temporary Windows CI mutation removes `freeze_support()`, the frozen smoke step goes red,
+  and retained evidence records more than one top-level start including multiprocessing argv
+- The mutation is reverted and the final Linux and Windows frozen jobs are green
+- The smoke gate fails if either the parent or spawned child does not report `frozen=True`
+- The raw probe log is uploaded from its actual `dist/frozen-probe.log` location, or the
+  redundant raw-log upload claim is removed and `frozen-smoke.txt` is made canonical
+- No temporary mutation remains in the final tree
+
+---
+
+### T-030 — Ratify the two Phase 0 architecture additions
+
+**Status:** In Review — addressed 2026-07-25; awaiting re-review
+**Owner:** Planner
+**Priority:** Medium
+**Phase:** Phase 0 review correction
+**Depends on:** `T-007`, `T-020`
+**Relevant context:** Phase 0 finding `P0-R6`, `ARCHITECTURE.md` §4 and §5
+**Affected surfaces:** `ai/ARCHITECTURE.md`
+**Risk:** Low — the implementations are reasonable; the canonical ownership map is incomplete
+
+#### Acceptance criteria
+
+- §5 assigns ephemeral window geometry to the UI and records
+  `user_config_dir/tracksandtrails/window.toml`
+- §4 or §12 records `_freeze_probe.py` as frozen-build diagnostic infrastructure outside the
+  product layers and explains why it must share the real entry point
+- The changes ratify current behavior without broadening product scope or creating a routine
+  `DECISIONS.md` completion entry
+
+---
+
+### T-031 — Correct OPS-004 before deciding it
+
+**Status:** In Review — addressed 2026-07-25; awaiting re-review
+**Owner:** Planner / Maintainer + Reviewer (`ai/TESTING.md`)
+**Priority:** High
+**Phase:** Phase 0 review correction
+**Depends on:** none
+**Relevant context:** Phase 0 finding `P0-R7`, `OPS-003`, proposed `OPS-004`, `T-026`
+**Affected surfaces:** `ai/DECISIONS.md`, `ai/TASKS.md` (`T-026`), `ai/TESTING.md`
+**Risk:** Medium — an omitted verification category could disappear when the manual gate shrinks
+
+#### Acceptance criteria
+
+- Native file dialogs, reveal-in-file-manager, and open-file behavior are explicitly assigned
+  to automation or retained manual verification; they do not disappear between `OPS-003` and
+  `OPS-004`
+- `T-026` distinguishes a retained screenshot from a red/green layout assertion and does not
+  claim that a visible mutation fails the suite unless an objective assertion actually does
+- The manual list shrinks only after each replacement automation has landed
+- After those corrections, the maintainer accepts or rejects `OPS-004` explicitly
+
+---
+
+### T-032 — Reconcile Phase 0 current-truth documents
+
+**Status:** In Review — addressed 2026-07-25; awaiting re-review
+**Owner:** Planner + Reviewer (`ai/TESTING.md`)
+**Priority:** Medium
+**Phase:** Phase 0 review correction
+**Depends on:** `T-027` through `T-031`
+**Relevant context:** Phase 0 finding `P0-R8`, `AGENTS.md` §6
+**Affected surfaces:** `ai/STATUS.md`, `ai/TASKS.md`, `ai/TESTING.md`
+**Risk:** Low — stale navigation and exact counts misstate what is implemented and reviewed
+
+#### Acceptance criteria
+
+- `STATUS.md` no longer asks to merge completed work, call completed tasks "in review", or
+  describe the replaced placeholder `app.run`
+- Exact source counts are recomputed rather than copied; at `2d06153` there are 31 Python
+  modules, 26 docstring-only stubs, and 5 modules with code
+- `TASKS.md` headings agree with task statuses, and the exit-review next step is current
+- `TESTING.md`'s status note acknowledges resource, layering, and shell-window tests while
+  retaining the honest boundary that only one of §7's ten mandatory areas is covered
+
+---
 
 ### T-007 — Application shell window
 
@@ -158,12 +296,20 @@ Move the objective half of Windows verification into CI:
 #### Acceptance criteria
 
 - The Windows job runs the UI suite under the real `windows` platform plugin and uploads a
-  screenshot of every key window; a deliberately broken layout is visible in the artifact
+  screenshot of every key window. **A screenshot is retained evidence, not a gate**: it is
+  uploaded for a human to look at and does not turn the build red on its own. Any claim that
+  a broken layout "fails" must be backed by a separate objective assertion — a widget's
+  geometry, visibility, or size — not by the image (`T031-R2`).
 - Tab order and focus chain are asserted on Windows, and reordering two widgets fails the test
 - Every interactive control exposes a non-empty accessible name and a correct role through UI
   Automation; removing a label fails the test
 - `ai/TESTING.md` §9's manual Windows list is rewritten to only what remains subjective, and
-  `REQUIREMENTS.md` §3's "known-unverified" wording is narrowed to match
+  `REQUIREMENTS.md` §3's "known-unverified" wording is narrowed to match — **each item moved
+  only once its replacement automation has landed and is green**, never on the strength of
+  this task's intent
+- Native file dialogs, reveal-in-file-manager and open-file behavior are handled per
+  `OPS-004`'s split: the request, path handling and shell verb are asserted; foreground and
+  file-association behavior stay on the manual list
 - Both the offscreen and real-plugin runs stay green, and the added time is recorded against
   `T-006`'s budget
 

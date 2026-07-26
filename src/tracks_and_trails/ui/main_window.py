@@ -17,8 +17,8 @@ from pathlib import Path
 from typing import Final
 
 from platformdirs import user_config_dir
-from PySide6.QtCore import QSize
-from PySide6.QtGui import QAction, QCloseEvent, QIcon, QKeySequence
+from PySide6.QtCore import QRect, QSize
+from PySide6.QtGui import QAction, QCloseEvent, QGuiApplication, QIcon, QKeySequence
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QWidget
 
 from tracks_and_trails import __version__
@@ -30,6 +30,14 @@ APP_SLUG: Final = "tracksandtrails"
 
 #: Used when no geometry has been stored yet, and when what was stored is unusable.
 DEFAULT_SIZE: Final = QSize(960, 640)
+
+#: Qt's geometry accessors are C++ `int`. Anything outside this range raises or triggers a
+#: shiboken overflow warning before Qt ever sees it (`T027-R1`).
+_INT32_MIN: Final = -(2**31)
+_INT32_MAX: Final = 2**31 - 1
+
+#: A restored window smaller than this is unusable — the menu bar alone needs more.
+MIN_SIZE: Final = QSize(240, 160)
 
 _ICON_DIR: Final = Path(__file__).resolve().parent.parent / "resources" / "icons"
 
@@ -55,29 +63,81 @@ def geometry_path() -> Path:
     return Path(user_config_dir(APP_SLUG, appauthor=False)) / "window.toml"
 
 
+def _coordinate(value: object) -> int | None:
+    """Return `value` if it is a geometry integer Qt can actually accept, else `None`.
+
+    Stricter than `int(value)` on purpose, because that was the bug (`T027-R1`):
+
+    - **Booleans are rejected**, though `bool` is a subclass of `int`. TOML `x = true` was
+      being silently accepted as `x = 1`, which is a corrupt file read as a valid one.
+    - **Floats are rejected outright**, so TOML `inf` and `nan` never reach `int()`, which
+      raises on both — from a function whose contract is that it never raises.
+    - **The 32-bit range is enforced here**, not left to Qt. `QWidget.setGeometry` takes C++
+      `int`; a larger value raises `OverflowError` out of the constructor, or logs a shiboken
+      overflow warning and silently truncates.
+    """
+    if isinstance(value, bool) or not isinstance(value, int):
+        return None
+    if not _INT32_MIN <= value <= _INT32_MAX:
+        return None
+    return value
+
+
 def load_geometry(path: Path | None = None) -> dict[str, int] | None:
     """Read stored geometry, or `None` if there is nothing usable.
 
-    Never raises. A missing file is the normal first run; a corrupt one is a file a crash or
-    a user damaged. Neither is worth refusing to start over, so both fall back to the default.
+    **Never raises**, for any content whatsoever. A missing file is the normal first run; a
+    corrupt one is a file a crash or a user damaged; a hostile one is a file someone wrote by
+    hand. None of them is worth refusing to start over.
     """
     path = path or geometry_path()
     try:
         with path.open("rb") as handle:
             data = tomllib.load(handle)
-    except OSError, tomllib.TOMLDecodeError:
+    except OSError, tomllib.TOMLDecodeError, ValueError, RecursionError:
         return None
 
     window = data.get("window")
     if not isinstance(window, dict):
         return None
-    try:
-        geometry = {key: int(window[key]) for key in ("x", "y", "width", "height")}
-    except KeyError, TypeError, ValueError:
-        return None
-    if geometry["width"] <= 0 or geometry["height"] <= 0:
+
+    geometry: dict[str, int] = {}
+    for key in ("x", "y", "width", "height"):
+        coordinate = _coordinate(window.get(key))
+        if coordinate is None:
+            return None
+        geometry[key] = coordinate
+
+    if geometry["width"] < MIN_SIZE.width() or geometry["height"] < MIN_SIZE.height():
         return None
     return geometry
+
+
+def moved_onto_a_screen(rect: QRect) -> QRect:
+    """Return `rect` unchanged if any screen can show part of it, otherwise a centred rect.
+
+    A window restored where no screen exists is functionally lost: the user cannot click it,
+    move it, or close it. That happens without anything being corrupt — unplugging a second
+    monitor is enough (`T027-R2`).
+    """
+    screens = QGuiApplication.screens()
+    if not screens:
+        return rect
+    if any(screen.availableGeometry().intersects(rect) for screen in screens):
+        return rect
+
+    # PySide6 types primaryScreen() as non-optional, but Qt documents it returning null when
+    # no primary screen is set — which happens on a headless session and briefly during a
+    # display reconfiguration. The stub is optimistic, so the guard stays and mypy is told to
+    # allow a check it believes is dead. Removing it would put an AttributeError in a code
+    # path whose whole contract is that it never raises.
+    primary = QGuiApplication.primaryScreen()
+    fallback = screens[0] if primary is None else primary  # type: ignore[redundant-expr]
+    available = fallback.availableGeometry()
+    size = rect.size().boundedTo(available.size())
+    recovered = QRect(available.topLeft(), size)
+    recovered.moveCenter(available.center())
+    return recovered
 
 
 def save_geometry(window: QWidget, path: Path | None = None) -> None:
@@ -170,7 +230,8 @@ class MainWindow(QMainWindow):
         if stored is None:
             self.resize(DEFAULT_SIZE)
             return
-        self.setGeometry(stored["x"], stored["y"], stored["width"], stored["height"])
+        rect = QRect(stored["x"], stored["y"], stored["width"], stored["height"])
+        self.setGeometry(moved_onto_a_screen(rect))
 
     # Qt's override name, hence the camelCase: this is not a project naming choice.
     def closeEvent(self, event: QCloseEvent) -> None:

@@ -208,10 +208,12 @@ Coverage is a signal, not a target — no build fails on a percentage. Expectati
 
 Tracked honestly; each should become a task or be accepted deliberately.
 
-- **The suite is nearly empty.** `T-001` established the toolchain and structural checks;
-  `T-022` added asset invariants and `T-005` the layering guard. Of §7's ten mandatory areas
-  exactly **one** — Layering — is covered. The other nine arrive with the phases that
-  introduce the behavior they guard, and none of them are covered by anything today.
+- **The suite is structural, not behavioral.** It covers the toolchain (`T-001`), shipped
+  asset invariants (`T-022`), the layering guard (`T-005`), and the shell window including
+  hostile stored geometry (`T-007`, `T-027`) — real tests, and they have caught real defects.
+  But of §7's ten mandatory areas exactly **one** — Layering — is covered. The other nine
+  guard behavior that does not exist yet: nothing downloads, probes, persists, or classifies
+  an error. Read the test count as breadth of scaffolding, not depth of coverage.
 - **Windows has automated coverage only** (`OPS-003`). Screen readers, native dialogs, real
   keyboard interaction, theming, and installer UX are unverified there. Discharged by the
   pre-release session in §8 item 15.
