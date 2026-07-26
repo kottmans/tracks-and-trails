@@ -12,21 +12,275 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-010` — the domain models, state machine and error taxonomy that every
-other Phase 1 task imports. `T-011` and `T-012` are planned in full and become Ready as their
-dependency merges; `T-013`–`T-019` and `T-034` are planned in full behind them.
+**Start here:** `T-011` — the IPC message contract. `T-010` is complete and approved, so
+`T-011`, `T-034`, `T-014` and `T-015` are all Ready. `T-012` is the chokepoint: it needs
+`T-011`, `T-034` and `T-035`, and six tasks depend on it.
 
-Phase 0 is built and reviewed, but has **not formally exited**: the Windows launch criterion
-has not been checked. It does **not** need a Windows machine — `OPS-004` (accepted 2026-07-26)
-established that the CI runner has a real desktop — it needs `T-026`, which is now Ready and is
-the other place to start. That does not block Phase 1. `T-033` becomes Ready once `T-012`
-merges; `T-039` waits for a Phase 5 installer.
+Phase 0's work is complete: `T-026` closed the Windows launch criterion and its third-round
+re-review was waived by the maintainer. Recording the phase's **formal exit** is a separate
+maintainer act and has not been done. `T-033` becomes Ready once `T-012` merges; `T-039` waits
+for a Phase 5 installer; `T-040` for the first focusable widgets.
 
 ---
 
 ## Ready
 
-*(none — both implemented tasks are in review)*
+### T-011 — IPC message contract
+
+**Status:** **Ready** — `T-010` approved and complete, 2026-07-26
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 1
+**Depends on:** `T-010`
+**Relevant context:** `ARCHITECTURE.md` §3 (process model), §6 (yt-dlp boundary), §7;
+`ARC-002`, `NFR-008`, `REQ-014`, `REQ-028`
+**Affected surfaces:** `downloader/protocol.py`, `tests/unit/`
+**Risk:** Medium — this is the parent/child contract; a gap here shows up as a hang, not an
+exception
+**Review base:** the `T-010` merge commit
+
+#### Scope
+
+The typed messages that cross the `multiprocessing.Queue` between the GUI process and a
+worker, and nothing else. One module, no behavior beyond construction and validation.
+
+Cover the message kinds the vertical slice needs: a probe result, progress updates carrying
+the stages `REQ-014` names (probing, downloading video, downloading audio, merging,
+post-processing), a terminal success carrying the final path and byte count, and a terminal
+failure carrying a `core.errors` classification plus the verbatim message.
+
+The rule this module exists to enforce: **a raw yt-dlp `info_dict` never crosses the
+boundary** (`ARCHITECTURE.md` §3). The dict's shape belongs to yt-dlp and changes without
+notice (`NFR-008`); the parent must only ever see declared types projected by
+`ytdlp_adapter.py`.
+
+**Shutdown and identity are part of the contract, not details left to `T-013`.** The earlier
+draft specified only the message payloads, which leaves three ways to hang or lie:
+
+- **Every message carries a job ID.** Without it the parent cannot attribute a message, and
+  "exactly one terminal message per job" is unenforceable.
+- **A sentinel terminates the stream.** `ResultPump` does a blocking `Queue.get()`; with no
+  sentinel, shutdown depends on a timeout or on killing a thread mid-read. The protocol
+  defines the sentinel and the guarantee that it is the last thing sent.
+- **Terminal-once is a receiver obligation, stated here.** Message classes alone cannot
+  prevent a second terminal message being sent — an earlier draft claimed they could. The
+  protocol therefore *specifies* that a job has exactly one terminal outcome and that the
+  receiver must enforce it by job ID; `T-013` implements the enforcement.
+
+**No protocol versioning.** Both ends ship in the same artifact and are always the same build,
+even when the user updates yt-dlp underneath (`OPS-002`) — that changes the *engine*, not the
+contract. Recording this now so nobody later adds negotiation machinery for a skew that cannot
+occur.
+
+#### Acceptance criteria
+
+- Every message type round-trips through `pickle` unchanged
+- **Every message carries a job ID**, and constructing one without it fails
+- A declared `is_terminal` predicate identifies exactly the success and failure types, so the
+  receiver's terminal-once rule can be written against the protocol rather than a hardcoded
+  list that drifts as types are added
+- A sentinel type exists, is picklable, and is documented as the last item on the queue
+- Progress messages carry every stage named in `REQ-014`, asserted against that list
+- A terminal failure carries both a `core.errors` kind **and** the original text; neither is
+  optional, and a message with a classification but no text fails construction (`NFR-006`)
+- A **validation helper** rejects anything that is not a declared message — including a bare
+  `dict` — and it lives here so both ends share one definition of "valid". This task tests the
+  helper directly; `T-013` applies it on receipt. The earlier draft promised rejection "at a
+  seam" while declaring both seams out of scope, which was unimplementable
+- `protocol.py` imports no Qt and no `yt_dlp`, enforced by the layering test
+- Every message type is exercised by at least one test; an unexercised type fails the suite
+
+#### Out of scope
+
+- Sending or receiving anything — `T-012` (child side) and `T-013` (parent side). This task
+  defines and tests the validator; it does not call it across a real queue
+- Enforcing terminal-once — specified here, implemented and tested in `T-013`
+- Queue lifetime, draining, and backpressure — `T-013`
+- Any type that only Phase 2's queue needs
+
+---
+
+### T-034 — Filename safety and output-path containment
+
+**Status:** **Ready** — `T-010` approved and complete, 2026-07-26
+**Owner:** Implementer
+**Priority:** **High** — a `ai/TESTING.md` §7 mandatory area, and `T-012` cannot write a file
+without it
+**Phase:** Phase 1
+**Depends on:** `T-010`
+**Relevant context:** `ARCHITECTURE.md` §8 (Filename safety), §9 (Security boundaries);
+`REQ-011`, `NFR-004`; `ai/TESTING.md` §7 (Path safety)
+**Affected surfaces:** `core/paths.py`, `tests/unit/`
+**Risk:** **High** — the failure mode is writing a file outside the directory the user chose,
+driven by a title an attacker controls
+**Review base:** the `T-010` merge commit
+
+#### Scope
+
+**Filed during Phase 1 planning: this was assigned to no task.** `ARCHITECTURE.md` §8 requires
+every output path to pass through `core/paths.py`, `ai/TESTING.md` §7 lists path safety as
+mandatory coverage, and `T-012` writes files — so the slice cannot be built without it, and
+nothing in the original outline owned it.
+
+**Corrected after review: this task no longer renders output templates.** The earlier draft
+put yt-dlp-compatible template rendering in `core/paths.py`, which cannot work —
+`ARCHITECTURE.md` §9 says rendering uses *yt-dlp's own template mechanism*, and `core/` may not
+import `yt_dlp` (§6). Reimplementing yt-dlp's template language in `core/` would be a second
+implementation of someone else's syntax, guaranteed to drift.
+
+The responsibility splits:
+
+- **`core/paths.py` (this task)** — pure, yt-dlp-free: platform directory resolution, filename
+  sanitizing, and the containment check. Given a candidate path and a target directory, it
+  answers *is this safe and legal on both platforms*, and returns a sanitized path.
+- **`ytdlp_adapter.py` (`T-012`)** — passes the output template to yt-dlp, which renders it,
+  then runs the result through this module before it is used. Rendering stays with the only
+  code allowed to know yt-dlp's syntax.
+
+Sanitizing enforces the **intersection** of Linux and Windows rules: reserved device names
+(`CON`, `NUL`, `LPT1`…), characters illegal on NTFS, trailing dots and spaces, and path-length
+limits.
+
+The security property, stated plainly: **a title-derived filename must never escape the
+configured output directory.** Titles come from media sites and are attacker-influenced data.
+After rendering, `..` and absolute components are rejected, and the result is verified to be
+contained within the target directory.
+
+#### Acceptance criteria
+
+- A rendered path is always inside the configured output directory. Asserted against titles
+  containing `../`, absolute paths, drive letters, UNC prefixes, NUL bytes, and separators for
+  the *other* platform — each must be neutralized, not merely escaped
+- Windows-illegal names are sanitized **on both platforms**, not only on Windows
+  (`ai/TESTING.md` §7) — a name legal on Linux that becomes illegal when the file syncs to
+  Windows is still a defect
+- Reserved device names are handled including with extensions (`CON.mp4`), which is the case
+  usually missed
+- Over-long paths are shortened without losing the extension or colliding with a neighbouring
+  file
+- Sanitizing is deterministic and idempotent: sanitizing an already-sanitized path returns it
+  unchanged, so passing a path through twice cannot corrupt it
+- The `REQ-011` live preview is **not** this task's — it needs a rendered template and
+  therefore belongs with `T-012`, which owns rendering. This task supplies the sanitizing step
+  the preview must pass through, and `T-012` asserts preview-equals-actual
+- `core/paths.py` imports no Qt and no `yt_dlp`
+
+#### Out of scope
+
+- **Output-template rendering** — `T-012`, because it uses yt-dlp's own mechanism
+- The `REQ-011` live preview — `T-012`, for the same reason
+- The settings UI for choosing a template — Phase 4
+- Collision policy when the target file already exists — Phase 2 alongside resume
+- Any actual file writing; this module computes and validates paths
+
+---
+
+### T-014 — Persistence: schema, migrations, and the job repository
+
+**Status:** **Ready** — `T-010` approved and complete, 2026-07-26
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 1
+**Depends on:** `T-010`
+**Relevant context:** `ARCHITECTURE.md` §5 (core entities); `DAT-001`, `REQ-012`, `REQ-018`,
+`NFR-003`, `NFR-004`; `ai/TESTING.md` §7 (Crash recovery, Migrations)
+**Affected surfaces:** `persistence/schema.sql`, `persistence/migrations/`,
+`persistence/db.py`, `persistence/repositories.py`, `tests/unit/`, `tests/integration/`
+**Risk:** **High** — the one component whose failure mode is *lost user data*, and the only
+one where a bug can persist across restarts
+**Review base:** the `T-010` merge commit
+
+#### Scope
+
+SQLite in WAL mode at `user_data_dir/tracksandtrails/library.sqlite3` (`DAT-001`,
+`ARCHITECTURE.md` §5). The schema for `Job` and `HistoryEntry` as §5 defines them, a forward-only
+migration runner, and `JobRepository`.
+
+Two properties are the entire point:
+
+- **The queue survives an unclean kill** (`REQ-012`, `NFR-003`). WAL is chosen for exactly
+  this; the test must actually kill the process, not close the connection politely.
+- **Startup recovers jobs stranded in `RUNNING`.** A job cannot be running if the application
+  just started, so it is recovered to a retryable state rather than left lying about its own
+  status (`ai/TESTING.md` §7).
+
+`DownloadRequest` is persisted *with* the job, so a retry after a settings change reproduces
+the original request rather than current defaults (`ARCHITECTURE.md` §5, §8).
+
+#### Acceptance criteria
+
+- A hard kill (`SIGKILL`) mid-write leaves the database readable with no partial row, verified
+  by killing a real process rather than simulating it
+- Jobs found in `RUNNING` at startup are recovered to a retryable state, and the recovery is
+  recorded so it is visible rather than silent
+- **Every migration runs forward from every prior schema version with data intact**, asserted
+  by building a database at each historical version and migrating it — not just from the
+  latest (`ai/TESTING.md` §7). With one version today, the harness must still exist, because
+  it is unwritable later once several versions exist
+- A schema change without a migration fails the suite
+- A persisted `DownloadRequest` round-trips exactly; a retry uses the stored request, proven
+  by changing the defaults between store and retry (`ARCHITECTURE.md` §8)
+- Queue order survives a restart (`REQ-012`)
+- No cookie path, cookie content, proxy credential, or token-like query parameter is ever
+  written to the database (`REQ-026`, `NFR-007`) — asserted against a request containing all
+  four
+- The database lives under `platformdirs`, never beside the installed application (`NFR-004`)
+
+#### Out of scope
+
+- History pruning, search, and export — Phase 3
+- Concurrency beyond a single writer — Phase 2 brings the second
+- Settings storage, which is TOML and not this store (`DAT-001`)
+
+---
+
+### T-015 — Built-in presets and selector translation
+
+**Status:** **Ready** — `T-010` approved and complete, 2026-07-26
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 1
+**Depends on:** `T-010`
+**Relevant context:** `REQ-006`, `REQ-008`, `REQ-009`; `ARCHITECTURE.md` §4, §6
+**Affected surfaces:** `core/presets.py`, `tests/unit/`
+**Risk:** Low — pure translation, fully unit-testable
+**Review base:** the `T-010` merge commit
+
+#### Scope
+
+The named presets `REQ-006` requires, at minimum: best video ≤1080p (MP4), best video
+available, audio only (MP3), audio only (best/original), and video with embedded subtitles.
+Plus the translation from a `Preset` to the fields of a `DownloadRequest`.
+
+**This module produces data, not yt-dlp calls.** It emits format selector strings and option
+values; `ytdlp_adapter.py` turns those into a yt-dlp options dict. That split is what keeps
+`core/` free of `yt_dlp` (`ARCHITECTURE.md` §6) and is enforced by the layering test.
+
+`REQ-009` requires the **effective selector to be visible for every preset**, so a user can
+learn the syntax and then write their own. That means the selector string is a first-class
+output of translation, not an internal detail.
+
+#### Acceptance criteria
+
+- Every preset named in `REQ-006` exists and translates to a `DownloadRequest`
+- Each preset exposes its effective selector string, and the string is what translation
+  actually uses — not a separately maintained label that could drift (`REQ-009`)
+- A raw user-supplied selector passes through unchanged, including strings the project does
+  not understand — the escape hatch is not validated into uselessness (`REQ-009`)
+- **The validation boundary is explicit**, because "accept anything unknown" and "reject
+  malformed" otherwise contradict each other. Only two structural conditions are rejected, and
+  only for **built-in presets**: an empty selector, and one that is not a string. A
+  user-supplied selector is never rejected for content — yt-dlp is the judge of whether it
+  resolves, and a test asserts a deliberately nonsensical user selector survives untouched
+- `core/presets.py` imports no `yt_dlp` and no Qt
+
+#### Out of scope
+
+- Custom user-defined presets and their TOML persistence — Phase 4
+- The format table and per-format selection UI — `REQ-003`/`REQ-008`, Phase 3
+- Whether a selector actually resolves against a real site — that is yt-dlp's judgment
+
+---
 
 ## Proposed — Phase 0
 
@@ -128,81 +382,6 @@ agreement on the reduced form before implementation.
 ---
 
 ## Proposed — Phase 1
-
-### T-011 — IPC message contract
-
-**Status:** Proposed — Ready once `T-010` merges
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 1
-**Depends on:** `T-010`
-**Relevant context:** `ARCHITECTURE.md` §3 (process model), §6 (yt-dlp boundary), §7;
-`ARC-002`, `NFR-008`, `REQ-014`, `REQ-028`
-**Affected surfaces:** `downloader/protocol.py`, `tests/unit/`
-**Risk:** Medium — this is the parent/child contract; a gap here shows up as a hang, not an
-exception
-**Review base:** the `T-010` merge commit
-
-#### Scope
-
-The typed messages that cross the `multiprocessing.Queue` between the GUI process and a
-worker, and nothing else. One module, no behavior beyond construction and validation.
-
-Cover the message kinds the vertical slice needs: a probe result, progress updates carrying
-the stages `REQ-014` names (probing, downloading video, downloading audio, merging,
-post-processing), a terminal success carrying the final path and byte count, and a terminal
-failure carrying a `core.errors` classification plus the verbatim message.
-
-The rule this module exists to enforce: **a raw yt-dlp `info_dict` never crosses the
-boundary** (`ARCHITECTURE.md` §3). The dict's shape belongs to yt-dlp and changes without
-notice (`NFR-008`); the parent must only ever see declared types projected by
-`ytdlp_adapter.py`.
-
-**Shutdown and identity are part of the contract, not details left to `T-013`.** The earlier
-draft specified only the message payloads, which leaves three ways to hang or lie:
-
-- **Every message carries a job ID.** Without it the parent cannot attribute a message, and
-  "exactly one terminal message per job" is unenforceable.
-- **A sentinel terminates the stream.** `ResultPump` does a blocking `Queue.get()`; with no
-  sentinel, shutdown depends on a timeout or on killing a thread mid-read. The protocol
-  defines the sentinel and the guarantee that it is the last thing sent.
-- **Terminal-once is a receiver obligation, stated here.** Message classes alone cannot
-  prevent a second terminal message being sent — an earlier draft claimed they could. The
-  protocol therefore *specifies* that a job has exactly one terminal outcome and that the
-  receiver must enforce it by job ID; `T-013` implements the enforcement.
-
-**No protocol versioning.** Both ends ship in the same artifact and are always the same build,
-even when the user updates yt-dlp underneath (`OPS-002`) — that changes the *engine*, not the
-contract. Recording this now so nobody later adds negotiation machinery for a skew that cannot
-occur.
-
-#### Acceptance criteria
-
-- Every message type round-trips through `pickle` unchanged
-- **Every message carries a job ID**, and constructing one without it fails
-- A declared `is_terminal` predicate identifies exactly the success and failure types, so the
-  receiver's terminal-once rule can be written against the protocol rather than a hardcoded
-  list that drifts as types are added
-- A sentinel type exists, is picklable, and is documented as the last item on the queue
-- Progress messages carry every stage named in `REQ-014`, asserted against that list
-- A terminal failure carries both a `core.errors` kind **and** the original text; neither is
-  optional, and a message with a classification but no text fails construction (`NFR-006`)
-- A **validation helper** rejects anything that is not a declared message — including a bare
-  `dict` — and it lives here so both ends share one definition of "valid". This task tests the
-  helper directly; `T-013` applies it on receipt. The earlier draft promised rejection "at a
-  seam" while declaring both seams out of scope, which was unimplementable
-- `protocol.py` imports no Qt and no `yt_dlp`, enforced by the layering test
-- Every message type is exercised by at least one test; an unexercised type fails the suite
-
-#### Out of scope
-
-- Sending or receiving anything — `T-012` (child side) and `T-013` (parent side). This task
-  defines and tests the validator; it does not call it across a real queue
-- Enforcing terminal-once — specified here, implemented and tested in `T-013`
-- Queue lifetime, draining, and backpressure — `T-013`
-- Any type that only Phase 2's queue needs
-
----
 
 ### T-035 — Resolve the yt-dlp and ffmpeg environment
 
@@ -410,81 +589,6 @@ Dependency order: `T-010`; then `T-011`, `T-014`, `T-015`, `T-034` in parallel; 
 and `T-038`; then `T-012`; then `T-013`; then `T-016`, `T-017`, `T-018`, `T-019`; then `T-036`;
 then `T-037`.
 
-### T-034 — Filename safety and output-path containment
-
-**Status:** Proposed — Ready once `T-010` merges
-**Owner:** Implementer
-**Priority:** **High** — a `ai/TESTING.md` §7 mandatory area, and `T-012` cannot write a file
-without it
-**Phase:** Phase 1
-**Depends on:** `T-010`
-**Relevant context:** `ARCHITECTURE.md` §8 (Filename safety), §9 (Security boundaries);
-`REQ-011`, `NFR-004`; `ai/TESTING.md` §7 (Path safety)
-**Affected surfaces:** `core/paths.py`, `tests/unit/`
-**Risk:** **High** — the failure mode is writing a file outside the directory the user chose,
-driven by a title an attacker controls
-**Review base:** the `T-010` merge commit
-
-#### Scope
-
-**Filed during Phase 1 planning: this was assigned to no task.** `ARCHITECTURE.md` §8 requires
-every output path to pass through `core/paths.py`, `ai/TESTING.md` §7 lists path safety as
-mandatory coverage, and `T-012` writes files — so the slice cannot be built without it, and
-nothing in the original outline owned it.
-
-**Corrected after review: this task no longer renders output templates.** The earlier draft
-put yt-dlp-compatible template rendering in `core/paths.py`, which cannot work —
-`ARCHITECTURE.md` §9 says rendering uses *yt-dlp's own template mechanism*, and `core/` may not
-import `yt_dlp` (§6). Reimplementing yt-dlp's template language in `core/` would be a second
-implementation of someone else's syntax, guaranteed to drift.
-
-The responsibility splits:
-
-- **`core/paths.py` (this task)** — pure, yt-dlp-free: platform directory resolution, filename
-  sanitizing, and the containment check. Given a candidate path and a target directory, it
-  answers *is this safe and legal on both platforms*, and returns a sanitized path.
-- **`ytdlp_adapter.py` (`T-012`)** — passes the output template to yt-dlp, which renders it,
-  then runs the result through this module before it is used. Rendering stays with the only
-  code allowed to know yt-dlp's syntax.
-
-Sanitizing enforces the **intersection** of Linux and Windows rules: reserved device names
-(`CON`, `NUL`, `LPT1`…), characters illegal on NTFS, trailing dots and spaces, and path-length
-limits.
-
-The security property, stated plainly: **a title-derived filename must never escape the
-configured output directory.** Titles come from media sites and are attacker-influenced data.
-After rendering, `..` and absolute components are rejected, and the result is verified to be
-contained within the target directory.
-
-#### Acceptance criteria
-
-- A rendered path is always inside the configured output directory. Asserted against titles
-  containing `../`, absolute paths, drive letters, UNC prefixes, NUL bytes, and separators for
-  the *other* platform — each must be neutralized, not merely escaped
-- Windows-illegal names are sanitized **on both platforms**, not only on Windows
-  (`ai/TESTING.md` §7) — a name legal on Linux that becomes illegal when the file syncs to
-  Windows is still a defect
-- Reserved device names are handled including with extensions (`CON.mp4`), which is the case
-  usually missed
-- Over-long paths are shortened without losing the extension or colliding with a neighbouring
-  file
-- Sanitizing is deterministic and idempotent: sanitizing an already-sanitized path returns it
-  unchanged, so passing a path through twice cannot corrupt it
-- The `REQ-011` live preview is **not** this task's — it needs a rendered template and
-  therefore belongs with `T-012`, which owns rendering. This task supplies the sanitizing step
-  the preview must pass through, and `T-012` asserts preview-equals-actual
-- `core/paths.py` imports no Qt and no `yt_dlp`
-
-#### Out of scope
-
-- **Output-template rendering** — `T-012`, because it uses yt-dlp's own mechanism
-- The `REQ-011` live preview — `T-012`, for the same reason
-- The settings UI for choosing a template — Phase 4
-- Collision policy when the target file already exists — Phase 2 alongside resume
-- Any actual file writing; this module computes and validates paths
-
----
-
 ### T-013 — Download manager and result pump
 
 **Status:** Proposed — Ready once `T-012` merges
@@ -565,113 +669,6 @@ so.
 - More than one concurrent job, scheduling, priority, pause/resume — Phase 2
 - Retry policy and backoff — Phase 2; this task reports failures, it does not re-run them
 - Any widget — `T-016`, `T-017`
-
----
-
-### T-014 — Persistence: schema, migrations, and the job repository
-
-**Status:** Proposed — Ready once `T-010` merges
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 1
-**Depends on:** `T-010`
-**Relevant context:** `ARCHITECTURE.md` §5 (core entities); `DAT-001`, `REQ-012`, `REQ-018`,
-`NFR-003`, `NFR-004`; `ai/TESTING.md` §7 (Crash recovery, Migrations)
-**Affected surfaces:** `persistence/schema.sql`, `persistence/migrations/`,
-`persistence/db.py`, `persistence/repositories.py`, `tests/unit/`, `tests/integration/`
-**Risk:** **High** — the one component whose failure mode is *lost user data*, and the only
-one where a bug can persist across restarts
-**Review base:** the `T-010` merge commit
-
-#### Scope
-
-SQLite in WAL mode at `user_data_dir/tracksandtrails/library.sqlite3` (`DAT-001`,
-`ARCHITECTURE.md` §5). The schema for `Job` and `HistoryEntry` as §5 defines them, a forward-only
-migration runner, and `JobRepository`.
-
-Two properties are the entire point:
-
-- **The queue survives an unclean kill** (`REQ-012`, `NFR-003`). WAL is chosen for exactly
-  this; the test must actually kill the process, not close the connection politely.
-- **Startup recovers jobs stranded in `RUNNING`.** A job cannot be running if the application
-  just started, so it is recovered to a retryable state rather than left lying about its own
-  status (`ai/TESTING.md` §7).
-
-`DownloadRequest` is persisted *with* the job, so a retry after a settings change reproduces
-the original request rather than current defaults (`ARCHITECTURE.md` §5, §8).
-
-#### Acceptance criteria
-
-- A hard kill (`SIGKILL`) mid-write leaves the database readable with no partial row, verified
-  by killing a real process rather than simulating it
-- Jobs found in `RUNNING` at startup are recovered to a retryable state, and the recovery is
-  recorded so it is visible rather than silent
-- **Every migration runs forward from every prior schema version with data intact**, asserted
-  by building a database at each historical version and migrating it — not just from the
-  latest (`ai/TESTING.md` §7). With one version today, the harness must still exist, because
-  it is unwritable later once several versions exist
-- A schema change without a migration fails the suite
-- A persisted `DownloadRequest` round-trips exactly; a retry uses the stored request, proven
-  by changing the defaults between store and retry (`ARCHITECTURE.md` §8)
-- Queue order survives a restart (`REQ-012`)
-- No cookie path, cookie content, proxy credential, or token-like query parameter is ever
-  written to the database (`REQ-026`, `NFR-007`) — asserted against a request containing all
-  four
-- The database lives under `platformdirs`, never beside the installed application (`NFR-004`)
-
-#### Out of scope
-
-- History pruning, search, and export — Phase 3
-- Concurrency beyond a single writer — Phase 2 brings the second
-- Settings storage, which is TOML and not this store (`DAT-001`)
-
----
-
-### T-015 — Built-in presets and selector translation
-
-**Status:** Proposed — Ready once `T-010` merges
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 1
-**Depends on:** `T-010`
-**Relevant context:** `REQ-006`, `REQ-008`, `REQ-009`; `ARCHITECTURE.md` §4, §6
-**Affected surfaces:** `core/presets.py`, `tests/unit/`
-**Risk:** Low — pure translation, fully unit-testable
-**Review base:** the `T-010` merge commit
-
-#### Scope
-
-The named presets `REQ-006` requires, at minimum: best video ≤1080p (MP4), best video
-available, audio only (MP3), audio only (best/original), and video with embedded subtitles.
-Plus the translation from a `Preset` to the fields of a `DownloadRequest`.
-
-**This module produces data, not yt-dlp calls.** It emits format selector strings and option
-values; `ytdlp_adapter.py` turns those into a yt-dlp options dict. That split is what keeps
-`core/` free of `yt_dlp` (`ARCHITECTURE.md` §6) and is enforced by the layering test.
-
-`REQ-009` requires the **effective selector to be visible for every preset**, so a user can
-learn the syntax and then write their own. That means the selector string is a first-class
-output of translation, not an internal detail.
-
-#### Acceptance criteria
-
-- Every preset named in `REQ-006` exists and translates to a `DownloadRequest`
-- Each preset exposes its effective selector string, and the string is what translation
-  actually uses — not a separately maintained label that could drift (`REQ-009`)
-- A raw user-supplied selector passes through unchanged, including strings the project does
-  not understand — the escape hatch is not validated into uselessness (`REQ-009`)
-- **The validation boundary is explicit**, because "accept anything unknown" and "reject
-  malformed" otherwise contradict each other. Only two structural conditions are rejected, and
-  only for **built-in presets**: an empty selector, and one that is not a string. A
-  user-supplied selector is never rejected for content — yt-dlp is the judge of whether it
-  resolves, and a test asserts a deliberately nonsensical user selector survives untouched
-- `core/presets.py` imports no `yt_dlp` and no Qt
-
-#### Out of scope
-
-- Custom user-defined presets and their TOML persistence — Phase 4
-- The format table and per-format selection UI — `REQ-003`/`REQ-008`, Phase 3
-- Whether a selector actually resolves against a real site — that is yt-dlp's judgment
 
 ---
 
@@ -1140,6 +1137,10 @@ Assert, on `windows-latest`:
 
 ## In Review
 
+*(none)*
+
+## Complete
+
 ### T-010 — Domain models, job state machine, and error taxonomy
 
 **Status:** **Complete — approved** on final re-review, 2026-07-26 (`ai/REVIEWS.md`). All four
@@ -1246,9 +1247,25 @@ Two properties are load-bearing and easy to lose:
 
 ### T-026 — Verify Windows behavior against the runner's real desktop
 
-**Status:** Final re-review 2026-07-26 — **changes requested**. `T026-R1`, `R3` and `R4` are
-resolved; `T026-R2` and `T026-R5` remain and are corrected below, pending a third round.
-**Phase 0 must not be recorded as exited until this is approved.**
+**Status:** **Complete — third-round re-review waived by the maintainer**, 2026-07-26.
+
+Two full independent review passes were performed (`ai/REVIEWS.md`), producing five findings;
+all five are corrected. The waiver applies **only to the third round**, which would have
+verified the `T026-R2` and `T026-R5` corrections. It is not an unreviewed merge — contrast
+`T-007`, which had no independent pass at all.
+
+**What the waiver rests on, stated so it can be re-examined:**
+
+- `T026-R2`'s corrections were verified against the reviewer's **own adversarial trees**, rebuilt
+  locally: a main window containing only native furniture, and an About dialog whose only button
+  is the title-bar `Close`. Both previously passed; both are now rejected, and a healthy tree
+  still passes all four main-window assertions.
+- Windows CI is green on the corrections — run `30212152886`, `windows desktop` job, **20
+  passed**, all five jobs green.
+- **What no one verified independently:** that the corrected assertions fail for the *right*
+  reasons against a real UI Automation tree. The adversarial trees are fabricated `Node` graphs,
+  not live UIA output, and no missing-control or wrong-role mutation was run against a real
+  Windows tree. That is the specific gap the waived round would have closed.
 
 **`T026-R2`, second round.** The contract was still satisfiable by Windows' own furniture: a
 name-and-role match cannot tell the application's menu bar from the System menu, nor the About
@@ -1377,7 +1394,7 @@ mutation that must turn the suite red, and only those may retire a manual item. 
 evidence** — the screenshots — is uploaded for a human to look at and fails nothing on its
 own; it supports a judgement rather than replacing one.
 
-## Complete
+---
 
 ### T-027 — Reject unsafe stored window geometry
 

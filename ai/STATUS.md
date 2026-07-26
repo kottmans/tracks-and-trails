@@ -12,22 +12,20 @@
 
 ---
 
-**Current phase:** Phase 0 — Foundation, **not exited**
-**Overall state:** Final re-review 2026-07-26 (`ai/REVIEWS.md`): **`T-010` approved**,
-**`T-026` changes requested**. Phase 0 must **not** be recorded as formally exited at head
-`918c50c`.
+**Current phase:** Phase 0 complete; **Phase 1 in progress**. The formal exit has not been
+recorded — see the open question below.
+**Overall state:** `T-010` was **approved** on final re-review. `T-026`'s five findings are all
+corrected, and its **third-round re-review was waived by the maintainer** on 2026-07-26.
 
-`T-010` is approved and unblocks its Phase 1 dependents — `T-011`, `T-014`, `T-015`, `T-034`.
+Phase 0's deliverables and exit criteria are all satisfied, including the Windows clean-checkout
+launch: the application starts through its real entry point under the real `windows` platform
+plugin, verified in CI run `30212152886` (20 desktop tests).
 
-`T-026` has two findings left. `T026-R2` is the substantive one: the accessibility contract
-could still be satisfied by Windows' own title-bar furniture, because a name-and-role match
-cannot tell the application's menu bar from the System menu, nor the About dialog's Close
-button from the title bar's. The reviewer demonstrated both with fabricated trees. Part of the
-cause was self-inflicted — the `File`/`Help` equality written in the first correction round was
-**deleted by accident** when a scripted edit spanned past it.
-
-Corrections are implemented and verified against the reviewer's own adversarial harness; they
-are **not yet confirmed on Windows CI**.
+**What the waiver leaves unverified**, recorded rather than glossed: nobody independently
+checked that `T-026`'s corrected accessibility assertions fail for the right reasons against a
+*real* UI Automation tree. The adversarial trees that validated them are fabricated node graphs,
+and no missing-control or wrong-role mutation was run on Windows. `T-040` will touch this suite
+again and is the natural place to close it.
 
 ## Completed
 
@@ -82,22 +80,20 @@ are **not yet confirmed on Windows CI**.
 
 ## Next
 
-1. **`T-026` re-review, third round.** Two findings corrected:
-   - `T026-R2` — the UIA snapshot now walks the control view and records each node's ancestor
-     roles, so application controls are distinguishable from title-bar furniture. The deleted
-     `File`/`Help` equality is restored and scoped to application-owned controls; the About
-     dialog requires a Close button of its own. All three of the reviewer's adversarial trees
-     are now rejected, verified locally.
-   - `T026-R5` — the stray duplicated section before `TESTING.md`'s title is removed, metadata
-     dated, the Windows-environment row corrected, and the obsolete ten-kind paragraph deleted.
+**Phase 1 is underway.** `T-010` is complete and approved, so four tasks are Ready:
 
-2. **Phase 0 formally exits** only after `T-026` is approved. Its criteria require independent
-   sign-off, and one task is unapproved.
+1. **`T-011` — IPC message contract.** Started. The chokepoint `T-012` needs it, and `T-035`
+   and `T-038` unblock when it merges.
+2. **`T-034` — filename safety and output-path containment.** A `TESTING.md` §7 mandatory area
+   that is currently uncovered, and the failure mode is a security one: a title-derived filename
+   escaping the user's output directory.
+3. **`T-014` — persistence** and **`T-015` — presets.** Ready, off the critical path.
 
-3. **Phase 1 can proceed now.** `T-010` is approved, so `T-011`, `T-014`, `T-015` and `T-034`
-   are unblocked. `T-012` remains the chokepoint.
+`T-012` needs `T-011`, `T-034` **and** `T-035` before it can start; six tasks depend on it.
 
-4. **A human Windows session** — `OPS-004`'s subjective residue only. Blocks first release.
+Also outstanding, both maintainer acts: **recording Phase 0's formal exit**, and confirming the
+`IMPLEMENTATION_PLAN.md` Phase 1 prerequisite amendment — which becomes moot once the exit is
+recorded.
 
 ## Known gaps not yet scheduled
 
