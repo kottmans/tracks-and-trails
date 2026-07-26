@@ -23,6 +23,11 @@ env/
 htmlcov/
 coverage.xml
 
+# Frozen build output (T-020). Produced by packaging/tracks-and-trails.spec.
+/dist/
+/build/
+*.spec.bak
+
 # CI evidence (T-006). Written by the workflow and uploaded as an artifact; also appears
 # locally when the CI steps are run by hand.
 reports/

@@ -129,3 +129,74 @@ jobs:
           path: reports/
           retention-days: 30
           if-no-files-found: warn
+
+  # T-020. A separate job, not extra steps on `check`: the build is far slower than the test
+  # suite, and folding it in would hide that cost inside T-006's ~10 minute budget. Its own
+  # runtime is therefore recorded independently, which the task permits.
+  #
+  # This exists in Phase 0 on purpose. `freeze_support()` only matters once frozen, and the
+  # failure it prevents is a recursive application launch — discovering that at Phase 5, with
+  # the whole app built on ARC-002, is the outcome this job is here to avoid.
+  frozen:
+    name: frozen ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install Qt runtime libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+
+      - name: Install the project and the build extra
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev,build]"
+
+      - name: Build the frozen artifact
+        working-directory: packaging
+        run: |
+          mkdir -p ../reports
+          SECONDS=0
+          pyinstaller --noconfirm --clean \
+            --distpath ../dist --workpath ../build tracks-and-trails.spec \
+            2>&1 | tee "../reports/pyinstaller.txt"
+          echo "build seconds: $SECONDS" | tee -a "../reports/frozen-timing.txt"
+
+      - name: Smoke-test the frozen artifact
+        # Asserts: launches, spawns a child, exchanges one message, exits zero, runs exactly
+        # one top-level application process, and leaves no orphan behind.
+        run: |
+          SECONDS=0
+          python packaging/frozen_smoke.py dist/tracks-and-trails 2>&1 | tee "reports/frozen-smoke.txt"
+          echo "smoke seconds: $SECONDS" | tee -a "reports/frozen-timing.txt"
+
+      - name: Upload frozen evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: frozen-evidence-${{ matrix.os }}
+          path: |
+            reports/
+            frozen-probe.log
+          retention-days: 30
+          if-no-files-found: warn

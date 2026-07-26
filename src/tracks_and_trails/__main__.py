@@ -19,6 +19,15 @@ multiprocessing.freeze_support()
 
 def main() -> int:
     """Run the application. Returns the process exit code."""
+    # Records one line per top-level application start when TT_PROBE_LOG is set, and does
+    # nothing otherwise. This is T-020's evidence that a spawned child ran the worker rather
+    # than relaunching the whole application; it must stay here, in the path every top-level
+    # start reaches, because a relaunched child inherits multiprocessing's argv rather than
+    # ours and so never reaches --spawn-probe. Imports no Qt.
+    from tracks_and_trails._freeze_probe import record_app_start
+
+    record_app_start()
+
     # Imported lazily so that merely importing this module does not pull in Qt.
     from tracks_and_trails.app import run
 

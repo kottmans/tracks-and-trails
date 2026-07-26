@@ -16,10 +16,11 @@ from tracks_and_trails import __version__
 USAGE = """\
 Tracks & Trails {version} — a desktop GUI for yt-dlp.
 
-usage: tracks-and-trails [--version] [--help]
+usage: tracks-and-trails [--version] [--help] [--spawn-probe]
 
-  --version   print the version and exit
-  --help, -h  print this message and exit
+  --version      print the version and exit
+  --help, -h     print this message and exit
+  --spawn-probe  self-test the process model and exit (T-020)
 
 Run with no arguments to open the application window.
 """
@@ -37,6 +38,13 @@ def run(argv: Sequence[str]) -> int:
     if "--help" in args or "-h" in args:
         print(USAGE.format(version=__version__), end="")
         return 0
+    # Before Qt, and before anything else that would make this need a display. The frozen
+    # build runs exactly this path in CI to prove that spawning a child does not relaunch the
+    # application (REL-001, ARCHITECTURE.md §3, T-020).
+    if "--spawn-probe" in args:
+        from tracks_and_trails._freeze_probe import run_probe
+
+        return run_probe()
     if args:
         print(USAGE.format(version=__version__), end="")
         return 2

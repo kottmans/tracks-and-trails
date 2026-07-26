@@ -166,7 +166,7 @@ agreement on the reduced form before implementation.
 
 ### T-020 — Frozen-build smoke test in CI
 
-**Status:** Proposed
+**Status:** In Review — implemented and verified 2026-07-25; awaiting Codex
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 0
@@ -207,6 +207,58 @@ does it relaunch the application?
 - Installers, ffmpeg bundling, icons, signing, size optimization — all Phase 5
 - Qt dynamic-linking verification (Phase 5 release gate)
 - The `OPS-002` wheel-extraction updater — Phase 4, though it shares this constraint
+
+#### Implementation record — 2026-07-25
+
+**Delivered:** `_freeze_probe.py` (spawn probe and start marker), `packaging/tracks-and-trails.spec`
+(minimal one-dir PyInstaller build), `packaging/frozen_smoke.py` (runs the artifact and
+asserts), a `--spawn-probe` argument, and a separate `frozen` CI job on both platforms.
+`psutil` added as a dev-only dependency for the orphan check (`AGENTS.md` §7: no `DECISIONS`
+entry needed).
+
+**`freeze_support()` was already correct.** `T-001` placed it as the first executable statement
+of `__main__.py` with a comment citing `REL-001`, ahead of any Qt import. This task verified
+that placement rather than making it.
+
+**A separate CI job, not extra steps on `check`.** The build dominates the test suite, and
+folding it in would hide that cost inside `T-006`'s ~10 minute budget. The task permits this
+provided the runtime is recorded, which the job does explicitly.
+
+**The detection method was wrong on the first attempt, and the negative test is what found
+it.** `run_probe` originally wrote the "application started" marker itself, on the reasoning
+that a relaunched child would re-enter the same path. It does not: a relaunched child inherits
+*multiprocessing's* argument vector, not the parent's, so it never reaches `--spawn-probe`.
+Removing `freeze_support()` and rebuilding produced a genuine recursion while the marker count
+stayed at 1 — the assertion would have passed through exactly the failure it exists to catch.
+The marker now lives in `main()`, which every top-level start reaches.
+
+**Negative test, on Linux.** With `freeze_support()` commented out and the artifact rebuilt,
+the probe exits **1** and the log records **three** top-level application starts instead of
+one. The `argv` column names the mechanism outright:
+
+```
+app-start pid=110766 frozen=True argv=['--spawn-probe']
+app-start pid=110768 frozen=True argv=['--multiprocessing-fork', 'tracker_fd=7', 'pipe_handle=9']
+app-start pid=110767 frozen=True argv=['-B','-S','-I','-c','from multiprocessing.resource_tracker import main;main(6)']
+```
+
+Those second and third lines are multiprocessing's internal invocations being executed as the
+whole application. `T-020` predicted this would fail "on Windows"; it fails on **Linux too**,
+which is a better outcome than the task assumed — the guard is not Windows-specific.
+
+**Positive result, Linux:** frozen artifact 284 MB, `--version` in 0.1 s, `--spawn-probe`
+exits 0 in 0.3 s, exactly one top-level start, both parent and child report `frozen=True`, no
+orphan. Build 15 s locally.
+
+**Deliberate deviation, reported.** `_freeze_probe.py` is not in `ARCHITECTURE.md` §4's
+structure. It is underscore-prefixed to mark it as infrastructure rather than a layer, imports
+no Qt so a spawned child inherits none, and is reachable only through an explicit argument.
+The alternative — a separate frozen entry point — would not have tested `__main__.py`'s
+ordering, which is the only thing that matters here. `--spawn-probe` is listed in `--help`
+rather than hidden.
+
+**Windows is unverified until this runs in CI**, which is the whole point of the job
+(`OPS-003`).
 
 ---
 
