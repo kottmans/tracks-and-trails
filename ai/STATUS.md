@@ -32,26 +32,30 @@
   narrowly — `T-021` filed as an optional improvement that blocks nothing
 - **First review completed** — the review process in `AGENTS.md` §3 has now been exercised
   end to end (implement → review → correct → focused re-review) and works
+- **Windows is no longer entirely unverified.** `T-006`'s runners confirmed, with downloadable
+  artifact evidence: Python 3.14.6 (MSC v.1944, AMD64), PySide6/shiboken6/Qt 6.11.1, a
+  `QWidget` visible offscreen, and the full 27-test suite passing. This discharges the Windows
+  carries from `T-002` and `T-003`. The `OPS-003` interactive gaps (screen reader, native
+  dialogs, keyboard, theming, installer) remain untouched and still block first release.
 - Verified 2026-07-25 that yt-dlp 2026.06.09 is pure Python (1046 `.py`, no compiled
   extensions), which is what makes the `OPS-002` pip-free updater viable
 
 ## In progress
 
-*(nothing active — the `T-003` + `T-022` change unit is approved and awaiting commit)*
+- **`T-006`** — In Review on branch `t-006-ci` (PR #1). Implemented and fully verified against
+  its acceptance criteria on real runners; awaiting Codex. Not yet merged to `main`.
 
 ## Next
 
-All three are Ready and independent — any order.
+Both are Ready and independent — either order.
 
-1. **`T-006`** — CI on Linux and Windows. Higher priority than its phase position suggests:
-   per `OPS-003` it is the only Windows environment that exists, and it now carries the
-   unfinished Windows verification from `T-002` and `T-003` both.
-2. **`T-005`** — layering enforcement test. Cheap, and the longer the skeleton sits without
-   it the more chance a layer rule gets broken unnoticed.
-3. **`T-007`** — application shell window. Unblocked as of 2026-07-25 now that the icon
-   exists.
+1. **`T-005`** — layering enforcement test. Cheap, and the longer the skeleton sits without
+   it the more chance a layer rule gets broken unnoticed. It also gains real value now that
+   CI runs it on both platforms.
+2. **`T-007`** — application shell window. Unblocked as of 2026-07-25 now that the icon
+   exists, and the first task that produces something visible.
 
-Then `T-020` (frozen smoke test), which needs both `T-006` and `T-007`.
+Then `T-020` (frozen smoke test), which needs `T-006` merged and `T-007` done.
 
 ## Blockers
 

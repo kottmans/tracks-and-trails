@@ -1,0 +1,131 @@
+# CI — T-006.
+#
+# This is deliberately larger than a lint-and-test pipeline. Per OPS-003 the maintainer has no
+# Windows machine, so the Windows runner here is the ONLY Windows environment this project
+# has. Anything it does not check is genuinely unverified on Windows, not merely unautomated.
+# Two consequences shape the file:
+#
+#   - fail-fast is off. A Linux failure must never cancel the Windows job; Windows evidence is
+#     the scarce resource.
+#   - every job uploads its evidence, pass or fail.
+#
+# Windows failures are debugged from two distinct sources, and neither replaces the other:
+#
+#   - the Actions job log, owned by GitHub, covers EVERY step including checkout, setup-python,
+#     the apt install and pip install. Those run before reports/ exists, so a failure there
+#     produces little or no artifact and the log is the only record of it.
+#   - the uploaded reports/ artifact covers this project's own gates — lint, format, mypy, the
+#     Qt baseline and pytest — plus an environment snapshot and the junit XML. It is the part
+#     that can be downloaded and analyzed offline rather than read in a browser.
+#
+# See ai/TESTING.md §10 and the T-006 entry in ai/TASKS.md.
+
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# A superseded run has no value; cancel it rather than spend Windows runner minutes on it.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    # bash on both runners, so every step below is written once rather than per-platform.
+    shell: bash
+
+jobs:
+  check:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    env:
+      # ai/TESTING.md §2: the UI suite runs headless. tests/ui/conftest.py sets the same value
+      # via setdefault for local runs; setting it here makes CI's behavior explicit rather
+      # than inherited.
+      QT_QPA_PLATFORM: offscreen
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          # ARC-001 / T-002: the pinned baseline. PySide6 ships abi3 wheels, so this is a
+          # project choice, not a PySide6 constraint.
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: pyproject.toml
+
+      - name: Install Qt runtime libraries
+        if: runner.os == 'Linux'
+        # The offscreen platform plugin still links EGL/GL and xkbcommon; without these the
+        # Qt import succeeds and QApplication construction fails, which is a confusing way to
+        # discover a missing system package.
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+
+      - name: Install the project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Record the environment
+        # Written to the artifact so a Windows failure can be diagnosed without a Windows
+        # machine — which, per OPS-003, is the only way it will ever be diagnosed.
+        run: |
+          mkdir -p reports
+          {
+            echo "runner:  ${{ runner.os }} / ${{ matrix.os }}"
+            echo "ref:     ${{ github.ref }} @ ${{ github.sha }}"
+            python -VV
+            echo "--- installed ---"
+            python -m pip list
+          } | tee "reports/environment.txt"
+
+      # Every check below tees into reports/ as well as the job log. Both destinations matter:
+      # the log is the complete record and the only one covering the setup steps above, while
+      # the artifact is the downloadable unit that can be grepped and diffed offline. A gate
+      # whose diagnostic reaches only the log cannot be analyzed without the Actions UI, which
+      # under OPS-003 is a real cost — these are the project's own checks, so unlike the setup
+      # steps their output is ours to capture. `shell: bash` runs with pipefail, so teeing does
+      # not mask the non-zero exit that fails the step.
+      - name: Lint
+        run: ruff check . 2>&1 | tee "reports/lint.txt"
+
+      - name: Format check
+        run: ruff format --check . 2>&1 | tee "reports/format.txt"
+
+      - name: Types
+        run: mypy src 2>&1 | tee "reports/mypy.txt"
+
+      - name: Qt baseline
+        # Discharges the Windows half of T-002, which was verified on Linux only: PySide6
+        # installs, imports, and constructs a QApplication + QWidget offscreen.
+        run: python .github/scripts/qt_baseline.py 2>&1 | tee "reports/qt-baseline.txt"
+
+      - name: Tests
+        # Network tests stay excluded by the addopts in pyproject.toml (ai/TESTING.md §10).
+        run: pytest -v --junitxml="reports/pytest.xml" 2>&1 | tee "reports/pytest.txt"
+
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evidence-${{ matrix.os }}
+          path: reports/
+          retention-days: 30
+          if-no-files-found: warn

@@ -169,6 +169,100 @@ three open findings are resolved. `T003-R5` remains an accepted provenance risk,
 execution of the resource test remains an explicit `T-006` carry; neither is hidden or newly
 introduced by this correction.
 
+## 2026-07-25 — T-006 Linux and Windows CI
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-006`
+**Base:** `947db1a9aa40e2c6ffadb448ca195c384bf68c02`
+**Head:** `8db0518de72c17139ce34b832f8cbeed24ec4d21`
+**Platforms verified:** Linux and Windows through GitHub-hosted runner artifacts and logs
+**Verdict:** Changes requested
+
+### Findings
+
+| ID | Severity | Area | Finding | Recommendation | Status |
+|---|---|---|---|---|---|
+| `T006-R1` | Low | Failure evidence | `.github/workflows/ci.yml:91` writes lint, format, and mypy output only to the Actions job log, while only the baseline and pytest commands tee into `reports/`. This is observable in run `30179263484`: `if: always()` uploaded the failed Windows artifact, but it contained only `environment.txt`; the actual `F401` diagnostic was absent and had to be retrieved from the job log. That contradicts `ai/TESTING.md:175` and the workflow comments calling uploaded artifacts the retained failure output and the only Windows debugging material. The failed-pytest case is captured correctly. | Preserve stdout/stderr for the controllable gates in `reports/` without swallowing their exit status, and document honestly that early action/setup failures remain available through Actions-owned logs rather than the artifact. | Open — `T-023` |
+| `T006-R2` | Low | Coordination truth | The `T-006` record says both Windows carries are discharged, but the canonical completed-task notes still say the opposite: `ai/TASKS.md:475` calls `T-003`'s Windows check unverified and `ai/TASKS.md:536` / `ai/TASKS.md:571` leave `T-002` Linux-only and carried into `T-006`. `TASKS.md` is current truth, so readers receive mutually exclusive states in one file. | Update the `T-002` and `T-003` completion notes to cite the verified `T-006` Windows evidence while preserving genuinely Linux-only probes. | Open — `T-023` |
+| `T006-R3` | Note | Linux packages | `ubuntu-latest` and unpinned `apt` packages can drift, and the five-package list is sufficient rather than proven minimal. Exact package-version pins on a moving hosted image would be brittle and would suppress security updates; exercising the current supported Ubuntu environment is useful portability pressure. The Linux baseline and suite prove the present list sufficient. | Keep the acknowledged assumption and treat future runner/package drift as CI maintenance, not a reproducibility guarantee. | Accepted Risk |
+| `T006-R4` | Note | Qt environment | The job-level `QT_QPA_PLATFORM=offscreen` and `tests/ui/conftest.py` do not conflict. CI makes the value explicit; local tests default to it; `setdefault` preserves any caller override. The standalone baseline reads the job value and asserts the resolved plugin. | None. | Resolved |
+| `T006-R5` | Note | Baseline validation | Keeping `.github/scripts/qt_baseline.py` outside pytest is justified by its earlier, clearer failure boundary. `ruff` checks it, both matrix jobs execute it, and an independent `mypy --strict` run found no issues. The standard `mypy src` gate does not statically check future edits to it, but its size and mandatory runtime execution keep that residual risk small. | Add it to the type-check command if the script grows beyond this focused probe. | Accepted Risk |
+| `T006-R6` | Note | Fork security | A fork PR does execute untrusted checked-out code through editable installation and pytest; that is intrinsic to CI and should not be described otherwise. It executes on GitHub-hosted ephemeral runners with no secrets, a read-only `contents` token, and no `pull_request_target` or third-party actions, so no privileged fork path was found. | Preserve this permission model; review any future secrets, write permissions, self-hosted runners, or `pull_request_target` use as a new threat model. | Resolved |
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Final push and PR | Runs `30179509580` and `30179510514` both resolve to head `8db0518`; Linux and Windows jobs passed. PR #1 is open, non-draft, mergeable, and `CLEAN`. |
+| Deliberate lint failure | Run `30179263484`: both runners failed at `Lint` on the injected unused `os` import (`F401`); both `Upload evidence` steps succeeded. |
+| Deliberate pytest failure | Run `30179308976`: both runners reached `Tests` and failed only on the injected `assert 1 == 2`; both uploads succeeded. The Windows artifact contains the complete traceback in `pytest.txt` and `pytest.xml`. |
+| Revert integrity | `tests/unit/test_ci_gate_check.py` is deleted at `7406928` and absent from head. The workflow blob is identical at the lint-failure, test-failure, reverted, and final heads; post-revert changes before `8db0518` are coordination documents only. |
+| Windows `T-002` carry | Final Windows artifact: Python 3.14.6 (MSC AMD64), PySide6/shiboken6/Qt 6.11.1, `platform offscreen`, `QWidget visible=True`, baseline exit zero. Discharged. |
+| Windows `T-003` carry | Final Windows pytest text/XML: all 27 default cases passed, including `test_ico_exposes_every_frame_to_qt`, whose source pins all seven frames. Discharged. |
+| Artifact retention | Failed-test artifacts downloaded successfully; API metadata reports `expired=false` and expiry on 2026-08-24, matching 30 days. |
+| Remaining `OPS-003` automation | Orphan assertions require worker behavior, path safety requires path implementation, install/launch requires the frozen artifact (`T-020`), and screenshots require the shell (`T-007`). Deferring them is honest, not omitted current-tree coverage. |
+| Local Qt baseline | Passed offscreen with PySide6/shiboken6/Qt 6.11.1 and visible 320×240 widget. |
+| `mypy --strict .github/scripts/qt_baseline.py` | Passed: no issues in one source file. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: 53 files already formatted. |
+| `mypy src` | Passed: no issues in 30 source files. |
+| `pytest -q` | Passed: 27 passed, 1 deselected in 0.09s. |
+| `git diff --check 947db1a 8db0518` | Passed. |
+
+### Readiness
+
+The CI gate proof is real, both Windows carries are discharged, and no product or security
+blocker was found. PR #1 is not ready to merge until `T-023` closes the two evidence/current-
+truth findings and receives focused re-review. After approval, prefer a squash merge so the
+deliberately broken gate-proof commits do not enter `main`; published branch history must not
+be rewritten.
+
+## 2026-07-25 — T-023 focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-023`; re-review of `T006-R1`, `T006-R2`
+**Base:** `947db1a9aa40e2c6ffadb448ca195c384bf68c02`
+**Correction boundary:** `8db0518de72c17139ce34b832f8cbeed24ec4d21` to
+`24d926d103945f1abb049783d80561ee79ce88d8`
+**Platforms verified:** Linux locally; Linux and Windows through GitHub-hosted runner
+artifacts and logs
+**Verdict:** Changes requested
+
+### Finding dispositions
+
+| ID | Result | Evidence |
+|---|---|---|
+| `T006-R1` | Partially resolved | The workflow correction works. Run `30180163074` failed at lint on both platforms without masking the exit, both uploads succeeded, and the downloaded Windows artifact contains the complete `F401` diagnostic in `lint.txt`, including the runner-native `tests\unit\...` path. Run `30180215713` reverted the probe, passed both jobs, and retained all seven expected files per artifact. However, the required documentation correction was omitted: `.github/workflows/ci.yml:10`, `.github/workflows/ci.yml:91`, `ai/TESTING.md:173`, and `ai/TASKS.md:293` still call artifacts the only Windows debugging material. Checkout, setup, and installation failures happen before `reports/` exists, while their Actions-owned job logs remain available. This directly misses `T-023`'s scope and second acceptance criterion. Update all four descriptions to distinguish downloadable project-gate evidence from early Actions/setup logs. |
+| `T006-R2` | Resolved | The completed `T-002` and `T-003` records now identify their Windows carries as discharged and cite the verified `T-006` evidence. A full `TASKS.md` search found no other stale open carry: remaining uses either define `T-006`'s historical inputs, explicitly mark them resolved, or describe the still-open real-download cancellation check assigned to `T-019`. |
+
+### New findings
+
+None.
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Corrected lint-failure proof | Run `30180163074` resolves to `d719ea2`; Linux and Windows failed at `Lint`, later gates were skipped, and both `Upload evidence` steps passed. Both downloadable artifacts contain `environment.txt` and `lint.txt`; Windows `lint.txt` contains the full `F401` diagnostic. Artifact metadata is current (`expired=false`) with expiry on 2026-08-24. |
+| Passing revert proof | Run `30180215713` resolves to `f6e9ce1`; every gate and upload passed on Linux and Windows. Each artifact contains `environment.txt`, `lint.txt`, `format.txt`, `mypy.txt`, `qt-baseline.txt`, `pytest.txt`, and `pytest.xml`. |
+| Revert and head integrity | The workflow blob is identical at `f6e9ce1` and `24d926d`; `tests/unit/test_ci_gate_check.py` is absent from head. |
+| Current PR | PR #1 is open, non-draft, mergeable, and `CLEAN` at `24d926d`; both push and pull-request matrix runs at that head passed. |
+| `TASKS.md` carry audit | No stale open Windows carry from `T-002` or `T-003` remains. The sleeping-worker cancellation limitation remains correctly open under `T-019`. |
+| Local Qt baseline | Passed offscreen with PySide6/shiboken6/Qt 6.11.1 and a visible 320x240 widget. |
+| `mypy --strict .github/scripts/qt_baseline.py` | Passed: no issues in one source file. |
+| `ruff check .` | Passed: "All checks passed!" |
+| `ruff format --check .` | Passed: 53 files already formatted. |
+| `mypy src` | Passed: no issues in 30 source files. |
+| `pytest -q` | Passed: 27 passed, 1 deselected in 0.10s. |
+| `git diff --check 947db1a 24d926d` | Passed. |
+
+### Readiness
+
+The retention mechanism and the `TASKS.md` carry correction are verified, but PR #1 is not
+ready to merge while `T006-R1`'s explicit documentation requirement remains unmet. After the
+four stale descriptions are corrected and focused re-review approves them, prefer a squash
+merge so the deliberate gate-proof commits do not enter `main`.
+
 ## Open findings
 
-*(none)*
+- `T006-R1` — documentation portion remains open under `T-023`
