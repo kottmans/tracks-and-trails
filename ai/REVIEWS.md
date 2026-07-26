@@ -837,3 +837,57 @@ Strict runtime validation remains incomplete under R2, the advertised probe gram
 fully enforced, and R5 still requires the maintainer to interpret or supersede `ARC-002`.
 This is the requested last review pass: these are the final reviewer dispositions at this
 head, and no additional Codex re-review is implied.
+
+## 2026-07-26 — T-011 post-final correction verification
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-011`; verification of reopened `T011-R2` and new `T011-R7`
+**Base:** `8fbbb2d439f4041f235deb193d57ad0af00bffac`
+**Head:** `83c7d4e84df42ddacd7c83debb03ffd6bb2d7f4a`
+**Platforms verified:** Linux locally; Windows CI run `30214219218` was reported green in the
+handoff, but the reviewer could not independently query it because the installed `gh`
+credential remains invalid
+**Verdict:** The submitted R2 and R7 corrections are verified; T-011 remains blocked by
+parked `T011-R5` and the carry-forward finding below
+
+### Finding dispositions
+
+| ID | Result | Evidence |
+|---|---|---|
+| `T011-R2` reopened fields | **Resolved** | `Progress.speed_bytes_per_second` now accepts only a non-negative real number or `None`; `Succeeded.total_bytes` accepts only a non-negative integer or `None`. Reapplying the exact two-dictionary sample mutation produced 33 failures and 80 passes. The new generic audit visits every dataclass field of every declared message. Adding an otherwise-unvalidated field to `WorkerFinished` made that audit fail specifically for the new field: 1 failed, 4 passed. Both mutations were restored. |
+| `T011-R7` | **Resolved** | Probe sessions now reject downloading-video, downloading-audio, merging and post-processing progress. Disabling the probe-stage branch caused exactly those four parametrized cases to fail while 109 protocol tests passed. The explicit allowance for arbitrary/repeated download stages matches the narrow review judgment and remains intentional. |
+| `T011-R5` | **Open — unchanged** | The task and status now accurately say this is parked rather than corrected, and the task heading is narrowed to “No runtime version negotiation.” Nothing in this correction interprets or supersedes accepted `ARC-002`; the maintainer decision remains the only blocker of this type. |
+
+### Carry-forward finding
+
+| ID | Severity | Area | Finding | Recommendation | Status |
+|---|---|---|---|---|---|
+| `T011-R8` | **High** | Recursive projection / immutability | The systematic audit is sound for direct message fields but does not traverse declared model payloads. `MediaInfo` accepts its `formats` field as a mutable list containing raw yt-dlp format dictionaries; `Probed` accepts that `MediaInfo`; the list and dictionaries remain mutable, pass `is_message()`, and survive pickle. A caller can therefore wrap `info_dict["formats"]` one level down and cross the process boundary without producing `FormatInfo` projections, violating the same `ARC-002` rule and feeder-thread invariant as R2. | In the following task, make `MediaInfo` reject or normalize `formats` to an immutable tuple of actual `FormatInfo` instances, with negative tests for a list of raw dictionaries, a tuple containing a raw dictionary, and mutation after construction/pickle. Apply the same runtime-shape audit to the other IPC-reachable core models rather than duplicating validation in `Probed`. | Open — carry forward per maintainer instruction |
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Correction boundary | Clean `main` at exact head `83c7d4e`; `8fbbb2d..83c7d4e` is two commits and 5 files, with 271 insertions and 20 deletions. Commit `7fb6c6a` records the prior review; the correction itself is one commit, `83c7d4e`, touching 4 files. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: 65 files already formatted. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| Bare `mypy` | Passed: no issues in 50 source files. |
+| `mypy --platform win32` | Passed: no issues in 50 source files. |
+| `pytest -q` | Passed: 355 passed, 2 skipped, 1 deselected in 0.53 s. |
+| Focused protocol baseline | Passed: 113 tests. |
+| Layering | Passed: 109 cases. |
+| R2 exact mutation | Mutable dictionaries substituted for progress speed and success byte count: 33 failed, 80 passed. Restored. |
+| R2 future-field mutation | Added an unvalidated defaulted field to `WorkerFinished`; the generic audit failed for that field: 1 failed, 4 passed. Restored. |
+| R7 branch mutation | Disabled probe-stage enforcement: the four illegal probe-stage cases failed; 109 other protocol tests passed. Restored. |
+| Recursive projection probe | `Probed(MediaInfo(formats=[{"format_id": "137", "ext": "mp4"}]))` constructed and passed `is_message`; mutating the original nested dictionary changed the message, and pickle restored another list/dict graph. |
+| `git diff --check 8fbbb2d..83c7d4e` | Passed. |
+| Windows CI | Not independently checked: `gh auth status` reports the configured token invalid. The handoff reports run `30214219218` with all five jobs green. |
+
+### Readiness
+
+The corrections actually submitted for review are verified: reopened R2's two direct fields
+and R7 are closed. No further T-011 re-review is requested. T-011 still must not unblock
+T-035/T-038 until the maintainer resolves R5; the newly identified recursive projection hole
+is explicitly carried to the following task, as directed, rather than starting another
+correction pass here.
