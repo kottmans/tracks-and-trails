@@ -50,16 +50,22 @@ be verified on both, that must be stated as unverified rather than assumed.
 
 **Current verification constraint** (`OPS-004`, narrowing `OPS-003`): there is no Windows
 machine available, so Windows is verified by CI — but the runner provides a real desktop, and
-since 2026-07-26 the `windows desktop` job asserts against it. The window launches under the
-real platform plugin, menus are keyboard reachable, and the UI Automation tree exposes a
-correct name and role for every control.
+the `windows desktop` job asserts against it: the application launches through its real entry
+point under the real platform plugin, menus are keyboard reachable, and the UI Automation tree
+matches an explicit name-and-role contract for the window, menu bar, every menu action, and the
+About dialog.
 
-What is still *known-unverified* on Windows, and must be reported as such: whether rendering
-**looks** right, whether Narrator **sounds** coherent, whether the installer **feels** normal,
-shell foreground and file-association behavior, and long-running stability. Also not yet
-covered by automation: widget tab order (no focusable widgets exist yet — `T-016`, `T-017`) and
-installer placement and removal (`T-039`). A single real Windows session discharges the
-subjective residue and blocks the first public release.
+*Rewritten 2026-07-26 after `T026-R2`.* An earlier version of this paragraph claimed the
+name/role gap was closed while the tests required only that *some* menu items existed with
+non-empty names — a claim that outran its evidence. Scope statements here must not exceed what
+a gate actually fails on.
+
+Still *known-unverified* on Windows, and to be reported as such: whether rendering **looks**
+right, whether Narrator **sounds** coherent, whether the installer **feels** normal, shell
+foreground and file-association behavior, and long-running stability. Not yet covered by
+automation: widget tab order (`T-040`, blocked until focusable controls exist) and installer
+placement and removal (`T-039`). A single real Windows session discharges the subjective
+residue and blocks the first public release.
 
 ## 4. Functional requirements
 

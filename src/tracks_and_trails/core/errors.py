@@ -19,9 +19,11 @@ to import `yt_dlp` (`ARCHITECTURE.md` §6), so that mapping belongs to `T-012`. 
 the seam it plugs into.
 """
 
-from dataclasses import dataclass, field
+from collections.abc import Mapping
+from dataclasses import dataclass
 from enum import StrEnum
-from typing import Final
+from types import MappingProxyType
+from typing import Any, Final
 
 
 class ErrorKind(StrEnum):
@@ -92,7 +94,16 @@ class FailureDetail:
 
     #: Optional structured context — an ffmpeg exit code, a worker's exit status, the offending
     #: path. Kept separate from `message` so presentation can use it without parsing prose.
-    context: dict[str, str] = field(default_factory=dict)
+    #:
+    #: **A sorted tuple of pairs, not a dict** (`T010-R2`). A `dict` field inside a frozen
+    #: dataclass is only shallowly frozen: `detail.context["exit_code"] = "0"` succeeded, which
+    #: for an IPC value is worse than untidy. `multiprocessing.Queue` may serialize on its
+    #: feeder thread *after* `put()` returns, so a mutation between those two moments changes
+    #: what crosses the process boundary — a race with no visible cause at either end.
+    #:
+    #: Sorted so that two details built from the same pairs in different order compare equal;
+    #: `mappingproxy` was the obvious alternative and cannot be pickled at all.
+    context: tuple[tuple[str, str], ...] = ()
 
     def __post_init__(self) -> None:
         if not self.message:
@@ -100,6 +111,28 @@ class FailureDetail:
                 "a classified failure must carry the original message (NFR-006); "
                 "an empty message discards the only actionable information there was"
             )
+
+        # Typed as `Any` on purpose: this is unvalidated input. The declared field type says
+        # what callers *should* pass, and the loop below is what happens when they do not —
+        # narrowing it to the declared type here would make mypy call the checks redundant and
+        # leave nothing guarding the boundary at runtime.
+        raw: Any = self.context
+        pairs: tuple[Any, ...] = tuple(raw.items()) if isinstance(raw, Mapping) else tuple(raw)
+        for pair in pairs:
+            if not isinstance(pair, tuple) or len(pair) != 2:
+                raise ValueError(f"context entries must be (str, str) pairs; got {pair!r}")
+            if not all(isinstance(part, str) for part in pair):
+                raise ValueError(f"context entries must be (str, str) pairs; got {pair!r}")
+        object.__setattr__(self, "context", tuple(sorted(pairs)))
+
+    @property
+    def context_map(self) -> Mapping[str, str]:
+        """A read-only mapping view, for callers that want lookup rather than iteration.
+
+        Built on access and wrapped in `MappingProxyType`, so writing through it raises rather
+        than mutating a copy the caller would then wrongly believe had taken effect.
+        """
+        return MappingProxyType(dict(self.context))
 
     @property
     def retryable(self) -> bool:
@@ -123,4 +156,8 @@ def classify(message: str, kind: ErrorKind | None = None, **context: str) -> Fai
     a wrong guess is worse than no guess, because `DRM_PROTECTED` and `NETWORK` carry retry
     policy. `T-012` maps from yt-dlp's *exception types*, which are a real contract.
     """
-    return FailureDetail(kind=kind or ErrorKind.EXTRACTOR_ERROR, message=message, context=context)
+    return FailureDetail(
+        kind=kind or ErrorKind.EXTRACTOR_ERROR,
+        message=message,
+        context=tuple(context.items()),
+    )

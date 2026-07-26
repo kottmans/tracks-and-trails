@@ -12,15 +12,17 @@
 
 ---
 
-**Current phase:** Phase 0 — Foundation, **every exit criterion now met; formal exit is the
-maintainer's call**
-**Overall state:** Every deliverable is built and green on both platforms, all eight exit-review
-findings are closed (`T-027` … `T-032`), and the last open criterion — "the window launches from
-a clean checkout on Windows" — was closed on 2026-07-26 by `T-026`, verified in CI run
-`30208677607`. Phase 1 has also started: `T-010` is implemented and awaiting review.
+**Current phase:** Phase 0 — Foundation, **exit blocked on review findings**
+**Overall state:** Both implemented tasks were reviewed on 2026-07-26 and both came back
+**changes requested** (`ai/REVIEWS.md`). Nine findings, four of them High.
 
-Both are **unreviewed**. Phase 0's exit criteria include "reviewed and signed off", so the phase
-is not exited until `T-026` has had its independent pass (`AGENTS.md` §3).
+Phase 0's Windows clean-checkout criterion is **not** met, contrary to what this file claimed
+earlier the same day. `T026-R1` is the reason: the desktop job constructed a `MainWindow`
+inside pytest and never exercised `app.run`, so it proved a widget can be created on a real
+desktop, not that the *application* launches. Native `HWND` evidence was real; the conclusion
+drawn from it was too broad.
+
+The corrections are implemented and awaiting focused re-review.
 
 ## Completed
 
@@ -75,29 +77,27 @@ is not exited until `T-026` has had its independent pass (`AGENTS.md` §3).
 
 ## Next
 
-Phase 0's exit criteria are **all met**. The `windows desktop` job closed the last one on
-2026-07-26 (run `30208677607`, 15 passed): the window launched under the real `windows`
-platform plugin with a native `HWND`, and `GetWindowTextW` read its title back as
-`Tracks & Trails`.
+1. **Focused re-review of `T-010` and `T-026`.** All nine findings have corrections implemented
+   locally. The two High findings on each task were reproduced before fixing and re-checked
+   after:
+   - `T010-R1` — the exhaustive transition test consulted the table it was policing. It now
+     checks against a relation transcribed independently from `ARCHITECTURE.md` §5. The
+     reviewer's `QUEUED → READY` mutation, which previously left 48 tests green, now fails 2.
+   - `T010-R2` — `FailureDetail.context` is a sorted tuple of pairs with a read-only mapping
+     view, so in-place mutation raises. `mappingproxy` was rejected: it cannot be pickled.
+   - `T026-R1` — a subprocess test now drives the real `app.run` entry point under the real
+     `windows` plugin, with the launched process reporting its own Win32 evidence.
+   - `T026-R2` — the accessibility contract is an equality over names and roles, and opens the
+     File menu, the Help menu and the About dialog, each queried by its own window handle.
 
-Nothing is blocked on hardware any more. What Phase 0 still needs is a **review**.
+2. **Formally exit Phase 0** once the re-review clears. `T026-R1` means the exit criterion
+   cannot be recorded as met until the new launch test is green on Windows.
 
-1. **Review `T-026` and `T-010`** — both are implemented, pushed and green, and neither has had
-   an independent pass. `AGENTS.md` §3 requires a different agent than the implementer, and
-   Phase 0's exit criteria include "reviewed and signed off", so this is what stands between
-   the project and a formally exited Phase 0. Review base `4a2a1e6`, head `4172fd0`.
+3. **Phase 1 continues from `T-010`.** `T-011`, `T-014`, `T-015` and `T-034` become Ready once
+   it merges. `T-012` is the chokepoint: three tasks land before it, six depend on it.
 
-2. **Formally exit Phase 0** once that review clears — a maintainer decision, not an automatic
-   consequence. `IMPLEMENTATION_PLAN.md`'s Phase 1 prerequisite amendment becomes moot at that
-   point and should be reduced back to "Phase 0 complete".
-
-3. **Phase 1 continues from `T-010`.** `T-011`, `T-014`, `T-015` and `T-034` all become Ready
-   once it merges. `T-012` is the chokepoint: three tasks must land before it and six depend on
-   it. Phase 1 is **15 tasks**, all planned in full.
-
-4. **A human Windows session** — scoped to `OPS-004`'s subjective residue only: whether it looks
-   right, sounds coherent, feels normal, plus shell foreground behavior and long-running
-   stability. It blocks **first release**. It no longer blocks Phase 0.
+4. **A human Windows session** — `OPS-004`'s subjective residue only. Blocks first release, not
+   Phase 0.
 
 ## Known gaps not yet scheduled
 
@@ -151,11 +151,11 @@ Development machine, verified 2026-07-25:
 |---|---|
 | Python | 3.14.6 (`/usr/bin/python3`) — the only interpreter; **confirmed sufficient** (`T-002`) |
 | `pip` | 26.0.1, installed via `ensurepip --user` into `~/.local` (no sudo, no PEP 668 marker on F44) |
-| Project venv | `.venv/` — editable install; PySide6 6.11.1, yt-dlp 2026.7.4, platformdirs 4.11.0 |
+| Project venv | `.venv/` — recreated 2026-07-26 (this checkout had none); editable install, PySide6 6.11.1, platformdirs 4.11.0. `comtypes` is a Windows-only dev dependency and is absent here by design |
 | Dev tools | ruff 0.16.0, mypy 2.3.0, pytest 9.1.1, pytest-qt 4.5.0, PyInstaller 6.21.0 |
 | ffmpeg | present |
 | git | branch `main` tracking `origin/main`; CI green on every push and PR (`T-006`) |
-| Repository path | `/mnt/storage/software_projects/tracks-and-trails` |
+| Repository path | `/mnt/projects/software_projects/tracks-and-trails` (corrected 2026-07-26; the recorded `/mnt/storage/...` path does not exist) |
 | Windows environment | **CI runners only** — no local Windows machine or VM. The runner is a real desktop, not a bare headless box (`OPS-004`), though CI currently forces `QT_QPA_PLATFORM=offscreen` and so does not use it |
 
 ## Current risks

@@ -21,6 +21,7 @@ depends on their content. Every claim that turns the build red is a separate obj
 
 import ctypes
 import os
+import subprocess
 import sys
 from pathlib import Path
 
@@ -120,15 +121,124 @@ def test_a_real_screen_is_available(qapp: QApplication) -> None:
 
 
 # --- the Phase 0 exit criterion -----------------------------------------------------------
+#
+# `T026-R1`: constructing a `MainWindow` inside pytest is **not** the exit criterion. The
+# criterion is that *the application* launches from a clean checkout, and the application is
+# `app.run` — argument handling, `QApplication` construction, window creation and a real event
+# loop, in a fresh interpreter. A widget built under a pytest-owned `QApplication` skips all
+# of it.
+#
+# `tests/ui/test_app_launch.py` already drives that path, but hard-codes
+# `QT_QPA_PLATFORM=offscreen`, so it proves the startup path and not the desktop. The
+# subprocess test below is the missing intersection: real startup path *and* real plugin, with
+# the launched process reporting Win32 evidence about itself.
+
+#: Runs the real entry point under the inherited platform plugin and quits from the GUI thread.
+#:
+#: The quit is scheduled from `showEvent` through a zero-delay timer, matching the harness in
+#: `test_app_launch.py` and for the same reason (`T028-R1`): polling `QApplication.instance()`
+#: from a foreign thread relies on something Qt never documented as safe.
+#:
+#: The Win32 assertions run **inside the launched application**, which is the point — they
+#: describe the process a user would actually start, not a widget a test constructed.
+LAUNCH_ON_REAL_DESKTOP = """
+import ctypes
+import sys
+
+from PySide6.QtCore import QTimer
+from PySide6.QtWidgets import QApplication
+
+import tracks_and_trails.ui.main_window as main_window
 
 
-def test_the_window_launches_on_a_real_windows_desktop(shown_window: MainWindow) -> None:
-    """Phase 0's remaining exit criterion, asserted rather than assumed.
+class ProveThenQuit(main_window.MainWindow):
+    def showEvent(self, event):
+        super().showEvent(event)
+        app = QApplication.instance()
+        print("PLATFORM", app.platformName(), flush=True)
 
-    "The window launches on Linux **and** Windows from a clean checkout" — the clean checkout
-    is the runner, and this is the launch. Four independent facts, because any one of them
-    alone has a plausible false pass: Qt believing it is visible says nothing about Windows
-    agreeing, and a handle that exists says nothing about it being shown.
+        hwnd = int(self.winId())
+        user32 = ctypes.windll.user32
+        length = user32.GetWindowTextLengthW(hwnd)
+        buffer = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buffer, length + 1)
+
+        print("HWND", hwnd, flush=True)
+        print("IS-WINDOW", bool(user32.IsWindow(hwnd)), flush=True)
+        print("VISIBLE", bool(user32.IsWindowVisible(hwnd)), flush=True)
+        print("TITLE", buffer.value, flush=True)
+        QTimer.singleShot(0, self._request_quit)
+
+    def _request_quit(self):
+        print("QUIT-REQUESTED", flush=True)
+        QApplication.instance().quit()
+
+
+main_window.MainWindow = ProveThenQuit
+
+from tracks_and_trails.app import run
+
+sys.exit(run(["tracks-and-trails"]))
+"""
+
+
+def test_the_application_launches_on_a_real_windows_desktop(tmp_path: Path) -> None:
+    """**Phase 0's exit criterion**, on the real startup path (`T026-R1`).
+
+    Everything else in this file constructs a widget. This starts the application.
+
+    `platformdirs` is redirected through `WIN_PD_OVERRIDE_*` rather than `APPDATA`: on Windows
+    it resolves folders through `SHGetKnownFolderPath` via ctypes, so setting `APPDATA` does
+    nothing — the mistake that once made a launch test pass on Linux and fail here.
+    """
+    environment = {
+        **os.environ,
+        "QT_QPA_PLATFORM": "windows",
+        "WIN_PD_OVERRIDE_APPDATA": str(tmp_path),
+        "WIN_PD_OVERRIDE_LOCAL_APPDATA": str(tmp_path),
+    }
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", LAUNCH_ON_REAL_DESKTOP],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+            env=environment,
+        )
+    except subprocess.TimeoutExpired as expired:
+        raise AssertionError(
+            "the application never exited within 120s on a real desktop. It either never "
+            f"showed a window or never processed the queued quit.\nstdout: {expired.stdout!r}"
+            f"\nstderr: {expired.stderr!r}"
+        ) from expired
+
+    assert result.returncode == 0, f"exit {result.returncode}\nstderr: {result.stderr}"
+
+    reported = dict(
+        line.split(" ", 1) for line in result.stdout.splitlines() if " " in line.strip()
+    )
+    assert reported.get("PLATFORM") == "windows", (
+        f"the application ran under {reported.get('PLATFORM')!r}, not the real desktop plugin"
+    )
+    assert reported.get("IS-WINDOW") == "True", "Windows did not recognise the handle"
+    assert reported.get("VISIBLE") == "True", "Windows reports the window as not visible"
+    assert reported.get("TITLE") == APP_NAME, (
+        f"Windows reports the title as {reported.get('TITLE')!r}"
+    )
+    assert int(reported.get("HWND", "0")) != 0, "the application window has no native handle"
+    assert "QUIT-REQUESTED" in result.stdout, "the window appeared but the quit never fired"
+    assert result.stderr.strip() == "", (
+        f"Qt wrote to stderr during a clean real-desktop run:\n{result.stderr}"
+    )
+
+
+def test_a_window_constructed_in_process_is_seen_by_windows(shown_window: MainWindow) -> None:
+    """The narrower, faster check: a widget built here is a real window to the OS.
+
+    Kept alongside the launch test rather than instead of it. It isolates Qt's window creation
+    from application startup, so a failure in one does not have to be diagnosed through the
+    other — but on its own it is **not** the Phase 0 criterion (`T026-R1`).
     """
     hwnd = int(shown_window.winId())
     user32 = ctypes.windll.user32  # type: ignore[attr-defined]
@@ -233,7 +343,9 @@ def test_every_menu_action_is_reachable_by_a_keyboard_mnemonic(shown_window: Mai
 
     for action in actions:
         menu = action.menu()
-        if menu is None:
+        # isinstance rather than `is not None`: PySide6 types `QAction.menu()` as `QObject`,
+        # so a None check alone leaves every `menu.title()` below untyped (`T026-R4`).
+        if not isinstance(menu, QMenu):
             continue
         assert "&" in menu.title(), f"menu {menu.title()!r} has no keyboard mnemonic"
         for item in menu.actions():

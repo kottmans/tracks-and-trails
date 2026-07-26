@@ -32,7 +32,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMenu
 
 from tracks_and_trails.ui.main_window import APP_NAME, MainWindow
 
@@ -52,6 +52,15 @@ import comtypes.client  # noqa: E402
 UIA_WINDOW = 50032
 UIA_MENU_BAR = 50010
 UIA_MENU_ITEM = 50011
+UIA_BUTTON = 50000
+
+#: Role names, for failure messages that a reader can interpret without a lookup table.
+ROLE_NAMES = {
+    UIA_WINDOW: "Window",
+    UIA_MENU_BAR: "MenuBar",
+    UIA_MENU_ITEM: "MenuItem",
+    UIA_BUTTON: "Button",
+}
 
 #: `CLSID_CUIAutomation`.
 CUIAUTOMATION = "{ff48dba4-60ef-4201-aa87-54103eef594e}"
@@ -115,20 +124,17 @@ def _read_tree(hwnd: int) -> Tree:
         ctypes.windll.ole32.CoUninitialize()
 
 
-@pytest.fixture
-def tree(qapp: QApplication, tmp_path: Path) -> Tree:
-    """The live window's accessibility tree, read without blocking the GUI thread.
+def read_tree(hwnd: int) -> Tree:
+    """Snapshot `hwnd`'s accessibility tree without blocking the GUI thread.
 
     The main thread keeps pumping Qt events for the duration, because that is what answers the
     `WM_GETOBJECT` the UIA client sends. Stop pumping and the query returns an empty tree.
-    """
-    window = MainWindow(geometry_file=tmp_path / "window.toml")
-    window.show()
-    window.raise_()
-    window.activateWindow()
-    QApplication.processEvents()
-    hwnd = int(window.winId())
 
+    Takes an arbitrary handle rather than only the main window's, so menus and dialogs — which
+    are their own top-level windows on Windows — can be queried too. `T026-R2`: the first
+    version only ever looked at the main window, which is why a missing `Quit` action or an
+    unlabelled About dialog could not have been detected.
+    """
     result: dict[str, object] = {}
 
     def worker() -> None:
@@ -136,7 +142,7 @@ def tree(qapp: QApplication, tmp_path: Path) -> Tree:
             result["tree"] = _read_tree(hwnd)
         except BaseException as error:
             # Caught broadly and re-raised on the main thread below. An exception escaping a
-            # worker thread would otherwise be printed and discarded, leaving the fixture to
+            # worker thread would otherwise be printed and discarded, leaving the caller to
             # report a timeout and hiding the real COM error underneath it.
             result["error"] = error
 
@@ -160,6 +166,31 @@ def tree(qapp: QApplication, tmp_path: Path) -> Tree:
     return snapshot
 
 
+@pytest.fixture
+def window(qapp: QApplication, tmp_path: Path) -> MainWindow:
+    """A shown, activated main window."""
+    shown = MainWindow(geometry_file=tmp_path / "window.toml")
+    shown.show()
+    shown.raise_()
+    shown.activateWindow()
+    QApplication.processEvents()
+    return shown
+
+
+@pytest.fixture
+def tree(window: MainWindow) -> Tree:
+    """The main window's accessibility tree."""
+    return read_tree(int(window.winId()))
+
+
+def describe(nodes: tuple[Node, ...]) -> list[str]:
+    """Render a tree for a failure message: what Narrator would actually encounter."""
+    return [f"{ROLE_NAMES.get(n.control_type, n.control_type)}:{n.name!r}" for n in nodes]
+
+
+# --- the main window ------------------------------------------------------------------------
+
+
 def test_the_window_is_published_with_its_name_and_role(tree: Tree) -> None:
     """The top-level element is what a screen reader announces on focus."""
     assert tree.window.name == APP_NAME, (
@@ -168,33 +199,105 @@ def test_the_window_is_published_with_its_name_and_role(tree: Tree) -> None:
     assert tree.window.control_type == UIA_WINDOW
 
 
-def test_the_menu_bar_reaches_the_accessibility_tree(tree: Tree) -> None:
-    """A menu bar absent from the tree is a menu bar Narrator cannot reach."""
-    assert tree.of_type(UIA_MENU_BAR), (
-        "no menu bar in the UI Automation tree; found control types "
-        f"{sorted({node.control_type for node in tree.descendants})}"
+def test_the_menu_bar_is_published_with_the_menu_bar_role(tree: Tree) -> None:
+    """A menu bar absent from the tree, or published under another role, is one Narrator
+    cannot navigate as a menu bar."""
+    bars = tree.of_type(UIA_MENU_BAR)
+    assert len(bars) == 1, (
+        f"expected exactly one menu bar, tree exposes {describe(tree.descendants)}"
     )
 
 
-def test_every_menu_item_has_a_non_empty_accessible_name(tree: Tree) -> None:
-    """`NFR-005`'s actual requirement, asserted against what Windows publishes.
+def test_the_menu_bar_exposes_exactly_the_expected_menus(tree: Tree) -> None:
+    """`T026-R2`: an **equality**, not a subset.
 
-    Iterates whatever the tree contains rather than a fixed list, so a control added later
-    without a label fails here instead of shipping silently unreadable.
+    The previous version asserted `{"File", "Help"} <= names`, which stays green when a menu
+    is added without a label, published under the wrong role, or duplicated. Pinning the exact
+    set means any of those fails.
+
+    Mnemonic markup must not survive into the tree either — Qt strips `&` when publishing to
+    the platform bridge, and a regression there has Narrator saying "ampersand File".
     """
-    items = tree.of_type(UIA_MENU_ITEM)
-    assert items, "no menu items in the UI Automation tree — File and Help should both be"
+    names = sorted(node.name for node in tree.of_type(UIA_MENU_ITEM))
+    assert names == ["File", "Help"], (
+        f"menu bar exposes {names}; expected exactly ['File', 'Help']. "
+        f"Full tree: {describe(tree.descendants)}"
+    )
 
-    unnamed = [item for item in items if not item.name.strip()]
-    assert not unnamed, f"{len(unnamed)} menu item(s) expose no accessible name to Narrator"
 
+def test_no_control_reaches_the_tree_without_a_name(tree: Tree) -> None:
+    """`NFR-005`. Asserted over every element, not only the ones this file names.
 
-def test_the_file_and_help_menus_are_announced_without_mnemonic_markup(tree: Tree) -> None:
-    """Mnemonics are markup for the eye; a screen reader must not read the ampersand.
-
-    Qt strips `&` when publishing to the platform accessibility bridge. Asserting it catches a
-    regression where the raw title reaches the tree and Narrator says "ampersand File".
+    A control added later without a label fails here rather than shipping unreadable.
     """
-    names = {node.name for node in tree.of_type(UIA_MENU_ITEM)}
-    assert not any("&" in name for name in names), f"mnemonic markup reached the tree: {names}"
-    assert {"File", "Help"} <= names, f"expected File and Help menus, tree exposes {names}"
+    unnamed = [node for node in tree.descendants if not node.name.strip()]
+    assert not unnamed, (
+        f"{len(unnamed)} control(s) expose no accessible name: {describe(tuple(unnamed))}"
+    )
+
+
+# --- the menus themselves -------------------------------------------------------------------
+#
+# `T026-R2`: `Quit` and `About` live in popup menus, which on Windows are their own top-level
+# windows. Querying only the main window's HWND can never see them, so either action could
+# have been deleted or mis-roled with the suite still green. Each menu is opened and its own
+# handle queried.
+
+
+@pytest.mark.parametrize(
+    ("menu_title", "expected_items"),
+    [("&File", ["Quit"]), ("&Help", [f"About {APP_NAME}"])],
+)
+def test_each_menu_publishes_exactly_its_actions(
+    window: MainWindow, menu_title: str, expected_items: list[str]
+) -> None:
+    """Every action a user can trigger must be announced, by name and as a menu item."""
+    menus: dict[str, QMenu] = {}
+    for action in window.menuBar().actions():
+        menu = action.menu()
+        # isinstance, not `is not None`: PySide6 types `QAction.menu()` as `QObject`.
+        if isinstance(menu, QMenu):
+            menus[menu.title()] = menu
+
+    menu = menus[menu_title]
+    menu.popup(window.mapToGlobal(window.rect().topLeft()))
+    QApplication.processEvents()
+    try:
+        subtree = read_tree(int(menu.winId()))
+        names = sorted(node.name for node in subtree.of_type(UIA_MENU_ITEM))
+        assert names == sorted(expected_items), (
+            f"{menu_title} publishes {names}, expected {sorted(expected_items)}. "
+            f"Full subtree: {describe(subtree.descendants)}"
+        )
+    finally:
+        menu.close()
+        QApplication.processEvents()
+
+
+# --- the About dialog -----------------------------------------------------------------------
+
+
+def test_the_about_dialog_and_its_close_button_are_announced(window: MainWindow) -> None:
+    """`T026-R2`: the About box was never opened, so its Close control sat outside the tree.
+
+    A dialog a screen reader cannot name, containing a button it cannot name, is unusable —
+    and it is the one modal surface the application currently has.
+    """
+    about = window.show_about()
+    QApplication.processEvents()
+    try:
+        subtree = read_tree(int(about.winId()))
+
+        assert subtree.window.name == f"About {APP_NAME}", (
+            f"the About dialog is announced as {subtree.window.name!r}"
+        )
+        assert subtree.window.control_type == UIA_WINDOW
+
+        buttons = [node.name for node in subtree.of_type(UIA_BUTTON)]
+        assert any("close" in name.lower() for name in buttons), (
+            f"the About dialog exposes no Close button to Narrator; buttons: {buttons}. "
+            f"Full subtree: {describe(subtree.descendants)}"
+        )
+    finally:
+        about.close()
+        QApplication.processEvents()

@@ -26,187 +26,7 @@ merges; `T-039` waits for a Phase 5 installer.
 
 ## Ready
 
-### T-010 — Domain models, job state machine, and error taxonomy
-
-**Status:** Implemented 2026-07-26, awaiting review. All four checks green locally; the
-guarantees were mutation-checked rather than assumed (see the record below).
-
-**Reported, not decided:** this task's acceptance criterion says the taxonomy covers "exactly
-the ten kinds in `ARCHITECTURE.md` §7". §7 has ten *rows*, but one declares two kinds
-(`FFMPEG_MISSING` / `FFMPEG_ERROR`), so there are **eleven**. All eleven are implemented, since
-dropping one to match a count would lose a real distinction. The criterion's wording needs
-correcting to eleven — a Planner edit, not an Implementer one (`AGENTS.md` §4).
-**Owner:** Implementer
-**Priority:** High — every other Phase 1 task imports this
-**Phase:** Phase 1
-**Depends on:** `T-001`
-**Relevant context:** `ARCHITECTURE.md` §4 (layers), §5 (data ownership), §7 (error taxonomy),
-§8 (settings propagation); `REQ-005`, `REQ-012`, `REQ-015`, `REQ-018`, `REQ-028`, `NFR-006`,
-`REQ-EXCL-001`; `ai/TESTING.md` §7 (State machine)
-**Affected surfaces:** `core/models.py`, `core/job_state.py`, `core/errors.py`,
-`tests/unit/`
-**Risk:** Medium — cheap to write, expensive to change once four other modules import it
-**Review base:** `ce7cec4`
-
-#### Scope
-
-The pure-domain foundation of the vertical slice. No Qt, no yt-dlp, no I/O beyond the standard
-library — `core/` is the layer that stays testable headless and gets reused by both the GUI
-process and the spawned worker.
-
-Three modules, deliberately together because they are one design and splitting them would
-mean three reviews of the same decisions:
-
-1. **`models.py`** — `Job`, `JobStatus`, `MediaInfo`, `FormatInfo`, `Preset`,
-   `DownloadRequest`. Plain dataclasses.
-2. **`job_state.py`** — the legal-transition table and the single function that applies a
-   transition. `ai/TESTING.md` §7 requires that every illegal transition raises; this is where
-   that guarantee lives.
-3. **`errors.py`** — the `ARCHITECTURE.md` §7 taxonomy as an enum, plus a `classify()` seam.
-   The module *defines* the taxonomy and how a classified failure is carried; `T-012` supplies
-   the yt-dlp-specific mapping into it, because that is the only place that may import
-   `yt_dlp` (§6).
-
-`errors.py` is pulled forward into this task rather than left to `T-012` for two reasons: it
-is pure `core/` code, and `T-012` needs to classify from its first line, so writing it there
-would put a `core/` design decision inside a task reviewed for its yt-dlp handling.
-
-Two properties are load-bearing and easy to lose:
-
-- **Everything here crosses a process boundary** (`ARC-002`). Every type must be picklable:
-  plain dataclasses and enums, no lambdas, no open handles, no `functools.partial`.
-- **`DownloadRequest` is frozen at job-creation time** (`ARCHITECTURE.md` §8). A running job
-  never observes a mid-flight settings change, which is what makes the worker's behavior
-  reproducible from the request alone.
-
-#### Acceptance criteria
-
-- Every model round-trips through `pickle` unchanged, asserted per type — this is what makes
-  `T-011`'s IPC possible, and it fails loudly the day someone adds an unpicklable field
-- **Each model's required fields and invariants are pinned**, not merely its picklability: a
-  `Job` without an id, url or status fails construction; `MediaInfo` and `FormatInfo` declare
-  the fields `ARCHITECTURE.md` §5 names. Empty dataclasses would satisfy a pickle test alone,
-  which is exactly the vacuous pass to avoid
-- `DownloadRequest` is immutable; attempting to mutate a field raises
-- The state machine accepts every transition in the legal table and **raises on every
-  transition outside it** — asserted exhaustively over the full `JobStatus × JobStatus`
-  product, not over a sampled list, so a newly added status cannot silently acquire
-  permissive behavior
-- Adding a `JobStatus` member without adding its transitions fails the suite
-- `CANCELLED` is reachable from every non-terminal state; no state is reachable *from* a
-  terminal state
-- The taxonomy covers exactly the ten kinds in `ARCHITECTURE.md` §7 — asserted against that
-  list, so the table and the code cannot drift apart
-- A classified failure preserves the original message verbatim alongside the classification
-  (`NFR-006`); the classification is additive and never replaces the text
-- `DRM_PROTECTED` and `CANCELLED` are marked non-retryable, and `NETWORK` is the only kind
-  marked auto-retryable (`REQ-018`, `REQ-EXCL-001`)
-- The layering test still passes: no Qt, no `yt_dlp` anywhere in `core/`
-
-#### Out of scope
-
-- Any yt-dlp exception mapping — `T-012`, and it is the only place that may import `yt_dlp`
-- Persistence of any of these types — `T-014` owns the schema
-- Preset *content* and selector translation — `T-015`; this task defines the `Preset` shape
-  only
-- Retry scheduling and backoff policy — Phase 2, though the retryable flag is defined here
-
----
-
-### T-026 — Verify Windows behavior against the runner's real desktop
-
-**Status:** Implemented and **verified green on Windows** 2026-07-26 — run `30208677607`,
-15 passed. Awaiting review. **Closes Phase 0's last exit criterion:** the window launched under
-the real `windows` platform plugin with native `HWND`, and `GetWindowTextW` read the title back
-as `Tracks & Trails`.
-
-**Incomplete against its own scope, deliberately.** The widget tab-order gate is not here: the
-shell window has no focusable controls, so a focus-chain assertion would pass over zero widgets
-— the vacuous check this task exists to avoid. It lands with `T-016`/`T-017`. The installer half
-became `T-039`. `ai/TESTING.md` §9 and `REQUIREMENTS.md` §3 record both gaps rather than
-implying full coverage.
-
-**Three CI rounds were needed, and each failure was real rather than flaky:**
-1. `findChildren(QMenu)` also returns an untitled internal `QMenu` Qt creates for the menu bar.
-2. UI Automation returned an empty tree and `COMError 0x80040201`. A UIA client inspecting its
-   own process must not call from the thread owning the window — Qt builds its accessibility
-   bridge in response to `WM_GETOBJECT`, which that thread must handle. Queries now run in an
-   MTA worker thread while the main thread pumps events.
-3. `QMenu` wrappers died mid-test. The `QAction` list is what keeps them alive, so collecting
-   menus in one loop and asserting in a second releases the actions and kills the menus. The
-   first fix for this was wrong — it blamed the number of `menu()` calls, not the lifetime.
-**Owner:** Implementer
-**Priority:** High — this is what closes Phase 0's last exit criterion
-**Phase:** Phase 0 follow-up; must land before the first public release
-**Depends on:** `T-006`, `T-007`, `OPS-004`
-**Relevant context:** `OPS-004`, `OPS-003` (superseded classification), `NFR-005`,
-`ai/TESTING.md` §9, `REQUIREMENTS.md` §3
-**Affected surfaces:** `.github/workflows/ci.yml`, `tests/ui/`, `ai/TESTING.md`,
-`REQUIREMENTS.md` §3
-**Risk:** Medium — it converts release-blocking manual work into automation, so a weak
-implementation would retire a gate without replacing it
-
-#### Scope
-
-`OPS-003` assumed a CI runner has no desktop and wrote off most Windows verification as
-human-only. A spike disproved that: `windows-latest` reports `platformName == 'windows'`,
-a 1024×768 display, a native `HWND` whose title the Win32 API reads back, and captures
-screenshots with native font rendering.
-
-Move the objective half of Windows verification into CI:
-
-1. **Real-plugin rendering.** Run the UI suite on Windows without `QT_QPA_PLATFORM=offscreen`
-   as well as with it, and retain screenshots of each key window as artifacts.
-2. **Focus and keyboard.** Assert tab order and focus chain through synthetic key events on a
-   real window, not an offscreen one.
-3. **Accessibility tree.** Assert every control's name and role as exposed to UI Automation —
-   what a screen reader reads (`NFR-005`). Needs a dev-only dependency such as `comtypes`.
-
-The fourth item `OPS-004` reclassified — installer behavior — is **`T-039`**, not this task.
-An installer only exists in Phase 5, and this task must be completable now because it is what
-closes Phase 0's remaining exit criterion.
-
-#### Acceptance criteria
-
-- The Windows job runs the UI suite under the real `windows` platform plugin and uploads a
-  screenshot of every key window. **A screenshot is retained evidence, not a gate**: it is
-  uploaded for a human to look at and does not turn the build red on its own. Any claim that
-  a broken layout "fails" must be backed by a separate objective assertion — a widget's
-  geometry, visibility, or size — not by the image (`T031-R2`).
-- Tab order and focus chain are asserted on Windows, and reordering two widgets fails the test
-- Every interactive control exposes a non-empty accessible name and a correct role through UI
-  Automation; removing a label fails the test
-- `ai/TESTING.md` §9's manual Windows list is rewritten to only what remains subjective **plus
-  installer behavior**, which stays manual until `T-039` lands; `REQUIREMENTS.md` §3's
-  "known-unverified" wording is narrowed to match — **each item moved only once its replacement
-  automation has landed and is green**, never on the strength of this task's intent
-- Native file dialogs, reveal-in-file-manager and open-file behavior are handled per
-  `OPS-004`'s split: the request, path handling and shell verb are asserted; foreground and
-  file-association behavior stay on the manual list
-- Both the offscreen and real-plugin runs stay green, and the added time is recorded against
-  `T-006`'s budget
-
-#### Out of scope
-
-- Pixel-perfect screenshot diffing — retain screenshots as evidence first; baselines are a
-  separate decision, and a brittle image gate is worse than none
-- The subjective residue in `OPS-004`: whether rendering looks right, whether Narrator sounds
-  coherent, installer feel, long-running stability. Those still need a person and still block
-  first release
-- Installer verification — `T-039`, once Phase 5 produces an installer
-- Buying or renting a cloud Windows desktop — complementary, not part of this
-
-**Note:** this is the rare task that *reduces* release-blocking manual work. The risk is doing
-it shallowly: a screenshot nobody looks at and an accessibility assertion that passes on an
-empty tree would retire a real gate and replace it with theatre.
-
-The criteria are therefore of two kinds, and conflating them is exactly the failure mode
-(`P0-R7`). **Gates** — focus order, accessibility names and roles — are each stated as a
-mutation that must turn the suite red, and only those may retire a manual item. **Retained
-evidence** — the screenshots — is uploaded for a human to look at and fails nothing on its
-own; it supports a judgement rather than replacing one.
-
----
+*(none — both implemented tasks are in review)*
 
 ## Proposed — Phase 0
 
@@ -1214,6 +1034,55 @@ survives; and no orphan outlives the test session.
 
 ## Blocked
 
+### T-040 — Extend the Windows desktop gate to widget focus order
+
+**Status:** Proposed — blocked until `T-016` or `T-017` adds focusable controls
+**Owner:** Implementer
+**Priority:** High once unblocked — it completes a `T-026` acceptance criterion that is
+currently unmet
+**Phase:** Phase 1, landing with the first real widgets
+**Depends on:** `T-016` **or** `T-017` (whichever first adds focusable controls), `T-026`
+**Relevant context:** `T026-R3`, `OPS-004`, `NFR-005`, `ai/TESTING.md` §9 and §12
+**Affected surfaces:** `tests/ui/test_windows_desktop.py`, `ai/TESTING.md` §12
+**Risk:** Medium — the gap is easy to forget precisely because deferring it was correct
+
+#### Scope
+
+Filed from `T026-R3`. `T-026` requires "tab order and focus chain are asserted on Windows, and
+reordering two widgets fails the test". That criterion is **unmet**, and deferring it was the
+right call: the shell window has no focusable controls, so a focus-chain assertion would pass
+over zero widgets and gate nothing.
+
+The reviewer's point stands, though — unlike the installer gap, which became `T-039`, this had
+no owner. A criterion deferred into a comment is a criterion that quietly disappears. `T-016`
+mentions a deliberate tab order but does not require extending the real-plugin Windows suite,
+and `T-017` does not mention tab order at all.
+
+Extend the existing `windows_desktop` suite — do not start a second harness — to assert, under
+the real `windows` platform plugin:
+
+1. **Tab order** across the new controls matches the intended sequence.
+2. **The focus chain wraps**, forwards and backwards (`Tab` and `Shift+Tab`).
+3. **Every focusable control is reachable** by keyboard alone from the window's initial focus.
+
+#### Acceptance criteria
+
+- Reordering two widgets in the source **fails** the suite, demonstrated by an actual mutation
+  and recorded in the task, not asserted in the abstract
+- A control added without being placed in the tab order fails the suite
+- The assertions run under the real plugin, not offscreen — offscreen focus behavior does not
+  answer the question `NFR-005` asks
+- `ai/TESTING.md` §12 drops the "widget tab order is ungated" gap, and `T-026`'s acceptance
+  criterion is marked met **only then**
+
+#### Out of scope
+
+- Focus *appearance* — whether the focus ring is visible enough is subjective and stays with
+  the pre-release session (`OPS-004`)
+- Linux focus order, which the offscreen suite cannot meaningfully assert either
+
+---
+
 ### T-039 — Verify Windows installer behavior on the runner
 
 **Status:** Proposed — blocked until Phase 5 produces an installer
@@ -1271,7 +1140,223 @@ Assert, on `windows-latest`:
 
 ## In Review
 
-*(none)*
+### T-010 — Domain models, job state machine, and error taxonomy
+
+**Status:** Reviewed 2026-07-26 — **changes requested**, all four findings corrected the same
+day, awaiting focused re-review.
+
+- **`T010-R1` (High), closed.** The exhaustive test asked `can_transition()` which pairs were
+  illegal, so it compared the table with itself. The reviewer's `QUEUED → READY` mutation left
+  48 tests green. `tests/unit/test_job_state.py` now carries `EXPECTED`, transcribed by hand
+  from `ARCHITECTURE.md` §5, and checks production against it. The same mutation now fails 2
+  tests. **My own earlier mutation check missed this**: I verified that adding a *status* broke
+  the table and never that adding an *edge* did.
+- **`T010-R2` (Medium), closed.** `context` is a sorted tuple of pairs with a `context_map`
+  read-only view; in-place mutation raises. `MappingProxyType` was the obvious alternative and
+  cannot be pickled, which rules it out for an `ARC-002` value.
+- **`T010-R3` / `T010-R4` (Low), closed** as Planner amendments to the criteria below, per the
+  reviewer's recommendation to keep production unchanged. The `FAILED` exclusion is now an
+  explicit `CANCELLABLE` set rather than a silent `continue`.
+
+**Reported, not decided:** this task's acceptance criterion says the taxonomy covers "exactly
+the ten kinds in `ARCHITECTURE.md` §7". §7 has ten *rows*, but one declares two kinds
+(`FFMPEG_MISSING` / `FFMPEG_ERROR`), so there are **eleven**. All eleven are implemented, since
+dropping one to match a count would lose a real distinction. The criterion's wording needs
+correcting to eleven — a Planner edit, not an Implementer one (`AGENTS.md` §4).
+**Owner:** Implementer
+**Priority:** High — every other Phase 1 task imports this
+**Phase:** Phase 1
+**Depends on:** `T-001`
+**Relevant context:** `ARCHITECTURE.md` §4 (layers), §5 (data ownership), §7 (error taxonomy),
+§8 (settings propagation); `REQ-005`, `REQ-012`, `REQ-015`, `REQ-018`, `REQ-028`, `NFR-006`,
+`REQ-EXCL-001`; `ai/TESTING.md` §7 (State machine)
+**Affected surfaces:** `core/models.py`, `core/job_state.py`, `core/errors.py`,
+`tests/unit/`
+**Risk:** Medium — cheap to write, expensive to change once four other modules import it
+**Review base:** `ce7cec4`
+
+#### Scope
+
+The pure-domain foundation of the vertical slice. No Qt, no yt-dlp, no I/O beyond the standard
+library — `core/` is the layer that stays testable headless and gets reused by both the GUI
+process and the spawned worker.
+
+Three modules, deliberately together because they are one design and splitting them would
+mean three reviews of the same decisions:
+
+1. **`models.py`** — `Job`, `JobStatus`, `MediaInfo`, `FormatInfo`, `Preset`,
+   `DownloadRequest`. Plain dataclasses.
+2. **`job_state.py`** — the legal-transition table and the single function that applies a
+   transition. `ai/TESTING.md` §7 requires that every illegal transition raises; this is where
+   that guarantee lives.
+3. **`errors.py`** — the `ARCHITECTURE.md` §7 taxonomy as an enum, plus a `classify()` seam.
+   The module *defines* the taxonomy and how a classified failure is carried; `T-012` supplies
+   the yt-dlp-specific mapping into it, because that is the only place that may import
+   `yt_dlp` (§6).
+
+`errors.py` is pulled forward into this task rather than left to `T-012` for two reasons: it
+is pure `core/` code, and `T-012` needs to classify from its first line, so writing it there
+would put a `core/` design decision inside a task reviewed for its yt-dlp handling.
+
+Two properties are load-bearing and easy to lose:
+
+- **Everything here crosses a process boundary** (`ARC-002`). Every type must be picklable:
+  plain dataclasses and enums, no lambdas, no open handles, no `functools.partial`.
+- **`DownloadRequest` is frozen at job-creation time** (`ARCHITECTURE.md` §8). A running job
+  never observes a mid-flight settings change, which is what makes the worker's behavior
+  reproducible from the request alone.
+
+#### Acceptance criteria
+
+- Every model round-trips through `pickle` unchanged, asserted per type — this is what makes
+  `T-011`'s IPC possible, and it fails loudly the day someone adds an unpicklable field
+- **Each model's required fields and invariants are pinned**, not merely its picklability: a
+  `Job` without an id or url fails construction, and its status is always a valid `JobStatus`,
+  defaulting to `QUEUED` (**amended 2026-07-26 per `T010-R4`** — the criterion previously
+  required construction to fail without an explicit status, which contradicted the implemented
+  default; a new job is queued by definition, and no caller needs to distinguish "omitted" from
+  "queued"); `MediaInfo` and `FormatInfo` declare
+  the fields `ARCHITECTURE.md` §5 names. Empty dataclasses would satisfy a pickle test alone,
+  which is exactly the vacuous pass to avoid
+- `DownloadRequest` is immutable; attempting to mutate a field raises
+- The state machine accepts every transition in the legal table and **raises on every
+  transition outside it** — asserted exhaustively over the full `JobStatus × JobStatus`
+  product, not over a sampled list, so a newly added status cannot silently acquire
+  permissive behavior
+- Adding a `JobStatus` member without adding its transitions fails the suite
+- `CANCELLED` is reachable from exactly the states with work in flight — `QUEUED`, `PROBING`,
+  `READY`, `RUNNING`, `PAUSED`, `POST_PROCESSING` — and no state is reachable *from* a terminal
+  state (**amended 2026-07-26 per `T010-R3`**: this read "every non-terminal state", which
+  wrongly implies `FAILED`. Cancelling stops active work and a failed job has none; `REQ-015`'s
+  "remove" is deletion, not a lifecycle transition. `FAILED → QUEUED` remains its only edge)
+- The taxonomy covers exactly the **eleven** kinds in `ARCHITECTURE.md` §7 — asserted against
+  that list, so the table and the code cannot drift apart (**corrected 2026-07-26**: §7 has ten
+  *rows*, one of which declares two kinds, `FFMPEG_MISSING` and `FFMPEG_ERROR`. The old wording
+  counted rows. Collapsing them to match the count would lose a real distinction)
+- A classified failure preserves the original message verbatim alongside the classification
+  (`NFR-006`); the classification is additive and never replaces the text
+- `DRM_PROTECTED` and `CANCELLED` are marked non-retryable, and `NETWORK` is the only kind
+  marked auto-retryable (`REQ-018`, `REQ-EXCL-001`)
+- The layering test still passes: no Qt, no `yt_dlp` anywhere in `core/`
+
+#### Out of scope
+
+- Any yt-dlp exception mapping — `T-012`, and it is the only place that may import `yt_dlp`
+- Persistence of any of these types — `T-014` owns the schema
+- Preset *content* and selector translation — `T-015`; this task defines the `Preset` shape
+  only
+- Retry scheduling and backoff policy — Phase 2, though the retryable flag is defined here
+
+---
+
+### T-026 — Verify Windows behavior against the runner's real desktop
+
+**Status:** Reviewed 2026-07-26 — **changes requested**, all five findings corrected the same
+day, awaiting focused re-review on Windows.
+
+**The Phase 0 exit criterion was claimed too early.** Run `30208677607` was genuinely green and
+its `HWND` evidence real, but `T026-R1` is right that it proved a *widget* reaches a real
+desktop, not that the *application* launches: every test constructed `MainWindow` inside pytest
+and none touched `app.run`. The criterion is **not** met until the new subprocess launch test is
+green on Windows.
+
+- **`T026-R1` (High), corrected.** A subprocess test drives the real entry point under the real
+  plugin, with the launched process reporting its own `IsWindow` / `IsWindowVisible` /
+  `GetWindowTextW` results and a clean-stderr assertion.
+- **`T026-R2` (High), corrected.** The accessibility contract is now an equality over names and
+  roles. The File menu, Help menu and About dialog are each opened and queried by their own
+  window handle, so `Quit`, `About` and the dialog's Close button are covered — none of them
+  were reachable from the main window's handle alone.
+- **`T026-R3` (Medium), corrected.** Tab order now has a concrete owner: `T-040`.
+- **`T026-R4` (Low), corrected.** `mypy --platform win32` runs in the desktop job. It found
+  seven real errors on first use, including `QAction.menu()` being typed as `QObject`.
+- **`T026-R5` (Low), corrected.** Coordination documents reconciled.
+
+**Incomplete against its own scope, deliberately.** The widget tab-order gate is not here: the
+shell window has no focusable controls, so a focus-chain assertion would pass over zero widgets
+— the vacuous check this task exists to avoid. It lands with `T-016`/`T-017`. The installer half
+became `T-039`. `ai/TESTING.md` §9 and `REQUIREMENTS.md` §3 record both gaps rather than
+implying full coverage.
+
+**Three CI rounds were needed, and each failure was real rather than flaky:**
+1. `findChildren(QMenu)` also returns an untitled internal `QMenu` Qt creates for the menu bar.
+2. UI Automation returned an empty tree and `COMError 0x80040201`. A UIA client inspecting its
+   own process must not call from the thread owning the window — Qt builds its accessibility
+   bridge in response to `WM_GETOBJECT`, which that thread must handle. Queries now run in an
+   MTA worker thread while the main thread pumps events.
+3. `QMenu` wrappers died mid-test. The `QAction` list is what keeps them alive, so collecting
+   menus in one loop and asserting in a second releases the actions and kills the menus. The
+   first fix for this was wrong — it blamed the number of `menu()` calls, not the lifetime.
+**Owner:** Implementer
+**Priority:** High — this is what closes Phase 0's last exit criterion
+**Phase:** Phase 0 follow-up; must land before the first public release
+**Depends on:** `T-006`, `T-007`, `OPS-004`
+**Relevant context:** `OPS-004`, `OPS-003` (superseded classification), `NFR-005`,
+`ai/TESTING.md` §9, `REQUIREMENTS.md` §3
+**Affected surfaces:** `.github/workflows/ci.yml`, `tests/ui/`, `ai/TESTING.md`,
+`REQUIREMENTS.md` §3
+**Risk:** Medium — it converts release-blocking manual work into automation, so a weak
+implementation would retire a gate without replacing it
+
+#### Scope
+
+`OPS-003` assumed a CI runner has no desktop and wrote off most Windows verification as
+human-only. A spike disproved that: `windows-latest` reports `platformName == 'windows'`,
+a 1024×768 display, a native `HWND` whose title the Win32 API reads back, and captures
+screenshots with native font rendering.
+
+Move the objective half of Windows verification into CI:
+
+1. **Real-plugin rendering.** Run the UI suite on Windows without `QT_QPA_PLATFORM=offscreen`
+   as well as with it, and retain screenshots of each key window as artifacts.
+2. **Focus and keyboard.** Assert tab order and focus chain through synthetic key events on a
+   real window, not an offscreen one.
+3. **Accessibility tree.** Assert every control's name and role as exposed to UI Automation —
+   what a screen reader reads (`NFR-005`). Needs a dev-only dependency such as `comtypes`.
+
+The fourth item `OPS-004` reclassified — installer behavior — is **`T-039`**, not this task.
+An installer only exists in Phase 5, and this task must be completable now because it is what
+closes Phase 0's remaining exit criterion.
+
+#### Acceptance criteria
+
+- The Windows job runs the UI suite under the real `windows` platform plugin and uploads a
+  screenshot of every key window. **A screenshot is retained evidence, not a gate**: it is
+  uploaded for a human to look at and does not turn the build red on its own. Any claim that
+  a broken layout "fails" must be backed by a separate objective assertion — a widget's
+  geometry, visibility, or size — not by the image (`T031-R2`).
+- Tab order and focus chain are asserted on Windows, and reordering two widgets fails the test
+- Every interactive control exposes a non-empty accessible name and a correct role through UI
+  Automation; removing a label fails the test
+- `ai/TESTING.md` §9's manual Windows list is rewritten to only what remains subjective **plus
+  installer behavior**, which stays manual until `T-039` lands; `REQUIREMENTS.md` §3's
+  "known-unverified" wording is narrowed to match — **each item moved only once its replacement
+  automation has landed and is green**, never on the strength of this task's intent
+- Native file dialogs, reveal-in-file-manager and open-file behavior are handled per
+  `OPS-004`'s split: the request, path handling and shell verb are asserted; foreground and
+  file-association behavior stay on the manual list
+- Both the offscreen and real-plugin runs stay green, and the added time is recorded against
+  `T-006`'s budget
+
+#### Out of scope
+
+- Pixel-perfect screenshot diffing — retain screenshots as evidence first; baselines are a
+  separate decision, and a brittle image gate is worse than none
+- The subjective residue in `OPS-004`: whether rendering looks right, whether Narrator sounds
+  coherent, installer feel, long-running stability. Those still need a person and still block
+  first release
+- Installer verification — `T-039`, once Phase 5 produces an installer
+- Buying or renting a cloud Windows desktop — complementary, not part of this
+
+**Note:** this is the rare task that *reduces* release-blocking manual work. The risk is doing
+it shallowly: a screenshot nobody looks at and an accessibility assertion that passes on an
+empty tree would retire a real gate and replace it with theatre.
+
+The criteria are therefore of two kinds, and conflating them is exactly the failure mode
+(`P0-R7`). **Gates** — focus order, accessibility names and roles — are each stated as a
+mutation that must turn the suite red, and only those may retire a manual item. **Retained
+evidence** — the screenshots — is uploaded for a human to look at and fails nothing on its
+own; it supports a judgement rather than replacing one.
 
 ## Complete
 

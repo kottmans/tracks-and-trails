@@ -115,7 +115,8 @@ def test_a_failure_without_a_message_is_rejected() -> None:
 def test_context_is_carried_separately_from_the_message() -> None:
     """So presentation can use structured detail without parsing prose."""
     detail = classify("ffmpeg exited non-zero", ErrorKind.FFMPEG_ERROR, exit_code="1")
-    assert detail.context == {"exit_code": "1"}
+    assert detail.context == (("exit_code", "1"),)
+    assert detail.context_map["exit_code"] == "1"
     assert "exit_code" not in detail.message
 
 
@@ -126,12 +127,65 @@ def test_failure_detail_is_immutable() -> None:
         detail.kind = ErrorKind.NETWORK  # type: ignore[misc]
 
 
+def test_context_cannot_be_mutated_in_place() -> None:
+    """`T010-R2`. The original `dict` field made this succeed, silently.
+
+    It matters more than tidiness for an IPC value: `multiprocessing.Queue` may serialize on
+    its feeder thread *after* `put()` returns, so a mutation landing between those two moments
+    changes what crosses the process boundary, with no visible cause at either end.
+    """
+    detail = classify("ffmpeg exited non-zero", ErrorKind.FFMPEG_ERROR, exit_code="1")
+
+    with pytest.raises(TypeError):
+        detail.context[0] = ("exit_code", "0")  # type: ignore[index]
+    with pytest.raises(TypeError):
+        detail.context_map["exit_code"] = "0"  # type: ignore[index]
+
+    assert detail.context_map["exit_code"] == "1"
+
+
+def test_the_read_only_view_does_not_leak_a_writable_copy() -> None:
+    """A view that silently accepted writes would be worse than none — the caller would
+    believe the change had taken effect."""
+    detail = classify("nope", ErrorKind.DISK, path="/output/clip.mp4")
+    with pytest.raises(AttributeError):
+        detail.context_map.clear()  # type: ignore[attr-defined]
+    with pytest.raises(TypeError):
+        del detail.context_map["path"]  # type: ignore[attr-defined]
+
+
+def test_context_order_does_not_affect_equality() -> None:
+    """Two details built from the same pairs must compare equal however they were built.
+
+    Otherwise a value object's identity would depend on kwargs order, which nothing else in
+    the system preserves across a process boundary.
+    """
+    first = classify("x", ErrorKind.DISK, a="1", b="2")
+    second = classify("x", ErrorKind.DISK, b="2", a="1")
+    assert first == second
+
+
+def test_a_context_entry_that_is_not_a_string_pair_is_rejected() -> None:
+    """Persisted and sent between processes; a stray non-string is a latent decode failure."""
+    with pytest.raises(ValueError, match="pairs"):
+        FailureDetail(kind=ErrorKind.DISK, message="m", context=(("exit_code", 1),))  # type: ignore[arg-type]
+
+
 def test_failure_detail_round_trips_through_pickle() -> None:
     """`ARC-002`: this travels from the worker process back to the GUI."""
-    detail = classify("disk full", ErrorKind.DISK, path="/output/clip.mp4")
+    detail = classify("disk full", ErrorKind.DISK, path="/output/clip.mp4", code="28")
     restored = pickle.loads(pickle.dumps(detail))
     assert restored == detail
     assert restored.retryable == detail.retryable
+    assert restored.context == detail.context
+    assert restored.context_map["path"] == "/output/clip.mp4"
+
+
+def test_the_restored_copy_is_also_immutable() -> None:
+    """Unpickling must not quietly produce a mutable twin of an immutable record."""
+    restored = pickle.loads(pickle.dumps(classify("x", ErrorKind.DISK, k="v")))
+    with pytest.raises(TypeError):
+        restored.context[0] = ("k", "other")
 
 
 def test_error_kind_values_are_stable_strings() -> None:
