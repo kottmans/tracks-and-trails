@@ -222,24 +222,27 @@ def test_every_menu_action_is_reachable_by_a_keyboard_mnemonic(shown_window: Mai
     a menu the user can reach and has no mnemonic to check — the first run of this test failed
     on exactly that.
 
-    `menu()` is called **once per action** and the result held. Calling it twice — once in a
-    comprehension's condition and again in its expression — hands back two Python wrappers for
-    one C++ object, and the discarded one takes the object with it: "Internal C++ object
-    (QMenu) already deleted", which is how the second run of this test failed.
+    Everything happens in **one pass, with `actions` held in a local**. Collecting the menus
+    first and asserting over them afterwards fails with "Internal C++ object (QMenu) already
+    deleted": the `QAction` wrappers are what keep the menu wrappers alive, so once that list
+    is released the collected menus are dead. Two CI runs failed on variations of this before
+    the lifetime, rather than the number of `menu()` calls, turned out to be the cause.
     """
-    menus = []
-    for action in shown_window.menuBar().actions():
-        menu = action.menu()
-        if menu is not None:
-            menus.append(menu)
-    assert menus, "the menu bar exposes no menus"
+    actions = shown_window.menuBar().actions()
+    checked = 0
 
-    for menu in menus:
+    for action in actions:
+        menu = action.menu()
+        if menu is None:
+            continue
         assert "&" in menu.title(), f"menu {menu.title()!r} has no keyboard mnemonic"
-        for action in menu.actions():
-            if action.isSeparator():
+        for item in menu.actions():
+            if item.isSeparator():
                 continue
-            assert "&" in action.text(), f"action {action.text()!r} has no keyboard mnemonic"
+            assert "&" in item.text(), f"action {item.text()!r} has no keyboard mnemonic"
+        checked += 1
+
+    assert checked, "the menu bar exposes no menus"
 
 
 def test_the_quit_shortcut_is_bound(shown_window: MainWindow) -> None:
