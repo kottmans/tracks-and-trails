@@ -106,6 +106,16 @@ non-negotiable invariant. If an instruction appears to require that, say so and 
   through the download manager (`ARC-002`).
 
 **Git**
+- This is an individual/personal project. Normal development stays on the
+  maintainer-designated integration branch, `main`.
+- Do **not** create or switch branches merely because a task, phase, development cycle,
+  agent session, or review starts. Commits and exact base/head SHAs on `main` are sufficient
+  review boundaries.
+- A branch requires explicit maintainer instruction and a concrete need: isolated concurrent
+  work, a risky experiment, a long-running release/hotfix/backport, an external contribution,
+  or repository protection that prevents direct work on `main`.
+- If a task begins on a non-`main` branch, do not switch, merge, rebase, or delete it without
+  explicit instruction; report the branch in the handoff.
 - Do **not** commit or push unless explicitly instructed.
 - Do **not** name AI tools as commit authors or co-authors. No `Co-Authored-By:` trailers
   for AI tools, no "generated with" footers. Commit history names the human maintainer only.
@@ -220,6 +230,7 @@ completion note for routine work. Routine fixes belong in `ai/TASKS.md` and `CHA
 
 *Documentation system: AI-Assisted Project Documentation Convention rev 2026-07-18.1,
 Standard profile. The review-convergence policy in §9 was adopted by direct maintainer
-instruction from convention rev 2026-07-26.1. See `DOC-001` in `ai/DECISIONS.md`. The
+instruction, and the individual-project branch policy in §7 was adopted by the same
+instruction, from convention rev 2026-07-26.2. See `DOC-001` in `ai/DECISIONS.md`. The
 convention document itself lives outside this repository; this file is self-contained and
 does not depend on it.*
