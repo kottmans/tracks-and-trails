@@ -12,12 +12,54 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-007` — the only Ready task. `T-005` is In Review. `T-001` through
-`T-004`, `T-006`, `T-022` and `T-023` are complete. Nothing is blocked.
+**Start here:** `T-024` to close the `T-005` review findings, then `T-007`. `T-005` is
+In Review. `T-001` through `T-004`, `T-006`, `T-022` and `T-023` are complete. Nothing is
+blocked.
 
 ---
 
 ## Ready
+
+### T-024 — Close T-005 review findings
+
+**Status:** Ready
+**Owner:** Implementer (test correction) + Planner (coordination correction)
+**Priority:** High
+**Phase:** Phase 0
+**Depends on:** `T-005`
+**Relevant context:** `ai/REVIEWS.md` findings `T005-R1` through `T005-R3`;
+`ARCHITECTURE.md` §4 and §6
+**Affected surfaces:** `tests/unit/test_layering.py`, `ai/STATUS.md`
+**Risk:** **High** — a green layering guard can be weakened around its sampled fixtures
+
+#### Scope
+
+Make the analyzer's self-tests pin the complete architectural rule definitions rather than
+sample paths. Keep source discovery static and rooted in the repository without importing the
+package under test. Correct the stale blanket statement in `STATUS.md` that nothing in
+`TESTING.md` is implemented.
+
+#### Acceptance criteria
+
+- Narrowing the core rule to the currently sampled `core/models.py` and `core/paths.py` makes
+  the suite red
+- Adding any third existing module to `YTDLP_OWNERS` makes the suite red
+- Dropping `shiboken6`, emptying `YTDLP_OWNERS`, or making `check()` return `[]` makes the
+  suite red
+- The five real-tree violation probes from `T-005` still fail with the offending file and
+  rule in the message, and the source tree is restored byte-for-byte
+- The test locates and parses the repository source tree without importing
+  `tracks_and_trails`; every Python module under that tree is swept
+- `STATUS.md` accurately distinguishes implemented tests from approved future coverage
+- The default suite and Linux/Windows matrix are green
+- `T005-R1` through `T005-R3` receive focused re-review
+
+#### Out of scope
+
+- Detecting dynamic `importlib.import_module()` or `__import__()` calls
+- Changing the layer boundaries or adding a fifth rule
+
+---
 
 ### T-007 — Application shell window
 
@@ -238,8 +280,45 @@ statements are analyzed. `importlib.import_module("PySide6")` and `__import__` a
 detected. Accepted, not overlooked — a dynamic import of Qt is conspicuous in review in a way
 a plain one is not.
 
-**Checks:** `ruff check`, `ruff format --check`, `mypy src`, and `pytest` all green; suite is
-now 72 passed, 1 deselected (was 27).
+**Checks:** `ruff check`, `ruff format --check`, `mypy src`, and `pytest` all green.
+
+#### Review corrections — 2026-07-25
+
+**`T005-R1`, High — the analyzer's self-protection was routed around.** The finding is
+correct and it is the exact failure the original design claimed to prevent. The synthetic
+cases asserted the analyzer's behavior at a handful of *hardcoded paths*, so narrowing the
+`core/` predicate to those same paths left all 45 tests green, as did adding
+`downloader/environment.py` as a third yt-dlp owner. The guard was checking itself against its
+own examples rather than against the architecture.
+
+Fixed by stating the architecture a second time, independently. `architecture_forbids()`
+derives what a file may not import straight from its path, sharing no constant or predicate
+with `RULES`, and `test_every_module_is_actually_guarded` sweeps **every real module** in the
+tree asserting the analyzer would catch every package the architecture forbids there. A
+literal `ARCH_YTDLP_OWNERS` is compared against `YTDLP_OWNERS`, so widening the allowlist
+fails rather than silently permitting a third importer. Two statements that must agree cannot
+be routed around by editing one.
+
+Verified by reproducing the reviewer's two bypasses and two more:
+
+| Weakening | Result |
+|---|---|
+| Narrow the `core/` predicate to `core/models.py` + `core/paths.py` | **fails** — every other `core/` module reported as an enforcement hole |
+| Add `downloader/environment.py` as a third yt-dlp owner | **fails** twice — allowlist mismatch, and `environment.py` unguarded |
+| Drop `shiboken6` from `QT` | **fails** — `shiboken6` uncaught across `core/` |
+| Make `check()` return `[]` unconditionally | **fails** — 36 of 76 |
+
+**`T005-R2`, Low — the static test imported the package under test.** Correct and
+self-contradictory: locating `SRC` via `import tracks_and_trails` executed its `__init__` and
+bound the analysis to whichever copy was installed rather than this checkout. `SRC` is now
+derived from `Path(__file__)`, so the module imports nothing from the package it analyzes.
+
+**`T005-R3`, Low — stale current truth.** `STATUS.md` still said nothing in `TESTING.md` was
+implemented. Rewritten to separate the two claims that had been conflated: no application
+*behavior* exists, which remains true and is the warning worth keeping, while the *scaffolding*
+that guards it does — CI, asset invariants, and this test.
+
+**Suite:** 103 passed, 1 deselected (was 27 before `T-005`, 72 at first review).
 
 ---
 

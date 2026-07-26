@@ -25,9 +25,11 @@ from pathlib import Path
 
 import pytest
 
-import tracks_and_trails
-
-SRC = Path(tracks_and_trails.__file__).parent
+#: Located from this file's own path rather than by importing the package. Importing
+#: `tracks_and_trails` to read `__file__` would execute its `__init__`, contradicting this
+#: module's whole premise, and would analyze whichever copy happens to be installed rather
+#: than the source tree in this checkout (`T005-R2`).
+SRC = Path(__file__).resolve().parents[2] / "src" / "tracks_and_trails"
 
 QT = frozenset({"PySide6", "shiboken6"})
 YTDLP = frozenset({"yt_dlp"})
@@ -106,6 +108,63 @@ def source_files() -> list[Path]:
 
 def rel(path: Path) -> str:
     return path.relative_to(SRC).as_posix()
+
+
+# ---------------------------------------------------------------------------
+# An independent restatement of the architecture.
+#
+# Everything above describes how the rules are *implemented*. Everything below describes what
+# the rules must *achieve*, derived from ARCHITECTURE.md straight from a file path and sharing
+# no constant or predicate with RULES. That separation is the point (`T005-R1`): the original
+# self-tests asserted the analyzer's behavior at a handful of hardcoded paths, so narrowing a
+# rule to exactly those paths — or adding a third yt-dlp owner — left every test green. Two
+# statements that must agree cannot be routed around by editing one of them.
+# ---------------------------------------------------------------------------
+
+#: ARCHITECTURE.md §6 and NFR-008, written out literally. If `YTDLP_OWNERS` above gains an
+#: entry, this does not move with it and the disagreement fails the suite.
+ARCH_YTDLP_OWNERS = frozenset({"downloader/worker.py", "downloader/ytdlp_adapter.py"})
+
+#: ARCHITECTURE.md §4, written out literally, for the same reason.
+ARCH_QT_PACKAGES = frozenset({"PySide6", "shiboken6"})
+ARCH_YTDLP_PACKAGES = frozenset({"yt_dlp"})
+
+
+def architecture_forbids(rel_path: str) -> frozenset[str]:
+    """What `ARCHITECTURE.md` says this file may not import, read straight from its path."""
+    forbidden: set[str] = set()
+    # §4: core/ is pure Python, no Qt. §4 bullets + ARC-002: the worker inherits no Qt.
+    if rel_path.startswith("core/") or rel_path == "downloader/worker.py":
+        forbidden |= ARCH_QT_PACKAGES
+    # §6 + NFR-008: exactly two modules may import yt-dlp; ui/ is covered by this too.
+    if rel_path not in ARCH_YTDLP_OWNERS:
+        forbidden |= ARCH_YTDLP_PACKAGES
+    return frozenset(forbidden)
+
+
+def test_the_owner_allowlist_matches_the_architecture() -> None:
+    """`YTDLP_OWNERS` may not quietly grow a third entry (`T005-R1`)."""
+    assert frozenset(YTDLP_OWNERS) == ARCH_YTDLP_OWNERS, (
+        "YTDLP_OWNERS disagrees with ARCHITECTURE.md §6. Widening the allowlist is an "
+        "architecture change and needs a Planner decision, not a test edit."
+    )
+
+
+@pytest.mark.parametrize("path", source_files(), ids=rel)
+def test_every_module_is_actually_guarded(path: Path) -> None:
+    """For every real module, the analyzer must catch every import the architecture forbids.
+
+    This is the check that closes `T005-R1`. It sweeps the real tree rather than a fixture
+    list, so narrowing any rule's `applies_to` leaves some module unguarded and fails here,
+    and dropping a package from `QT` or `YTDLP` leaves that package uncaught and fails here.
+    """
+    rel_path = rel(path)
+    for package in sorted(architecture_forbids(rel_path)):
+        violations = check(rel_path, f"import {package}")
+        assert violations, (
+            f"{rel_path} may not import {package} per ARCHITECTURE.md §4/§6, but no rule in "
+            f"RULES would catch it. The enforcement has a hole at this path."
+        )
 
 
 def test_source_tree_is_not_empty() -> None:

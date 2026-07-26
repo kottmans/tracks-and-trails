@@ -97,6 +97,12 @@ Development machine, verified 2026-07-25:
 
 ## Notes
 
-Nothing in `ARCHITECTURE.md` or `TESTING.md` has been implemented. Both describe the approved
-target, not reality. Treat any claim of implemented behavior as false until this section says
-otherwise.
+**No application behavior exists yet.** `ARCHITECTURE.md` describes the approved target, not
+reality: not one module in §4's structure has an implementation, and nothing downloads,
+persists, or renders anything. Treat any claim of implemented *behavior* as false until this
+section says otherwise.
+
+What *has* been built is the scaffolding that guards that behavior when it arrives, and those
+parts of `TESTING.md` are real: CI on both platforms (`T-006`), the shipped-asset invariants
+(`T-022`), and the layering enforcement test (`T-005`, in review). Of `TESTING.md` §7's ten
+mandatory areas, exactly one — Layering — is covered.
