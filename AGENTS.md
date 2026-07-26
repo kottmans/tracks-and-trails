@@ -153,16 +153,29 @@ The same asymmetry applies to tests: a test that passes on Linux may encode a Li
 
 ## 9. Review convergence
 
-Tracks & Trails uses the Standard review budget:
+**There is no cap on review passes.** Review continues until the verdict is **Approved** or
+**Approved with follow-ups**. A blocking defect found on any round gets fixed in that round —
+including one found late, and including one introduced by a correction.
 
-1. One comprehensive initial review.
-2. One focused correction re-review.
+This follows convention rev **2026-07-26.3**, which withdrew the Standard-profile review
+budget. The change came from this project's experience: the cap was reached twice in one
+session, and on both occasions the passes it would have prevented found real blocking defects —
+a digest collision, a regression a correction had itself introduced, and two more that an
+implementer verification turned up afterwards. A cap that stops before the defects do is not
+buying convergence; it defers the same work to a later task with less context.
 
-A third pass requires explicit maintainer authorization and a remaining blocking defect,
-failed acceptance criterion, failed required check, or regression introduced by the
-correction. The budget never requires approval of unsafe or knowingly incorrect work. When
-it is exhausted, stop the Claude/Codex loop and ask the maintainer to choose another pass,
-accepted risk, scope change, or carry-forward work.
+Convergence comes from **scope discipline**, not from counting passes:
+
+- A focused re-review verifies the original blocking findings and checks the correction diff for
+  regressions. It is not a new unbounded audit.
+- Non-blocking findings become follow-up work with an owner and target task; they do not keep
+  the reviewed task in review, and they do not reopen it.
+- The absence of a cap is not licence to reopen settled ground. A finding that revisits a
+  decision already recorded as settled needs new evidence, not a second opinion.
+
+**If rounds stop converging — the same defect class recurring, or corrections generating fresh
+blockers — that is a signal to change approach**, not to keep iterating. Say so, and put the
+choice to the maintainer: split the task, revisit the design, or accept a documented risk.
 
 Every finding records both **severity** and **Blocks approval: Yes | No**:
 
@@ -240,9 +253,9 @@ completion note for routine work. Routine fixes belong in `ai/TASKS.md` and `CHA
 
 ---
 
-*Documentation system: AI-Assisted Project Documentation Convention rev 2026-07-18.1,
-Standard profile. The review-convergence policy in §9 was adopted by direct maintainer
-instruction, and the individual-project branch policy in §7 was adopted by the same
-instruction, from convention rev 2026-07-26.2. See `DOC-001` in `ai/DECISIONS.md`. The
-convention document itself lives outside this repository; this file is self-contained and
-does not depend on it.*
+*Documentation system: AI-Assisted Project Documentation Convention, Standard profile.
+Adopted at rev 2026-07-18.1 (`DOC-001`); §7's individual-project branch policy and §9's
+review-convergence policy came from rev 2026-07-26.2, and §9's removal of the review budget
+from rev **2026-07-26.3** — a convention change this project's experience prompted. No
+deliberate deviations from the convention are in force. The convention document itself lives
+outside this repository; this file is self-contained and does not depend on it.*
