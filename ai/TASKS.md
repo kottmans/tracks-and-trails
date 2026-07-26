@@ -218,9 +218,14 @@ criteria, and a review base before it moves to Ready.
 
 ## In Review
 
+*(none)*
+
+## Complete
+
 ### T-027 — Reject unsafe stored window geometry
 
-**Status:** In Review — addressed 2026-07-25; awaiting re-review
+**Status:** Complete
+**Completed:** 2026-07-25 — squash-merged via PR #7. `T005`-era findings and `P0-R2` … `P0-R5` were reviewer-verified; the corrections to `P0-R1`, `P0-R6`, `P0-R7` and `P0-R8` were **accepted by the maintainer without a final re-review**. Recorded rather than implied: those four are maintainer-accepted, not reviewer-verified.
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 0 review correction
@@ -246,7 +251,8 @@ previous monitor layout from restoring the only window entirely off-screen.
 
 ### T-028 — Remove undocumented cross-thread Qt access from the launch test
 
-**Status:** In Review — addressed 2026-07-25; awaiting re-review
+**Status:** Complete
+**Completed:** 2026-07-25 — squash-merged via PR #7. `T005`-era findings and `P0-R2` … `P0-R5` were reviewer-verified; the corrections to `P0-R1`, `P0-R6`, `P0-R7` and `P0-R8` were **accepted by the maintainer without a final re-review**. Recorded rather than implied: those four are maintainer-accepted, not reviewer-verified.
 **Owner:** Reviewer / Implementer
 **Priority:** Medium
 **Phase:** Phase 0 review correction
@@ -267,7 +273,8 @@ previous monitor layout from restoring the only window entirely off-screen.
 
 ### T-029 — Complete the frozen-probe negative and evidence gates
 
-**Status:** In Review — addressed 2026-07-25; awaiting re-review
+**Status:** Complete
+**Completed:** 2026-07-25 — squash-merged via PR #7. `T005`-era findings and `P0-R2` … `P0-R5` were reviewer-verified; the corrections to `P0-R1`, `P0-R6`, `P0-R7` and `P0-R8` were **accepted by the maintainer without a final re-review**. Recorded rather than implied: those four are maintainer-accepted, not reviewer-verified.
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 0 review correction
@@ -318,7 +325,8 @@ artifact, which now contains the log.
 
 ### T-030 — Ratify the two Phase 0 architecture additions
 
-**Status:** In Review — addressed 2026-07-25; awaiting re-review
+**Status:** Complete
+**Completed:** 2026-07-25 — squash-merged via PR #7. `T005`-era findings and `P0-R2` … `P0-R5` were reviewer-verified; the corrections to `P0-R1`, `P0-R6`, `P0-R7` and `P0-R8` were **accepted by the maintainer without a final re-review**. Recorded rather than implied: those four are maintainer-accepted, not reviewer-verified.
 **Owner:** Planner
 **Priority:** Medium
 **Phase:** Phase 0 review correction
@@ -340,7 +348,8 @@ artifact, which now contains the log.
 
 ### T-031 — Correct OPS-004 before deciding it
 
-**Status:** In Review — addressed 2026-07-25; awaiting re-review
+**Status:** Complete
+**Completed:** 2026-07-25 — squash-merged via PR #7. `T005`-era findings and `P0-R2` … `P0-R5` were reviewer-verified; the corrections to `P0-R1`, `P0-R6`, `P0-R7` and `P0-R8` were **accepted by the maintainer without a final re-review**. Recorded rather than implied: those four are maintainer-accepted, not reviewer-verified.
 **Owner:** Planner / Maintainer + Reviewer (`ai/TESTING.md`)
 **Priority:** High
 **Phase:** Phase 0 review correction
@@ -363,7 +372,8 @@ artifact, which now contains the log.
 
 ### T-032 — Reconcile Phase 0 current-truth documents
 
-**Status:** In Review — addressed 2026-07-25; awaiting re-review
+**Status:** Complete
+**Completed:** 2026-07-25 — squash-merged via PR #7. `T005`-era findings and `P0-R2` … `P0-R5` were reviewer-verified; the corrections to `P0-R1`, `P0-R6`, `P0-R7` and `P0-R8` were **accepted by the maintainer without a final re-review**. Recorded rather than implied: those four are maintainer-accepted, not reviewer-verified.
 **Owner:** Planner + Reviewer (`ai/TESTING.md`)
 **Priority:** Medium
 **Phase:** Phase 0 review correction
@@ -383,8 +393,6 @@ artifact, which now contains the log.
   retaining the honest boundary that only one of §7's ten mandatory areas is covered
 
 ---
-
-## Complete
 
 ### T-007 — Application shell window
 
