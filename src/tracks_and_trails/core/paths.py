@@ -1,4 +1,252 @@
-"""Platform directories, output-template rendering, and filename sanitizing.
+"""Filename sanitizing and output-path containment.
 
 Enforces the intersection of Linux and Windows filesystem rules, and guarantees a
-rendered template cannot escape the configured output directory (ARCHITECTURE.md §8)."""
+rendered template cannot escape the configured output directory (`ARCHITECTURE.md` §8).
+
+**The security property, stated plainly: a title-derived filename must never escape the
+configured output directory.** Titles come from media sites. They are attacker-influenced data
+that reaches this module after yt-dlp renders them into a template, and `ARCHITECTURE.md` §9
+already forbids them reaching a shell. This module is the other half: they must not reach a
+path outside the directory the user chose either.
+
+**Both platforms' rules, on both platforms.** `ai/TESTING.md` §7 requires Windows-illegal names
+to be sanitized on Linux too. A file named `aux.mp4` or `what?.mp4` is legal on ext4 and
+unopenable once the directory syncs to Windows, gets shared, or is restored onto another
+machine — so the intersection is enforced everywhere rather than per-host. That is also why
+this module takes no interest in `os.name`: identical input produces identical output on both
+platforms, which is what makes it testable in CI on either.
+
+**What this module does not do.** It does not render output templates — that uses yt-dlp's own
+mechanism and belongs to `ytdlp_adapter.py` (`T-012`), the only code allowed to know that
+syntax (`ARCHITECTURE.md` §6). It writes nothing. It answers one question: *given a candidate
+path and a target directory, what is the safe path inside that directory, or is there none?*
+"""
+
+import unicodedata
+from pathlib import Path, PureWindowsPath
+from typing import Final
+
+#: Characters NTFS forbids outright, plus the path separators of both platforms.
+#:
+#: `/` is included even though it is legal in a Windows *component* — by the time a title
+#: reaches here it is a single component, so a separator inside it is an escape attempt, not a
+#: directory the user asked for.
+_ILLEGAL_CHARACTERS: Final = frozenset('<>:"/\\|?*')
+
+#: Windows reserved device names. Reserved with **any** extension: `CON.mp4` is as unusable as
+#: `CON`, which is the case usually missed — the check must run against the stem, not the name.
+_RESERVED_NAMES: Final = frozenset(
+    {"CON", "PRN", "AUX", "NUL"}
+    | {f"COM{digit}" for digit in "123456789"}
+    | {f"LPT{digit}" for digit in "123456789"}
+)
+
+#: Substituted for anything illegal. A visible marker beats silent deletion: a user who sees
+#: `Artist - Song_ Live.mp4` can tell something was replaced, where `Artist - Song Live.mp4`
+#: looks like the title always was that.
+_REPLACEMENT: Final = "_"
+
+#: Used when sanitizing removes everything. Never an empty component.
+_FALLBACK_STEM: Final = "download"
+
+#: Conservative component limit. Most filesystems allow 255 *bytes*; a component of 255
+#: astral-plane characters is 1020 bytes in UTF-8 and fails on ext4 while passing a naive
+#: length check. Budgeting in encoded bytes is what makes this correct for emoji titles.
+MAX_COMPONENT_BYTES: Final = 200
+
+#: Conservative full-path limit. Windows' classic `MAX_PATH` is 260 including the drive and a
+#: NUL; long-path support exists but is opt-in per machine and per API, so a released
+#: application cannot assume it.
+MAX_PATH_CHARACTERS: Final = 240
+
+
+class UnsafePathError(Exception):
+    """A path that cannot be made safe, rather than one that merely needed cleaning.
+
+    Distinct from returning a sanitized value because the two demand different responses:
+    sanitizing is routine and silent, while this means a caller asked for something outside the
+    output directory and the request must fail loudly rather than be quietly redirected. A
+    silent redirect would write a file somewhere the user was never told about.
+    """
+
+
+def _strip_control_characters(text: str) -> str:
+    """Remove NUL and other control characters.
+
+    NUL truncates the name at the C API boundary — `"clip\\x00.mp4"` becomes `"clip"` — so it
+    is a way to change a filename after validation. The rest are unprintable and break tooling.
+    """
+    return "".join(char for char in text if unicodedata.category(char) != "Cc")
+
+
+def _truncate_to_bytes(text: str, limit: int) -> str:
+    """Shorten `text` so its UTF-8 encoding fits `limit` bytes, never splitting a character."""
+    encoded = text.encode("utf-8")
+    if len(encoded) <= limit:
+        return text
+    return encoded[:limit].decode("utf-8", errors="ignore")
+
+
+def sanitize_component(name: str) -> str:
+    """Return `name` as a single path component that is legal on Linux **and** Windows.
+
+    Deterministic and idempotent: `sanitize_component(sanitize_component(x))` equals
+    `sanitize_component(x)` for every input. That is what lets a caller pass a path through
+    twice — a preview and then the real write, say — without the second pass corrupting it.
+
+    Order matters. Illegal characters are replaced before trailing dots and spaces are stripped,
+    because replacing can expose a new trailing character; and the reserved-name check runs on
+    the resulting stem, because `CON.mp4` is reserved while `CONCERT.mp4` is not.
+    """
+    cleaned = _strip_control_characters(name)
+    cleaned = "".join(_REPLACEMENT if char in _ILLEGAL_CHARACTERS else char for char in cleaned)
+
+    if not cleaned.strip(". ") or set(cleaned) <= {"."}:
+        return _FALLBACK_STEM
+
+    stem, dot, extension = cleaned.partition(".")
+    if stem.upper() in _RESERVED_NAMES:
+        # Suffix rather than replace: the user's title stays readable, and the result cannot
+        # collide with a legitimately-named neighbour the way a fixed placeholder would.
+        stem = f"{stem}{_REPLACEMENT}"
+    cleaned = f"{stem}{dot}{extension}"
+
+    # The one place trailing dots and spaces are removed. Windows strips them when creating a
+    # file, so `"clip. "` and `"clip"` would silently collide; stripping here makes that visible.
+    # An earlier version also stripped before the reserved-name check, which mutation testing
+    # showed was redundant — every case reaches this line anyway.
+    return _truncate_to_bytes(cleaned, MAX_COMPONENT_BYTES).rstrip(". ") or _FALLBACK_STEM
+
+
+def sanitize_filename(name: str) -> str:
+    """Sanitize a filename, preserving its extension when shortening.
+
+    Truncating a name to a byte budget can eat the extension, which changes what the file *is*
+    to every tool that reads one. The stem is shortened instead, and the extension is kept.
+
+    **The split happens before any truncation**, on the raw name. Sanitizing first and splitting
+    afterwards loses the extension whenever the stem alone exceeds the budget — the component
+    truncation has already removed it by the time the split runs. Both length tests failed on
+    exactly that ordering.
+    """
+    raw_stem, dot, raw_extension = name.rpartition(".")
+    if not dot or not raw_extension or len(raw_extension) > 20:
+        # No usable extension: `.bashrc` (empty stem), no dot at all, or something too long to
+        # be one — a title containing a full stop is far likelier than a 20-character suffix.
+        return sanitize_component(name)
+
+    extension = sanitize_component(raw_extension).rstrip(". ")
+    if not extension:
+        return sanitize_component(name)
+
+    suffix = f".{extension}"
+    budget = MAX_COMPONENT_BYTES - len(suffix.encode("utf-8"))
+    if budget <= 0:
+        return sanitize_component(name)
+
+    stem = _truncate_to_bytes(sanitize_component(raw_stem), budget).rstrip(". ")
+    return f"{stem or _FALLBACK_STEM}{suffix}"
+
+
+def _components(candidate: str) -> list[str]:
+    """Split `candidate` on **both** platforms' separators, whatever the host is.
+
+    Reading a Windows-style path with POSIX rules is how `..\\..\\evil` survives as a single
+    component on Linux, only to become traversal once the name reaches a Windows machine. Both
+    separators are honoured so neither host's rules can hide the other's escape.
+
+    Deliberately a string split rather than `PurePosixPath`/`PureWindowsPath`. An earlier
+    version parsed with both and took whichever produced more parts; mutation testing showed
+    that was dead code — normalising the separator first makes the path classes redundant here,
+    and this is far easier to reason about at a security boundary.
+
+    Empty pieces are dropped, which is what neutralises a leading `/` (absolute) and a leading
+    `\\\\` (UNC) without either needing a special case.
+    """
+    return [piece for piece in candidate.replace("\\", "/").split("/") if piece]
+
+
+def is_contained(path: Path, directory: Path) -> bool:
+    """Whether `path` resolves inside `directory`.
+
+    Compares **resolved** paths, so a symlink inside the output directory pointing elsewhere
+    does not pass. `Path.resolve()` is used rather than string prefixing because
+    `/home/user/Downloads-evil` starts with `/home/user/Downloads` as a string while being a
+    different directory entirely.
+    """
+    try:
+        resolved = path.resolve()
+        base = directory.resolve()
+    except OSError:
+        return False
+    return resolved == base or base in resolved.parents
+
+
+def safe_output_path(directory: Path, candidate: str) -> Path:
+    """Return the sanitized path for `candidate` inside `directory`, or raise `UnsafePathError`.
+
+    The single entry point `ARCHITECTURE.md` §8 requires every output path to pass through.
+    `T-012` calls it on whatever yt-dlp's template renderer produced, before that path is used.
+
+    Traversal is **neutralized, not escaped**: `..` components are dropped rather than replaced
+    with a literal `..` string, absolute roots and drive letters are discarded so the path stays
+    relative to `directory`, and UNC prefixes cannot survive because their separators are
+    stripped during component splitting.
+
+    Raises rather than silently redirecting when nothing usable survives, or when the result
+    somehow still falls outside `directory` — the belt-and-braces check at the end. A silent
+    redirect writes a file somewhere the user was never told about.
+    """
+    if not candidate or not _strip_control_characters(candidate).strip():
+        raise UnsafePathError("empty candidate path")
+
+    raw_parts: list[str] = []
+    for index, part in enumerate(_components(candidate)):
+        # A drive letter or root is discarded, not sanitized into a directory name: the user
+        # asked for a file in `directory`, and `C:` becoming a folder called `C_` would be a
+        # surprising interpretation of an absolute path.
+        if part in (".", "", ".."):
+            continue
+        if index == 0 and PureWindowsPath(part).drive:
+            continue
+        raw_parts.append(part)
+
+    if not raw_parts:
+        raise UnsafePathError(f"nothing usable remained of {candidate!r}")
+
+    # The final component goes through `sanitize_filename` on its **raw** value, so the
+    # extension is split off before any truncation. Sanitizing it as a component first would
+    # have already discarded the suffix.
+    safe_parts = [sanitize_component(part) for part in raw_parts[:-1]]
+    safe_parts.append(sanitize_filename(raw_parts[-1]))
+    result = directory.joinpath(*safe_parts)
+
+    # Shorten from the *stem* if the assembled path is too long, so the extension and the
+    # directory structure both survive.
+    if len(str(result)) > MAX_PATH_CHARACTERS:
+        room = MAX_PATH_CHARACTERS - len(str(result.parent)) - 1
+        if room <= 0:
+            raise UnsafePathError(
+                f"output directory {str(directory)!r} leaves no room for a filename "
+                f"within {MAX_PATH_CHARACTERS} characters"
+            )
+        result = result.parent / _shorten_to(result.name, room)
+
+    # Defence in depth at a security boundary. Every escape is already neutralised above, so no
+    # input reaches this raise — mutation testing confirms removing it fails nothing, and that
+    # is recorded rather than hidden. It stays because the cost is one comparison and the thing
+    # it guards is "a file written somewhere the user was never told about"; `is_contained()`
+    # itself is directly tested, including the sibling-prefix and symlink cases.
+    if not is_contained(result, directory):
+        raise UnsafePathError(f"{candidate!r} would write outside {str(directory)!r}")
+    return result
+
+
+def _shorten_to(name: str, limit: int) -> str:
+    """Shorten `name` to `limit` characters, keeping its extension."""
+    if len(name) <= limit:
+        return name
+    stem, dot, extension = name.rpartition(".")
+    if not dot or len(extension) + 1 >= limit:
+        return name[:limit]
+    return f"{stem[: limit - len(extension) - 1].rstrip('. ') or _FALLBACK_STEM}.{extension}"

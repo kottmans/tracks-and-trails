@@ -152,81 +152,6 @@ the thing this task exists to avoid.
 
 ---
 
-### T-034 — Filename safety and output-path containment
-
-**Status:** **Ready** — `T-010` approved and complete, 2026-07-26
-**Owner:** Implementer
-**Priority:** **High** — a `ai/TESTING.md` §7 mandatory area, and `T-012` cannot write a file
-without it
-**Phase:** Phase 1
-**Depends on:** `T-010`
-**Relevant context:** `ARCHITECTURE.md` §8 (Filename safety), §9 (Security boundaries);
-`REQ-011`, `NFR-004`; `ai/TESTING.md` §7 (Path safety)
-**Affected surfaces:** `core/paths.py`, `tests/unit/`
-**Risk:** **High** — the failure mode is writing a file outside the directory the user chose,
-driven by a title an attacker controls
-**Review base:** the `T-010` merge commit
-
-#### Scope
-
-**Filed during Phase 1 planning: this was assigned to no task.** `ARCHITECTURE.md` §8 requires
-every output path to pass through `core/paths.py`, `ai/TESTING.md` §7 lists path safety as
-mandatory coverage, and `T-012` writes files — so the slice cannot be built without it, and
-nothing in the original outline owned it.
-
-**Corrected after review: this task no longer renders output templates.** The earlier draft
-put yt-dlp-compatible template rendering in `core/paths.py`, which cannot work —
-`ARCHITECTURE.md` §9 says rendering uses *yt-dlp's own template mechanism*, and `core/` may not
-import `yt_dlp` (§6). Reimplementing yt-dlp's template language in `core/` would be a second
-implementation of someone else's syntax, guaranteed to drift.
-
-The responsibility splits:
-
-- **`core/paths.py` (this task)** — pure, yt-dlp-free: platform directory resolution, filename
-  sanitizing, and the containment check. Given a candidate path and a target directory, it
-  answers *is this safe and legal on both platforms*, and returns a sanitized path.
-- **`ytdlp_adapter.py` (`T-012`)** — passes the output template to yt-dlp, which renders it,
-  then runs the result through this module before it is used. Rendering stays with the only
-  code allowed to know yt-dlp's syntax.
-
-Sanitizing enforces the **intersection** of Linux and Windows rules: reserved device names
-(`CON`, `NUL`, `LPT1`…), characters illegal on NTFS, trailing dots and spaces, and path-length
-limits.
-
-The security property, stated plainly: **a title-derived filename must never escape the
-configured output directory.** Titles come from media sites and are attacker-influenced data.
-After rendering, `..` and absolute components are rejected, and the result is verified to be
-contained within the target directory.
-
-#### Acceptance criteria
-
-- A rendered path is always inside the configured output directory. Asserted against titles
-  containing `../`, absolute paths, drive letters, UNC prefixes, NUL bytes, and separators for
-  the *other* platform — each must be neutralized, not merely escaped
-- Windows-illegal names are sanitized **on both platforms**, not only on Windows
-  (`ai/TESTING.md` §7) — a name legal on Linux that becomes illegal when the file syncs to
-  Windows is still a defect
-- Reserved device names are handled including with extensions (`CON.mp4`), which is the case
-  usually missed
-- Over-long paths are shortened without losing the extension or colliding with a neighbouring
-  file
-- Sanitizing is deterministic and idempotent: sanitizing an already-sanitized path returns it
-  unchanged, so passing a path through twice cannot corrupt it
-- The `REQ-011` live preview is **not** this task's — it needs a rendered template and
-  therefore belongs with `T-012`, which owns rendering. This task supplies the sanitizing step
-  the preview must pass through, and `T-012` asserts preview-equals-actual
-- `core/paths.py` imports no Qt and no `yt_dlp`
-
-#### Out of scope
-
-- **Output-template rendering** — `T-012`, because it uses yt-dlp's own mechanism
-- The `REQ-011` live preview — `T-012`, for the same reason
-- The settings UI for choosing a template — Phase 4
-- Collision policy when the target file already exists — Phase 2 alongside resume
-- Any actual file writing; this module computes and validates paths
-
----
-
 ### T-014 — Persistence: schema, migrations, and the job repository
 
 **Status:** **Ready** — `T-010` approved and complete, 2026-07-26
@@ -1076,6 +1001,102 @@ Assert, on `windows-latest`:
 ---
 
 ## In Review
+
+### T-034 — Filename safety and output-path containment
+
+**Status:** Implemented 2026-07-26, awaiting review. Closes a `ai/TESTING.md` §7 mandatory
+coverage area — **Path safety** — taking §7 from two of ten to three.
+
+**Mutation-checked, nine weakenings of the security property.** All nine now fail; two did not
+at first, and both were real:
+
+- **Splitting on only the host's separator survived.** A Windows-style path was flattened into
+  one mangled filename on Linux rather than read as a path — same input, different structure per
+  host, which `NFR-004` forbids. The guard turned out to be **dead code**: normalising the
+  separator first makes the `PurePosixPath`/`PureWindowsPath` comparison redundant. Simplified to
+  a string split and a real cross-platform test added. The test that should have caught it
+  compared `sanitize_component("aux.mp4")` **with itself** and proved nothing.
+- **Removing a trailing dot/space strip survived**, because a second strip later in the same
+  function already did the work. Redundancy, not a gap — the duplicate is gone.
+
+**One mutation is knowingly uncaught and documented in the module:** removing the final
+`is_contained()` call in `safe_output_path` fails nothing, because every escape is already
+neutralised before it. It stays as defence in depth at a security boundary — the cost is one
+comparison and what it guards is a file written somewhere the user was never told about — and
+`is_contained()` itself is directly tested, including the sibling-prefix and symlink cases.
+Recorded rather than hidden, since `ARC-003` argued the opposite about unreachable checks and
+the distinction deserves a reviewer's eye.
+**Owner:** Implementer
+**Priority:** **High** — a `ai/TESTING.md` §7 mandatory area, and `T-012` cannot write a file
+without it
+**Phase:** Phase 1
+**Depends on:** `T-010`
+**Relevant context:** `ARCHITECTURE.md` §8 (Filename safety), §9 (Security boundaries);
+`REQ-011`, `NFR-004`; `ai/TESTING.md` §7 (Path safety)
+**Affected surfaces:** `core/paths.py`, `tests/unit/`
+**Risk:** **High** — the failure mode is writing a file outside the directory the user chose,
+driven by a title an attacker controls
+**Review base:** the `T-010` merge commit
+
+#### Scope
+
+**Filed during Phase 1 planning: this was assigned to no task.** `ARCHITECTURE.md` §8 requires
+every output path to pass through `core/paths.py`, `ai/TESTING.md` §7 lists path safety as
+mandatory coverage, and `T-012` writes files — so the slice cannot be built without it, and
+nothing in the original outline owned it.
+
+**Corrected after review: this task no longer renders output templates.** The earlier draft
+put yt-dlp-compatible template rendering in `core/paths.py`, which cannot work —
+`ARCHITECTURE.md` §9 says rendering uses *yt-dlp's own template mechanism*, and `core/` may not
+import `yt_dlp` (§6). Reimplementing yt-dlp's template language in `core/` would be a second
+implementation of someone else's syntax, guaranteed to drift.
+
+The responsibility splits:
+
+- **`core/paths.py` (this task)** — pure, yt-dlp-free: platform directory resolution, filename
+  sanitizing, and the containment check. Given a candidate path and a target directory, it
+  answers *is this safe and legal on both platforms*, and returns a sanitized path.
+- **`ytdlp_adapter.py` (`T-012`)** — passes the output template to yt-dlp, which renders it,
+  then runs the result through this module before it is used. Rendering stays with the only
+  code allowed to know yt-dlp's syntax.
+
+Sanitizing enforces the **intersection** of Linux and Windows rules: reserved device names
+(`CON`, `NUL`, `LPT1`…), characters illegal on NTFS, trailing dots and spaces, and path-length
+limits.
+
+The security property, stated plainly: **a title-derived filename must never escape the
+configured output directory.** Titles come from media sites and are attacker-influenced data.
+After rendering, `..` and absolute components are rejected, and the result is verified to be
+contained within the target directory.
+
+#### Acceptance criteria
+
+- A rendered path is always inside the configured output directory. Asserted against titles
+  containing `../`, absolute paths, drive letters, UNC prefixes, NUL bytes, and separators for
+  the *other* platform — each must be neutralized, not merely escaped
+- Windows-illegal names are sanitized **on both platforms**, not only on Windows
+  (`ai/TESTING.md` §7) — a name legal on Linux that becomes illegal when the file syncs to
+  Windows is still a defect
+- Reserved device names are handled including with extensions (`CON.mp4`), which is the case
+  usually missed
+- Over-long paths are shortened without losing the extension or colliding with a neighbouring
+  file
+- Sanitizing is deterministic and idempotent: sanitizing an already-sanitized path returns it
+  unchanged, so passing a path through twice cannot corrupt it
+- The `REQ-011` live preview is **not** this task's — it needs a rendered template and
+  therefore belongs with `T-012`, which owns rendering. This task supplies the sanitizing step
+  the preview must pass through, and `T-012` asserts preview-equals-actual
+- `core/paths.py` imports no Qt and no `yt_dlp`
+
+#### Out of scope
+
+- **Output-template rendering** — `T-012`, because it uses yt-dlp's own mechanism
+- The `REQ-011` live preview — `T-012`, for the same reason
+- The settings UI for choosing a template — Phase 4
+- Collision policy when the target file already exists — Phase 2 alongside resume
+- Any actual file writing; this module computes and validates paths
+
+---
 
 ### T-042 — Make the model audit enforce nullability and boolean rejection
 

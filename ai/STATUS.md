@@ -78,8 +78,12 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
+- **`T-034`** — filename safety and output-path containment. Implemented; closes `TESTING.md`
+  §7's **Path safety** mandatory area and is one of `T-012`'s two remaining prerequisites.
 - **`T-042`** and **`T-043`** — test-strength fixes for guards that were correct but
-  unprotected, so a regression would have been silent. Both implemented, awaiting review.
+  unprotected, so a regression would have been silent.
+
+All three await review.
 
 ## Next
 
