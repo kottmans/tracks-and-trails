@@ -35,6 +35,9 @@
 - **`T-006` + `T-023` complete** — CI runs on Linux and Windows for every push and pull
   request, squash-merged as `e36525e` and green on `main`. Reviewed twice; the final
   documentation correction was maintainer-accepted with the focused re-review waived.
+- **`T-005` + `T-024` complete** — layering enforcement test, squash-merged as `88b810f`.
+  The analyser is guarded against being weakened, verified by eight distinct weakenings. Two
+  review rounds; the second re-review was waived by the maintainer.
 - **Windows is no longer entirely unverified.** `T-006`'s runners confirmed, with downloadable
   artifact evidence: Python 3.14.6 (MSC v.1944, AMD64), PySide6/shiboken6/Qt 6.11.1, a
   `QWidget` visible offscreen, and the full 27-test suite passing. This discharges the Windows
@@ -45,7 +48,7 @@
 
 ## In progress
 
-- **`T-005`** — In Review. Layering enforcement test implemented and verified; awaiting Codex.
+*(nothing active)*
 
 ## Next
 
