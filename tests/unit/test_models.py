@@ -7,6 +7,7 @@ every model's required fields and invariants are pinned as well.
 
 import dataclasses
 import pickle
+import typing
 from datetime import UTC, datetime
 
 import pytest
@@ -242,9 +243,6 @@ def test_every_model_the_module_defines_is_covered(request_: DownloadRequest) ->
         ("raw dict", {"title": "Example", "formats": []}),
         ("list of raw dicts", [{"format_id": "137"}]),
         ("mutable list of strings", ["a"]),
-        # `T041-R1`: `None` was absent from this sweep, which is how two non-optional
-        # counters came to accept it while all 54 tests stayed green.
-        ("none", None),
     ],
 )
 def test_no_field_accepts_raw_or_mutable_payloads(
@@ -277,6 +275,87 @@ def test_no_field_accepts_raw_or_mutable_payloads(
             f"({label}); a mutable payload reachable from a sent model can change after "
             "put() and before the feeder thread serializes it"
         )
+
+
+def annotated_types(model: type, name: str) -> set[type]:
+    """The concrete types in a field's annotation, unwrapping unions."""
+    hint = typing.get_type_hints(model)[name]
+    args = typing.get_args(hint) or (hint,)
+    return {arg for arg in args if isinstance(arg, type)}
+
+
+def optional_fields(model: type) -> set[str]:
+    """Fields whose annotation admits `None`."""
+    return {
+        name
+        for name in model.__dataclass_fields__  # type: ignore[attr-defined]
+        if type(None) in annotated_types(model, name)
+    }
+
+
+def numeric_fields(model: type) -> set[str]:
+    """Fields annotated as a number but **not** as a bool.
+
+    `bool` is an `int` subclass, so `True` would otherwise be stored as a count of 1.
+    """
+    result = set()
+    for name in model.__dataclass_fields__:  # type: ignore[attr-defined]
+        types_ = annotated_types(model, name)
+        if (int in types_ or float in types_) and bool not in types_:
+            result.add(name)
+    return result
+
+
+@pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
+def test_fields_that_cannot_be_none_reject_none(request_: DownloadRequest, model: type) -> None:
+    """`T041-R6`. Nullability, derived from each model's own annotations.
+
+    The hostile-payload sweep once carried a `None` case, and it was **vacuous**: its assertion
+    is `not isinstance(stored, dict | list)`, and `None` is neither, so any field storing `None`
+    passed. `T-041`'s handoff claimed that case covered the class. It did not — protection came
+    from two explicitly named fields.
+
+    Reading optionality from the annotations means a new required field is covered without
+    anyone editing a list, which is `T041-R2`'s lesson applied before it bites again.
+    """
+    optional = optional_fields(model)
+    required = [n for n in model.__dataclass_fields__ if n not in optional]
+    assert required, f"{model.__name__} has no required fields; the sweep would be vacuous"
+
+    for name in required:
+        kwargs = dict(valid_kwargs(request_)[model])
+        kwargs[name] = None
+        with pytest.raises((TypeError, ValueError)):
+            model(**kwargs)
+
+
+@pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
+def test_fields_that_may_be_none_accept_none(request_: DownloadRequest, model: type) -> None:
+    """The counterpart, so the rule above cannot be satisfied by rejecting `None` everywhere."""
+    for name in optional_fields(model):
+        kwargs = dict(valid_kwargs(request_)[model])
+        kwargs[name] = None
+        assert getattr(model(**kwargs), name) is None
+
+
+@pytest.mark.parametrize("model", MODELS, ids=lambda m: m.__name__)
+def test_numeric_fields_reject_booleans(request_: DownloadRequest, model: type) -> None:
+    """`T041-R6`. Nothing tested this: deleting the `bool` guard left all 76 tests green.
+
+    `bool` is an `int` subclass, so `True` would be stored as a byte count of 1 — a wrong number
+    that looks like a right one, which is the shape of bug this project treats as serious.
+
+    Driven by the annotations, so a numeric field added later is covered automatically.
+    """
+    fields = numeric_fields(model)
+    if not fields:
+        pytest.skip(f"{model.__name__} declares no numeric fields")
+
+    for name in fields:
+        kwargs = dict(valid_kwargs(request_)[model])
+        kwargs[name] = True
+        with pytest.raises(TypeError):
+            model(**kwargs)
 
 
 @pytest.mark.parametrize("field_name", ["bytes_done", "attempts"])

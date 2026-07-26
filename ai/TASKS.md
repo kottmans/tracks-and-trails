@@ -28,9 +28,67 @@ for a Phase 5 installer; `T-040` for the first focusable widgets.
 
 ## Ready
 
+### T-043 — Protect `protocol.py`'s remaining boolean guards
+
+**Status:** **Ready** — found by `T-042`'s out-of-scope check, 2026-07-26
+**Owner:** Implementer
+**Priority:** Low — production behavior is correct; the guards are simply untested
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T041-R6`, `T042`, `T011-R2`
+**Affected surfaces:** `tests/unit/test_protocol.py`
+**Risk:** Low to fix; the risk it addresses is a **silent regression**
+
+#### Scope
+
+`T-042` closed the same class in `core/models.py` and its out-of-scope note required checking
+the sibling sweep. `downloader/protocol.py` is in better shape — no required field accepts
+`None`, and the count validators' `bool` guards are covered — but two are not:
+
+- `Progress.speed_bytes_per_second` (`_require_optional_rate`)
+- `WorkerFinished.exit_code`
+
+Deleting either guard leaves **all 113 protocol tests green**, verified by mutation on
+2026-07-26. `bool` is an `int` subclass, so `True` would be stored as a rate of 1 byte/second or
+an exit code of 1 — a wrong number that reads as a right one.
+
+Apply the annotation-driven approach `T-042` used rather than adding two more names to a
+parametrize list: derive the numeric fields from each message's type hints.
+
+#### Acceptance criteria
+
+- Deleting the `bool` guard from `_require_optional_rate` fails the suite
+- Deleting it from `WorkerFinished.exit_code` fails the suite
+- The check is derived from the message annotations, so a numeric field added later is covered
+  without editing a list
+- Both mutations demonstrated and recorded here
+- No production change
+
+#### Out of scope
+
+- Nullability in `protocol.py` — already verified sound: no required field accepts `None`
+- Any production change to `protocol.py`
+
+---
+
 ### T-042 — Make the model audit enforce nullability and boolean rejection
 
-**Status:** **Ready** — carried from `T041-R6`, 2026-07-26
+**Status:** Implemented 2026-07-26, awaiting review.
+
+Both gaps closed and mutation-verified. The tests are **annotation-driven**: optionality and
+numeric-ness are read from each model's own type hints, so a field added later is covered
+without editing a list — `T041-R2`'s lesson applied before it could bite a third time.
+
+- deleting the `bool` guard from either count validator now fails 4 tests (was 0)
+- letting a required counter accept `None` again fails 2 tests
+- **adding a new required numeric field with no test edited fails 5 tests** — the check that the
+  generalisation actually generalises
+
+The vacuous `None` entry is removed from the container sweep rather than left beside the real
+tests, so nobody reads it as coverage.
+
+**Out-of-scope check performed:** `downloader/protocol.py` has the same class of gap, narrower.
+Filed as `T-043`.
 **Owner:** Implementer
 **Priority:** Low — production behavior is already correct; this is test strength, not a defect
 **Phase:** Phase 1
