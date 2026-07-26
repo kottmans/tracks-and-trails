@@ -37,6 +37,9 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "mypy>=1.14",
+    # Used only by packaging/frozen_smoke.py, to assert no process survives the T-020 frozen
+    # run. Dev-only tooling, so no DECISIONS entry is required (AGENTS.md §7).
+    "psutil>=6.0",
     "pytest>=8.0",
     "pytest-cov>=6.0",
     "pytest-qt>=4.4",
