@@ -71,14 +71,20 @@ Phase 0's build work and every exit-review finding are merged. **The phase still
 exited**, for one reason only: the documented criterion "the window launches from a clean
 checkout on Windows" is unmet and cannot be met here (`OPS-003`). Everything else passes.
 
-1. **`T-010`** — Ready. Domain models, job state machine and error taxonomy. `T-011` (IPC
-   contract) and `T-012` (yt-dlp in a spawned worker) are planned in full behind it;
-   `T-013`–`T-019` are still outlines awaiting the same treatment.
+1. **`T-010`** — Ready, and the only one that is. All of Phase 1 is now planned in full:
+   `T-011`–`T-019` plus `T-034`, each with scope, observable acceptance criteria, an
+   out-of-scope list and a review base. Order: `T-010`, then `T-011`/`T-014`/`T-015`/`T-034`
+   in parallel, then `T-012`, then `T-013`, then the UI and integration tasks.
 2. **A Windows session** — a cloud desktop, a local VM, or a person with a Windows machine.
    It closes the last exit criterion and it blocks first release either way.
 3. **`OPS-004`** — accept or reject; it unblocks `T-026`. See the open question below.
 
 ## Known gaps not yet scheduled
+
+- **`T-034` was missing from the plan.** Output-path rendering and filename safety
+  (`core/paths.py`) belonged to no task, despite `ARCHITECTURE.md` §8 requiring every output
+  path to pass through it and `ai/TESTING.md` §7 listing path safety as mandatory. Found while
+  planning Phase 1; now filed and blocking `T-012`.
 
 - **`T-033` — the frozen artifact contains no yt-dlp.** Verified against the built artifact:
   zero `yt_dlp` files. Correct today (nothing imports it yet) but it will not self-correct
