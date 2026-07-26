@@ -217,6 +217,52 @@ truth findings and receives focused re-review. After approval, prefer a squash m
 deliberately broken gate-proof commits do not enter `main`; published branch history must not
 be rewritten.
 
+## 2026-07-25 — T-023 focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-023`; re-review of `T006-R1`, `T006-R2`
+**Base:** `947db1a9aa40e2c6ffadb448ca195c384bf68c02`
+**Correction boundary:** `8db0518de72c17139ce34b832f8cbeed24ec4d21` to
+`24d926d103945f1abb049783d80561ee79ce88d8`
+**Platforms verified:** Linux locally; Linux and Windows through GitHub-hosted runner
+artifacts and logs
+**Verdict:** Changes requested
+
+### Finding dispositions
+
+| ID | Result | Evidence |
+|---|---|---|
+| `T006-R1` | Partially resolved | The workflow correction works. Run `30180163074` failed at lint on both platforms without masking the exit, both uploads succeeded, and the downloaded Windows artifact contains the complete `F401` diagnostic in `lint.txt`, including the runner-native `tests\unit\...` path. Run `30180215713` reverted the probe, passed both jobs, and retained all seven expected files per artifact. However, the required documentation correction was omitted: `.github/workflows/ci.yml:10`, `.github/workflows/ci.yml:91`, `ai/TESTING.md:173`, and `ai/TASKS.md:293` still call artifacts the only Windows debugging material. Checkout, setup, and installation failures happen before `reports/` exists, while their Actions-owned job logs remain available. This directly misses `T-023`'s scope and second acceptance criterion. Update all four descriptions to distinguish downloadable project-gate evidence from early Actions/setup logs. |
+| `T006-R2` | Resolved | The completed `T-002` and `T-003` records now identify their Windows carries as discharged and cite the verified `T-006` evidence. A full `TASKS.md` search found no other stale open carry: remaining uses either define `T-006`'s historical inputs, explicitly mark them resolved, or describe the still-open real-download cancellation check assigned to `T-019`. |
+
+### New findings
+
+None.
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Corrected lint-failure proof | Run `30180163074` resolves to `d719ea2`; Linux and Windows failed at `Lint`, later gates were skipped, and both `Upload evidence` steps passed. Both downloadable artifacts contain `environment.txt` and `lint.txt`; Windows `lint.txt` contains the full `F401` diagnostic. Artifact metadata is current (`expired=false`) with expiry on 2026-08-24. |
+| Passing revert proof | Run `30180215713` resolves to `f6e9ce1`; every gate and upload passed on Linux and Windows. Each artifact contains `environment.txt`, `lint.txt`, `format.txt`, `mypy.txt`, `qt-baseline.txt`, `pytest.txt`, and `pytest.xml`. |
+| Revert and head integrity | The workflow blob is identical at `f6e9ce1` and `24d926d`; `tests/unit/test_ci_gate_check.py` is absent from head. |
+| Current PR | PR #1 is open, non-draft, mergeable, and `CLEAN` at `24d926d`; both push and pull-request matrix runs at that head passed. |
+| `TASKS.md` carry audit | No stale open Windows carry from `T-002` or `T-003` remains. The sleeping-worker cancellation limitation remains correctly open under `T-019`. |
+| Local Qt baseline | Passed offscreen with PySide6/shiboken6/Qt 6.11.1 and a visible 320x240 widget. |
+| `mypy --strict .github/scripts/qt_baseline.py` | Passed: no issues in one source file. |
+| `ruff check .` | Passed: "All checks passed!" |
+| `ruff format --check .` | Passed: 53 files already formatted. |
+| `mypy src` | Passed: no issues in 30 source files. |
+| `pytest -q` | Passed: 27 passed, 1 deselected in 0.10s. |
+| `git diff --check 947db1a 24d926d` | Passed. |
+
+### Readiness
+
+The retention mechanism and the `TASKS.md` carry correction are verified, but PR #1 is not
+ready to merge while `T006-R1`'s explicit documentation requirement remains unmet. After the
+four stale descriptions are corrected and focused re-review approves them, prefer a squash
+merge so the deliberate gate-proof commits do not enter `main`.
+
 ## Open findings
 
-- `T006-R1`, `T006-R2` — tracked by `T-023`
+- `T006-R1` — documentation portion remains open under `T-023`

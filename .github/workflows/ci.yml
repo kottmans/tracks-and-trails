@@ -7,8 +7,16 @@
 #
 #   - fail-fast is off. A Linux failure must never cancel the Windows job; Windows evidence is
 #     the scarce resource.
-#   - every job uploads its evidence, pass or fail. With no local Windows machine, these
-#     artifacts are the only Windows debugging material that will ever exist.
+#   - every job uploads its evidence, pass or fail.
+#
+# Windows failures are debugged from two distinct sources, and neither replaces the other:
+#
+#   - the Actions job log, owned by GitHub, covers EVERY step including checkout, setup-python,
+#     the apt install and pip install. Those run before reports/ exists, so a failure there
+#     produces little or no artifact and the log is the only record of it.
+#   - the uploaded reports/ artifact covers this project's own gates — lint, format, mypy, the
+#     Qt baseline and pytest — plus an environment snapshot and the junit XML. It is the part
+#     that can be downloaded and analyzed offline rather than read in a browser.
 #
 # See ai/TESTING.md §10 and the T-006 entry in ai/TASKS.md.
 
@@ -88,12 +96,13 @@ jobs:
             python -m pip list
           } | tee "reports/environment.txt"
 
-      # Every check below tees into reports/ as well as the job log. The job log is readable
-      # in the Actions UI, but the artifact is what survives as a downloadable unit, and
-      # under OPS-003 that artifact is the only Windows debugging material that exists. A
-      # check whose diagnostic reaches only the log is a check whose failure cannot be
-      # analyzed offline. `shell: bash` runs with pipefail, so teeing does not mask the
-      # non-zero exit that fails the step.
+      # Every check below tees into reports/ as well as the job log. Both destinations matter:
+      # the log is the complete record and the only one covering the setup steps above, while
+      # the artifact is the downloadable unit that can be grepped and diffed offline. A gate
+      # whose diagnostic reaches only the log cannot be analyzed without the Actions UI, which
+      # under OPS-003 is a real cost — these are the project's own checks, so unlike the setup
+      # steps their output is ours to capture. `shell: bash` runs with pipefail, so teeing does
+      # not mask the non-zero exit that fails the step.
       - name: Lint
         run: ruff check . 2>&1 | tee "reports/lint.txt"
 

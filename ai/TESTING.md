@@ -173,8 +173,22 @@ A red CI run blocks merge.
 Implemented by `T-006` as `.github/workflows/ci.yml`. Two properties are load-bearing rather
 than stylistic, both following from `OPS-003`: `fail-fast` is **off**, so a Linux failure
 never cancels the Windows job, and every job uploads its `reports/` evidence **whether it
-passed or failed**, because with no Windows machine those artifacts are the only Windows
-debugging material that exists. Do not "tidy" either away.
+passed or failed**. Do not "tidy" either away.
+
+### Where Windows failure evidence lives
+
+With no Windows machine, CI output is the only Windows debugging evidence there is — but it
+comes in two forms, and neither replaces the other:
+
+| Source | Covers | Retention |
+|---|---|---|
+| **Actions job log** (GitHub-owned) | *Every* step, including checkout, `setup-python`, apt, and pip — all of which run before `reports/` exists. A failure there yields little or no artifact, so the log is the only record. | Repository log-retention setting |
+| **`reports/` artifact** (ours) | This project's own gates: lint, format, mypy, the Qt baseline, pytest, plus the environment snapshot and junit XML. Downloadable, so it can be grepped and diffed offline. | 30 days, set in the workflow |
+
+The distinction is worth keeping straight: the artifact is not the whole record, and the
+project's own gates are the only part of it we control. That is why each one tees its stdout
+*and stderr* into `reports/` — `T006-R1` found lint, format, and mypy reaching the log alone,
+and the piped steps dropping stderr.
 
 `.github/scripts/qt_baseline.py` runs before the suite and verifies the Qt stack itself —
 PySide6 imports, and a `QApplication` + `QWidget` construct offscreen. It is not a pytest test

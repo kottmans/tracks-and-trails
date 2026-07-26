@@ -87,7 +87,8 @@ Statically analyze the import graph (via `ast`, not by importing) and assert:
 
 ### T-023 — Close T-006 review findings
 
-**Status:** Ready
+**Status:** In Review — `T006-R2` closed in the first pass, `T006-R1`'s documentation half
+closed in the second; awaiting focused re-review
 **Owner:** Implementer (workflow evidence) + Planner (coordination correction)
 **Priority:** High
 **Phase:** Phase 0
@@ -121,6 +122,36 @@ Windows carries were discharged by `T-006`.
 - Re-running the already-proven lint and pytest gate experiments unless needed to validate
   the evidence-capture correction
 - Adding behavior-dependent `OPS-003` checks assigned to later phases
+
+#### Work completed — 2026-07-25
+
+**Pass 1 — mechanism.** All four project gates now tee stdout *and* stderr into `reports/`
+while preserving exit status. The Qt baseline and pytest steps also gained `2>&1`; both write
+failure detail to stderr, so they carried the same defect in a less visible form than the
+three steps the finding named. Proven by run `30180163074` (lint failure, both platforms red,
+Windows `lint.txt` carrying the native `tests\unit\...` `F401` diagnostic) and reverted in
+`30180215713` (green, all seven evidence files per artifact).
+
+**Pass 1 — `T006-R2`.** The `T-002` and `T-003` notes now record their discharge and cite the
+`T-006` evidence. `T-002`'s "explicitly still unverified" list was audited item by item rather
+than only the flagged entry; a third item had been resolved by `T-001` and never marked.
+
+**Pass 2 — the documentation half of `T006-R1`, missed in pass 1.** Fixing the mechanism while
+leaving the description intact meant the docs still called the artifact the only Windows
+debugging material. It is not: checkout, `setup-python`, apt, and pip all run before
+`reports/` exists, and a failure in any of them is recorded only in the Actions job log.
+
+Corrected in all four places — `.github/workflows/ci.yml` (header and the tee comment),
+`ai/TESTING.md` §10, and the `T-006` implementation record. `ai/TESTING.md` §10 now carries a
+table stating which source covers what and with what retention, since that is the policy home
+and the other three should point at it rather than restate it. `ai/REVIEWS.md` was left
+untouched: it is a historical record (`AGENTS.md` §6), and its finding text quoting the old
+wording is evidence of what was found, not a claim to be corrected.
+
+**Standing distinction, recorded so it is not re-flattened:** the Actions job log is the
+complete record and the only source covering the setup steps; the `reports/` artifact covers
+this project's own gates and is the part that can be analyzed offline. Neither replaces the
+other, and only the second is ours to control.
 
 ---
 
@@ -292,9 +323,12 @@ added to `.gitignore`.
 
 The workflow encodes two `OPS-003` consequences rather than leaving them to convention.
 `fail-fast: false`, so a Linux failure can never cancel the Windows job — Windows evidence is
-the scarce resource. Evidence uploads `if: always()`, because with no Windows machine those
-artifacts are the only Windows debugging material that will ever exist. Concurrency cancels
-superseded runs, since Windows minutes bill at 2× against a private repository's allowance.
+the scarce resource. Evidence uploads `if: always()`, so a failed Windows job still yields a
+downloadable record of this project's own gates. That artifact is not the whole record:
+checkout, `setup-python`, apt, and pip all run before `reports/` exists, and a failure in
+those is available only through the Actions job log. `ai/TESTING.md` §10 tabulates which
+source covers what. Concurrency cancels superseded runs, since Windows minutes bill at 2×
+against a private repository's allowance.
 
 `qt_baseline.py` is deliberately **not** a pytest test. It answers whether the Qt stack works
 at all on the runner, which is the question worth asking before trusting a suite that imports
