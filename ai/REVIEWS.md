@@ -1227,3 +1227,73 @@ acceptance boundary. No further implementer/reviewer loop is implied or authoriz
 maintainer must choose: authorize one additional focused pass, accept the two risks, change
 the acceptance scope, or carry the work forward under a new task and approve T-034 with that
 explicit exception.
+
+## 2026-07-26 — T-034 second authorized exception verification
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-034`
+**Verification base:** `3f80d231106260650e827ae46fb9b594dbefb63a`
+**Head:** `66a55422381e25680a0630af6f6eb7c70abd323c`
+**Scope:** The two implementer-found defects in this one-commit correction only; no T-045
+review or broader T-034 audit
+**Platforms verified:** Linux locally; Linux, Windows, frozen Linux, frozen Windows, and
+Windows desktop in independently queried CI run `30221188245`
+**Verdict:** **Approved with follow-ups**
+
+### Authorized verification items
+
+These are correction defects found by the Implementer's verification, not a new reviewer
+finding round. Both would have blocked T-034 at the prior behavior and are resolved at this
+head.
+
+| Item | Severity | Blocks approval | Disposition and evidence |
+|---|---|---|---|
+| Trailing decoration bypassed reserved-name defusing | **Medium** | **No** | **Resolved.** `sanitize_component()` strips ASCII dots/spaces from the stem once, before the case-insensitive reserved-name lookup. `CON`, `CON `, `CON.`, and `CON .mp4` now defuse on the same stripped stem and remain idempotent. Removing this one line produced 21 failed and 179 passed path tests, proving it is load-bearing rather than redundant. The later final `rstrip()` remains a separate general rule for non-reserved components; it cannot replace the pre-check normalization. |
+| Drive-prefixed legal title was discarded | **Medium** | **No** | **Resolved.** The first component is discarded only when `PureWindowsPath(part).drive == part`, so an exact `C:` root is removed while `A: The Movie.mp4`, `E: Live at Wembley.mp4`, and drive-relative-looking `C:file.mp4` are retained and have their colon sanitized. Reverting to any truthy drive match produced 3 failed and 197 passed path tests. Removing drive handling entirely produced 2 failed and 198 passed tests, so real `C:\...`/`C:/...` paths still exercise the security branch. |
+
+### Review judgments
+
+- One stem-normalization guard is sufficient. It operates on the value used for reserved-name
+  membership and for the defusing digest. The final component strip has a different job and
+  does not make it redundant; the exact removal mutation demonstrates the distinction.
+- Collapsing `CON`, `CON `, and `CON.` is the correct cross-platform choice. Windows treats
+  trailing dots/spaces as the same filename, so preserving a Linux-only distinction would make
+  preview/write behavior platform-dependent and could emit an unusable Windows name.
+- Relaxing the drive predicate does not re-enable an escape. A longer drive-relative-looking
+  component remains an ordinary component, its colon is replaced, it is joined beneath the
+  selected directory, and the final resolved containment check still applies. Direct probes
+  for `C:../evil.mp4` and `C:..\evil.mp4` produced contained `C_/evil.mp4` paths; ordinary
+  absolute drive paths still lost the exact `C:` component.
+- NFC/NFD spellings and literal `~` components are unchanged and outside this two-defect
+  verification. Nothing in the current path pipeline calls `expanduser()`.
+- T-045 is implemented but unreviewed work in the same module. Its Low collision follow-up
+  remains independently owned and does not block T-034 under `AGENTS.md` §9.
+
+### Checks and evidence
+
+| Check | Result |
+|---|---|
+| Boundary | Clean `main` at exact head `66a5542` before reviewer documentation. `3f80d23..66a5542` is one commit, three files, and 29 changed production lines. |
+| `.venv/bin/ruff check .` | Passed: “All checks passed!” |
+| `.venv/bin/ruff format --check .` | Passed: 67 files already formatted. |
+| `.venv/bin/mypy src` | Passed: no issues in 31 source files. |
+| `.venv/bin/mypy` | Passed: no issues in 52 source files. |
+| `.venv/bin/mypy --platform win32` | Passed: no issues in 52 source files. |
+| `.venv/bin/pytest -q` | Passed: 640 passed, 5 skipped, 1 deselected in 1.65 s. |
+| Focused path suite | Passed: 200 tests. |
+| Layering | Passed: 109 cases. |
+| Stem-strip mutation | Removed the single pre-check stem strip: 21 failed, 179 passed. Restored. |
+| Broad-drive mutation | Reverted to dropping any first component with a drive: 3 failed, 197 passed. Restored. |
+| Removed-drive mutation | Disabled drive-component handling: 2 failed, 198 passed. Restored. |
+| Direct reserved probes | `CON`, `CON `, and `CON.` produced the same defused name; `CON .mp4`, `AUX  `, and tab-decorated `COM1` were defused and idempotent. |
+| Direct drive probes | Legal drive-prefixed titles and `C:../evil.mp4`/`C:..\evil.mp4` were sanitized beneath the output directory; drive-absolute and UNC inputs remained contained. |
+| Prior blocker retention | The known 32-bit collision pair now produces distinct names; `COM0`, `COM0.mp4`, `LPT0`, and `LPT0.mp4` remain unchanged. |
+| `git diff --check 3f80d23..66a5542` | Passed. |
+| CI `30221188245` | Independently verified successful at exact head `66a5542`; all five jobs green. |
+| Worktree after mutations | All temporary source mutations were restored. The only local modification is this reviewer-owned `ai/REVIEWS.md` entry. |
+
+### Readiness
+
+T-034 has no open blocking finding and is **Approved with follow-ups** at `66a5542`. It may
+move to Complete, and its dependency edge no longer blocks T-012. T-045 remains separately
+In Review and T-044 remains Ready; neither requests or implies another T-034 pass.
