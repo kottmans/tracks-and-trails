@@ -181,9 +181,12 @@ jobs:
         # at all. A deliberate `int = "not an int"` passed everywhere.
         #
         # `--platform win32` makes the `sys.platform` guard true, so the bodies are analysed.
-        run: |
-          mypy --platform win32 tests/ui/test_windows_desktop.py \
-            tests/ui/test_windows_accessibility.py 2>&1 | tee "reports/mypy-win32.txt"
+        #
+        # No file arguments: naming files explicitly discards the config's `files`/package
+        # context, and mypy then treats the first-party package and comtypes as unstubbed
+        # third-party imports. The bare invocation uses pyproject.toml's scope, which is what
+        # was validated locally.
+        run: mypy --platform win32 2>&1 | tee "reports/mypy-win32.txt"
 
       - name: Windows desktop suite
         # `-m windows_desktop` is load-bearing. pytest exits 5 when it collects nothing, so a
