@@ -21,7 +21,13 @@ Everything else in Phase 0 is complete except `T-020`, which `T-007` unblocks.
 
 ### T-007 — Application shell window
 
-**Status:** In Review — implemented and verified 2026-07-25; awaiting Codex
+**Status:** Complete
+**Completed:** 2026-07-25. **The Codex review was waived by the maintainer**, who authorized
+the merge to unblock `T-020`. Recorded rather than implied: unlike `T-003`, `T-006` and
+`T-005`, this task received **no independent review at all** — not a waived re-review after
+findings, but no first pass. `AGENTS.md` §3 requires review by a different agent; that did not
+happen here. The Windows config-directory bug below was caught by CI, not by review, and a
+reviewer would plausibly have found more.
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 0
