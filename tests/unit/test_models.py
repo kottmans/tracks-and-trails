@@ -277,6 +277,11 @@ def test_no_field_accepts_raw_or_mutable_payloads(
         )
 
 
+def field_names(model: type) -> list[str]:
+    """Declared field names. Centralises the one `__dataclass_fields__` access mypy dislikes."""
+    return list(model.__dataclass_fields__)  # type: ignore[attr-defined]
+
+
 def annotated_types(model: type, name: str) -> set[type]:
     """The concrete types in a field's annotation, unwrapping unions."""
     hint = typing.get_type_hints(model)[name]
@@ -286,11 +291,7 @@ def annotated_types(model: type, name: str) -> set[type]:
 
 def optional_fields(model: type) -> set[str]:
     """Fields whose annotation admits `None`."""
-    return {
-        name
-        for name in model.__dataclass_fields__  # type: ignore[attr-defined]
-        if type(None) in annotated_types(model, name)
-    }
+    return {name for name in field_names(model) if type(None) in annotated_types(model, name)}
 
 
 def numeric_fields(model: type) -> set[str]:
@@ -299,7 +300,7 @@ def numeric_fields(model: type) -> set[str]:
     `bool` is an `int` subclass, so `True` would otherwise be stored as a count of 1.
     """
     result = set()
-    for name in model.__dataclass_fields__:  # type: ignore[attr-defined]
+    for name in field_names(model):
         types_ = annotated_types(model, name)
         if (int in types_ or float in types_) and bool not in types_:
             result.add(name)
@@ -319,7 +320,7 @@ def test_fields_that_cannot_be_none_reject_none(request_: DownloadRequest, model
     anyone editing a list, which is `T041-R2`'s lesson applied before it bites again.
     """
     optional = optional_fields(model)
-    required = [n for n in model.__dataclass_fields__ if n not in optional]
+    required = [n for n in field_names(model) if n not in optional]
     assert required, f"{model.__name__} has no required fields; the sweep would be vacuous"
 
     for name in required:
