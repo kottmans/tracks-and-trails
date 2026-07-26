@@ -28,6 +28,51 @@ for a Phase 5 installer; `T-040` for the first focusable widgets.
 
 ## Ready
 
+### T-042 — Make the model audit enforce nullability and boolean rejection
+
+**Status:** **Ready** — carried from `T041-R6`, 2026-07-26
+**Owner:** Implementer
+**Priority:** Low — production behavior is already correct; this is test strength, not a defect
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T041-R6`, `T041-R1`, `T010-R1`
+**Affected surfaces:** `tests/unit/test_models.py`
+**Risk:** Low to fix. The risk it addresses is a **silent regression**: production could lose
+these guards and the suite would stay green.
+
+#### Scope
+
+Two gaps in `tests/unit/test_models.py`, both confirmed by mutation on 2026-07-26:
+
+1. **The `None` case in the hostile-payload sweep is vacuous.** Its assertion is
+   `not isinstance(stored, dict | list)`, and `None` is neither — so a field that accepts and
+   stores `None` passes. Nullability is actually protected only by
+   `test_required_job_counters_reject_none`, which names two fields explicitly.
+
+   **This was overstated in `T-041`'s handoff**, which claimed adding `None` to the sweep covered
+   the class. It did not; the reviewer was right to check rather than take the claim.
+
+2. **Nothing tests boolean rejection.** `_require_optional_count()` excludes `bool` because it is
+   an `int` subclass and `True` would be stored as a count of 1 — but deleting that check leaves
+   all 76 model tests green.
+
+#### Acceptance criteria
+
+- The sweep distinguishes fields that are genuinely optional from those that are not, and a
+  required field accepting `None` fails — derived from the model's own annotations rather than a
+  hand-listed set of field names, so a new required field is covered without editing a list
+  (`T041-R2`'s lesson)
+- Deleting the `bool` guard from either count validator fails the suite
+- Both mutations are demonstrated and recorded in this task, not asserted in the abstract
+- No production change: the behavior is already correct and must stay so
+
+#### Out of scope
+
+- `downloader/protocol.py`'s equivalent sweep. It has the same shape and may have the same gap;
+  check it, and if so file separately rather than widening this task
+
+---
+
 ### T-035 — Resolve the yt-dlp and ffmpeg environment
 
 **Status:** **Ready** — `T-011` complete, 2026-07-26
@@ -1077,10 +1122,17 @@ Assert, on `windows-latest`:
 
 ## In Review
 
+*(none)*
+
+## Complete
+
 ### T-041 — Validate nested payloads in `core/models.py`
 
-**Status:** In Review — reviewed 2026-07-26, **changes requested**; all five findings corrected
-the same day, awaiting focused re-review.
+**Status:** **Complete — approved** at `c693ec6`, 2026-07-26. All five findings independently
+verified resolved; `T011-R8` functionally closed. CI run `30216176642` was verified green at that
+exact head by the reviewer.
+
+One non-blocking Low finding, **`T041-R6`, was carried forward to `T-042`**.
 
 **The reported hole was one field; the audit found the whole module.** `T011-R8` named
 `MediaInfo.formats`. Enumerating every field of every model showed that **all of them** accepted
@@ -1180,8 +1232,6 @@ dicts where models belong is not, and must raise.
 - Retro-fitting the same audit to `persistence/` — nothing exists there yet (`T-014`)
 
 ---
-
-## Complete
 
 ### T-011 — IPC message contract
 
