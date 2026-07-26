@@ -1030,3 +1030,110 @@ T-041 is approved at `c693ec6`, and the functional `T011-R8` payload/immutabilit
 independently verified closed. The task is ready for the implementer or maintainer to move to
 Complete. Per the explicit final-pass instruction, `T041-R6` is carried into the next Phase 1
 implementation and does not request another T-041 re-review.
+
+## 2026-07-26 — T-034, T-035, T-042 and T-043 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-034`, `T-035`, `T-042`, `T-043`; carried finding `T041-R6`
+**Review base:** `352f887726352a7b32198dd820792ee50ddba176`
+**Head:** `666c4be1edd0cb5a54727ec6b30104b0beca27aa`
+**Platforms verified:** Linux locally; Linux, Windows, frozen Linux, frozen Windows, and
+Windows desktop in independently queried CI run `30218288265`
+**Overall verdict:** **Changes requested**
+
+### Per-task verdicts
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-034` | **Changes requested** | Four open Medium findings violate the path-safety gate or explicit acceptance criteria. |
+| `T-035` | **Changes requested** | The candidate list contradicts an explicit acceptance criterion, and an unusable override is reported as fully available. |
+| `T-042` | **Approved** | The annotation-driven nullability and boolean guards are independently mutation-verified; no open finding applies to this task. |
+| `T-043` | **Approved** | The equivalent protocol guards are independently mutation-verified; no open finding applies to this task. |
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status / owner / target |
+|---|---|---|---|---|---|---|
+| `T034-R1` | **Medium** | **Yes** | Required containment gate | The final `safe_output_path()` containment check is reachable, contrary to its comment and the handoff's mutation claim. An existing symlink under the output directory that points outside makes the current entry point raise. Disabling only the final branch allowed that path to escape while all 115 focused path tests still passed, because the suite tests `is_contained()` directly but never drives a symlink through `safe_output_path()`. The mandatory `TESTING.md` §7 gate therefore does not prove that its public entry point invokes the security check. | Add an entry-point regression using an in-directory symlink to an outside directory, then repeat the exact branch-removal mutation and require it to fail. Retain the final containment check and correct its dead-code comment. | **Open** — Implementer; `T-034` correction batch |
+| `T034-R2` | **Medium** | **Yes** | Long-name collision | Truncation preserves only the prefix. Two 401-character stems with the same first 400 characters and different final characters sanitize to the same 200-byte filename. The existing collision test differs near the beginning, exactly where naive prefix truncation already preserves the distinction, so it does not establish the acceptance criterion that shortening must not collide with a neighbouring file. | Preserve a deterministic differentiator, such as a stable digest suffix derived from the truncated input, and test two names that differ only beyond the retained prefix. Mutation-check removal of the differentiator. | **Open** — Implementer; `T-034` correction batch |
+| `T034-R3` | **Medium** | **Yes** | Extension preservation | `_shorten_to()` falls back to `name[:limit]` when the remaining full-path budget cannot fit the extension. A directory leaving two filename characters returns `cl` for `clip.mp4`, losing `.mp4`, although the acceptance criterion says over-long paths are shortened without losing the extension. | If the complete suffix cannot fit, raise `UnsafePathError` rather than return a misleading extensionless path; add a positive small-budget case as well as the existing no-room case. | **Open** — Implementer; `T-034` correction batch |
+| `T034-R4` | **Medium** | **Yes** | Windows-illegal names | The Windows device-name set covers ASCII `COM1`–`COM9` and `LPT1`–`LPT9` only. Windows also reserves `COM¹`, `COM²`, `COM³`, `LPT¹`, `LPT²`, and `LPT³`; all six currently pass unchanged, including with extensions. That violates the cross-platform Windows-illegal-name acceptance criterion. Microsoft's naming rules explicitly list these superscript-digit forms. | Add the six reserved forms to production and parameterize bare, case/extension, and allowed-neighbour cases. Use the [Microsoft file-naming rules](https://learn.microsoft.com/windows/win32/fileio/naming-a-file) as the platform source. | **Open** — Implementer; `T-034` correction batch |
+| `T035-R1` | **Medium** | **Yes** | yt-dlp candidate contract | `T-035` says that with no user copy the candidate list contains the baseline alone. `ytdlp_candidates()` always returns two entries, the first being a missing user candidate with `exists=False`. The test silently weakens the criterion to “the baseline is the only *present* candidate.” This is an executable/documented contract mismatch at the Phase 1 worker seam. | Return only the baseline when the user directory is absent, while retaining an existing-but-empty directory for worker import validation; alternatively obtain a deliberate task-contract amendment before retaining absent candidates. Test the tuple itself, not a filtered projection. | **Open** — Implementer; `T-035` correction batch |
+| `T035-R2` | **Medium** | **Yes** | ffmpeg capability detection | An explicit override is accepted on `Path.is_file()` alone. On POSIX, a regular file with mode `0644` is reported available and the summary says every post-processing feature works even though it cannot be executed. The positive override fixture itself creates a non-executable file, so the test enshrines the incorrect result. The `PATH` branch already uses `shutil.which()`, whose default check includes executability. | Apply executable-discovery semantics to the override on each platform; make the positive fixture executable (and appropriately named on Windows) and add a non-executable regular-file rejection. Python's [`shutil.which()` documentation](https://docs.python.org/3/library/shutil.html#shutil.which) describes its `F_OK | X_OK` and Windows `PATHEXT` behavior. | **Open** — Implementer; `T-035` correction batch |
+| `T035-R3` | **Low** | **No** | Ownership-boundary test strength | The test claiming that `environment.py` exposes no version/usability verdict checks six exact export names. Adding an ordinary `get_ytdlp_version()` export left all 20 focused environment tests green while violating the locate/import ownership split the test claims to protect. The AST checks still block the currently named import mechanisms; this finding is about the broader export claim, not a current production import. | Replace the finite exact-name set with an explicit reviewed public API or a semantic naming/pattern check that at least covers ordinary `get_*version*`, `verify*`, and usability variants. Mutation-check an obvious new export. | **Open, non-blocking** — Implementer; `T-035` correction batch. If not corrected there, add a named `TASKS.md` follow-up before approval. |
+| `P1-R1` | **Low** | **No** | Coordination accuracy | `STATUS.md` says “All three await review” after listing four tasks, and its recommended next list still starts with completed `T-041` and includes the already-implemented `T-034`/`T-035`. This does not change the code verdicts, but current-truth documents should not direct the next implementer to completed work. | Update `TASKS.md`/`STATUS.md` after this review: move approved `T-042`/`T-043` to Complete, keep `T-034`/`T-035` in review for the focused correction pass, and recompute the next-work list. | **Open, non-blocking** — Implementer; coordination update accompanying the `T-034`/`T-035` correction batch |
+
+### Review judgments
+
+- The final `is_contained()` call is appropriate defence in depth and should remain. The
+  review disagreement is factual rather than philosophical: existing filesystem state makes
+  the branch reachable, and the required gate must exercise it through the public entry point.
+- Neutralizing traversal components rather than rejecting every hostile input is acceptable:
+  the task expressly permits neutralization and the resolved result remains under the selected
+  directory.
+- `environment.py` locating candidates while `worker.py` imports them is accepted. The
+  ownership split is consistent with the current task and layering rules; `T035-R3` concerns
+  only the claimed future-proof strength of one test.
+- T-042's test discovery follows module-defined dataclasses and annotations independently.
+  Removing either count validator's boolean guard made the annotation-driven cases fail, and a
+  new required numeric model field failed without editing the test's field list. This resolves
+  `T041-R6`.
+- T-043 applies the same independent annotation approach to declared protocol messages.
+  Removing the two previously unprotected boolean guards failed their respective cases, and a
+  new numeric message field failed without editing a field list. The deliberate nullability
+  extension is small, relevant, and accepted.
+
+### Checks and adversarial evidence
+
+| Check | Result |
+|---|---|
+| Review boundary | `352f887..666c4be` contains **7**, not the handoff's stated 8, commits and 9 changed files. The two disclosed broken intermediate commits were inspected as history; approval is assessed only at the clean head. Current local HEAD is later at `8cb14d6`, whose only changes after the review head are the two explicitly excluded `AGENTS.md` commits; source and tests match `666c4be`. |
+| `.venv/bin/ruff check .` | Passed: “All checks passed!” |
+| `.venv/bin/ruff format --check .` | Passed: 67 files already formatted. |
+| `.venv/bin/mypy src` | Passed: no issues in 31 source files. |
+| `.venv/bin/mypy` | Passed: no issues in 52 source files. |
+| `.venv/bin/mypy --platform win32` | Passed: no issues in 52 source files. |
+| `.venv/bin/pytest -q` | Passed: 553 passed, 5 skipped, 1 deselected in 0.78 s. |
+| Full unit suite | Passed: 499 passed, 3 skipped. |
+| Integration suite | No tests collected; `tests/integration/` contains only `__init__.py`, so the direct command exited 5. The default suite above passed. |
+| Focused path baseline | Passed: 115 tests. |
+| Focused environment baseline | Passed: 20 tests. |
+| Focused model baseline | Passed: 85 passed, 1 skipped. |
+| Focused protocol baseline | Passed: 121 passed, 2 skipped. |
+| Layering | Passed: 109 cases. |
+| Containment-call mutation | Disabled only `safe_output_path()`'s final containment branch: all 115 path tests passed. A direct in-directory symlink probe raised before the mutation and returned an outside-resolving path during it. Restored. |
+| Long-name probes | Names with 400 identical leading characters and different final characters produced identical 200-byte `.mp4` results. A path budget leaving two filename characters returned `cl`, with no extension. |
+| Windows reserved-name probe | `COM¹`, `COM².mp4`, `COM³`, `LPT¹`, `LPT².mp4`, and `LPT³.mkv` all passed unchanged. |
+| Candidate-list probe | A definitely absent user directory returned two entries: one absent user candidate and one present baseline. |
+| ffmpeg override probe | A regular non-executable override was reported available with “all post-processing features are available.” |
+| Ownership-export mutation | Added `get_ytdlp_version()` without importing yt-dlp: all 20 environment tests passed. Restored. |
+| Model boolean mutations | Removing the optional-count boolean guard failed 3 annotation-driven cases. Removing the required-count guard failed its derived cases. Restored. |
+| Protocol boolean mutations | Removing the optional-rate and exit-code boolean guards failed the corresponding `Progress` and `WorkerFinished` cases. Restored. |
+| New numeric-field mutations | A new required `int` field on `FormatInfo` failed the derived nullability/boolean guards; one on `WorkerFinished` failed the corresponding protocol guards. Restored. |
+| `git diff --check 352f887..666c4be` | Passed. |
+| CI `30218288265` | Independently verified successful at exact head `666c4be`; all five jobs green. |
+| Worktree after review | All temporary source/test mutations were restored. The only local modification is this reviewer-owned `ai/REVIEWS.md` entry. |
+
+### Review-policy clarification
+
+This append-only record does not rewrite the eight earlier review entries, but the current
+`AGENTS.md` §9 policy changes how two of their dispositions should be read:
+
+- `T011-R5` was Low and should have recorded **Blocks approval: No**. Its maintainer-owned
+  target was `ARC-003`, now accepted. It should not by itself have kept T-011 in review; after
+  the maintainer-directed carry-forward, the applicable exact verdict was **Approved with
+  follow-ups**, not a freeform blocked variant.
+- The final T-041 correction review carried Low `T041-R6` to owner Implementer and target
+  `T-042`. Its exact verdict under §9 was therefore **Approved with follow-ups**, not
+  **Approved**. This review independently verifies T-042 and resolves that follow-up.
+- All findings from this entry onward record **Blocks approval: Yes | No**, and task verdicts
+  use only the four exact §9 values.
+
+### Readiness and review budget
+
+`T-042` and `T-043` are approved at `666c4be` and can move to Complete without waiting for the
+other two tasks. `T-034` and `T-035` are not approved and do not yet unblock `T-012`. Their
+remaining standard budget is one focused correction re-review covering the findings above and
+regressions introduced by their corrections; it is not another unbounded audit. The
+Implementer should return all blocking corrections in one batch with failing regressions and
+mutation evidence, then update the coordination documents.
