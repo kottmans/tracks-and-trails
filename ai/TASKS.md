@@ -69,7 +69,7 @@ previous monitor layout from restoring the only window entirely off-screen.
 
 ### T-029 — Complete the frozen-probe negative and evidence gates
 
-**Status:** In Progress — smoke assertions and log path done; Windows negative proof running in CI
+**Status:** In Review — addressed 2026-07-25; awaiting re-review
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 0 review correction
@@ -88,6 +88,34 @@ previous monitor layout from restoring the only window entirely off-screen.
   redundant raw-log upload claim is removed and `frozen-smoke.txt` is made canonical
 - No temporary mutation remains in the final tree
 
+
+#### Work completed — 2026-07-25
+
+**The Windows negative proof, which had never been run.** `T-020`'s criterion required that
+removing `freeze_support()` fails the frozen smoke test *on Windows*; it was only ever
+exercised on Linux. Run `30186080950` removed it and pushed:
+
+```
+frozen windows-latest = failure
+--spawn-probe exited 1 in 120.2s     (the child never sent its message)
+top-level application starts recorded: 2
+  app-start pid=3344 frozen=True argv=['--spawn-probe']
+  app-start pid=1700 frozen=True argv=['--multiprocessing-fork', 'parent_pid=3344', 'pipe_handle=608']
+```
+
+That second argv is **Windows-specific** — `parent_pid`/`pipe_handle`, where Linux produced
+`tracker_fd`/`pipe_handle` — so this is genuinely the Windows relaunch path and not a Linux
+result restated. All four jobs went red, not just the frozen ones. Reverted in the following
+commit; run `30186222977` is green on all four, and no mutation remains in the tree.
+
+**`frozen=True` is now asserted, not printed.** The smoke test previously printed the parent's
+and child's frozen state and asserted nothing about it, so it would have passed against a
+source run — which proves nothing about freezing, the entire point of `T-020`.
+
+**The raw probe log upload was silently broken.** CI requested `frozen-probe.log` at the
+repository root; `frozen_smoke.py` writes it beside the artifact at `dist/frozen-probe.log`,
+so the upload had been contributing nothing. Corrected, and confirmed by the negative run's
+artifact, which now contains the log.
 ---
 
 ### T-030 — Ratify the two Phase 0 architecture additions
