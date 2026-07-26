@@ -329,13 +329,75 @@ occur.
 
 ---
 
+### T-035 — Resolve the yt-dlp and ffmpeg environment
+
+**Status:** Proposed — Ready once `T-011` merges
+**Owner:** Implementer
+**Priority:** High — `T-012` cannot honour `OPS-002` without it, and `REQ-024` is owned by
+nothing else
+**Phase:** Phase 1
+**Depends on:** `T-011`
+**Relevant context:** `ARCHITECTURE.md` §6 (resolution order), §4; `OPS-002`, `OPS-001`,
+`REQ-024`, `REQ-025`, `NFR-007`
+**Affected surfaces:** `downloader/environment.py`, `tests/unit/`, `tests/integration/`
+**Risk:** Medium — a wrong answer here is misattributed to yt-dlp or to the site
+**Review base:** the `T-011` merge commit
+
+#### Scope
+
+**Filed during Phase 1 planning: `downloader/environment.py` was claimed by no task, and
+`REQ-024` by nothing at all.** `ARCHITECTURE.md` §4 assigns this module "locating yt-dlp and
+ffmpeg; version reporting; update", and `ARCHITECTURE.md` §6 puts yt-dlp resolution at *worker
+start* — so `T-012` needs it from its first line, and without it the worker would import
+whatever yt-dlp happens to be on `sys.path`, which is precisely what `OPS-002` rejects.
+
+Two jobs:
+
+1. **Resolve yt-dlp** per `OPS-002`: prefer a user-managed copy in
+   `user_data_dir/tracksandtrails/ytdlp/` by prepending it to `sys.path`, otherwise the
+   bundled baseline. Report the resolved version (`REQ-025`). **Fail loudly and fall back to
+   the baseline if the user copy does not import cleanly** — `ARCHITECTURE.md` §6 requires
+   this explicitly, and a silently ignored override is worse than a broken one because the
+   user believes their update took effect.
+2. **Detect ffmpeg** at startup and report which features are unavailable without it
+   (`REQ-024`, `OPS-001`) — rather than failing at merge time, after a download has already
+   consumed the user's bandwidth.
+
+Resolution runs in the worker, so this module must not import Qt.
+
+#### Acceptance criteria
+
+- With no user copy present, the baseline is resolved and its version reported
+- With a valid user copy present, **that** version is resolved and reported — proven with two
+  genuinely different versions, not by mocking the lookup
+- With a **broken** user copy present (importable path, unimportable package), the failure is
+  reported and the baseline is used; a test asserts both the fallback and that it was not
+  silent
+- The reported version is what the worker actually imported, read from the imported module
+  rather than from a recorded string that could drift
+- ffmpeg presence and absence both yield a correct feature report; the absent case names what
+  will not work (`REQ-024`)
+- Detection never executes a shell (`ARCHITECTURE.md` §9) and never blocks the GUI thread
+- No user path, cookie, or credential reaches a log line from this module (`NFR-007`)
+- `environment.py` imports no Qt
+
+#### Out of scope
+
+- Downloading and extracting the yt-dlp wheel — Phase 4; this task resolves what is already
+  present
+- Bundling either dependency into the frozen artifact — `T-033` for yt-dlp, Phase 5 for ffmpeg
+- Any UI for showing the version or the ffmpeg state — `T-016`/`T-017` consume the report
+
+---
+
 ### T-012 — yt-dlp in a spawned worker
 
 **Status:** Proposed — Ready once `T-011` merges
 **Owner:** Implementer
 **Priority:** High — this is where `ARC-002` stops being a design
 **Phase:** Phase 1
-**Depends on:** `T-011`, `T-034` (the worker cannot write a file without a validated path)
+**Depends on:** `T-011`, `T-034` (no file write without a validated path), `T-035` (no
+yt-dlp without resolution)
 **Relevant context:** `ARCHITECTURE.md` §3, §6, §7; `ARC-002`, `OPS-002`, `NFR-008`,
 `REQ-002`, `REQ-005`, `REQ-025`, `REQ-028`, `NFR-006`; `ai/TESTING.md` §5 (fixtures)
 **Affected surfaces:** `downloader/worker.py`, `downloader/ytdlp_adapter.py`,
@@ -413,8 +475,12 @@ Every Phase 1 task is now planned in full. `T-034` was filed during planning: ou
 rendering and filename safety belonged to no task, despite being a `ai/TESTING.md` §7
 mandatory area that `T-012` depends on.
 
-Dependency order: `T-010` first, then `T-011`, `T-014`, `T-015` and `T-034` in parallel, then
-`T-012`, then `T-013`, then the UI and test tasks.
+Two tasks were filed during planning rather than being new work: `T-034` (output-path safety)
+and `T-035` (yt-dlp and ffmpeg resolution). Both are `ARCHITECTURE.md` responsibilities that no
+outline task owned, and `T-012` depends on both.
+
+Dependency order: `T-010` first; then `T-011`, `T-014`, `T-015` and `T-034` in parallel; then
+`T-035`; then `T-012`; then `T-013`; then the UI and test tasks.
 
 ### T-034 — Output path rendering and filename safety
 
