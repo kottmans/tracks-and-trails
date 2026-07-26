@@ -1077,8 +1077,12 @@ Assert, on `windows-latest`:
 
 ### T-011 — IPC message contract
 
-**Status:** In Review — reviewed 2026-07-26, **changes requested**; all six findings corrected
-the same day, awaiting focused re-review.
+**Status:** In Review — two review rounds on 2026-07-26, both **changes requested**.
+`T011-R1`, `R3`, `R4`, `R6` are **reviewer-confirmed resolved**. `T011-R2` and the new
+`T011-R7` are corrected in the third pass below. **`T011-R5` is parked, not fixed** — it needs
+a maintainer decision on `ARC-002` and cannot be closed by an Implementer.
+
+Do **not** read this entry as "all findings corrected"; `R5` is open by design.
 
 - **`T011-R1` (High), corrected.** A successful probe produced *no outcome*: `Probed` then
   `WorkerFinished`, neither counted as terminal. A receiver applying `REQ-028`'s "exited 0 with
@@ -1103,6 +1107,18 @@ the same day, awaiting focused re-review.
   raised in `STATUS.md` — not something this task may decide.**
 - **`T011-R6` (Low), corrected.** Task placement, status vocabulary, metadata and `STATUS.md`
   reconciled.
+
+**Third pass, 2026-07-26 (`T011-R2` reopened, `T011-R7` new):**
+
+- **`T011-R2`** — the first correction validated the fields the review *named* and left
+  `Progress.speed_bytes_per_second` and `Succeeded.total_bytes` accepting a mutable dict; a
+  substitution left all 100 tests green. Both are validated now — but the real fix is
+  `test_no_field_accepts_and_stores_a_mutable_mapping`, which walks **every field of every
+  message type**. Listing two more fields would have repeated the same mistake one size smaller.
+- **`T011-R7`** — the module documented the probe grammar as `Progress(PROBING)*` and claimed
+  `validate_sequence()` was its executable form, but a probe reporting `MERGING` validated.
+  Probe sessions now reject any other stage. Download-stage ordering stays unconstrained, and a
+  test asserts that narrowness is deliberate: real yt-dlp pipelines skip and repeat stages.
 
 **Verified against the reviewer's own probes**, not just re-asserted: the sample mutation that
 previously left all 48 tests passing now fails **28**, and all five direct runtime probes
@@ -1146,10 +1162,15 @@ draft specified only the message payloads, which leaves three ways to hang or li
   protocol therefore *specifies* that a job has exactly one terminal outcome and that the
   receiver must enforce it by job ID; `T-013` implements the enforcement.
 
-**No protocol versioning.** Both ends ship in the same artifact and are always the same build,
-even when the user updates yt-dlp underneath (`OPS-002`) — that changes the *engine*, not the
-contract. Recording this now so nobody later adds negotiation machinery for a skew that cannot
+**No runtime version negotiation.** Both ends ship in the same artifact and are always the same
+build, even when the user updates yt-dlp underneath (`OPS-002`) — that changes the *engine*, not
+the contract. Recording this so nobody later adds negotiation machinery for a skew that cannot
 occur.
+
+**This does not resolve `T011-R5`.** `ARC-002` calls the protocol "a versioned internal
+contract". Whether that meant version-*controlled* or an explicit protocol version is a
+maintainer reading of an accepted decision, raised in `STATUS.md`. `DECISIONS.md` outranks this
+file (`AGENTS.md` §5), so if it meant the latter, this task is non-compliant as written.
 
 #### Acceptance criteria
 

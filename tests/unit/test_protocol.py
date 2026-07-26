@@ -159,6 +159,69 @@ def test_progress_rejects_negative_quantities(field_name: str) -> None:
         Progress(job_id="j", stage=Stage.MERGING, **{field_name: -1})
 
 
+#: Fields that legitimately accept a mapping and normalise it to an immutable form.
+#: Everything else must reject one outright.
+NORMALISING_FIELDS = {(Failed, "context")}
+
+
+@pytest.mark.parametrize("message_type", MESSAGE_TYPES, ids=lambda t: t.__name__)
+def test_no_field_accepts_and_stores_a_mutable_mapping(message_type: type) -> None:
+    """`T011-R2`, second round — the **systematic** version of that finding.
+
+    The first correction validated the fields the review happened to name and left
+    `Progress.speed_bytes_per_second` and `Succeeded.total_bytes` accepting a mutable dict:
+    they pickled, passed `is_message()`, and stayed mutable after construction. Substituting
+    those two left all 100 protocol tests green.
+
+    Listing the newly-found fields would repeat the mistake at a smaller scale. This walks
+    **every field of every message type**, so a field added later without validation fails here
+    without anyone remembering to extend a list.
+
+    The hazard is the `T010-R2` one: `multiprocessing.Queue` may serialize on its feeder thread
+    after `put()` returns, so anything mutable reachable from a message can change what the
+    parent receives.
+    """
+    sample = one_of_each()[message_type]
+    valid = {name: getattr(sample, name) for name in sample.__dataclass_fields__}
+
+    for name in sample.__dataclass_fields__:
+        kwargs = dict(valid)
+        kwargs[name] = {"mutable": "dict"}
+
+        if (message_type, name) in NORMALISING_FIELDS:
+            stored = getattr(message_type(**kwargs), name)
+            assert not isinstance(stored, dict), f"{message_type.__name__}.{name} stored a dict"
+            continue
+
+        with pytest.raises((TypeError, ValueError)):
+            message_type(**kwargs)
+
+
+def test_progress_rejects_a_non_numeric_speed() -> None:
+    """One of the two fields the first correction missed (`T011-R2`)."""
+    bad_speeds: tuple[object, ...] = ({}, "fast", [1])
+    for bad in bad_speeds:
+        with pytest.raises(TypeError):
+            Progress(job_id="j", stage=Stage.MERGING, speed_bytes_per_second=bad)  # type: ignore[arg-type]
+
+
+def test_progress_accepts_a_fractional_speed_but_not_a_negative_one() -> None:
+    """A transfer rate is legitimately fractional, unlike a byte count."""
+    assert Progress(job_id="j", stage=Stage.MERGING, speed_bytes_per_second=1.5).fraction is None
+    with pytest.raises(ValueError, match="negative"):
+        Progress(job_id="j", stage=Stage.MERGING, speed_bytes_per_second=-1.0)
+
+
+def test_succeeded_rejects_a_non_integer_total() -> None:
+    """The other field the first correction missed (`T011-R2`)."""
+    bad_totals: tuple[object, ...] = ({}, "10", 1.5, True)
+    for bad in bad_totals:
+        with pytest.raises(TypeError):
+            Succeeded(job_id="j", output_path="/a.mp4", total_bytes=bad)  # type: ignore[arg-type]
+    with pytest.raises(ValueError, match="negative"):
+        Succeeded(job_id="j", output_path="/a.mp4", total_bytes=-1)
+
+
 # --- rejection: failure context immutability (T011-R2 / T010-R2) ----------------------------
 
 
@@ -426,6 +489,46 @@ def test_illegal_sequences_are_rejected(
     """Each of these is a way for the system to hang or lie rather than raise."""
     with pytest.raises(ProtocolViolationError):
         validate_sequence(kind, sequence)
+
+
+@pytest.mark.parametrize(
+    "stage",
+    [Stage.DOWNLOADING_VIDEO, Stage.DOWNLOADING_AUDIO, Stage.MERGING, Stage.POST_PROCESSING],
+    ids=lambda s: s.value,
+)
+def test_a_probe_session_may_only_report_the_probing_stage(stage: Stage) -> None:
+    """`T011-R7`: the declared grammar is `Progress(PROBING)*`, and now so is the check.
+
+    A probe extracts metadata. It cannot download, merge or post-process, so any other stage
+    misreports `REQ-014` state rather than describing an unusual pipeline.
+    """
+    sequence = [
+        Progress(job_id="j", stage=stage),
+        Probed(job_id="j", media=media()),
+        WorkerFinished(job_id="j"),
+    ]
+    with pytest.raises(ProtocolViolationError, match="probe session"):
+        validate_sequence(SessionKind.PROBE, sequence)
+
+
+def test_a_download_session_may_report_any_stage() -> None:
+    """Deliberately *not* generalised (`T011-R7`).
+
+    Real yt-dlp pipelines skip and repeat stages — a format needing no merge never reports
+    `MERGING` — so download-stage ordering belongs to the adapter (`T-012`) and the end-to-end
+    gate (`T-037`), not to this contract. Asserted so the narrowness is intentional rather than
+    an omission.
+    """
+    validate_sequence(
+        SessionKind.DOWNLOAD,
+        [
+            Progress(job_id="j", stage=Stage.MERGING),
+            Progress(job_id="j", stage=Stage.DOWNLOADING_AUDIO),
+            Progress(job_id="j", stage=Stage.PROBING),
+            Succeeded(job_id="j", output_path="/a.mp4"),
+            WorkerFinished(job_id="j"),
+        ],
+    )
 
 
 def test_the_violation_message_names_what_was_wrong() -> None:

@@ -71,6 +71,34 @@ class SessionKind(StrEnum):
     DOWNLOAD = "download"
 
 
+def _require_optional_count(owner: str, name: str, value: object) -> None:
+    """Reject anything that is not a non-negative `int` or `None`.
+
+    `bool` is excluded explicitly: it is an `int` subclass, so `isinstance(True, int)` passes
+    and `True` would be stored as a byte count of 1.
+    """
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise TypeError(f"{owner}.{name} must be an int or None, not {type(value).__name__}")
+    if value < 0:
+        raise ValueError(f"{owner}.{name} cannot be negative")
+
+
+def _require_optional_rate(owner: str, name: str, value: object) -> None:
+    """Reject anything that is not a non-negative real number or `None`.
+
+    Separate from `_require_optional_count` because a transfer rate is legitimately
+    fractional, while a byte count is not.
+    """
+    if value is None:
+        return
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise TypeError(f"{owner}.{name} must be a number or None, not {type(value).__name__}")
+    if value < 0:
+        raise ValueError(f"{owner}.{name} cannot be negative")
+
+
 class ProtocolViolationError(Exception):
     """A message sequence that this contract forbids.
 
@@ -148,13 +176,11 @@ class Progress(_Message):
         if not isinstance(self.stage, Stage):
             raise TypeError(f"Progress.stage must be a Stage, not {type(self.stage).__name__}")
         for name in ("downloaded_bytes", "total_bytes", "eta_seconds"):
-            value = getattr(self, name)
-            if value is None:
-                continue
-            if isinstance(value, bool) or not isinstance(value, int):
-                raise TypeError(f"Progress.{name} must be an int or None, not {value!r}")
-            if value < 0:
-                raise ValueError(f"Progress.{name} cannot be negative")
+            _require_optional_count("Progress", name, getattr(self, name))
+        # `T011-R2`, second round: this field was the one the first correction missed. It
+        # accepted a mutable dict, which pickled, passed `is_message()` and stayed mutable
+        # after construction — the same feeder-thread hazard, on a field nobody had listed.
+        _require_optional_rate("Progress", "speed_bytes_per_second", self.speed_bytes_per_second)
 
     @property
     def fraction(self) -> float | None:
@@ -183,6 +209,8 @@ class Succeeded(_Message):
                 "Succeeded requires the output path; a success that cannot say what it wrote "
                 "is indistinguishable from a failure to the user"
             )
+        # `T011-R2`, second round: the other field the first correction missed.
+        _require_optional_count("Succeeded", "total_bytes", self.total_bytes)
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
@@ -355,3 +383,25 @@ def validate_sequence(kind: SessionKind, messages: Sequence[object]) -> None:
     later = [type(m).__name__ for m in declared[outcome_at + 1 : -1]]
     if later:
         raise ProtocolViolationError(f"messages after the outcome: {later}")
+
+    # `T011-R7`: the module documents the probe grammar as `Progress(PROBING)*`, and claims
+    # this function is its executable form — but a probe reporting `MERGING` validated. A probe
+    # extracts metadata; it cannot download, merge or post-process, so any other stage is a
+    # misreport of `REQ-014` state rather than an unusual-but-legal pipeline.
+    #
+    # Deliberately *not* generalised to download-stage ordering. Real yt-dlp pipelines skip and
+    # repeat stages — a format needing no merge never reports `MERGING` — so ordering there is
+    # the adapter's business (`T-012`) and the end-to-end gate's (`T-037`), not this contract's.
+    if kind is SessionKind.PROBE:
+        wrong = sorted(
+            {
+                m.stage.value
+                for m in declared
+                if isinstance(m, Progress) and m.stage is not Stage.PROBING
+            }
+        )
+        if wrong:
+            raise ProtocolViolationError(
+                f"a probe session reported stage(s) {wrong}; a probe only extracts metadata, "
+                f"so {Stage.PROBING.value!r} is its only legal progress stage"
+            )

@@ -76,17 +76,24 @@ again and is the natural place to close it.
 
 ## In progress
 
-- **`T-011`** — IPC message contract. Implemented, reviewed 2026-07-26
-  (**changes requested**), all six findings corrected, awaiting focused re-review. It does
-  **not** yet unblock `T-035` or `T-038`.
+- **`T-011`** — IPC message contract. Two review rounds on 2026-07-26, both **changes
+  requested**. `T011-R1`/`R3`/`R4`/`R6` are reviewer-confirmed resolved; `T011-R2` (reopened on
+  two unvalidated fields) and the new `T011-R7` are corrected and awaiting re-review.
+  **`T011-R5` is parked pending a maintainer decision on `ARC-002`** — see the open question
+  below. `T-011` does **not** yet unblock `T-035` or `T-038`.
 
 ## Next
 
-1. **`T-011` focused re-review.** Six findings, two High, all corrected. The substantive one
-   (`T011-R1`) was a real design hole: a successful probe produced no outcome at all, so a
-   receiver applying `REQ-028` would have failed every probe. The contract now models sessions
-   with exactly one outcome each, and `validate_sequence()` makes the legal sequences
-   executable.
+1. **`T-011` re-review, third round.** Two findings addressed:
+   - `T011-R2` reopened because the first correction validated only the fields the review
+     named, leaving `Progress.speed_bytes_per_second` and `Succeeded.total_bytes` accepting a
+     mutable dict. Both are fixed, and a new test now walks **every field of every message
+     type** so the class of gap cannot recur rather than just these two instances.
+   - `T011-R7` (new): the documented probe grammar `Progress(PROBING)*` was not enforced, so a
+     probe could report `MERGING`. Probe sessions now reject any other stage; download-stage
+     ordering stays deliberately unconstrained.
+
+   **`T011-R5` is not addressed and cannot be** — it needs the `ARC-002` reading below.
 
 2. **`T-034` — filename safety and output-path containment.** Ready, and the best use of time
    while `T-011` is in review: a `TESTING.md` §7 mandatory area that is still uncovered, with a
