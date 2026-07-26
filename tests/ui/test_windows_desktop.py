@@ -154,6 +154,13 @@ import tracks_and_trails.ui.main_window as main_window
 class ProveThenQuit(main_window.MainWindow):
     def showEvent(self, event):
         super().showEvent(event)
+        print("WINDOW-SHOWN", flush=True)
+        # Probing here reported VISIBLE False on the first CI run: showEvent runs *during*
+        # show(), before Windows has mapped the window. A zero-delay timer cannot fire until
+        # the event loop is running, by which point the window really is on screen.
+        QTimer.singleShot(0, self._probe_then_quit)
+
+    def _probe_then_quit(self):
         app = QApplication.instance()
         print("PLATFORM", app.platformName(), flush=True)
 
@@ -167,11 +174,9 @@ class ProveThenQuit(main_window.MainWindow):
         print("IS-WINDOW", bool(user32.IsWindow(hwnd)), flush=True)
         print("VISIBLE", bool(user32.IsWindowVisible(hwnd)), flush=True)
         print("TITLE", buffer.value, flush=True)
-        QTimer.singleShot(0, self._request_quit)
 
-    def _request_quit(self):
         print("QUIT-REQUESTED", flush=True)
-        QApplication.instance().quit()
+        app.quit()
 
 
 main_window.MainWindow = ProveThenQuit
@@ -227,6 +232,7 @@ def test_the_application_launches_on_a_real_windows_desktop(tmp_path: Path) -> N
         f"Windows reports the title as {reported.get('TITLE')!r}"
     )
     assert int(reported.get("HWND", "0")) != 0, "the application window has no native handle"
+    assert "WINDOW-SHOWN" in result.stdout, "the window never reached showEvent"
     assert "QUIT-REQUESTED" in result.stdout, "the window appeared but the quit never fired"
     assert result.stderr.strip() == "", (
         f"Qt wrote to stderr during a clean real-desktop run:\n{result.stderr}"
