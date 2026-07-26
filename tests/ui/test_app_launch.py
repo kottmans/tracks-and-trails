@@ -53,11 +53,16 @@ def run_headless(source: str, tmp_home: str) -> subprocess.CompletedProcess[str]
     env = {
         **os.environ,
         "QT_QPA_PLATFORM": "offscreen",
-        # Redirect every platformdirs location so a test never writes to the developer's real
-        # config and never reads a window position they set by hand.
+        # Redirect platformdirs so a test never writes to the real config directory and never
+        # reads a window position the user set by hand.
+        #
+        # Windows needs its own mechanism: platformdirs resolves folders through
+        # SHGetKnownFolderPath via ctypes, so setting APPDATA does nothing there. Its
+        # documented escape hatch is WIN_PD_OVERRIDE_*. Setting only the POSIX variable is
+        # why this test passed on Linux and failed on the Windows runner.
         "XDG_CONFIG_HOME": tmp_home,
-        "APPDATA": tmp_home,
-        "LOCALAPPDATA": tmp_home,
+        "WIN_PD_OVERRIDE_APPDATA": tmp_home,
+        "WIN_PD_OVERRIDE_LOCAL_APPDATA": tmp_home,
     }
     return subprocess.run(
         [sys.executable, "-c", source],

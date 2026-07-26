@@ -45,7 +45,14 @@ def app_icon() -> QIcon:
 
 
 def geometry_path() -> Path:
-    return Path(user_config_dir(APP_SLUG)) / "window.toml"
+    """`user_config_dir/tracksandtrails/window.toml`, per `ARCHITECTURE.md` §5.
+
+    `appauthor=False` is load-bearing on Windows and a no-op on Linux. platformdirs otherwise
+    inserts an author segment defaulting to the app name, giving
+    `%APPDATA%\\tracksandtrails\\tracksandtrails\\` — a doubled directory that does not match
+    the path §5 specifies. There is no author to name: this is not a vendor-scoped app.
+    """
+    return Path(user_config_dir(APP_SLUG, appauthor=False)) / "window.toml"
 
 
 def load_geometry(path: Path | None = None) -> dict[str, int] | None:

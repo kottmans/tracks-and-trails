@@ -15,9 +15,11 @@ from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox
 from tracks_and_trails import __version__
 from tracks_and_trails.ui.main_window import (
     APP_NAME,
+    APP_SLUG,
     DEFAULT_SIZE,
     MainWindow,
     app_icon,
+    geometry_path,
     load_geometry,
     save_geometry,
 )
@@ -147,3 +149,16 @@ def test_saving_to_an_unwritable_location_does_not_raise(
 
 def test_app_icon_loads(qapp: QApplication) -> None:
     assert not app_icon().isNull()
+
+
+def test_config_directory_is_not_doubled(qapp: QApplication) -> None:
+    """`ARCHITECTURE.md` §5 specifies `user_config_dir/tracksandtrails/window.toml`.
+
+    platformdirs inserts an author segment on Windows unless `appauthor=False`, defaulting it
+    to the app name and producing `...\\tracksandtrails\\tracksandtrails\\`. That is invisible
+    on Linux, so it needs asserting rather than eyeballing on the platform it breaks.
+    """
+    path = geometry_path()
+    assert path.name == "window.toml"
+    assert path.parent.name == APP_SLUG
+    assert path.parent.parent.name != APP_SLUG, f"config directory is doubled: {path}"

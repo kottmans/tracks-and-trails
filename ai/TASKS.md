@@ -94,6 +94,20 @@ unreliable: 2 of 8 runs never saw the window and one took 18 s. The harness now 
 relying on `run` calling `show()` before `exec()` for ordering. 10/10 clean afterwards. The
 instability was the harness, never the application.
 
+**A Windows-only production bug, caught by CI on the first run.** `user_config_dir(APP_SLUG)`
+inserts an author segment on Windows, defaulting it to the app name, so the real config path
+would have been `%APPDATA%\tracksandtrails\tracksandtrails\` — a doubled directory that does
+not match `ARCHITECTURE.md` §5. Invisible on Linux, where the call is identical either way.
+Fixed with `appauthor=False` and pinned by `test_config_directory_is_not_doubled`, which
+asserts the shape rather than the platform-specific string.
+
+The same CI run also exposed a defect in the test that found it: `run_headless` redirected
+platformdirs by setting `XDG_CONFIG_HOME`, `APPDATA` and `LOCALAPPDATA`, but platformdirs
+resolves Windows folders through `SHGetKnownFolderPath` via ctypes and ignores `APPDATA`
+entirely. The Windows job was therefore writing to the runner's real profile. It now uses
+platformdirs' documented `WIN_PD_OVERRIDE_*` variables. **This is precisely the `OPS-003`
+case for CI**: neither fault was observable on the development machine.
+
 **Known-unverified.** Whether the icon appears correctly in the **Windows** taskbar and title
 bar, and how the About box renders there, are not automatable and remain `OPS-003` gaps —
 CI proves the assets load and the window constructs, not that they look right. Cold start was
