@@ -5,7 +5,7 @@
 **Owner:** Reviewer (Codex)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-25
+**Last updated:** 2026-07-26
 **Update when:** A review completes, a defect is found, a prior finding is rechecked, or a release review occurs.
 **Does not contain:** The work required to fix findings — that goes to `TASKS.md`.
 
@@ -515,3 +515,115 @@ PR #7 is not approved at this head. `P0-R1` is still a functional Medium finding
 still cannot exit while its documented Windows launch criterion remains unmet. When the
 remaining corrections are complete, squash merge is the appropriate strategy because this
 branch intentionally contains the broken `freeze_support()` proof commit.
+
+## 2026-07-26 — T-010 domain models, state machine, and error taxonomy
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-010`
+**Base:** `4a2a1e6bc1720a2085146e363d7612503cf07989`
+**Head:** `e2becc0f1153f9fca078c9ed10e8955eb5bc1b2f`
+**Implementation commit:** `ad4d7686158d92c4072ec0469003eef214d61765`
+**Platforms verified:** Linux locally; the handoff reports green Linux and Windows CI, but the
+reviewer could not query those private runs because the installed `gh` credential is invalid
+**Verdict:** Changes requested
+
+### Findings
+
+| ID | Severity | Area | Finding | Recommendation | Status |
+|---|---|---|---|---|---|
+| `T010-R1` | **High** | State-machine anti-vacuity | The exhaustive illegal-transition test asks `can_transition()`—the production table itself—which pairs are illegal before asserting that `apply()` rejects them. It therefore proves that two views of the same table agree, not that the table matches `ARCHITECTURE.md` §5. Adding the undocumented `QUEUED → READY` edge left all 48 state/model tests green. This is exactly the silent state-corruption class `TESTING.md` §7 makes mandatory. | Put the complete architecture-derived transition relation in the test, independent of `_TRANSITIONS`, and check all 81 ordered pairs against it through `allowed_from()`, `can_transition()`, and `apply()`. Retain the new-status coverage guard. | Open |
+| `T010-R2` | **Medium** | Cross-process immutability | `FailureDetail` is declared frozen and described as an immutable cross-process record, but `context` is a mutable `dict`. `failure.context["exit_code"] = "0"` succeeds. This matters for an IPC value: `multiprocessing.Queue` may serialize on its feeder thread after `put()`, so a post-put mutation can change what crosses the boundary. The current immutability test reassigns `kind` only and misses nested mutation. | Store context in a genuinely immutable, picklable representation and test both mutation rejection and pickle round-trip. | Open |
+| `T010-R3` | **Low** | State semantics / task truth | `FAILED` is deliberately non-terminal, yet the acceptance criterion says `CANCELLED` is reachable from every non-terminal state. The test silently excludes `FAILED`, and production correctly permits only `FAILED → QUEUED`. Adding `FAILED → CANCELLED` would be the wrong fix: cancellation stops active work, a failed job has none, and `REQ-015`'s remove action is deletion rather than a lifecycle transition. | Keep the production transition unchanged. Have the Planner replace “every non-terminal state” with an explicit in-flight/cancellable set and distinguish retryable from actively cancellable states. | Open |
+| `T010-R4` | **Low** | Model contract / task truth | The acceptance criterion says a `Job` without an explicit status fails construction, while `Job.status` defaults to `QUEUED` and the tests affirm that default. A new job always having a valid queued status is a reasonable API, but the task currently records the opposite contract. | Keep the default unless a caller genuinely needs to distinguish omitted from queued; have the Planner amend the criterion to require a non-null valid status that defaults to `QUEUED`. Correct “ten kinds” to eleven in the same Planner pass. | Open |
+
+### Review judgments
+
+- `FAILED` should remain non-terminal because retry is a real outgoing transition; it is not
+  an actively cancellable state.
+- `Job.progress is None` when total size is unknown is correct. Zero would conflate unknown
+  progress with known zero progress.
+- `classify()` should not infer policy-bearing kinds from message substrings. Mapping typed
+  yt-dlp failures at the adapter seam is the safer boundary.
+- Implementing eleven `ErrorKind` members is correct: §7 has ten rows but names eleven kinds.
+  This is a task-wording correction, not a reason to collapse ffmpeg failures.
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Bounded review | Clean `main` at exact head `e2becc0`; base/head diff is 17 files, 2,020 insertions and 151 deletions. |
+| Focused T-010 baseline | Passed: 65 tests across `test_models.py`, `test_job_state.py`, and `test_errors.py`. |
+| Invalid transition mutation | Added `QUEUED → READY`; **48 state/model tests still passed**, reproducing `T010-R1`. Mutation was restored and the file returned to the committed diff. |
+| Failed cancellation probe | `is_terminal(FAILED)` returned false; `apply(FAILED, CANCELLED)` raised `IllegalTransitionError`, while the acceptance test excludes `FAILED`. |
+| Failure context probe | Mutating `FailureDetail.context["exit_code"]` from `"1"` to `"0"` succeeded, reproducing `T010-R2`. |
+| Layering | The full default suite includes the architecture-derived layering cases and passed; no Qt or yt-dlp import was added to `core/`. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: 64 files already formatted. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| Bare `mypy` | Passed: no issues in 49 source files. |
+| `pytest -q` | Passed: 243 passed, 2 skipped, 1 deselected in 0.42 s. |
+| `git diff --check 4a2a1e6..e2becc0` | Passed. |
+
+### Readiness
+
+The production transition relation and taxonomy are substantively sound, but `T-010` is not
+ready for dependent Phase 1 work while its mandatory state-machine gate can be weakened by
+adding illegal edges. Fix `T010-R1` and the mutable IPC record, reconcile the two task-contract
+wordings, then perform a focused re-review.
+
+## 2026-07-26 — T-026 real Windows desktop verification
+
+**Reviewer:** Codex (Reviewer)
+**Task(s):** `T-026`; accepted `OPS-004`
+**Base:** `4a2a1e6bc1720a2085146e363d7612503cf07989`
+**Head:** `e2becc0f1153f9fca078c9ed10e8955eb5bc1b2f`
+**Platforms verified:** Linux static review and local collection behavior; Windows run
+`30208677607` and screenshots were reported in the handoff but could not be independently
+queried or downloaded because the installed `gh` credential is invalid
+**Verdict:** Changes requested
+
+### Findings
+
+| ID | Severity | Area | Finding | Recommendation | Status |
+|---|---|---|---|---|---|
+| `T026-R1` | **High** | Phase 0 clean-launch gate | The dedicated job runs only tests marked `windows_desktop`. Those tests construct `MainWindow` inside pytest; they do not exercise `tracks_and_trails.app.run`, the console/module entry point, argument handling, or a fresh application event loop. The existing end-to-end launch test is unmarked, excluded by `-m windows_desktop`, and hard-codes `QT_QPA_PLATFORM=offscreen`. Native `HWND` evidence proves that a widget can be constructed, but not the still-documented exit criterion: the application launches on Windows from a clean checkout following `docs/DEVELOPMENT.md`. This is the same distinction the prior Phase 0 review explicitly recorded. | Add a subprocess launch through the real application startup path under the inherited `windows` plugin, with deterministic GUI-thread shutdown and a positive shown-window marker. Select it in the dedicated job and keep the independent Win32 HWND/title assertions. Do not record the Phase 0 criterion as met until that test is green. | Open |
+| `T026-R2` | **High** | Accessibility anti-vacuity | The UI Automation tests do not pin every interactive control and role as claimed. They require a window, some menu bar, some non-empty menu items, and the names `File` and `Help`. `Quit` and `About Tracks & Trails` are not required, so either action can disappear or be published under a wrong role while the checks remain green. The About dialog is never opened, leaving its Close control wholly outside the queried tree. `REQUIREMENTS.md` §3 and `TESTING.md` §9/§10 therefore retired the manual name/role gap too broadly. | Compare the current UIA tree with an explicit expected name/role contract for the window, menu bar, File, Quit, Help, and About action. Open the About dialog and assert its window and Close control separately. Include removal, empty-name, and wrong-role mutations before narrowing the current-truth claims again. | Open |
+| `T026-R3` | **Medium** | Incomplete acceptance criterion | Deferring widget tab order is correct today—zero focusable widgets would make a theatrical test—but it leaves an explicit T-026 acceptance criterion unmet while the task is treated as completed. `T-016` mentions a deliberate tab order but does not explicitly require extending the real-Windows `windows_desktop` gate or prove that reordering two controls fails there; `T-017` does not mention tab order. Unlike the installer gap, there is no concrete split task. | Keep the vacuous assertion out now. Either keep this criterion open or split it into a concrete follow-up that explicitly extends the Windows real-plugin suite when `T-016`/`T-017` add focusable controls. | Open |
+| `T026-R4` | **Low** | Windows-test type gate | The mypy override is tightly scoped to the two Windows test modules, but those modules have no effective type-checking path. Bare mypy on Linux treats their post-guard code as unreachable; the Windows `check` job runs only `mypy src`; and the dedicated desktop job runs no mypy. A deliberate `int = "not an int"` after the platform guard passed bare mypy locally, while `mypy --platform win32` caught it. | Run bare mypy, or a Windows-platform explicit test target, in the Windows desktop job. Keep the override module-scoped, but let Windows analyze the reachable bodies. | Open |
+| `T026-R5` | **Low** | Current truth / coordination | The changed coordination set remains internally stale. `TESTING.md` still says the suite is near-empty and only one §7 area is covered, and its §12 Windows paragraph still says real keyboard and screen-reader behavior are wholly unverified under superseded `OPS-003`. `TASKS.md` files both implemented, awaiting-review tasks under `Ready` while `In Review` is empty. `STATUS.md` gives the review head as `4172fd0` rather than `e2becc0` and retains the nonexistent `/mnt/storage/...` repository path. | Reconcile the status note, §12, task headings, exact review boundary, and repository path after the functional gates are corrected. | Open |
+
+### Review judgments
+
+- The `addopts` exclusion is acceptable because the dedicated opt-in exists. On Linux,
+  `pytest -m windows_desktop` collected no runnable desktop tests and exited 5, so a marker
+  selection that collects none does fail rather than pass.
+- Explicitly setting `QT_QPA_PLATFORM=windows` is equivalent to removing the offscreen
+  override for this purpose, and the platform-name assertion protects that assumption.
+- Screenshot assertions are correctly limited to capture-pipeline evidence, not visual
+  correctness. The PNG content must not become a red/green layout gate without a separate
+  decision. The reviewer could not inspect the retained images in this pass.
+- Splitting installer automation into `T-039` is correct, and native dialog/shell behavior
+  remains tracked under the objective/subjective split in `OPS-004`.
+- Editing `REQUIREMENTS.md` §3 was within the explicit T-026 acceptance surface after the
+  maintainer accepted `OPS-004`; the defect is that the resulting claim outruns `T026-R2`,
+  not that the Implementer touched the file.
+
+### Checks run
+
+| Check | Result |
+|---|---|
+| Workflow selection review | `windows-desktop` sets the real plugin but invokes only `pytest -m windows_desktop`; the end-to-end startup module is unmarked and forces offscreen. |
+| Accessibility contract review | The queried tree never includes the About dialog; only `File` and `Help` are required by name, and filtering by `UIA_MENU_ITEM` cannot detect a missing/mis-typed Quit or About action. |
+| Desktop collection guard, Linux | `pytest -q -m windows_desktop` reported 2 skipped and 244 deselected, then exited 5. The no-tests guard works. |
+| Mypy suppression mutation | A deliberate post-guard incompatible assignment passed bare mypy on Linux; `mypy --platform win32 tests/ui/test_windows_desktop.py` reported the assignment error. Mutation was restored. |
+| Screenshot source review | Main-window capture asserts save/file/nontrivial size; About capture asserts save/file. No assertion evaluates visual content, so screenshots are not accidental layout gates. |
+| Local required checks | `ruff check .`, `ruff format --check .`, `mypy src`, bare `mypy`, and `pytest -q` all passed with the results recorded in the T-010 entry above. |
+| Windows CI/artifacts | Not independently checked: `gh auth status` reports the configured `kottmans` token invalid. The handoff reports run `30208677607` green with 15 tests and native HWND/title evidence. |
+
+### Readiness
+
+T-026 is not approved, and Phase 0's clean-checkout Windows launch criterion remains
+unverified at this head. The real-plugin job is a strong foundation, its marker/skip guards
+are meaningful, and the screenshot evidence is correctly classified. It still needs an
+end-to-end startup assertion, a non-vacuous complete accessibility contract, and a concrete
+owner for the deferred tab-order gate, followed by focused Windows re-review.
