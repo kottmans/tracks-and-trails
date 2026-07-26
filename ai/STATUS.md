@@ -76,24 +76,28 @@ again and is the natural place to close it.
 
 ## In progress
 
-*(nothing active — `main` is the only branch)*
+- **`T-011`** — IPC message contract. Implemented, reviewed 2026-07-26
+  (**changes requested**), all six findings corrected, awaiting focused re-review. It does
+  **not** yet unblock `T-035` or `T-038`.
 
 ## Next
 
-**Phase 1 is underway.** `T-010` is complete and approved, so four tasks are Ready:
+1. **`T-011` focused re-review.** Six findings, two High, all corrected. The substantive one
+   (`T011-R1`) was a real design hole: a successful probe produced no outcome at all, so a
+   receiver applying `REQ-028` would have failed every probe. The contract now models sessions
+   with exactly one outcome each, and `validate_sequence()` makes the legal sequences
+   executable.
 
-1. **`T-011` — IPC message contract.** Started. The chokepoint `T-012` needs it, and `T-035`
-   and `T-038` unblock when it merges.
-2. **`T-034` — filename safety and output-path containment.** A `TESTING.md` §7 mandatory area
-   that is currently uncovered, and the failure mode is a security one: a title-derived filename
-   escaping the user's output directory.
-3. **`T-014` — persistence** and **`T-015` — presets.** Ready, off the critical path.
+2. **`T-034` — filename safety and output-path containment.** Ready, and the best use of time
+   while `T-011` is in review: a `TESTING.md` §7 mandatory area that is still uncovered, with a
+   security failure mode (a title-derived filename escaping the output directory). It does not
+   depend on `T-011`.
 
-`T-012` needs `T-011`, `T-034` **and** `T-035` before it can start; six tasks depend on it.
+3. **`T-014` and `T-015`** — also Ready, off the critical path.
 
-Also outstanding, both maintainer acts: **recording Phase 0's formal exit**, and confirming the
-`IMPLEMENTATION_PLAN.md` Phase 1 prerequisite amendment — which becomes moot once the exit is
-recorded.
+4. **Record Phase 0's formal exit** — a maintainer act; nothing blocks it.
+
+5. **A human Windows session** — `OPS-004`'s subjective residue only. Blocks first release.
 
 ## Known gaps not yet scheduled
 
@@ -112,6 +116,18 @@ recorded.
   fail every URL in a way that looks like ordinary site breakage.
 
 ## Open questions for the maintainer
+
+- **Does `ARC-002` require a versioned IPC protocol?** Its consequences say the protocol is
+  "a versioned internal contract with its own tests". `T-011` implements no version field and
+  no negotiation, on the grounds that both ends ship in the same artifact and always match —
+  updating yt-dlp in place (`OPS-002`) changes the engine, not the contract.
+
+  `T011-R5` is right that this does not resolve the conflict: `DECISIONS.md` outranks `TASKS.md`
+  (`AGENTS.md` §5), so if "versioned" meant an explicit protocol version, `T-011` is
+  non-compliant. If it meant version-*controlled* — the contract evolves with the release, in
+  git, covered by tests — then `T-011` complies and only the wording is ambiguous. **Reading an
+  accepted decision's intent is a maintainer call**; the module currently claims only "no
+  runtime negotiation" and cites the conflict rather than resolving it.
 
 - **Confirm the Phase 1 prerequisite amendment.** `IMPLEMENTATION_PLAN.md` said "Phase 0
   complete" while `TASKS.md` treated `T-010` as startable — and the plan outranks `TASKS.md`

@@ -5,15 +5,16 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-25
+**Last updated:** 2026-07-26
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-011` — the IPC message contract. `T-010` is complete and approved, so
-`T-011`, `T-034`, `T-014` and `T-015` are all Ready. `T-012` is the chokepoint: it needs
+**Start here:** `T-034` — filename safety, a `TESTING.md` §7 mandatory area that is still
+uncovered. `T-014` and `T-015` are also Ready. `T-011` is **in review with corrections
+pending** and does not yet unblock `T-035` or `T-038`. `T-012` is the chokepoint: it needs
 `T-011`, `T-034` and `T-035`, and six tasks depend on it.
 
 Phase 0's work is complete: `T-026` closed the Windows launch criterion and its third-round
@@ -24,91 +25,6 @@ for a Phase 5 installer; `T-040` for the first focusable widgets.
 ---
 
 ## Ready
-
-### T-011 — IPC message contract
-
-**Status:** Implemented 2026-07-26, awaiting review. All checks green; the contract's
-guarantees were mutation-checked rather than asserted:
-
-- adding a message type without a test sample fails **6** tests
-- making the sentinel terminal fails the terminal-classification tests
-- letting the validator accept a bare `dict` fails the rejection test
-
-**Design note for review:** `WorkerFinished` is deliberately *not* terminal. It ends the
-stream, not the job — conflating them would make a worker that crashed after reporting success
-indistinguishable from one that shut down cleanly. `is_terminal()` covers `Succeeded` and
-`Failed` only.
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 1
-**Depends on:** `T-010`
-**Relevant context:** `ARCHITECTURE.md` §3 (process model), §6 (yt-dlp boundary), §7;
-`ARC-002`, `NFR-008`, `REQ-014`, `REQ-028`
-**Affected surfaces:** `downloader/protocol.py`, `tests/unit/`
-**Risk:** Medium — this is the parent/child contract; a gap here shows up as a hang, not an
-exception
-**Review base:** the `T-010` merge commit
-
-#### Scope
-
-The typed messages that cross the `multiprocessing.Queue` between the GUI process and a
-worker, and nothing else. One module, no behavior beyond construction and validation.
-
-Cover the message kinds the vertical slice needs: a probe result, progress updates carrying
-the stages `REQ-014` names (probing, downloading video, downloading audio, merging,
-post-processing), a terminal success carrying the final path and byte count, and a terminal
-failure carrying a `core.errors` classification plus the verbatim message.
-
-The rule this module exists to enforce: **a raw yt-dlp `info_dict` never crosses the
-boundary** (`ARCHITECTURE.md` §3). The dict's shape belongs to yt-dlp and changes without
-notice (`NFR-008`); the parent must only ever see declared types projected by
-`ytdlp_adapter.py`.
-
-**Shutdown and identity are part of the contract, not details left to `T-013`.** The earlier
-draft specified only the message payloads, which leaves three ways to hang or lie:
-
-- **Every message carries a job ID.** Without it the parent cannot attribute a message, and
-  "exactly one terminal message per job" is unenforceable.
-- **A sentinel terminates the stream.** `ResultPump` does a blocking `Queue.get()`; with no
-  sentinel, shutdown depends on a timeout or on killing a thread mid-read. The protocol
-  defines the sentinel and the guarantee that it is the last thing sent.
-- **Terminal-once is a receiver obligation, stated here.** Message classes alone cannot
-  prevent a second terminal message being sent — an earlier draft claimed they could. The
-  protocol therefore *specifies* that a job has exactly one terminal outcome and that the
-  receiver must enforce it by job ID; `T-013` implements the enforcement.
-
-**No protocol versioning.** Both ends ship in the same artifact and are always the same build,
-even when the user updates yt-dlp underneath (`OPS-002`) — that changes the *engine*, not the
-contract. Recording this now so nobody later adds negotiation machinery for a skew that cannot
-occur.
-
-#### Acceptance criteria
-
-- Every message type round-trips through `pickle` unchanged
-- **Every message carries a job ID**, and constructing one without it fails
-- A declared `is_terminal` predicate identifies exactly the success and failure types, so the
-  receiver's terminal-once rule can be written against the protocol rather than a hardcoded
-  list that drifts as types are added
-- A sentinel type exists, is picklable, and is documented as the last item on the queue
-- Progress messages carry every stage named in `REQ-014`, asserted against that list
-- A terminal failure carries both a `core.errors` kind **and** the original text; neither is
-  optional, and a message with a classification but no text fails construction (`NFR-006`)
-- A **validation helper** rejects anything that is not a declared message — including a bare
-  `dict` — and it lives here so both ends share one definition of "valid". This task tests the
-  helper directly; `T-013` applies it on receipt. The earlier draft promised rejection "at a
-  seam" while declaring both seams out of scope, which was unimplementable
-- `protocol.py` imports no Qt and no `yt_dlp`, enforced by the layering test
-- Every message type is exercised by at least one test; an unexercised type fails the suite
-
-#### Out of scope
-
-- Sending or receiving anything — `T-012` (child side) and `T-013` (parent side). This task
-  defines and tests the validator; it does not call it across a real queue
-- Enforcing terminal-once — specified here, implemented and tested in `T-013`
-- Queue lifetime, draining, and backpressure — `T-013`
-- Any type that only Phase 2's queue needs
-
----
 
 ### T-034 — Filename safety and output-path containment
 
@@ -651,8 +567,20 @@ so.
   (`REQ-015`, `ai/TESTING.md` §7)
 - `SIGKILL`/`TerminateProcess` of a worker yields `WORKER_CRASH` with the exit code recorded,
   and the application stays responsive (`REQ-028`)
-- A worker that exits 0 without sending a terminal message is also `WORKER_CRASH`, not a
-  silent success — the case that looks like nothing went wrong
+- A worker that exits 0 without sending an **outcome** is also `WORKER_CRASH`, not a silent
+  success — the case that looks like nothing went wrong. "Outcome" is `protocol.is_outcome()`,
+  which covers `Probed` as well as `Succeeded`/`Failed` (`T011-R1`): a successful probe is a
+  complete session, and treating it as outcome-less would fail every probe the application ever
+  makes
+- **Terminal-once is enforced, not merely assumed** (`T011-R4`). After one outcome for a job id,
+  a second `Succeeded`/`Failed`/`Probed` for that id is a protocol violation: it is reported and
+  **must not** produce a second state transition or a second signal. Asserted by a test that
+  sends two outcomes and observes exactly one transition. `T-011` specifies this rule and
+  `protocol.validate_sequence()` expresses it; without this criterion the rule had no owner that
+  any test would check
+- `protocol.validate_sequence()` is applied to each completed session, and a violation is
+  surfaced rather than swallowed — an undeclared object, a missing sentinel, or messages after
+  the outcome each fail the job loudly instead of hanging the pump
 - No orphan survives application exit, including a job cancelled during shutdown
 - The GUI thread is never blocked: an assertion that no manager or pump call performs a
   blocking wait on the GUI thread (`NFR-001`)
@@ -1147,7 +1075,115 @@ Assert, on `windows-latest`:
 
 ## In Review
 
-*(none)*
+### T-011 — IPC message contract
+
+**Status:** In Review — reviewed 2026-07-26, **changes requested**; all six findings corrected
+the same day, awaiting focused re-review.
+
+- **`T011-R1` (High), corrected.** A successful probe produced *no outcome*: `Probed` then
+  `WorkerFinished`, neither counted as terminal. A receiver applying `REQ-028`'s "exited 0 with
+  no outcome means the worker crashed" would have failed **every** successful probe. The
+  contract now models **sessions**: a probe or a download produces exactly one outcome, `Probed`
+  is an outcome, and `validate_sequence()` is the executable form. `WorkerFinished` stays a
+  non-outcome, which the reviewer confirmed is right.
+- **`T011-R2` (High), corrected.** Constructors validated only the outer class, so
+  `Probed(media={...})` carried a raw `info_dict` across the boundary — the exact `ARC-002`
+  violation this module exists to prevent — and string stages, string kinds, mutable dict
+  contexts and undeclared subclasses all passed. Payloads are now type-checked, `context` is
+  normalised by the **same helper** `FailureDetail` uses rather than a near-copy, and
+  `is_message()` is an exact type match.
+- **`T011-R3` (Medium), corrected.** All messages are `kw_only`, so required payloads have no
+  defaults and honest non-optional annotations. `Progress.stage` is required — it defaulted to
+  `PROBING`, so omitting it produced a valid message that confidently misreported the stage.
+- **`T011-R4` (Medium), corrected** in `T-013`'s acceptance criteria, which now require
+  terminal-once to be enforced and tested rather than merely assigned.
+- **`T011-R5` (Low), narrowed.** The module now claims only "no runtime negotiation" and records
+  that `ARC-002`'s "versioned internal contract" is the accepted decision's wording. **Whether
+  `ARC-002` meant version-controlled or an explicit protocol version is a maintainer question,
+  raised in `STATUS.md` — not something this task may decide.**
+- **`T011-R6` (Low), corrected.** Task placement, status vocabulary, metadata and `STATUS.md`
+  reconciled.
+
+**Verified against the reviewer's own probes**, not just re-asserted: the sample mutation that
+previously left all 48 tests passing now fails **28**, and all five direct runtime probes
+(wrapped dict, string stage, string kind, mutable context, undeclared subclass) now raise.
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 1
+**Depends on:** `T-010`
+**Relevant context:** `ARCHITECTURE.md` §3 (process model), §6 (yt-dlp boundary), §7;
+`ARC-002`, `NFR-008`, `REQ-014`, `REQ-028`
+**Affected surfaces:** `downloader/protocol.py`, `tests/unit/`
+**Risk:** Medium — this is the parent/child contract; a gap here shows up as a hang, not an
+exception
+**Review base:** the `T-010` merge commit
+
+#### Scope
+
+The typed messages that cross the `multiprocessing.Queue` between the GUI process and a
+worker, and nothing else. One module, no behavior beyond construction and validation.
+
+Cover the message kinds the vertical slice needs: a probe result, progress updates carrying
+the stages `REQ-014` names (probing, downloading video, downloading audio, merging,
+post-processing), a terminal success carrying the final path and byte count, and a terminal
+failure carrying a `core.errors` classification plus the verbatim message.
+
+The rule this module exists to enforce: **a raw yt-dlp `info_dict` never crosses the
+boundary** (`ARCHITECTURE.md` §3). The dict's shape belongs to yt-dlp and changes without
+notice (`NFR-008`); the parent must only ever see declared types projected by
+`ytdlp_adapter.py`.
+
+**Shutdown and identity are part of the contract, not details left to `T-013`.** The earlier
+draft specified only the message payloads, which leaves three ways to hang or lie:
+
+- **Every message carries a job ID.** Without it the parent cannot attribute a message, and
+  "exactly one terminal message per job" is unenforceable.
+- **A sentinel terminates the stream.** `ResultPump` does a blocking `Queue.get()`; with no
+  sentinel, shutdown depends on a timeout or on killing a thread mid-read. The protocol
+  defines the sentinel and the guarantee that it is the last thing sent.
+- **Terminal-once is a receiver obligation, stated here.** Message classes alone cannot
+  prevent a second terminal message being sent — an earlier draft claimed they could. The
+  protocol therefore *specifies* that a job has exactly one terminal outcome and that the
+  receiver must enforce it by job ID; `T-013` implements the enforcement.
+
+**No protocol versioning.** Both ends ship in the same artifact and are always the same build,
+even when the user updates yt-dlp underneath (`OPS-002`) — that changes the *engine*, not the
+contract. Recording this now so nobody later adds negotiation machinery for a skew that cannot
+occur.
+
+#### Acceptance criteria
+
+- Every message type round-trips through `pickle` unchanged
+- **Every message carries a job ID**, and constructing one without it fails
+- A declared **outcome** predicate identifies exactly the types that report what a job
+  achieved, so the receiver's terminal-once rule can be written against the protocol rather
+  than a hardcoded list that drifts as types are added (**amended 2026-07-26 per `T011-R1`**:
+  this said `is_terminal` and "success and failure types", which excluded `Probed` and left a
+  successful probe with no outcome at all)
+- **Legal sequences are specified and executable.** Each session kind declares which outcomes
+  it may produce, and a validator rejects a missing outcome, a duplicate outcome, an outcome
+  illegal for the session, a missing or misplaced sentinel, messages after the outcome, mixed
+  job ids, and undeclared objects (`T011-R1`)
+- A sentinel type exists, is picklable, and is documented as the last item on the queue
+- Progress messages carry every stage named in `REQ-014`, asserted against that list
+- A terminal failure carries both a `core.errors` kind **and** the original text; neither is
+  optional, and a message with a classification but no text fails construction (`NFR-006`)
+- A **validation helper** rejects anything that is not a declared message — including a bare
+  `dict` — and it lives here so both ends share one definition of "valid". This task tests the
+  helper directly; `T-013` applies it on receipt. The earlier draft promised rejection "at a
+  seam" while declaring both seams out of scope, which was unimplementable
+- `protocol.py` imports no Qt and no `yt_dlp`, enforced by the layering test
+- Every message type is exercised by at least one test; an unexercised type fails the suite
+
+#### Out of scope
+
+- Sending or receiving anything — `T-012` (child side) and `T-013` (parent side). This task
+  defines and tests the validator; it does not call it across a real queue
+- Enforcing terminal-once — specified here, implemented and tested in `T-013`
+- Queue lifetime, draining, and backpressure — `T-013`
+- Any type that only Phase 2's queue needs
+
+---
 
 ## Complete
 

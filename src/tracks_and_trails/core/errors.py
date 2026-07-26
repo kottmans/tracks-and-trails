@@ -62,6 +62,27 @@ _NON_RETRYABLE: Final = frozenset({ErrorKind.DRM_PROTECTED, ErrorKind.CANCELLED}
 _AUTO_RETRYABLE: Final = frozenset({ErrorKind.NETWORK})
 
 
+def normalise_context(raw: object) -> tuple[tuple[str, str], ...]:
+    """Return `raw` as a sorted, immutable tuple of string pairs, or raise `ValueError`.
+
+    Shared rather than duplicated (`T011-R2`). `downloader.protocol.Failed` carries the same
+    classification-plus-context shape as `FailureDetail`, mirroring the columns in
+    `ARCHITECTURE.md` §5 so persistence is a direct mapping — but a second hand-written copy of
+    this validation is a second chance to get it subtly wrong, and the mutable-dict hazard
+    `T010-R2` found is exactly what a near-copy reintroduces.
+
+    Sorted so two contexts built from the same pairs in different order compare equal;
+    `MappingProxyType` was the obvious alternative and cannot be pickled.
+    """
+    pairs: tuple[Any, ...] = tuple(raw.items()) if isinstance(raw, Mapping) else tuple(raw)  # type: ignore[arg-type]
+    for pair in pairs:
+        if not isinstance(pair, tuple) or len(pair) != 2:
+            raise ValueError(f"context entries must be (str, str) pairs; got {pair!r}")
+        if not all(isinstance(part, str) for part in pair):
+            raise ValueError(f"context entries must be (str, str) pairs; got {pair!r}")
+    return tuple(sorted(pairs))
+
+
 def is_retryable(kind: ErrorKind) -> bool:
     """Whether a job in this state may be retried at all, by the user or automatically."""
     return kind not in _NON_RETRYABLE
@@ -112,18 +133,7 @@ class FailureDetail:
                 "an empty message discards the only actionable information there was"
             )
 
-        # Typed as `Any` on purpose: this is unvalidated input. The declared field type says
-        # what callers *should* pass, and the loop below is what happens when they do not —
-        # narrowing it to the declared type here would make mypy call the checks redundant and
-        # leave nothing guarding the boundary at runtime.
-        raw: Any = self.context
-        pairs: tuple[Any, ...] = tuple(raw.items()) if isinstance(raw, Mapping) else tuple(raw)
-        for pair in pairs:
-            if not isinstance(pair, tuple) or len(pair) != 2:
-                raise ValueError(f"context entries must be (str, str) pairs; got {pair!r}")
-            if not all(isinstance(part, str) for part in pair):
-                raise ValueError(f"context entries must be (str, str) pairs; got {pair!r}")
-        object.__setattr__(self, "context", tuple(sorted(pairs)))
+        object.__setattr__(self, "context", normalise_context(self.context))
 
     @property
     def context_map(self) -> Mapping[str, str]:
