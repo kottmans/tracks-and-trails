@@ -135,9 +135,21 @@ non-negotiable invariant. If an instruction appears to require that, say so and 
 |---|---|
 | Docs only (`ai/`, `README.md`, comments) | none |
 | Source change | `ruff check` + `ruff format --check` + `mypy src` + the tests relevant to the change |
+| Change touching a platform-guarded module | the above **plus `mypy --platform win32`** — see below |
 | Anything toward a tagged release or distributed build | the full suite + the release gate, regardless of size |
 
 Never report a check as passing without having run it. Paste or summarize the real result.
+
+**Run the checks, read each result, and only then commit.** Do not chain validation and
+`git commit` into one shell command: the commit runs regardless of what the checks said, and
+the failure is on screen while the push happens. This is not hypothetical — it shipped a
+`mypy` failure and, separately, a commit missing its coordination-file updates.
+
+**A host-only check is not the whole gate.** `mypy` is configured for the host platform, so on
+Linux the bodies of Windows-guarded modules are proved unreachable and never analysed at all.
+`mypy --platform win32` analyses them; `ai/TESTING.md` records which modules need it and why.
+The same asymmetry applies to tests: a test that passes on Linux may encode a Linux assumption
+(temp-path length, `PATHEXT`, `appauthor`), and only the Windows job can tell you.
 
 ## 9. Review convergence
 
