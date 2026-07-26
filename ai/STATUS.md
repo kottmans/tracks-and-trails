@@ -133,17 +133,16 @@ again and is the natural place to close it.
 
 ## Open questions for the maintainer
 
-- **Does `ARC-002` require a versioned IPC protocol?** Its consequences say the protocol is
-  "a versioned internal contract with its own tests". `T-011` implements no version field and
-  no negotiation, on the grounds that both ends ship in the same artifact and always match —
-  updating yt-dlp in place (`OPS-002`) changes the engine, not the contract.
+- **Accept or reject `ARC-003`.** It narrows one phrase in `ARC-002`'s consequences — "the IPC
+  protocol is now a versioned internal contract with its own tests" — to mean version-*controlled*
+  rather than version-*negotiated*, and records that `T-011` therefore complies as written.
 
-  `T011-R5` is right that this does not resolve the conflict: `DECISIONS.md` outranks `TASKS.md`
-  (`AGENTS.md` §5), so if "versioned" meant an explicit protocol version, `T-011` is
-  non-compliant. If it meant version-*controlled* — the contract evolves with the release, in
-  git, covered by tests — then `T-011` complies and only the wording is ambiguous. **Reading an
-  accepted decision's intent is a maintainer call**; the module currently claims only "no
-  runtime negotiation" and cites the conflict rather than resolving it.
+  Drafted 2026-07-26 in response to `T011-R5`, and **it is the only thing still blocking
+  `T-011`'s approval**; every code finding against that task is resolved. The reasoning: the
+  phrase sits among obligations rather than features, `ARC-002` never discusses version skew
+  anywhere, and skew is architecturally impossible while `REL-001` ships one artifact that
+  spawns its own children. `ARC-003` names the trigger that would expire it — any packaging in
+  which parent and child become separately deployable.
 
 - **Confirm the Phase 1 prerequisite amendment.** `IMPLEMENTATION_PLAN.md` said "Phase 0
   complete" while `TASKS.md` treated `T-010` as startable — and the plan outranks `TASKS.md`

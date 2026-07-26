@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-25
+**Last updated:** 2026-07-26
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -157,7 +157,8 @@ Build in Python with **PySide6** (Qt 6) for the GUI.
 
 ## ARC-002 — Consume yt-dlp as a library inside one isolated child process per job
 
-**Status:** Accepted
+**Status:** Accepted — the "versioned internal contract" phrase in its consequences is
+**narrowed by `ARC-003`** (2026-07-26). The decision itself is unchanged.
 **Date:** 2026-07-25
 
 ### Context
@@ -662,3 +663,79 @@ path-safety checks are more reliable as assertions than as a human watching Task
   deferred to that pre-release session.
 - Any Windows-only defect will be found late. Accepted knowingly; `T-020` exists to catch the
   worst-known instance of that class in Phase 0.
+
+---
+
+## ARC-003 — "Versioned" in `ARC-002` means version-controlled, not version-negotiated
+
+**Status:** Proposed — needs maintainer acceptance
+**Date:** 2026-07-26
+**Narrows:** one phrase in `ARC-002`'s consequences. The decision itself stands unchanged.
+
+### Context
+
+`ARC-002`'s consequences include:
+
+> The IPC protocol is now a versioned internal contract with its own tests.
+
+`T011-R5` found that this does not say what it requires. Read one way it is an obligation to
+carry an explicit protocol version across the boundary; read another it says the protocol is
+now a real API surface, maintained deliberately in version control and covered by tests.
+
+The ambiguity is not academic. `T-011` implements no version field and no negotiation, and
+`DECISIONS.md` outranks `TASKS.md` (`AGENTS.md` §5) — so under the first reading `T-011` is
+non-compliant and cannot be approved, and under the second it complies as written. The
+reviewer correctly declined to resolve it, and so did the Implementer: reading an accepted
+decision's intent is a maintainer act.
+
+### Decision
+
+**Version-controlled.** `ARC-002` requires that the IPC protocol be a deliberate, tested
+internal contract — one module, declared types, changed only alongside its tests. It does
+**not** require a protocol version field, a handshake, compatibility ranges, or any runtime
+negotiation between parent and child.
+
+`downloader/protocol.py` as implemented in `T-011` satisfies `ARC-002`.
+
+### Rationale
+
+- **The phrase sits among obligations, not features.** Its neighbours in the same list are
+  "everything crossing the boundary must be picklable", "worker modules must not import Qt",
+  and "per-process startup cost is real". Every one is a cost the decision imposes. "With its
+  own tests" is the operative clause, and it is satisfied.
+- **`ARC-002` never discusses version skew.** Not in its context, rationale, or alternatives.
+  When this project means version skew it says so at length — see `OPS-002`, which is entirely
+  about a yt-dlp version the user can change underneath the application.
+- **Skew is architecturally impossible.** `REL-001` ships one self-contained artifact, and
+  `ARC-002` spawns the child from that same binary. There is no supported configuration in
+  which a parent and child of different builds meet. `OPS-002`'s in-place update replaces
+  yt-dlp — the *engine* — not this protocol, which is the application's own code.
+- **A check that can never fail is a check nobody maintains.** Version machinery guarding an
+  unreachable state is dead weight that later readers must still reason about.
+
+### Alternatives considered
+
+- **Leave the phrase ambiguous** — rejected. It blocks `T-011`'s approval indefinitely, and
+  `AGENTS.md` §7 forbids leaving a known conflict standing as project truth.
+- **Rewrite `ARC-002` in place** — rejected. It is historical record (`AGENTS.md` §6);
+  narrowing by a separate entry preserves what was believed and when.
+- **Add a `PROTOCOL_VERSION` constant asserted at worker startup** — *not unreasonable*, and
+  rejected only on balance. It would cost about five lines, add no negotiation, and make the
+  original wording literally true. It also catches one case that genuinely occurs: a developer
+  running a worker from source against a stale installed build. Rejected because that is a
+  development-workflow problem rather than a shipped-artifact one, and because a permanently
+  passing assertion invites exactly the machinery this entry declines. **If the trigger below
+  fires, this is the first thing to add.**
+- **Implement real version negotiation** — rejected. Substantial machinery for a failure mode
+  the architecture forbids.
+
+### Consequences
+
+- `T011-R5` closes on acceptance, and `T-011` becomes approvable on its current implementation.
+- `downloader/protocol.py` keeps its narrow claim — no runtime negotiation — and may drop the
+  note recording this conflict as unresolved.
+- **This decision expires if parent and child ever become separately deployable.** A standalone
+  worker binary, an external helper process, a plugin model, or any packaging in which the
+  child is not spawned from the parent's own artifact makes skew reachable and re-opens the
+  question. Whoever proposes such a change must revisit this entry rather than discovering the
+  gap at runtime.
