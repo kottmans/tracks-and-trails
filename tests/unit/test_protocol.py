@@ -11,6 +11,7 @@ asserted to be valid rather than assumed.
 """
 
 import pickle
+import typing
 from typing import Any
 
 import pytest
@@ -220,6 +221,86 @@ def test_succeeded_rejects_a_non_integer_total() -> None:
             Succeeded(job_id="j", output_path="/a.mp4", total_bytes=bad)  # type: ignore[arg-type]
     with pytest.raises(ValueError, match="negative"):
         Succeeded(job_id="j", output_path="/a.mp4", total_bytes=-1)
+
+
+# --- annotation-driven scalar guards (T-043, from T041-R6 via T-042) ------------------------
+
+
+def field_names(message_type: type) -> list[str]:
+    """Declared field names. Centralises the one `__dataclass_fields__` access mypy dislikes."""
+    return list(message_type.__dataclass_fields__)  # type: ignore[attr-defined]
+
+
+def annotated_types(message_type: type, name: str) -> set[type]:
+    """The concrete types in a field's annotation, unwrapping unions."""
+    hint = typing.get_type_hints(message_type)[name]
+    args = typing.get_args(hint) or (hint,)
+    return {arg for arg in args if isinstance(arg, type)}
+
+
+def numeric_fields(message_type: type) -> set[str]:
+    """Fields annotated as a number but **not** as a bool."""
+    result = set()
+    for name in field_names(message_type):
+        types_ = annotated_types(message_type, name)
+        if (int in types_ or float in types_) and bool not in types_:
+            result.add(name)
+    return result
+
+
+def optional_fields(message_type: type) -> set[str]:
+    return {
+        name
+        for name in field_names(message_type)
+        if type(None) in annotated_types(message_type, name)
+    }
+
+
+def kwargs_for(message_type: type) -> dict[str, Any]:
+    sample = one_of_each()[message_type]
+    return {name: getattr(sample, name) for name in field_names(message_type)}
+
+
+@pytest.mark.parametrize("message_type", MESSAGE_TYPES, ids=lambda t: t.__name__)
+def test_numeric_fields_reject_booleans(message_type: type) -> None:
+    """`T-043`. `bool` is an `int` subclass, so `True` becomes a rate of 1 B/s or exit code 1.
+
+    Found by `T-042`'s out-of-scope check on the sibling sweep in `core/models.py`. The count
+    validators' guards were already covered here, but `Progress.speed_bytes_per_second` and
+    `WorkerFinished.exit_code` were not: deleting either left all 113 protocol tests green.
+
+    Annotation-driven rather than two more names in a parametrize list, so a numeric field added
+    later is covered without anyone editing anything — the `T041-R2` lesson.
+    """
+    fields = numeric_fields(message_type)
+    if not fields:
+        pytest.skip(f"{message_type.__name__} declares no numeric fields")
+
+    for name in fields:
+        kwargs = kwargs_for(message_type)
+        kwargs[name] = True
+        with pytest.raises(TypeError):
+            message_type(**kwargs)
+
+
+@pytest.mark.parametrize("message_type", MESSAGE_TYPES, ids=lambda t: t.__name__)
+def test_fields_that_cannot_be_none_reject_none(message_type: type) -> None:
+    """A regression guard, slightly beyond `T-043` as written — deliberately.
+
+    The task scoped nullability out because the reviewer verified it sound, and it is. But
+    "correct and untested" is exactly the condition `T-042` existed to fix, and the helpers
+    above make this one extra test rather than a separate effort. Widening by a single test
+    with the reason recorded beats filing a third task for it.
+    """
+    optional = optional_fields(message_type)
+    required = [n for n in field_names(message_type) if n not in optional]
+    assert required, f"{message_type.__name__} has no required fields; this would be vacuous"
+
+    for name in required:
+        kwargs = kwargs_for(message_type)
+        kwargs[name] = None
+        with pytest.raises((TypeError, ValueError)):
+            message_type(**kwargs)
 
 
 # --- rejection: failure context immutability (T011-R2 / T010-R2) ----------------------------

@@ -78,7 +78,8 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-*(nothing active — `T-041` was approved and is complete)*
+- **`T-042`** and **`T-043`** — test-strength fixes for guards that were correct but
+  unprotected, so a regression would have been silent. Both implemented, awaiting review.
 
 ## Next
 
