@@ -49,10 +49,10 @@ unmet and unmeetable here (`OPS-003`).
   platforms; the clean-checkout verification passes on Linux. The **negative** proof — that
   removing `freeze_support()` breaks it — has now been run on Windows too (`T-029`, run
   `30186080950`).
-- **Phase 0 exit review complete — changes requested.** **Eight** findings (`P0-R1` …
-  `P0-R8`), three Medium; tracked as `T-027` … `T-032`. `T005-R1` and `T005-R3` are now
-  formally Resolved. A re-review then closed `T-028` and all of `T-029`, leaving `P0-R1`,
-  `P0-R6`, `P0-R7` and `P0-R8` open — all four addressed on `t-027-032-review-fixes`.
+- **Phase 0 exit review complete, and its eight findings closed** — `T-027` … `T-032`,
+  squash-merged as `6f2fec9`. `P0-R2` … `P0-R5` were reviewer-verified; the corrections to
+  `P0-R1`, `P0-R6`, `P0-R7` and `P0-R8` were **maintainer-accepted without a final
+  re-review**, and each task records that.
 - **Windows is no longer entirely unverified.** `T-006`'s runners confirmed, with downloadable
   artifact evidence: Python 3.14.6 (MSC v.1944, AMD64), PySide6/shiboken6/Qt 6.11.1, a
   `QWidget` visible offscreen, and the full 27-test suite passing. This discharges the Windows
@@ -63,22 +63,20 @@ unmet and unmeetable here (`OPS-003`).
 
 ## In progress
 
-- **`T-027` … `T-032`** — In Review on branch `t-027-032-review-fixes` (PR #7), covering the
-  Phase 0 exit-review findings and the re-review's four remaining ones.
+*(nothing active — `main` is the only branch)*
 
 ## Next
 
-Phase 0's build work is merged. The exit review happened and **requested changes**, so the
-phase has not exited.
+Phase 0's build work and every exit-review finding are merged. **The phase still has not
+exited**, for one reason only: the documented criterion "the window launches from a clean
+checkout on Windows" is unmet and cannot be met here (`OPS-003`). Everything else passes.
 
-1. **`T-027` … `T-032`** — the exit-review follow-ups. `T-027` (unsafe stored geometry),
-   `T-029` (the frozen negative proof was never run on Windows) and `T-031` (correct `OPS-004`
-   before deciding it) are High.
-2. **Re-review**, then a second Phase 0 exit verdict.
-3. **The Windows launch criterion** stays unmet regardless — it needs a real Windows session
-   (`OPS-003`), and `OPS-004`/`T-026` decide how much of the surrounding gap CI can close.
-4. **Phase 1** — `T-010` … `T-019` are outlines needing full scope, acceptance criteria and
-   review bases before any moves to Ready. Planner work, and not started.
+1. **Phase 1 planning** — `T-010` … `T-019` are one-line outlines. Each needs scope,
+   observable acceptance criteria, an out-of-scope list and a review base before it can move
+   to Ready. This is the next real work and it is Planner work.
+2. **A Windows session** — a cloud desktop, a local VM, or a person with a Windows machine.
+   It closes the last exit criterion and it blocks first release either way.
+3. **`OPS-004`** — accept or reject; it unblocks `T-026`. See the open question below.
 
 ## Known gaps not yet scheduled
 
