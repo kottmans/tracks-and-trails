@@ -28,50 +28,6 @@ for a Phase 5 installer; `T-040` for the first focusable widgets.
 
 ## Ready
 
-### T-045 — Defused reserved names can collide with a legal neighbour
-
-**Status:** **Ready** — found while correcting `T034-R4`, 2026-07-26
-**Owner:** Implementer
-**Priority:** Low — needs a directory containing both names; no data loss, one file would
-overwrite or be rejected by the caller
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `T034-R2`, `T034-R4`, `ARCHITECTURE.md` §8
-**Affected surfaces:** `src/tracks_and_trails/core/paths.py`, `tests/unit/test_paths.py`
-**Risk:** Low
-
-#### Scope
-
-`sanitize_component` defuses a Windows reserved name by appending `_`, so `COM1` becomes
-`COM1_` — which is exactly what a file legitimately named `COM1_` also produces. Both land on
-one path.
-
-Same class as the `COM0` defect corrected in `T034-R4`'s second round, but narrower and not the
-same mistake: `COM0` was never reserved and should never have been touched, whereas `COM1` is
-genuinely reserved and *must* be renamed. The collision is a consequence of the renaming
-strategy, not of renaming something that did not need it.
-
-Found while writing the `COM0` regression test, and deliberately **not** fixed there: the
-maintainer authorized a single exception pass limited to two named corrections, and this is a
-third. Pinned by `test_defusing_a_genuinely_reserved_name_still_collides_see_t_045` so the
-current behavior cannot change unnoticed.
-
-#### Acceptance criteria
-
-- Defusing a reserved name cannot produce a path that a legal filename also produces —
-  for example by appending the `_MARKER_BYTES` digest rather than a bare `_`
-- Idempotence survives: sanitizing an already-defused name returns it unchanged
-- The pinning test above is replaced by one asserting the names differ
-- A mutation reverting to the bare `_` suffix fails the suite
-
-#### Out of scope
-
-- Any change to which names are treated as reserved — `T034-R4` settled that against
-  Microsoft's list, in both directions
-- Collision policy when the target file already exists — Phase 2, alongside resume
-
----
-
 ### T-038 — Logging with handler-level redaction
 
 **Status:** **Ready** — `T-011` complete, 2026-07-26
@@ -1015,6 +971,63 @@ Assert, on `windows-latest`:
 ---
 
 ## In Review
+
+### T-045 — Defused reserved names can collide with a legal neighbour
+
+**Status:** Implemented 2026-07-26, awaiting review.
+
+Reserved names are now defused with the same digest the truncation differentiator uses, rather
+than a bare `_`. `COM1` becomes `COM1-<16 hex>`; a legal file named `COM1_` is untouched, so the
+two no longer land on one path.
+
+The digest is taken over the *stem*, so it is stable across calls and processes — a path that
+changed between the `REQ-011` preview and the write would make the preview a lie. Idempotent,
+because `COM1-<hex>` is not itself reserved and a second pass leaves it alone. Extensions
+survive: `CON.mp4` becomes `CON-<hex>.mp4`.
+
+**Mutation-verified:** reverting to the bare `_` suffix fails 5 tests. The pinning test that
+recorded the old behavior is replaced by one asserting the names differ, parametrized across
+five reserved forms including a superscript.
+**Owner:** Implementer
+**Priority:** Low — needs a directory containing both names; no data loss, one file would
+overwrite or be rejected by the caller
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T034-R2`, `T034-R4`, `ARCHITECTURE.md` §8
+**Affected surfaces:** `src/tracks_and_trails/core/paths.py`, `tests/unit/test_paths.py`
+**Risk:** Low
+
+#### Scope
+
+`sanitize_component` defuses a Windows reserved name by appending `_`, so `COM1` becomes
+`COM1_` — which is exactly what a file legitimately named `COM1_` also produces. Both land on
+one path.
+
+Same class as the `COM0` defect corrected in `T034-R4`'s second round, but narrower and not the
+same mistake: `COM0` was never reserved and should never have been touched, whereas `COM1` is
+genuinely reserved and *must* be renamed. The collision is a consequence of the renaming
+strategy, not of renaming something that did not need it.
+
+Found while writing the `COM0` regression test, and deliberately **not** fixed there: the
+maintainer authorized a single exception pass limited to two named corrections, and this is a
+third. Pinned by `test_defusing_a_genuinely_reserved_name_still_collides_see_t_045` so the
+current behavior cannot change unnoticed.
+
+#### Acceptance criteria
+
+- Defusing a reserved name cannot produce a path that a legal filename also produces —
+  for example by appending the `_MARKER_BYTES` digest rather than a bare `_`
+- Idempotence survives: sanitizing an already-defused name returns it unchanged
+- The pinning test above is replaced by one asserting the names differ
+- A mutation reverting to the bare `_` suffix fails the suite
+
+#### Out of scope
+
+- Any change to which names are treated as reserved — `T034-R4` settled that against
+  Microsoft's list, in both directions
+- Collision policy when the target file already exists — Phase 2, alongside resume
+
+---
 
 ### T-035 — Resolve the yt-dlp and ffmpeg environment
 

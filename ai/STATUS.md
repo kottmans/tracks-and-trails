@@ -80,8 +80,9 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 - **`T-034`** — two further corrections applied under a maintainer-authorized exception pass
   (the §9 budget was exhausted): the digest widened to 8 bytes, and my invented `COM0`/`LPT0`
-  rule removed. A third defect found in the process is filed as `T-045` rather than fixed.
+  rule removed. A third defect found in the process was filed as `T-045` and has since been fixed.
 - **`T-035`** — **approved with follow-ups**; its Low findings are owned by `T-044`.
+- **`T-045`** — reserved-name defusing no longer collides with a legal neighbour. Implemented.
 
 ## Next
 

@@ -158,9 +158,15 @@ def sanitize_component(name: str) -> str:
 
     stem, dot, extension = cleaned.partition(".")
     if stem.upper() in _RESERVED_NAMES:
-        # Suffix rather than replace: the user's title stays readable, and the result cannot
-        # collide with a legitimately-named neighbour the way a fixed placeholder would.
-        stem = f"{stem}{_REPLACEMENT}"
+        # Suffixed with a digest, not a bare `_` (`T-045`). The user's title stays readable and
+        # the result stays unique: `COM1` and a legal file named `COM1_` both produced `COM1_`,
+        # so two distinct names landed on one path — the same collision class the truncation
+        # differentiator exists to prevent, reached by a different route.
+        #
+        # A bare marker rather than `_` plus marker, so the defused name cannot be confused with
+        # a truncated one. Idempotent: `COM1-<hex>` is not itself reserved, so a second pass
+        # leaves it alone.
+        stem = f"{stem}{_marker(stem)}"
     cleaned = f"{stem}{dot}{extension}"
 
     # The one place trailing dots and spaces are removed. Windows strips them when creating a

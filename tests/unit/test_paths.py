@@ -84,18 +84,29 @@ def test_names_that_only_look_reserved_pass_through_untouched(name: str) -> None
     assert sanitize_component(f"{name}.mp4") == f"{name}.mp4"
 
 
-def test_defusing_a_genuinely_reserved_name_still_collides_see_t_045() -> None:
-    """**Known limitation, pinned rather than fixed** — `T-045`.
+@pytest.mark.parametrize("reserved", ["COM1", "CON", "aux", "LPT\u00b9", "NUL"])
+def test_defusing_a_reserved_name_cannot_collide_with_a_legal_neighbour(reserved: str) -> None:
+    """`T-045`. A defused name must not be a name a legal file also produces.
 
-    `COM1` is genuinely reserved and must be renamed, and the `_` suffix makes it collide with a
-    legal file named `COM1_`. That is the same class as the `COM0` defect, but narrower: it needs
-    a directory holding both names, and unlike `COM0` the mangling itself is unavoidable.
-
-    Found while writing the `COM0` regression test. Fixing it is outside the single exception
-    pass the maintainer authorized, so it is filed as `T-045` and pinned here — an unpinned
-    known defect is one nobody notices changing.
+    `COM1` and a legal file named `COM1_` both used to yield `COM1_`, so two distinct names
+    landed on one path — the same collision class the truncation differentiator exists to
+    prevent, reached by a different route. The bare `_` suffix is now a digest.
     """
-    assert sanitize_component("COM1") == sanitize_component("COM1_") == "COM1_"
+    defused = sanitize_component(reserved)
+    assert defused != reserved, f"{reserved!r} must be renamed at all"
+    assert defused != sanitize_component(f"{reserved}_")
+    assert sanitize_component(defused) == defused, "defusing must stay idempotent"
+
+
+def test_a_defused_reserved_name_keeps_its_extension() -> None:
+    """The rename must not cost the extension — the `T034-R3` property, at a different seam."""
+    assert sanitize_component("CON.mp4").endswith(".mp4")
+    assert sanitize_component("aux.mkv").endswith(".mkv")
+
+
+def test_defusing_is_stable_across_calls() -> None:
+    """A path that changed between the preview and the write would make the preview a lie."""
+    assert len({sanitize_component("CON.mp4") for _ in range(20)}) == 1
 
 
 #: `ai/TESTING.md` §5's required fixture set.
