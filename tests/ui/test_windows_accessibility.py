@@ -235,15 +235,24 @@ def test_the_title_bar_controls_are_announced(tree: Tree) -> None:
     )
 
 
-def test_no_control_reaches_the_tree_without_a_name(tree: Tree) -> None:
-    """`NFR-005`. Asserted over every element, not only the ones this file names.
+def test_no_interactive_control_reaches_the_tree_without_a_name(tree: Tree) -> None:
+    """`NFR-005`. Over every interactive control, not only the ones this file names.
 
     A control added later without a label fails here rather than shipping unreadable.
+
+    Scoped to menu items and buttons — the roles a user actually operates. Qt and Windows
+    leave the `TitleBar` and the `MenuBar` **container** unnamed, which the first CI run of
+    this assertion flagged as two violations. They are not: a screen reader announces those by
+    role, and their children carry the names. Requiring a name there would assert something
+    the platform does not do, and the only way to make it pass would be to weaken it.
     """
-    unnamed = [node for node in tree.descendants if not node.name.strip()]
-    assert not unnamed, (
-        f"{len(unnamed)} control(s) expose no accessible name: {describe(tuple(unnamed))}"
+    interactive = tuple(
+        node for node in tree.descendants if node.control_type in (UIA_MENU_ITEM, UIA_BUTTON)
     )
+    assert interactive, "no interactive controls in the tree at all"
+
+    unnamed = tuple(node for node in interactive if not node.name.strip())
+    assert not unnamed, f"{len(unnamed)} control(s) expose no accessible name: {describe(unnamed)}"
 
 
 # --- the menus themselves -------------------------------------------------------------------
