@@ -332,7 +332,9 @@ agreement on the reduced form before implementation.
 
 ### T-012 — yt-dlp in a spawned worker
 
-**Status:** Ready once the current review clears — all three prerequisites (`T-011`, `T-034`, `T-035`) are implemented; `T-011` is approved and the other two await review
+**Status:** **Ready** — all three prerequisites approved: `T-011`, `T-034` (2026-07-26 at
+`66a5542`) and `T-035`. **`T-033` must land with this task**, or the frozen artifact ships
+without yt-dlp and fails every URL like ordinary site breakage.
 **Owner:** Implementer
 **Priority:** High — this is where `ARC-002` stops being a design
 **Phase:** Phase 1
@@ -1029,106 +1031,18 @@ current behavior cannot change unnoticed.
 
 ---
 
+## Complete
+
 ### T-034 — Filename safety and output-path containment
 
-**Status:** Implemented 2026-07-26, awaiting review. Closes a `ai/TESTING.md` §7 mandatory
-coverage area — **Path safety** — taking §7 from two of ten to three.
+**Status:** **Complete — approved with follow-ups**, 2026-07-26 at `66a5542`.
 
-**Mutation-checked, nine weakenings of the security property.** All nine now fail; two did not
-at first, and both were real:
+Closes `ai/TESTING.md` §7's **Path safety** mandatory area, taking §7 from two of ten to three.
+Four review rounds and two maintainer-authorized exception passes; the reviewer independently
+probed `C:../evil.mp4` and `C:..\evil.mp4` and confirmed both stay contained.
 
-- **Splitting on only the host's separator survived.** A Windows-style path was flattened into
-  one mangled filename on Linux rather than read as a path — same input, different structure per
-  host, which `NFR-004` forbids. The guard turned out to be **dead code**: normalising the
-  separator first makes the `PurePosixPath`/`PureWindowsPath` comparison redundant. Simplified to
-  a string split and a real cross-platform test added. The test that should have caught it
-  compared `sanitize_component("aux.mp4")` **with itself** and proved nothing.
-- **Removing a trailing dot/space strip survived**, because a second strip later in the same
-  function already did the work. Redundancy, not a gap — the duplicate is gone.
-
-**A Windows-only test defect, caught by CI and worth recording.** The two length tests built a
-fixed 80+80 directory under `tmp_path`. That leaves room under Linux's short temp path and none
-under the Windows runner's much longer one, so `safe_output_path` correctly refused and the test
-failed — on Windows only. **The module was right; the tests encoded a platform assumption.** Both
-now size the directory from the remaining budget and skip when the scenario cannot be
-constructed. Verified locally against a deliberately long `--basetemp` as well as the default.
-
-**One mutation is knowingly uncaught and documented in the module:** removing the final
-`is_contained()` call in `safe_output_path` fails nothing, because every escape is already
-neutralised before it. It stays as defence in depth at a security boundary — the cost is one
-comparison and what it guards is a file written somewhere the user was never told about — and
-`is_contained()` itself is directly tested, including the sibling-prefix and symlink cases.
-Recorded rather than hidden, since `ARC-003` argued the opposite about unreachable checks and
-the distinction deserves a reviewer's eye.
-
-**Reviewed 2026-07-26 — changes requested; four blocking Medium findings, all corrected:**
-
-- **`T034-R1`** — I claimed the final containment check was unreachable. **It is not.** An
-  existing symlink under the output directory pointing outside makes the joined path resolve
-  elsewhere, so the branch fires. My mutation only looked green because no test drove a symlink
-  through `safe_output_path` — `is_contained` was tested directly instead. Both directions are
-  now driven from the public entry point, and the comment is corrected.
-- **`T034-R2`** — prefix truncation collided: two 401-character stems sharing 400 characters
-  produced one filename. A stable `blake2b` digest now differentiates them. The old collision
-  test differed at character 7, inside the retained prefix, so it proved nothing.
-- **`T034-R3`** — a tight budget silently returned `cl` for `clip.mp4`. It raises now. Tested
-  against `_shorten_to` directly, because the filesystem-level version could not construct a
-  tight enough budget on every host and took its `else` branch against the bug.
-- **`T034-R4`** — the device-name set omitted `COM0`, `LPT0` and the six superscript forms
-  Microsoft documents. Derived from a digit string now, so it cannot drift.
-
-**Second exception pass, 2026-07-26 — maintainer-authorized, two defects found by
-implementer verification rather than review:**
-
-- **Trailing whitespace bypassed reserved-name defusing.** `"CON "` came out as `"CON"` — an
-  unopenable Windows file — because the reserved check ran on the unstripped stem and the final
-  strip then produced the bare name anyway. It also broke idempotence: `"CON "` gave `"CON"`
-  while `"CON"` gave `"CON-<hex>"`, so the `REQ-011` preview and the write would disagree.
-
-  **Caused by the first correction pass.** I removed an early `rstrip` there as "redundant" on
-  mutation evidence — and it was only redundant because no test covered a decorated reserved
-  name. **The mutation was reporting a missing test, not a useless guard**, and I read it the
-  other way. The fix strips the *stem* before the check, which also catches `"CON .mp4"` that
-  the original line missed.
-
-  The first attempt at this fix added *two* strips, and each alone sufficed, so single mutations
-  survived — the identical redundancy trap. Resolved to one guard, deliberately, now that tests
-  cover it: reverting it fails **21** tests.
-
-- **A legal title beginning `X:` was rejected outright.** `"A: The Movie.mp4"` parses as a
-  Windows drive, and discarding the whole component left nothing usable, so the download failed
-  entirely. Only a component that *is* a drive specifier is dropped now; one that merely begins
-  with one is sanitized like any other colon — `"A_ The Movie.mp4"`, matching what
-  `"Artist: Song.mp4"` already produced. `"C:\\Windows\\evil.mp4"` still loses its drive.
-
-**Thirteen mutations, none surviving** — including both new fixes, and the ten from earlier
-passes re-verified at this head.
-
-**Exception pass, 2026-07-26 — maintainer-authorized, limited to two corrections:**
-
-- **`T034-R2`, second round.** The 4-byte digest is 32 bits, so a birthday collision arrives
-  around 2^16; the reviewer found a concrete pair at 96,718 candidates, which I reproduced
-  exactly. Widened to 8 bytes (~2^32), with a 20,000-name behavioural test that would have
-  caught the original.
-- **`T034-R4`, second round — a regression I introduced.** `COM0` and `LPT0` are **not** on
-  Microsoft's list. I added them in the previous pass, reasoning that auditing the class beat
-  listing instances. That was wrong where the authority is explicit and finite: there was no
-  class to generalise, and the result mangled two legal filenames into `COM0_`/`LPT0_` —
-  colliding with exactly the names a user might already have. **I introduced a collision while
-  fixing a collision finding.** The test now asserts an **equality** with the transcribed list,
-  so inventing a rule fails as loudly as missing one.
-
-**A third defect was found and deliberately not fixed:** `COM1` and a legal `COM1_` both
-sanitize to `COM1_`. Same class, but narrower and not the same mistake — `COM1` genuinely must
-be renamed. Fixing it would exceed the authorized scope, so it is filed as **`T-045`** and
-pinned by a test, because an unpinned known defect is one nobody notices changing.
-
-**The `T010-R1` vacuity recurred and was caught by mutation:** my first fix for `R4` asserted
-against production's own `_RESERVED_NAMES`, so shrinking production shrank the expectation and
-all tests stayed green. The expectation is now transcribed by hand from Microsoft's rules.
-
-All five weakenings now fail: containment 1, differentiator 1, extension 1, superscripts 9,
-`COM0`/`LPT0` 3.
+**Follow-up owned elsewhere:** `T-045` is implemented but independently in review, in this same
+module. It does not block this task under `AGENTS.md` §9.
 **Owner:** Implementer
 **Priority:** **High** — a `ai/TESTING.md` §7 mandatory area, and `T-012` cannot write a file
 without it
@@ -1200,8 +1114,6 @@ contained within the target directory.
 - Any actual file writing; this module computes and validates paths
 
 ---
-
-## Complete
 
 ### T-035 — Resolve the yt-dlp and ffmpeg environment
 

@@ -78,30 +78,27 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-034`** — two further corrections applied under a maintainer-authorized exception pass
-  (the §9 budget was exhausted): the digest widened to 8 bytes, and my invented `COM0`/`LPT0`
-  rule removed. A third defect found in the process was filed as `T-045` and has since been fixed.
-- **`T-035`** — **approved with follow-ups**; its Low findings are owned by `T-044`.
-- **`T-045`** — reserved-name defusing no longer collides with a legal neighbour. Implemented.
+- **`T-045`** — reserved-name defusing without collisions. Implemented, independently in review.
 
 ## Next
 
-1. **Focused re-review of `T-034` and `T-035`.** Six blocking Medium findings, all corrected
-   and mutation-verified. `T-042` and `T-043` were **approved** in the same pass and are
-   complete.
+**`T-012` is unblocked.** `T-011`, `T-034` and `T-035` are all approved, so the Phase 1
+chokepoint — six tasks behind it — is Ready.
 
-2. **`T-012` — yt-dlp in a spawned worker.** The Phase 1 chokepoint, with six tasks behind it.
-   Its three prerequisites — `T-011`, `T-034`, `T-035` — are all implemented; `T-011` is
-   approved and the other two are in the re-review above. **`T-033` must land with it**: the
-   frozen artifact bundles no yt-dlp, and the failure looks like ordinary site breakage.
+1. **`T-044`** — `T-035`'s Low follow-ups. Small; clears the decks first.
+2. **`T-012` — yt-dlp in a spawned worker.** The first code to import `yt_dlp`, the first to run
+   in a spawned process, and the first to write a file. `ARC-002` stops being a design here.
+   **`T-033` must land with it**: the frozen artifact bundles no yt-dlp today, and the failure
+   looks exactly like ordinary site breakage.
+3. **`T-038`** — log redaction, a §7 mandatory area. Independent of the above.
+4. **`T-014`, `T-015`** — persistence and presets. Also independent.
 
-3. **`T-038` — logging with handler-level redaction.** The only task Ready right now, and a
-   `TESTING.md` §7 mandatory area (log redaction, `NFR-007`).
+`T-045` needs a review pass at some point; it does not block anything.
 
-4. **`T-014` and `T-015`** were consumed into the reviewed batch's dependencies — both remain
-   Proposed behind nothing and can start whenever.
-
-5. **A human Windows session** — `OPS-004`'s subjective residue only. Blocks first release.
+**A caution worth carrying into `T-012`.** The last three tasks each needed correction rounds,
+and the defects clustered in *test strength* rather than production logic — four times a
+"generic" test asked the thing it was policing. `T-012` has more surface for that than anything
+so far: real process spawning, real IPC, real yt-dlp.
 
 ## Known gaps not yet scheduled
 
