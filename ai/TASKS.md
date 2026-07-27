@@ -257,6 +257,11 @@ recorded here rather than silently absorbed:
   so a job a previous probe left in `READY` cannot be handed to a download session that probes
   again. Phase 1's flow never produces that state; a probe-then-download flow (`T-016`, `T-018`)
   needs the state machine amended first, which is a Planner decision.
+  **Amended by `ARC-004` (`T-051`, 2026-07-27), not corrected**: refusing `READY` was right for
+  the machine as it stood, and the answer turned out to be a second *entry point* rather than a
+  new edge — `start()` will accept `READY` and move the job straight to `RUNNING`, because a
+  download's own extraction is not a probe. `T-016` makes that change; this contract is otherwise
+  unchanged, and `READY → PROBING` still does not exist.
 - **`shutdown()` blocks the GUI thread**, bounded by its timeout. It runs during teardown, when
   the event loop that drives escalation is ending; a non-blocking shutdown would return with
   workers alive and nothing left to reap them. `NFR-001` is about interactions, and there are
@@ -858,7 +863,7 @@ personal paths (`REQ-026`, `NFR-007`). They are committed, so a leak here is per
 
 ### T-038 — Logging with handler-level redaction
 
-**Status:** **Ready** — `T-011` complete, 2026-07-26
+**Status:** **In Review — implemented 2026-07-27** on `phase1-orphans-logging-lifecycle`.
 **Owner:** Implementer
 **Priority:** High — `NFR-007` is a privacy promise and worker diagnostics are where it leaks
 **Phase:** Phase 1
@@ -895,6 +900,39 @@ the thing this task exists to avoid.
 - Worker logs reach the parent's log without the child needing Qt
 - Logs are written under `platformdirs`, never beside the application (`NFR-004`)
 - A test scans a generated log for a known token and fails if it appears in any form
+
+#### What landed
+
+**`core/logging.py`, and the redaction is a `Formatter`.** Every handler this module installs
+renders through `RedactingFormatter`, which rewrites the **finished string** — so `%`-style args,
+a caller's f-string, an `extra` field the format names, and an exception traceback all converge
+on one rewrite and there is no fourth route to forget. A test asserts every handler on the
+application's logger tree has it, because a handler added without one would be a hole that the
+other handlers' passing tests would hide.
+
+**Every URL loses its query, userinfo and fragment** — not "token-like parameters". Deciding
+which parameter names look like secrets is the recogniser problem that cost `T-018` four rounds,
+and `X-Amz-Signature` was outside every list anyone had thought of. Nothing in a log needs a
+query string, so the allowlist is empty and the question closes. Proxy credentials fall out of
+the same rule; `DownloadRequest` cannot hold one anyway (`T-014`).
+
+**Two limits, stated rather than discovered.** An **output path is not touched** — `T014-R6`
+turned a user's output directory into a relative path while scrubbing prose, which was
+independently Critical, and a log that cannot say where the file went has broken its own purpose.
+A **bare `NAME=value` is not chased**: it is indistinguishable from `height=1080`, and cookie
+*contents* are outside what `REQ-026` binds because this application never holds one — it passes
+a browser name and yt-dlp reads the jar. Both have their own tests, so the boundary is asserted
+rather than assumed.
+
+**`remember_a_secret()` is the escape hatch that is not a guess.** When the application does hold
+a sensitive literal, it registers that exact string. Bounded and exact; no pattern involved.
+
+**Worker records travel unformatted.** The child installs a `QueueHandler` over a plain
+`multiprocessing.Queue` — stdlib, Qt-free, which `ARCHITECTURE.md` §3 requires — and the parent's
+handlers render them. So a worker cannot emit an unredacted line even in principle: it does not
+do the formatting. **Its own queue, not the protocol's**, because a log record on the message
+queue is indistinguishable from a worker sending something undeclared, which `SessionValidator`
+exists to refuse (`T-011`).
 
 #### Out of scope
 
@@ -955,8 +993,8 @@ agreement on the reduced form before implementation.
 **Priority:** Medium
 **Phase:** Phase 1
 **Depends on:** `T-013`, `T-015`, `T-018` (the playlist/single-item projection this task
-displays does not exist until `T-018` adds it — `T012-R6`), `T-051` (the probed `READY` job
-cannot currently start a download)
+displays does not exist until `T-018` adds it — `T012-R6`). **`T-051` is resolved**: `ARC-004`
+decides that a probed job downloads from `READY`, and this task implements it
 **Relevant context:** `REQ-001`, `REQ-002`, `REQ-005`, `NFR-001`, `NFR-005`, `NFR-006`
 **Affected surfaces:** `ui/add_dialog.py`, `ui/main_window.py`, `tests/ui/`
 **Risk:** Medium — the first widget that talks to the manager, and the first place a blocking
@@ -968,6 +1006,12 @@ call would freeze the application
 Paste or type a URL, probe it, see what it is, choose a preset, and queue it. Probing runs in
 a worker process — **never inline** — because probe latency is unbounded and blocking the GUI
 thread on it is exactly what `NFR-001` forbids (`ARCHITECTURE.md` §8).
+
+**The probe-then-download step is settled** (`ARC-004`, from `T-051`). This task changes
+`DownloadManager.start()` to accept a job in `QUEUED` **or** `READY`, choosing the status that
+says a worker holds it — `PROBING` from the first, `RUNNING` from the second — and replaces the
+docstring note that says the flow "needs the state machine amended first" with a pointer to
+`ARC-004`. The download re-extracts rather than re-probing; the recorded title stands.
 
 Show what `REQ-002` names: title, uploader, duration, thumbnail, and whether the URL is a
 single item or a playlist. On failure, show the extractor's own message **verbatim**
@@ -990,6 +1034,9 @@ single item or a playlist. On failure, show the extractor's own message **verbat
 - No information is conveyed by color alone (`NFR-005`)
 - Queuing a job persists it before the dialog closes, so a crash immediately after does not
   lose it (`REQ-012`)
+- A probed job in `READY` starts a download through `start()` and moves `READY → RUNNING`
+  without passing through `PROBING`, with the persisted status asserted at each step (`ARC-004`)
+- A `QUEUED` job still starts at `PROBING`, so the second entry point did not replace the first
 
 #### Out of scope
 
@@ -1001,7 +1048,7 @@ single item or a playlist. On failure, show the extractor's own message **verbat
 
 ### T-051 — Define the READY-to-download lifecycle
 
-**Status:** Ready
+**Status:** **Complete** — decided and recorded 2026-07-27 as `ARC-004`. No source changed.
 **Owner:** Planner
 **Priority:** High — blocks `T-016`'s probe-then-queue flow
 **Phase:** Phase 1
@@ -1036,6 +1083,36 @@ than source code silently creating architecture.
 - Any durable architecture trade-off is recorded in `ai/DECISIONS.md`; otherwise the current
   architecture and tasks are aligned without manufacturing a decision entry
 - No source code is changed by this Planner task
+
+#### The decision — `ARC-004`
+
+**A download starts from `READY` as well as from `QUEUED`, and never re-enters `PROBING`.** The
+two entry points use edges the state machine already has: `QUEUED → PROBING`, and `READY →
+RUNNING`. `READY → PROBING` is not added, because a job that has been probed does not become
+unprobed, and a download session's own extraction is part of downloading rather than a return to
+an earlier state.
+
+Answering this task's criteria one by one:
+
+- **The legal path from a successful probe to a download start** is `PROBING → READY` (the probe
+  session's outcome) then `READY → RUNNING` (the download session starting). Recorded in
+  `ARCHITECTURE.md` §5 as a table of the two entry points, beside the diagram it reads from.
+- **The one operation, named the same in both tasks**, is `DownloadManager.start(job_id,
+  kind=SessionKind.DOWNLOAD)` — accepting a job in `QUEUED` **or** `READY`, and setting the
+  status that says a worker holds it. `T-013`'s entry and `T-016`'s scope now both say that.
+- **Metadata is not reused and not re-probed: it is re-extracted.** `YoutubeDL.download()`
+  resolves the URL itself and cannot be handed a previous extraction, so the bytes are never
+  fetched against stale data however old the probe is. What can be stale is only what was
+  *displayed*, and a download session reports no `Probed` outcome, so the recorded title stands.
+- **Staleness that matters surfaces as an ordinary failure** in the extractor's own words
+  (`REQ-005`, `NFR-006`) — the chosen format no longer resolving is the observable case. There is
+  no freshness timer, no re-probe prompt, and no expiry on `READY`; nothing would read them.
+- **The durable trade-off is recorded** in `ai/DECISIONS.md` as `ARC-004`, including the two
+  designs considered and what reopens the question (a probe expensive enough to be worth handing
+  to the worker, which would be a protocol change).
+
+**Nothing here is implemented by this task.** `T-016` owns the manager change and the docstring
+in `DownloadManager.start()` that currently says the flow needs the state machine amended first.
 
 ---
 
@@ -1227,8 +1304,9 @@ is checked against reality at least once. It stays excluded by default (`ai/TEST
 
 ### T-019 — Kill the process *tree*, and prove it on Windows
 
-**Status:** Proposed — **rescoped 2026-07-27** (was "Cancellation and worker-crash integration
-tests"). Ready once `T-013` is approved.
+**Status:** **In Review — implemented 2026-07-27** on `phase1-orphans-logging-lifecycle`.
+`T019-R1` is corrected and verified running in CI. The descendant-reaping defect is fixed and
+the `process_tree` marker is removed.
 **Owner:** Implementer
 **Priority:** **High** — carries a live defect, plus the only Windows evidence Phase 1's exit
 criteria can ever have
@@ -1269,6 +1347,59 @@ wedge a later run the way it does locally. Verified locally at `pytest -m proces
 
 Every claim that CI ran them was corrected rather than deleted, in `ai/TESTING.md` §2 and §7 and
 in the module comment, each naming the step that now makes it true.
+
+#### What landed
+
+**`downloader/process_tree.py`, and the containment happens in the child.** The parent cannot
+reliably enumerate a tree it is racing — between listing the descendants and signalling them the
+worker can spawn another, and the one just listed can exit and have its pid reused. Both
+platforms offer the same answer instead: make the descendants a set the kernel tracks, once,
+before any of them exist. POSIX `os.setsid()` so the worker leads its own process group; a
+Windows Job object with `KILL_ON_JOB_CLOSE` so the kernel reaps the members when the worker's
+last handle closes. `CREATE_NEW_PROCESS_GROUP` is the common substitute and is not this: it
+affects Ctrl-C delivery, not descendant lifetime.
+
+The two halves are **split at module level under `sys.platform`**, so each is type-checked by
+the run that owns it — `mypy src` checks the POSIX branch, `mypy --platform win32 src` the
+Windows one. The first draft used `hasattr()` guards, which read as portable and check neither.
+
+**The rule that keeps this from killing the application.** `killpg` takes a group, and the wrong
+group id here is the parent's own. From the parent, a worker whose group equals ours means
+containment failed, and signalling it would take down the GUI — so `_group_of` reports "no group"
+and the caller falls back to the single process. From *inside* the worker the same test means the
+opposite, which cost a debugging round: the watchdog called `kill_tree(os.getpid())`, the guard
+saw the caller's own group, refused, and the grandchild survived. `kill_this_group()` is the
+separate function for the caller that means its own group, and it checks that it *leads* that
+group first.
+
+**Three paths, all covered.** Cancellation signals the group at both escalation deadlines; a
+worker that dies on its own — crash, external kill, ordinary exit — has its group reaped when the
+session is released, **before the process is joined**, because the group id is the dead worker's
+pid and a pid is reusable the moment the zombie is collected; and the parent-death watchdog kills
+the group rather than merely exiting.
+
+**`worker_processes()` was the reason nobody saw this.** It filtered to `spawn_main` in the
+command line, so an `ffmpeg` grandchild was invisible to every orphan assertion in the file — the
+tests passed while the exact process that survived cancellation was excluded from the question by
+construction. It now reports every descendant and excludes only `multiprocessing`'s resource
+tracker, which is the exclusion that was always right. Two tests hold it there: one leaks a real
+child and a real grandchild and asserts both are seen, the other asserts the tracker still is not.
+
+**`prepare_this_worker()` exists because the `entry_point` seam replaces `spawn_session`
+entirely.** A stand-in worker in a test that did not repeat the containment and the watchdog was
+subtly unlike every real one — and was: the first parent-kill test watched a stand-in and its
+child both survive the application. One function, called by production and by the stand-ins.
+
+**`T019-R1`'s CI step is removed along with the marker**, because the marker is gone: the 43
+tests are back in the default run on both platforms, so a separate step would run them twice.
+
+**Mutation-checked.** See the correction record in `ai/REVIEWS.md` for the battery. One result is
+worth naming here: removing the escalation's group signalling **survived** the first battery,
+because the release-path reaping killed the descendant a moment later anyway. The guard had no
+evidence of its own. `test_a_descendant_is_asked_to_stop_before_it_is_killed` now distinguishes
+them — a grandchild that handles `SIGTERM` writes a marker when it is *asked* to stop, which is
+the difference `REQ-015` actually cares about: `ffmpeg` asked can close its output, `ffmpeg`
+killed cannot.
 
 #### Why this was rescoped
 

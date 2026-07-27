@@ -68,10 +68,11 @@ from typing import Any, Final, Protocol
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
+from tracks_and_trails.core import logging as app_logging
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import Job
-from tracks_and_trails.downloader import worker
+from tracks_and_trails.downloader import process_tree, worker
 from tracks_and_trails.downloader.protocol import (
     Failed,
     Probed,
@@ -162,6 +163,9 @@ class ProcessLike(Protocol):
     @property
     def exitcode(self) -> int | None: ...
 
+    @property
+    def pid(self) -> int | None: ...
+
     def is_alive(self) -> bool: ...
 
     def start(self) -> None: ...
@@ -193,6 +197,14 @@ class _Session:
     #: unstarted process raises, so the first is load-bearing for reaping too.
     process_started: bool = False
     pump_started: bool = False
+
+    #: The worker's process group, learned while it is still alive and kept afterwards
+    #: (`T-019`). It cannot be looked up later: `os.getpgid` needs the process to exist, and
+    #: `Process.is_alive()` reaps the zombie as a side effect of asking — so by the time a dead
+    #: session is released there is no pid left to resolve, and the descendants it left behind
+    #: would be unaddressable. A group keeps its id reserved while it still has members, which
+    #: is exactly the case where there is something to reap.
+    group_id: int | None = None
 
     #: Set when the user asks to cancel. It changes what "no outcome" means at the end of the
     #: session: a job the user stopped is `CANCELLED`, not a crash.
@@ -351,6 +363,9 @@ class DownloadManager(QObject):
                     "cancel": cancel,
                     "user_ytdlp_directory": self._user_ytdlp_directory,
                     "ffmpeg_override": self._ffmpeg_override,
+                    # `T-038`: the worker's diagnostics come back here as records and are
+                    # rendered — and therefore redacted — by this process's handlers.
+                    "log_queue": app_logging.worker_log_queue(),
                 },
                 # Belt and braces with the child's own parent watchdog: this covers an orderly
                 # parent exit, the watchdog covers a parent that was killed.
@@ -440,7 +455,11 @@ class DownloadManager(QObject):
           that has merely been *issued* is not a thread that has stopped.
         """
         if session.process_started and session.process.is_alive():
+            # The tree, not just the worker (`T-019`). A start that failed after the process was
+            # spawned is one of the three paths a descendant can outlive.
+            self._stop_tree(session, force=True)
             session.process.kill()
+            self._reap_tree(session)
             session.process.join(0)
 
         if not session.pump_started:
@@ -561,6 +580,7 @@ class DownloadManager(QObject):
         now = time.monotonic()
         overdue = self._shutdown_deadline is not None and now >= self._shutdown_deadline
         for session in list(self._sessions.values()):
+            self._learn_the_group(session)
             self._escalate(session, now)
 
             alive = session.process.is_alive()
@@ -586,16 +606,64 @@ class DownloadManager(QObject):
             self.idle.emit()
 
     def _escalate(self, session: _Session, now: float) -> None:
+        """Walk one session through the two deadlines, signalling the **tree** at each.
+
+        `terminate()` and `kill()` reach the worker and nothing else, and yt-dlp's `ffmpeg` is a
+        child *of* the worker (`T-019`). Each step therefore signals the worker's process group —
+        or, where there is no group of its own to signal, falls back to the single process, which
+        is what `Process.terminate()` did all along.
+        """
         if not session.cancelling or not session.process.is_alive():
             return
         terminate_at = session.terminate_at
         if not session.terminated and terminate_at is not None and now >= terminate_at:
             session.terminated = True
+            self._stop_tree(session, force=False)
             session.process.terminate()
         kill_at = session.kill_at
         if not session.killed and kill_at is not None and now >= kill_at:
             session.killed = True
+            self._stop_tree(session, force=True)
             session.process.kill()
+
+    def _stop_tree(self, session: _Session, *, force: bool) -> None:
+        """Signal the worker's descendants, if this platform needs the parent to.
+
+        On Windows it does not: the child's Job object kills its members when the worker's last
+        handle closes, so `Process.terminate()` alone reaps the tree. On POSIX this is the whole
+        fix. Both call sites still signal the process itself afterwards, because a group with no
+        members of its own is exactly the case where this does nothing.
+        """
+        if session.group_id is None:
+            return
+        if force:
+            process_tree.kill_group(session.group_id)
+        else:
+            process_tree.terminate_group(session.group_id)
+
+    def _learn_the_group(self, session: _Session) -> None:
+        """Record the worker's process group the first tick it can be read.
+
+        Not at `start()`: the pid exists before the child has run `contain_this_process()`, so an
+        answer taken there is the group the worker was *born* into — ours — and would be refused
+        forever. Asked on each tick until it returns something, which is at most one extra
+        `getpgid` per 50 ms and only until the child has settled.
+        """
+        if session.group_id is None and session.process_started:
+            pid = session.process.pid
+            if pid is not None:
+                session.group_id = process_tree.group_of(pid)
+
+    def _reap_tree(self, session: _Session) -> None:
+        """Kill anything still in a finished worker's group.
+
+        Uses the group learned while the worker was alive, because there is nothing left to
+        resolve now: see `_Session.group_id`. Without it the tests looked green — a descendant
+        whose parent has died is reparented to `init` and stops being one of ours, so "no
+        descendants remain" was true while `ffmpeg` kept writing.
+        """
+        if session.group_id is not None:
+            process_tree.kill_group(session.group_id)
 
     def _end_the_stream(self, session: _Session) -> None:
         """Put the sentinel the dead worker did not send, carrying its real exit code.
@@ -634,6 +702,14 @@ class DownloadManager(QObject):
         if session.pump_started and not (session.pump_finished or session.pump.isFinished()):
             return
         if session.process_started:
+            # **Reap the group on every path** (`T-019`). The path nothing else covers is the
+            # ordinary one: a worker that crashed, was killed from outside, or simply finished
+            # leaves its `ffmpeg` behind, and no cancellation ever runs to notice. The group
+            # outlives its leader, which is what makes it addressable at all — and it is
+            # addressable only because the id was learned while the worker was alive, since
+            # `is_alive()` reaps the zombie and there is no pid left to resolve by now. A
+            # completed session pays one signal to an empty group for the cases that are not.
+            self._reap_tree(session)
             session.process.join(0)
         self._close_quietly(session.job_id, session.queue)
         self._sessions.pop(session.job_id, None)
@@ -651,6 +727,7 @@ class DownloadManager(QObject):
         """
         session.forced = True
         if session.process.is_alive():
+            self._stop_tree(session, force=True)
             session.process.kill()
         # Non-blocking reap. A process that has not finished dying yet is collected by a later
         # tick's `is_alive()`.

@@ -62,6 +62,15 @@ def run(argv: Sequence[str]) -> int:
         print(USAGE.format(version=__version__), end="")
         return 2
 
+    # Before Qt, and before anything that might log: a diagnostic emitted while the application
+    # was still starting is exactly the one worth having, and until this runs there is no
+    # redacting handler under it (`T-038`, `REQ-026`). Nothing above this point logs, which is
+    # why it sits here rather than at the top — `--version` on a machine with no writable cache
+    # directory must still print a version.
+    from tracks_and_trails.core.logging import configure_logging
+
+    configure_logging()
+
     from PySide6.QtWidgets import QApplication
 
     from tracks_and_trails.ui.main_window import APP_NAME, MainWindow, app_icon

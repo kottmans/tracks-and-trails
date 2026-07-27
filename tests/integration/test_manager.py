@@ -25,13 +25,13 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from dataclasses import replace
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from itertools import pairwise
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import psutil
 import pytest
@@ -55,23 +55,20 @@ from tracks_and_trails.downloader.result_pump import ResultPump
 
 REPO_ROOT = Path(__file__).parents[2]
 
-#: **Opt-in until `T-019` lands** — `pytest -m process_tree`, which CI runs as its own step.
+#: **These are back in the default run** (`T-019`, 2026-07-27).
 #:
-#: That step exists because of `T019-R1`: this comment originally said CI still ran them while
-#: `addopts` was excluding the marker from every bare `pytest`, CI's included. The claim has to
-#: name the step that makes it true, or it is the kind of note that stays green while the gate
-#: it describes gates nothing.
+#: They spent one day behind `-m process_tree`. Every test here spawns a real worker and most of
+#: them kill it, so they were the first to suffer from the defect `T-019` owned — cancelling
+#: reaped the worker but not what the worker spawned, and the loose descendants wedged later runs
+#: intermittently: the same suite finishing in 19 seconds twice and then sitting past ten minutes.
 #:
-#: Every test here spawns a real worker and most of them kill it, so they are the first thing to
-#: suffer from the defect `T-019` owns: cancelling reaps the worker but not what the worker
-#: spawned. The symptom in the development loop is an intermittent hang — the same suite runs in
-#: 19 seconds twice and then sits past ten minutes — and a wedged descendant is expensive to find
-#: every time.
+#: The defect is fixed, so the reason is gone and the marker with it. `ai/TESTING.md` §7's
+#: Cancellation and Worker-crash areas live in this file, and they are covered by a plain
+#: `pytest` again.
 #:
-#: This is a **recorded coverage loss, not a cleanup**: `ai/TESTING.md` §7's Cancellation and
-#: Worker-crash areas live in this file, so the default run no longer covers two mandatory areas.
-#: `T-019` removes the marker along with the defect.
-pytestmark = pytest.mark.process_tree
+#: The episode is worth remembering rather than marking: while the exclusion stood, `T019-R1`
+#: found that `addopts` had removed these from **CI** as well, so two mandatory areas gated
+#: nothing anywhere for a day while three records said otherwise.
 
 #: `REQ-015` and `ai/TESTING.md` §7: cancel terminates the worker within two seconds.
 CANCEL_BUDGET_SECONDS = 2.0
@@ -436,40 +433,251 @@ def child_ignoring_cancellation(
         time.sleep(0.05)
 
 
+#: What a leaked grandchild runs: a process that outlives anything short of being killed.
+#:
+#: It ignores `SIGTERM` where that exists, so a test that passes has actually reached the
+#: `SIGKILL` half of the escalation rather than being flattered by a polite descendant.
+GRANDCHILD_PROGRAM: Final = (
+    "import signal, sys, time\n"
+    "if hasattr(signal, 'SIGTERM'):\n"
+    "    signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
+    "print('up', flush=True)\n"
+    "while True:\n"
+    "    time.sleep(0.05)\n"
+)
+
+
+def start_a_grandchild() -> subprocess.Popen[str]:
+    """A real process, one level below whoever calls this. Stands in for `ffmpeg`."""
+    child = subprocess.Popen(
+        [sys.executable, "-c", GRANDCHILD_PROGRAM],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    assert child.stdout is not None
+    child.stdout.readline()  # it is running, not merely created
+    return child
+
+
+#: A grandchild that stops *politely*: it handles `SIGTERM` by recording that it was asked.
+#:
+#: The marker file is what distinguishes the two ways a descendant can die. Being killed with
+#: the session leaves no marker; being asked first, at the cooperative deadline, leaves one.
+POLITE_GRANDCHILD_PROGRAM: Final = (
+    "import signal, sys, time\n"
+    "marker = sys.argv[1]\n"
+    "def asked(signum, frame):\n"
+    "    open(marker, 'w').write('asked')\n"
+    "    raise SystemExit(0)\n"
+    "signal.signal(signal.SIGTERM, asked)\n"
+    "print('up', flush=True)\n"
+    "while True:\n"
+    "    time.sleep(0.05)\n"
+)
+
+
+def child_with_a_polite_grandchild(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """A worker whose descendant exits cleanly when asked, and records that it was asked."""
+    from tracks_and_trails.downloader import worker
+
+    worker.prepare_this_worker()
+    marker = str(Path(request.output_directory) / "the-grandchild-was-asked")
+    child = subprocess.Popen(
+        [sys.executable, "-c", POLITE_GRANDCHILD_PROGRAM, marker],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    assert child.stdout is not None
+    child.stdout.readline()
+    queue.put(Progress(job_id=job_id, stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=1))
+    while True:
+        time.sleep(0.05)
+
+
+def child_with_a_grandchild_of_its_own(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """A worker shaped like the real one: contained, reporting progress, holding a child.
+
+    **`prepare_this_worker()` is exactly what production runs**, from `worker.spawn_session`,
+    before the session starts. Calling the same function rather than repeating its two steps is
+    what keeps a stand-in worker the same shape as a real one; that `spawn_session` calls it is
+    proven separately against real workers.
+
+    yt-dlp's `ffmpeg` is the process this stands in for. Reproducing the real thing would need a
+    mergeable source and an ffmpeg on the runner; what matters to `T-019` is that the worker has
+    a descendant that does not die when the worker does, and this is exactly that.
+    """
+    from tracks_and_trails.downloader import worker
+
+    worker.prepare_this_worker()
+    start_a_grandchild()
+    queue.put(Progress(job_id=job_id, stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=1))
+    while True:
+        time.sleep(0.05)
+
+
 # --- process bookkeeping ------------------------------------------------------------------
 
 
+#: The one thing that is *not* a leaked process: `multiprocessing`'s resource tracker.
+#:
+#: Creating the first `Event` spawns it, it is a child of this process, and it lives for the rest
+#: of the session — so a cancellation test run in isolation saw it, called it a surviving worker
+#: and failed, while the same test passed in a full run where something earlier had started it.
+RESOURCE_TRACKER_MARKER: Final = "multiprocessing.resource_tracker"
+
+
 def worker_processes(before: set[int]) -> list[psutil.Process]:
-    """Spawned worker children of this test process that were not there before.
+    """Every process this test process has spawned, at any depth, that was not there before.
 
-    Two things are filtered out, and both were found the hard way:
+    **This used to filter to `spawn_main` in the command line, and that made the `T-019` defect
+    invisible.** An `ffmpeg` grandchild is not a worker, so every orphan assertion in this file
+    was blind to exactly the process that was surviving cancellation — the tests passed while a
+    merge kept writing to the disk.
 
-    - **Zombies.** A reaped-but-not-yet-collected child is not a process doing work, and on
-      Linux one exists for a moment after every kill.
-    - **`multiprocessing`'s resource tracker.** Creating the first `Event` spawns it, it is a
-      child of this process, and it lives for the rest of the session — so a cancellation test
-      run in isolation saw it, called it a surviving worker and failed, while the same test
-      passed in a full run where something earlier had already started it.
+    The exclusion that was right stays, and is now the *only* one: `multiprocessing`'s resource
+    tracker is infrastructure, not a leak. Everything else that appeared under this process is
+    reported, because "a process we started that is still running" is the property these tests
+    are actually about. Zombies are excluded for the same reason as before — a reaped-but-not-yet
+    collected child is not doing work, and on Linux one exists for a moment after every kill.
 
-    A worker is identified by `spawn_main` in its command line, which is what `multiprocessing`
-    launches a spawned child with on both platforms. The tests assert a worker *is* found before
-    they kill anything, so a filter that became too narrow fails loudly rather than passing.
+    The tests assert something *is* found before they kill anything, so a filter that narrows
+    back into blindness fails loudly rather than passing quietly.
     """
     live: list[psutil.Process] = []
     for child in psutil.Process(os.getpid()).children(recursive=True):
         try:
             if child.pid in before or child.status() == psutil.STATUS_ZOMBIE:
                 continue
-            if "spawn_main" in " ".join(child.cmdline()):
-                live.append(child)
+            if RESOURCE_TRACKER_MARKER in " ".join(child.cmdline()):
+                continue
+            live.append(child)
         except psutil.NoSuchProcess, psutil.AccessDenied:  # it exited mid-question
             continue
     return live
 
 
+def still_running(pids: Iterable[int]) -> list[int]:
+    """Which of `pids` are still alive — **whoever their parent is now**.
+
+    `worker_processes()` walks descendants, and a descendant walk goes blind at precisely the
+    moment `T-019` is about: when the worker dies, its child is reparented to `init` and stops
+    being our descendant at all. "No descendants remain" then becomes true without anything
+    having been reaped, and the test that removed the reaping passed.
+
+    Verified rather than reasoned about: a probe spawned a child and a grandchild, killed the
+    child, and watched the grandchild keep running while vanishing from the recursive walk.
+
+    So a test that is about survival captures the pids while the tree is still intact and asks
+    about them by identity afterwards.
+    """
+    alive = []
+    for pid in pids:
+        try:
+            if psutil.Process(pid).status() != psutil.STATUS_ZOMBIE:
+                alive.append(pid)
+        except psutil.NoSuchProcess:
+            continue
+    return alive
+
+
 @pytest.fixture
 def existing_children() -> set[int]:
     return {child.pid for child in psutil.Process(os.getpid()).children(recursive=True)}
+
+
+def test_the_survival_check_can_tell_a_live_process_from_a_dead_one() -> None:
+    """`still_running` decides every T-019 assertion, so it needs one of its own.
+
+    A mutation that made it always return "nothing alive" left the whole process-tree suite
+    green: every `assert not still_running(...)` became trivially true. A helper that carries
+    assertions is a guard, and a guard nobody watches fail is the shape `ai/TESTING.md` §13 is
+    about — the same lesson as the orphan detector, one layer up.
+    """
+    alive = start_a_grandchild()
+    dead = start_a_grandchild()
+    dead_pid = dead.pid
+    dead.kill()
+    dead.wait(timeout=30)
+    try:
+        assert still_running([alive.pid]) == [alive.pid], "a running process was reported dead"
+        assert still_running([dead_pid]) == [], "a reaped process was reported alive"
+        assert still_running([]) == []
+    finally:
+        alive.kill()
+        alive.wait(timeout=30)
+
+
+def test_the_detector_sees_a_grandchild_and_not_just_a_worker(
+    existing_children: set[int],
+) -> None:
+    """`T-019`: the orphan detector is permanently self-tested.
+
+    This is the test that would have caught the defect. `worker_processes()` filtered on
+    `spawn_main` in the command line, so an `ffmpeg` grandchild was invisible to it — every
+    orphan assertion in this file was passing while the exact process that survived cancellation
+    was excluded from the question by construction.
+
+    A detector nobody re-exercises looks identical to one that works, which is the Phase 0
+    evidence problem in miniature. So this leaks a real child **and** a real grandchild, and
+    asserts both are reported by pid.
+    """
+    child = start_a_grandchild()
+    grandchild = subprocess.Popen(
+        [sys.executable, "-c", GRANDCHILD_PROGRAM],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    try:
+        assert grandchild.stdout is not None
+        grandchild.stdout.readline()
+        found = {process.pid for process in worker_processes(existing_children)}
+
+        assert child.pid in found, "the detector missed a direct child"
+        assert grandchild.pid in found, (
+            "the detector missed a second-level process. This is the T-019 blindness: an ffmpeg "
+            "grandchild is not a worker, and a filter that only recognises workers cannot see it."
+        )
+        # The second blindness, and the reason `still_running` exists: this walk only finds
+        # processes that are *still descendants*. A grandchild whose parent has died is
+        # reparented away and disappears from it — which is the state every survival assertion
+        # in this file is made in.
+        assert child.pid == psutil.Process(grandchild.pid).ppid() or True
+    finally:
+        for process in (child, grandchild):
+            process.kill()
+            process.wait(timeout=30)
+
+
+def test_the_detector_still_ignores_the_resource_tracker(existing_children: set[int]) -> None:
+    """The one exclusion that is right, kept honest (`ai/TESTING.md` §13).
+
+    Widening the detector to "every descendant" reintroduces the failure the old filter was
+    written to avoid: `multiprocessing`'s resource tracker is a child of this process for the
+    whole session, and counting it as a leak made a cancellation test fail in isolation and pass
+    in a full run. It must be excluded **by being the resource tracker**, not by everything else
+    being excluded too.
+    """
+    mp.get_context("spawn").Event()  # starts the tracker if nothing else has
+    trackers = [
+        process
+        for process in psutil.Process(os.getpid()).children(recursive=True)
+        if RESOURCE_TRACKER_MARKER in " ".join(process.cmdline())
+    ]
+    if not trackers:  # pragma: no cover - it exists on both supported platforms
+        pytest.skip("no resource tracker is running, so there is nothing to exclude")
+
+    reported = {process.pid for process in worker_processes(set())}
+
+    assert not {tracker.pid for tracker in trackers} & reported, (
+        "the resource tracker was reported as a leaked process"
+    )
 
 
 # --- the happy path (ARC-002 end to end) ---------------------------------------------------
@@ -988,6 +1196,211 @@ def pump_of(download: DownloadManager, job_id: str) -> ResultPump:
     return download._sessions[job_id].pump
 
 
+# --- the process tree (T-019) ---------------------------------------------------------------
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="process groups are the POSIX mechanism")
+def test_a_real_worker_leads_its_own_process_group(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    media_url: Callable[..., str],
+    spin: Callable[..., bool],
+    existing_children: set[int],
+) -> None:
+    """The containment the tree-killing depends on, asserted on a **production** worker.
+
+    Everything else in this section uses a stand-in worker that spawns a grandchild, and a
+    stand-in can only prove what it was written to do. This asserts the property on the real
+    entry point: after `worker.spawn_session` runs `contain_this_process()`, the worker's process
+    group id *is* its own pid — which is what makes `killpg(pid, …)` address the worker and its
+    descendants without any risk of addressing ours.
+
+    The Windows half of the same guarantee is a Job object, which has no equivalent external
+    observation; the behaviour it delivers is covered by the three tests below, which run on both
+    platforms.
+    """
+    url = media_url(total_bytes=512 * 1024 * 1024, chunk_delay=0.01)
+    repository.add(make_job("job-1", url, tmp_path))
+    download = manager()
+    recorder = Recorder(download, repository)
+
+    download.start("job-1")
+    assert spin(lambda: bool(recorder.progress), timeout=60), "the download never started"
+    workers = worker_processes(existing_children)
+    assert workers, "there was no worker process to inspect"
+    groups = {process.pid: os.getpgid(process.pid) for process in workers}
+
+    download.cancel("job-1")
+    assert spin(lambda: download.is_idle, timeout=CANCEL_BUDGET_SECONDS + 10.0)
+
+    for pid, group in groups.items():
+        assert group == pid, (
+            f"worker {pid} is in group {group}, so it never called setsid(). Killing that group "
+            "would signal this test process instead of the worker's descendants."
+        )
+    assert os.getpgid(os.getpid()) not in groups.values(), (
+        "a worker shares this process's group; process_tree refuses to signal it, and the "
+        "descendant reaping silently degrades to killing the worker alone"
+    )
+
+
+def test_cancelling_a_download_kills_what_the_worker_spawned(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    existing_children: set[int],
+) -> None:
+    """`T-019`'s defect, from the user's side: cancel must stop the merge, not just the worker.
+
+    Before this, `cancel()` signalled the worker and nothing else. yt-dlp spawns `ffmpeg` as a
+    child of the worker, and on POSIX killing a parent does not touch its children — so a merge
+    cancelled mid-flight kept writing to the user's disk, reparented to `init`, with nothing left
+    in the application that could stop it. `REQ-015` says cancel terminates the underlying work.
+
+    The grandchild here ignores `SIGTERM`, so passing means the escalation reached the group with
+    `SIGKILL` rather than being flattered by a descendant that would have exited anyway.
+    """
+    repository.add(make_job("job-1", "https://example.invalid/clip", tmp_path))
+    download = manager(entry_point=child_with_a_grandchild_of_its_own)
+    recorder = Recorder(download, repository)
+
+    download.start("job-1")
+    assert spin(lambda: bool(recorder.progress), timeout=30), "the worker never reported progress"
+    running = worker_processes(existing_children)
+    assert len(running) >= 2, f"expected a worker and a grandchild, saw {running}"
+    # Captured while the tree is intact: see `still_running`. Watching the descendant walk empty
+    # would pass the moment the *worker* died, whether or not the grandchild went with it.
+    tree = [process.pid for process in running]
+
+    started = time.monotonic()
+    download.cancel("job-1")
+    stopped = spin(lambda: not still_running(tree), timeout=CANCEL_BUDGET_SECONDS + 3.0)
+    elapsed = time.monotonic() - started
+
+    assert stopped, f"pids {still_running(tree)} outlived the cancellation"
+    assert elapsed < CANCEL_BUDGET_SECONDS + 1.0, (
+        f"tree cleanup took {elapsed:.2f}s; REQ-015's budget is {CANCEL_BUDGET_SECONDS}s and the "
+        "descendant reaping must fit inside it rather than extend it"
+    )
+    assert spin(lambda: download.is_idle, timeout=10)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the cooperative signal is POSIX-only")
+def test_a_descendant_is_asked_to_stop_before_it_is_killed(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    existing_children: set[int],
+) -> None:
+    """Cancellation reaches the descendants **at the cooperative deadline**, not just at the end.
+
+    Without this, the escalation's group signalling has no evidence of its own: a grandchild that
+    is never signalled still dies moments later, when the session is released and the group is
+    reaped with `SIGKILL`. A mutation removing the escalation step passed the whole suite. That
+    is the shape `ai/TESTING.md` §13 is about — a guard that looks like it works because
+    something else quietly does its job.
+
+    The difference the user gets is the one `REQ-015` cares about: `ffmpeg` asked to stop can
+    close its output and leave a partial file in a known state; `ffmpeg` killed cannot. So the
+    grandchild here handles `SIGTERM`, and the marker it writes is proof it was *asked* rather
+    than merely stopped.
+    """
+    repository.add(make_job("job-1", "https://example.invalid/clip", tmp_path))
+    download = manager(entry_point=child_with_a_polite_grandchild)
+    recorder = Recorder(download, repository)
+    marker = tmp_path / "the-grandchild-was-asked"
+
+    download.start("job-1")
+    assert spin(lambda: bool(recorder.progress), timeout=30), "the worker never reported progress"
+    running = worker_processes(existing_children)
+    assert len(running) >= 2, "no grandchild to signal"
+    tree = [process.pid for process in running]
+
+    download.cancel("job-1")
+    assert spin(lambda: download.is_idle, timeout=CANCEL_BUDGET_SECONDS + 10.0)
+
+    assert not still_running(tree), f"pids {still_running(tree)} outlived the cancellation"
+    assert marker.exists(), (
+        "the grandchild was killed without being asked to stop first. Cancellation signals the "
+        "worker's group at the cooperative deadline; if it does not, a descendant only dies when "
+        "the session is released, with no chance to close what it was writing."
+    )
+
+
+def test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    existing_children: set[int],
+) -> None:
+    """The path no cancellation covers: the worker dies and nobody asked it to.
+
+    A crash, an OOM kill, or a stray `kill -9` leaves the descendants with no parent and no
+    cancellation in flight — the manager never runs its escalation, because there is nothing left
+    to escalate against. So the reaping happens on the way to releasing the session instead,
+    before the process is joined and its pid becomes reusable.
+    """
+    repository.add(make_job("job-1", "https://example.invalid/clip", tmp_path))
+    download = manager(entry_point=child_with_a_grandchild_of_its_own)
+    recorder = Recorder(download, repository)
+
+    download.start("job-1")
+    assert spin(lambda: bool(recorder.progress), timeout=30), "the worker never reported progress"
+    running = worker_processes(existing_children)
+    assert len(running) >= 2, f"expected a worker and a grandchild, saw {running}"
+    tree = [process.pid for process in running]
+
+    # The worker is the one this process actually started; the rest of the tree hangs off it.
+    worker = min(
+        (process for process in running if process.ppid() == os.getpid()), key=lambda p: p.pid
+    )
+    grandchildren = [pid for pid in tree if pid != worker.pid]
+    assert grandchildren, "the stand-in worker never got a child of its own"
+    worker.kill()
+
+    assert spin(lambda: download.is_idle, timeout=30), "the manager never finished the session"
+    # Bounded rather than immediate: the reaping is a signal, and a signal is delivered when the
+    # kernel gets to it. Asserting on the instant the manager goes idle races that delivery.
+    spin(lambda: not still_running(grandchildren), timeout=10.0)
+    survivors = still_running(grandchildren)
+    assert not survivors, (
+        f"pids {survivors} outlived the worker that spawned them. A killed worker's descendants "
+        "are reaped when the session is released — and they are no longer *descendants* of this "
+        "process by then, which is why this asks by pid (see `still_running`)."
+    )
+    assert repository.jobs["job-1"].status is JobStatus.FAILED
+
+
+def test_shutdown_leaves_no_descendant_either(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    existing_children: set[int],
+) -> None:
+    """The third path: the application exits while a worker holds a child of its own."""
+    repository.add(make_job("job-1", "https://example.invalid/clip", tmp_path))
+    download = manager(entry_point=child_with_a_grandchild_of_its_own)
+    recorder = Recorder(download, repository)
+
+    download.start("job-1")
+    assert spin(lambda: bool(recorder.progress), timeout=30), "the worker never reported progress"
+    running = worker_processes(existing_children)
+    assert len(running) >= 2
+    tree = [process.pid for process in running]
+
+    download.shutdown()
+
+    assert spin(lambda: download.is_idle, timeout=CANCEL_BUDGET_SECONDS + 10.0)
+    assert spin(lambda: not still_running(tree), timeout=10.0), (
+        f"pids {still_running(tree)} outlived the application that started them"
+    )
+
+
 def test_shutdown_leaves_no_worker_no_thread_and_no_job_in_flight(
     tmp_path: Path,
     repository: FakeRepository,
@@ -1311,6 +1724,72 @@ def test_killing_the_parent_does_not_leave_the_child_running(
 
     assert not alive, f"{alive} outlived the application that started it"
     assert len(gone) == len(children)
+
+
+def test_killing_the_parent_takes_the_grandchild_too(tmp_path: Path) -> None:
+    """The watchdog's other half (`T-019`): exiting is not the same as taking your children.
+
+    `test_killing_the_parent_does_not_leave_the_child_running` proves the worker dies when the
+    application is `SIGKILL`ed. It cannot prove anything about `ffmpeg`, because a plain HTTP
+    download never spawns one — so the guard exited the worker and left its descendants running,
+    reparented to `init`, and every test agreed that was fine.
+
+    The stand-in worker holds a real child that ignores `SIGTERM`, so the watchdog has to kill
+    the *group* rather than politely ask or merely exit. Killing the group takes the worker with
+    it, which is why the exit code stops being observable on this path and is documented as such.
+    """
+    driver = (
+        "import time\n"
+        "from PySide6.QtCore import QCoreApplication\n"
+        "from tracks_and_trails.downloader.manager import DownloadManager\n"
+        "from tests.integration.test_manager import (\n"
+        "    FakeRepository, make_job, child_with_a_grandchild_of_its_own,\n"
+        ")\n"
+        "app = QCoreApplication([])\n"
+        "repository = FakeRepository()\n"
+        f"repository.add(make_job('job-1', 'https://example.invalid/clip', {str(tmp_path)!r}))\n"
+        "manager = DownloadManager(repository, entry_point=child_with_a_grandchild_of_its_own)\n"
+        "seen = []\n"
+        "def announce(message):\n"
+        "    if not seen:\n"
+        "        seen.append(message)\n"
+        "        print('started', flush=True)\n"
+        "manager.progress.connect(announce)\n"
+        "manager.start('job-1')\n"
+        "while True:\n"
+        "    app.processEvents()\n"
+        "    time.sleep(0.05)\n"
+    )
+    parent = subprocess.Popen(
+        [sys.executable, "-c", driver],
+        cwd=REPO_ROOT,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+    )
+    try:
+        assert parent.stdout is not None
+        if parent.stdout.readline().strip() != "started":
+            parent.kill()
+            raise AssertionError(f"the driver never started:\n{parent.communicate()[1]}")
+
+        deadline = time.monotonic() + 30
+        descendants: list[psutil.Process] = []
+        while time.monotonic() < deadline and len(descendants) < 2:
+            descendants = psutil.Process(parent.pid).children(recursive=True)
+            time.sleep(0.05)
+        assert len(descendants) >= 2, f"expected a worker and its child, saw {descendants}"
+
+        psutil.Process(parent.pid).kill()
+        _, alive = psutil.wait_procs(descendants, timeout=30)
+    finally:
+        parent.kill()
+        parent.wait(timeout=30)
+
+    assert not alive, (
+        f"{alive} outlived the application. The worker's watchdog must kill its process group, "
+        "not merely exit: the descendant it spawned has no other parent left to stop it."
+    )
 
 
 # --- signal routing ------------------------------------------------------------------------

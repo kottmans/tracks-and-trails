@@ -162,11 +162,10 @@ testpaths = ["tests"]
 # offscreen everywhere, including on the Windows `check` job, where the off-Windows module
 # skip does not apply. Without this they would run offscreen there and fail correctly but
 # uselessly. `pytest -m windows_desktop` opts back in, and is what the dedicated job runs.
-addopts = "-m 'not network and not windows_desktop and not process_tree' --strict-markers --strict-config"
+addopts = "-m 'not network and not windows_desktop' --strict-markers --strict-config"
 markers = [
     "network: hits the real network and real sites; excluded from the default run",
     "windows_desktop: requires a real Windows desktop session (no offscreen platform plugin)",
-    "process_tree: spawns and kills real worker processes; opt-in until T-019 lands",
 ]
 
 [tool.coverage.run]

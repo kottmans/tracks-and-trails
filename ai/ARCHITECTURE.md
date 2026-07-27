@@ -230,6 +230,23 @@ FAILED ──retry──▶ QUEUED        (attempts incremented)
 Transitions are validated in one place. An illegal transition raises rather than silently
 corrupting state — a persisted queue that lies about its state is worse than a crash.
 
+**Starting a session sets the status that says a worker holds the job** (`T-051`, `ARC-004`).
+There are two entry points into the machine and they use the two edges already drawn above:
+
+| The job is | Starting a download session moves it to | Because |
+|---|---|---|
+| `QUEUED` | `PROBING` | nothing is resolved yet; the session's first act is to extract |
+| `READY` | `RUNNING` | a probe already resolved it; this session downloads what was chosen |
+
+`READY → PROBING` does not exist and is not added. A job that has been probed does not become
+unprobed, and a download session's own extraction — yt-dlp cannot download without one — is an
+implementation detail of downloading, not a return to an earlier state. The stage a worker
+reports (`REQ-014`) is what tells a user it is extracting; the job's *status* says who holds it.
+
+**The invariant this preserves:** a job with a live session is `PROBING` or `RUNNING`, never
+`QUEUED` or `READY`. The manager's set of active jobs and the persisted statuses cannot disagree
+about whether work is in flight.
+
 **Crash recovery:** SQLite runs in WAL mode. Any job found in `PROBING`, `RUNNING`, or
 `POST_PROCESSING` at startup was interrupted by an unclean exit; it is moved to an
 `INTERRUPTED` presentation of `FAILED` and offered for retry (`REQ-012`, `NFR-003`).

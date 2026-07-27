@@ -131,17 +131,18 @@ failure mode is silent, destructive, or both.
 | Crash recovery | A DB with jobs stuck in `RUNNING` is recovered to a retryable state at startup |
 | State machine | Every illegal transition raises; no silent state corruption |
 | Path safety | No rendered output template escapes the output directory; Windows-illegal names are sanitized on both platforms |
-| Log redaction | Cookie paths/contents, proxy credentials, and token-like query parameters never reach any log (`NFR-007`) |
+| Log redaction | Cookie paths/contents, proxy credentials, and URL query parameters never reach any log — asserted on what a **handler emitted**, not on a redaction function (`NFR-007`, `T-038`) |
 | DRM | `DRM_PROTECTED` is never auto-retried and has no bypass path (`REQ-EXCL-001`, `SEC-001`) |
 | Migrations | Every migration runs forward from every prior schema version with data intact |
 | Settings freeze | A settings change mid-flight does not alter a running job's `DownloadRequest` |
 
-**Cancellation and Worker crash are currently behind `-m process_tree`** and are not in the
-default *local* run (`T-019`). They gate CI through an explicit `-m process_tree` step on both
-platforms; the first version of this note claimed that while `addopts` was quietly excluding
-them from CI too, so they gated nothing anywhere (`T019-R1`). A local `pytest` still does not
-cover two of the ten areas, which is a real hole in the fastest feedback loop and is recorded
-here rather than discovered at the exit review.
+**All ten are back in the default run as of `T-019`** (2026-07-27). Cancellation and Worker
+crash spent one day behind `-m process_tree`, because the defect `T-019` owned left descendants
+that wedged later runs; that defect is fixed, so the reason is gone and the marker with it. The
+episode is worth keeping in mind rather than in a marker: while the exclusion stood, `T019-R1`
+found it had removed those two areas from **CI** as well — `addopts` is global and both check
+jobs ran a bare `pytest` — so for a day two mandatory areas gated nothing anywhere while three
+records said otherwise. A skip that is recorded is still a skip; check what actually runs.
 
 **Each of these must be proven by mutation, not by a passing run** — remove the guard and watch
 the suite fail. §13 explains why that is not pedantry: five tests in this project have passed

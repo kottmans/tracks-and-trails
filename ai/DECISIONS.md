@@ -1010,3 +1010,91 @@ plus the reviewed provenance and error fields. Every other key is dropped before
 - **This decision reopens** if a fixture is ever needed to prove something the adapter does not
   read — a reproduction case for an upstream bug, say. That fixture needs its own handling, not
   a widening of this rule.
+
+---
+
+## ARC-004 — A probed job downloads from `READY`; the download re-extracts, it does not re-probe
+
+**Status:** **Accepted**
+**Date:** 2026-07-27
+**Decides:** `T-051`. **Blocks were:** `T-016`.
+**Supersedes:** nothing. **Amends:** `ARCHITECTURE.md` §5's prose, not its diagram.
+
+### Context
+
+`T-016` probes a URL, shows the user what it is, lets them pick a preset, and then downloads it.
+That flow needs a job to go from a finished probe to a running download, and `T-013`'s review
+found it could not:
+
+- `DownloadManager.start()` accepts only a `QUEUED` job, and unconditionally advances it to
+  `PROBING`;
+- a probe session leaves the job in `READY`;
+- `READY → PROBING` is not an edge, and `_advance()` refuses to walk backwards.
+
+So the probed job cannot be started, and creating a second job for the download would either
+strand the probed record or duplicate it. The T-013 reviewer was right to refuse to invent the
+edge in the manager: source code silently creating architecture is how the executable state
+machine and the approved design come to disagree.
+
+Two designs were available: allow a probed job to be probed again (a new `READY → PROBING`
+edge), or start the download from `READY` and let its own extraction stand in for the probe.
+
+### Decision
+
+**A download starts from `READY` as well as from `QUEUED`, and never re-enters `PROBING`.**
+
+- `DownloadManager.start(job_id, kind=DOWNLOAD)` accepts a job in `QUEUED` **or** `READY`, and
+  sets the status that says a worker holds it: `PROBING` from `QUEUED`, `RUNNING` from `READY`.
+  Both edges already exist; no new edge is added.
+- **The download session always extracts again.** This is not a choice — `YoutubeDL.download()`
+  resolves the URL itself, and there is no way to hand it a previous extraction. So the *bytes*
+  are never fetched against stale metadata, whatever the age of the probe.
+- **The probe's metadata is what the user was shown, and it stands** until something contradicts
+  it. A download session reports no `Probed` outcome, so the recorded title does not change
+  mid-download.
+- **Stale metadata surfaces as an ordinary failure, in the extractor's own words.** If the site
+  changed so that the chosen format no longer resolves, yt-dlp says so and `REQ-005`/`NFR-006`
+  carry that message through verbatim. There is no freshness timer, no re-probe prompt, and no
+  expiry on `READY`.
+
+### Rationale
+
+- **The honest reading of `PROBING` is "probing on the user's behalf".** A download's internal
+  extraction is not that; it is the first step of downloading. Modelling it as a state would mean
+  the status line said "probing" for a job the user had already told to download.
+- **A `READY → PROBING` edge would make `READY` meaningless.** It is the state that says "this
+  job is resolved and waiting"; an edge back out of it says nothing is ever resolved.
+- **The staleness question mostly dissolves.** The only thing that can be stale is what is
+  *displayed*, because the download re-resolves regardless. Guarding displayed text with a
+  freshness timer would add a mechanism whose failure mode (a spurious re-probe, a dialog the
+  user did not ask for) is worse than the one it prevents (a title that changed since Tuesday).
+- **It keeps one invariant worth having:** a job with a live session is `PROBING` or `RUNNING`.
+  The manager's active set and the persisted status cannot disagree about work in flight.
+
+### Alternatives considered
+
+- **Add `READY → PROBING`** — rejected above. It also reopens `T-013`'s "one terminal outcome per
+  session" reasoning, because a job could then accumulate probe outcomes without downloading.
+- **Discard the probed job and create a fresh one at download time** — rejected: the probed row
+  is what `REQ-012` persisted, and abandoning it loses the queue position and the created time,
+  or duplicates the job in the user's list.
+- **Probe results live only in the dialog, never as a job** — rejected: `REQ-012` requires a
+  queued job to survive a crash immediately after queuing, and a probe that is not persisted
+  cannot be resumed or retried.
+- **Expire `READY` after some interval** — rejected as a mechanism with no reader. Nothing acts
+  on the age of a probe, and the download re-resolves anyway.
+
+### Consequences
+
+- **`T-016` owns the code change**, not this decision (`T-051` is a Planner task and changes no
+  source). Concretely: `DownloadManager.start()` accepts `READY`, chooses the session-start
+  status from the current one, and its docstring — which currently says the flow "needs the state
+  machine amended first" — is replaced by a pointer here.
+- **`T-013`'s manager contract is amended, not corrected.** Refusing a `READY` job was right at
+  the time and is recorded as such; the refusal narrows rather than disappears.
+- **A second probe of the same job is still impossible**, and stays impossible. Re-probing means
+  a new job.
+- **This decision reopens** if a probe ever becomes expensive enough to be worth reusing inside
+  the download — a paid API, a rate-limited extractor, an interactive auth step. Then the
+  question becomes how to hand an extraction to the worker, which is a protocol change and not
+  this one.

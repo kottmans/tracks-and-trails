@@ -3363,3 +3363,129 @@ Including the four the reviewer named as unmutated last round:
 | Opt-in process-tree suite | Passed — **43 passed, 2 skipped** |
 | Mutation battery | 12 of 12 killed |
 | Windows, and the CI step | Not run — no runner in this environment (`OPS-003`) |
+
+## 2026-07-27 — T-018 fifth correction verified; T-019 coverage correction verified
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** `T-018` (`T018-R1`) and the bounded `T-019` coverage correction (`T019-R1`)
+**Correction base:** `5f0a6c4a2954cfbc68eb8e956118f68e53e1e454`
+**Correction head:** `e3c9596f127fe6b288dbb790052c02ca1d81454d`
+**Review unit:** `git show e3c9596`, focused on the two unresolved findings and correction
+regressions
+**Repository state at inspection:** clean; checked out on
+`phase1-orphans-logging-lifecycle`, with `main` and `origin/main` resolving to the same
+correction head. The branch is intentional staging for subsequent work.
+**Platforms verified:** Linux locally; Windows and the GitHub Actions step were not run
+**T-018 verdict:** **Approved**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T018-R1` | **Critical** | **No** | **Resolved.** The amended `SEC-002` boundary is implemented at the serialization door. `schema_fingerprint()` and every committed `_schema` block are gone; `write()` rebuilds only `_fixture`, `info_dict` and `error`, so caller-supplied `_schema` and unrelated blocks do not reach disk; and playlist entries preserve cardinality as empty placeholders rather than retaining child values the projection never reads. The public dynamic-key probe wrote the exact 40-byte `{"_fixture": {}, "info_dict": {}}` payload, with neither the credential nor `unknown_map` present. A supplied `_schema` carrying `SID=secret` was dropped. A hostile two-entry playlist became `[{}, {}]`, with its titles, uploader and cookie absent. Independently, `unexpected_keys()` rejected both a restored `_schema` and `info_dict.entries[0].title`. The committed seven-entry fixture contains seven empty placeholders and `playlist_count: 7`. The correction removes the leaking secondary design instead of extending the recognizer again; no privacy-boundary escape remains in the reviewed correction. |
+| `T019-R1` | **Medium** | **No** | **Resolved.** The `check` job's `ubuntu-latest` / `windows-latest` matrix now contains a dedicated `pytest -m process_tree` step after the default suite, with a ten-minute step timeout and separate JUnit/text evidence included by the existing always-run artifact upload. Local collection proves the explicit selector is load-bearing and selects **43** tests despite global `not process_tree` addopts; the opt-in run passed **43 passed, 2 skipped**. `ai/TESTING.md` §2 and §7 and the integration-module comment now accurately say CI has an explicit step. GitHub Actions and Windows runtime results remain unverified locally under `OPS-003`; that does not make the gate vacuous, and any platform failure is evidence for `T-019`'s original descendant-process work rather than a recurrence of this finding. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| `git diff --check 5f0a6c4..e3c9596` | Passed. |
+| Public writer/gate probes | Passed: dynamic mapping key dropped in a 40-byte file; supplied `_schema` dropped; playlist contents reduced to placeholders; hostile `_schema` and populated entry rejected by path. |
+| Fixture + adapter tests | Passed: **176 passed, 5 skipped**. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **78 files already formatted**. |
+| `mypy src tests` | Passed: no issues in 63 source files. |
+| `mypy --platform win32 src` | Passed: no issues in 31 source files. |
+| Default suite | Passed: **1086 passed, 11 skipped, 44 deselected** in 14.98 s. |
+| Process-tree suite | Passed outside the restricted socket sandbox: **43 passed, 2 skipped, 1096 deselected** in 18.88 s. The first sandboxed attempt was invalid infrastructure evidence: nine localhost-dependent cases received `PermissionError` while 34 passed. |
+
+The implementer's 12-mutation battery was not repeated wholesale. The four mechanisms added
+for this correction are directly pinned by discriminating tests and were exercised through
+the public writer and independent gate during this review.
+
+### Verdict and remaining boundary
+
+`T018-R1` no longer blocks and **T-018 is closed as Approved**. No new finding is opened against
+T-018. The narrower `NFR-008` trade—an unconsumed upstream field rename is no longer detected—is
+explicitly authorized in amended `SEC-002`.
+
+`T019-R1` is also resolved. This does **not** approve or complete `T-019`: that task still owns
+the pre-existing live defect in descendant-process cleanup and its Windows proof. The new CI
+step makes that work observable on both platforms; its first real Windows result remains
+unverified here.
+
+## 2026-07-27 — T-019, T-038 and T-051 implemented on `phase1-orphans-logging-lifecycle`
+
+**Implementer:** Claude Code
+**Tasks:** `T-019` (live defect + Windows proof), `T-038` (logging), `T-051` (Planner decision)
+**Base:** `e3c9596` (the reviewed and approved head)
+**Awaiting review.** No finding is marked Resolved by this record.
+
+### `T019-R1` is verified running, which the previous record could not claim
+
+CI run `30293051118` on `e3c9596` executed the Process-tree suite step on both platforms:
+**ubuntu-latest 43 passed, 2 skipped; windows-latest 43 passed, 0 skipped.** That is the first
+Windows *runtime* evidence in the vertical slice, and it discharges the "the CI step itself
+cannot be verified from here" caveat recorded against `T019-R1`.
+
+### `T-019` — the defect, and two ways my own tests were wrong about it
+
+The production fix is `downloader/process_tree.py`: containment in the child (POSIX `setsid`,
+Windows Job object with `KILL_ON_JOB_CLOSE`), signalling from the parent, and three paths covered
+— cancellation, a worker that dies unasked, and application exit. The task entry describes it.
+
+What is worth reviewing carefully is that **the first two versions of the tests passed while
+proving nothing**, and both were found by mutation rather than by reading:
+
+1. **The cancel test was carried by another mechanism.** Removing the escalation's group
+   signalling left the suite green, because the release-path reaping killed the descendant a
+   moment later anyway. The guard had no evidence of its own.
+   `test_a_descendant_is_asked_to_stop_before_it_is_killed` now separates them: the grandchild
+   handles `SIGTERM` and writes a marker, so being *asked* to stop is distinguishable from being
+   stopped — which is the difference `REQ-015` cares about, since `ffmpeg` asked can close its
+   output and `ffmpeg` killed cannot.
+
+2. **Every survival assertion was blind in the state it was asserting about.** A grandchild whose
+   parent has died is reparented to `init` and stops being our descendant, so
+   `worker_processes()` — a recursive walk — reported nothing left while the process was still
+   running. Verified with a standalone probe, not reasoned about. The three tree tests now
+   capture pids while the tree is intact and ask about them by identity (`still_running`).
+
+**That second fix exposed a real production bug**, which is the part most worth checking. The
+reaping resolved a pid to a group at signalling time, and `Process.is_alive()` reaps the zombie
+as a side effect of asking — so by the time a dead session was released there was no pid left to
+resolve, `getpgid` raised, and nothing was signalled. The module now takes **group ids**;
+`group_of()` is the only place a pid becomes one, and the manager learns it on a tick while the
+worker is alive (`_learn_the_group`). Reading it at `start()` does not work either: the pid
+exists before the child has run `contain_this_process()`.
+
+**Two rules, opposite in shape**, and this cost a debugging round: from the parent a group equal
+to ours is refused, because it means containment failed and signalling it would kill the GUI;
+from inside the worker our group *is* the target, so the check is that we **lead** it.
+
+**`tests/unit/test_process_tree.py` exists because those two rules are unreachable when
+everything works.** They only fire when a worker failed to contain itself, which healthy
+integration tests never produce — and the mutation removing the parent's guard did not merely
+survive, it `killpg`'d the group the harness was in and killed the mutation run. That is the
+behaviour the guard prevents, and it cannot be demonstrated in-process. Four unit tests, no
+skips; an earlier version skipped when pytest happened to lead its own group, which is where it
+mattered most.
+
+### `T-038` — redaction is a `Formatter`, and the limits are asserted
+
+`core/logging.py`. Every handler installed here renders through `RedactingFormatter`, which
+rewrites the finished string — so `%`-args, a caller's f-string, an `extra` field the format
+names, and an exception traceback all converge on one rewrite. A test asserts every handler on
+the application's tree has it.
+
+Every URL loses query, userinfo and fragment: an empty allowlist rather than a judgement about
+which parameter names look like secrets, which is the `T-018` lesson applied before rather than
+after four rounds. Two limits are stated and tested rather than left to be discovered — an output
+path is never touched (`T014-R6`), and a bare `NAME=value` is not chased, because it is
+indistinguishable from `height=1080` and cookie *contents* are outside what `REQ-026` binds.
+
+### `T-051` — `ARC-004`, and no source changed
+
+A download starts from `READY` as well as `QUEUED`, using edges the machine already has; the
+download re-extracts rather than re-probing, because `YoutubeDL.download()` resolves the URL
+itself and cannot be handed a previous extraction. `T-016` owns the code.
