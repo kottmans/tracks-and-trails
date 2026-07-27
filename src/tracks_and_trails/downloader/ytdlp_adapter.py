@@ -110,6 +110,16 @@ UNMAPPED_KINDS: Final[Mapping[ErrorKind, str]] = {
 }
 
 
+#: Every `_type` yt-dlp declares for a result holding more than one video (`T018-R2`).
+#:
+#: Transcribed from `InfoExtractor`'s own documentation — *"`_type` `playlist` indicates multiple
+#: videos"* and *"`_type` `multi_video` indicates that there are multiple videos that form a
+#: single show"* — rather than derived from yt-dlp's code, so an upstream addition shows up as a
+#: fixture disagreeing with this list instead of as a playlist silently reported as one item.
+#: `YoutubeDL.process_ie_result()` dispatches both through its playlist processor.
+MULTI_ITEM_TYPES: Final[frozenset[str]] = frozenset({"playlist", "multi_video"})
+
+
 def unwrap(error: BaseException) -> BaseException:
     """Return the underlying cause of a `DownloadError`, or `error` itself.
 
@@ -225,12 +235,31 @@ def project_media(info: Mapping[str, Any]) -> MediaInfo:
 
     A missing title becomes the URL rather than an empty string, because `MediaInfo` requires a
     displayable title and inventing "Untitled" would be worse than showing what the user pasted.
+
+    **Playlists are projected as playlists** (`REQ-002`, `T012-R6`). `_type` is yt-dlp's own
+    structured answer to "is this one thing or many", so the distinction is read from it rather
+    than guessed from the presence of `entries` — an extractor may supply an empty `entries` for
+    a playlist it could not enumerate, and that is still a playlist.
+
+    **Both of yt-dlp's multi-item types count** (`T018-R2`). Its extractor contract declares
+    `"playlist"` *and* `"multi_video"` — the second for parts of one work, such as a film split
+    across files — and `playlist_result(multi_video=True)` produces it. Reading only `"playlist"`
+    reported a real multi-item result as a single item, which is the distinction `REQ-002`
+    exists to make. They are deliberately projected the same: `REQ-002` asks one question, and
+    inventing a third state the requirement does not name would push the choice onto every
+    reader.
+
+    The **entries themselves are not projected**. Phase 1 downloads one item, `REQ-002` asks
+    only whether the URL is a playlist, and projecting every entry would make a probe's cost
+    proportional to a list that can hold thousands. `T-016` shows the distinction and the count;
+    expanding a playlist into jobs is Phase 3's.
     """
     url = str(info.get("webpage_url") or info.get("original_url") or info.get("url") or "")
     title = str(info.get("title") or "").strip() or url
     formats = tuple(
         project_format(entry) for entry in (info.get("formats") or ()) if entry.get("format_id")
     )
+    is_playlist = info.get("_type") in MULTI_ITEM_TYPES
     return MediaInfo(
         url=url,
         title=title,
@@ -239,7 +268,30 @@ def project_media(info: Mapping[str, Any]) -> MediaInfo:
         uploader=_as_optional_str(info.get("uploader")),
         thumbnail_url=_as_optional_str(info.get("thumbnail")),
         is_live=bool(info.get("is_live")),
+        is_playlist=is_playlist,
+        entry_count=_entry_count(info) if is_playlist else None,
     )
+
+
+def _entry_count(info: Mapping[str, Any]) -> int | None:
+    """How many items a playlist holds, or `None` when the extractor did not say.
+
+    `playlist_count` is preferred over `len(entries)` because they are different facts: the
+    count is what the site reports, while `entries` is what this extraction happened to
+    materialise — flat extraction, a page limit or a lazy generator can all make the second
+    smaller. Reporting the second as the total would understate a playlist and do it silently.
+    """
+    counted = _as_optional_int(info.get("playlist_count"))
+    if counted is not None:
+        return counted
+    entries = info.get("entries")
+    # `str` and `bytes` are `Sequence`s, and a malformed `entries` of either would have been
+    # "counted" as its number of characters (`T018-R2`). A generator — which is what a lazily
+    # paginated playlist supplies — has no length at all and is not counted rather than being
+    # consumed, because consuming it here would fetch the whole playlist during a probe.
+    if isinstance(entries, str | bytes) or not isinstance(entries, Sequence):
+        return None
+    return len(entries)
 
 
 def build_options(

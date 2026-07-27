@@ -363,6 +363,279 @@ so.
 ---
 
 
+### T-015 — Built-in presets and selector translation
+
+**Status:** **In Review — corrections returned 2026-07-27, awaiting verification.** `T015-R1`
+(High) is corrected and awaiting the Reviewer's independent check (`AGENTS.md` §9: only the
+Reviewer marks a finding Resolved). Implemented on branch `phase1-presets-and-fixtures`
+alongside `T-018`.
+
+#### Correction batch — `T015-R1`
+
+Two routes to one wrong result — a named or displayed choice that is not the request that runs —
+and each is closed at its own end.
+
+**The preset's name is a promise about the file.** `BEST_VIDEO_1080P`'s last fallback was a bare
+`best[height<=1080]` with no container constraint, and fed a site offering only WebM the real
+selector engine picked the WebM. Every branch is now constrained to MP4, so a site with no MP4
+fails the preset rather than substituting a container nobody chose — and yt-dlp's own message
+says so (`REQ-005`). Converting instead would be a post-processing decision (`REQ-010`) and
+belongs to a preset whose name says so.
+
+**Overrides may no longer touch a field the preset owns.** `to_request(**overrides)` let a
+caller pass `format_selector="worst"` and get exactly that while `effective_selector()` still
+displayed the preset's string — which defeats the single thing `REQ-009` promises. The owned set
+is **derived from both dataclasses**, so a field added to `Preset` is protected the day it
+appears; the sibling audit the finding asked for is the derivation itself rather than a list.
+Settings a preset does not own — proxy, rate limit, cookie source — are still accepted.
+
+**The tests now ask yt-dlp, not the string.** The capability check that let this through asked
+whether the selector *contained* `ext=mp4`, which stayed true while a later branch permitted
+something else. Every fallback branch is now resolved through the pinned engine's own
+`build_format_selector`, and the WebM-only case is asserted to select nothing.
+
+**Mutation-checked: 2 mutations, 2 killed** — restoring the unconstrained fallback, and dropping
+the override guard.
+
+**What landed.** `core/presets.py`: the five `REQ-006` presets, `to_request()`,
+`effective_selector()`, `by_name()` and `custom_preset()` for `REQ-009`'s raw-selector escape
+hatch. No `yt_dlp`, no Qt — it emits selector strings and option *values*, and
+`ytdlp_adapter.py` turns those into yt-dlp's dict.
+
+**`Preset` gained four fields**, which the task did not name: `audio_codec`, `audio_quality`,
+`subtitle_languages`, `embed_subtitles`. Without them a preset cannot say what "audio only
+(MP3)" *means* — `REQ-006`'s two audio presets would differ only in their names, which is
+`T012-R5` exactly one layer up, where omitting `preferredcodec` left yt-dlp keeping the source
+codec and the MP3 preset converting nothing. Every `Preset` field is now a `DownloadRequest`
+field under the same name, and a test derives that correspondence from both dataclasses.
+
+**One deviation, stated.** The criterion asks this module to reject an empty or non-string
+selector *for built-ins only*. It does not: `Preset` and `DownloadRequest` already refuse both,
+for every preset, so a check here could never be reached by a test — a branch that reads as a
+guard while protecting nothing. The behaviour the criterion asks for is asserted where the value
+is constructed, including through `custom_preset()`. Making it unrepresentable is the same
+resolution `T-014` reached for proxy credentials.
+
+**Evidence.** 86 tests in `tests/unit/test_presets.py`. `REQ-006` is transcribed as five
+*capabilities* — questions asked of the request a preset produces — rather than as a list of
+names compared with the module's own list, which is the `T041-R2` shape. Each capability must
+be answered by **exactly one** preset, and every preset must answer one, so the check is an
+equality in both directions. The last section asserts through `ytdlp_adapter`, on the far side
+of the boundary: a preset that sets a field the adapter never reads has chosen nothing.
+
+**Mutation-checked (6 of 6 killed).** Dropping `audio_codec` from the translation, returning a
+friendly label from `effective_selector`, the MP3 preset losing its codec, `custom_preset`
+validating a user's selector, the subtitle preset losing `embed_subtitles`, and `Preset`
+dropping its audio-quality check — which **survived** the first run, because the validator was
+added and never asserted. Per `ai/TESTING.md` §13 that defaults to "a test is missing", and it
+was; the test now kills it.
+
+**First review.** `ai/REVIEWS.md` records the full evidence. The correction must ensure every
+branch of the 1080p-MP4 selector can only produce MP4, and must prevent `to_request()` overrides
+from replacing preset-owned choices while `effective_selector()` continues to display the
+original. Freeze both negative cases through yt-dlp's real selector engine and the complete
+preset-to-request API, audit sibling preset-owned fields, and mutation-check the corrections.
+
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 1
+**Depends on:** `T-010`
+**Relevant context:** `REQ-006`, `REQ-008`, `REQ-009`; `ARCHITECTURE.md` §4, §6
+**Affected surfaces:** `core/presets.py`, `core/models.py` (`Preset`'s four new fields),
+`tests/unit/test_presets.py`
+**Risk:** Low — pure translation, fully unit-testable
+**Review base:** the `T-010` merge commit. **Review head:** branch
+`phase1-presets-and-fixtures`; `core/presets.py` and the `Preset` half of `core/models.py`.
+
+#### Scope
+
+The named presets `REQ-006` requires, at minimum: best video ≤1080p (MP4), best video
+available, audio only (MP3), audio only (best/original), and video with embedded subtitles.
+Plus the translation from a `Preset` to the fields of a `DownloadRequest`.
+
+**This module produces data, not yt-dlp calls.** It emits format selector strings and option
+values; `ytdlp_adapter.py` turns those into a yt-dlp options dict. That split is what keeps
+`core/` free of `yt_dlp` (`ARCHITECTURE.md` §6) and is enforced by the layering test.
+
+`REQ-009` requires the **effective selector to be visible for every preset**, so a user can
+learn the syntax and then write their own. That means the selector string is a first-class
+output of translation, not an internal detail.
+
+#### Acceptance criteria
+
+- Every preset named in `REQ-006` exists and translates to a `DownloadRequest`
+- Each preset exposes its effective selector string, and the string is what translation
+  actually uses — not a separately maintained label that could drift (`REQ-009`)
+- A raw user-supplied selector passes through unchanged, including strings the project does
+  not understand — the escape hatch is not validated into uselessness (`REQ-009`)
+- **The validation boundary is explicit**, because "accept anything unknown" and "reject
+  malformed" otherwise contradict each other. Only two structural conditions are rejected, and
+  only for **built-in presets**: an empty selector, and one that is not a string. A
+  user-supplied selector is never rejected for content — yt-dlp is the judge of whether it
+  resolves, and a test asserts a deliberately nonsensical user selector survives untouched
+- `core/presets.py` imports no `yt_dlp` and no Qt
+
+#### Out of scope
+
+- Custom user-defined presets and their TOML persistence — Phase 4
+- The format table and per-format selection UI — `REQ-003`/`REQ-008`, Phase 3
+- Whether a selector actually resolves against a real site — that is yt-dlp's judgment
+
+---
+
+### T-018 — Recorded `info_dict` fixtures and projection tests
+
+**Status:** **In Review — corrections returned 2026-07-27, awaiting verification.** `T018-R1`
+(Critical) and `T018-R2` (High) are corrected and awaiting the Reviewer's independent check
+(`AGENTS.md` §9: only the Reviewer marks a finding Resolved). Implemented on branch
+`phase1-presets-and-fixtures` alongside `T-015`.
+
+#### Correction batch — `T018-R1`, `T018-R2`
+
+**`T018-R1` — the gate stops guessing what a secret looks like.** Both halves were false
+negatives, and both are now fail-closed:
+
+- **Every container is walked.** `redact()` recursed through `dict` and `list` only, so one
+  tuple anywhere in the graph carried everything beneath it through — and yt-dlp's info dicts
+  contain tuples. It now walks every container the JSON encoder can serialise, and asserts on
+  Python objects rather than JSON text, because **a tuple cannot be written in JSON**: the
+  committed-file scanner is structurally unable to see this class, which is exactly why the
+  sanitizer has to fail closed rather than be checked after the fact.
+- **Query parameters are an allowlist, and it is empty.** The blocklist enumerated names it had
+  thought of, so `X-Amz-Signature`, `X-Amz-Credential` and `X-Amz-Expires` were not missed —
+  they were outside the question. Nothing downstream reads a query parameter, so the honest
+  default is to keep none. URL userinfo is dropped for the same reason. The committed-file gate
+  made the same inversion **independently**, and still shares no constant with the sanitizer.
+- **Credential keys match by substring, case-insensitively.** Four exact spellings meant
+  `Cookie`, `set-cookie` and `authorization` all walked past.
+
+**A test the corrections added found a third gap immediately.** Putting every leak shape through
+the sanitizer and then back through the gate showed the sanitizer never looked at local
+filesystem paths, which the gate rejects — so a refresh would have produced a fixture that could
+not be committed. `NFR-007` covers those too; the sanitizer now removes them.
+
+**All five fixtures were re-captured under the new policy**, and the derived DRM one regenerated
+from the new capture, so no committed fixture claims a redaction policy that no longer holds.
+`T-012`'s `archive_org_big_buck_bunny` is deliberately **not** refreshed: refreshing is meant to
+be a deliberate act with its own task, and it passes the new gate unchanged.
+
+**`T018-R2` — both of yt-dlp's multi-item types.** `MULTI_ITEM_TYPES` is transcribed from the
+extractor documentation (*"`multi_video` indicates that there are multiple videos that form a
+single show"*), not derived from yt-dlp's code, so an upstream addition surfaces as a
+disagreement rather than as a playlist silently reported as one item. Both project the same
+way: `REQ-002` asks one binary question, and inventing a third state it does not name would push
+the choice onto every reader. The sibling audit caught `_entry_count` too — `str` and `bytes`
+are `Sequence`s, so a malformed `entries` of `"two"` was counted as three characters.
+
+**`T012-R6` is now closed and `T-016` is unblocked**, subject to the Reviewer's verification.
+
+**Mutation-checked: 9 mutations, 9 killed.** Dict/list-only recursion, exact-match credential
+keys, a parameter blocklist in the sanitizer *and* in the gate, userinfo left in place, local
+paths left in place, `multi_video` dropped, and `entries` counted by `Sequence` alone.
+
+**What landed.**
+
+- **The playlist projection (`T012-R6`).** `MediaInfo` gains `is_playlist` and `entry_count`,
+  and `project_media` reads `_type` — yt-dlp's own structured answer — rather than guessing from
+  the presence of `entries`. `entry_count` prefers `playlist_count` (what the *site* reported)
+  over `len(entries)` (what this extraction happened to materialise), because flat extraction or
+  a page limit makes the second smaller and reporting it would understate a playlist silently.
+  A count on something that is not a playlist is **unrepresentable**, not merely discouraged.
+- **Four new fixtures**, three recorded and one derived: an audio-only item, a real seven-entry
+  playlist, and two recorded *failures* — `UnsupportedError` and a real 404 — carrying the
+  exception type, where it lives, its verbatim message, and the taxonomy kind
+  `ARCHITECTURE.md` §7 says it must become.
+- **`tests/fixtures/capture.py`**, so taking or refreshing a fixture is reproducible rather than
+  remembered. It sanitizes on the way in, because a committed leak is permanent.
+
+**`build_options` was left alone, and that is a finding.** The task's premise was that
+`noplaylist=True` would prevent a probe from ever seeing a playlist. It does not: for a
+playlist *URL* the extractor still returns `_type: "playlist"`, and the flag only decides what
+happens to a video that merely sits in a playlist's context. Verified against the real
+extractor before writing any code, so the probe options are unchanged.
+
+**DRM cannot honestly be recorded.** Capturing a real DRM-protected item means probing a DRM
+service, which needs credentials and is what `REQ-EXCL-001` and `SEC-001` put out of scope. The
+fixture is therefore **derived** — a real archive.org capture with the two DRM flags set by hand
+— and says so in its own metadata, listing which fields are synthetic. Every fixture now
+declares `capture_method`, and a test rejects a derived one that does not admit what it is.
+
+**Evidence.** 70 tests in `tests/unit/test_fixtures.py`, plus one model invariant in
+`test_models.py`. The sanitization scan reads each file **as text**, because the real leak was
+nested three levels down inside a playlist's entries' formats, where a top-level check sees
+nothing. The scanner is itself mutation-proofed by a test that feeds it six real leak shapes.
+Coverage is asked of the fixtures' *contents*, not their filenames.
+
+**Mutation-checked (6 of 6 killed).** The projection ignoring `_type`; `entry_count` preferring
+`len(entries)`; `MediaInfo` accepting a count on a single item; the leak scanner losing the
+browser identity; the leak scanner losing Windows paths (which found a real hole first — the
+scan reads JSON text, where a Windows path is escaped, so checking only `C:\Users` missed
+`C:\\Users`); and `UnsupportedError` falling out of the taxonomy, which the recorded-failure
+fixture catches.
+
+**First review.** `ai/REVIEWS.md` records the full evidence. The correction must make capture
+sanitization and the independent committed-file scanner fail closed on signed URL credentials
+and cookie material across every JSON-serializable container shape, and must project yt-dlp's
+declared `multi_video` result as multi-item rather than single-item. Add hostile negative cases,
+audit sibling URL credential forms and container shapes, and mutation-check the corrections.
+
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 1
+**Depends on:** `T-012`
+**Relevant context:** `ai/TESTING.md` §5 (fixtures), `NFR-008`, `C-002`, `REQ-026`, `NFR-007`
+**Affected surfaces:** `tests/fixtures/infodicts/`, `tests/fixtures/errors/`,
+`tests/fixtures/capture.py`, `tests/unit/test_fixtures.py`, `tests/unit/test_models.py`,
+`core/models.py`, `downloader/ytdlp_adapter.py`
+**Risk:** Medium — a carelessly refreshed fixture hides the upstream breakage the fixture
+exists to catch
+**Review base:** the `T-012` merge commit. **Review head:** branch
+`phase1-presets-and-fixtures`
+**Blocks:** `T-016` — remains until `T018-R2` is resolved
+
+#### Scope
+
+Broaden the fixture set `T-012` bootstrapped: several sites, a playlist, an audio-only case,
+a DRM-protected case, an unsupported URL, and an extractor error. Each records the yt-dlp
+version and capture date (`ai/TESTING.md` §5).
+
+**Also owns the playlist/single-item projection** (`T012-R6`, carried from the `T-012` review).
+`REQ-002` requires a probe to say whether the input is a single item or a playlist, and today
+no typed value can express it: `MediaInfo` has no such field, `project_media()` cannot preserve
+one, and `build_options` sets `noplaylist=True`. `T-016` promises to *display* the distinction,
+so it cannot be built until something can carry it.
+
+Assigned here rather than to the `T-012` correction batch because it needs a recorded playlist
+fixture to be tested against at all, and this task is where that fixture is captured. **`T-016`
+therefore depends on this task**, not merely on `T-012`.
+
+Fixtures are **sanitized**: no cookies, tokens, session or auth query parameters, and no
+personal paths (`REQ-026`, `NFR-007`). They are committed, so a leak here is permanent.
+
+#### Acceptance criteria
+
+- Each fixture records the yt-dlp version and capture date alongside it
+- A fixture containing a cookie, token, auth query parameter, or a path under `/home` or
+  `C:\Users` fails a sanitization check — asserted by a test that scans the fixture directory,
+  not by review discipline
+- The projection test fails when a projected key changes shape, which is the whole purpose
+- When a fixture changes shape the test **names the field that moved**, rather than reporting
+  a generic mismatch, so the diff is diagnosable
+- Fixture provenance is machine-checked: every fixture has a recorded yt-dlp version and
+  capture date, and one lacking either fails. *(Requiring a human to explain why a fixture
+  changed is a review convention from `ai/TESTING.md` §5, not an executable criterion — it is
+  stated there and deliberately not restated here as if a test enforced it.)
+- Fixtures cover at minimum: a normal video, an audio-only case, a playlist, `DRM_PROTECTED`,
+  `UNSUPPORTED_URL`, and `EXTRACTOR_ERROR`
+- No test in this task touches the network
+
+#### Out of scope
+
+- The `-m network` suite that hits real sites — it exists and stays opt-in
+- Automatic fixture refresh; refreshing is deliberately manual
+
+---
+
 ## Ready
 
 ### T-038 — Logging with handler-level redaction
@@ -410,113 +683,6 @@ the thing this task exists to avoid.
 - A log viewer in the UI — Phase 3
 - Rotation and retention policy — Phase 4
 - Crash reporting of any kind; there is none (`NFR-007`)
-
----
-
-### T-018 — Recorded `info_dict` fixtures and projection tests
-
-**Status:** **Ready** — `T-012` completed 2026-07-26. Also owns the `T012-R6` playlist
-projection, and therefore **blocks `T-016`**.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 1
-**Depends on:** `T-012`
-**Relevant context:** `ai/TESTING.md` §5 (fixtures), `NFR-008`, `C-002`, `REQ-026`, `NFR-007`
-**Affected surfaces:** `tests/fixtures/infodicts/`, `tests/unit/`, `core/models.py`,
-`downloader/ytdlp_adapter.py`
-**Risk:** Medium — a carelessly refreshed fixture hides the upstream breakage the fixture
-exists to catch
-**Review base:** the `T-012` merge commit
-**Blocks:** `T-016` — see the playlist scope below
-
-#### Scope
-
-Broaden the fixture set `T-012` bootstrapped: several sites, a playlist, an audio-only case,
-a DRM-protected case, an unsupported URL, and an extractor error. Each records the yt-dlp
-version and capture date (`ai/TESTING.md` §5).
-
-**Also owns the playlist/single-item projection** (`T012-R6`, carried from the `T-012` review).
-`REQ-002` requires a probe to say whether the input is a single item or a playlist, and today
-no typed value can express it: `MediaInfo` has no such field, `project_media()` cannot preserve
-one, and `build_options` sets `noplaylist=True`. `T-016` promises to *display* the distinction,
-so it cannot be built until something can carry it.
-
-Assigned here rather than to the `T-012` correction batch because it needs a recorded playlist
-fixture to be tested against at all, and this task is where that fixture is captured. **`T-016`
-therefore depends on this task**, not merely on `T-012`.
-
-Fixtures are **sanitized**: no cookies, tokens, session or auth query parameters, and no
-personal paths (`REQ-026`, `NFR-007`). They are committed, so a leak here is permanent.
-
-#### Acceptance criteria
-
-- Each fixture records the yt-dlp version and capture date alongside it
-- A fixture containing a cookie, token, auth query parameter, or a path under `/home` or
-  `C:\Users` fails a sanitization check — asserted by a test that scans the fixture directory,
-  not by review discipline
-- The projection test fails when a projected key changes shape, which is the whole purpose
-- When a fixture changes shape the test **names the field that moved**, rather than reporting
-  a generic mismatch, so the diff is diagnosable
-- Fixture provenance is machine-checked: every fixture has a recorded yt-dlp version and
-  capture date, and one lacking either fails. *(Requiring a human to explain why a fixture
-  changed is a review convention from `ai/TESTING.md` §5, not an executable criterion — it is
-  stated there and deliberately not restated here as if a test enforced it.)
-- Fixtures cover at minimum: a normal video, an audio-only case, a playlist, `DRM_PROTECTED`,
-  `UNSUPPORTED_URL`, and `EXTRACTOR_ERROR`
-- No test in this task touches the network
-
-#### Out of scope
-
-- The `-m network` suite that hits real sites — it exists and stays opt-in
-- Automatic fixture refresh; refreshing is deliberately manual
-
----
-
-### T-015 — Built-in presets and selector translation
-
-**Status:** **Ready** — `T-010` approved and complete, 2026-07-26
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 1
-**Depends on:** `T-010`
-**Relevant context:** `REQ-006`, `REQ-008`, `REQ-009`; `ARCHITECTURE.md` §4, §6
-**Affected surfaces:** `core/presets.py`, `tests/unit/`
-**Risk:** Low — pure translation, fully unit-testable
-**Review base:** the `T-010` merge commit
-
-#### Scope
-
-The named presets `REQ-006` requires, at minimum: best video ≤1080p (MP4), best video
-available, audio only (MP3), audio only (best/original), and video with embedded subtitles.
-Plus the translation from a `Preset` to the fields of a `DownloadRequest`.
-
-**This module produces data, not yt-dlp calls.** It emits format selector strings and option
-values; `ytdlp_adapter.py` turns those into a yt-dlp options dict. That split is what keeps
-`core/` free of `yt_dlp` (`ARCHITECTURE.md` §6) and is enforced by the layering test.
-
-`REQ-009` requires the **effective selector to be visible for every preset**, so a user can
-learn the syntax and then write their own. That means the selector string is a first-class
-output of translation, not an internal detail.
-
-#### Acceptance criteria
-
-- Every preset named in `REQ-006` exists and translates to a `DownloadRequest`
-- Each preset exposes its effective selector string, and the string is what translation
-  actually uses — not a separately maintained label that could drift (`REQ-009`)
-- A raw user-supplied selector passes through unchanged, including strings the project does
-  not understand — the escape hatch is not validated into uselessness (`REQ-009`)
-- **The validation boundary is explicit**, because "accept anything unknown" and "reject
-  malformed" otherwise contradict each other. Only two structural conditions are rejected, and
-  only for **built-in presets**: an empty selector, and one that is not a string. A
-  user-supplied selector is never rejected for content — yt-dlp is the judge of whether it
-  resolves, and a test asserts a deliberately nonsensical user selector survives untouched
-- `core/presets.py` imports no `yt_dlp` and no Qt
-
-#### Out of scope
-
-- Custom user-defined presets and their TOML persistence — Phase 4
-- The format table and per-format selection UI — `REQ-003`/`REQ-008`, Phase 3
-- Whether a selector actually resolves against a real site — that is yt-dlp's judgment
 
 ---
 

@@ -76,6 +76,19 @@ pytest --cov=tracks_and_trails --cov-report=term-missing
   between yt-dlp and `ytdlp_adapter.py`. Each records the yt-dlp version and capture date.
   Refreshing one is a deliberate act with its own task — a silently refreshed fixture hides
   exactly the breakage it exists to catch.
+- **`tests/fixtures/capture.py` is how a fixture is taken or refreshed** (`T-018`). Run by hand,
+  never by a test: it touches the network, sanitizes on the way in, and writes the provenance
+  block. Its existence is what makes "refreshing is deliberate" a reproducible act rather than a
+  remembered one.
+- **Every fixture declares `capture_method`: `recorded` or `derived`** (`T-018`). A derived one
+  must also say what it was derived from and which fields are synthetic. The distinction is not
+  bookkeeping: the next reader treats a fixture's shape as evidence of what a site really sends,
+  and one case — `DRM_PROTECTED` — cannot honestly be recorded at all, because capturing it
+  would mean probing a DRM service that `REQ-EXCL-001` and `SEC-001` put out of scope.
+- **Recorded failures** in `tests/fixtures/errors/` pin the other half of the boundary: the
+  exception type yt-dlp raised, where that type lives, its verbatim message, and the taxonomy
+  kind `ARCHITECTURE.md` §7 says it must become. The import of the recorded type is an
+  `NFR-008` canary — an upstream rename fails a test instead of a download.
 - **Filename fixtures** must include titles with characters illegal on NTFS, Windows
   reserved device names (`CON`, `NUL`, `LPT1`), trailing dots and spaces, emoji, RTL text,
   and path-traversal attempts (`../`, absolute paths).

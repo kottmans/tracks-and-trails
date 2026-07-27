@@ -1,5 +1,6 @@
 {
   "_fixture": {
+    "capture_method": "recorded",
     "captured": "2026-07-26",
     "content_licence": "Big Buck Bunny (c) Blender Foundation, CC BY 3.0 \u2014 public domain-ish, stable",
     "extractor": "archive.org",

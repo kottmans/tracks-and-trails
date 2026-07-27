@@ -137,6 +137,24 @@ def test_media_info_declares_the_fields_the_architecture_names() -> None:
         assert hasattr(media, name), f"MediaInfo is missing {name}"
 
 
+def test_a_count_of_entries_is_only_meaningful_on_a_playlist() -> None:
+    """`T-018`'s playlist fields, made incapable of describing a contradiction.
+
+    A single item with `entry_count=7` is not a state anything should have to interpret: a UI
+    reading it would render "7 items" for one thing, and every reader would have to remember to
+    check `is_playlist` first. Making the pair unrepresentable is the same move `T-014` made for
+    proxy credentials — cheaper than a rule everyone downstream must keep.
+    """
+    playlist = MediaInfo(url="https://example.com/p", title="P", is_playlist=True, entry_count=7)
+    assert playlist.entry_count == 7
+
+    unknown = MediaInfo(url="https://example.com/p", title="P", is_playlist=True)
+    assert unknown.entry_count is None, "an uncounted playlist is unknown, not empty"
+
+    with pytest.raises(ValueError, match="entry_count"):
+        MediaInfo(url="https://example.com/x", title="T", entry_count=3)
+
+
 def test_format_info_declares_the_fields_the_architecture_names() -> None:
     fmt = FormatInfo(format_id="137", extension="mp4")
     for name in ("format_id", "extension", "height", "width", "filesize", "video_codec"):

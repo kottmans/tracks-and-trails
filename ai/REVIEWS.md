@@ -2752,6 +2752,77 @@ the ordinary budget; the two High findings continue until independently resolved
 that cap. Windows remains unverified for cancellation timing, the killed-parent watchdog and
 `TerminateProcess`.
 
+## 2026-07-27 — T-015 and T-018 initial reviews
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** `T-015`, `T-018`
+**Base:** `cc79bb8b0379bcd7dd8f30e808e1cbfb25d2b542`
+**Reviewed commit:** `1156007b3316e46f35a5714402efb977ec048bb7`
+**Review unit:** the single combined commit on `phase1-presets-and-fixtures`; findings and
+verdicts remain task-specific
+**Platforms verified:** Linux locally; Windows not run
+**T-015 verdict:** **Changes requested**
+**T-018 verdict:** **Changes requested**
+
+### T-015 findings
+
+| ID | Severity | Blocks approval | Status | Finding |
+|---|---|---:|---|---|
+| `T015-R1` | **High** | **Yes** | **Open** | **The translation can download a selector or container different from the preset the UI presents.** `BEST_VIDEO_1080P` ends with `/best[height<=1080]`, a fallback with no MP4 constraint. Feeding the pinned yt-dlp selector engine a single 720p WebM format selected that WebM successfully, although `REQ-006` and the preset name promise “≤1080p (MP4).” The capability test at `test_presets.py:47-50` only checks that the whole selector contains both `height<=1080` and `ext=mp4`; it stays green when another fallback branch permits a different container. Independently, `to_request()` applies unrestricted `**overrides` through `dataclasses.replace()` after copying the preset. A probe passed `format_selector="worst"` and received a request for `worst` while `effective_selector(BEST_VIDEO_1080P)` still displayed the original selector. That directly defeats `REQ-009`'s promise that the effective selector shown is the one used. Both routes are the same wrong-result class: a named/displayed choice is not the request that runs. Remove the non-MP4 fallback or add an explicit conversion contract that still guarantees MP4, and reject overrides of preset-owned fields (or derive the displayed effective value from the final request). Audit `media_kind`, codec/quality, subtitles, post-processors and output template as sibling preset-owned fields. Freeze the format case through yt-dlp's real selector engine, test every fallback branch, test hostile overrides, and mutation-check both guards. |
+
+### T-018 findings
+
+| ID | Severity | Blocks approval | Status | Finding |
+|---|---|---:|---|---|
+| `T018-R1` | **Critical** | **Yes** | **Open** | **The capture sanitizer and its independent gate both allow credential material into committed fixtures.** `capture.redact()` recurses through dictionaries and lists only; a tuple containing `{"cookies": "SID=secret"}` passed unchanged and serialized as JSON with the cookie intact. `redact_url()` removes only an exact short list of parameter names, and the committed scanner uses the same narrow vocabulary in another form. A URL carrying the standard signed-request fields `X-Amz-Signature`, `X-Amz-Credential` and `X-Amz-Expires` passed through unchanged, and `leaks_in()` returned no findings. URL userinfo and other provider token names are likewise outside the asserted boundary. The current six fixtures contain no established live secret, but the stated gate is specifically meant to prevent the next deliberate refresh from permanently writing one into git; a false-negative credential gate crosses `REQ-026`/`NFR-007` and has Critical consequence under `AGENTS.md` §9. Make sanitization fail closed across every JSON-serializable container and URL authority/query shape. Prefer removing URL userinfo and all query parameters unless a small reviewed allowlist proves one is contract data. Keep the committed-file scanner independent and add hostile cases for tuple nesting, cookie values, mixed/case-varied keys, percent-encoded names, AWS/CloudFront-style signed URLs and userinfo. Mutation-check each class, not only one spelling. |
+| `T018-R2` | **High** | **Yes** | **Open** | **The playlist projection misclassifies yt-dlp's declared `multi_video` result as a single item.** `project_media()` uses `info.get("_type") == "playlist"`. The pinned yt-dlp's extractor contract defines both `"playlist"` and `"multi_video"` as multiple-video results, and `YoutubeDL.process_ie_result()` dispatches both through its playlist processor. A deterministic `_type="multi_video"` payload with two entries projected as `is_playlist=False, entry_count=None`. `REQ-002` requires the binary single-item/playlist distinction and T-018 exists to close `T012-R6`; leaving a supported multi-item type on the single side means that follow-up is not closed and T-016 is not yet unblocked. Represent both multi-item result types honestly (an enum may preserve the distinction if future UI behavior needs it), add a fixture-backed or explicitly derived `multi_video` case, and audit `_entry_count()`'s accepted shapes so strings/bytes are not counted merely because they implement `Sequence`. Mutation-check each supported `_type`. |
+
+### Scope and implementation rulings
+
+- **T-015 model expansion accepted.** Codec/quality and subtitle fields are necessary to make
+  the required presets behaviorally distinct, and they stay within the pure-core layering rule.
+- **T-015 selector-validation deviation accepted.** Empty/non-string selectors are already
+  unrepresentable in `Preset` and `DownloadRequest`; duplicating an unreachable built-in-only
+  branch would not strengthen the boundary.
+- **T-018 recorded/derived fixture split accepted.** The DRM fixture clearly identifies its
+  synthetic fields and does not probe a service outside `SEC-001`.
+- **Leaving `build_options(noplaylist=True)` unchanged is not itself a finding.** An explicit
+  playlist URL can still produce a playlist result in the pinned engine. The incomplete
+  `_type` projection is the blocking defect.
+
+### Validation and negative evidence
+
+All validation ran from a clean `/tmp` archive of `1156007`, with `PYTHONPATH=src` so the
+repository's editable virtual environment could not import `main` instead of the archived
+branch.
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **78 files already formatted**. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| `mypy --platform win32 src` | Passed: no issues in 31 source files. |
+| Full default suite | Passed: **1070 passed, 11 skipped, 1 deselected**. An initial run without `PYTHONPATH=src` imported the active main checkout through the editable environment and failed collection; the exact archived source produced the recorded passing result. |
+| MP4 selector probe | The real pinned yt-dlp selector chose a 720p WebM from the unconstrained final fallback (`T015-R1`). |
+| Selector-override probe | The shown selector remained the built-in string while the resulting request carried `"worst"` (`T015-R1`). |
+| Multi-video projection probe | `_type="multi_video"` with two entries projected as a single item with no count (`T018-R2`). |
+| Signed-URL probe | AWS-style signature, credential and expiry parameters survived both capture redaction and the scanner with zero findings (`T018-R1`). |
+| Nested-cookie probe | A tuple-nested `SID=secret` survived redaction, JSON serialization and the scanner with zero findings (`T018-R1`). |
+| `git show 1156007 --check` / bounded `git diff --check` | Passed. |
+
+The implementer's reported mutation batches were not rerun wholesale. The review established
+four missing negative classes that the correction batches must freeze and mutation-check.
+No test touched the network; the fixture capture script was inspected, not executed.
+
+### Readiness
+
+T-015 remains **In Review — changes requested** with one High blocker. T-018 remains
+**In Review — changes requested** with one Critical and one High blocker; `T012-R6` remains
+open through `T018-R2`, so T-016 is not unblocked. High and Critical corrections continue until
+independently verified regardless of the ordinary pass budget. `ai/STATUS.md` still says the
+playlist projection unblocks T-016; the Implementer must align that current-truth claim in the
+correction batch.
+
 ## 2026-07-27 — T-013 focused correction re-review
 
 **Reviewer:** Codex (Reviewer)

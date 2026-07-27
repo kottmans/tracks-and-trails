@@ -1,0 +1,36 @@
+{
+  "_fixture": {
+    "capture_method": "recorded",
+    "captured": "2026-07-27",
+    "note": "expected_kind is transcribed from ARCHITECTURE.md \u00a77, not read from the adapter. The type path is an NFR-008 canary: an upstream rename fails the test that imports it.",
+    "redaction": {
+      "allowed_query_parameters": [],
+      "credential_key_markers": [
+        "cookie",
+        "header",
+        "auth",
+        "token",
+        "secret",
+        "password",
+        "credential",
+        "signature",
+        "session",
+        "api_key",
+        "apikey"
+      ],
+      "policy": "fail-closed",
+      "url_userinfo": "removed",
+      "user_directory_paths": "removed"
+    },
+    "source_url": "https://archive.org/details/definitely-not-a-real-item-xyzzy-9999",
+    "why_this_source": "An extractor that matched and then failed: HTTP 404 from a real site. \u00a77 maps a non-retryable HTTP status to EXTRACTOR_ERROR, and the 404 is what makes it one \u2014 a 503 from the same site would be NETWORK.",
+    "yt_dlp_version": "2026.07.04"
+  },
+  "error": {
+    "expected_kind": "extractor_error",
+    "http_status": 404,
+    "message": "ERROR: [archive.org] definitely-not-a-real-item-xyzzy-9999: Unable to download webpage: HTTP Error 404: Not Found (caused by <HTTPError 404: Not Found>)",
+    "module": "yt_dlp.networking.exceptions",
+    "type": "HTTPError"
+  }
+}

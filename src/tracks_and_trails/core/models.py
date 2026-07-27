@@ -314,6 +314,18 @@ class MediaInfo:
     thumbnail_url: str | None = None
     is_live: bool = False
 
+    #: Whether the probed URL is a playlist rather than a single item (`REQ-002`, `T012-R6`).
+    #:
+    #: Added by `T-018`. `REQ-002` requires a probe to report the distinction and `T-016`
+    #: promises to display it, but no declared type could carry it: the raw `_type: "playlist"`
+    #: stops at the adapter, and `ARC-002` forbids passing the dict on to find out.
+    is_playlist: bool = False
+
+    #: How many items a playlist holds, when the extractor says. `None` means unknown, not zero
+    #: — a playlist whose count could not be determined is a real state, and showing "0 items"
+    #: for it would be a confident lie of the kind `Job.progress` already refuses to tell.
+    entry_count: int | None = None
+
     def __post_init__(self) -> None:
         _require_text("MediaInfo", "url", self.url, "it is the url this describes")
         _require_text(
@@ -333,6 +345,16 @@ class MediaInfo:
         _require_optional_text("MediaInfo", "uploader", self.uploader)
         _require_optional_text("MediaInfo", "thumbnail_url", self.thumbnail_url)
         _require_flag("MediaInfo", "is_live", self.is_live)
+        _require_flag("MediaInfo", "is_playlist", self.is_playlist)
+        _require_optional_count("MediaInfo", "entry_count", self.entry_count)
+        if self.entry_count is not None and not self.is_playlist:
+            # A count on a single item has no meaning, and a UI reading it would render "1 of 7"
+            # for something that is one thing. Making the pair unrepresentable is cheaper than
+            # every reader remembering to check the flag first (`T-014`'s lesson).
+            raise ValueError(
+                f"MediaInfo.entry_count is {self.entry_count} on something that is not a "
+                "playlist; only a playlist has entries to count"
+            )
 
 
 @dataclass(frozen=True, slots=True)
@@ -407,9 +429,14 @@ class DownloadRequest:
 class Preset:
     """A named, user-facing bundle that translates to a `DownloadRequest`.
 
-    This task defines the *shape* only. Built-in preset content and the translation into a
-    format selector are `T-015` — putting them here would mean deciding yt-dlp selector syntax
-    inside a task reviewed for its domain model.
+    `T-010` defined the shape; built-in content and the translation live in `core/presets.py`
+    (`T-015`), because deciding yt-dlp selector syntax inside a task reviewed for its domain
+    model would put the two in the wrong places.
+
+    **Every field here is a field of `DownloadRequest` under the same name.** That is the whole
+    design: a preset is the subset of a request that a named choice fixes, and translation is a
+    copy rather than an interpretation. `tests/unit/test_presets.py` derives that correspondence
+    from both dataclasses, so a field added here and not carried across fails the suite.
     """
 
     name: str
@@ -417,6 +444,20 @@ class Preset:
     format_selector: str
     output_template: str
     post_processors: tuple[str, ...] = ()
+
+    #: `REQ-010`'s chosen codec and quality, added by `T-015`. Without them a preset cannot say
+    #: what "audio only (MP3)" means, and `REQ-006`'s two audio presets differ only in their
+    #: names — which is precisely the defect `T012-R5` found one layer down, where omitting
+    #: `preferredcodec` left yt-dlp's default of "keep the source codec" and the MP3 preset
+    #: silently converted nothing.
+    audio_codec: AudioCodec = AudioCodec.ORIGINAL
+    audio_quality: str | None = None
+
+    #: `REQ-006`'s "video with embedded subtitles" preset, likewise: `build_postprocessors`
+    #: installs `FFmpegEmbedSubtitle` only when a request carries both, so a preset that cannot
+    #: express them cannot ask for them.
+    subtitle_languages: tuple[str, ...] = ()
+    embed_subtitles: bool = False
 
     #: Built-ins ship with the application and may not be edited or deleted; user presets may.
     #: The flag lives on the preset rather than in a separate list so the UI cannot lose track
@@ -428,11 +469,19 @@ class Preset:
         _require_text("Preset", "format_selector", self.format_selector)
         _require_enum("Preset", "media_kind", self.media_kind, MediaKind)
         _require_text("Preset", "output_template", self.output_template)
-        object.__setattr__(
-            self,
-            "post_processors",
-            _as_tuple_of("Preset", "post_processors", self.post_processors, str),
-        )
+        for name in ("post_processors", "subtitle_languages"):
+            object.__setattr__(self, name, _as_tuple_of("Preset", name, getattr(self, name), str))
+        _require_enum("Preset", "audio_codec", self.audio_codec, AudioCodec)
+        _require_optional_text("Preset", "audio_quality", self.audio_quality)
+        if self.audio_quality is not None and not _is_ytdlp_quality(self.audio_quality):
+            # The same rule as `DownloadRequest`, checked here too rather than only there: a
+            # preset is chosen long before a request is built, and discovering the typo at
+            # post-processing time costs the whole download.
+            raise ValueError(
+                f"Preset.audio_quality must be a VBR setting 0-9 or a kbps bitrate, "
+                f"not {self.audio_quality!r}"
+            )
+        _require_flag("Preset", "embed_subtitles", self.embed_subtitles)
         _require_flag("Preset", "built_in", self.built_in)
 
 

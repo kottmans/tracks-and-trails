@@ -87,13 +87,19 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-013` — corrections returned 2026-07-27, awaiting focused re-review.** The first review
-  requested changes on three blockers; all three are corrected, each reproduced first and
-  mutation-checked (16 of 16). The theme of two of them was one thing: **the receiver acted on a
-  message before deciding whether the message was legal.** The grammar now runs incrementally,
-  in the protocol module rather than in a second copy, and the terminal transition waits for the
-  stream to end. The maintainer ruled that a protocol violation fails the job loudly even when a
-  legal outcome arrived first — cancellation excepted.
+- **`T-013` — second correction batch returned 2026-07-27, awaiting verification.** Two review
+  passes so far. `T013-R1` and `T013-R2` (High) were verified resolved; `T013-R3` and `T013-R4`
+  (blocking Medium) were corrected under the maintainer's authorization of one further focused
+  pass. The theme running through all four: **the receiver acted before it decided whether it
+  should**, and the last two were on cleanup paths that only run when something else has already
+  failed. `T013-R5` is non-blocking test hardening owned by `T-052`.
+- **`T-015` and `T-018` — corrections returned 2026-07-27, awaiting verification.** Presets and
+  their translation; the recorded-fixture set, the playlist projection, and a committed capture
+  tool. Both came back Changes requested — one Critical, two High — and all three are corrected.
+  The Critical (`T018-R1`) was the fixture credential gate being a false negative in two
+  directions at once; it now fails closed on both sides, and every fixture was re-captured under
+  the new policy. `T012-R6` is closed by the `multi_video` correction, so **`T-016` is unblocked**
+  once the Reviewer verifies it. Merged to `main` 2026-07-27.
 - **`ai/TESTING.md` §7 stands at eight of ten mandatory areas**, up from six. `T-013` added
   Cancellation and Worker crash, both against real spawned processes. The two outstanding are
   Log redaction (`T-038`) and DRM. **DRM has no Phase 1 owner** — worth settling deliberately
@@ -114,27 +120,20 @@ connects them — in a test, a URL becomes a file on disk, and cancelling it lea
 see `T-019` below. **No widget touches any of it yet**: composition is `T-036` and the first
 *user-visible* download is `T-037`.
 
-1. **Re-review `T-013`'s corrections** — a focused pass over the correction diff and the three
-   findings, not a new audit (`AGENTS.md` §9). It owns process lifetime and the only thread in
-   the application, and both of its failure modes are silent, so nothing downstream should be
-   built until it passes.
+1. **Re-review everything returned today** — `T-013`'s two correction batches, and `T-015` and
+   `T-018`'s. Focused passes over the correction diffs and the named findings, not new audits
+   (`AGENTS.md` §9). Nothing downstream should be built until they pass.
 2. **`T-038` — logging with handler-level redaction.** Ready, High priority, and now overdue
    rather than early: `T-013` generates the diagnostics most likely to carry a tokenised URL or a
    cookie path, and they are being produced today with no redacting handler under them.
    Retrofitting redaction around live diagnostics is how `T-014` lost four review rounds.
-3. **`T-015` and `T-018` corrections**, on branch `phase1-presets-and-fixtures`. Reviewed
-   2026-07-27: both Changes requested, one **Critical** (`T018-R1` — the fixture credential gate
-   passes tuple-nested cookies and signed-URL parameters, so the next refresh could commit a
-   secret permanently) and two High. A Critical always blocks and cannot be closed as accepted
-   risk by an agent (`AGENTS.md` §9). `T-016` is **not** unblocked: `T012-R6` stays open through
-   `T018-R2`.
-4. **`T-019` — rescoped 2026-07-27, and it now carries a live defect.** Cancelling reaps the
+3. **`T-019` — rescoped 2026-07-27, and it now carries a live defect.** Cancelling reaps the
    worker but not what the worker spawned: probed against a real spawned child with one
    grandchild, the grandchild survived `Process.kill()` and was reparented to `init`. yt-dlp
    spawns `ffmpeg` exactly that way, so a cancelled merge keeps writing. The task now owns the
    production fix — POSIX process groups, a Windows Job object — plus the Windows runs Phase 1
    cannot exit without.
-5. **`T-050`** — new, and **Phase 2**, not Phase 1: the `history` table is still empty, and
+4. **`T-050`** — new, and **Phase 2**, not Phase 1: the `history` table is still empty, and
    `IMPLEMENTATION_PLAN.md` puts `REQ-020`'s history persistence in Phase 2. This file's claim
    that `T-013` owned it was `STATUS.md` running ahead of both the plan and `T-013`'s own scope;
    the task entry records the two things still missing before it can be written honestly.
@@ -240,11 +239,11 @@ it** — composition is `T-036`, and the first URL a *user* can download is `T-0
 `ARCHITECTURE.md` as the approved target rather than a description of what a user can do.
 
 Precisely, recounted 2026-07-27 by parsing each module for anything beyond its docstring: of the
-**31** modules under `src/`, **14 are still docstring-only stubs** and **17 have code**. Those
-seventeen are `__init__.py`, `__main__.py`, `_freeze_probe.py`, `app.py`, `ui/main_window.py`,
+**31** modules under `src/`, **13 are still docstring-only stubs** and **18 have code**. Those
+eighteen are `__init__.py`, `__main__.py`, `_freeze_probe.py`, `app.py`, `ui/main_window.py`,
 `core/{models,job_state,errors,paths}.py`,
 `downloader/{environment,protocol,worker,ytdlp_adapter}.py`, `persistence/{db,repositories}.py`,
-and — new with `T-013` — `downloader/{manager,result_pump}.py`.
+`downloader/{manager,result_pump}.py` (`T-013`), and — new with `T-015` — `core/presets.py`.
 
 *(Before `T-014` this said 23 stubs and eight coded, recomputed at `697e024`; it had gone stale
 across four tasks. Each count since has been recounted rather than adjusted.)*
