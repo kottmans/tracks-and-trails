@@ -1422,6 +1422,13 @@ Two things made a one-line bug cost a full CI round, and both are fixed:
   confusing integration failures instead. The skip is per-test now, and
   `test_containment_succeeds_on_this_platform` runs on both.
 
+**Verified on the re-run.** CI `30303348265` is green on every job. On `windows-latest`:
+`test_containment_succeeds_on_this_platform`, `test_cancelling_a_download_kills_what_the_worker_spawned`,
+`test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind`,
+`test_shutdown_leaves_no_descendant_either` and `test_killing_the_parent_takes_the_grandchild_too`
+all pass — **1163 passed, 20 skipped** in 64 s. That is the Windows half of this task's whole
+premise, and it is the first time a Job object has reaped anything in this project.
+
 **A second finding from the same run, in the checks rather than the code.** CI runs bare
 `mypy --platform win32`, which covers `tests/` through `pyproject.toml`'s `files`; locally the
 task had been running `mypy --platform win32 src`. Two `os.getpgid` calls in a POSIX-only test

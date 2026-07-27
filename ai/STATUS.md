@@ -137,10 +137,14 @@ is `T-037`.
    await review. `T-019` fixes the live defect — cancelling now reaps the worker's whole process
    group, and the `process_tree` marker is gone with the reason for it. `T-038` puts redaction in
    a formatter, so no call site can leak by forgetting. `T-051` is a decision, `ARC-004`.
-3. **Windows has runtime evidence for the first time.** CI run `30293051118` ran the process-tree
-   suite on both platforms — 43 passed on Windows, 43 passed and 2 skipped on Linux. Phase 1's
-   "verified on Linux *and* Windows" exit criterion has moved for the first time since it was
-   written.
+3. **Windows has runtime evidence, and it found a real bug.** `30293051118` first ran the
+   process-tree suite on both platforms; `30302798113` then ran `T-019`'s new descendant tests
+   there and **failed**, because `ctypes` had truncated the Job object's handle — invisible on
+   Linux by construction. `30303348265` is green on every job, with all four grandchild tests
+   and the containment check passing on `windows-latest` (1163 passed, 20 skipped). Phase 1's
+   "verified on Linux *and* Windows" criterion has moved for the first time since it was written,
+   and the move was worth more than the confirmation: pushing bought a defect nothing local
+   could have found (`T019-R2`).
 4. **`T-016` and `T-017` are the next widgets**, and both are now unblocked: `T-018` is closed,
    `T-051` answered the lifecycle question, and `T-013` is approved. They are the first code that
    makes any of the engine visible to a person.
