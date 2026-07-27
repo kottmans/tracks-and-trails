@@ -111,18 +111,44 @@ def migrate(connection: sqlite3.Connection) -> list[int]:
     Forward-only (`T-014` scope). There is no `down`: an unexercised down-migration is a guess
     about undoing a change, and restoring a backup is the honest recovery path.
     """
+    migrations = available_migrations()
+    if not migrations:
+        # A packaging omission must not masquerade as a valid empty schema (`T014-R3`).
+        # PyInstaller does not collect arbitrary package data through import analysis, so a spec
+        # that forgets the `.sql` files produces a directory that is merely *absent*, not broken.
+        # Left unchecked, `connect()` returns a version-0 database with no tables and the first
+        # write fails with `no such table: jobs`, which reads as a code bug rather than a build
+        # one.
+        raise RuntimeError(
+            f"no migrations found in {MIGRATIONS_DIRECTORY}. In a frozen build this means the "
+            "spec did not collect persistence/migrations/*.sql; from source it means the "
+            "directory is missing. Either way the database cannot be created correctly, and "
+            "continuing would produce an empty schema that looks valid."
+        )
+
     applied: list[int] = []
     current = schema_version(connection)
-    for version, path in available_migrations():
+    for version, path in migrations:
         if version <= current:
             continue
-        # `executescript` issues a COMMIT before running, so the version bump cannot share a
-        # transaction with the DDL by wrapping both in one `with`. Set it inside the script's
-        # own transaction instead: SQLite's DDL is transactional, and appending the pragma to
-        # the script keeps the two atomic.
-        connection.executescript(f"BEGIN;\n{path.read_text(encoding='utf-8')}\nCOMMIT;")
-        connection.execute(f"PRAGMA user_version = {version:d}")
-        connection.commit()
+        # **The DDL and the version bump commit together, or neither does** (`T014-R2`).
+        #
+        # `executescript` issues a COMMIT before it runs, so wrapping both in `with connection:`
+        # does not do it — an earlier version set the pragma *after* the script's COMMIT, and an
+        # interruption in between left the tables committed at version 0. The next startup then
+        # re-ran the migration and failed with `table jobs already exists`, which is precisely
+        # the schema/version split this is supposed to prevent.
+        #
+        # SQLite accepts `PRAGMA user_version` inside a transaction and rolls it back with
+        # everything else, so the pragma goes *before* the COMMIT, inside the same script.
+        script = path.read_text(encoding="utf-8")
+        try:
+            connection.executescript(
+                f"BEGIN;\n{script}\nPRAGMA user_version = {version:d};\nCOMMIT;"
+            )
+        except Exception:
+            connection.rollback()
+            raise
         applied.append(version)
     return applied
 

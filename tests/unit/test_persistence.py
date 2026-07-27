@@ -9,22 +9,17 @@ because it needs a real process to kill. Everything provable in-process is here.
 
 import json
 import sqlite3
-from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 
 from tracks_and_trails.core.errors import ErrorKind, is_auto_retryable, is_retryable
 from tracks_and_trails.core.job_state import IllegalTransitionError, JobStatus
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, Job, MediaKind
-from tracks_and_trails.persistence import db
-from tracks_and_trails.persistence.repositories import (
-    INTERRUPTED_ON_STARTUP,
-    JobRepository,
-    strip_credentials,
-)
+from tracks_and_trails.persistence import db, repositories
+from tracks_and_trails.persistence.repositories import INTERRUPTED_ON_STARTUP, JobRepository
 
 
 def a_request(**overrides: Any) -> DownloadRequest:
@@ -83,49 +78,86 @@ def test_migrations_are_discovered_from_the_directory_not_a_list() -> None:
     assert on_disk, "there must be at least one migration, or nothing below tests anything"
 
 
-def test_every_migration_runs_forward_from_every_prior_version_with_data_intact(
-    tmp_path: Path,
-) -> None:
-    """`ai/TESTING.md` §7, and **the reason this harness exists now rather than later**.
+#: Frozen databases, one per schema version, each captured **while that version was current**.
+#:
+#: `T014-R4`. The earlier harness replayed old DDL and then seeded it through the *current*
+#: repository, model and serializer. That does not test a migration: when a request field or its
+#: representation changes, a genuine v1 row holds the old JSON shape while the harness would
+#: write the new shape into a v1 table and migrate that — so a missing data migration passes.
+#:
+#: These files are historical artefacts. **Never regenerate them from current code.** A new
+#: version adds its own file and leaves the older ones untouched.
+HISTORICAL_FIXTURES: Final = Path(__file__).parent.parent / "fixtures" / "schema_versions"
 
-    With one version today this is nearly trivial. It is written anyway because it becomes
-    unwritable once several versions exist: reconstructing a v3 database to prove the v4
-    migration needs the v3 code, which by then is gone. Building it forward from each version, as
-    here, keeps working however many arrive.
+
+def historical_versions() -> list[tuple[int, Path]]:
+    """Frozen fixtures on disk, as `(version, path)` — discovered, not listed."""
+    found = []
+    for path in sorted(HISTORICAL_FIXTURES.glob("v*.sql")):
+        found.append((int(path.stem.lstrip("v")), path))
+    return sorted(found)
+
+
+def test_a_frozen_fixture_exists_for_every_schema_version_but_the_latest() -> None:
+    """Without this, the migration test below silently covers nothing.
+
+    A version whose fixture was never captured cannot be migrated *from* in any later run, and
+    the moment to capture it is while it is current. This fails the build that introduces v2
+    without freezing v1's successor state, which is exactly when the author still can.
+    """
+    captured = {version for version, _ in historical_versions()}
+    expected = {version for version, _ in db.available_migrations()}
+    assert expected - captured == set(), (
+        f"no frozen fixture for schema version(s) {sorted(expected - captured)}. Capture one "
+        "while that version is current — it cannot be reconstructed later, which is the whole "
+        "reason this gate exists (T014-R4)."
+    )
+
+
+@pytest.mark.parametrize(("version", "fixture"), historical_versions())
+def test_every_migration_runs_forward_from_real_historical_data(
+    tmp_path: Path, version: int, fixture: Path
+) -> None:
+    """`ai/TESTING.md` §7, against bytes that a past version actually wrote (`T014-R4`).
+
+    The fixture is loaded as SQL and migrated by the **current runner only**. No current model,
+    serializer or repository touches it before the migration — that is the difference between
+    testing a migration and testing that today's code can round-trip through an old table.
 
     Data intact is the operative half. A migration that drops and recreates a table passes a
     "does it run" check and loses the user's queue.
     """
-    migrations = db.available_migrations()
+    database = tmp_path / f"from_v{version}.sqlite3"
+    connection = sqlite3.connect(database)
+    connection.row_factory = sqlite3.Row
+    db.configure(connection)
+    connection.executescript(fixture.read_text(encoding="utf-8"))
+    connection.commit()
 
-    for start_version, _ in migrations:
-        database = tmp_path / f"from_v{start_version}.sqlite3"
-        connection = sqlite3.connect(database)
-        db.configure(connection)
+    assert db.schema_version(connection) == version, "the fixture must declare its own version"
+    before = {row["id"]: dict(row) for row in connection.execute("SELECT * FROM jobs ORDER BY id")}
+    assert before, "the fixture carries no rows, so 'data intact' asserts nothing"
 
-        # Build the database *at* start_version, then seed it.
-        for version, path in migrations:
-            if version > start_version:
-                break
-            connection.executescript(path.read_text(encoding="utf-8"))
-            connection.execute(f"PRAGMA user_version = {version:d}")
-        connection.commit()
-        connection.row_factory = sqlite3.Row
+    applied = db.migrate(connection)
+    assert all(v > version for v in applied)
+    assert db.schema_version(connection) == db.latest_version()
 
-        repository = JobRepository(connection)
-        seeded = a_job(f"survivor-from-v{start_version}", queue_position=0)
-        repository.add(seeded)
+    after = {row["id"]: dict(row) for row in connection.execute("SELECT * FROM jobs ORDER BY id")}
+    assert set(after) == set(before), (
+        f"migrating from v{version} lost or added rows. A migration that recreates a table "
+        "passes a 'does it run' check and drops the user's queue."
+    )
+    for job_id, original in before.items():
+        for column, value in original.items():
+            assert after[job_id][column] == value, (
+                f"{job_id}.{column} changed during migration from v{version}"
+            )
 
-        applied = db.migrate(connection)
-        assert all(version > start_version for version in applied)
-        assert db.schema_version(connection) == db.latest_version()
-
-        survived = repository.get(seeded.id)
-        assert survived == seeded, (
-            f"migrating from v{start_version} lost or altered data. A migration that recreates a "
-            "table passes a 'does it run' check and drops the user's queue."
-        )
-        connection.close()
+    # And the current repository can read what the migration produced — the property a user
+    # actually experiences after upgrading.
+    for job in JobRepository(connection).all_jobs():
+        assert job.id in before
+    connection.close()
 
 
 def test_a_schema_change_without_a_migration_fails(tmp_path: Path) -> None:
@@ -183,6 +215,144 @@ def test_a_gap_in_migration_versions_raises(tmp_path: Path) -> None:
             db.available_migrations()
     finally:
         db.MIGRATIONS_DIRECTORY = original  # type: ignore[misc]
+
+
+def test_a_failed_migration_rolls_back_its_schema_and_its_version_together(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T014-R2`. The defect this replaced was a schema/version split, not a crash.
+
+    The earlier runner ran `BEGIN; DDL; COMMIT;` and then set `PRAGMA user_version` in a second
+    transaction. An interruption between them committed the tables at version 0, so the next
+    startup re-ran the migration and died with `table jobs already exists` — a database that
+    cannot be opened again, from a crash that SQLite itself handled correctly.
+
+    Deterministic rather than timing-dependent: the migration's last statement is invalid, so
+    the failure lands *after* the DDL and the pragma have both been issued inside the
+    transaction. Neither may survive.
+    """
+    directory = tmp_path / "migrations"
+    directory.mkdir()
+    (directory / "0001_broken.sql").write_text(
+        "CREATE TABLE jobs (id TEXT PRIMARY KEY);\nINSERT INTO no_such_table VALUES (1);\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(db, "MIGRATIONS_DIRECTORY", directory)
+
+    connection = sqlite3.connect(tmp_path / "broken.sqlite3")
+    db.configure(connection)
+    with pytest.raises(sqlite3.Error):
+        db.migrate(connection)
+
+    assert db.schema_version(connection) == 0, (
+        "the version bump survived a failed migration; the next startup would skip DDL that "
+        "never ran"
+    )
+    tables = {
+        row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    assert "jobs" not in tables, (
+        "the DDL survived a failed migration; the next startup would re-run it and fail with "
+        "'table jobs already exists'"
+    )
+    connection.close()
+
+
+def test_a_migration_interrupted_at_the_commit_leaves_a_database_that_still_opens(
+    tmp_path: Path,
+) -> None:
+    """`T014-R2`, and **the case the failing-migration test above cannot reach**.
+
+    The dangerous interruption is not a migration that fails — SQLite rolls that back correctly
+    either way. It is a migration that *succeeds* and is interrupted between committing its DDL
+    and recording its version. The old runner did those in two transactions, so the tables
+    landed at version 0 and the next startup re-ran the DDL and died with `table jobs already
+    exists`: a database that can never be opened again.
+
+    Simulated deterministically by truncating the script at its `COMMIT` and then dying. With
+    the pragma *inside* the transaction the commit carries both, so the interruption is harmless
+    and the next startup proceeds. With the pragma after the `COMMIT`, this leaves the split.
+
+    The assertion is the property a user experiences: **the next startup still works.**
+    """
+
+    class DiesAtCommit(sqlite3.Connection):
+        """Runs the script up to and including its `COMMIT`, then stops existing.
+
+        A subclass rather than a patch: `sqlite3.Connection` is an immutable C type, so its
+        methods cannot be replaced on the class.
+        """
+
+        # Not named `interrupt`: `sqlite3.Connection.interrupt` is a real method, and shadowing
+        # it with a bool would break any caller that used it.
+        stop_at_commit = True
+
+        def executescript(self, sql_script: str) -> sqlite3.Cursor:
+            if not DiesAtCommit.stop_at_commit:
+                return super().executescript(sql_script)
+            head, separator, _ = sql_script.partition("COMMIT;")
+            super().executescript(head + separator)
+            raise RuntimeError("the process died here")
+
+    connection = sqlite3.connect(tmp_path / "interrupted.sqlite3", factory=DiesAtCommit)
+    db.configure(connection)
+
+    with pytest.raises(RuntimeError, match="died here"):
+        db.migrate(connection)
+    DiesAtCommit.stop_at_commit = False
+
+    # Whatever survived, schema and version must agree, so the next startup can continue.
+    tables = {
+        row[0] for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    if tables:
+        assert db.schema_version(connection) > 0, (
+            "tables were committed at version 0. The next startup re-runs the migration and "
+            "fails with 'table jobs already exists' — the database is unopenable from here."
+        )
+
+    db.migrate(connection)  # must not raise
+    assert db.schema_version(connection) == db.latest_version()
+    JobRepository(connection).add(a_job("after-recovery"))
+    connection.close()
+
+
+def test_an_empty_migration_set_raises_rather_than_creating_an_empty_schema(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T014-R3`. A packaging omission must not masquerade as a valid version-0 database.
+
+    PyInstaller collects `.sql` files only when the spec names them, and when it does not the
+    migration directory is merely *absent*. Left unchecked, `connect()` returns a database with
+    no tables and the first write fails with `no such table: jobs` — which reads as a code bug
+    on the platform where `OPS-003` says failures are diagnosed from a log and nothing else.
+    """
+    empty = tmp_path / "no-migrations"
+    empty.mkdir()
+    monkeypatch.setattr(db, "MIGRATIONS_DIRECTORY", empty)
+
+    connection = sqlite3.connect(tmp_path / "empty.sqlite3")
+    db.configure(connection)
+    with pytest.raises(RuntimeError, match="no migrations found"):
+        db.migrate(connection)
+    connection.close()
+
+
+def test_the_frozen_spec_collects_the_migration_sql() -> None:
+    """`T014-R3`, as a cheap early warning — **not** the real gate.
+
+    This asserts the spec *declares* the data rule. Whether PyInstaller then places the files in
+    the artifact is proven only by `--database-probe` running inside a built one, which CI does
+    on both platforms. Both exist because they fail at different times: this fails in seconds on
+    every push, that one fails on the thing users install.
+    """
+    spec = (Path(__file__).parent.parent.parent / "packaging" / "tracks-and-trails.spec").read_text(
+        encoding="utf-8"
+    )
+    assert "persistence/migrations/*.sql" in spec, (
+        "the frozen spec no longer collects the migration SQL. The artifact would build, launch, "
+        "and fail every write with 'no such table: jobs'."
+    )
 
 
 def test_migrating_twice_applies_nothing_the_second_time(tmp_path: Path) -> None:
@@ -298,57 +468,120 @@ def test_every_request_field_survives_the_round_trip(repository: JobRepository) 
 # --- secrets (REQ-026, NFR-007, and the T-014 scope decision) --------------------------------
 
 
+def raw_row(repository: JobRepository, job_id: str = "job-1") -> str:
+    """Every stored column of one job as one string, for scanning.
+
+    **Scanning the raw row is the point** (`T014-R1`). Redaction applied in the model but not on
+    the way to disk passes an object comparison and still leaves the secret on disk — and a test
+    that checks only the field it expects the secret in misses the field it did not think of.
+    This concatenates *all* of them.
+    """
+    row = repository._connection.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
+    return "\n".join(str(value) for value in tuple(row))
+
+
 @pytest.mark.parametrize(
-    ("raw", "expected"),
+    "proxy",
     [
-        ("http://user:pass@proxy.invalid:8080", "http://proxy.invalid:8080"),
-        ("http://user@proxy.invalid:8080", "http://proxy.invalid:8080"),
-        ("http://proxy.invalid:8080", "http://proxy.invalid:8080"),
-        ("socks5://u:p@10.0.0.1:1080", "socks5://10.0.0.1:1080"),
-        (None, None),
+        pytest.param("http://secretuser:hunter2@proxy.invalid:8080", id="with-scheme"),
+        # `T014-R1`: `DownloadRequest.proxy` accepts any non-empty string, and `urlsplit` puts
+        # this entirely in `path` with an empty `netloc` — so the old netloc-only check returned
+        # it unchanged and wrote both credentials to disk.
+        pytest.param("secretuser:hunter2@proxy.invalid:8080", id="scheme-less"),
+        pytest.param("socks5://secretuser:hunter2@10.0.0.1:1080", id="socks-numeric-host"),
+        pytest.param("HTTP://secretuser:hunter2@Proxy.Invalid:8080", id="uppercase-scheme"),
     ],
 )
-def test_proxy_credentials_are_stripped(raw: str | None, expected: str | None) -> None:
-    """The host survives because a proxy without one is not a proxy; the password does not."""
-    assert strip_credentials(raw) == expected
+def test_no_proxy_credential_reaches_any_column(repository: JobRepository, proxy: str) -> None:
+    """`REQ-026`: credentials are never written to history, whatever form the proxy took."""
+    repository.add(a_job(request=a_request(proxy=proxy)))
+    stored = raw_row(repository)
+
+    assert "hunter2" not in stored
+    assert "secretuser" not in stored
+    assert "proxy.invalid" in stored.lower() or "10.0.0.1" in stored, (
+        "the proxy host must survive or the setting is silently lost on retry"
+    )
 
 
-def test_no_credential_or_cookie_reaches_the_database(repository: JobRepository) -> None:
-    """`REQ-026`, `NFR-007`, asserted against the raw file rather than the model.
+@pytest.mark.parametrize(
+    ("secret", "message"),
+    [
+        pytest.param(
+            "hunter2",
+            "proxy failed: http://secretuser:hunter2@proxy.invalid:8080 refused the connection",
+            id="credential-in-diagnostic",
+        ),
+        pytest.param(
+            "hunter2",
+            "could not connect via secretuser:hunter2@proxy.invalid:8080",
+            id="scheme-less-credential-in-diagnostic",
+        ),
+        pytest.param(
+            "cookies.txt",
+            "Cookie file /home/someone/private/cookies.txt could not be read",
+            id="cookie-path-in-diagnostic",
+        ),
+        pytest.param(
+            "secret-jar",
+            "unable to open --cookies /var/data/secret-jar",
+            id="cookie-flag-in-diagnostic",
+        ),
+    ],
+)
+def test_no_secret_reaches_the_database_through_a_diagnostic(
+    repository: JobRepository, secret: str, message: str
+) -> None:
+    """`T014-R1`. `error_message` is an unrestricted sink carrying verbatim extractor prose.
 
-    Scanning the stored row is the point: a redaction applied in the model but not on the way to
-    disk would pass an object comparison and still leave the secret on disk.
-
-    The **URL is stored verbatim** and that is deliberate (`T-014` scope decision, 2026-07-26).
-    It is the job — `REQ-012`'s queue and `REQ-020`'s history are unusable without it, and a
-    retry cannot reconstruct it. What this asserts is that nothing the user did not type into the
-    URL bar ends up stored.
+    The earlier design redacted the request's `proxy` field and wrote `error_message` untouched,
+    so a diagnostic naming the proxy stored the password in the row beside the stripped copy.
+    Redaction now happens at the sink, so every text column is covered by default.
     """
-    request = a_request(
-        proxy="http://secretuser:hunter2@proxy.invalid:8080",
-        cookies_from_browser="firefox",
+    job = a_job().with_failure(ErrorKind.NETWORK, message)
+    repository.add(job)
+    assert secret not in raw_row(repository)
+
+
+def test_redaction_leaves_the_diagnostic_usable(repository: JobRepository) -> None:
+    """`NFR-006`: masking a password must not destroy the message the user can act on.
+
+    Over-eager redaction violates `NFR-006` as surely as a leak violates `REQ-026`. The host,
+    the verb and the reason all survive; only the credential goes.
+    """
+    repository.add(
+        a_job().with_failure(
+            ErrorKind.NETWORK, "proxy failed: http://u:p@proxy.invalid:8080 refused the connection"
+        )
     )
-    repository.add(a_job(request=request))
-
-    stored = repository._connection.execute("SELECT request, url FROM jobs").fetchone()
-    serialized = stored["request"]
-
-    assert "hunter2" not in serialized
-    assert "secretuser" not in serialized
-    assert "proxy.invalid" in serialized, "the proxy host must survive or the setting is lost"
-    assert json.loads(serialized)["cookies_from_browser"] == "firefox", (
-        "a browser name is not a cookie; dropping it would silently stop using the cookies the "
-        "user asked for"
-    )
-    assert stored["url"] == request.url
+    stored = repository.get("job-1")
+    assert stored is not None
+    assert stored.error_message is not None
+    assert "proxy.invalid:8080" in stored.error_message
+    assert "refused the connection" in stored.error_message
 
 
-def test_the_stripped_proxy_is_what_comes_back(repository: JobRepository) -> None:
-    """The model must agree with the disk, or callers would think the credential survived."""
-    repository.add(a_job(request=a_request(proxy="http://u:p@proxy.invalid:8080")))
-    restored = repository.get("job-1")
-    assert restored is not None
-    assert restored.request.proxy == "http://proxy.invalid:8080"
+def test_the_job_url_is_the_one_thing_stored_verbatim(repository: JobRepository) -> None:
+    """The maintainer-approved exception, asserted so it stays an exception rather than a habit.
+
+    The URL *is* the job — `REQ-012`'s queue and `REQ-020`'s history are unusable without it and
+    a retry cannot reconstruct it. `_STORED_VERBATIM` names it and `output_path` explicitly, so
+    a text column added later is redacted unless someone deliberately exempts it.
+    """
+    url = "https://example.invalid/watch?v=abc123&token=keepme"
+    repository.add(a_job(request=a_request(url=url), url=url))
+
+    row = repository._connection.execute("SELECT url, request FROM jobs").fetchone()
+    assert row["url"] == url
+    assert json.loads(row["request"])["url"] == url
+    assert {"url", "output_path"} == repositories._STORED_VERBATIM
+
+
+def test_a_browser_name_is_not_a_cookie(repository: JobRepository) -> None:
+    """Dropping it would silently stop using the cookies the user asked for (`REQ-026`)."""
+    repository.add(a_job(request=a_request(cookies_from_browser="firefox")))
+    row = repository._connection.execute("SELECT request FROM jobs").fetchone()
+    assert json.loads(row["request"])["cookies_from_browser"] == "firefox"
 
 
 # --- crash recovery (ai/TESTING.md §7, ARCHITECTURE.md §5) -----------------------------------
@@ -430,18 +663,30 @@ def test_recovery_survives_a_restart_and_is_idempotent(tmp_path: Path) -> None:
         assert stranded.status is JobStatus.FAILED
 
 
-def test_recovery_routes_through_the_state_machine(repository: JobRepository) -> None:
+def test_recovery_routes_through_the_state_machine(
+    repository: JobRepository, monkeypatch: pytest.MonkeyPatch
+) -> None:
     """The validation must not be bypassed by writing `FAILED` straight into the row.
 
-    Proven at the seam rather than by inspection: a `COMPLETED` job hand-forced into the
-    recovered set must raise, because `COMPLETED → FAILED` is illegal. If recovery wrote the
-    column directly this would pass and the state machine would be decorative.
+    **Rewritten after `T014-R5`.** The earlier version called `stored.with_failure()` directly
+    and never invoked `recover_interrupted()` at all — it tested the model method, which is
+    already covered elsewhere, while claiming to test the repository seam. Codex proved it by
+    replacing `recover_interrupted` with a function that always raises: the test still passed.
+
+    This forces an illegal source status into the recovered set and asserts the *repository*
+    raises. A direct `replace(job, status=FAILED, ...)` implementation, which produces identical
+    output for every legal case, fails here — which is what makes the mutation meaningful.
     """
+    monkeypatch.setattr(repositories, "INTERRUPTED_ON_STARTUP", frozenset({JobStatus.COMPLETED}))
     repository.add(a_job("done", status=JobStatus.COMPLETED))
+
+    with pytest.raises(IllegalTransitionError):
+        repository.recover_interrupted()
+
+    # And the illegal move was not written before it raised.
     stored = repository.get("done")
     assert stored is not None
-    with pytest.raises(IllegalTransitionError):
-        replace(stored, status=JobStatus.COMPLETED).with_failure(ErrorKind.INTERRUPTED, "x")
+    assert stored.status is JobStatus.COMPLETED
 
 
 # --- location (NFR-004, ARCHITECTURE.md §5) --------------------------------------------------

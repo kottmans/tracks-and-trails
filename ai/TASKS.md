@@ -82,7 +82,54 @@ the thing this task exists to avoid.
 
 ### T-014 — Persistence: schema, migrations, and the job repository
 
-**Status:** **Implemented 2026-07-26, awaiting review.**
+**Status:** **Changes requested** 2026-07-26 (`T014-R1` Critical, `R2`/`R3` High, `R4` Medium).
+All five corrected; **awaiting focused re-review**. The taxonomy amendment was approved
+separately at `d816fa0` and is unaffected.
+
+**`T014-R1` — Critical, and it was two holes, not one.** `strip_credentials()` examined only
+`urlsplit().netloc`, so the model-valid scheme-less `user:pass@proxy.invalid:8080` — which
+`urlsplit` puts entirely in `path` — was written unchanged. Separately, `error_message` was
+stored verbatim, so a diagnostic naming the proxy persisted the password in the row beside the
+stripped copy. **The design was wrong, not just the regex:** redaction named one field and left
+every other text column, present and future, unguarded.
+
+Corrected by inverting it. `core/redaction.py` recognises credentials and cookie paths
+structurally, and `_job_to_values` applies it to **every** text column by default;
+`_STORED_VERBATIM` names the two exceptions (`url`, `output_path`) with reasons. A column added
+later is covered unless someone deliberately exempts it. `NFR-006` is not violated — masking an
+embedded password leaves every actionable word of the diagnostic intact, asserted by test.
+
+The module states its boundary rather than claiming completeness: free-form secret *content* in
+prose is not structurally recognisable, and that limit is pinned by test. `T-038` should call
+this rather than write a second redactor.
+
+**`T014-R2` — High.** The pragma now sits inside the migration's transaction, before `COMMIT`.
+The test that proves it is not the obvious one: a *failing* migration rolls back correctly
+either way, so the harness truncates a **succeeding** script at its `COMMIT` and dies there.
+Under the old ordering that leaves tables at version 0 and the next startup dies with `table
+jobs already exists`.
+
+**`T014-R3` — High.** `packaging/tracks-and-trails.spec` now collects
+`persistence/migrations/*.sql`, `migrate()` raises rather than treating an absent directory as a
+valid empty schema, and a new `--database-probe` creates a database and writes a job **inside
+the frozen artifact** on both CI platforms. A unit test asserts the spec declares the rule — a
+seconds-fast early warning, explicitly not the real gate.
+
+**`T014-R4` — Medium.** `tests/fixtures/schema_versions/v1.sql` holds bytes written by v1 DDL
+and hand-written INSERTs, captured while v1 is current, migrated by the current runner alone.
+A second test fails the build that adds v2 without freezing v1's fixture, which is the only
+moment it can still be captured. Writing it by hand immediately caught that `AudioCodec.ORIGINAL`
+serializes as `"best"` — drift a generated fixture would have hidden by construction.
+
+**`T014-R5` — Low, corrected anyway.** The test now calls `recover_interrupted()` and forces an
+illegal source status into the recovered set, so a direct-column-write implementation fails it.
+The reviewer's probe — replacing the method with one that always raises — no longer passes.
+
+**Mutation evidence: 12 planted, 11 fail.** Five for `R1` (netloc-only credentials; no sink
+redaction; exempting `error_message`; no cookie-path redaction; unredacted request fields), two
+for `R2`, two for `R3`, one for `R4`, one for `R5`. The twelfth — altering a value inside the
+frozen fixture — passes, and is reported rather than hidden: it changes historical data without
+representing a defect, so it is not a meaningful mutation. Sources restored byte-identical.
 
 **Three conflicts in the linked context were surfaced rather than papered over**, and two needed
 a maintainer decision:

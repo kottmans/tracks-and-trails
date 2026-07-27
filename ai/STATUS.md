@@ -87,10 +87,20 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-014` — implemented 2026-07-26, awaiting review.** Persistence is real: SQLite in WAL mode
-  under `platformdirs`, a forward-only migration runner that discovers migrations by globbing the
-  directory rather than from a list in code, and `JobRepository` with durable queue order and
-  startup recovery. Suite 830 → 864.
+- **`T-014` — Changes requested 2026-07-26, corrected, awaiting focused re-review.** Persistence
+  is real: SQLite in WAL mode under `platformdirs`, a forward-only migration runner that
+  discovers migrations by globbing the directory, and `JobRepository` with durable queue order
+  and startup recovery. Suite 830 → 899.
+- **The review found a Critical.** Credentials could reach the database by two routes the first
+  implementation did not cover: a scheme-less proxy that `urlsplit` does not parse as an
+  authority, and `error_message`, which was stored verbatim. Both are corrected, and the shape of
+  the fix matters more than either hole — redaction now happens at **one sink covering every text
+  column by default**, with two named exceptions, instead of naming one field to protect.
+  `core/redaction.py` is new and `T-038` should use it rather than write a second redactor.
+- Also corrected: migration DDL and its version bump now commit atomically (`T014-R2`); the
+  frozen artifact collects and exercises its migration SQL (`T014-R3`); the migration test
+  migrates genuinely historical bytes rather than rows the current serializer produced
+  (`T014-R4`).
 - **This closes three more of `ai/TESTING.md` §7's ten mandatory areas** — crash recovery,
   migrations, and the settings freeze — taking §7 from three of ten to six. The crash test kills
   a real process with `SIGKILL` mid-write, because the cooperative paths prove nothing about the

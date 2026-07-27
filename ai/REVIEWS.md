@@ -2234,3 +2234,98 @@ on `main`; `ai/REVIEWS.md` excluded
 
 T-044 is **Approved with follow-ups** and complete. No further T-044 review pass is pending.
 T-047 carries the three accepted limitations; T-014 may start next on the critical path.
+
+## 2026-07-26 — T-014 initial comprehensive review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-014`
+**Platforms verified:** Linux locally; Windows not run
+
+### Unit 1 — taxonomy amendment
+
+**Base:** `92ab377cf445eb6f9d1e81b836b5b02772c35d9f`
+**Head:** `d816fa0c89f1b0256d7f2856bd223b6e5c146f13`
+**Verdict:** **Approved**
+
+No findings.
+
+- The `INTERRUPTED` / `WORKER_CRASH` distinction is real. The parent observes and classifies a
+  worker crash while it is alive; startup recovery can infer only that the whole application
+  stopped while persisted work was in flight.
+- `ErrorKind.INTERRUPTED` is retryable and is not auto-retryable. That matches §7's policy and
+  avoids relaunching directly into a download after an application-level interruption.
+- Both taxonomy pins continue to transcribe §7 as literal sets. Neither imports or derives the
+  expected member from production.
+- Listing `INTERRUPTED` in `UNMAPPED_KINDS` is honest: it is created by startup recovery, not
+  raised or classified from a surviving yt-dlp process.
+
+### Unit 2 — persistence
+
+**Base:** `d816fa0c89f1b0256d7f2856bd223b6e5c146f13`
+**Head:** `cfb66af5433044e33e057c50d9e23a1fe5350060`
+**Verdict:** **Changes requested**
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction |
+|---|---|---:|---|---|
+| `T014-R1` | **Critical** | **Yes** | The narrowed no-secret database criterion is still false at the persistence boundary. First, `DownloadRequest.proxy` accepts any non-empty string, but `strip_credentials()` examines only `urlsplit(...).netloc`; the model-valid `user:pass@proxy.invalid:8080` therefore returns unchanged and is serialized with both credentials. Second, `_job_to_values()` writes `error_message` verbatim. A failed job whose diagnostic is `proxy failed: http://secretuser:hunter2@proxy.invalid:8080` stores `hunter2` in the raw row even though the request copy is stripped. The same unrestricted diagnostic sink can persist a cookie path. Downstream proxy validity is not a defense: the job is persisted before a worker can reject the setting. This is an exposed-credential path and therefore Critical under `AGENTS.md` §9. | Enforce the exclusion at the database sink across every persisted field that can carry diagnostics or settings, and handle accepted proxy forms without relying on `urlsplit()` recognizing a netloc. Add raw-database negative tests for a scheme-less credential-bearing proxy and for credentials/cookie paths arriving through an error message; audit all sibling stored text fields. Preserve the maintainer-approved verbatim job URL exception explicitly. |
+| `T014-R2` | **High** | **Yes** | A migration and its `user_version` bump are not atomic. `migrate()` runs `BEGIN; <DDL>; COMMIT;`, then sets `PRAGMA user_version` and commits again. A simulated interruption on the pragma left both tables committed with version 0; the next `migrate()` failed with `OperationalError: table jobs already exists`. This is exactly the schema/version split the docstring says cannot happen and violates the migration and unclean-exit guarantees. | Put the version pragma before the migration transaction's `COMMIT`, with rollback/error handling, and add a deterministic interruption test proving both schema and version roll back together. SQLite accepts `PRAGMA user_version` inside this transaction; a local `BEGIN; CREATE TABLE; PRAGMA user_version=1; ROLLBACK` left neither the table nor the version. |
+| `T014-R3` | **High** | **Yes** | The only frozen-artifact specification collects `resources/icons/*` and yt-dlp data, but not `persistence/migrations/*.sql`. PyInstaller does not collect arbitrary package data through Python import analysis. In that environment `available_migrations()` sees an empty directory, `connect()` silently creates a version-0 database with no tables, and the first repository write fails `OperationalError: no such table: jobs`. The persistence layer therefore cannot run in the no-Python artifact required by `REL-001`. | Collect the migration SQL in `packaging/tracks-and-trails.spec` and exercise database creation/schema version from inside the frozen artifact on both CI platforms. Prefer also failing clearly when a build that expects migrations finds none, so a packaging omission cannot masquerade as a valid version-0 schema. |
+| `T014-R4` | **Medium** | **Yes** | `test_every_migration_runs_forward_from_every_prior_version_with_data_intact` does not construct historical data. It replays the old DDL but seeds each old schema through the **current** `JobRepository`, current model, and current JSON serializer. When a future request field or representation changes, a real v1 row has the old JSON shape, while this harness writes the new shape into a v1 table before running v2; a missing data migration can therefore pass. Conversely, a current repository that expects a newly added SQL column may fail while seeding the old schema before the migration is exercised. The test is not the v4-capable historical gate claimed by the task and `ai/TESTING.md` §7. | Freeze representative seed data or database fixtures for each schema version while that version is current, then migrate those historical bytes using only the new runner/repository. Mutation-check a representation-changing migration, not only DDL replay with current objects. |
+| `T014-R5` | **Low** | **No** | `test_recovery_routes_through_the_state_machine` never calls `recover_interrupted()`. It directly calls `stored.with_failure()`, so it tests the already-covered model method rather than the repository seam named by the test. Replacing `JobRepository.recover_interrupted` at runtime with a function that always raises still left this test passing. A direct `replace(job, status=FAILED, error_kind=..., ...)` implementation with identical output would also satisfy the other recovery assertions, so the reported “writing FAILED directly” mutation did not isolate the claimed route. Current production does call `with_failure`; this is test-strength and mutation-evidence accuracy, not a present behavior defect. | Exercise `recover_interrupted()` with a state-machine spy or force an illegal source into the repository's recovered set and assert that the repository raises. Record mutation evidence for a behavior-preserving direct-state-write bypass. |
+
+### Scope and decision judgments
+
+- Widening startup recovery to `PROBING`, `RUNNING`, and `POST_PROCESSING` was the implementer's
+  authority-order resolution to make. Architecture §5 names the exact set and outranks the
+  stale single-status task/test wording; no new design choice was introduced.
+- The maintainer-approved URL amendment is honest in what it gives up: a retryable durable job
+  requires its source URL, and the URL is explicitly stored verbatim. The amendment itself does
+  not overclaim. `T014-R1` concerns the narrower promise it retains—credentials and cookie data
+  outside that source URL still reach other database fields.
+- Creating `history` in version 1 while leaving writes to T-013 is a sound boundary. Its columns
+  transcribe REQ-020's source URL, title, resolved path, format, size, and completion time; no
+  premature history behavior is claimed.
+- The SQL normalizer did not reveal a semantic blind spot in the current schema comparison.
+  Both sides lose comments and whitespace only, while table, column, constraint, and index
+  changes remain visible in `sqlite_master`.
+- The POSIX-only integrity test is supplemented by the second crash test, which calls
+  `Process.kill()` without a Windows skip and reopens and parses every persisted job before
+  recovery. Windows execution remains unverified locally, as reported.
+
+### Independent evidence
+
+| Probe | Result |
+|---|---|
+| Scheme-less proxy | `strip_credentials("user:pass@proxy.invalid:8080")` returned the credential-bearing input unchanged. |
+| Encoded userinfo, IPv6, and `file://` | The tested canonical authority forms were stripped while preserving their host/path; they do not close the scheme-less route. |
+| Diagnostic credential sink | The serialized request omitted `hunter2`, but the same raw job row's `error_message` retained it. |
+| Migration interruption | Raising on `PRAGMA user_version = 1` left `jobs` and `history` committed at version 0; retry failed because `jobs` already existed. |
+| Atomic pragma control | Putting `PRAGMA user_version = 1` before `ROLLBACK` removed both the created table and the version bump. |
+| Missing migration assets | With an absent migration directory, `connect()` produced version 0 and no tables; `JobRepository.add()` failed `no such table: jobs`. The frozen spec contains no persistence migration data rule. |
+| Recovery seam test | The named test passed after replacing `recover_interrupted()` with an always-raising function, proving it never reaches that method. |
+| Hard-kill tests | Focused Linux run passed both real-process kill tests. |
+
+### Checks
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: 72 files already formatted. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| `mypy` | Passed: no issues in 57 source/test files. |
+| `mypy --platform win32` | Passed: no issues in 57 source/test files. |
+| Full default suite | Passed: **864 passed, 6 skipped, 1 deselected**. |
+| Taxonomy-focused tests | Passed: **102 passed**. |
+| Persistence-focused tests | Passed: **34 passed**. |
+| `git diff --check 92ab377 d816fa0` | Passed. |
+| `git diff --check d816fa0 cfb66af` | Passed. |
+
+### Readiness
+
+Unit 1 is **Approved**. Unit 2 has one Critical, two High, and one blocking Medium finding, so
+it is **Changes requested**. The focused correction re-review should verify `T014-R1` through
+`T014-R4`, check their correction diff for regressions, and re-check `T014-R5` if it is included
+in the same batch. No reviewed source or test file was changed during this review; only this
+historical review entry was appended.

@@ -300,6 +300,21 @@ jobs:
           [ -f "$BIN" ] || BIN=dist/tracks-and-trails/tracks-and-trails.exe
           "$BIN" --ytdlp-probe 2>&1 | tee "reports/ytdlp-probe.txt"
 
+      - name: Verify the frozen artifact can create its database
+        # T014-R3. The migrations are .sql files and PyInstaller follows imports, so they are
+        # collected only if the spec names them. When it does not, the failure is quiet: the
+        # migration directory is simply absent, the database is created at version 0 with no
+        # tables, and the first write fails with "no such table: jobs" — which reads as a code
+        # bug rather than a packaging one, on the platform where OPS-003 says failures are
+        # diagnosed from this log and nothing else.
+        #
+        # Collecting the files in the spec is not the gate; this is. It creates a real database
+        # and writes a real job through the real repository, inside the artifact.
+        run: |
+          BIN=dist/tracks-and-trails/tracks-and-trails
+          [ -f "$BIN" ] || BIN=dist/tracks-and-trails/tracks-and-trails.exe
+          "$BIN" --database-probe 2>&1 | tee "reports/database-probe.txt"
+
       - name: Smoke-test the frozen artifact
         # Asserts: launches, spawns a child, exchanges one message, exits zero, runs exactly
         # one top-level application process, and leaves no orphan behind.

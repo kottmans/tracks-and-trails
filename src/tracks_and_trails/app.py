@@ -52,6 +52,12 @@ def run(argv: Sequence[str]) -> int:
         from tracks_and_trails._freeze_probe import run_ytdlp_probe
 
         return run_ytdlp_probe()
+    # Before Qt for the same reason: a frozen artifact that cannot create its database must
+    # be diagnosable without a display (T-014, T014-R3).
+    if "--database-probe" in args:
+        from tracks_and_trails._freeze_probe import run_database_probe
+
+        return run_database_probe()
     if args:
         print(USAGE.format(version=__version__), end="")
         return 2

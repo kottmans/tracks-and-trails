@@ -24,13 +24,14 @@ import json
 import sqlite3
 from dataclasses import fields, replace
 from datetime import datetime
+from enum import Enum
 from typing import Any, Final
-from urllib.parse import urlsplit, urlunsplit
 
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.core.models import Job as JobModel
+from tracks_and_trails.core.redaction import redact
 
 #: Statuses that cannot still be true at startup (`ARCHITECTURE.md` §5).
 #:
@@ -74,31 +75,32 @@ _JOB_COLUMNS: Final = (
 )
 
 
-def strip_credentials(url: str | None) -> str | None:
-    """Return `url` without any embedded `user:password@`, or `None` unchanged.
-
-    A proxy is commonly written `http://user:pass@host:8080`, and that password is a credential
-    the database has no business holding (`REQ-026`, `NFR-007`). The host, scheme and port are
-    kept because without them the proxy setting is meaningless and a retry would silently stop
-    using a proxy the user asked for.
-
-    Anything unparseable is returned unchanged rather than guessed at — but a value that cannot
-    be parsed also cannot be shown to contain credentials, and `@` is the only way to embed them
-    in a URL authority.
-    """
-    if url is None:
-        return None
-    parts = urlsplit(url)
-    if "@" not in parts.netloc:
-        return url
-    _, _, host = parts.netloc.rpartition("@")
-    return urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+#: Fields stored **verbatim**, exempt from redaction, each for a stated reason.
+#:
+#: Named explicitly rather than by omission (`T014-R1`): the sink redacts everything by default,
+#: so a column added later is protected unless someone deliberately lists it here and says why.
+#: The previous design redacted one named field and let every other text column through.
+#:
+#: - `url` — maintainer decision, 2026-07-26. The URL *is* the job: `REQ-012`'s queue and
+#:   `REQ-020`'s history are unusable without it and a retry cannot reconstruct it.
+#: - `output_path` — the user chose this and `REQ-021` opens the file from it. It is the user's
+#:   own path to their own download, not a secret arriving from outside.
+_STORED_VERBATIM: Final = frozenset({"url", "output_path"})
 
 
 def _serialize_request(request: DownloadRequest) -> str:
-    """Serialize a request to JSON, stripping proxy credentials on the way."""
-    safe = replace(request, proxy=strip_credentials(request.proxy))
-    payload = {name: getattr(safe, name) for name in _REQUEST_FIELDS}
+    """Serialize a request to JSON, redacting every string field except the job URL.
+
+    Redacting the whole request rather than the `proxy` field alone (`T014-R1`). The earlier
+    version named `proxy`, which left every other string on the model — present and future — as
+    an unguarded route to disk.
+    """
+    payload: dict[str, Any] = {}
+    for name in _REQUEST_FIELDS:
+        value = getattr(request, name)
+        if isinstance(value, str) and not isinstance(value, Enum) and name not in _STORED_VERBATIM:
+            value = redact(value)
+        payload[name] = value
     # StrEnum members serialize as their string values; tuples become JSON arrays.
     return json.dumps(payload, sort_keys=True)
 
@@ -147,7 +149,19 @@ def _row_to_job(row: sqlite3.Row) -> JobModel:
 
 
 def _job_to_values(job: JobModel) -> dict[str, Any]:
-    return {
+    """Every column's value, with redaction applied at this single sink (`T014-R1`, `REQ-026`).
+
+    **The redaction happens here and nowhere else.** One choke point that every write passes
+    through is the only version of this that holds: the previous design redacted the `proxy`
+    field inside the request and let `error_message` — an unrestricted diagnostic sink carrying
+    verbatim extractor prose — write a credential straight to the row beside it.
+
+    `NFR-006`'s "preserved verbatim" is not violated by this. It forbids paraphrasing an
+    extractor's message into a generic one, destroying the information the user can act on;
+    masking an embedded password leaves every actionable word intact. `REQ-026` is explicit that
+    credentials and cookie paths are never written to history, and history is this database.
+    """
+    values: dict[str, Any] = {
         "id": job.id,
         "url": job.url,
         "status": job.status.value,
@@ -164,6 +178,13 @@ def _job_to_values(job: JobModel) -> dict[str, Any]:
         "started_at": _to_iso(job.started_at),
         "finished_at": _to_iso(job.finished_at),
     }
+    # Redact by default; `_STORED_VERBATIM` is the exception list, so a text column added to the
+    # schema later is covered without anyone remembering to cover it. `request` is already
+    # redacted field-by-field above and is JSON, which this must not re-encode.
+    for name, value in values.items():
+        if isinstance(value, str) and name not in _STORED_VERBATIM | {"request"}:
+            values[name] = redact(value)
+    return values
 
 
 class JobRepository:

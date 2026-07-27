@@ -247,3 +247,75 @@ def run_ytdlp_probe() -> int:
 
     print("OK: the frozen artifact carries a usable yt-dlp with its extractors")
     return 0
+
+
+def run_database_probe() -> int:
+    """Assert the frozen artifact can actually create its database (`T-014`, `T014-R3`).
+
+    **Collecting the `.sql` files in the spec is not the test.** PyInstaller follows imports and
+    nothing imports a `.sql`, so the migrations are collected only if named — and when they are
+    not, the directory is simply *absent* rather than broken. `available_migrations()` then
+    returns an empty list, a version-0 database with no tables is created, and the first write
+    fails with `no such table: jobs`, which reads as a code bug rather than a build one.
+
+    So this builds a real database in a temporary directory and writes a real job through the
+    real repository, inside the artifact. Nothing here is a parallel implementation: it is the
+    same `connect` a launch performs.
+    """
+    import tempfile
+
+    from tracks_and_trails.core.models import DownloadRequest, Job
+    from tracks_and_trails.persistence import db
+    from tracks_and_trails.persistence.repositories import JobRepository
+
+    try:
+        migrations = db.available_migrations()
+    except (OSError, ValueError) as error:
+        print(f"FAIL: the migration directory is unusable: {error}", file=sys.stderr)
+        return 1
+
+    print(f"migrations      {len(migrations)}")
+    if not migrations:
+        print(
+            "FAIL: the frozen artifact carries no migration SQL. The spec did not collect "
+            "persistence/migrations/*.sql, so the database would be created empty and every "
+            "write would fail with 'no such table' (T-014, T014-R3).",
+            file=sys.stderr,
+        )
+        return 1
+
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "probe.sqlite3"
+        try:
+            with db.open_database(path) as connection:
+                version = db.schema_version(connection)
+                print(f"schema version  {version}")
+                if version != db.latest_version():
+                    print(
+                        f"FAIL: the database came up at version {version}, expected "
+                        f"{db.latest_version()}.",
+                        file=sys.stderr,
+                    )
+                    return 1
+
+                repository = JobRepository(connection)
+                request = DownloadRequest(
+                    url="https://example.invalid/probe",
+                    output_directory=directory,
+                    format_selector="best",
+                    output_template="%(title)s.%(ext)s",
+                )
+                job = Job(id="probe", url=request.url, request=request)
+                repository.add(job)
+                if repository.get("probe") != job:
+                    print(
+                        "FAIL: a job written inside the artifact did not read back.",
+                        file=sys.stderr,
+                    )
+                    return 1
+        except Exception as error:
+            print(f"FAIL: the frozen artifact could not use its database: {error}", file=sys.stderr)
+            return 1
+
+    print("database        ok")
+    return 0

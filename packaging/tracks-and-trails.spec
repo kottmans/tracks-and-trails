@@ -12,6 +12,18 @@ from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 datas = collect_data_files("tracks_and_trails", includes=["resources/icons/*"])
 
+# T-014 (T014-R3). Without this the artifact builds, launches, and cannot persist anything.
+#
+# The migrations are .sql files. PyInstaller follows *imports*, and nothing imports a .sql, so
+# they are collected only if asked for by name. The failure mode is the quiet kind again: the
+# migration directory is simply absent, so `available_migrations()` returns an empty list, the
+# database is created at version 0 with no tables, and the first write fails with `no such
+# table: jobs` — which reads as a code bug rather than a packaging one.
+#
+# `persistence.migrate` now raises on an empty migration set rather than proceeding, so a spec
+# that loses this line fails loudly at startup instead of at the first download.
+datas += collect_data_files("tracks_and_trails", includes=["persistence/migrations/*.sql"])
+
 # T-033. Without this the artifact builds, launches, and fails every URL.
 #
 # OPS-002 says every release bundles a pinned yt-dlp baseline. PyInstaller's analysis follows
