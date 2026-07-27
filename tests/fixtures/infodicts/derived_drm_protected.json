@@ -5,12 +5,25 @@
     "content_licence": "No content: the structure of a real capture with DRM flags set.",
     "derived_from": "archive_org_test_mp3",
     "note": "Derived, not recorded. It exercises DRM detection against a realistically shaped info_dict \u2014 many keys, real formats \u2014 which an inline dict in a test cannot. The detection contract itself (_has_drm, per-format has_drm) is yt-dlp's and is transcribed from ARCHITECTURE.md \u00a77, not from this file.",
-    "redacted_keys": [
-      "cookies",
-      "http_headers",
-      "_cookies",
-      "cookiefile"
-    ],
+    "redaction": {
+      "allowed_query_parameters": [],
+      "credential_key_markers": [
+        "cookie",
+        "header",
+        "auth",
+        "token",
+        "secret",
+        "password",
+        "credential",
+        "signature",
+        "session",
+        "api_key",
+        "apikey"
+      ],
+      "policy": "fail-closed",
+      "url_userinfo": "removed",
+      "user_directory_paths": "removed"
+    },
     "source_url": null,
     "what_is_synthetic": [
       "_has_drm",
@@ -40,7 +53,7 @@
     "duration": 12.42,
     "duration_string": "12",
     "dynamic_range": "SDR",
-    "epoch": 1785132078,
+    "epoch": 1785140056,
     "ext": "mp3",
     "extractor": "archive.org",
     "extractor_key": "ArchiveOrg",

@@ -44,7 +44,7 @@ already made it unrepresentable everywhere, and re-opening an approved model to 
 selector would trade a clear error for a silent substitution.
 """
 
-from dataclasses import replace
+from dataclasses import fields, replace
 from typing import Any, Final
 
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind, Preset
@@ -72,13 +72,20 @@ SUBTITLE_LANGUAGES: Final = ("all",)
 BEST_VIDEO_1080P: Final = Preset(
     name="Best video up to 1080p (MP4)",
     media_kind=MediaKind.VIDEO,
-    # Three fallbacks, in order, and the order is the point: prefer a real MP4/M4A pair to
-    # merge, then a pre-muxed MP4, then anything at all within the height limit. Without the
-    # last two a site that offers no MP4 at 1080p would fail rather than deliver what it has.
+    # **Every branch is constrained to MP4** (`T015-R1`). The last fallback used to be a bare
+    # `best[height<=1080]`, and fed a site that offers only WebM it selected the WebM — so a
+    # preset named "(MP4)" delivered something else, silently, exactly when the user could least
+    # tell. A preset's name is a promise about the file, not about the first branch that matches.
+    #
+    # The order still prefers a real MP4/M4A pair to merge, then a pre-muxed MP4. A site with no
+    # MP4 at all now fails this preset rather than substituting a container the user did not
+    # choose — and the failure names the format, which is `REQ-005`'s verbatim message doing its
+    # job. Converting to MP4 instead would be a post-processing decision (`REQ-010`) and belongs
+    # to a preset that says so in its name.
     format_selector=(
         "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]"
         "/best[height<=1080][ext=mp4]"
-        "/best[height<=1080]"
+        "/bestvideo[height<=1080][ext=mp4]"
     ),
     output_template=DEFAULT_OUTPUT_TEMPLATE,
     built_in=True,
@@ -209,6 +216,22 @@ def custom_preset(selector: str, *, name: str = "Custom selector") -> Preset:
     )
 
 
+#: The request fields a preset owns. Derived from the two dataclasses rather than listed, so a
+#: field added to `Preset` is protected the day it appears instead of the day somebody
+#: remembers this constant (`T015-R1`).
+PRESET_OWNED_FIELDS: Final[frozenset[str]] = frozenset(
+    {field.name for field in fields(Preset)} & {field.name for field in fields(DownloadRequest)}
+)
+
+
+class PresetOverrideError(ValueError):
+    """An override that would make the request disagree with the preset that was shown.
+
+    Its own type so a caller can tell this apart from a malformed value: the request is not
+    invalid, it is *not the preset it claims to be*.
+    """
+
+
 def to_request(
     preset: Preset,
     *,
@@ -219,14 +242,28 @@ def to_request(
     """Build the `DownloadRequest` this preset means, for `url` (`REQ-006`).
 
     Every preset field is copied under its own name; `url` and `output_directory` are the two
-    things a preset cannot know. `overrides` is how a caller applies settings the preset does
-    not fix — a proxy, a rate limit, a cookie source — and it is applied last, so a request can
-    always be more specific than the preset it came from.
+    things a preset cannot know. `overrides` carry the settings a preset does not fix — a proxy,
+    a rate limit, a cookie source, a rate cap.
+
+    **An override may not touch a field the preset owns** (`T015-R1`). Unrestricted overrides
+    let a caller pass `format_selector="worst"` and receive exactly that while
+    `effective_selector()` still displayed the preset's own string — which defeats the one thing
+    `REQ-009` promises, that what is shown is what runs. Refusing is better than silently
+    re-deriving the display, because a caller that wants a different selector wants
+    `custom_preset()`, and saying so is more useful than quietly making it work.
 
     **Copied explicitly rather than by iterating the dataclass**, so mypy checks each field and
     a reader can see what a preset controls. The risk that carries — a field added and not
     copied — is covered by a test that derives the correspondence from both dataclasses instead.
     """
+    owned = sorted(PRESET_OWNED_FIELDS & set(overrides))
+    if owned:
+        raise PresetOverrideError(
+            f"{owned} belong to the preset {preset.name!r} and cannot be overridden here: the "
+            "selector a user is shown must be the one that runs (REQ-009). Build a "
+            "custom_preset() for a different selector, or edit the preset itself."
+        )
+
     request = DownloadRequest(
         url=url,
         output_directory=output_directory,

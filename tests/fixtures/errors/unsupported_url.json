@@ -3,12 +3,25 @@
     "capture_method": "recorded",
     "captured": "2026-07-27",
     "note": "expected_kind is transcribed from ARCHITECTURE.md \u00a77, not read from the adapter. The type path is an NFR-008 canary: an upstream rename fails the test that imports it.",
-    "redacted_keys": [
-      "cookies",
-      "http_headers",
-      "_cookies",
-      "cookiefile"
-    ],
+    "redaction": {
+      "allowed_query_parameters": [],
+      "credential_key_markers": [
+        "cookie",
+        "header",
+        "auth",
+        "token",
+        "secret",
+        "password",
+        "credential",
+        "signature",
+        "session",
+        "api_key",
+        "apikey"
+      ],
+      "policy": "fail-closed",
+      "url_userinfo": "removed",
+      "user_directory_paths": "removed"
+    },
     "source_url": "https://example.com/",
     "why_this_source": "A URL no extractor claims. yt-dlp raises UnsupportedError, which \u00a77 maps to UNSUPPORTED_URL \u2014 'no extractor matched' in the taxonomy's own words.",
     "yt_dlp_version": "2026.07.04"

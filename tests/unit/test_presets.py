@@ -266,6 +266,141 @@ def test_overrides_apply_last_and_leave_the_preset_alone() -> None:
     assert before == presets.AUDIO_MP3
 
 
+# --- what the selector actually picks (T015-R1) ----------------------------------------------
+#
+# Through yt-dlp's own selector engine, because the previous test asked whether the selector
+# *string* contained `ext=mp4` — which stayed true while a later fallback branch permitted
+# something else. A preset's name is a promise about the file that lands, and only the engine
+# that resolves it can say what that file would be.
+
+
+def selected_formats(selector: str, formats: list[dict[str, Any]]) -> list[str]:
+    """Every format the pinned yt-dlp would choose for `selector`, by extension."""
+    from yt_dlp import YoutubeDL
+
+    chosen = YoutubeDL({"quiet": True, "no_warnings": True}).build_format_selector(selector)
+    return [
+        str(entry.get("ext")) for entry in chosen({"formats": formats, "incomplete_formats": False})
+    ]
+
+
+def format_row(**overrides: Any) -> dict[str, Any]:
+    base = {
+        "format_id": "f",
+        "ext": "mp4",
+        "height": 1080,
+        "vcodec": "avc1",
+        "acodec": "mp4a",
+        "url": "https://example.com/f",
+    }
+    return {**base, **overrides}
+
+
+@pytest.mark.parametrize(
+    ("case", "formats"),
+    [
+        (
+            "merge pair",
+            [
+                format_row(format_id="v", acodec="none"),
+                format_row(format_id="a", vcodec="none", ext="m4a"),
+            ],
+        ),
+        ("pre-muxed mp4", [format_row(format_id="m")]),
+        ("mp4 at 720", [format_row(format_id="m", height=720)]),
+    ],
+)
+def test_the_1080p_preset_delivers_mp4_whenever_one_exists(
+    case: str, formats: list[dict[str, Any]]
+) -> None:
+    """Every branch of the fallback chain, resolved by the real engine.
+
+    Parametrized per branch because the finding was in the branch nobody exercised: a selector
+    tested only through its first alternative says nothing about its last.
+    """
+    picked = selected_formats(presets.effective_selector(presets.BEST_VIDEO_1080P), formats)
+
+    assert picked, f"the {case} case selected nothing"
+    assert set(picked) <= {"mp4", "m4a"}, f"the {case} case delivered {picked}, not MP4"
+
+
+def test_the_1080p_preset_refuses_a_site_that_offers_no_mp4() -> None:
+    """`T015-R1`: the preset is named "(MP4)", so WebM is not an acceptable substitute.
+
+    Fed a 720p WebM — within the height limit, and the only thing on offer — the old final
+    fallback selected it happily. Selecting nothing is the correct answer: yt-dlp then reports
+    that no format matched, verbatim (`REQ-005`), and the user learns the site has no MP4
+    rather than receiving a file in a container they did not choose.
+    """
+    webm_only = [format_row(format_id="w", ext="webm", height=720, vcodec="vp9", acodec="opus")]
+
+    picked = selected_formats(presets.effective_selector(presets.BEST_VIDEO_1080P), webm_only)
+
+    assert picked == [], f"a preset promising MP4 selected {picked}"
+
+
+def test_the_1080p_preset_still_respects_its_height_limit() -> None:
+    """The other half of the name, checked the same way rather than by reading the string."""
+    too_tall = [format_row(format_id="m", height=2160)]
+
+    assert selected_formats(presets.effective_selector(presets.BEST_VIDEO_1080P), too_tall) == []
+
+
+# --- overrides cannot contradict what was shown (T015-R1) -------------------------------------
+
+
+@pytest.mark.parametrize("field_name", sorted(presets.PRESET_OWNED_FIELDS))
+def test_a_preset_owned_field_cannot_be_overridden(field_name: str) -> None:
+    """`REQ-009`'s promise, enforced against **every** field a preset owns.
+
+    The finding was `format_selector`, where an override produced a request for `worst` while
+    `effective_selector()` still displayed the preset's own string. The sibling audit is the
+    reason this is parametrized over the fields derived from both dataclasses: `media_kind`,
+    the codec and the subtitle settings are each equally capable of making the request stop
+    being the preset that was chosen.
+    """
+    sample: dict[str, Any] = {
+        "format_selector": "worst",
+        "output_template": "%(id)s.%(ext)s",
+        "media_kind": MediaKind.AUDIO,
+        "post_processors": ("FFmpegMetadata",),
+        "subtitle_languages": ("en",),
+        "embed_subtitles": True,
+        "audio_codec": AudioCodec.FLAC,
+        "audio_quality": "0",
+    }
+    assert field_name in sample, f"no hostile value written for {field_name}"
+
+    with pytest.raises(presets.PresetOverrideError, match=field_name):
+        presets.to_request(
+            presets.BEST_VIDEO_1080P,
+            url=URL,
+            output_directory=DIRECTORY,
+            **{field_name: sample[field_name]},
+        )
+
+
+def test_settings_a_preset_does_not_own_are_still_accepted() -> None:
+    """The refusal must stay narrow, or it blocks the settings it was never about."""
+    request = request_for(
+        presets.BEST_VIDEO,
+        proxy="http://proxy.example:8080",
+        rate_limit_bytes=1024,
+        cookies_from_browser="firefox",
+    )
+
+    assert request.proxy == "http://proxy.example:8080"
+    assert request.rate_limit_bytes == 1024
+    assert request.cookies_from_browser == "firefox"
+    assert request.format_selector == presets.effective_selector(presets.BEST_VIDEO)
+
+
+def test_the_owned_field_set_is_derived_and_not_empty() -> None:
+    """A guard that protects nothing would let every parametrized case above vanish."""
+    assert "format_selector" in presets.PRESET_OWNED_FIELDS
+    assert len(presets.PRESET_OWNED_FIELDS) >= 6
+
+
 def test_the_two_audio_presets_are_actually_different() -> None:
     """`T012-R5`, one layer up: they must differ in what they *ask for*, not only in name.
 

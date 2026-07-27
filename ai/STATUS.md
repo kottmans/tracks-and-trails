@@ -96,11 +96,12 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 - **`T-015` and `T-018` — implemented 2026-07-27, In Review**, on branch
   `phase1-presets-and-fixtures` (`AGENTS.md` §7: branched on maintainer instruction, to keep new
   work off `main` while `T-013`'s corrections land there). Presets and their translation; the
-  recorded-fixture set, a playlist projection, and a committed capture tool. **Both came back
-  Changes requested on 2026-07-27**, with one Critical (`T018-R1`: the fixture credential gate
-  is a false negative for tuple-nested cookies and signed-URL parameters) and two High. **`T-016`
-  is not unblocked**: `T018-R2` found the projection misses yt-dlp's `multi_video`, so `T012-R6`
-  is still open. An earlier version of this line claimed the opposite.
+  recorded-fixture set, a playlist projection, and a committed capture tool. Both came back
+  Changes requested on 2026-07-27 — one Critical, two High — and **all three are now corrected
+  and awaiting verification**. The Critical (`T018-R1`) was the fixture credential gate being a
+  false negative in two directions at once; it now fails closed on both sides, and every fixture
+  was re-captured under the new policy. `T012-R6` is closed by the `multi_video` correction, so
+  **`T-016` is unblocked** once the Reviewer verifies it.
 - **`ai/TESTING.md` §7 stands at eight of ten mandatory areas**, up from six. `T-013` added
   Cancellation and Worker crash, both against real spawned processes. The two outstanding are
   Log redaction (`T-038`) and DRM. **DRM has no Phase 1 owner** — worth settling deliberately

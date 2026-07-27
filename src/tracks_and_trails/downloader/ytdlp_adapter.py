@@ -110,6 +110,16 @@ UNMAPPED_KINDS: Final[Mapping[ErrorKind, str]] = {
 }
 
 
+#: Every `_type` yt-dlp declares for a result holding more than one video (`T018-R2`).
+#:
+#: Transcribed from `InfoExtractor`'s own documentation — *"`_type` `playlist` indicates multiple
+#: videos"* and *"`_type` `multi_video` indicates that there are multiple videos that form a
+#: single show"* — rather than derived from yt-dlp's code, so an upstream addition shows up as a
+#: fixture disagreeing with this list instead of as a playlist silently reported as one item.
+#: `YoutubeDL.process_ie_result()` dispatches both through its playlist processor.
+MULTI_ITEM_TYPES: Final[frozenset[str]] = frozenset({"playlist", "multi_video"})
+
+
 def unwrap(error: BaseException) -> BaseException:
     """Return the underlying cause of a `DownloadError`, or `error` itself.
 
@@ -231,6 +241,14 @@ def project_media(info: Mapping[str, Any]) -> MediaInfo:
     than guessed from the presence of `entries` — an extractor may supply an empty `entries` for
     a playlist it could not enumerate, and that is still a playlist.
 
+    **Both of yt-dlp's multi-item types count** (`T018-R2`). Its extractor contract declares
+    `"playlist"` *and* `"multi_video"` — the second for parts of one work, such as a film split
+    across files — and `playlist_result(multi_video=True)` produces it. Reading only `"playlist"`
+    reported a real multi-item result as a single item, which is the distinction `REQ-002`
+    exists to make. They are deliberately projected the same: `REQ-002` asks one question, and
+    inventing a third state the requirement does not name would push the choice onto every
+    reader.
+
     The **entries themselves are not projected**. Phase 1 downloads one item, `REQ-002` asks
     only whether the URL is a playlist, and projecting every entry would make a probe's cost
     proportional to a list that can hold thousands. `T-016` shows the distinction and the count;
@@ -241,7 +259,7 @@ def project_media(info: Mapping[str, Any]) -> MediaInfo:
     formats = tuple(
         project_format(entry) for entry in (info.get("formats") or ()) if entry.get("format_id")
     )
-    is_playlist = info.get("_type") == "playlist"
+    is_playlist = info.get("_type") in MULTI_ITEM_TYPES
     return MediaInfo(
         url=url,
         title=title,
@@ -267,7 +285,13 @@ def _entry_count(info: Mapping[str, Any]) -> int | None:
     if counted is not None:
         return counted
     entries = info.get("entries")
-    return len(entries) if isinstance(entries, Sequence) else None
+    # `str` and `bytes` are `Sequence`s, and a malformed `entries` of either would have been
+    # "counted" as its number of characters (`T018-R2`). A generator — which is what a lazily
+    # paginated playlist supplies — has no length at all and is not counted rather than being
+    # consumed, because consuming it here would fetch the whole playlist during a probe.
+    if isinstance(entries, str | bytes) or not isinstance(entries, Sequence):
+        return None
+    return len(entries)
 
 
 def build_options(

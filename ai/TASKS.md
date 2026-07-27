@@ -223,9 +223,37 @@ so.
 
 ### T-015 — Built-in presets and selector translation
 
-**Status:** **In Review — changes requested** in the first independent review on 2026-07-27.
-`T015-R1` is a High blocker. Implemented on branch `phase1-presets-and-fixtures` alongside
-`T-018`.
+**Status:** **In Review — corrections returned 2026-07-27, awaiting verification.** `T015-R1`
+(High) is corrected and awaiting the Reviewer's independent check (`AGENTS.md` §9: only the
+Reviewer marks a finding Resolved). Implemented on branch `phase1-presets-and-fixtures`
+alongside `T-018`.
+
+#### Correction batch — `T015-R1`
+
+Two routes to one wrong result — a named or displayed choice that is not the request that runs —
+and each is closed at its own end.
+
+**The preset's name is a promise about the file.** `BEST_VIDEO_1080P`'s last fallback was a bare
+`best[height<=1080]` with no container constraint, and fed a site offering only WebM the real
+selector engine picked the WebM. Every branch is now constrained to MP4, so a site with no MP4
+fails the preset rather than substituting a container nobody chose — and yt-dlp's own message
+says so (`REQ-005`). Converting instead would be a post-processing decision (`REQ-010`) and
+belongs to a preset whose name says so.
+
+**Overrides may no longer touch a field the preset owns.** `to_request(**overrides)` let a
+caller pass `format_selector="worst"` and get exactly that while `effective_selector()` still
+displayed the preset's string — which defeats the single thing `REQ-009` promises. The owned set
+is **derived from both dataclasses**, so a field added to `Preset` is protected the day it
+appears; the sibling audit the finding asked for is the derivation itself rather than a list.
+Settings a preset does not own — proxy, rate limit, cookie source — are still accepted.
+
+**The tests now ask yt-dlp, not the string.** The capability check that let this through asked
+whether the selector *contained* `ext=mp4`, which stayed true while a later branch permitted
+something else. Every fallback branch is now resolved through the pinned engine's own
+`build_format_selector`, and the WebM-only case is asserted to select nothing.
+
+**Mutation-checked: 2 mutations, 2 killed** — restoring the unconstrained fallback, and dropping
+the override guard.
 
 **What landed.** `core/presets.py`: the five `REQ-006` presets, `to_request()`,
 `effective_selector()`, `by_name()` and `custom_preset()` for `REQ-009`'s raw-selector escape
@@ -315,10 +343,53 @@ output of translation, not an internal detail.
 
 ### T-018 — Recorded `info_dict` fixtures and projection tests
 
-**Status:** **In Review — changes requested** in the first independent review on 2026-07-27.
-`T018-R1` is a Critical blocker and `T018-R2` is a High blocker. Implemented on branch
-`phase1-presets-and-fixtures` alongside `T-015`. **`T-016` remains blocked** until the
-playlist/single-item projection handles every multi-item result the pinned yt-dlp declares.
+**Status:** **In Review — corrections returned 2026-07-27, awaiting verification.** `T018-R1`
+(Critical) and `T018-R2` (High) are corrected and awaiting the Reviewer's independent check
+(`AGENTS.md` §9: only the Reviewer marks a finding Resolved). Implemented on branch
+`phase1-presets-and-fixtures` alongside `T-015`.
+
+#### Correction batch — `T018-R1`, `T018-R2`
+
+**`T018-R1` — the gate stops guessing what a secret looks like.** Both halves were false
+negatives, and both are now fail-closed:
+
+- **Every container is walked.** `redact()` recursed through `dict` and `list` only, so one
+  tuple anywhere in the graph carried everything beneath it through — and yt-dlp's info dicts
+  contain tuples. It now walks every container the JSON encoder can serialise, and asserts on
+  Python objects rather than JSON text, because **a tuple cannot be written in JSON**: the
+  committed-file scanner is structurally unable to see this class, which is exactly why the
+  sanitizer has to fail closed rather than be checked after the fact.
+- **Query parameters are an allowlist, and it is empty.** The blocklist enumerated names it had
+  thought of, so `X-Amz-Signature`, `X-Amz-Credential` and `X-Amz-Expires` were not missed —
+  they were outside the question. Nothing downstream reads a query parameter, so the honest
+  default is to keep none. URL userinfo is dropped for the same reason. The committed-file gate
+  made the same inversion **independently**, and still shares no constant with the sanitizer.
+- **Credential keys match by substring, case-insensitively.** Four exact spellings meant
+  `Cookie`, `set-cookie` and `authorization` all walked past.
+
+**A test the corrections added found a third gap immediately.** Putting every leak shape through
+the sanitizer and then back through the gate showed the sanitizer never looked at local
+filesystem paths, which the gate rejects — so a refresh would have produced a fixture that could
+not be committed. `NFR-007` covers those too; the sanitizer now removes them.
+
+**All five fixtures were re-captured under the new policy**, and the derived DRM one regenerated
+from the new capture, so no committed fixture claims a redaction policy that no longer holds.
+`T-012`'s `archive_org_big_buck_bunny` is deliberately **not** refreshed: refreshing is meant to
+be a deliberate act with its own task, and it passes the new gate unchanged.
+
+**`T018-R2` — both of yt-dlp's multi-item types.** `MULTI_ITEM_TYPES` is transcribed from the
+extractor documentation (*"`multi_video` indicates that there are multiple videos that form a
+single show"*), not derived from yt-dlp's code, so an upstream addition surfaces as a
+disagreement rather than as a playlist silently reported as one item. Both project the same
+way: `REQ-002` asks one binary question, and inventing a third state it does not name would push
+the choice onto every reader. The sibling audit caught `_entry_count` too — `str` and `bytes`
+are `Sequence`s, so a malformed `entries` of `"two"` was counted as three characters.
+
+**`T012-R6` is now closed and `T-016` is unblocked**, subject to the Reviewer's verification.
+
+**Mutation-checked: 9 mutations, 9 killed.** Dict/list-only recursion, exact-match credential
+keys, a parameter blocklist in the sanitizer *and* in the gate, userinfo left in place, local
+paths left in place, `multi_video` dropped, and `entries` counted by `Sequence` alone.
 
 **What landed.**
 

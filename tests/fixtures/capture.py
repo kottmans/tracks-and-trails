@@ -25,8 +25,8 @@ no reason to change. A fixture that churns teaches nothing about our code when i
 
 import argparse
 import json
-import re
 import sys
+from collections.abc import Mapping
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
@@ -36,59 +36,119 @@ ERROR_DIR: Final = Path(__file__).parent / "errors"
 
 #: Keys whose values never enter the repository, whatever they contain.
 #:
-#: `cookies` and `http_headers` are the two yt-dlp attaches to every format. They carry session
-#: identifiers and a fingerprintable user agent, and neither is anything the projection reads.
-REDACTED_KEYS: Final = ("cookies", "http_headers", "_cookies", "cookiefile")
-
-#: Query parameters whose *name* suggests a credential. Matched case-insensitively on the name
-#: alone: guessing from a value's shape is how a legitimate id gets mangled and a real token
-#: gets missed.
-TOKEN_PARAMETERS: Final = re.compile(
-    r"^(token|access_token|auth|authorization|sig|signature|key|api_key|session|sid|password|"
-    r"pwd|secret|expires|policy|credential)$",
-    re.IGNORECASE,
+#: Matched **case-insensitively and by substring** (`T018-R1`): the first version compared four
+#: exact spellings, so `Cookie`, `set-cookie` and `authorization` all walked past it. A key whose
+#: name mentions a credential is redacted, and a legitimate field that happens to contain one of
+#: these words costs nothing to lose — no projection reads any of them.
+CREDENTIAL_KEY_MARKERS: Final = (
+    "cookie",
+    "header",
+    "auth",
+    "token",
+    "secret",
+    "password",
+    "credential",
+    "signature",
+    "session",
+    "api_key",
+    "apikey",
 )
+
+#: The **only** query parameters allowed to survive into a committed fixture (`T018-R1`).
+#:
+#: An allowlist, not a blocklist, and that inversion is the finding. The blocklist enumerated
+#: parameter names it had thought of, so `X-Amz-Signature`, `X-Amz-Credential` and `X-Amz-Expires`
+#: — the standard fields on every signed S3 or CloudFront URL — walked straight through it, as
+#: would the next provider's spelling. Nothing in the projection reads a query parameter at all,
+#: so the safe default is to keep none: an empty tuple, and a reviewed entry if that ever changes.
+#:
+#: This is the same move `T-044`, `T-045` and `T-014` each ended at: stop trying to recognise
+#: what a secret looks like, and constrain what can be present instead.
+ALLOWED_QUERY_PARAMETERS: Final[tuple[str, ...]] = ()
 
 REDACTED: Final = "<redacted>"
 
 
-def redact(value: Any) -> Any:
-    """Return `value` with credential material replaced, at any depth.
+def is_credential_key(key: object) -> bool:
+    """Whether a mapping key names something that must never be committed."""
+    text = str(key).lower()
+    return any(marker in text for marker in CREDENTIAL_KEY_MARKERS)
 
-    Recursive because the material is: a playlist's entries each carry their own formats, and
-    each format carries its own cookies. A single-level sweep over the top-level dict would
-    leave every one of them in place — which is exactly what a committed playlist fixture would
-    have shipped.
+
+def redact(value: Any) -> Any:
+    """Return `value` with credential material removed, at any depth and in any container.
+
+    **Fails closed** (`T018-R1`). The first version recursed through `dict` and `list` only, so a
+    single `tuple` anywhere in the graph carried everything below it through untouched — and
+    yt-dlp's info dicts contain tuples. Every container Python's JSON encoder can serialise is
+    walked here, and anything this function does not recognise is returned unchanged only if it
+    is a scalar, which cannot hide a nested cookie.
     """
-    if isinstance(value, dict):
+    if isinstance(value, Mapping):
         return {
-            key: REDACTED if key in REDACTED_KEYS else redact(item) for key, item in value.items()
+            key: REDACTED if is_credential_key(key) else redact(item) for key, item in value.items()
         }
-    if isinstance(value, list):
+    if isinstance(value, list | tuple | set | frozenset):
         return [redact(item) for item in value]
     if isinstance(value, str):
-        return redact_url(value)
+        return REDACTED if names_a_user_directory(value) else redact_url(value)
     return value
 
 
-def redact_url(value: str) -> str:
-    """Strip token-like query parameters from anything that looks like a URL.
+#: Path prefixes that identify somebody's home directory on the two supported platforms.
+#:
+#: `NFR-007` keeps personal paths out of records that persist, and a fixture persists forever.
+#: Found by the test that puts every leak shape through this sanitizer and then back through the
+#: committed-file gate: the gate rejected a local path the sanitizer had never looked at, so a
+#: refresh would have produced a fixture that could not be committed.
+USER_DIRECTORY_MARKERS: Final = ("/home/", "/users/", "c:\\users", "c:/users")
 
-    Left as-is when there is no query string, so ordinary text passes through untouched. The
-    parameter is removed rather than blanked: a URL that still carries `?token=` with an empty
-    value invites someone to conclude the fixture was captured without one.
+
+def names_a_user_directory(value: str) -> bool:
+    lowered = value.lower()
+    return any(marker in lowered for marker in USER_DIRECTORY_MARKERS)
+
+
+def redact_url(value: str) -> str:
+    """Strip every query parameter and any userinfo from anything that looks like a URL.
+
+    **Everything goes unless `ALLOWED_QUERY_PARAMETERS` says otherwise** (`T018-R1`). Deciding
+    per-parameter meant deciding, in advance, every name a provider might use for a signature —
+    and AWS's `X-Amz-*` family was already outside that list. Userinfo (`https://user:pass@host`)
+    is dropped for the same reason: it is a credential in a position no allowlist covers.
+
+    Nothing downstream reads a query parameter, so this costs the fixtures nothing.
     """
-    if "?" not in value or "://" not in value:
+    if "://" not in value:
         return value
     from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
     parts = urlsplit(value)
     kept = [
-        (k, v)
-        for k, v in parse_qsl(parts.query, keep_blank_values=True)
-        if not TOKEN_PARAMETERS.match(k)
+        (name, item)
+        for name, item in parse_qsl(parts.query, keep_blank_values=True)
+        if name.lower() in ALLOWED_QUERY_PARAMETERS
     ]
-    return urlunsplit(parts._replace(query=urlencode(kept)))
+    netloc = parts.netloc
+    if "@" in netloc:
+        netloc = netloc.rsplit("@", 1)[1]
+    return urlunsplit(parts._replace(netloc=netloc, query=urlencode(kept)))
+
+
+def _redaction_record() -> dict[str, Any]:
+    """What the sanitizer promised this fixture, recorded with it.
+
+    Written into every capture so a reader can tell what was removed without reading this file,
+    and so a fixture taken under weaker rules is identifiable after the rules tighten — which is
+    exactly what happened when `T018-R1` inverted the query-parameter policy.
+    """
+    return {
+        "policy": "fail-closed",
+        "credential_key_markers": list(CREDENTIAL_KEY_MARKERS),
+        "allowed_query_parameters": list(ALLOWED_QUERY_PARAMETERS),
+        "url_userinfo": "removed",
+        "user_directory_paths": "removed",
+    }
 
 
 class Source:
@@ -183,7 +243,7 @@ def capture_info(source: Source, version: str) -> dict[str, Any]:
             "capture_options": sorted(f"{key}={value!r}" for key, value in source.options.items()),
             "content_licence": source.licence,
             "why_this_source": source.why,
-            "redacted_keys": list(REDACTED_KEYS),
+            "redaction": _redaction_record(),
             "note": (
                 "A contract, not a sample (ai/TESTING.md §5). Changing a projected key must fail "
                 "the projection test. Refreshing this file is a deliberate act with its own task."
@@ -214,7 +274,7 @@ def capture_error(
                 "source_url": url,
                 "capture_method": "recorded",
                 "why_this_source": why,
-                "redacted_keys": list(REDACTED_KEYS),
+                "redaction": _redaction_record(),
                 "note": (
                     "expected_kind is transcribed from ARCHITECTURE.md §7, not read from the "
                     "adapter. The type path is an NFR-008 canary: an upstream rename fails the "

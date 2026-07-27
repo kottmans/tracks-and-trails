@@ -118,20 +118,41 @@ FORBIDDEN_SUBSTRINGS = (
     "C:\\\\Users",
 )
 
-#: Query parameters that carry credentials. Transcribed from what signed media URLs use, not
-#: imported from `capture.py` — the two are supposed to agree, and a shared constant would make
-#: any disagreement invisible.
-FORBIDDEN_QUERY_PARAMETERS = re.compile(
-    r"[?&](token|access_token|auth|authorization|sig|signature|key|api_key|session|sid|"
-    r"password|pwd|secret|policy|credential)=",
-    re.IGNORECASE,
-)
+#: Query parameters a committed fixture may carry. **None** (`T018-R1`).
+#:
+#: This is the gate's half of the same inversion the sanitizer made, arrived at independently:
+#: the previous version listed the parameter names it considered dangerous, so an AWS-style
+#: `X-Amz-Signature` was not merely missed — it was outside the question being asked. Since no
+#: projection reads a query parameter, any parameter at all in a committed fixture is either a
+#: credential or unnecessary, and both are reasons to fail.
+#:
+#: Deliberately **not** imported from `capture.py`. The sanitizer and this gate are supposed to
+#: agree, and a shared constant would make disagreement invisible — which is the entire value of
+#: having a second check at all.
+ALLOWED_QUERY_PARAMETERS: frozenset[str] = frozenset()
+
+#: A URL query parameter, as it appears inside JSON.
+_QUERY_PARAMETER = re.compile(r"[?&]([A-Za-z0-9_.\-%]+)=")
+
+#: `scheme://user:password@host` — a credential in a position no parameter list covers.
+_URL_USERINFO = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^/\s\"']*@")
 
 
 def leaks_in(blob: str) -> list[str]:
-    """Every credential-shaped thing in `blob`. The scanner both tests use."""
+    """Every credential-shaped thing in `blob`. The scanner both tests use.
+
+    Fails closed on two of its three checks (`T018-R1`): any query parameter outside the
+    allowlist counts, and so does any URL carrying userinfo. Only the literal list above
+    enumerates, and it enumerates things that are *always* wrong rather than trying to be a
+    complete catalogue of what a secret looks like.
+    """
     found = [needle for needle in FORBIDDEN_SUBSTRINGS if needle in blob]
-    found += [match.group(0) for match in FORBIDDEN_QUERY_PARAMETERS.finditer(blob)]
+    found += [
+        f"query parameter {match.group(1)!r}"
+        for match in _QUERY_PARAMETER.finditer(blob)
+        if match.group(1).lower() not in ALLOWED_QUERY_PARAMETERS
+    ]
+    found += [f"url userinfo in {match.group(0)!r}" for match in _URL_USERINFO.finditer(blob)]
     return found
 
 
@@ -172,21 +193,83 @@ def test_the_redacted_keys_are_actually_redacted(path: Path) -> None:
     assert redacted, f"{path.name} has no cookies or headers at all; the sanitizer is untested"
 
 
-def test_the_leak_scanner_can_actually_fail() -> None:
+#: Leak shapes the gate must reject. Each is a real thing a capture can contain, and the last
+#: four are `T018-R1`'s: the parameter names a blocklist had never heard of, a percent-encoded
+#: spelling of one it had, and a credential in the URL's authority rather than its query.
+LEAK_SHAPES = {
+    "cookie value": '{"cookies": "ia-csrf=abc; Domain=.archive.org"}',
+    "browser identity": '{"http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0)"}}',
+    "bearer token": '{"authorization": "Bearer eyJhbGciOi"}',
+    "linux path": '{"cookiefile": "/home/sean/.config/cookies.txt"}',
+    "windows path": '{"path": "C:\\\\Users\\\\sean\\\\cookies.txt"}',
+    "named signature": '{"url": "https://cdn.example/v.mp4?signature=deadbeef&expires=1"}',
+    "aws signed url": (
+        '{"url": "https://s3.example/v.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256'
+        '&X-Amz-Credential=AKIA%2F20260727&X-Amz-Signature=abc123&X-Amz-Expires=3600"}'
+    ),
+    "cloudfront signed url": (
+        '{"url": "https://d1.cloudfront.net/v.mp4?Policy=eyJTdGF0ZW1l&Key-Pair-Id=APKA"}'
+    ),
+    "percent-encoded name": '{"url": "https://cdn.example/v.mp4?%73ignature=deadbeef"}',
+    "url userinfo": '{"url": "https://someone:hunter2@cdn.example/v.mp4"}',
+    "unfamiliar provider name": '{"url": "https://cdn.example/v.mp4?hdnts=exp=1~hmac=9f"}',
+}
+
+
+@pytest.mark.parametrize("shape", sorted(LEAK_SHAPES))
+def test_the_leak_scanner_can_actually_fail(shape: str) -> None:
     """`ai/TESTING.md` §13: a scan nobody has watched reject something is not evidence.
 
-    Each string below is a real shape of the thing being kept out, run through the same scanner
-    the fixtures are checked with.
+    Parametrized rather than looped so a shape that stops being caught names itself. The four
+    `T018-R1` rows are the point: the previous scanner asked "is this one of the parameter names
+    I know?", which no amount of adding names fixes. This one asks "is any parameter present?",
+    and the answer for a fixture is always no.
     """
-    for blob in (
-        '{"cookies": "ia-csrf=abc; Domain=.archive.org"}',
-        '{"http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0)"}}',
-        '{"authorization": "Bearer eyJhbGciOi"}',
-        '{"url": "https://cdn.example/video.mp4?signature=deadbeef&expires=1"}',
-        '{"cookiefile": "/home/sean/.config/cookies.txt"}',
-        '{"path": "C:\\\\Users\\\\sean\\\\cookies.txt"}',
-    ):
-        assert leaks_in(blob), f"the scanner would have let {blob!r} through"
+    assert leaks_in(LEAK_SHAPES[shape]), f"the scanner would have let a {shape} through"
+
+
+@pytest.mark.parametrize(
+    ("shape", "payload"),
+    [
+        ("tuple", ({"cookies": "SID=secret"},)),
+        ("tuple inside a list", [({"cookies": "SID=secret"},)]),
+        ("tuple inside a dict", {"formats": ({"cookies": "SID=secret"},)}),
+        ("set of urls", {"seen": {"https://cdn.example/v.mp4?X-Amz-Signature=abc"}}),
+        ("nested three deep", {"a": [{"b": ({"http_headers": {"Cookie": "SID=x"}},)}]}),
+    ],
+)
+def test_the_sanitizer_walks_every_container_not_just_two(shape: str, payload: Any) -> None:
+    """`T018-R1`'s core: `redact()` recursed through `dict` and `list` only.
+
+    A single tuple anywhere in the graph carried everything beneath it through untouched, and
+    yt-dlp's info dicts contain tuples — `_format_sort_fields` is one. This is asserted on
+    Python objects rather than on JSON text because a tuple cannot be written in JSON: the
+    committed-file scanner is structurally unable to see this class, which is exactly why the
+    sanitizer has to fail closed rather than be checked afterwards.
+    """
+    from tests.fixtures import capture
+
+    serialized = json.dumps(capture.redact(payload))
+
+    assert "secret" not in serialized, f"a {shape} carried a cookie through: {serialized}"
+    assert "SID=" not in serialized
+    assert not leaks_in(serialized), f"a {shape} carried {leaks_in(serialized)}"
+
+
+def test_the_scanner_and_the_sanitizer_agree_without_sharing_a_list() -> None:
+    """The two halves are written separately on purpose; this is where they must meet.
+
+    Every leak shape above is put through `capture.redact()` and then re-scanned. A sanitizer
+    that misses what the gate catches would let a refresh write a fixture that cannot be
+    committed; a gate that misses what the sanitizer strips would stop noticing regressions.
+    """
+    from tests.fixtures import capture
+
+    for shape, blob in LEAK_SHAPES.items():
+        sanitized = json.dumps(capture.redact(json.loads(blob)))
+        assert not leaks_in(sanitized), (
+            f"the sanitizer left a {shape} that the gate rejects: {sanitized}"
+        )
 
 
 # --- 3. coverage, asked of the contents ------------------------------------------------------
@@ -350,6 +433,64 @@ def test_a_single_item_is_not_reported_as_a_playlist(path: Path) -> None:
 
     assert media.is_playlist is False
     assert media.entry_count is None, "a single item has no entries to count"
+
+
+#: yt-dlp's declared multi-item result types, transcribed from its extractor documentation
+#: rather than imported from the adapter (`ai/TESTING.md` §13). Asking the module which types it
+#: handles and then checking it handles them is the `T010-R1` shape.
+YT_DLP_MULTI_ITEM_TYPES = ("playlist", "multi_video")
+
+
+@pytest.mark.parametrize("declared_type", YT_DLP_MULTI_ITEM_TYPES)
+def test_every_multi_item_type_yt_dlp_declares_is_projected_as_one(declared_type: str) -> None:
+    """`T018-R2`: `multi_video` is a multi-item result, and reading only `playlist` missed it.
+
+    yt-dlp's own contract names both, and `playlist_result(multi_video=True)` produces the
+    second for parts of one work — a film split across files. `REQ-002` asks a binary question,
+    so both answer it the same way; the distinction between them is yt-dlp's business.
+    """
+    info = {
+        "_type": declared_type,
+        "title": "A work in parts",
+        "webpage_url": "https://example.com/p",
+        "entries": [{"id": "1"}, {"id": "2"}],
+        "playlist_count": 2,
+    }
+    media = adapter.project_media(info)
+
+    assert media.is_playlist is True, f"{declared_type!r} was projected as a single item"
+    assert media.entry_count == 2
+
+
+def test_a_single_video_type_is_still_a_single_item() -> None:
+    """The other side: widening the set must not swallow the type it exists to distinguish."""
+    info = {"_type": "video", "title": "One thing", "webpage_url": "https://example.com/v"}
+    assert adapter.project_media(info).is_playlist is False
+
+
+@pytest.mark.parametrize(
+    "entries",
+    ["two", b"two", iter([{"id": "1"}, {"id": "2"}])],
+    ids=["str", "bytes", "generator"],
+)
+def test_an_entries_value_that_is_not_a_list_is_not_counted(entries: object) -> None:
+    """`T018-R2`'s sibling: `str` and `bytes` are `Sequence`s.
+
+    A malformed `entries` of `"two"` was counted as three — its number of characters — and
+    reported as a playlist of three items. A generator, which a lazily paginated playlist
+    supplies, has no length and must not be consumed here: doing so would fetch the whole
+    playlist during a probe.
+    """
+    info = {
+        "_type": "playlist",
+        "title": "P",
+        "webpage_url": "https://example.com/p",
+        "entries": entries,
+    }
+    media = adapter.project_media(info)
+
+    assert media.is_playlist is True
+    assert media.entry_count is None, f"{type(entries).__name__} was counted as {media.entry_count}"
 
 
 def test_the_count_prefers_what_the_site_reported_over_what_was_materialised() -> None:
