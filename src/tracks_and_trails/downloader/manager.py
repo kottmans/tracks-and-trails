@@ -58,7 +58,6 @@ produced a file; a worker that exits 0 having reported nothing did not. So the *
 decides whenever there is one, and the exit code decides only when there is not.
 """
 
-import contextlib
 import logging
 import multiprocessing
 import time
@@ -623,13 +622,20 @@ class DownloadManager(QObject):
             self.idle.emit()
 
     def _stop_logging(self) -> None:
-        """Stop the thread draining worker log records (`T038-R2`).
+        """Ask the thread draining worker log records to finish (`T038-R2`). **Does not wait.**
 
         Only on the way out, and only once: the queue and its listener are process-wide, so a
         manager that stopped them while another was running would silently swallow that one's
         worker output. Done here rather than left to interpreter exit because a listener thread
         that is still blocked on a queue is a process that does not finish quitting — the same
         shape as the orphan worker this file spends most of its length preventing.
+
+        **Asking is all it does.** This runs on the GUI thread, from `shutdown()` or from the
+        timer tick that finishes it, and the listener may be inside a slow handler. The first
+        version joined the thread and a two-second handler call held `shutdown()` for 2.001 s —
+        `T013-R2`'s blocking teardown restored under a different name. The sentinel is queued
+        behind whatever this session's release put there, so the ordering the per-job logs
+        depend on survives the stop.
         """
         app_logging.stop_listening_for_worker_logs()
 
@@ -688,14 +694,24 @@ class DownloadManager(QObject):
         logging.getLogger(APP_SLUG).addHandler(handler)
 
     def _close_job_log(self, session: _Session) -> None:
-        """Detach and close this session's log file. Safe to call more than once."""
+        """Hand this session's log file back, to be closed **once its records have arrived**.
+
+        Not closed here (`T038-R2`). Log records and result messages travel on two different
+        queues, and only the second one is what tells this manager the session is over — so at
+        the moment a session is released, a line the worker wrote before its `WorkerFinished`
+        can still be in the log queue. Closing the handler on the spot sent that line to the
+        application log alone and left the per-job file empty, which a delayed listener
+        reproduced every time.
+
+        `close_job_log_when_drained` establishes the ordering instead of waiting for it, and the
+        close happens on the listener thread. Safe to call more than once; the session forgets
+        the handler here either way.
+        """
         handler = session.log_handler
         if handler is None:
             return
         session.log_handler = None
-        logging.getLogger(APP_SLUG).removeHandler(handler)
-        with contextlib.suppress(Exception):
-            handler.close()
+        app_logging.close_job_log_when_drained(session.job_id, handler)
 
     def _learn_the_group(self, session: _Session) -> None:
         """Record the worker's process group the first tick it can be read.

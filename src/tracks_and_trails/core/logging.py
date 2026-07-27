@@ -47,11 +47,15 @@ where the file went has broken the thing logs exist for.
 
 from __future__ import annotations
 
+import contextlib
+import itertools
 import logging
 import logging.handlers
 import re
+import threading
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, NamedTuple
 from urllib.parse import urlsplit, urlunsplit
 
 from platformdirs import user_cache_dir
@@ -63,12 +67,14 @@ __all__ = [
     "REDACTED",
     "RedactingFormatter",
     "application_log_path",
+    "close_job_log_when_drained",
     "configure_logging",
     "job_log_path",
     "open_job_log",
     "redact",
     "remember_a_secret",
     "stop_listening_for_worker_logs",
+    "wait_for_the_log_listener_to_stop",
     "worker_log_queue",
     "worker_logging_handler",
 ]
@@ -295,11 +301,127 @@ def open_job_log(
 
     Filtered to that job, which is what makes it a per-job log rather than a second copy of the
     application log (`T038-R2`). `DownloadManager` installs it for the life of a session and
-    closes it on every exit path; `logging.Handler.close()` is the end of it.
+    hands it back through `close_job_log_when_drained()`.
+
+    **A still-draining handler for the same job is closed first.** Otherwise a job probed and then
+    downloaded — the ordinary `T-016` flow — would briefly have two handlers open on one file,
+    and every line the second session emitted in that window would be written twice. Nothing is
+    lost by closing the first: the records it was waiting for carry this job's stamp, so the
+    handler opening here admits them into the very same file.
     """
+    _close_any_drain_for(job_id)
     handler = _file_handler(job_log_path(job_id, directory), level)
     handler.addFilter(_OnlyThisJob(job_id))
     return handler
+
+
+#: The record attribute carrying a drain marker's token (`T038-R2`).
+#:
+#: A marker is an ordinary `LogRecord` put on the worker queue by the **parent**, and its whole
+#: content is this token. It reaches no handler: the listener recognises it and stops there.
+_DRAIN_FIELD: Final = "tracks_and_trails_drain"
+
+
+class _Drain(NamedTuple):
+    """One per-job handler, the job it belongs to, and the queue its marker was put on.
+
+    The queue is held because a listener that is stopping closes the handlers waiting on **its**
+    queue and no others. Without it, a listener shutting down would close a per-job handler that
+    a newer queue and listener had just taken responsibility for — the log failing silently
+    again, one lifecycle further out.
+    """
+
+    job_id: str
+    handler: logging.Handler
+    queue: Any
+
+
+#: Per-job handlers waiting for their marker to come back out of the queue, and the lock over
+#: them — the only state in this module touched from both the GUI thread and the listener thread.
+_drains: dict[int, _Drain] = {}
+_drain_lock: Final = threading.Lock()
+_drain_tokens: Final = itertools.count()
+
+
+def close_job_log_when_drained(job_id: str, handler: logging.Handler) -> None:
+    """Detach and close `handler`, but **not before** the records already queued have reached it.
+
+    The defect this exists for (`T038-R2`): result messages and log records travel on two
+    different queues, so a worker's last line can still be in the log queue when its
+    `WorkerFinished` has already been read off the result queue and the session released. Closing
+    the per-job handler at that moment sends that line to the application log alone, and the
+    per-job file — the one a user is pointed at — ends up empty. A two-second listener delay
+    reproduced it every time.
+
+    **The ordering is established rather than waited for.** The parent puts a marker record on
+    the log queue; everything the worker wrote is already ahead of it, because the worker's
+    process has exited and a `multiprocessing.Queue` flushes its feeder before it goes. When the
+    listener reaches the marker it has, by construction, already handed every one of those
+    records to this handler — so the close happens there, on the listener thread, and nothing on
+    the GUI thread waits for it (`T013-R2`).
+
+    Fails closed in both directions: with no listener running, or with a queue that will not take
+    the marker, the handler is closed immediately rather than left attached forever.
+    """
+    queue = _worker_queue
+    if queue is None:
+        _detach_and_close(handler)
+        return
+    with _drain_lock:
+        token = next(_drain_tokens)
+        _drains[token] = _Drain(job_id, handler, queue)
+    marker = logging.LogRecord(
+        name=APP_SLUG,
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=0,
+        msg="(a per-job log drain marker; if you are reading this, it escaped the listener)",
+        args=None,
+        exc_info=None,
+    )
+    setattr(marker, _DRAIN_FIELD, token)
+    try:
+        queue.put_nowait(marker)
+    except Exception:
+        _finish_the_drain(token)
+
+
+def _finish_the_drain(token: int) -> None:
+    """Close the handler this marker was carrying, if nothing has closed it already."""
+    with _drain_lock:
+        drain = _drains.pop(token, None)
+    if drain is not None:
+        _detach_and_close(drain.handler)
+
+
+def _close_any_drain_for(job_id: str) -> None:
+    """Stop waiting for `job_id`'s marker and close its handler now."""
+    _close_the_drains(lambda drain: drain.job_id == job_id)
+
+
+def _close_the_drains(chosen: Callable[[_Drain], bool]) -> None:
+    """Take the matching handlers out of the waiting set and close them, once each.
+
+    The pop happens under the lock and the close outside it, so the GUI thread and the listener
+    thread can both call this without either holding the lock across file I/O.
+    """
+    with _drain_lock:
+        tokens = [token for token, drain in _drains.items() if chosen(drain)]
+        closing = [_drains.pop(token) for token in tokens]
+    for drain in closing:
+        _detach_and_close(drain.handler)
+
+
+def _detach_and_close(handler: logging.Handler) -> None:
+    """Take a handler off the application's logger and close it. Whoever gets here first wins.
+
+    Both threads reach this, but only through a pop under `_drain_lock`, so exactly one of them
+    reaches it per handler. `logging` locks the rest: `Handler.close()` and `Handler.handle()`
+    take the same handler lock, so this cannot close a file the listener is mid-write on.
+    """
+    logging.getLogger(APP_SLUG).removeHandler(handler)
+    with contextlib.suppress(Exception):
+        handler.close()
 
 
 #: The one queue workers send records on, and the listener draining it. Process-wide rather
@@ -307,7 +429,7 @@ def open_job_log(
 #: the integration suite, and the lifetime of a log sink is the lifetime of the process, not of
 #: whichever object happened to want one first.
 _worker_queue: Any = None
-_listener: logging.handlers.QueueListener | None = None
+_listener: _ToWhicheverHandlersWeHaveNow | None = None
 
 
 class _ToWhicheverHandlersWeHaveNow(logging.handlers.QueueListener):
@@ -323,11 +445,58 @@ class _ToWhicheverHandlersWeHaveNow(logging.handlers.QueueListener):
     nothing had started a worker first.
     """
 
+    @property
+    def thread(self) -> threading.Thread | None:
+        """The listener's own thread, while it still has one. Read before `stop()` drops it."""
+        return self._thread
+
     def handle(self, record: logging.LogRecord) -> None:
+        token = getattr(record, _DRAIN_FIELD, None)
+        if token is not None:
+            # A marker, not a line. Reaching it here is the proof that every record put on the
+            # queue before it has already been through the loop below (`T038-R2`).
+            _finish_the_drain(token)
+            return
         record = self.prepare(record)
         for handler in logging.getLogger(APP_SLUG).handlers:
             if record.levelno >= handler.level:
                 handler.handle(record)
+
+    def stop(self) -> None:
+        """Ask the thread to finish, and **return without waiting for it** (`T038-R2`).
+
+        The inherited `stop()` joins. That join is on whichever thread called it, which in this
+        application is the GUI thread by way of `DownloadManager.shutdown()` — and it lasts as
+        long as whatever the listener is currently inside. One queued handler call taking two
+        seconds held `shutdown()` for 2.001 s, which is `T013-R2`'s rejected blocking teardown
+        again with log I/O in place of a process wait.
+
+        The sentinel still goes on the queue, so the thread still ends; what changes is that
+        nobody stands and watches. Its own exit path closes the queue and any handler still
+        waiting for a marker, because after the sentinel there is no one left to do either.
+        """
+        if self._thread is None:
+            return
+        self._thread = None
+        with contextlib.suppress(Exception):
+            self.enqueue_sentinel()
+
+    # `_monitor` is the listener thread's body. It is private, and typeshed does not declare it,
+    # so the call up to it is the one place in this module that has to say so out loud.
+    def _monitor(self) -> None:
+        """The listener thread. Everything the unjoined `stop()` no longer does happens here.
+
+        Closing the queue belongs here rather than in `stop()` for the same reason the join is
+        gone: this is the moment nothing will read it again. Handlers still waiting for a marker
+        on **this** queue are closed too — after the sentinel, no marker on it will ever arrive.
+        """
+        queue: Any = self.queue
+        try:
+            super()._monitor()  # type: ignore[misc]
+        finally:
+            _close_the_drains(lambda drain: drain.queue is queue)
+            with contextlib.suppress(Exception):
+                queue.close()
 
 
 def worker_log_queue() -> Any:
@@ -347,21 +516,47 @@ def worker_log_queue() -> Any:
 
 
 def stop_listening_for_worker_logs() -> None:
-    """Stop the listener and drop the queue with it. Safe when nothing ever started.
+    """Ask the listener to stop and drop the queue with it. **Waits for nothing** (`T038-R2`).
 
     **Both, or neither.** Stopping the listener while keeping the queue leaves the next caller of
     `worker_log_queue()` holding a queue nothing drains: workers log into a pipe nobody reads,
     silently. Found twice — once as a hang, and again as an ordering failure after
     `DownloadManager.shutdown()` started calling this, where a later manager's worker output
-    vanished entirely.
+    vanished entirely. Both globals are therefore dropped here, together, so the next caller
+    builds a fresh pair.
+
+    What is *not* done here is waiting: this is reached from `DownloadManager.shutdown()` on the
+    GUI thread, and the listener may be inside a slow handler. The thread finishes on its own
+    time and closes the queue as it goes — see `_ToWhicheverHandlersWeHaveNow._monitor`. A
+    caller that genuinely needs the thread to be gone, which no GUI path does, asks for it
+    explicitly through `wait_for_the_log_listener_to_stop()`.
     """
-    global _listener, _worker_queue
+    global _listener, _stopping, _worker_queue
     if _listener is not None:
+        _stopping = _listener.thread
         _listener.stop()
         _listener = None
-    if _worker_queue is not None:
-        _worker_queue.close()
-        _worker_queue = None
+    _worker_queue = None
+
+
+#: The thread of the listener that was stopped most recently, kept for the one caller that has to
+#: know it has actually gone: a test, tearing down a process-wide fixture before the next test
+#: installs its own handlers. Production never waits for it.
+_stopping: threading.Thread | None = None
+
+
+def wait_for_the_log_listener_to_stop(timeout: float = 5.0) -> bool:
+    """Block until the stopped listener's thread has returned.
+
+    **Never call this on the GUI thread**: that wait is the thing `stop_listening_for_worker_logs`
+    exists without (`T038-R2`). Returns whether the thread finished within `timeout`, and `True`
+    when there was nothing to wait for.
+    """
+    thread = _stopping
+    if thread is None:
+        return True
+    thread.join(timeout)
+    return not thread.is_alive()
 
 
 def worker_logging_handler(

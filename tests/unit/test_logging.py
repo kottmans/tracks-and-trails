@@ -424,6 +424,137 @@ def test_worker_records_follow_the_handlers_the_application_has_now(tmp_path: Pa
     assert TOKEN not in written, "the parent rendered the record without redacting it"
 
 
+# --- handing a per-job log back (T038-R2) ------------------------------------------------------
+
+
+def a_local_queue(monkeypatch: pytest.MonkeyPatch) -> Any:
+    """A queue standing in for the process-wide one, with no thread draining it.
+
+    Driving the listener by hand is what makes these deterministic: "the marker has not been
+    reached yet" is a state this test holds open, rather than a race it has to win. The
+    process-wide queue is deliberately untouched — a test that stops and replaces it reaches into
+    every other test in the run.
+    """
+    import queue as queue_module
+
+    queue: Any = queue_module.Queue()
+    monkeypatch.setattr(app_logging, "_worker_queue", queue)
+    return queue
+
+
+def test_a_job_log_stays_open_until_its_queued_records_have_come_through(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T038-R2`: the handler is closed by the marker's arrival, not by the session ending.
+
+    Two queues, and only the result one says the session is over — so a record can still be in
+    the log queue when the manager releases the job. Closing the handler at that moment loses the
+    line. Here the marker is held in the queue, and the handler must still be attached and open.
+    """
+    queue = a_local_queue(monkeypatch)
+    listener = app_logging._ToWhicheverHandlersWeHaveNow(queue)
+    tree = logging.getLogger("tracksandtrails")
+    handler = app_logging.open_job_log("job-1", directory=tmp_path)
+    tree.addHandler(handler)
+
+    app_logging.close_job_log_when_drained("job-1", handler)
+
+    assert handler in tree.handlers, (
+        "the per-job handler was detached before its queued records arrived; anything still in "
+        "the log queue would be written to the application log alone"
+    )
+    late = logging.LogRecord(
+        name="tracksandtrails.worker",
+        level=logging.WARNING,
+        pathname=__file__,
+        lineno=1,
+        msg="a late line",
+        args=None,
+        exc_info=None,
+    )
+    setattr(late, app_logging.JOB_FIELD, "job-1")
+    listener.handle(late)
+    handler.flush()
+    written = app_logging.job_log_path("job-1", tmp_path).read_text(encoding="utf-8")
+
+    listener.handle(queue.get_nowait())
+
+    assert "a late line" in written, (
+        f"the record arrived after the session was released and never reached its own log: "
+        f"{written!r}"
+    )
+    assert handler not in tree.handlers, (
+        "the marker came through and the handler is still attached; a per-job file handle now "
+        "outlives its job for the rest of the process"
+    )
+    assert handler.stream is None, "the handler was detached but its file was left open"  # type: ignore[attr-defined]
+
+
+def test_reopening_a_jobs_log_closes_the_one_still_draining(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A probe and then a download of the same job must not both hold that file open.
+
+    The ordinary `T-016` flow releases a session and starts another for the same job immediately.
+    With the first handler still waiting for its marker, both would be attached, and every line
+    the second session emitted would be written to the file twice. Nothing is lost by closing the
+    first: the records it was waiting for carry this job's stamp, so the new handler admits them.
+    """
+    a_local_queue(monkeypatch)
+    tree = logging.getLogger("tracksandtrails")
+    first = app_logging.open_job_log("job-1", directory=tmp_path)
+    tree.addHandler(first)
+    app_logging.close_job_log_when_drained("job-1", first)
+
+    second = app_logging.open_job_log("job-1", directory=tmp_path)
+    tree.addHandler(second)
+
+    assert first not in tree.handlers, (
+        "two handlers are open on one job's file; every line would be written twice"
+    )
+    assert second in tree.handlers
+
+
+def test_a_marker_that_will_never_arrive_does_not_hold_a_job_log_open(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A listener that stops closes what it was going to close. The marker is taken away here.
+
+    Nothing in production is expected to lose one — a marker is always queued ahead of the
+    sentinel. That is exactly why the case needs a test: an invariant nobody can reach is also an
+    invariant nobody notices breaking, and the cost of being wrong is a file handle attached to
+    the application's logger for the rest of the process.
+    """
+    queue = a_local_queue(monkeypatch)
+    listener = app_logging._ToWhicheverHandlersWeHaveNow(queue)
+    tree = logging.getLogger("tracksandtrails")
+    handler = app_logging.open_job_log("job-1", directory=tmp_path)
+    tree.addHandler(handler)
+    app_logging.close_job_log_when_drained("job-1", handler)
+    queue.get_nowait()
+
+    listener.enqueue_sentinel()
+    listener._monitor()
+
+    assert handler not in tree.handlers, (
+        "the listener stopped with a per-job handler still waiting for a marker that is no longer "
+        "coming, and left it attached"
+    )
+    assert handler.stream is None  # type: ignore[attr-defined]
+
+
+def test_a_job_log_is_closed_at_once_when_no_listener_is_running(tmp_path: Path) -> None:
+    """With no queue there is no marker to wait for, so waiting would be waiting forever."""
+    tree = logging.getLogger("tracksandtrails")
+    handler = app_logging.open_job_log("job-1", directory=tmp_path)
+    tree.addHandler(handler)
+
+    app_logging.close_job_log_when_drained("job-1", handler)
+
+    assert handler not in tree.handlers
+    assert handler.stream is None  # type: ignore[attr-defined]
+
+
 def test_the_logging_module_needs_no_qt() -> None:
     """`ARCHITECTURE.md` §3: the worker installs logging, and the worker inherits no Qt.
 

@@ -903,6 +903,10 @@ the thing this task exists to avoid.
 
 #### `T038-R1`, `T038-R2` — corrected 2026-07-27, awaiting re-review
 
+`T038-R1` was **resolved** by the focused correction re-review of 2026-07-27 (`ai/REVIEWS.md`).
+`T038-R2` stayed open at that pass and is corrected a second time below; it continues under
+`AGENTS.md` §9, which does not stop correction of a High defect at the ordinary pass budget.
+
 **`T038-R1` (Critical) — five false negatives, all reproduced first.** Four were shapes the rules
 could not see: a path component containing a space, a cookie filename with no directory, a URL
 malformed enough to break `urlsplit` — which then returned it **unchanged**, so being harder to
@@ -932,6 +936,50 @@ admits only that job's, so an unstamped record is refused rather than shared —
 contents depend on which other jobs were open is worse than none. `job_log_path()` sanitises the
 id through `core/paths.py` instead of asserting that every id is a UUID, which is a fact about
 today's callers and not a property of the type.
+
+#### `T038-R2` — second correction, 2026-07-27, awaiting re-review
+
+The routing above held; both **ends of the lifecycle** were wrong, and each had a deterministic
+probe against it in the review.
+
+**The close came before the records did.** Results and log records travel on two different
+queues, and only the result queue tells the manager a session is over. So `_release()` closed the
+per-job handler while a line the worker wrote before its `WorkerFinished` was still in the log
+queue: that line reached the application log alone, and the per-job file — the one a user is
+pointed at — stayed empty.
+
+The ordering is now **established rather than waited for**. `close_job_log_when_drained()` puts a
+marker record on the log queue and hands the handler over; everything the worker wrote is already
+ahead of it, because the worker's process has exited and a `multiprocessing.Queue` flushes its
+feeder before it goes. When the listener reaches the marker it has, by construction, already given
+every one of those records to that handler, so the close happens **there, on the listener thread**,
+and nothing on the GUI thread waits for it. It fails closed in every direction that was reachable:
+no listener, a queue that refuses the marker, a marker that never comes back, and a second session
+opening the same job's file — that last one closes the still-draining handler first, because two
+handlers on one file would write every line of the new session twice.
+
+**The stop joined the listener on the GUI thread**, which is `T013-R2`'s rejected blocking teardown
+restored under a different name — a two-second handler call held `shutdown()` for 2.001 s.
+`QueueListener.stop()` is overridden to enqueue the sentinel and return; the thread closes the
+queue and sweeps its own leftovers on the way out. Both globals are still dropped together, so the
+"both, or neither" rule that this function was already carrying two scars from is untouched.
+Waiting is now a separate, named thing (`wait_for_the_log_listener_to_stop`) that says in its own
+docstring never to call it from the GUI thread; only test teardown does.
+
+**Evidence.** Two deterministic tests reproduce the reviewer's probes — a gated handler parks the
+listener inside `emit`, so "the record was still in flight when the session was released" and "the
+handler was still blocked when `shutdown()` returned" are states the test holds open rather than
+races it has to win. Four unit tests pin the drain itself. Six mutations, one per moving part, each
+killed by the test named for it; the tree hashed identical before and after the battery.
+
+| Check | Result |
+|---|---|
+| `ruff check` / `ruff format --check` | Passed |
+| `mypy` and `mypy --platform win32` | Passed — 68 source files each |
+| Focused logging, worker-logging and manager suite | **93 passed** |
+| Canonical bare `pytest` | **1192 passed, 11 skipped, 1 deselected** — three consecutive runs, 52–53 s each |
+| Mutation battery | **6 of 6 killed**, tree restored to the same hash |
+| Windows | **Not run.** No Windows-specific code path here, but the listener thread and the queue are platform behaviour; CI is the evidence |
 
 #### What landed
 
