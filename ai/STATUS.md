@@ -118,8 +118,10 @@ composition is `T-036` and the first *user-visible* download is `T-037`.
    cookie path, and they are being produced today with no redacting handler under them.
    Retrofitting redaction around live diagnostics is how `T-014` lost four review rounds.
 3. **`T-015`, `T-018`** — Ready and independent. `T-018` blocks `T-016`.
-4. **`T-050`** — new, and small: the `history` table is still empty. `T-013` did not write it,
-   and the entry records the two things that are missing before it honestly can be.
+4. **`T-050`** — new, and **Phase 2**, not Phase 1: the `history` table is still empty, and
+   `IMPLEMENTATION_PLAN.md` puts `REQ-020`'s history persistence in Phase 2. This file's claim
+   that `T-013` owned it was `STATUS.md` running ahead of both the plan and `T-013`'s own scope;
+   the task entry records the two things still missing before it can be written honestly.
 
 **What two review rounds cost, and what they bought.** Eight blocking findings across two
 passes, every one real. The pattern worth remembering: **five of them were things that

@@ -22,8 +22,8 @@ needs frozen CI evidence this repository cannot produce locally.
 
 Also Ready and independent: `T-038` (log redaction — one of `ai/TESTING.md` §7's two remaining
 uncovered mandatory areas, and the one `T-013`'s diagnostics make urgent) and `T-015` (presets).
-`T-018` owns the playlist projection (`T012-R6`) and **blocks `T-016`**. `T-050` is new: nothing
-writes the `history` table.
+`T-018` owns the playlist projection (`T012-R6`) and **blocks `T-016`**. `T-050` is new and sits
+in **Phase 2**, where the plan puts history: nothing writes the `history` table.
 
 Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; `T-040` for the
 first focusable widgets.
@@ -414,56 +414,6 @@ agreement on the reduced form before implementation.
 
 ## Proposed — Phase 1
 
-### T-050 — Write the history table
-
-**Status:** Proposed — Ready now; `T-013` produces the event that fills it
-**Owner:** Implementer
-**Priority:** Medium — `REQ-020` has no owner without it, and the table already exists empty
-**Phase:** Phase 1
-**Depends on:** `T-013`
-**Relevant context:** `REQ-020`; `ARCHITECTURE.md` §5 (`HistoryEntry`);
-`persistence/schema.sql` (the `history` table `T-014` created)
-**Affected surfaces:** `core/models.py` or `persistence/` (wherever `HistoryEntry` lands),
-`persistence/repositories.py`, `downloader/manager.py`, `tests/unit/`
-**Risk:** Low — an append-only record; nothing depends on it yet
-**Review base:** the `T-013` merge commit
-
-#### Scope
-
-**Filed after implementation: nothing owned this.** `STATUS.md` said `T-013` "owns writing the
-`history` table `T-014` created but left empty", but `T-013`'s scope, acceptance criteria and
-affected surfaces never mentioned it, and `TASKS.md` outranks `STATUS.md` (`AGENTS.md` §5). It
-was left undone deliberately rather than guessed at, because two pieces are genuinely missing:
-
-- **There is no `HistoryEntry`.** `core/models.py` says so explicitly and gives the reason — it
-  is a durable record rather than live domain state, so it belongs with the schema that stores
-  it. No repository exposes the table either.
-- **`history.format_used` has no source.** Nothing reports the format yt-dlp actually selected;
-  `Succeeded` carries the path and the byte count. Filling the column from the request's
-  *format selector* would store a different fact under a truthful-looking name — `bestvideo+
-  bestaudio` is not a format that was used. Either the worker projects the chosen format into
-  the outcome, or the column is left null and the schema says why.
-
-Decide the first of those, then write a row when a job completes, from the manager, in the same
-place the terminal transition is persisted.
-
-#### Acceptance criteria
-
-- A completed download writes exactly one `history` row, and a retry of the same job does not
-  silently duplicate it
-- `format_used` either carries the format yt-dlp actually used, reported from the worker, or is
-  null with the reason recorded — never the selector wearing that name
-- A cancelled or failed job writes no history row (`REQ-020` is a record of what was obtained)
-- The manager still imports no `persistence` module: history goes through an injected protocol,
-  as the job repository does (`T-013`, `ARCHITECTURE.md` §3)
-
-#### Out of scope
-
-- Any history UI — Phase 3 (`REQ-020`'s view)
-- Pruning, retention, or export
-
----
-
 ### T-016 — Add-URL dialog with probe results
 
 **Status:** Proposed — Ready once `T-013`, `T-015` and `T-018` merge
@@ -729,6 +679,60 @@ survives; and no orphan outlives the test session.
 ---
 
 ## Proposed — Phase 2
+
+### T-050 — Write the history table
+
+**Status:** Proposed — Ready now; `T-013` produces the event that fills it
+**Owner:** Implementer
+**Priority:** Medium — `REQ-020` has no owner without it, and the table already exists empty
+**Phase:** **Phase 2** — `IMPLEMENTATION_PLAN.md` lists "History persistence and
+completed-download records (`REQ-020`)" among Phase 2's deliverables, and the plan outranks
+this file (`AGENTS.md` §5). It was filed under Phase 1 first, because `T-014` had already
+created the table and `STATUS.md` said `T-013` would fill it; that was this file drifting
+ahead of the plan, not the plan being wrong.
+**Depends on:** `T-013`
+**Relevant context:** `REQ-020`; `ARCHITECTURE.md` §5 (`HistoryEntry`);
+`persistence/schema.sql` (the `history` table `T-014` created)
+**Affected surfaces:** `core/models.py` or `persistence/` (wherever `HistoryEntry` lands),
+`persistence/repositories.py`, `downloader/manager.py`, `tests/unit/`
+**Risk:** Low — an append-only record; nothing depends on it yet
+**Review base:** the `T-013` merge commit
+
+#### Scope
+
+**Filed after implementation: nothing owned this.** `STATUS.md` said `T-013` "owns writing the
+`history` table `T-014` created but left empty", but `T-013`'s scope, acceptance criteria and
+affected surfaces never mentioned it, and `TASKS.md` outranks `STATUS.md` (`AGENTS.md` §5). It
+was left undone deliberately rather than guessed at, because two pieces are genuinely missing:
+
+- **There is no `HistoryEntry`.** `core/models.py` says so explicitly and gives the reason — it
+  is a durable record rather than live domain state, so it belongs with the schema that stores
+  it. No repository exposes the table either.
+- **`history.format_used` has no source.** Nothing reports the format yt-dlp actually selected;
+  `Succeeded` carries the path and the byte count. Filling the column from the request's
+  *format selector* would store a different fact under a truthful-looking name — `bestvideo+
+  bestaudio` is not a format that was used. Either the worker projects the chosen format into
+  the outcome, or the column is left null and the schema says why.
+
+Decide the first of those, then write a row when a job completes, from the manager, in the same
+place the terminal transition is persisted.
+
+#### Acceptance criteria
+
+- A completed download writes exactly one `history` row, and a retry of the same job does not
+  silently duplicate it
+- `format_used` either carries the format yt-dlp actually used, reported from the worker, or is
+  null with the reason recorded — never the selector wearing that name
+- A cancelled or failed job writes no history row (`REQ-020` is a record of what was obtained)
+- The manager still imports no `persistence` module: history goes through an injected protocol,
+  as the job repository does (`T-013`, `ARCHITECTURE.md` §3)
+
+#### Out of scope
+
+- Any history UI — Phase 3 (`REQ-020`'s view)
+- Pruning, retention, or export
+
+---
 
 ### T-046 — Output path collision policy against the filesystem
 
