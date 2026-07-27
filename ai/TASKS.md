@@ -726,72 +726,100 @@ is checked against reality at least once. It stays excluded by default (`ai/TEST
 
 ---
 
-### T-019 — Cancellation and worker-crash integration tests
+### T-019 — Kill the process *tree*, and prove it on Windows
 
-**Status:** Proposed — Ready once `T-013` merges
+**Status:** Proposed — **rescoped 2026-07-27** (was "Cancellation and worker-crash integration
+tests"). Ready once `T-013` is approved.
 **Owner:** Implementer
-**Priority:** **High** — two of `ai/TESTING.md` §7's mandatory areas, and Phase 1 cannot exit
-without them
+**Priority:** **High** — carries a live defect, plus the only Windows evidence Phase 1's exit
+criteria can ever have
 **Phase:** Phase 1
 **Depends on:** `T-013`
 **Relevant context:** `ai/TESTING.md` §7 (Cancellation, Worker crash), `REQ-015`, `REQ-028`,
-`NFR-003`, `OPS-003`
-**Affected surfaces:** `tests/integration/`, possibly `.github/workflows/ci.yml`
-**Risk:** **High** — these tests are the evidence for `ARC-002`. A test that passes because
-nothing was really running would retire the guarantee rather than establish it.
+`NFR-003`, `OPS-003`, `OPS-004`
+**Affected surfaces:** `downloader/manager.py` (**production**, see below),
+`downloader/worker.py`, `tests/integration/`, `.github/workflows/ci.yml`
+**Risk:** **High** — a download that keeps running and keeps writing after the user cancelled
+it, on a path no current test can see
 **Review base:** the `T-013` merge commit
+
+#### Why this was rescoped
+
+`T-013` delivered most of what this task was written to prove, and delivered it against
+stronger evidence than the task asked for. What it did **not** deliver is now the whole point,
+and it is not a test gap — it is a defect.
+
+**What `T-013` already covers, with pointers so the reduction can be checked rather than
+trusted** (all in `tests/integration/test_manager.py`):
+
+| This task originally asked for | Where it now lives |
+|---|---|
+| A fake doing observable work before the cancel | Not a fake at all: `test_cancel_stops_a_real_in_flight_download_within_the_budget` runs **real yt-dlp** against a local `http.server`, cancels only after real progress messages, and asserts the real `.part` file |
+| Cancellation within 2 s of genuinely in-flight work | Same test, measured from the `cancel()` call to the last worker process disappearing |
+| A worker that ignores cancellation | `test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget` — ignores the event *and* `SIGTERM` |
+| `SIGKILL` → `WORKER_CRASH`, app survives | `test_a_killed_worker_becomes_worker_crash_with_its_exit_code`, and `test_the_application_survives_a_worker_crash_and_can_start_another`, which proves survival by *using* the manager afterwards rather than by watching a timer |
+| Exit 0 with no outcome → `WORKER_CRASH` | `test_a_worker_that_exits_zero_without_an_outcome_is_a_crash_not_a_success` |
+| One terminal outcome per job | `test_a_second_outcome_produces_no_second_transition_and_no_second_signal` |
+| Persisted state matches what the UI was told | `test_a_real_download_completes_and_every_transition_is_persisted_first`, asserted at the moment of each signal |
+| No orphan outlives the session | `test_shutdown_leaves_no_worker_no_thread_and_no_job_in_flight`, plus the parent-kill test |
+
+Reasserting those here would duplicate them, and a duplicate is worse than nothing: it is a
+second place to update and a second place to quietly weaken.
 
 #### Scope
 
-Real child processes, real IPC, yt-dlp faked at the adapter seam (`ai/TESTING.md` §2) so a
-download can be made to hang, crash, or run long on demand without the network.
+**1. Cancellation must reap the whole process tree — this is a production change.**
 
-**The fake must do observable work, or the whole task is vacuous.** A fake that returns
-immediately would let every assertion below pass against an implementation that cancels
-nothing. So the fake, running inside a **real spawned child**, must: signal that it has entered
-the download call, emit progress messages carrying its own PID, and grow a partial file on
-disk. Only once the test has observed all three may it cancel or kill. That sequencing is
-itself an acceptance criterion.
+`DownloadManager` cancels by signalling, terminating and killing **the worker process**. yt-dlp
+spawns `ffmpeg` as a child *of the worker*, and on POSIX killing a parent does not touch its
+children. Probed on 2026-07-27 against a spawned worker with one real grandchild: after
+`Process.kill()` the grandchild was **still running**, reparented to `init`. `REQ-015` says
+cancel must terminate the underlying work and `ai/TESTING.md` §7 says it must leave no orphan
+process; a merge cancelled mid-flight currently leaves ffmpeg writing to the user's disk with
+nothing left that can stop it.
 
-**Descendants count.** Killing the Python worker does not necessarily kill the `ffmpeg` it
-spawned. The fake therefore spawns a real grandchild, and cleanup is asserted over the whole
-process tree — checking worker PIDs alone would report success while `ffmpeg` kept running and
-kept writing.
+Fix it where the platforms differ, and say so in the code: a POSIX process **group** (the child
+calls `setsid`/`os.setpgrp` at start-up so its descendants share a group that can be signalled
+as one) and a Windows **Job object** (`CREATE_NEW_PROCESS_GROUP` alone does not kill
+descendants). Both belong to `spawn_session`'s "I am a child" half and the manager's escalation.
 
-Prove on **both platforms**: cancellation terminates genuinely in-flight work within 2 seconds
-leaving no surviving descendant; a killed worker becomes `WORKER_CRASH` and the application
-survives; and no orphan outlives the test session.
+**2. The test helper that hides this must be fixed, not worked around.**
+`worker_processes()` in `test_manager.py` filters to processes whose command line contains
+`spawn_main`, so an `ffmpeg` grandchild is invisible to every existing orphan assertion. It was
+written that way to exclude `multiprocessing`'s resource tracker, and the exclusion is right —
+but the filter must exclude *that*, not everything that is not a worker.
+
+**3. The orphan detector is permanently self-tested.** A test leaks a real child **and** a real
+grandchild, asserts the detector finds both, then reaps them. A detector nobody re-exercises
+looks exactly like one that works — the Phase 0 evidence problem, again.
+
+**4. Both platforms, and no skips.** `SIGKILL` and `TerminateProcess` are each exercised on
+their own platform, and a skip on either fails the job. `OPS-003` makes CI the only Windows
+evidence that exists, and Phase 1 cannot exit without it.
 
 #### Acceptance criteria
 
-- Before any cancel or kill, the test has observed **all three** signs of real work: the child
-  reported entering the download, progress arrived stamped with the child's PID, and the
-  partial file grew. A fake that skips any of them fails the test rather than passing it
-- Cancellation of that genuinely in-flight work completes within 2 seconds (`REQ-015`) — the
-  distinction `T-002` raised and never closed
-- **Cleanup is asserted over the process tree**, including a deliberately spawned grandchild
-  standing in for `ffmpeg`. Killing the worker while the grandchild survives must fail
-- **The orphan detector is permanently self-tested**: a test creates a real leaked child *and*
-  a leaked grandchild and asserts the detector finds both, then reaps them. This runs on every
-  suite run — a one-time manual leak would repeat exactly the Phase 0 evidence problem, where
-  a check nobody re-exercises looks identical to one that works
-- Exactly **one** terminal outcome is recorded per job; a cancelled job is `CANCELLED`, never
-  also a failure or a success
-- A cancelled download leaves **no completed-file rename** — the partial file stays partial,
-  so a cancel cannot be mistaken for a finished download
-- The job's persisted state after cancellation matches what the UI was told
-- The **GUI event loop is still running** after the kill, asserted by scheduling and observing
-  a timer — "the application survives" is otherwise unfalsifiable (`REQ-028`)
-- `SIGKILL` and `TerminateProcess` are both exercised on their own platform
-- A worker exiting 0 with no terminal message is reported as `WORKER_CRASH`
-- The tests run in CI on Linux **and** Windows, and are not skipped on either — a skip on one
-  platform fails the job, because `OPS-003` makes CI the only Windows evidence there is
-- Timings are recorded, not just asserted, so the 2-second budget can be seen trending
+- A cancelled download leaves **no surviving descendant**, asserted over the full process tree
+  with a deliberately spawned grandchild standing in for `ffmpeg`. Killing the worker while the
+  grandchild lives must fail the test
+- The same holds for a **killed** worker and for **application exit**: no descendant outlives
+  any of the three paths
+- `worker_processes()` (or its replacement) is shown to **see** a grandchild — a test leaks one
+  and asserts the detector reports it, so the filter cannot be narrowed back into blindness
+- Cancellation still completes within 2 seconds with the tree cleanup in place (`REQ-015`)
+- A cancelled download leaves **no completed-file rename**: the partial file stays partial, so
+  a cancel can never be mistaken for a finished download
+- Every cancellation and worker-crash test runs in CI on **Linux and Windows**, unskipped, and
+  a skip on either platform fails that job
+- Timings are recorded, not merely asserted, so the 2-second budget can be seen trending
+- The process-group and Job-object handling is mutation-checked on the platform that owns it
 
 #### Out of scope
 
-- Queue-level behavior with multiple workers — Phase 2
-- Network-dependent tests — yt-dlp is faked at the adapter seam here
+- Re-testing what `T-013` already proves — see the table above
+- Queue-level behaviour with multiple workers — Phase 2
+- Network-dependent tests. The local-server pattern `T-013` introduced (`ai/TESTING.md` §6)
+  is available and is not a network test
 
 ---
 

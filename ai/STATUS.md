@@ -109,9 +109,10 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 `ARC-002` is proven end to end. A spawned child imports yt-dlp, extracts and reports typed
 messages back (`T-012`); a job survives a restart and an unclean kill (`T-014`); and `T-013` now
-connects them — in a test, a URL becomes a file on disk, and cancelling it leaves neither an
-orphan process nor a job that lies about its state. **No widget touches any of it yet**:
-composition is `T-036` and the first *user-visible* download is `T-037`.
+connects them — in a test, a URL becomes a file on disk, and cancelling it leaves no orphan
+**worker** and no job that lies about its state. It does not yet leave no orphan *descendant*:
+see `T-019` below. **No widget touches any of it yet**: composition is `T-036` and the first
+*user-visible* download is `T-037`.
 
 1. **Re-review `T-013`'s corrections** — a focused pass over the correction diff and the three
    findings, not a new audit (`AGENTS.md` §9). It owns process lifetime and the only thread in
@@ -121,10 +122,19 @@ composition is `T-036` and the first *user-visible* download is `T-037`.
    rather than early: `T-013` generates the diagnostics most likely to carry a tokenised URL or a
    cookie path, and they are being produced today with no redacting handler under them.
    Retrofitting redaction around live diagnostics is how `T-014` lost four review rounds.
-3. **`T-015`, `T-018`** — implemented 2026-07-27 and awaiting review on branch
-   `phase1-presets-and-fixtures`, which is one commit ahead of `main` and touches none of the
-   files this correction batch changed.
-4. **`T-050`** — new, and **Phase 2**, not Phase 1: the `history` table is still empty, and
+3. **`T-015` and `T-018` corrections**, on branch `phase1-presets-and-fixtures`. Reviewed
+   2026-07-27: both Changes requested, one **Critical** (`T018-R1` — the fixture credential gate
+   passes tuple-nested cookies and signed-URL parameters, so the next refresh could commit a
+   secret permanently) and two High. A Critical always blocks and cannot be closed as accepted
+   risk by an agent (`AGENTS.md` §9). `T-016` is **not** unblocked: `T012-R6` stays open through
+   `T018-R2`.
+4. **`T-019` — rescoped 2026-07-27, and it now carries a live defect.** Cancelling reaps the
+   worker but not what the worker spawned: probed against a real spawned child with one
+   grandchild, the grandchild survived `Process.kill()` and was reparented to `init`. yt-dlp
+   spawns `ffmpeg` exactly that way, so a cancelled merge keeps writing. The task now owns the
+   production fix — POSIX process groups, a Windows Job object — plus the Windows runs Phase 1
+   cannot exit without.
+5. **`T-050`** — new, and **Phase 2**, not Phase 1: the `history` table is still empty, and
    `IMPLEMENTATION_PLAN.md` puts `REQ-020`'s history persistence in Phase 2. This file's claim
    that `T-013` owned it was `STATUS.md` running ahead of both the plan and `T-013`'s own scope;
    the task entry records the two things still missing before it can be written honestly.
