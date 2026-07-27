@@ -19,7 +19,12 @@ from tracks_and_trails.core.errors import ErrorKind, is_auto_retryable, is_retry
 from tracks_and_trails.core.job_state import IllegalTransitionError, JobStatus
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, Job, MediaKind
 from tracks_and_trails.persistence import db, repositories
-from tracks_and_trails.persistence.repositories import INTERRUPTED_ON_STARTUP, JobRepository
+from tracks_and_trails.persistence.repositories import (
+    _STORED_MESSAGES,
+    INTERRUPTED_ON_STARTUP,
+    JobRepository,
+    proxy_without_credentials,
+)
 
 
 def a_request(**overrides: Any) -> DownloadRequest:
@@ -87,6 +92,26 @@ def test_migrations_are_discovered_from_the_directory_not_a_list() -> None:
 #:
 #: These files are historical artefacts. **Never regenerate them from current code.** A new
 #: version adds its own file and leaves the older ones untouched.
+#: Columns a migration is *declared* to transform, as `(table, column)` with the reason.
+#:
+#: `T014-R4`. Byte equality alone rejects a legitimate data migration — the whole point of one is
+#: that values change. Listing the exception here keeps the default strict while letting a real
+#: migration through, and forces whoever writes it to say which columns it rewrites and why.
+#: Empty today because no migration transforms data yet.
+TRANSFORMED_BY_MIGRATION: Final[dict[tuple[str, str], str]] = {}
+
+#: Tables the fixtures seed and the migration test compares. Literals, never user input.
+_MIGRATED_TABLES: Final = ("jobs", "history")
+
+
+def _rows_by_id(connection: sqlite3.Connection, table: str) -> dict[str, dict[str, Any]]:
+    """Every row of `table`, keyed by id. `table` comes from `_MIGRATED_TABLES`, never input."""
+    return {
+        row["id"]: dict(row)
+        for row in connection.execute(f"SELECT * FROM {table}")  # noqa: S608
+    }
+
+
 HISTORICAL_FIXTURES: Final = Path(__file__).parent.parent / "fixtures" / "schema_versions"
 
 
@@ -135,28 +160,35 @@ def test_every_migration_runs_forward_from_real_historical_data(
     connection.commit()
 
     assert db.schema_version(connection) == version, "the fixture must declare its own version"
-    before = {row["id"]: dict(row) for row in connection.execute("SELECT * FROM jobs ORDER BY id")}
-    assert before, "the fixture carries no rows, so 'data intact' asserts nothing"
+    before = {table: _rows_by_id(connection, table) for table in _MIGRATED_TABLES}
+    for table, rows in before.items():
+        assert rows, f"the fixture seeds no {table} rows, so 'data intact' asserts nothing there"
 
     applied = db.migrate(connection)
     assert all(v > version for v in applied)
     assert db.schema_version(connection) == db.latest_version()
 
-    after = {row["id"]: dict(row) for row in connection.execute("SELECT * FROM jobs ORDER BY id")}
-    assert set(after) == set(before), (
-        f"migrating from v{version} lost or added rows. A migration that recreates a table "
-        "passes a 'does it run' check and drops the user's queue."
-    )
-    for job_id, original in before.items():
-        for column, value in original.items():
-            assert after[job_id][column] == value, (
-                f"{job_id}.{column} changed during migration from v{version}"
-            )
+    after = {table: _rows_by_id(connection, table) for table in _MIGRATED_TABLES}
+
+    for table, originals in before.items():
+        assert set(after[table]) == set(originals), (
+            f"migrating {table} from v{version} lost or added rows. A migration that recreates a "
+            "table passes a 'does it run' check and drops the user's queue."
+        )
+        for row_id, original in originals.items():
+            for column, value in original.items():
+                if (table, column) in TRANSFORMED_BY_MIGRATION:
+                    continue
+                assert after[table][row_id][column] == value, (
+                    f"{table}.{row_id}.{column} changed during migration from v{version}. If a "
+                    "migration is meant to transform it, declare it in TRANSFORMED_BY_MIGRATION "
+                    "with the reason — silence here would hide accidental data loss."
+                )
 
     # And the current repository can read what the migration produced — the property a user
     # actually experiences after upgrading.
     for job in JobRepository(connection).all_jobs():
-        assert job.id in before
+        assert job.id in before["jobs"]
     connection.close()
 
 
@@ -469,13 +501,7 @@ def test_every_request_field_survives_the_round_trip(repository: JobRepository) 
 
 
 def raw_row(repository: JobRepository, job_id: str = "job-1") -> str:
-    """Every stored column of one job as one string, for scanning.
-
-    **Scanning the raw row is the point** (`T014-R1`). Redaction applied in the model but not on
-    the way to disk passes an object comparison and still leaves the secret on disk — and a test
-    that checks only the field it expects the secret in misses the field it did not think of.
-    This concatenates *all* of them.
-    """
+    """Every stored column of one job as one string, for scanning."""
     row = repository._connection.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
     return "\n".join(str(value) for value in tuple(row))
 
@@ -483,98 +509,101 @@ def raw_row(repository: JobRepository, job_id: str = "job-1") -> str:
 @pytest.mark.parametrize(
     "proxy",
     [
-        pytest.param("http://secretuser:hunter2@proxy.invalid:8080", id="with-scheme"),
-        # `T014-R1`: `DownloadRequest.proxy` accepts any non-empty string, and `urlsplit` puts
-        # this entirely in `path` with an empty `netloc` — so the old netloc-only check returned
-        # it unchanged and wrote both credentials to disk.
+        pytest.param("http://secretuser:hunter2@proxy.invalid:8080", id="scheme"),
         pytest.param("secretuser:hunter2@proxy.invalid:8080", id="scheme-less"),
-        pytest.param("socks5://secretuser:hunter2@10.0.0.1:1080", id="socks-numeric-host"),
-        pytest.param("HTTP://secretuser:hunter2@Proxy.Invalid:8080", id="uppercase-scheme"),
+        pytest.param("secretuser:hunter2@proxy:8080", id="single-label-host"),
+        pytest.param("secretuser:hunter2@\u00e9xample.invalid:8080", id="unicode-host"),
+        pytest.param("http://secretuser@proxy.invalid:8080", id="username-only"),
+        pytest.param("http://secretuser:hunter2@[fe80::1%25eth0]:8080", id="ipv6-zone-id"),
+        pytest.param("socks5://secretuser:hunter2@10.0.0.1:1080", id="numeric-host"),
     ],
 )
 def test_no_proxy_credential_reaches_any_column(repository: JobRepository, proxy: str) -> None:
-    """`REQ-026`: credentials are never written to history, whatever form the proxy took."""
+    """`REQ-026`, `T014-R1`. Parsed, not pattern-matched, so every accepted form is covered.
+
+    The forms below are the ones a recognizer over prose kept missing — single-label and Unicode
+    hosts, username-only userinfo, an IPv6 zone identifier. Parsing the value as the URL it is
+    handles them without knowing they exist, which is the point.
+    """
     repository.add(a_job(request=a_request(proxy=proxy)))
     stored = raw_row(repository)
-
     assert "hunter2" not in stored
     assert "secretuser" not in stored
-    assert "proxy.invalid" in stored.lower() or "10.0.0.1" in stored, (
-        "the proxy host must survive or the setting is silently lost on retry"
-    )
+
+
+def test_the_proxy_host_survives_so_the_setting_is_not_silently_lost() -> None:
+    """Dropping the host would stop using a proxy the user asked for, without saying so."""
+    assert proxy_without_credentials("http://u:p@proxy.invalid:8080") == "http://proxy.invalid:8080"
+    assert proxy_without_credentials("u:p@proxy.invalid:8080") == "proxy.invalid:8080"
+    assert proxy_without_credentials("http://proxy.invalid:8080") == "http://proxy.invalid:8080"
+    assert proxy_without_credentials(None) is None
 
 
 @pytest.mark.parametrize(
-    ("secret", "message"),
+    ("field", "value"),
     [
+        pytest.param("output_directory", "/downloads/cookie-videos", id="directory-naming-cookie"),
         pytest.param(
-            "hunter2",
-            "proxy failed: http://secretuser:hunter2@proxy.invalid:8080 refused the connection",
-            id="credential-in-diagnostic",
+            "output_template", "%(uploader)s:%(id)s@example.invalid.%(ext)s", id="template"
         ),
-        pytest.param(
-            "hunter2",
-            "could not connect via secretuser:hunter2@proxy.invalid:8080",
-            id="scheme-less-credential-in-diagnostic",
-        ),
-        pytest.param(
-            "cookies.txt",
-            "Cookie file /home/someone/private/cookies.txt could not be read",
-            id="cookie-path-in-diagnostic",
-        ),
-        pytest.param(
-            "secret-jar",
-            "unable to open --cookies /var/data/secret-jar",
-            id="cookie-flag-in-diagnostic",
-        ),
+        pytest.param("format_selector", "bestvideo[height<=1080]+bestaudio/best", id="selector"),
+        pytest.param("output_directory", r"C:\Users\someone\My Cookies", id="windows-path"),
+        pytest.param("url", "https://example.invalid/w?v=a&token=keepme", id="url"),
     ],
 )
-def test_no_secret_reaches_the_database_through_a_diagnostic(
-    repository: JobRepository, secret: str, message: str
+def test_functional_values_are_never_rewritten(
+    repository: JobRepository, field: str, value: str
 ) -> None:
-    """`T014-R1`. `error_message` is an unrestricted sink carrying verbatim extractor prose.
+    """`T014-R1`'s regression, pinned. **Rewriting these is itself a Critical defect.**
 
-    The earlier design redacted the request's `proxy` field and wrote `error_message` untouched,
-    so a diagnostic naming the proxy stored the password in the row beside the stripped copy.
-    Redaction now happens at the sink, so every text column is covered by default.
+    An earlier correction ran a secret-recogniser over every string. `/downloads/cookie-videos`
+    became `[redacted]` — a *relative* path, so a retry would have written outside the directory
+    the user chose — and an output template containing `:` and `@` was rewritten. Both also broke
+    the settings freeze: the stored request no longer reproduced the original.
     """
-    job = a_job().with_failure(ErrorKind.NETWORK, message)
-    repository.add(job)
-    assert secret not in raw_row(repository)
+    overrides = {field: value}
+    request = a_request(**overrides)
+    repository.add(a_job(request=request, url=request.url))
 
-
-def test_redaction_leaves_the_diagnostic_usable(repository: JobRepository) -> None:
-    """`NFR-006`: masking a password must not destroy the message the user can act on.
-
-    Over-eager redaction violates `NFR-006` as surely as a leak violates `REQ-026`. The host,
-    the verb and the reason all survive; only the credential goes.
-    """
-    repository.add(
-        a_job().with_failure(
-            ErrorKind.NETWORK, "proxy failed: http://u:p@proxy.invalid:8080 refused the connection"
-        )
+    restored = repository.get("job-1")
+    assert restored is not None
+    assert getattr(restored.request, field) == value
+    assert (
+        json.loads(
+            repository._connection.execute("SELECT request FROM jobs").fetchone()["request"]
+        )[field]
+        == value
     )
-    stored = repository.get("job-1")
-    assert stored is not None
-    assert stored.error_message is not None
-    assert "proxy.invalid:8080" in stored.error_message
-    assert "refused the connection" in stored.error_message
 
 
-def test_the_job_url_is_the_one_thing_stored_verbatim(repository: JobRepository) -> None:
-    """The maintainer-approved exception, asserted so it stays an exception rather than a habit.
+def test_the_database_never_stores_the_extractors_own_words(repository: JobRepository) -> None:
+    """`T014-R1`. No external string can reach `error_message` — a structural bound, not a filter.
 
-    The URL *is* the job — `REQ-012`'s queue and `REQ-020`'s history are unusable without it and
-    a retry cannot reconstruct it. `_STORED_VERBATIM` names it and `output_path` explicitly, so
-    a text column added later is redacted unless someone deliberately exempts it.
+    Scrubbing arbitrary prose failed twice, in both directions. So the column is written only
+    from `_STORED_MESSAGES`, which this project authors. `NFR-006` is satisfied in the per-job
+    log (`ARCHITECTURE.md` §5, `REQ-019`), which is where the extractor's own output belongs.
     """
-    url = "https://example.invalid/watch?v=abc123&token=keepme"
-    repository.add(a_job(request=a_request(url=url), url=url))
+    leaky = (
+        "proxy http://secretuser:hunter2@proxy.invalid:8080 failed; "
+        "cookies /home/someone/cookies.txt unreadable; password is hunter2"
+    )
+    repository.add(a_job().with_failure(ErrorKind.NETWORK, leaky))
 
-    row = repository._connection.execute("SELECT url, request FROM jobs").fetchone()
-    assert row["url"] == url
-    assert json.loads(row["request"])["url"] == url
-    assert {"url", "output_path"} == repositories._STORED_VERBATIM
+    stored = raw_row(repository)
+    for secret in ("hunter2", "secretuser", "cookies.txt", "/home/someone"):
+        assert secret not in stored, f"{secret!r} reached the database"
+
+    restored = repository.get("job-1")
+    assert restored is not None
+    assert restored.error_kind is ErrorKind.NETWORK
+    assert restored.error_message == _STORED_MESSAGES[ErrorKind.NETWORK]
+
+
+def test_every_error_kind_has_a_stored_message() -> None:
+    """A missing kind would raise `KeyError` mid-write, losing the job rather than the message."""
+    assert set(_STORED_MESSAGES) == set(ErrorKind)
+    for kind, message in _STORED_MESSAGES.items():
+        assert message.strip(), f"{kind.name} has an empty stored message"
 
 
 def test_a_browser_name_is_not_a_cookie(repository: JobRepository) -> None:

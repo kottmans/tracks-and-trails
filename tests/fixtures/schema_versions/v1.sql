@@ -67,4 +67,11 @@ CREATE INDEX history_completed_at ON history (completed_at);
 INSERT INTO jobs VALUES ('v1-queued', 'https://example.invalid/v1-era', 'queued', '{"audio_codec": "best", "audio_quality": null, "cookies_from_browser": null, "embed_subtitles": false, "format_selector": "bestvideo+bestaudio/best", "media_kind": "video", "output_directory": "/downloads", "output_template": "%(title)s.%(ext)s", "post_processors": [], "proxy": null, "rate_limit_bytes": null, "subtitle_languages": [], "url": "https://example.invalid/v1-era"}', 'A v1-era job', NULL, 0, NULL, NULL, NULL, 0, 0, '2026-07-26T12:00:00+00:00', NULL, NULL);
 INSERT INTO jobs VALUES ('v1-failed', 'https://example.invalid/v1-era', 'failed', '{"audio_codec": "best", "audio_quality": null, "cookies_from_browser": null, "embed_subtitles": false, "format_selector": "bestvideo+bestaudio/best", "media_kind": "video", "output_directory": "/downloads", "output_template": "%(title)s.%(ext)s", "post_processors": [], "proxy": null, "rate_limit_bytes": null, "subtitle_languages": [], "url": "https://example.invalid/v1-era"}', NULL, NULL, 7, 100, 'network', 'timed out', 2, 1, '2026-07-26T12:05:00+00:00', '2026-07-26T12:06:00+00:00', '2026-07-26T12:07:00+00:00');
 
+
+-- History rows, so a migration touching this table is covered too (`T014-R6`... `T014-R4`).
+INSERT INTO history VALUES ('h-1', 'https://example.invalid/v1-era', 'A finished download',
+    '/downloads/a.mp4', 'bestvideo+bestaudio/best', 1048576, '2026-07-26T11:00:00+00:00');
+INSERT INTO history VALUES ('h-2', 'https://example.invalid/v1-era-2', NULL,
+    NULL, NULL, NULL, '2026-07-26T11:30:00+00:00');
+
 PRAGMA user_version = 1;

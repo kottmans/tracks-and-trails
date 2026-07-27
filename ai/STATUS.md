@@ -87,16 +87,20 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-014` — Changes requested 2026-07-26, corrected, awaiting focused re-review.** Persistence
+- **`T-014` — Changes requested twice; second correction awaiting re-review.** Persistence
   is real: SQLite in WAL mode under `platformdirs`, a forward-only migration runner that
   discovers migrations by globbing the directory, and `JobRepository` with durable queue order
-  and startup recovery. Suite 830 → 899.
-- **The review found a Critical.** Credentials could reach the database by two routes the first
-  implementation did not cover: a scheme-less proxy that `urlsplit` does not parse as an
-  authority, and `error_message`, which was stored verbatim. Both are corrected, and the shape of
-  the fix matters more than either hole — redaction now happens at **one sink covering every text
-  column by default**, with two named exceptions, instead of naming one field to protect.
-  `core/redaction.py` is new and `T-038` should use it rather than write a second redactor.
+  and startup recovery. Suite 830 → 878.
+- **The Critical took two attempts and the first correction was itself Critical.** Scrubbing every
+  stored string with a secret-recogniser both missed forms (single-label and Unicode hosts,
+  username-only userinfo, IPv6 zone IDs) and *corrupted legitimate values* — an output directory
+  named `cookie-videos` became `[redacted]`, a relative path that would have written outside the
+  directory the user chose. **A heuristic over arbitrary text cannot do this job**, which is the
+  same lesson `T-044` and `T-045` each taught. Replaced by treating fields by what they are:
+  functional values stored verbatim, `proxy` parsed structurally, and `error_message` never
+  carrying an external string at all — the extractor's words belong in the per-job log
+  (`REQ-019`), which is where `NFR-006` is actually satisfied. `core/redaction.py` was deleted
+  rather than handed to `T-038`.
 - Also corrected: migration DDL and its version bump now commit atomically (`T014-R2`); the
   frozen artifact collects and exercises its migration SQL (`T014-R3`); the migration test
   migrates genuinely historical bytes rather than rows the current serializer produced

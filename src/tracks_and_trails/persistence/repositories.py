@@ -24,14 +24,13 @@ import json
 import sqlite3
 from dataclasses import fields, replace
 from datetime import datetime
-from enum import Enum
 from typing import Any, Final
+from urllib.parse import urlsplit, urlunsplit
 
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.core.models import Job as JobModel
-from tracks_and_trails.core.redaction import redact
 
 #: Statuses that cannot still be true at startup (`ARCHITECTURE.md` §5).
 #:
@@ -75,34 +74,69 @@ _JOB_COLUMNS: Final = (
 )
 
 
-#: Fields stored **verbatim**, exempt from redaction, each for a stated reason.
+#: What the database stores in `error_message`, keyed by kind (`T014-R1`, `REQ-026`).
 #:
-#: Named explicitly rather than by omission (`T014-R1`): the sink redacts everything by default,
-#: so a column added later is protected unless someone deliberately lists it here and says why.
-#: The previous design redacted one named field and let every other text column through.
+#: **Project-authored text, never the extractor's.** A free-text diagnostic is an unbounded sink:
+#: it can carry a credential, a cookie path, a personal path, anything. Two attempts to scrub such
+#: prose with a recognizer both failed — the second also corrupted legitimate values — because a
+#: heuristic applied to arbitrary text can neither exclude every secret nor leave the text intact.
 #:
-#: - `url` — maintainer decision, 2026-07-26. The URL *is* the job: `REQ-012`'s queue and
-#:   `REQ-020`'s history are unusable without it and a retry cannot reconstruct it.
-#: - `output_path` — the user chose this and `REQ-021` opens the file from it. It is the user's
-#:   own path to their own download, not a secret arriving from outside.
-_STORED_VERBATIM: Final = frozenset({"url", "output_path"})
+#: So no external string reaches this column at all. That is a *structural* guarantee rather than
+#: a filter: the only values that can be written are the ones below.
+#:
+#: `NFR-006`'s verbatim preservation is not lost, it is relocated. `ARCHITECTURE.md` §5 already
+#: puts the extractor's own output in the per-job log, and `REQ-019` is the view that shows it.
+#: The database records *what* failed; the log records what the extractor said (`T-038`).
+_STORED_MESSAGES: Final[dict[ErrorKind, str]] = {
+    ErrorKind.UNSUPPORTED_URL: "No extractor matched this URL. See the job log.",
+    ErrorKind.EXTRACTOR_ERROR: "The site or extractor reported a problem. See the job log.",
+    ErrorKind.AUTH_REQUIRED: "This content requires signing in. See the job log.",
+    ErrorKind.GEO_RESTRICTED: "This content is not available in your region. See the job log.",
+    ErrorKind.DRM_PROTECTED: "This content is DRM protected and cannot be downloaded.",
+    ErrorKind.NETWORK: "A network problem interrupted this download. See the job log.",
+    ErrorKind.FFMPEG_MISSING: "ffmpeg is required for this download and was not found.",
+    ErrorKind.FFMPEG_ERROR: "ffmpeg reported a problem. See the job log.",
+    ErrorKind.DISK: "Writing the file failed. See the job log.",
+    ErrorKind.WORKER_CRASH: "The download process stopped unexpectedly. See the job log.",
+    ErrorKind.INTERRUPTED: _INTERRUPTED_MESSAGE,
+    ErrorKind.CANCELLED: "Cancelled.",
+}
+
+
+def proxy_without_credentials(proxy: str | None) -> str | None:
+    """Return `proxy` with any userinfo removed, parsed rather than pattern-matched.
+
+    `T014-R1`. A proxy is a URL, so its credentials are removed by *parsing* it — not by scanning
+    for something credential-shaped. `urlsplit` only populates `netloc` when a scheme is present,
+    and `DownloadRequest.proxy` accepts any non-empty string, so a scheme-less value is re-parsed
+    behind a placeholder scheme and the placeholder dropped again. That is what makes this exact
+    for every form the model accepts, including single-label, Unicode and IPv6 hosts, which a
+    recognizer over prose kept missing.
+    """
+    if proxy is None:
+        return None
+    parts = urlsplit(proxy)
+    scheme_less = not parts.scheme or not parts.netloc
+    if scheme_less:
+        parts = urlsplit(f"placeholder://{proxy}")
+    if "@" not in parts.netloc:
+        return proxy
+    _, _, host = parts.netloc.rpartition("@")
+    rebuilt = urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
+    return rebuilt.removeprefix("placeholder://") if scheme_less else rebuilt
 
 
 def _serialize_request(request: DownloadRequest) -> str:
-    """Serialize a request to JSON, redacting every string field except the job URL.
+    """Serialize a request to JSON. **Functional values are never rewritten** (`T014-R1`).
 
-    Redacting the whole request rather than the `proxy` field alone (`T014-R1`). The earlier
-    version named `proxy`, which left every other string on the model — present and future — as
-    an unguarded route to disk.
+    `output_directory`, `output_template`, `format_selector` and `url` are what the download
+    does; altering one changes where a file lands or what is fetched. An earlier version ran a
+    secret-recogniser over every string and turned the output directory `/downloads/cookie-videos`
+    into `[redacted]` — a relative path, so a retry would have written outside the directory the
+    user chose. Only `proxy` is transformed, and only by parsing it.
     """
-    payload: dict[str, Any] = {}
-    for name in _REQUEST_FIELDS:
-        value = getattr(request, name)
-        if isinstance(value, str) and not isinstance(value, Enum) and name not in _STORED_VERBATIM:
-            value = redact(value)
-        payload[name] = value
-    # StrEnum members serialize as their string values; tuples become JSON arrays.
-    return json.dumps(payload, sort_keys=True)
+    safe = replace(request, proxy=proxy_without_credentials(request.proxy))
+    return json.dumps({name: getattr(safe, name) for name in _REQUEST_FIELDS}, sort_keys=True)
 
 
 def _deserialize_request(raw: str) -> DownloadRequest:
@@ -149,19 +183,17 @@ def _row_to_job(row: sqlite3.Row) -> JobModel:
 
 
 def _job_to_values(job: JobModel) -> dict[str, Any]:
-    """Every column's value, with redaction applied at this single sink (`T014-R1`, `REQ-026`).
+    """Every column's value. **Nothing here is rewritten by a heuristic** (`T014-R1`).
 
-    **The redaction happens here and nowhere else.** One choke point that every write passes
-    through is the only version of this that holds: the previous design redacted the `proxy`
-    field inside the request and let `error_message` — an unrestricted diagnostic sink carrying
-    verbatim extractor prose — write a credential straight to the row beside it.
+    Two rules, both structural:
 
-    `NFR-006`'s "preserved verbatim" is not violated by this. It forbids paraphrasing an
-    extractor's message into a generic one, destroying the information the user can act on;
-    masking an embedded password leaves every actionable word intact. `REQ-026` is explicit that
-    credentials and cookie paths are never written to history, and history is this database.
+    - `error_message` is never the caller's string. It is looked up from `_STORED_MESSAGES` by
+      kind, so no external text can reach the column — the extractor's own words go to the job
+      log (`ARCHITECTURE.md` §5, `REQ-019`), which is where `NFR-006` is actually satisfied.
+    - Every other value is stored exactly as given. `url`, `output_directory`, `output_template`
+      and `format_selector` are functional: rewriting one changes where the file lands.
     """
-    values: dict[str, Any] = {
+    return {
         "id": job.id,
         "url": job.url,
         "status": job.status.value,
@@ -171,20 +203,13 @@ def _job_to_values(job: JobModel) -> dict[str, Any]:
         "bytes_done": job.bytes_done,
         "bytes_total": job.bytes_total,
         "error_kind": job.error_kind.value if job.error_kind is not None else None,
-        "error_message": job.error_message,
+        "error_message": _STORED_MESSAGES[job.error_kind] if job.error_kind is not None else None,
         "attempts": job.attempts,
         "queue_position": job.queue_position,
         "created_at": _to_iso(job.created_at),
         "started_at": _to_iso(job.started_at),
         "finished_at": _to_iso(job.finished_at),
     }
-    # Redact by default; `_STORED_VERBATIM` is the exception list, so a text column added to the
-    # schema later is covered without anyone remembering to cover it. `request` is already
-    # redacted field-by-field above and is JSON, which this must not re-encode.
-    for name, value in values.items():
-        if isinstance(value, str) and name not in _STORED_VERBATIM | {"request"}:
-            values[name] = redact(value)
-    return values
 
 
 class JobRepository:

@@ -82,77 +82,51 @@ the thing this task exists to avoid.
 
 ### T-014 — Persistence: schema, migrations, and the job repository
 
-**Status:** **Changes requested** 2026-07-26 (`T014-R1` Critical, `R2`/`R3` High, `R4` Medium).
-All five corrected; **awaiting focused re-review**. The taxonomy amendment was approved
-separately at `d816fa0` and is unaffected.
+**Status:** **Changes requested** (second round) 2026-07-26. `T014-R2`, `R3`, `R5` resolved.
+`T014-R1` corrected by **replacing the approach**; `T014-R4` corrected under maintainer
+authorization. **Awaiting focused re-review.**
 
-**`T014-R1` — Critical, and it was two holes, not one.** `strip_credentials()` examined only
-`urlsplit().netloc`, so the model-valid scheme-less `user:pass@proxy.invalid:8080` — which
-`urlsplit` puts entirely in `path` — was written unchanged. Separately, `error_message` was
-stored verbatim, so a diagnostic naming the proxy persisted the password in the row beside the
-stripped copy. **The design was wrong, not just the regex:** redaction named one field and left
-every other text column, present and future, unguarded.
+**`T014-R1` — the second correction was wrong in a new way, and the reviewer was right twice.**
+Redacting every string with a recogniser closed the two reported examples and then failed on
+both sides: credentials still escaped through single-label and Unicode hosts, username-only
+userinfo, an IPv6 zone identifier and a string nested in `post_processors`; and it *corrupted
+legitimate values*, turning the output directory `/downloads/cookie-videos` into `[redacted]` —
+a relative path, so a retry would have written outside the directory the user chose. That
+regression was independently Critical, and it broke the settings freeze.
 
-Corrected by inverting it. `core/redaction.py` recognises credentials and cookie paths
-structurally, and `_job_to_values` applies it to **every** text column by default;
-`_STORED_VERBATIM` names the two exceptions (`url`, `output_path`) with reasons. A column added
-later is covered unless someone deliberately exempts it. `NFR-006` is not violated — masking an
-embedded password leaves every actionable word of the diagnostic intact, asserted by test.
+**The lesson is the same one this project keeps paying for**: a heuristic over arbitrary text
+neither excludes every secret nor leaves the text intact. Fixing the regex would have been the
+third attempt at a losing approach.
 
-The module states its boundary rather than claiming completeness: free-form secret *content* in
-prose is not structurally recognisable, and that limit is pinned by test. `T-038` should call
-this rather than write a second redactor.
+Replaced with three treatments matched to what each field *is*:
 
-**`T014-R2` — High.** The pragma now sits inside the migration's transaction, before `COMMIT`.
-The test that proves it is not the obvious one: a *failing* migration rolls back correctly
-either way, so the harness truncates a **succeeding** script at its `COMMIT` and dies there.
-Under the old ordering that leaves tables at version 0 and the next startup dies with `table
-jobs already exists`.
+- **Functional** — `url`, `output_directory`, `output_template`, `format_selector`. Stored
+  verbatim and never rewritten. Altering one changes where the file lands or what is fetched.
+- **Structured** — `proxy`. Its credentials are removed by *parsing it as the URL it is*,
+  including a re-parse behind a placeholder scheme for the scheme-less forms the model accepts.
+  Every form the recogniser missed is handled without knowing it exists.
+- **Prose** — `error_message`. **No external string reaches the database at all.** The column is
+  written only from `_STORED_MESSAGES`, which this project authors, so the bound is structural
+  rather than a filter. `NFR-006` is not lost but relocated: `ARCHITECTURE.md` §5 already puts
+  the extractor's own words in the per-job log and `REQ-019` is the view that shows them.
 
-**`T014-R3` — High.** `packaging/tracks-and-trails.spec` now collects
-`persistence/migrations/*.sql`, `migrate()` raises rather than treating an absent directory as a
-valid empty schema, and a new `--database-probe` creates a database and writes a job **inside
-the frozen artifact** on both CI platforms. A unit test asserts the spec declares the rule — a
-seconds-fast early warning, explicitly not the real gate.
+`core/redaction.py` and its tests are **deleted**. Handing `T-038` a recogniser the reviewer had
+just disproved would have propagated the flaw.
 
-**`T014-R4` — Medium.** `tests/fixtures/schema_versions/v1.sql` holds bytes written by v1 DDL
-and hand-written INSERTs, captured while v1 is current, migrated by the current runner alone.
-A second test fails the build that adds v2 without freezing v1's fixture, which is the only
-moment it can still be captured. Writing it by hand immediately caught that `AudioCodec.ORIGINAL`
-serializes as `"best"` — drift a generated fixture would have hidden by construction.
+**`T014-R4` — corrected under maintainer authorization**, its ordinary budget being exhausted.
+Byte equality rejected legitimate data migrations, so comparison is now per column with
+`TRANSFORMED_BY_MIGRATION` naming any column a migration is *declared* to rewrite, and why —
+empty today. The v1 fixture now seeds `history` as well as `jobs`, so a migration touching it is
+covered.
 
-**`T014-R5` — Low, corrected anyway.** The test now calls `recover_interrupted()` and forces an
-illegal source status into the recovered set, so a direct-column-write implementation fails it.
-The reviewer's probe — replacing the method with one that always raises — no longer passes.
+**`T014-R6` does not reproduce.** The reviewer reports `test_queue_order_survives_a_restart`
+carrying its docstring twice; it appears once at the reviewed head `e15dee4` and once now.
+Reported rather than silently "fixed".
 
-**Mutation evidence: 12 planted, 11 fail.** Five for `R1` (netloc-only credentials; no sink
-redaction; exempting `error_message`; no cookie-path redaction; unredacted request fields), two
-for `R2`, two for `R3`, one for `R4`, one for `R5`. The twelfth — altering a value inside the
-frozen fixture — passes, and is reported rather than hidden: it changes historical data without
-representing a defect, so it is not a meaningful mutation. Sources restored byte-identical.
+**Mutation evidence: 5 planted, 5 fail** — storing the caller's message verbatim (1); skipping
+proxy credential removal (7); not re-parsing scheme-less proxies (4); reintroducing the
+functional-string regression (5); dropping history rows from the fixture (1). Restored identical.
 
-**Three conflicts in the linked context were surfaced rather than papered over**, and two needed
-a maintainer decision:
-
-1. **Crash-recovery scope** — `ARCHITECTURE.md` §5 names three in-flight statuses, the criterion
-   named one. Resolved by authority order (`AGENTS.md` §5); the criterion above is widened.
-2. **`ErrorKind.INTERRUPTED` did not exist.** §5 had required an "`INTERRUPTED` presentation of
-   `FAILED`" since the document was written, while §7's taxonomy never listed the kind — so
-   `core/errors.py` implemented §7 faithfully and §5's recovery had no kind to use. `T-010`'s
-   taxonomy gate refused the member until the architecture said so, which is the gate working.
-   **Maintainer approved amending §7**; the kind is added, retryable and never auto-retryable.
-3. **The secrets criterion contradicted the round-trip criterion.** Resolved by maintainer
-   decision; see the narrowed criterion above.
-
-**Mutation evidence.** Eight mutations, each failing: recovering only `RUNNING` (1); skipping
-credential stripping (2); writing `FAILED` directly instead of through the state machine (4);
-dropping the recovery message (1); turning WAL off (1); removing a schema column without a
-migration (6 failed, 16 errors); removing the unique queue-position index (2); replacing the
-directory glob with a hardcoded migration list (2). Source restored byte-identical after each.
-
-**Not built here, and deliberately:** the `history` table exists from version 1 because the
-schema is in scope and adding it later would cost a migration for nothing — but **nothing writes
-it yet.** Recording a completed job belongs to `T-013`; pruning, search and export are Phase 3.
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 1

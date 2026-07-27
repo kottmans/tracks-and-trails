@@ -2329,3 +2329,89 @@ it is **Changes requested**. The focused correction re-review should verify `T01
 `T014-R4`, check their correction diff for regressions, and re-check `T014-R5` if it is included
 in the same batch. No reviewed source or test file was changed during this review; only this
 historical review entry was appended.
+
+## 2026-07-26 — T-014 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-014`
+**Correction base:** `cfb66af5433044e33e057c50d9e23a1fe5350060`
+**Head:** `e15dee473a5777549e17101123aceecdb25a8fe3`
+**Review unit:** Persistence correction commit; the approved taxonomy amendment is unchanged
+**Platforms verified:** Linux locally, including a real frozen build; Windows not run
+**Verdict:** **Changes requested**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T014-R1` | **Critical** | **Yes** | **Open — direct continuation with correction regressions.** Redacting scalar strings by default does close the two original examples: adding a new scalar `DownloadRequest` field carrying a canonical credential caused it to be masked without listing the field, and canonical proxy/error-message cases are masked. The generic recognizer is not a safe database boundary, however. Credentials still reached the raw request JSON through the model-valid `secretuser:hunter2@proxy:8080` (single-label host), `secretuser:hunter2@éxample.invalid:8080` (Unicode host), and a string nested in `post_processors`; username-only userinfo and an IPv6 zone identifier also survived `redact()`. Cookie paths with spaces/quotes are only partly masked, while UNC, relative, and extended Windows paths with a space survived. The stated free-form boundary explicitly pins `password is hunter2` and a cookie value as unredacted even though the retained acceptance criterion says credentials and cookie content never reach the database. The opposite direction now corrupts frozen request behavior: `/downloads/cookie-videos` is persisted as `[redacted]`, and `%(uploader)s:%(id)s@example.invalid.%(ext)s` is rewritten. The first turns the user's absolute output directory into a relative path on retry, risking a write outside the directory the user chose—independently Critical under §9—and both violate the exact settings-freeze criterion. Ordinary prose such as `retry at 10:30@example.invalid` is also mangled. A heuristic applied to every functional string therefore neither excludes secrets nor preserves the request. |
+| `T014-R2` | **High** | **Yes** | **Resolved.** `PRAGMA user_version` is inside the same transaction before `COMMIT`, and the exception path rolls back. Moving the pragma after `COMMIT` made the succeeding-script interruption test fail with tables committed at version 0. Removing the explicit rollback made the failed-migration test fail with `jobs` still visible. The `DiesAtCommit` subclass executes through the real commit and raises before any old-style following pragma could run, so it reproduces the original split rather than merely testing an ordinary SQL failure. |
+| `T014-R3` | **High** | **Yes** | **Resolved.** The spec declares the migration data, an empty migration set now fails loudly, the internal CLI route runs before Qt, and both-platform CI invokes the real repository probe. Removing the spec data line failed the early unit gate. More importantly, an independent PyInstaller 6.21 Linux build placed `0001_initial.sql` under the artifact's internal package path; running that artifact with `--database-probe` reported one migration, schema version 1, wrote/read a real job, and exited successfully. Windows remains locally unverified, but the same artifact gate is correctly wired into the non-fail-fast Windows matrix job. |
+| `T014-R4` | **Medium** | **Yes** | **Open — direct continuation.** `v1.sql` is now loaded before any current model, serializer, or repository touches it, and adding a temporary v2 migration made the missing-v2-fixture gate fail as intended. The data assertion is nevertheless byte equality over the old `jobs` columns. A legitimate temporary v2 migration that added forward metadata to the request JSON changed the stored bytes while preserving both rows and leaving both readable through the current repository; this harness would reject it. The representation-changing migration cited as the reason for historical fixtures is therefore exactly what the test forbids. It also seeds and compares no `history` row, so a future migration can discard completed-download history while this “data intact” gate passes. Assert preserved domain meaning with version-specific expectations, including every durable table, rather than requiring all old storage representations to remain byte-identical. |
+| `T014-R5` | **Low** | **No** | **Resolved.** The rewritten test calls `recover_interrupted()`, forces `COMPLETED` into the recovered set, expects `IllegalTransitionError`, and proves the row remains unchanged. Replacing `recover_interrupted()` with an always-raising `AssertionError` now reaches the replacement and fails the test rather than passing unnoticed. |
+| `T014-R6` | **Low** | **No** | **Open — correction cleanup.** `test_queue_order_survives_a_restart` contains its docstring twice. This has no behavioral effect; remove the duplicate line in the correction cleanup. |
+
+### R1 focused judgments
+
+- The sink inversion works only for direct scalar strings already present in the value mapping.
+  It does not recursively protect tuple/list strings inside the serialized request, and a new
+  SQL column still has to be added to `_job_to_values()` before the default loop can see it.
+- Canonical percent-encoded userinfo, bracketed IPv6, `file://`, an empty password, and a
+  canonical scheme-less dotted host were masked. The misses above are ordinary accepted model
+  values within the claimed userinfo/path structures, not the acknowledged arbitrary-prose
+  boundary.
+- Partial cookie-path masking is still a leak: for a quoted path containing spaces the
+  directory prefix remains in the stored diagnostic. Redaction must remove the complete path,
+  not merely make the exact input string absent.
+- Masking credentials inside an otherwise retained diagnostic is compatible with `NFR-006`.
+  The problem is not that interpretation; it is that the recognizer changes non-secret
+  diagnostics and functional request fields while known credentials still pass.
+- `core.redaction.redact(str) -> str` is a usable seam for T-038, but T-038 must not inherit the
+  present completeness or false-positive claims until R1 is redesigned.
+
+### R4 budget
+
+R4's historical-input half is materially improved, but the mandatory “data intact” gate remains
+unmet after the ordinary initial-plus-focused budget. Per `AGENTS.md` §9, another review of R4
+requires an explicit maintainer choice: authorize one more tightly focused verification, narrow
+the criterion, or carry it into a named follow-up. R1 remains Critical and therefore continues
+through correction and independent verification without further authorization.
+
+### Independent checks and probes
+
+| Check | Result |
+|---|---|
+| Scalar-field default-deny mutation | A newly added scalar request field containing `http://u:hunter2@proxy.invalid` was stored as `http://[redacted]@proxy.invalid`. Restored. |
+| Credential adversarial probes | Single-label/Unicode hosts, username-only userinfo, IPv6 zone IDs, and a credential nested in `post_processors` survived; canonical dotted host, encoded `@`, bracketed IPv6, `file://`, and empty-password cases were masked. |
+| Cookie-path adversarial probes | Quoted paths with spaces were only partly masked; UNC, relative, and extended Windows paths containing a space survived. |
+| False-positive probes | A legitimate output directory became `[redacted]`; a legitimate output template and `10:30@example.invalid` prose were rewritten. |
+| R2 old-order mutation | Intended interruption test failed: tables survived at version 0. Restored byte-identical. |
+| R2 no-rollback mutation | Intended failed-migration test failed: `jobs` remained visible. Restored byte-identical. |
+| R3 spec mutation | Spec-collection unit test failed. Restored byte-identical. |
+| R3 real frozen build | PyInstaller 6.21 build succeeded on Linux; migration SQL was present and the in-artifact database probe passed. |
+| R4 v2-fixture gate | Adding a temporary v2 migration without a v2 fixture failed the gate as intended. |
+| R4 representation probe | A v2 JSON representation update changed bytes, preserved both rows, and remained readable by the current repository, demonstrating the byte-equality false positive. |
+| R5 replacement probe | The always-raising replacement was reached; the rewritten test no longer passed. |
+| Mutation restoration | All temporary repository mutations were restored; only this review entry remains modified. |
+
+### Validation
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: 74 files already formatted. |
+| `mypy src` | Passed: no issues in 32 source files. |
+| `mypy` | Passed: no issues in 59 source/test files. |
+| `mypy --platform win32` | Passed: no issues in 59 source/test files. |
+| Focused redaction + persistence + crash tests | Passed: **66 passed**. |
+| Full default suite | Passed: **899 passed, 6 skipped, 1 deselected**. |
+| Source `--database-probe` | Passed: migrations 1, schema version 1, database ok. |
+| Frozen Linux `--database-probe` | Passed with the same result from the built artifact. |
+| `git diff --check cfb66af e15dee4` | Passed. |
+
+### Readiness
+
+T014-R2, R3, and R5 are resolved. T014-R1 remains Critical and T014-R4 remains a blocking
+Medium, so the persistence unit is **Changes requested**. The next correction batch should
+redesign R1 at the boundary between functional frozen data and arbitrary diagnostics rather
+than extending the regex enumeration. R4 needs the maintainer disposition described above.
