@@ -75,10 +75,19 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
   shell foreground behavior, long-running stability — which is what still blocks first release.
 - Verified 2026-07-25 that yt-dlp 2026.06.09 is pure Python (1046 `.py`, no compiled
   extensions), which is what makes the `OPS-002` pip-free updater viable
+- **`T-045` complete — Approved with follow-ups**, 2026-07-26 after four rounds, with no
+  production change at any point. `T-046` owns the filesystem-aware uniqueness guarantee.
+- **`T-044` complete — Approved with follow-ups by maintainer direction**, 2026-07-26 after six
+  rounds and three scope decisions. The gate now states only its tested runtime promise; three
+  known blind spots are pinned and owned by `T-047`. No production code changed in any round.
+- **The lesson from T-044 and T-045:** all six defects came from treating an enumerated set as
+  exhaustive. The successful corrections were not longer enumerations: T-044 reads the
+  interpreter's namespace and states its gaps, while T-045 dropped the completeness claim.
+  `ai/TESTING.md` §13 records the general rule.
 
 ## In progress
 
-- **`T-044`, `T-045`** — implemented, independently in review. Neither blocks anything.
+- No implementation task is active. `T-014` is next on the critical path.
 
 ## Next
 
@@ -169,11 +178,11 @@ Development machine, verified 2026-07-25:
 |---|---|
 | Python | 3.14.6 (`/usr/bin/python3`) — the only interpreter; **confirmed sufficient** (`T-002`) |
 | `pip` | 26.0.1, installed via `ensurepip --user` into `~/.local` (no sudo, no PEP 668 marker on F44) |
-| Project venv | `.venv/` — recreated 2026-07-26 (this checkout had none); editable install, PySide6 6.11.1, platformdirs 4.11.0. `comtypes` is a Windows-only dev dependency and is absent here by design |
+| Project venv | `.venv/` — recreated 2026-07-26 (this checkout had none, again: it is git-ignored and does not survive a fresh clone); editable install, PySide6 6.11.1, platformdirs 4.11.0. `comtypes` is a Windows-only dev dependency and is absent here by design |
 | Dev tools | ruff 0.16.0, mypy 2.3.0, pytest 9.1.1, pytest-qt 4.5.0, PyInstaller 6.21.0 |
 | ffmpeg | present |
 | git | branch `main` tracking `origin/main`; CI green on every push and PR (`T-006`) |
-| Repository path | `/mnt/projects/software_projects/tracks-and-trails` (corrected 2026-07-26; the recorded `/mnt/storage/...` path does not exist) |
+| Repository path | `/mnt/storage/software_projects/tracks-and-trails`, verified 2026-07-26. A prior edit "corrected" this to `/mnt/projects/...` and recorded that `/mnt/storage/...` does not exist; both halves were wrong, and the `/mnt/projects` path is what does not exist |
 | Windows environment | **CI runners only** — no local Windows machine or VM. The runner is a real desktop, not a bare headless box (`OPS-004`), and the dedicated `windows desktop` job uses it: the other jobs pin `QT_QPA_PLATFORM=offscreen`, that one does not |
 
 ## Current risks

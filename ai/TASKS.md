@@ -650,6 +650,108 @@ survives; and no orphan outlives the test session.
 
 ---
 
+## Proposed — Phase 2
+
+### T-046 — Output path collision policy against the filesystem
+
+**Status:** Proposed — Phase 2, alongside resume
+**Owner:** Implementer
+**Priority:** Medium — **raise to High before first release.** Until this lands, two downloads
+whose titles sanitize to the same component contend for one path
+**Phase:** Phase 2
+**Depends on:** `T-034`, `T-045`, and the download manager (`T-013`)
+**Relevant context:** `DAT-002`; `ARCHITECTURE.md` §8; `REQ-011`
+**Affected surfaces:** the download manager's path selection; `core/paths.py` remains pure
+**Risk:** Medium — the failure mode is one download overwriting another's output
+
+#### Scope
+
+**Filed by `DAT-002`, which is where the reasoning lives.** `T-045` established that
+`sanitize_component` cannot promise a unique path: it is a pure function of one string, and
+"does this collide with something?" is a question about the filesystem. The maintainer kept
+idempotence and narrowed the sanitizer's promise to the plausible neighbour class, moving real
+uniqueness here.
+
+This task owns the guarantee at the layer that can keep it — the one that knows what is already
+on disk and what other jobs are queued. That covers the ordinary case, not only the reserved-name
+residue: two different videos whose titles sanitize identically collide today by the same
+mechanism, and always have.
+
+**`core/paths.py` stays pure.** The resolution belongs to the caller that has filesystem context;
+pushing it into the sanitizer would make it stateful and re-open `DAT-002`.
+
+#### Acceptance criteria
+
+- Two jobs whose sanitized components are equal resolve to distinct output paths
+- The resolution is visible in the `REQ-011` preview before the write, not applied silently
+  afterwards — a preview that disagrees with the write is the failure `DAT-002` protects against
+- An existing file at the target is never silently overwritten
+- Concurrent writers cannot both win the same path — asserted against real concurrent jobs
+  rather than by inspection, since Phase 2 is where the second worker arrives
+- The residual collision `T-045` pins is covered by this policy, so `DAT-002`'s assumption that
+  `T-046` lands before first release is discharged
+
+#### Out of scope
+
+- Which names are legal or reserved — settled by `T-034` and `T-045`
+- Resume semantics for a partially downloaded file, beyond not colliding with one
+
+---
+
+### T-047 — Decide whether the environment ownership gate's blind spots are worth closing
+
+**Status:** Proposed — **not scheduled.** Carries `T044-R1`'s residue
+**Owner:** Planner, then Implementer if the answer is yes
+**Priority:** **Low, and deliberately so.** The question is whether to spend anything here at
+all; the honest default answer is no
+**Phase:** unassigned
+**Depends on:** `T-044`
+**Relevant context:** `T044-R1` and its six review rounds in `ai/REVIEWS.md`; `ai/TESTING.md`
+("What the environment ownership gate actually promises"); `ARCHITECTURE.md` §6
+**Affected surfaces:** `tests/unit/test_environment.py` only
+**Risk:** Low — no production code is involved, and none ever was
+
+#### Scope
+
+`T-044`'s gate reports any public attribute of `downloader/environment.py` not bound by an
+`import` statement, under the configuration the suite runs in. Three gaps are pinned by test and
+carried here:
+
+1. **Anything behind a guard false at run time** — OS, architecture, dependency presence,
+   feature probe, environment state.
+2. **A name imported and then rebound** — `try: from x import Y / except ImportError: Y = ...`,
+   the ordinary shape of an optional dependency, where the parse subtracts a name the fallback
+   genuinely bound.
+3. **Dynamic rebinding of an imported name** — `globals()["Path"] = ...`.
+
+**Read the history before proposing a fix.** `T044-R1` was found six times. Every attempt to
+close it by recognising more syntax was defeated by syntax the author had not enumerated, and
+three attempts to state its coverage overclaimed and were disproved. That is the strongest
+available evidence that the next clever fix will also be wrong, and it is why this task's first
+deliverable is a *decision*, not a patch.
+
+The likely correct answer is **no**. Gaps 1 and 3 need a determined author to trigger; gap 2 is
+plausible but would announce itself the moment anyone read the module. The gate catches what it
+exists to catch — an accidental `get_ytdlp_version()` — and `ARCHITECTURE.md` §6's boundary is
+independently guarded by the layering test and by review.
+
+#### Acceptance criteria
+
+- A recorded decision, with reasoning, on whether any gap is worth closing
+- If **no**: this task closes, and `ai/TESTING.md`'s statement of the promise stands as the
+  durable record. Nothing in the tree changes
+- If **yes** for a given gap: the fix must come with evidence it does not reintroduce the
+  enumeration failure — specifically, a demonstration against binding syntax the fix does not
+  name, since that is how all five previous fixes died
+
+#### Out of scope
+
+- Any production change to `downloader/environment.py`. The gate is a test; the module's
+  behavior has never been in question
+- Strengthening the layering test, which uses `ast.walk` and is unaffected
+
+---
+
 ## Blocked
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -840,18 +942,73 @@ Assert, on `windows-latest`:
 
 ---
 
-## In Review
+## Complete
 
 ### T-044 — Close the non-blocking T-035 review follow-ups
 
-**Status:** Implemented 2026-07-26, awaiting review.
+**Status:** **Complete — Approved with follow-ups**, 2026-07-26. The maintainer directed T-044
+forward after the claims-only re-review: its deliberately narrow runtime promise is accepted,
+the three pinned blind spots are owned by `T-047`, and no further T-044 review loop is
+authorized. **No production code changed at any point across six rounds.**
+
+**`T044-R1` was found six times, and it was two defects wearing one number.**
+
+*Rounds 0–4, the gate missing a binding shape.* Each fix enumerated one layer further out and
+was defeated by the next:
+
+| Round | Missed | Because |
+|---|---|---|
+| 0 | a public function | denylist of forbidden *names* |
+| 1 | a public constant | runtime allowlist keyed on `value.__module__`, which constants lack |
+| 2 | conditional definition, destructuring | parsed `tree.body` only, simple `Name` targets only |
+| 3 | `match` captures | walked statements, never pattern bindings |
+| 4 | walrus in a default argument | stopped at the whole `def`, not at its body |
+
+Round 5 retired that class by not parsing for bindings at all: `defined_public_names` reads
+`vars(module)` minus the names the parse shows were imported, so the interpreter's own namespace
+decides. All eight historical shapes are caught, including the three from round 4 for which no
+code was written.
+
+*Rounds 3–6, the docstring claiming more than the gate delivered.* This is the defect that
+actually persisted. Three separate claims — a "supported binding model", `T045-R3`'s "exact"
+collider set, and "the Windows job covers non-executed exports" — were each asserted without
+being established, and each disproved. The last was wrong in an instructive way: the
+`[ubuntu-latest, windows-latest]` matrix covers only guards true on Windows and false on Linux.
+Guards on architecture, dependency presence, feature probes or environment state are false on
+**both** runners, and the probe asserting the claim used a `nonesuch` platform that is false on
+both — so it never demonstrated what it was cited for.
+
+**This pass therefore changes claims, not code**, on the reviewer's own recommendation.
+`defined_public_names` now states one guarantee — under the configuration the suite runs in, a
+public attribute not bound by an `import` statement is reported — and pins three gaps by test
+rather than by memory: a guard false at run time, a name imported then rebound by a fallback,
+and dynamic rebinding. `ai/TESTING.md` records the same, including the retracted CI claim.
+`T-047` carries the decision on whether any gap is worth closing; its likely answer is no.
+
+**`T044-R1` — the gate did not gate what it claimed.** `defined_public_names()` walked
+`tree.body` directly and read only simple-`Name` assignment targets, so a public export written
+as `if os.name: YTDLP_VERSION = ...` or `YTDLP_VERSION, YTDLP_USABLE = ...` was invisible to it
+while being an ordinary module attribute at runtime. Codex demonstrated both survivors.
+
+**Mutation evidence** (round 5's design, unchanged by round 6). All eight survivors from every
+round fail the ownership test when planted in the real module — including round four's
+walrus-in-a-default, walrus-in-a-decorator and class-base-expression cases, for which *no code
+was written*: the interpreter bound them, so the runtime namespace has them. A private name
+stays correctly allowed. Dropping the import subtraction fails 5 tests; making the gate return
+an empty set fails 17; renaming a reviewed export private fails the reverse check.
+
+**Defect-class audit (`AGENTS.md` §9).** `T044-R1` is a shallow-traversal defect, so every other
+AST gate in the repository was checked for it. There is exactly one — the layering analyser in
+`tests/unit/test_layering.py` — and it is **not** affected: it uses `ast.walk`, which recurses
+into every node, and it already carries a synthetic-violation case for an import nested inside a
+function body. No other module parses source.
 
 **`T035-R3`, second round.** The previous fix caught a new *function* but filtered runtime
 attributes by `value.__module__` to exclude imports — and a constant has no `__module__`, so
 `YTDLP_VERSION = "unreviewed"` was filtered out with them and all 22 tests stayed green. A
-denylist of names missed a function; a runtime allowlist missed a constant. The check now parses
-the module's top level, where a `def`, a `class` and an assignment are all visible and an
-`ImportFrom` is not.
+denylist of names missed a function; a runtime allowlist missed a constant. That round changed
+the check to parse the module's top level; the later `T044-R1` rounds above replaced binding
+parsing with the deliberately narrow runtime gate.
 
 Mutation-verified across every shape: a public constant, function, class and annotated constant
 each fail 1 test; a private name is correctly allowed; renaming a reviewed export away fails.
@@ -865,10 +1022,13 @@ gap and repairs current-truth navigation
 **Depends on:** nothing
 **Relevant context:** `T035-R3`, `T035-R4`, `P1-R1`; `AGENTS.md` §9;
 `ARCHITECTURE.md` §6
-**Affected surfaces:** `tests/unit/test_environment.py`, optionally
-`downloader/environment.py` public-API metadata, `ai/TASKS.md`, `ai/STATUS.md`
+**Affected surfaces:** `tests/unit/test_environment.py`, `ai/TESTING.md`, `ai/TASKS.md`,
+`ai/STATUS.md`. **No production code changed at any point across six rounds**
 **Risk:** Low
-**Review base:** `fb2dab9`
+**Review base:** `6c0a773` — the sole parent of head `d01a782` (`T044-R3`). The entry previously
+recorded `fb2dab9`, which is seven commits back and would have swept unrelated approved work
+into the diff.
+**Correction head:** uncommitted; see `ai/REVIEWS.md` for the `T044-R1` correction batch.
 
 #### Scope
 
@@ -885,8 +1045,11 @@ Two non-blocking findings were carried rather than keeping `T-035` in review:
 
 #### Acceptance criteria
 
-- Adding a public function **or constant** not in the independently transcribed reviewed API
-  fails the environment test
+- Under the interpreter, platform, and configuration the suite actually runs, adding a public
+  function **or constant** not bound by an import statement and not in the independently
+  transcribed reviewed API fails the environment test
+- The three known gaps are asserted explicitly and owned by `T-047`: a guard false at run time,
+  an imported name rebound by a fallback, and dynamic rebinding of an imported name
 - The test does not ask production's own list what the expected public API is; if `__all__` is
   introduced, compare it with an independent expectation
 - `TASKS.md` and `STATUS.md` agree on which tasks are Ready, In Review, and Complete, and the
@@ -903,7 +1066,38 @@ Two non-blocking findings were carried rather than keeping `T-035` in review:
 
 ### T-045 — Defused reserved names can collide with a legal neighbour
 
-**Status:** Implemented 2026-07-26, awaiting review.
+**Status:** **Complete — approved with follow-ups**, 2026-07-26. `T045-R1`, `T045-R2` and
+`T045-R3` all resolved and independently verified; none blocks. Four rounds, one accepted
+decision (`DAT-002`), and **no production change at any point** — the digest implementation
+merged as `c0f4881` stands untouched. The follow-up is `T-046`, which owns filesystem-aware
+uniqueness and whose before-first-release assumption is recorded in both `DAT-002` and the task.
+
+**`T045-R3` — the correction overclaimed.** Having established that the *original* criterion was
+unsatisfiable, the fix then asserted an "exact" colliding set that is also untrue. The test
+checked six hand-picked candidates and called the result exhaustive, while `defused + " "`,
+`defused + "."`, `"CON\t"` and `"C\x00ON"` all collide too — it passed because nothing outside
+its own list was ever asked. That is the shape `ai/STATUS.md` records as this project's
+recurring test defect: asserting over a curated list and claiming completeness.
+
+Corrected in three places — the test now asserts the fixed point, the plausible-neighbour
+distinction, and that the class is demonstrably *wider* than the reserved name alone, with no
+enumeration claim; `DAT-002` is amended to say the set is not enumerable and why (normalization
+is many-to-one by design); and this entry's criterion below matches. `DAT-002`'s incidental
+claim that non-idempotence implies nondeterminism was also wrong and is corrected — the
+load-bearing reason is that applying a non-idempotent sanitizer twice changes the path.
+
+**`T045-R1` — the original criterion was unsatisfiable, not unmet.** Codex established that
+"defusing cannot produce a path a legal filename also produces" contradicts idempotence, which
+this module also promises. For any reserved `x`, let `y = sanitize_component(x)`. `y` is itself
+legal input, and idempotence requires `sanitize_component(y) == y`, so `x` and `y` necessarily
+map to one path. The digest changes *which* legal name collides — from the plausible `COM1_` to
+the 16-hex-digit `CON-1bc43d851d28ada0` — but no stateless idempotent sanitizer can eliminate
+the collision entirely.
+
+The maintainer resolved this on 2026-07-26 in favour of keeping idempotence and narrowing the
+promise (`DAT-002`). Absolute uniqueness needs to know what is already on disk, which this
+function deliberately does not; that guarantee moves to `T-046`, and this task's own out-of-scope
+list already deferred it.
 
 Reserved names are now defused with the same digest the truncation differentiator uses, rather
 than a bare `_`. `COM1` becomes `COM1-<16 hex>`; a legal file named `COM1_` is untouched, so the
@@ -925,6 +1119,8 @@ overwrite or be rejected by the caller
 **Relevant context:** `T034-R2`, `T034-R4`, `ARCHITECTURE.md` §8
 **Affected surfaces:** `src/tracks_and_trails/core/paths.py`, `tests/unit/test_paths.py`
 **Risk:** Low
+**Review base:** `1c80964` — the sole parent of head `c0f4881` (`T045-R2`). The entry recorded
+none, which in this non-contiguous history invites a diff carrying unrelated approved work.
 
 #### Scope
 
@@ -944,8 +1140,19 @@ current behavior cannot change unnoticed.
 
 #### Acceptance criteria
 
-- Defusing a reserved name cannot produce a path that a legal filename also produces —
-  for example by appending the `_MARKER_BYTES` digest rather than a bare `_`
+**Narrowed 2026-07-26 per `T045-R1` and `DAT-002`.** The original first criterion — "cannot
+produce a path that a legal filename also produces" — is unreachable while `sanitize_component`
+stays idempotent, and idempotence is the stronger promise because `T-012` previews a path under
+`REQ-011` before writing it. What replaces it is a guarantee this function can actually keep:
+
+- Defusing a reserved name does not collide with **the plausible neighbour class** — the name
+  the user would realistically also hold. `COM1` and a legal `COM1_` no longer land on one path
+- The residual collision is **named rather than denied**: `sanitize_component(y) == y` where
+  `y = sanitize_component("CON")`, so the 16-hex-digit form `CON-1bc43d851d28ada0` is a fixed
+  point. A test asserts that identity, and asserts that the colliding class is wider than the
+  reserved name alone, so nobody reads the fixed point as an enumeration (`T045-R3`). The
+  colliding set is **not** claimed to be enumerable: normalization is many-to-one by design, and
+  control-character stripping and trailing dot/space removal each widen the class
 - Idempotence survives: sanitizing an already-defused name returns it unchanged
 - The pinning test above is replaced by one asserting the names differ
 - A mutation reverting to the bare `_` suffix fails the suite
@@ -954,11 +1161,11 @@ current behavior cannot change unnoticed.
 
 - Any change to which names are treated as reserved — `T034-R4` settled that against
   Microsoft's list, in both directions
-- Collision policy when the target file already exists — Phase 2, alongside resume
+- Collision policy when the target file already exists — now owned by `T-046` (Phase 2,
+  alongside resume). That is where a real uniqueness guarantee belongs, because it is the only
+  layer that knows what is already on disk (`DAT-002`)
 
 ---
-
-## Complete
 
 ### T-012 — yt-dlp in a spawned worker
 
