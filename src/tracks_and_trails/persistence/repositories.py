@@ -25,7 +25,6 @@ import sqlite3
 from dataclasses import fields, replace
 from datetime import datetime
 from typing import Any, Final
-from urllib.parse import urlsplit, urlunsplit
 
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
@@ -74,69 +73,20 @@ _JOB_COLUMNS: Final = (
 )
 
 
-#: What the database stores in `error_message`, keyed by kind (`T014-R1`, `REQ-026`).
-#:
-#: **Project-authored text, never the extractor's.** A free-text diagnostic is an unbounded sink:
-#: it can carry a credential, a cookie path, a personal path, anything. Two attempts to scrub such
-#: prose with a recognizer both failed — the second also corrupted legitimate values — because a
-#: heuristic applied to arbitrary text can neither exclude every secret nor leave the text intact.
-#:
-#: So no external string reaches this column at all. That is a *structural* guarantee rather than
-#: a filter: the only values that can be written are the ones below.
-#:
-#: `NFR-006`'s verbatim preservation is not lost, it is relocated. `ARCHITECTURE.md` §5 already
-#: puts the extractor's own output in the per-job log, and `REQ-019` is the view that shows it.
-#: The database records *what* failed; the log records what the extractor said (`T-038`).
-_STORED_MESSAGES: Final[dict[ErrorKind, str]] = {
-    ErrorKind.UNSUPPORTED_URL: "No extractor matched this URL. See the job log.",
-    ErrorKind.EXTRACTOR_ERROR: "The site or extractor reported a problem. See the job log.",
-    ErrorKind.AUTH_REQUIRED: "This content requires signing in. See the job log.",
-    ErrorKind.GEO_RESTRICTED: "This content is not available in your region. See the job log.",
-    ErrorKind.DRM_PROTECTED: "This content is DRM protected and cannot be downloaded.",
-    ErrorKind.NETWORK: "A network problem interrupted this download. See the job log.",
-    ErrorKind.FFMPEG_MISSING: "ffmpeg is required for this download and was not found.",
-    ErrorKind.FFMPEG_ERROR: "ffmpeg reported a problem. See the job log.",
-    ErrorKind.DISK: "Writing the file failed. See the job log.",
-    ErrorKind.WORKER_CRASH: "The download process stopped unexpectedly. See the job log.",
-    ErrorKind.INTERRUPTED: _INTERRUPTED_MESSAGE,
-    ErrorKind.CANCELLED: "Cancelled.",
-}
-
-
-def proxy_without_credentials(proxy: str | None) -> str | None:
-    """Return `proxy` with any userinfo removed, parsed rather than pattern-matched.
-
-    `T014-R1`. A proxy is a URL, so its credentials are removed by *parsing* it — not by scanning
-    for something credential-shaped. `urlsplit` only populates `netloc` when a scheme is present,
-    and `DownloadRequest.proxy` accepts any non-empty string, so a scheme-less value is re-parsed
-    behind a placeholder scheme and the placeholder dropped again. That is what makes this exact
-    for every form the model accepts, including single-label, Unicode and IPv6 hosts, which a
-    recognizer over prose kept missing.
-    """
-    if proxy is None:
-        return None
-    parts = urlsplit(proxy)
-    scheme_less = not parts.scheme or not parts.netloc
-    if scheme_less:
-        parts = urlsplit(f"placeholder://{proxy}")
-    if "@" not in parts.netloc:
-        return proxy
-    _, _, host = parts.netloc.rpartition("@")
-    rebuilt = urlunsplit((parts.scheme, host, parts.path, parts.query, parts.fragment))
-    return rebuilt.removeprefix("placeholder://") if scheme_less else rebuilt
-
-
 def _serialize_request(request: DownloadRequest) -> str:
-    """Serialize a request to JSON. **Functional values are never rewritten** (`T014-R1`).
+    """Serialize a request to JSON. **Nothing is transformed on the way** (`T014-R1`, `T014-R7`).
 
-    `output_directory`, `output_template`, `format_selector` and `url` are what the download
-    does; altering one changes where a file lands or what is fetched. An earlier version ran a
-    secret-recogniser over every string and turned the output directory `/downloads/cookie-videos`
-    into `[redacted]` — a relative path, so a retry would have written outside the directory the
-    user chose. Only `proxy` is transformed, and only by parsing it.
+    Every field is stored exactly as the caller froze it, which is what `ARCHITECTURE.md` §8's
+    settings freeze requires: a retry must reproduce the original request, not an edited copy.
+
+    Credentials are excluded *upstream* rather than here. `DownloadRequest` rejects a proxy
+    carrying userinfo at construction, so a job cannot hold one — three separate credential forms
+    reached the database while this layer tried to strip them from an unbounded string, and one
+    attempt to do so corrupted legitimate output paths instead. Making the value unrepresentable
+    is the only version of this bound that does not depend on recognising what a secret looks
+    like.
     """
-    safe = replace(request, proxy=proxy_without_credentials(request.proxy))
-    return json.dumps({name: getattr(safe, name) for name in _REQUEST_FIELDS}, sort_keys=True)
+    return json.dumps({name: getattr(request, name) for name in _REQUEST_FIELDS}, sort_keys=True)
 
 
 def _deserialize_request(raw: str) -> DownloadRequest:
@@ -183,15 +133,13 @@ def _row_to_job(row: sqlite3.Row) -> JobModel:
 
 
 def _job_to_values(job: JobModel) -> dict[str, Any]:
-    """Every column's value. **Nothing here is rewritten by a heuristic** (`T014-R1`).
+    """Every column's value, stored exactly as given (`T014-R7`).
 
-    Two rules, both structural:
-
-    - `error_message` is never the caller's string. It is looked up from `_STORED_MESSAGES` by
-      kind, so no external text can reach the column — the extractor's own words go to the job
-      log (`ARCHITECTURE.md` §5, `REQ-019`), which is where `NFR-006` is actually satisfied.
-    - Every other value is stored exactly as given. `url`, `output_directory`, `output_template`
-      and `format_selector` are functional: rewriting one changes where the file lands.
+    **`error_message` carries the extractor's own words.** An earlier correction replaced it with
+    project-authored text to bound what could reach the column; that violated `NFR-006`,
+    `ARCHITECTURE.md` §5 and §7, `core/models.py` and `downloader/protocol.py`, all of which
+    require the original message to be preserved rather than paraphrased. The maintainer restored
+    it on 2026-07-26, together with the proxy grammar that removes the reason it was attempted.
     """
     return {
         "id": job.id,
@@ -203,7 +151,7 @@ def _job_to_values(job: JobModel) -> dict[str, Any]:
         "bytes_done": job.bytes_done,
         "bytes_total": job.bytes_total,
         "error_kind": job.error_kind.value if job.error_kind is not None else None,
-        "error_message": _STORED_MESSAGES[job.error_kind] if job.error_kind is not None else None,
+        "error_message": job.error_message,
         "attempts": job.attempts,
         "queue_position": job.queue_position,
         "created_at": _to_iso(job.created_at),

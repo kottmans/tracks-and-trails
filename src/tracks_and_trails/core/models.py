@@ -28,6 +28,7 @@ from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum, StrEnum
 from typing import Any, Final, Self
+from urllib.parse import urlsplit
 
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, apply
@@ -145,6 +146,41 @@ def _require_model[T](owner: str, name: str, value: object, model: type[T]) -> N
     """
     if type(value) is not model:
         _fail(owner, name, value, f"exactly a {model.__name__}")
+
+
+def _require_credential_free_proxy(value: str | None) -> None:
+    """Reject a proxy that is not `scheme://host[:port]`, or that carries userinfo (`T014-R1`).
+
+    **Credentials are made unrepresentable rather than removed.** This field accepted any
+    non-empty string, so persistence had no grammar to parse and every attempt to strip secrets
+    was a scan of unbounded text. Three separate credential forms reached the database that way —
+    scheme-less, then Unicode and single-label hosts, then scheme-relative — and one attempt to
+    scrub them corrupted legitimate output paths instead.
+
+    A job therefore cannot hold a proxy password at all. `REQ-026` covers authenticated *content*
+    via cookies; it does not require an authenticated proxy, and if one is ever needed it belongs
+    in the settings layer with its own handling rather than inside a persisted, IPC-crossing job.
+    """
+    if value is None:
+        return
+    parsed = urlsplit(value)
+    if not parsed.scheme or not parsed.netloc:
+        raise ValueError(
+            f"DownloadRequest.proxy must be scheme://host[:port], not {value!r}. A value without "
+            "an explicit scheme — including the scheme-relative //host form — has no unambiguous "
+            "parse, which is how three separate credential forms reached the database."
+        )
+    if "@" in parsed.netloc:
+        raise ValueError(
+            "DownloadRequest.proxy must not carry credentials. A job is persisted and crosses a "
+            "process boundary, so a password here would be written to the database (REQ-026). "
+            "Use a proxy without userinfo."
+        )
+    if parsed.path.strip("/") or parsed.query or parsed.fragment:
+        raise ValueError(
+            f"DownloadRequest.proxy must be scheme://host[:port] with no path, query or "
+            f"fragment, not {value!r}."
+        )
 
 
 def _require_optional_datetime(owner: str, name: str, value: object) -> None:
@@ -362,6 +398,7 @@ class DownloadRequest:
                 "time, which is after the download has already been paid for"
             )
         _require_optional_text("DownloadRequest", "proxy", self.proxy)
+        _require_credential_free_proxy(self.proxy)
         _require_optional_text("DownloadRequest", "cookies_from_browser", self.cookies_from_browser)
         _require_optional_count("DownloadRequest", "rate_limit_bytes", self.rate_limit_bytes)
 

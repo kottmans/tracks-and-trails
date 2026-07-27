@@ -2415,3 +2415,85 @@ T014-R2, R3, and R5 are resolved. T014-R1 remains Critical and T014-R4 remains a
 Medium, so the persistence unit is **Changes requested**. The next correction batch should
 redesign R1 at the boundary between functional frozen data and arbitrary diagnostics rather
 than extending the regex enumeration. R4 needs the maintainer disposition described above.
+
+## 2026-07-26 — T-014 second focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-014`
+**Correction base:** `e15dee473a5777549e17101123aceecdb25a8fe3`
+**Head:** `a0fb4e4f3444b2e29c8872979431987a4fd70b6a`
+**Review unit:** Persistence correction commit; R2, R3, and R5 are unchanged
+**Platforms verified:** Linux locally; Windows not run; frozen build not rerun because R3's
+specification and probe are unchanged
+**Verdict:** **Changes requested**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T014-R1` | **Critical** | **Yes** | **Open — third direct survivor.** The field taxonomy is an improvement: the five supplied functional-value cases round-trip exactly, and caller prose cannot reach `error_message` through `add()`, `update()`, or startup recovery. The structured proxy bound is still false for a model-valid network-path reference. `proxy_without_credentials("//secretuser:hunter2@proxy.invalid:8080")` returns the input unchanged, and adding that request leaves both `secretuser` and `hunter2` in the raw database row. The first `urlsplit()` correctly puts this form in `netloc`, but `scheme_less = not parts.scheme or not parts.netloc` is true merely because the scheme is absent; reparsing `placeholder:////...` then loses the authority, sees no `@` in `netloc`, and returns the original. `http:///secretuser:hunter2@proxy.invalid:8080` is another accepted value that survives. This remains exposed credential material, hence Critical. Validate `DownloadRequest.proxy` to a deliberately supported grammar or make the persistence boundary fail closed for every value the model accepts; add raw-row cases for `//userinfo@host` and malformed authority forms. |
+| `T014-R4` | **Medium** | **Yes** | **Open — the allowance is a blanket for a column.** Seeding `history` is corrected: deleting its two fixture rows makes the gate fail, and row deletion is now detected in both durable tables. However, once `(table, column)` is present in `TRANSFORMED_BY_MIGRATION`, comparison of that column is skipped for every fixture, row, and migration, and neither the stated reason nor an expected transformed value is checked. I added a temporary v2 migration that changed every stored request's `format_selector` to the valid but wrong string `wrong-format`, declared `("jobs", "request")` as transformed, and ran the actual test; it passed, including the current-repository readability check. Readability is not preserved domain meaning. Key an allowance to the relevant source/target migration and assert its version-specific expected semantic result; require a real reason instead of merely skipping equality. |
+| `T014-R6` | **Low** | **No** | **Retracted — reviewer error.** `test_queue_order_survives_a_restart` has exactly one docstring at both `e15dee4` and `a0fb4e4`. The earlier observation came from concatenated tool output, not either file. No correction was required. |
+| `T014-R7` | **High** | **Yes** | **New correction regression — the repository now discards the diagnostic that its contracts require it to preserve.** Persisting a failed `Job` replaces `Job.error_message` with `_STORED_MESSAGES[kind]`; reading it back therefore does not round-trip the job. This directly conflicts with `core/models.py` (`Job` is a direct persistence mapping and `with_failure()` stores the message verbatim), `downloader/protocol.py` (the persisted fields mirror `Failed`), `ARCHITECTURE.md` §7 (the original message is always preserved verbatim alongside classification), and `NFR-006` (extractor messages are never swallowed or replaced by a generic message). The proposed destination cannot currently cure the loss: T-038's per-job log does not exist, while stored messages already tell the user to “See the job log.” This is a user-visible requirement failure with no present workaround, so it is High. The privacy/verbatim conflict now needs a maintainer design decision, not another implementer-local reinterpretation in `TASKS.md` and `STATUS.md`: either introduce an authorized durable diagnostic seam before making this repository lossy, or amend the architecture/model/protocol contracts and reconsider whether `error_message` belongs in the schema this phase. Any chosen design must also close R1 without persisting credentials. |
+
+### Focused judgments
+
+- The split between functional, structured, and prose fields is useful, but its proxy branch
+  still assumes a URL grammar that the model does not enforce. The third Critical survivor is
+  enough evidence to stop extending examples around the current parser. The accepted input
+  grammar and persistence treatment need to be designed together.
+- Storing `post_processors` verbatim is acceptable for T-014's intended domain: the values are
+  yt-dlp post-processor names, and the adapter validates them against yt-dlp's registry before
+  use. The core model does accept arbitrary strings, so this judgment does not support a broader
+  claim that every model-valid nested string is non-sensitive; no such broader claim should be
+  made.
+- Project-authored summaries can be useful alongside diagnostics, but substituting one for the
+  other is not the behavior the current requirement, architecture, model, or protocol specifies.
+  Moving the verbatim diagnostic to a future cache log is a sequencing and durability decision,
+  especially because the architecture classifies that log under cache rather than the database.
+- R4's new `history` coverage is real. The remaining defect is specifically the transform
+  exception: an unchecked skip is not evidence that a declared transformation preserved data.
+- R6 is closed without a code change. Historical review entries are not silently rewritten, so
+  this entry records the correction to the review record.
+
+### Independent probes and mutation checks
+
+| Check | Result |
+|---|---|
+| Network-path proxy | `//secretuser:hunter2@proxy.invalid:8080` was returned unchanged; a real repository write retained both credential components in the raw row. |
+| Other parser edges | Normal scheme/scheme-less, encoded-userinfo, Unicode-host, IPv6-zone, and second-`@` cases were stripped; `http:///userinfo@host` survived, while bare/empty-authority forms such as `@`, `user:pass@`, and `http://@` were changed into invalid values rather than preserved. |
+| Error-message write paths | `add()` and `update()` persisted only the project-authored message; `recover_interrupted()` persisted its authored interruption message. Caller prose did not reach the raw rows. |
+| Store caller message mutation | Failed 1 intended database-secret test. Restored byte-identical. |
+| Skip proxy stripping mutation | Failed all 7 intended parametrized cases. Restored byte-identical. |
+| Remove scheme-less reparse mutation | Failed 4 intended cases. Restored byte-identical. |
+| Rewrite functional values mutation | Failed all 5 exact round-trip cases. Restored byte-identical. |
+| Remove history fixture rows mutation | Failed the migration test because `history` was empty. Restored byte-identical. |
+| R4 corrupt-but-readable probe | A temporary v2 rewrite of `jobs.request.format_selector` to `wrong-format` passed when `jobs.request` was listed in `TRANSFORMED_BY_MIGRATION`; the current repository still parsed the corrupted jobs. |
+| R6 source check | Both reviewed revisions contain one function docstring, not two. |
+
+### Validation
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: 72 files already formatted. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| `mypy` | Passed: no issues in 57 source/test files. |
+| `mypy --platform win32` | Passed: no issues in 57 source/test files. |
+| Full default suite | Passed: **878 passed, 6 skipped, 1 deselected**. |
+| Source `--database-probe` | Passed: migrations 1, schema version 1, database ok. |
+| `git diff --check e15dee4 a0fb4e4` | Passed. |
+| Mutation restoration | All temporary source, test, and fixture mutations were restored byte-identical before validation. |
+
+### Budget and readiness
+
+T014-R1 remains Critical and continues automatically under `AGENTS.md` §9. The repeated
+credential-boundary failures now warrant a maintainer-level design decision about the accepted
+proxy grammar and whether `error_message` is part of this phase's durable schema.
+
+T014-R4 remains a blocking Medium after the explicitly authorized pass. Another focused
+verification of R4 requires fresh maintainer authorization, narrowing the criterion, or carrying
+the remaining transform-expectation work into a named follow-up. T014-R7 is a new High correction
+regression and must be resolved with the same design decision or an aligned implementation.
+
+The persistence unit is **Changes requested**. R2, R3, and R5 remain resolved; R6 is retracted.

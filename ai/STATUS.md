@@ -87,10 +87,10 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-014` — Changes requested twice; second correction awaiting re-review.** Persistence
+- **`T-014` — Changes requested three times; third correction awaiting re-review.** Persistence
   is real: SQLite in WAL mode under `platformdirs`, a forward-only migration runner that
   discovers migrations by globbing the directory, and `JobRepository` with durable queue order
-  and startup recovery. Suite 830 → 878.
+  and startup recovery. Suite 830 → 879.
 - **The Critical took two attempts and the first correction was itself Critical.** Scrubbing every
   stored string with a secret-recogniser both missed forms (single-label and Unicode hosts,
   username-only userinfo, IPv6 zone IDs) and *corrupted legitimate values* — an output directory

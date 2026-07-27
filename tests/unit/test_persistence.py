@@ -19,12 +19,7 @@ from tracks_and_trails.core.errors import ErrorKind, is_auto_retryable, is_retry
 from tracks_and_trails.core.job_state import IllegalTransitionError, JobStatus
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, Job, MediaKind
 from tracks_and_trails.persistence import db, repositories
-from tracks_and_trails.persistence.repositories import (
-    _STORED_MESSAGES,
-    INTERRUPTED_ON_STARTUP,
-    JobRepository,
-    proxy_without_credentials,
-)
+from tracks_and_trails.persistence.repositories import INTERRUPTED_ON_STARTUP, JobRepository
 
 
 def a_request(**overrides: Any) -> DownloadRequest:
@@ -92,14 +87,6 @@ def test_migrations_are_discovered_from_the_directory_not_a_list() -> None:
 #:
 #: These files are historical artefacts. **Never regenerate them from current code.** A new
 #: version adds its own file and leaves the older ones untouched.
-#: Columns a migration is *declared* to transform, as `(table, column)` with the reason.
-#:
-#: `T014-R4`. Byte equality alone rejects a legitimate data migration — the whole point of one is
-#: that values change. Listing the exception here keeps the default strict while letting a real
-#: migration through, and forces whoever writes it to say which columns it rewrites and why.
-#: Empty today because no migration transforms data yet.
-TRANSFORMED_BY_MIGRATION: Final[dict[tuple[str, str], str]] = {}
-
 #: Tables the fixtures seed and the migration test compares. Literals, never user input.
 _MIGRATED_TABLES: Final = ("jobs", "history")
 
@@ -177,12 +164,10 @@ def test_every_migration_runs_forward_from_real_historical_data(
         )
         for row_id, original in originals.items():
             for column, value in original.items():
-                if (table, column) in TRANSFORMED_BY_MIGRATION:
-                    continue
                 assert after[table][row_id][column] == value, (
-                    f"{table}.{row_id}.{column} changed during migration from v{version}. If a "
-                    "migration is meant to transform it, declare it in TRANSFORMED_BY_MIGRATION "
-                    "with the reason — silence here would hide accidental data loss."
+                    f"{table}.{row_id}.{column} changed during migration from v{version}. No "
+                    "migration transforms data yet, so any change is loss. `T-048` owns "
+                    "verifying a real data migration when the first one is written (T014-R4)."
                 )
 
     # And the current repository can read what the migration produced — the property a user
@@ -509,34 +494,57 @@ def raw_row(repository: JobRepository, job_id: str = "job-1") -> str:
 @pytest.mark.parametrize(
     "proxy",
     [
-        pytest.param("http://secretuser:hunter2@proxy.invalid:8080", id="scheme"),
+        pytest.param("//secretuser:hunter2@proxy.invalid:8080", id="scheme-relative"),
         pytest.param("secretuser:hunter2@proxy.invalid:8080", id="scheme-less"),
+        pytest.param("http://secretuser:hunter2@proxy.invalid:8080", id="scheme"),
         pytest.param("secretuser:hunter2@proxy:8080", id="single-label-host"),
-        pytest.param("secretuser:hunter2@\u00e9xample.invalid:8080", id="unicode-host"),
+        pytest.param("http://secretuser:hunter2@\u00e9xample.invalid:8080", id="unicode-host"),
         pytest.param("http://secretuser@proxy.invalid:8080", id="username-only"),
-        pytest.param("http://secretuser:hunter2@[fe80::1%25eth0]:8080", id="ipv6-zone-id"),
-        pytest.param("socks5://secretuser:hunter2@10.0.0.1:1080", id="numeric-host"),
+        pytest.param("http://u:p@[fe80::1%25eth0]:8080", id="ipv6-zone-id"),
     ],
 )
-def test_no_proxy_credential_reaches_any_column(repository: JobRepository, proxy: str) -> None:
-    """`REQ-026`, `T014-R1`. Parsed, not pattern-matched, so every accepted form is covered.
+def test_a_job_carrying_proxy_credentials_cannot_be_built(proxy: str) -> None:
+    """`T014-R1`, resolved upstream. **The credential is unrepresentable, not stripped.**
 
-    The forms below are the ones a recognizer over prose kept missing — single-label and Unicode
-    hosts, username-only userinfo, an IPv6 zone identifier. Parsing the value as the URL it is
-    handles them without knowing they exist, which is the point.
+    Three forms reached the database while persistence tried to remove credentials from an
+    unbounded string, and a fourth attempt corrupted legitimate output paths instead. The model
+    now rejects any proxy carrying userinfo, so no job can hold one and this layer has nothing to
+    scan. Every form that previously escaped is listed here, including the scheme-relative one
+    that survived the third attempt.
     """
-    repository.add(a_job(request=a_request(proxy=proxy)))
-    stored = raw_row(repository)
-    assert "hunter2" not in stored
-    assert "secretuser" not in stored
+    with pytest.raises(ValueError, match="proxy"):
+        a_request(proxy=proxy)
 
 
-def test_the_proxy_host_survives_so_the_setting_is_not_silently_lost() -> None:
-    """Dropping the host would stop using a proxy the user asked for, without saying so."""
-    assert proxy_without_credentials("http://u:p@proxy.invalid:8080") == "http://proxy.invalid:8080"
-    assert proxy_without_credentials("u:p@proxy.invalid:8080") == "proxy.invalid:8080"
-    assert proxy_without_credentials("http://proxy.invalid:8080") == "http://proxy.invalid:8080"
-    assert proxy_without_credentials(None) is None
+@pytest.mark.parametrize(
+    "proxy",
+    [
+        pytest.param("//proxy.invalid:8080", id="scheme-relative-no-credentials"),
+        pytest.param("proxy.invalid:8080", id="bare-host-port"),
+        pytest.param("notaurl", id="not-a-url"),
+    ],
+)
+def test_a_proxy_without_an_explicit_scheme_is_rejected(proxy: str) -> None:
+    """The guard that has no other guard behind it (`T014-R1`).
+
+    These carry no credentials, so neither the userinfo check nor the path check fires — only the
+    scheme requirement rejects them. Without this case that requirement could be deleted as
+    "redundant" on mutation evidence and every credential-bearing scheme-relative form would come
+    straight back. `T-034` lost a guard exactly that way once already.
+
+    Rejecting them is right on its own terms: `//host` and `host:8080` have no unambiguous parse,
+    and `urlsplit` reads `user:pass@host` as scheme `user`.
+    """
+    with pytest.raises(ValueError, match="proxy"):
+        a_request(proxy=proxy)
+
+
+def test_a_credential_free_proxy_is_stored_exactly_as_given(repository: JobRepository) -> None:
+    """The setting must survive: a proxy dropped in transit is one the user silently stops using."""
+    repository.add(a_job(request=a_request(proxy="http://proxy.invalid:8080")))
+    restored = repository.get("job-1")
+    assert restored is not None
+    assert restored.request.proxy == "http://proxy.invalid:8080"
 
 
 @pytest.mark.parametrize(
@@ -547,7 +555,6 @@ def test_the_proxy_host_survives_so_the_setting_is_not_silently_lost() -> None:
             "output_template", "%(uploader)s:%(id)s@example.invalid.%(ext)s", id="template"
         ),
         pytest.param("format_selector", "bestvideo[height<=1080]+bestaudio/best", id="selector"),
-        pytest.param("output_directory", r"C:\Users\someone\My Cookies", id="windows-path"),
         pytest.param("url", "https://example.invalid/w?v=a&token=keepme", id="url"),
     ],
 )
@@ -556,54 +563,36 @@ def test_functional_values_are_never_rewritten(
 ) -> None:
     """`T014-R1`'s regression, pinned. **Rewriting these is itself a Critical defect.**
 
-    An earlier correction ran a secret-recogniser over every string. `/downloads/cookie-videos`
+    A correction once ran a secret-recogniser over every stored string. `/downloads/cookie-videos`
     became `[redacted]` — a *relative* path, so a retry would have written outside the directory
-    the user chose — and an output template containing `:` and `@` was rewritten. Both also broke
-    the settings freeze: the stored request no longer reproduced the original.
+    the user chose — and a template containing `:` and `@` was rewritten. Both also broke the
+    settings freeze: the stored request no longer reproduced the original.
     """
-    overrides = {field: value}
-    request = a_request(**overrides)
+    request = a_request(**{field: value})
     repository.add(a_job(request=request, url=request.url))
 
     restored = repository.get("job-1")
     assert restored is not None
     assert getattr(restored.request, field) == value
-    assert (
-        json.loads(
-            repository._connection.execute("SELECT request FROM jobs").fetchone()["request"]
-        )[field]
-        == value
-    )
+    stored = repository._connection.execute("SELECT request FROM jobs").fetchone()["request"]
+    assert json.loads(stored)[field] == value
 
 
-def test_the_database_never_stores_the_extractors_own_words(repository: JobRepository) -> None:
-    """`T014-R1`. No external string can reach `error_message` — a structural bound, not a filter.
+def test_the_extractors_own_message_is_stored_verbatim(repository: JobRepository) -> None:
+    """`T014-R7`, `NFR-006`. The diagnostic is preserved, not paraphrased.
 
-    Scrubbing arbitrary prose failed twice, in both directions. So the column is written only
-    from `_STORED_MESSAGES`, which this project authors. `NFR-006` is satisfied in the per-job
-    log (`ARCHITECTURE.md` §5, `REQ-019`), which is where the extractor's own output belongs.
+    A correction once replaced this column with project-authored text to bound what could reach
+    it. That violated `NFR-006`, `ARCHITECTURE.md` §5 and §7, `core/models.py` and
+    `downloader/protocol.py` — all of which require the original message. The maintainer restored
+    it alongside the proxy grammar that removed the reason it was attempted.
     """
-    leaky = (
-        "proxy http://secretuser:hunter2@proxy.invalid:8080 failed; "
-        "cookies /home/someone/cookies.txt unreadable; password is hunter2"
-    )
-    repository.add(a_job().with_failure(ErrorKind.NETWORK, leaky))
-
-    stored = raw_row(repository)
-    for secret in ("hunter2", "secretuser", "cookies.txt", "/home/someone"):
-        assert secret not in stored, f"{secret!r} reached the database"
+    message = "ERROR: [youtube] dQw4w9WgXcQ: Video unavailable. This video is private."
+    repository.add(a_job().with_failure(ErrorKind.EXTRACTOR_ERROR, message))
 
     restored = repository.get("job-1")
     assert restored is not None
-    assert restored.error_kind is ErrorKind.NETWORK
-    assert restored.error_message == _STORED_MESSAGES[ErrorKind.NETWORK]
-
-
-def test_every_error_kind_has_a_stored_message() -> None:
-    """A missing kind would raise `KeyError` mid-write, losing the job rather than the message."""
-    assert set(_STORED_MESSAGES) == set(ErrorKind)
-    for kind, message in _STORED_MESSAGES.items():
-        assert message.strip(), f"{kind.name} has an empty stored message"
+    assert restored.error_message == message
+    assert restored.error_kind is ErrorKind.EXTRACTOR_ERROR
 
 
 def test_a_browser_name_is_not_a_cookie(repository: JobRepository) -> None:

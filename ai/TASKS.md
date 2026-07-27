@@ -82,50 +82,36 @@ the thing this task exists to avoid.
 
 ### T-014 — Persistence: schema, migrations, and the job repository
 
-**Status:** **Changes requested** (second round) 2026-07-26. `T014-R2`, `R3`, `R5` resolved.
-`T014-R1` corrected by **replacing the approach**; `T014-R4` corrected under maintainer
-authorization. **Awaiting focused re-review.**
+**Status:** **Changes requested** (third round) 2026-07-26. `T014-R2`, `R3`, `R5` resolved;
+`R6` retracted by the reviewer. `T014-R1` and `T014-R7` resolved by **maintainer decision moving
+the boundary upstream**; `T014-R4` closed by removing the mechanism. **Awaiting re-review.**
 
-**`T014-R1` — the second correction was wrong in a new way, and the reviewer was right twice.**
-Redacting every string with a recogniser closed the two reported examples and then failed on
-both sides: credentials still escaped through single-label and Unicode hosts, username-only
-userinfo, an IPv6 zone identifier and a string nested in `post_processors`; and it *corrupted
-legitimate values*, turning the output directory `/downloads/cookie-videos` into `[redacted]` —
-a relative path, so a retry would have written outside the directory the user chose. That
-regression was independently Critical, and it broke the settings freeze.
+**`T014-R1` took three rounds and the root cause was never in this layer.**
+`DownloadRequest.proxy` accepted any non-empty string, so persistence had no grammar to parse and
+every fix was a scan of unbounded text. Three credential forms escaped in turn — scheme-less,
+then Unicode and single-label hosts, then scheme-relative — and one attempt to scrub them
+corrupted legitimate output paths, which was independently Critical.
 
-**The lesson is the same one this project keeps paying for**: a heuristic over arbitrary text
-neither excludes every secret nor leaves the text intact. Fixing the regex would have been the
-third attempt at a losing approach.
+**The model now rejects a proxy carrying userinfo**, on maintainer decision. A job cannot hold a
+credential, so there is nothing for persistence to strip and no text to scan. `REQ-026` covers
+authenticated *content* via cookies; it does not require an authenticated proxy, and if one is
+ever needed it belongs in the settings layer rather than inside a persisted, IPC-crossing job.
 
-Replaced with three treatments matched to what each field *is*:
+**`T014-R7` — I was wrong to relocate `NFR-006`.** Replacing the diagnostic with project-authored
+text contradicted `ARCHITECTURE.md` §5 and §7, `core/models.py`, `downloader/protocol.py` and
+`NFR-006` itself. It is restored verbatim, which the proxy grammar makes safe: with credentials
+unrepresentable, the residual secret in a diagnostic is the job URL, already stored verbatim by
+the 2026-07-26 decision.
 
-- **Functional** — `url`, `output_directory`, `output_template`, `format_selector`. Stored
-  verbatim and never rewritten. Altering one changes where the file lands or what is fetched.
-- **Structured** — `proxy`. Its credentials are removed by *parsing it as the URL it is*,
-  including a re-parse behind a placeholder scheme for the scheme-less forms the model accepts.
-  Every form the recogniser missed is handled without knowing it exists.
-- **Prose** — `error_message`. **No external string reaches the database at all.** The column is
-  written only from `_STORED_MESSAGES`, which this project authors, so the bound is structural
-  rather than a filter. `NFR-006` is not lost but relocated: `ARCHITECTURE.md` §5 already puts
-  the extractor's own words in the per-job log and `REQ-019` is the view that shows them.
+**`T014-R4` — the mechanism is gone rather than defended.** An allowance can conceal a
+corrupt-but-readable migration, and an empty one protects nothing. Comparison is strict per
+column again; `T-048` owns verifying the first real data migration, designed against a real one.
 
-`core/redaction.py` and its tests are **deleted**. Handing `T-038` a recogniser the reviewer had
-just disproved would have propagated the flaw.
-
-**`T014-R4` — corrected under maintainer authorization**, its ordinary budget being exhausted.
-Byte equality rejected legitimate data migrations, so comparison is now per column with
-`TRANSFORMED_BY_MIGRATION` naming any column a migration is *declared* to rewrite, and why —
-empty today. The v1 fixture now seeds `history` as well as `jobs`, so a migration touching it is
-covered.
-
-**`T014-R6` does not reproduce.** The reviewer reports `test_queue_order_survives_a_restart`
-carrying its docstring twice; it appears once at the reviewed head `e15dee4` and once now.
-Reported rather than silently "fixed".
-
-**Mutation evidence: 5 planted, 5 fail** — storing the caller's message verbatim (1); skipping
-proxy credential removal (7); not re-parsing scheme-less proxies (4); reintroducing the
-functional-string regression (5); dropping history rows from the fixture (1). Restored identical.
+**Mutation evidence: 6 planted, 6 fail** — dropping proxy validation entirely (7 tests); allowing
+userinfo (4); allowing a scheme-less proxy (1); paraphrasing `error_message` (2); rewriting a
+functional field (4); dropping the scheme requirement (1). That last case was **added after a
+mutation survived**: the scheme check had no test isolating it, and `T-034` lost a guard once by
+deleting one that looked redundant on exactly that evidence.
 
 **Owner:** Implementer
 **Priority:** High
@@ -810,6 +796,40 @@ independently guarded by the layering test and by review.
 - Any production change to `downloader/environment.py`. The gate is a test; the module's
   behavior has never been in question
 - Strengthening the layering test, which uses `ast.walk` and is unaffected
+
+---
+
+### T-048 — Verify the first real data migration when one is written
+
+**Status:** Proposed — **not schedulable yet.** No migration transforms data
+**Owner:** Implementer, when the first data migration is authored
+**Priority:** Medium at that point; nothing to do before
+**Phase:** unassigned
+**Depends on:** the first migration that changes stored values
+**Relevant context:** `T014-R4`; `ai/TESTING.md` §7 (Migrations)
+**Affected surfaces:** `tests/unit/test_persistence.py`
+
+#### Scope
+
+`T-014`'s migration test asserts strict per-column equality, which is correct while every
+migration is pure DDL and any change is loss. It will be **wrong** the day a migration
+legitimately transforms values.
+
+A `TRANSFORMED_BY_MIGRATION` allowance was written and then removed: `T014-R4` established that
+an allowance can conceal a corrupt-but-readable migration, and an empty allowance protects
+nothing while adding a mechanism nobody has exercised. Designing it against a real migration
+beats designing it against an imagined one.
+
+#### Acceptance criteria
+
+- The first data migration ships with a test asserting the transformed values are **correct**,
+  not merely different — a readable row holding wrong data is the failure mode `T014-R4` named
+- Untransformed columns stay under strict equality
+- The v1 fixture remains untouched; a new version freezes its own
+
+#### Out of scope
+
+- Any change to `T-014`'s current strict comparison, which is right until then
 
 ---
 
