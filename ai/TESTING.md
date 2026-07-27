@@ -228,6 +228,36 @@ type gate anywhere: a deliberate `int = "not an int"` passed every check.
 change; the `windows desktop` job runs it on every push. It caught seven real errors the first
 time it was used, including `QAction.menu()` being typed as `QObject` rather than `QMenu`.
 
+### What the environment ownership gate actually promises (`T044-R1`)
+
+`tests/unit/test_environment.py` pins `downloader/environment.py`'s reviewed public API, so a new
+export that answers "what version?" or "does it work?" fails rather than quietly eroding the
+locate/import split (`ARCHITECTURE.md` §6).
+
+**How it decides what is exported changed after five review rounds, and the promise is now
+deliberately narrow.** Every version that tried to recognise an export by parsing the source was
+defeated by a shape its author had not enumerated — a conditional definition, tuple-
+destructuring, a `match` capture, a walrus in a default argument. Each fix enumerated one layer
+further out and was defeated by the next. The gate now reads `vars(module)` and subtracts only
+what the parse shows was imported; the interpreter's namespace cannot be evaded by syntax.
+
+**It guarantees exactly this:** under the interpreter, platform and configuration the suite runs
+in, a public attribute not bound by an `import` statement is reported.
+
+**It does not cover**, and three tests pin each rather than leaving it to memory:
+
+- anything behind a guard false at run time — OS, architecture, dependency presence, feature
+  probe, environment state;
+- a name imported and then rebound, the ordinary `try: from x import Y / except ImportError:`
+  shape of an optional dependency;
+- dynamic rebinding of an imported name.
+
+**A previous version of this section claimed the `[ubuntu-latest, windows-latest]` matrix
+compensated for the first gap. It does not**, and the claim is recorded here because it was
+wrong in a way worth not repeating: the matrix covers only guards true on Windows and false on
+Linux. Every other guard is false on both runners. `T-047` carries whether the gaps are worth
+closing; the gate remains useful for what it does catch, which is accidental erosion.
+
 ### The `windows desktop` job (`T-026`, `OPS-004`)
 
 Every job above pins `QT_QPA_PLATFORM=offscreen`, which is correct for a headless suite and is

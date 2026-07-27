@@ -15,8 +15,11 @@ not necessarily see as an `import yt_dlp`.
 
 import ast
 import importlib.metadata
+import importlib.util
 import sys
+from collections.abc import Iterator
 from pathlib import Path
+from types import ModuleType
 
 import pytest
 
@@ -122,28 +125,81 @@ REVIEWED_PUBLIC_API = frozenset(
 )
 
 
-def defined_public_names(module: object) -> set[str]:
-    """Public names the module *defines*, found by parsing its top level.
+#: Nodes that open a new scope. An `import` inside one binds locally and never becomes a module
+#: attribute, so the walk yields the node and does not descend into it.
+_NESTED_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
 
-    Parsed rather than read from `vars()` (`T035-R3`, second round). The earlier version
-    filtered runtime attributes by `value.__module__` to exclude imports — but a constant has
-    no `__module__`, so `YTDLP_VERSION = "unreviewed"` was filtered out along with the imports
-    and all 22 tests stayed green. A denylist of names missed a function; a runtime allowlist
-    missed a constant.
 
-    The AST sees definitions rather than values: `def`, `class`, and top-level assignment all
-    count, while `from platformdirs import user_data_dir` is an `ImportFrom` and does not.
+def _module_scope_nodes(node: ast.AST) -> Iterator[ast.AST]:
+    """Every node evaluated in the module's own scope, however deeply nested in control flow.
+
+    Descends through `if`/`try`/`for`/`while`/`match` so a conditional import is found, and stops
+    at a nested scope. **Used only to locate `import` statements** — see `defined_public_names`
+    for why this file no longer tries to detect *bindings* by parsing.
+
+    Stopping at the whole `def`/`class`/`lambda` is exact for that job: an `import` is a
+    statement, so it cannot hide in a decorator, default argument, annotation or base-class
+    expression. It was *not* exact for binding detection, which is what `T044-R1` kept proving.
     """
-    tree = ast.parse(Path(module.__file__).read_text(encoding="utf-8"))  # type: ignore[attr-defined]
+    for child in ast.iter_child_nodes(node):
+        yield child
+        if not isinstance(child, _NESTED_SCOPES):
+            yield from _module_scope_nodes(child)
+
+
+def _imported_names(tree: ast.Module) -> set[str]:
+    """Names the module binds by importing them, which are not part of its own public API.
+
+    `import importlib.metadata` binds `importlib`, not `importlib.metadata` — hence the split on
+    the first dot when there is no `as` clause.
+    """
     names: set[str] = set()
-    for node in tree.body:
-        if isinstance(node, ast.FunctionDef | ast.AsyncFunctionDef | ast.ClassDef):
-            names.add(node.name)
-        elif isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            names.add(node.target.id)
-        elif isinstance(node, ast.Assign):
-            names.update(t.id for t in node.targets if isinstance(t, ast.Name))
-    return {name for name in names if not name.startswith("_")}
+    for node in _module_scope_nodes(tree):
+        if isinstance(node, ast.Import):
+            names.update(a.asname or a.name.split(".")[0] for a in node.names)
+        elif isinstance(node, ast.ImportFrom):
+            names.update(a.asname or a.name for a in node.names)
+    return names
+
+
+def defined_public_names(module: ModuleType) -> set[str]:
+    """Public attributes of `module` that no `import` statement in its source accounts for.
+
+    **Read the promise literally; it is deliberately small** (`T044-R1`, sixth round, third
+    maintainer decision). Every earlier version of this docstring claimed more than it delivered,
+    and the reviewer disproved each claim in turn. What follows is only what is demonstrated by
+    the tests below.
+
+    **Guaranteed.** On the interpreter, platform and configuration the suite actually runs under,
+    a public attribute of the module that was not bound by an `import` statement appears here.
+    `vars()` is the interpreter's own namespace, so this holds for any binding syntax — a
+    conditional definition, destructuring, a `match` capture, a walrus in a default argument —
+    including syntax that does not exist yet. That is the property five rounds of parsing failed
+    to achieve, and it is achieved by not parsing for bindings at all.
+
+    **Not guaranteed, each pinned by a test rather than left to memory:**
+
+    - *Anything behind a guard that is false when the suite runs.* Not merely OS guards —
+      architecture, dependency presence, feature availability, environment state. A runtime gate
+      cannot see a binding that never happened, and no CI matrix changes that in general. An
+      earlier version of this docstring claimed the `windows-latest` job covered this; it covers
+      only guards that are true on Windows and false on Linux, which is one narrow case.
+      Pinned by `test_an_export_behind_a_guard_that_is_false_here_is_invisible`.
+    - *A name imported and then rebound.* `try: from x import Y / except ImportError: Y = ...`
+      leaves a genuine public constant, while the parse sees `Y` as an import and subtracts it.
+      Pinned by `test_a_fallback_after_a_failed_import_is_a_known_blind_spot`.
+    - *Dynamic rebinding of an imported name*, `globals()["Path"] = ...`.
+      Pinned by `test_a_dynamically_rebound_import_alias_is_a_known_blind_spot`.
+
+    **What it is for.** Catching the *accidental* erosion of the locate/import split — someone
+    adding a helpful `get_ytdlp_version()` to a module that `ARCHITECTURE.md` §6 says may not
+    answer that question. It is not a security boundary and does not defend against an author
+    working to hide an export. `T-047` carries the gaps above; closing them is not a condition of
+    this gate being useful for what it does catch.
+    """
+    tree = ast.parse(Path(module.__file__ or "").read_text(encoding="utf-8"))
+    public = set(vars(module)) - _imported_names(tree)
+    return {name for name in public if not name.startswith("_")}
 
 
 def test_the_module_exposes_no_version_and_no_usability_verdict() -> None:
@@ -171,6 +227,183 @@ def test_the_module_exposes_no_version_and_no_usability_verdict() -> None:
     candidate = ytdlp_candidates()[0]
     assert not hasattr(candidate, "version")
     assert not hasattr(candidate, "usable")
+
+
+def _module_from_source(tmp_path: Path, name: str, source: str) -> ModuleType:
+    """Load `source` as a real module so the runtime gate sees a genuine namespace."""
+    path = tmp_path / f"{name}.py"
+    path.write_text(source, encoding="utf-8")
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+#: Export shapes the gate must catch. Each binds `SMUGGLED` at module scope by a different route.
+#:
+#: The first two are `T044-R1`'s survivors: a definition under module-level control flow, and one
+#: made by destructuring. Both were runtime-present and left the ownership test green.
+SMUGGLING_ROUTES = [
+    pytest.param("if os.name:\n    SMUGGLED = 'unreviewed'\n", id="conditional"),
+    pytest.param("SMUGGLED, OTHER = ('unreviewed', True)\n", id="destructuring"),
+    pytest.param("SMUGGLED, *REST = ('unreviewed', 1, 2)\n", id="star-unpacking"),
+    pytest.param("try:\n    SMUGGLED = 'unreviewed'\nexcept OSError:\n    pass\n", id="try-block"),
+    pytest.param("for SMUGGLED in ('unreviewed',):\n    pass\n", id="for-target"),
+    pytest.param(
+        "import contextlib\nwith contextlib.suppress() as SMUGGLED:\n    pass\n", id="with-as"
+    ),
+    pytest.param("if (SMUGGLED := 'unreviewed'):\n    pass\n", id="walrus"),
+    pytest.param("type SMUGGLED = int\n", id="type-alias"),
+    pytest.param("SMUGGLED: str = 'unreviewed'\n", id="annotated"),
+    pytest.param("def SMUGGLED() -> None:\n    pass\n", id="function"),
+    pytest.param("class SMUGGLED:\n    pass\n", id="class"),
+    # No ordinary assignment statement binds this one; runtime namespace inspection still sees it.
+    pytest.param("globals()['SMUGGLED'] = 'unreviewed'\n", id="globals-assignment"),
+    pytest.param("match 'x':\n    case str() as SMUGGLED:\n        pass\n", id="match-as"),
+    pytest.param("match ['x']:\n    case [*SMUGGLED]:\n        pass\n", id="match-star"),
+    pytest.param("match {'k': 1}:\n    case {**SMUGGLED}:\n        pass\n", id="match-mapping"),
+]
+
+
+@pytest.mark.parametrize("source", SMUGGLING_ROUTES)
+def test_every_export_shape_reaches_the_reviewed_api_gate(tmp_path: Path, source: str) -> None:
+    """`T044-R1`. The gate must not depend on guessing how an export was written.
+
+    The previous version walked `tree.body` directly and read only simple-`Name` assignment
+    targets, so `if os.name: YTDLP_VERSION = ...` and `YTDLP_VERSION, YTDLP_USABLE = ...` both
+    passed it while being ordinary public exports at runtime. That is the third time this gate
+    was defeated by an unenumerated shape, which is why it no longer relies on enumeration alone.
+    """
+    module = _module_from_source(tmp_path, f"shape_{abs(hash(source))}", f"import os\n{source}")
+    assert "SMUGGLED" in defined_public_names(module)
+
+
+def test_an_export_behind_a_guard_that_is_false_here_is_invisible(tmp_path: Path) -> None:
+    """**A known limit, pinned rather than papered over** (`T044-R1`, sixth round).
+
+    A runtime gate cannot see a binding that never happened. An earlier version of this file
+    claimed the `windows-latest` CI job covered this; it does not. That job covers guards which
+    are true on Windows and false on Linux — one narrow case. A guard on architecture, on a
+    dependency being installed, on a feature probe, or on any environment state is false on both
+    runners, and this probe's `nonesuch` platform is false on both too.
+
+    So the honest statement is the one asserted here: behind a false guard, the gate sees
+    nothing. `T-047` carries whether that is worth closing.
+    """
+    module = _module_from_source(
+        tmp_path,
+        "guarded_false",
+        "import sys\nif sys.platform == 'nonesuch':\n    HIDDEN = 'unreviewed'\n",
+    )
+    assert not hasattr(module, "HIDDEN"), "the guard must not have run on this host"
+    assert "HIDDEN" not in defined_public_names(module), (
+        "invisible by construction. If this now fails the gate inspects source again, and the "
+        "promise in defined_public_names plus ai/TESTING.md both need revisiting."
+    )
+
+
+def test_a_conditional_export_is_caught_once_its_guard_is_true(tmp_path: Path) -> None:
+    """The other side: the gate does not care *why* a name was bound, only that it was.
+
+    This is what makes the guarantee syntax-independent. It is not a claim about any particular
+    CI runner — it is the general property that an executed binding is always seen.
+    """
+    module = _module_from_source(
+        tmp_path,
+        "guarded_true",
+        "import sys\nif sys.platform == sys.platform:\n    REVEALED = 'unreviewed'\n",
+    )
+    assert "REVEALED" in defined_public_names(module)
+
+
+def test_a_fallback_after_a_failed_import_is_a_known_blind_spot(tmp_path: Path) -> None:
+    """**Known limit, pinned** (`T044-R1`, sixth round). An optional dependency's usual shape.
+
+    `try: from x import Y / except ImportError: Y = default` leaves `Y` as a genuine public
+    constant of this module, but the parse sees an `ImportFrom` binding `Y` and subtracts it. The
+    import provenance is real; it just did not happen this time.
+
+    Closing it means either not subtracting a name the source also assigns — which is
+    re-enumerating assignment syntax, the thing that failed five times — or comparing each
+    attribute's value against what the import would have produced, which a dynamic module
+    defeats anyway. The maintainer chose to state the limit instead (`T-047`).
+    """
+    module = _module_from_source(
+        tmp_path,
+        "import_fallback",
+        "try:\n    from nonexistent_module import YTDLP_VERSION\n"
+        "except ImportError:\n    YTDLP_VERSION = 'unreviewed'\n",
+    )
+    assert module.YTDLP_VERSION == "unreviewed", "the fallback must have bound the name"
+    assert "YTDLP_VERSION" not in defined_public_names(module), (
+        "if this now fails the blind spot is closed — delete this test and the caveat with it"
+    )
+
+
+def test_a_dynamically_rebound_import_alias_is_a_known_blind_spot(tmp_path: Path) -> None:
+    """**Declared out of scope, pinned rather than fixed** (`T044-R1`, `AGENTS.md` §9).
+
+    Overwriting a name that entered the namespace as an import defeats the gate: runtime
+    inspection sees the value, but the source parse records the name as imported and subtracts
+    it. Closing this needs value-identity heuristics that a sufficiently dynamic module defeats
+    anyway.
+
+    The maintainer authorized declaring this out of the gate's supported binding model rather
+    than chasing it, because the gate defends against accidental erosion of the locate/import
+    split, not against an author working to hide an export. This pins the limit so it cannot
+    change unnoticed: if a future version *does* catch it, this test fails and should be deleted
+    along with the caveat in `defined_public_names`.
+    """
+    module = _module_from_source(
+        tmp_path,
+        "rebound_alias",
+        "from pathlib import Path\nglobals()['Path'] = 'unreviewed'\n",
+    )
+    assert module.Path == "unreviewed", "the overwrite must have taken effect"
+    assert "Path" not in defined_public_names(module), (
+        "if this now fails the blind spot is closed — delete this test and the caveat with it"
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "source"),
+    [
+        pytest.param("Path", "from pathlib import Path\n", id="from-import"),
+        pytest.param("importlib", "import importlib.metadata\n", id="dotted-import"),
+        pytest.param("alias", "import os as alias\n", id="aliased-import"),
+        pytest.param("_PRIVATE", "_PRIVATE = 1\n", id="private-name"),
+        pytest.param("LOCAL", "def f() -> None:\n    LOCAL = 1\n", id="function-local"),
+        pytest.param("ATTR", "class C:\n    ATTR = 1\n", id="class-attribute"),
+        # `T044-R1`, second round: these three were reported as module exports because the walk
+        # descended into function bodies, and because an `except` alias is deleted on exit.
+        pytest.param(
+            "WALRUS", "def f() -> None:\n    if (WALRUS := 1):\n        pass\n", id="local-walrus"
+        ),
+        pytest.param(
+            "EXC",
+            "def f() -> None:\n    try:\n        pass\n    except OSError as EXC:\n        pass\n",
+            id="local-except-alias",
+        ),
+        pytest.param(
+            "EXC",
+            "try:\n    pass\nexcept OSError as EXC:\n    pass\n",
+            id="module-except-alias-is-deleted-on-exit",
+        ),
+        pytest.param("LAMBDA_LOCAL", "f = lambda: (LAMBDA_LOCAL := 1)\n", id="lambda-local-walrus"),
+    ],
+)
+def test_the_gate_reports_neither_imports_nor_names_outside_module_scope(
+    tmp_path: Path, name: str, source: str
+) -> None:
+    """The other direction: over-reporting would make the gate noise nobody reads.
+
+    An import is not this module's API, a private name is not public, a binding inside a `def`,
+    `lambda` or `class` body never becomes a module attribute, and Python deletes an `except ...
+    as` target when the handler exits so it is never one either.
+    """
+    module_name = f"excluded_{name.strip('_')}_{abs(hash(source))}"
+    assert name not in defined_public_names(_module_from_source(tmp_path, module_name, source))
 
 
 def imported_roots(module: object) -> set[str]:
