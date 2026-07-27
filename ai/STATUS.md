@@ -87,7 +87,17 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- No implementation task is active. `T-014` is next on the critical path.
+- **`T-014` — implemented 2026-07-26, awaiting review.** Persistence is real: SQLite in WAL mode
+  under `platformdirs`, a forward-only migration runner that discovers migrations by globbing the
+  directory rather than from a list in code, and `JobRepository` with durable queue order and
+  startup recovery. Suite 830 → 864.
+- **This closes three more of `ai/TESTING.md` §7's ten mandatory areas** — crash recovery,
+  migrations, and the settings freeze — taking §7 from three of ten to six. The crash test kills
+  a real process with `SIGKILL` mid-write, because the cooperative paths prove nothing about the
+  guarantee `DAT-001` chose SQLite for.
+- **`ARCHITECTURE.md` §7 gained `ErrorKind.INTERRUPTED`** on maintainer approval. §5 had required
+  it since the document was written and §7's taxonomy never listed it; `T-010`'s gate refused the
+  enum member until the architecture agreed, which is what surfaced the contradiction.
 
 ## Next
 
@@ -95,13 +105,11 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 design. A spawned child imports yt-dlp, extracts, classifies failures against the real
 taxonomy, writes inside a validated path, and reports typed messages back.
 
-1. **`T-014` — persistence.** The critical path runs through it: `T-013` needs the job
-   repository, and nothing downstream of `T-013` can start until it does. Carries three of
-   `ai/TESTING.md` §7's mandatory areas (crash recovery, migrations, settings freeze).
+1. **`T-013` — download manager and result pump.** Ready once `T-014` merges. The largest
+   remaining item between here and a URL that actually downloads, and it also owns writing the
+   `history` table `T-014` created but deliberately left empty.
 2. **`T-015`, `T-018`, `T-038`** — Ready and independent of the critical path, so any of them
    can be done in parallel or while `T-014` is in review.
-3. **`T-013` — download manager and result pump.** Ready once `T-014` merges. The largest
-   remaining item between here and a URL that actually downloads.
 
 **What two review rounds cost, and what they bought.** Eight blocking findings across two
 passes, every one real. The pattern worth remembering: **five of them were things that
@@ -197,25 +205,29 @@ Development machine, verified 2026-07-25:
 
 ## Notes
 
-**Almost no application behavior exists yet.** Nothing downloads, probes, or persists a
-job. There is now a window (`T-007`, merged) — titled, icon-bearing, with File → Quit and
-Help → About — and it remembers its size and position. That is the whole of it. `ARCHITECTURE.md` describes the approved target, not
-reality — treat any claim of implemented *behavior* as false until this section says
-otherwise.
+**Nothing downloads end to end yet, and no two parts are wired together.** A window opens
+(`T-007`). A spawned worker can import yt-dlp, probe a URL and report typed messages back
+(`T-012`). A job can be stored, ordered and recovered (`T-014`). **Nothing connects them** —
+composition is `T-036`, and the first URL that actually downloads is `T-037`.
+`ARCHITECTURE.md` describes the approved target, not reality; treat any claim of implemented
+*behavior* as false until this section says otherwise.
 
-Precisely, recomputed at `697e024`: of the **31** modules under `src/`, **23 are
-docstring-only stubs**. The eight with code are `__init__.py` (the version string),
-`__main__.py` (`freeze_support()` and `main()`), `_freeze_probe.py` (`T-020`'s frozen-build
-diagnostics), `app.py` (argument handling and `QApplication` setup), `ui/main_window.py`
-(the shell window), and — new with `T-010` — `core/models.py`, `core/job_state.py` and
-`core/errors.py`.
+Precisely, recounted 2026-07-26 by parsing each module for anything beyond its docstring: of the
+**31** modules under `src/`, **16 are still docstring-only stubs** and **15 have code**. Those
+fifteen are `__init__.py`, `__main__.py`, `_freeze_probe.py`, `app.py`, `ui/main_window.py`,
+`core/{models,job_state,errors,paths}.py`,
+`downloader/{environment,protocol,worker,ytdlp_adapter}.py`, and — new with `T-014` —
+`persistence/{db,repositories}.py`.
 
-The three `core/` modules are **domain vocabulary, not behavior**. They define what a job,
-a request and a failure *are*, and the rules for moving between states. Nothing calls them yet:
-no job is created, persisted, or run. The statement above still holds — nothing downloads.
+*(The previous count here said 23 stubs and eight coded, recomputed at `697e024`. It had gone
+stale across `T-012`, `T-034`, `T-035` and `T-014`; this one was recounted rather than
+adjusted.)*
 
-What *has* been built is the scaffolding that guards that behavior when it arrives, and those
-parts of `TESTING.md` are real: CI on both platforms (`T-006`), the shipped-asset invariants
-(`T-022`), the layering enforcement test (`T-005`), and the Windows desktop and accessibility
-gates (`T-026`). Of `TESTING.md` §7's ten mandatory areas, **two** are now covered — Layering,
-and the State machine (`T-010`, asserted over every ordered pair of statuses).
+The `core/` modules remain **domain vocabulary plus pure functions** — what a job, a request and
+a failure *are*, the rules for moving between states, and filename safety. `persistence/` is the
+first module that keeps something across a restart.
+
+Of `TESTING.md` §7's ten mandatory areas, **six** are now covered: Layering (`T-005`), the State
+machine (`T-010`), Path safety (`T-034`), and — new with `T-014` — Crash recovery, Migrations,
+and the Settings freeze. The four outstanding are Cancellation, Worker crash, Log redaction
+(`T-038`) and DRM.

@@ -82,7 +82,30 @@ the thing this task exists to avoid.
 
 ### T-014 — Persistence: schema, migrations, and the job repository
 
-**Status:** **Ready** — `T-010` approved and complete, 2026-07-26
+**Status:** **Implemented 2026-07-26, awaiting review.**
+
+**Three conflicts in the linked context were surfaced rather than papered over**, and two needed
+a maintainer decision:
+
+1. **Crash-recovery scope** — `ARCHITECTURE.md` §5 names three in-flight statuses, the criterion
+   named one. Resolved by authority order (`AGENTS.md` §5); the criterion above is widened.
+2. **`ErrorKind.INTERRUPTED` did not exist.** §5 had required an "`INTERRUPTED` presentation of
+   `FAILED`" since the document was written, while §7's taxonomy never listed the kind — so
+   `core/errors.py` implemented §7 faithfully and §5's recovery had no kind to use. `T-010`'s
+   taxonomy gate refused the member until the architecture said so, which is the gate working.
+   **Maintainer approved amending §7**; the kind is added, retryable and never auto-retryable.
+3. **The secrets criterion contradicted the round-trip criterion.** Resolved by maintainer
+   decision; see the narrowed criterion above.
+
+**Mutation evidence.** Eight mutations, each failing: recovering only `RUNNING` (1); skipping
+credential stripping (2); writing `FAILED` directly instead of through the state machine (4);
+dropping the recovery message (1); turning WAL off (1); removing a schema column without a
+migration (6 failed, 16 errors); removing the unique queue-position index (2); replacing the
+directory glob with a hardcoded migration list (2). Source restored byte-identical after each.
+
+**Not built here, and deliberately:** the `history` table exists from version 1 because the
+schema is in scope and adding it later would cost a migration for nothing — but **nothing writes
+it yet.** Recording a completed job belongs to `T-013`; pruning, search and export are Phase 3.
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 1
@@ -116,8 +139,14 @@ the original request rather than current defaults (`ARCHITECTURE.md` §5, §8).
 
 - A hard kill (`SIGKILL`) mid-write leaves the database readable with no partial row, verified
   by killing a real process rather than simulating it
-- Jobs found in `RUNNING` at startup are recovered to a retryable state, and the recovery is
-  recorded so it is visible rather than silent
+- Jobs found **in flight** at startup are recovered to a retryable state, and the recovery is
+  recorded so it is visible rather than silent.
+
+  **Widened 2026-07-26 to match the architecture.** This said `RUNNING` alone, as does
+  `ai/TESTING.md` §7, while `ARCHITECTURE.md` §5 names `PROBING`, `RUNNING` *and*
+  `POST_PROCESSING`. The architecture outranks both (`AGENTS.md` §5), and recovering only
+  `RUNNING` would strand a job in `PROBING` with no path out. The three statuses are transcribed
+  into a test, so narrowing the set fails rather than passing
 - **Every migration runs forward from every prior schema version with data intact**, asserted
   by building a database at each historical version and migrating it — not just from the
   latest (`ai/TESTING.md` §7). With one version today, the harness must still exist, because
@@ -126,9 +155,20 @@ the original request rather than current defaults (`ARCHITECTURE.md` §5, §8).
 - A persisted `DownloadRequest` round-trips exactly; a retry uses the stored request, proven
   by changing the defaults between store and retry (`ARCHITECTURE.md` §8)
 - Queue order survives a restart (`REQ-012`)
-- No cookie path, cookie content, proxy credential, or token-like query parameter is ever
-  written to the database (`REQ-026`, `NFR-007`) — asserted against a request containing all
-  four
+- No cookie path, cookie content, or proxy credential is ever written to the database
+  (`REQ-026`, `NFR-007`) — asserted by scanning the stored row, not the model, since a
+  redaction applied in the model but not on the way to disk would pass an object comparison and
+  still leave the secret on disk.
+
+  **Narrowed 2026-07-26 by maintainer decision.** This criterion originally also forbade a
+  "token-like query parameter", which cannot hold alongside the round-trip criterion above: the
+  job URL *is* the request, `REQ-012`'s queue and `REQ-020`'s history are unusable without it,
+  and a retry cannot reconstruct it. Stripping token-like parameters would also need a
+  heuristic for "token-like" — an enumerate-and-claim-complete gate of exactly the kind that
+  cost `T-044` six review rounds. The URL is stored verbatim; what is excluded is everything the
+  user did not type into it. `cookies_from_browser` carries a browser name such as `"firefox"`,
+  not a cookie, and is kept because dropping it would silently stop using cookies the user asked
+  for. Log redaction is a different sink and remains `T-038`'s
 - The database lives under `platformdirs`, never beside the installed application (`NFR-004`)
 
 #### Out of scope
