@@ -16,6 +16,7 @@ from pathlib import Path
 
 import pytest
 
+from tracks_and_trails.core.models import DownloadRequest
 from tracks_and_trails.downloader import process_tree
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -202,4 +203,68 @@ def test_containment_leads_a_new_group() -> None:
     assert result.stdout.strip() == "True True", (
         f"containment reported {result.stdout.strip()!r}; a worker that says it was contained "
         "and is not leads the parent to signal the wrong group"
+    )
+
+
+def test_a_worker_that_cannot_be_contained_refuses_to_run(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T019-R3`: the session never reaches yt-dlp when containment fails.
+
+    The first version logged a warning and downloaded anyway, reasoning that a worker which
+    cannot be contained should still do the user's work. That reasoning does not survive contact
+    with the criterion: `T-019` says no descendant survives *any* path, with no exception clause,
+    and `REQ-015` promises cancel terminates the underlying work. Downloading anyway means an
+    `ffmpeg` nothing in the application can stop, still writing after the user pressed cancel.
+
+    Driven in-process rather than through a spawned child, deliberately: the thing under test is
+    a decision made *before* the process boundary matters, and forcing a real containment failure
+    on a healthy machine would mean breaking `setsid` for everyone. `ai/TESTING.md` §6 forbids
+    mocking the boundary, and this does not — `run_session` is the far side of the decision, and
+    the point is that it is never reached.
+    """
+    from tracks_and_trails.core.errors import ErrorKind
+    from tracks_and_trails.downloader import worker
+    from tracks_and_trails.downloader.protocol import Failed, SessionKind, WorkerFinished
+
+    monkeypatch.setattr(process_tree, "contain_this_process", lambda: False)
+    monkeypatch.setattr(process_tree, "containment_error", "setsid() failed: forced")
+    ran: list[str] = []
+
+    def should_never_run(*args: object, **kwargs: object) -> int:
+        ran.append("ran")
+        return 0
+
+    monkeypatch.setattr(worker, "run_session", should_never_run)
+
+    sent: list[object] = []
+
+    class Sink:
+        def put(self, item: object, /) -> None:
+            sent.append(item)
+
+    request = DownloadRequest(
+        url="https://example.invalid/clip",
+        output_directory=str(tmp_path),
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+    )
+
+    with pytest.raises(SystemExit) as exit_info:
+        worker.spawn_session(SessionKind.DOWNLOAD, "job-1", request, Sink())
+
+    assert not ran, (
+        "the session ran despite containment failing. Whatever it spawns cannot be stopped, "
+        "which is the defect T-019 exists to remove."
+    )
+    assert exit_info.value.code == worker.UNCONTAINED_EXIT_CODE
+    assert [type(item) for item in sent] == [Failed, WorkerFinished], (
+        f"the refusal must be a legal session — one outcome, then the sentinel. Sent: {sent}"
+    )
+    failure = sent[0]
+    assert isinstance(failure, Failed)
+    assert failure.kind is ErrorKind.WORKER_CRASH
+    assert "refused before it started" in failure.message
+    assert "setsid() failed: forced" in failure.message, (
+        "the reason must reach the user; a refusal nobody can diagnose is its own defect"
     )

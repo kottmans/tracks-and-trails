@@ -319,8 +319,27 @@ classification. Classification is a hint, not a replacement.
 - **Settings propagation.** Settings are read at job-creation time into the `DownloadRequest`
   and frozen there. A running job never observes a mid-flight settings change.
 - **Logging.** Python `logging`; app log to `user_cache_dir`, per-job logs separate. Cookie
-  file paths, cookie contents, proxy credentials, and URL query parameters that look like
-  tokens are redacted at the handler level, not at each call site (`REQ-026`, `NFR-007`).
+  file paths, cookie contents, proxy credentials, and URL query parameters are redacted at the
+  handler level, not at each call site (`REQ-026`, `NFR-007`).
+
+  **Every** query parameter goes, not the ones that "look like tokens": deciding which names
+  look like secrets is the recogniser problem that cost `T-018` four review rounds, and nothing
+  downstream reads a query parameter out of a log.
+
+  **One shape is deliberately out of scope**, authorized by the maintainer on 2026-07-27 after
+  `T038-R1`: a bare `NAME=value` with no header, path or URL around it. It is indistinguishable
+  from `height=1080`, and a rule wide enough to catch it redacts most of every line — which is
+  the `T014-R6` failure in the opposite direction, a log that cannot describe what happened.
+  This costs less than it appears: cookie *contents* are not a value this application ever
+  holds, because `DownloadRequest` carries a browser name and yt-dlp reads the jar itself. When
+  the application does hold a sensitive literal, `core/logging.remember_a_secret()` redacts that
+  exact string, which needs no pattern at all.
+
+  **The `REQ-026` boundary is narrower than this one, and both stand.** `REQ-026` and `DAT-003`
+  preserve a cookie path that yt-dlp names inside a *stored diagnostic*, because `NFR-006`
+  requires that message verbatim and the database is local and user-owned. A log is written by
+  this application rather than quoted by it, so the supplied-value rule binds here in full and
+  the path goes. The two sinks differ on purpose; neither weakens the other.
 - **Filename safety.** All output paths pass through `core/paths.py`, which enforces the
   intersection of Linux and Windows rules — reserved device names (`CON`, `NUL`, `LPT1`…),
   characters illegal on NTFS, trailing dots/spaces, and path-length limits. A title-derived

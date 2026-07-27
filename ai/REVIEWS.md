@@ -3489,3 +3489,316 @@ indistinguishable from `height=1080` and cookie *contents* are outside what `REQ
 A download starts from `READY` as well as `QUEUED`, using edges the machine already has; the
 download re-extracts rather than re-probing, because `YoutubeDL.download()` resolves the URL
 itself and cannot be handed a previous extraction. `T-016` owns the code.
+
+## 2026-07-27 — T-019, T-038 and T-051 independent review
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** `T-019`, `T-038`, `T-051`
+**Review base:** `e3c9596f127fe6b288dbb790052c02ca1d81454d`
+**Review head:** `e08c265051552624a0447d18ef803c3c8f30879a`
+**Review unit:** `git diff e3c9596..e08c265` (five commits, including the Windows correction
+and its evidence record)
+**Repository state at inspection:** clean `main`; `HEAD`, `origin/main` and `origin/HEAD` all
+resolve to the review head
+**Platforms verified:** Linux locally; Windows from GitHub Actions run `30303348265`
+**T-019 verdict:** **Changes requested**
+**T-038 verdict:** **Changes requested**
+**T-051 verdict:** **Approved**
+
+### Finding summary
+
+| ID | Severity | Blocks approval | Status |
+|---|---|---:|---|
+| `T019-R2` | **High** | **No** | **Resolved within the review range.** |
+| `T019-R3` | **Medium** | **Yes** | Open — a containment failure deliberately runs work whose descendants cannot be stopped. |
+| `T019-R4` | **Medium** | **Yes** | Open — three explicit acceptance claims are not established, and failed mutation runs leak their proof processes. |
+| `T019-R5` | **Medium** | **Yes** | Open — the restored bare default test command reproducibly wedges. |
+| `T038-R1` | **Critical** | **Yes** | Open — credential/cookie shapes named by the task still reach emitted logs. |
+| `T038-R2` | **High** | **Yes** | Open — per-job logging and listener shutdown are helper-only, with no production caller. |
+
+### `T019-R2` — the Windows handle defect is corrected
+
+**Severity:** High
+**Blocks approval:** No
+**Disposition:** **Resolved.**
+
+At `989ef46`, `CreateJobObjectW` had no `ctypes` return declaration, so Python's default
+`c_int` return truncated a 64-bit `HANDLE`. GitHub Actions run `30302798113` is tied to that
+exact head and failed the Windows job, including the four descendant-lifetime tests. Commit
+`8644c95` declares the return and argument types for all five Win32 calls used by the module.
+
+Run `30303348265`, at `8644c953e0108af894e97ea43597372637cd98de`, is green on
+`windows-latest`: `test_containment_succeeds_on_this_platform` and all four descendant paths
+pass; the job reports **1163 passed, 20 skipped**. The review head only adds the evidence record
+after that code. This is the required runtime proof, not an inference from the Linux branch or
+from `mypy --platform win32`.
+
+### `T019-R3` — containment failure recreates the defect this task owns
+
+**Severity:** Medium
+**Blocks approval:** Yes
+
+`contain_this_process()` returns `False` when `setsid()`, Job creation, Job configuration or
+Job assignment fails. `prepare_this_worker()` logs that its descendants will outlive it and
+then `spawn_session()` proceeds directly into `run_session()` (`worker.py:596-612, 640-650`).
+That is an accurate warning about an acceptance failure, not a recovery:
+
+- on POSIX, the parent's group guard refuses the shared GUI group and falls back to killing
+  only the worker; the watchdog also refuses to kill a group it does not lead;
+- on Windows, a failed Job object leaves no kernel-owned set to reap when the worker dies.
+
+The trigger is narrow, so this is Medium rather than High, but the consequence is exactly
+`T-019`'s live defect: cancel can return while an `ffmpeg` descendant keeps writing. The task's
+unqualified “no surviving descendant” criterion is therefore not met.
+
+**Required correction:** fail the session before yt-dlp can spawn anything when containment
+cannot be established, or provide and prove another containment mechanism. Logging that the
+guarantee is absent does not satisfy it. Add a discriminating test in which containment fails
+and the session is shown not to enter yt-dlp or spawn a descendant.
+
+### `T019-R4` — the acceptance evidence does not prove what its record says
+
+**Severity:** Medium
+**Blocks approval:** Yes
+
+Three explicit criteria in `T-019` remain unproved:
+
+1. `test_the_detector_sees_a_grandchild_and_not_just_a_worker` creates `child` and
+   `grandchild` as two direct `Popen` children of pytest. Its only parentage assertion is
+   `assert child.pid == psutil.Process(grandchild.pid).ppid() or True`
+   (`test_manager.py:617-655`), which is unconditionally true. The test therefore proves that
+   the detector sees two siblings, not that it sees the required second-level process.
+2. The real cancellation test asserts that a `.part` file exists, but never asserts that the
+   completed output is absent (`test_manager.py:817-819`). A simultaneous completed rename
+   would pass, contrary to the “no completed-file rename” criterion.
+3. Cancellation durations are calculated only for pass/fail assertions. They are not emitted
+   as a test property, report, or other retained evidence, so the criterion that timings be
+   recorded and trendable is not met.
+
+The mutation evidence also needs failure-safe cleanup. Before final validation, **111** exact
+`GRANDCHILD_PROGRAM` processes and three childless worker/resource-tracker pairs from earlier
+mutation attempts were still alive, some for more than two hours. The ordinary current-head
+manager run created no new leak, but a mutation is supposed to make an assertion fail; tests
+that clean up only after their assertions necessarily leak the deliberately stubborn process
+when the evidence works. The reviewer removed those exact test helpers before the final run.
+
+**Required correction:** build a real parent→grandchild relationship in the detector
+self-test and assert it without a vacuous clause; assert both partial presence and completed
+output absence; retain elapsed values in test evidence; and put tracked-process cleanup in
+`finally` paths so a killed mutation cannot contaminate later runs.
+
+### `T019-R5` — bare `pytest` is still an intermittent hard gate failure
+
+**Severity:** Medium
+**Blocks approval:** Yes
+
+`T-019` says it restores the default test run after loose descendants made it wedge
+intermittently. On a clean process table, the canonical bare command did not complete:
+
+- two full `timeout 180 .venv/bin/pytest` runs stopped with exit 124 after 46 manager tests;
+- the bounded minimal order
+  `pytest test_crash_kill.py test_freeze_probe.py test_manager.py` also stopped with exit 124
+  after the same 46 manager tests;
+- at the stall, no worker remained, but pytest's main thread waited on a futex while one Qt
+  thread and the multiprocessing resource tracker remained alive.
+
+The same 62-test ordered subset passed **62/62 in 35.78 s** with `-vv`, and the final verbose
+full run passed **1174 passed, 11 skipped, 1 deselected in 39.84 s**. Verbosity changing the
+timing is evidence of the race, not a discharge of the canonical `pytest` gate. The next test
+in collection order is
+`test_the_failure_is_recorded_before_anything_is_cleaned_up`, which drives `_abort_start`
+against a live pump and calls `QThread.terminate()` through the unwind; focused investigation
+should start there, but the review does not claim that as the established root cause.
+
+**Required correction:** make the bare command complete reliably, add a bounded regression
+that distinguishes a stopped pump from a merely requested termination, and retain the
+timeout/reproduction evidence. This is a required-check failure, so it blocks despite the
+verbose pass and green CI's `pytest -v`.
+
+### `T038-R1` — the redactor's documented carve-outs violate its task contract
+
+**Severity:** Critical
+**Blocks approval:** Yes
+
+The task and `ARCHITECTURE.md` §8 require emitted output to redact cookie paths, cookie
+contents, proxy credentials and token-bearing URL queries at the handler. The implementation
+instead declares several inputs out of scope without a higher-authority amendment. Real-handler
+probes on the review head showed:
+
+- `SID=review-cookie-7c6c` survives unchanged;
+- a cookie path containing a space is only partly replaced, leaving the identifying prefix;
+- a relative `cookies.txt` survives;
+- a syntactically malformed URL containing `?token=review-url-token-7c6c` survives because
+  `_bare_url()` returns its input on `urlsplit()` failure;
+- a schemeless `user:review-proxy-pass-7c6c@proxy.invalid:8080` survives.
+
+These are false negatives at the sink the task says must fail closed. A credential or cookie
+written to a persistent log is a breached privacy boundary, hence Critical under `AGENTS.md`
+§9 even though the correction may be small.
+
+There is also an authority conflict to resolve deliberately: `REQ-026` preserves a cookie path
+that yt-dlp itself names in a diagnostic, while the lower-authority task and architecture say
+cookie paths are redacted. The implementer's bare-value carve-out does not resolve that
+conflict and does not authorize weakening the other shapes.
+
+**Required correction:** either implement the current task/architecture boundary for every
+emitted route, including parser failure and schemeless credentials, or obtain a Planner/
+maintainer amendment that states the narrower boundary and reconciles `REQ-026`,
+`ARCHITECTURE.md` §8 and `T-038`. Tests must write every accepted shape through a real
+installed handler and scan the resulting file for the marker.
+
+### `T038-R2` — no production path creates a per-job log
+
+**Severity:** High
+**Blocks approval:** Yes
+
+`open_job_log()` and `job_log_path()` exist, and unit tests manually attach their handler, but
+`rg open_job_log src` finds only the function definition. No manager/session code installs,
+filters, removes or closes a job handler. Likewise,
+`stop_listening_for_worker_logs()` has no production caller. The only production integration
+is the application-wide handler plus worker queue.
+
+Consequently the task's “add per-job log files” scope and `ARCHITECTURE.md` §8 are not
+implemented. A helper that could create the file is not a per-job log users or later UI code
+can rely on. Attaching it naively to the application logger would also route every worker into
+every active job once Phase 2 permits concurrency, so the correction must establish job
+isolation rather than merely call the helper.
+
+**Required correction:** make session ownership install a redacting handler filtered to that
+job, close/remove it on every normal, cancellation, crash and startup-unwind path, and stop the
+process-wide listener during application shutdown. Prove two distinct job IDs cannot cross
+write, and validate the actual production lifecycle rather than attaching a handler only in a
+unit test. `job_log_path()` also assumes IDs are UUIDs although the current model accepts
+arbitrary non-empty text; the production wiring must not turn an unchecked ID into a path
+component.
+
+### T-051 disposition
+
+`ARC-004` answers the linked Planner question without changing source: a previously probed job
+downloads from `READY`, the download re-extracts without presenting a second `PROBING` state,
+and `T-016` owns the manager/state implementation. The decision, architecture amendment and
+`T-016` task entry agree. **T-051 is Approved with no findings.**
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| `git diff --check e3c9596..e08c265` | Passed. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **83 files already formatted**. |
+| `mypy src` | Passed: no issues in **33 source files**. |
+| `mypy --platform win32 src` | Passed: no issues in **33 source files**. |
+| Manager integration module, verbose | Passed: **52 passed in 23.94 s**. |
+| Ordered crash/freeze/manager subset, verbose | Passed: **62 passed in 35.78 s**. |
+| Default command, bounded | **Failed to complete:** two full 180-second timeouts and one minimal 90-second timeout, all after the same 46 manager tests. |
+| Full suite, verbose | Passed: **1174 passed, 11 skipped, 1 deselected in 39.84 s**. |
+| Windows failure run | Confirmed: Actions `30302798113`, head `989ef46`, `windows-latest` failed. |
+| Windows correction run | Confirmed: Actions `30303348265`, head `8644c95`, `windows-latest` passed with **1163 passed, 20 skipped** and all five Job-object/descendant checks passing. |
+| Early worker-exit probe on POSIX | Ten spawned sessions exited before the first 50 ms manager tick; every manager became idle and every grandchild was dead. No `_learn_the_group` finding. |
+
+The first sandboxed full-suite attempt is not counted as product evidence: localhost sockets
+were denied and the subprocess launch inherited a read-only home cache, causing 12
+environmental failures. It was rerun with normal OS access. The implementer's mutation counts
+were not repeated wholesale; their process residue was observed, identified by the exact test
+program, and removed before the final runs.
+
+### Review verdict
+
+`T019-R2` is independently resolved and the Windows Job-object path now has real runtime
+evidence. `T-019` remains **Changes requested** on three blocking Medium findings. `T-038`
+remains **Changes requested** on one Critical and one High finding. `T-051` is **Approved**.
+
+This is the initial comprehensive review. One focused correction re-review remains available
+for the Medium findings; the Critical and High findings remain in the current review until
+corrected and independently verified.
+
+## 2026-07-27 — T-019 and T-038 corrections returned (`T019-R3/R4/R5`, `T038-R1/R2`)
+
+**Implementer:** Claude Code
+**Correction base:** `e08c265`
+**Authorization:** maintainer, 2026-07-27 — the `ARCHITECTURE.md` §8 carve-out for a bare
+`NAME=value`, and failing a session outright when containment cannot be established
+**Awaiting re-review.** No finding is marked Resolved by this record.
+
+### `T019-R5` — root cause found, and it was not where either of us looked
+
+Reproduced on the first attempt: bare `pytest`, exit 124 after 46 manager tests. The reviewer's
+pointer at `_abort_start` was correct, and the mechanism underneath it was `QThread.terminate()`.
+
+A `SIGABRT` stack dump at the stall shows the main thread parked on an internal CPython mutex
+(`_PyMutex_LockTimed` / `_PyParkingLot_Park`) inside `multiprocessing.Queue.put` →
+`Thread.start()`, and **two threads carrying no Python frame at all**. That is a thread killed at
+an arbitrary point, holding an interpreter lock that will never be released.
+
+Two hypotheses, one discarded: the `T-038` log listener's monitor thread was visibly alive in the
+same dump, and is innocent — the wedge reproduces with the log queue removed entirely. Disabling
+`terminate()` produced **22 consecutive clean runs** against a ~20 % baseline (p ≈ 0.007).
+
+`ResultPump` now reads with a `POLL_SECONDS` timeout and returns when `stop()` is set. **No
+`QThread.terminate()` remains in the project.** This changes `T-013`-approved code and the module
+docstring that argued against a timed `get()`; that argument is corrected rather than removed —
+the timeout is not a competing definition of "the stream ended", it is the only way a stopped
+thread can learn it was stopped.
+
+| Gate | Before | After |
+|---|---|---|
+| Minimal reproduction (`crash_kill`, `freeze_probe`, `manager`) | wedged ~1 run in 5 | **10 / 10 clean** |
+| Canonical bare `pytest` | exit 124, reproduced | **3 / 3 clean**, then 3 more after the later corrections |
+
+### `T019-R3` — the guarantee, not a warning about its absence
+
+`spawn_session()` refuses: a legal failed session (one outcome, then the sentinel) and
+`UNCONTAINED_EXIT_CODE`, before yt-dlp can spawn anything.
+`test_a_worker_that_cannot_be_contained_refuses_to_run` asserts `run_session` is never reached.
+
+### `T019-R4` — each of the three claims, plus the cleanup
+
+- The detector self-test spawns a **real** two-level tree and asserts `ppid()` first. The
+  mutation that hands it siblings instead now fails it; the old `or True` could not fail at all.
+- Cancellation asserts the completed output is **absent** as well as the partial present.
+- Elapsed times go to `record_property`, landing in the junit XML CI already uploads.
+- Stray cleanup is an autouse fixture keyed to a unique marker, so it runs when an assertion
+  **fails** — precisely when a working mutation leaks its stubborn process.
+
+**A second `or True` was found while fixing the first**, the one `T013-R5` filed as `T-052`.
+Removing it showed the production code was right and the assertion was wrong: it looked for the
+parametrised component name, which the message never claimed to carry. It now asserts that the
+original `OSError`'s own words survive the unwind. That part of `T-052` is discharged here.
+
+### `T038-R1` — all five reproduced, four closed, one documented
+
+| Probe | Before | After |
+|---|---|---|
+| `C:\Users\A Person\cookies.txt` | directory and name survived | `<redacted>` |
+| relative `cookies.txt` | survived | `<redacted>` |
+| `https://[bad/v?token=…` (parser failure) | returned **unchanged** | `<redacted>` |
+| `user:pass@proxy.invalid:8080` (schemeless) | survived | `<redacted>@proxy.invalid:8080` |
+| bare `SID=…` | survived | still survives — **authorized carve-out**, `ARCHITECTURE.md` §8 |
+
+Closing the second nearly broke the log in the other direction: matching any token containing
+"cookie" also matches the *word*. The rule is split into a path-with-directory and a filename
+that must carry an extension, and `test_ordinary_prose_survives_the_cookie_rules` holds that
+line — the mutation removing the extension requirement is killed by the **prose** test.
+
+`ARCHITECTURE.md` §8 now states the carve-out and reconciles it with `REQ-026`/`DAT-003`: a
+stored diagnostic keeps a cookie path yt-dlp named, because `NFR-006` requires that message
+verbatim; a log is written by this application rather than quoted by it, so the path goes.
+
+### `T038-R2` — wired, isolated, closed
+
+A session opens its own log and closes it on every exit path including the startup unwind;
+`shutdown()` stops the process-wide listener. The worker stamps each record with its job id and
+the per-job handler admits only that job's — an unstamped record is refused rather than shared.
+`job_log_path()` sanitises the id through `core/paths.py` rather than trusting that every `Job.id`
+is a UUID. `test_two_jobs_cannot_write_into_each_others_logs` and
+`test_a_job_id_never_chooses_its_own_path` cover both.
+
+### Evidence
+
+| Check | Result |
+|---|---|
+| `ruff check .` / `ruff format --check .` | Passed |
+| `mypy` and `mypy --platform win32` (both over `src` **and** `tests`) | Passed — 68 source files each |
+| **Canonical bare `pytest`** | **1186 passed, 11 skipped, 1 deselected** — three consecutive runs, 40 s each |
+| Mutation battery | **14 of 14 killed** |
+| Windows | Not re-run locally; CI will exercise it on push |

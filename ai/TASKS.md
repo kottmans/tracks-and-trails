@@ -901,6 +901,38 @@ the thing this task exists to avoid.
 - Logs are written under `platformdirs`, never beside the application (`NFR-004`)
 - A test scans a generated log for a known token and fails if it appears in any form
 
+#### `T038-R1`, `T038-R2` — corrected 2026-07-27, awaiting re-review
+
+**`T038-R1` (Critical) — five false negatives, all reproduced first.** Four were shapes the rules
+could not see: a path component containing a space, a cookie filename with no directory, a URL
+malformed enough to break `urlsplit` — which then returned it **unchanged**, so being harder to
+parse made a string safer — and a proxy credential written the ordinary way, with no scheme for
+the URL rule to anchor on. All four are closed, and `_bare_url()` now fails closed on a parser
+error.
+
+**Closing them nearly broke the log in the other direction.** The first fix matched any token
+containing "cookie", which turned "loading cookies from the browser profile" into
+"loading `<redacted>` from the browser profile" — the `T014-R6` failure wearing a different hat.
+The rule is split in two: a path *with* a directory, and a bare filename that must carry an
+extension. An extension is what separates a filename from a noun.
+`test_ordinary_prose_survives_the_cookie_rules` holds that boundary, and the mutation removing
+the extension requirement is killed by it rather than by a redaction test.
+
+**The fifth shape is the authorized carve-out.** A bare `NAME=value` with nothing around it stays
+out of scope, on the maintainer's decision of 2026-07-27, and `ARCHITECTURE.md` §8 now states it
+— together with the reconciliation the review asked for: `REQ-026` and `DAT-003` preserve a cookie
+path inside a *stored diagnostic* because `NFR-006` requires that message verbatim, while a log
+is written by this application rather than quoted by it. The two sinks differ on purpose.
+
+**`T038-R2` (High) — per-job logs are wired, isolated, and closed.** `open_job_log()` had no
+production caller at all. `DownloadManager` now opens one per session and closes it on every exit
+path including the startup unwind; `shutdown()` stops the process-wide listener. Isolation is
+real rather than incidental: the worker stamps each record with its job id and the per-job handler
+admits only that job's, so an unstamped record is refused rather than shared — a per-job log whose
+contents depend on which other jobs were open is worse than none. `job_log_path()` sanitises the
+id through `core/paths.py` instead of asserting that every id is a UUID, which is a fact about
+today's callers and not a property of the type.
+
 #### What landed
 
 **`core/logging.py`, and the redaction is a `Formatter`.** Every handler this module installs
@@ -1400,6 +1432,48 @@ evidence of its own. `test_a_descendant_is_asked_to_stop_before_it_is_killed` no
 them — a grandchild that handles `SIGTERM` writes a marker when it is *asked* to stop, which is
 the difference `REQ-015` actually cares about: `ffmpeg` asked can close its output, `ffmpeg`
 killed cannot.
+
+#### `T019-R3`, `T019-R4`, `T019-R5` — corrected 2026-07-27, awaiting re-review
+
+**`T019-R5` — the canonical gate, and the root cause was `QThread.terminate()`.** Reproduced on
+the first try: bare `pytest` exit 124 after 46 manager tests. A `SIGABRT` stack dump at the stall
+showed the main thread parked on an internal CPython mutex inside `Thread.start()`, and two
+threads carrying **no Python frame at all** — a thread killed mid-operation, holding a lock
+nothing would release. Two hypotheses were tested and one discarded: the `T-038` log listener was
+visibly alive in the dump and turned out to be innocent, since the wedge reproduces with the log
+queue removed. Disabling `terminate()` gave **22 consecutive clean runs** against a ~20 % baseline.
+
+`ResultPump` now polls with a `POLL_SECONDS` timeout and returns when asked; `stop()` replaces
+both `terminate()` call sites. **There is no `QThread.terminate()` left in the project.** The
+module docstring that argued *against* a timed `get()` is corrected rather than deleted: the
+timeout is not a second definition of "the stream ended" — the sentinel is still the only thing
+that means that — it is the only way a *stopped* thread can notice it was stopped.
+`test_a_stopped_pump_actually_stops_rather_than_being_killed` asserts the distinction the review
+asked for: not that a stop was requested, but that the thread reports itself finished *and*
+emitted `session_ended`, which only a thread that reached its `finally` can do. Verified 13×
+across the minimal reproduction and the full bare command.
+
+**`T019-R3` — an uncontained worker refuses to run.** Logging that the guarantee is missing is
+not the guarantee. `spawn_session()` now reports a legal failed session — one outcome, then the
+sentinel — and exits with `UNCONTAINED_EXIT_CODE` before anything can spawn a descendant. The
+message carries the reason, because a refusal nobody can diagnose is its own defect.
+
+**`T019-R4` — the evidence now proves what it claimed.** The detector self-test spawns a **real**
+two-level tree and asserts `ppid()` before anything else; its old assertion ended in `or True`
+and could not fail. Cancellation asserts the completed output is *absent* as well as the partial
+present. Elapsed cancel times go to `record_property`, so they land in the junit XML CI already
+uploads and can be seen trending. Stray-descendant cleanup moved into an autouse fixture keyed to
+a unique marker, so it runs when an assertion **fails** — which is exactly when a mutation leaks
+the deliberately stubborn process, and how 111 of them accumulated.
+
+**A second `or True` was found and removed while fixing the first** — the startup-diagnostic
+assertion `T013-R5` filed as `T-052`. Removing it showed the production behaviour was right and
+the *assertion* was wrong: it looked for the parametrised component name, which the message never
+claimed to carry. It now asserts what `T-052` actually asks for — that the original `OSError`'s
+own words survive the unwind rather than being replaced by whatever the cleanup hit. That part of
+`T-052` is therefore discharged here; the rest of its scope is untouched.
+
+**Mutation-checked: 14 of 14 killed** across both tasks' corrections.
 
 #### `T019-R2` — the first Windows run, and what it found
 

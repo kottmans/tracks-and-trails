@@ -56,6 +56,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 from platformdirs import user_cache_dir
 
+from tracks_and_trails.core.paths import sanitize_component
 from tracks_and_trails.downloader.environment import APP_SLUG
 
 __all__ = [
@@ -87,12 +88,35 @@ LOG_FORMAT: Final = "%(asctime)s %(levelname)-8s %(name)s %(message)s"
 #: finds is then parsed properly and rebuilt without its query, userinfo or fragment.
 _URL: Final = re.compile(r"\b[a-zA-Z][a-zA-Z0-9+.\-]*://[^\s\"'<>]+")
 
+#: `user:secret@host` with **no scheme in front of it** (`T038-R1`).
+#:
+#: `_URL` cannot see this one: it anchors on `://`, so a proxy written the way a proxy is usually
+#: written in a diagnostic — `user:pass@proxy.invalid:8080` — walked straight past the rule meant
+#: to catch exactly it. Only the userinfo is taken; the host is what makes the line worth having.
+_BARE_USERINFO: Final = re.compile(r"(?<![\w:/@.])[\w.\-+%]+:[^\s@/]+@(?=[\w.\-]+)")
+
 #: A cookie header and its value, to the end of the line.
 _COOKIE_HEADER: Final = re.compile(r"\b(set-cookie|cookie)\s*:\s*[^\n\r]*", re.IGNORECASE)
 
-#: A filesystem path whose final component names a cookie store.
+#: A cookie store named **with a directory in front of it** (`T038-R1`).
+#:
+#: Two false negatives closed here. Components could not contain whitespace, so
+#: `C:\\Users\\A Person\\cookies.txt` matched only its tail and left the directory — and the
+#: person's name — in the line.
 _COOKIE_PATH: Final = re.compile(
-    r"(?:[A-Za-z]:)?(?:[\\/][^\\/\s\"']+)*[\\/][^\\/\s\"']*cookies?[^\\/\s\"']*",
+    r"(?:[A-Za-z]:)?(?:[\\/](?:[^\\/\n\r\"']*[^\\/\s\"'])?)*"
+    r"[\\/][^\\/\s\"']*cookies?[^\\/\s\"']*",
+    re.IGNORECASE,
+)
+
+#: A cookie store named as a **bare filename**, with no directory — the other false negative.
+#:
+#: An extension is required, and that requirement is the whole rule. Without it this matches the
+#: *word*: "loading cookies from the browser profile" becomes "loading <redacted> from the
+#: browser profile", and a log that redacts its own prose is the `T014-R6` failure mode wearing
+#: a different hat. A relative `cookies.txt` is a path; the noun "cookies" is not.
+_COOKIE_FILENAME: Final = re.compile(
+    r"\b[^\\/\s\"']*cookies?[^\\/\s\"']*\.[A-Za-z0-9]{1,8}\b",
     re.IGNORECASE,
 )
 
@@ -131,7 +155,11 @@ def redact(text: str) -> str:
         text = text.replace(secret, REDACTED)
     text = _COOKIE_HEADER.sub(lambda match: f"{match.group(1)}: {REDACTED}", text)
     text = _COOKIE_PATH.sub(REDACTED, text)
-    return _URL.sub(lambda match: _bare_url(match.group(0)), text)
+    text = _COOKIE_FILENAME.sub(REDACTED, text)
+    text = _URL.sub(lambda match: _bare_url(match.group(0)), text)
+    # After the URL rule, not before: a credential inside a well-formed URL is already gone by
+    # now, and this is only for the ones written without a scheme to hang off.
+    return _BARE_USERINFO.sub(f"{REDACTED}@", text)
 
 
 def _bare_url(value: str) -> str:
@@ -146,8 +174,12 @@ def _bare_url(value: str) -> str:
         value = value[:-1]
     try:
         parts = urlsplit(value)
-    except ValueError:  # not a URL after all; nothing to take apart
-        return value + trailing
+    except ValueError:
+        # **Fail closed** (`T038-R1`). This used to return the input unchanged, which meant a URL
+        # malformed enough to break the parser — `https://[bad/v?token=…` — kept its query while
+        # every well-formed one lost it. A parser failure is the one moment we know least about
+        # the string, which is the worst possible moment to decide it is safe.
+        return REDACTED
     netloc = parts.netloc.rsplit("@", 1)[-1]
     return urlunsplit(parts._replace(netloc=netloc, query="", fragment="")) + trailing
 
@@ -174,11 +206,51 @@ def application_log_path(directory: Path | None = None) -> Path:
 def job_log_path(job_id: str, directory: Path | None = None) -> Path:
     """One file per job (`ARCHITECTURE.md` §8).
 
-    The job id is a UUID this application generated, so it is used as the filename directly. A
-    title would need `core/paths.py`'s sanitising and could still collide; an id cannot.
+    **The id is sanitised, not trusted** (`T038-R2`). Every id this application generates is a
+    UUID, and the first version said so and used it as a filename directly — but `Job.id` is
+    typed as any non-empty string, so "every id is a UUID" is a fact about today's callers rather
+    than a property of the type. An id containing a separator would otherwise choose its own
+    directory, and `core/paths.py` exists precisely so no untrusted text becomes a path
+    component.
     """
     root = directory or Path(user_cache_dir(APP_SLUG, appauthor=False))
-    return root / JOB_LOG_DIRECTORY / f"{job_id}.log"
+    return root / JOB_LOG_DIRECTORY / f"{sanitize_component(job_id)}.log"
+
+
+#: The record attribute carrying which job a line belongs to.
+#:
+#: Stamped in the worker and read by the per-job handler's filter. Without it every worker's
+#: output would land in every open job's file the moment Phase 2 allows two at once — which is
+#: not "a per-job log" in any sense a reader would recognise (`T038-R2`).
+JOB_FIELD: Final = "tracks_and_trails_job"
+
+
+class _OnlyThisJob(logging.Filter):
+    """Admits records stamped with one job id, and nothing else.
+
+    Records with no stamp are refused rather than shared. The application log already has every
+    line; a per-job file whose contents depend on which jobs happened to be open is worse than
+    no per-job file, because it looks authoritative.
+    """
+
+    def __init__(self, job_id: str) -> None:
+        super().__init__()
+        self._job_id = job_id
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return getattr(record, JOB_FIELD, None) == self._job_id
+
+
+class _StampTheJob(logging.Filter):
+    """Marks every record from this worker with the job it belongs to. Never filters anything."""
+
+    def __init__(self, job_id: str) -> None:
+        super().__init__()
+        self._job_id = job_id
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        setattr(record, JOB_FIELD, self._job_id)
+        return True
 
 
 def _file_handler(path: Path, level: int) -> logging.Handler:
@@ -219,12 +291,15 @@ def configure_logging(
 def open_job_log(
     job_id: str, *, directory: Path | None = None, level: int = logging.INFO
 ) -> logging.Handler:
-    """A handler writing one job's diagnostics to its own file, redacted like everything else.
+    """A handler writing **one job's** diagnostics to its own file, redacted like everything else.
 
-    Returned rather than installed, because a job log's lifetime is a session's lifetime and the
-    caller is what knows when that ends. `logging.Handler.close()` is the end of it.
+    Filtered to that job, which is what makes it a per-job log rather than a second copy of the
+    application log (`T038-R2`). `DownloadManager` installs it for the life of a session and
+    closes it on every exit path; `logging.Handler.close()` is the end of it.
     """
-    return _file_handler(job_log_path(job_id, directory), level)
+    handler = _file_handler(job_log_path(job_id, directory), level)
+    handler.addFilter(_OnlyThisJob(job_id))
+    return handler
 
 
 #: The one queue workers send records on, and the listener draining it. Process-wide rather
@@ -272,14 +347,26 @@ def worker_log_queue() -> Any:
 
 
 def stop_listening_for_worker_logs() -> None:
-    """Stop the listener thread. Called at shutdown; safe when nothing ever started."""
-    global _listener
+    """Stop the listener and drop the queue with it. Safe when nothing ever started.
+
+    **Both, or neither.** Stopping the listener while keeping the queue leaves the next caller of
+    `worker_log_queue()` holding a queue nothing drains: workers log into a pipe nobody reads,
+    silently. Found twice — once as a hang, and again as an ordering failure after
+    `DownloadManager.shutdown()` started calling this, where a later manager's worker output
+    vanished entirely.
+    """
+    global _listener, _worker_queue
     if _listener is not None:
         _listener.stop()
         _listener = None
+    if _worker_queue is not None:
+        _worker_queue.close()
+        _worker_queue = None
 
 
-def worker_logging_handler(queue: Any, *, level: int = logging.INFO) -> logging.Handler:
+def worker_logging_handler(
+    queue: Any, *, job_id: str | None = None, level: int = logging.INFO
+) -> logging.Handler:
     """Install a handler in a **worker process** that sends records to the parent (`T-038`).
 
     A `QueueHandler` over a plain `multiprocessing.Queue`: stdlib, and Qt-free, which the child
@@ -298,6 +385,10 @@ def worker_logging_handler(queue: Any, *, level: int = logging.INFO) -> logging.
         handler.close()
     handler = logging.handlers.QueueHandler(queue)
     handler.setLevel(level)
+    if job_id is not None:
+        # Stamped here, in the child, because this is the only process that knows which job it
+        # is working on. The parent reads it to route the line to that job's file.
+        handler.addFilter(_StampTheJob(job_id))
     worker_root.addHandler(handler)
     worker_root.propagate = False
     return handler

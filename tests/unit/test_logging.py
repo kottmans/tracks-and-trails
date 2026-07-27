@@ -183,6 +183,54 @@ def test_a_short_registered_value_is_ignored(tmp_path: Path) -> None:
     assert "the token was ok" in written
 
 
+@pytest.mark.parametrize(
+    ("line", "marker"),
+    [
+        (r"loading C:\Users\A Person\cookies.txt", "A Person"),
+        ("loading cookies.txt from the working directory", "cookies.txt"),
+        ("cookiefile=/tmp/yt-dlp-cookies-7c6c", "yt-dlp-cookies-7c6c"),
+        ("refused https://[bad/v?token=review-url-token-7c6c", "review-url-token-7c6c"),
+        ("via user:review-proxy-pass-7c6c@proxy.invalid:8080", "review-proxy-pass-7c6c"),
+    ],
+)
+def test_the_shapes_that_got_past_the_first_version(tmp_path: Path, line: str, marker: str) -> None:
+    """`T038-R1`: five false negatives found at the sink, each written through a real handler.
+
+    Every one of these is a shape the first version's rules could not see rather than a shape it
+    decided to allow — a path component with a space in it, a filename with no directory, a URL
+    malformed enough to break the parser (which then returned it *unchanged*, so being harder to
+    parse made a string safer), and a proxy credential written the ordinary way, without a
+    scheme for the URL rule to anchor on.
+    """
+    written = emitted(tmp_path, lambda log: log.info(line))
+
+    assert marker not in written, f"{marker!r} reached the log file: {written.strip()!r}"
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "loading cookies from the browser profile",
+        "the cookie jar was empty",
+        "selected format=best height=1080",
+    ],
+)
+def test_ordinary_prose_survives_the_cookie_rules(tmp_path: Path, line: str) -> None:
+    """The other direction, and it is not decoration (`T014-R6`).
+
+    Closing the "bare filename" hole by matching any token containing "cookie" also matches the
+    **word**, and "loading <redacted> from the browser profile" is a log nobody can use. The
+    extension requirement is what separates a filename from a noun, and this is what holds it
+    there.
+    """
+    written = emitted(tmp_path, lambda log: log.info(line))
+
+    assert line in written, (
+        f"redaction ate ordinary prose: {written.strip()!r}. Over-redaction is a failure too — a "
+        "log that cannot describe what happened has lost its only purpose."
+    )
+
+
 def test_a_bare_name_equals_value_is_not_chased(tmp_path: Path) -> None:
     """The limit of this design, asserted so nobody discovers it in a review instead.
 
@@ -249,12 +297,26 @@ def test_the_logs_live_under_platformdirs_and_not_beside_the_application() -> No
 
 
 def test_a_job_log_holds_that_job_and_is_redacted(tmp_path: Path) -> None:
+    """A per-job handler takes its own job's records, redacts them, and refuses the rest.
+
+    Both halves matter (`T038-R2`). The first version of this test attached the handler and
+    logged straight into it, which passed while the handler had no filter at all — so it proved
+    the file could be written, not that it held one job's output. Records arrive stamped by the
+    worker that produced them; an unstamped one belongs to no job and is refused rather than
+    shared, because a per-job log whose contents depend on what else was running is worse than
+    none.
+    """
     handler = app_logging.open_job_log("job-1", directory=tmp_path)
     log = logging.getLogger("tracksandtrails.job")
     log.addHandler(handler)
     log.setLevel(logging.INFO)
     try:
-        log.info(f"probing https://example.invalid/v?token={TOKEN}")
+        log.info(
+            f"probing https://example.invalid/v?token={TOKEN}",
+            extra={app_logging.JOB_FIELD: "job-1"},
+        )
+        log.info("this line belongs to nobody")
+        log.info("this line is another job's", extra={app_logging.JOB_FIELD: "job-2"})
         handler.flush()
     finally:
         log.removeHandler(handler)
@@ -264,6 +326,10 @@ def test_a_job_log_holds_that_job_and_is_redacted(tmp_path: Path) -> None:
 
     assert "probing" in written
     assert TOKEN not in written
+    assert "belongs to nobody" not in written, (
+        "an unstamped record reached a job log; it belongs to no job and must not be shared"
+    )
+    assert "another job's" not in written, "another job's record reached this job's log"
 
 
 def test_a_generated_log_is_scanned_for_a_known_token(tmp_path: Path) -> None:

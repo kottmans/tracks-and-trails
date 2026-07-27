@@ -534,6 +534,10 @@ def _is_cancellation(error: BaseException, resolved: ResolvedYtdlp) -> bool:
 #: parent examining a reaped process — or a person reading a log — can tell the two apart.
 ORPHAN_EXIT_CODE: Final = 66
 
+#: Exit code of a worker that refused to run because it could not be contained (`T019-R3`).
+#: Distinct from both of the above for the same reason: these are different corpses.
+UNCONTAINED_EXIT_CODE: Final = 67
+
 
 def _exit_when_the_parent_does() -> None:
     """Exit this process if the parent disappears (`T-013`: no orphan survives the parent).
@@ -572,7 +576,7 @@ def _exit_when_the_parent_does() -> None:
     threading.Thread(target=watch, name="parent-watchdog", daemon=True).start()
 
 
-def prepare_this_worker(log_queue: Any | None = None) -> None:
+def prepare_this_worker(log_queue: Any | None = None, log_job_id: str | None = None) -> bool:
     """Everything a spawned worker must do before it starts working, in the order it must do it.
 
     Named and separate because it is the **contract for being a worker**, not an implementation
@@ -584,6 +588,9 @@ def prepare_this_worker(log_queue: Any | None = None) -> None:
     same shape. That `spawn_session` calls it is proven separately, against real workers, by
     `test_a_real_worker_leads_its_own_process_group` and
     `test_killing_the_parent_does_not_leave_the_child_running`.
+
+    Returns whether **containment** was established. The caller decides what to do about a
+    `False`, and `spawn_session()` refuses to run the session at all — see `T019-R3`.
 
     **Order matters.** Containment first: it works by capturing every *later* descendant, so
     anything spawned before it escapes. The watchdog second: it depends on the group established
@@ -600,16 +607,43 @@ def prepare_this_worker(log_queue: Any | None = None) -> None:
         # this module is re-imported on every spawn and pays for everything at the top.
         from tracks_and_trails.core.logging import worker_logging_handler
 
-        worker_logging_handler(log_queue)
+        worker_logging_handler(log_queue, job_id=log_job_id)
         if not contained:
             # After the handler, not before: this is the first moment the reason can both be
             # known and reported. A worker that cannot be contained still runs its download —
             # failing the job for it would be a failure the user cannot act on — so the only
             # cost of silence here is that nobody finds out why a descendant survived.
             logging.getLogger(f"{APP_SLUG}.worker").warning(
-                "this worker is not contained, so its descendants will outlive it: %s",
+                "this worker is not contained, so its descendants would outlive it: %s",
                 process_tree.containment_error,
             )
+    return contained
+
+
+def _refuse_to_run_uncontained(job_id: str, queue: MessageSink) -> None:
+    """Report the refusal in the protocol's own terms, then let the caller exit (`T019-R3`).
+
+    A full, legal session: one outcome and then the sentinel. The parent therefore records an
+    ordinary failed job with a message a person can act on, rather than inferring something from
+    an exit code — which is the difference between a refusal and a crash.
+
+    `WORKER_CRASH` because the taxonomy has no kind for "this worker cannot run safely", and
+    inventing one is an `ARCHITECTURE.md` §7 change with a maintainer decision attached
+    (`T-014` needed exactly that for `INTERRUPTED`). The message carries what the kind cannot.
+    """
+    queue.put(
+        Failed(
+            job_id=job_id,
+            kind=ErrorKind.WORKER_CRASH,
+            message=(
+                "This download was refused before it started: the worker could not put its child "
+                "processes under a handle this application can stop "
+                f"({process_tree.containment_error}). Cancelling it would not have stopped the "
+                "conversion it spawns, so it was not begun."
+            ),
+        )
+    )
+    queue.put(WorkerFinished(job_id=job_id, exit_code=UNCONTAINED_EXIT_CODE))
 
 
 def spawn_session(
@@ -622,6 +656,7 @@ def spawn_session(
     user_ytdlp_directory: Path | None = None,
     ffmpeg_override: Path | None = None,
     log_queue: Any | None = None,
+    log_job_id: str | None = None,
 ) -> None:
     """The `multiprocessing` entry point: run one session, then exit with its code.
 
@@ -636,8 +671,18 @@ def spawn_session(
     **Containment comes first** (`T-019`): `contain_this_process()` has to run before yt-dlp can
     spawn anything, because it works by making every *later* descendant a member of a set the
     kernel tracks. It cannot retroactively adopt an `ffmpeg` that already exists.
+
+    **And if it fails, the session does not run** (`T019-R3`). The first version logged a warning
+    and carried on, on the reasoning that a worker which cannot be contained should still do the
+    user's download. That reasoning is wrong here: `T-019`'s criterion — no surviving descendant,
+    on any path — has no exception clause, and `REQ-015` promises that cancelling terminates the
+    underlying work. Downloading anyway would mean an `ffmpeg` that nothing in the application
+    can stop, writing to the user's disk after they pressed cancel. A refusal is visible and
+    recoverable; that is not.
     """
-    prepare_this_worker(log_queue)
+    if not prepare_this_worker(log_queue, log_job_id):
+        _refuse_to_run_uncontained(job_id, queue)
+        raise SystemExit(UNCONTAINED_EXIT_CODE)
     raise SystemExit(
         run_session(
             kind,

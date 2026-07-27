@@ -13,6 +13,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+import pytest
 from PySide6.QtCore import QCoreApplication
 
 from tests.integration.test_manager import FakeRepository, make_job
@@ -79,3 +80,88 @@ def test_a_spawned_workers_line_reaches_the_parents_log_without_its_token(
         "the worker's token reached the log file. Records travel unformatted so the parent's "
         "handlers redact them; if this fails, something formatted in the child."
     )
+
+
+def a_worker_logging_its_own_id(
+    kind: Any, job_id: str, request: Any, queue: Any, **kwargs: Any
+) -> None:
+    """A worker that says which job it is, so a crossed line names the file it should not be in."""
+    from tracks_and_trails.downloader import worker
+
+    worker.prepare_this_worker(kwargs.get("log_queue"), kwargs.get("log_job_id"))
+    logging.getLogger("tracksandtrails.worker").warning("this line belongs to %s", job_id)
+    queue.put(Succeeded(job_id=job_id, output_path="/written/clip.mp4", total_bytes=1))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+
+
+def test_two_jobs_cannot_write_into_each_others_logs(
+    tmp_path: Path, qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T038-R2`: a per-job log holds **that** job, or it is not a per-job log.
+
+    The isolation is the whole claim. Attaching a file handler to the application logger without
+    it would give every open job a copy of every worker's output the moment Phase 2 allows two at
+    once — a file that looks authoritative and is not. Phase 1 runs one session at a time, so the
+    two jobs here run in sequence; what is asserted is that the *routing* is per job, which is the
+    property that has to hold before concurrency arrives rather than after.
+    """
+    monkeypatch.setattr(
+        app_logging,
+        "job_log_path",
+        lambda job_id, directory=None: tmp_path / "jobs" / f"{job_id}.log",
+    )
+    app_logging.configure_logging(directory=tmp_path, level=logging.DEBUG)
+    repository = FakeRepository()
+
+    try:
+        for job_id in ("job-alpha", "job-beta"):
+            repository.add(make_job(job_id, "https://example.invalid/clip", tmp_path))
+            download = DownloadManager(repository, entry_point=a_worker_logging_its_own_id)
+            download.start(job_id)
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline and not download.is_idle:
+                qapp.processEvents()
+                time.sleep(0.05)
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline:
+                path = tmp_path / "jobs" / f"{job_id}.log"
+                if path.exists() and job_id in path.read_text("utf-8"):
+                    break
+                qapp.processEvents()
+                time.sleep(0.05)
+            download.shutdown()
+            deadline = time.monotonic() + 30
+            while time.monotonic() < deadline and not download.is_idle:
+                qapp.processEvents()
+                time.sleep(0.05)
+
+        alpha = (tmp_path / "jobs" / "job-alpha.log").read_text("utf-8")
+        beta = (tmp_path / "jobs" / "job-beta.log").read_text("utf-8")
+    finally:
+        app_logging.stop_listening_for_worker_logs()
+        tree = logging.getLogger("tracksandtrails")
+        for handler in list(tree.handlers):
+            tree.removeHandler(handler)
+            handler.close()
+
+    assert "job-alpha" in alpha, f"job-alpha's own line is missing from its log: {alpha!r}"
+    assert "job-beta" in beta, f"job-beta's own line is missing from its log: {beta!r}"
+    assert "job-beta" not in alpha, (
+        f"job-beta's output was written into job-alpha's log: {alpha!r}. A per-job log whose "
+        "contents depend on which other jobs were open is worse than none."
+    )
+    assert "job-alpha" not in beta, f"job-alpha's output leaked into job-beta's log: {beta!r}"
+
+
+def test_a_job_id_never_chooses_its_own_path(tmp_path: Path) -> None:
+    """`T038-R2`: `Job.id` is any non-empty string, so it is sanitised rather than trusted."""
+    escaping = app_logging.job_log_path("../../etc/passwd", tmp_path)
+
+    assert escaping.parent == tmp_path / "jobs", (
+        f"a job id chose its own directory: {escaping}. Every id this application makes is a "
+        "UUID, but the type permits anything, and core/paths.py exists for exactly this."
+    )
+    # The dots survive as *characters* and that is fine — what matters is that no separator
+    # does, so the name cannot be more than one component and cannot climb out.
+    assert "/" not in escaping.name and "\\" not in escaping.name, escaping.name
+    assert escaping.resolve().is_relative_to((tmp_path / "jobs").resolve())

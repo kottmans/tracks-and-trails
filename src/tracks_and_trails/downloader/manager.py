@@ -58,6 +58,8 @@ produced a file; a worker that exits 0 having reported nothing did not. So the *
 decides whenever there is one, and the exit code decides only when there is not.
 """
 
+import contextlib
+import logging
 import multiprocessing
 import time
 from collections.abc import Callable
@@ -73,6 +75,7 @@ from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import Job
 from tracks_and_trails.downloader import process_tree, worker
+from tracks_and_trails.downloader.environment import APP_SLUG
 from tracks_and_trails.downloader.protocol import (
     Failed,
     Probed,
@@ -197,6 +200,13 @@ class _Session:
     #: unstarted process raises, so the first is load-bearing for reaping too.
     process_started: bool = False
     pump_started: bool = False
+
+    #: This job's own log file, open for exactly as long as the session is (`T038-R2`).
+    #:
+    #: Held on the session rather than in a dictionary keyed by job id, so it cannot outlive the
+    #: thing it belongs to: every path that drops a session goes through `_release`, which closes
+    #: this. An open file handle for a finished job is a leak with a filename.
+    log_handler: Any = None
 
     #: The worker's process group, learned while it is still alive and kept afterwards
     #: (`T-019`). It cannot be looked up later: `os.getpgid` needs the process to exist, and
@@ -364,8 +374,10 @@ class DownloadManager(QObject):
                     "user_ytdlp_directory": self._user_ytdlp_directory,
                     "ffmpeg_override": self._ffmpeg_override,
                     # `T-038`: the worker's diagnostics come back here as records and are
-                    # rendered — and therefore redacted — by this process's handlers.
+                    # rendered — and therefore redacted — by this process's handlers. The job id
+                    # travels with them so each line reaches that job's own file (`T038-R2`).
                     "log_queue": app_logging.worker_log_queue(),
+                    "log_job_id": job_id,
                 },
                 # Belt and braces with the child's own parent watchdog: this covers an orderly
                 # parent exit, the watchdog covers a parent that was killed.
@@ -375,6 +387,7 @@ class DownloadManager(QObject):
                 job_id=job_id, kind=kind, process=process, queue=queue, cancel=cancel, pump=pump
             )
             self._sessions[job_id] = session
+            self._open_job_log(session)
             self._connect(session)
 
             # **The process first, then the pump.** The original order was the other way round,
@@ -449,10 +462,10 @@ class DownloadManager(QObject):
         - **A started process with no pump** is a worker nobody is reading and nobody will stop.
           It is killed here — it has done no work worth unwinding, since the pump that would
           have carried its messages never ran.
-        - **A started pump** is a thread blocked in `Queue.get()`, ended the ordinary way with a
-          sentinel and by `terminate()` if the queue will not take one. The session is put back
-          under watch until the thread reports itself finished (`T013-R4`), because a terminate
-          that has merely been *issued* is not a thread that has stopped.
+        - **A started pump** is a thread blocked reading, ended the ordinary way with a sentinel
+          and by `stop()` if the queue will not take one. The session is put back under watch
+          until the thread reports itself finished (`T013-R4`), because a stop that has merely
+          been *asked for* is not a thread that has stopped.
         """
         if session.process_started and session.process.is_alive():
             # The tree, not just the worker (`T-019`). A start that failed after the process was
@@ -464,10 +477,11 @@ class DownloadManager(QObject):
 
         if not session.pump_started:
             self._close_quietly(session.job_id, session.queue)
+            self._close_job_log(session)
             return
 
         if not self._end_the_stream_quietly(session.job_id, session.queue):
-            session.pump.terminate()
+            session.pump.stop()
         session.sentinel_sent = True
         session.forced = True
         session.abandoned = True
@@ -564,6 +578,7 @@ class DownloadManager(QObject):
             self.cancel(job_id)
         if not self._sessions:
             self._timer.stop()
+            self._stop_logging()
             self.idle.emit()
             return
         # Keep the timer running: it is the only thing left that can finish this.
@@ -603,7 +618,20 @@ class DownloadManager(QObject):
 
         if not self._sessions:
             self._timer.stop()
+            if self._shutting_down:
+                self._stop_logging()
             self.idle.emit()
+
+    def _stop_logging(self) -> None:
+        """Stop the thread draining worker log records (`T038-R2`).
+
+        Only on the way out, and only once: the queue and its listener are process-wide, so a
+        manager that stopped them while another was running would silently swallow that one's
+        worker output. Done here rather than left to interpreter exit because a listener thread
+        that is still blocked on a queue is a process that does not finish quitting — the same
+        shape as the orphan worker this file spends most of its length preventing.
+        """
+        app_logging.stop_listening_for_worker_logs()
 
     def _escalate(self, session: _Session, now: float) -> None:
         """Walk one session through the two deadlines, signalling the **tree** at each.
@@ -640,6 +668,34 @@ class DownloadManager(QObject):
             process_tree.kill_group(session.group_id)
         else:
             process_tree.terminate_group(session.group_id)
+
+    def _open_job_log(self, session: _Session) -> None:
+        """Give this session its own log file for as long as it runs (`T038-R2`, §8).
+
+        Failing to open one must not fail the download: a job that cannot be *logged* is still a
+        job that can be *done*, and the application log has the same lines regardless. So this
+        records the problem and carries on — the opposite of `contain_this_process()`, where the
+        missing guarantee was the user's ability to stop the work.
+        """
+        try:
+            handler = app_logging.open_job_log(session.job_id)
+        except OSError as error:
+            logging.getLogger(f"{APP_SLUG}.manager").warning(
+                "no per-job log for %s: %s", session.job_id, error
+            )
+            return
+        session.log_handler = handler
+        logging.getLogger(APP_SLUG).addHandler(handler)
+
+    def _close_job_log(self, session: _Session) -> None:
+        """Detach and close this session's log file. Safe to call more than once."""
+        handler = session.log_handler
+        if handler is None:
+            return
+        session.log_handler = None
+        logging.getLogger(APP_SLUG).removeHandler(handler)
+        with contextlib.suppress(Exception):
+            handler.close()
 
     def _learn_the_group(self, session: _Session) -> None:
         """Record the worker's process group the first tick it can be read.
@@ -695,9 +751,9 @@ class DownloadManager(QObject):
         """Drop a session whose process is gone and whose pump has returned.
 
         Both facts are required, and the thread is asked twice: `pump_finished` records the
-        `finished` signal, and `isFinished()` is asked directly because a *terminated* thread
-        may never deliver that signal to a slot. Releasing on either is what keeps a forced
-        stop from claiming completion it has not got (`T013-R4`).
+        `finished` signal, and `isFinished()` is asked directly because a thread that ended
+        without the event loop running may never deliver that signal to a slot. Releasing on
+        either is what keeps a forced stop from claiming completion it has not got (`T013-R4`).
         """
         if session.pump_started and not (session.pump_finished or session.pump.isFinished()):
             return
@@ -712,6 +768,7 @@ class DownloadManager(QObject):
             self._reap_tree(session)
             session.process.join(0)
         self._close_quietly(session.job_id, session.queue)
+        self._close_job_log(session)
         self._sessions.pop(session.job_id, None)
 
     def _force_stop(self, session: _Session) -> None:
@@ -738,20 +795,24 @@ class DownloadManager(QObject):
         session.abandon_at = session.abandon_at or time.monotonic() + self._reap_seconds
 
     def _abandon(self, session: _Session) -> None:
-        """Force a pump thread that will not return — and keep owning it until it has.
+        """Stop a pump thread that will not return — and keep owning it until it has.
 
-        `QThread.terminate()` is unsafe in general and is the last resort here: the alternative
-        is a thread Qt destroys while it is still running, which aborts the process. Reached only
-        when a killed worker's queue is so damaged that even the synthetic sentinel cannot be
-        read — the case the pump's own exception guard exists for, one layer deeper.
+        Reached only when a killed worker's queue is so damaged that even the synthetic sentinel
+        cannot be written — the case the pump's own exception guard exists for, one layer deeper.
 
-        **Terminate is a request, not an event** (`T013-R4`). The first version of this dropped
-        the session as soon as `terminate()` had been *issued*, so the next tick found nothing
-        left and announced `idle` while the thread was still running and the job was still in
-        flight — the exact opposite of what the shutdown criterion promises. So the job is
-        resolved durably here, and the session stays until the thread reports itself finished.
-        Nothing releases it early, and if it never finishes this manager never claims to be idle,
-        which is the honest answer.
+        **This used to call `QThread.terminate()`, and that was the wrong tool** (`T019-R5`).
+        Killing a thread wherever it happens to be includes killing it inside CPython's own
+        internals, holding a lock nothing will ever release; the observable cost was a bare
+        `pytest` wedging about one run in five, parked forever on that lock. `ResultPump.stop()`
+        asks instead, and the thread returns within one poll — so there is no window in which it
+        dies mid-operation.
+
+        **A stop is a request, not an event** (`T013-R4`), and that was already true of the tool
+        this replaces. The first version dropped the session as soon as termination had been
+        *issued*, so the next tick found nothing left and announced `idle` while the thread was
+        still running and the job was still in flight. So the job is resolved durably here, and
+        the session stays until the thread reports itself finished. Nothing releases it early,
+        and if it never finishes this manager never claims to be idle, which is the honest answer.
         """
         if not session.abandoned:
             session.abandoned = True
@@ -760,7 +821,7 @@ class DownloadManager(QObject):
                 "the result pump did not stop after its worker was killed and its stream ended; "
                 "the thread was terminated",
             )
-            session.pump.terminate()
+            session.pump.stop()
             # Before anything can announce completion: leave no job in flight.
             self._on_session_ended(session.job_id)
         self._release(session)

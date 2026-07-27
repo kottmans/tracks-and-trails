@@ -18,6 +18,7 @@ budget below is measured against bytes actually moving: a process asleep in `tim
 the instant it is signalled, and a process inside yt-dlp's download loop does not.
 """
 
+import contextlib
 import multiprocessing as mp
 import os
 import pickle
@@ -52,7 +53,7 @@ from tracks_and_trails.downloader.protocol import (
     Succeeded,
     WorkerFinished,
 )
-from tracks_and_trails.downloader.result_pump import ResultPump
+from tracks_and_trails.downloader.result_pump import POLL_SECONDS, ResultPump
 
 REPO_ROOT = Path(__file__).parents[2]
 
@@ -434,15 +435,32 @@ def child_ignoring_cancellation(
         time.sleep(0.05)
 
 
+#: A string that appears in the command line of every process these tests spawn as a stand-in
+#: for `ffmpeg`, and nowhere else. It is how the teardown below finds strays it can safely kill —
+#: including ones that have been reparented away and are no longer descendants of this process.
+GRANDCHILD_MARKER: Final = "tracks-and-trails-test-descendant"
+
 #: What a leaked grandchild runs: a process that outlives anything short of being killed.
 #:
 #: It ignores `SIGTERM` where that exists, so a test that passes has actually reached the
 #: `SIGKILL` half of the escalation rather than being flattered by a polite descendant.
 GRANDCHILD_PROGRAM: Final = (
+    f"# {GRANDCHILD_MARKER}\n"
     "import signal, sys, time\n"
     "if hasattr(signal, 'SIGTERM'):\n"
     "    signal.signal(signal.SIGTERM, signal.SIG_IGN)\n"
     "print('up', flush=True)\n"
+    "while True:\n"
+    "    time.sleep(0.05)\n"
+)
+
+#: A process that spawns one of the above and reports its pid — a **real** second level, which
+#: is what the detector self-test needs and what its first version did not have.
+NESTED_GRANDCHILD_PROGRAM: Final = (
+    f"# {GRANDCHILD_MARKER}\n"
+    "import subprocess, sys, time\n"
+    f"child = subprocess.Popen([sys.executable, '-c', {GRANDCHILD_PROGRAM!r}])\n"
+    "print(child.pid, flush=True)\n"
     "while True:\n"
     "    time.sleep(0.05)\n"
 )
@@ -592,6 +610,28 @@ def existing_children() -> set[int]:
     return {child.pid for child in psutil.Process(os.getpid()).children(recursive=True)}
 
 
+@pytest.fixture(autouse=True)
+def no_test_descendant_outlives_its_test() -> Iterator[None]:
+    """Reap this file's stand-in `ffmpeg` processes however the test ends (`T019-R4`).
+
+    Cleanup that runs *after* the assertions never runs when an assertion fails — and a mutation
+    is meant to make assertions fail. The review of `T-019` found **111** of these still alive,
+    some for over two hours, left behind by mutation runs that were working exactly as intended.
+    They then wedge later runs, which is how a test suite starts lying about unrelated things.
+
+    So it is a fixture, not a `finally` inside each test: it runs on every exit path including a
+    failure, an error, and a keyboard interrupt. Identification is by the exact marker these
+    programs carry, so it can only ever kill this file's own helpers — and it finds them by
+    scanning all processes rather than by walking descendants, because the ones that matter have
+    been reparented away from us by the time anything goes wrong.
+    """
+    yield
+    for process in psutil.process_iter(["cmdline"]):
+        with contextlib.suppress(psutil.Error):
+            if any(GRANDCHILD_MARKER in part for part in (process.info["cmdline"] or ())):
+                process.kill()
+
+
 def test_the_survival_check_can_tell_a_live_process_from_a_dead_one() -> None:
     """`still_running` decides every T-019 assertion, so it needs one of its own.
 
@@ -628,32 +668,39 @@ def test_the_detector_sees_a_grandchild_and_not_just_a_worker(
     evidence problem in miniature. So this leaks a real child **and** a real grandchild, and
     asserts both are reported by pid.
     """
-    child = start_a_grandchild()
-    grandchild = subprocess.Popen(
-        [sys.executable, "-c", GRANDCHILD_PROGRAM],
+    child = subprocess.Popen(
+        [sys.executable, "-c", NESTED_GRANDCHILD_PROGRAM],
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         text=True,
     )
+    grandchild_pid: int | None = None
     try:
-        assert grandchild.stdout is not None
-        grandchild.stdout.readline()
+        assert child.stdout is not None
+        grandchild_pid = int(child.stdout.readline())
+
+        # **A real second level, asserted before anything else.** The first version of this test
+        # spawned two *siblings* and asserted their relationship with `... or True`, which cannot
+        # fail — so it proved the detector saw two direct children and said nothing at all about
+        # the depth it exists to check (`T019-R4`).
+        assert psutil.Process(grandchild_pid).ppid() == child.pid, (
+            f"{grandchild_pid} is not a child of {child.pid}, so this test is not about a "
+            "grandchild at all"
+        )
+
         found = {process.pid for process in worker_processes(existing_children)}
 
         assert child.pid in found, "the detector missed a direct child"
-        assert grandchild.pid in found, (
+        assert grandchild_pid in found, (
             "the detector missed a second-level process. This is the T-019 blindness: an ffmpeg "
             "grandchild is not a worker, and a filter that only recognises workers cannot see it."
         )
-        # The second blindness, and the reason `still_running` exists: this walk only finds
-        # processes that are *still descendants*. A grandchild whose parent has died is
-        # reparented away and disappears from it — which is the state every survival assertion
-        # in this file is made in.
-        assert child.pid == psutil.Process(grandchild.pid).ppid() or True
     finally:
-        for process in (child, grandchild):
-            process.kill()
-            process.wait(timeout=30)
+        for pid in (grandchild_pid, child.pid):
+            if pid is not None:
+                with contextlib.suppress(psutil.Error):
+                    psutil.Process(pid).kill()
+        child.wait(timeout=30)
 
 
 def test_the_detector_still_ignores_the_resource_tracker(existing_children: set[int]) -> None:
@@ -773,6 +820,7 @@ def test_cancel_stops_a_real_in_flight_download_within_the_budget(
     media_url: Callable[..., str],
     spin: Callable[..., bool],
     existing_children: set[int],
+    record_property: Callable[[str, object], None],
 ) -> None:
     """`REQ-015`'s two-second budget, measured against bytes that are actually moving.
 
@@ -798,6 +846,11 @@ def test_cancel_stops_a_real_in_flight_download_within_the_budget(
     elapsed = time.monotonic() - started
 
     assert stopped, "a worker process outlived its cancellation"
+    # Recorded, not just compared (`T019-R4`). The criterion asks for timings that can be seen
+    # trending; a number that only ever becomes pass or fail cannot show the margin shrinking.
+    # `record_property` puts it in the junit XML CI already uploads as evidence.
+    record_property("cancel_seconds", round(elapsed, 3))
+    record_property("cancel_budget_seconds", CANCEL_BUDGET_SECONDS)
     assert elapsed < CANCEL_BUDGET_SECONDS, f"cancellation took {elapsed:.2f}s (REQ-015: 2s)"
 
     assert spin(lambda: download.is_idle, timeout=10)
@@ -816,6 +869,18 @@ def test_cancel_stops_a_real_in_flight_download_within_the_budget(
     )
     assert list(tmp_path.glob("*.part")), (
         "yt-dlp left no partial file, so the download did not unwind through its own cleanup"
+    )
+    # **And nothing finished** (`T019-R4`). Asserting only that a `.part` exists would pass if a
+    # completed file sat beside it, and a cancel that leaves a finished download is a cancel the
+    # user cannot distinguish from a success.
+    finished = [
+        path
+        for path in tmp_path.iterdir()
+        if path.is_file() and path.suffix != ".part" and not path.name.startswith(".")
+    ]
+    assert not finished, (
+        f"cancelling produced a completed file: {[p.name for p in finished]}. The partial must "
+        "stay partial; a rename here is indistinguishable from a finished download."
     )
 
 
@@ -1252,6 +1317,7 @@ def test_cancelling_a_download_kills_what_the_worker_spawned(
     manager: Callable[..., DownloadManager],
     spin: Callable[..., bool],
     existing_children: set[int],
+    record_property: Callable[[str, object], None],
 ) -> None:
     """`T-019`'s defect, from the user's side: cancel must stop the merge, not just the worker.
 
@@ -1281,6 +1347,7 @@ def test_cancelling_a_download_kills_what_the_worker_spawned(
     elapsed = time.monotonic() - started
 
     assert stopped, f"pids {still_running(tree)} outlived the cancellation"
+    record_property("tree_cleanup_seconds", round(elapsed, 3))
     assert elapsed < CANCEL_BUDGET_SECONDS + 1.0, (
         f"tree cleanup took {elapsed:.2f}s; REQ-015's budget is {CANCEL_BUDGET_SECONDS}s and the "
         "descendant reaping must fit inside it rather than extend it"
@@ -1995,7 +2062,23 @@ def test_a_startup_failure_leaves_a_failed_job_rather_than_a_phantom_one(
         "running, so the queue is describing work that does not exist"
     )
     assert stored.error_kind is ErrorKind.WORKER_CRASH
-    assert (stored.error_message and fail_on in stored.error_message.lower()) or True
+    # **The original failure, not the cleanup's** (`T013-R5`, `T-052`). This assertion used to
+    # end in `or True` and could not fail. Removing that showed the production behaviour was
+    # right all along and the *assertion* was wrong: it looked for the parametrised component
+    # name, which the message never claimed to carry. What the message must carry — and does —
+    # is the `OSError` that actually stopped the start, rather than whatever the unwind hit
+    # afterwards while tidying up.
+    assert stored.error_message, "a failed start stored no diagnostic at all"
+    # The *words* of the original error, not its type name: `BrokenContext` raises `OSError` for
+    # two cases and `BlockingIOError` — a subclass — for the third, so the class name is not the
+    # invariant. What the user needs is what actually went wrong.
+    assert any(
+        phrase in stored.error_message.lower()
+        for phrase in ("too many open files", "resource temporarily")
+    ), (
+        f"the stored diagnostic does not carry the failure that caused the abort, only that "
+        f"something failed: {stored.error_message!r}"
+    )
     assert recorder.failed, "REQ-018: the failure was never announced"
     assert recorder.stored_when_told[-1] is JobStatus.FAILED, (
         "the failure was signalled before it was persisted"
@@ -2215,17 +2298,17 @@ def test_abandoning_a_pump_resolves_its_job_first(
 class StubbornPump:
     """A pump thread that does not stop when it is told to.
 
-    `QThread.terminate()` is asynchronous and, on a thread wedged in a C call, may not take
-    effect promptly at all. This is that thread, made deterministic: it accepts the terminate
-    and keeps reporting itself unfinished.
+    `stop()` is a request, and a thread inside a slow read may take a poll or several to honour
+    it — or, if something has gone badly wrong, never. This is that thread, made deterministic:
+    it accepts the stop and keeps reporting itself unfinished.
     """
 
     def __init__(self, real: Any) -> None:
         self._real = real
-        self.terminated = False
+        self.stopped = False
 
-    def terminate(self) -> None:
-        self.terminated = True
+    def stop(self) -> None:
+        self.stopped = True
 
     def isFinished(self) -> bool:  # noqa: N802 - Qt's own name
         return False
@@ -2246,10 +2329,12 @@ def test_a_pump_that_will_not_stop_keeps_the_manager_from_claiming_it_is_idle(
 ) -> None:
     """`T013-R4`: a correction regression from the event-driven shutdown.
 
-    Removing the blocking waits was right; dropping the session the moment `terminate()` was
-    *issued* was not. `terminate()` is asynchronous, so the next tick could find no sessions and
-    announce `idle` while the thread was still alive and the job still in flight — which is
-    precisely what the shutdown criterion says must never be true.
+    Removing the blocking waits was right; dropping the session the moment a stop was *issued*
+    was not. A stop is asynchronous, so the next tick could find no sessions and announce `idle`
+    while the thread was still alive and the job still in flight — which is precisely what the
+    shutdown criterion says must never be true. (`T019-R5` changed the mechanism from
+    `QThread.terminate()` to a cooperative `stop()`; the asymmetry it exercises is unchanged, and
+    it is the reason the mechanism could be swapped without touching this test's substance.)
 
     Ownership has to last until the thread actually reports itself finished, and the job has to
     be durably resolved before anything announces completion.
@@ -2289,6 +2374,66 @@ def test_a_pump_that_will_not_stop_keeps_the_manager_from_claiming_it_is_idle(
 
     assert spin(lambda: download.is_idle, timeout=30)
     assert not worker_processes(existing_children)
+
+
+def test_a_stopped_pump_actually_stops_rather_than_being_killed(
+    tmp_path: Path, qapp: QCoreApplication
+) -> None:
+    """`T019-R5`: the pump ends by **returning**, and does it within a bounded time.
+
+    The distinction this asserts is the one that cost a working test gate. `QThread.terminate()`
+    ended a thread by killing it wherever it stood — including inside CPython's internals, holding
+    a lock nothing would release — and a bare `pytest` then wedged about one run in five, parked
+    on that lock inside `Thread.start()`. Twenty-two consecutive clean runs with `terminate()`
+    removed identified it.
+
+    So the assertion is not "stop was called". It is that the thread reports itself finished, and
+    that it emitted its own end-of-session — which only a thread that reached its `finally` can do.
+    """
+    queue: Any = mp.get_context("spawn").Queue()
+    pump = ResultPump(queue, "job-1", SessionKind.DOWNLOAD)
+    ended: list[str] = []
+    pump.session_ended.connect(ended.append)
+    violations: list[tuple[str, str]] = []
+    pump.violation.connect(lambda job, why: violations.append((job, why)))
+
+    try:
+        pump.start()
+        deadline = time.monotonic() + 5.0
+        while time.monotonic() < deadline and not pump.isRunning():
+            qapp.processEvents()
+            time.sleep(0.01)
+        assert pump.isRunning(), "the pump never started, so stopping it proves nothing"
+
+        started = time.monotonic()
+        pump.stop()
+        deadline = started + 5.0
+        while time.monotonic() < deadline and not pump.isFinished():
+            qapp.processEvents()
+            time.sleep(0.01)
+        elapsed = time.monotonic() - started
+    finally:
+        pump.stop()
+        pump.wait(5000)
+        queue.close()
+
+    assert pump.isFinished(), (
+        f"the pump was still running {elapsed:.2f}s after stop(). Nothing else may kill it — a "
+        "thread that does not return here is one that would have had to be terminated."
+    )
+    assert elapsed < 1.0, (
+        f"the pump took {elapsed:.2f}s to notice, against a {POLL_SECONDS}s poll; a stop that is "
+        "only honoured slowly turns every shutdown into a wait"
+    )
+    qapp.processEvents()
+    assert ended == ["job-1"], (
+        "the pump did not emit session_ended, so it never reached its finally block — which is "
+        "what a killed thread looks like and what this test exists to rule out"
+    )
+    assert any("stopped this reader" in why for _, why in violations), (
+        "a stream ended by the parent must be reported as a violation, not passed off as a "
+        "clean shutdown"
+    )
 
 
 def test_the_advance_walk_only_takes_transitions_the_state_machine_allows(
