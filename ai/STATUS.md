@@ -31,7 +31,7 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## Completed
 
-- Documentation system bootstrapped: `DOC-001` (convention rev 2026-07-18.1, Standard profile)
+- Documentation system bootstrapped: `DOC-001`
 - Requirements, architecture, phases, and Phase 0 tasks defined
 - Foundational decisions accepted: `ARC-001`, `ARC-002`, `DAT-001`, `OPS-001`, `OPS-002`,
   `OPS-003`, `SEC-001`, `REL-001`, `LIC-001`
@@ -86,11 +86,13 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 design. A spawned child imports yt-dlp, extracts, classifies failures against the real
 taxonomy, writes inside a validated path, and reports typed messages back.
 
-1. **`T-013` — download manager and result pump.** Now Ready, and the largest remaining item
-   between here and a URL that actually downloads.
-2. **`T-038` — logging with handler-level redaction.** One of `ai/TESTING.md` §7's ten
-   mandatory coverage areas; a leak here is written to disk and survives.
-3. **`T-014`, `T-015`** — Ready and independent. `T-014` carries three more mandatory areas.
+1. **`T-014` — persistence.** The critical path runs through it: `T-013` needs the job
+   repository, and nothing downstream of `T-013` can start until it does. Carries three of
+   `ai/TESTING.md` §7's mandatory areas (crash recovery, migrations, settings freeze).
+2. **`T-015`, `T-018`, `T-038`** — Ready and independent of the critical path, so any of them
+   can be done in parallel or while `T-014` is in review.
+3. **`T-013` — download manager and result pump.** Ready once `T-014` merges. The largest
+   remaining item between here and a URL that actually downloads.
 
 **What two review rounds cost, and what they bought.** Eight blocking findings across two
 passes, every one real. The pattern worth remembering: **five of them were things that

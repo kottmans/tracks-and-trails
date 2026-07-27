@@ -153,7 +153,7 @@ The same asymmetry applies to tests: a test that passes on Linux may encode a Li
 
 ## 9. Review convergence
 
-The Standard review budget is **one initial comprehensive review plus one focused correction
+The review budget is **one initial comprehensive review plus one focused correction
 re-review**. This cap applies when the remaining findings are **Medium or lower**. It does not
 stop correction of **Critical or High** defects.
 
@@ -369,12 +369,3 @@ activates it per clone (it is not set automatically by cloning).
 
 Write the message in an editor or a file, not as a chain of `-m` flags — `-m` encourages
 single-line messages and makes wrapping accidental.
-
----
-
-*Documentation system: AI-Assisted Project Documentation Convention, Standard profile.
-Adopted at rev 2026-07-18.1 (`DOC-001`); §7's individual-project branch policy and §9's
-review-convergence policy came from rev 2026-07-26.2 and was clarified as a severity-gated
-review budget in rev **2026-07-26.4**. No deliberate deviations from the convention are in
-force. The convention document itself lives outside this repository; this file is self-contained
-and does not depend on it.*

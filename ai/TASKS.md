@@ -12,8 +12,9 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-013` — download manager and result pump. `T-012` is complete, so this is
-now Ready and is the largest single item between here and a URL that actually downloads.
+**Start here:** `T-014` — persistence. Phase 1's critical path runs through it: `T-013` needs
+the job repository, and every remaining UI task sits behind `T-013`. `T-015`, `T-018` and
+`T-038` are Ready and off the critical path, so they can be done alongside it.
 
 `T-012` was approved with follow-ups on 2026-07-26 after two review rounds. **`T-033` is
 Blocked**, not complete: its code is verified but approval needs frozen CI evidence this
@@ -232,7 +233,8 @@ agreement on the reduced form before implementation.
 
 ### T-013 — Download manager and result pump
 
-**Status:** **Ready** — `T-012` completed 2026-07-26
+**Status:** Proposed — **Ready once `T-014` merges**. `T-012` completed 2026-07-26; `T-014` is
+the remaining prerequisite (the manager persists job state, so it needs the repository).
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 1
