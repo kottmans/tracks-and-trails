@@ -40,6 +40,7 @@ Three things drive the test strategy, and they come straight from the architectu
 | Resources | `tests/unit/test_resources.py`, `tests/ui/test_resources.py` | yes | Shipped asset invariants: the icon PNGs exist at their declared dimensions, `icon.ico` declares and exposes its full frame set, and every asset loads through `QIcon` (`T-022`) |
 | UI | `tests/ui/` | yes (offscreen) | Widget behavior, signal wiring, keyboard navigation, accessible names — via `pytest-qt` with `QT_QPA_PLATFORM=offscreen` |
 | Integration | `tests/integration/` | yes | Real child processes and real IPC, with yt-dlp faked at the adapter seam: progress delivery, cancellation, worker-crash handling, migrations, crash recovery |
+| Process tree | `tests/integration/test_manager.py` | **no** — `-m process_tree` | Real workers spawned and killed. Opt-in **only until `T-019` lands**: cancelling reaps the worker but not its descendants, and the loose ends wedge later runs intermittently. CI still runs them; the default loop does not (`T-019`) |
 | Network | `tests/network/` | **no** — `-m network` | A small set of real URLs against real yt-dlp. Run before a release and when diagnosing extractor issues |
 
 ## 3. Required checks by change type
@@ -134,6 +135,11 @@ failure mode is silent, destructive, or both.
 | DRM | `DRM_PROTECTED` is never auto-retried and has no bypass path (`REQ-EXCL-001`, `SEC-001`) |
 | Migrations | Every migration runs forward from every prior schema version with data intact |
 | Settings freeze | A settings change mid-flight does not alter a running job's `DownloadRequest` |
+
+**Cancellation and Worker crash are currently behind `-m process_tree`** and are not in the
+default run (`T-019`). They are proven and they still gate CI, but a local `pytest` no longer
+covers two of the ten areas — which is a real hole in the fastest feedback loop, recorded here
+rather than discovered at the exit review.
 
 **Each of these must be proven by mutation, not by a passing run** — remove the guard and watch
 the suite fail. §13 explains why that is not pedantry: five tests in this project have passed

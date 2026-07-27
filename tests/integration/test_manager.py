@@ -55,6 +55,19 @@ from tracks_and_trails.downloader.result_pump import ResultPump
 
 REPO_ROOT = Path(__file__).parents[2]
 
+#: **Opt-in until `T-019` lands** — `pytest -m process_tree`, and CI still runs them.
+#:
+#: Every test here spawns a real worker and most of them kill it, so they are the first thing to
+#: suffer from the defect `T-019` owns: cancelling reaps the worker but not what the worker
+#: spawned. The symptom in the development loop is an intermittent hang — the same suite runs in
+#: 19 seconds twice and then sits past ten minutes — and a wedged descendant is expensive to find
+#: every time.
+#:
+#: This is a **recorded coverage loss, not a cleanup**: `ai/TESTING.md` §7's Cancellation and
+#: Worker-crash areas live in this file, so the default run no longer covers two mandatory areas.
+#: `T-019` removes the marker along with the defect.
+pytestmark = pytest.mark.process_tree
+
 #: `REQ-015` and `ai/TESTING.md` §7: cancel terminates the worker within two seconds.
 CANCEL_BUDGET_SECONDS = 2.0
 

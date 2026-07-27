@@ -1166,6 +1166,12 @@ criteria can ever have
 it, on a path no current test can see
 **Review base:** the `T-013` merge commit
 
+**It also restores the default test run.** `tests/integration/test_manager.py` is behind
+`-m process_tree` as of 2026-07-27, because the loose descendants wedge later runs intermittently
+— the same suite finishing in 19 seconds twice and then sitting past ten minutes. Two of
+`ai/TESTING.md` §7's mandatory areas are out of the default loop until this lands. The marker is
+removed by this task, not by a separate cleanup.
+
 #### Why this was rescoped
 
 `T-013` delivered most of what this task was written to prove, and delivered it against
