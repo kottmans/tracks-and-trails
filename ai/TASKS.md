@@ -865,7 +865,7 @@ gap and repairs current-truth navigation
 **Affected surfaces:** `tests/unit/test_environment.py`, optionally
 `downloader/environment.py` public-API metadata, `ai/TASKS.md`, `ai/STATUS.md`
 **Risk:** Low
-**Review base:** `51e37f0`
+**Review base:** `fb2dab9`
 
 #### Scope
 
@@ -1145,7 +1145,7 @@ then `T-037`.
 
 ### T-034 — Filename safety and output-path containment
 
-**Status:** **Complete — approved with follow-ups**, 2026-07-26 at `66a5542`.
+**Status:** **Complete — approved with follow-ups**, 2026-07-26 at `313198d`.
 
 Closes `ai/TESTING.md` §7's **Path safety** mandatory area, taking §7 from two of ten to three.
 Four review rounds and two maintainer-authorized exception passes; the reviewer independently
@@ -1443,7 +1443,7 @@ parametrize list: derive the numeric fields from each message's type hints.
 
 ### T-041 — Validate nested payloads in `core/models.py`
 
-**Status:** **Complete — approved** at `c693ec6`, 2026-07-26. All five findings independently
+**Status:** **Complete — approved** at `0268e13`, 2026-07-26. All five findings independently
 verified resolved; `T011-R8` functionally closed. CI run `30216176642` was verified green at that
 exact head by the reviewer.
 
@@ -1732,7 +1732,7 @@ findings resolved and verified by the reviewer. Unblocks `T-011`, `T-014`, `T-01
 **Affected surfaces:** `core/models.py`, `core/job_state.py`, `core/errors.py`,
 `tests/unit/`
 **Risk:** Medium — cheap to write, expensive to change once four other modules import it
-**Review base:** `ce7cec4`
+**Review base:** `3c4f7a7`
 
 #### Scope
 
@@ -1982,7 +1982,7 @@ previous monitor layout from restoring the only window entirely off-screen.
   fall back without an exception or Qt overflow warning
 - Stored geometry that intersects no available screen is moved onto an available screen
 - The existing round-trip remains green for ordinary negative coordinates and positive sizes
-- Each new adversarial case fails against `2d06153` before the production fix is applied
+- Each new adversarial case fails against `adb25f8` before the production fix is applied
 
 ---
 
@@ -2123,7 +2123,7 @@ artifact, which now contains the log.
 
 - `STATUS.md` no longer asks to merge completed work, call completed tasks "in review", or
   describe the replaced placeholder `app.run`
-- Exact source counts are recomputed rather than copied; at `2d06153` there are 31 Python
+- Exact source counts are recomputed rather than copied; at `adb25f8` there are 31 Python
   modules, 26 docstring-only stubs, and 5 modules with code
 - `TASKS.md` headings agree with task statuses, and the exit-review next step is current
 - `TESTING.md`'s status note acknowledges resource, layering, and shell-window tests while
@@ -2274,7 +2274,7 @@ merged.
 ### T-020 — Frozen-build smoke test in CI
 
 **Status:** Complete
-**Completed:** 2026-07-25 — merged to `main` as part of `4d6ad3c`; **no independent review**, pending the Phase 0 exit review
+**Completed:** 2026-07-25 — merged to `main` as part of `564aad0`; **no independent review**, pending the Phase 0 exit review
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 0
@@ -2374,7 +2374,7 @@ rather than hidden.
 ### T-025 — Phase 0 exit preparation
 
 **Status:** Complete
-**Completed:** 2026-07-25 — merged to `main` as part of `4d6ad3c`; **no independent review**, pending the Phase 0 exit review
+**Completed:** 2026-07-25 — merged to `main` as part of `564aad0`; **no independent review**, pending the Phase 0 exit review
 **Owner:** Implementer + Documentation Maintainer
 **Priority:** High
 **Phase:** Phase 0
@@ -2449,7 +2449,7 @@ around it is done.
 ### T-005 — Layering enforcement test
 
 **Status:** Complete
-**Completed:** 2026-07-25 — squash-merged as `88b810f` via PR #2
+**Completed:** 2026-07-25 — squash-merged as `d1f45e5` via PR #2
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 0
@@ -2652,7 +2652,7 @@ hashed before and after: byte-identical. Suite 133 passed, 1 deselected.
 ### T-006 — CI on Linux and Windows
 
 **Status:** Complete
-**Completed:** 2026-07-25 — squash-merged as `e36525e` via PR #1; CI green on `main`
+**Completed:** 2026-07-25 — squash-merged as `c8a72b8` via PR #1; CI green on `main`
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 0

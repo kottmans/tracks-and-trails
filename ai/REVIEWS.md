@@ -76,7 +76,7 @@ where this project's failures are silent or destructive:
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-003`
-**Base:** `e131a7fb9065a19b7184a5b6b8d41b2b049be8c9`
+**Base:** `a2cf514eb6dbb6a1c5812ddc1b4355d04c987d4d`
 **Head:** bounded uncommitted snapshot — tracked patch SHA-256
 `37deb9c436df1ccaa1266cbcaa82c132c1bd952c1ce2f44653ca250c31837371`;
 ordered ten-asset manifest SHA-256
@@ -173,7 +173,7 @@ introduced by this correction.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-006`
-**Base:** `947db1a9aa40e2c6ffadb448ca195c384bf68c02`
+**Base:** `8d30c884236eb07d05649efa29529fa9b0dc7d74`
 **Head:** `8db0518de72c17139ce34b832f8cbeed24ec4d21`
 **Platforms verified:** Linux and Windows through GitHub-hosted runner artifacts and logs
 **Verdict:** Changes requested
@@ -207,7 +207,7 @@ introduced by this correction.
 | `ruff format --check .` | Passed: 53 files already formatted. |
 | `mypy src` | Passed: no issues in 30 source files. |
 | `pytest -q` | Passed: 27 passed, 1 deselected in 0.09s. |
-| `git diff --check 947db1a 8db0518` | Passed. |
+| `git diff --check 8d30c88 8db0518` | Passed. |
 
 ### Readiness
 
@@ -221,7 +221,7 @@ be rewritten.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-023`; re-review of `T006-R1`, `T006-R2`
-**Base:** `947db1a9aa40e2c6ffadb448ca195c384bf68c02`
+**Base:** `8d30c884236eb07d05649efa29529fa9b0dc7d74`
 **Correction boundary:** `8db0518de72c17139ce34b832f8cbeed24ec4d21` to
 `24d926d103945f1abb049783d80561ee79ce88d8`
 **Platforms verified:** Linux locally; Linux and Windows through GitHub-hosted runner
@@ -254,7 +254,7 @@ None.
 | `ruff format --check .` | Passed: 53 files already formatted. |
 | `mypy src` | Passed: no issues in 30 source files. |
 | `pytest -q` | Passed: 27 passed, 1 deselected in 0.10s. |
-| `git diff --check 947db1a 24d926d` | Passed. |
+| `git diff --check 8d30c88 24d926d` | Passed. |
 
 ### Readiness
 
@@ -267,7 +267,7 @@ merge so the deliberate gate-proof commits do not enter `main`.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-005`
-**Base:** `00b610f3a48ac280b8ca77841746bb20f1786b28`
+**Base:** `3fe92abfa82371e76c6be13b0cdb31d1275d503c`
 **Head:** `655f53d6fcb616d0691b1aefc229fb41393a8a69`
 **Platforms verified:** Linux locally; Linux and Windows through GitHub-hosted runner
 artifacts and logs
@@ -303,7 +303,7 @@ artifacts and logs
 | Bare `mypy` | Passed: no issues in 41 source files. |
 | Isolated `mypy tests/unit/test_layering.py` | Failed at the package-location import because the separately analyzed installed package has no `py.typed`; this is not a required gate, but reinforces `T005-R2`. |
 | `pytest -q` | Passed: 72 passed, 1 deselected in 0.32s. |
-| `git diff --check 00b610f 655f53d` | Passed. |
+| `git diff --check 3fe92ab 655f53d` | Passed. |
 
 ### Readiness
 
@@ -316,7 +316,7 @@ three open corrections; focused re-review is required before merge.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-024`; re-review of `T005-R1`, `T005-R2`, `T005-R3`
-**Base:** `00b610f3a48ac280b8ca77841746bb20f1786b28`
+**Base:** `3fe92abfa82371e76c6be13b0cdb31d1275d503c`
 **Correction boundary:** `655f53d6fcb616d0691b1aefc229fb41393a8a69` to
 `d6af9d92e49388eff0f9917b0e79de10687d37d9`
 **Platforms verified:** Linux locally; Linux and Windows through GitHub-hosted runner
@@ -355,7 +355,7 @@ None.
 | Bare `mypy` | Passed: no issues in 41 source files. |
 | `mypy tests/unit/test_layering.py` | Passed: no issues in one source file. |
 | `pytest -q` | Passed: 103 passed, 1 deselected in 0.17s. |
-| `git diff --check 00b610f d6af9d9` | Passed. |
+| `git diff --check 3fe92ab d6af9d9` | Passed. |
 
 ### Readiness
 
@@ -373,8 +373,8 @@ inside `T-024`; focused re-review is still required.
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-001`, `T-002`, `T-003`, `T-004`, `T-005`, `T-006`, `T-007`,
 `T-020`, `T-022`, `T-023`, `T-024`, `T-025`; proposed `OPS-004`
-**Base:** `606a50dbac412c20da87d2bdc5646ad6b9340213`
-**Head:** `2d06153b3a3a571ad66cf0e1284c4b9cd74cd673`
+**Base:** `158057661196adfe2730c820c6898724e446c116`
+**Head:** `adb25f81019916849933c7b36091514f8d9db259`
 **Platforms verified:** Linux locally; Windows from retained check, frozen-build, and desktop
 spike artifacts
 **Verdict:** Changes requested
@@ -403,7 +403,7 @@ spike artifacts
 
 | Criterion | Reviewer result |
 |---|---|
-| Local and CI lint, format, types, tests | **Met with an evidence-access caveat.** Current local checks pass. Retained Windows check evidence passes at the T-007 code boundary, retained Windows frozen evidence exercises the only later source addition, and only documentation changed after `ae30e77`. The local `gh` credential is expired, so the reviewer could not freshly query the final `2d06153` run. |
+| Local and CI lint, format, types, tests | **Met with an evidence-access caveat.** Current local checks pass. Retained Windows check evidence passes at the T-007 code boundary, retained Windows frozen evidence exercises the only later source addition, and only documentation changed after `41e9f6e`. The local `gh` credential is expired, so the reviewer could not freshly query the final `adb25f8` run. |
 | Deliberate Qt import in `core/` fails | **Met.** `core/models.py` injection: 1 failed, 108 passed, naming the file and rule; restored hash matched. |
 | Clean-checkout Linux window launch | **Met.** A 73-file tracked-only archive launched with the real Linux platform plugin, exited 0 with empty stderr, and wrote redirected geometry. T-025 separately records the full clean environment setup. |
 | Clean-checkout Windows window launch | **Not met.** Offscreen UI tests and the frozen `--spawn-probe` path are not the documented end-user launch. The spike constructs `MainWindow` directly rather than exercising `python -m tracks_and_trails` from the documented setup. `OPS-004` makes this automatable; it does not supply the missing evidence retroactively. |
@@ -437,8 +437,8 @@ spike artifacts
 
 | Check | Result |
 |---|---|
-| Working boundary | Started at clean `main` `2d06153`; base/head diff is 67 files, 3,370 insertions, 145 deletions. Review mutations were restored by SHA-256; only this review's coordination edits remain. |
-| `git diff --check 606a50d 2d06153` | Passed. |
+| Working boundary | Started at clean `main` `adb25f8`; base/head diff is 67 files, 3,370 insertions, 145 deletions. Review mutations were restored by SHA-256; only this review's coordination edits remain. |
+| `git diff --check 1580576 adb25f8` | Passed. |
 | `ruff check .` | Passed: “All checks passed!” |
 | `ruff format --check .` | Passed: 58 files already formatted. |
 | `mypy src` | Passed: no issues in 31 source files. |
@@ -464,7 +464,7 @@ advancing Phase 1.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-027` through `T-032`; corrected `OPS-004`; PR #7
-**Base:** `2d06153b3a3a571ad66cf0e1284c4b9cd74cd673`
+**Base:** `adb25f81019916849933c7b36091514f8d9db259`
 **Head:** `67da109bc8de8bb02ecbd582b9d2e27710e3e981`
 **Platforms verified:** Linux locally; Windows from GitHub Actions runs and retained artifacts
 **Verdict:** Changes requested
@@ -496,7 +496,7 @@ advancing Phase 1.
 | Check | Result |
 |---|---|
 | PR boundary and final CI | PR #7 is open and mergeable at the exact reviewed head. Both final push and pull-request workflows are green: Linux, Windows, frozen Linux, and frozen Windows. |
-| `git diff --check 2d06153..67da109` | Passed. |
+| `git diff --check adb25f8..67da109` | Passed. |
 | `ruff check .` | Passed: “All checks passed!” |
 | `ruff format --check .` | Passed: 58 files already formatted. |
 | `mypy src` | Passed: no issues in 31 source files. |
@@ -520,9 +520,9 @@ branch intentionally contains the broken `freeze_support()` proof commit.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-010`
-**Base:** `4a2a1e6bc1720a2085146e363d7612503cf07989`
-**Head:** `e2becc0f1153f9fca078c9ed10e8955eb5bc1b2f`
-**Implementation commit:** `ad4d7686158d92c4072ec0469003eef214d61765`
+**Base:** `c8651676ca5ab62e825eb03dc73d9e4e79cdc74a`
+**Head:** `eb0b4c8a1cb292e989dcd48f881d37b2cee2377f`
+**Implementation commit:** `1f1263dcfbe9bf7da30088cee5457173254bcd5f`
 **Platforms verified:** Linux locally; the handoff reports green Linux and Windows CI, but the
 reviewer could not query those private runs because the installed `gh` credential is invalid
 **Verdict:** Changes requested
@@ -551,7 +551,7 @@ reviewer could not query those private runs because the installed `gh` credentia
 
 | Check | Result |
 |---|---|
-| Bounded review | Clean `main` at exact head `e2becc0`; base/head diff is 17 files, 2,020 insertions and 151 deletions. |
+| Bounded review | Clean `main` at exact head `eb0b4c8`; base/head diff is 17 files, 2,020 insertions and 151 deletions. |
 | Focused T-010 baseline | Passed: 65 tests across `test_models.py`, `test_job_state.py`, and `test_errors.py`. |
 | Invalid transition mutation | Added `QUEUED → READY`; **48 state/model tests still passed**, reproducing `T010-R1`. Mutation was restored and the file returned to the committed diff. |
 | Failed cancellation probe | `is_terminal(FAILED)` returned false; `apply(FAILED, CANCELLED)` raised `IllegalTransitionError`, while the acceptance test excludes `FAILED`. |
@@ -562,7 +562,7 @@ reviewer could not query those private runs because the installed `gh` credentia
 | `mypy src` | Passed: no issues in 31 source files. |
 | Bare `mypy` | Passed: no issues in 49 source files. |
 | `pytest -q` | Passed: 243 passed, 2 skipped, 1 deselected in 0.42 s. |
-| `git diff --check 4a2a1e6..e2becc0` | Passed. |
+| `git diff --check c865167..eb0b4c8` | Passed. |
 
 ### Readiness
 
@@ -575,8 +575,8 @@ wordings, then perform a focused re-review.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-026`; accepted `OPS-004`
-**Base:** `4a2a1e6bc1720a2085146e363d7612503cf07989`
-**Head:** `e2becc0f1153f9fca078c9ed10e8955eb5bc1b2f`
+**Base:** `c8651676ca5ab62e825eb03dc73d9e4e79cdc74a`
+**Head:** `eb0b4c8a1cb292e989dcd48f881d37b2cee2377f`
 **Platforms verified:** Linux static review and local collection behavior; Windows run
 `30208677607` and screenshots were reported in the handoff but could not be independently
 queried or downloaded because the installed `gh` credential is invalid
@@ -590,7 +590,7 @@ queried or downloaded because the installed `gh` credential is invalid
 | `T026-R2` | **High** | Accessibility anti-vacuity | The UI Automation tests do not pin every interactive control and role as claimed. They require a window, some menu bar, some non-empty menu items, and the names `File` and `Help`. `Quit` and `About Tracks & Trails` are not required, so either action can disappear or be published under a wrong role while the checks remain green. The About dialog is never opened, leaving its Close control wholly outside the queried tree. `REQUIREMENTS.md` §3 and `TESTING.md` §9/§10 therefore retired the manual name/role gap too broadly. | Compare the current UIA tree with an explicit expected name/role contract for the window, menu bar, File, Quit, Help, and About action. Open the About dialog and assert its window and Close control separately. Include removal, empty-name, and wrong-role mutations before narrowing the current-truth claims again. | Open |
 | `T026-R3` | **Medium** | Incomplete acceptance criterion | Deferring widget tab order is correct today—zero focusable widgets would make a theatrical test—but it leaves an explicit T-026 acceptance criterion unmet while the task is treated as completed. `T-016` mentions a deliberate tab order but does not explicitly require extending the real-Windows `windows_desktop` gate or prove that reordering two controls fails there; `T-017` does not mention tab order. Unlike the installer gap, there is no concrete split task. | Keep the vacuous assertion out now. Either keep this criterion open or split it into a concrete follow-up that explicitly extends the Windows real-plugin suite when `T-016`/`T-017` add focusable controls. | Open |
 | `T026-R4` | **Low** | Windows-test type gate | The mypy override is tightly scoped to the two Windows test modules, but those modules have no effective type-checking path. Bare mypy on Linux treats their post-guard code as unreachable; the Windows `check` job runs only `mypy src`; and the dedicated desktop job runs no mypy. A deliberate `int = "not an int"` after the platform guard passed bare mypy locally, while `mypy --platform win32` caught it. | Run bare mypy, or a Windows-platform explicit test target, in the Windows desktop job. Keep the override module-scoped, but let Windows analyze the reachable bodies. | Open |
-| `T026-R5` | **Low** | Current truth / coordination | The changed coordination set remains internally stale. `TESTING.md` still says the suite is near-empty and only one §7 area is covered, and its §12 Windows paragraph still says real keyboard and screen-reader behavior are wholly unverified under superseded `OPS-003`. `TASKS.md` files both implemented, awaiting-review tasks under `Ready` while `In Review` is empty. `STATUS.md` gives the review head as `4172fd0` rather than `e2becc0` and retains the nonexistent `/mnt/storage/...` repository path. | Reconcile the status note, §12, task headings, exact review boundary, and repository path after the functional gates are corrected. | Open |
+| `T026-R5` | **Low** | Current truth / coordination | The changed coordination set remains internally stale. `TESTING.md` still says the suite is near-empty and only one §7 area is covered, and its §12 Windows paragraph still says real keyboard and screen-reader behavior are wholly unverified under superseded `OPS-003`. `TASKS.md` files both implemented, awaiting-review tasks under `Ready` while `In Review` is empty. `STATUS.md` gives the review head as `697e024` rather than `eb0b4c8` and retains the nonexistent `/mnt/storage/...` repository path. | Reconcile the status note, §12, task headings, exact review boundary, and repository path after the functional gates are corrected. | Open |
 
 ### Review judgments
 
@@ -633,8 +633,8 @@ owner for the deferred tab-order gate, followed by focused Windows re-review.
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-010`, `T-026`; dispositions for `T010-R1`–`T010-R4` and
 `T026-R1`–`T026-R5`
-**Base:** `e2becc0f1153f9fca078c9ed10e8955eb5bc1b2f`
-**Head:** `918c50c9a06daed854f347b94202b4d4b2d096d2`
+**Base:** `eb0b4c8a1cb292e989dcd48f881d37b2cee2377f`
+**Head:** `8e5f9a6f6d11facf7b67d057c3d3c915e2cacaf0`
 **Platforms verified:** Linux locally; Windows run `30210954363` was reported green with
 19 desktop tests, but the reviewer could not independently query or download it because the
 installed `gh` credential remains invalid
@@ -678,7 +678,7 @@ installed `gh` credential remains invalid
 
 | Check | Result |
 |---|---|
-| Correction boundary | Clean `main` at exact head `918c50c`; correction diff is 12 files, 1,023 insertions and 334 deletions. All temporary mutations were restored. |
+| Correction boundary | Clean `main` at exact head `8e5f9a6`; correction diff is 12 files, 1,023 insertions and 334 deletions. All temporary mutations were restored. |
 | `ruff check .` | Passed: “All checks passed!” |
 | `ruff format --check .` | Passed: 64 files already formatted. |
 | `mypy src` | Passed: no issues in 31 source files. |
@@ -691,7 +691,7 @@ installed `gh` credential remains invalid
 | T026 type mutation | A post-guard incompatible assignment failed `mypy --platform win32` with exactly the intended assignment error. Restored. |
 | T026 accessibility adversarial harness | A fabricated main tree containing only an unnamed native menu bar, `System`, and title-bar buttons passed both main-tree guards. A fabricated About tree whose only button was the native title-bar `Close` passed `test_the_about_dialog_and_its_close_button_are_announced`. This reproduces the remaining anti-vacuity holes without needing to emulate UI Automation itself. |
 | Desktop collection guard, Linux | `pytest -q -m windows_desktop` reported 2 skipped and 243 deselected, then exited 5. |
-| `git diff --check e2becc0..918c50c` | Passed. |
+| `git diff --check eb0b4c8..8e5f9a6` | Passed. |
 | Windows CI/artifacts | Not independently checked: `gh auth status` reports the configured token invalid. The handoff reports run `30210954363` and all five jobs green, with 19 desktop tests. |
 
 ### Readiness
@@ -707,8 +707,8 @@ this entry.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-011`
-**Base:** `db8ab66fcf4c90d93a12390baed0756b1bf42a75`
-**Head:** `6663c9ea2ddc1b3f9a0aac601827c928c2a06be9`
+**Base:** `831a726fcbb11427caa3645b3318457ca2d158c5`
+**Head:** `bd794186470a5b511246c360b691db56f76be9aa`
 **Platforms verified:** Linux locally; Windows CI run `30212659385` was reported green in the
 handoff, but the reviewer could not independently query it because the installed `gh`
 credential is invalid
@@ -745,7 +745,7 @@ credential is invalid
 
 | Check | Result |
 |---|---|
-| Review boundary | Clean `main` at exact head `6663c9e`; `db8ab66..6663c9e` is one commit touching 3 files, with 497 insertions and 2 deletions. |
+| Review boundary | Clean `main` at exact head `bd79418`; `831a726..bd79418` is one commit touching 3 files, with 497 insertions and 2 deletions. |
 | `ruff check .` | Passed: “All checks passed!” |
 | `ruff format --check .` | Passed: 65 files already formatted. |
 | `mypy src` | Passed: no issues in 31 source files. |
@@ -756,7 +756,7 @@ credential is invalid
 | Layering | Passed: 109 cases; the protocol imports neither Qt nor yt-dlp. |
 | Malformed-sample mutation | Replaced the representative `Probed.media` with a raw dict and omitted the representative `Progress.stage`; all 48 protocol tests still passed. Restored. |
 | Direct runtime probes | A wrapped raw dict survived pickle and passed `is_message`; invalid string stage/kind values passed; a dict `Failed.context` remained mutable; an undeclared `Progress` subclass passed `is_message`; a successful-probe sequence contained zero terminal messages. |
-| `git diff --check db8ab66..6663c9e` | Passed. |
+| `git diff --check 831a726..bd79418` | Passed. |
 | Windows CI | Not independently checked: `gh auth status` reports the configured token invalid. The handoff reports run `30212659385` with all five jobs green. |
 
 ### Readiness
@@ -772,8 +772,8 @@ should be reconciled in the same correction pass.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-011`; dispositions for `T011-R1`–`T011-R6`
-**Base:** `6663c9ea2ddc1b3f9a0aac601827c928c2a06be9`
-**Head:** `8fbbb2d439f4041f235deb193d57ad0af00bffac`
+**Base:** `bd794186470a5b511246c360b691db56f76be9aa`
+**Head:** `c247e54e11cbe7b4f84505e5aa7f14673c80351f`
 **Platforms verified:** Linux locally; Windows CI run `30213417231` was reported green in the
 handoff, but the reviewer could not independently query it because the installed `gh`
 credential remains invalid
@@ -814,7 +814,7 @@ credential remains invalid
 
 | Check | Result |
 |---|---|
-| Correction boundary | Clean `main` at exact head `8fbbb2d`; `6663c9e..8fbbb2d` is two commits and 6 files, with 797 insertions and 297 deletions. Commit `90abde5` records the prior review unchanged; the implementation correction is `90abde5..8fbbb2d`, 5 files. |
+| Correction boundary | Clean `main` at exact head `c247e54`; `bd79418..c247e54` is two commits and 6 files, with 797 insertions and 297 deletions. Commit `60edd4e` records the prior review unchanged; the implementation correction is `60edd4e..c247e54`, 5 files. |
 | `ruff check .` | Passed: “All checks passed!” |
 | `ruff format --check .` | Passed: 65 files already formatted. |
 | `mypy src` | Passed: no issues in 31 source files. |
@@ -826,12 +826,12 @@ credential remains invalid
 | Original malformed-sample mutation | Replaced `Probed.media` with a raw dict and omitted `Progress.stage`: 28 failed, 72 passed. Both invalid constructors were reached through the shared fixture. Restored. |
 | Residual payload mutation | Replaced representative progress speed and success byte count with mutable dictionaries: all 100 protocol tests passed. Restored. |
 | Direct residual probes | Both mutable dictionaries constructed, passed `is_message()`, survived where pickled, and retained mutable state. A probe reporting `Stage.MERGING` passed `validate_sequence(SessionKind.PROBE, ...)`. |
-| `git diff --check 6663c9e..8fbbb2d` | Passed. |
+| `git diff --check bd79418..c247e54` | Passed. |
 | Windows CI | Not independently checked: `gh auth status` reports the configured token invalid. The handoff reports run `30213417231` with all five jobs green. |
 
 ### Readiness
 
-T-011 is not approved at `8fbbb2d` and should not unblock T-035 or T-038. The two original
+T-011 is not approved at `c247e54` and should not unblock T-035 or T-038. The two original
 High-level design failures are substantially corrected, and R1, R3, R4 and R6 are closed.
 Strict runtime validation remains incomplete under R2, the advertised probe grammar is not
 fully enforced, and R5 still requires the maintainer to interpret or supersede `ARC-002`.
@@ -842,8 +842,8 @@ head, and no additional Codex re-review is implied.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-011`; verification of reopened `T011-R2` and new `T011-R7`
-**Base:** `8fbbb2d439f4041f235deb193d57ad0af00bffac`
-**Head:** `83c7d4e84df42ddacd7c83debb03ffd6bb2d7f4a`
+**Base:** `c247e54e11cbe7b4f84505e5aa7f14673c80351f`
+**Head:** `a9225145266424d0663fdbf175dd9d9b8ec0facc`
 **Platforms verified:** Linux locally; Windows CI run `30214219218` was reported green in the
 handoff, but the reviewer could not independently query it because the installed `gh`
 credential remains invalid
@@ -868,7 +868,7 @@ parked `T011-R5` and the carry-forward finding below
 
 | Check | Result |
 |---|---|
-| Correction boundary | Clean `main` at exact head `83c7d4e`; `8fbbb2d..83c7d4e` is two commits and 5 files, with 271 insertions and 20 deletions. Commit `7fb6c6a` records the prior review; the correction itself is one commit, `83c7d4e`, touching 4 files. |
+| Correction boundary | Clean `main` at exact head `a922514`; `c247e54..a922514` is two commits and 5 files, with 271 insertions and 20 deletions. Commit `88c3b1f` records the prior review; the correction itself is one commit, `a922514`, touching 4 files. |
 | `ruff check .` | Passed: “All checks passed!” |
 | `ruff format --check .` | Passed: 65 files already formatted. |
 | `mypy src` | Passed: no issues in 31 source files. |
@@ -881,7 +881,7 @@ parked `T011-R5` and the carry-forward finding below
 | R2 future-field mutation | Added an unvalidated defaulted field to `WorkerFinished`; the generic audit failed for that field: 1 failed, 4 passed. Restored. |
 | R7 branch mutation | Disabled probe-stage enforcement: the four illegal probe-stage cases failed; 109 other protocol tests passed. Restored. |
 | Recursive projection probe | `Probed(MediaInfo(formats=[{"format_id": "137", "ext": "mp4"}]))` constructed and passed `is_message`; mutating the original nested dictionary changed the message, and pickle restored another list/dict graph. |
-| `git diff --check 8fbbb2d..83c7d4e` | Passed. |
+| `git diff --check c247e54..a922514` | Passed. |
 | Windows CI | Not independently checked: `gh auth status` reports the configured token invalid. The handoff reports run `30214219218` with all five jobs green. |
 
 ### Readiness
@@ -896,8 +896,8 @@ correction pass here.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-041`; carried finding `T011-R8`
-**Base:** `766c4ba651a4f687c0291385ba801695a21e7d81`
-**Head:** `fa62d9789e1e817b33d819b1cb051235452afd8c`
+**Base:** `b933940a009e437f30a83a52553676e6f50464ad`
+**Head:** `cc201a7df5cb798c3fd77ae7f1388d9615e16f09`
 **Platforms verified:** Linux locally; Windows CI run `30215562522` was reported green in the
 handoff, but the reviewer could not independently query it because the installed `gh`
 credential remains invalid
@@ -932,7 +932,7 @@ credential remains invalid
 
 | Check | Result |
 |---|---|
-| Review boundary | Clean `main` at exact head `fa62d97`; `766c4ba..fa62d97` is one commit touching 4 files, with 346 insertions and 24 deletions. All review mutations were restored. |
+| Review boundary | Clean `main` at exact head `cc201a7`; `b933940..cc201a7` is one commit touching 4 files, with 346 insertions and 24 deletions. All review mutations were restored. |
 | `ruff check .` | Passed: “All checks passed!” |
 | `ruff format --check .` | Passed: 65 files already formatted. |
 | `mypy src` | Passed: no issues in 31 source files. |
@@ -946,12 +946,12 @@ credential remains invalid
 | New-model mutation | Added a sixth frozen dataclass with an unvalidated payload but did not edit the two test lists: all 54 model tests passed. Restored. |
 | Direct invariant probes | `Job(bytes_done=None, attempts=None)` constructed and stored both `None` values. Required text fields given dictionaries raised `ValueError`, not the documented `TypeError`. |
 | Subclass probe | A frozen `FormatInfo` subclass carrying a mutable dictionary was accepted in `MediaInfo.formats`; mutating the source dictionary changed the stored graph. |
-| `git diff --check 766c4ba..fa62d97` | Passed. |
+| `git diff --check b933940..cc201a7` | Passed. |
 | Windows CI | Not independently checked: `gh auth status` reports the configured token invalid. The handoff reports run `30215562522` with all five jobs green. |
 
 ### Readiness
 
-T-041 is not approved at `fa62d97`, and `T011-R8` should not yet be recorded as fully closed.
+T-041 is not approved at `cc201a7`, and `T011-R8` should not yet be recorded as fully closed.
 The direct raw-format-dictionary defect is fixed, the collection normalization strategy is
 sound, and the field audit is useful for known models. Approval still requires restoring the
 non-optional Job invariants, making the model-set guard independent, closing declared-model
@@ -962,8 +962,8 @@ reflect the independently verified result.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-041`; carried finding `T011-R8`
-**Re-review base:** `fa62d9789e1e817b33d819b1cb051235452afd8c`
-**Head:** `c693ec6da74004e37fbc92d5c7f84ffbcbba1a47`
+**Re-review base:** `cc201a7df5cb798c3fd77ae7f1388d9615e16f09`
+**Head:** `0268e13a88055358a733d368dc631e7f6ea7f71b`
 **Platforms verified:** Linux locally; Linux, Windows, frozen Linux, frozen Windows, and
 Windows desktop in independently queried CI run `30216176642`
 **Verdict:** **Approved.** One Low test-hardening finding is carried into the next Phase 1
@@ -1004,7 +1004,7 @@ the invalid values or nested carriers found in the first pass.
 
 | Check | Result |
 |---|---|
-| Correction boundary | Clean `main` at exact head `c693ec6`; `fa62d97..c693ec6` is the advertised two commits and five files. Commit `4ef32fa` records the first review; `c693ec6` contains the four-file correction. All reviewer mutations were restored. |
+| Correction boundary | Clean `main` at exact head `0268e13`; `cc201a7..0268e13` is the advertised two commits and five files. Commit `828799b` records the first review; `0268e13` contains the four-file correction. All reviewer mutations were restored. |
 | `ruff check .` | Passed: “All checks passed!” |
 | `ruff format --check .` | Passed: 65 files already formatted. |
 | `mypy src` | Passed: no issues in 31 source files. |
@@ -1021,12 +1021,12 @@ the invalid values or nested carriers found in the first pass.
 | Required-counter mutation | Routed `bytes_done` through the optional validator: its dedicated regression failed, while the generic `None` sweep still passed all 5 model cases. Restored. |
 | Boolean mutation | Removed `_require_optional_count`'s explicit `bool` rejection: all 76 model tests passed. Restored; recorded as `T041-R6`. |
 | Exact-boundary mutation | Reverted both declared-model boundaries to `isinstance`: both adversarial subclass tests failed. Restored. |
-| `git diff --check fa62d97..c693ec6` | Passed. |
-| CI `30216176642` | Independently verified successful at exact head `c693ec6`; all five jobs green. |
+| `git diff --check cc201a7..0268e13` | Passed. |
+| CI `30216176642` | Independently verified successful at exact head `0268e13`; all five jobs green. |
 
 ### Readiness
 
-T-041 is approved at `c693ec6`, and the functional `T011-R8` payload/immutability defect is
+T-041 is approved at `0268e13`, and the functional `T011-R8` payload/immutability defect is
 independently verified closed. The task is ready for the implementer or maintainer to move to
 Complete. Per the explicit final-pass instruction, `T041-R6` is carried into the next Phase 1
 implementation and does not request another T-041 re-review.
@@ -1035,8 +1035,8 @@ implementation and does not request another T-041 re-review.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-034`, `T-035`, `T-042`, `T-043`; carried finding `T041-R6`
-**Review base:** `352f887726352a7b32198dd820792ee50ddba176`
-**Head:** `666c4be1edd0cb5a54727ec6b30104b0beca27aa`
+**Review base:** `64c9dfdc3bfc73dc207bb3dd00201f114cb5b99e`
+**Head:** `f08f5a6bbba0551494dd731ea66c55d444b43c07`
 **Platforms verified:** Linux locally; Linux, Windows, frozen Linux, frozen Windows, and
 Windows desktop in independently queried CI run `30218288265`
 **Overall verdict:** **Changes requested**
@@ -1087,7 +1087,7 @@ Windows desktop in independently queried CI run `30218288265`
 
 | Check | Result |
 |---|---|
-| Review boundary | `352f887..666c4be` contains **7**, not the handoff's stated 8, commits and 9 changed files. The two disclosed broken intermediate commits were inspected as history; approval is assessed only at the clean head. Current local HEAD is later at `8cb14d6`, whose only changes after the review head are the two explicitly excluded `AGENTS.md` commits; source and tests match `666c4be`. |
+| Review boundary | `64c9dfd..f08f5a6` contains **7**, not the handoff's stated 8, commits and 9 changed files. The two disclosed broken intermediate commits were inspected as history; approval is assessed only at the clean head. Current local HEAD is later at `901a22c`, whose only changes after the review head are the two explicitly excluded `AGENTS.md` commits; source and tests match `f08f5a6`. |
 | `.venv/bin/ruff check .` | Passed: “All checks passed!” |
 | `.venv/bin/ruff format --check .` | Passed: 67 files already formatted. |
 | `.venv/bin/mypy src` | Passed: no issues in 31 source files. |
@@ -1110,8 +1110,8 @@ Windows desktop in independently queried CI run `30218288265`
 | Model boolean mutations | Removing the optional-count boolean guard failed 3 annotation-driven cases. Removing the required-count guard failed its derived cases. Restored. |
 | Protocol boolean mutations | Removing the optional-rate and exit-code boolean guards failed the corresponding `Progress` and `WorkerFinished` cases. Restored. |
 | New numeric-field mutations | A new required `int` field on `FormatInfo` failed the derived nullability/boolean guards; one on `WorkerFinished` failed the corresponding protocol guards. Restored. |
-| `git diff --check 352f887..666c4be` | Passed. |
-| CI `30218288265` | Independently verified successful at exact head `666c4be`; all five jobs green. |
+| `git diff --check 64c9dfd..f08f5a6` | Passed. |
+| CI `30218288265` | Independently verified successful at exact head `f08f5a6`; all five jobs green. |
 | Worktree after review | All temporary source/test mutations were restored. The only local modification is this reviewer-owned `ai/REVIEWS.md` entry. |
 
 ### Review-policy clarification
@@ -1131,7 +1131,7 @@ This append-only record does not rewrite the eight earlier review entries, but t
 
 ### Readiness and review budget
 
-`T-042` and `T-043` are approved at `666c4be` and can move to Complete without waiting for the
+`T-042` and `T-043` are approved at `f08f5a6` and can move to Complete without waiting for the
 other two tasks. `T-034` and `T-035` are not approved and do not yet unblock `T-012`. Their
 remaining standard budget is one focused correction re-review covering the findings above and
 regressions introduced by their corrections; it is not another unbounded audit. The
@@ -1142,9 +1142,9 @@ mutation evidence, then update the coordination documents.
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-034`, `T-035`; non-blocking coordination finding `P1-R1`
-**Re-review base:** `666c4be1edd0cb5a54727ec6b30104b0beca27aa`
-**Head:** `51e37f0987f4effd974b223a0acc2879ef8f08a3`
-**Functional correction diff:** `08787ff..51e37f0` — one commit, six files
+**Re-review base:** `f08f5a6bbba0551494dd731ea66c55d444b43c07`
+**Head:** `fb2dab9634405282d02044270c8e25750222ff65`
+**Functional correction diff:** `1454591..fb2dab9` — one commit, six files
 **Platforms verified:** Linux locally; Linux, Windows, frozen Linux, frozen Windows, and
 Windows desktop in independently queried CI run `30219285036`
 **Overall verdict:** **Changes requested**
@@ -1191,7 +1191,7 @@ Windows desktop in independently queried CI run `30219285036`
 
 | Check | Result |
 |---|---|
-| Correction boundary | Clean `main` at exact head `51e37f0` before reviewer documentation. `666c4be..51e37f0` contains the two previously excluded `AGENTS.md` commits, the committed initial review, and correction commit `51e37f0`; the functional correction is the one-commit `08787ff..51e37f0` diff. |
+| Correction boundary | Clean `main` at exact head `fb2dab9` before reviewer documentation. `f08f5a6..fb2dab9` contains the two previously excluded `AGENTS.md` commits, the committed initial review, and correction commit `fb2dab9`; the functional correction is the one-commit `1454591..fb2dab9` diff. |
 | `.venv/bin/ruff check .` | Passed: “All checks passed!” |
 | `.venv/bin/ruff format --check .` | Passed: 67 files already formatted. |
 | `.venv/bin/mypy src` | Passed: no issues in 31 source files. |
@@ -1211,13 +1211,13 @@ Windows desktop in independently queried CI run `30219285036`
 | R2 override-presence mutation | Accepted any regular override file: 1 failed, 21 passed. Restored. |
 | R3 function-export mutation | Added `get_ytdlp_version()`: 1 failed, 21 passed. Restored. |
 | R4 constant-export mutation | Added `YTDLP_VERSION`: all 22 environment tests passed. Restored; assigned to `T-044`. |
-| `git diff --check 666c4be..51e37f0` | Passed. |
-| CI `30219285036` | Independently verified successful at exact head `51e37f0`; all five jobs green. |
+| `git diff --check f08f5a6..fb2dab9` | Passed. |
+| CI `30219285036` | Independently verified successful at exact head `fb2dab9`; all five jobs green. |
 | Worktree after mutations | All temporary source/test mutations were restored. The only local changes are this reviewer-owned entry and the `T-044` follow-up in `ai/TASKS.md`. |
 
 ### Readiness and exhausted budget
 
-`T-035` is **Approved with follow-ups** at `51e37f0`; it can move to Complete, and `T-044`
+`T-035` is **Approved with follow-ups** at `fb2dab9`; it can move to Complete, and `T-044`
 owns the two Low carry-forwards. `T-034` remains **Changes requested**, so `T-012` remains
 blocked on path safety.
 
@@ -1232,8 +1232,8 @@ explicit exception.
 
 **Reviewer:** Codex (Reviewer)
 **Task:** `T-034`
-**Verification base:** `3f80d231106260650e827ae46fb9b594dbefb63a`
-**Head:** `66a55422381e25680a0630af6f6eb7c70abd323c`
+**Verification base:** `eca1f7e7adfe7b97bec9e4392f8dcc9abf64f86f`
+**Head:** `313198d08b5e8f537cde77add662d22a45e3a824`
 **Scope:** The two implementer-found defects in this one-commit correction only; no T-045
 review or broader T-034 audit
 **Platforms verified:** Linux locally; Linux, Windows, frozen Linux, frozen Windows, and
@@ -1273,7 +1273,7 @@ head.
 
 | Check | Result |
 |---|---|
-| Boundary | Clean `main` at exact head `66a5542` before reviewer documentation. `3f80d23..66a5542` is one commit, three files, and 29 changed production lines. |
+| Boundary | Clean `main` at exact head `313198d` before reviewer documentation. `eca1f7e..313198d` is one commit, three files, and 29 changed production lines. |
 | `.venv/bin/ruff check .` | Passed: “All checks passed!” |
 | `.venv/bin/ruff format --check .` | Passed: 67 files already formatted. |
 | `.venv/bin/mypy src` | Passed: no issues in 31 source files. |
@@ -1288,13 +1288,13 @@ head.
 | Direct reserved probes | `CON`, `CON `, and `CON.` produced the same defused name; `CON .mp4`, `AUX  `, and tab-decorated `COM1` were defused and idempotent. |
 | Direct drive probes | Legal drive-prefixed titles and `C:../evil.mp4`/`C:..\evil.mp4` were sanitized beneath the output directory; drive-absolute and UNC inputs remained contained. |
 | Prior blocker retention | The known 32-bit collision pair now produces distinct names; `COM0`, `COM0.mp4`, `LPT0`, and `LPT0.mp4` remain unchanged. |
-| `git diff --check 3f80d23..66a5542` | Passed. |
-| CI `30221188245` | Independently verified successful at exact head `66a5542`; all five jobs green. |
+| `git diff --check eca1f7e..313198d` | Passed. |
+| CI `30221188245` | Independently verified successful at exact head `313198d`; all five jobs green. |
 | Worktree after mutations | All temporary source mutations were restored. The only local modification is this reviewer-owned `ai/REVIEWS.md` entry. |
 
 ### Readiness
 
-T-034 has no open blocking finding and is **Approved with follow-ups** at `66a5542`. It may
+T-034 has no open blocking finding and is **Approved with follow-ups** at `313198d`. It may
 move to Complete, and its dependency edge no longer blocks T-012. T-045 remains separately
 In Review and T-044 remains Ready; neither requests or implies another T-034 pass.
 
@@ -1302,7 +1302,7 @@ In Review and T-044 remains Ready; neither requests or implies another T-034 pas
 
 **Reviewer:** Codex (Reviewer)
 **Task(s):** `T-012`, `T-033`
-**Review base:** `073aff830272d99282313f67fcf47e123f2869cd`
+**Review base:** `7bd9e7b46a241d27dec8e81f7a05b40d12f58439`
 **Head:** Bounded uncommitted working-tree snapshot from
 `ai/handoffs/T-012-T-033-review-handoff.md`; `AGENTS.md` and the handoff itself are excluded
 from the functional change
@@ -1352,7 +1352,7 @@ because this snapshot is not committed or pushed.
 
 | Check | Result |
 |---|---|
-| Review boundary | Base `073aff830272d99282313f67fcf47e123f2869cd`; 11 functional/coordination files in the bounded working-tree snapshot. `AGENTS.md` and `ai/handoffs/` excluded. Production blob IDs include worker `73ef6568`, adapter `4a571da6`, and freeze probe `026cdaf0`. |
+| Review boundary | Base `7bd9e7b46a241d27dec8e81f7a05b40d12f58439`; 11 functional/coordination files in the bounded working-tree snapshot. `AGENTS.md` and `ai/handoffs/` excluded. Production blob IDs include worker `73ef6568`, adapter `4a571da6`, and freeze probe `026cdaf0`. |
 | `.venv/bin/ruff check .` | Passed: “All checks passed!” |
 | `.venv/bin/ruff format --check .` | Passed: 70 files already formatted. |
 | `.venv/bin/mypy src` | Passed: no issues in 31 source files. |
@@ -1447,7 +1447,7 @@ be approved on this batch alone.
 **Reviewer:** Codex
 **Responds to:** the 2026-07-26 T-012/T-033 correction batch
 **Boundary:** the correction applied to the same uncommitted working tree reviewed from
-`073aff830272d99282313f67fcf47e123f2869cd`; there is still no head commit. Maintainer-owned
+`7bd9e7b46a241d27dec8e81f7a05b40d12f58439`; there is still no head commit. Maintainer-owned
 `AGENTS.md` and `.gitmessage`, and the convenience handoff, remain excluded.
 **Overall verdict:** **Changes requested**
 
@@ -1563,7 +1563,7 @@ Nothing has been committed or pushed.
 **Reviewer:** Codex
 **Responds to:** the 2026-07-26 T-012/T-033 second correction batch
 **Boundary:** the current uncommitted T-012/T-033 tree based on
-`073aff830272d99282313f67fcf47e123f2869cd`; maintainer-owned `AGENTS.md` and `.gitmessage`,
+`7bd9e7b46a241d27dec8e81f7a05b40d12f58439`; maintainer-owned `AGENTS.md` and `.gitmessage`,
 and the convenience handoff, remain outside this reviewed task boundary.
 
 ### Verdict by task
@@ -1610,3 +1610,54 @@ The commit may close `T012-R1` through `T012-R5`, `T033-R2`, and `P1-R2`. It mus
 `T033-R1` or T-033 complete yet. After the green normal frozen run, exercise and revert the
 collection-removal mutation, retain both platforms' evidence, calculate the artifact-size
 delta from the two totals, and return only that external evidence for final T-033 verification.
+
+---
+
+## 2026-07-26 — note: commit SHAs in this file were remapped
+
+**This file is a historical record (`AGENTS.md` §6), so this rewrite is recorded rather than
+performed silently.** No finding, verdict, evidence line or date has been altered. Only commit
+SHAs changed, and only so they keep pointing at the same commits.
+
+All 80 commit messages were rewritten to the `AGENTS.md` §12 convention at the maintainer's
+instruction: subjects shortened to ≤50 characters and stripped of task IDs, which moved into
+`Task:`/`Refs:`/`Review:` trailers. Rewriting a message changes its SHA and every descendant's,
+so the 112 SHA references across `REVIEWS.md`, `TASKS.md` and `STATUS.md` were remapped to the
+rewritten commits.
+
+Verified before and after:
+
+- all 80 trees are byte-identical to the originals — **no file content changed**, only messages;
+- all 61 commit references in `ai/*.md` resolve in the rewritten history;
+- the 26 remaining hex tokens in this file were never commits on `main` — three are blob IDs a
+  reviewer cited, the rest are uncommitted working-tree snapshots — and are deliberately
+  untouched;
+- CI run numbers (`3020867`, `3021095`, `3021516`, `3021617`) are seven-digit decimals that a
+  hex pattern also matches; they were excluded explicitly rather than by luck.
+
+The pre-rewrite history is preserved at tag `pre-message-rewrite-backup` and branch
+`backup/pre-message-rewrite` (old head `435d780`, new head `a296615`).
+
+**One consequence worth stating plainly:** the passing CI run for the `T-012`/`T-033` boundary
+(run `30226122180`) was recorded against `435d780`, which this rewrite orphans. Its evidence
+remains valid and is quoted below, but the run no longer corresponds to a reachable commit.
+`T-033`'s outstanding CI work will be re-run against the rewritten head.
+
+### The orphaned run's evidence, preserved
+
+Both frozen jobs passed on `435d780`. Quoted here because the run's own artifacts name a commit
+that no longer exists:
+
+| Platform | Probe | Artifact |
+|---|---|---|
+| ubuntu-latest | `2026.07.04`, pin `2026.7.4`, 1751 extractors, `youtube from yt_dlp.extractor.youtube` | 227348 KiB |
+| windows-latest | identical | 136020 KiB |
+
+`T033-R2` is therefore confirmed **in the real frozen artifact**, not only in source: the probe
+loaded the concrete extractor module rather than the lazy placeholder, on both platforms.
+
+**A defect in that same evidence step, found while reading it.** The step also prints
+`yt_dlp files: 3` / `yt_dlp KiB: 24`. That is misleading: PyInstaller packs pure-Python modules
+into the PYZ archive, so a filesystem search finds only the few loose data files and reports 24
+KiB for a dependency contributing far more. The artifact total is sound; the yt-dlp subtotal is
+not, and must not be quoted as the size delta. Filed as part of `T-033`'s remaining CI work.

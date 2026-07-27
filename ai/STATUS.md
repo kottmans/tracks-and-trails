@@ -25,7 +25,7 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
   whether Narrator *sounds* coherent, whether the installer *feels* normal. Unverified, needs a
   person, and blocks **first release**, not this phase. `T-040` (tab order) and `T-039`
   (installer) have no automated gate yet either.
-- **`T011-R8` is closed.** `T-041` was approved at `c693ec6` and the finding is functionally
+- **`T011-R8` is closed.** `T-041` was approved at `0268e13` and the finding is functionally
   resolved. The audit behind it found the hole was not one field but every field of every model
   in `core/models.py`.
 
@@ -47,22 +47,22 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 - **First review completed** — the review process in `AGENTS.md` §3 has now been exercised
   end to end (implement → review → correct → focused re-review) and works
 - **`T-006` + `T-023` complete** — CI runs on Linux and Windows for every push and pull
-  request, squash-merged as `e36525e` and green on `main`. Reviewed twice; the final
+  request, squash-merged as `c8a72b8` and green on `main`. Reviewed twice; the final
   documentation correction was maintainer-accepted with the focused re-review waived.
-- **`T-005` + `T-024` complete** — layering enforcement test, squash-merged as `88b810f`.
+- **`T-005` + `T-024` complete** — layering enforcement test, squash-merged as `d1f45e5`.
   The analyser is guarded against being weakened, verified by eight distinct weakenings. Two
   review rounds; the second re-review was waived by the maintainer.
-- **`T-007` complete** — the application shell window, merged as `ef12f02`. Opens with the
+- **`T-007` complete** — the application shell window, merged as `fa5a3c0`. Opens with the
   icon and title, File → Quit and Help → About, geometry across restarts, clean exit. Cold
   start 0.178 s median against `NFR-002`'s 3 s. **Merged without any independent review** at
   the maintainer's direction — not a waived re-review, no first pass; recorded in its task.
 - **`T-020` + `T-025` complete** — frozen-build smoke test and the Phase 0 exit preparation,
-  merged as `4d6ad3c`. A frozen artifact spawns a child without relaunching itself on both
+  merged as `564aad0`. A frozen artifact spawns a child without relaunching itself on both
   platforms; the clean-checkout verification passes on Linux. The **negative** proof — that
   removing `freeze_support()` breaks it — has now been run on Windows too (`T-029`, run
   `30186080950`).
 - **Phase 0 exit review complete, and its eight findings closed** — `T-027` … `T-032`,
-  squash-merged as `6f2fec9`. `P0-R2` … `P0-R5` were reviewer-verified; the corrections to
+  squash-merged as `7b7860d`. `P0-R2` … `P0-R5` were reviewer-verified; the corrections to
   `P0-R1`, `P0-R6`, `P0-R7` and `P0-R8` were **maintainer-accepted without a final
   re-review**, and each task records that.
 - **Windows is no longer entirely unverified.** `T-006`'s runners confirmed, with downloadable
@@ -192,7 +192,7 @@ Help → About — and it remembers its size and position. That is the whole of 
 reality — treat any claim of implemented *behavior* as false until this section says
 otherwise.
 
-Precisely, recomputed at `4172fd0`: of the **31** modules under `src/`, **23 are
+Precisely, recomputed at `697e024`: of the **31** modules under `src/`, **23 are
 docstring-only stubs**. The eight with code are `__init__.py` (the version string),
 `__main__.py` (`freeze_support()` and `main()`), `_freeze_probe.py` (`T-020`'s frozen-build
 diagnostics), `app.py` (argument handling and `QApplication` setup), `ui/main_window.py`
