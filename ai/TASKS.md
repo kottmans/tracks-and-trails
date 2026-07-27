@@ -232,7 +232,7 @@ agreement on the reduced form before implementation.
 
 ### T-013 — Download manager and result pump
 
-**Status:** Proposed — Ready once `T-012` merges
+**Status:** **Ready** — `T-012` completed 2026-07-26
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 1
@@ -522,7 +522,8 @@ is checked against reality at least once. It stays excluded by default (`ai/TEST
 
 ### T-018 — Recorded `info_dict` fixtures and projection tests
 
-**Status:** Proposed — Ready once `T-012` merges
+**Status:** **Ready** — `T-012` completed 2026-07-26. Also owns the `T012-R6` playlist
+projection, and therefore **blocks `T-016`**.
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 1

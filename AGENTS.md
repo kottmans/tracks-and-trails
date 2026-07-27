@@ -153,30 +153,25 @@ The same asymmetry applies to tests: a test that passes on Linux may encode a Li
 
 ## 9. Review convergence
 
-**There is no cap on review passes.** Review continues until the verdict is **Approved** or
-**Approved with follow-ups**. A blocking defect found on any round gets fixed in that round —
-including one found late, and including one introduced by a correction.
+The Standard review budget is **one initial comprehensive review plus one focused correction
+re-review**. This cap applies when the remaining findings are **Medium or lower**. It does not
+stop correction of **Critical or High** defects.
 
-This follows convention rev **2026-07-26.3**, which withdrew the Standard-profile review
-budget. The change came from this project's experience: the cap was reached twice in one
-session, and on both occasions the passes it would have prevented found real blocking defects —
-a digest collision, a regression a correction had itself introduced, and two more that an
-implementer verification turned up afterwards. A cap that stops before the defects do is not
-buying convergence; it defers the same work to a later task with less context.
+- An unresolved Critical or High finding remains in the current review until it is corrected and
+  independently verified. Additional focused passes for those severities do not require
+  maintainer authorization, even after the ordinary budget is exhausted.
+- If the budget is exhausted and only blocking Medium-or-lower findings remain, stop the
+  automatic agent-to-agent loop and ask the maintainer to choose: authorize another focused
+  pass, accept the documented risk, change scope, or carry the work into a named follow-up task.
+  A third pass for those findings requires explicit maintainer authorization.
+- Non-blocking findings become follow-up work with an owner and target task; they do not consume
+  another pass or keep the original task in review.
 
-Convergence comes from **scope discipline**, not from counting passes:
-
-- A focused re-review verifies the original blocking findings and checks the correction diff for
-  regressions. It is not a new unbounded audit — **except that a Critical defect is corrected in
-  whatever round finds it**, regardless of scope.
-- Non-blocking findings become follow-up work with an owner and target task; they do not keep
-  the reviewed task in review, and they do not reopen it.
-- The absence of a cap is not licence to reopen settled ground. A finding that revisits a
-  decision already recorded as settled needs new evidence, not a second opinion.
-
-**If rounds stop converging — the same defect class recurring, or corrections generating fresh
-blockers — that is a signal to change approach**, not to keep iterating. Say so, and put the
-choice to the maintainer: split the task, revisit the design, or accept a documented risk.
+Every extra pass stays focused on unresolved blockers and the correction diff; it is not a new
+broad audit. A finding that revisits settled ground needs new evidence, not a second opinion.
+If High/Critical corrections repeatedly reproduce the same defect class or create fresh serious
+defects, ask the maintainer to split the work or revisit the design, but do not approve the task
+while the serious defect remains.
 
 Every finding records both **severity** and **Blocks approval: Yes | No**.
 
@@ -186,7 +181,7 @@ fix for a data-loss defect is still Critical:
 | Severity | Means |
 |---|---|
 | **Critical** | Shipping it causes harm the user cannot undo: data loss or corruption, a breached security or privacy boundary, exposed credentials or cookies, a defeated safety constraint, a licence violation. Also silent wrong results in what this product exists to do — downloading the wrong thing, or writing outside the directory the user chose. |
-| **High** | A stated requirement or acceptance criterion is unmet, a documented architecture invariant is violated, or a user hits a defect with no workaround. |
+| **High** | Core or user-visible functionality the task exists to deliver is broken; a stated requirement or acceptance criterion is unmet; a documented architecture invariant is violated; or a user hits a defect with no workaround. |
 | **Medium** | A correctness or robustness gap with a narrow trigger or a workaround — including a gate that does not actually gate what it claims to. |
 | **Low** | Quality, clarity, maintainability; test strength where the behavior under test is correct. |
 | **Note** | An observation. No action implied. |
@@ -197,9 +192,12 @@ fix for a data-loss defect is still Critical:
   harm, and that belongs in `ai/DECISIONS.md` with its reasoning, not in a review table. Where
   it touches a safety constraint, §5's safety exception applies: report the conflict and ask,
   rather than complying silently.
-- High findings normally block. Downgrading one needs a stated reason recorded with the finding.
+- High findings block, especially when functionality is broken. Downgrading one needs a stated
+  reason and explicit maintainer approval recorded with the finding.
 - Medium findings block when they violate an acceptance criterion, required check, approved
   architecture invariant, security boundary, data-integrity rule, or observable correctness.
+  After the ordinary pass budget, an unresolved blocking Medium finding produces **Blocked**
+  pending the maintainer choice above; it does not authorize another pass by itself.
 - Low and Note findings normally do not block.
 - Mechanical documentation, status, cleanup, and test-hardening findings do not block unless
   they materially misstate safety, behavior, release readiness, or a required gate.
@@ -219,9 +217,10 @@ remaining changed surfaces for later rounds.
 
 A focused re-review verifies the original blocking findings and checks the correction diff for
 regressions; it is not a new unbounded audit. A new Critical or High defect, failed acceptance
-criterion/check, correction regression, or direct continuation showing an original blocker is
-not resolved may block. Other new, pre-existing, adjacent, Low, or non-blocking Medium findings
-become follow-up work and do not reopen the reviewed task.
+criterion with High consequences, High correction regression, or direct continuation of a
+Critical/High blocker continues through another focused correction and verification pass.
+Medium-or-lower discoveries follow the pass budget above. Other new, pre-existing, adjacent,
+Low, or non-blocking Medium findings become follow-up work and do not reopen the reviewed task.
 
 Before returning a correction batch, the Implementer must:
 
@@ -269,11 +268,113 @@ Do not copy a fact into a second authoritative-looking place. Link to the canoni
 Create a `ai/DECISIONS.md` entry only for durable choices and real trade-offs — not as a
 completion note for routine work. Routine fixes belong in `ai/TASKS.md` and `CHANGELOG.md`.
 
+## 12. Commit messages
+
+A commit message is read twice: once as a one-line subject while scanning history, and once in
+full while investigating something that broke. The two readings want different things, and the
+format below serves each separately rather than compromising between them.
+
+### Shape
+
+```
+<subject, imperative, ≤50 chars, no trailing period>
+<blank>
+<why-paragraph: 1–3 sentences of reasoning that is not recoverable from the diff>
+<blank>
+- <one discrete change, wrapped at 72>
+- <another>
+<blank>
+Task: T-0NN
+```
+
+### Subject — the only line most tools show
+
+- **≤50 characters.** Hard cap 60. This is not stylistic: VSCode's Source Control pane, GitHub's
+  commit list and `git log --oneline` in a split terminal all clip around 50, which is why
+  history has looked "cut off" despite nothing being truncated in git itself.
+- **Imperative mood** — "Add", "Close", "Record", "Fix". It completes the sentence *"Applied,
+  this commit will…"*.
+- **No trailing period.** No task ID, no `(T-0NN)` suffix, no `feat:`/`fix:` prefix.
+- Say what changed in the product's own vocabulary, not the file's. "Bound stored geometry to
+  Qt's maximum" beats "Update paths.py".
+
+### Why-paragraph — the part that only you know
+
+One to three sentences on **why**, or what the change means, or what it cost. The diff already
+records what changed; it cannot record that a previous fix was itself wrong, or that a test was
+passing vacuously, or that a design was chosen over a specific alternative. That is the content
+worth keeping.
+
+Skip it only when the subject is genuinely self-explanatory — a typo fix, a status-file pointer
+update. A body that merely restates the subject in longer words is worse than no body.
+
+### Bullets — one per discrete change
+
+Bullets, not paragraphs, once there is more than one thing to report. Wrap at 72 columns so the
+message stays readable under `git log`'s four-space indent.
+
+**Budget: about 150 words, and at most ~8 bullets.** Past that, the commit is doing too much and
+should have been split, or the detail belongs in `ai/TASKS.md` where it is indexed and editable.
+A commit message is an immutable record, so it is the worst place to put anything that will need
+revising.
+
+### Trailers
+
+Machine-readable, last, after a blank line:
+
+| Trailer | Use |
+|---|---|
+| `Task:` | `T-0NN`, or `T-027..T-032` for a range. Omit only for work no task covers. |
+| `Refs:` | Decision or requirement IDs the commit turns on — `ARC-002`, `REQ-011`. |
+| `Review:` | Finding IDs closed by this commit — `T034-R5`, `T035-R3`. |
+
+Look-ups stay easy: `git log --grep='Task:.*T-034'`.
+
+**No AI tools as authors or co-authors** — §7 already governs this, and it applies to trailers
+specifically. No `Co-Authored-By:` for an AI tool, no "generated with" footer. The commit history
+names the human maintainer only.
+
+### Worked example
+
+Rewriting this repository's longest message (516 words, 8 unstructured paragraphs):
+
+```
+Close the Phase 0 exit review findings
+
+Eight findings plus the four that survived the first re-review. The
+theme running through them: stored window geometry was treated as
+trusted input when it is not, and the first fix was itself incomplete
+in a way its own test concealed.
+
+- Bound coordinates to Qt's QWIDGETSIZE_MAX. Validating the four
+  numbers individually missed that QRect derives right() as
+  x + width - 1, so at y = 2**31 - 1 the bottom edge wrapped negative
+  and off-screen recovery never fired.
+- Reject bools, inf and nan in load_geometry, whose contract is that
+  it never raises.
+- Run T-020's frozen negative proof on Windows, not Linux alone.
+- Schedule quit from showEvent so the harness never touches Qt from a
+  foreign thread.
+
+Task: T-027..T-032
+Review: T027-R1..T032-R4
+```
+
+Same facts, a third of the words, and a reader looking for one finding can find it.
+
+### Mechanics
+
+`.gitmessage` at the repository root is the template; `git config commit.template .gitmessage`
+activates it per clone (it is not set automatically by cloning).
+
+Write the message in an editor or a file, not as a chain of `-m` flags — `-m` encourages
+single-line messages and makes wrapping accidental.
+
 ---
 
 *Documentation system: AI-Assisted Project Documentation Convention, Standard profile.
 Adopted at rev 2026-07-18.1 (`DOC-001`); §7's individual-project branch policy and §9's
-review-convergence policy came from rev 2026-07-26.2, and §9's removal of the review budget
-from rev **2026-07-26.3** — a convention change this project's experience prompted. No
-deliberate deviations from the convention are in force. The convention document itself lives
-outside this repository; this file is self-contained and does not depend on it.*
+review-convergence policy came from rev 2026-07-26.2 and was clarified as a severity-gated
+review budget in rev **2026-07-26.4**. No deliberate deviations from the convention are in
+force. The convention document itself lives outside this repository; this file is self-contained
+and does not depend on it.*

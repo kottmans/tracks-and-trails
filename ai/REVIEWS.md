@@ -1661,3 +1661,44 @@ loaded the concrete extractor module rather than the lazy placeholder, on both p
 into the PYZ archive, so a filesystem search finds only the few loose data files and reports 24
 KiB for a dependency contributing far more. The artifact total is sound; the yt-dlp subtotal is
 not, and must not be quoted as the size delta. Filed as part of `T-033`'s remaining CI work.
+
+## 2026-07-26 — T-012/T-033 pre-review self-audit (retained from the deleted handoff)
+
+Recorded here because `ai/handoffs/` was deleted on 2026-07-26 as a maintenance burden and a
+second source of project truth. The handoff itself is not worth keeping — its design notes live
+in the modules' docstrings and its findings in the entries above — but this table did not exist
+anywhere else, and it is the evidence that the *implementer's own* mutation pass found real
+gaps before any reviewer saw the code.
+
+Eleven mutations were run against `T-012`/`T-033` before the first review. Nine were killed
+immediately. **Two survived, and both were genuine missing tests rather than redundant code**,
+which is `ai/TESTING.md` §13's default reading and the correct one on both occasions.
+
+| # | Mutation | Result |
+|---|---|---|
+| M1 | `ExtractorError` moved first in the mapping | killed |
+| M2 | `extractor_message` ignores `orig_msg` | killed |
+| M3 | `unwrap` returns the wrapper | killed |
+| M4 | `has_drm`: `all` → `any` | killed |
+| M5 | `has_drm` ignores `_has_drm` | killed |
+| M6 | `'none'` codec sentinel kept as a string | killed |
+| M7 | `filesize_approx` fallback deleted | **survived** |
+| M8 | `_origin_of` always trusts its candidate | killed |
+| M9 | probe threshold raised above reality | killed |
+| M10 | probe given an unresolvable extractor name | killed, but via an uncaught `KeyError` |
+| M11 | preview computed by a route parallel to the write | **survived** |
+
+**M7** survived because the archive.org fixture populates `filesize` on every format, so nothing
+exercised the fallback. YouTube's DASH formats commonly carry only `filesize_approx`, so the gap
+would have shown "unknown" for sizes yt-dlp knows — on the site that matters most.
+
+**M11** survived twice. `preview_path` (`REQ-011`) had no test at all, and the first test written
+to cover it was **vacuous on Linux**: the chosen title used `: " ?`, which yt-dlp's own
+`prepare_filename` already maps to fullwidth forms, leaving `T-034` nothing to change. A preview
+that skipped sanitisation entirely still matched. A reserved device name (`CON`) diverges on
+every platform, because yt-dlp does not handle those and `T-045` defuses them with a digest.
+
+**M10** exposed a third defect without surviving: `get_info_extractor` *raises* `KeyError` rather
+than returning `None`, so the probe's `matched is None` branch was dead code and a packaging
+failure escaped as a bare traceback — in the one log `OPS-003` says Windows failures are
+diagnosed from.

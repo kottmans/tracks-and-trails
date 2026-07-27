@@ -1,0 +1,22 @@
+# <subject: imperative, <=50 chars, no trailing period, no task ID>
+# 50 chars: #####################################|
+# 72 chars: ###########################################################|
+
+# Why this change, or what it means, or what it cost. 1-3 sentences.
+# The diff records what changed; it cannot record that a previous fix was
+# wrong, that a test was passing vacuously, or why an alternative lost.
+# Delete this paragraph only if the subject is genuinely self-explanatory.
+
+# - One discrete change per bullet, wrapped at 72 columns.
+# - Budget: ~150 words, at most ~8 bullets. Past that, split the commit
+#   or put the detail in ai/TASKS.md, where it can be revised.
+
+# Task: T-0NN
+# Refs: ARC-002, REQ-011
+# Review: T034-R5
+
+# ---------------------------------------------------------------------
+# AGENTS.md 12 is authoritative.
+# Lines starting with '#' are stripped. Delete the rulers before saving.
+# No AI tools as authors or co-authors (AGENTS.md 7) - the history names
+# the human maintainer only.
