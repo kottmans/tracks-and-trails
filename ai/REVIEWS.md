@@ -2875,3 +2875,86 @@ correction re-review, so the ordinary budget in `AGENTS.md` §9 is exhausted. T-
 **Blocked** pending the maintainer's choice: authorize one more focused pass, accept the
 documented risk, change scope, or carry the blockers into a named follow-up. `T013-R5` is
 non-blocking and assigned to `T-052`.
+
+## 2026-07-27 — T-013, T-015 and T-018 merged correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** `T-013`, `T-015`, `T-018`
+**Correction commits:** `d5034a00d7b55940b20397e3926a16fdc23d64eb` (`T013-R3`,
+`T013-R4`); `0973fee967cff164b799e5b3e752953faa751e85` (`T015-R1`, `T018-R1`,
+`T018-R2`)
+**Merged head:** `7021a01c0721edaf2d95dafc26d9e15590b2de7d`
+**Review unit:** the two correction commits and merge resolution only
+**Branch:** `main`, clean, 12 commits ahead of `origin/main`, not pushed
+**Platforms verified:** Linux locally; Windows not run
+**T-013 verdict:** **Blocked**
+**T-015 verdict:** **Changes requested**
+**T-018 verdict:** **Changes requested**
+
+### T-013 finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T013-R3` | **Medium** | **Yes** | **Open — the correction closes the reported cleanup-write failure but leaves two parts of the startup transaction unsound.** The durable `FAILED` record now precedes cleanup, and cleanup writes/closes are guarded. However, `start()` now calls `process.start()` before `pump.start()` and does not set `session.started` until both return. If the pump start raises after the process start succeeds, `_release_half_built()` sees a non-running pump, closes the queue, drops the session and never terminates the already-live worker. A deterministic process/pump probe left the fake process alive with neither `terminate()` nor `kill()` called while the manager claimed idle. This is the pump-start sibling the original finding explicitly required. Separately, `_abort_start()` still calls `_on_violation()` before `_save_and_announce(FAILED)`: a signal observer deterministically read `PROBING`, contradicting the original “emit after persistence” requirement. Track process start independently, stop/reap it on every later startup failure, and persist before either failure signal. |
+| `T013-R4` | **Medium** | **No** | **Resolved.** `_abandon()` resolves the job through `_on_session_ended()` and retains the session; `_release()` requires either the delivered `finished` signal or `isFinished()`. A stubborn-pump probe stayed non-idle with a terminal job until the real thread finished. Removing `_on_session_ended()` made the direct mechanism test fail, so the correction is not being supplied by an incidental second path. The recorded survivor—removing the `isFinished()` fallback while Qt still delivers `finished` in every test—is genuine redundant evidence, not a demonstrated behavior defect. |
+| `T013-R5` | **Low** | **No** | **Remains Open and unchanged.** The implementer's correction note confirms the earlier claimed route-before-validation mutation had duplicated emission rather than moved it, so the old 16/16 number measured the test shape rather than the ordering guard. `T-052` still owns the non-blocking hardening. |
+
+### T-015 finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T015-R1` | **High** | **No** | **Resolved as originally reported.** Every selector alternative now has `ext=mp4`; the pinned yt-dlp engine selects nothing from a WebM-only set. `PRESET_OWNED_FIELDS` is derived from the intersection of `Preset` and `DownloadRequest`, and every such override is rejected while proxy/rate/cookie settings remain accepted. Removing the override guard failed its focused test. |
+| `T015-R2` | **High** | **Yes** | **Open correction regression — the new final fallback can silently download video without audio.** The third alternative is `bestvideo[height<=1080][ext=mp4]`, which by definition accepts a video-only stream. Given a 720p MP4 video-only format plus available WebM/Opus audio, the pinned selector chose only the MP4 row (`acodec="none"`). The committed “every branch” table never isolates this branch: its 720p row is pre-muxed and is selected by the preceding `best[ext=mp4]` alternative. A common “best video ≤1080p” preset silently producing a mute file is core user-visible wrong output and blocks. Remove the video-only fallback or define an explicit, truthful audio/container policy; add a real-engine case that can only reach each distinct alternative and asserts audio as well as extension. |
+
+### T-018 finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T018-R1` | **Critical** | **Yes** | **Open — both fail-closed claims still have credential/privacy false negatives.** The correction does fix tuple/container traversal, mixed-case credential markers, ordinary query removal and URL userinfo, and the current committed fixtures contain no established live secret. But `capture_info()` and `capture_error()` write their `source_url` metadata raw instead of passing it through the sanitizer; a fake capture returned `https://someone:hunter2@…?X-Amz-Signature=secret` verbatim. More fundamentally, both halves miss supported shapes outside their enumerations: `D:\Users\Sean\private.txt` survives `redact()` and produces no `leaks_in()` finding, as does `https://example.invalid/video#access_token=secret`. Windows profiles are not confined to `C:`, and URL fragments are a real bearer-token location. A future deliberate refresh can therefore still write private material into a file whose scanner returns clean—the irreversible privacy consequence that made R1 Critical. Sanitize every capture-owned metadata/error field, remove URL fragments when no fragment is allowlisted, and make user-directory recognition drive/UNC-independent and case-insensitive in both independent halves. Add negative tests at the public capture functions and at the committed-file scanner, not only against `redact()` in isolation. |
+| `T018-R2` | **High** | **No** | **Resolved.** `MULTI_ITEM_TYPES` independently transcribes `playlist` and `multi_video`; both project to `is_playlist=True` with an honest count. String, bytes and generator `entries` are not counted or consumed. Removing `multi_video` failed the independent declared-type test. `T012-R6` is resolved. |
+
+### Merge verification
+
+`7021a01` is a true two-parent merge of `d5034a0` and `0973fee`; `main` contains both and the
+local feature branch is deleted. The merged manager and manager tests are byte-identical to the
+T-013 parent, while the preset, projection, capture, fixture and associated test surfaces are
+byte-identical to the T-015/T-018 parent. `git show --remerge-diff` reports content conflicts
+only in `ai/REVIEWS.md` and `ai/STATUS.md`: the merge preserves both append-only reviews and
+rewrites the status snapshot to contain both work streams. `ai/TASKS.md` combined without a
+content conflict. No production-code conflict was resolved manually.
+
+### Validation and negative evidence
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **78 files already formatted**. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| `mypy --platform win32 src` | Passed: no issues in 31 source files. |
+| Focused manager suite | Passed: **50 passed**. |
+| Focused preset + fixture + model suite | Passed: **279 passed, 6 skipped**. |
+| Full merged-tree default suite | Passed: **1123 passed, 11 skipped, 1 deselected**. |
+| Pump-start negative probe | Failed: the process remained alive after `pump.start()` raised (`T013-R3`). |
+| Startup signal-order probe | Failed: `protocol_violation` observed the repository at `PROBING`, not `FAILED` (`T013-R3`). |
+| MP4/audio selector probe | Failed: the pinned engine selected one MP4 video-only row and discarded available Opus audio (`T015-R2`). |
+| Capture-owned source URL probe | Failed: userinfo and an AWS signature remained verbatim in `_fixture.source_url` (`T018-R1`). |
+| Windows-profile and fragment-token probes | Failed: both sanitizer and scanner accepted the private material (`T018-R1`). |
+| R4 mechanism mutation | Killed: removing `_on_session_ended()` failed the direct `_abandon()` test. |
+| R2 declared-type mutation | Killed: removing `multi_video` failed its focused projection test. |
+| Preset override mutation | Killed: removing the owned-field guard failed its focused test. |
+| Commit/merge whitespace and parent-code comparisons | Passed. |
+
+Reviewer probes and mutations existed only in a clean archive of merged head `7021a01`; the
+working tree remained untouched until these review records were written. Windows remains
+unverified.
+
+### Convergence and readiness
+
+- **T-013 is Blocked.** `T013-R4` is resolved, but `T013-R3` remains a blocking Medium after
+  the maintainer-authorized extra pass. Another Medium-or-lower pass requires a new maintainer
+  choice under `AGENTS.md` §9.
+- **T-015 has Changes requested.** `T015-R1` is resolved, but new High correction regression
+  `T015-R2` blocks and continues through correction and focused verification without a pass cap.
+- **T-018 has Changes requested.** `T018-R2` is resolved; Critical `T018-R1` remains open and
+  cannot be accepted or deferred by an agent. The projection half `T012-R6` is closed, but
+  T-018 itself is not approved.

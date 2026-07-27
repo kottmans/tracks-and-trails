@@ -12,20 +12,21 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-013` is **Blocked in review** after its focused correction pass. The High
-findings are resolved, but `T013-R3` remains open and `T013-R4` is a new blocking Medium
-correction regression. Per `AGENTS.md` §9, another Medium-or-lower correction pass requires the
-maintainer to authorize it, accept the documented risk, change scope, or carry the blockers
-into a named follow-up.
+**Start here:** three merged correction units remain in review. `T-013` is **Blocked** on
+`T013-R3` after its maintainer-authorized extra pass; `T013-R4` is resolved. `T-015` has new
+High correction regression `T015-R2`. `T-018` resolved its multi-item projection, but Critical
+privacy finding `T018-R1` remains open. See the task-local reviewer results and
+`ai/REVIEWS.md`.
 
 `T-012` was approved with follow-ups on 2026-07-26 after two review rounds; `T-014` was approved
 2026-07-26 at `db14cc2`. **`T-033` is Blocked**, not complete: its code is verified but approval
 needs frozen CI evidence this repository cannot produce locally.
 
 Also Ready and independent: `T-038` (log redaction — one of `ai/TESTING.md` §7's two remaining
-uncovered mandatory areas, and the one `T-013`'s diagnostics make urgent) and `T-015` (presets).
-`T-018` owns the playlist projection (`T012-R6`) and **blocks `T-016`**. `T-050` is new and sits
-in **Phase 2**, where the plan puts history: nothing writes the `history` table.
+uncovered mandatory areas, and the one `T-013`'s diagnostics make urgent). `T012-R6` is resolved
+by T-018's verified multi-item projection, but T-018 itself remains unapproved on its Critical
+privacy gate. `T-050` sits in **Phase 2**, where the plan puts history: nothing writes the
+`history` table.
 
 Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; `T-040` for the
 first focusable widgets.
@@ -36,15 +37,30 @@ first focusable widgets.
 
 ### T-013 — Download manager and result pump
 
-**Status:** **In Review — second correction batch returned 2026-07-27, awaiting verification.**
-`T013-R1` and `T013-R2` were verified resolved. `T013-R3` and `T013-R4` are now corrected under
-the maintainer's authorization of one further focused pass (`AGENTS.md` §9). `T013-R5` stays
-non-blocking test hardening owned by `T-052`.
+**Status:** **In Review — Blocked after the maintainer-authorized correction pass,
+2026-07-27.** `T013-R4` is resolved; `T013-R3` remains a blocking Medium. The authorized extra
+pass is exhausted, so another Medium-or-lower pass requires a new maintainer choice under
+`AGENTS.md` §9. `T013-R5` stays non-blocking test hardening owned by `T-052`.
+
+#### Reviewer result on `d5034a0`
+
+The reordered startup fixes the cleanup-sentinel failure but does not cover the entire
+transaction the original finding named. Once `process.start()` succeeds, a later
+`pump.start()` failure leaves a live worker: `session.started` is not set yet, the non-running
+pump path closes the queue and drops the session, and nothing terminates or reaps the process.
+The startup failure also still emits `protocol_violation` while the durable job is `PROBING`;
+the `FAILED` write follows that signal. Both are deterministic reviewer probes under
+`T013-R3`.
+
+`T013-R4` is resolved. `_abandon()` finalizes the job and retains the session until the thread
+reports finished; removing that finalization fails the direct mechanism test. Full evidence and
+the merge verification are in `ai/REVIEWS.md`.
 
 #### Second correction batch — `T013-R3`, `T013-R4` (maintainer-authorized 2026-07-27)
 
-The maintainer authorized one further focused pass under `AGENTS.md` §9. Both blockers
-reproduced first, both are corrected, and the batch is returned awaiting verification.
+The maintainer authorized one further focused pass under `AGENTS.md` §9. The Implementer
+returned both blockers as corrected; focused verification resolved `T013-R4` and kept
+`T013-R3` open on the later pump-start and signal-order paths recorded above.
 
 **`T013-R3` — the situation is removed, not merely handled.** The cleanup write could fail
 because the thing that broke the session can break its queue too, and then its exception
@@ -274,6 +290,7 @@ each blocker, audit its sibling paths, and mutation-check the corrections before
 `pyproject.toml` (a `psutil` mypy override), `tests/integration/`, `tests/unit/`
 **Risk:** **High** — owns process lifetime and the only thread in the application. Both of its
 failure modes are silent: an orphaned worker, and a Qt object touched off the GUI thread.
+**Current correction head:** `d5034a0`, merged by `7021a01`.
 **Review base:** `a296615` (`T-012`, "Run yt-dlp in a spawned worker"). **Review head:**
 `0a19daf` ("Add the download manager and result pump"), committed to `main` 2026-07-27 and not
 pushed. `git diff a296615..0a19daf` is the review boundary; `T-014`'s persistence work
@@ -365,15 +382,23 @@ so.
 
 ### T-015 — Built-in presets and selector translation
 
-**Status:** **In Review — corrections returned 2026-07-27, awaiting verification.** `T015-R1`
-(High) is corrected and awaiting the Reviewer's independent check (`AGENTS.md` §9: only the
-Reviewer marks a finding Resolved). Implemented on branch `phase1-presets-and-fixtures`
-alongside `T-018`.
+**Status:** **In Review — Changes requested 2026-07-27.** `T015-R1` is resolved. New High
+correction regression `T015-R2` blocks approval.
+
+#### Reviewer result on `0973fee`
+
+The MP4 constraint and preset-owned override guard resolve `T015-R1`. The replacement final
+fallback introduces `T015-R2`: `bestvideo[height<=1080][ext=mp4]` selects a video-only MP4
+when the available audio is not M4A. The pinned engine returned one row with `acodec="none"`
+from a 720p MP4-video + WebM/Opus-audio set. The committed branch table never isolates that
+fallback because its 720p row is pre-muxed and matches the preceding `best[ext=mp4]` branch.
+Fix the silent-audio regression and add a branch-distinguishing real-engine test.
 
 #### Correction batch — `T015-R1`
 
-Two routes to one wrong result — a named or displayed choice that is not the request that runs —
-and each is closed at its own end.
+The Implementer closed the two routes in `T015-R1`: a named or displayed choice that was not
+the request that ran. Focused verification resolved R1 and found the separate silent-audio
+regression `T015-R2` recorded above.
 
 **The preset's name is a promise about the file.** `BEST_VIDEO_1080P`'s last fallback was a bare
 `best[height<=1080]` with no container constraint, and fed a site offering only WebM the real
@@ -391,8 +416,9 @@ Settings a preset does not own — proxy, rate limit, cookie source — are stil
 
 **The tests now ask yt-dlp, not the string.** The capability check that let this through asked
 whether the selector *contained* `ext=mp4`, which stayed true while a later branch permitted
-something else. Every fallback branch is now resolved through the pinned engine's own
-`build_format_selector`, and the WebM-only case is asserted to select nothing.
+something else. The committed cases use the pinned engine's own `build_format_selector`, and
+the WebM-only case selects nothing. They do not isolate the new `bestvideo`-only fallback;
+`T015-R2` owns that missing branch observation.
 
 **Mutation-checked: 2 mutations, 2 killed** — restoring the unconstrained fallback, and dropping
 the override guard.
@@ -444,8 +470,8 @@ preset-to-request API, audit sibling preset-owned fields, and mutation-check the
 **Affected surfaces:** `core/presets.py`, `core/models.py` (`Preset`'s four new fields),
 `tests/unit/test_presets.py`
 **Risk:** Low — pure translation, fully unit-testable
-**Review base:** the `T-010` merge commit. **Review head:** branch
-`phase1-presets-and-fixtures`; `core/presets.py` and the `Preset` half of `core/models.py`.
+**Review base:** the `T-010` merge commit. **Review head:** `0973fee`, merged by `7021a01`;
+`core/presets.py` and the `Preset` half of `core/models.py`.
 
 #### Scope
 
@@ -485,15 +511,30 @@ output of translation, not an internal detail.
 
 ### T-018 — Recorded `info_dict` fixtures and projection tests
 
-**Status:** **In Review — corrections returned 2026-07-27, awaiting verification.** `T018-R1`
-(Critical) and `T018-R2` (High) are corrected and awaiting the Reviewer's independent check
-(`AGENTS.md` §9: only the Reviewer marks a finding Resolved). Implemented on branch
-`phase1-presets-and-fixtures` alongside `T-015`.
+**Status:** **In Review — Changes requested 2026-07-27.** `T018-R2` is resolved. `T018-R1`
+remains an open Critical blocker.
+
+#### Reviewer result on `0973fee`
+
+The multi-item projection resolves `T018-R2` and closes `T012-R6`. The privacy gate remains
+false-negative in both halves:
+
+- `capture_info()` and `capture_error()` add `source_url` metadata without sanitizing it;
+- a Windows profile outside `C:` (for example `D:\Users\Sean`) survives both `redact()` and
+  `leaks_in()`; and
+- a bearer token in a URL fragment survives both halves.
+
+The current fixtures contain no established live secret, but a future refresh can still write
+private material into a file the committed scanner calls clean, so `T018-R1` remains Critical.
+Apply sanitization to capture-owned metadata/error fields and make both independent gates
+drive/UNC-independent, case-insensitive, and fragment-safe. Full probes are in
+`ai/REVIEWS.md`.
 
 #### Correction batch — `T018-R1`, `T018-R2`
 
-**`T018-R1` — the gate stops guessing what a secret looks like.** Both halves were false
-negatives, and both are now fail-closed:
+**`T018-R1` — attempted fail-closed correction.** The batch fixes the original tuple,
+ordinary-query and userinfo cases below. Focused verification found capture-owned metadata,
+non-`C:` Windows profiles and URL fragments still bypass both halves, so R1 remains Critical:
 
 - **Every container is walked.** `redact()` recursed through `dict` and `list` only, so one
   tuple anywhere in the graph carried everything beneath it through — and yt-dlp's info dicts
@@ -527,11 +568,48 @@ way: `REQ-002` asks one binary question, and inventing a third state it does not
 the choice onto every reader. The sibling audit caught `_entry_count` too — `str` and `bytes`
 are `Sequence`s, so a malformed `entries` of `"two"` was counted as three characters.
 
-**`T012-R6` is now closed and `T-016` is unblocked**, subject to the Reviewer's verification.
+**`T012-R6` is closed.** The projection blocker on `T-016` is resolved; T-018 itself remains in
+review on the independent Critical privacy finding.
 
 **Mutation-checked: 9 mutations, 9 killed.** Dict/list-only recursion, exact-match credential
 keys, a parameter blocklist in the sanitizer *and* in the gate, userinfo left in place, local
 paths left in place, `multi_video` dropped, and `entries` counted by `Sequence` alone.
+
+#### Second correction batch — `T018-R1` (Critical, still open after the first)
+
+The re-review found three more false negatives, all of the same shape: a rule that enumerated
+where it should have constrained.
+
+- **The metadata was never sanitized.** `source_url` is captured data — whoever asks for a
+  capture supplies it — and it was written into the provenance block raw while the `info_dict`
+  beside it was carefully cleaned. `write()` now sanitizes the **whole payload**, so no field can
+  be forgotten: sanitizing field by field is precisely the arrangement that forgot one. The
+  redaction record became a single sentence, because a metadata key named
+  `credential_key_markers` would have been redacted by its own policy.
+- **Home directories are not confined to `C:`.** `D:\Users\…`, a redirected profile and a UNC
+  share all produced no finding. Both halves now match a *pattern* — any drive letter, either
+  slash, UNC shares, case-insensitive — rather than a prefix list.
+- **URL fragments are a bearer-token location.** `#access_token=…` is where an OAuth implicit
+  flow leaves one, and a check that only knew about `?` called it clean. The sanitizer drops
+  fragments; the gate reads them as parameters.
+
+Tests now sit **at `write()`**, the door every capture goes through, rather than only against
+`redact()` in isolation. **Mutation-checked: 5 mutations, 5 killed.**
+
+#### Second correction batch — `T015-R2` (High, a regression from the first)
+
+The `T015-R1` correction replaced an unconstrained fallback with `bestvideo[…][ext=mp4]`, which
+by definition accepts a **video-only** stream — so the preset produced a mute file. Same cause
+as the finding it was fixing: a fallback widened until something matched.
+
+The fallback is **gone** rather than widened again. Two branches remain, and each yields a
+watchable MP4: a real MP4/M4A pair to merge, or a pre-muxed MP4. A site with MP4 video and only
+non-MP4 audio now fails the preset — merging those would produce an MKV, breaking the container
+half of the same promise.
+
+The test that missed it asserted the extension only, and its "720p" row was pre-muxed, so the
+branch under test was never reached. Cases now reach **one alternative each**, and assert audio
+as well as container. **Mutation-checked: 1 mutation, 1 killed.**
 
 **What landed.**
 
@@ -589,9 +667,9 @@ audit sibling URL credential forms and container shapes, and mutation-check the 
 `core/models.py`, `downloader/ytdlp_adapter.py`
 **Risk:** Medium — a carelessly refreshed fixture hides the upstream breakage the fixture
 exists to catch
-**Review base:** the `T-012` merge commit. **Review head:** branch
-`phase1-presets-and-fixtures`
-**Blocks:** `T-016` — remains until `T018-R2` is resolved
+**Review base:** the `T-012` merge commit. **Review head:** `0973fee`, merged by `7021a01`
+**Blocks:** the `T012-R6` projection blocker on `T-016` is resolved; T-018 itself remains in
+review on `T018-R1`
 
 #### Scope
 

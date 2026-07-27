@@ -109,13 +109,20 @@ FORBIDDEN_SUBSTRINGS = (
     "session-id",
     "donation-identifier",
     "Mozilla/",
-    "/home/",
-    "/Users/",
-    # Both spellings of a Windows path, because the scan reads the file as text and JSON escapes
-    # every backslash. `C:\Users` never appears literally in a fixture — `C:\\Users` does — and
-    # checking only the first is a leak detector that cannot detect the leak on one platform.
-    "C:\\Users",
-    "C:\\\\Users",
+)
+
+#: A path inside somebody's home directory, on **any** drive or share (`T018-R1`).
+#:
+#: The first version listed `C:\Users` and its JSON-escaped twin, so `D:\Users\...` produced no
+#: finding at all — and a second drive or a redirected profile is entirely ordinary. Written as a
+#: pattern over one or two backslashes, because the scan reads the file as *text* and JSON
+#: escapes every backslash it contains.
+_USER_DIRECTORY = re.compile(
+    r"(?:[A-Za-z]:(?:\\{1,2}|/)+users(?:\\{1,2}|/))"
+    r"|(?:\\{2,4}[^\\/\s\"']+(?:\\{1,2}|/)+[^\\/\s\"']+(?:\\{1,2}|/)+users(?:\\{1,2}|/))"
+    r"|(?:/home/)"
+    r"|(?:/Users/)",
+    re.IGNORECASE,
 )
 
 #: Query parameters a committed fixture may carry. **None** (`T018-R1`).
@@ -131,8 +138,12 @@ FORBIDDEN_SUBSTRINGS = (
 #: having a second check at all.
 ALLOWED_QUERY_PARAMETERS: frozenset[str] = frozenset()
 
-#: A URL query parameter, as it appears inside JSON.
-_QUERY_PARAMETER = re.compile(r"[?&]([A-Za-z0-9_.\-%]+)=")
+#: A URL query **or fragment** parameter, as it appears inside JSON.
+#:
+#: `#` is included because a fragment is where an OAuth implicit flow puts an access token
+#: (`T018-R1`), and a check that only knew about `?` reported a fixture carrying
+#: `#access_token=…` as clean.
+_QUERY_PARAMETER = re.compile(r"[?&#]([A-Za-z0-9_.\-%]+)=")
 
 #: `scheme://user:password@host` — a credential in a position no parameter list covers.
 _URL_USERINFO = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^/\s\"']*@")
@@ -147,6 +158,7 @@ def leaks_in(blob: str) -> list[str]:
     complete catalogue of what a secret looks like.
     """
     found = [needle for needle in FORBIDDEN_SUBSTRINGS if needle in blob]
+    found += [f"user directory in {match.group(0)!r}" for match in _USER_DIRECTORY.finditer(blob)]
     found += [
         f"query parameter {match.group(1)!r}"
         for match in _QUERY_PARAMETER.finditer(blob)
@@ -213,6 +225,13 @@ LEAK_SHAPES = {
     "percent-encoded name": '{"url": "https://cdn.example/v.mp4?%73ignature=deadbeef"}',
     "url userinfo": '{"url": "https://someone:hunter2@cdn.example/v.mp4"}',
     "unfamiliar provider name": '{"url": "https://cdn.example/v.mp4?hdnts=exp=1~hmac=9f"}',
+    # `T018-R1`, second pass. Each of these produced no finding at all: a home directory is not
+    # confined to `C:`, and a fragment is where an OAuth implicit flow leaves an access token.
+    "second drive profile": '{"cookiefile": "D:\\\\Users\\\\Sean\\\\cookies.txt"}',
+    "unc share profile": '{"cookiefile": "\\\\\\\\nas\\\\home\\\\Users\\\\Sean\\\\c.txt"}',
+    "lowercase drive profile": '{"cookiefile": "d:/users/sean/cookies.txt"}',
+    "fragment token": '{"url": "https://example.invalid/video#access_token=secret"}',
+    "fragment token after query": '{"url": "https://example.invalid/v?a=1#id_token=secret"}',
 }
 
 
@@ -254,6 +273,56 @@ def test_the_sanitizer_walks_every_container_not_just_two(shape: str, payload: A
     assert "secret" not in serialized, f"a {shape} carried a cookie through: {serialized}"
     assert "SID=" not in serialized
     assert not leaks_in(serialized), f"a {shape} carried {leaks_in(serialized)}"
+
+
+def test_what_a_capture_writes_is_sanitized_including_its_own_metadata(tmp_path: Path) -> None:
+    """`T018-R1`, second pass: the provenance block is captured data too.
+
+    `source_url` comes from whoever asked for the capture, and it was written into the metadata
+    raw — so a URL carrying userinfo and a signature was recorded verbatim beside an
+    `info_dict` that had been carefully cleaned. Asserted at `write()`, which every capture goes
+    through, because sanitizing per-field is exactly the arrangement that forgot a field.
+    """
+    from tests.fixtures import capture
+
+    hostile = "https://someone:hunter2@cdn.example/v.mp4?X-Amz-Signature=secret#access_token=t"
+    payload = {
+        "_fixture": {
+            "captured": "2026-07-27",
+            "yt_dlp_version": "0.0.0",
+            "source_url": hostile,
+            "capture_method": "recorded",
+            "redaction": "irrelevant",
+            "note": r"taken from D:\Users\Sean\downloads",
+        },
+        "info_dict": {"webpage_url": hostile, "cookies": "SID=secret"},
+    }
+    written = tmp_path / "hostile.json"
+
+    capture.write(written, payload)
+    blob = written.read_text(encoding="utf-8")
+
+    assert not leaks_in(blob), f"the capture wrote {leaks_in(blob)}"
+    assert "hunter2" not in blob and "secret" not in blob
+    assert "cdn.example" in blob, "the URL should be cleaned, not deleted"
+
+
+def test_the_redaction_record_survives_its_own_policy(tmp_path: Path) -> None:
+    """The provenance note must still be readable after the sanitizer has been over it.
+
+    `write()` now sanitizes everything, so a record that described the policy in keys named
+    after credentials would redact itself and leave the fixture claiming nothing.
+    """
+    from tests.fixtures import capture
+
+    written = tmp_path / "record.json"
+    capture.write(
+        written,
+        {"_fixture": {"redaction": capture._redaction_record()}, "info_dict": {}},
+    )
+
+    record = json.loads(written.read_text(encoding="utf-8"))["_fixture"]["redaction"]
+    assert "fail-closed" in record, f"the redaction record was itself redacted: {record!r}"
 
 
 def test_the_scanner_and_the_sanitizer_agree_without_sharing_a_list() -> None:

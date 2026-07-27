@@ -274,14 +274,27 @@ def test_overrides_apply_last_and_leave_the_preset_alone() -> None:
 # that resolves it can say what that file would be.
 
 
-def selected_formats(selector: str, formats: list[dict[str, Any]]) -> list[str]:
-    """Every format the pinned yt-dlp would choose for `selector`, by extension."""
+def selected_rows(selector: str, formats: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Every format row the pinned yt-dlp would choose for `selector`.
+
+    Rows rather than extensions (`T015-R2`): the previous version returned only the container,
+    so a *video-only* selection looked identical to a complete one. What a preset delivers is
+    the whole set — its container **and** whether anyone can hear it.
+    """
     from yt_dlp import YoutubeDL
 
     chosen = YoutubeDL({"quiet": True, "no_warnings": True}).build_format_selector(selector)
-    return [
-        str(entry.get("ext")) for entry in chosen({"formats": formats, "incomplete_formats": False})
-    ]
+    picked = list(chosen({"formats": formats, "incomplete_formats": False}))
+    # A merge is reported as one entry with `requested_formats`; flatten it so the assertions
+    # below see what actually gets downloaded.
+    rows: list[dict[str, Any]] = []
+    for entry in picked:
+        rows.extend(entry.get("requested_formats") or [entry])
+    return rows
+
+
+def has_audio(rows: list[dict[str, Any]]) -> bool:
+    return any(row.get("acodec") not in (None, "none") for row in rows)
 
 
 def format_row(**overrides: Any) -> dict[str, Any]:
@@ -296,54 +309,67 @@ def format_row(**overrides: Any) -> dict[str, Any]:
     return {**base, **overrides}
 
 
+#: One format set per selector alternative, each reachable **only** by that alternative
+#: (`T015-R2`). The previous table's "720p" row was pre-muxed, so it was selected by the
+#: *preceding* branch and the branch under test was never exercised at all.
+ALTERNATIVE_CASES = {
+    "merge an mp4 video with m4a audio": [
+        format_row(format_id="v", acodec="none"),
+        format_row(format_id="a", ext="m4a", vcodec="none", acodec="mp4a"),
+    ],
+    "take a pre-muxed mp4 when no separate audio exists": [format_row(format_id="m")],
+}
+
+
+@pytest.mark.parametrize("case", sorted(ALTERNATIVE_CASES))
+def test_every_alternative_delivers_mp4_that_can_be_heard(case: str) -> None:
+    """Each branch resolved by the real engine, asserting container **and** audio.
+
+    `T015-R2` was a branch that satisfied the container half of the preset's name and silently
+    dropped the sound. Asserting the extension alone is what let it through review-clean.
+    """
+    rows = selected_rows(
+        presets.effective_selector(presets.BEST_VIDEO_1080P), ALTERNATIVE_CASES[case]
+    )
+
+    assert rows, f"the {case!r} case selected nothing"
+    assert {row["ext"] for row in rows} <= {"mp4", "m4a"}, f"{case!r} delivered {rows}"
+    assert has_audio(rows), f"{case!r} produced a video nobody can hear: {rows}"
+    assert any(row.get("vcodec") not in (None, "none") for row in rows), f"{case!r} has no video"
+
+
 @pytest.mark.parametrize(
     ("case", "formats"),
     [
         (
-            "merge pair",
+            "webm only",
+            [format_row(format_id="w", ext="webm", height=720, vcodec="vp9", acodec="opus")],
+        ),
+        (
+            "mp4 video with only non-mp4 audio",
             [
-                format_row(format_id="v", acodec="none"),
-                format_row(format_id="a", vcodec="none", ext="m4a"),
+                format_row(format_id="v", height=720, acodec="none"),
+                format_row(format_id="a", ext="webm", vcodec="none", acodec="opus"),
             ],
         ),
-        ("pre-muxed mp4", [format_row(format_id="m")]),
-        ("mp4 at 720", [format_row(format_id="m", height=720)]),
+        ("mp4 above the height limit", [format_row(format_id="m", height=2160)]),
     ],
 )
-def test_the_1080p_preset_delivers_mp4_whenever_one_exists(
+def test_the_preset_refuses_rather_than_delivering_something_else(
     case: str, formats: list[dict[str, Any]]
 ) -> None:
-    """Every branch of the fallback chain, resolved by the real engine.
+    """`T015-R1` and `T015-R2` share one cause: a fallback widened until something matched.
 
-    Parametrized per branch because the finding was in the branch nobody exercised: a selector
-    tested only through its first alternative says nothing about its last.
+    Selecting nothing is the correct answer for all three. yt-dlp then says no format matched,
+    verbatim (`REQ-005`), and the user reaches for "best video available" or their own selector
+    — which is a choice they made, rather than a substitution nobody told them about.
+
+    The middle case is `T015-R2`'s: merging that pair would produce an MKV, so honouring the
+    "MP4" half of the name means declining, not merging.
     """
-    picked = selected_formats(presets.effective_selector(presets.BEST_VIDEO_1080P), formats)
+    rows = selected_rows(presets.effective_selector(presets.BEST_VIDEO_1080P), formats)
 
-    assert picked, f"the {case} case selected nothing"
-    assert set(picked) <= {"mp4", "m4a"}, f"the {case} case delivered {picked}, not MP4"
-
-
-def test_the_1080p_preset_refuses_a_site_that_offers_no_mp4() -> None:
-    """`T015-R1`: the preset is named "(MP4)", so WebM is not an acceptable substitute.
-
-    Fed a 720p WebM — within the height limit, and the only thing on offer — the old final
-    fallback selected it happily. Selecting nothing is the correct answer: yt-dlp then reports
-    that no format matched, verbatim (`REQ-005`), and the user learns the site has no MP4
-    rather than receiving a file in a container they did not choose.
-    """
-    webm_only = [format_row(format_id="w", ext="webm", height=720, vcodec="vp9", acodec="opus")]
-
-    picked = selected_formats(presets.effective_selector(presets.BEST_VIDEO_1080P), webm_only)
-
-    assert picked == [], f"a preset promising MP4 selected {picked}"
-
-
-def test_the_1080p_preset_still_respects_its_height_limit() -> None:
-    """The other half of the name, checked the same way rather than by reading the string."""
-    too_tall = [format_row(format_id="m", height=2160)]
-
-    assert selected_formats(presets.effective_selector(presets.BEST_VIDEO_1080P), too_tall) == []
+    assert rows == [], f"the {case!r} case delivered {rows}"
 
 
 # --- overrides cannot contradict what was shown (T015-R1) -------------------------------------

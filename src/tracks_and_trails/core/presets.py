@@ -72,20 +72,23 @@ SUBTITLE_LANGUAGES: Final = ("all",)
 BEST_VIDEO_1080P: Final = Preset(
     name="Best video up to 1080p (MP4)",
     media_kind=MediaKind.VIDEO,
-    # **Every branch is constrained to MP4** (`T015-R1`). The last fallback used to be a bare
-    # `best[height<=1080]`, and fed a site that offers only WebM it selected the WebM — so a
-    # preset named "(MP4)" delivered something else, silently, exactly when the user could least
-    # tell. A preset's name is a promise about the file, not about the first branch that matches.
+    # **Two branches, and every one of them yields a watchable MP4.** The name promises three
+    # things — video, at most 1080p, in MP4 — and a branch that delivers two of them is a
+    # silent wrong result, which is the harder kind to notice.
     #
-    # The order still prefers a real MP4/M4A pair to merge, then a pre-muxed MP4. A site with no
-    # MP4 at all now fails this preset rather than substituting a container the user did not
-    # choose — and the failure names the format, which is `REQ-005`'s verbatim message doing its
-    # job. Converting to MP4 instead would be a post-processing decision (`REQ-010`) and belongs
-    # to a preset that says so in its name.
+    # `T015-R1`: the original last branch was a bare `best[height<=1080]`, which selected a WebM
+    # from a site with no MP4. `T015-R2`: replacing it with `bestvideo[…][ext=mp4]` selected a
+    # **video-only** stream, so the preset produced a mute file. Both were the same mistake —
+    # widening the fallback until *something* matches — so the fallback is gone rather than
+    # widened again. What remains is a real MP4/M4A pair to merge, then a pre-muxed MP4.
+    #
+    # A site offering only video-only MP4 with no M4A audio now fails this preset. That is the
+    # honest answer: yt-dlp reports that nothing matched, verbatim (`REQ-005`), and the user can
+    # pick "best video available" or their own selector (`REQ-009`). Merging MP4 video with, say,
+    # Opus audio would produce an MKV — breaking the container half of the same promise — and
+    # converting instead is a post-processing decision (`REQ-010`) for a preset that says so.
     format_selector=(
-        "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]"
-        "/best[height<=1080][ext=mp4]"
-        "/bestvideo[height<=1080][ext=mp4]"
+        "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]"
     ),
     output_template=DEFAULT_OUTPUT_TEMPLATE,
     built_in=True,

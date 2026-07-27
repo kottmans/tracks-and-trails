@@ -25,6 +25,7 @@ no reason to change. A fixture that churns teaches nothing about our code when i
 
 import argparse
 import json
+import re
 import sys
 from collections.abc import Mapping
 from datetime import UTC, datetime
@@ -43,7 +44,8 @@ ERROR_DIR: Final = Path(__file__).parent / "errors"
 CREDENTIAL_KEY_MARKERS: Final = (
     "cookie",
     "header",
-    "auth",
+    "authorization",
+    "bearer",
     "token",
     "secret",
     "password",
@@ -95,18 +97,23 @@ def redact(value: Any) -> Any:
     return value
 
 
-#: Path prefixes that identify somebody's home directory on the two supported platforms.
+#: Anything that looks like somebody's home directory, on any drive or share (`T018-R1`).
 #:
 #: `NFR-007` keeps personal paths out of records that persist, and a fixture persists forever.
-#: Found by the test that puts every leak shape through this sanitizer and then back through the
-#: committed-file gate: the gate rejected a local path the sanitizer had never looked at, so a
-#: refresh would have produced a fixture that could not be committed.
-USER_DIRECTORY_MARKERS: Final = ("/home/", "/users/", "c:\\users", "c:/users")
+#: The first version listed `c:\users` literally, so `D:\Users\...` — an ordinary second drive,
+#: or a redirected profile — walked past it. Matched as a *pattern* rather than a prefix list:
+#: any drive letter, either slash, and UNC shares, case-insensitively.
+USER_DIRECTORY_PATTERN: Final = re.compile(
+    r"(?:[a-z]:[\\/]+users[\\/])"  # C:\Users\, d:/users/
+    r"|(?:\\\\[^\\/]+[\\/]+[^\\/]+[\\/]+users[\\/])"  # \\server\share\Users\
+    r"|(?:/home/)"
+    r"|(?:/users/)",
+    re.IGNORECASE,
+)
 
 
 def names_a_user_directory(value: str) -> bool:
-    lowered = value.lower()
-    return any(marker in lowered for marker in USER_DIRECTORY_MARKERS)
+    return USER_DIRECTORY_PATTERN.search(value) is not None
 
 
 def redact_url(value: str) -> str:
@@ -132,23 +139,23 @@ def redact_url(value: str) -> str:
     netloc = parts.netloc
     if "@" in netloc:
         netloc = netloc.rsplit("@", 1)[1]
-    return urlunsplit(parts._replace(netloc=netloc, query=urlencode(kept)))
+    # The fragment goes with the query, and for the same reason (`T018-R1`). OAuth implicit
+    # flows put access tokens there — `#access_token=…` — and it is invisible to a check that
+    # only knows about `?`. Nothing downstream reads a fragment either.
+    return urlunsplit(parts._replace(netloc=netloc, query=urlencode(kept), fragment=""))
 
 
-def _redaction_record() -> dict[str, Any]:
+def _redaction_record() -> str:
     """What the sanitizer promised this fixture, recorded with it.
 
-    Written into every capture so a reader can tell what was removed without reading this file,
-    and so a fixture taken under weaker rules is identifiable after the rules tighten — which is
-    exactly what happened when `T018-R1` inverted the query-parameter policy.
+    A single sentence, not a nested object: `write()` sanitizes the whole payload, and a
+    metadata key called `credential_key_markers` would be redacted by its own policy. Values
+    are never key-redacted, so a sentence survives and a structure does not.
     """
-    return {
-        "policy": "fail-closed",
-        "credential_key_markers": list(CREDENTIAL_KEY_MARKERS),
-        "allowed_query_parameters": list(ALLOWED_QUERY_PARAMETERS),
-        "url_userinfo": "removed",
-        "user_directory_paths": "removed",
-    }
+    return (
+        "fail-closed: values under credential-named keys, every URL query parameter, URL "
+        "userinfo, URL fragments and user-directory paths are removed at capture time"
+    )
 
 
 class Source:
@@ -293,9 +300,22 @@ def capture_error(
 
 
 def write(path: Path, payload: dict[str, Any]) -> None:
+    """Sanitize the **whole** payload, then write it.
+
+    Every capture goes through here, so sanitizing at this point is what makes "no field was
+    forgotten" true by construction rather than by review (`T018-R1`). The first version
+    sanitized `info_dict` and left the metadata alone, and `source_url` is captured data: a
+    hostile URL was written into the provenance block verbatim, complete with its userinfo and
+    its signature.
+
+    The redaction record is a single sentence rather than a nested object precisely because this
+    runs over it too — a metadata key named `credential_key_markers` would redact *itself*.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
-    print(f"wrote {path.relative_to(Path(__file__).parents[2])} ({path.stat().st_size} bytes)")
+    path.write_text(json.dumps(redact(payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    root = Path(__file__).parents[2]
+    shown = path.relative_to(root) if path.is_relative_to(root) else path
+    print(f"wrote {shown} ({path.stat().st_size} bytes)")
 
 
 def main(argv: list[str]) -> int:

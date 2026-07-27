@@ -87,19 +87,17 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-013` — second correction batch returned 2026-07-27, awaiting verification.** Two review
-  passes so far. `T013-R1` and `T013-R2` (High) were verified resolved; `T013-R3` and `T013-R4`
-  (blocking Medium) were corrected under the maintainer's authorization of one further focused
-  pass. The theme running through all four: **the receiver acted before it decided whether it
-  should**, and the last two were on cleanup paths that only run when something else has already
-  failed. `T013-R5` is non-blocking test hardening owned by `T-052`.
-- **`T-015` and `T-018` — corrections returned 2026-07-27, awaiting verification.** Presets and
-  their translation; the recorded-fixture set, the playlist projection, and a committed capture
-  tool. Both came back Changes requested — one Critical, two High — and all three are corrected.
-  The Critical (`T018-R1`) was the fixture credential gate being a false negative in two
-  directions at once; it now fails closed on both sides, and every fixture was re-captured under
-  the new policy. `T012-R6` is closed by the `multi_video` correction, so **`T-016` is unblocked**
-  once the Reviewer verifies it. Merged to `main` 2026-07-27.
+- **`T-013` — Blocked after the maintainer-authorized extra pass, 2026-07-27.** `T013-R4` is
+  resolved. `T013-R3` remains a blocking Medium: a pump-start failure leaves the already-started
+  worker alive, and the protocol-violation signal still precedes the durable failed state.
+  Another Medium-or-lower pass needs a new maintainer choice under `AGENTS.md` §9. `T013-R5`
+  remains non-blocking hardening owned by `T-052`.
+- **`T-015` — Changes requested.** `T015-R1` is resolved, but its correction introduced High
+  `T015-R2`: the last 1080p-MP4 fallback can silently select video without audio. **`T-018` —
+  Changes requested.** `T018-R2` is resolved and closes `T012-R6`; Critical `T018-R1` remains
+  open because capture-owned metadata and additional Windows-path/URL-fragment shapes still
+  bypass both privacy gates. Both correction streams are merged to `main` by `7021a01`; the
+  merge itself is verified clean.
 - **`ai/TESTING.md` §7 stands at eight of ten mandatory areas**, up from six. `T-013` added
   Cancellation and Worker crash, both against real spawned processes. The two outstanding are
   Log redaction (`T-038`) and DRM. **DRM has no Phase 1 owner** — worth settling deliberately
@@ -113,16 +111,16 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## Next
 
-`ARC-002` is proven end to end. A spawned child imports yt-dlp, extracts and reports typed
-messages back (`T-012`); a job survives a restart and an unclean kill (`T-014`); and `T-013` now
-connects them — in a test, a URL becomes a file on disk, and cancelling it leaves no orphan
-**worker** and no job that lies about its state. It does not yet leave no orphan *descendant*:
-see `T-019` below. **No widget touches any of it yet**: composition is `T-036` and the first
-*user-visible* download is `T-037`.
+`ARC-002`'s ordinary end-to-end path is proven: a spawned child imports yt-dlp, extracts and
+reports typed messages back (`T-012`); a job survives a restart and an unclean kill (`T-014`);
+and, in a test, a URL becomes a file on disk through `T-013`. T-013 is not approved: a pump-start
+failure can still leave its worker alive after the job is recorded failed. Cancellation also
+does not yet reap descendants; see `T-019`. **No widget touches any of it yet**: composition is
+`T-036` and the first *user-visible* download is `T-037`.
 
-1. **Re-review everything returned today** — `T-013`'s two correction batches, and `T-015` and
-   `T-018`'s. Focused passes over the correction diffs and the named findings, not new audits
-   (`AGENTS.md` §9). Nothing downstream should be built until they pass.
+1. **Resolve the returned review blockers.** T-013 needs a maintainer decision before another
+   Medium pass. T-015's new High regression and T-018's still-open Critical continue through
+   correction and focused verification under `AGENTS.md` §9.
 2. **`T-038` — logging with handler-level redaction.** Ready, High priority, and now overdue
    rather than early: `T-013` generates the diagnostics most likely to carry a tokenised URL or a
    cookie path, and they are being produced today with no redacting handler under them.
