@@ -225,12 +225,23 @@ def project_media(info: Mapping[str, Any]) -> MediaInfo:
 
     A missing title becomes the URL rather than an empty string, because `MediaInfo` requires a
     displayable title and inventing "Untitled" would be worse than showing what the user pasted.
+
+    **Playlists are projected as playlists** (`REQ-002`, `T012-R6`). `_type` is yt-dlp's own
+    structured answer to "is this one thing or many", so the distinction is read from it rather
+    than guessed from the presence of `entries` — an extractor may supply an empty `entries` for
+    a playlist it could not enumerate, and that is still a playlist.
+
+    The **entries themselves are not projected**. Phase 1 downloads one item, `REQ-002` asks
+    only whether the URL is a playlist, and projecting every entry would make a probe's cost
+    proportional to a list that can hold thousands. `T-016` shows the distinction and the count;
+    expanding a playlist into jobs is Phase 3's.
     """
     url = str(info.get("webpage_url") or info.get("original_url") or info.get("url") or "")
     title = str(info.get("title") or "").strip() or url
     formats = tuple(
         project_format(entry) for entry in (info.get("formats") or ()) if entry.get("format_id")
     )
+    is_playlist = info.get("_type") == "playlist"
     return MediaInfo(
         url=url,
         title=title,
@@ -239,7 +250,24 @@ def project_media(info: Mapping[str, Any]) -> MediaInfo:
         uploader=_as_optional_str(info.get("uploader")),
         thumbnail_url=_as_optional_str(info.get("thumbnail")),
         is_live=bool(info.get("is_live")),
+        is_playlist=is_playlist,
+        entry_count=_entry_count(info) if is_playlist else None,
     )
+
+
+def _entry_count(info: Mapping[str, Any]) -> int | None:
+    """How many items a playlist holds, or `None` when the extractor did not say.
+
+    `playlist_count` is preferred over `len(entries)` because they are different facts: the
+    count is what the site reports, while `entries` is what this extraction happened to
+    materialise — flat extraction, a page limit or a lazy generator can all make the second
+    smaller. Reporting the second as the total would understate a playlist and do it silently.
+    """
+    counted = _as_optional_int(info.get("playlist_count"))
+    if counted is not None:
+        return counted
+    entries = info.get("entries")
+    return len(entries) if isinstance(entries, Sequence) else None
 
 
 def build_options(

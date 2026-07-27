@@ -1,0 +1,23 @@
+{
+  "_fixture": {
+    "capture_method": "recorded",
+    "captured": "2026-07-27",
+    "note": "expected_kind is transcribed from ARCHITECTURE.md \u00a77, not read from the adapter. The type path is an NFR-008 canary: an upstream rename fails the test that imports it.",
+    "redacted_keys": [
+      "cookies",
+      "http_headers",
+      "_cookies",
+      "cookiefile"
+    ],
+    "source_url": "https://example.com/",
+    "why_this_source": "A URL no extractor claims. yt-dlp raises UnsupportedError, which \u00a77 maps to UNSUPPORTED_URL \u2014 'no extractor matched' in the taxonomy's own words.",
+    "yt_dlp_version": "2026.07.04"
+  },
+  "error": {
+    "expected_kind": "unsupported_url",
+    "http_status": null,
+    "message": "Unsupported URL: https://example.com/",
+    "module": "yt_dlp.utils",
+    "type": "UnsupportedError"
+  }
+}

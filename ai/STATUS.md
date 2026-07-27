@@ -87,10 +87,17 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-013` — implemented 2026-07-27, In Review, uncommitted.** The download manager and the
-  result pump. A job now goes from `QUEUED` to a file on disk through a real spawned worker, and
-  a cancelled or crashed one ends in a state the queue can explain. Awaiting its first
-  independent pass; its record in `TASKS.md` lists what it deviated from and why.
+- **`T-013` — reviewed 2026-07-27: changes requested.** The download manager and result pump are
+  implemented and merged to `main` at `0a19daf`; a job goes from `QUEUED` to a file on disk
+  through a real spawned worker, and a cancelled or crashed one ends in a state the queue can
+  explain. Three blocking findings (`T013-R1`, `T013-R2` High; `T013-R3` Medium) are open and
+  the correction batch has not started. Four of the five judgement calls the implementer flagged
+  were accepted; the fifth produced `T-051`.
+- **`T-015` and `T-018` — implemented 2026-07-27, In Review**, on branch
+  `phase1-presets-and-fixtures` (`AGENTS.md` §7: branched on maintainer instruction, to keep new
+  work off `main` while `T-013`'s corrections land there). Presets and their translation; the
+  recorded-fixture set, the playlist projection that unblocks `T-016`, and a committed capture
+  tool.
 - **`ai/TESTING.md` §7 stands at eight of ten mandatory areas**, up from six. `T-013` added
   Cancellation and Worker crash, both against real spawned processes. The two outstanding are
   Log redaction (`T-038`) and DRM. **DRM has no Phase 1 owner** — worth settling deliberately
@@ -110,14 +117,16 @@ connects them — in a test, a URL becomes a file on disk, and cancelling it lea
 orphan process nor a job that lies about its state. **No widget touches any of it yet**:
 composition is `T-036` and the first *user-visible* download is `T-037`.
 
-1. **Review `T-013`.** It owns process lifetime and the only thread in the application, and both
-   of its failure modes are silent. Nothing downstream should start against an unreviewed
-   manager.
+1. **Correct `T-013`'s three blockers**, on `main`. Two of them are one theme: the receiver acts
+   on a message before deciding whether the message was legal. Nothing downstream should be
+   built against a manager in that state.
 2. **`T-038` — logging with handler-level redaction.** Ready, High priority, and now overdue
    rather than early: `T-013` generates the diagnostics most likely to carry a tokenised URL or a
    cookie path, and they are being produced today with no redacting handler under them.
    Retrofitting redaction around live diagnostics is how `T-014` lost four review rounds.
-3. **`T-015`, `T-018`** — Ready and independent. `T-018` blocks `T-016`.
+3. **Review `T-015` and `T-018`** on `phase1-presets-and-fixtures`. Both are independent of
+   `T-013`'s corrections and touch no file it does — except `ytdlp_adapter.py`'s projection and
+   `core/models.py`, neither of which the findings name.
 4. **`T-050`** — new, and **Phase 2**, not Phase 1: the `history` table is still empty, and
    `IMPLEMENTATION_PLAN.md` puts `REQ-020`'s history persistence in Phase 2. This file's claim
    that `T-013` owned it was `STATUS.md` running ahead of both the plan and `T-013`'s own scope;
@@ -224,11 +233,11 @@ it** — composition is `T-036`, and the first URL a *user* can download is `T-0
 `ARCHITECTURE.md` as the approved target rather than a description of what a user can do.
 
 Precisely, recounted 2026-07-27 by parsing each module for anything beyond its docstring: of the
-**31** modules under `src/`, **14 are still docstring-only stubs** and **17 have code**. Those
-seventeen are `__init__.py`, `__main__.py`, `_freeze_probe.py`, `app.py`, `ui/main_window.py`,
+**31** modules under `src/`, **13 are still docstring-only stubs** and **18 have code**. Those
+eighteen are `__init__.py`, `__main__.py`, `_freeze_probe.py`, `app.py`, `ui/main_window.py`,
 `core/{models,job_state,errors,paths}.py`,
 `downloader/{environment,protocol,worker,ytdlp_adapter}.py`, `persistence/{db,repositories}.py`,
-and — new with `T-013` — `downloader/{manager,result_pump}.py`.
+`downloader/{manager,result_pump}.py` (`T-013`), and — new with `T-015` — `core/presets.py`.
 
 *(Before `T-014` this said 23 stubs and eight coded, recomputed at `697e024`; it had gone stale
 across four tasks. Each count since has been recounted rather than adjusted.)*
