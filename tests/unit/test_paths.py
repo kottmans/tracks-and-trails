@@ -85,8 +85,10 @@ def test_names_that_only_look_reserved_pass_through_untouched(name: str) -> None
 
 
 @pytest.mark.parametrize("reserved", ["COM1", "CON", "aux", "LPT\u00b9", "NUL"])
-def test_defusing_a_reserved_name_cannot_collide_with_a_legal_neighbour(reserved: str) -> None:
-    """`T-045`. A defused name must not be a name a legal file also produces.
+def test_defusing_a_reserved_name_does_not_collide_with_its_plausible_neighbour(
+    reserved: str,
+) -> None:
+    """`T-045`. A defused name must not be one a user would realistically also hold.
 
     `COM1` and a legal file named `COM1_` both used to yield `COM1_`, so two distinct names
     landed on one path — the same collision class the truncation differentiator exists to
@@ -96,6 +98,40 @@ def test_defusing_a_reserved_name_cannot_collide_with_a_legal_neighbour(reserved
     assert defused != reserved, f"{reserved!r} must be renamed at all"
     assert defused != sanitize_component(f"{reserved}_")
     assert sanitize_component(defused) == defused, "defusing must stay idempotent"
+
+
+@pytest.mark.parametrize("reserved", ["COM1", "CON", "aux", "LPT¹", "NUL"])
+def test_a_defused_name_is_a_fixed_point_and_shares_it_with_a_whole_class(
+    reserved: str,
+) -> None:
+    """`T045-R1`, `T045-R3`, `DAT-002`. The residual collision, described honestly.
+
+    No stateless idempotent sanitizer can promise a defused name collides with nothing: for
+    reserved `x`, `y = sanitize_component(x)` is itself legal input, and idempotence forces
+    `sanitize_component(y) == y == sanitize_component(x)`. The maintainer kept idempotence —
+    `T-012` previews a path under `REQ-011` before writing it, and a preview disagreeing with the
+    write would be a lie — and narrowed the promise instead (`DAT-002`).
+
+    **This does not claim to enumerate the colliding inputs, and an earlier version wrongly did**
+    (`T045-R3`). It checked six hand-picked candidates and called the result the exact set, while
+    `defused + " "`, `defused + "."`, `"CON\\t"` and `"C\\x00ON"` all map to `defused` too —
+    the test passed because nothing outside its own list was ever asked.
+
+    Normalization is many-to-one by design: control-character stripping, trailing dot and space
+    removal, and reserved-name defusing each merge inputs deliberately, and every merge widens
+    this class. What is asserted below is what actually holds — the output is a fixed point, the
+    plausible neighbour stays distinct, and the class is demonstrably wider than one might
+    assume. A real uniqueness guarantee needs to know what is already on disk, and is `T-046`.
+    """
+    defused = sanitize_component(reserved)
+
+    assert sanitize_component(defused) == defused, "the output must be a fixed point"
+    assert sanitize_component(f"{reserved}_") != defused, "the plausible neighbour stays distinct"
+
+    # Not an enumeration — a demonstration that the class is wider than the reserved name alone,
+    # so nobody reads the fixed point above as "only these collide".
+    for also_colliding in (f"{reserved} ", f"{reserved}.", f"{defused} ", f"{defused}.", defused):
+        assert sanitize_component(also_colliding) == defused
 
 
 @pytest.mark.parametrize("reserved", ["CON", "AUX", "NUL", "COM1", "LPT9", "\u0043\u004f\u004e"])

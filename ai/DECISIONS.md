@@ -739,3 +739,91 @@ negotiation between parent and child.
   child is not spawned from the parent's own artifact makes skew reachable and re-opens the
   question. Whoever proposes such a change must revisit this entry rather than discovering the
   gap at runtime.
+
+## DAT-002 — Filename sanitizing promises idempotence, not uniqueness
+
+**Status:** **Accepted** (2026-07-26) — maintainer decision on a blocking review finding
+**Date:** 2026-07-26
+**Narrows:** one acceptance criterion of `T-045`. `ARCHITECTURE.md` §8 stands unchanged.
+
+### Context
+
+`T-045` replaced the bare `_` used to defuse a Windows reserved name with the same digest the
+truncation differentiator uses, so `COM1` became `COM1-<16 hex>` and stopped colliding with a
+legal file named `COM1_`. Its first acceptance criterion read:
+
+> Defusing a reserved name cannot produce a path that a legal filename also produces
+
+`T045-R1` established that this cannot be satisfied while `sanitize_component` stays idempotent,
+and the argument is not about hashing. For any reserved `x`, let `y = sanitize_component(x)`.
+`y` is legal input in its own right, and idempotence requires `sanitize_component(y) == y`.
+Therefore `x` and `y` map to the same path, whatever the renaming strategy. The digest changes
+*which* legal name collides — from the plausible `COM1_` to the 16-hex-digit
+`CON-1bc43d851d28ada0` — but cannot eliminate the collision.
+
+The two criteria are individually reasonable and jointly unreachable. Choosing between them is a
+product decision, not an implementation one, so the reviewer returned **Blocked** rather than
+Changes requested.
+
+### Decision
+
+**Keep idempotence. Narrow the uniqueness promise to the plausible neighbour class.**
+
+`sanitize_component` guarantees that a defused reserved name does not collide with the name a
+user would realistically also hold — `COM1` versus `COM1_`. It does **not** guarantee collision
+with nothing.
+
+**Amended 2026-07-26 (`T045-R3`).** This entry first said the residual colliding set was "pinned
+by test". That was an overclaim, and the test making it checked six hand-picked candidates and
+called the result exact — `defused + " "`, `defused + "."` and control-character forms such as
+`"CON\t"` all collide too. Normalization is many-to-one *by design*: control-character
+stripping, trailing dot and space removal, and reserved-name defusing each merge inputs
+deliberately, and every merge widens the class. What the test pins is what holds — the defused
+output is a fixed point, the plausible neighbour stays distinct, and the class is demonstrably
+wider than the reserved name alone. The colliding set is **not** enumerated, and this decision
+does not claim it is.
+
+**Absolute uniqueness moves to `T-046`** (Phase 2, alongside resume), where collision policy has
+the filesystem context the guarantee actually requires.
+
+### Rationale
+
+- **Idempotence is load-bearing and uniqueness is not, at this layer.** `T-012` renders a path
+  preview under `REQ-011` and writes later. If sanitizing were not a fixed point, the preview and
+  the write could disagree — the user is shown one filename and gets another. That is a silent
+  wrong result in what this product exists to do, which `AGENTS.md` §9 rates Critical. The
+  residual collision, by contrast, requires a user to name a file `CON-1bc43d851d28ada0`.
+- **Uniqueness is unanswerable without state.** "Does this path collide with something?" is a
+  question about the filesystem. A pure function of one string cannot answer it, and pretending
+  otherwise is what produced an unreachable criterion in the first place.
+- **What can be asserted is asserted; what cannot is said plainly.** `T-045`'s tests pin the
+  fixed point and the plausible-neighbour distinction, and demonstrate that the colliding class
+  is wider than the reserved name alone. They do not enumerate it, and neither does this entry.
+
+### Alternatives considered
+
+- **Drop idempotence, keep absolute uniqueness** — rejected. It buys a guarantee no user
+  realistically needs at the cost of the preview/write agreement `T-012` depends on: applying a
+  non-idempotent sanitizer twice returns a different path, so the previewed filename and the
+  written one diverge. *(An earlier draft said this would make sanitizing "non-deterministic
+  across processes". That was wrong — a non-idempotent function can be perfectly deterministic,
+  and determinism is not what the rejection turns on. Corrected under `T045-R3`.)*
+- **Leave both criteria and mark `T-045` permanently Blocked** — rejected. `AGENTS.md` §7
+  forbids leaving a known contradiction standing as project truth, and the implementation under
+  review is a real improvement over the bare `_` regardless of how the criterion is worded.
+- **Rewrite the criterion silently in `TASKS.md`** — rejected. This is a durable choice with a
+  real trade-off between two safety properties, which is what `AGENTS.md` §11 says belongs here
+  rather than in a task edit nobody can find later.
+- **Reject reserved names outright instead of renaming them** — rejected. `REQ-011` requires a
+  download to succeed from a title the user did not choose; failing on `CON` would turn a
+  cosmetic problem into a lost download.
+
+### Consequences
+
+- `T045-R1` closes on acceptance; `T-045` becomes approvable on its current implementation with
+  its narrowed criterion, and needs one focused re-review.
+- `T-046` is filed and owns the real uniqueness guarantee. **This decision assumes it lands
+  before first release** — until it does, two downloads whose titles sanitize identically still
+  contend for one path, which is the ordinary collision case and not specific to reserved names.
+- `core/paths.py` keeps its narrow claim: legal on both platforms, deterministic, idempotent.
+  Any future change making it stateful or filesystem-aware re-opens this entry.
