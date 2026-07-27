@@ -2497,3 +2497,103 @@ the remaining transform-expectation work into a named follow-up. T014-R7 is a ne
 regression and must be resolved with the same design decision or an aligned implementation.
 
 The persistence unit is **Changes requested**. R2, R3, and R5 remain resolved; R6 is retracted.
+
+## 2026-07-26 — T-014 third focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-014`
+**Correction base:** `a0fb4e4f3444b2e29c8872979431987a4fd70b6a`
+**Head:** `04dd8af`
+**Review unit:** Persistence correction commit plus the maintainer-authorized upstream
+`DownloadRequest.proxy` invariant
+**Platforms verified:** Linux locally; Windows not run; frozen build not rerun because the
+specification and probe are unchanged
+**Verdict:** **Changes requested**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T014-R1` | **Critical** | **Yes** | **Open — proxy-credential half resolved; cookie-data half still directly fails.** Moving the proxy boundary into `DownloadRequest` is the right design. Every prior credential-bearing form, including `//userinfo@host`, is rejected before a `Job` can exist; valid credential-free HTTP and SOCKS proxies still reach the adapter unchanged. I found no eighth valid URL-userinfo form that bypasses the literal authority delimiter. Restoring verbatim `error_message`, however, reopens the other unrestricted database sink covered by this finding and by T-014's unchanged criterion. A failed job with diagnostic `cookies /home/someone/cookies.txt; Cookie: SID=hunter2` stored both the path and cookie value verbatim in `jobs.error_message`. T-038 redacts logs; it cannot redact a separate database write. The task's claim that the only residual secret is the already-approved job URL is therefore false. Under §9, cookie material crossing a documented privacy boundary remains Critical. The maintainer may choose the stated trade-off, but §9 requires known Critical harm to be accepted in `ai/DECISIONS.md`, with its reasoning; the current commit neither records that decision nor narrows the contradictory T-014 acceptance criterion. Record and propagate the decision explicitly, including why local database diagnostics may contain cookie paths/content, or restore a design that satisfies both verbatim diagnostics and the database exclusion. |
+| `T014-R4` | **Medium** | **No** | **Resolved.** `TRANSFORMED_BY_MIGRATION` and its unchecked skip are gone. The v1 fixture still seeds both `jobs` and `history`, and strict per-column equality is correct while every migration is pure DDL. Repeating the prior corrupt-but-readable v2 mutation now failed closed on `jobs.v1-queued.request`. T-048 has an owner trigger and the right acceptance criterion for the first actual data migration: assert the transformed value is correct while retaining strict equality elsewhere. The present review request explicitly authorizes verification of this removal; no additional pass authorization is needed to close R4. |
+| `T014-R7` | **High** | **No** | **Resolved.** `_job_to_values()` again writes `job.error_message`, `_row_to_job()` returns that column unchanged, and both `add()` and `update()` use the shared mapping. Independent repository probes returned the exact original message after add, the exact replacement after update, and the exact authored interruption message after `recover_interrupted()`. No remaining repository paraphrase was found. This closes R7's contract failure; it does not by itself close R1's separate cookie-data exclusion. |
+| `T014-R6` | **Low** | **No** | **Remains retracted.** No code change was needed. |
+
+R2, R3, and R5 remain resolved and their reviewed surfaces are unchanged.
+
+### Proxy-policy and wider-surface judgment
+
+- Rejecting authenticated proxies is compatible with the literal requirements: REQ-023 requires
+  proxy configuration but does not promise proxy authentication, while REQ-026 concerns
+  authenticated access to content through cookies. The current maintainer direction therefore
+  authorizes the capability trade-off.
+- Because that trade-off changes a durable public capability and is also being used to close a
+  Critical security finding, it should be recorded with the cookie-diagnostic decision in
+  `ai/DECISIONS.md`, not only in the editable T-014 task narrative.
+- `urlsplit()` rejects all valid userinfo forms because the authority delimiter remains a literal
+  `@`, including when username/password characters are percent-encoded. NFKC variants that
+  normalize into an authority delimiter raise as invalid. Control characters and backslashes did
+  not hide the delimiter.
+- The helper is not a complete proxy-validity checker despite its `scheme://host[:port]`
+  wording: it accepts examples such as `http://:8080`, `http://proxy.invalid:abc`, an unsupported
+  `ftp://` scheme, whitespace, and backslashes in the authority. Those do not create userinfo and
+  yt-dlp has its own supported-scheme validation, so this is not a T-014 credential-boundary
+  defect. The Phase 4 settings surface should still avoid presenting this helper as complete URL
+  validation.
+- Rejecting a non-slash path is reasonable for a proxy endpoint. A trailing slash remains
+  accepted. No current T-011 protocol or T-012 worker path reconstructs or weakens the request:
+  both carry the already-validated frozen model, and their normal HTTP/SOCKS construction cases
+  remain green.
+- Validation errors for scheme-less credential-bearing input interpolate the rejected value.
+  Such an exception must be treated as sensitive by T-038 if it is ever logged; this does not
+  reach the T-014 database because construction fails before a job exists.
+
+### Mutation and correction evidence
+
+| Check | Result |
+|---|---|
+| Remove proxy-validation call | Failed all 7 credential-form cases. Restored byte-identical. |
+| Remove userinfo rejection | Failed the 4 cases that otherwise have a valid explicit scheme/authority. Restored byte-identical. |
+| Remove the full scheme/authority guard | Failed only the scheme-relative no-credential case; the path check independently rejected the two other supplied strings. Restored byte-identical. |
+| Retain only the authority half of that guard | Failed only the same scheme-relative case, confirming the explicit-scheme test is load-bearing. Restored byte-identical. |
+| Paraphrase every non-null persisted error message | Failed **1**, not the claimed 2: `test_the_extractors_own_message_is_stored_verbatim`. The shared production sink and direct add/update/recovery probes establish current behavior, but the task's mutation count should be corrected. Restored byte-identical. |
+| Rewrite all four pinned functional fields | Failed all 4 parametrized round-trip cases. Restored byte-identical. |
+| R4 corrupt-but-readable v2 mutation | Failed strict equality on `jobs.request`; it no longer survives through an allowance. |
+| Cookie diagnostic probe | Raw `jobs.error_message` retained both `/home/someone/cookies.txt` and `SID=hunter2`. |
+| Construction-path regression run | Models, persistence, protocol, adapter, and worker tests passed: **393 passed, 4 skipped**. |
+
+### Coordination accuracy
+
+`ai/STATUS.md` still describes the superseded second-correction design: it says
+`error_message` never carries external text and that NFR-006 is satisfied only in the per-job
+log. That is the opposite of `04dd8af`. The T-014 task also reports two failures for the
+paraphrase mutation, while the faithful conditional paraphrase above failed one. Both
+current-truth records need correction with the R1 disposition.
+
+### Validation
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: 72 files already formatted. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| `mypy` | Passed: no issues in 57 source/test files. |
+| `mypy --platform win32` | Passed: no issues in 57 source/test files. |
+| Focused model + persistence + protocol + adapter + worker tests | Passed: **393 passed, 4 skipped**. |
+| Full default suite | Passed: **879 passed, 6 skipped, 1 deselected**. |
+| Source `--database-probe` | Passed: migrations 1, schema version 1, database ok. |
+| `git diff --check a0fb4e4 04dd8af` | Passed. |
+| Mutation restoration | All temporary source mutations were restored byte-identical before validation. |
+
+### Readiness
+
+R4 and R7 are resolved; R2, R3, and R5 remain resolved; R6 remains retracted. The upstream
+proxy invariant closes every established proxy-credential route and introduces no regression
+in T-011 or T-012.
+
+R1 remains Critical because the unchanged database criterion covers cookie paths/content as
+well as proxy credentials, and arbitrary diagnostics still enter that database verbatim. The
+maintainer's stated decision can resolve this without another filtering mechanism, but the
+Critical accepted risk must be recorded in `ai/DECISIONS.md` and the contradictory acceptance
+criterion/current-truth text must be aligned before approval. The persistence unit is
+**Changes requested**.

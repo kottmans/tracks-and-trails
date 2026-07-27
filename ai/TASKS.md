@@ -82,36 +82,38 @@ the thing this task exists to avoid.
 
 ### T-014 — Persistence: schema, migrations, and the job repository
 
-**Status:** **Changes requested** (third round) 2026-07-26. `T014-R2`, `R3`, `R5` resolved;
-`R6` retracted by the reviewer. `T014-R1` and `T014-R7` resolved by **maintainer decision moving
-the boundary upstream**; `T014-R4` closed by removing the mechanism. **Awaiting re-review.**
+**Status:** **Changes requested** (fourth round) 2026-07-26 — documentation only.
+`T014-R4` and `T014-R7` resolved; `R6` retracted. `T014-R1`'s remaining half was that the
+maintainer's accepted trade-off had never been written down. Recorded as `DAT-003`; `REQ-026`
+and the criterion above now say what the code does. **No code changed.** Awaiting re-review.
 
-**`T014-R1` took three rounds and the root cause was never in this layer.**
-`DownloadRequest.proxy` accepted any non-empty string, so persistence had no grammar to parse and
-every fix was a scan of unbounded text. Three credential forms escaped in turn — scheme-less,
-then Unicode and single-label hosts, then scheme-relative — and one attempt to scrub them
-corrupted legitimate output paths, which was independently Critical.
+**`T014-R1` — the boundary is right; the paperwork was not.** Proxy credentials are
+unrepresentable (`DownloadRequest` rejects userinfo), which the reviewer confirmed with no
+bypass found. What remained: `T-014`'s criterion and `REQ-026` still promised that cookie paths
+never reach the database, while the restored verbatim diagnostic can carry one yt-dlp itself
+names — a browser profile it could not read, say.
 
-**The model now rejects a proxy carrying userinfo**, on maintainer decision. A job cannot hold a
-credential, so there is nothing for persistence to strip and no text to scan. `REQ-026` covers
-authenticated *content* via cookies; it does not require an authenticated proxy, and if one is
-ever needed it belongs in the settings layer rather than inside a persisted, IPC-crossing job.
+Under `AGENTS.md` §9 a Critical may **not** be closed as accepted risk by an agent; only the
+maintainer can choose to ship known harm, and it belongs in `ai/DECISIONS.md` with its
+reasoning. That choice was made when the diagnostic was restored and simply never recorded,
+which is exactly what the finding reported.
 
-**`T014-R7` — I was wrong to relocate `NFR-006`.** Replacing the diagnostic with project-authored
-text contradicted `ARCHITECTURE.md` §5 and §7, `core/models.py`, `downloader/protocol.py` and
-`NFR-006` itself. It is restored verbatim, which the proxy grammar makes safe: with credentials
-unrepresentable, the residual secret in a diagnostic is the job URL, already stored verbatim by
-the 2026-07-26 decision.
+`DAT-003` now records it and scopes the exclusion to values **this application supplies** —
+credentials (structurally impossible), cookie contents (never read into a job), and cookie paths
+this app holds (none exist; `cookies_from_browser` is a browser *name*). The residue is a path
+yt-dlp echoes inside a message `NFR-006` requires be kept intact. `REQ-026` carries a matching
+note rather than being weakened silently, and the entry names the condition that reopens it: the
+calculus depends on the database being local and user-owned, so sync, export or attaching it to
+a bug report all revisit it.
 
-**`T014-R4` — the mechanism is gone rather than defended.** An allowance can conceal a
-corrupt-but-readable migration, and an empty one protects nothing. Comparison is strict per
-column again; `T-048` owns verifying the first real data migration, designed against a real one.
+**`T-038`'s scope is unchanged** — logs are written by this application, so the supplied-value
+rule binds there in full.
 
-**Mutation evidence: 6 planted, 6 fail** — dropping proxy validation entirely (7 tests); allowing
-userinfo (4); allowing a scheme-less proxy (1); paraphrasing `error_message` (2); rewriting a
-functional field (4); dropping the scheme requirement (1). That last case was **added after a
-mutation survived**: the scheme check had no test isolating it, and `T-034` lost a guard once by
-deleting one that looked redundant on exactly that evidence.
+**The full arc of `T014-R1`, because it is the most expensive finding this project has had:**
+four rounds, three credential escapes, one Critical regression of my own making, and a
+documentation gap at the end. Every one of my three code fixes was in the wrong layer — a filter
+over unbounded input where the answer was to constrain what the input could be. The correction
+that worked changed `core/models.py`, not `persistence/`.
 
 **Owner:** Implementer
 **Priority:** High
@@ -162,7 +164,7 @@ the original request rather than current defaults (`ARCHITECTURE.md` §5, §8).
 - A persisted `DownloadRequest` round-trips exactly; a retry uses the stored request, proven
   by changing the defaults between store and retry (`ARCHITECTURE.md` §8)
 - Queue order survives a restart (`REQ-012`)
-- No cookie path, cookie content, or proxy credential is ever written to the database
+- No **application-supplied** cookie path, cookie content, or proxy credential is ever written to the database (`DAT-003`)
   (`REQ-026`, `NFR-007`) — asserted by scanning the stored row, not the model, since a
   redaction applied in the model but not on the way to disk would pass an object comparison and
   still leave the secret on disk.

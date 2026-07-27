@@ -87,7 +87,7 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-014` — Changes requested three times; third correction awaiting re-review.** Persistence
+- **`T-014` — four review rounds; final correction is documentation only, awaiting re-review.** Persistence
   is real: SQLite in WAL mode under `platformdirs`, a forward-only migration runner that
   discovers migrations by globbing the directory, and `JobRepository` with durable queue order
   and startup recovery. Suite 830 → 879.

@@ -108,7 +108,7 @@ residue and blocks the first public release.
 - **REQ-023** — Provide a settings screen covering: default download directory, default preset, concurrency limit, output template, ffmpeg location, network options (rate limit, proxy, retries), cookie source, and theme.
 - **REQ-024** — Detect ffmpeg at startup and clearly report which features are unavailable without it, rather than failing at merge time.
 - **REQ-025** — Report the yt-dlp version in use and let the user update yt-dlp from within the application without reinstalling Tracks & Trails.
-- **REQ-026** — Support authenticated access **to content the user is already entitled to**, via cookies from a browser profile or a cookies file. Credentials and cookie paths are never written to logs or to history.
+- **REQ-026** — Support authenticated access **to content the user is already entitled to**, via cookies from a browser profile or a cookies file. Credentials and cookie paths **that this application supplies** are never written to logs or to history. A cookie path that yt-dlp itself names inside a diagnostic is preserved with that message, which `NFR-006` requires be kept verbatim — see `DAT-003` for the reasoning and the condition that reopens it.
 
 - **REQ-029** — Installing and running Tracks & Trails must require **no Python installation, no virtual environment, and no developer toolchain** on the user's machine. The implementation language is not a user-facing prerequisite (`REL-001`).
 

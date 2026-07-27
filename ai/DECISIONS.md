@@ -827,3 +827,72 @@ the filesystem context the guarantee actually requires.
   contend for one path, which is the ordinary collision case and not specific to reserved names.
 - `core/paths.py` keeps its narrow claim: legal on both platforms, deterministic, idempotent.
   Any future change making it stateful or filesystem-aware re-opens this entry.
+
+## DAT-003 — A stored diagnostic is verbatim; cookie paths inside one are accepted
+
+**Status:** **Accepted** (2026-07-26) — maintainer decision on a Critical review finding
+**Date:** 2026-07-26
+**Narrows:** one clause of `REQ-026`, and one acceptance criterion of `T-014`.
+
+### Context
+
+`T-014` stores a failed job's `error_message`. Two requirements pull against each other there:
+
+- `NFR-006`, `ARCHITECTURE.md` §5 and §7, `core/models.py` and `downloader/protocol.py` all
+  require the extractor's original message, preserved rather than paraphrased.
+- `REQ-026` says credentials and cookie paths are never written to logs **or to history**.
+
+An attempt to satisfy the second by replacing the message with project-authored text violated the
+first in four places (`T014-R7`). Two earlier attempts to scrub the prose with a recogniser both
+failed — one also corrupted legitimate output paths, which was independently Critical.
+
+**Credentials are no longer the issue.** `DownloadRequest` now rejects a proxy carrying userinfo,
+so a job cannot hold one; that half of `REQ-026` is structurally guaranteed rather than filtered.
+What remains is narrower: yt-dlp may name a browser cookie database in a diagnostic — for example
+when a profile cannot be read — and that path is stored verbatim with the message.
+
+### Decision
+
+**The database stores the extractor's message verbatim, and a cookie *path* appearing inside one
+is accepted.** `REQ-026`'s exclusion is read as binding on values this application *supplies* —
+credentials and cookie file paths it holds, passes, or logs deliberately — not on text a third
+party emits and `NFR-006` requires be preserved intact.
+
+Scope, precisely:
+
+- **Credentials** — never in the database. Structural: unrepresentable in the model.
+- **Cookie contents** — never in the database. Nothing reads a cookie jar into a job.
+- **Cookie paths supplied by this application** — none exist. `DownloadRequest` carries
+  `cookies_from_browser`, a browser *name*, not a path.
+- **Cookie paths echoed by yt-dlp inside a diagnostic** — **accepted**, and the only residue.
+
+### Rationale
+
+- **The alternative was worse and was tried twice.** Scrubbing prose neither excluded every
+  secret nor left the message intact, and the second attempt turned a user's output directory
+  into a relative path — a write outside the directory they chose.
+- **A path is not a credential.** It names a file on the user's own machine. Its disclosure value
+  is low, the database is local and user-owned, and the user can already see the path.
+- **Losing the message costs more.** `NFR-006` exists because a paraphrased error destroys the
+  only information a user can act on, and `REQ-019` shows that message back to them.
+- **Silence was the real defect.** This trade-off was made when the diagnostic was restored and
+  simply never written down, which is what `T014-R1`'s final round reported.
+
+### Alternatives considered
+
+- **Keep the generic stored message** — rejected as `T014-R7`: it contradicts four approved
+  sources at once.
+- **Scrub prose before storing** — rejected on evidence. Two implementations, three credential
+  escapes, one Critical regression.
+- **Drop `error_message` from the schema this phase** — rejected: `REQ-018` requires the error be
+  recorded, and the per-job log that would hold it does not exist until `T-038`.
+
+### Consequences
+
+- `REQ-026` gains a note scoping its exclusion; `T-014`'s criterion is amended to match. Neither
+  is weakened silently.
+- **`T-038` still owns log redaction**, and its scope is unchanged — logs are written by this
+  application, so the supplied-value rule binds there in full.
+- **This decision reopens** if the database stops being local and user-owned — sync, export,
+  cloud backup, or a bug report attaching it — because the disclosure calculus above depends on
+  it. Whoever proposes such a feature revisits this entry.
