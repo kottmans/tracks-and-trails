@@ -374,12 +374,158 @@ def stage_of(message: object) -> Stage | None:
     return message.stage if isinstance(message, Progress) else None
 
 
+class SessionValidator:
+    """The contract enforced **as each message arrives**, rather than after the fact.
+
+    This is the form `T-013`'s receiver needs and `validate_sequence()` is a wrapper around
+    (`T013-R1`). The distinction is not stylistic: the receiver routes each message onward, and
+    routing an illegal one persists job state and tells the GUI about a result that the contract
+    forbids. Validating the finished stream afterwards reports the violation *after* the damage,
+    which made the executable receiver strictly weaker than the rules written here.
+
+    Every rule below is decidable when the message arrives, given only what came before it. The
+    two that are not — a session that never produced an outcome, and one that never ended — live
+    in `complete()`, because until the stream stops they are indistinguishable from a stream that
+    has not finished yet.
+
+    **One implementation, two entry points.** A per-message checker written separately from
+    `validate_sequence()` would be a second hand-maintained statement of one grammar, and this
+    project has repeatedly found that two such statements drift apart without anything noticing
+    (`T010-R1`, `T041-R2`). So `validate_sequence()` feeds this class and adds nothing of its own.
+    """
+
+    def __init__(self, kind: SessionKind, job_id: str | None = None) -> None:
+        self._kind = kind
+        #: The job this stream is allowed to describe. `None` means "bind to the first message",
+        #: which is what a whole-stream check does; the receiver passes the id it asked for, so a
+        #: stream consistently claiming to be a *different* job is caught (`T013-R1`). The old
+        #: check only rejected a stream that changed its mind halfway.
+        self._job_id = job_id
+        self._outcome: _Message | None = None
+        self._reports = 0
+        self._finished = False
+        self._seen = 0
+
+    @property
+    def outcome(self) -> _Message | None:
+        """The one legal outcome, once it has arrived."""
+        return self._outcome
+
+    @property
+    def finished(self) -> bool:
+        """Whether the sentinel has been accepted."""
+        return self._finished
+
+    def accept(self, item: object) -> None:
+        """Admit one message, or raise `ProtocolViolationError` describing why not."""
+        if not is_message(item):
+            raise ProtocolViolationError(f"undeclared object on the queue: {item!r}")
+        message: _Message = item  # narrowed by `is_message`
+        self._seen += 1
+
+        if self._finished:
+            raise ProtocolViolationError(
+                f"{type(message).__name__} arrived after WorkerFinished; the sentinel is the "
+                "last thing a worker sends"
+            )
+
+        if self._job_id is None:
+            self._job_id = message.job_id
+        elif message.job_id != self._job_id:
+            raise ProtocolViolationError(
+                f"a message for job {message.job_id!r} arrived on job {self._job_id!r}'s "
+                "stream; one session carries one job id, and an unattributable message "
+                "cannot be routed"
+            )
+
+        if isinstance(message, WorkerFinished):
+            self._finished = True
+            return
+
+        if is_outcome(message):
+            # Checked before the general post-outcome rule below, because a *second outcome* is
+            # a materially different fault from a stray progress message: it is the one that
+            # would drive a second state transition for one job (`T011-R4`), and the receiver's
+            # log should say so rather than describing it as late chatter.
+            if self._outcome is not None:
+                raise ProtocolViolationError(
+                    f"a second outcome ({type(message).__name__}) for job {self._job_id!r}; "
+                    "a session has exactly one"
+                )
+            self._accept_outcome(message)
+            return
+
+        if self._outcome is not None:
+            raise ProtocolViolationError(
+                f"messages after the outcome: [{type(message).__name__!r}]"
+            )
+
+        if isinstance(message, ResolutionReport):
+            # `T012-R1`: one session resolves yt-dlp once, so it reports that once. Two reports
+            # would mean either a second resolution or a duplicated message, and the parent
+            # would have no way to tell which one describes the run.
+            self._reports += 1
+            if self._reports > 1:
+                raise ProtocolViolationError(
+                    f"{self._reports} ResolutionReports for one session; a session resolves "
+                    "yt-dlp once"
+                )
+            return
+
+        if isinstance(message, Progress):
+            self._check_stage(message)
+
+    def _accept_outcome(self, message: _Message) -> None:
+        if type(message) not in legal_outcomes(self._kind):
+            allowed = ", ".join(t.__name__ for t in legal_outcomes(self._kind))
+            raise ProtocolViolationError(
+                f"a {self._kind.value} session cannot produce {type(message).__name__}; "
+                f"allowed: {allowed}"
+            )
+        self._outcome = message
+
+    def _check_stage(self, message: Progress) -> None:
+        """`T011-R7`: a probe extracts metadata, so `PROBING` is its only legal stage.
+
+        Deliberately *not* generalised to download-stage ordering. Real yt-dlp pipelines skip and
+        repeat stages — a format needing no merge never reports `MERGING` — so ordering there is
+        the adapter's business (`T-012`) and the end-to-end gate's (`T-037`), not this contract's.
+        """
+        if self._kind is SessionKind.PROBE and message.stage is not Stage.PROBING:
+            raise ProtocolViolationError(
+                f"a probe session reported stage(s) ['{message.stage.value}']; a probe only "
+                f"extracts metadata, so {Stage.PROBING.value!r} is its only legal progress stage"
+            )
+
+    def complete(self) -> None:
+        """Raise unless the stream that just ended was a complete session.
+
+        The two rules that need the end: a session with no outcome cannot be told from a crashed
+        worker (`REQ-028`), and one with no sentinel leaves `ResultPump` blocked on `Queue.get()`
+        forever.
+        """
+        if self._seen == 0:
+            raise ProtocolViolationError("a session must send at least an outcome and the sentinel")
+        if self._outcome is None:
+            raise ProtocolViolationError(
+                f"a {self._kind.value} session produced no outcome; a receiver cannot tell that "
+                "from a crashed worker (REQ-028)"
+            )
+        if not self._finished:
+            raise ProtocolViolationError(
+                "no WorkerFinished: the receiver blocks on Queue.get() and would never stop"
+            )
+
+
 def validate_sequence(kind: SessionKind, messages: Sequence[object]) -> None:
     """Raise `ProtocolViolationError` unless `messages` is a legal `kind` session.
 
-    The executable form of the contract at the top of this module, and what `T-013` enforces on
-    receipt. Checked here rather than left to prose because every rule below is a way for the
-    system to hang or lie rather than raise:
+    The whole-stream form of the contract at the top of this module. It is now a loop over
+    `SessionValidator`, which is the same grammar applied message by message — the receiver
+    needs that form, and two implementations of one contract would drift (`T013-R1`).
+
+    Checked at all rather than left to prose because every rule is a way for the system to hang
+    or lie rather than raise:
 
     - an unattributed or mixed-job stream cannot be routed;
     - a missing outcome is indistinguishable from a crash (`REQ-028`);
@@ -387,83 +533,7 @@ def validate_sequence(kind: SessionKind, messages: Sequence[object]) -> None:
     - an outcome the session kind cannot produce means the worker is not doing what was asked;
     - a missing or non-final sentinel leaves `ResultPump` blocked on `Queue.get()` forever.
     """
-    if not messages:
-        raise ProtocolViolationError("a session must send at least an outcome and the sentinel")
-
+    validator = SessionValidator(kind)
     for item in messages:
-        if not is_message(item):
-            raise ProtocolViolationError(f"undeclared object on the queue: {item!r}")
-
-    declared = [m for m in messages if isinstance(m, _Message)]
-    job_ids = {m.job_id for m in declared}
-    if len(job_ids) > 1:
-        raise ProtocolViolationError(f"one session must carry one job id; saw {sorted(job_ids)}")
-
-    sentinels = [i for i, m in enumerate(declared) if isinstance(m, WorkerFinished)]
-    if not sentinels:
-        raise ProtocolViolationError(
-            "no WorkerFinished: the receiver blocks on Queue.get() and would never stop"
-        )
-    if len(sentinels) > 1:
-        raise ProtocolViolationError(f"{len(sentinels)} sentinels; exactly one ends the stream")
-    if sentinels[0] != len(declared) - 1:
-        raise ProtocolViolationError(
-            f"WorkerFinished is at position {sentinels[0]} of {len(declared)}; "
-            "it must be the last message"
-        )
-
-    outcomes = [m for m in declared if is_outcome(m)]
-    if not outcomes:
-        raise ProtocolViolationError(
-            f"a {kind.value} session produced no outcome; a receiver cannot tell that from a "
-            "crashed worker (REQ-028)"
-        )
-    if len(outcomes) > 1:
-        raise ProtocolViolationError(
-            f"{len(outcomes)} outcomes for one job: {[type(m).__name__ for m in outcomes]}; "
-            "a session has exactly one"
-        )
-
-    outcome = outcomes[0]
-    if type(outcome) not in legal_outcomes(kind):
-        allowed = ", ".join(t.__name__ for t in legal_outcomes(kind))
-        raise ProtocolViolationError(
-            f"a {kind.value} session cannot produce {type(outcome).__name__}; allowed: {allowed}"
-        )
-
-    outcome_at = declared.index(outcome)
-    later = [type(m).__name__ for m in declared[outcome_at + 1 : -1]]
-    if later:
-        raise ProtocolViolationError(f"messages after the outcome: {later}")
-
-    # `T012-R1`: one session resolves yt-dlp once, so it reports that once. Two reports would
-    # mean either a second resolution or a duplicated message, and the parent would have no way
-    # to tell which one describes the run. (Ordering needs no separate rule: the check above
-    # already forbids anything between the outcome and the sentinel.)
-    reports = [m for m in declared if isinstance(m, ResolutionReport)]
-    if len(reports) > 1:
-        raise ProtocolViolationError(
-            f"{len(reports)} ResolutionReports for one session; a session resolves yt-dlp once"
-        )
-
-    # `T011-R7`: the module documents the probe grammar as `Progress(PROBING)*`, and claims
-    # this function is its executable form — but a probe reporting `MERGING` validated. A probe
-    # extracts metadata; it cannot download, merge or post-process, so any other stage is a
-    # misreport of `REQ-014` state rather than an unusual-but-legal pipeline.
-    #
-    # Deliberately *not* generalised to download-stage ordering. Real yt-dlp pipelines skip and
-    # repeat stages — a format needing no merge never reports `MERGING` — so ordering there is
-    # the adapter's business (`T-012`) and the end-to-end gate's (`T-037`), not this contract's.
-    if kind is SessionKind.PROBE:
-        wrong = sorted(
-            {
-                m.stage.value
-                for m in declared
-                if isinstance(m, Progress) and m.stage is not Stage.PROBING
-            }
-        )
-        if wrong:
-            raise ProtocolViolationError(
-                f"a probe session reported stage(s) {wrong}; a probe only extracts metadata, "
-                f"so {Stage.PROBING.value!r} is its only legal progress stage"
-            )
+        validator.accept(item)
+    validator.complete()

@@ -34,10 +34,78 @@ first focusable widgets.
 
 ### T-013 — Download manager and result pump
 
-**Status:** **In Review — changes requested** in the first independent review on 2026-07-27.
-`T013-R1` and `T013-R2` are High blockers; `T013-R3` is a Medium blocker. Prerequisites were
-met before implementation started: `T-012` completed 2026-07-26, `T-014` approved 2026-07-26
-at `db14cc2`.
+**Status:** **In Review — corrections returned 2026-07-27, awaiting focused re-review.** All
+three blocking findings are **corrected and awaiting verification** (`AGENTS.md` §9: only the
+Reviewer marks a finding Resolved). Prerequisites were met before implementation started:
+`T-012` completed 2026-07-26, `T-014` approved 2026-07-26 at `db14cc2`.
+
+#### Correction batch — `T013-R1`, `T013-R2`, `T013-R3`
+
+**Each blocker was reproduced before it was fixed.** Twelve tests were written against the
+committed head and observed failing: five illegal streams, a missing sentinel, a message after
+the outcome, a blocking shutdown, a shutdown that accepted new work, and three startup failures.
+
+**`T013-R1` — the grammar now runs before the message does.** The diagnosis was sharper than
+the finding: the pump enforced *two* of the grammar's rules on arrival and deferred the rest to
+a finalizer that ran after every message had already been routed, persisted and announced. So
+the executable receiver was strictly weaker than `validate_sequence()`, the function the
+acceptance criterion says it applies.
+
+- `protocol.SessionValidator` is the same grammar in **incremental** form — `accept()` for
+  everything decidable on arrival, `complete()` for the two rules that need the end of the
+  stream. `validate_sequence()` is now a loop over it, so the whole-stream and per-message forms
+  **cannot drift**; writing per-message checks into the pump would have been a second
+  hand-maintained statement of one contract, which is the `T010-R1`/`T041-R2` shape.
+- The pump validates, then routes, and **ends the stream on any violation** — which is what
+  `ProtocolViolationError`'s own docstring already said should happen ("a bad sequence means the
+  worker cannot be trusted at all") and what the first implementation did not do.
+- The stream is now **bound to the job it was started for**. The old check only rejected a
+  stream that *changed* job id; one consistently claiming to be another job passed.
+- **A synthesised sentinel is reported as a violation.** The parent knows it manufactured one,
+  so no new protocol machinery was needed — three lines.
+- **The terminal transition moved to session end.** An outcome legal on arrival can still be
+  followed by an illegal stream, and `COMPLETED`/`CANCELLED` are terminal, so a job moved there
+  on arrival could not be corrected. Deferring costs one event-loop turn and is what makes the
+  ruling below implementable at all.
+
+**Maintainer ruling, 2026-07-27:** a violation **fails the job loudly**, even when a legal
+outcome arrived first. The implementer had argued the first legal outcome should stand, on the
+grounds that a file already on disk should not be re-downloaded; the maintainer ruled for the
+reviewer's reading of "fail loudly". **Cancellation is the one exception** — killing a worker
+mid-write routinely truncates its queue, and reporting the user's own cancel as a crash would be
+worse than useless. The worker's own cancellation message is kept when it managed to send one,
+because that is the evidence the cooperative path ran.
+
+**`T013-R2` — shutdown is a lifecycle, not a call.** The "teardown is not an interaction"
+argument was rejected, correctly: `NFR-001` and `ARCHITECTURE.md` §8 are unqualified, and a
+blocking loop that pumps events to make progress re-enters the GUI it claims to be closing.
+`shutdown()` now refuses new sessions, cancels the running ones, and returns; the same timer
+finishes the work and `idle` announces completion. `_force_stop` no longer joins the process or
+waits on the pump — it kills, ends the stream, and sets a deadline the tick honours. The
+application closes in two steps: ask, then quit when told.
+
+**`T013-R3` — the startup transaction now covers everything after the durable write.** Queue,
+event, pump construction, pump start and process start are one `try`; any failure ends the
+half-built session, drops it, and leaves the job **persisted as failed before the failure is
+announced**. Tested by injecting a resource failure at each of the three construction points.
+
+**Sibling audit** (`AGENTS.md` §9, the finding is a defect class): every other message-handling
+path was checked for "acts before it validates". `_on_progress`, `_on_resolution` and
+`_on_worker_finished` are all downstream of the same gate, so all three are now covered by it;
+`_claim_outcome` keeps its duplicate check as defence in depth for a second route to the slots.
+
+**Mutation-checked: 16 mutations, 16 killed.** Ten for `T013-R1` (including reinstating the
+original route-then-validate order, which the new tests catch), three for `T013-R2`, two for
+`T013-R3`, and one added afterwards: the shutdown deadline's hard stop **survived** the first
+run, because the cancel escalation always finished first. Per `ai/TESTING.md` §13 that defaults
+to "a test is missing", and it was — a manager whose cooperative grace is longer than the
+shutdown budget now proves the deadline is shutdown's own. Its mutation kills by hanging, which
+is the honest consequence of removing a hard stop.
+
+**Checks after the corrections.** `ruff check`, `ruff format --check`, `mypy src`,
+`mypy --platform win32 src` clean; **925 passed, 6 skipped, 1 deselected**. `T-011`'s 129
+protocol tests pass unchanged against the rewritten `validate_sequence`, which is the evidence
+that the grammar was reorganised rather than altered. Still Linux-only.
 
 **What landed.** `downloader/result_pump.py` (a `QThread` doing a blocking read on one session's
 queue, routing every declared message type to its own signal and ending on the protocol's

@@ -87,10 +87,13 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-013` — implemented 2026-07-27, In Review, uncommitted.** The download manager and the
-  result pump. A job now goes from `QUEUED` to a file on disk through a real spawned worker, and
-  a cancelled or crashed one ends in a state the queue can explain. Awaiting its first
-  independent pass; its record in `TASKS.md` lists what it deviated from and why.
+- **`T-013` — corrections returned 2026-07-27, awaiting focused re-review.** The first review
+  requested changes on three blockers; all three are corrected, each reproduced first and
+  mutation-checked (16 of 16). The theme of two of them was one thing: **the receiver acted on a
+  message before deciding whether the message was legal.** The grammar now runs incrementally,
+  in the protocol module rather than in a second copy, and the terminal transition waits for the
+  stream to end. The maintainer ruled that a protocol violation fails the job loudly even when a
+  legal outcome arrived first — cancellation excepted.
 - **`ai/TESTING.md` §7 stands at eight of ten mandatory areas**, up from six. `T-013` added
   Cancellation and Worker crash, both against real spawned processes. The two outstanding are
   Log redaction (`T-038`) and DRM. **DRM has no Phase 1 owner** — worth settling deliberately
@@ -110,14 +113,17 @@ connects them — in a test, a URL becomes a file on disk, and cancelling it lea
 orphan process nor a job that lies about its state. **No widget touches any of it yet**:
 composition is `T-036` and the first *user-visible* download is `T-037`.
 
-1. **Review `T-013`.** It owns process lifetime and the only thread in the application, and both
-   of its failure modes are silent. Nothing downstream should start against an unreviewed
-   manager.
+1. **Re-review `T-013`'s corrections** — a focused pass over the correction diff and the three
+   findings, not a new audit (`AGENTS.md` §9). It owns process lifetime and the only thread in
+   the application, and both of its failure modes are silent, so nothing downstream should be
+   built until it passes.
 2. **`T-038` — logging with handler-level redaction.** Ready, High priority, and now overdue
    rather than early: `T-013` generates the diagnostics most likely to carry a tokenised URL or a
    cookie path, and they are being produced today with no redacting handler under them.
    Retrofitting redaction around live diagnostics is how `T-014` lost four review rounds.
-3. **`T-015`, `T-018`** — Ready and independent. `T-018` blocks `T-016`.
+3. **`T-015`, `T-018`** — implemented 2026-07-27 and awaiting review on branch
+   `phase1-presets-and-fixtures`, which is one commit ahead of `main` and touches none of the
+   files this correction batch changed.
 4. **`T-050`** — new, and **Phase 2**, not Phase 1: the `history` table is still empty, and
    `IMPLEMENTATION_PLAN.md` puts `REQ-020`'s history persistence in Phase 2. This file's claim
    that `T-013` owned it was `STATUS.md` running ahead of both the plan and `T-013`'s own scope;

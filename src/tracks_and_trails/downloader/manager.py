@@ -66,7 +66,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Final, Protocol
 
-from PySide6.QtCore import QCoreApplication, QObject, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal
 
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
@@ -213,6 +213,11 @@ class _Session:
     sentinel_sent: bool = False
     reap_at: float | None = None
 
+    #: Set when the session has been stopped by force. `abandon_at` bounds how long the pump
+    #: thread is given to notice, so nothing has to wait for it (`T013-R2`).
+    forced: bool = False
+    abandon_at: float | None = None
+
     violations: list[str] = field(default_factory=list)
     finalized: bool = False
 
@@ -272,6 +277,8 @@ class DownloadManager(QObject):
         self._user_ytdlp_directory = user_ytdlp_directory
         self._ffmpeg_override = ffmpeg_override
         self._sessions: dict[str, _Session] = {}
+        self._shutting_down = False
+        self._shutdown_deadline: float | None = None
         # `spawn` on every platform, including Linux: forking a process that has already created
         # a `QApplication` is unsafe, and Windows has only spawn — so choosing it everywhere
         # means both platforms exercise the same path (`ARC-002`, `ARCHITECTURE.md` §3).
@@ -303,6 +310,8 @@ class DownloadManager(QObject):
         produces that state; a probe-then-download flow needs the state machine amended first,
         which is a Planner decision rather than something to paper over here.
         """
+        if self._shutting_down:
+            raise RuntimeError("the manager is shutting down; no new session can be started")
         if self._sessions:
             raise RuntimeError(
                 f"a session is already running for {sorted(self._sessions)}; Phase 1 runs a pool "
@@ -318,59 +327,99 @@ class DownloadManager(QObject):
         started = self._advance(replace(job, started_at=_now()), JobStatus.PROBING)
         self._save_and_announce(started)
 
-        queue = self._context.Queue()
-        cancel = self._context.Event()
-        pump = ResultPump(queue, job_id, kind, parent=None)
-        process = self._context.Process(
-            target=self._entry_point,
-            args=(kind, job_id, job.request, queue),
-            kwargs={
-                "cancel": cancel,
-                "user_ytdlp_directory": self._user_ytdlp_directory,
-                "ffmpeg_override": self._ffmpeg_override,
-            },
-            # Belt and braces with the child's own parent watchdog: this covers an orderly
-            # parent exit, the watchdog covers a parent that was killed.
-            daemon=True,
-        )
-        session = _Session(
-            job_id=job_id,
-            kind=kind,
-            process=process,
-            queue=queue,
-            cancel=cancel,
-            pump=pump,
-        )
-        self._sessions[job_id] = session
-
-        pump.probed.connect(self._on_probed)
-        pump.progress.connect(self._on_progress)
-        pump.resolution_reported.connect(self._on_resolution)
-        pump.succeeded.connect(self._on_succeeded)
-        pump.failed.connect(self._on_failed)
-        pump.worker_finished.connect(self._on_worker_finished)
-        pump.violation.connect(self._on_violation)
-        pump.session_ended.connect(self._on_session_ended)
-        # `finished` carries no argument, so the job id is closed over rather than routed.
-        pump.finished.connect(lambda: self._on_pump_finished(job_id))
-
-        # The pump first: a worker that fails immediately must not find nobody reading.
-        pump.start()
+        # Everything from here to `process.start()` is one transaction with that durable write
+        # (`T013-R3`). The job now says it is in flight; if any of it fails, the queue is
+        # describing work that does not exist, `REQ-018`'s "never fail silently" is broken, and
+        # crash recovery cannot help — the application did not crash.
+        queue: Any = None
+        pump: ResultPump | None = None
         try:
+            queue = self._context.Queue()
+            cancel = self._context.Event()
+            pump = ResultPump(queue, job_id, kind, parent=None)
+            process = self._context.Process(
+                target=self._entry_point,
+                args=(kind, job_id, job.request, queue),
+                kwargs={
+                    "cancel": cancel,
+                    "user_ytdlp_directory": self._user_ytdlp_directory,
+                    "ffmpeg_override": self._ffmpeg_override,
+                },
+                # Belt and braces with the child's own parent watchdog: this covers an orderly
+                # parent exit, the watchdog covers a parent that was killed.
+                daemon=True,
+            )
+            session = _Session(
+                job_id=job_id,
+                kind=kind,
+                process=process,
+                queue=queue,
+                cancel=cancel,
+                pump=pump,
+            )
+            self._sessions[job_id] = session
+
+            pump.probed.connect(self._on_probed)
+            pump.progress.connect(self._on_progress)
+            pump.resolution_reported.connect(self._on_resolution)
+            pump.succeeded.connect(self._on_succeeded)
+            pump.failed.connect(self._on_failed)
+            pump.worker_finished.connect(self._on_worker_finished)
+            pump.violation.connect(self._on_violation)
+            pump.session_ended.connect(self._on_session_ended)
+            # `finished` carries no argument, so the job id is closed over rather than routed.
+            pump.finished.connect(lambda: self._on_pump_finished(job_id))
+
+            # The pump first: a worker that fails immediately must not find nobody reading.
+            pump.start()
             process.start()
         except BaseException as error:
-            # Spawning can fail before the child exists at all — an unpicklable argument, a
-            # process limit, a frozen build without `freeze_support()`. The pump is already
-            # blocked in `Queue.get()` on a queue no worker will ever write to, so this must
-            # end the stream itself; otherwise the one failure mode that never reaches a
-            # worker is also the one that leaks a thread.
-            session.sentinel_sent = True
-            queue.put(WorkerFinished(job_id=job_id, exit_code=1))
-            self._on_violation(job_id, f"the worker process could not be started: {error!r}")
-            self._timer.start()
+            self._abort_start(job_id, queue, pump, error)
             raise
         session.started = True
         self._timer.start()
+
+    def _abort_start(
+        self, job_id: str, queue: Any, pump: ResultPump | None, error: BaseException
+    ) -> None:
+        """Undo a half-built session and leave the job durably failed (`T013-R3`).
+
+        Three things have to happen, and the order matters. The pump — if it got as far as
+        running — is sitting in `Queue.get()` on a queue no worker will ever write to, so its
+        stream is ended first. The session is dropped, because there is nothing to watch. And the
+        job is moved from the `PROBING` this method already persisted to a recorded failure,
+        written before it is announced, so nothing is ever told about a state the database does
+        not hold.
+        """
+        session = self._sessions.pop(job_id, None)
+        reason = f"the worker session could not be started: {error!r}"
+        running_pump = pump if pump is not None and pump.isRunning() else None
+
+        if running_pump is not None and queue is not None:
+            # Let it end the way every other session ends, on a sentinel.
+            queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+        elif running_pump is not None:
+            running_pump.terminate()
+
+        if session is not None and running_pump is not None and queue is not None:
+            # Keep watching it just long enough to see the thread return; the tick releases it,
+            # and `finalized` stops it from touching a job this method has already failed.
+            session.sentinel_sent = True
+            session.finalized = True
+            session.forced = True
+            session.abandon_at = time.monotonic() + self._reap_seconds
+            self._sessions[job_id] = session
+            self._timer.start()
+        elif queue is not None:
+            queue.close()
+
+        self._on_violation(job_id, reason)
+        job = self._require(job_id)
+        message = f"The download could not be started. {reason}"
+        self._save_and_announce(
+            replace(job.with_failure(ErrorKind.WORKER_CRASH, message), finished_at=_now())
+        )
+        self.job_failed.emit(job_id, ErrorKind.WORKER_CRASH, message)
 
     # --- cancelling ---------------------------------------------------------------------
 
@@ -407,33 +456,36 @@ class DownloadManager(QObject):
         self._tick()
 
     def shutdown(self, timeout: float = DEFAULT_SHUTDOWN_SECONDS) -> None:
-        """Stop everything and do not return while a worker is still running.
+        """Begin teardown and return. **Nothing here waits** (`T013-R2`).
 
-        **This is the one call here that blocks the GUI thread, and it is deliberate.** It runs
-        during application teardown, when the event loop is ending: the timer that drives
-        escalation will not fire again, so a non-blocking shutdown would return with workers
-        still alive and nothing left to reap them. `NFR-001`'s responsiveness budget is about
-        interactions; there are none left to be responsive to, and the alternative is a
-        download that keeps writing to the user's disk after the window closes.
+        The first version blocked the GUI thread until every worker was gone, arguing that
+        teardown is not an interaction. The review rejected that, and correctly: `NFR-001` and
+        `ARCHITECTURE.md` §8 are unqualified, and a blocking loop that pumps events to make
+        progress also re-enters arbitrary GUI code while claiming to be shutting it down.
 
-        Bounded by `timeout`, after which anything still alive is killed outright.
+        So shutdown is a **lifecycle, not a call**. It refuses new sessions, cancels the running
+        ones, and lets the same timer that drives cancellation finish the job. When the last
+        session is released, `idle` is emitted — that signal is how composition code
+        (`T-036`) knows it may quit, and quitting before it arrives is what would leave an
+        orphan. `timeout` bounds the escalation, after which anything still alive is killed by
+        the tick rather than by a wait here.
+
+        The application therefore closes in two steps: ask, then quit when told. A window that
+        calls `QCoreApplication.quit()` immediately after this returns has not shut down; it has
+        stopped watching.
         """
+        if self._shutting_down:
+            return
+        self._shutting_down = True
+        self._shutdown_deadline = time.monotonic() + timeout
         for job_id in list(self._sessions):
             self.cancel(job_id)
-
-        deadline = time.monotonic() + timeout
-        while self._sessions and time.monotonic() < deadline:
-            self._tick()
-            # Queued signals from the pump threads are delivered here; without this the
-            # session would never be seen to end, because that news arrives as an event.
-            application = QCoreApplication.instance()
-            if application is not None:
-                application.processEvents()
-            time.sleep(0.005)
-
-        for session in list(self._sessions.values()):
-            self._force_stop(session)
-        self._timer.stop()
+        if not self._sessions:
+            self._timer.stop()
+            self.idle.emit()
+            return
+        # Keep the timer running: it is the only thing left that can finish this.
+        self._timer.start()
 
     # --- the tick -----------------------------------------------------------------------
 
@@ -444,6 +496,7 @@ class DownloadManager(QObject):
         applied, and so none of them is implemented as a wait.
         """
         now = time.monotonic()
+        overdue = self._shutdown_deadline is not None and now >= self._shutdown_deadline
         for session in list(self._sessions.values()):
             self._escalate(session, now)
 
@@ -452,6 +505,12 @@ class DownloadManager(QObject):
                 self._end_the_stream(session)
             if session.ended and not alive:
                 self._release(session)
+            elif session.forced and session.abandon_at is not None and now >= session.abandon_at:
+                self._abandon(session)
+            elif overdue:
+                # Shutdown has run out of patience. The hard stop happens here, on a timer tick,
+                # rather than inside a wait on the GUI thread (`T013-R2`).
+                self._force_stop(session)
             elif session.ended and alive:
                 # The stream is over but the process is still there. Give it a moment to exit
                 # on its own, then stop it: this shape is an orphan in the making.
@@ -481,9 +540,19 @@ class DownloadManager(QObject):
         The pump is blocked in `Queue.get()` and nothing else will ever wake it. Writing to the
         same queue is ordered after everything the child wrote, because the child is gone, so
         this cannot overtake a message that was already on its way.
+
+        **Synthesising it is recorded as a violation** (`T013-R1`). The protocol's guarantee is
+        that the worker sends the sentinel last; a parent that quietly manufactures one makes a
+        worker that died on the way out indistinguishable from one that shut down cleanly, and
+        turns "the sentinel is always last" into something no test could falsify.
         """
         session.sentinel_sent = True
         exit_code = session.process.exitcode
+        self._on_violation(
+            session.job_id,
+            f"the worker exited (code {exit_code}) without sending its WorkerFinished sentinel; "
+            "the parent supplied one so the receiver could stop reading",
+        )
         session.queue.put(WorkerFinished(job_id=session.job_id, exit_code=exit_code or 0))
 
     def _release(self, session: _Session) -> None:
@@ -496,35 +565,48 @@ class DownloadManager(QObject):
         self._sessions.pop(session.job_id, None)
 
     def _force_stop(self, session: _Session) -> None:
-        """Last resort, used only by `shutdown()` and by the reap deadline.
+        """Kill the worker and end its stream. **Waits for nothing** (`T013-R2`).
 
-        Kills the process, ends the stream so the pump cannot be left blocked in `Queue.get()`,
-        and waits briefly for the thread. `QThread.terminate()` is the final fallback: it is
-        unsafe in general, and leaving a running thread behind at application exit is worse —
-        Qt destroys it and the process aborts.
+        Used by the reap deadline and by shutdown's own deadline. The previous version joined
+        the process and waited on the pump thread here, which is exactly the GUI-thread blocking
+        the review rejected — and it was reached from `shutdown()`, so the "teardown only"
+        argument did not even limit it.
+
+        What replaces the waits is a deadline: the pump is given `_reap_seconds` to notice the
+        sentinel, checked on later ticks, and abandoned after that. Nothing here can stall.
         """
+        session.forced = True
         if session.process.is_alive():
             session.process.kill()
-            session.process.join(1.0)
+        # Non-blocking reap. A process that has not finished dying yet is collected by a later
+        # tick's `is_alive()`.
+        if session.started:
+            session.process.join(0)
         if not session.ended and not session.sentinel_sent:
             self._end_the_stream(session)
-        if not session.pump.wait(1000):
-            session.pump.terminate()
-            session.pump.wait(500)
+        session.abandon_at = session.abandon_at or time.monotonic() + self._reap_seconds
+
+    def _abandon(self, session: _Session) -> None:
+        """Give up on a pump thread that will not return, without waiting for it.
+
+        `QThread.terminate()` is unsafe in general and is the last resort here: the alternative
+        is a thread Qt destroys while it is still running, which aborts the process. Reached only
+        when a killed worker's queue is so damaged that even the synthetic sentinel cannot be
+        read — the case the pump's own exception guard exists for, one layer deeper.
+        """
+        self._on_violation(
+            session.job_id,
+            "the result pump did not stop after its worker was killed and its stream ended; "
+            "the thread was terminated",
+        )
+        session.pump.terminate()
         session.queue.close()
         self._sessions.pop(session.job_id, None)
 
     # --- slots: everything below runs on the GUI thread ---------------------------------
 
     def _on_probed(self, message: Probed) -> None:
-        session = self._sessions.get(message.job_id)
-        if session is None or not self._claim_outcome(session, message):
-            return
-        job = self._require(message.job_id)
-        self._save_and_announce(
-            replace(self._advance(job, JobStatus.READY), title=message.media.title)
-        )
-        self.media_probed.emit(message.job_id, message.media)
+        self._claim_outcome(message)
 
     def _on_progress(self, message: Progress) -> None:
         session = self._sessions.get(message.job_id)
@@ -547,33 +629,10 @@ class DownloadManager(QObject):
         self.resolution_reported.emit(message)
 
     def _on_succeeded(self, message: Succeeded) -> None:
-        session = self._sessions.get(message.job_id)
-        if session is None or not self._claim_outcome(session, message):
-            return
-        job = self._require(message.job_id)
-        completed = replace(
-            self._advance(job, JobStatus.COMPLETED),
-            output_path=message.output_path,
-            bytes_total=message.total_bytes or job.bytes_total,
-            finished_at=_now(),
-        )
-        self._save_and_announce(completed)
-        self.job_succeeded.emit(message.job_id, message.output_path)
+        self._claim_outcome(message)
 
     def _on_failed(self, message: Failed) -> None:
-        session = self._sessions.get(message.job_id)
-        if session is None or not self._claim_outcome(session, message):
-            return
-        job = self._require(message.job_id)
-        if message.kind is ErrorKind.CANCELLED:
-            # Not a failure: the user asked for it, and `CANCELLED` is terminal, so presenting
-            # it as `FAILED` would offer a retry for something nobody wants retried.
-            self._save_and_announce(self._cancelled(job, message.message))
-        else:
-            self._save_and_announce(
-                replace(job.with_failure(message.kind, message.message), finished_at=_now())
-            )
-            self.job_failed.emit(message.job_id, message.kind, message.message)
+        self._claim_outcome(message)
 
     def _on_worker_finished(self, message: WorkerFinished) -> None:
         session = self._sessions.get(message.job_id)
@@ -587,34 +646,99 @@ class DownloadManager(QObject):
         self.protocol_violation.emit(job_id, reason)
 
     def _on_session_ended(self, job_id: str) -> None:
-        """The stream is over. Decide what a job with no outcome means (`REQ-028`)."""
+        """The stream is over. Apply its outcome, or decide what its absence meant.
+
+        **The terminal transition happens here, not when the outcome arrived** (`T013-R1`). A
+        message is only known to be legal in the context of the whole session: an outcome that
+        was legal on arrival can still be followed by a stream that turns out to be illegal, and
+        `COMPLETED` and `CANCELLED` are terminal, so a job moved there on arrival could not be
+        corrected afterwards. Holding the transition until the stream ends is what makes the
+        maintainer's ruling of 2026-07-27 implementable at all: **a violation fails the job
+        loudly, even when a legal outcome arrived first.**
+
+        The cost is one event-loop turn of latency on the final state, which no user can
+        perceive. The alternative was a terminal state that could not be taken back.
+        """
         session = self._sessions.get(job_id)
-        if session is None or session.finalized:
+        if session is None:
             return
+        # `ended` is a fact about the stream and is recorded even when the job has already been
+        # finalised — a start that failed halfway (`_abort_start`) has both, and the tick needs
+        # the first to release the session.
         session.ended = True
+        if session.finalized:
+            return
         session.finalized = True
-
-        if session.outcome is not None:
-            # The worker said what happened, and it has already been persisted. Its exit code
-            # is not consulted: a worker that reports success and then dies on the way out
-            # still produced the file.
-            return
-
         job = self._require(job_id)
+
         if session.cancelling:
-            self._save_and_announce(self._cancelled(job))
+            # Cancellation outranks everything, including violations. Killing a worker mid-write
+            # routinely leaves a truncated queue and no sentinel — reporting that as a crash
+            # would tell the user their own cancel button broke something.
+            #
+            # The worker's own words are kept when it managed to send them, because they are the
+            # evidence that the *cooperative* path ran and left partial files in a known state
+            # (`REQ-015`). The generic text is for a worker that was killed before it could say
+            # anything, where claiming a clean stop would be a guess.
+            spoken = session.outcome
+            reason = (
+                spoken.message
+                if isinstance(spoken, Failed) and spoken.kind is ErrorKind.CANCELLED
+                else None
+            )
+            self._save_and_announce(self._cancelled(job, reason))
             return
 
+        if session.violations:
+            self._fail_loudly(job, session)
+            return
+
+        outcome = session.outcome
+        if outcome is None:
+            self._fail_loudly(job, session)
+        elif isinstance(outcome, Succeeded):
+            completed = replace(
+                self._advance(job, JobStatus.COMPLETED),
+                output_path=outcome.output_path,
+                bytes_total=outcome.total_bytes or job.bytes_total,
+                finished_at=_now(),
+            )
+            self._save_and_announce(completed)
+            self.job_succeeded.emit(job_id, outcome.output_path)
+        elif isinstance(outcome, Probed):
+            self._save_and_announce(
+                replace(self._advance(job, JobStatus.READY), title=outcome.media.title)
+            )
+            self.media_probed.emit(job_id, outcome.media)
+        elif outcome.kind is ErrorKind.CANCELLED:
+            # Not a failure: the user asked for it, and `CANCELLED` is terminal, so presenting
+            # it as `FAILED` would offer a retry for something nobody wants retried.
+            self._save_and_announce(self._cancelled(job, outcome.message))
+        else:
+            self._save_and_announce(
+                replace(job.with_failure(outcome.kind, outcome.message), finished_at=_now())
+            )
+            self.job_failed.emit(job_id, outcome.kind, outcome.message)
+
+    def _fail_loudly(self, job: Job, session: _Session) -> None:
+        """Record a session that cannot be believed as `WORKER_CRASH` (`REQ-028`, `REQ-018`).
+
+        Covers both shapes of untrustworthy: a session that reported no outcome, and one whose
+        stream broke the contract. The maintainer ruled on 2026-07-27 that the second fails the
+        job even when an outcome had already arrived legally — a worker that cannot follow the
+        protocol has not established that it did what it claimed, and `REQ-018`'s rule is that a
+        failure is recorded rather than assumed away.
+        """
         detail = "; ".join(session.violations) if session.violations else "no outcome was reported"
         exit_code = session.exit_code if session.exit_code is not None else session.process.exitcode
         message = (
-            f"The download worker stopped without reporting a result (exit code {exit_code}). "
-            f"{detail}."
+            f"The download worker did not report a result this queue can trust "
+            f"(exit code {exit_code}). {detail}."
         )
         self._save_and_announce(
             replace(job.with_failure(ErrorKind.WORKER_CRASH, message), finished_at=_now())
         )
-        self.job_failed.emit(job_id, ErrorKind.WORKER_CRASH, message)
+        self.job_failed.emit(job.id, ErrorKind.WORKER_CRASH, message)
 
     def _on_pump_finished(self, job_id: str) -> None:
         session = self._sessions.get(job_id)
@@ -623,22 +747,25 @@ class DownloadManager(QObject):
 
     # --- helpers ------------------------------------------------------------------------
 
-    def _claim_outcome(self, session: _Session, message: Probed | Succeeded | Failed) -> bool:
-        """Record the session's one outcome, or refuse a second (`T011-R4`).
+    def _claim_outcome(self, message: Probed | Succeeded | Failed) -> None:
+        """Hold the session's one outcome until the stream ends (`T013-R1`).
 
-        `ResultPump` already suppresses a duplicate before it becomes a signal. This is the
-        same rule stated where the state lives, so that a second route to these slots — a
-        replayed signal, a future direct call — cannot produce a second transition either.
+        Recording rather than applying: see `_on_session_ended`. A second outcome cannot reach
+        here — `SessionValidator` rejects it before the pump routes it — but the check stays as
+        defence in depth, because a second route to these slots would otherwise overwrite the
+        outcome the session will be judged on (`T011-R4`).
         """
+        session = self._sessions.get(message.job_id)
+        if session is None:
+            return
         if session.outcome is not None:
             self._on_violation(
                 session.job_id,
                 f"a second outcome ({type(message).__name__}) reached the manager for "
                 f"{session.job_id!r}; the first one stands",
             )
-            return False
+            return
         session.outcome = message
-        return True
 
     def _advance(self, job: Job, target: JobStatus) -> Job:
         """Walk `job` along `_PIPELINE` to `target`, one validated step at a time.

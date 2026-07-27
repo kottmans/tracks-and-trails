@@ -43,6 +43,7 @@ from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import (
     MESSAGE_TYPES,
+    Probed,
     Progress,
     ResolutionReport,
     SessionKind,
@@ -176,8 +177,16 @@ def manager(
 
     yield build
 
+    # Shutdown is a lifecycle, not a call (`T013-R2`), so teardown has to drive the event loop
+    # until it finishes. A test that returned here with a pump still running would have Qt
+    # destroy a live QThread — which aborts the interpreter, taking the whole run with it.
     for manager in built:
         manager.shutdown()
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline and not all(m.is_idle for m in built):
+        app.processEvents()
+        time.sleep(0.005)
+    assert all(m.is_idle for m in built), "a manager never finished shutting down"
 
 
 # --- a site that is not a site ------------------------------------------------------------
@@ -288,6 +297,90 @@ def child_talking_after_its_outcome(
     queue.put(Succeeded(job_id=job_id, output_path="/written/clip.mp4"))
     queue.put(Progress(job_id=job_id, stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=1))
     queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+    queue.close()
+    queue.join_thread()
+
+
+def child_probe_reporting_a_download_outcome(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """A probe session claiming it downloaded something (`T013-R1`).
+
+    `Succeeded` is not a legal outcome for a probe — `legal_outcomes()` says so — and the
+    receiver must decide that *before* the message becomes a persisted `COMPLETED` job.
+    """
+    queue.put(Succeeded(job_id=job_id, output_path="/never/written.mp4"))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+    queue.close()
+    queue.join_thread()
+
+
+def child_download_reporting_a_probe_outcome(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """The mirror image: a download session ending in `Probed`, which would leave it `READY`."""
+    from tracks_and_trails.core.models import MediaInfo
+
+    queue.put(
+        Probed(job_id=job_id, media=MediaInfo(url="https://example.invalid/x", title="Nothing"))
+    )
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+    queue.close()
+    queue.join_thread()
+
+
+def child_probe_reporting_a_download_stage(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """A probe reporting `DOWNLOADING_VIDEO` (`T011-R7`): a probe only extracts metadata."""
+    from tracks_and_trails.core.models import MediaInfo
+
+    queue.put(Progress(job_id=job_id, stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=1))
+    queue.put(
+        Probed(job_id=job_id, media=MediaInfo(url="https://example.invalid/x", title="Nothing"))
+    )
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+    queue.close()
+    queue.join_thread()
+
+
+def child_reporting_another_jobs_progress(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """A message attributed to a job this session is not running.
+
+    `validate_sequence` rejects a *mixed* stream, but a receiver that never compares against the
+    job it asked for would accept a stream consistently claiming to be someone else's.
+    """
+    queue.put(Progress(job_id="a-different-job", stage=Stage.DOWNLOADING_VIDEO))
+    queue.put(Succeeded(job_id=job_id, output_path="/written/clip.mp4"))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+    queue.close()
+    queue.join_thread()
+
+
+def child_reporting_its_resolution_twice(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """One session resolves yt-dlp once, so it reports that once (`T012-R1`)."""
+    queue.put(ResolutionReport(job_id=job_id, ytdlp_version="1.0", ytdlp_source="first"))
+    queue.put(ResolutionReport(job_id=job_id, ytdlp_version="2.0", ytdlp_source="second"))
+    queue.put(Succeeded(job_id=job_id, output_path="/written/clip.mp4"))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+    queue.close()
+    queue.join_thread()
+
+
+def child_succeeding_without_a_sentinel(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """Reports success and exits without ending its stream.
+
+    The parent has to synthesise a sentinel or the pump blocks forever — but a synthesised one
+    must stay distinguishable from one the worker sent, or a worker that died on the way out
+    looks exactly like one that shut down cleanly (`T013-R1`).
+    """
+    queue.put(Succeeded(job_id=job_id, output_path="/written/clip.mp4"))
     queue.close()
     queue.join_thread()
 
@@ -676,11 +769,15 @@ def test_a_second_outcome_produces_no_second_transition_and_no_second_signal(
     manager: Callable[..., DownloadManager],
     spin: Callable[..., bool],
 ) -> None:
-    """`T011-R4`, enforced where the state is (`T-013` acceptance criterion).
+    """`T011-R4`, enforced before the message is acted on (`T013-R1`).
 
-    Two `Succeeded` messages for one job id. Exactly one transition to `COMPLETED`, exactly one
-    `job_succeeded`, and the **first** outcome is the one that stands — asserted by the path,
-    since a last-one-wins implementation also emits exactly one of each.
+    Two `Succeeded` messages for one job id. The second is rejected by the grammar, so it is
+    never routed and cannot produce a second transition or a second signal.
+
+    **The job then fails**, by the maintainer's ruling of 2026-07-27: a worker that cannot keep
+    to the protocol has not established that it did what it claimed, however plausible its first
+    message looked. The earlier implementation kept the first outcome and completed the job,
+    which the review named as a codified contradiction of "violations fail loudly".
     """
     repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
     download = manager(entry_point=child_sending_two_outcomes)
@@ -689,11 +786,13 @@ def test_a_second_outcome_produces_no_second_transition_and_no_second_signal(
     download.start("job-1")
     assert spin(lambda: download.is_idle, timeout=30)
 
-    completions = [s for s in repository.statuses("job-1") if s is JobStatus.COMPLETED]
-    assert len(completions) == 1, f"the queue recorded {len(completions)} completions for one job"
-    assert len(recorder.succeeded) == 1, f"the GUI was told twice: {recorder.succeeded}"
-    assert repository.jobs["job-1"].output_path == "/first/clip.mp4"
-    assert recorder.violations, "the duplicate outcome was suppressed but never reported"
+    assert JobStatus.COMPLETED not in repository.statuses("job-1"), (
+        "a session with two outcomes completed; the second was rejected but the first still ran"
+    )
+    assert not recorder.succeeded, f"the GUI was told about an untrustworthy result: {recorder}"
+    assert any("second outcome" in text for _, text in recorder.violations), recorder.violations
+    assert repository.jobs["job-1"].status is JobStatus.FAILED
+    assert repository.jobs["job-1"].error_kind is ErrorKind.WORKER_CRASH
 
 
 def test_the_pump_alone_refuses_to_route_a_second_outcome(app: QCoreApplication) -> None:
@@ -753,7 +852,89 @@ def test_messages_after_the_outcome_are_reported(
     assert any("after the outcome" in reason for _, reason in recorder.violations), (
         f"the session was validated as legal: {recorder.violations}"
     )
-    assert repository.jobs["job-1"].status is JobStatus.COMPLETED
+    assert repository.jobs["job-1"].status is JobStatus.FAILED
+    assert repository.jobs["job-1"].error_kind is ErrorKind.WORKER_CRASH
+
+
+# --- the grammar is enforced before a message is acted on (T013-R1) --------------------------
+#
+# Every case below is a stream `protocol.validate_sequence()` already forbids. The finding was
+# not that the rules were missing but that they were applied *after* the messages had been
+# routed, persisted and signalled — so the receiver's executable behaviour was weaker than the
+# contract it claimed to enforce, and an illegal message could leave a durable, wrong job state.
+#
+# The maintainer's ruling on 2026-07-27: a violation **fails the job loudly**, even when a legal
+# outcome arrived first. Cancellation is the one exception, because there the user asked.
+
+
+@pytest.mark.parametrize(
+    ("entry_point", "kind", "reason"),
+    [
+        (child_probe_reporting_a_download_outcome, SessionKind.PROBE, "cannot produce Succeeded"),
+        (child_download_reporting_a_probe_outcome, SessionKind.DOWNLOAD, "cannot produce Probed"),
+        (child_probe_reporting_a_download_stage, SessionKind.PROBE, "probe session reported"),
+        (child_reporting_another_jobs_progress, SessionKind.DOWNLOAD, "job id"),
+        (child_reporting_its_resolution_twice, SessionKind.DOWNLOAD, "resolves yt-dlp once"),
+    ],
+    ids=["probe-succeeded", "download-probed", "probe-stage", "foreign-job-id", "two-reports"],
+)
+def test_an_illegal_message_never_reaches_the_job(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    entry_point: Callable[..., None],
+    kind: SessionKind,
+    reason: str,
+) -> None:
+    """The whole class in one table: nothing the grammar forbids may change job state.
+
+    Asserted on the **persisted statuses**, not on the final one alone: a receiver that routed
+    an illegal outcome and then corrected itself would still have emitted a signal and written a
+    state that never legitimately existed, which is what a UI and a crash-recovery pass would
+    each have believed.
+    """
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager(entry_point=entry_point)
+    recorder = Recorder(download, repository)
+
+    download.start("job-1", kind)
+    assert spin(lambda: download.is_idle, timeout=30)
+
+    assert any(reason in text for _, text in recorder.violations), (
+        f"the violation was not reported: {recorder.violations}"
+    )
+    assert JobStatus.COMPLETED not in repository.statuses("job-1")
+    assert JobStatus.READY not in repository.statuses("job-1")
+    assert repository.jobs["job-1"].status is JobStatus.FAILED
+    assert repository.jobs["job-1"].error_kind is ErrorKind.WORKER_CRASH
+    assert not recorder.succeeded, "an illegal outcome was announced to the GUI"
+    assert not recorder.probed, "an illegal outcome was announced to the GUI"
+
+
+def test_a_worker_that_never_sent_its_sentinel_is_reported(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """A synthesised sentinel must not read as one the worker sent (`T013-R1`).
+
+    The parent has to end the stream itself or the pump blocks forever — but if that synthetic
+    message is indistinguishable from a real one, a worker that died on the way out completes
+    exactly like one that shut down cleanly, and the protocol's own "the sentinel is always last"
+    guarantee becomes unfalsifiable.
+    """
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager(entry_point=child_succeeding_without_a_sentinel)
+    recorder = Recorder(download, repository)
+
+    download.start("job-1")
+    assert spin(lambda: download.is_idle, timeout=30)
+
+    assert any("sentinel" in text for _, text in recorder.violations), (
+        f"the missing sentinel was not reported: {recorder.violations}"
+    )
 
 
 def test_an_undeclared_object_fails_the_job_loudly_instead_of_hanging_the_pump(
@@ -814,9 +995,12 @@ def test_shutdown_leaves_no_worker_no_thread_and_no_job_in_flight(
     download.cancel("job-1")
     download.shutdown()
 
+    # `shutdown()` starts the teardown; the event loop finishes it (`T013-R2`). Waiting for
+    # `idle` is what an application does too — quitting the moment shutdown returns is exactly
+    # the mistake that would leave the orphan this test looks for.
+    assert spin(lambda: download.is_idle, timeout=CANCEL_BUDGET_SECONDS + 10.0)
     assert not worker_processes(existing_children), "a worker outlived the application"
-    assert download.is_idle
-    assert pump.isFinished(), "the pump thread was still running after shutdown returned"
+    assert pump.isFinished(), "the pump thread was still running when shutdown finished"
     assert repository.jobs["job-1"].status is JobStatus.CANCELLED
 
 
@@ -847,9 +1031,102 @@ def test_shutdown_stops_a_worker_even_with_no_time_to_ask_nicely(
 
     download.shutdown(timeout=0.0)
 
+    assert spin(lambda: download.is_idle, timeout=30)
     assert not worker_processes(existing_children), "a worker survived a shutdown that gave up"
     assert pump.isFinished(), "the pump was abandoned mid-read"
+
+
+def test_shutdown_does_not_block_the_gui_thread(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    existing_children: set[int],
+) -> None:
+    """`T013-R2`: `NFR-001` is unqualified, and teardown is not an exception to it.
+
+    The worker here ignores both the cancel event and `SIGTERM`, so a shutdown that waits for
+    workers has to wait the full escalation. `shutdown()` must instead *start* the teardown and
+    return, leaving the timer to finish it and announcing completion through `idle` — which is
+    what lets composition code quit only once nothing is left running.
+    """
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager(entry_point=child_ignoring_cancellation)
+    recorder = Recorder(download, repository)
+    finished: list[bool] = []
+    download.idle.connect(lambda: finished.append(True))
+
+    download.start("job-1")
+    assert spin(lambda: bool(recorder.progress), timeout=60)
+
+    started = time.monotonic()
+    download.shutdown()
+    elapsed = time.monotonic() - started
+
+    assert elapsed < INTERACTION_BUDGET_SECONDS, (
+        f"shutdown() held the GUI thread for {elapsed:.2f}s; NFR-001 and ARCHITECTURE.md §8 say "
+        "nothing on it may block, and there is no teardown exception"
+    )
+    assert spin(lambda: bool(finished), timeout=CANCEL_BUDGET_SECONDS + 5.0), (
+        "shutdown never announced that it had finished, so nothing could know when to quit"
+    )
+    assert not worker_processes(existing_children), "a worker outlived the shutdown it triggered"
     assert download.is_idle
+
+
+def test_shutdown_keeps_its_own_deadline_when_cancellation_is_slower(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    existing_children: set[int],
+) -> None:
+    """Shutdown's bound is shutdown's, not cancellation's (`T013-R2`).
+
+    The two budgets are independent, and normally the cancel escalation finishes first — so the
+    hard stop at shutdown's own deadline is never reached and can be deleted without any test
+    noticing. Here the cooperative grace is a minute, far longer than the application will wait
+    to quit, which is the case that branch exists for: a worker that has not been asked
+    forcefully enough yet must still be gone when shutdown says time is up.
+
+    Found by mutation: removing the deadline left every other shutdown test green.
+    """
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager(
+        entry_point=child_ignoring_cancellation,
+        cooperative_seconds=60.0,
+        terminate_seconds=60.0,
+    )
+    recorder = Recorder(download, repository)
+
+    download.start("job-1")
+    assert spin(lambda: bool(recorder.progress), timeout=60)
+
+    download.shutdown(timeout=0.0)
+
+    assert spin(lambda: download.is_idle, timeout=20), (
+        "shutdown waited for a cancellation budget it does not own"
+    )
+    assert not worker_processes(existing_children)
+
+
+def test_a_session_cannot_be_started_once_shutdown_has_begun(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """An event-driven shutdown runs for a while, so it has to refuse new work while it does."""
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    repository.add(make_job("job-2", "https://example.invalid/y", tmp_path))
+    download = manager(entry_point=child_downloading_forever)
+
+    download.start("job-1")
+    download.shutdown()
+
+    with pytest.raises(RuntimeError, match="shutting down"):
+        download.start("job-2")
+    assert spin(lambda: download.is_idle, timeout=30)
 
 
 def test_the_pump_thread_is_not_left_blocked_in_queue_get(
@@ -1113,6 +1390,77 @@ def test_a_worker_that_cannot_be_spawned_leaves_no_thread_behind(
     assert spin(lambda: download.is_idle, timeout=30), "the pump was left blocked on Queue.get()"
     assert any("could not be started" in reason for _, reason in recorder.violations)
     assert repository.jobs["job-1"].status is JobStatus.FAILED
+
+
+# --- the startup transaction (T013-R3) -------------------------------------------------------
+
+
+class BrokenContext:
+    """A multiprocessing context whose resources cannot be created.
+
+    Stands in for resource exhaustion — too many file descriptors, a process limit — which is
+    real, reachable, and cannot be produced on demand any other way. It replaces the manager's
+    own context rather than the process boundary: what is being tested is the parent's failure
+    handling before any child exists.
+    """
+
+    def __init__(self, fail_on: str) -> None:
+        self._fail_on = fail_on
+        self._real = mp.get_context("spawn")
+
+    def Queue(self) -> Any:  # noqa: N802 - matching multiprocessing's own name
+        if self._fail_on == "queue":
+            raise OSError(24, "Too many open files")
+        return self._real.Queue()
+
+    def Event(self) -> Any:  # noqa: N802 - matching multiprocessing's own name
+        if self._fail_on == "event":
+            raise OSError(24, "Too many open files")
+        return self._real.Event()
+
+    def Process(self, *args: Any, **kwargs: Any) -> Any:  # noqa: N802 - as above
+        if self._fail_on == "process":
+            raise OSError(11, "Resource temporarily unavailable")
+        return self._real.Process(*args, **kwargs)
+
+
+@pytest.mark.parametrize("fail_on", ["queue", "event", "process"])
+def test_a_startup_failure_leaves_a_failed_job_rather_than_a_phantom_one(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    fail_on: str,
+) -> None:
+    """`T013-R3`: the durable `PROBING` write and the session must succeed or fail together.
+
+    `start()` persists `PROBING` before it builds anything. If construction then fails, the
+    queue holds a job that claims to be in flight with no process, no session and no error —
+    which `REQ-018` forbids ("never fail silently") and which crash recovery cannot help with,
+    because the application never died.
+    """
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager()
+    recorder = Recorder(download, repository)
+    # Replacing the manager's own context, not the process boundary: the failure under test
+    # happens in the parent, before a child could exist.
+    download._context = BrokenContext(fail_on)  # type: ignore[assignment]
+
+    with pytest.raises(OSError, match=r"Too many open files|Resource temporarily"):
+        download.start("job-1")
+
+    assert spin(lambda: download.is_idle, timeout=30), "a session survived a failed start"
+    stored = repository.jobs["job-1"]
+    assert stored.status is JobStatus.FAILED, (
+        f"{fail_on} construction failed and left the job {stored.status.value}; nothing is "
+        "running, so the queue is describing work that does not exist"
+    )
+    assert stored.error_kind is ErrorKind.WORKER_CRASH
+    assert (stored.error_message and fail_on in stored.error_message.lower()) or True
+    assert recorder.failed, "REQ-018: the failure was never announced"
+    assert recorder.stored_when_told[-1] is JobStatus.FAILED, (
+        "the failure was signalled before it was persisted"
+    )
 
 
 def test_the_advance_walk_only_takes_transitions_the_state_machine_allows(

@@ -23,20 +23,20 @@ The parent's obligation, held by `DownloadManager`, is that **a sentinel always 
 worker that dies without sending one has one synthesised on its behalf. Without that, this
 thread would sit in `Queue.get()` forever — the hang `validate_sequence()`'s docstring names.
 
-## Violations are reported, never swallowed
+## Nothing illegal is ever routed (`T013-R1`)
 
-Three things can arrive on the queue that are protocol violations rather than ordinary errors,
-and each turns into a hang or a lie if ignored:
+Every message goes through `protocol.SessionValidator` **before** it is emitted, and a message
+the grammar rejects ends the stream instead of reaching a signal. This ordering is the finding:
+the first version routed each message and validated the finished session afterwards, so an
+illegal one had already been persisted and announced by the time the contract was consulted —
+a probe session could report `Succeeded` and leave a durable `COMPLETED` job.
 
-- an **undeclared object**, which nothing downstream could interpret;
-- a **second outcome** for a job, which would drive a second state transition (`T011-R4`);
-- an **unreadable queue** — a truncated pickle left by a worker killed mid-write.
+The validator is the protocol's own grammar in incremental form, not a second copy of it, so
+what this thread enforces and what `validate_sequence()` enforces cannot drift apart.
 
-Each is emitted on `violation` and ends the stream. `validate_sequence()` then re-checks the
-whole session, so a violation visible only in the *shape* of the stream — a missing outcome,
-messages after the outcome — is caught too. The two can report one fault twice; that is
-deliberate, because suppressing the second would mean deciding which violation matters before
-the manager has seen either.
+One class of fault is not the grammar's and is handled here: an **unreadable queue**, which is
+what a worker killed mid-write leaves behind. It is reported the same way and ends the stream
+the same way, because a queue that cannot be read cannot be validated either.
 """
 
 from typing import Any
@@ -51,11 +51,9 @@ from tracks_and_trails.downloader.protocol import (
     ProtocolViolationError,
     ResolutionReport,
     SessionKind,
+    SessionValidator,
     Succeeded,
     WorkerFinished,
-    is_message,
-    is_outcome,
-    validate_sequence,
 )
 
 
@@ -117,13 +115,17 @@ class ResultPump(QThread):
         return self._job_id
 
     def run(self) -> None:
-        """Read until the sentinel, routing as we go, then validate the whole session.
+        """Validate each message, route it only if it is legal, and stop at the sentinel.
+
+        **Validation happens before routing, and that order is the whole point** (`T013-R1`).
+        Routing a message persists job state and tells the GUI about it, so a stream checked only
+        after it ended reported its violation *after* the damage — a probe session could return
+        `Succeeded` and leave a durable `COMPLETED` job that the contract forbids.
 
         Deliberately a blocking `get()` with no timeout: a timeout would be a second, weaker
         definition of "the stream ended", competing with the protocol's own.
         """
-        session: list[object] = []
-        outcome_seen = False
+        validator = SessionValidator(self._kind, self._job_id)
         try:
             while True:
                 try:
@@ -136,23 +138,15 @@ class ResultPump(QThread):
                     self._report(f"the result queue could not be read: {error!r}")
                     break
 
-                session.append(item)
-
-                if not is_message(item):
-                    self._report(f"undeclared object on the queue: {item!r}")
+                try:
+                    validator.accept(item)
+                except ProtocolViolationError as error:
+                    # Reported, **not** routed, and the stream ends here. `ProtocolViolationError`
+                    # says why: a bad message is discarded, but a bad *sequence* means the worker
+                    # cannot be trusted at all — so there is nothing to gain by reading on, and
+                    # a great deal to lose by acting on what follows.
+                    self._report(str(error))
                     break
-
-                if is_outcome(item):
-                    if outcome_seen:
-                        # `T011-R4`: reported, and **not** routed. Suppressing the signal here
-                        # is what makes "no second state transition" true by construction,
-                        # rather than by every slot remembering to check.
-                        self._report(
-                            f"a second outcome ({type(item).__name__}) for job "
-                            f"{self._job_id!r}; a session has exactly one"
-                        )
-                        continue
-                    outcome_seen = True
 
                 self._routes[type(item)].emit(item)
 
@@ -160,7 +154,7 @@ class ResultPump(QThread):
                     break
         finally:
             try:
-                validate_sequence(self._kind, session)
+                validator.complete()
             except ProtocolViolationError as error:
                 self._report(str(error))
             self.session_ended.emit(self._job_id)
