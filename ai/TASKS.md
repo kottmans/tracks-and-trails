@@ -34,9 +34,10 @@ first focusable widgets.
 
 ### T-013 — Download manager and result pump
 
-**Status:** **In Review** — implemented 2026-07-27, awaiting the first independent review.
-Prerequisites were met before it started: `T-012` completed 2026-07-26, `T-014` approved
-2026-07-26 at `db14cc2`.
+**Status:** **In Review — changes requested** in the first independent review on 2026-07-27.
+`T013-R1` and `T013-R2` are High blockers; `T013-R3` is a Medium blocker. Prerequisites were
+met before implementation started: `T-012` completed 2026-07-26, `T-014` approved 2026-07-26
+at `db14cc2`.
 
 **What landed.** `downloader/result_pump.py` (a `QThread` doing a blocking read on one session's
 queue, routing every declared message type to its own signal and ending on the protocol's
@@ -112,6 +113,13 @@ Python validated the cached `.pyc` by size and whole-second mtime and re-ran unm
 **Checks.** `ruff check`, `ruff format --check`, `mypy src`, `mypy --platform win32 src` all
 clean; **913 passed, 6 skipped, 1 deselected**. Windows evidence pending CI — the cancellation
 budget, the orphan guard and `TerminateProcess` have only been observed on Linux.
+
+**First review.** `ai/REVIEWS.md` records the full evidence. The correction batch must enforce
+the session grammar before forbidden messages mutate durable job state, report a worker's
+missing sentinel instead of making the synthetic sentinel indistinguishable from a real one,
+replace GUI-thread-blocking shutdown with an event-driven lifecycle, and make every startup
+failure leave a durable failed job with no leaked pump/session. Per `AGENTS.md` §9, reproduce
+each blocker, audit its sibling paths, and mutation-check the corrections before re-review.
 
 **Owner:** Implementer
 **Priority:** High
@@ -416,12 +424,13 @@ agreement on the reduced form before implementation.
 
 ### T-016 — Add-URL dialog with probe results
 
-**Status:** Proposed — Ready once `T-013`, `T-015` and `T-018` merge
+**Status:** Proposed — Ready once `T-013`, `T-015`, `T-018` and `T-051` merge
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 1
 **Depends on:** `T-013`, `T-015`, `T-018` (the playlist/single-item projection this task
-displays does not exist until `T-018` adds it — `T012-R6`)
+displays does not exist until `T-018` adds it — `T012-R6`), `T-051` (the probed `READY` job
+cannot currently start a download)
 **Relevant context:** `REQ-001`, `REQ-002`, `REQ-005`, `NFR-001`, `NFR-005`, `NFR-006`
 **Affected surfaces:** `ui/add_dialog.py`, `ui/main_window.py`, `tests/ui/`
 **Risk:** Medium — the first widget that talks to the manager, and the first place a blocking
@@ -461,6 +470,46 @@ single item or a playlist. On failure, show the extractor's own message **verbat
 - The sortable format table and per-format selection — `REQ-003`, `REQ-008`, Phase 3
 - Drag-and-drop — `REQ-001` allows it, but it is not needed to prove the slice; Phase 2
 - Playlist expansion into individual jobs — Phase 3
+
+---
+
+### T-051 — Define the READY-to-download lifecycle
+
+**Status:** Ready
+**Owner:** Planner
+**Priority:** High — blocks `T-016`'s probe-then-queue flow
+**Phase:** Phase 1
+**Depends on:** `T-013`
+**Relevant context:** `ARCHITECTURE.md` §5; `REQ-002`, `REQ-015`; `T-016`
+**Affected surfaces:** `ai/ARCHITECTURE.md`, `ai/DECISIONS.md` if the choice is durable,
+`ai/TASKS.md` (`T-013`/`T-016` correction or implementation scope)
+**Risk:** Medium — inventing an edge in the manager would make the executable state machine
+and the approved architecture disagree
+**Review base:** the corrected `T-013` head
+**Blocks:** `T-016`
+
+#### Scope
+
+Resolve the lifecycle gap exposed by the T-013 review ruling. `DownloadManager.start()` is
+correct to refuse a `READY` job today because `ARCHITECTURE.md` §5 has no
+`READY → PROBING` edge. But `T-016` must first probe a persisted job, leaving it `READY`, and
+then queue that selection for download. It cannot honestly reuse that job through the current
+manager API, while creating a second job would strand or duplicate the probed record.
+
+Choose and document the intended transition and manager operation before T-016 implements the
+widget flow. Plausible designs include starting a download from `READY` without re-probing, or
+explicitly allowing a new probe cycle with a justified state edge; the Planner decides rather
+than source code silently creating architecture.
+
+#### Acceptance criteria
+
+- The architecture names the legal state path from a successful probe to a download start
+- `T-013`'s manager contract and `T-016`'s widget scope name the same operation and starting state
+- The chosen design states whether metadata is reused or probed again, including what happens
+  when it has become stale
+- Any durable architecture trade-off is recorded in `ai/DECISIONS.md`; otherwise the current
+  architecture and tasks are aligned without manufacturing a decision entry
+- No source code is changed by this Planner task
 
 ---
 

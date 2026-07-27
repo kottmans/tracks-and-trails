@@ -5,7 +5,7 @@
 **Owner:** Reviewer (Codex)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-26
+**Last updated:** 2026-07-27
 **Update when:** A review completes, a defect is found, a prior finding is rechecked, or a release review occurs.
 **Does not contain:** The work required to fix findings — that goes to `TASKS.md`.
 
@@ -2678,3 +2678,76 @@ to check the decision's factual claims.
 T-014 is **Approved with follow-ups**. No further T-014 review pass is pending. T-049 owns the
 non-blocking decision-wording correction; T-048 remains the future data-migration guard.
 T-013 is unblocked.
+
+## 2026-07-27 — T-013 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-013`
+**Base:** `a29661566696beb105805c45b49bce1bd4779e3d`
+**Reviewed commit:** `0a19daf407d6c2665450f68515e4108f6cbcb1f2`
+**Review unit:** `git show 0a19daf`; T-014's already-approved persistence commits and the later
+coordination-only commits through `420cef9` are excluded
+**Branch at review start:** `main`, not pushed
+**Platforms verified:** Linux locally; Windows not run
+**Verdict:** **Changes requested**
+
+### Findings
+
+| ID | Severity | Blocks approval | Status | Finding |
+|---|---|---:|---|---|
+| `T013-R1` | **High** | **Yes** | **Open** | **The receiver reports several illegal streams only after their messages have already mutated durable job state, and it silently legalizes a missing sentinel.** `ResultPump.run()` emits each declared message at `result_pump.py:157` and calls `validate_sequence()` only in its finalizer at lines 161–165. The manager therefore persists an outcome before learning whether that outcome is legal for the session kind; `_on_session_ended()` then returns immediately whenever any outcome was claimed (`manager.py:597-601`), even when validation recorded violations. A deterministic probe started a `PROBE` session whose child sent `Succeeded`: the pump reported the forbidden outcome, but the job remained `COMPLETED` and `job_succeeded` had already been emitted. The same ordering lets a download end `READY` on an illegal `Probed`, lets a wrong-stage probe advance into download states before validation, and routes progress or resolution messages sent after an outcome. The committed test at `test_manager.py:730-756` explicitly codifies one contradiction by requiring a stream with a message after its outcome to remain completed, although T-013 says such violations fail loudly. Separately, `_end_the_stream()` inserts `WorkerFinished` without recording that the child omitted it (`manager.py:478-487`); a child that sent `Succeeded` and exited with no sentinel completed with no protocol violation in a second probe. This leaves the executable receiver weaker than `protocol.validate_sequence()`, violates T-013's session-validation acceptance criterion and `ARC-002`'s declared IPC contract, and can persist a false result for the requested session. Enforce every decidable grammar rule before routing its message, bind messages to the pump's expected job and session kind, suppress post-outcome traffic, and distinguish a synthetic sentinel from one the worker actually sent. Preserve the separate accepted rule that a **legal** outcome remains authoritative when the process later exits non-zero. Add negative tests for sibling outcome kinds, probe stages, job IDs, post-outcome message types, duplicate resolution reports, and a missing sentinel; mutation-check the guards. |
+| `T013-R2` | **High** | **Yes** | **Open** | **`shutdown()` knowingly blocks the GUI thread, contrary to the unqualified NFR and architecture invariant and to T-013's own acceptance criterion.** `manager.py:409-436` runs a polling loop with `time.sleep()` and manual `processEvents()` for up to five seconds; its fallback then performs `Process.join()` and two `QThread.wait()` calls on that same thread (`manager.py:498-515`). A deterministic child that ignored cancellation occupied the caller for **1.52 s**. `NFR-001` says the UI thread is never blocked on subprocess work, Architecture §8 says nothing on it may block, and T-013 requires that no manager or pump call perform a blocking wait there. Teardown is not an authority-level exception, and processing arbitrary events inside a blocking shutdown loop also permits reentrant GUI actions. Make shutdown an event-driven lifecycle: initiate cancellation, keep the Qt loop and escalation timer alive, refuse new sessions, and announce completion through `idle` so composition code can finish quitting only after workers and pumps are gone. Keep any last-resort hard stop outside an interactive GUI-thread wait and mutation-check both graceful and forced paths. |
+| `T013-R3` | **Medium** | **Yes** | **Open** | **Failures before `Process.start()` strand a durable `PROBING` job without a session or error.** `start()` persists `PROBING` at `manager.py:318-319`, but queue, event, pump, process and pump-thread construction occur before the only protected operation at lines 321–360. The exception handler covers only `process.start()`. A deterministic `Queue()` failure raised `OSError`, left `_sessions` empty, and left the repository at `PROBING`; no `job_failed` or protocol-violation signal was emitted. Resource exhaustion or a pump-thread start failure therefore looks like active work that does not exist, violating `REQ-018`'s recorded-failure rule. Cover the complete startup transaction: all failures after the durable transition must persist a useful failure, emit it after persistence, and close or stop every resource that was successfully created. Audit queue/event/process construction, pump construction/start, process start, and failures while synthesizing the cleanup sentinel. |
+
+### Rulings on the five implementation judgments
+
+1. **Worker surface expansion accepted.** Cancellation observation, process exit status and the
+   killed-parent watchdog are the child halves of explicit T-013 criteria and belong in
+   `worker.py`; separating them into another task would split one acceptance boundary without
+   reducing risk.
+2. **Blocking shutdown rejected.** It is `T013-R2`; the lower-authority task explanation cannot
+   create an exception to `NFR-001` or Architecture §8.
+3. **Loopback yt-dlp exception accepted.** The two tests bind only `127.0.0.1`, fake the site
+   rather than the process/library boundary, and uniquely prove bytes moving through the real
+   progress hook. They are not external-network tests and should remain in the default suite,
+   not behind `-m network`.
+4. **QUEUED-only start accepted for T-013.** Inventing `READY → PROBING` in source would violate
+   the approved state machine. It does, however, block T-016's probe-then-queue flow from reusing
+   the probed job. Planner-owned `T-051` now resolves that lifecycle before T-016; this is not a
+   T-013 approval blocker.
+5. **Injected entry point accepted.** It is a narrow fault-injection seam whose tests still use
+   real spawned processes and real queues. The malformed streams under test cannot be produced
+   by the correct production entry point, and no user-controlled value selects the callable.
+
+### Validation and negative evidence
+
+The checkout changed concurrently during review from `main` to `phase1-presets-and-fixtures`
+and gained an unrelated uncommitted T-015 edit in `core/models.py`. It was preserved untouched.
+All gates below therefore ran from a clean `/tmp` archive of the exact reviewed commit, using
+the repository virtual environment.
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **75 files already formatted**. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| `mypy --platform win32 src` | Passed: no issues in 31 source files. |
+| Full default suite | Passed with loopback permission: **913 passed, 6 skipped, 1 deselected**. The first sandboxed run failed 9 tests only because socket creation was denied with `PermissionError`; the unchanged suite passed after loopback binding was allowed. |
+| Illegal probe-outcome review probe | Failed as intended: the job was `COMPLETED`, not `FAILED`, despite the recorded protocol violation (`T013-R1`). |
+| Missing-sentinel review probe | Failed as intended: a child-emitted success plus process exit produced no `WorkerFinished` violation (`T013-R1`). |
+| Startup-construction review probe | Failed as intended: a `Queue()` error left the job `PROBING`, not `FAILED` (`T013-R3`). |
+| GUI-thread shutdown review probe | Failed as intended: a cancellation-resistant child held `shutdown()` for **1.52 s** (`T013-R2`). |
+| `git show 0a19daf --check` | Passed. |
+
+The four review probes existed only in the temporary clean archive and were not added to the
+working tree. The implementer's reported 15-mutation run was not rerun wholesale; the review
+instead established three missing negative cases and one direct timing contradiction that the
+correction batch must freeze and mutation-check.
+
+### Readiness
+
+T-013 remains **In Review — changes requested**. `T013-R1` and `T013-R2` are High blockers;
+`T013-R3` is a blocking Medium. One focused correction re-review remains available for R3 under
+the ordinary budget; the two High findings continue until independently resolved regardless of
+that cap. Windows remains unverified for cancellation timing, the killed-parent watchdog and
+`TerminateProcess`.
