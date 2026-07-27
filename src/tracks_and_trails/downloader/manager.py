@@ -214,8 +214,11 @@ class _Session:
     reap_at: float | None = None
 
     #: Set when the session has been stopped by force. `abandon_at` bounds how long the pump
-    #: thread is given to notice, so nothing has to wait for it (`T013-R2`).
+    #: thread is given to notice, so nothing has to wait for it (`T013-R2`). `abandoned` records
+    #: that `terminate()` has already been issued — it is a request, not an event, so the
+    #: session is still owned until the thread reports itself finished (`T013-R4`).
     forced: bool = False
+    abandoned: bool = False
     abandon_at: float | None = None
 
     violations: list[str] = field(default_factory=list)
@@ -370,9 +373,20 @@ class DownloadManager(QObject):
             # `finished` carries no argument, so the job id is closed over rather than routed.
             pump.finished.connect(lambda: self._on_pump_finished(job_id))
 
-            # The pump first: a worker that fails immediately must not find nobody reading.
-            pump.start()
+            # **The process first, then the pump** (`T013-R3`, second pass). The original order
+            # was the other way round, on the theory that a worker failing immediately must not
+            # find nobody reading — but a `multiprocessing.Queue` writes into a pipe that
+            # buffers, so nothing a worker sends before the reader starts is lost.
+            #
+            # The order matters for failure, not for success. Starting the pump first meant a
+            # failed spawn left a live thread already blocked in `Queue.get()`, and the only
+            # ways to end it are a sentinel the broken queue may refuse and a `terminate()` that
+            # does not reliably interrupt a blocked read. Probed both: closing the queue does not
+            # wake a reader already inside `get()` either. So that cleanup had no reliable
+            # answer, and the fix is to not create the situation — after this order, a spawn
+            # failure has no running thread to unwind.
             process.start()
+            pump.start()
         except BaseException as error:
             self._abort_start(job_id, queue, pump, error)
             raise
@@ -393,26 +407,12 @@ class DownloadManager(QObject):
         """
         session = self._sessions.pop(job_id, None)
         reason = f"the worker session could not be started: {error!r}"
-        running_pump = pump if pump is not None and pump.isRunning() else None
 
-        if running_pump is not None and queue is not None:
-            # Let it end the way every other session ends, on a sentinel.
-            queue.put(WorkerFinished(job_id=job_id, exit_code=1))
-        elif running_pump is not None:
-            running_pump.terminate()
-
-        if session is not None and running_pump is not None and queue is not None:
-            # Keep watching it just long enough to see the thread return; the tick releases it,
-            # and `finalized` stops it from touching a job this method has already failed.
-            session.sentinel_sent = True
-            session.finalized = True
-            session.forced = True
-            session.abandon_at = time.monotonic() + self._reap_seconds
-            self._sessions[job_id] = session
-            self._timer.start()
-        elif queue is not None:
-            queue.close()
-
+        # **The durable record comes first, and nothing below may pre-empt it** (`T013-R3`,
+        # second pass). Whatever broke the session is quite capable of having broken its queue
+        # too, so the cleanup write can fail — and when it did, its exception replaced the
+        # original cause on the way out and the job was left claiming to be in flight with
+        # nothing running. Tidying up is never worth more than the record of what happened.
         self._on_violation(job_id, reason)
         job = self._require(job_id)
         message = f"The download could not be started. {reason}"
@@ -420,6 +420,62 @@ class DownloadManager(QObject):
             replace(job.with_failure(ErrorKind.WORKER_CRASH, message), finished_at=_now())
         )
         self.job_failed.emit(job_id, ErrorKind.WORKER_CRASH, message)
+
+        if session is not None:
+            # The job is already resolved; stop the session from resolving it again.
+            session.finalized = True
+        self._release_half_built(job_id, session, queue, pump)
+
+    def _release_half_built(
+        self, job_id: str, session: _Session | None, queue: Any, pump: ResultPump | None
+    ) -> None:
+        """Dispose of whatever `start()` managed to build, without ever raising.
+
+        Called only when the job has already been recorded as failed, so every step here is
+        best-effort: a failure to clean up is reported and moved past, never allowed to escape
+        and mask the failure that caused it.
+        """
+        running = pump is not None and pump.isRunning()
+        if not running:
+            self._close_quietly(job_id, queue)
+            return
+
+        if pump is not None and not self._end_the_stream_quietly(job_id, queue):
+            # The sentinel could not be delivered, so the thread cannot end the ordinary way.
+            pump.terminate()
+
+        if session is not None:
+            # Keep watching it until the thread actually returns (`T013-R4`). The tick releases
+            # it; `finalized` stops it from touching a job this method has already failed.
+            session.sentinel_sent = True
+            session.forced = True
+            session.abandoned = True
+            session.abandon_at = time.monotonic() + self._reap_seconds
+            self._sessions[job_id] = session
+            self._timer.start()
+
+    def _end_the_stream_quietly(self, job_id: str, queue: Any) -> bool:
+        """Try to put the sentinel; report and return `False` if the queue will not take it."""
+        if queue is None:
+            return False
+        try:
+            queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+        except Exception as error:
+            self._on_violation(
+                job_id,
+                f"the session's queue would not accept the closing sentinel: {error!r}; "
+                "the reader thread was stopped instead",
+            )
+            return False
+        return True
+
+    def _close_quietly(self, job_id: str, queue: Any) -> None:
+        if queue is None:
+            return
+        try:
+            queue.close()
+        except Exception as error:
+            self._on_violation(job_id, f"the session's queue would not close: {error!r}")
 
     # --- cancelling ---------------------------------------------------------------------
 
@@ -553,15 +609,26 @@ class DownloadManager(QObject):
             f"the worker exited (code {exit_code}) without sending its WorkerFinished sentinel; "
             "the parent supplied one so the receiver could stop reading",
         )
-        session.queue.put(WorkerFinished(job_id=session.job_id, exit_code=exit_code or 0))
+        # The same sibling as `T013-R3`: this write runs *because* something already went
+        # wrong, so the queue it writes to may be exactly as broken as the worker was. Raising
+        # here would escape into a timer slot and leave the session unfinishable.
+        if not self._end_the_stream_quietly(session.job_id, session.queue):
+            session.forced = True
+            session.abandon_at = time.monotonic() + self._reap_seconds
 
     def _release(self, session: _Session) -> None:
-        """Drop a session whose process is gone and whose pump has returned."""
-        if not session.pump_finished:
+        """Drop a session whose process is gone and whose pump has returned.
+
+        Both facts are required, and the thread is asked twice: `pump_finished` records the
+        `finished` signal, and `isFinished()` is asked directly because a *terminated* thread
+        may never deliver that signal to a slot. Releasing on either is what keeps a forced
+        stop from claiming completion it has not got (`T013-R4`).
+        """
+        if not (session.pump_finished or session.pump.isFinished()):
             return
         if session.started:
             session.process.join(0)
-        session.queue.close()
+        self._close_quietly(session.job_id, session.queue)
         self._sessions.pop(session.job_id, None)
 
     def _force_stop(self, session: _Session) -> None:
@@ -587,21 +654,32 @@ class DownloadManager(QObject):
         session.abandon_at = session.abandon_at or time.monotonic() + self._reap_seconds
 
     def _abandon(self, session: _Session) -> None:
-        """Give up on a pump thread that will not return, without waiting for it.
+        """Force a pump thread that will not return — and keep owning it until it has.
 
         `QThread.terminate()` is unsafe in general and is the last resort here: the alternative
         is a thread Qt destroys while it is still running, which aborts the process. Reached only
         when a killed worker's queue is so damaged that even the synthetic sentinel cannot be
         read — the case the pump's own exception guard exists for, one layer deeper.
+
+        **Terminate is a request, not an event** (`T013-R4`). The first version of this dropped
+        the session as soon as `terminate()` had been *issued*, so the next tick found nothing
+        left and announced `idle` while the thread was still running and the job was still in
+        flight — the exact opposite of what the shutdown criterion promises. So the job is
+        resolved durably here, and the session stays until the thread reports itself finished.
+        Nothing releases it early, and if it never finishes this manager never claims to be idle,
+        which is the honest answer.
         """
-        self._on_violation(
-            session.job_id,
-            "the result pump did not stop after its worker was killed and its stream ended; "
-            "the thread was terminated",
-        )
-        session.pump.terminate()
-        session.queue.close()
-        self._sessions.pop(session.job_id, None)
+        if not session.abandoned:
+            session.abandoned = True
+            self._on_violation(
+                session.job_id,
+                "the result pump did not stop after its worker was killed and its stream ended; "
+                "the thread was terminated",
+            )
+            session.pump.terminate()
+            # Before anything can announce completion: leave no job in flight.
+            self._on_session_ended(session.job_id)
+        self._release(session)
 
     # --- slots: everything below runs on the GUI thread ---------------------------------
 

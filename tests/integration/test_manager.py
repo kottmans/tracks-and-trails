@@ -1395,6 +1395,23 @@ def test_a_worker_that_cannot_be_spawned_leaves_no_thread_behind(
 # --- the startup transaction (T013-R3) -------------------------------------------------------
 
 
+class UnwritableQueue:
+    """A real queue that has stopped accepting writes.
+
+    The state a queue is in when the thing that broke the session also broke it: a closed pipe,
+    an exhausted descriptor table. Everything except `put` is the real object's.
+    """
+
+    def __init__(self, real: Any) -> None:
+        self._real = real
+
+    def put(self, item: Any) -> None:
+        raise RuntimeError("the queue can no longer be written to")
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._real, name)
+
+
 class BrokenContext:
     """A multiprocessing context whose resources cannot be created.
 
@@ -1404,14 +1421,16 @@ class BrokenContext:
     handling before any child exists.
     """
 
-    def __init__(self, fail_on: str) -> None:
+    def __init__(self, fail_on: str, *, queue_writes_fail: bool = False) -> None:
         self._fail_on = fail_on
+        self._queue_writes_fail = queue_writes_fail
         self._real = mp.get_context("spawn")
 
     def Queue(self) -> Any:  # noqa: N802 - matching multiprocessing's own name
         if self._fail_on == "queue":
             raise OSError(24, "Too many open files")
-        return self._real.Queue()
+        queue = self._real.Queue()
+        return UnwritableQueue(queue) if self._queue_writes_fail else queue
 
     def Event(self) -> Any:  # noqa: N802 - matching multiprocessing's own name
         if self._fail_on == "event":
@@ -1421,7 +1440,29 @@ class BrokenContext:
     def Process(self, *args: Any, **kwargs: Any) -> Any:  # noqa: N802 - as above
         if self._fail_on == "process":
             raise OSError(11, "Resource temporarily unavailable")
-        return self._real.Process(*args, **kwargs)
+        process = self._real.Process(*args, **kwargs)
+        return UnstartableProcess(process) if self._fail_on == "process_start" else process
+
+
+class UnstartableProcess:
+    """A process that fails at `start()` rather than at construction.
+
+    The distinction matters to the cleanup path: by `start()` the pump is already running and
+    already blocked on the queue, so the failure has something to clean up. A failure during
+    construction has not built anything yet, and takes a much shorter route out.
+    """
+
+    def __init__(self, real: Any) -> None:
+        self._real = real
+
+    def start(self) -> None:
+        raise OSError(11, "Resource temporarily unavailable")
+
+    def is_alive(self) -> bool:
+        return False
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._real, name)
 
 
 @pytest.mark.parametrize("fail_on", ["queue", "event", "process"])
@@ -1461,6 +1502,218 @@ def test_a_startup_failure_leaves_a_failed_job_rather_than_a_phantom_one(
     assert recorder.stored_when_told[-1] is JobStatus.FAILED, (
         "the failure was signalled before it was persisted"
     )
+
+
+def test_a_failure_while_cleaning_up_cannot_hide_the_failure_that_caused_it(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`T013-R3`, second pass: the cleanup path is itself a failure path.
+
+    Whatever broke the session is quite capable of having broken the queue too, so the sentinel
+    write during cleanup can fail. When it did, its exception replaced the original spawn error
+    and the durable failure was never written — the job stayed `PROBING` with nothing running,
+    which is the very state the finding exists to prevent.
+
+    The order that survives this: **record the failure first, clean up second.** Nothing done
+    for tidiness may pre-empt the fact that the job failed.
+    """
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager(reap_seconds=0.2)
+    recorder = Recorder(download, repository)
+    download._context = BrokenContext("process_start", queue_writes_fail=True)  # type: ignore[assignment]
+
+    with pytest.raises(OSError, match=r"Resource temporarily") as raised:
+        download.start("job-1")
+
+    assert "no longer be written" not in str(raised.value), (
+        "the cleanup failure replaced the spawn failure, so the log names the wrong cause"
+    )
+    stored = repository.jobs["job-1"]
+    assert stored.status is JobStatus.FAILED, (
+        f"the job is {stored.status.value} after a start that failed and cleaned up badly; "
+        "nothing is running, so the queue is describing work that does not exist"
+    )
+    assert stored.error_kind is ErrorKind.WORKER_CRASH
+    assert recorder.stored_when_told[-1] is JobStatus.FAILED, (
+        "the failure was announced before it was persisted"
+    )
+    assert download.is_idle, (
+        "a half-built session was left to be cleaned up later. Nothing was running: the pump "
+        "starts after the process, so a spawn failure has no thread to unwind"
+    )
+
+
+class WatchingQueue:
+    """A queue that records what the repository held at the moment it was written to.
+
+    The only way to observe *ordering* rather than outcome. Both the persistence and the
+    cleanup end in the same state, so a test that checks the end state passes whichever came
+    first — which is how the ordering guard survived its mutation.
+    """
+
+    def __init__(self, real: Any, repository: FakeRepository, job_id: str) -> None:
+        self._real = real
+        self._repository = repository
+        self._job_id = job_id
+        self.status_when_written: list[JobStatus | None] = []
+
+    def put(self, item: Any) -> None:
+        job = self._repository.get(self._job_id)
+        self.status_when_written.append(job.status if job is not None else None)
+        raise RuntimeError("the queue can no longer be written to")
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._real, name)
+
+
+def test_the_failure_is_recorded_before_anything_is_cleaned_up(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`T013-R3`, pinned at the ordering rather than at the outcome.
+
+    `_abort_start` is driven directly, with a pump that is running and a queue that refuses
+    writes — a state `start()` can no longer reach now that the process starts first, and which
+    therefore has no other route to a test. The assertion is not that the job ends up failed;
+    it is that the job was **already** failed when cleanup was attempted.
+
+    Written after the end-state test survived a mutation that put cleanup first.
+    """
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager(reap_seconds=0.2)
+    download.start("job-1")
+    session = download._sessions["job-1"]
+    watching = WatchingQueue(session.queue, repository, "job-1")
+
+    download._abort_start("job-1", watching, session.pump, OSError(11, "spawn refused"))
+
+    assert watching.status_when_written == [JobStatus.FAILED], (
+        f"cleanup ran while the job was {watching.status_when_written}; a cleanup failure at "
+        "that point would have replaced the real cause and left the job in flight"
+    )
+    assert spin(lambda: download.is_idle, timeout=30)
+
+
+def test_abandoning_a_pump_resolves_its_job_first(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`T013-R4`, pinned at `_abandon` itself.
+
+    The end-to-end version passes even when `_abandon` resolves nothing, because a killed
+    worker's dying queue eventually ends the stream by another route and *that* resolves the
+    job. Driving `_abandon` directly removes the second route, so the assertion is about this
+    method's own obligation: nothing may announce completion while a job is still in flight.
+    """
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager(entry_point=child_downloading_forever, reap_seconds=0.2)
+    download.start("job-1")
+    session = download._sessions["job-1"]
+    before: JobStatus = repository.jobs["job-1"].status
+    assert before is JobStatus.PROBING, "the precondition this test rests on has changed"
+
+    real_pump, real_queue = session.pump, session.queue
+    session.pump = StubbornPump(real_pump)  # type: ignore[assignment]
+
+    download._abandon(session)
+    # Annotated so mypy widens it back: narrowing from the precondition above would otherwise
+    # make the assertion below statically false, and everything after it unreachable.
+    status_after: JobStatus = repository.jobs["job-1"].status
+    idle_after = download.is_idle
+
+    # Restore before asserting, so a failure cannot leave a wedged thread behind it.
+    session.pump = real_pump
+    real_queue.put(WorkerFinished(job_id="job-1", exit_code=0))
+
+    assert status_after is not JobStatus.PROBING, "the pump was abandoned with its job in flight"
+    assert idle_after is False, "the session was released before its thread finished"
+    assert spin(lambda: download.is_idle, timeout=30)
+
+
+class StubbornPump:
+    """A pump thread that does not stop when it is told to.
+
+    `QThread.terminate()` is asynchronous and, on a thread wedged in a C call, may not take
+    effect promptly at all. This is that thread, made deterministic: it accepts the terminate
+    and keeps reporting itself unfinished.
+    """
+
+    def __init__(self, real: Any) -> None:
+        self._real = real
+        self.terminated = False
+
+    def terminate(self) -> None:
+        self.terminated = True
+
+    def isFinished(self) -> bool:  # noqa: N802 - Qt's own name
+        return False
+
+    def isRunning(self) -> bool:  # noqa: N802 - Qt's own name
+        return True
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._real, name)
+
+
+def test_a_pump_that_will_not_stop_keeps_the_manager_from_claiming_it_is_idle(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    existing_children: set[int],
+) -> None:
+    """`T013-R4`: a correction regression from the event-driven shutdown.
+
+    Removing the blocking waits was right; dropping the session the moment `terminate()` was
+    *issued* was not. `terminate()` is asynchronous, so the next tick could find no sessions and
+    announce `idle` while the thread was still alive and the job still in flight — which is
+    precisely what the shutdown criterion says must never be true.
+
+    Ownership has to last until the thread actually reports itself finished, and the job has to
+    be durably resolved before anything announces completion.
+    """
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager(entry_point=child_downloading_forever, reap_seconds=0.2)
+    recorder = Recorder(download, repository)
+    announced: list[bool] = []
+    download.idle.connect(lambda: announced.append(True))
+
+    download.start("job-1")
+    assert spin(lambda: bool(recorder.progress), timeout=60)
+
+    session = download._sessions["job-1"]
+    real_pump, real_queue = session.pump, session.queue
+    # Both halves are needed to make the situation real. Taking the queue's writes away is what
+    # keeps the *actual* thread blocked — otherwise the closing sentinel reaches it, it finishes
+    # normally, and the stubborn facade is never consulted.
+    session.queue = UnwritableQueue(real_queue)
+    session.pump = StubbornPump(real_pump)  # type: ignore[assignment]
+
+    download.shutdown(timeout=0.0)
+    spin(lambda: False, timeout=2.0)  # let several ticks pass
+
+    try:
+        assert not announced, "idle was announced while the pump thread was still running"
+        assert not download.is_idle, "the session was dropped before its thread finished"
+        assert repository.jobs["job-1"].status is not JobStatus.PROBING, (
+            "the job was abandoned in flight: nothing is running it and nothing says so"
+        )
+    finally:
+        # Give the real thread its queue and its sentinel back, so it ends the ordinary way and
+        # the fixture can tear down. A test that leaves a wedged QThread aborts the interpreter.
+        session.queue = real_queue
+        session.pump = real_pump
+        real_queue.put(WorkerFinished(job_id="job-1", exit_code=0))
+
+    assert spin(lambda: download.is_idle, timeout=30)
+    assert not worker_processes(existing_children)
 
 
 def test_the_advance_walk_only_takes_transitions_the_state_machine_allows(

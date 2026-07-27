@@ -36,11 +36,50 @@ first focusable widgets.
 
 ### T-013 — Download manager and result pump
 
-**Status:** **In Review — Blocked after focused re-review 2026-07-27.** `T013-R1` and
-`T013-R2` are resolved. `T013-R3` remains a blocking Medium, and new correction regression
-`T013-R4` is a blocking Medium. The ordinary review budget is exhausted; another focused pass
-requires the maintainer choice listed in `AGENTS.md` §9. `T013-R5` is non-blocking test
-hardening owned by `T-052`.
+**Status:** **In Review — second correction batch returned 2026-07-27, awaiting verification.**
+`T013-R1` and `T013-R2` were verified resolved. `T013-R3` and `T013-R4` are now corrected under
+the maintainer's authorization of one further focused pass (`AGENTS.md` §9). `T013-R5` stays
+non-blocking test hardening owned by `T-052`.
+
+#### Second correction batch — `T013-R3`, `T013-R4` (maintainer-authorized 2026-07-27)
+
+The maintainer authorized one further focused pass under `AGENTS.md` §9. Both blockers
+reproduced first, both are corrected, and the batch is returned awaiting verification.
+
+**`T013-R3` — the situation is removed, not merely handled.** The cleanup write could fail
+because the thing that broke the session can break its queue too, and then its exception
+replaced the original cause and the job stayed `PROBING`. Three changes, in order of how much
+they matter:
+
+- **The process now starts before the pump.** The old order existed on the theory that a worker
+  failing instantly must not find nobody reading — but a `multiprocessing.Queue` writes into a
+  pipe that buffers, so nothing is lost. Starting the pump first was what left a live thread
+  blocked in `Queue.get()` after a failed spawn, and that thread has no reliable end: the
+  sentinel may be refused, `terminate()` does not interrupt a blocked read, and **closing the
+  queue does not wake a reader already inside `get()`** — probed, all three. After the reorder a
+  spawn failure has nothing running to unwind.
+- **The durable failure is recorded before any cleanup runs**, so nothing done for tidiness can
+  pre-empt the record of what happened.
+- **Every cleanup step is guarded** and reports rather than raising, including the same sibling
+  in `_end_the_stream()`, which the audit found had the identical unprotected write.
+
+**`T013-R4` — terminate is a request, not an event.** `_abandon()` now resolves the job durably
+before anything can announce completion, and keeps the session until the thread reports itself
+finished. If it never finishes, this manager never claims to be idle, which is the honest
+answer; nothing releases early to make the number look better.
+
+**Mutation-checked: 6 mutations, 5 killed — and the two that mattered only died after the tests
+were rewritten.** Reinstating cleanup-before-persistence, the pump-first order, and an
+`_abandon` that resolves nothing all **survived** the first battery, because the tests asserted
+end states that several mechanisms can reach. They are now pinned at the mechanism: a queue that
+records what the repository held at the moment it was written to, and `_abandon` driven directly.
+**One mutation still survives, stated rather than filed away:** dropping the `isFinished()`
+fallback in `_release()` leaves the suite green, because Qt's `finished` signal always arrives in
+these tests. The fallback exists for a terminated thread that never delivers it, and no test can
+construct that state today — `terminate()` does not act on a thread blocked in a read.
+
+This is the `T013-R5` lesson applied to its own correction: the first battery's numbers were
+measuring the tests, not the guards.
 
 #### Focused re-review — `cc79bb8..65303a2`
 
