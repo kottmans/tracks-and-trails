@@ -412,8 +412,9 @@ so.
 
 ### T-015 — Built-in presets and selector translation
 
-**Status:** **In Review — Changes requested 2026-07-27.** `T015-R1` is resolved. New High
-correction regression `T015-R2` blocks approval.
+**Status:** **In Review — corrections returned 2026-07-27, awaiting verification.** `T015-R1`
+is verified resolved. `T015-R2` — the High regression its correction introduced — is corrected
+and awaiting the Reviewer's check.
 
 #### Reviewer result on `0973fee`
 
@@ -541,8 +542,9 @@ output of translation, not an internal detail.
 
 ### T-018 — Recorded `info_dict` fixtures and projection tests
 
-**Status:** **In Review — Changes requested 2026-07-27.** `T018-R2` is resolved. `T018-R1`
-remains an open Critical blocker.
+**Status:** **In Review — corrections returned 2026-07-27, awaiting verification.** `T018-R2`
+is verified resolved, closing `T012-R6`. `T018-R1` (Critical) survived its first correction in
+three further places and is corrected again, awaiting the Reviewer's check.
 
 #### Reviewer result on `0973fee`
 
