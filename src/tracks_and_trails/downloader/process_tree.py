@@ -79,6 +79,12 @@ __all__ = [
 #: by the parent, so there is nothing for the parent to do beyond killing the worker itself.
 GROUPS_ARE_SUPPORTED: Final = sys.platform != "win32"
 
+#: Why the last `contain_this_process()` failed, or `None`. A worker that cannot be contained
+#: still runs its download — failing the job for this would be a failure the user cannot act on —
+#: so the reason has to be recorded somewhere rather than lost. `prepare_this_worker()` logs it
+#: once the log handler exists, which is the only moment it can be both known and reportable.
+containment_error: str | None = None
+
 
 def terminate_group(group: int) -> None:
     """Ask a worker's group to stop (`SIGTERM`)."""
@@ -118,11 +124,33 @@ if sys.platform == "win32":
         permitted from Windows 8 onward, so this works even when a CI runner or a debugger has
         already put us in one.
         """
-        global _windows_job
+        global _windows_job, containment_error
         import ctypes
         from ctypes import wintypes
 
         kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+
+        # **Declare every signature.** Without a `restype`, ctypes assumes `c_int` and truncates
+        # the returned 64-bit `HANDLE` to 32 bits — so the job is created, the handle is corrupted
+        # on the way back, and every later call against it fails. `contain_this_process()` then
+        # returns False, nothing is contained, and the only symptom is descendants surviving a
+        # cancellation. That is exactly what CI reported on the first Windows run of this code,
+        # and it is invisible on Linux by construction.
+        kernel32.CreateJobObjectW.restype = wintypes.HANDLE
+        kernel32.CreateJobObjectW.argtypes = (wintypes.LPVOID, wintypes.LPCWSTR)
+        kernel32.SetInformationJobObject.restype = wintypes.BOOL
+        kernel32.SetInformationJobObject.argtypes = (
+            wintypes.HANDLE,
+            ctypes.c_int,
+            wintypes.LPVOID,
+            wintypes.DWORD,
+        )
+        kernel32.AssignProcessToJobObject.restype = wintypes.BOOL
+        kernel32.AssignProcessToJobObject.argtypes = (wintypes.HANDLE, wintypes.HANDLE)
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+        kernel32.GetCurrentProcess.argtypes = ()
+        kernel32.CloseHandle.restype = wintypes.BOOL
+        kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
 
         class _BasicLimits(ctypes.Structure):
             _fields_ = (
@@ -167,16 +195,20 @@ if sys.platform == "win32":
 
         job = kernel32.CreateJobObjectW(None, None)
         if not job:
+            containment_error = f"CreateJobObjectW failed, error {ctypes.get_last_error()}"
             return False
 
         limits = _ExtendedLimits()
         limits.BasicLimitInformation.LimitFlags = kill_on_close
-        assigned = bool(
-            kernel32.SetInformationJobObject(
-                job, extended_limit_information, ctypes.byref(limits), ctypes.sizeof(limits)
-            )
-        ) and bool(kernel32.AssignProcessToJobObject(job, kernel32.GetCurrentProcess()))
-        if not assigned:
+        if not kernel32.SetInformationJobObject(
+            job, extended_limit_information, ctypes.byref(limits), ctypes.sizeof(limits)
+        ):
+            containment_error = f"SetInformationJobObject failed, error {ctypes.get_last_error()}"
+            kernel32.CloseHandle(job)
+            return False
+
+        if not kernel32.AssignProcessToJobObject(job, kernel32.GetCurrentProcess()):
+            containment_error = f"AssignProcessToJobObject failed, error {ctypes.get_last_error()}"
             kernel32.CloseHandle(job)
             return False
 
@@ -212,11 +244,13 @@ else:
         run the download, because the alternative is a job that fails for a reason the user
         cannot act on. The parent's fallback still covers the process itself.
         """
+        global containment_error
         try:
             os.setsid()
-        except OSError:
+        except OSError as error:
             # Already a group leader, which a spawned child is not — but a test harness or an
             # embedding may have arranged otherwise, and it is not worth failing a session over.
+            containment_error = f"setsid() failed: {error}"
             return False
         return True
 

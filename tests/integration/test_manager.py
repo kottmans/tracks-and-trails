@@ -40,6 +40,7 @@ from PySide6.QtCore import QCoreApplication
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, can_transition
 from tracks_and_trails.core.models import DownloadRequest, Job
+from tracks_and_trails.downloader import process_tree
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import (
     MESSAGE_TYPES,
@@ -1229,20 +1230,20 @@ def test_a_real_worker_leads_its_own_process_group(
     assert spin(lambda: bool(recorder.progress), timeout=60), "the download never started"
     workers = worker_processes(existing_children)
     assert workers, "there was no worker process to inspect"
-    groups = {process.pid: os.getpgid(process.pid) for process in workers}
+    # Asked through `group_of`, which is the function the manager actually uses, and which is
+    # typed on both platforms — reading `os.getpgid` here made `mypy --platform win32` fail over
+    # `tests/`, a check CI runs and a `mypy --platform win32 src` locally does not.
+    groups = {process.pid: process_tree.group_of(process.pid) for process in workers}
 
     download.cancel("job-1")
     assert spin(lambda: download.is_idle, timeout=CANCEL_BUDGET_SECONDS + 10.0)
 
     for pid, group in groups.items():
         assert group == pid, (
-            f"worker {pid} is in group {group}, so it never called setsid(). Killing that group "
-            "would signal this test process instead of the worker's descendants."
+            f"worker {pid} reported group {group}, not its own pid. Either it never called "
+            "setsid(), or it shares this process's group — which `group_of` reports as None, "
+            "because signalling it would kill the test runner instead of the worker's children."
         )
-    assert os.getpgid(os.getpid()) not in groups.values(), (
-        "a worker shares this process's group; process_tree refuses to signal it, and the "
-        "descendant reaping silently degrades to killing the worker alone"
-    )
 
 
 def test_cancelling_a_download_kills_what_the_worker_spawned(

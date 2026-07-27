@@ -40,6 +40,7 @@ observe them (`REQ-015`, `ARCHITECTURE.md` §3):
   killed, so without this a `SIGKILL`ed application would leave a download running forever.
 """
 
+import logging
 import multiprocessing
 import os
 import sys
@@ -58,6 +59,7 @@ from tracks_and_trails.core.paths import (
 )
 from tracks_and_trails.downloader import process_tree
 from tracks_and_trails.downloader.environment import (
+    APP_SLUG,
     FfmpegReport,
     YtdlpCandidate,
     find_ffmpeg,
@@ -591,7 +593,7 @@ def prepare_this_worker(log_queue: Any | None = None) -> None:
     handlers render them and a worker cannot emit an unredacted line even in principle. Optional
     because a worker driven directly by a unit test has no parent to send them to.
     """
-    process_tree.contain_this_process()
+    contained = process_tree.contain_this_process()
     _exit_when_the_parent_does()
     if log_queue is not None:
         # Imported here rather than at module scope: `core.logging` is Qt-free and cheap, but
@@ -599,6 +601,15 @@ def prepare_this_worker(log_queue: Any | None = None) -> None:
         from tracks_and_trails.core.logging import worker_logging_handler
 
         worker_logging_handler(log_queue)
+        if not contained:
+            # After the handler, not before: this is the first moment the reason can both be
+            # known and reported. A worker that cannot be contained still runs its download —
+            # failing the job for it would be a failure the user cannot act on — so the only
+            # cost of silence here is that nobody finds out why a descendant survived.
+            logging.getLogger(f"{APP_SLUG}.worker").warning(
+                "this worker is not contained, so its descendants will outlive it: %s",
+                process_tree.containment_error,
+            )
 
 
 def spawn_session(

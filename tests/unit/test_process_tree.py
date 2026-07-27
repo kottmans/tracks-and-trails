@@ -23,11 +23,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 #: A process that leads a group of its own, and says so once it does.
 LEADS_ITS_OWN_GROUP = "import os, time\nos.setsid()\nprint('up', flush=True)\ntime.sleep(30)\n"
 
-pytestmark = pytest.mark.skipif(
+#: The group rules are POSIX; the Job object is Windows. Applied per test rather than to the
+#: module, because `test_containment_succeeds_on_this_platform` must run on **both** — a
+#: module-wide skip is what let a broken Windows Job object reach CI as four confusing
+#: integration failures instead of one clear unit failure.
+posix_only = pytest.mark.skipif(
     sys.platform == "win32", reason="process groups are the POSIX mechanism; Windows uses a Job"
 )
 
 
+@posix_only
 def test_our_own_group_is_never_reported_as_signallable() -> None:
     """The rule the GUI's life depends on.
 
@@ -42,6 +47,7 @@ def test_our_own_group_is_never_reported_as_signallable() -> None:
     )
 
 
+@posix_only
 def test_a_process_that_leads_its_own_group_is_reported() -> None:
     """The other half: containment worked, so the group is the worker's and is safe to signal."""
     child = subprocess.Popen(
@@ -64,6 +70,7 @@ def test_a_process_that_leads_its_own_group_is_reported() -> None:
         child.wait(timeout=30)
 
 
+@posix_only
 def test_a_process_that_does_not_lead_its_group_refuses_to_kill_it() -> None:
     """`kill_this_group()` checks that it leads the group before killing it.
 
@@ -109,6 +116,7 @@ def test_a_process_that_does_not_lead_its_group_refuses_to_kill_it() -> None:
     )
 
 
+@posix_only
 def test_killing_a_group_refuses_the_callers_own() -> None:
     """The second place the rule is enforced, and the one that still matters later.
 
@@ -143,15 +151,43 @@ def test_killing_a_group_refuses_the_callers_own() -> None:
     )
 
 
-def test_containment_reports_whether_it_worked() -> None:
-    """A worker reports rather than raises, and the caller can tell (`contain_this_process`).
+def test_containment_succeeds_on_this_platform() -> None:
+    """Containment must actually work here, whichever mechanism "here" uses.
 
-    Run in a child, because succeeding here would put the *test process* in a new session and
-    detach it from pytest's own group — which is exactly the kind of thing this module does.
+    **This is the test the first Windows run needed and did not have.** `contain_this_process()`
+    reports failure rather than raising — deliberately, because a worker that cannot be contained
+    should still run its download — so a broken Windows Job object was silent, and the only
+    symptom was four integration tests reporting that descendants had survived. The cause was
+    ctypes returning a 64-bit `HANDLE` through a default `c_int` restype, truncating it.
+
+    Run in a child, because succeeding in-process would put the *test runner* in a new session on
+    POSIX, which is exactly the kind of thing this module does.
     """
     probe = (
         "from tracks_and_trails.downloader import process_tree\n"
+        "worked = process_tree.contain_this_process()\n"
+        "print(worked, process_tree.containment_error)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=REPO_ROOT,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert result.stdout.strip().startswith("True"), (
+        f"containment failed on {sys.platform}: {result.stdout.strip()}. Nothing spawned by a "
+        "worker can be reaped when this fails, and it fails quietly."
+    )
+
+
+@posix_only
+def test_containment_leads_a_new_group() -> None:
+    """The POSIX half of the same claim: reporting success and *being* a leader must agree."""
+    probe = (
         "import os\n"
+        "from tracks_and_trails.downloader import process_tree\n"
         "worked = process_tree.contain_this_process()\n"
         "print(worked, os.getpgrp() == os.getpid())\n"
     )
@@ -164,6 +200,6 @@ def test_containment_reports_whether_it_worked() -> None:
     )
 
     assert result.stdout.strip() == "True True", (
-        f"containment reported {result.stdout.strip()!r}; the two halves must agree — a worker "
-        "that says it was contained and is not leads the parent to signal the wrong group"
+        f"containment reported {result.stdout.strip()!r}; a worker that says it was contained "
+        "and is not leads the parent to signal the wrong group"
     )

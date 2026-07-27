@@ -1401,6 +1401,34 @@ them — a grandchild that handles `SIGTERM` writes a marker when it is *asked* 
 the difference `REQ-015` actually cares about: `ffmpeg` asked can close its output, `ffmpeg`
 killed cannot.
 
+#### `T019-R2` — the first Windows run, and what it found
+
+**The Job object contained nothing, silently.** Pushed at `989ef46`; CI run `30302798113`
+reported the four grandchild tests failing on `windows-latest` and every other job green.
+
+The cause was `ctypes` with no declared `restype`: it assumes `c_int`, so `CreateJobObjectW`'s
+64-bit `HANDLE` came back truncated to 32 bits, every later call against it failed,
+`contain_this_process()` returned `False`, and nothing was contained. Every signature is now
+declared. **Invisible on Linux by construction** — the POSIX half of the module has no handles.
+
+Two things made a one-line bug cost a full CI round, and both are fixed:
+
+- **`contain_this_process()` fails quietly, by design**, because a worker that cannot be
+  contained should still run its download. That is right, but the reason was going nowhere:
+  `containment_error` now records it and `prepare_this_worker()` logs it once the handler exists.
+- **The one test that would have caught it in one line was skipped on Windows.** The module-level
+  `skipif` in `tests/unit/test_process_tree.py` covered the *group* tests, which are genuinely
+  POSIX — and swept up the containment test with them, so a broken Job object surfaced as four
+  confusing integration failures instead. The skip is per-test now, and
+  `test_containment_succeeds_on_this_platform` runs on both.
+
+**A second finding from the same run, in the checks rather than the code.** CI runs bare
+`mypy --platform win32`, which covers `tests/` through `pyproject.toml`'s `files`; locally the
+task had been running `mypy --platform win32 src`. Two `os.getpgid` calls in a POSIX-only test
+therefore failed a check that had passed everywhere it was run. The test now asks through
+`process_tree.group_of`, which is the function the manager uses and is typed on both platforms —
+and the local command matches CI's.
+
 #### Why this was rescoped
 
 `T-013` delivered most of what this task was written to prove, and delivered it against
