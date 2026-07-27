@@ -56,6 +56,7 @@ from tracks_and_trails.core.paths import (
     escapes_directory,
     safe_output_path,
 )
+from tracks_and_trails.downloader import process_tree
 from tracks_and_trails.downloader.environment import (
     FfmpegReport,
     YtdlpCandidate,
@@ -552,9 +553,52 @@ def _exit_when_the_parent_does() -> None:
 
     def watch() -> None:
         parent.join()
+        # **Take the descendants first, and expect not to return.** `ffmpeg` is a process of its
+        # own: exiting this one used to leave the merge writing to the user's disk after both the
+        # application and the worker were gone (`T-019`). Killing the group is what stops it, and
+        # this process is *in* that group, so on POSIX the call below is normally the last
+        # thing that happens here — by design, and fail-closed. `SIGKILL` cannot be ignored
+        # by a descendant, which `SIGTERM` can. On Windows it returns: the Job object reaps
+        # the tree when this process's handles close, which the exit below does.
+        process_tree.kill_this_group()
+        # Reached only when there was no group of our own to kill — containment failed at
+        # start-up, so `kill_tree` signalled nothing rather than risk the parent's group. Nothing
+        # spawned by this worker is covered in that case, and the exit code says which corpse
+        # this is.
         os._exit(ORPHAN_EXIT_CODE)
 
     threading.Thread(target=watch, name="parent-watchdog", daemon=True).start()
+
+
+def prepare_this_worker(log_queue: Any | None = None) -> None:
+    """Everything a spawned worker must do before it starts working, in the order it must do it.
+
+    Named and separate because it is the **contract for being a worker**, not an implementation
+    detail of `spawn_session`. `DownloadManager`'s `entry_point` seam replaces `spawn_session`
+    entirely, so a stand-in worker in a test that did not repeat these two calls would be
+    subtly unlike every real one — and it was: the first version of `T-019`'s parent-kill test
+    watched a stand-in worker and its child both survive the application, because the stand-in
+    had no watchdog. One function, called by production and by the stand-ins, keeps the two the
+    same shape. That `spawn_session` calls it is proven separately, against real workers, by
+    `test_a_real_worker_leads_its_own_process_group` and
+    `test_killing_the_parent_does_not_leave_the_child_running`.
+
+    **Order matters.** Containment first: it works by capturing every *later* descendant, so
+    anything spawned before it escapes. The watchdog second: it depends on the group established
+    by the first to take the descendants with it.
+
+    `log_queue` is `T-038`'s worker→parent path. Records travel **unformatted**, so the parent's
+    handlers render them and a worker cannot emit an unredacted line even in principle. Optional
+    because a worker driven directly by a unit test has no parent to send them to.
+    """
+    process_tree.contain_this_process()
+    _exit_when_the_parent_does()
+    if log_queue is not None:
+        # Imported here rather than at module scope: `core.logging` is Qt-free and cheap, but
+        # this module is re-imported on every spawn and pays for everything at the top.
+        from tracks_and_trails.core.logging import worker_logging_handler
+
+        worker_logging_handler(log_queue)
 
 
 def spawn_session(
@@ -566,6 +610,7 @@ def spawn_session(
     cancel: CancelSignal | None = None,
     user_ytdlp_directory: Path | None = None,
     ffmpeg_override: Path | None = None,
+    log_queue: Any | None = None,
 ) -> None:
     """The `multiprocessing` entry point: run one session, then exit with its code.
 
@@ -576,8 +621,12 @@ def spawn_session(
     `SystemExit` rather than `return`: a `Process` target's return value is discarded, and the
     exit code is what `REQ-028` requires the parent to record for a session that produced no
     outcome.
+
+    **Containment comes first** (`T-019`): `contain_this_process()` has to run before yt-dlp can
+    spawn anything, because it works by making every *later* descendant a member of a set the
+    kernel tracks. It cannot retroactively adopt an `ffmpeg` that already exists.
     """
-    _exit_when_the_parent_does()
+    prepare_this_worker(log_queue)
     raise SystemExit(
         run_session(
             kind,

@@ -1,0 +1,381 @@
+"""`T-038`: redaction at the handler, proven through real handlers writing real files.
+
+Every assertion below reads what was **emitted**. A test that called `redact()` directly would
+prove the function works and say nothing about the property the task is actually about — that a
+call site cannot leak by forgetting to use it (`ai/TESTING.md` §13, `ARCHITECTURE.md` §8).
+"""
+
+from __future__ import annotations
+
+import logging
+import logging.handlers
+import multiprocessing as mp
+import subprocess
+import sys
+from collections.abc import Callable
+from pathlib import Path
+from typing import Any
+
+import pytest
+
+from tracks_and_trails.core import logging as app_logging
+from tracks_and_trails.core.models import DownloadRequest
+
+#: One recognisable string per leak shape. Each appears in exactly one test input, so a failure
+#: names which route let it out. Not credentials — invented markers, shaped like the real thing
+#: so the patterns under test see what they would see in the field.
+TOKEN = "sk-live-7c6c-must-not-appear"  # noqa: S105 - a marker, not a secret
+COOKIE_VALUE = "SID=7c6c-secret-session"
+
+
+@pytest.fixture(autouse=True)
+def a_clean_logging_tree() -> object:
+    """Logging is global state; leaving handlers behind breaks the next test, not this one."""
+    yield
+    app_logging.forget_the_secrets()
+    tree = logging.getLogger("tracksandtrails")
+    for handler in list(tree.handlers):
+        tree.removeHandler(handler)
+        handler.close()
+
+
+def emitted(tmp_path: Path, emit: Callable[[logging.Logger], None]) -> str:
+    """Run `emit` against a configured application log and return what reached the file."""
+    path = app_logging.configure_logging(directory=tmp_path, level=logging.DEBUG)
+    emit(logging.getLogger("tracksandtrails.test"))
+    for handler in logging.getLogger("tracksandtrails").handlers:
+        handler.flush()
+    return path.read_text(encoding="utf-8")
+
+
+# --- the four routes a message can take (T-038 acceptance criteria) ---------------------------
+
+
+def test_a_token_in_a_percent_style_argument_is_redacted(tmp_path: Path) -> None:
+    written = emitted(
+        tmp_path,
+        lambda log: log.info("probing %s", f"https://example.invalid/v?token={TOKEN}"),
+    )
+
+    assert TOKEN not in written, "a %-style argument was formatted after redaction, not before"
+    assert "https://example.invalid/v" in written, "the address itself must survive"
+
+
+def test_a_token_in_a_caller_formatted_string_is_redacted(tmp_path: Path) -> None:
+    """The commonest real call site, and the one a call-site helper would not cover."""
+    written = emitted(
+        tmp_path,
+        lambda log: log.info(f"probing https://example.invalid/v?token={TOKEN}"),
+    )
+
+    assert TOKEN not in written
+
+
+def test_a_token_in_an_extra_field_is_redacted(tmp_path: Path) -> None:
+    """`extra=` reaches the output only through a format string; when it does, it is redacted."""
+    handler = logging.handlers.MemoryHandler(10)
+    handler.setFormatter(app_logging.RedactingFormatter("%(message)s | %(url)s"))
+    record = logging.LogRecord(
+        name="tracksandtrails.test",
+        level=logging.INFO,
+        pathname=__file__,
+        lineno=1,
+        msg="probing",
+        args=(),
+        exc_info=None,
+    )
+    record.url = f"https://example.invalid/v?token={TOKEN}"
+
+    assert TOKEN not in handler.format(record)
+
+
+def test_a_url_inside_an_exception_traceback_is_redacted(tmp_path: Path) -> None:
+    """`exc_info` is rendered by the formatter, so it goes through the same one rewrite."""
+
+    def emit(log: logging.Logger) -> None:
+        try:
+            raise RuntimeError(f"refused https://example.invalid/v?token={TOKEN}")
+        except RuntimeError:
+            log.exception("the probe failed")
+
+    written = emitted(tmp_path, emit)
+
+    assert "the probe failed" in written
+    assert "RuntimeError" in written, "the traceback must still be there"
+    assert TOKEN not in written
+
+
+def test_a_careless_call_site_logging_a_whole_request_still_leaks_nothing(tmp_path: Path) -> None:
+    """The criterion that distinguishes handler-level redaction from the call-site kind.
+
+    Nobody writes `log.info("starting %s", redact(request))`. They write this, and the repr
+    carries the URL with whatever is in its query string.
+    """
+    request = DownloadRequest(
+        url=f"https://example.invalid/v?token={TOKEN}",
+        output_directory=str(tmp_path),
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+        proxy="http://proxy.invalid:8080",
+    )
+
+    written = emitted(tmp_path, lambda log: log.info("starting %s", request))
+
+    assert TOKEN not in written
+    assert "example.invalid" in written, "the log must still say what it was working on"
+
+
+# --- what redaction covers --------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        f"Cookie: {COOKIE_VALUE}",
+        f"set-cookie: {COOKIE_VALUE}; Path=/",
+        f"sending Cookie: {COOKIE_VALUE}",
+    ],
+)
+def test_cookie_material_never_reaches_the_file(tmp_path: Path, line: str) -> None:
+    written = emitted(tmp_path, lambda log: log.info(line))
+
+    assert COOKIE_VALUE not in written
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/home/someone/.config/cookies.txt",
+        r"C:\Users\Someone\cookies.sqlite",
+        "/tmp/yt-dlp-cookiefile-7c6c",  # noqa: S108 - a string under test, nothing is written
+    ],
+)
+def test_a_cookie_file_path_never_reaches_the_file(tmp_path: Path, path: str) -> None:
+    written = emitted(tmp_path, lambda log: log.info("loading cookies from %s", path))
+
+    assert path not in written
+    assert app_logging.REDACTED in written
+
+
+def test_url_userinfo_is_removed(tmp_path: Path) -> None:
+    """A proxy credential's shape, even though `DownloadRequest` cannot hold one (`T-014`)."""
+    written = emitted(tmp_path, lambda log: log.info("via http://user:hunter2@proxy.invalid:8080"))
+
+    assert "hunter2" not in written
+    assert "proxy.invalid:8080" in written
+
+
+def test_a_registered_literal_is_redacted_wherever_it_appears(tmp_path: Path) -> None:
+    """The bounded escape hatch: an exact value the application knows, not a pattern."""
+    app_logging.remember_a_secret(TOKEN)
+
+    written = emitted(tmp_path, lambda log: log.info("the value was %s, plainly", TOKEN))
+
+    assert TOKEN not in written
+
+
+def test_a_short_registered_value_is_ignored(tmp_path: Path) -> None:
+    """Over-redaction is a failure too: a two-character "secret" eats ordinary prose."""
+    app_logging.remember_a_secret("ok")
+
+    written = emitted(tmp_path, lambda log: log.info("the token was ok, and the download is ok"))
+
+    assert "the token was ok" in written
+
+
+def test_a_bare_name_equals_value_is_not_chased(tmp_path: Path) -> None:
+    """The limit of this design, asserted so nobody discovers it in a review instead.
+
+    `SID=abc` with no header around it is indistinguishable from `height=1080`, `format=best` or
+    any other ordinary diagnostic. A pattern wide enough to catch it redacts most of every log
+    line, and this project has four `T-018` rounds on record about where recognisers end.
+
+    It is also outside what `REQ-026` binds: cookie *contents* are never a supplied value here —
+    `DownloadRequest` carries a browser name, and yt-dlp reads the jar itself, so this
+    application never holds one. If that ever changes, the value is known at the moment it is
+    held, and `remember_a_secret()` redacts it exactly rather than by guessing.
+    """
+    written = emitted(tmp_path, lambda log: log.info("selected format=best height=1080"))
+
+    assert "format=best height=1080" in written, (
+        "ordinary key=value diagnostics must survive; redacting them would make the log useless"
+    )
+
+
+def test_an_output_path_is_left_alone(tmp_path: Path) -> None:
+    """`T014-R6`: scrubbing prose destroyed a user's output directory, which was Critical.
+
+    A log that cannot say where the file went has broken the one thing it is for.
+    """
+    destination = str(tmp_path / "Videos" / "A Clip.mp4")
+
+    written = emitted(tmp_path, lambda log: log.info("wrote %s", destination))
+
+    assert destination in written
+
+
+# --- where the files go, and who formats them -------------------------------------------------
+
+
+def test_every_handler_on_our_tree_redacts(tmp_path: Path) -> None:
+    """The property the whole design rests on, asserted rather than assumed.
+
+    A handler added without `RedactingFormatter` is a hole in exactly the guarantee
+    `ARCHITECTURE.md` §8 makes, and it would be invisible — the other handlers would keep
+    passing their own tests.
+    """
+    app_logging.configure_logging(directory=tmp_path, stream=sys.stderr)
+    handler = app_logging.open_job_log("job-1", directory=tmp_path)
+    tree = logging.getLogger("tracksandtrails")
+    tree.addHandler(handler)
+
+    assert tree.handlers, "the tree has no handlers, so this test proves nothing"
+    for installed in tree.handlers:
+        assert isinstance(installed.formatter, app_logging.RedactingFormatter), (
+            f"{installed!r} formats without redaction"
+        )
+
+
+def test_the_logs_live_under_platformdirs_and_not_beside_the_application() -> None:
+    """`NFR-004`. The repository must never be a log destination."""
+    application = app_logging.application_log_path()
+    job = app_logging.job_log_path("job-1")
+    repository = Path(__file__).resolve().parents[2]
+
+    assert not application.is_relative_to(repository), application
+    assert not job.is_relative_to(repository), job
+    assert job.parent.parent == application.parent, "a job log belongs beside the application log"
+    assert "tracksandtrails" in str(application).lower()
+
+
+def test_a_job_log_holds_that_job_and_is_redacted(tmp_path: Path) -> None:
+    handler = app_logging.open_job_log("job-1", directory=tmp_path)
+    log = logging.getLogger("tracksandtrails.job")
+    log.addHandler(handler)
+    log.setLevel(logging.INFO)
+    try:
+        log.info(f"probing https://example.invalid/v?token={TOKEN}")
+        handler.flush()
+    finally:
+        log.removeHandler(handler)
+        handler.close()
+
+    written = app_logging.job_log_path("job-1", tmp_path).read_text(encoding="utf-8")
+
+    assert "probing" in written
+    assert TOKEN not in written
+
+
+def test_a_generated_log_is_scanned_for_a_known_token(tmp_path: Path) -> None:
+    """The acceptance criterion in its own words: generate a log, then hunt the token in it.
+
+    Deliberately separate from the per-route tests. Those assert one shape each; this one takes
+    the file as a whole and looks for the value **in any form**, including the percent-encoded
+    and uppercased spellings a rewrite could produce.
+
+    The cookie value appears here behind its header, which is the shape it has in a real
+    diagnostic. A bare `NAME=value` with nothing around it is not redacted and deliberately is
+    not chased — see `test_a_bare_name_equals_value_is_not_chased`.
+    """
+
+    def emit(log: logging.Logger) -> None:
+        log.info("probe %s", f"https://example.invalid/v?auth={TOKEN}")
+        log.warning(f"retrying https://example.invalid/v?auth={TOKEN}#frag={TOKEN}")
+        log.error("cookie jar at /home/someone/cookies.txt sent Cookie: %s", COOKIE_VALUE)
+
+    written = emitted(tmp_path, emit)
+
+    for form in (TOKEN, TOKEN.upper(), TOKEN.replace("-", "%2D"), COOKIE_VALUE):
+        assert form not in written, f"{form!r} reached the log file"
+
+
+# --- the worker half --------------------------------------------------------------------------
+
+
+def test_a_worker_sends_records_to_the_parent_and_the_parent_redacts(tmp_path: Path) -> None:
+    """`T-038`: worker logs reach the parent's log, and are rendered by the parent's handlers.
+
+    Records travel unformatted, so redaction happens once, in the process that owns the file.
+    A worker cannot emit an unredacted line even in principle — it does not do the formatting.
+    """
+    queue: Any = mp.get_context("spawn").Queue()
+    app_logging.worker_logging_handler(queue)
+    logging.getLogger("tracksandtrails.worker").info(
+        "probing %s", f"https://example.invalid/v?token={TOKEN}"
+    )
+
+    record = queue.get(timeout=10)
+
+    path = app_logging.configure_logging(directory=tmp_path)
+    listener = logging.handlers.QueueListener(
+        mp.get_context("spawn").Queue(), *logging.getLogger("tracksandtrails").handlers
+    )
+    listener.handle(record)
+    for handler in logging.getLogger("tracksandtrails").handlers:
+        handler.flush()
+    written = path.read_text(encoding="utf-8")
+
+    assert "probing" in written, "the worker's line never reached the parent's log"
+    assert TOKEN not in written
+
+
+def test_worker_records_follow_the_handlers_the_application_has_now(tmp_path: Path) -> None:
+    """The listener resolves handlers per record, not once when it was built.
+
+    An ordering defect, found by the full suite and invisible to the test that owns this path:
+    the listener is created the first time a worker starts, and `configure_logging()` can run
+    after that. A listener holding the handler list from construction would then write every
+    worker line to handlers nobody reads — a log that fails silently, which is the worst kind.
+
+    Built directly rather than through `worker_log_queue()`, because that one is process-wide:
+    a test that stops and replaces it reaches into every other test in the run, which is how
+    this file first broke the integration suite.
+    """
+    import queue as queue_module
+
+    listener = app_logging._ToWhicheverHandlersWeHaveNow(queue_module.Queue())
+    path = app_logging.configure_logging(directory=tmp_path, level=logging.DEBUG)
+
+    listener.handle(
+        logging.LogRecord(
+            name="tracksandtrails.worker",
+            level=logging.WARNING,
+            pathname=__file__,
+            lineno=1,
+            msg="probing %s",
+            args=(f"https://example.invalid/v?token={TOKEN}",),
+            exc_info=None,
+        )
+    )
+    for handler in logging.getLogger("tracksandtrails").handlers:
+        handler.flush()
+    written = path.read_text(encoding="utf-8")
+
+    assert "probing" in written, (
+        "a worker record went to handlers captured before the log was configured, so it reached "
+        "nothing"
+    )
+    assert TOKEN not in written, "the parent rendered the record without redacting it"
+
+
+def test_the_logging_module_needs_no_qt() -> None:
+    """`ARCHITECTURE.md` §3: the worker installs logging, and the worker inherits no Qt.
+
+    Asserted in a fresh interpreter, because this one has already imported Qt for other tests
+    and `sys.modules` would show it whatever this module does.
+    """
+    probe = (
+        "import sys\n"
+        "import tracks_and_trails.core.logging\n"
+        "qt = [name for name in sys.modules if name.startswith('PySide6')]\n"
+        "print(qt)\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=Path(__file__).resolve().parents[2],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+
+    assert result.stdout.strip() == "[]", f"importing the logging module pulled in {result.stdout}"

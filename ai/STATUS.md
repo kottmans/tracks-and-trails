@@ -126,23 +126,25 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 `ARC-002`'s ordinary end-to-end path is proven: a spawned child imports yt-dlp, extracts and
 reports typed messages back (`T-012`); a job survives a restart and an unclean kill (`T-014`);
 and, in a test, a URL becomes a file on disk through `T-013`. T-013 is now approved, so that path
-is something to build on. Cancellation still does not reap descendants; see `T-019`. **No widget
-touches any of it yet**: composition is `T-036` and the first *user-visible* download is `T-037`.
+is something to build on, and cancellation now reaps the worker's descendants too (`T-019`).
+**No widget touches any of it yet**: composition is `T-036` and the first *user-visible* download
+is `T-037`.
 
-1. **`T-018` is the last open blocker in Phase 1.** The fourth correction is returned and awaits
-   re-review; under `AGENTS.md` §9 a Critical continues without the ordinary pass cap. Nothing
-   else in Phase 1 is waiting on a review verdict.
-2. **`T-038` — logging with handler-level redaction.** Ready, High priority, and now overdue
-   rather than early: `T-013` generates the diagnostics most likely to carry a tokenised URL or a
-   cookie path, and they are being produced today with no redacting handler under them.
-   Retrofitting redaction around live diagnostics is how `T-014` lost four review rounds.
-3. **`T-019` — rescoped 2026-07-27, and it now carries a live defect.** Cancelling reaps the
-   worker but not what the worker spawned: probed against a real spawned child with one
-   grandchild, the grandchild survived `Process.kill()` and was reparented to `init`. yt-dlp
-   spawns `ffmpeg` exactly that way, so a cancelled merge keeps writing. The task now owns the
-   production fix — POSIX process groups, a Windows Job object — plus the Windows runs Phase 1
-   cannot exit without.
-4. **`T-050`** — new, and **Phase 2**, not Phase 1: the `history` table is still empty, and
+1. **`T-018` is approved and closed** (2026-07-27, `T018-R1` and `T019-R1` both Resolved). The
+   fifth correction removed the schema fingerprint that could carry captured mapping keys;
+   `SEC-002` records the amendment and what it gives up.
+2. **`T-019`, `T-038` and `T-051` are implemented** on `phase1-orphans-logging-lifecycle` and
+   await review. `T-019` fixes the live defect — cancelling now reaps the worker's whole process
+   group, and the `process_tree` marker is gone with the reason for it. `T-038` puts redaction in
+   a formatter, so no call site can leak by forgetting. `T-051` is a decision, `ARC-004`.
+3. **Windows has runtime evidence for the first time.** CI run `30293051118` ran the process-tree
+   suite on both platforms — 43 passed on Windows, 43 passed and 2 skipped on Linux. Phase 1's
+   "verified on Linux *and* Windows" exit criterion has moved for the first time since it was
+   written.
+4. **`T-016` and `T-017` are the next widgets**, and both are now unblocked: `T-018` is closed,
+   `T-051` answered the lifecycle question, and `T-013` is approved. They are the first code that
+   makes any of the engine visible to a person.
+5. **`T-050`** — new, and **Phase 2**, not Phase 1: the `history` table is still empty, and
    `IMPLEMENTATION_PLAN.md` puts `REQ-020`'s history persistence in Phase 2. This file's claim
    that `T-013` owned it was `STATUS.md` running ahead of both the plan and `T-013`'s own scope;
    the task entry records the two things still missing before it can be written honestly.

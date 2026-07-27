@@ -119,27 +119,11 @@ jobs:
 
       - name: Tests
         # Network tests stay excluded by the addopts in pyproject.toml (ai/TESTING.md §10).
-        # `process_tree` is excluded here too, and opted back in by the next step.
+        #
+        # The `process_tree` tests are back in this run as of `T-019`. They had their own step
+        # for one day, because `T019-R1` found the marker excluding them from CI as well as
+        # locally; the marker is gone now, so a separate step would run them twice.
         run: pytest -v --junitxml="reports/pytest.xml" 2>&1 | tee "reports/pytest.txt"
-
-      - name: Process-tree suite
-        # `T019-R1`: the marker added in 9010794 kept these out of the *local* default run,
-        # because T-019's live defect leaves descendants that wedge later runs on a developer's
-        # machine. It silently kept them out of CI too — `addopts` is global, this job ran bare
-        # `pytest`, and no step opted back in. Mandatory Cancellation and Worker-crash coverage
-        # was therefore running nowhere, while three records claimed CI still ran it.
-        #
-        # A fresh runner is exactly where these belong: it is discarded after the job, so an
-        # orphan cannot wedge anything, and `T-019`'s fix has to be provable on both platforms.
-        #
-        # `-m process_tree` is load-bearing for the same reason it is in the desktop job: pytest
-        # exits 5 on an empty collection, so a marker typo fails the job rather than passing it
-        # vacuously (`T031-R2`). The timeout is here because the defect under test is precisely
-        # one that can hang — a wedged job should fail in ten minutes, not sit for six hours.
-        timeout-minutes: 10
-        run: |
-          pytest -v -m process_tree \
-            --junitxml="reports/pytest-process-tree.xml" 2>&1 | tee "reports/pytest-process-tree.txt"
 
       - name: Upload evidence
         if: always()
