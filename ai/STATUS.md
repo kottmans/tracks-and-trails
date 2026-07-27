@@ -87,43 +87,33 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-014` — four review rounds; final correction is documentation only, awaiting re-review.** Persistence
-  is real: SQLite in WAL mode under `platformdirs`, a forward-only migration runner that
-  discovers migrations by globbing the directory, and `JobRepository` with durable queue order
-  and startup recovery. Suite 830 → 879.
-- **The Critical took two attempts and the first correction was itself Critical.** Scrubbing every
-  stored string with a secret-recogniser both missed forms (single-label and Unicode hosts,
-  username-only userinfo, IPv6 zone IDs) and *corrupted legitimate values* — an output directory
-  named `cookie-videos` became `[redacted]`, a relative path that would have written outside the
-  directory the user chose. **A heuristic over arbitrary text cannot do this job**, which is the
-  same lesson `T-044` and `T-045` each taught. Replaced by treating fields by what they are:
-  functional values stored verbatim, `proxy` parsed structurally, and `error_message` never
-  carrying an external string at all — the extractor's words belong in the per-job log
-  (`REQ-019`), which is where `NFR-006` is actually satisfied. `core/redaction.py` was deleted
-  rather than handed to `T-038`.
-- Also corrected: migration DDL and its version bump now commit atomically (`T014-R2`); the
-  frozen artifact collects and exercises its migration SQL (`T014-R3`); the migration test
-  migrates genuinely historical bytes rather than rows the current serializer produced
-  (`T014-R4`).
-- **This closes three more of `ai/TESTING.md` §7's ten mandatory areas** — crash recovery,
-  migrations, and the settings freeze — taking §7 from three of ten to six. The crash test kills
-  a real process with `SIGKILL` mid-write, because the cooperative paths prove nothing about the
-  guarantee `DAT-001` chose SQLite for.
-- **`ARCHITECTURE.md` §7 gained `ErrorKind.INTERRUPTED`** on maintainer approval. §5 had required
-  it since the document was written and §7's taxonomy never listed it; `T-010`'s gate refused the
-  enum member until the architecture agreed, which is what surfaced the contradiction.
+- **No implementation task is active.** `T-014` completed 2026-07-26 at `db14cc2` — approved with
+  follow-ups after four review rounds. **`T-013` is unblocked** and is the critical path.
+- **`ai/TESTING.md` §7 stands at six of ten mandatory areas**, up from three. `T-019` would add
+  Cancellation and Worker crash, `T-038` Log redaction. **DRM has no Phase 1 owner** — worth
+  settling deliberately rather than discovering it at the exit review.
+- **The lesson from `T-044`, `T-045` and `T-014`, now three for three:** each blocking finding
+  came from filtering unbounded input instead of constraining what the input could be. `T-044`
+  stopped parsing for exports and read the interpreter's namespace; `T-045` dropped a completeness
+  claim it could not keep; `T-014` made a proxy credential *unrepresentable* in the model rather
+  than strippable in persistence. **`T-038` is this problem again** and should start from that,
+  not from a recogniser.
 
 ## Next
 
-**`T-012` is complete** (approved with follow-ups, 2026-07-26) — `ARC-002` is no longer a
-design. A spawned child imports yt-dlp, extracts, classifies failures against the real
-taxonomy, writes inside a validated path, and reports typed messages back.
+`ARC-002` is proven and the queue is durable. A spawned child imports yt-dlp, extracts,
+classifies failures against the real taxonomy and reports typed messages back (`T-012`); a job
+survives a restart and an unclean kill (`T-014`). **Nothing connects them yet.**
 
-1. **`T-013` — download manager and result pump.** Ready once `T-014` merges. The largest
-   remaining item between here and a URL that actually downloads, and it also owns writing the
-   `history` table `T-014` created but deliberately left empty.
-2. **`T-015`, `T-018`, `T-038`** — Ready and independent of the critical path, so any of them
-   can be done in parallel or while `T-014` is in review.
+1. **`T-013` — download manager and result pump.** **Ready now.** The largest remaining item
+   between here and a URL that actually downloads, and it unblocks `T-036`, `T-017`, `T-019` and
+   `T-016` at once. It also owns writing the `history` table `T-014` created but left empty.
+2. **`T-038` — logging with handler-level redaction.** Ready, High priority, and worth doing
+   *before* `T-013` rather than beside it: `T-013` generates the diagnostics most likely to carry
+   a tokenised URL or a cookie path, and retrofitting redaction around live diagnostics is how
+   `T-014` lost four review rounds.
+3. **`T-015`, `T-018`** — Ready and independent, so either can run in parallel with the above.
+   `T-018` blocks `T-016`.
 
 **What two review rounds cost, and what they bought.** Eight blocking findings across two
 passes, every one real. The pattern worth remembering: **five of them were things that

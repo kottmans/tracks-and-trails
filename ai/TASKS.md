@@ -32,6 +32,103 @@ first focusable widgets.
 
 ## Ready
 
+### T-013 — Download manager and result pump
+
+**Status:** **Ready** — both prerequisites met. `T-012` completed 2026-07-26; `T-014` completed
+and approved 2026-07-26 at `db14cc2`, which was the blocking one (the manager persists job state,
+so it needs the repository).
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 1
+**Depends on:** `T-012`, `T-014`
+**Relevant context:** `ARCHITECTURE.md` §3, §8 (threading); `ARC-002`, `REQ-014`, `REQ-015`,
+`REQ-018`, `REQ-028`, `NFR-001`, `NFR-003`; `ai/TESTING.md` §7 (Cancellation, Worker crash)
+**Affected surfaces:** `downloader/manager.py`, `downloader/result_pump.py`,
+`tests/integration/`
+**Risk:** **High** — owns process lifetime and the only thread in the application. Both of its
+failure modes are silent: an orphaned worker, and a Qt object touched off the GUI thread.
+**Review base:** the `T-012` merge commit
+
+#### Scope
+
+The GUI-process half of `ARC-002`. A pool of exactly one for Phase 1 — concurrency is Phase 2,
+and building the pool for N now would mean designing scheduling policy with no queue to test
+it against.
+
+- **`manager.py`** — starts a worker per job, tracks its lifetime, cancels it, reaps it, and
+  turns a worker that died without a terminal message into `WORKER_CRASH` with its exit code
+  (`REQ-028`).
+- **`result_pump.py`** — a `QThread` doing a blocking read on the result queue and re-emitting
+  each `T-011` message as a Qt signal. It is the **only** bridge from worker to GUI, and it
+  communicates *only* by signal emission (`ARCHITECTURE.md` §8).
+
+`manager.py` is the one `downloader/` module allowed to import Qt, because it emits signals.
+`worker.py` still may not.
+
+**Persistence is injected, not imported.** `ARCHITECTURE.md` §3 shows `DownloadManager` owning
+a repository, and Phase 1 promises durable transitions — so the dependency on `T-014` stays.
+But the manager must not know SQLite exists: it takes a **repository protocol**, is unit-tested
+against a fake implementation, and receives the concrete `JobRepository` from `app.py` at
+composition time (`T-036`). One integration test exercises the real repository. A widget is the
+wrong place to create this boundary; `T-017` consumes durable state, it does not construct the
+persistence seam.
+
+Cancellation is the sharp end (`REQ-015`): try the cooperative path first — `DownloadCancelled`
+raised from a progress hook, so partial files are left in a known state — then `terminate()`,
+then `kill()` on a timeout. The 2-second budget is measured against a **real in-flight
+download**, not a sleeping worker; `T-002`'s probe only ever proved the sleeping case and said
+so.
+
+#### Acceptance criteria
+
+- Cancel terminates a **real in-flight download** within 2 seconds and leaves no orphan
+  process, asserted programmatically rather than by watching a process list
+  (`REQ-015`, `ai/TESTING.md` §7)
+- `SIGKILL`/`TerminateProcess` of a worker yields `WORKER_CRASH` with the exit code recorded,
+  and the application stays responsive (`REQ-028`)
+- A worker that exits 0 without sending an **outcome** is also `WORKER_CRASH`, not a silent
+  success — the case that looks like nothing went wrong. "Outcome" is `protocol.is_outcome()`,
+  which covers `Probed` as well as `Succeeded`/`Failed` (`T011-R1`): a successful probe is a
+  complete session, and treating it as outcome-less would fail every probe the application ever
+  makes
+- **Terminal-once is enforced, not merely assumed** (`T011-R4`). After one outcome for a job id,
+  a second `Succeeded`/`Failed`/`Probed` for that id is a protocol violation: it is reported and
+  **must not** produce a second state transition or a second signal. Asserted by a test that
+  sends two outcomes and observes exactly one transition. `T-011` specifies this rule and
+  `protocol.validate_sequence()` expresses it; without this criterion the rule had no owner that
+  any test would check
+- `protocol.validate_sequence()` is applied to each completed session, and a violation is
+  surfaced rather than swallowed — an undeclared object, a missing sentinel, or messages after
+  the outcome each fail the job loudly instead of hanging the pump
+- No orphan survives application exit, including a job cancelled during shutdown
+- The GUI thread is never blocked: an assertion that no manager or pump call performs a
+  blocking wait on the GUI thread (`NFR-001`)
+- **No Qt object is touched off the GUI thread.** The pump's only interaction with the GUI is
+  signal emission; a test asserts messages arrive on the GUI thread, since this is the
+  standing risk `ai/REVIEWS.md` names and it produces intermittent failures rather than
+  errors
+- Every `T-011` message type is routed to a signal; an unhandled type raises rather than being
+  dropped
+- The manager is constructed with a fake repository in unit tests and never imports
+  `persistence` directly — asserted, so the injected boundary cannot quietly collapse
+- Every state transition the manager performs is persisted before the corresponding signal is
+  emitted, so a crash between the two cannot leave the UI ahead of the database
+- **Shutdown is deterministic:** the pump exits on a protocol sentinel rather than on a
+  timeout, and a test asserts no thread is left blocked in `Queue.get()` after shutdown
+- **The terminal-message/exit race is handled:** a worker that sends a terminal message and
+  then exits non-zero is reported by its message, not as `WORKER_CRASH`. A test forces that
+  ordering, because the naive implementation checks the exit code first and manufactures a
+  crash from a successful download
+- Killing the parent does not leave the child running
+
+#### Out of scope
+
+- More than one concurrent job, scheduling, priority, pause/resume — Phase 2
+- Retry policy and backoff — Phase 2; this task reports failures, it does not re-run them
+- Any widget — `T-016`, `T-017`
+
+---
+
 ### T-038 — Logging with handler-level redaction
 
 **Status:** **Ready** — `T-011` complete, 2026-07-26
@@ -80,111 +177,62 @@ the thing this task exists to avoid.
 
 ---
 
-### T-014 — Persistence: schema, migrations, and the job repository
+### T-018 — Recorded `info_dict` fixtures and projection tests
 
-**Status:** **Changes requested** (fourth round) 2026-07-26 — documentation only.
-`T014-R4` and `T014-R7` resolved; `R6` retracted. `T014-R1`'s remaining half was that the
-maintainer's accepted trade-off had never been written down. Recorded as `DAT-003`; `REQ-026`
-and the criterion above now say what the code does. **No code changed.** Awaiting re-review.
-
-**`T014-R1` — the boundary is right; the paperwork was not.** Proxy credentials are
-unrepresentable (`DownloadRequest` rejects userinfo), which the reviewer confirmed with no
-bypass found. What remained: `T-014`'s criterion and `REQ-026` still promised that cookie paths
-never reach the database, while the restored verbatim diagnostic can carry one yt-dlp itself
-names — a browser profile it could not read, say.
-
-Under `AGENTS.md` §9 a Critical may **not** be closed as accepted risk by an agent; only the
-maintainer can choose to ship known harm, and it belongs in `ai/DECISIONS.md` with its
-reasoning. That choice was made when the diagnostic was restored and simply never recorded,
-which is exactly what the finding reported.
-
-`DAT-003` now records it and scopes the exclusion to values **this application supplies** —
-credentials (structurally impossible), cookie contents (never read into a job), and cookie paths
-this app holds (none exist; `cookies_from_browser` is a browser *name*). The residue is a path
-yt-dlp echoes inside a message `NFR-006` requires be kept intact. `REQ-026` carries a matching
-note rather than being weakened silently, and the entry names the condition that reopens it: the
-calculus depends on the database being local and user-owned, so sync, export or attaching it to
-a bug report all revisit it.
-
-**`T-038`'s scope is unchanged** — logs are written by this application, so the supplied-value
-rule binds there in full.
-
-**The full arc of `T014-R1`, because it is the most expensive finding this project has had:**
-four rounds, three credential escapes, one Critical regression of my own making, and a
-documentation gap at the end. Every one of my three code fixes was in the wrong layer — a filter
-over unbounded input where the answer was to constrain what the input could be. The correction
-that worked changed `core/models.py`, not `persistence/`.
-
+**Status:** **Ready** — `T-012` completed 2026-07-26. Also owns the `T012-R6` playlist
+projection, and therefore **blocks `T-016`**.
 **Owner:** Implementer
-**Priority:** High
+**Priority:** Medium
 **Phase:** Phase 1
-**Depends on:** `T-010`
-**Relevant context:** `ARCHITECTURE.md` §5 (core entities); `DAT-001`, `REQ-012`, `REQ-018`,
-`NFR-003`, `NFR-004`; `ai/TESTING.md` §7 (Crash recovery, Migrations)
-**Affected surfaces:** `persistence/schema.sql`, `persistence/migrations/`,
-`persistence/db.py`, `persistence/repositories.py`, `tests/unit/`, `tests/integration/`
-**Risk:** **High** — the one component whose failure mode is *lost user data*, and the only
-one where a bug can persist across restarts
-**Review base:** the `T-010` merge commit
+**Depends on:** `T-012`
+**Relevant context:** `ai/TESTING.md` §5 (fixtures), `NFR-008`, `C-002`, `REQ-026`, `NFR-007`
+**Affected surfaces:** `tests/fixtures/infodicts/`, `tests/unit/`, `core/models.py`,
+`downloader/ytdlp_adapter.py`
+**Risk:** Medium — a carelessly refreshed fixture hides the upstream breakage the fixture
+exists to catch
+**Review base:** the `T-012` merge commit
+**Blocks:** `T-016` — see the playlist scope below
 
 #### Scope
 
-SQLite in WAL mode at `user_data_dir/tracksandtrails/library.sqlite3` (`DAT-001`,
-`ARCHITECTURE.md` §5). The schema for `Job` and `HistoryEntry` as §5 defines them, a forward-only
-migration runner, and `JobRepository`.
+Broaden the fixture set `T-012` bootstrapped: several sites, a playlist, an audio-only case,
+a DRM-protected case, an unsupported URL, and an extractor error. Each records the yt-dlp
+version and capture date (`ai/TESTING.md` §5).
 
-Two properties are the entire point:
+**Also owns the playlist/single-item projection** (`T012-R6`, carried from the `T-012` review).
+`REQ-002` requires a probe to say whether the input is a single item or a playlist, and today
+no typed value can express it: `MediaInfo` has no such field, `project_media()` cannot preserve
+one, and `build_options` sets `noplaylist=True`. `T-016` promises to *display* the distinction,
+so it cannot be built until something can carry it.
 
-- **The queue survives an unclean kill** (`REQ-012`, `NFR-003`). WAL is chosen for exactly
-  this; the test must actually kill the process, not close the connection politely.
-- **Startup recovers jobs stranded in `RUNNING`.** A job cannot be running if the application
-  just started, so it is recovered to a retryable state rather than left lying about its own
-  status (`ai/TESTING.md` §7).
+Assigned here rather than to the `T-012` correction batch because it needs a recorded playlist
+fixture to be tested against at all, and this task is where that fixture is captured. **`T-016`
+therefore depends on this task**, not merely on `T-012`.
 
-`DownloadRequest` is persisted *with* the job, so a retry after a settings change reproduces
-the original request rather than current defaults (`ARCHITECTURE.md` §5, §8).
+Fixtures are **sanitized**: no cookies, tokens, session or auth query parameters, and no
+personal paths (`REQ-026`, `NFR-007`). They are committed, so a leak here is permanent.
 
 #### Acceptance criteria
 
-- A hard kill (`SIGKILL`) mid-write leaves the database readable with no partial row, verified
-  by killing a real process rather than simulating it
-- Jobs found **in flight** at startup are recovered to a retryable state, and the recovery is
-  recorded so it is visible rather than silent.
-
-  **Widened 2026-07-26 to match the architecture.** This said `RUNNING` alone, as does
-  `ai/TESTING.md` §7, while `ARCHITECTURE.md` §5 names `PROBING`, `RUNNING` *and*
-  `POST_PROCESSING`. The architecture outranks both (`AGENTS.md` §5), and recovering only
-  `RUNNING` would strand a job in `PROBING` with no path out. The three statuses are transcribed
-  into a test, so narrowing the set fails rather than passing
-- **Every migration runs forward from every prior schema version with data intact**, asserted
-  by building a database at each historical version and migrating it — not just from the
-  latest (`ai/TESTING.md` §7). With one version today, the harness must still exist, because
-  it is unwritable later once several versions exist
-- A schema change without a migration fails the suite
-- A persisted `DownloadRequest` round-trips exactly; a retry uses the stored request, proven
-  by changing the defaults between store and retry (`ARCHITECTURE.md` §8)
-- Queue order survives a restart (`REQ-012`)
-- No **application-supplied** cookie path, cookie content, or proxy credential is ever written to the database (`DAT-003`)
-  (`REQ-026`, `NFR-007`) — asserted by scanning the stored row, not the model, since a
-  redaction applied in the model but not on the way to disk would pass an object comparison and
-  still leave the secret on disk.
-
-  **Narrowed 2026-07-26 by maintainer decision.** This criterion originally also forbade a
-  "token-like query parameter", which cannot hold alongside the round-trip criterion above: the
-  job URL *is* the request, `REQ-012`'s queue and `REQ-020`'s history are unusable without it,
-  and a retry cannot reconstruct it. Stripping token-like parameters would also need a
-  heuristic for "token-like" — an enumerate-and-claim-complete gate of exactly the kind that
-  cost `T-044` six review rounds. The URL is stored verbatim; what is excluded is everything the
-  user did not type into it. `cookies_from_browser` carries a browser name such as `"firefox"`,
-  not a cookie, and is kept because dropping it would silently stop using cookies the user asked
-  for. Log redaction is a different sink and remains `T-038`'s
-- The database lives under `platformdirs`, never beside the installed application (`NFR-004`)
+- Each fixture records the yt-dlp version and capture date alongside it
+- A fixture containing a cookie, token, auth query parameter, or a path under `/home` or
+  `C:\Users` fails a sanitization check — asserted by a test that scans the fixture directory,
+  not by review discipline
+- The projection test fails when a projected key changes shape, which is the whole purpose
+- When a fixture changes shape the test **names the field that moved**, rather than reporting
+  a generic mismatch, so the diff is diagnosable
+- Fixture provenance is machine-checked: every fixture has a recorded yt-dlp version and
+  capture date, and one lacking either fails. *(Requiring a human to explain why a fixture
+  changed is a review convention from `ai/TESTING.md` §5, not an executable criterion — it is
+  stated there and deliberately not restated here as if a test enforced it.)
+- Fixtures cover at minimum: a normal video, an audio-only case, a playlist, `DRM_PROTECTED`,
+  `UNSUPPORTED_URL`, and `EXTRACTOR_ERROR`
+- No test in this task touches the network
 
 #### Out of scope
 
-- History pruning, search, and export — Phase 3
-- Concurrency beyond a single writer — Phase 2 brings the second
-- Settings storage, which is TOML and not this store (`DAT-001`)
+- The `-m network` suite that hits real sites — it exists and stays opt-in
+- Automatic fixture refresh; refreshing is deliberately manual
 
 ---
 
@@ -279,102 +327,6 @@ agreement on the reduced form before implementation.
 ---
 
 ## Proposed — Phase 1
-
-### T-013 — Download manager and result pump
-
-**Status:** Proposed — **Ready once `T-014` merges**. `T-012` completed 2026-07-26; `T-014` is
-the remaining prerequisite (the manager persists job state, so it needs the repository).
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 1
-**Depends on:** `T-012`, `T-014`
-**Relevant context:** `ARCHITECTURE.md` §3, §8 (threading); `ARC-002`, `REQ-014`, `REQ-015`,
-`REQ-018`, `REQ-028`, `NFR-001`, `NFR-003`; `ai/TESTING.md` §7 (Cancellation, Worker crash)
-**Affected surfaces:** `downloader/manager.py`, `downloader/result_pump.py`,
-`tests/integration/`
-**Risk:** **High** — owns process lifetime and the only thread in the application. Both of its
-failure modes are silent: an orphaned worker, and a Qt object touched off the GUI thread.
-**Review base:** the `T-012` merge commit
-
-#### Scope
-
-The GUI-process half of `ARC-002`. A pool of exactly one for Phase 1 — concurrency is Phase 2,
-and building the pool for N now would mean designing scheduling policy with no queue to test
-it against.
-
-- **`manager.py`** — starts a worker per job, tracks its lifetime, cancels it, reaps it, and
-  turns a worker that died without a terminal message into `WORKER_CRASH` with its exit code
-  (`REQ-028`).
-- **`result_pump.py`** — a `QThread` doing a blocking read on the result queue and re-emitting
-  each `T-011` message as a Qt signal. It is the **only** bridge from worker to GUI, and it
-  communicates *only* by signal emission (`ARCHITECTURE.md` §8).
-
-`manager.py` is the one `downloader/` module allowed to import Qt, because it emits signals.
-`worker.py` still may not.
-
-**Persistence is injected, not imported.** `ARCHITECTURE.md` §3 shows `DownloadManager` owning
-a repository, and Phase 1 promises durable transitions — so the dependency on `T-014` stays.
-But the manager must not know SQLite exists: it takes a **repository protocol**, is unit-tested
-against a fake implementation, and receives the concrete `JobRepository` from `app.py` at
-composition time (`T-036`). One integration test exercises the real repository. A widget is the
-wrong place to create this boundary; `T-017` consumes durable state, it does not construct the
-persistence seam.
-
-Cancellation is the sharp end (`REQ-015`): try the cooperative path first — `DownloadCancelled`
-raised from a progress hook, so partial files are left in a known state — then `terminate()`,
-then `kill()` on a timeout. The 2-second budget is measured against a **real in-flight
-download**, not a sleeping worker; `T-002`'s probe only ever proved the sleeping case and said
-so.
-
-#### Acceptance criteria
-
-- Cancel terminates a **real in-flight download** within 2 seconds and leaves no orphan
-  process, asserted programmatically rather than by watching a process list
-  (`REQ-015`, `ai/TESTING.md` §7)
-- `SIGKILL`/`TerminateProcess` of a worker yields `WORKER_CRASH` with the exit code recorded,
-  and the application stays responsive (`REQ-028`)
-- A worker that exits 0 without sending an **outcome** is also `WORKER_CRASH`, not a silent
-  success — the case that looks like nothing went wrong. "Outcome" is `protocol.is_outcome()`,
-  which covers `Probed` as well as `Succeeded`/`Failed` (`T011-R1`): a successful probe is a
-  complete session, and treating it as outcome-less would fail every probe the application ever
-  makes
-- **Terminal-once is enforced, not merely assumed** (`T011-R4`). After one outcome for a job id,
-  a second `Succeeded`/`Failed`/`Probed` for that id is a protocol violation: it is reported and
-  **must not** produce a second state transition or a second signal. Asserted by a test that
-  sends two outcomes and observes exactly one transition. `T-011` specifies this rule and
-  `protocol.validate_sequence()` expresses it; without this criterion the rule had no owner that
-  any test would check
-- `protocol.validate_sequence()` is applied to each completed session, and a violation is
-  surfaced rather than swallowed — an undeclared object, a missing sentinel, or messages after
-  the outcome each fail the job loudly instead of hanging the pump
-- No orphan survives application exit, including a job cancelled during shutdown
-- The GUI thread is never blocked: an assertion that no manager or pump call performs a
-  blocking wait on the GUI thread (`NFR-001`)
-- **No Qt object is touched off the GUI thread.** The pump's only interaction with the GUI is
-  signal emission; a test asserts messages arrive on the GUI thread, since this is the
-  standing risk `ai/REVIEWS.md` names and it produces intermittent failures rather than
-  errors
-- Every `T-011` message type is routed to a signal; an unhandled type raises rather than being
-  dropped
-- The manager is constructed with a fake repository in unit tests and never imports
-  `persistence` directly — asserted, so the injected boundary cannot quietly collapse
-- Every state transition the manager performs is persisted before the corresponding signal is
-  emitted, so a crash between the two cannot leave the UI ahead of the database
-- **Shutdown is deterministic:** the pump exits on a protocol sentinel rather than on a
-  timeout, and a test asserts no thread is left blocked in `Queue.get()` after shutdown
-- **The terminal-message/exit race is handled:** a worker that sends a terminal message and
-  then exits non-zero is reported by its message, not as `WORKER_CRASH`. A test forces that
-  ordering, because the naive implementation checks the exit code first and manufactures a
-  crash from a successful download
-- Killing the parent does not leave the child running
-
-#### Out of scope
-
-- More than one concurrent job, scheduling, priority, pause/resume — Phase 2
-- Retry policy and backoff — Phase 2; this task reports failures, it does not re-run them
-- Any widget — `T-016`, `T-017`
-
----
 
 ### T-016 — Add-URL dialog with probe results
 
@@ -568,65 +520,6 @@ is checked against reality at least once. It stays excluded by default (`ai/TEST
 
 - Multiple concurrent jobs — Phase 2
 - Resume of a partial download — Phase 2
-
----
-
-### T-018 — Recorded `info_dict` fixtures and projection tests
-
-**Status:** **Ready** — `T-012` completed 2026-07-26. Also owns the `T012-R6` playlist
-projection, and therefore **blocks `T-016`**.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 1
-**Depends on:** `T-012`
-**Relevant context:** `ai/TESTING.md` §5 (fixtures), `NFR-008`, `C-002`, `REQ-026`, `NFR-007`
-**Affected surfaces:** `tests/fixtures/infodicts/`, `tests/unit/`, `core/models.py`,
-`downloader/ytdlp_adapter.py`
-**Risk:** Medium — a carelessly refreshed fixture hides the upstream breakage the fixture
-exists to catch
-**Review base:** the `T-012` merge commit
-**Blocks:** `T-016` — see the playlist scope below
-
-#### Scope
-
-Broaden the fixture set `T-012` bootstrapped: several sites, a playlist, an audio-only case,
-a DRM-protected case, an unsupported URL, and an extractor error. Each records the yt-dlp
-version and capture date (`ai/TESTING.md` §5).
-
-**Also owns the playlist/single-item projection** (`T012-R6`, carried from the `T-012` review).
-`REQ-002` requires a probe to say whether the input is a single item or a playlist, and today
-no typed value can express it: `MediaInfo` has no such field, `project_media()` cannot preserve
-one, and `build_options` sets `noplaylist=True`. `T-016` promises to *display* the distinction,
-so it cannot be built until something can carry it.
-
-Assigned here rather than to the `T-012` correction batch because it needs a recorded playlist
-fixture to be tested against at all, and this task is where that fixture is captured. **`T-016`
-therefore depends on this task**, not merely on `T-012`.
-
-Fixtures are **sanitized**: no cookies, tokens, session or auth query parameters, and no
-personal paths (`REQ-026`, `NFR-007`). They are committed, so a leak here is permanent.
-
-#### Acceptance criteria
-
-- Each fixture records the yt-dlp version and capture date alongside it
-- A fixture containing a cookie, token, auth query parameter, or a path under `/home` or
-  `C:\Users` fails a sanitization check — asserted by a test that scans the fixture directory,
-  not by review discipline
-- The projection test fails when a projected key changes shape, which is the whole purpose
-- When a fixture changes shape the test **names the field that moved**, rather than reporting
-  a generic mismatch, so the diff is diagnosable
-- Fixture provenance is machine-checked: every fixture has a recorded yt-dlp version and
-  capture date, and one lacking either fails. *(Requiring a human to explain why a fixture
-  changed is a review convention from `ai/TESTING.md` §5, not an executable criterion — it is
-  stated there and deliberately not restated here as if a test enforced it.)
-- Fixtures cover at minimum: a normal video, an audio-only case, a playlist, `DRM_PROTECTED`,
-  `UNSUPPORTED_URL`, and `EXTRACTOR_ERROR`
-- No test in this task touches the network
-
-#### Out of scope
-
-- The `-m network` suite that hits real sites — it exists and stays opt-in
-- Automatic fixture refresh; refreshing is deliberately manual
 
 ---
 
@@ -835,6 +728,53 @@ beats designing it against an imagined one.
 
 ---
 
+### T-049 — Tighten DAT-003 before cookie-file support
+
+**Status:** Proposed
+**Owner:** Planner
+**Priority:** Medium before cookie-file support or first release
+**Phase:** Phase 4
+**Depends on:** none
+**Relevant context:** `DAT-003`, `REQ-026`, `T014-R1`, `T-038`
+**Affected surfaces:** `ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, `ai/TASKS.md`
+
+#### Scope
+
+The maintainer accepted DAT-003's controlling trade-off: third-party diagnostic prose is stored
+verbatim in the local, user-owned database, even when it names a cookie path. That closes
+T014-R1. Its explanatory table is narrower than the decision it records, however:
+
+- a user-supplied source URL may itself contain userinfo and is stored verbatim under the earlier
+  URL decision;
+- `cookies_from_browser` is passed to yt-dlp as a browser name, but the model currently accepts
+  any non-empty string, including a path-shaped one; and
+- arbitrary third-party prose cannot support an exhaustive claim that a cookie path is the
+  "only residue." The accepted boundary is provenance, not enumeration of what yt-dlp may say.
+
+Rewrite DAT-003's table and linked notes around that actual boundary. Add the missing reopening
+condition: REQ-026 already promises cookie-file support, so the decision must be revisited before
+the application adds a cookie-file path or any other secret-bearing field to a persisted job.
+Keep T-038 origin-agnostic: every emitted log is redacted regardless of whether its text began in
+this application or yt-dlp.
+
+#### Acceptance criteria
+
+- DAT-003 makes no exhaustive claim about the contents of arbitrary third-party diagnostics
+- User-entered source URLs, model fields supplied by the application, and yt-dlp-emitted prose
+  are distinguished explicitly
+- Adding cookie-file support or another secret-bearing persisted field is a named reopening
+  condition alongside sync, export, cloud backup, and database attachment
+- T-038 still requires redaction of the final emitted log regardless of message provenance
+- `REQ-026` and T-014's historical criterion link to the same scoped decision without acquiring
+  a second competing definition
+
+#### Out of scope
+
+- Reopening T-014 or changing its approved persistence code
+- Implementing cookie-file settings or log redaction
+
+---
+
 ## Blocked
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -1026,6 +966,101 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-014 — Persistence: schema, migrations, and the job repository
+
+**Status:** **Complete — approved with follow-ups**, 2026-07-26 at `db14cc2`. Four review
+rounds; `T014-R1` (Critical), `R2`, `R3`, `R4`, `R5` and `R7` all resolved, `R6` retracted by the
+reviewer. Follow-ups: `T-048` (verify the first real data migration) and `T-049` (tighten
+`DAT-003`'s explanatory guarantees before cookie-file support).
+
+Closes three of `ai/TESTING.md` §7's ten mandatory areas — crash recovery, migrations, and the
+settings freeze — taking §7 from three to six. **Unblocks `T-013`**, and with it the rest of the
+Phase 1 chain.
+
+**`T014-R1` was the most expensive finding this project has had**, and the lesson is worth more
+than the code. Four rounds, three credential escapes, one Critical regression I introduced while
+fixing it, and a missing decision record at the end. **All three of my code fixes were in the
+wrong layer** — a filter over unbounded input, where the answer was to constrain what the input
+could be. The correction that worked changed `core/models.py`, not `persistence/`, and made a
+proxy credential *unrepresentable* rather than removable.
+
+The same shape defeated `T-044` (six rounds) and `T-045`. Whoever takes `T-038` should read this
+first: log redaction is this problem again, and the instinct to write a recogniser will be wrong
+there too.
+
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 1
+**Depends on:** `T-010`
+**Relevant context:** `ARCHITECTURE.md` §5 (core entities); `DAT-001`, `REQ-012`, `REQ-018`,
+`NFR-003`, `NFR-004`; `ai/TESTING.md` §7 (Crash recovery, Migrations)
+**Affected surfaces:** `persistence/schema.sql`, `persistence/migrations/`,
+`persistence/db.py`, `persistence/repositories.py`, `tests/unit/`, `tests/integration/`
+**Risk:** **High** — the one component whose failure mode is *lost user data*, and the only
+one where a bug can persist across restarts
+**Review base:** the `T-010` merge commit
+
+#### Scope
+
+SQLite in WAL mode at `user_data_dir/tracksandtrails/library.sqlite3` (`DAT-001`,
+`ARCHITECTURE.md` §5). The schema for `Job` and `HistoryEntry` as §5 defines them, a forward-only
+migration runner, and `JobRepository`.
+
+Two properties are the entire point:
+
+- **The queue survives an unclean kill** (`REQ-012`, `NFR-003`). WAL is chosen for exactly
+  this; the test must actually kill the process, not close the connection politely.
+- **Startup recovers jobs stranded in `RUNNING`.** A job cannot be running if the application
+  just started, so it is recovered to a retryable state rather than left lying about its own
+  status (`ai/TESTING.md` §7).
+
+`DownloadRequest` is persisted *with* the job, so a retry after a settings change reproduces
+the original request rather than current defaults (`ARCHITECTURE.md` §5, §8).
+
+#### Acceptance criteria
+
+- A hard kill (`SIGKILL`) mid-write leaves the database readable with no partial row, verified
+  by killing a real process rather than simulating it
+- Jobs found **in flight** at startup are recovered to a retryable state, and the recovery is
+  recorded so it is visible rather than silent.
+
+  **Widened 2026-07-26 to match the architecture.** This said `RUNNING` alone, as does
+  `ai/TESTING.md` §7, while `ARCHITECTURE.md` §5 names `PROBING`, `RUNNING` *and*
+  `POST_PROCESSING`. The architecture outranks both (`AGENTS.md` §5), and recovering only
+  `RUNNING` would strand a job in `PROBING` with no path out. The three statuses are transcribed
+  into a test, so narrowing the set fails rather than passing
+- **Every migration runs forward from every prior schema version with data intact**, asserted
+  by building a database at each historical version and migrating it — not just from the
+  latest (`ai/TESTING.md` §7). With one version today, the harness must still exist, because
+  it is unwritable later once several versions exist
+- A schema change without a migration fails the suite
+- A persisted `DownloadRequest` round-trips exactly; a retry uses the stored request, proven
+  by changing the defaults between store and retry (`ARCHITECTURE.md` §8)
+- Queue order survives a restart (`REQ-012`)
+- No **application-supplied** cookie path, cookie content, or proxy credential is ever written to the database (`DAT-003`)
+  (`REQ-026`, `NFR-007`) — asserted by scanning the stored row, not the model, since a
+  redaction applied in the model but not on the way to disk would pass an object comparison and
+  still leave the secret on disk.
+
+  **Narrowed 2026-07-26 by maintainer decision.** This criterion originally also forbade a
+  "token-like query parameter", which cannot hold alongside the round-trip criterion above: the
+  job URL *is* the request, `REQ-012`'s queue and `REQ-020`'s history are unusable without it,
+  and a retry cannot reconstruct it. Stripping token-like parameters would also need a
+  heuristic for "token-like" — an enumerate-and-claim-complete gate of exactly the kind that
+  cost `T-044` six review rounds. The URL is stored verbatim; what is excluded is everything the
+  user did not type into it. `cookies_from_browser` carries a browser name such as `"firefox"`,
+  not a cookie, and is kept because dropping it would silently stop using cookies the user asked
+  for. Log redaction is a different sink and remains `T-038`'s
+- The database lives under `platformdirs`, never beside the installed application (`NFR-004`)
+
+#### Out of scope
+
+- History pruning, search, and export — Phase 3
+- Concurrency beyond a single writer — Phase 2 brings the second
+- Settings storage, which is TOML and not this store (`DAT-001`)
+
+---
 
 ### T-044 — Close the non-blocking T-035 review follow-ups
 

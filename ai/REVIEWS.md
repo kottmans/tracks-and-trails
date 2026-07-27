@@ -2597,3 +2597,84 @@ maintainer's stated decision can resolve this without another filtering mechanis
 Critical accepted risk must be recorded in `ai/DECISIONS.md` and the contradictory acceptance
 criterion/current-truth text must be aligned before approval. The persistence unit is
 **Changes requested**.
+
+## 2026-07-26 — T-014 final documentation re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-014`
+**Correction base:** `04dd8af`
+**Head:** `db14cc2`
+**Review unit:** Documentation-only decision and authority alignment; the committed
+`ai/REVIEWS.md` addition is the prior reviewer entry, not part of the correction
+**Platforms verified:** Linux locally; Windows not run; frozen build not rerun because no
+executable, specification, or probe file changed
+**Verdict:** **Approved with follow-ups**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T014-R1` | **Critical** | **No** | **Resolved by explicit maintainer decision.** DAT-003 records the controlling trade-off in the historical decision log: the local, user-owned database preserves third-party diagnostics verbatim even when they contain a cookie path. REQ-026 and T-014 now scope their exclusion to values this application supplies. That is the option the maintainer selected, it states the accepted harm and rationale, and it satisfies `AGENTS.md` §9's requirement that an agent not silently accept a Critical privacy trade-off. The proxy half remains structurally closed and unchanged. |
+| `T014-R4` | **Medium** | **No** | **Remains resolved.** No migration-test or executable file changed. T-048 still owns the first real data migration. |
+| `T014-R7` | **High** | **No** | **Remains resolved.** The verbatim diagnostic contract and implementation are unchanged. |
+| `T014-R6` | **Low** | **No** | **Remains retracted.** |
+| `T014-R8` | **Medium** | **No** | **Follow-up — DAT-003's explanatory table overstates the guarantee established by its controlling decision.** “Credentials — never in the database” is not absolute: a user-entered source URL may contain userinfo and is stored verbatim under the earlier URL disposition. `cookies_from_browser` is passed to yt-dlp in the browser-name position, but its model type accepts any non-empty string, including a path-shaped value. Nothing currently reads a cookie jar into a job, but arbitrary third-party diagnostic prose cannot support the exhaustive claim that an echoed path is the “only residue.” Finally, the reopening list correctly names database externalization but omits REQ-026's future cookie-file support, which will cause this application to hold and pass a cookie path. These are documentation-scope defects, not an unaccepted runtime risk: DAT-003's controlling provenance rule already accepts verbatim third-party text, and the database remains local. Per the maintainer's final-pass direction, T-049 owns tightening the table and adding the missing reopening trigger before cookie-file support or first release. |
+
+R2, R3, and R5 remain resolved and unchanged.
+
+### Decision-scope verification
+
+- **Proxy credentials:** verified last round and unchanged. `DownloadRequest.proxy` rejects valid
+  URL userinfo before a job can exist.
+- **Cookie contents supplied by the application:** no request or job field carries a cookie jar
+  or cookie value. `build_options()` passes only `(request.cookies_from_browser,)`, and projected
+  yt-dlp data does not become stored cookie state.
+- **`cookies_from_browser`:** semantically used as a browser name by the adapter, and every
+  current application construction site supplies either a browser name or `None`. This is a
+  current-flow fact, not a structural property of the string-typed model.
+- **Third-party residue:** current yt-dlp cookie loading reads cookie values internally and
+  reports generic failures while its diagnostic/logging paths may name filesystem locations.
+  Because `NFR-006` deliberately preserves arbitrary upstream prose, no exhaustive list of what
+  a future yt-dlp diagnostic may contain is supportable. DAT-003's main decision correctly turns
+  on provenance; T-049 removes the narrower “only residue” claim.
+- **REQ-026 authority:** the maintainer explicitly selected an option requiring a narrowed
+  REQ-026 note. That is sufficient authorization for the Planner-owned requirement edit. The
+  resulting requirement and T-014 criterion both use the same “application-supplied” boundary
+  and link to DAT-003 rather than inventing separate rationales.
+- **Reopening condition:** sync, export, cloud backup, or attaching the database to a report are
+  correct triggers because they break the local/user-owned premise. T-049 adds the other premise:
+  revisit the decision when cookie-file support or another secret-bearing persisted input is
+  introduced.
+- **T-038:** not weakened. Its unchanged acceptance criterion scans final emitted log output for
+  cookie paths/content, proxy credentials, and token-like parameters regardless of where the
+  message originated. T-049 will replace DAT-003's weaker “the application writes it” explanation
+  with that origin-agnostic rule.
+
+### Follow-up filed
+
+`T-049 — Tighten DAT-003 before cookie-file support` is Proposed, owned by the Planner, and
+targets Phase 4 before cookie-file support or first release. It does not reopen T-014 or change
+approved persistence code.
+
+### Validation
+
+No mutation run was needed or useful for a four-file documentation correction: no executable
+source, test, build, or configuration input changed. Read-only model/repository probes were used
+to check the decision's factual claims.
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: 72 files already formatted. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| `mypy` | Passed: no issues in 57 source/test files. |
+| `mypy --platform win32` | Passed: no issues in 57 source/test files. |
+| Full default suite | Passed: **879 passed, 6 skipped, 1 deselected**. |
+| `git diff --check 04dd8af db14cc2` | Passed. |
+| Reviewer working diff | Passed `git diff --check`; only `ai/REVIEWS.md` and the approved T-049 follow-up in `ai/TASKS.md` were added. |
+
+### Readiness
+
+T-014 is **Approved with follow-ups**. No further T-014 review pass is pending. T-049 owns the
+non-blocking decision-wording correction; T-048 remains the future data-migration guard.
+T-013 is unblocked.
