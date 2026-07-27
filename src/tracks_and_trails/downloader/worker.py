@@ -24,9 +24,26 @@ test, or by the layering analyser, without paying for it.
 A worker runs exactly one probe or one download, emits exactly one outcome, then the sentinel
 (`downloader/protocol.py`). Nothing here enforces "one" — that is `validate_sequence()`'s job
 on the receiving side — but the control flow is written so there is a single exit path.
+
+## Cancellation, and dying with the parent
+
+`T-013` owns cancellation, but two halves of it can only exist here, because only the child can
+observe them (`REQ-015`, `ARCHITECTURE.md` §3):
+
+- **The cooperative path.** The parent sets an event; the progress hooks notice it and raise
+  yt-dlp's own `DownloadCancelled`, which unwinds the download through yt-dlp's cleanup rather
+  than through a signal, so partial files are left in a known state. The parent still escalates
+  to `terminate()` and `kill()` on a timeout — this path is the tidy case, not the guarantee.
+- **The orphan guard.** `spawn_session()` — the process entry point, and the only thing here
+  that knows it is a child — watches the parent and exits if it disappears. A `daemon=True`
+  process is cleaned up when the parent exits *normally*; nothing in the parent runs when it is
+  killed, so without this a `SIGKILL`ed application would leave a download running forever.
 """
 
+import multiprocessing
+import os
 import sys
+import threading
 import traceback
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,6 +72,27 @@ from tracks_and_trails.downloader.protocol import (
     Succeeded,
     WorkerFinished,
 )
+
+
+class SessionCancelledError(Exception):
+    """The stand-in used when the resolved yt-dlp has no `DownloadCancelled` of its own.
+
+    yt-dlp's exception is preferred because yt-dlp *knows* it: it unwinds its own download and
+    post-processing state rather than being caught as an arbitrary extractor failure. A copy old
+    or odd enough not to define it still has to be cancellable, so cancellation falls back to
+    this rather than becoming un-cancellable.
+    """
+
+
+class CancelSignal(Protocol):
+    """Anything the parent can use to ask this session to stop.
+
+    A `Protocol` for the same reason as `MessageSink`: the real caller passes a
+    `multiprocessing.Event`, and a unit test passes a `threading.Event` or a stub. Only
+    `is_set()` is named, because setting it is the parent's business (`T-013`).
+    """
+
+    def is_set(self) -> bool: ...
 
 
 class MessageSink(Protocol):
@@ -217,10 +255,12 @@ class _Reporter:
     the job is not in.
     """
 
-    def __init__(self, job_id: str, queue: MessageSink) -> None:
+    def __init__(self, job_id: str, queue: MessageSink, cancel: CancelSignal | None = None) -> None:
         self._job_id = job_id
         self._queue = queue
         self._stage = Stage.PROBING
+        self._cancel = cancel
+        self._cancelled_error: type[BaseException] = SessionCancelledError
         #: Hook failures are swallowed so a reporting bug cannot kill a download — but they are
         #: counted, and the count reaches the parent in the outcome's context. Swallowing
         #: silently would make missing progress updates unexplainable.
@@ -232,8 +272,25 @@ class _Reporter:
     def stage(self, stage: Stage) -> None:
         self._stage = stage
 
+    def use_cancellation_error(self, error: type[BaseException]) -> None:
+        """Adopt the resolved yt-dlp's own abort exception, once there is one to adopt."""
+        self._cancelled_error = error
+
+    def _abort_if_cancelled(self) -> None:
+        """Raise if the parent has asked this session to stop (`REQ-015`).
+
+        Called from the hooks **outside** their `try`, and that placement is the whole
+        mechanism: everything inside is swallowed so that a reporting bug cannot kill a
+        download, and `DownloadCancelled` is an `Exception`, so a check inside the guard would
+        be caught by it and cancellation would be recorded as a hook failure while the download
+        carried on.
+        """
+        if self._cancel is not None and self._cancel.is_set():
+            raise self._cancelled_error("the parent process cancelled this session")
+
     def progress_hook(self, status: dict[str, Any]) -> None:
         """yt-dlp's `progress_hooks` callback. Must not raise: it runs inside the download."""
+        self._abort_if_cancelled()
         try:
             info = status.get("info_dict") or {}
             if status.get("status") == "downloading":
@@ -258,6 +315,7 @@ class _Reporter:
             self._record_hook_failure("progress", error)
 
     def postprocessor_hook(self, status: dict[str, Any]) -> None:
+        self._abort_if_cancelled()
         try:
             name = str(status.get("postprocessor") or "")
             self._stage = _POSTPROCESSOR_STAGES.get(name, Stage.POST_PROCESSING)
@@ -277,6 +335,7 @@ def run_session(
     request: DownloadRequest,
     queue: MessageSink,
     *,
+    cancel: CancelSignal | None = None,
     user_ytdlp_directory: Path | None = None,
     ffmpeg_override: Path | None = None,
 ) -> int:
@@ -286,10 +345,11 @@ def run_session(
     without an outcome is indistinguishable from a crashed one to the parent (`REQ-028`), so
     the sentinel is sent in a `finally` and the outcome is sent before it on every branch.
     """
-    reporter = _Reporter(job_id, queue)
+    reporter = _Reporter(job_id, queue, cancel)
     exit_code = 0
     try:
         resolved = _import_ytdlp(ytdlp_candidates(user_ytdlp_directory))
+        reporter.use_cancellation_error(_cancellation_error(resolved))
         # Reported before the work starts, so it reaches the parent even if the job then fails
         # (`T012-R1`, `REQ-025`, `ARCHITECTURE.md` §6).
         reporter.send(
@@ -303,6 +363,11 @@ def run_session(
         outcome = _run(kind, job_id, request, reporter, resolved, ffmpeg_override)
         reporter.send(outcome)
         exit_code = 0 if not isinstance(outcome, Failed) else 1
+    except SessionCancelledError as error:
+        # Cancellation before yt-dlp was resolved, so `_run` never ran to classify it. Still an
+        # outcome: the parent asked, and a session that stops without saying so is a crash.
+        reporter.send(Failed(job_id=job_id, kind=ErrorKind.CANCELLED, message=str(error)))
+        exit_code = 1
     except BaseException as error:  # the outcome must reach the parent whatever happened
         detail = _classify_without_ytdlp(error)
         reporter.send(
@@ -414,6 +479,19 @@ def _run(
             )
         )
     except BaseException as error:
+        if _is_cancellation(error, resolved):
+            # Classified here rather than by the adapter for the same reason as `UnsafePathError`
+            # above: the user asked for this. `EXTRACTOR_ERROR` would report the site as broken,
+            # and `ErrorKind.CANCELLED` is the one kind `core.errors` treats as not a failure to
+            # offer a retry for.
+            return with_hook_failures(
+                Failed(
+                    job_id=job_id,
+                    kind=ErrorKind.CANCELLED,
+                    message=str(error) or "the parent process cancelled this session",
+                    context=tuple(sorted(context.items())),
+                )
+            )
         detail = adapter.classify_exception(error)
         return with_hook_failures(
             Failed(
@@ -423,6 +501,94 @@ def _run(
                 context=tuple(sorted({**context, **dict(detail.context)}.items())),
             )
         )
+
+
+def _cancellation_error(resolved: ResolvedYtdlp) -> type[BaseException]:
+    """The exception this session raises to abort a download from a progress hook.
+
+    yt-dlp's own `DownloadCancelled` when the resolved copy has one, because yt-dlp recognises
+    it and unwinds cleanly; `SessionCancelledError` otherwise, so an unusual copy is still
+    cancellable. Read from the resolved module rather than imported at the top of the file: the
+    module docstring's deferred-import rule applies to every yt-dlp name, not just the package.
+    """
+    utils = getattr(resolved.module, "utils", None)
+    candidate = getattr(utils, "DownloadCancelled", None)
+    if isinstance(candidate, type) and issubclass(candidate, BaseException):
+        return candidate
+    return SessionCancelledError
+
+
+def _is_cancellation(error: BaseException, resolved: ResolvedYtdlp) -> bool:
+    """Whether `error` is this session being cancelled rather than failing.
+
+    Both classes are checked because which one the hook raised depends on what the resolved copy
+    offered, and by the time the exception is caught that decision is no longer visible.
+    """
+    return isinstance(error, SessionCancelledError | _cancellation_error(resolved))
+
+
+#: Exit code of a worker that outlived its parent. Distinct from `1` (a failed session) so a
+#: parent examining a reaped process — or a person reading a log — can tell the two apart.
+ORPHAN_EXIT_CODE: Final = 66
+
+
+def _exit_when_the_parent_does() -> None:
+    """Exit this process if the parent disappears (`T-013`: no orphan survives the parent).
+
+    `daemon=True` covers only an orderly parent exit, because it is implemented by the parent's
+    own `atexit` handling — and a parent that was `SIGKILL`ed runs nothing. A download left
+    running after the application is gone writes to the user's disk with no UI able to stop it,
+    so the child watches instead of being watched.
+
+    `multiprocessing.parent_process()` is the portable form: its sentinel is a pipe fd on POSIX
+    and a process handle on Windows, so `join()` returns exactly when the parent dies. A daemon
+    thread, so it can never hold up a session that finishes normally, and `os._exit` rather than
+    `sys.exit` because a `SystemExit` raised on this thread would be ignored by the one doing
+    the download.
+    """
+    parent = multiprocessing.parent_process()
+    if parent is None:  # not a spawned child at all; nothing to watch
+        return
+
+    def watch() -> None:
+        parent.join()
+        os._exit(ORPHAN_EXIT_CODE)
+
+    threading.Thread(target=watch, name="parent-watchdog", daemon=True).start()
+
+
+def spawn_session(
+    kind: SessionKind,
+    job_id: str,
+    request: DownloadRequest,
+    queue: MessageSink,
+    *,
+    cancel: CancelSignal | None = None,
+    user_ytdlp_directory: Path | None = None,
+    ffmpeg_override: Path | None = None,
+) -> None:
+    """The `multiprocessing` entry point: run one session, then exit with its code.
+
+    Separate from `run_session()` because the two have genuinely different jobs. `run_session`
+    is callable in-process and returns a value; this one is what a spawned child *is*, so it
+    installs the orphan guard and turns the result into a process exit code.
+
+    `SystemExit` rather than `return`: a `Process` target's return value is discarded, and the
+    exit code is what `REQ-028` requires the parent to record for a session that produced no
+    outcome.
+    """
+    _exit_when_the_parent_does()
+    raise SystemExit(
+        run_session(
+            kind,
+            job_id,
+            request,
+            queue,
+            cancel=cancel,
+            user_ytdlp_directory=user_ytdlp_directory,
+            ffmpeg_override=ffmpeg_override,
+        )
+    )
 
 
 def _drm_failure(job_id: str, request: DownloadRequest, context: dict[str, str]) -> Failed:

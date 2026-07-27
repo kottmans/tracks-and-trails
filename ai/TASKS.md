@@ -5,38 +5,114 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-26
+**Last updated:** 2026-07-27
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-014` — persistence. Phase 1's critical path runs through it: `T-013` needs
-the job repository, and every remaining UI task sits behind `T-013`. `T-015`, `T-018` and
-`T-038` are Ready and off the critical path, so they can be done alongside it.
+**Start here:** review `T-013` — the download manager and result pump, implemented 2026-07-27
+and awaiting its first independent pass. It is the largest thing between the project and a URL
+that downloads, and it unblocks `T-036`, `T-016`, `T-017` and `T-019`.
 
-`T-012` was approved with follow-ups on 2026-07-26 after two review rounds. **`T-033` is
-Blocked**, not complete: its code is verified but approval needs frozen CI evidence this
-repository cannot produce locally. `T-044` and `T-045` are still awaiting review and block
-nothing.
+`T-012` was approved with follow-ups on 2026-07-26 after two review rounds; `T-014` was approved
+2026-07-26 at `db14cc2`. **`T-033` is Blocked**, not complete: its code is verified but approval
+needs frozen CI evidence this repository cannot produce locally.
 
-Also Ready and independent: `T-038` (log redaction — one of `ai/TESTING.md` §7's ten mandatory
-areas), `T-014` (persistence), `T-015` (presets). `T-018` now owns the playlist projection
-(`T012-R6`) and **blocks `T-016`**.
+Also Ready and independent: `T-038` (log redaction — one of `ai/TESTING.md` §7's two remaining
+uncovered mandatory areas, and the one `T-013`'s diagnostics make urgent) and `T-015` (presets).
+`T-018` owns the playlist projection (`T012-R6`) and **blocks `T-016`**. `T-050` is new: nothing
+writes the `history` table.
 
 Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; `T-040` for the
 first focusable widgets.
 
 ---
 
-## Ready
+## In Review
 
 ### T-013 — Download manager and result pump
 
-**Status:** **Ready** — both prerequisites met. `T-012` completed 2026-07-26; `T-014` completed
-and approved 2026-07-26 at `db14cc2`, which was the blocking one (the manager persists job state,
-so it needs the repository).
+**Status:** **In Review** — implemented 2026-07-27, awaiting the first independent review.
+Prerequisites were met before it started: `T-012` completed 2026-07-26, `T-014` approved
+2026-07-26 at `db14cc2`.
+
+**What landed.** `downloader/result_pump.py` (a `QThread` doing a blocking read on one session's
+queue, routing every declared message type to its own signal and ending on the protocol's
+sentinel) and `downloader/manager.py` (`DownloadManager`: one worker per job, a pool of exactly
+one, cancellation with cooperative → `terminate()` → `kill()` escalation, persistence of every
+transition before the signal announcing it, and `WORKER_CRASH` for a session that reported no
+outcome). Persistence is a `JobStore` protocol, injected; `downloader/manager.py` imports
+neither `persistence` nor `sqlite3`, and a static test enforces that.
+
+**Three things had to be added to `worker.py`, which the task's affected-surface list did not
+name.** Each is a half of a `T-013` criterion that only the child can implement, and each is
+recorded here rather than silently absorbed:
+
+- **A cancel signal.** `run_session` takes an optional `CancelSignal`; the progress hooks check
+  it *outside* their exception guard and raise yt-dlp's own `DownloadCancelled`, so the download
+  unwinds through yt-dlp's cleanup and leaves a `.part` file in a known state. The check has to
+  be outside the guard: `DownloadCancelled` is an `Exception`, so inside it, cancellation would
+  have been swallowed as a hook failure while the download continued.
+- **`spawn_session`.** A process entry point distinct from `run_session`, which exits with the
+  session's code — a `Process` target's return value is discarded, and `REQ-028` needs that code.
+- **An orphan guard.** `spawn_session` starts a daemon thread on `multiprocessing.parent_process()`
+  and `os._exit`s when the parent dies. `daemon=True` alone is implemented by the *parent's* exit
+  handling, so a `SIGKILL`ed application leaves the download running. Proven by mutation.
+
+**Deviations and gaps, stated rather than absorbed:**
+
+- **`start()` accepts only a `QUEUED` job.** `ARCHITECTURE.md` §5 has no `READY → PROBING` edge,
+  so a job a previous probe left in `READY` cannot be handed to a download session that probes
+  again. Phase 1's flow never produces that state; a probe-then-download flow (`T-016`, `T-018`)
+  needs the state machine amended first, which is a Planner decision.
+- **`shutdown()` blocks the GUI thread**, bounded by its timeout. It runs during teardown, when
+  the event loop that drives escalation is ending; a non-blocking shutdown would return with
+  workers alive and nothing left to reap them. `NFR-001` is about interactions, and there are
+  none left. `start()` and `cancel()` are timed against the budget by test.
+- **Progress bytes are not persisted per message** — only at transitions and terminal states. A
+  write per progress update is an unbounded rate for a fact that is worthless after a crash, and
+  recovery re-queues the job anyway (`T-014`).
+- **The `history` table is still not written.** `STATUS.md` said this task owned it; the task's
+  own scope, acceptance criteria and affected surfaces never mentioned it, and it cannot be done
+  honestly yet — there is no `HistoryEntry` model, no `HistoryRepository`, and nothing reports
+  the **format actually used**, so `history.format_used` could only be filled with the request's
+  *selector*, which is a different fact. Filed as **`T-050`** rather than guessed at.
+- **`entry_point` is a constructor parameter** (default `worker.spawn_session`). Not a mock: the
+  tests that use it spawn real processes over real queues. It exists because the streams the
+  receiving half must survive — two outcomes for one job, a bare dict, an exit reporting nothing
+  — are ones a correct worker cannot produce.
+
+**Evidence.** 25 tests in `tests/integration/test_manager.py`, 9 in
+`tests/unit/test_manager_boundaries.py`. Cancellation and worker crash are exercised against
+**real spawned processes**: `REQ-015`'s two-second budget is measured against a download with
+bytes actually moving (a local HTTP server serving throttled `video/mp4` to the real generic
+extractor), not against a sleeping worker — the gap `T-002` recorded. `REQ-028` is exercised by
+`SIGKILL`ing a worker from outside the manager.
+
+**Mutation-checked (15 mutations, 14 killed).** The orphan guard, the cooperative cancel check,
+the escalation, sentinel injection for a dead worker (and again for a spawn that fails before
+there is a worker at all), the no-outcome rule (twice: clean exit and `SIGKILL`),
+exit-code-beats-message, `is_message()`, `validate_sequence()`, persist-before-signal, and
+`shutdown()`'s final force-stop all die when removed. **One survivor, deliberately:**
+`_claim_outcome`'s terminal-once check in the manager, which is redundant with `ResultPump`'s
+suppression — removing *either* alone leaves the end-to-end test green and removing **both**
+fails it, which is what redundancy looks like when it is demonstrated in both directions
+(`ai/TESTING.md` §13). The pump's half now has its own test; the manager's stays as the guard
+against a second route to those slots.
+
+**Two false readings the mutation run produced first, both recorded because they nearly caused
+harm.** The orphan test originally hosted its HTTP server inside the application being killed,
+so the orphan died of a connection error and the guard was never involved — the mutation
+survived and the test proved nothing. And two size-preserving mutations "survived" because
+Python validated the cached `.pyc` by size and whole-second mtime and re-ran unmutated bytecode;
+`ai/TESTING.md` §13 now records that trap.
+
+**Checks.** `ruff check`, `ruff format --check`, `mypy src`, `mypy --platform win32 src` all
+clean; **913 passed, 6 skipped, 1 deselected**. Windows evidence pending CI — the cancellation
+budget, the orphan guard and `TerminateProcess` have only been observed on Linux.
+
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 1
@@ -44,10 +120,14 @@ so it needs the repository).
 **Relevant context:** `ARCHITECTURE.md` §3, §8 (threading); `ARC-002`, `REQ-014`, `REQ-015`,
 `REQ-018`, `REQ-028`, `NFR-001`, `NFR-003`; `ai/TESTING.md` §7 (Cancellation, Worker crash)
 **Affected surfaces:** `downloader/manager.py`, `downloader/result_pump.py`,
-`tests/integration/`
+`downloader/worker.py` (cancellation, the spawn entry point and the orphan guard — see above),
+`pyproject.toml` (a `psutil` mypy override), `tests/integration/`, `tests/unit/`
 **Risk:** **High** — owns process lifetime and the only thread in the application. Both of its
 failure modes are silent: an orphaned worker, and a Qt object touched off the GUI thread.
-**Review base:** the `T-012` merge commit
+**Review base:** the `T-012` merge commit. **Review head:** the working tree — this work is
+uncommitted, and its bounds are `src/tracks_and_trails/downloader/{manager,result_pump,worker}.py`,
+`pyproject.toml`, `tests/integration/{conftest,test_manager}.py`,
+`tests/unit/test_manager_boundaries.py`, plus the `ai/` updates in this commit.
 
 #### Scope
 
@@ -128,6 +208,9 @@ so.
 - Any widget — `T-016`, `T-017`
 
 ---
+
+
+## Ready
 
 ### T-038 — Logging with handler-level redaction
 
@@ -327,6 +410,56 @@ agreement on the reduced form before implementation.
 ---
 
 ## Proposed — Phase 1
+
+### T-050 — Write the history table
+
+**Status:** Proposed — Ready now; `T-013` produces the event that fills it
+**Owner:** Implementer
+**Priority:** Medium — `REQ-020` has no owner without it, and the table already exists empty
+**Phase:** Phase 1
+**Depends on:** `T-013`
+**Relevant context:** `REQ-020`; `ARCHITECTURE.md` §5 (`HistoryEntry`);
+`persistence/schema.sql` (the `history` table `T-014` created)
+**Affected surfaces:** `core/models.py` or `persistence/` (wherever `HistoryEntry` lands),
+`persistence/repositories.py`, `downloader/manager.py`, `tests/unit/`
+**Risk:** Low — an append-only record; nothing depends on it yet
+**Review base:** the `T-013` merge commit
+
+#### Scope
+
+**Filed after implementation: nothing owned this.** `STATUS.md` said `T-013` "owns writing the
+`history` table `T-014` created but left empty", but `T-013`'s scope, acceptance criteria and
+affected surfaces never mentioned it, and `TASKS.md` outranks `STATUS.md` (`AGENTS.md` §5). It
+was left undone deliberately rather than guessed at, because two pieces are genuinely missing:
+
+- **There is no `HistoryEntry`.** `core/models.py` says so explicitly and gives the reason — it
+  is a durable record rather than live domain state, so it belongs with the schema that stores
+  it. No repository exposes the table either.
+- **`history.format_used` has no source.** Nothing reports the format yt-dlp actually selected;
+  `Succeeded` carries the path and the byte count. Filling the column from the request's
+  *format selector* would store a different fact under a truthful-looking name — `bestvideo+
+  bestaudio` is not a format that was used. Either the worker projects the chosen format into
+  the outcome, or the column is left null and the schema says why.
+
+Decide the first of those, then write a row when a job completes, from the manager, in the same
+place the terminal transition is persisted.
+
+#### Acceptance criteria
+
+- A completed download writes exactly one `history` row, and a retry of the same job does not
+  silently duplicate it
+- `format_used` either carries the format yt-dlp actually used, reported from the worker, or is
+  null with the reason recorded — never the selector wearing that name
+- A cancelled or failed job writes no history row (`REQ-020` is a record of what was obtained)
+- The manager still imports no `persistence` module: history goes through an injected protocol,
+  as the job repository does (`T-013`, `ARCHITECTURE.md` §3)
+
+#### Out of scope
+
+- Any history UI — Phase 3 (`REQ-020`'s view)
+- Pruning, retention, or export
+
+---
 
 ### T-016 — Add-URL dialog with probe results
 

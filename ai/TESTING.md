@@ -5,7 +5,7 @@
 **Owner:** Reviewer (Codex) — policy; Implementer may add checks a change introduces.
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-26
+**Last updated:** 2026-07-27
 **Last reviewed:** 2026-07-26
 **Update when:** A test type, CI requirement, mandatory command, coverage rule, or gate changes.
 **Does not contain:** Local setup instructions (`docs/DEVELOPMENT.md`, once created).
@@ -92,6 +92,15 @@ pytest --cov=tracks_and_trails --cov-report=term-missing
 - **Never mock the process boundary in integration tests.** The entire point of
   `tests/integration/` is that real processes are spawned, real messages cross a real queue,
   and real terminations are issued. A mocked subprocess cannot fail the way a real one does.
+- **One exception to "always fake yt-dlp", introduced by `T-013` and bounded here.** Two tests —
+  a download that completes and `REQ-015`'s cancellation — run the **real** yt-dlp against a
+  local `http.server` serving throttled `video/mp4` from `127.0.0.1`. What is faked is the
+  *site*, not the library: no packet leaves the machine, so §1's "a site changed" flakiness does
+  not apply, and these do not belong behind `-m network`. The reason is that the acceptance
+  criterion is specifically about a download with **bytes actually moving** — `T-002` proved
+  cancellation against a sleeping worker and recorded that as insufficient, and a faked
+  `_extract` cannot be cancelled from a progress hook because it never calls one. Any further
+  use of this pattern needs the same justification: faking yt-dlp remains the default.
 - Do not mock SQLite. Use a real database in `tmp_path`; it is fast and catches actual SQL
   and migration errors.
 
@@ -296,11 +305,13 @@ Tracked honestly; each should become a task or be accepted deliberately.
 - **The suite is structural, not behavioral.** It covers the toolchain (`T-001`), shipped
   asset invariants (`T-022`), the layering guard (`T-005`), and the shell window including
   hostile stored geometry (`T-007`, `T-027`) — real tests, and they have caught real defects.
-  But of §7's ten mandatory areas **two** are covered — Layering, and the State machine
+  Of §7's ten mandatory areas **eight** are now covered: Layering (`T-005`), the State machine
   (`T-010`, checked against a transition relation transcribed independently from
-  `ARCHITECTURE.md` §5). The other eight guard behavior that does not exist yet: nothing
-  downloads, probes, persists, or writes an output path. Read the test count as breadth of
-  scaffolding, not depth of coverage.
+  `ARCHITECTURE.md` §5), Path safety (`T-034`), Crash recovery, Migrations and the Settings
+  freeze (`T-014`), and — new with `T-013` — Cancellation and Worker crash, both proven against
+  real spawned processes. **Log redaction (`T-038`) and DRM remain uncovered.** This bullet
+  previously read "two", written when nothing downloaded or persisted; the count is now
+  recomputed rather than adjusted.
 - **Windows has automated coverage only** (`OPS-004`, narrowing `OPS-003`). The runner is a
   real desktop, so the application launch, menu keyboard reachability, and the UI Automation
   name/role contract are now gated. Still unverified there: whether rendering *looks* right,
@@ -360,8 +371,15 @@ production what to expect, it stops being a test and becomes a mirror.
 Before claiming a guard is covered, remove the guard and watch the suite fail. Record the count
 in the task. `AGENTS.md` §9 requires this of every correction batch.
 
-Two things that have bitten here:
+Three things that have bitten here:
 
+- **A size-preserving mutation may not run at all** (`T-013`). Python validates a cached `.pyc`
+  against the source's *size* and its mtime **in whole seconds**. Swapping two adjacent lines —
+  the natural mutation for "is this written before that?" — changes neither, so a batch that
+  mutates, runs, and restores within one second re-runs the *unmutated* bytecode and reports the
+  guard as uncovered. Two real guards were nearly rewritten on that evidence. Clear
+  `__pycache__` and set `PYTHONDONTWRITEBYTECODE=1` for any automated mutation run, and treat a
+  "survivor" whose mutation changed neither size nor second as unmeasured rather than uncovered.
 - **Mutate content, not just shape.** Adding a new `JobStatus` broke the transition table's
   lookups and failed loudly — which felt like proof, but adding an *undocumented edge* to the
   existing table changed nothing. The shape mutation was easy and uninformative; the content

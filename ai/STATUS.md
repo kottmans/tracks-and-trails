@@ -5,8 +5,8 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-26
-**Last verified against repository:** 2026-07-26
+**Last updated:** 2026-07-27
+**Last verified against repository:** 2026-07-27
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -87,11 +87,14 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **No implementation task is active.** `T-014` completed 2026-07-26 at `db14cc2` — approved with
-  follow-ups after four review rounds. **`T-013` is unblocked** and is the critical path.
-- **`ai/TESTING.md` §7 stands at six of ten mandatory areas**, up from three. `T-019` would add
-  Cancellation and Worker crash, `T-038` Log redaction. **DRM has no Phase 1 owner** — worth
-  settling deliberately rather than discovering it at the exit review.
+- **`T-013` — implemented 2026-07-27, In Review, uncommitted.** The download manager and the
+  result pump. A job now goes from `QUEUED` to a file on disk through a real spawned worker, and
+  a cancelled or crashed one ends in a state the queue can explain. Awaiting its first
+  independent pass; its record in `TASKS.md` lists what it deviated from and why.
+- **`ai/TESTING.md` §7 stands at eight of ten mandatory areas**, up from six. `T-013` added
+  Cancellation and Worker crash, both against real spawned processes. The two outstanding are
+  Log redaction (`T-038`) and DRM. **DRM has no Phase 1 owner** — worth settling deliberately
+  rather than discovering it at the exit review.
 - **The lesson from `T-044`, `T-045` and `T-014`, now three for three:** each blocking finding
   came from filtering unbounded input instead of constraining what the input could be. `T-044`
   stopped parsing for exports and read the interpreter's namespace; `T-045` dropped a completeness
@@ -101,19 +104,22 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## Next
 
-`ARC-002` is proven and the queue is durable. A spawned child imports yt-dlp, extracts,
-classifies failures against the real taxonomy and reports typed messages back (`T-012`); a job
-survives a restart and an unclean kill (`T-014`). **Nothing connects them yet.**
+`ARC-002` is proven end to end. A spawned child imports yt-dlp, extracts and reports typed
+messages back (`T-012`); a job survives a restart and an unclean kill (`T-014`); and `T-013` now
+connects them — in a test, a URL becomes a file on disk, and cancelling it leaves neither an
+orphan process nor a job that lies about its state. **No widget touches any of it yet**:
+composition is `T-036` and the first *user-visible* download is `T-037`.
 
-1. **`T-013` — download manager and result pump.** **Ready now.** The largest remaining item
-   between here and a URL that actually downloads, and it unblocks `T-036`, `T-017`, `T-019` and
-   `T-016` at once. It also owns writing the `history` table `T-014` created but left empty.
-2. **`T-038` — logging with handler-level redaction.** Ready, High priority, and worth doing
-   *before* `T-013` rather than beside it: `T-013` generates the diagnostics most likely to carry
-   a tokenised URL or a cookie path, and retrofitting redaction around live diagnostics is how
-   `T-014` lost four review rounds.
-3. **`T-015`, `T-018`** — Ready and independent, so either can run in parallel with the above.
-   `T-018` blocks `T-016`.
+1. **Review `T-013`.** It owns process lifetime and the only thread in the application, and both
+   of its failure modes are silent. Nothing downstream should start against an unreviewed
+   manager.
+2. **`T-038` — logging with handler-level redaction.** Ready, High priority, and now overdue
+   rather than early: `T-013` generates the diagnostics most likely to carry a tokenised URL or a
+   cookie path, and they are being produced today with no redacting handler under them.
+   Retrofitting redaction around live diagnostics is how `T-014` lost four review rounds.
+3. **`T-015`, `T-018`** — Ready and independent. `T-018` blocks `T-016`.
+4. **`T-050`** — new, and small: the `history` table is still empty. `T-013` did not write it,
+   and the entry records the two things that are missing before it honestly can be.
 
 **What two review rounds cost, and what they bought.** Eight blocking findings across two
 passes, every one real. The pattern worth remembering: **five of them were things that
@@ -191,10 +197,10 @@ Development machine, verified 2026-07-25:
 | Python | 3.14.6 (`/usr/bin/python3`) — the only interpreter; **confirmed sufficient** (`T-002`) |
 | `pip` | 26.0.1, installed via `ensurepip --user` into `~/.local` (no sudo, no PEP 668 marker on F44) |
 | Project venv | `.venv/` — recreated 2026-07-26 (this checkout had none, again: it is git-ignored and does not survive a fresh clone); editable install, PySide6 6.11.1, platformdirs 4.11.0. `comtypes` is a Windows-only dev dependency and is absent here by design |
-| Dev tools | ruff 0.16.0, mypy 2.3.0, pytest 9.1.1, pytest-qt 4.5.0, PyInstaller 6.21.0 |
+| Dev tools | ruff 0.16.0, mypy 2.3.0, pytest 9.1.1, pytest-qt 4.5.0, PyInstaller 6.21.0, psutil — no longer packaging-only, the default suite needs it since `T-013` asserts on real processes |
 | ffmpeg | present |
 | git | branch `main` tracking `origin/main`; CI green on every push and PR (`T-006`) |
-| Repository path | `/mnt/storage/software_projects/tracks-and-trails`, verified 2026-07-26. A prior edit "corrected" this to `/mnt/projects/...` and recorded that `/mnt/storage/...` does not exist; both halves were wrong, and the `/mnt/projects` path is what does not exist |
+| Repository path | **Unsettled, and this row has now been wrong in both directions.** On 2026-07-27 the `T-013` session ran entirely in `/mnt/projects/software_projects/tracks-and-trails`, where `ls`, `readlink -f` (not a symlink) and every check and test agree, while `/mnt/storage` does not exist at all. The previous entry asserted the reverse. Rather than flip the value a third time: the working checkout is wherever the maintainer's shell says it is, and **this row should record a machine, not a truth** — one of the two paths is presumably a mount that is not always present. Needs a maintainer answer, not another edit |
 | Windows environment | **CI runners only** — no local Windows machine or VM. The runner is a real desktop, not a bare headless box (`OPS-004`), and the dedicated `windows desktop` job uses it: the other jobs pin `QT_QPA_PLATFORM=offscreen`, that one does not |
 
 ## Current risks
@@ -209,29 +215,27 @@ Development machine, verified 2026-07-25:
 
 ## Notes
 
-**Nothing downloads end to end yet, and no two parts are wired together.** A window opens
-(`T-007`). A spawned worker can import yt-dlp, probe a URL and report typed messages back
-(`T-012`). A job can be stored, ordered and recovered (`T-014`). **Nothing connects them** —
-composition is `T-036`, and the first URL that actually downloads is `T-037`.
-`ARCHITECTURE.md` describes the approved target, not reality; treat any claim of implemented
-*behavior* as false until this section says otherwise.
+**Something downloads now — in a test.** A window opens (`T-007`) and knows nothing about any
+of this. What `T-013` connected is the *engine*: given a job in the repository, a real spawned
+worker downloads a real URL to a real file and every transition is persisted. **No widget calls
+it** — composition is `T-036`, and the first URL a *user* can download is `T-037`. Treat
+`ARCHITECTURE.md` as the approved target rather than a description of what a user can do.
 
-Precisely, recounted 2026-07-26 by parsing each module for anything beyond its docstring: of the
-**31** modules under `src/`, **16 are still docstring-only stubs** and **15 have code**. Those
-fifteen are `__init__.py`, `__main__.py`, `_freeze_probe.py`, `app.py`, `ui/main_window.py`,
+Precisely, recounted 2026-07-27 by parsing each module for anything beyond its docstring: of the
+**31** modules under `src/`, **14 are still docstring-only stubs** and **17 have code**. Those
+seventeen are `__init__.py`, `__main__.py`, `_freeze_probe.py`, `app.py`, `ui/main_window.py`,
 `core/{models,job_state,errors,paths}.py`,
-`downloader/{environment,protocol,worker,ytdlp_adapter}.py`, and — new with `T-014` —
-`persistence/{db,repositories}.py`.
+`downloader/{environment,protocol,worker,ytdlp_adapter}.py`, `persistence/{db,repositories}.py`,
+and — new with `T-013` — `downloader/{manager,result_pump}.py`.
 
-*(The previous count here said 23 stubs and eight coded, recomputed at `697e024`. It had gone
-stale across `T-012`, `T-034`, `T-035` and `T-014`; this one was recounted rather than
-adjusted.)*
+*(Before `T-014` this said 23 stubs and eight coded, recomputed at `697e024`; it had gone stale
+across four tasks. Each count since has been recounted rather than adjusted.)*
 
 The `core/` modules remain **domain vocabulary plus pure functions** — what a job, a request and
 a failure *are*, the rules for moving between states, and filename safety. `persistence/` is the
 first module that keeps something across a restart.
 
-Of `TESTING.md` §7's ten mandatory areas, **six** are now covered: Layering (`T-005`), the State
-machine (`T-010`), Path safety (`T-034`), and — new with `T-014` — Crash recovery, Migrations,
-and the Settings freeze. The four outstanding are Cancellation, Worker crash, Log redaction
-(`T-038`) and DRM.
+Of `TESTING.md` §7's ten mandatory areas, **eight** are now covered: Layering (`T-005`), the
+State machine (`T-010`), Path safety (`T-034`), Crash recovery, Migrations and the Settings
+freeze (`T-014`), and — new with `T-013` — Cancellation and Worker crash. The two outstanding
+are Log redaction (`T-038`) and DRM.

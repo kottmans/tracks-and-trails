@@ -130,6 +130,13 @@ module = ["comtypes", "comtypes.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
+# psutil ships no type information. Used only by tests, and only where a real OS process is the
+# thing under test: T-013's cancellation, crash and orphan criteria are all statements about
+# processes, and a mocked one cannot fail the way a real one does (ai/TESTING.md §6).
+module = ["psutil"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
 # T-026's Windows-only test modules. On a Linux checkout mypy correctly proves everything after
 # their `sys.platform != "win32"` guard unreachable, then reports the Windows-only `ctypes.windll`
 # and `comtypes` as missing and their `type: ignore`s as unused. All three are artefacts of
