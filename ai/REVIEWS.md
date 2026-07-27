@@ -3188,3 +3188,178 @@ reviewer's own hung full-suite attempt on `73d04c6`. Those 43 tests still pass o
 (`pytest -m process_tree`: 43 passed, 2 skipped) and CI still runs them. `T-019` removes the
 marker. Recorded in `ai/TESTING.md` §2 and §7 and in `T-019`'s entry, and called out here because
 it changes what a default run proves.
+
+## 2026-07-27 — T-018 structural correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-018`; the bounded head also contains `T-019`'s test-selection commit
+**Correction base:** `73d04c6f47cb55403f88b7764df08c51d1e9751f`
+**Correction head:** `5f0a6c4a2954cfbc68eb8e956118f68e53e1e454`
+**Review unit:** `2f85a32` (structural fixture correction), `9010794` (process-tree marker),
+and `5f0a6c4` (decision/records and mutation-survivor coverage)
+**Branch:** `main`, clean at inspection, 20 commits ahead of `origin/main`, not pushed
+**Platforms verified:** Linux locally; Windows not run
+**T-018 verdict:** **Blocked**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T018-R1` | **Critical** | **Yes** | **Open — the allowlist closes the credential-name class, but `_schema` can itself carry captured data.** The structural correction faithfully implements `SEC-002` and the reviewer’s earlier recommendation: the four prior credential keys are absent from `info_dict`, and the raw-fixture gate rejects all five sanitizer/gate disagreements by path. However, `schema_fingerprint()` copies every mapping key verbatim and both schema checks inspect only leaf *values*. `capture.write()` given `{"unknown_map": {"credential-value-as-key-7c6c": "ignored"}}` wrote that known credential into `_schema`; `unexpected_keys()`, `values_in_schema()` and `leaks_in()` all returned `[]`. Mapping keys are captured data too—nested maps commonly use data-derived labels—so the claim that a fingerprint “cannot carry data” is false. `write()` also trusts a caller-supplied `_schema` instead of deriving it at the serialization boundary, and `keep_consumed()` recursively retains values from playlist `entries` although `ytdlp_adapter` reads only their length. The first reproduction alone preserves the irreversible privacy consequence. This is an oversight in the authorized design, including the reviewer’s recommendation, not another credential-marker miss. `SEC-002` must be amended: do not persist arbitrary raw mapping keys; either drop `_schema` or make it name-free (container/type/count only), always derive it inside `write()`, and represent playlist entries by cardinality placeholders rather than unconsumed child values. |
+| `T019-R1` | **Medium** | **Yes** | **Open — `9010794` says CI still runs the process-tree suite, but CI excludes it.** `pyproject.toml` adds `not process_tree` to global `addopts`; `.github/workflows/ci.yml` invokes bare `pytest`, so both Linux and Windows check jobs inherit that exclusion. No workflow step opts the marker back in. Consequently all 43 selected manager tests—including mandatory Cancellation and Worker-crash coverage plus unrelated manager protocol/startup tests—are absent from both the local default and CI, contrary to `ai/TESTING.md`, the test-module comment, the implementer record and the commit message. The opt-in suite itself passes locally (**43 passed, 2 skipped**), so add an explicit CI `pytest -m process_tree` step with evidence/timeout, or narrow/remove the module marker; align the records with what actually runs. This is owned by `T-019` and does not alter the substance of the T-018 privacy finding, but a required gate that does not gate blocks approval of the coverage change. |
+
+### Structural verification
+
+The reported correction behavior is real:
+
+- the reviewer’s `passwd`, `passphrase`, `private_key` and `accessKey` payload writes a
+  155-byte file with an empty `info_dict`; only their names and `"str"` leaves appear in
+  `_schema`;
+- raw fixtures containing `cookiejar`, `sessionid`, `clientsecret`, `httpheaders` and
+  `oauth2` are all rejected by `unexpected_keys()`;
+- consumed URL values lose userinfo, query and fragment, and the five committed user-directory
+  shapes are removed at `write()`;
+- every committed fixture passes the independent allowlist, schema-leaf and text scans and
+  still projects into the declared model.
+
+The new negative proof is:
+
+```python
+capture.write(
+    path,
+    {
+        "_fixture": {},
+        "info_dict": {
+            "unknown_map": {
+                "credential-value-as-key-7c6c": "ignored",
+            }
+        },
+    },
+)
+```
+
+The written `_schema` is
+`{"unknown_map": {"credential-value-as-key-7c6c": "str"}}`. All three committed-file gates
+report it clean. A second probe showed that a supplied `_schema` is copied directly; its scalar
+value is caught by `values_in_schema()`, but only after `write()` has accepted it. A third
+showed playlist-entry `title` and `uploader` values retained even though projection uses only
+`len(entries)`.
+
+### Validation
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **78 files already formatted**. |
+| `mypy src tests` | Passed: no issues in 63 source files. |
+| `mypy --platform win32 src` | Passed: no issues in 31 source files. |
+| Focused fixture + adapter suite | Passed: **172 passed, 5 skipped**. |
+| Default suite | Passed: **1082 passed, 11 skipped, 44 deselected** in 15.11 s. |
+| Opt-in process-tree suite | Passed: **43 passed, 2 skipped, 1092 deselected** in 18.81 s. |
+| Prior credential probes | Passed under the structural policy: dropped or rejected as intended. |
+| Dynamic schema-key probe | Failed the privacy claim: captured data appeared in `_schema` while every gate returned clean (`T018-R1`). |
+| CI-selection inspection | Failed the recorded claim: both check jobs run bare `pytest` and inherit `not process_tree` (`T019-R1`). |
+
+The implementer’s ten-mutation batch was not rerun wholesale. Its recorded survivor and ten
+final kills are consistent with the committed tests, but the battery did not mutate schema
+*keys*, supplied schemas, or entry-value retention. Windows runtime behavior remains
+unverified.
+
+### Stop condition
+
+T-018 remains **Blocked**, not returned for another recognizer patch. The allowlist is the right
+primary control. Closing `T018-R1` now requires a narrow amendment to `SEC-002` about the
+secondary churn record: arbitrary captured key strings cannot be called value-free. The safest
+choice is to omit names for all unconsumed data (or omit `_schema` entirely), retaining only
+name-free container/type/count information if that evidence is still worth keeping. This gives
+up detection of a rename the adapter does not read, which is consistent with the task’s actual
+projection-contract purpose and safer than hashing potentially low-entropy personal data.
+
+## 2026-07-27 — T-018 fifth correction batch and T-019's first, returned
+
+**Implementer:** Claude Code
+**Tasks:** `T-018` (`T018-R1`, Critical), `T-019` (`T019-R1`, Medium)
+**Correction base:** `5f0a6c4`
+**Authorization:** maintainer, 2026-07-27 — `SEC-002` amended, and an explicit CI step chosen
+over narrowing the marker
+**Awaiting re-review.** Only the Reviewer marks a finding Resolved.
+
+### `T018-R1` — the finding is accepted in full, including that it was my design
+
+The reviewer's probe is reproduced and it is exactly right. `schema_fingerprint()` copied every
+mapping key verbatim; a mapping key is captured data; `{"unknown_map": {"<secret>": "ignored"}}`
+therefore wrote the secret to disk with all three gates reporting clean. The claim that a
+fingerprint "cannot carry data" was false as written, and it was false in the recommendation
+that produced it as well as in the implementation.
+
+**The fingerprint is removed rather than made name-free**, on the maintainer's ruling. A record
+that can say only "a mapping of nine things, one of them a list" names nothing that changed and
+churns on every yt-dlp release — it would have become a noisy test somebody deleted, while
+remaining a second place data could appear. Hashing was rejected: the material at risk is
+low-entropy personal data, which a hash does not protect.
+
+Two further corrections from the same finding:
+
+- **`write()` derives everything it writes.** A caller-supplied `_schema` was previously copied
+  through, so a value that had never passed the allowlist reached disk. Nothing outside
+  `_fixture`, `info_dict` and `error` is carried, and those three are rebuilt.
+- **A playlist entry is a count.** `ytdlp_adapter` reads `len(entries)`; capture recursed into
+  each entry and kept its consumed fields — the largest body of retained data in the set, held
+  for no reader. Entries are placeholders.
+
+### The reviewer's three probes, re-run against this head
+
+| Probe | Result |
+|---|---|
+| `{"unknown_map": {"credential-value-as-key-7c6c": "ignored"}}` through `capture.write()` | 40-byte file: `{"_fixture": {}, "info_dict": {}}`. Neither the secret nor the containing key's own name appears. |
+| A caller-supplied `_schema` | Dropped. `write()` emits only the three derived blocks. |
+| Committed playlist entries | `[{}, {}, {}, {}, {}, {}, {}]`, `playlist_count: 7`. No title, no uploader. 12 KB → 1.4 KB. |
+
+All three are permanent assertions now: `test_a_secret_used_as_a_mapping_key_is_not_written`,
+`test_the_writer_ignores_anything_the_caller_supplies_beside_the_known_blocks`, and
+`test_a_playlist_entry_is_a_count_and_never_a_record`. The gate refuses both a restored `_schema`
+and any key inside an entry, independently of the writer
+(`test_the_gate_refuses_a_shape_record_and_a_populated_entry`).
+
+### The fixtures were re-applied, not re-captured
+
+Each committed file was fed back through `capture.write()` — no network call, no new extraction.
+Every fixture is therefore, by construction, what the writer produces under the amended policy;
+the `captured` dates still describe the extractions they came from, which is what they always
+meant. `policy` strings were rewritten to the sentence that now holds.
+
+### `T019-R1` — accepted; the claim was false and is corrected in all four places
+
+`addopts` is global, both check jobs ran bare `pytest`, no step opted the marker back in. For one
+day Cancellation and Worker crash gated nothing anywhere. `.github/workflows/ci.yml` now carries
+a **Process-tree suite** step in the `check` job on both platforms, after the main test step:
+`-m process_tree` load-bearing against pytest's exit-5-on-empty-collection (`T031-R2`),
+`timeout-minutes: 10` because the defect under test is one that hangs, and its own junit XML and
+log in the evidence artifact. `ai/TESTING.md` §2 and §7, the module comment and `T-019`'s entry
+each now name the step that makes the claim true. **The CI step itself cannot be verified from
+here** (`OPS-003`); locally, `pytest -m process_tree` is 43 passed, 2 skipped.
+
+### Mutation evidence — 12 mutations, 12 killed
+
+Including the four the reviewer named as unmutated last round:
+
+| Mutation | Killed by |
+|---|---|
+| `write()` carries the caller's blocks, including a restored `_schema` | supplied-payload and gate tests |
+| `keep_consumed` recurses into entries again | entry-cardinality test, committed-fixture gate |
+| the gate accepts a restored `_schema` | `test_the_gate_refuses_a_shape_record_and_a_populated_entry` |
+| the gate accepts an entry carrying allowed info-dict keys | same test |
+| the eight fourth-batch guards (allowlist, formats, query allowlist, userinfo, fragment, provenance, error, user directories) | as recorded in the previous entry |
+
+### Validation
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed — 78 files already formatted |
+| `mypy src tests` | Passed — no issues in 63 source files |
+| `mypy --platform win32 src` | Passed — no issues in 31 source files |
+| Default suite | Passed — **1086 passed, 11 skipped, 44 deselected** in 15.1 s |
+| Opt-in process-tree suite | Passed — **43 passed, 2 skipped** |
+| Mutation battery | 12 of 12 killed |
+| Windows, and the CI step | Not run — no runner in this environment (`OPS-003`) |

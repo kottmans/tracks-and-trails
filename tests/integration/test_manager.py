@@ -55,7 +55,12 @@ from tracks_and_trails.downloader.result_pump import ResultPump
 
 REPO_ROOT = Path(__file__).parents[2]
 
-#: **Opt-in until `T-019` lands** — `pytest -m process_tree`, and CI still runs them.
+#: **Opt-in until `T-019` lands** — `pytest -m process_tree`, which CI runs as its own step.
+#:
+#: That step exists because of `T019-R1`: this comment originally said CI still ran them while
+#: `addopts` was excluding the marker from every bare `pytest`, CI's included. The claim has to
+#: name the step that makes it true, or it is the kind of note that stays green while the gate
+#: it describes gates nothing.
 #:
 #: Every test here spawns a real worker and most of them kill it, so they are the first thing to
 #: suffer from the defect `T-019` owns: cancelling reaps the worker but not what the worker

@@ -94,19 +94,26 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
   happens, and the unwind reads that record instead of inferring it. `T013-R5` remains
   non-blocking hardening owned by `T-052`.
 - **`T-013` approved with follow-ups and `T-015` approved**, 2026-07-27. `T-018` is on its
-  **fourth** correction of the same Critical (`T018-R1`), and the fourth is structural rather
-  than another recogniser. Three passes each closed the reported spellings and left another the
-  rule had not been written to see — tuple containers, then capture metadata and non-`C:`
-  profiles, then a key named exactly `auth`, then `passwd` and `accessKey`. The reviewer declined
-  a fifth marker list; the maintainer authorized the scope change (`SEC-002`): **a fixture now
-  commits values only for the fields the adapter reads**, and everything else is dropped and
-  survives as a value-free schema fingerprint.
-- **`ai/TESTING.md` §7 covers eight of ten mandatory areas, but only six are in the default
+  **fifth** correction of the same Critical (`T018-R1`). Three recogniser passes each closed the
+  reported spellings and left another the rule had not been written to see; the fourth made an
+  allowlist the control (`SEC-002`), and the reviewer verified that it works. The fifth removes
+  what stood beside it: the schema fingerprint copied captured mapping **keys** verbatim, so a
+  secret used as a key was written to disk while all three gates called the file clean. `SEC-002`
+  is amended — the fingerprint is gone, `write()` derives everything it writes, and a playlist
+  entry is a count rather than a record.
+- **The lesson, a fourth time in one task:** every one of the five rounds ended the same way —
+  something was being kept without a reader for it, and the argument for keeping it was always
+  "it's only shape / only names / only the parts we recognise". The allowlist survived review
+  because it starts from what is *read*. Anything else in a fixture is a liability with a story.
+- **`ai/TESTING.md` §7 covers eight of ten mandatory areas, but only six are in the default local
   run.** `T-013` added Cancellation and Worker crash against real spawned processes; both moved
   behind `-m process_tree` in `9010794`, because `T-019`'s live defect leaves descendants that
-  wedge later runs. They still pass on demand and CI still runs them; `T-019` removes the marker.
-  The two genuinely uncovered are Log redaction (`T-038`) and DRM. **DRM has no Phase 1 owner** —
-  worth settling deliberately rather than discovering it at the exit review.
+  wedge later runs. **`T019-R1` caught that the same marker removed them from CI**, which ran a
+  bare `pytest` and inherited the exclusion — so for one day two mandatory areas gated nothing
+  anywhere, while three records said CI still covered them. CI now runs an explicit
+  `-m process_tree` step on both platforms; `T-019` removes the marker with the defect. The two
+  genuinely uncovered are Log redaction (`T-038`) and DRM. **DRM has no Phase 1 owner** — worth
+  settling deliberately rather than discovering it at the exit review.
 - **The lesson from `T-044`, `T-045` and `T-014`, now three for three:** each blocking finding
   came from filtering unbounded input instead of constraining what the input could be. `T-044`
   stopped parsing for exports and read the interpreter's namespace; `T-045` dropped a completeness

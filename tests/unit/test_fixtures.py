@@ -104,8 +104,14 @@ def test_a_fixture_says_whether_it_was_recorded_or_constructed(path: Path) -> No
 #
 # The question is now "is this a field the projection reads?", which does. A value can only be
 # committed if `ytdlp_adapter` reads a field by that name, and it reads none that carry
-# credentials. Everything else is dropped at capture and survives as a value-free entry in
-# `_schema`, so upstream churn is still visible (`NFR-008`) and cannot smuggle anything.
+# credentials.
+#
+# A fifth round found the exception that proved the rule. Everything dropped used to leave a
+# value-free `_schema` fingerprint behind, for `NFR-008` churn evidence — and a fingerprint
+# copies mapping *keys* verbatim, so `{"unknown_map": {"<a secret>": "ignored"}}` wrote the
+# secret to disk while all three gates reported the file clean. A key is captured data. `SEC-002`
+# was amended to remove the fingerprint rather than sanitize it, and this file no longer has a
+# second thing that may contain something.
 
 #: Transcribed from `capture.py`'s allowlists **by hand**, as the second of two statements that
 #: must agree. Importing them would make the gate a mirror of the thing it checks.
@@ -158,10 +164,10 @@ ALLOWED_FIXTURE_KEYS = frozenset(
 )
 ALLOWED_ERROR_KEYS = frozenset({"expected_kind", "http_status", "message", "module", "type"})
 
-#: The only things a fingerprint may say. A value of any other kind means data got in.
-SCHEMA_LEAF_TYPES = frozenset(
-    {"str", "int", "float", "bool", "NoneType", "dict", "list", "tuple", "set", "frozenset"}
-)
+#: The only top-level blocks a fixture may have. `_schema` is deliberately **not** one of them
+#: any more (`SEC-002`, amended): removing the writer's ability to emit one is half the fix, and
+#: refusing to accept one at the gate is the half that stays true if somebody restores it.
+ALLOWED_TOP_LEVEL_KEYS = frozenset({"_fixture", "error", "info_dict"})
 
 #: Literal strings that must never appear anywhere in a committed fixture. Kept as a second,
 #: independent check — the allowlist should make every one of them unreachable, and a hit here
@@ -227,37 +233,22 @@ def unexpected_keys(payload: dict[str, Any]) -> list[str]:
                         if name not in ALLOWED_FORMAT_KEYS
                     )
             elif key == "entries" and isinstance(value, list):
+                # An entry is a count, not a record (`T018-R1`): the projection reads
+                # `len(entries)` and never looks inside one. Anything in there is data kept for
+                # no reader, so *every* key is unexpected rather than every unlisted key.
                 for index, entry in enumerate(value):
-                    walk_info(entry, f"{path}.entries[{index}]")
+                    if isinstance(entry, dict):
+                        found.extend(f"{path}.entries[{index}].{name}" for name in entry)
+                    elif entry is not None:
+                        found.append(f"{path}.entries[{index}] = {type(entry).__name__}")
 
     found.extend(
         f"_fixture.{k}" for k in payload.get("_fixture", {}) if k not in ALLOWED_FIXTURE_KEYS
     )
     found.extend(f"error.{k}" for k in payload.get("error", {}) if k not in ALLOWED_ERROR_KEYS)
     walk_info(payload.get("info_dict"), "info_dict")
-    found.extend(k for k in payload if k not in {"_fixture", "_schema", "info_dict", "error"})
+    found.extend(k for k in payload if k not in ALLOWED_TOP_LEVEL_KEYS)
     return found
-
-
-def values_in_schema(schema: Any, path: str = "_schema") -> list[str]:
-    """Every leaf of a fingerprint that is not simply a type name.
-
-    The fingerprint exists to record yt-dlp's shape without its data. A leaf that is not a type
-    name is data, and the whole point of keeping the record separate is that it cannot be.
-    """
-    if isinstance(schema, dict):
-        return [
-            item
-            for key, value in schema.items()
-            for item in values_in_schema(value, f"{path}.{key}")
-        ]
-    if isinstance(schema, list):
-        return [
-            item
-            for index, value in enumerate(schema)
-            for item in values_in_schema(value, f"{path}[{index}]")
-        ]
-    return [] if schema in SCHEMA_LEAF_TYPES else [f"{path} = {schema!r}"]
 
 
 @pytest.mark.parametrize("path", all_fixtures(), ids=fixture_id)
@@ -271,17 +262,25 @@ def test_a_fixture_carries_only_the_keys_the_projection_reads(path: Path) -> Non
     found = unexpected_keys(load(path))
     assert not found, (
         f"{path.name} carries fields the projection never reads: {found}. Values belong only "
-        "under consumed keys; everything else lives in _schema without its data."
+        "under consumed keys; everything else is dropped and nothing about it is kept."
     )
 
 
-@pytest.mark.parametrize("path", info_fixtures(), ids=fixture_id)
-def test_the_schema_fingerprint_carries_no_data(path: Path) -> None:
-    """`NFR-008` evidence, kept in a form that cannot leak."""
+@pytest.mark.parametrize("path", all_fixtures(), ids=fixture_id)
+def test_no_fixture_carries_a_shape_record(path: Path) -> None:
+    """`SEC-002`, amended: there is no second block, because the second block could carry data.
+
+    A fingerprint of the discarded keys was `NFR-008` churn evidence until a probe put a secret
+    in a nested mapping *key* and watched every gate call the file clean. A key is captured data.
+    What remains of `NFR-008` here is narrower and honest: a rename of a field the adapter
+    **reads** fails the projection tests, and one it never reads is not this project's canary.
+    """
     payload = load(path)
-    assert payload.get("_schema"), f"{path.name} records no schema, so churn would be invisible"
-    leaked = values_in_schema(payload["_schema"])
-    assert not leaked, f"{path.name} put data in its fingerprint: {leaked[:5]}"
+    assert "_schema" not in payload, (
+        f"{path.name} carries a _schema block. It was removed because a fingerprint copies "
+        "mapping keys verbatim, and a key is data (SEC-002, amended)."
+    )
+    assert set(payload) <= ALLOWED_TOP_LEVEL_KEYS, sorted(set(payload) - ALLOWED_TOP_LEVEL_KEYS)
 
 
 @pytest.mark.parametrize("path", all_fixtures(), ids=fixture_id)
@@ -365,34 +364,116 @@ def test_the_writer_keeps_only_what_the_projection_reads() -> None:
         assert secret not in blob, f"{secret!r} survived into the committed values"
 
 
-def test_the_fingerprint_records_names_and_types_but_never_values() -> None:
-    """The other half of the trade: churn evidence that cannot carry data (`NFR-008`)."""
+def test_a_secret_used_as_a_mapping_key_is_not_written(tmp_path: Path) -> None:
+    """The probe that reopened `T018-R1` a fifth time, now a permanent assertion.
+
+    `capture.write()` used to emit a shape fingerprint of everything it dropped, and a
+    fingerprint copies mapping keys verbatim. Nested maps are commonly keyed by data — a header
+    name, an identifier, a token — so the claim that the record "cannot carry data" was simply
+    false, and all three gates reported the file clean.
+    """
     from tests.fixtures import capture
 
-    schema = capture.schema_fingerprint(HOSTILE_INFO)
+    written = tmp_path / "keys.json"
+    capture.write(
+        written,
+        {
+            "_fixture": {"captured": "2026-07-27"},
+            "info_dict": {"unknown_map": {"credential-value-as-key-7c6c": "ignored"}},
+        },
+    )
+    text = written.read_text(encoding="utf-8")
 
-    assert "cookies" in schema, "the fingerprint must still record that the key existed"
-    assert schema["cookies"] == "str", "it must record the type, not the value"
-    assert not values_in_schema(schema), values_in_schema(schema)
-
-    # A key *name* is schema and is the whole point of keeping this — `clientsecret` appears
-    # here, and should. What must never appear is what it held.
-    blob = json.dumps(schema)
-    assert "clientsecret" in blob, "the fingerprint stopped recording key names"
-    for value in ("hunter2", "sesame", "AKIA", "SID=", "fixture-secret-7c6c", "-----BEGIN"):
-        assert value not in blob, f"the fingerprint carried the value {value!r}"
+    assert "credential-value-as-key-7c6c" not in text, "a mapping key reached the file"
+    assert "unknown_map" not in text, "the dropped key's own name reached the file"
+    assert not unexpected_keys(load(written))
+    assert not leaks_in(text)
 
 
-def test_the_fingerprint_check_reports_data_when_it_finds_some() -> None:
-    """`ai/TESTING.md` §13: the check has to be watched failing.
+def test_the_writer_ignores_anything_the_caller_supplies_beside_the_known_blocks(
+    tmp_path: Path,
+) -> None:
+    """`write()` derives what it writes; it does not accept a caller's version of it.
 
-    Every other assertion about the fingerprint runs against output the writer produced, which
-    is clean — so a check that always returned "nothing found" would look identical.
+    The removed `_schema` was taken from the payload when one was there, so a value that had
+    never been through the allowlist went to disk. Nothing outside `_fixture`, `info_dict` and
+    `error` is carried now, and those three are rebuilt rather than copied.
     """
-    assert values_in_schema({"cookies": "SID=secret"}), "a value in a leaf went unreported"
-    assert values_in_schema({"formats": [{"url": "https://cdn/x?sig=1"}]})
-    assert values_in_schema({"nested": {"deep": 12}})
-    assert not values_in_schema({"cookies": "str", "formats": [{"url": "str"}], "n": "int"})
+    from tests.fixtures import capture
+
+    written = tmp_path / "supplied.json"
+    capture.write(
+        written,
+        {
+            "_fixture": {"captured": "2026-07-27"},
+            "info_dict": {"title": "kept"},
+            "_schema": {"smuggled": "SID=secret"},
+            "extra_block": {"also": "SID=secret"},
+        },
+    )
+    payload = load(written)
+
+    assert set(payload) <= ALLOWED_TOP_LEVEL_KEYS, sorted(payload)
+    assert "SID=secret" not in written.read_text(encoding="utf-8")
+    assert payload["info_dict"]["title"] == "kept"
+
+
+def test_a_playlist_entry_is_a_count_and_never_a_record(tmp_path: Path) -> None:
+    """`ytdlp_adapter` reads `len(entries)`. Everything else about an entry was kept for nobody.
+
+    Each entry is a whole info dict, so recursing into them was the largest single body of
+    retained data in the fixture set — and the projection has never looked inside one.
+    """
+    from tests.fixtures import capture
+
+    written = tmp_path / "playlist.json"
+    capture.write(
+        written,
+        {
+            "_fixture": {"captured": "2026-07-27"},
+            "info_dict": {
+                "_type": "playlist",
+                "title": "kept",
+                "entries": [
+                    {"title": "chapter one", "uploader": "a person", "cookies": "SID=secret"},
+                    {"title": "chapter two", "uploader": "a person"},
+                ],
+            },
+        },
+    )
+    payload = load(written)
+
+    assert payload["info_dict"]["entries"] == [{}, {}], "an entry carried something"
+    text = written.read_text(encoding="utf-8")
+    for value in ("chapter one", "a person", "SID=secret"):
+        assert value not in text, f"{value!r} survived inside an entry"
+    assert not unexpected_keys(payload)
+
+
+def test_the_gate_refuses_a_shape_record_and_a_populated_entry(tmp_path: Path) -> None:
+    """`ai/TESTING.md` §13: the gate has to be watched refusing what the writer stopped emitting.
+
+    Removing the writer's ability to emit a `_schema` is half the fix. This is the half that
+    survives somebody restoring it, or hand-editing a fixture.
+    """
+    hostile = {
+        "_fixture": {"captured": "2026-07-27"},
+        "info_dict": {
+            "title": "fine",
+            "entries": [{"title": "chapter one"}, {}],
+        },
+        "_schema": {"unknown_map": {"credential-value-as-key-7c6c": "str"}},
+    }
+    written = tmp_path / "restored.json"
+    written.write_text(json.dumps(hostile), encoding="utf-8")
+
+    found = unexpected_keys(load(written))
+
+    assert "_schema" in found, "a restored fingerprint was accepted"
+    assert "info_dict.entries[0].title" in found, "an entry's contents were accepted"
+    assert not any(item.endswith(".title") and "entries" not in item for item in found), (
+        "a consumed field was refused"
+    )
 
 
 def test_the_writer_enforces_the_provenance_and_error_allowlists(tmp_path: Path) -> None:

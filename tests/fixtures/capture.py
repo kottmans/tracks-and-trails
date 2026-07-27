@@ -48,6 +48,11 @@ ERROR_DIR: Final = Path(__file__).parent / "errors"
 #: correct and the next spelling still walked through. An allowlist inverts the question — a
 #: credential can only be committed if the projection reads a field by that name, and it does
 #: not — so a new spelling is irrelevant by construction rather than by vigilance.
+#:
+#: It is the **only** control, deliberately. A fifth round found the secondary shape record
+#: writing captured mapping *keys* verbatim, which is captured data; `SEC-002` was amended to
+#: drop it rather than sanitize it, because "everything except the allowlist, but safely" is the
+#: same bet that lost four times.
 CONSUMED_TOP_LEVEL: Final = (
     "_has_drm",
     "_type",
@@ -164,13 +169,19 @@ def redact_url(value: str) -> str:
     return urlunsplit(parts._replace(netloc=netloc, query=urlencode(kept), fragment=""))
 
 
+#: What an entry of a playlist becomes. The projection reads `len(entries)` and nothing else
+#: (`ytdlp_adapter._entry_count`), so an entry is a **count**, not a record.
+ENTRY_PLACEHOLDER: Final[dict[str, Any]] = {}
+
+
 def keep_consumed(info: Mapping[str, Any]) -> dict[str, Any]:
     """The projection's own view of an info dict: allowed keys only, values cleaned.
 
     Everything else is **dropped, not redacted**. A dropped key cannot leak whatever it held,
     and cannot become a leak later when somebody adds a field to yt-dlp with a name nobody has
-    thought of yet. What is lost — the shape of the rest — is kept separately and without
-    values by `schema_fingerprint`.
+    thought of yet. Nothing is kept about it — see `SEC-002`, amended: the shape record that
+    used to stand in for the discarded data was itself able to carry it, because a mapping *key*
+    is captured data too.
     """
     kept: dict[str, Any] = {}
     for key in CONSUMED_TOP_LEVEL:
@@ -180,10 +191,10 @@ def keep_consumed(info: Mapping[str, Any]) -> dict[str, Any]:
         if key == "formats" and isinstance(value, list | tuple):
             kept[key] = [_keep_format(entry) for entry in value]
         elif key == "entries" and isinstance(value, list | tuple):
-            # Entries are whole info dicts of their own; the same rule applies one level down.
-            kept[key] = [
-                keep_consumed(entry) if isinstance(entry, Mapping) else {} for entry in value
-            ]
+            # **Cardinality, not content** (`T018-R1`). Recursing here kept each entry's title
+            # and uploader, and the projection never reads either: it takes `len(entries)`. Data
+            # retained for no reader is a leak waiting for a shape nobody predicted.
+            kept[key] = [dict(ENTRY_PLACEHOLDER) for _ in value]
         else:
             kept[key] = clean_scalar(value)
     return kept
@@ -195,24 +206,6 @@ def _keep_format(entry: Any) -> dict[str, Any]:
     return {key: clean_scalar(entry[key]) for key in CONSUMED_FORMAT if key in entry}
 
 
-#: What a fingerprint may say about a value: its shape, never its content.
-def schema_fingerprint(value: Any) -> Any:
-    """Describe `value`'s structure and types, carrying none of its data (`T018-R1`).
-
-    This is what the fixtures were really for beyond the projection: evidence of yt-dlp's shape,
-    so an upstream rename or removal fails a test instead of a download (`NFR-008`). Key names
-    and types answer that; values never did. A fingerprint therefore cannot leak, whatever the
-    next field is called.
-    """
-    if isinstance(value, Mapping):
-        pairs = sorted(value.items(), key=lambda kv: str(kv[0]))
-        return {str(key): schema_fingerprint(item) for key, item in pairs}
-    if isinstance(value, list | tuple | set | frozenset):
-        items = list(value)
-        return [schema_fingerprint(items[0])] if items else []
-    return type(value).__name__
-
-
 def _policy_record() -> str:
     """What the fixture writer promised, recorded beside the fixture.
 
@@ -220,9 +213,9 @@ def _policy_record() -> str:
     recognising anything, so there is no marker list to reproduce here.
     """
     return (
-        "allowlist: only fields ytdlp_adapter reads carry values; every other key is dropped "
-        "and survives as a value-free entry in _schema. URLs lose query, userinfo and fragment; "
-        "user-directory paths are removed"
+        "allowlist: only fields ytdlp_adapter reads carry values, and playlist entries are "
+        "counted rather than recorded; every other key is dropped and nothing about it is kept. "
+        "URLs lose query, userinfo and fragment; user-directory paths are removed"
     )
 
 
@@ -335,7 +328,6 @@ def capture_info(source: Source, version: str) -> dict[str, Any]:
             ),
         },
         "info_dict": keep_consumed(dict(info or {})),
-        "_schema": schema_fingerprint(dict(info or {})),
     }
 
 
@@ -383,6 +375,11 @@ def write(path: Path, payload: dict[str, Any]) -> None:
     Every capture goes through here, so this is where "no field was forgotten" becomes true by
     construction rather than by review (`T018-R1`). Anything outside the allowlists is dropped
     — including from the provenance block, whose `source_url` is captured data like any other.
+
+    **Nothing in `payload` is trusted, and nothing outside the three known blocks is carried.**
+    The removed `_schema` was accepted from the caller when one was supplied, which meant the
+    door had a hole in it beside the lock: whatever a caller had already computed went to disk
+    unexamined. Every field written below is derived here, from this function.
     """
     fixture = {
         key: clean_scalar(value)
@@ -392,7 +389,6 @@ def write(path: Path, payload: dict[str, Any]) -> None:
     written: dict[str, Any] = {"_fixture": fixture}
     if "info_dict" in payload:
         written["info_dict"] = keep_consumed(payload["info_dict"])
-        written["_schema"] = payload.get("_schema") or schema_fingerprint(payload["info_dict"])
     if "error" in payload:
         written["error"] = {
             key: clean_scalar(value)

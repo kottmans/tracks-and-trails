@@ -901,10 +901,41 @@ Scope, precisely:
 
 ## SEC-002 — A fixture commits values only for the fields the projection reads
 
-**Status:** **Accepted** (2026-07-27) — maintainer decision on a Critical review finding
+**Status:** **Accepted** (2026-07-27), **amended the same day** — maintainer decisions on a
+Critical review finding
 **Date:** 2026-07-27
 **Narrows:** the scope of what `tests/fixtures/capture.py` writes, and one acceptance criterion
 of `T-018`.
+
+> **Amendment, 2026-07-27 — the schema fingerprint is removed, not sanitized.**
+>
+> The original decision below kept a value-free fingerprint of the discarded data as `NFR-008`
+> churn evidence. That record was not value-free. **A mapping key is captured data**, and
+> `schema_fingerprint()` copied every key verbatim: `{"unknown_map": {"<a secret>": "ignored"}}`
+> wrote the secret to disk while the key gate, the schema-leaf check and the text scanner all
+> reported the file clean. Nested maps are routinely keyed by data — a header name, an
+> identifier, a token — so "names are schema, values are data" was simply the wrong line.
+>
+> The fingerprint is **deleted** rather than made name-free. A record that can say only
+> "a mapping of nine things, one of them a list" identifies nothing that changed, and counts
+> churn on every yt-dlp release, so it would have been a noisy test somebody eventually removed
+> — while remaining a second place data could appear. Hashing was rejected too: the material at
+> risk is low-entropy personal data, which a hash does not protect.
+>
+> Two consequences of the same amendment, from the same review:
+>
+> - **`write()` derives everything it writes.** It used to accept a caller-supplied `_schema`,
+>   so a value that had never been through the allowlist reached disk. Nothing outside
+>   `_fixture`, `info_dict` and `error` is carried, and those three are rebuilt, not copied.
+> - **A playlist entry is a count.** `ytdlp_adapter` reads `len(entries)` and never looks inside
+>   one, but capture recursed into each entry and kept its consumed fields — the largest body of
+>   retained data in the fixture set, held for no reader. Entries are now placeholders.
+>
+> **What this gives up, deliberately:** detection of an upstream rename in a field the adapter
+> never reads. That was the fingerprint's only unique job. A rename of a field the adapter *does*
+> read still fails the projection tests, and the AST-derived allowlist test still fails when the
+> adapter starts reading something the fixtures cannot carry. `NFR-008`'s canary is narrower now
+> and honest about its range.
 
 ### Context
 
@@ -936,10 +967,12 @@ plus the reviewed provenance and error fields. Every other key is dropped before
   adapter's AST — so a field the adapter starts reading fails the suite until it is listed.
 - URL-valued allowed fields still lose query, userinfo and fragment. The path and key patterns
   stay as defence in depth, not as the primary control.
-- **Upstream churn evidence is preserved without preserving unknown values**: alongside the
+- ~~**Upstream churn evidence is preserved without preserving unknown values**: alongside the
   allowlisted projection input, each fixture records a value-free recursive schema fingerprint
   of the discarded raw data — key names, container shape, scalar *type*, no scalar values. A
-  yt-dlp shape change is still visible; an unfamiliar key cannot carry its value into git.
+  yt-dlp shape change is still visible; an unfamiliar key cannot carry its value into git.~~
+  **Struck by the amendment above**: key names are captured data, so this was never true. The
+  fingerprint is removed; nothing about a dropped key is kept.
 
 ### Rationale
 
@@ -965,8 +998,10 @@ plus the reviewed provenance and error fields. Every other key is dropped before
 ### Consequences
 
 - **A fixture no longer proves what yt-dlp returned, only what this project consumes of it.**
-  The schema fingerprint is what catches upstream churn now; a field the adapter never reads
-  changing shape is, deliberately, no longer a test failure.
+  A field the adapter never reads changing shape — or name, after the amendment — is
+  deliberately not a test failure. What still fails is a rename of a field the adapter *does*
+  read (the projection tests) and the adapter reading something the fixtures cannot carry (the
+  AST-derived allowlist test).
 - **Adding an adapter read is a two-step change**: extend the allowlist, then re-capture. The
   AST test makes forgetting the first step fail loudly rather than silently drop data.
 - **`T-012`'s `archive_org_big_buck_bunny` was force-refreshed** by this policy, because its

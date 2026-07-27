@@ -14,8 +14,9 @@ IDs are never reused. Completed tasks move to `ai/archive/` once they bury the l
 
 **Start here:** `T-013` is **approved with follow-ups** (`T-052`) and `T-015` is **approved**,
 both 2026-07-27. **`T-018` is the one task still in review**: Critical `T018-R1` is corrected a
-fourth time, structurally, on the maintainer's authorization (`SEC-002` — a fixture commits
-values only for the fields the adapter reads). See the task-local record and `ai/REVIEWS.md`.
+fifth time — the allowlist held, and `SEC-002` is amended to remove the schema fingerprint
+beside it, because a mapping key is captured data. `T-019` carries Medium `T019-R1`, corrected:
+the process-tree marker was excluding those 43 tests from CI as well as from the local run.
 
 `T-012` was approved with follow-ups on 2026-07-26 after two review rounds; `T-014` was approved
 2026-07-26 at `db14cc2`. **`T-033` is Blocked**, not complete: its code is verified but approval
@@ -542,10 +543,43 @@ output of translation, not an internal detail.
 
 ### T-018 — Recorded `info_dict` fixtures and projection tests
 
-**Status:** **In Review — fourth correction batch returned 2026-07-27, awaiting verification.**
-`T018-R2` is verified resolved, closing `T012-R6`. `T018-R1` (Critical) survived three
-recogniser corrections; the fourth is a **structural scope change authorized by the maintainer**
-and recorded as `SEC-002` — a fixture now commits values only for the fields the adapter reads.
+**Status:** **In Review — fifth correction batch returned 2026-07-27, awaiting verification.**
+`T018-R2` is verified resolved, closing `T012-R6`. `T018-R1` (Critical) survived three recogniser
+corrections; the fourth made the allowlist the control, which the reviewer verified works. The
+fifth removes the *secondary* record that came with it — `SEC-002` is **amended**: a schema
+fingerprint copies mapping keys verbatim, and a mapping key is captured data.
+
+#### Fifth correction batch — `T018-R1` (Critical, in the authorized design; `SEC-002` amended)
+
+The allowlist held. What failed was the thing standing beside it: `capture.write()` given
+`{"unknown_map": {"credential-value-as-key-7c6c": "ignored"}}` wrote that key into `_schema`, and
+the key gate, the schema-leaf check and the text scanner all reported the file clean. "Names are
+schema, values are data" was the wrong line — nested maps are routinely keyed by data.
+
+- **The fingerprint is deleted, not sanitized.** A name-free version could say only "a mapping of
+  nine things, one of them a list": it identifies nothing that changed, churns on every yt-dlp
+  release, and remains a second place data can appear. Hashing was rejected because the material
+  at risk is low-entropy personal data. `SEC-002` records what this gives up — detecting a rename
+  in a field the adapter never reads, which was the fingerprint's only unique job.
+- **`write()` derives everything it writes.** It used to accept a caller-supplied `_schema`, so a
+  value that had never been through the allowlist reached disk. Nothing outside `_fixture`,
+  `info_dict` and `error` is carried now, and those three are rebuilt rather than copied.
+- **A playlist entry is a count.** `ytdlp_adapter` reads `len(entries)` and never looks inside
+  one, but capture recursed into each entry and kept its consumed fields — the largest body of
+  retained data in the set, held for no reader. Entries are placeholders; the playlist fixture
+  went from 12 KB to 1.4 KB.
+- **The gate refuses both independently.** Removing the writer's ability to emit a `_schema` is
+  half the fix; `unexpected_keys()` rejecting a restored one, and rejecting any key inside an
+  entry, is the half that survives somebody putting it back or hand-editing a fixture.
+
+**The fixtures were re-applied, not re-captured.** Each committed file was fed back through
+`capture.write()` — no network call, no new extraction — so every one is by construction what the
+writer produces under the amended policy. The `captured` dates still describe the extractions
+they came from, which is what they always meant.
+
+**Mutation-checked: 12 mutations, 12 killed**, including the four the reviewer named as unmutated
+last round: a restored `_schema` accepted by `write()`, entry recursion restored, the gate
+accepting a `_schema` block, and the gate accepting entry contents.
 
 #### Fourth correction batch — `T018-R1` (Critical, structural; `SEC-002`)
 
@@ -771,7 +805,9 @@ audit sibling URL credential forms and container shapes, and mutation-check the 
 `core/models.py`, `downloader/ytdlp_adapter.py`
 **Risk:** Medium — a carelessly refreshed fixture hides the upstream breakage the fixture
 exists to catch
-**Review base:** the `T-012` merge commit. **Review head:** `0973fee`, merged by `7021a01`; corrections at `73d04c6` (third) and `2f85a32` (fourth, structural — `SEC-002`)
+**Review base:** the `T-012` merge commit. **Review head:** `0973fee`, merged by `7021a01`;
+corrections at `73d04c6` (third), `2f85a32` (fourth, structural — `SEC-002`) and the fifth
+below (`SEC-002` amended)
 **Blocks:** the `T012-R6` projection blocker on `T-016` is resolved; T-018 itself remains in
 review on `T018-R1`
 
@@ -1211,6 +1247,28 @@ it, on a path no current test can see
 — the same suite finishing in 19 seconds twice and then sitting past ten minutes. Two of
 `ai/TESTING.md` §7's mandatory areas are out of the default loop until this lands. The marker is
 removed by this task, not by a separate cleanup.
+
+#### `T019-R1` — Medium, corrected 2026-07-27, awaiting re-review
+
+**The marker took those 43 tests out of CI as well, while three records said otherwise.**
+`addopts` in `pyproject.toml` is global, both check jobs ran bare `pytest`, and no step opted the
+marker back in — so Cancellation and Worker crash, two mandatory areas, ran nowhere: not locally,
+not on Linux CI, not on Windows CI. `ai/TESTING.md`, the module comment, the implementer record
+and the commit message all claimed CI still covered them.
+
+`.github/workflows/ci.yml` now has a **Process-tree suite** step in the `check` job, after the
+main test step, on both platforms. It follows the `windows_desktop` pattern: `-m process_tree` is
+load-bearing because pytest exits 5 on an empty collection, so a marker typo fails the job rather
+than passing it vacuously (`T031-R2`). It carries `timeout-minutes: 10`, because the defect under
+test is one that hangs — a wedged job should fail in ten minutes rather than sit for six hours —
+and its own junit XML and log in the evidence artifact.
+
+A fresh runner is the right place for these: it is discarded after the job, so an orphan cannot
+wedge a later run the way it does locally. Verified locally at `pytest -m process_tree`:
+**43 passed, 2 skipped**. The CI step itself cannot be verified from here (`OPS-003`).
+
+Every claim that CI ran them was corrected rather than deleted, in `ai/TESTING.md` §2 and §7 and
+in the module comment, each naming the step that now makes it true.
 
 #### Why this was rescoped
 
