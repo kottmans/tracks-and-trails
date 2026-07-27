@@ -37,10 +37,40 @@ first focusable widgets.
 
 ### T-013 — Download manager and result pump
 
-**Status:** **In Review — Blocked after the maintainer-authorized correction pass,
-2026-07-27.** `T013-R4` is resolved; `T013-R3` remains a blocking Medium. The authorized extra
-pass is exhausted, so another Medium-or-lower pass requires a new maintainer choice under
-`AGENTS.md` §9. `T013-R5` stays non-blocking test hardening owned by `T-052`.
+**Status:** **In Review — third correction batch returned 2026-07-27, awaiting verification.**
+`T013-R1`, `T013-R2` and `T013-R4` are verified resolved. `T013-R3` is corrected again — this
+time by **restructuring** the startup transaction rather than patching a third sibling of it,
+which is the option the maintainer chose when authorizing the pass (`AGENTS.md` §9). `T013-R5`
+stays non-blocking test hardening owned by `T-052`.
+
+#### Third correction batch — `T013-R3`, restructured
+
+**The same eight lines had failed review three times, each with a different sibling**: the
+cleanup write, then the sentinel write, then a worker left running after its reader failed to
+start. Every one had the same cause — the unwind inferred what existed from whichever locals
+were in scope. So the shape changed rather than the symptom:
+
+- **The session is created as soon as there is anything to own**, and each start is recorded on
+  it the instant it returns. `process_started` and `pump_started` are separate facts because
+  they fail separately: the single flag they replace was set only after *both* succeeded, so a
+  pump that failed to start left a live worker the unwind could not see.
+- **`_abort_start` reads that record instead of guessing.** A started process is killed; a
+  started pump is ended with a sentinel, or terminated if the queue refuses one, and the session
+  stays under watch until the thread reports itself finished — `T013-R4`'s rule, reused rather
+  than re-derived.
+- **Persistence comes first and both signals follow it.** `protocol_violation` was still emitted
+  before the `FAILED` write, so an observer could read `PROBING` — a state nothing was working
+  on any more.
+
+**Mutation-checked: 4 mutations, 4 killed** — dropping the process reap, collapsing the two
+start records into one, announcing the violation before persisting, and dropping a started pump
+instead of watching it.
+
+**One thing found while validating, worth knowing.** The full suite appeared to hang for ten
+minutes. It was not the correction: earlier probes and a timed-out mutation batch had left
+orphaned `spawn_main` workers reparented to the session manager, and they interfered with later
+runs. That is `T-019`'s subject arriving in the development loop rather than in the product — a
+harness that kills its own parent needs the same process-tree cleanup the application does.
 
 #### Reviewer result on `d5034a0`
 

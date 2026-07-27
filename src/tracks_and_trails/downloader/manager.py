@@ -187,9 +187,12 @@ class _Session:
     cancel: Any
     pump: ResultPump
 
-    #: Whether `Process.start()` actually returned. `join()` on an unstarted process raises, and
-    #: the one path that gets here without a live child is a spawn that failed outright.
-    started: bool = False
+    #: The two starts, recorded separately and the instant each returns (`T013-R3`). They fail
+    #: independently — a process can be running while its pump never started — and an unwind
+    #: that inferred them from one flag left a live worker nobody was reading. `join()` on an
+    #: unstarted process raises, so the first is load-bearing for reaping too.
+    process_started: bool = False
+    pump_started: bool = False
 
     #: Set when the user asks to cancel. It changes what "no outcome" means at the end of the
     #: session: a job the user stopped is `CANCELLED`, not a crash.
@@ -330,12 +333,13 @@ class DownloadManager(QObject):
         started = self._advance(replace(job, started_at=_now()), JobStatus.PROBING)
         self._save_and_announce(started)
 
-        # Everything from here to `process.start()` is one transaction with that durable write
-        # (`T013-R3`). The job now says it is in flight; if any of it fails, the queue is
-        # describing work that does not exist, `REQ-018`'s "never fail silently" is broken, and
-        # crash recovery cannot help — the application did not crash.
+        # **One transaction, one unwind** (`T013-R3`, third pass). This block has now failed
+        # review three times, in three different places, and every one had the same cause: the
+        # unwind inferred what existed from whichever locals happened to be in scope. So the
+        # session is created as soon as there is anything to own, each start is recorded on it
+        # the instant it succeeds, and `_abort_start` reads that record instead of guessing.
+        session: _Session | None = None
         queue: Any = None
-        pump: ResultPump | None = None
         try:
             queue = self._context.Queue()
             cancel = self._context.Event()
@@ -353,109 +357,112 @@ class DownloadManager(QObject):
                 daemon=True,
             )
             session = _Session(
-                job_id=job_id,
-                kind=kind,
-                process=process,
-                queue=queue,
-                cancel=cancel,
-                pump=pump,
+                job_id=job_id, kind=kind, process=process, queue=queue, cancel=cancel, pump=pump
             )
             self._sessions[job_id] = session
+            self._connect(session)
 
-            pump.probed.connect(self._on_probed)
-            pump.progress.connect(self._on_progress)
-            pump.resolution_reported.connect(self._on_resolution)
-            pump.succeeded.connect(self._on_succeeded)
-            pump.failed.connect(self._on_failed)
-            pump.worker_finished.connect(self._on_worker_finished)
-            pump.violation.connect(self._on_violation)
-            pump.session_ended.connect(self._on_session_ended)
-            # `finished` carries no argument, so the job id is closed over rather than routed.
-            pump.finished.connect(lambda: self._on_pump_finished(job_id))
-
-            # **The process first, then the pump** (`T013-R3`, second pass). The original order
-            # was the other way round, on the theory that a worker failing immediately must not
-            # find nobody reading — but a `multiprocessing.Queue` writes into a pipe that
-            # buffers, so nothing a worker sends before the reader starts is lost.
+            # **The process first, then the pump.** The original order was the other way round,
+            # on the theory that a worker failing immediately must not find nobody reading — but
+            # a `multiprocessing.Queue` writes into a pipe that buffers, so nothing sent before
+            # the reader starts is lost.
             #
             # The order matters for failure, not for success. Starting the pump first meant a
-            # failed spawn left a live thread already blocked in `Queue.get()`, and the only
-            # ways to end it are a sentinel the broken queue may refuse and a `terminate()` that
-            # does not reliably interrupt a blocked read. Probed both: closing the queue does not
-            # wake a reader already inside `get()` either. So that cleanup had no reliable
-            # answer, and the fix is to not create the situation — after this order, a spawn
-            # failure has no running thread to unwind.
+            # failed spawn left a thread blocked in `Queue.get()` with no reliable end: the
+            # sentinel can be refused, `terminate()` does not interrupt a blocked read, and
+            # closing the queue does not wake a reader already inside `get()` — all three
+            # probed. Each start is recorded separately because the *other* order has a failure
+            # too: a pump that will not start leaves a worker already running.
             process.start()
+            session.process_started = True
             pump.start()
+            session.pump_started = True
         except BaseException as error:
-            self._abort_start(job_id, queue, pump, error)
+            self._abort_start(job_id, session, queue, error)
             raise
-        session.started = True
         self._timer.start()
 
+    def _connect(self, session: _Session) -> None:
+        """Wire one session's pump to the slots that decide what its messages mean."""
+        pump = session.pump
+        pump.probed.connect(self._on_probed)
+        pump.progress.connect(self._on_progress)
+        pump.resolution_reported.connect(self._on_resolution)
+        pump.succeeded.connect(self._on_succeeded)
+        pump.failed.connect(self._on_failed)
+        pump.worker_finished.connect(self._on_worker_finished)
+        pump.violation.connect(self._on_violation)
+        pump.session_ended.connect(self._on_session_ended)
+        # `finished` carries no argument, so the job id is closed over rather than routed.
+        job_id = session.job_id
+        pump.finished.connect(lambda: self._on_pump_finished(job_id))
+
     def _abort_start(
-        self, job_id: str, queue: Any, pump: ResultPump | None, error: BaseException
+        self, job_id: str, session: _Session | None, queue: Any, error: BaseException
     ) -> None:
-        """Undo a half-built session and leave the job durably failed (`T013-R3`).
+        """Leave the job durably failed, then take apart exactly what was built (`T013-R3`).
 
-        Three things have to happen, and the order matters. The pump — if it got as far as
-        running — is sitting in `Queue.get()` on a queue no worker will ever write to, so its
-        stream is ended first. The session is dropped, because there is nothing to watch. And the
-        job is moved from the `PROBING` this method already persisted to a recorded failure,
-        written before it is announced, so nothing is ever told about a state the database does
-        not hold.
+        **Persistence comes first, and both signals come after it.** Whatever broke the session
+        can break its queue too, so an unguarded cleanup write once replaced the original cause;
+        and an observer of `protocol_violation` once read `PROBING`, because the violation was
+        emitted before the failure was stored. Nothing about tidying up is worth more than the
+        record of what happened, and nothing is announced before it is true.
         """
-        session = self._sessions.pop(job_id, None)
         reason = f"the worker session could not be started: {error!r}"
-
-        # **The durable record comes first, and nothing below may pre-empt it** (`T013-R3`,
-        # second pass). Whatever broke the session is quite capable of having broken its queue
-        # too, so the cleanup write can fail — and when it did, its exception replaced the
-        # original cause on the way out and the job was left claiming to be in flight with
-        # nothing running. Tidying up is never worth more than the record of what happened.
-        self._on_violation(job_id, reason)
-        job = self._require(job_id)
         message = f"The download could not be started. {reason}"
+        job = self._require(job_id)
         self._save_and_announce(
             replace(job.with_failure(ErrorKind.WORKER_CRASH, message), finished_at=_now())
         )
+        self._on_violation(job_id, reason)
         self.job_failed.emit(job_id, ErrorKind.WORKER_CRASH, message)
 
-        if session is not None:
-            # The job is already resolved; stop the session from resolving it again.
-            session.finalized = True
-        self._release_half_built(job_id, session, queue, pump)
-
-    def _release_half_built(
-        self, job_id: str, session: _Session | None, queue: Any, pump: ResultPump | None
-    ) -> None:
-        """Dispose of whatever `start()` managed to build, without ever raising.
-
-        Called only when the job has already been recorded as failed, so every step here is
-        best-effort: a failure to clean up is reported and moved past, never allowed to escape
-        and mask the failure that caused it.
-        """
-        running = pump is not None and pump.isRunning()
-        if not running:
+        if session is None:
+            # Nothing was owned yet: construction failed before there was a session.
             self._close_quietly(job_id, queue)
             return
 
-        if pump is not None and not self._end_the_stream_quietly(job_id, queue):
-            # The sentinel could not be delivered, so the thread cannot end the ordinary way.
-            pump.terminate()
+        session.finalized = True
+        self._sessions.pop(job_id, None)
+        self._unwind(session)
 
-        if session is not None:
-            # Keep watching it until the thread actually returns (`T013-R4`). The tick releases
-            # it; `finalized` stops it from touching a job this method has already failed.
-            session.sentinel_sent = True
-            session.forced = True
-            session.abandoned = True
-            session.abandon_at = time.monotonic() + self._reap_seconds
-            self._sessions[job_id] = session
-            self._timer.start()
+    def _unwind(self, session: _Session) -> None:
+        """Stop whatever a failed `start()` actually got running, reading its own record.
+
+        The two halves fail independently, and the review found each of them in turn:
+
+        - **A started process with no pump** is a worker nobody is reading and nobody will stop.
+          It is killed here — it has done no work worth unwinding, since the pump that would
+          have carried its messages never ran.
+        - **A started pump** is a thread blocked in `Queue.get()`, ended the ordinary way with a
+          sentinel and by `terminate()` if the queue will not take one. The session is put back
+          under watch until the thread reports itself finished (`T013-R4`), because a terminate
+          that has merely been *issued* is not a thread that has stopped.
+        """
+        if session.process_started and session.process.is_alive():
+            session.process.kill()
+            session.process.join(0)
+
+        if not session.pump_started:
+            self._close_quietly(session.job_id, session.queue)
+            return
+
+        if not self._end_the_stream_quietly(session.job_id, session.queue):
+            session.pump.terminate()
+        session.sentinel_sent = True
+        session.forced = True
+        session.abandoned = True
+        session.abandon_at = time.monotonic() + self._reap_seconds
+        self._sessions[session.job_id] = session
+        self._timer.start()
 
     def _end_the_stream_quietly(self, job_id: str, queue: Any) -> bool:
-        """Try to put the sentinel; report and return `False` if the queue will not take it."""
+        """Try to put the sentinel; report and return `False` if the queue will not take it.
+
+        Every caller runs *because* something already went wrong, so the queue being written to
+        may be exactly as broken as whatever broke first. Raising from here would replace the
+        original cause, or escape into a timer slot (`T013-R3`).
+        """
         if queue is None:
             return False
         try:
@@ -624,9 +631,9 @@ class DownloadManager(QObject):
         may never deliver that signal to a slot. Releasing on either is what keeps a forced
         stop from claiming completion it has not got (`T013-R4`).
         """
-        if not (session.pump_finished or session.pump.isFinished()):
+        if session.pump_started and not (session.pump_finished or session.pump.isFinished()):
             return
-        if session.started:
+        if session.process_started:
             session.process.join(0)
         self._close_quietly(session.job_id, session.queue)
         self._sessions.pop(session.job_id, None)
@@ -647,7 +654,7 @@ class DownloadManager(QObject):
             session.process.kill()
         # Non-blocking reap. A process that has not finished dying yet is collected by a later
         # tick's `is_alive()`.
-        if session.started:
+        if session.process_started:
             session.process.join(0)
         if not session.ended and not session.sentinel_sent:
             self._end_the_stream(session)

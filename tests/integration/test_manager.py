@@ -1577,26 +1577,103 @@ def test_the_failure_is_recorded_before_anything_is_cleaned_up(
 ) -> None:
     """`T013-R3`, pinned at the ordering rather than at the outcome.
 
-    `_abort_start` is driven directly, with a pump that is running and a queue that refuses
-    writes — a state `start()` can no longer reach now that the process starts first, and which
-    therefore has no other route to a test. The assertion is not that the job ends up failed;
-    it is that the job was **already** failed when cleanup was attempted.
-
-    Written after the end-state test survived a mutation that put cleanup first.
+    The assertion is not that the job ends up failed; it is that the job was **already** failed
+    when cleanup was attempted. Written after the end-state version survived a mutation that put
+    cleanup first.
     """
     repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
     download = manager(reap_seconds=0.2)
     download.start("job-1")
     session = download._sessions["job-1"]
-    watching = WatchingQueue(session.queue, repository, "job-1")
+    real_queue = session.queue
+    watching = WatchingQueue(real_queue, repository, "job-1")
+    session.queue = watching
 
-    download._abort_start("job-1", watching, session.pump, OSError(11, "spawn refused"))
+    download._abort_start("job-1", session, watching, OSError(11, "spawn refused"))
+    recorded = list(watching.status_when_written)
 
-    assert watching.status_when_written == [JobStatus.FAILED], (
-        f"cleanup ran while the job was {watching.status_when_written}; a cleanup failure at "
-        "that point would have replaced the real cause and left the job in flight"
+    # Restore so the real thread can end on a real sentinel and the fixture can tear down.
+    session.queue = real_queue
+    real_queue.put(WorkerFinished(job_id="job-1", exit_code=1))
+
+    assert recorded == [JobStatus.FAILED], (
+        f"cleanup ran while the job was {recorded}; a cleanup failure at that point would have "
+        "replaced the real cause and left the job in flight"
     )
     assert spin(lambda: download.is_idle, timeout=30)
+
+
+def test_a_failure_signal_never_arrives_before_the_failure_is_stored(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`T013-R3`, third pass: `protocol_violation` was emitted before the `FAILED` write.
+
+    An observer that reacted to it read `PROBING` — a state the database was about to leave and
+    that nothing was any longer working on. The rule is the same one `_save_and_announce` keeps
+    for every other transition, applied to the two signals a failed start emits.
+    """
+    from tracks_and_trails.downloader import manager as manager_module
+
+    class UnstartablePump(ResultPump):
+        def start(self, priority: Any = None) -> None:
+            raise OSError(11, "cannot create a thread")
+
+    monkeypatch.setattr(manager_module, "ResultPump", UnstartablePump)
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager(entry_point=child_downloading_forever, reap_seconds=0.2)
+    seen: list[JobStatus | None] = []
+    download.protocol_violation.connect(
+        lambda job_id, _reason: seen.append(
+            repository.jobs[job_id].status if job_id in repository.jobs else None
+        )
+    )
+
+    with pytest.raises(OSError, match="cannot create a thread"):
+        download.start("job-1")
+
+    assert seen == [JobStatus.FAILED], f"a violation was announced while the job read {seen}"
+    assert spin(lambda: download.is_idle, timeout=30)
+
+
+def test_a_pump_that_cannot_start_does_not_leave_its_worker_running(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    existing_children: set[int],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """`T013-R3`, third pass and the other half: the worker was already running.
+
+    Starting the process before the pump removed one failure and created its mirror. When the
+    pump then failed to start, the unwind looked for a *running pump*, found none, closed the
+    queue and dropped the session — leaving a live worker that nobody was reading and nothing
+    would ever stop. It downloads to the user's disk under a job the queue calls failed.
+
+    The two starts are now recorded separately, so the unwind stops what was actually started.
+    """
+    from tracks_and_trails.downloader import manager as manager_module
+
+    class UnstartablePump(ResultPump):
+        def start(self, priority: Any = None) -> None:
+            raise OSError(11, "cannot create a thread")
+
+    monkeypatch.setattr(manager_module, "ResultPump", UnstartablePump)
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager(entry_point=child_downloading_forever, reap_seconds=0.2)
+
+    with pytest.raises(OSError, match="cannot create a thread"):
+        download.start("job-1")
+
+    assert spin(lambda: not worker_processes(existing_children), timeout=30), (
+        "the worker was left running after its reader failed to start"
+    )
+    assert repository.jobs["job-1"].status is JobStatus.FAILED
+    assert download.is_idle
 
 
 def test_abandoning_a_pump_resolves_its_job_first(

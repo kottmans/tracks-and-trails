@@ -87,17 +87,17 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-013` — Blocked after the maintainer-authorized extra pass, 2026-07-27.** `T013-R4` is
-  resolved. `T013-R3` remains a blocking Medium: a pump-start failure leaves the already-started
-  worker alive, and the protocol-violation signal still precedes the durable failed state.
-  Another Medium-or-lower pass needs a new maintainer choice under `AGENTS.md` §9. `T013-R5`
-  remains non-blocking hardening owned by `T-052`.
-- **`T-015` — Changes requested.** `T015-R1` is resolved, but its correction introduced High
-  `T015-R2`: the last 1080p-MP4 fallback can silently select video without audio. **`T-018` —
-  Changes requested.** `T018-R2` is resolved and closes `T012-R6`; Critical `T018-R1` remains
-  open because capture-owned metadata and additional Windows-path/URL-fragment shapes still
-  bypass both privacy gates. Both correction streams are merged to `main` by `7021a01`; the
-  merge itself is verified clean.
+- **`T-013` — third correction batch returned 2026-07-27, awaiting verification.** Three review
+  passes. `T013-R1`, `T013-R2` and `T013-R4` are verified resolved. `T013-R3` came back twice
+  more with a different sibling each time, so the maintainer authorized **restructuring** the
+  startup transaction rather than patching it again: the session now records each start as it
+  happens, and the unwind reads that record instead of inferring it. `T013-R5` remains
+  non-blocking hardening owned by `T-052`.
+- **`T-015` and `T-018` — corrections returned 2026-07-27, awaiting verification.** `T015-R1`
+  and `T018-R2` are verified resolved, and `T012-R6` is closed, so **`T-016` is unblocked**.
+  `T015-R2` (a High regression the first correction introduced — a fallback that selected video
+  without audio) and `T018-R1` (Critical: capture-owned metadata, non-`C:` Windows profiles and
+  URL-fragment tokens all bypassed both privacy gates) are corrected. Everything is on `main`.
 - **`ai/TESTING.md` §7 stands at eight of ten mandatory areas**, up from six. `T-013` added
   Cancellation and Worker crash, both against real spawned processes. The two outstanding are
   Log redaction (`T-038`) and DRM. **DRM has no Phase 1 owner** — worth settling deliberately
