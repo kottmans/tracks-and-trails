@@ -124,10 +124,13 @@ budget, the orphan guard and `TerminateProcess` have only been observed on Linux
 `pyproject.toml` (a `psutil` mypy override), `tests/integration/`, `tests/unit/`
 **Risk:** **High** — owns process lifetime and the only thread in the application. Both of its
 failure modes are silent: an orphaned worker, and a Qt object touched off the GUI thread.
-**Review base:** the `T-012` merge commit. **Review head:** the working tree — this work is
-uncommitted, and its bounds are `src/tracks_and_trails/downloader/{manager,result_pump,worker}.py`,
-`pyproject.toml`, `tests/integration/{conftest,test_manager}.py`,
-`tests/unit/test_manager_boundaries.py`, plus the `ai/` updates in this commit.
+**Review base:** `a296615` (`T-012`, "Run yt-dlp in a spawned worker"). **Review head:**
+`0a19daf` ("Add the download manager and result pump"), committed to `main` 2026-07-27 and not
+pushed. `git diff a296615..0a19daf` is the review boundary; `T-014`'s persistence work
+(`cfb66af`..`655f7f3`) sits between the two and is **already approved** — the changes this task
+owns are `src/tracks_and_trails/downloader/{manager,result_pump,worker}.py`, `pyproject.toml`,
+`tests/integration/{conftest,test_manager}.py`, `tests/unit/test_manager_boundaries.py` and the
+`ai/` updates in `0a19daf`, so `git show 0a19daf` is the tighter and more useful diff.
 
 #### Scope
 
