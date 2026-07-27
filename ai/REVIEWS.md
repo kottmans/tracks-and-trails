@@ -3010,3 +3010,83 @@ establish that `T018-R1` is still live. Windows runtime behavior remains unverif
   finding remains.
 - **T-018 has Changes requested.** Critical `T018-R1` remains open. Under `AGENTS.md` §9,
   Critical correction and independent verification continue without the ordinary pass cap.
+
+## 2026-07-27 — T-018 third Critical correction verification
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-018`
+**Correction base:** `b3e30da`
+**Correction head:** `73d04c6f47cb55403f88b7764df08c51d1e9751f`
+**Review unit:** `git show 73d04c6`, limited to `T018-R1` and correction regressions
+**Branch:** `main`, clean at inspection, 17 commits ahead of `origin/main`, not pushed
+**Platforms verified:** Linux locally; Windows not run
+**Verdict:** **Blocked**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T018-R1` | **Critical** | **Yes** | **Open — the two reported shapes are fixed, but the recognizer still writes credential material that both gates report clean.** The new word splitter correctly distinguishes `auth`, `X-Auth`, `xAuth` and `authToken` from `author`; the sanitizer and parsed gate agree on those controls. Both path patterns now catch `\\server\Users\name`, nested UNC, mixed separators and extended UNC under a neutral key. However, the public `capture.write()` boundary preserved known values under `passwd`, `passphrase`, `private_key` and `accessKey`; the text scanner and parsed-key gate both returned no finding on the written file. The parsed gate also disagrees with the sanitizer's own classification: unredacted raw fixtures under `cookiejar`, `sessionid`, `clientsecret`, `httpheaders` and `oauth2` pass both committed-file checks even though the sanitizer recognizes and removes them. These are not requests for nine more markers. They demonstrate the same defect class for a fourth time: an open-ended credential namespace is being protected by a recognizer whose accepted complement is treated as safe. A deliberate refresh or derived-fixture edit can still commit a credential through a gate that reports clean, retaining the irreversible privacy consequence and Critical severity. |
+
+### Deterministic evidence
+
+The public-boundary probe called `capture.write()` with:
+
+```python
+{
+    "info_dict": {
+        "passwd": "opaque-password-7c6c",
+        "passphrase": "opaque-passphrase-7c6c",
+        "private_key": "opaque-private-key-7c6c",
+        "accessKey": "opaque-access-key-7c6c",
+    }
+}
+```
+
+All four values remained byte-for-byte in the JSON. `leaks_in(written_text)` and
+`credential_keys_left_intact(parsed_json)` both returned `[]`.
+
+A separate gate-independence probe supplied raw parsed objects under `cookiejar`,
+`sessionid`, `clientsecret`, `httpheaders` and `oauth2`. The sanitizer returned
+`"<redacted>"` for each, but the parsed gate returned no finding for any of them. That makes
+the committed-file check unable to detect a sanitizer regression over names the sanitizer
+already claims to cover.
+
+### Validation
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **78 files already formatted**. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| `mypy --platform win32 src` | Passed: no issues in 31 source files. |
+| Focused fixture suite | Passed: **112 passed, 5 skipped**. |
+| Full default suite, bounded rerun | Passed: **1145 passed, 11 skipped, 1 deselected** in 33.85 s. |
+| Initial full-suite attempt | Hung after early manager tests with a defunct spawned child and ignored two interrupts; the reviewer terminated only that pytest process. The isolated test at the apparent position passed, no worker/resource-tracker remained, and the bounded clean rerun passed. This is recorded as process-harness instability, not attributed to `73d04c6`. |
+| Reported auth/UNC controls | Passed: `auth`/`xAuth` redacted and reported, `author` preserved; direct-root, nested, mixed-separator and extended UNC detected. |
+| Public-write credential probe | Failed the privacy claim: four known credential-key forms survived both gates (`T018-R1`). |
+| Parsed-gate independence probe | Failed the gate claim: five sanitizer-recognized compound names produced no finding (`T018-R1`). |
+
+The implementer's six-mutation batch was not rerun wholesale. Its five killed production
+mutations do not cover the unbounded accepted complement established above. Windows remains
+unverified, but the reproduced defect is platform-independent.
+
+### Stop condition and recommended design decision
+
+This is **not returned for a fourth marker-list correction**. Three correction batches have
+established that the recognizer cannot make an open-ended raw `info_dict` safe by enumerating
+credential spellings. T-018 is **Blocked pending a maintainer scope/design choice**:
+
+1. **Recommended — constrain what is committed.** Persist values only for the explicit fields
+   `ytdlp_adapter` projects, plus the reviewed provenance/error fields. Reject or drop every
+   unlisted key before serialization. URL-valued allowed fields still lose query, userinfo and
+   fragment; path checks remain defense in depth.
+2. **Preserve churn evidence without preserving unknown values.** Alongside that allowlisted
+   projection input, record a value-free recursive schema fingerprint for discarded raw data:
+   key names, container shape and scalar type, but no scalar values. An upstream shape change
+   remains visible while an unfamiliar key cannot carry its value into git.
+
+This keeps the fixture's actual purpose—a pinned contract for the projection—while making a
+new leak spelling irrelevant by construction. Continuing with the full raw dict requires the
+maintainer to accept a known Critical privacy risk; an agent cannot close that as accepted risk
+under `AGENTS.md` §9.

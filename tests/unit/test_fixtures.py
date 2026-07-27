@@ -95,12 +95,77 @@ def test_a_fixture_says_whether_it_was_recorded_or_constructed(path: Path) -> No
         assert meta.get("derived_from"), "a derived fixture must say what it was derived from"
 
 
-# --- 2. sanitization (REQ-026, NFR-007) ------------------------------------------------------
+# --- 2. what a fixture may contain (REQ-026, NFR-007) ---------------------------------------
+#
+# `T018-R1` was Critical four times, and every correction was a better *recogniser*: cookies,
+# then tuple containers, then capture metadata and non-`C:` profiles, then `auth`, then `passwd`
+# and `accessKey`. Each fix was right and the next spelling still walked through, because the
+# question — "does this look like a secret?" — has no closed answer.
+#
+# The question is now "is this a field the projection reads?", which does. A value can only be
+# committed if `ytdlp_adapter` reads a field by that name, and it reads none that carry
+# credentials. Everything else is dropped at capture and survives as a value-free entry in
+# `_schema`, so upstream churn is still visible (`NFR-008`) and cannot smuggle anything.
 
-#: What must never appear in a committed fixture. Each is a literal that shows up in real
-#: yt-dlp output: session cookies, the browser identity yt-dlp sends, bearer tokens, and local
-#: paths. Written out rather than derived from the sanitizer, so weakening the sanitizer does
-#: not weaken the check on its results (`ai/TESTING.md` §13).
+#: Transcribed from `capture.py`'s allowlists **by hand**, as the second of two statements that
+#: must agree. Importing them would make the gate a mirror of the thing it checks.
+ALLOWED_INFO_KEYS = frozenset(
+    {
+        "_has_drm",
+        "_type",
+        "duration",
+        "entries",
+        "formats",
+        "is_live",
+        "original_url",
+        "playlist_count",
+        "thumbnail",
+        "title",
+        "uploader",
+        "url",
+        "webpage_url",
+    }
+)
+ALLOWED_FORMAT_KEYS = frozenset(
+    {
+        "acodec",
+        "ext",
+        "filesize",
+        "filesize_approx",
+        "format_id",
+        "format_note",
+        "has_drm",
+        "height",
+        "vcodec",
+        "width",
+    }
+)
+ALLOWED_FIXTURE_KEYS = frozenset(
+    {
+        "captured",
+        "capture_method",
+        "capture_options",
+        "content_licence",
+        "derived_from",
+        "extractor",
+        "note",
+        "policy",
+        "source_url",
+        "what_is_synthetic",
+        "why_this_source",
+        "yt_dlp_version",
+    }
+)
+ALLOWED_ERROR_KEYS = frozenset({"expected_kind", "http_status", "message", "module", "type"})
+
+#: The only things a fingerprint may say. A value of any other kind means data got in.
+SCHEMA_LEAF_TYPES = frozenset(
+    {"str", "int", "float", "bool", "NoneType", "dict", "list", "tuple", "set", "frozenset"}
+)
+
+#: Literal strings that must never appear anywhere in a committed fixture. Kept as a second,
+#: independent check — the allowlist should make every one of them unreachable, and a hit here
+#: means it did not.
 FORBIDDEN_SUBSTRINGS = (
     "Set-Cookie",
     "set-cookie",
@@ -111,375 +176,299 @@ FORBIDDEN_SUBSTRINGS = (
     "Mozilla/",
 )
 
-#: A path inside somebody's home directory, on **any** drive or share (`T018-R1`).
-#:
-#: The first version listed `C:\Users` and its JSON-escaped twin, so `D:\Users\...` produced no
-#: finding at all — and a second drive or a redirected profile is entirely ordinary. Written as a
-#: pattern over one or two backslashes, because the scan reads the file as *text* and JSON
-#: escapes every backslash it contains.
+_QUERY_PARAMETER = re.compile(r"[?&#]([A-Za-z0-9_.\-%]+)=")
+_URL_USERINFO = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^/\s\"']*@")
 _USER_DIRECTORY = re.compile(
     r"(?:[A-Za-z]:(?:\\{1,2}|/)+users(?:\\{1,2}|/))"
-    # `\\host\Users\` as well as `\\host\share\Users\`: requiring a share component before
-    # `Users` missed the case where the share *is* the profile root (`T018-R1`, third pass).
     r"|(?:\\{2,4}(?:[^\\/\s\"']+(?:\\{1,2}|/)+)+users(?:\\{1,2}|/))"
     r"|(?:/home/)"
     r"|(?:/Users/)",
     re.IGNORECASE,
 )
 
-#: Key names whose value must be the redaction marker, checked on the parsed object rather than
-#: the text (`T018-R1`, third pass).
-#:
-#: A key called exactly `auth` was written out with its value intact and this gate said nothing,
-#: because it only ever read the file as a string. Transcribed independently of `capture.py` —
-#: the two are supposed to agree, and sharing the list would hide it when they stop.
-_CREDENTIAL_KEY_WORDS = frozenset(
-    {
-        "auth",
-        "authorization",
-        "oauth",
-        "bearer",
-        "cookie",
-        "cookies",
-        "cookiefile",
-        "credential",
-        "credentials",
-        "header",
-        "headers",
-        "http_headers",
-        # `key` is deliberately absent: it is a whole word in `extractor_key`, which yt-dlp
-        # puts on every info dict, so including it would flag real projected data. A field
-        # named exactly `key` carrying a secret is not a shape yt-dlp produces.
-        "api_key",
-        "apikey",
-        "password",
-        "pwd",
-        "secret",
-        "session",
-        "sid",
-        "sig",
-        "signature",
-        "token",
-        "tokens",
-    }
-)
-
-_KEY_SPLIT = re.compile(r"[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])")
-
-
-def credential_keys_left_intact(payload: Any, path: str = "") -> list[str]:
-    """Every credential-named key in `payload` whose value is not the redaction marker.
-
-    Walks the parsed object, because that is the only way to ask about a *key*. A key matches
-    when its whole name or any of its words is one of `_CREDENTIAL_KEY_WORDS` — so `auth`,
-    `X-Auth` and `authToken` match while `author` does not, which is the distinction the
-    sanitizer got wrong by dropping the short marker entirely.
-    """
-    found: list[str] = []
-    if isinstance(payload, dict):
-        for key, value in payload.items():
-            here = f"{path}.{key}" if path else str(key)
-            # Split first, lowercase second: lowercasing up front erases the camelCase hump
-            # that separates `authToken` into two words.
-            words = {part.lower() for part in _KEY_SPLIT.split(str(key)) if part}
-            named = str(key).lower() in _CREDENTIAL_KEY_WORDS or bool(words & _CREDENTIAL_KEY_WORDS)
-            if named and value != "<redacted>":
-                found.append(f"{here} = {value!r}")
-            found.extend(credential_keys_left_intact(value, here))
-    elif isinstance(payload, list):
-        for index, item in enumerate(payload):
-            found.extend(credential_keys_left_intact(item, f"{path}[{index}]"))
-    return found
-
-
-#: Query parameters a committed fixture may carry. **None** (`T018-R1`).
-#:
-#: This is the gate's half of the same inversion the sanitizer made, arrived at independently:
-#: the previous version listed the parameter names it considered dangerous, so an AWS-style
-#: `X-Amz-Signature` was not merely missed — it was outside the question being asked. Since no
-#: projection reads a query parameter, any parameter at all in a committed fixture is either a
-#: credential or unnecessary, and both are reasons to fail.
-#:
-#: Deliberately **not** imported from `capture.py`. The sanitizer and this gate are supposed to
-#: agree, and a shared constant would make disagreement invisible — which is the entire value of
-#: having a second check at all.
-ALLOWED_QUERY_PARAMETERS: frozenset[str] = frozenset()
-
-#: A URL query **or fragment** parameter, as it appears inside JSON.
-#:
-#: `#` is included because a fragment is where an OAuth implicit flow puts an access token
-#: (`T018-R1`), and a check that only knew about `?` reported a fixture carrying
-#: `#access_token=…` as clean.
-_QUERY_PARAMETER = re.compile(r"[?&#]([A-Za-z0-9_.\-%]+)=")
-
-#: `scheme://user:password@host` — a credential in a position no parameter list covers.
-_URL_USERINFO = re.compile(r"[A-Za-z][A-Za-z0-9+.\-]*://[^/\s\"']*@")
-
 
 def leaks_in(blob: str) -> list[str]:
-    """Every credential-shaped thing in `blob`. The scanner both tests use.
+    """Credential-shaped text anywhere in `blob` — the belt, not the braces.
 
-    Fails closed on two of its three checks (`T018-R1`): any query parameter outside the
-    allowlist counts, and so does any URL carrying userinfo. Only the literal list above
-    enumerates, and it enumerates things that are *always* wrong rather than trying to be a
-    complete catalogue of what a secret looks like.
+    The allowlist is what actually keeps secrets out. This stays because a second check that
+    shares no logic with the first is how the two are known to agree, and because a *consumed*
+    field can still be a URL carrying a signature.
     """
     found = [needle for needle in FORBIDDEN_SUBSTRINGS if needle in blob]
-    found += [f"user directory in {match.group(0)!r}" for match in _USER_DIRECTORY.finditer(blob)]
-    found += [
-        f"query parameter {match.group(1)!r}"
-        for match in _QUERY_PARAMETER.finditer(blob)
-        if match.group(1).lower() not in ALLOWED_QUERY_PARAMETERS
-    ]
-    found += [f"url userinfo in {match.group(0)!r}" for match in _URL_USERINFO.finditer(blob)]
+    found += [f"user directory in {m.group(0)!r}" for m in _USER_DIRECTORY.finditer(blob)]
+    found += [f"query parameter {m.group(1)!r}" for m in _QUERY_PARAMETER.finditer(blob)]
+    found += [f"url userinfo in {m.group(0)!r}" for m in _URL_USERINFO.finditer(blob)]
     return found
+
+
+def unexpected_keys(payload: dict[str, Any]) -> list[str]:
+    """Every key in a fixture that is not on an allowlist — the gate that closes the class.
+
+    Reported by path so a failure names what got in, and checked on the parsed object because a
+    key is not visible in text. This is the check `T018-R1` needed from the start: it does not
+    care what the key is *called*.
+    """
+    found: list[str] = []
+
+    def walk_info(info: Any, path: str) -> None:
+        if not isinstance(info, dict):
+            return
+        for key, value in info.items():
+            if key not in ALLOWED_INFO_KEYS:
+                found.append(f"{path}.{key}")
+                continue
+            if key == "formats" and isinstance(value, list):
+                for index, entry in enumerate(value):
+                    if not isinstance(entry, dict):
+                        continue
+                    found.extend(
+                        f"{path}.formats[{index}].{name}"
+                        for name in entry
+                        if name not in ALLOWED_FORMAT_KEYS
+                    )
+            elif key == "entries" and isinstance(value, list):
+                for index, entry in enumerate(value):
+                    walk_info(entry, f"{path}.entries[{index}]")
+
+    found.extend(
+        f"_fixture.{k}" for k in payload.get("_fixture", {}) if k not in ALLOWED_FIXTURE_KEYS
+    )
+    found.extend(f"error.{k}" for k in payload.get("error", {}) if k not in ALLOWED_ERROR_KEYS)
+    walk_info(payload.get("info_dict"), "info_dict")
+    found.extend(k for k in payload if k not in {"_fixture", "_schema", "info_dict", "error"})
+    return found
+
+
+def values_in_schema(schema: Any, path: str = "_schema") -> list[str]:
+    """Every leaf of a fingerprint that is not simply a type name.
+
+    The fingerprint exists to record yt-dlp's shape without its data. A leaf that is not a type
+    name is data, and the whole point of keeping the record separate is that it cannot be.
+    """
+    if isinstance(schema, dict):
+        return [
+            item
+            for key, value in schema.items()
+            for item in values_in_schema(value, f"{path}.{key}")
+        ]
+    if isinstance(schema, list):
+        return [
+            item
+            for index, value in enumerate(schema)
+            for item in values_in_schema(value, f"{path}[{index}]")
+        ]
+    return [] if schema in SCHEMA_LEAF_TYPES else [f"{path} = {schema!r}"]
 
 
 @pytest.mark.parametrize("path", all_fixtures(), ids=fixture_id)
-def test_no_fixture_carries_credential_material(path: Path) -> None:
-    """The acceptance criterion, asserted over the file as text.
+def test_a_fixture_carries_only_the_keys_the_projection_reads(path: Path) -> None:
+    """The gate that ends the marker-list rounds (`T018-R1`).
 
-    Over the raw text rather than the parsed object on purpose: a leak nested inside a
-    playlist's entries' formats — which is exactly where the real one was — is invisible to a
-    check that looks at top-level keys.
+    Four corrections tried to recognise a credential and four were outrun by the next spelling.
+    This asks the closed question instead: a value may be committed only under a field
+    `ytdlp_adapter` reads, and none of those carry credentials.
     """
-    leaks = leaks_in(path.read_text(encoding="utf-8"))
-    assert not leaks, f"{path.name} carries {leaks}. Fixtures are committed; a leak is permanent."
-
-    intact = credential_keys_left_intact(load(path))
-    assert not intact, (
-        f"{path.name} keeps values under credential-named keys: {intact}. Reading the file as "
-        "text cannot see this — a key called `auth` is only a key on the parsed object."
+    found = unexpected_keys(load(path))
+    assert not found, (
+        f"{path.name} carries fields the projection never reads: {found}. Values belong only "
+        "under consumed keys; everything else lives in _schema without its data."
     )
 
 
 @pytest.mark.parametrize("path", info_fixtures(), ids=fixture_id)
-def test_the_redacted_keys_are_actually_redacted(path: Path) -> None:
-    """`cookies` and `http_headers` must hold the marker, not merely be absent.
-
-    An absent key and a redacted one look the same to the scan above, and only one of them
-    proves the sanitizer ran.
-    """
+def test_the_schema_fingerprint_carries_no_data(path: Path) -> None:
+    """`NFR-008` evidence, kept in a form that cannot leak."""
     payload = load(path)
-    redacted: list[str] = []
-
-    def walk(value: Any) -> None:
-        if isinstance(value, dict):
-            for key, item in value.items():
-                if key in {"cookies", "http_headers"}:
-                    assert item == "<redacted>", f"{path.name}: {key} = {item!r}"
-                    redacted.append(key)
-                walk(item)
-        elif isinstance(value, list):
-            for item in value:
-                walk(item)
-
-    walk(payload["info_dict"])
-    assert redacted, f"{path.name} has no cookies or headers at all; the sanitizer is untested"
+    assert payload.get("_schema"), f"{path.name} records no schema, so churn would be invisible"
+    leaked = values_in_schema(payload["_schema"])
+    assert not leaked, f"{path.name} put data in its fingerprint: {leaked[:5]}"
 
 
-#: Leak shapes the gate must reject. Each is a real thing a capture can contain, and the last
-#: four are `T018-R1`'s: the parameter names a blocklist had never heard of, a percent-encoded
-#: spelling of one it had, and a credential in the URL's authority rather than its query.
-LEAK_SHAPES = {
-    "cookie value": '{"cookies": "ia-csrf=abc; Domain=.archive.org"}',
-    "browser identity": '{"http_headers": {"User-Agent": "Mozilla/5.0 (Windows NT 10.0)"}}',
-    "bearer token": '{"authorization": "Bearer eyJhbGciOi"}',
-    "linux path": '{"cookiefile": "/home/sean/.config/cookies.txt"}',
-    "windows path": '{"path": "C:\\\\Users\\\\sean\\\\cookies.txt"}',
-    "named signature": '{"url": "https://cdn.example/v.mp4?signature=deadbeef&expires=1"}',
-    "aws signed url": (
-        '{"url": "https://s3.example/v.mp4?X-Amz-Algorithm=AWS4-HMAC-SHA256'
-        '&X-Amz-Credential=AKIA%2F20260727&X-Amz-Signature=abc123&X-Amz-Expires=3600"}'
-    ),
-    "cloudfront signed url": (
-        '{"url": "https://d1.cloudfront.net/v.mp4?Policy=eyJTdGF0ZW1l&Key-Pair-Id=APKA"}'
-    ),
-    "percent-encoded name": '{"url": "https://cdn.example/v.mp4?%73ignature=deadbeef"}',
-    "url userinfo": '{"url": "https://someone:hunter2@cdn.example/v.mp4"}',
-    "unfamiliar provider name": '{"url": "https://cdn.example/v.mp4?hdnts=exp=1~hmac=9f"}',
-    # `T018-R1`, second pass. Each of these produced no finding at all: a home directory is not
-    # confined to `C:`, and a fragment is where an OAuth implicit flow leaves an access token.
-    "second drive profile": '{"cookiefile": "D:\\\\Users\\\\Sean\\\\cookies.txt"}',
-    "unc share profile": '{"cookiefile": "\\\\\\\\nas\\\\home\\\\Users\\\\Sean\\\\c.txt"}',
-    "lowercase drive profile": '{"cookiefile": "d:/users/sean/cookies.txt"}',
-    "fragment token": '{"url": "https://example.invalid/video#access_token=secret"}',
-    "fragment token after query": '{"url": "https://example.invalid/v?a=1#id_token=secret"}',
-    # `T018-R1`, third pass. The share is itself the profile root, so the pattern that wanted a
-    # share *and* a folder before `Users` saw nothing.
-    "unc profile under an innocent key": '{"note": "taken from \\\\\\\\server\\\\Users\\\\sean"}',
-    "unc share is the profile root": '{"cookiefile": "\\\\\\\\server\\\\Users\\\\sean\\\\c.txt"}',
+@pytest.mark.parametrize("path", all_fixtures(), ids=fixture_id)
+def test_no_fixture_carries_credential_material(path: Path) -> None:
+    """The second, independent check. The allowlist should make every hit here impossible."""
+    leaks = leaks_in(path.read_text(encoding="utf-8"))
+    assert not leaks, f"{path.name} carries {leaks}. Fixtures are committed; a leak is permanent."
+
+
+def test_the_allowlist_matches_what_the_adapter_actually_reads() -> None:
+    """The two statements that must agree, one transcribed and one **derived** (§13).
+
+    The allowlist above is written by hand; this walks `ytdlp_adapter`'s AST for the keys it
+    reads off an info dict or a format entry. A field the adapter starts reading fails here
+    until the fixtures can carry it — which is the failure you want, because until then the
+    fixtures cannot test it.
+    """
+    import ast
+
+    source = (
+        Path(__file__).resolve().parents[2] / "src/tracks_and_trails/downloader/ytdlp_adapter.py"
+    ).read_text(encoding="utf-8")
+
+    reads: dict[str, set[str]] = {"info": set(), "entry": set()}
+    for node in ast.walk(ast.parse(source)):
+        if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
+            continue
+        if node.func.attr != "get" or not isinstance(node.func.value, ast.Name):
+            continue
+        receiver = node.func.value.id
+        first = node.args[0] if node.args else None
+        if receiver in reads and isinstance(first, ast.Constant) and isinstance(first.value, str):
+            reads[receiver].add(first.value)
+
+    assert reads["info"], "no info-dict reads found; the derivation broke, not the allowlist"
+    assert reads["info"] <= ALLOWED_INFO_KEYS, (
+        f"the adapter reads {sorted(reads['info'] - ALLOWED_INFO_KEYS)}, which fixtures drop"
+    )
+    assert reads["entry"] <= ALLOWED_FORMAT_KEYS, (
+        f"the adapter reads {sorted(reads['entry'] - ALLOWED_FORMAT_KEYS)} off a format"
+    )
+
+
+#: A payload holding every spelling that has ever beaten a marker list, plus a few nobody has
+#: proposed yet. None of them is recognised by name any more — they are dropped because nothing
+#: reads a field called that.
+HOSTILE_INFO = {
+    "title": "kept",
+    "webpage_url": "https://archive.org/details/x",
+    "cookies": "SID=secret",
+    "auth": "fixture-secret-7c6c",
+    "passwd": "hunter2",
+    "passphrase": "open sesame",
+    "private_key": "-----BEGIN",
+    "accessKey": "AKIA",
+    "cookiejar": "jar.txt",
+    "clientsecret": "shh",
+    "somethingNobodyHasNamedYet": "still a secret",
+    "formats": [
+        {"format_id": "1", "ext": "mp4", "http_headers": {"Cookie": "SID=x"}, "nonce": "abc"}
+    ],
 }
 
 
-@pytest.mark.parametrize("shape", sorted(LEAK_SHAPES))
-def test_the_leak_scanner_can_actually_fail(shape: str) -> None:
-    """`ai/TESTING.md` §13: a scan nobody has watched reject something is not evidence.
+def test_the_writer_keeps_only_what_the_projection_reads() -> None:
+    """`T018-R1`, structurally: the *writer* is where the class is closed.
 
-    Parametrized rather than looped so a shape that stops being caught names itself. The four
-    `T018-R1` rows are the point: the previous scanner asked "is this one of the parameter names
-    I know?", which no amount of adding names fixes. This one asks "is any parameter present?",
-    and the answer for a fixture is always no.
-    """
-    assert leaks_in(LEAK_SHAPES[shape]), f"the scanner would have let a {shape} through"
-
-
-@pytest.mark.parametrize(
-    ("shape", "payload"),
-    [
-        ("tuple", ({"cookies": "SID=secret"},)),
-        ("tuple inside a list", [({"cookies": "SID=secret"},)]),
-        ("tuple inside a dict", {"formats": ({"cookies": "SID=secret"},)}),
-        ("set of urls", {"seen": {"https://cdn.example/v.mp4?X-Amz-Signature=abc"}}),
-        ("nested three deep", {"a": [{"b": ({"http_headers": {"Cookie": "SID=x"}},)}]}),
-    ],
-)
-def test_the_sanitizer_walks_every_container_not_just_two(shape: str, payload: Any) -> None:
-    """`T018-R1`'s core: `redact()` recursed through `dict` and `list` only.
-
-    A single tuple anywhere in the graph carried everything beneath it through untouched, and
-    yt-dlp's info dicts contain tuples — `_format_sort_fields` is one. This is asserted on
-    Python objects rather than on JSON text because a tuple cannot be written in JSON: the
-    committed-file scanner is structurally unable to see this class, which is exactly why the
-    sanitizer has to fail closed rather than be checked afterwards.
+    The committed files are clean, so weakening the writer changes nothing until somebody
+    re-captures — which is a network act the suite never performs. Every guarantee below is
+    therefore asserted against `capture` directly, or it is asserted against nothing.
     """
     from tests.fixtures import capture
 
-    serialized = json.dumps(capture.redact(payload))
+    kept = capture.keep_consumed(HOSTILE_INFO)
 
-    assert "secret" not in serialized, f"a {shape} carried a cookie through: {serialized}"
-    assert "SID=" not in serialized
-    assert not leaks_in(serialized), f"a {shape} carried {leaks_in(serialized)}"
+    assert kept["title"] == "kept"
+    assert set(kept) <= capture.CONSUMED_TOP_LEVEL_SET, f"unread fields survived: {sorted(kept)}"
+    assert set(kept["formats"][0]) <= set(capture.CONSUMED_FORMAT)
+    blob = json.dumps(kept)
+    for secret in ("secret", "hunter2", "sesame", "BEGIN", "AKIA", "shh", "SID="):
+        assert secret not in blob, f"{secret!r} survived into the committed values"
 
 
-def test_what_a_capture_writes_is_sanitized_including_its_own_metadata(tmp_path: Path) -> None:
-    """`T018-R1`, second pass: the provenance block is captured data too.
+def test_the_fingerprint_records_names_and_types_but_never_values() -> None:
+    """The other half of the trade: churn evidence that cannot carry data (`NFR-008`)."""
+    from tests.fixtures import capture
 
-    `source_url` comes from whoever asked for the capture, and it was written into the metadata
-    raw — so a URL carrying userinfo and a signature was recorded verbatim beside an
-    `info_dict` that had been carefully cleaned. Asserted at `write()`, which every capture goes
-    through, because sanitizing per-field is exactly the arrangement that forgot a field.
+    schema = capture.schema_fingerprint(HOSTILE_INFO)
+
+    assert "cookies" in schema, "the fingerprint must still record that the key existed"
+    assert schema["cookies"] == "str", "it must record the type, not the value"
+    assert not values_in_schema(schema), values_in_schema(schema)
+
+    # A key *name* is schema and is the whole point of keeping this — `clientsecret` appears
+    # here, and should. What must never appear is what it held.
+    blob = json.dumps(schema)
+    assert "clientsecret" in blob, "the fingerprint stopped recording key names"
+    for value in ("hunter2", "sesame", "AKIA", "SID=", "fixture-secret-7c6c", "-----BEGIN"):
+        assert value not in blob, f"the fingerprint carried the value {value!r}"
+
+
+def test_the_fingerprint_check_reports_data_when_it_finds_some() -> None:
+    """`ai/TESTING.md` §13: the check has to be watched failing.
+
+    Every other assertion about the fingerprint runs against output the writer produced, which
+    is clean — so a check that always returned "nothing found" would look identical.
+    """
+    assert values_in_schema({"cookies": "SID=secret"}), "a value in a leaf went unreported"
+    assert values_in_schema({"formats": [{"url": "https://cdn/x?sig=1"}]})
+    assert values_in_schema({"nested": {"deep": 12}})
+    assert not values_in_schema({"cookies": "str", "formats": [{"url": "str"}], "n": "int"})
+
+
+def test_the_writer_enforces_the_provenance_and_error_allowlists(tmp_path: Path) -> None:
+    """`source_url` is captured data, and so is an error message.
+
+    A previous round wrote the provenance block raw while cleaning the `info_dict` beside it.
+    Both blocks are now allowlisted at the same door every capture passes through.
     """
     from tests.fixtures import capture
 
-    hostile = "https://someone:hunter2@cdn.example/v.mp4?X-Amz-Signature=secret#access_token=t"
-    payload = {
-        "_fixture": {
-            "captured": "2026-07-27",
-            "yt_dlp_version": "0.0.0",
-            "source_url": hostile,
-            "capture_method": "recorded",
-            "redaction": "irrelevant",
-            "note": r"taken from D:\Users\Sean\downloads",
-        },
-        "info_dict": {"webpage_url": hostile, "cookies": "SID=secret"},
-    }
-    written = tmp_path / "hostile.json"
-
-    capture.write(written, payload)
-    blob = written.read_text(encoding="utf-8")
-
-    assert not leaks_in(blob), f"the capture wrote {leaks_in(blob)}"
-    assert "hunter2" not in blob and "secret" not in blob
-    assert "cdn.example" in blob, "the URL should be cleaned, not deleted"
-
-
-def test_the_redaction_record_survives_its_own_policy(tmp_path: Path) -> None:
-    """The provenance note must still be readable after the sanitizer has been over it.
-
-    `write()` now sanitizes everything, so a record that described the policy in keys named
-    after credentials would redact itself and leave the fixture claiming nothing.
-    """
-    from tests.fixtures import capture
-
-    written = tmp_path / "record.json"
+    written = tmp_path / "written.json"
     capture.write(
         written,
-        {"_fixture": {"redaction": capture._redaction_record()}, "info_dict": {}},
+        {
+            "_fixture": {
+                "captured": "2026-07-27",
+                "source_url": "https://u:p@example.com/x?X-Amz-Signature=s#access_token=t",
+                "smuggled": "value",
+            },
+            "error": {"message": "fine", "stack": "leak"},
+            "info_dict": HOSTILE_INFO,
+        },
     )
+    payload = load(written)
 
-    record = json.loads(written.read_text(encoding="utf-8"))["_fixture"]["redaction"]
-    assert "fail-closed" in record, f"the redaction record was itself redacted: {record!r}"
+    assert "smuggled" not in payload["_fixture"]
+    assert "stack" not in payload["error"]
+    assert payload["_fixture"]["source_url"] == "https://example.com/x"
+    assert not unexpected_keys(payload)
+    assert not leaks_in(written.read_text(encoding="utf-8"))
 
 
-@pytest.mark.parametrize(
-    ("key", "guarded"),
-    [
-        ("auth", True),
-        ("X-Auth", True),
-        ("authToken", True),
-        # The discriminating case for the splitter: no substring marker matches "xauth", so this
-        # passes only if the key is split into words *before* being lowercased.
-        ("xAuth", True),
-        ("api_key", True),
-        ("sig", True),
-        ("author", False),
-        ("authors", False),
-        ("uploader", False),
-        ("format_id", False),
-    ],
-)
-def test_a_short_marker_is_matched_as_a_word_not_a_prefix(key: str, guarded: bool) -> None:
-    """`T018-R1`, third pass: `auth` was dropped because it collided with `author`.
+def test_the_gate_rejects_a_fixture_carrying_anything_else(tmp_path: Path) -> None:
+    """`ai/TESTING.md` §13: the gate has to be watched refusing something.
 
-    Dropping it was the wrong answer to a real collision — a key named exactly `auth` was then
-    written out intact by the sanitizer *and* reported clean by the gate. Both halves now split
-    a key into words, so the two cases separate properly instead of one being sacrificed.
-
-    Asserted on **both** halves in one test, because the failure was that they agreed with each
-    other — and both were wrong.
+    Every spelling that beat a marker list is here — and none of them is recognised by name now.
+    They are refused because nothing reads a field called that.
     """
-    from tests.fixtures import capture
+    hostile = {
+        "_fixture": {"captured": "2026-07-27", "smuggled": "value"},
+        "info_dict": {
+            "title": "fine",
+            "cookies": "SID=secret",
+            "auth": "fixture-secret-7c6c",
+            "passwd": "hunter2",
+            "passphrase": "open sesame",
+            "private_key": "-----BEGIN",
+            "accessKey": "AKIA",
+            "cookiejar": "jar.txt",
+            "clientsecret": "shh",
+            "formats": [{"format_id": "1", "ext": "mp4", "http_headers": {"Cookie": "SID=x"}}],
+        },
+        "error": {"message": "fine", "stack": "leak"},
+    }
+    written = tmp_path / "hostile.json"
+    written.write_text(json.dumps(hostile), encoding="utf-8")
 
-    payload = {key: "fixture-secret-7c6c"}
-    sanitized = capture.redact(payload)
-    reported = credential_keys_left_intact(payload)
+    found = unexpected_keys(load(written))
 
-    if guarded:
-        assert sanitized[key] == "<redacted>", f"the sanitizer kept {key!r}"
-        assert reported, f"the gate did not report {key!r}"
-    else:
-        assert sanitized[key] == "fixture-secret-7c6c", f"the sanitizer redacted {key!r}"
-        assert not reported, f"the gate flagged the innocent key {key!r}"
-
-
-def test_the_committed_file_gate_rejects_a_hostile_fixture(tmp_path: Path) -> None:
-    """Both halves of the gate, over a file, the way the committed ones are checked.
-
-    The text scan and the key walk are each tested in isolation above, but the *pair* is what
-    runs against every fixture — and no committed fixture violates either, so a mutation that
-    unhooked one of them from that check went unnoticed. This writes a file that violates both.
-    """
-    hostile = tmp_path / "hostile.json"
-    hostile.write_text(
-        json.dumps(
-            {
-                "_fixture": {"captured": "2026-07-27", "note": r"from \\server\Users\sean"},
-                "info_dict": {"auth": "fixture-secret-7c6c", "cookies": "SID=secret"},
-            }
-        ),
-        encoding="utf-8",
+    for smuggled in (
+        "cookies",
+        "auth",
+        "passwd",
+        "passphrase",
+        "private_key",
+        "accessKey",
+        "cookiejar",
+        "clientsecret",
+    ):
+        assert any(item.endswith(f".{smuggled}") for item in found), f"{smuggled} was allowed"
+    assert "info_dict.formats[0].http_headers" in found
+    assert "_fixture.smuggled" in found
+    assert "error.stack" in found
+    assert not any(item.endswith(".title") or item.endswith(".format_id") for item in found), (
+        "a consumed field was refused"
     )
-
-    blob = hostile.read_text(encoding="utf-8")
-    assert leaks_in(blob), "the text scan missed a user-directory path"
-    assert credential_keys_left_intact(json.loads(blob)), "the key walk missed an `auth` value"
-
-
-def test_the_scanner_and_the_sanitizer_agree_without_sharing_a_list() -> None:
-    """The two halves are written separately on purpose; this is where they must meet.
-
-    Every leak shape above is put through `capture.redact()` and then re-scanned. A sanitizer
-    that misses what the gate catches would let a refresh write a fixture that cannot be
-    committed; a gate that misses what the sanitizer strips would stop noticing regressions.
-    """
-    from tests.fixtures import capture
-
-    for shape, blob in LEAK_SHAPES.items():
-        sanitized = json.dumps(capture.redact(json.loads(blob)))
-        assert not leaks_in(sanitized), (
-            f"the sanitizer left a {shape} that the gate rejects: {sanitized}"
-        )
 
 
 # --- 3. coverage, asked of the contents ------------------------------------------------------

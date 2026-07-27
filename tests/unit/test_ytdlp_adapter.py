@@ -89,15 +89,21 @@ def test_the_fixture_records_its_provenance() -> None:
     assert meta["yt_dlp_version"]
     assert meta["captured"]
     assert meta["source_url"]
-    assert "cookies" in meta["redacted_keys"]
+    assert "allowlist" in meta["policy"], "the fixture must say what rule produced it"
 
 
 def test_the_fixture_carries_no_credential_material() -> None:
-    """`NFR-007`. Cookies and headers are redacted at capture time, not at read time."""
+    """`NFR-007`, and `T018-R1`'s structural answer: the keys are **absent**, not redacted.
+
+    They used to be present with a marker, which meant something still had to recognise them.
+    A fixture now carries only fields this adapter reads, and it reads no field that can hold a
+    credential — so `cookies` and `http_headers` are simply not there. `tests/unit/test_fixtures.py`
+    owns the general rule; this pins the one fixture `T-012` reads directly.
+    """
     blob = (FIXTURE_DIR / "archive_org_big_buck_bunny.json").read_text(encoding="utf-8")
     info = load_fixture()
-    assert info["cookies"] == "<redacted>"
-    assert all(entry["cookies"] == "<redacted>" for entry in info["formats"])
+    assert "cookies" not in info
+    assert all("cookies" not in entry and "http_headers" not in entry for entry in info["formats"])
     assert "Bearer " not in blob
 
 

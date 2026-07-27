@@ -35,108 +35,95 @@ from typing import Any, Final
 FIXTURE_DIR: Final = Path(__file__).parent / "infodicts"
 ERROR_DIR: Final = Path(__file__).parent / "errors"
 
-#: Keys whose values never enter the repository, whatever they contain.
+#: The `info_dict` keys whose **values** may be committed: exactly the ones
+#: `downloader/ytdlp_adapter.py` reads (`T018-R1`, structural).
 #:
-#: Matched **case-insensitively and by substring** (`T018-R1`): the first version compared four
-#: exact spellings, so `Cookie`, `set-cookie` and `authorization` all walked past it. A key whose
-#: name mentions a credential is redacted, and a legitimate field that happens to contain one of
-#: these words costs nothing to lose — no projection reads any of them.
-CREDENTIAL_KEY_MARKERS: Final = (
-    "cookie",
-    "header",
-    "authorization",
-    "oauth",
-    "bearer",
-    "token",
-    "secret",
-    "password",
-    "credential",
-    "signature",
-    "session",
-    "api_key",
-    "apikey",
+#: Transcribed by hand from that module; `tests/unit/test_fixtures.py` derives the same set from
+#: its AST and fails if the two disagree — transcribe one side, derive the other
+#: (`ai/TESTING.md` §13).
+#:
+#: **This replaces four rounds of guessing what a secret looks like.** Marker lists failed by
+#: enumeration every time: `cookies`, then tuple containers, then capture metadata and non-`C:`
+#: profiles, then `auth`, then `passwd`, `passphrase`, `private_key`, `accessKey`. Each fix was
+#: correct and the next spelling still walked through. An allowlist inverts the question — a
+#: credential can only be committed if the projection reads a field by that name, and it does
+#: not — so a new spelling is irrelevant by construction rather than by vigilance.
+CONSUMED_TOP_LEVEL: Final = (
+    "_has_drm",
+    "_type",
+    "duration",
+    "entries",
+    "formats",
+    "is_live",
+    "original_url",
+    "playlist_count",
+    "thumbnail",
+    "title",
+    "uploader",
+    "url",
+    "webpage_url",
 )
 
-#: Markers too short to match as substrings without swallowing innocent words, matched as whole
-#: **tokens** instead (`T018-R1`, third pass).
-#:
-#: `auth` was dropped from the list above because it is a prefix of `author`, and a key named
-#: exactly `auth` was then written out intact — the collision was real, and the answer to it was
-#: wrong. Splitting a key into tokens distinguishes them properly: `auth`, `X-Auth` and
-#: `authToken` match, `author` does not.
-CREDENTIAL_KEY_TOKENS: Final = ("auth", "sig", "sid", "pwd")
+#: A set view of the above, for callers that ask "may this key carry a value?".
+CONSUMED_TOP_LEVEL_SET: Final = frozenset(CONSUMED_TOP_LEVEL)
 
-#: `key` is deliberately absent. It is a whole word in `extractor_key`, which yt-dlp puts on
-#: every info dict, so including it redacted real projected data — and a field named exactly
-#: `key` carrying a secret is not a shape yt-dlp produces, while `extractor_key` is. `api_key`
-#: and `apikey` are covered as substrings above.
+#: The same, for each entry of `formats`.
+CONSUMED_FORMAT: Final = (
+    "acodec",
+    "ext",
+    "filesize",
+    "filesize_approx",
+    "format_id",
+    "format_note",
+    "has_drm",
+    "height",
+    "vcodec",
+    "width",
+)
 
-_TOKEN_SPLIT: Final = re.compile(r"[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])")
+#: Provenance fields a fixture may carry, and nothing else. Reviewed one by one, because this
+#: block is written here rather than captured — except `source_url`, which is supplied by
+#: whoever asks for a capture and is therefore sanitized like any other captured value.
+ALLOWED_FIXTURE_FIELDS: Final = (
+    "captured",
+    "capture_method",
+    "capture_options",
+    "content_licence",
+    "derived_from",
+    "extractor",
+    "note",
+    "policy",
+    "source_url",
+    "what_is_synthetic",
+    "why_this_source",
+    "yt_dlp_version",
+)
 
-#: The **only** query parameters allowed to survive into a committed fixture (`T018-R1`).
+#: Fields a recorded *failure* may carry.
+ALLOWED_ERROR_FIELDS: Final = (
+    "expected_kind",
+    "http_status",
+    "message",
+    "module",
+    "type",
+)
+
+#: The **only** query parameters allowed to survive into a committed fixture.
 #:
-#: An allowlist, not a blocklist, and that inversion is the finding. The blocklist enumerated
-#: parameter names it had thought of, so `X-Amz-Signature`, `X-Amz-Credential` and `X-Amz-Expires`
-#: — the standard fields on every signed S3 or CloudFront URL — walked straight through it, as
-#: would the next provider's spelling. Nothing in the projection reads a query parameter at all,
-#: so the safe default is to keep none: an empty tuple, and a reviewed entry if that ever changes.
-#:
-#: This is the same move `T-044`, `T-045` and `T-014` each ended at: stop trying to recognise
-#: what a secret looks like, and constrain what can be present instead.
+#: Empty, and an allowlist rather than a blocklist: nothing downstream reads a query parameter,
+#: so the safe default is to keep none. A consumed field can still be a URL — `webpage_url` and
+#: `thumbnail` both are — so this still matters after the key allowlist above.
 ALLOWED_QUERY_PARAMETERS: Final[tuple[str, ...]] = ()
 
 REDACTED: Final = "<redacted>"
 
-
-def key_tokens(key: object) -> list[str]:
-    """A key split into lowercase words, across delimiters and camelCase humps.
-
-    Split first, lowercase second: lowercasing up front erases the hump that separates
-    `authToken` into two words, and the token match then misses it.
-    """
-    return [part.lower() for part in _TOKEN_SPLIT.split(str(key)) if part]
-
-
-def is_credential_key(key: object) -> bool:
-    """Whether a mapping key names something that must never be committed.
-
-    Substring match for the long markers, whole-token match for the short ones — see
-    `CREDENTIAL_KEY_TOKENS` for why the distinction has to exist rather than being tidied away.
-    """
-    if any(marker in str(key).lower() for marker in CREDENTIAL_KEY_MARKERS):
-        return True
-    return any(token in CREDENTIAL_KEY_TOKENS for token in key_tokens(key))
-
-
-def redact(value: Any) -> Any:
-    """Return `value` with credential material removed, at any depth and in any container.
-
-    **Fails closed** (`T018-R1`). The first version recursed through `dict` and `list` only, so a
-    single `tuple` anywhere in the graph carried everything below it through untouched — and
-    yt-dlp's info dicts contain tuples. Every container Python's JSON encoder can serialise is
-    walked here, and anything this function does not recognise is returned unchanged only if it
-    is a scalar, which cannot hide a nested cookie.
-    """
-    if isinstance(value, Mapping):
-        return {
-            key: REDACTED if is_credential_key(key) else redact(item) for key, item in value.items()
-        }
-    if isinstance(value, list | tuple | set | frozenset):
-        return [redact(item) for item in value]
-    if isinstance(value, str):
-        return REDACTED if names_a_user_directory(value) else redact_url(value)
-    return value
-
-
-#: Anything that looks like somebody's home directory, on any drive or share (`T018-R1`).
+#: Anything that looks like somebody's home directory, on any drive or share.
 #:
-#: `NFR-007` keeps personal paths out of records that persist, and a fixture persists forever.
-#: The first version listed `c:\users` literally, so `D:\Users\...` — an ordinary second drive,
-#: or a redirected profile — walked past it. Matched as a *pattern* rather than a prefix list:
-#: any drive letter, either slash, and UNC shares, case-insensitively.
+#: Still needed after the allowlist: a *consumed* field can carry one. `NFR-007` keeps personal
+#: paths out of records that persist, and a fixture persists forever.
 USER_DIRECTORY_PATTERN: Final = re.compile(
-    r"(?:[a-z]:[\\/]+users[\\/])"  # C:\Users\, d:/users/
-    r"|(?:\\\\(?:[^\\/]+[\\/]+)+users[\\/])"  # \\server\Users\ and \\server\share\Users\
+    r"(?:[a-z]:[\\/]+users[\\/])"
+    r"|(?:\\\\(?:[^\\/]+[\\/]+)+users[\\/])"
     r"|(?:/home/)"
     r"|(?:/users/)",
     re.IGNORECASE,
@@ -147,15 +134,19 @@ def names_a_user_directory(value: str) -> bool:
     return USER_DIRECTORY_PATTERN.search(value) is not None
 
 
+def clean_scalar(value: Any) -> Any:
+    """Sanitize one value that *is* allowed through: URLs lose their credentials, paths go."""
+    if isinstance(value, str):
+        return REDACTED if names_a_user_directory(value) else redact_url(value)
+    return value
+
+
 def redact_url(value: str) -> str:
-    """Strip every query parameter and any userinfo from anything that looks like a URL.
+    """Strip every query parameter, any userinfo and any fragment from a URL.
 
-    **Everything goes unless `ALLOWED_QUERY_PARAMETERS` says otherwise** (`T018-R1`). Deciding
-    per-parameter meant deciding, in advance, every name a provider might use for a signature —
-    and AWS's `X-Amz-*` family was already outside that list. Userinfo (`https://user:pass@host`)
-    is dropped for the same reason: it is a credential in a position no allowlist covers.
-
-    Nothing downstream reads a query parameter, so this costs the fixtures nothing.
+    Deciding per-parameter meant deciding, in advance, every name a provider might use for a
+    signature, and AWS's `X-Amz-*` family was already outside that list. Userinfo and fragments
+    go for the same reason: both are credential positions no parameter list covers.
     """
     if "://" not in value:
         return value
@@ -170,22 +161,68 @@ def redact_url(value: str) -> str:
     netloc = parts.netloc
     if "@" in netloc:
         netloc = netloc.rsplit("@", 1)[1]
-    # The fragment goes with the query, and for the same reason (`T018-R1`). OAuth implicit
-    # flows put access tokens there — `#access_token=…` — and it is invisible to a check that
-    # only knows about `?`. Nothing downstream reads a fragment either.
     return urlunsplit(parts._replace(netloc=netloc, query=urlencode(kept), fragment=""))
 
 
-def _redaction_record() -> str:
-    """What the sanitizer promised this fixture, recorded with it.
+def keep_consumed(info: Mapping[str, Any]) -> dict[str, Any]:
+    """The projection's own view of an info dict: allowed keys only, values cleaned.
 
-    A single sentence, not a nested object: `write()` sanitizes the whole payload, and a
-    metadata key called `credential_key_markers` would be redacted by its own policy. Values
-    are never key-redacted, so a sentence survives and a structure does not.
+    Everything else is **dropped, not redacted**. A dropped key cannot leak whatever it held,
+    and cannot become a leak later when somebody adds a field to yt-dlp with a name nobody has
+    thought of yet. What is lost — the shape of the rest — is kept separately and without
+    values by `schema_fingerprint`.
+    """
+    kept: dict[str, Any] = {}
+    for key in CONSUMED_TOP_LEVEL:
+        if key not in info:
+            continue
+        value = info[key]
+        if key == "formats" and isinstance(value, list | tuple):
+            kept[key] = [_keep_format(entry) for entry in value]
+        elif key == "entries" and isinstance(value, list | tuple):
+            # Entries are whole info dicts of their own; the same rule applies one level down.
+            kept[key] = [
+                keep_consumed(entry) if isinstance(entry, Mapping) else {} for entry in value
+            ]
+        else:
+            kept[key] = clean_scalar(value)
+    return kept
+
+
+def _keep_format(entry: Any) -> dict[str, Any]:
+    if not isinstance(entry, Mapping):
+        return {}
+    return {key: clean_scalar(entry[key]) for key in CONSUMED_FORMAT if key in entry}
+
+
+#: What a fingerprint may say about a value: its shape, never its content.
+def schema_fingerprint(value: Any) -> Any:
+    """Describe `value`'s structure and types, carrying none of its data (`T018-R1`).
+
+    This is what the fixtures were really for beyond the projection: evidence of yt-dlp's shape,
+    so an upstream rename or removal fails a test instead of a download (`NFR-008`). Key names
+    and types answer that; values never did. A fingerprint therefore cannot leak, whatever the
+    next field is called.
+    """
+    if isinstance(value, Mapping):
+        pairs = sorted(value.items(), key=lambda kv: str(kv[0]))
+        return {str(key): schema_fingerprint(item) for key, item in pairs}
+    if isinstance(value, list | tuple | set | frozenset):
+        items = list(value)
+        return [schema_fingerprint(items[0])] if items else []
+    return type(value).__name__
+
+
+def _policy_record() -> str:
+    """What the fixture writer promised, recorded beside the fixture.
+
+    A sentence rather than a structure: it describes a rule that no longer depends on
+    recognising anything, so there is no marker list to reproduce here.
     """
     return (
-        "fail-closed: values under credential-named keys, every URL query parameter, URL "
-        "userinfo, URL fragments and user-directory paths are removed at capture time"
+        "allowlist: only fields ytdlp_adapter reads carry values; every other key is dropped "
+        "and survives as a value-free entry in _schema. URLs lose query, userinfo and fragment; "
+        "user-directory paths are removed"
     )
 
 
@@ -209,6 +246,16 @@ class Source:
 
 #: The recorded `info_dict` fixtures, and the reason each one exists.
 SOURCES: Final[tuple[Source, ...]] = (
+    Source(
+        name="archive_org_big_buck_bunny",
+        url="https://archive.org/details/BigBuckBunny_124",
+        why=(
+            "The original fixture, captured by T-012 and re-captured here because T018-R1's "
+            "allowlist changed what a fixture may contain. Refreshing is meant to be deliberate; "
+            "this one was forced by the policy, which is recorded rather than quietly done."
+        ),
+        licence="Big Buck Bunny (c) Blender Foundation, CC BY 3.0. Media URLs are unsigned.",
+    ),
     Source(
         name="archive_org_test_mp3",
         url="https://archive.org/details/testmp3testfile",
@@ -281,13 +328,14 @@ def capture_info(source: Source, version: str) -> dict[str, Any]:
             "capture_options": sorted(f"{key}={value!r}" for key, value in source.options.items()),
             "content_licence": source.licence,
             "why_this_source": source.why,
-            "redaction": _redaction_record(),
+            "policy": _policy_record(),
             "note": (
                 "A contract, not a sample (ai/TESTING.md §5). Changing a projected key must fail "
                 "the projection test. Refreshing this file is a deliberate act with its own task."
             ),
         },
-        "info_dict": redact(dict(info or {})),
+        "info_dict": keep_consumed(dict(info or {})),
+        "_schema": schema_fingerprint(dict(info or {})),
     }
 
 
@@ -312,7 +360,6 @@ def capture_error(
                 "source_url": url,
                 "capture_method": "recorded",
                 "why_this_source": why,
-                "redaction": _redaction_record(),
                 "note": (
                     "expected_kind is transcribed from ARCHITECTURE.md §7, not read from the "
                     "adapter. The type path is an NFR-008 canary: an upstream rename fails the "
@@ -331,19 +378,30 @@ def capture_error(
 
 
 def write(path: Path, payload: dict[str, Any]) -> None:
-    """Sanitize the **whole** payload, then write it.
+    """Enforce the allowlists, then write.
 
-    Every capture goes through here, so sanitizing at this point is what makes "no field was
-    forgotten" true by construction rather than by review (`T018-R1`). The first version
-    sanitized `info_dict` and left the metadata alone, and `source_url` is captured data: a
-    hostile URL was written into the provenance block verbatim, complete with its userinfo and
-    its signature.
-
-    The redaction record is a single sentence rather than a nested object precisely because this
-    runs over it too — a metadata key named `credential_key_markers` would redact *itself*.
+    Every capture goes through here, so this is where "no field was forgotten" becomes true by
+    construction rather than by review (`T018-R1`). Anything outside the allowlists is dropped
+    — including from the provenance block, whose `source_url` is captured data like any other.
     """
+    fixture = {
+        key: clean_scalar(value)
+        for key, value in (payload.get("_fixture") or {}).items()
+        if key in ALLOWED_FIXTURE_FIELDS
+    }
+    written: dict[str, Any] = {"_fixture": fixture}
+    if "info_dict" in payload:
+        written["info_dict"] = keep_consumed(payload["info_dict"])
+        written["_schema"] = payload.get("_schema") or schema_fingerprint(payload["info_dict"])
+    if "error" in payload:
+        written["error"] = {
+            key: clean_scalar(value)
+            for key, value in payload["error"].items()
+            if key in ALLOWED_ERROR_FIELDS
+        }
+
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(redact(payload), indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    path.write_text(json.dumps(written, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     root = Path(__file__).parents[2]
     shown = path.relative_to(root) if path.is_relative_to(root) else path
     print(f"wrote {shown} ({path.stat().st_size} bytes)")
