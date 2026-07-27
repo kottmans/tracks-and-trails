@@ -93,11 +93,11 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
   startup transaction rather than patching it again: the session now records each start as it
   happens, and the unwind reads that record instead of inferring it. `T013-R5` remains
   non-blocking hardening owned by `T-052`.
-- **`T-015` and `T-018` — corrections returned 2026-07-27, awaiting verification.** `T015-R1`
-  and `T018-R2` are verified resolved, and `T012-R6` is closed, so **`T-016` is unblocked**.
-  `T015-R2` (a High regression the first correction introduced — a fallback that selected video
-  without audio) and `T018-R1` (Critical: capture-owned metadata, non-`C:` Windows profiles and
-  URL-fragment tokens all bypassed both privacy gates) are corrected. Everything is on `main`.
+- **`T-013` approved with follow-ups and `T-015` approved**, 2026-07-27. `T-018` is on its
+  **third** correction of the same Critical (`T018-R1`): each pass closed the reported shapes and
+  left another the rule had not been written to see — tuple containers, then capture metadata and
+  non-`C:` profiles, then a key named exactly `auth` and a UNC share that *is* the profile root.
+  The gate now walks parsed keys as well as file text, which is the half it never had.
 - **`ai/TESTING.md` §7 stands at eight of ten mandatory areas**, up from six. `T-013` added
   Cancellation and Worker crash, both against real spawned processes. The two outstanding are
   Log redaction (`T-038`) and DRM. **DRM has no Phase 1 owner** — worth settling deliberately

@@ -119,11 +119,78 @@ FORBIDDEN_SUBSTRINGS = (
 #: escapes every backslash it contains.
 _USER_DIRECTORY = re.compile(
     r"(?:[A-Za-z]:(?:\\{1,2}|/)+users(?:\\{1,2}|/))"
-    r"|(?:\\{2,4}[^\\/\s\"']+(?:\\{1,2}|/)+[^\\/\s\"']+(?:\\{1,2}|/)+users(?:\\{1,2}|/))"
+    # `\\host\Users\` as well as `\\host\share\Users\`: requiring a share component before
+    # `Users` missed the case where the share *is* the profile root (`T018-R1`, third pass).
+    r"|(?:\\{2,4}(?:[^\\/\s\"']+(?:\\{1,2}|/)+)+users(?:\\{1,2}|/))"
     r"|(?:/home/)"
     r"|(?:/Users/)",
     re.IGNORECASE,
 )
+
+#: Key names whose value must be the redaction marker, checked on the parsed object rather than
+#: the text (`T018-R1`, third pass).
+#:
+#: A key called exactly `auth` was written out with its value intact and this gate said nothing,
+#: because it only ever read the file as a string. Transcribed independently of `capture.py` —
+#: the two are supposed to agree, and sharing the list would hide it when they stop.
+_CREDENTIAL_KEY_WORDS = frozenset(
+    {
+        "auth",
+        "authorization",
+        "oauth",
+        "bearer",
+        "cookie",
+        "cookies",
+        "cookiefile",
+        "credential",
+        "credentials",
+        "header",
+        "headers",
+        "http_headers",
+        # `key` is deliberately absent: it is a whole word in `extractor_key`, which yt-dlp
+        # puts on every info dict, so including it would flag real projected data. A field
+        # named exactly `key` carrying a secret is not a shape yt-dlp produces.
+        "api_key",
+        "apikey",
+        "password",
+        "pwd",
+        "secret",
+        "session",
+        "sid",
+        "sig",
+        "signature",
+        "token",
+        "tokens",
+    }
+)
+
+_KEY_SPLIT = re.compile(r"[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])")
+
+
+def credential_keys_left_intact(payload: Any, path: str = "") -> list[str]:
+    """Every credential-named key in `payload` whose value is not the redaction marker.
+
+    Walks the parsed object, because that is the only way to ask about a *key*. A key matches
+    when its whole name or any of its words is one of `_CREDENTIAL_KEY_WORDS` — so `auth`,
+    `X-Auth` and `authToken` match while `author` does not, which is the distinction the
+    sanitizer got wrong by dropping the short marker entirely.
+    """
+    found: list[str] = []
+    if isinstance(payload, dict):
+        for key, value in payload.items():
+            here = f"{path}.{key}" if path else str(key)
+            # Split first, lowercase second: lowercasing up front erases the camelCase hump
+            # that separates `authToken` into two words.
+            words = {part.lower() for part in _KEY_SPLIT.split(str(key)) if part}
+            named = str(key).lower() in _CREDENTIAL_KEY_WORDS or bool(words & _CREDENTIAL_KEY_WORDS)
+            if named and value != "<redacted>":
+                found.append(f"{here} = {value!r}")
+            found.extend(credential_keys_left_intact(value, here))
+    elif isinstance(payload, list):
+        for index, item in enumerate(payload):
+            found.extend(credential_keys_left_intact(item, f"{path}[{index}]"))
+    return found
+
 
 #: Query parameters a committed fixture may carry. **None** (`T018-R1`).
 #:
@@ -179,6 +246,12 @@ def test_no_fixture_carries_credential_material(path: Path) -> None:
     leaks = leaks_in(path.read_text(encoding="utf-8"))
     assert not leaks, f"{path.name} carries {leaks}. Fixtures are committed; a leak is permanent."
 
+    intact = credential_keys_left_intact(load(path))
+    assert not intact, (
+        f"{path.name} keeps values under credential-named keys: {intact}. Reading the file as "
+        "text cannot see this — a key called `auth` is only a key on the parsed object."
+    )
+
 
 @pytest.mark.parametrize("path", info_fixtures(), ids=fixture_id)
 def test_the_redacted_keys_are_actually_redacted(path: Path) -> None:
@@ -232,6 +305,10 @@ LEAK_SHAPES = {
     "lowercase drive profile": '{"cookiefile": "d:/users/sean/cookies.txt"}',
     "fragment token": '{"url": "https://example.invalid/video#access_token=secret"}',
     "fragment token after query": '{"url": "https://example.invalid/v?a=1#id_token=secret"}',
+    # `T018-R1`, third pass. The share is itself the profile root, so the pattern that wanted a
+    # share *and* a folder before `Users` saw nothing.
+    "unc profile under an innocent key": '{"note": "taken from \\\\\\\\server\\\\Users\\\\sean"}',
+    "unc share is the profile root": '{"cookiefile": "\\\\\\\\server\\\\Users\\\\sean\\\\c.txt"}',
 }
 
 
@@ -323,6 +400,70 @@ def test_the_redaction_record_survives_its_own_policy(tmp_path: Path) -> None:
 
     record = json.loads(written.read_text(encoding="utf-8"))["_fixture"]["redaction"]
     assert "fail-closed" in record, f"the redaction record was itself redacted: {record!r}"
+
+
+@pytest.mark.parametrize(
+    ("key", "guarded"),
+    [
+        ("auth", True),
+        ("X-Auth", True),
+        ("authToken", True),
+        # The discriminating case for the splitter: no substring marker matches "xauth", so this
+        # passes only if the key is split into words *before* being lowercased.
+        ("xAuth", True),
+        ("api_key", True),
+        ("sig", True),
+        ("author", False),
+        ("authors", False),
+        ("uploader", False),
+        ("format_id", False),
+    ],
+)
+def test_a_short_marker_is_matched_as_a_word_not_a_prefix(key: str, guarded: bool) -> None:
+    """`T018-R1`, third pass: `auth` was dropped because it collided with `author`.
+
+    Dropping it was the wrong answer to a real collision — a key named exactly `auth` was then
+    written out intact by the sanitizer *and* reported clean by the gate. Both halves now split
+    a key into words, so the two cases separate properly instead of one being sacrificed.
+
+    Asserted on **both** halves in one test, because the failure was that they agreed with each
+    other — and both were wrong.
+    """
+    from tests.fixtures import capture
+
+    payload = {key: "fixture-secret-7c6c"}
+    sanitized = capture.redact(payload)
+    reported = credential_keys_left_intact(payload)
+
+    if guarded:
+        assert sanitized[key] == "<redacted>", f"the sanitizer kept {key!r}"
+        assert reported, f"the gate did not report {key!r}"
+    else:
+        assert sanitized[key] == "fixture-secret-7c6c", f"the sanitizer redacted {key!r}"
+        assert not reported, f"the gate flagged the innocent key {key!r}"
+
+
+def test_the_committed_file_gate_rejects_a_hostile_fixture(tmp_path: Path) -> None:
+    """Both halves of the gate, over a file, the way the committed ones are checked.
+
+    The text scan and the key walk are each tested in isolation above, but the *pair* is what
+    runs against every fixture — and no committed fixture violates either, so a mutation that
+    unhooked one of them from that check went unnoticed. This writes a file that violates both.
+    """
+    hostile = tmp_path / "hostile.json"
+    hostile.write_text(
+        json.dumps(
+            {
+                "_fixture": {"captured": "2026-07-27", "note": r"from \\server\Users\sean"},
+                "info_dict": {"auth": "fixture-secret-7c6c", "cookies": "SID=secret"},
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    blob = hostile.read_text(encoding="utf-8")
+    assert leaks_in(blob), "the text scan missed a user-directory path"
+    assert credential_keys_left_intact(json.loads(blob)), "the key walk missed an `auth` value"
 
 
 def test_the_scanner_and_the_sanitizer_agree_without_sharing_a_list() -> None:

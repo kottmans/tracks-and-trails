@@ -542,9 +542,10 @@ output of translation, not an internal detail.
 
 ### T-018 — Recorded `info_dict` fixtures and projection tests
 
-**Status:** **In Review — corrections returned 2026-07-27, awaiting verification.** `T018-R2`
-is verified resolved, closing `T012-R6`. `T018-R1` (Critical) survived its first correction in
-three further places and is corrected again, awaiting the Reviewer's check.
+**Status:** **In Review — third correction batch returned 2026-07-27, awaiting verification.**
+`T018-R2` is verified resolved, closing `T012-R6`. `T018-R1` (Critical) has now survived two
+corrections and is corrected a third time — the two remaining false negatives were a key named
+exactly `auth`, and a UNC path whose share is itself the profile root.
 
 #### Reviewer result on `0973fee`
 
@@ -606,6 +607,37 @@ review on the independent Critical privacy finding.
 **Mutation-checked: 9 mutations, 9 killed.** Dict/list-only recursion, exact-match credential
 keys, a parameter blocklist in the sanitizer *and* in the gate, userinfo left in place, local
 paths left in place, `multi_video` dropped, and `entries` counted by `Sequence` alone.
+
+#### Third correction batch — `T018-R1` (Critical, third pass)
+
+Two false negatives survived the second correction, and both came from a fix made carelessly
+in the previous batch:
+
+- **A key named exactly `auth` was written out intact**, by both halves. `auth` had been dropped
+  from the marker list because it is a prefix of `author` — a real collision answered the wrong
+  way. Keys are now split into words (across delimiters *and* camelCase) and short markers match
+  a whole word, so `auth`, `X-Auth` and `authToken` are caught while `author` is not.
+- **`\\server\Users\name` survived both patterns**, which required a share component *before*
+  `Users`. When the share is itself the profile root there is no such component. Both now accept
+  one or more components.
+
+**The gate gained the half it never had.** It only ever read the file as text, and a key is not
+visible in text — so it now also walks the parsed object and fails any credential-named key whose
+value is not the redaction marker. Its word list is transcribed separately from the sanitizer's,
+because the two agreeing is the point and a shared constant would hide it when they stop.
+
+`key` is deliberately in neither list: it is a whole word in `extractor_key`, which yt-dlp puts
+on every info dict, so including it redacted real projected data.
+
+**Mutation-checked: 6 mutations, 5 killed.** Three of the first four survivors were missing
+tests, and each named the discriminating case the existing ones had missed — `authToken` was
+already caught by the `token` substring, so it never exercised the splitter; the UNC shape sat
+under a `cookiefile` key, so the key rule caught it before the path rule could. The survivor
+that remains removes an *assertion from a test* rather than weakening a guard, and no suite can
+detect the deletion of its own coverage.
+
+**All five fixtures were re-captured again**, because their provenance blocks still described the
+previous policy.
 
 #### Second correction batch — `T018-R1` (Critical, still open after the first)
 

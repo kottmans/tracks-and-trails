@@ -8,25 +8,7 @@
     "content_licence": "LibriVox recording of a public-domain text; the recordings are public domain.",
     "extractor": "archive.org",
     "note": "A contract, not a sample (ai/TESTING.md \u00a75). Changing a projected key must fail the projection test. Refreshing this file is a deliberate act with its own task.",
-    "redaction": {
-      "allowed_query_parameters": [],
-      "credential_key_markers": [
-        "cookie",
-        "header",
-        "auth",
-        "token",
-        "secret",
-        "password",
-        "credential",
-        "signature",
-        "session",
-        "api_key",
-        "apikey"
-      ],
-      "policy": "fail-closed",
-      "url_userinfo": "removed",
-      "user_directory_paths": "removed"
-    },
+    "redaction": "fail-closed: values under credential-named keys, every URL query parameter, URL userinfo, URL fragments and user-directory paths are removed at capture time",
     "source_url": "https://archive.org/details/art_of_war_librivox",
     "why_this_source": "A real multi-item playlist: `_type: playlist` with seven entries. REQ-002 requires a probe to say whether a URL is a single item or a playlist, and nothing could test that against a single-item fixture (T012-R6).",
     "yt_dlp_version": "2026.07.04"
@@ -35,245 +17,245 @@
     "_type": "playlist",
     "comments": [
       {
-        "author": "<redacted>",
+        "author": "pipesdreams",
         "id": null,
         "parent": "root",
         "text": "Ancient Chinese Strategy Still Good Advice\n\nWhat could be hotter than a chick reading about war stratagems? Some popping into the mic, but good pacing and powerful content.",
         "timestamp": 1214358427
       },
       {
-        "author": "<redacted>",
+        "author": "blaise69",
         "id": null,
         "parent": "root",
         "text": "Warfare made sexy\n\nMs. Fogarty has such a beautiful voice. These audios are a must-have for anyone interested in this classic book on warfare.",
         "timestamp": 1237389584
       },
       {
-        "author": "<redacted>",
+        "author": "thx1138_ga",
         "id": null,
         "parent": "root",
         "text": "Excellent Narration and High Quality Recording!!!\n\nThank you, Moira Fogarty, for narrating this for us.  You are certainly in the top echelon of readers on Librivox in my opinion.  I'm now going to visit some of the other novels you've read.  Keep up the great work.  The quality of the recording was outstanding as well.",
         "timestamp": 1256905129
       },
       {
-        "author": "<redacted>",
+        "author": "troy john",
         "id": null,
         "parent": "root",
         "text": "Nice to listen\n\nThe art of war was made more soothing to listen and easier to learn. Very good pronunciation and very sexy voice.",
         "timestamp": 1271759522
       },
       {
-        "author": "<redacted>",
+        "author": "olc11",
         "id": null,
         "parent": "root",
         "text": "Very good reading!\n\nThank you for this recording!",
         "timestamp": 1307948583
       },
       {
-        "author": "<redacted>",
+        "author": "wlie8",
         "id": null,
         "parent": "root",
         "text": "Finally found it.\n\nI have been searching for this book in printed format for quite some time here in Pakistan, but unfortunately it is not available.\n\nHowever, I was delighted to find this in Audio Book format.\n\nMany thanks!!!",
         "timestamp": 1359634846
       },
       {
-        "author": "<redacted>",
+        "author": "Hramirez",
         "id": null,
         "parent": "root",
         "text": "Nice Sound !!\n\nHi, I would like to have the history in PDF file or other format, I want to follow the sound with the text, there are many words that I can't understand yet. Who help me?",
         "timestamp": 1427469468
       },
       {
-        "author": "<redacted>",
+        "author": "librivoxbooks",
         "id": null,
         "parent": "root",
         "text": "@Hamza338\n\nHamza338 - we're librivox.ORG, not .com\n\nAll LibriVox recordings are in the public domain.",
         "timestamp": 1427488870
       },
       {
-        "author": "<redacted>",
+        "author": "jensenr30",
         "id": null,
         "parent": "root",
         "text": "Excellent Production.\n\nI really enjoyed listening to this.\nAs for the quality of the book itself, it was worth listening to.",
         "timestamp": 1433038064
       },
       {
-        "author": "<redacted>",
+        "author": "Vamelo",
         "id": null,
         "parent": "root",
         "text": "Marvelous work.\n\nMoira Fogarty has done an excellent job in presenting this work.  The sound quality itself is of the highest quality, however her enunciation and the timber of her voice, including her vocal range, makes this a pleasure to hear.\n\nAs Sun Tzu's Art of War can be a great temptation to make masculine, and authoritative Ms. Fogarty's straight forward and clear reading allows these ancient thoughts to enter the center of the consciousness.\n\nIf you're familiar with this work, her presentation is worth revisiting it for the pure enjoyment of the experience.  My compliments to Ms. Fogarty.",
         "timestamp": 1474965329
       },
       {
-        "author": "<redacted>",
+        "author": "Aman Lingar",
         "id": null,
         "parent": "root",
         "text": "love this book\n\n!",
         "timestamp": 1482044640
       },
       {
-        "author": "<redacted>",
+        "author": "Ravi Tej",
         "id": null,
         "parent": "root",
         "text": "Exceptional book and very fine narration\n\nExceptional book and very fine audio quality of the narration.",
         "timestamp": 1491977745
       },
       {
-        "author": "<redacted>",
+        "author": "ZF3K",
         "id": null,
         "parent": "root",
         "text": ":D\n\nvery nice !!",
         "timestamp": 1493654494
       },
       {
-        "author": "<redacted>",
+        "author": "Ibramob",
         "id": null,
         "parent": "root",
         "text": "Inquiry\n\ncan I use your audiobooks content to be exported as videos and uploaded on youtube keeping your copyright as librivox.com fixed in the videos ?..",
         "timestamp": 1539899953
       },
       {
-        "author": "<redacted>",
+        "author": "shadowpawn",
         "id": null,
         "parent": "root",
         "text": "Just amazing piece of work\n\nCan always listen to this and learn something new and apply it to my life.",
         "timestamp": 1568146335
       },
       {
-        "author": "<redacted>",
+        "author": "Earlobe56",
         "id": null,
         "parent": "root",
         "text": "I tried....\n\nI tried to be open minded and think that a different woman's voice may have worked for me. It just came across as too lightly presented. The other version offered with a male voice didn't work for me either.\nNot trying to be critical, but honestly felt both recordings\nseem contrived.",
         "timestamp": 1571837250
       },
       {
-        "author": "<redacted>",
+        "author": "Fred Blogs",
         "id": null,
         "parent": "root",
         "text": "Nicely do e\n\nThank you to the narrator for a very nice made piece. The lay's voice is even and easy to list to, that making the book a pleasure.",
         "timestamp": 1590308538
       },
       {
-        "author": "<redacted>",
+        "author": "Hamza338",
         "id": null,
         "parent": "root",
         "text": "Inquiry\n\nHi, \ncan I use your audiobooks content to be exported as videos and uploaded on youtube keeping your copyright as librivox.com fixed in the videos ?..\n\nThanks in ad",
         "timestamp": 1590447362
       },
       {
-        "author": "<redacted>",
+        "author": "Yesica1402",
         "id": null,
         "parent": "root",
         "text": "Gracias\n\nMe fascino la narradora... felicidades \ngracias por compartir",
         "timestamp": 1595807039
       },
       {
-        "author": "<redacted>",
+        "author": "WeizhiXie",
         "id": null,
         "parent": "root",
         "text": "Love this!\n\nLove this audiobook",
         "timestamp": 1596101466
       },
       {
-        "author": "<redacted>",
+        "author": "Joseph614",
         "id": null,
         "parent": "root",
         "text": "Enquiry\n\ncan I use your audiobooks content to be exported as videos and uploaded on youtube keeping your copyright as librivox.com fix^ed in the videos ?..",
         "timestamp": 1597119128
       },
       {
-        "author": "<redacted>",
+        "author": "anm_mahfuz",
         "id": null,
         "parent": "root",
         "text": "Love it\n\nI learn and lesson and take it to my YouTube channel PlayStation21exclusive. Thank you  ",
         "timestamp": 1600159202
       },
       {
-        "author": "<redacted>",
+        "author": "Sosatel228",
         "id": null,
         "parent": "root",
         "text": "W\n\nI really enjoyed listening to this.\nAs for the quality of the book itself, it was worth listening to.",
         "timestamp": 1612864737
       },
       {
-        "author": "<redacted>",
+        "author": "MurF-a-ZoiD",
         "id": null,
         "parent": "root",
         "text": "Where to Begin\n\nStrategy of a samurai warrior back in the days before my great-great-grandfather's. I see a lot of the skills the Samurai warrior was talking about in real day life now in the 21st century. Especially with families falling apart and families who just want to be lazy and do nothing with themselves. We're all tribes and hearing this great book in audio format was a great lesson to be told. I'll help with your self being, your business, and strategize your life out of all kinds of unexpected situations. So give this book a chance and welcome to the Art of War.",
         "timestamp": 1629996992
       },
       {
-        "author": "<redacted>",
+        "author": "GodParticle7",
         "id": null,
         "parent": "root",
         "text": "Giving Back to the Lord what the Devil stole\n\nApply this to Spiritual Warfare, in Jesus' MIGHTY name! I did a few years back. \n\nNOTE: TO OUR CURRENT GENERATION, THE LAST CHAPTER RELATING TO SPIES. KNOW IT. DO NOT BE DECIEVED. IT'S GOING ON RIGHT NOW.",
         "timestamp": 1634739428
       },
       {
-        "author": "<redacted>",
+        "author": "smallrat",
         "id": null,
         "parent": "root",
         "text": "High Quality, Good Pacing\n\nVery well and carefully recorded. Many thanks for putting your time, energy, and skill into making it available. \n\nAs a side note, I'm sorry that it's leading listeners to objectifying you publicly in their reviews and I wish that wasn't the case. It's incredibly disrespectful. ",
         "timestamp": 1641147516
       },
       {
-        "author": "<redacted>",
+        "author": "Jani M\u00e4kinen881",
         "id": null,
         "parent": "root",
         "text": "Review01\n\nHad read this book at the age of 21, \nand the book was great at waging art of war, Thank you.",
         "timestamp": 1644688060
       },
       {
-        "author": "<redacted>",
+        "author": "ronsonrocks",
         "id": null,
         "parent": "root",
         "text": "Srategms from the back of Time...\n\nAn astonishing work.  Read it/Listen and sigh for the fools' gold, then go to WWI or Vietnamese history documentary on archive.org.\n\nHell no, shall Johnny never get his gun again..? \n\nKidd Haus",
         "timestamp": 1644860887
       },
       {
-        "author": "<redacted>",
+        "author": "Nagrania",
         "id": null,
         "parent": "root",
         "text": "Thank you\n\nIt is very good to listen to",
         "timestamp": 1659573291
       },
       {
-        "author": "<redacted>",
+        "author": "Murtaza Hashwani",
         "id": null,
         "parent": "root",
         "text": "Good Quality\n\nThank you for sharing such a good audiobook Sun Tzu.",
         "timestamp": 1665733517
       },
       {
-        "author": "<redacted>",
+        "author": "Akosua Biggles",
         "id": null,
         "parent": "root",
         "text": "Great Archive\n\nI'm pleased to have come across your website. It has great quality audio books. I want to ask is it allowed to use your content for a YouTube motivational channel? If Yes, how do i credit your site?",
         "timestamp": 1666173432
       },
       {
-        "author": "<redacted>",
+        "author": "Leah Cirineo Garcia",
         "id": null,
         "parent": "root",
         "text": "bad ewww\n\nthis was so bad eww would not recommend this was trashy and horrible ew.",
         "timestamp": 1666624199
       },
       {
-        "author": "<redacted>",
+        "author": "Thanh Nguy\u1ec5n940",
         "id": null,
         "parent": "root",
         "text": "Thanh\n\nGood",
         "timestamp": 1674284678
       },
       {
-        "author": "<redacted>",
+        "author": "Jon Smith 345",
         "id": null,
         "parent": "root",
         "text": "The Art of War by Sun Tzu in audiobookAn absolute classic! Listening to The Art of War by Sun Tzu in audiobook format brings a new depth to the ancient wisdom it holds. The narrator does a great job keeping the tone serious and engaging, which is perfect for absorbing such strategic and philosophical insights.This timeless work isn\u2019t just for military enthusiasts\u2014it offers valuable lessons for leadership, business, and even personal discipline.If you're looking for something more lighthearted after diving into such intense material, take a breather with <a href=\"https://doodlecricket.org/doodle-baseball/\" rel=\"ugc nofollow\">Doodle Baseball</a>\u2014a fun and nostalgic game to relax your mind.Great job, LibriVox and Internet Archive, for keeping these classics alive and accessible!",
         "timestamp": 1749546292
       },
       {
-        "author": "<redacted>",
+        "author": "Andromeda Snow Globe",
         "id": null,
         "parent": "root",
         "text": "Excellent Translation\n\n\"The supreme art of war is to subdue the enemy without fighting.\"\n                                                                   - Sun Tzu",
@@ -306,7 +288,7 @@
         "duration": 507.1,
         "duration_string": "8:27",
         "dynamic_range": "SDR",
-        "epoch": 1785140057,
+        "epoch": 1785170241,
         "ext": "mp3",
         "extractor": "archive.org",
         "extractor_key": "ArchiveOrg",
@@ -439,7 +421,7 @@
         "duration": 465.67,
         "duration_string": "7:45",
         "dynamic_range": "SDR",
-        "epoch": 1785140057,
+        "epoch": 1785170241,
         "ext": "mp3",
         "extractor": "archive.org",
         "extractor_key": "ArchiveOrg",
@@ -572,7 +554,7 @@
         "duration": 636.98,
         "duration_string": "10:36",
         "dynamic_range": "SDR",
-        "epoch": 1785140057,
+        "epoch": 1785170241,
         "ext": "mp3",
         "extractor": "archive.org",
         "extractor_key": "ArchiveOrg",
@@ -705,7 +687,7 @@
         "duration": 531,
         "duration_string": "8:51",
         "dynamic_range": "SDR",
-        "epoch": 1785140057,
+        "epoch": 1785170241,
         "ext": "mp3",
         "extractor": "archive.org",
         "extractor_key": "ArchiveOrg",
@@ -838,7 +820,7 @@
         "duration": 882.63,
         "duration_string": "14:42",
         "dynamic_range": "SDR",
-        "epoch": 1785140057,
+        "epoch": 1785170241,
         "ext": "mp3",
         "extractor": "archive.org",
         "extractor_key": "ArchiveOrg",
@@ -971,7 +953,7 @@
         "duration": 776.58,
         "duration_string": "12:56",
         "dynamic_range": "SDR",
-        "epoch": 1785140057,
+        "epoch": 1785170241,
         "ext": "mp3",
         "extractor": "archive.org",
         "extractor_key": "ArchiveOrg",
@@ -1104,7 +1086,7 @@
         "duration": 539.05,
         "duration_string": "8:59",
         "dynamic_range": "SDR",
-        "epoch": 1785140057,
+        "epoch": 1785170241,
         "ext": "mp3",
         "extractor": "archive.org",
         "extractor_key": "ArchiveOrg",
@@ -1218,7 +1200,7 @@
         "width": 0
       }
     ],
-    "epoch": 1785140057,
+    "epoch": 1785170241,
     "extractor": "archive.org",
     "extractor_key": "ArchiveOrg",
     "id": "art_of_war_librivox",

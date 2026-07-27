@@ -45,6 +45,7 @@ CREDENTIAL_KEY_MARKERS: Final = (
     "cookie",
     "header",
     "authorization",
+    "oauth",
     "bearer",
     "token",
     "secret",
@@ -55,6 +56,22 @@ CREDENTIAL_KEY_MARKERS: Final = (
     "api_key",
     "apikey",
 )
+
+#: Markers too short to match as substrings without swallowing innocent words, matched as whole
+#: **tokens** instead (`T018-R1`, third pass).
+#:
+#: `auth` was dropped from the list above because it is a prefix of `author`, and a key named
+#: exactly `auth` was then written out intact — the collision was real, and the answer to it was
+#: wrong. Splitting a key into tokens distinguishes them properly: `auth`, `X-Auth` and
+#: `authToken` match, `author` does not.
+CREDENTIAL_KEY_TOKENS: Final = ("auth", "sig", "sid", "pwd")
+
+#: `key` is deliberately absent. It is a whole word in `extractor_key`, which yt-dlp puts on
+#: every info dict, so including it redacted real projected data — and a field named exactly
+#: `key` carrying a secret is not a shape yt-dlp produces, while `extractor_key` is. `api_key`
+#: and `apikey` are covered as substrings above.
+
+_TOKEN_SPLIT: Final = re.compile(r"[^A-Za-z0-9]+|(?<=[a-z0-9])(?=[A-Z])")
 
 #: The **only** query parameters allowed to survive into a committed fixture (`T018-R1`).
 #:
@@ -71,10 +88,24 @@ ALLOWED_QUERY_PARAMETERS: Final[tuple[str, ...]] = ()
 REDACTED: Final = "<redacted>"
 
 
+def key_tokens(key: object) -> list[str]:
+    """A key split into lowercase words, across delimiters and camelCase humps.
+
+    Split first, lowercase second: lowercasing up front erases the hump that separates
+    `authToken` into two words, and the token match then misses it.
+    """
+    return [part.lower() for part in _TOKEN_SPLIT.split(str(key)) if part]
+
+
 def is_credential_key(key: object) -> bool:
-    """Whether a mapping key names something that must never be committed."""
-    text = str(key).lower()
-    return any(marker in text for marker in CREDENTIAL_KEY_MARKERS)
+    """Whether a mapping key names something that must never be committed.
+
+    Substring match for the long markers, whole-token match for the short ones — see
+    `CREDENTIAL_KEY_TOKENS` for why the distinction has to exist rather than being tidied away.
+    """
+    if any(marker in str(key).lower() for marker in CREDENTIAL_KEY_MARKERS):
+        return True
+    return any(token in CREDENTIAL_KEY_TOKENS for token in key_tokens(key))
 
 
 def redact(value: Any) -> Any:
@@ -105,7 +136,7 @@ def redact(value: Any) -> Any:
 #: any drive letter, either slash, and UNC shares, case-insensitively.
 USER_DIRECTORY_PATTERN: Final = re.compile(
     r"(?:[a-z]:[\\/]+users[\\/])"  # C:\Users\, d:/users/
-    r"|(?:\\\\[^\\/]+[\\/]+[^\\/]+[\\/]+users[\\/])"  # \\server\share\Users\
+    r"|(?:\\\\(?:[^\\/]+[\\/]+)+users[\\/])"  # \\server\Users\ and \\server\share\Users\
     r"|(?:/home/)"
     r"|(?:/users/)",
     re.IGNORECASE,
