@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-26
+**Last updated:** 2026-07-27
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -896,3 +896,82 @@ Scope, precisely:
 - **This decision reopens** if the database stops being local and user-owned — sync, export,
   cloud backup, or a bug report attaching it — because the disclosure calculus above depends on
   it. Whoever proposes such a feature revisits this entry.
+
+---
+
+## SEC-002 — A fixture commits values only for the fields the projection reads
+
+**Status:** **Accepted** (2026-07-27) — maintainer decision on a Critical review finding
+**Date:** 2026-07-27
+**Narrows:** the scope of what `tests/fixtures/capture.py` writes, and one acceptance criterion
+of `T-018`.
+
+### Context
+
+`T-018` records real yt-dlp `info_dict`s as fixtures. The original design committed the **whole
+raw dict** and protected it with a recogniser: a list of credential-ish key markers, plus an
+independent scanner over the committed file.
+
+`T018-R1` reported that recogniser false-negative four times, and each correction closed the
+reported spellings and left another the rule had not been written to see:
+
+1. tuples, which `redact()` never walked, and which cannot appear in JSON at all;
+2. capture-owned metadata written raw, non-`C:` Windows profiles, URL fragments;
+3. a key named exactly `auth`, and a UNC share that is itself the profile root;
+4. `passwd`, `passphrase`, `private_key`, `accessKey` — and five names the *sanitizer*
+   recognised that the independent gate did not.
+
+The reviewer declined to return it for a fifth marker list, on the grounds that three batches had
+already established the defect class: **an open-ended namespace protected by a recogniser whose
+accepted complement is treated as safe.** Under `AGENTS.md` §9 an agent may not close a Critical
+as accepted risk, and continuing with the raw dict required exactly that. The decision was
+escalated.
+
+### Decision
+
+**A fixture commits values only for fields `downloader/ytdlp_adapter.py` demonstrably reads**,
+plus the reviewed provenance and error fields. Every other key is dropped before serialization.
+
+- The allowlist is derived from the adapter's real reads, and a test re-derives it from the
+  adapter's AST — so a field the adapter starts reading fails the suite until it is listed.
+- URL-valued allowed fields still lose query, userinfo and fragment. The path and key patterns
+  stay as defence in depth, not as the primary control.
+- **Upstream churn evidence is preserved without preserving unknown values**: alongside the
+  allowlisted projection input, each fixture records a value-free recursive schema fingerprint
+  of the discarded raw data — key names, container shape, scalar *type*, no scalar values. A
+  yt-dlp shape change is still visible; an unfamiliar key cannot carry its value into git.
+
+### Rationale
+
+- **It makes the next leak spelling irrelevant by construction.** The question stops being "did
+  we think of this key?" and becomes "does the adapter read it?", which has a checkable answer.
+- **It is the same lesson three times over.** `T-014` made a proxy credential unrepresentable
+  rather than strippable; `T-044` read the interpreter's namespace instead of parsing for it;
+  `T-045` dropped a completeness claim it could not keep. Constrain the input, do not filter it.
+- **The cost is small and was measured.** The fixture is a pinned contract for the projection,
+  and the projection reads a small, known set of fields. The playlist fixture fell from 45 KB to
+  12 KB; no projection test lost its subject.
+- **A committed leak is permanent.** The consequence is irreversible in a way that justifies
+  discarding data of unproven value.
+
+### Alternatives considered
+
+- **A fifth marker list** — rejected on the reviewer's evidence. Four passes, four escapes.
+- **Keep the raw dict and accept the risk** — rejected, and not available to an agent anyway:
+  `AGENTS.md` §9 reserves that to the maintainer, and the maintainer declined it here.
+- **Encrypt or externalise the fixtures** — rejected: it keeps the secret material in the
+  project's custody and adds a key to manage, without making any single fixture safer to read.
+
+### Consequences
+
+- **A fixture no longer proves what yt-dlp returned, only what this project consumes of it.**
+  The schema fingerprint is what catches upstream churn now; a field the adapter never reads
+  changing shape is, deliberately, no longer a test failure.
+- **Adding an adapter read is a two-step change**: extend the allowlist, then re-capture. The
+  AST test makes forgetting the first step fail loudly rather than silently drop data.
+- **`T-012`'s `archive_org_big_buck_bunny` was force-refreshed** by this policy, because its
+  committed provenance described a redaction policy that no longer holds. Two of its assertions
+  moved from "the value is `<redacted>`" to "the key is absent".
+- **This decision reopens** if a fixture is ever needed to prove something the adapter does not
+  read — a reproduction case for an upstream bug, say. That fixture needs its own handling, not
+  a widening of this rule.

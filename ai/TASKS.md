@@ -12,11 +12,10 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** three merged correction units remain in review. `T-013` is **Blocked** on
-`T013-R3` after its maintainer-authorized extra pass; `T013-R4` is resolved. `T-015` has new
-High correction regression `T015-R2`. `T-018` resolved its multi-item projection, but Critical
-privacy finding `T018-R1` remains open. See the task-local reviewer results and
-`ai/REVIEWS.md`.
+**Start here:** `T-013` is **approved with follow-ups** (`T-052`) and `T-015` is **approved**,
+both 2026-07-27. **`T-018` is the one task still in review**: Critical `T018-R1` is corrected a
+fourth time, structurally, on the maintainer's authorization (`SEC-002` — a fixture commits
+values only for the fields the adapter reads). See the task-local record and `ai/REVIEWS.md`.
 
 `T-012` was approved with follow-ups on 2026-07-26 after two review rounds; `T-014` was approved
 2026-07-26 at `db14cc2`. **`T-033` is Blocked**, not complete: its code is verified but approval
@@ -25,7 +24,8 @@ needs frozen CI evidence this repository cannot produce locally.
 Also Ready and independent: `T-038` (log redaction — one of `ai/TESTING.md` §7's two remaining
 uncovered mandatory areas, and the one `T-013`'s diagnostics make urgent). `T012-R6` is resolved
 by T-018's verified multi-item projection, but T-018 itself remains unapproved on its Critical
-privacy gate. `T-050` sits in **Phase 2**, where the plan puts history: nothing writes the
+privacy gate. `T-016` is unblocked on code and now waits only on `T-051` and that verdict.
+`T-050` sits in **Phase 2**, where the plan puts history: nothing writes the
 `history` table.
 
 Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; `T-040` for the
@@ -542,10 +542,50 @@ output of translation, not an internal detail.
 
 ### T-018 — Recorded `info_dict` fixtures and projection tests
 
-**Status:** **In Review — third correction batch returned 2026-07-27, awaiting verification.**
-`T018-R2` is verified resolved, closing `T012-R6`. `T018-R1` (Critical) has now survived two
-corrections and is corrected a third time — the two remaining false negatives were a key named
-exactly `auth`, and a UNC path whose share is itself the profile root.
+**Status:** **In Review — fourth correction batch returned 2026-07-27, awaiting verification.**
+`T018-R2` is verified resolved, closing `T012-R6`. `T018-R1` (Critical) survived three
+recogniser corrections; the fourth is a **structural scope change authorized by the maintainer**
+and recorded as `SEC-002` — a fixture now commits values only for the fields the adapter reads.
+
+#### Fourth correction batch — `T018-R1` (Critical, structural; `SEC-002`)
+
+The reviewer declined to return this for a fifth marker list, and was right to: four passes had
+each closed the reported spellings and left another the rule was never written to see. The
+maintainer authorized the scope change the reviewer recommended; it is recorded as `SEC-002`.
+
+**The recogniser is no longer the control.** `capture.write()` commits values only for the fields
+`ytdlp_adapter.py` demonstrably reads, plus the reviewed provenance and error fields
+(`CONSUMED_TOP_LEVEL`, `CONSUMED_FORMAT`, `ALLOWED_FIXTURE_FIELDS`, `ALLOWED_ERROR_FIELDS`).
+Every other key is **dropped, not redacted** — a dropped key cannot leak what it held, and cannot
+become a leak later when yt-dlp adds a field nobody has thought of. The question stops being
+"does this look like a secret?", which has no closed answer, and becomes "does the projection
+read a field by this name?", which does.
+
+**Upstream churn survives without values.** `schema_fingerprint()` records the discarded data's
+key names, container shape and scalar *types*, never a scalar value. `NFR-008`'s canary still
+fires on a rename; a fingerprint cannot carry data. The trade is stated in `SEC-002`: a field the
+adapter never reads changing *shape* is no longer a test failure, only a fingerprint diff.
+
+**The allowlist is transcribed on one side and derived on the other.** A test walks
+`ytdlp_adapter`'s AST and asserts its real reads are a subset of the allowlist, so a field the
+adapter starts reading fails the suite until it is listed. Same shape as the preset/request
+correspondence test, and for the same reason (`ai/TESTING.md` §13).
+
+**All five fixtures were re-captured**, and `T-012`'s `archive_org_big_buck_bunny` was
+force-refreshed rather than left alone this time: its provenance described a policy that no
+longer holds. Two of `T-012`'s assertions moved from "the value is `<redacted>`" to "the key is
+absent", which is what the policy now promises. The playlist fixture fell from 45 KB to 12 KB.
+
+**Mutation-checked: 10 mutations, 10 killed — after a survivor found a real hole.** The battery
+was re-run from a written list rather than reported from memory, and one mutation survived:
+removing `clean_scalar`'s user-directory branch left every test green. The key allowlist answers
+*may this field carry a value*, not *what is the value* — and `title` or `url` can be a local
+path. `test_a_consumed_field_still_loses_a_user_directory` now asserts that at `write()` across
+five path shapes, and the mutation dies. The other nine: the allowlist iterating the info dict
+instead of itself; the same for format keys; the fingerprint recording values; the fingerprint
+flattening container shape; `ALLOWED_QUERY_PARAMETERS` gaining a signed-URL parameter; `redact_url`
+keeping userinfo; keeping the fragment; and the provenance and error blocks each bypassing their
+allowlist.
 
 #### Reviewer result on `0973fee`
 
@@ -731,7 +771,7 @@ audit sibling URL credential forms and container shapes, and mutation-check the 
 `core/models.py`, `downloader/ytdlp_adapter.py`
 **Risk:** Medium — a carelessly refreshed fixture hides the upstream breakage the fixture
 exists to catch
-**Review base:** the `T-012` merge commit. **Review head:** `0973fee`, merged by `7021a01`
+**Review base:** the `T-012` merge commit. **Review head:** `0973fee`, merged by `7021a01`; corrections at `73d04c6` (third) and `2f85a32` (fourth, structural — `SEC-002`)
 **Blocks:** the `T012-R6` projection blocker on `T-016` is resolved; T-018 itself remains in
 review on `T018-R1`
 

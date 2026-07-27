@@ -3090,3 +3090,101 @@ This keeps the fixture's actual purpose—a pinned contract for the projection�
 new leak spelling irrelevant by construction. Continuing with the full raw dict requires the
 maintainer to accept a known Critical privacy risk; an agent cannot close that as accepted risk
 under `AGENTS.md` §9.
+
+## 2026-07-27 — T-018 fourth correction batch returned (`T018-R1`, structural)
+
+**Implementer:** Claude Code
+**Task:** `T-018`
+**Correction base:** `73d04c6`
+**Correction head:** `2f85a32` (structure), plus test coverage added afterwards — see below
+**Authorization:** maintainer, recorded as `SEC-002` in `ai/DECISIONS.md`
+**Awaiting re-review.** Only the Reviewer marks a finding Resolved.
+
+### What changed, and why it is not a fifth marker list
+
+The reviewer's stop condition is accepted in full. Three batches established that an open-ended
+`info_dict` cannot be made safe by enumerating credential spellings, and the recommended scope
+change was authorized rather than another recogniser pass.
+
+`capture.write()` now commits **values only for fields `ytdlp_adapter.py` demonstrably reads**,
+plus the reviewed provenance and error fields. Every other key is dropped before serialization.
+`ALLOWED_QUERY_PARAMETERS` stays empty; userinfo and fragments still go; the path and key patterns
+remain as defence in depth rather than as the control being relied on.
+
+Churn evidence is kept as `schema_fingerprint()` — key names, container shape, scalar *types*, no
+scalar values — so `NFR-008`'s canary still fires on an upstream rename while a fingerprint
+cannot carry data.
+
+The allowlist is transcribed in `capture.py` and **derived from `ytdlp_adapter`'s AST** in the
+gate, so the two must agree or the suite fails.
+
+### The reviewer's two probes, re-run against this head
+
+| Probe | Result |
+|---|---|
+| `passwd` / `passphrase` / `private_key` / `accessKey` through `capture.write()` | All four keys **absent** from the written file. Not redacted — dropped. Their existence survives in `_schema` as type names. |
+| `cookiejar` / `sessionid` / `clientsecret` / `httpheaders` / `oauth2` as raw parsed objects | `unexpected_keys()` reports each by path. The gate no longer depends on agreeing with a sanitizer's vocabulary, because there is no vocabulary. |
+
+The first probe's written file, in full:
+
+```json
+{"_fixture": {}, "_schema": {"accessKey": "str", "passphrase": "str", "passwd": "str",
+ "private_key": "str"}, "info_dict": {}}
+```
+
+155 bytes. `leaks_in()` and `unexpected_keys()` both return `[]` — and this time that is the
+right answer, because there is nothing in the file to find. The second probe's gate output is
+`['info_dict.cookiejar', 'info_dict.sessionid', 'info_dict.clientsecret',
+'info_dict.httpheaders', 'info_dict.oauth2']`.
+
+Both are asserted permanently: `test_the_writer_keeps_only_what_the_projection_reads` and
+`test_the_gate_rejects_a_fixture_carrying_anything_else` carry every spelling that beat a marker
+list, and none of them is recognised by name.
+
+### Mutation evidence — 10 mutations, 10 killed, and one of them found a hole
+
+The battery was **re-run from a written list** rather than reported from the previous session's
+count. That was the right call: one mutation survived the first pass.
+
+**Survivor, now fixed.** Removing `clean_scalar`'s user-directory branch left the whole suite
+green. The key allowlist answers *may this field carry a value*, not *what is that value* — and
+`title`, `url` and `format_note` can all hold a local path, which `NFR-007` keeps out of anything
+that persists. No committed fixture contains one, so nothing exercised the branch.
+`test_a_consumed_field_still_loses_a_user_directory` now asserts it at `write()` across
+`C:\Users\…`, `D:/Users/…`, `\\server\Users\…`, `/home/…` and `/Users/…`; the mutation dies.
+
+The nine killed on the first pass:
+
+| Mutation | Killed by |
+|---|---|
+| `keep_consumed` iterates the info dict instead of the allowlist | writer and gate tests |
+| `_keep_format` keeps every format key | writer test |
+| `schema_fingerprint` records the scalar value | fingerprint tests, every fixture |
+| `schema_fingerprint` flattens container shape | fingerprint and projection tests |
+| `ALLOWED_QUERY_PARAMETERS` gains `x-amz-signature` | committed-file gate |
+| `redact_url` leaves userinfo in place | writer allowlist test |
+| `redact_url` keeps the fragment | writer allowlist test |
+| `write()` lets the provenance block bypass its allowlist | writer allowlist test |
+| `write()` lets a recorded error bypass its allowlist | writer allowlist test |
+
+### Validation
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed — all checks passed |
+| `ruff format --check .` | Passed — 78 files already formatted |
+| `mypy src tests` | Passed — no issues in 63 source files |
+| `mypy --platform win32 src` | Passed — no issues in 31 source files |
+| Focused fixture suite | Passed — 92 passed, 5 skipped |
+| Default suite | Passed — **1082 passed, 11 skipped, 44 deselected** in 15.4 s |
+| Mutation battery | 10 of 10 killed (one after the coverage it exposed was added) |
+| Windows | Not run — no runner in this environment |
+
+### A note on the deselected 44
+
+`tests/integration/test_manager.py` moved behind `-m process_tree` in `9010794`, because
+`T-019`'s live defect leaves descendants that wedge later runs — which is what produced the
+reviewer's own hung full-suite attempt on `73d04c6`. Those 43 tests still pass on demand
+(`pytest -m process_tree`: 43 passed, 2 skipped) and CI still runs them. `T-019` removes the
+marker. Recorded in `ai/TESTING.md` §2 and §7 and in `T-019`'s entry, and called out here because
+it changes what a default run proves.

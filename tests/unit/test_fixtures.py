@@ -425,6 +425,48 @@ def test_the_writer_enforces_the_provenance_and_error_allowlists(tmp_path: Path)
     assert not leaks_in(written.read_text(encoding="utf-8"))
 
 
+@pytest.mark.parametrize(
+    "path_value",
+    [
+        r"C:\Users\Sean\Videos\out.mp4",
+        r"D:/Users/Sean/out.mp4",
+        r"\\server\Users\sean\out.mp4",
+        "/home/sean/out.mp4",
+        "/Users/sean/out.mp4",
+    ],
+)
+def test_a_consumed_field_still_loses_a_user_directory(tmp_path: Path, path_value: str) -> None:
+    """The allowlist does not cover this, and a mutation battery proved it (`NFR-007`).
+
+    A key allowlist answers "may this field carry a value?" — it says nothing about *what* the
+    value is. `title` is consumed, and a title can be a local path; so can a `url`. Removing
+    `clean_scalar`'s user-directory branch left every test green, which is the definition of an
+    unasserted guard (`ai/TESTING.md` §13). Asserted at `write()` rather than against
+    `clean_scalar`, because the door is what a future capture goes through.
+    """
+    from tests.fixtures import capture
+
+    written = tmp_path / "paths.json"
+    capture.write(
+        written,
+        {
+            "_fixture": {"captured": "2026-07-27", "note": path_value},
+            "info_dict": {
+                "title": path_value,
+                "url": path_value,
+                "formats": [{"format_id": "1", "ext": "mp4", "format_note": path_value}],
+            },
+        },
+    )
+    payload = load(written)
+
+    assert payload["info_dict"]["title"] == capture.REDACTED
+    assert payload["info_dict"]["url"] == capture.REDACTED
+    assert payload["info_dict"]["formats"][0]["format_note"] == capture.REDACTED
+    assert payload["_fixture"]["note"] == capture.REDACTED
+    assert not leaks_in(written.read_text(encoding="utf-8"))
+
+
 def test_the_gate_rejects_a_fixture_carrying_anything_else(tmp_path: Path) -> None:
     """`ai/TESTING.md` §13: the gate has to be watched refusing something.
 

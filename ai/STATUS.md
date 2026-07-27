@@ -94,14 +94,19 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
   happens, and the unwind reads that record instead of inferring it. `T013-R5` remains
   non-blocking hardening owned by `T-052`.
 - **`T-013` approved with follow-ups and `T-015` approved**, 2026-07-27. `T-018` is on its
-  **third** correction of the same Critical (`T018-R1`): each pass closed the reported shapes and
-  left another the rule had not been written to see — tuple containers, then capture metadata and
-  non-`C:` profiles, then a key named exactly `auth` and a UNC share that *is* the profile root.
-  The gate now walks parsed keys as well as file text, which is the half it never had.
-- **`ai/TESTING.md` §7 stands at eight of ten mandatory areas**, up from six. `T-013` added
-  Cancellation and Worker crash, both against real spawned processes. The two outstanding are
-  Log redaction (`T-038`) and DRM. **DRM has no Phase 1 owner** — worth settling deliberately
-  rather than discovering it at the exit review.
+  **fourth** correction of the same Critical (`T018-R1`), and the fourth is structural rather
+  than another recogniser. Three passes each closed the reported spellings and left another the
+  rule had not been written to see — tuple containers, then capture metadata and non-`C:`
+  profiles, then a key named exactly `auth`, then `passwd` and `accessKey`. The reviewer declined
+  a fifth marker list; the maintainer authorized the scope change (`SEC-002`): **a fixture now
+  commits values only for the fields the adapter reads**, and everything else is dropped and
+  survives as a value-free schema fingerprint.
+- **`ai/TESTING.md` §7 covers eight of ten mandatory areas, but only six are in the default
+  run.** `T-013` added Cancellation and Worker crash against real spawned processes; both moved
+  behind `-m process_tree` in `9010794`, because `T-019`'s live defect leaves descendants that
+  wedge later runs. They still pass on demand and CI still runs them; `T-019` removes the marker.
+  The two genuinely uncovered are Log redaction (`T-038`) and DRM. **DRM has no Phase 1 owner** —
+  worth settling deliberately rather than discovering it at the exit review.
 - **The lesson from `T-044`, `T-045` and `T-014`, now three for three:** each blocking finding
   came from filtering unbounded input instead of constraining what the input could be. `T-044`
   stopped parsing for exports and read the interpreter's namespace; `T-045` dropped a completeness
@@ -113,14 +118,13 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 `ARC-002`'s ordinary end-to-end path is proven: a spawned child imports yt-dlp, extracts and
 reports typed messages back (`T-012`); a job survives a restart and an unclean kill (`T-014`);
-and, in a test, a URL becomes a file on disk through `T-013`. T-013 is not approved: a pump-start
-failure can still leave its worker alive after the job is recorded failed. Cancellation also
-does not yet reap descendants; see `T-019`. **No widget touches any of it yet**: composition is
-`T-036` and the first *user-visible* download is `T-037`.
+and, in a test, a URL becomes a file on disk through `T-013`. T-013 is now approved, so that path
+is something to build on. Cancellation still does not reap descendants; see `T-019`. **No widget
+touches any of it yet**: composition is `T-036` and the first *user-visible* download is `T-037`.
 
-1. **Resolve the returned review blockers.** T-013 needs a maintainer decision before another
-   Medium pass. T-015's new High regression and T-018's still-open Critical continue through
-   correction and focused verification under `AGENTS.md` §9.
+1. **`T-018` is the last open blocker in Phase 1.** The fourth correction is returned and awaits
+   re-review; under `AGENTS.md` §9 a Critical continues without the ordinary pass cap. Nothing
+   else in Phase 1 is waiting on a review verdict.
 2. **`T-038` — logging with handler-level redaction.** Ready, High priority, and now overdue
    rather than early: `T-013` generates the diagnostics most likely to carry a tokenised URL or a
    cookie path, and they are being produced today with no redacting handler under them.
