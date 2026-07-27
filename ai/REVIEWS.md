@@ -2751,3 +2751,56 @@ T-013 remains **In Review — changes requested**. `T013-R1` and `T013-R2` are H
 the ordinary budget; the two High findings continue until independently resolved regardless of
 that cap. Windows remains unverified for cancellation timing, the killed-parent watchdog and
 `TerminateProcess`.
+
+## 2026-07-27 — T-013 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-013`
+**Correction base:** `cc79bb8b0379bcd7dd8f30e808e1cbfb25d2b542`
+**Correction head:** `65303a2826ec0f71693f17e6b8e922451674bf2d`
+**Review unit:** `git diff cc79bb8..65303a2`, limited to `T013-R1`–`T013-R3` and correction
+regressions; later T-019 coordination commit `9bdb8c4` is excluded
+**Branch at recording:** `main`, not pushed
+**Platforms verified:** Linux locally; Windows not run
+**Verdict:** **Blocked**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T013-R1` | **High** | **No** | **Resolved.** `SessionValidator` is the incremental form of the protocol grammar and `validate_sequence()` now delegates to it. `ResultPump` binds it to the requested job, calls `accept()` before any route, stops on a violation, and calls `complete()` at session end. The manager records a synthetic sentinel as a violation and defers every terminal transition until the stream is judged. The committed illegal-kind, wrong-stage, foreign-job, duplicate-report, post-outcome and missing-sentinel cases all pass; the cancellation exception applies only after the user has requested cancellation and preserves the worker's own `CANCELLED` outcome when present. |
+| `T013-R2` | **High** | **No** | **Resolved as originally stated.** `shutdown()` now marks the lifecycle, refuses new sessions, initiates cancellation and returns. Timer ticks perform escalation; no positive-duration process join, `QThread.wait()`, sleep loop or manual event pumping remains. A cancellation-resistant real spawned worker verified that the call returns inside the interaction budget and later reaches `idle`. The forced-pump release regression is recorded separately as `T013-R4`. |
+| `T013-R3` | **Medium** | **Yes** | **Open — the correction does not survive failure of its own cleanup sentinel.** `_abort_start()` calls `queue.put(WorkerFinished(...))` before it records the failed job, and that cleanup write is unprotected. A deterministic process-start failure paired with a queue whose cleanup `put()` fails raised the cleanup `RuntimeError` instead of the original spawn `OSError`, left the repository at `PROBING`, and emitted no durable failure. This is the exact “failures while synthesizing the cleanup sentinel” sibling named in the initial finding. Protect cleanup operations so they cannot pre-empt persistence of the useful original failure, then close/terminate whatever was built without leaking it. |
+| `T013-R4` | **Medium** | **Yes** | **Open — the new pump-abandon path can announce shutdown completion before the pump has finished and leaves the job in flight.** `_abandon()` calls asynchronous `QThread.terminate()`, immediately closes the queue and removes the session, and neither observes `finished` nor finalizes the job. `_tick()` can consequently emit `idle` while that thread is still running. A deterministic pump whose `terminate()` had not yet completed left `is_idle == True`, `isFinished() == False`, and the repository at `PROBING`. This is a narrow forced-cleanup path, hence Medium, but it violates T-013's no-thread/no-in-flight-job shutdown criterion and blocks. Retain ownership until `finished`, and durably cancel or fail the job before `idle`. |
+| `T013-R5` | **Low** | **No** | **Open follow-up — the recorded 16/16 mutation result overstates the committed gate.** Moving `_routes[type(item)].emit(item)` immediately before `SessionValidator.accept()` left all five cases in `test_an_illegal_message_never_reaches_the_job` green. The production order is correct, but the test permits an illegal progress message to persist `RUNNING` and does not assert that foreign progress or a duplicate resolution report was withheld. The startup test's useful-message assertion is also vacuous because it ends in `or True`. Implementer-owned `T-052` targets these tests; it does not keep T-013 in review. |
+
+### Focused verification
+
+The correction was read and executed from a clean `/tmp` archive of exact commit `65303a2`.
+The working branch changed independently while review was running; neither the T-015/T-018
+review commit on `phase1-presets-and-fixtures` nor main's later T-019 task update is in this
+review unit.
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **75 files already formatted**. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| `mypy --platform win32 src` | Passed: no issues in 31 source files. |
+| Focused manager + protocol + boundary tests | Passed: **175 passed, 3 skipped**. |
+| Full default suite, reviewer probes excluded | Passed: **925 passed, 6 skipped, 1 deselected**. |
+| Cleanup-sentinel negative probe | Failed against `65303a2`: cleanup `put()` replaced the spawn error and left the job `PROBING` (`T013-R3`). |
+| Asynchronous-abandon negative probe | Failed against `65303a2`: the manager became idle with an unfinished pump and an in-flight job (`T013-R4`). |
+| Route-before-validation mutation | **Survived:** all five parameterized illegal-message cases passed (`T013-R5`). |
+
+The reviewer-only probes and mutation existed only in the archived tree. The production source
+was restored before the committed suite run. Windows remains unverified for cancellation timing,
+the orphan guard and `TerminateProcess`.
+
+### Convergence and readiness
+
+The two High findings are resolved. Two blocking Medium findings remain after the one focused
+correction re-review, so the ordinary budget in `AGENTS.md` §9 is exhausted. T-013 is
+**Blocked** pending the maintainer's choice: authorize one more focused pass, accept the
+documented risk, change scope, or carry the blockers into a named follow-up. `T013-R5` is
+non-blocking and assigned to `T-052`.

@@ -12,9 +12,11 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** review `T-013` — the download manager and result pump, implemented 2026-07-27
-and awaiting its first independent pass. It is the largest thing between the project and a URL
-that downloads, and it unblocks `T-036`, `T-016`, `T-017` and `T-019`.
+**Start here:** `T-013` is **Blocked in review** after its focused correction pass. The High
+findings are resolved, but `T013-R3` remains open and `T013-R4` is a new blocking Medium
+correction regression. Per `AGENTS.md` §9, another Medium-or-lower correction pass requires the
+maintainer to authorize it, accept the documented risk, change scope, or carry the blockers
+into a named follow-up.
 
 `T-012` was approved with follow-ups on 2026-07-26 after two review rounds; `T-014` was approved
 2026-07-26 at `db14cc2`. **`T-033` is Blocked**, not complete: its code is verified but approval
@@ -34,10 +36,43 @@ first focusable widgets.
 
 ### T-013 — Download manager and result pump
 
-**Status:** **In Review — corrections returned 2026-07-27, awaiting focused re-review.** All
-three blocking findings are **corrected and awaiting verification** (`AGENTS.md` §9: only the
-Reviewer marks a finding Resolved). Prerequisites were met before implementation started:
-`T-012` completed 2026-07-26, `T-014` approved 2026-07-26 at `db14cc2`.
+**Status:** **In Review — Blocked after focused re-review 2026-07-27.** `T013-R1` and
+`T013-R2` are resolved. `T013-R3` remains a blocking Medium, and new correction regression
+`T013-R4` is a blocking Medium. The ordinary review budget is exhausted; another focused pass
+requires the maintainer choice listed in `AGENTS.md` §9. `T013-R5` is non-blocking test
+hardening owned by `T-052`.
+
+#### Focused re-review — `cc79bb8..65303a2`
+
+The incremental protocol grammar and validation-before-routing production order resolve
+`T013-R1`; the cancellation carve-out is appropriately limited to a session the user already
+asked to stop. The event-driven shutdown entry point resolves `T013-R2`: `shutdown()` returns,
+refuses new work, and uses timer-driven escalation without a positive-duration join or
+`QThread.wait()`.
+
+Two blocking cleanup edges remain:
+
+- **`T013-R3`:** `_abort_start()` writes its cleanup sentinel before persisting the failed job,
+  without protecting that write. A deterministic queue whose cleanup `put()` fails replaced the
+  original spawn exception and left the repository at `PROBING`, exactly the cleanup-sentinel
+  case the first review required the sibling audit to cover.
+- **`T013-R4`:** `_abandon()` calls asynchronous `QThread.terminate()`, then immediately closes
+  the queue and removes the session without observing `finished`. The next tick can emit `idle`
+  while the pump is not finished, and the active job is left in its in-flight state. Retain the
+  session until the thread actually finishes and durably cancel/fail the job before announcing
+  idle.
+
+The claimed route-before-validation mutation also survived independently: moving
+`_routes[type(item)].emit(item)` immediately before `SessionValidator.accept()` left all five
+parameterized illegal-message cases green. The production order is correct, so `T013-R5` is
+Low/non-blocking; `T-052` owns assertions over every persisted transient state and every public
+message route. The startup test's useful-message assertion is also vacuous because it ends in
+`or True`; `T-052` removes that escape.
+
+Exact archived-head validation passed: `ruff check`, `ruff format --check`, `mypy src`,
+`mypy --platform win32 src`, focused manager/protocol/boundary tests (**175 passed, 3
+skipped**), and the full default suite (**925 passed, 6 skipped, 1 deselected**). Reviewer-only
+negative probes failed on both open blockers. Windows remains unverified.
 
 #### Correction batch — `T013-R1`, `T013-R2`, `T013-R3`
 
@@ -578,6 +613,47 @@ than source code silently creating architecture.
 - Any durable architecture trade-off is recorded in `ai/DECISIONS.md`; otherwise the current
   architecture and tasks are aligned without manufacturing a decision entry
 - No source code is changed by this Planner task
+
+---
+
+### T-052 — Make the T-013 correction tests kill their claimed mutations
+
+**Status:** Proposed — non-blocking follow-up from `T013-R5`
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 1
+**Depends on:** `T-013`
+**Relevant context:** `T013-R5`; `ai/TESTING.md` §13
+**Affected surfaces:** `tests/integration/test_manager.py`
+**Risk:** Low — production behavior is correct; the negative gate is weaker than its evidence
+record claims
+
+#### Scope
+
+Strengthen the T-013 correction evidence at the observations where a route-before-validation
+regression is currently invisible. Moving the pump's signal emission immediately before
+`SessionValidator.accept()` leaves all five cases in
+`test_an_illegal_message_never_reaches_the_job` green: the test excludes only `READY` and
+`COMPLETED`, so illegal progress may still persist `RUNNING`; it does not assert that foreign
+progress or a duplicate resolution report was withheld from the public signals.
+
+The startup-construction test also ends its useful-error assertion with `or True`, making that
+assertion unconditional. Remove the escape and prove the stored diagnostic retains the original
+failure rather than a cleanup error.
+
+#### Acceptance criteria
+
+- Reordering validation and routing makes at least one committed test fail for each affected
+  route: persisted progress state, public progress, and resolution report
+- The tests assert the complete persisted status sequence, not selected terminal states
+- The useful startup diagnostic assertion has no unconditional branch and fails if the original
+  construction error is discarded
+- The route-before-validation and diagnostic-weakening mutations are run and recorded as killed
+
+#### Out of scope
+
+- Changing `SessionValidator` or the production routing order, which are correct at `65303a2`
+- The blocking cleanup behavior in `T013-R3` and `T013-R4`
 
 ---
 
