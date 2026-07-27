@@ -223,8 +223,9 @@ so.
 
 ### T-015 — Built-in presets and selector translation
 
-**Status:** **In Review** — implemented 2026-07-27 on branch `phase1-presets-and-fixtures`,
-alongside `T-018`, while `T-013` is in review.
+**Status:** **In Review — changes requested** in the first independent review on 2026-07-27.
+`T015-R1` is a High blocker. Implemented on branch `phase1-presets-and-fixtures` alongside
+`T-018`.
 
 **What landed.** `core/presets.py`: the five `REQ-006` presets, `to_request()`,
 `effective_selector()`, `by_name()` and `custom_preset()` for `REQ-009`'s raw-selector escape
@@ -258,6 +259,12 @@ validating a user's selector, the subtitle preset losing `embed_subtitles`, and 
 dropping its audio-quality check — which **survived** the first run, because the validator was
 added and never asserted. Per `ai/TESTING.md` §13 that defaults to "a test is missing", and it
 was; the test now kills it.
+
+**First review.** `ai/REVIEWS.md` records the full evidence. The correction must ensure every
+branch of the 1080p-MP4 selector can only produce MP4, and must prevent `to_request()` overrides
+from replacing preset-owned choices while `effective_selector()` continues to display the
+original. Freeze both negative cases through yt-dlp's real selector engine and the complete
+preset-to-request API, audit sibling preset-owned fields, and mutation-check the corrections.
 
 **Owner:** Implementer
 **Priority:** Medium
@@ -308,9 +315,10 @@ output of translation, not an internal detail.
 
 ### T-018 — Recorded `info_dict` fixtures and projection tests
 
-**Status:** **In Review** — implemented 2026-07-27 on branch `phase1-presets-and-fixtures`,
-alongside `T-015`. **`T-016` is unblocked** by it: `MediaInfo` can now carry the
-playlist/single-item distinction `T-016` promised to display.
+**Status:** **In Review — changes requested** in the first independent review on 2026-07-27.
+`T018-R1` is a Critical blocker and `T018-R2` is a High blocker. Implemented on branch
+`phase1-presets-and-fixtures` alongside `T-015`. **`T-016` remains blocked** until the
+playlist/single-item projection handles every multi-item result the pinned yt-dlp declares.
 
 **What landed.**
 
@@ -352,6 +360,12 @@ scan reads JSON text, where a Windows path is escaped, so checking only `C:\User
 `C:\\Users`); and `UnsupportedError` falling out of the taxonomy, which the recorded-failure
 fixture catches.
 
+**First review.** `ai/REVIEWS.md` records the full evidence. The correction must make capture
+sanitization and the independent committed-file scanner fail closed on signed URL credentials
+and cookie material across every JSON-serializable container shape, and must project yt-dlp's
+declared `multi_video` result as multi-item rather than single-item. Add hostile negative cases,
+audit sibling URL credential forms and container shapes, and mutation-check the corrections.
+
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 1
@@ -364,7 +378,7 @@ fixture catches.
 exists to catch
 **Review base:** the `T-012` merge commit. **Review head:** branch
 `phase1-presets-and-fixtures`
-**Blocks:** `T-016` — **cleared** by the playlist projection above
+**Blocks:** `T-016` — remains until `T018-R2` is resolved
 
 #### Scope
 
