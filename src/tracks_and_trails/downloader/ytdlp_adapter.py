@@ -103,6 +103,10 @@ UNMAPPED_KINDS: Final[Mapping[ErrorKind, str]] = {
     ErrorKind.WORKER_CRASH: (
         "produced by the parent observing a child's exit code (T-013); a worker cannot raise it"
     ),
+    ErrorKind.INTERRUPTED: (
+        "produced by startup recovery when a persisted job is found in flight (T-014); nothing "
+        "raises it, because the process that would have has already died"
+    ),
 }
 
 

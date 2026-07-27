@@ -273,10 +273,22 @@ differs per class:
 | `FFMPEG_MISSING` / `FFMPEG_ERROR` | merge/convert failure | Fail; link to ffmpeg settings (`REQ-024`) |
 | `DISK` | out of space, permission denied | Fail; pause the queue |
 | `WORKER_CRASH` | non-zero exit, no result message | Fail; log exit code (`REQ-028`) |
+| `INTERRUPTED` | the application died mid-flight | Fail; offer retry (`REQ-012`, `NFR-003`) |
 | `CANCELLED` | user action | Not an error |
 
 Only `NETWORK` auto-retries. Everything else waits for the user (`REQ-018`) — silently
-retrying a permanent failure just hammers the site.
+retrying a permanent failure just hammers the site. That includes `INTERRUPTED`: an application
+that crashed mid-download should not relaunch straight back into the download it crashed on.
+
+`INTERRUPTED` is distinct from `WORKER_CRASH` and the difference is observability. A worker
+crash was *watched* — the parent survived, saw a non-zero exit, and can log the code. An
+interruption was watched by nobody: the whole process died, and all that is known at the next
+startup is that a status which persisted before the crash cannot still be true. Collapsing the
+two would make a failed job's history unable to say whether a retry has any prospect of working.
+
+*(Added 2026-07-26 by `T-014`, on maintainer approval. §5 had required an "`INTERRUPTED`
+presentation of `FAILED`" since the document was written, while this table never listed it —
+so `core/errors.py` implemented §7 faithfully and §5's crash recovery had no kind to use.)*
 
 The extractor's original message is always preserved verbatim (`NFR-006`) alongside the
 classification. Classification is a hint, not a replacement.

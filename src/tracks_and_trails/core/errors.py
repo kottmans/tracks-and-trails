@@ -44,6 +44,19 @@ class ErrorKind(StrEnum):
     FFMPEG_ERROR = "ffmpeg_error"
     DISK = "disk"
     WORKER_CRASH = "worker_crash"
+
+    #: The application itself died while this job was in flight (`ARCHITECTURE.md` §5, §7).
+    #:
+    #: Added by `T-014` on maintainer approval: §5 had always required an "`INTERRUPTED`
+    #: presentation of `FAILED`" for crash recovery, while §7's taxonomy never listed the kind,
+    #: so there was nothing to classify a recovered job as.
+    #:
+    #: Distinct from `WORKER_CRASH`, and the difference is what was observed. A worker crash was
+    #: watched: the parent survived it and can log an exit code. An interruption was watched by
+    #: nobody — all that is known is that a status persisted before the crash cannot still be
+    #: true. Retryable, never auto-retryable.
+    INTERRUPTED = "interrupted"
+
     CANCELLED = "cancelled"
 
 

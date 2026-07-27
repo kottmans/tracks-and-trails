@@ -32,6 +32,11 @@ ARCHITECTURE_SECTION_7_KINDS = {
     "FFMPEG_ERROR",
     "DISK",
     "WORKER_CRASH",
+    # Added to §7 on 2026-07-26 by `T-014`, with maintainer approval. §5 had required an
+    # `INTERRUPTED` presentation of `FAILED` for crash recovery since the document was written,
+    # while §7's table never listed the kind — this gate is what surfaced the contradiction,
+    # by refusing the enum member until the architecture it transcribes actually said so.
+    "INTERRUPTED",
     "CANCELLED",
 }
 

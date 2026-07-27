@@ -234,6 +234,10 @@ SECTION_7_KINDS = {
     "FFMPEG_ERROR",
     "DISK",
     "WORKER_CRASH",
+    # Added to §7 on 2026-07-26 by `T-014` with maintainer approval, for §5's crash recovery.
+    # Unmappable here by construction: nothing raises it, because the process that would have
+    # is the one that died.
+    "INTERRUPTED",
     "CANCELLED",
 }
 
