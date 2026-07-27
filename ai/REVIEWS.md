@@ -2958,3 +2958,55 @@ unverified.
 - **T-018 has Changes requested.** `T018-R2` is resolved; Critical `T018-R1` remains open and
   cannot be accepted or deferred by an agent. The projection half `T012-R6` is closed, but
   T-018 itself is not approved.
+
+## 2026-07-27 — T-013, T-015 and T-018 focused blocker verification
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** `T-013`, `T-015`, `T-018`
+**Correction commits:** `d3bac037ca5cd9e4dab0605f1537b778975c3181` (`T015-R2`,
+`T018-R1`); `14a50e59f012161851c6cd78ca68b4b6154023d9` (`T013-R3`)
+**Review unit:** the two correction commits, limited to the three unresolved blockers and
+correction regressions
+**Branch at inspection:** `main` at `14a50e5`, clean, 14 commits ahead of `origin/main`, not
+pushed. While review ran, `main` advanced to docs-only `2ff5606` (15 ahead); that concurrent
+`ai/TASKS.md` status alignment does not change either correction diff.
+**Platforms verified:** Linux locally; Windows not run
+**T-013 verdict:** **Approved with follow-ups**
+**T-015 verdict:** **Approved**
+**T-018 verdict:** **Changes requested**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T013-R3` | **Medium** | **No** | **Resolved.** `_Session` now records `process_started` and `pump_started` separately as each start returns, and `_abort_start()` reads that record rather than inferring it from locals or one late flag. The durable `FAILED` write precedes both failure signals and every cleanup operation. A real-process test in which `process.start()` succeeds and `pump.start()` raises leaves no worker and a failed, idle manager; a signal-order test observes `FAILED` from `protocol_violation`; and the real successful-download test passes through the restructured ordinary path. All 52 focused manager and boundary tests passed. |
+| `T015-R2` | **High** | **No** | **Resolved.** The video-only fallback is gone. The remaining alternatives are a separate MP4/M4A pair and a pre-muxed MP4; committed cases isolate each through the pinned yt-dlp selector and assert both audio and video, while MP4-video plus WebM/Opus-audio selects nothing. That refusal is consistent with `REQ-006`: silently merging to MKV would violate the named MP4 preset, while remux/recode is a separate `REQ-010` choice. |
+| `T018-R1` | **Critical** | **Yes** | **Open — the claimed fail-closed policy still has two deterministic false negatives in both independent halves.** `write()` does sanitize the whole payload now, and the source-URL, drive-letter, nested-UNC and fragment cases reported in the preceding pass are corrected. However, `CREDENTIAL_KEY_MARKERS` deliberately removed `"auth"` to avoid matching `"author"` and did not replace it with boundary-aware or exact-key handling. Consequently `write(..., {"info_dict": {"auth": "fixture-secret-7c6c"}})` writes the secret unchanged and `leaks_in()` returns no finding. Exact `"auth"` is itself a credential key; preserving `"author"` does not require accepting it. The path patterns also miss the common UNC profile form `\\server\Users\name` because both require an extra component before `Users`; under a neutral key, that path survives `redact()` and produces no scanner finding. A future deliberate refresh can therefore still commit credential material or a personal path through a gate that reports clean. This retains the irreversible privacy consequence and Critical severity. Match bare/delimited `auth` without matching `author`, teach the independent scanner the same class without sharing the sanitizer's constant, and cover both `\\server\Users\name` and the already-tested nested UNC form. |
+
+### Verification
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **78 files already formatted**. |
+| `mypy src` | Passed: no issues in 31 source files. |
+| `mypy --platform win32 src` | Passed: no issues in 31 source files. |
+| Focused manager + boundary suite | Passed: **52 passed**. The first sandboxed run had 9 local-server `PermissionError` failures; rerunning with permission to bind `127.0.0.1` passed cleanly. |
+| Focused preset + fixture suite | Passed: **200 passed, 5 skipped**. |
+| Full merged-tree default suite | Passed: **1132 passed, 11 skipped, 1 deselected**. |
+| Bare-auth write probe | Failed closed-policy claim: the known secret remained in the written JSON and `leaks_in()` returned `[]` (`T018-R1`). |
+| UNC-share probe | Failed closed-policy claim: `\\nas\Users\Sean\private.txt` survived `redact()` and `leaks_in()` returned `[]`; the nested `\\nas\home\Users\Sean\private.txt` control was correctly detected (`T018-R1`). |
+
+The implementer's mutation batches were not rerun wholesale. The focused tests exercise the
+corrected T-013 and T-015 mechanisms and ordinary success path; the two direct privacy probes
+establish that `T018-R1` is still live. Windows runtime behavior remains unverified.
+
+### Convergence and readiness
+
+- **T-013 is Approved with follow-ups.** Its last blocking finding, `T013-R3`, is resolved.
+  `T013-R5` remains non-blocking and assigned to `T-052`; `T-019` still owns descendant
+  process-tree cleanup and Windows process-lifetime evidence.
+- **T-015 is Approved.** `T015-R1` and `T015-R2` are resolved; no blocking or non-blocking
+  finding remains.
+- **T-018 has Changes requested.** Critical `T018-R1` remains open. Under `AGENTS.md` §9,
+  Critical correction and independent verification continue without the ordinary pass cap.
