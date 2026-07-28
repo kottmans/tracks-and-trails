@@ -448,6 +448,17 @@ def live_session_process(manager: DownloadManager, job_id: str) -> Any:
     return manager._sessions[job_id].process
 
 
+def session_job_ids(manager: DownloadManager) -> tuple[str, ...]:
+    """The jobs that actually have a worker — not the ones whose start is merely reserved.
+
+    `active_job_ids()` reports both since `T016-R3`, because a reservation *is* work in flight
+    and hiding it is what let shutdown announce `idle` and then spawn. A test about **worker
+    construction** therefore has to ask about sessions specifically, or it would pass on a
+    reservation and prove nothing about the process.
+    """
+    return tuple(manager._sessions)
+
+
 # --- 1. what a probe shows (`REQ-002`) --------------------------------------------------------
 
 
@@ -1152,14 +1163,17 @@ def test_no_worker_exists_while_the_row_still_says_queued(
         assert on_disk is not None and on_disk.status is JobStatus.QUEUED, (
             "the contended transition somehow landed; this proves nothing"
         )
-        assert manager.active_job_ids() == (), (
+        assert session_job_ids(manager) == (), (
             "a worker was constructed while the row still said queued"
+        )
+        assert manager.active_job_ids() == (job_id,), (
+            "the reserved start is still owned, and has to be reported as such (T016-R3)"
         )
     finally:
         blocker.rollback()
         blocker.close()
 
-    assert spin(lambda: manager.active_job_ids() != (), timeout=30), (
+    assert spin(lambda: session_job_ids(manager) != (), timeout=30), (
         "the session never started once the transition became durable"
     )
     landed = repository.get(job_id)
@@ -1880,3 +1894,175 @@ def test_the_menu_item_opens_the_dialog_once_the_queue_is_wired(
         window.close()
         window.deleteLater()
         qapp.processEvents()
+
+
+# --- the third correction (`T016-R1`, `T016-R3`) ----------------------------------------------
+
+
+class StubWriter:
+    """A `QueueWriter` stand-in whose revisions complete when, and how, the test says.
+
+    A real writer cannot be made to fail two consecutive writes without breaking SQLite itself,
+    and what is under test is the store's *rollback rule* rather than the database's behaviour.
+    The repository underneath is real, so "what the disk says" is a genuine read.
+    """
+
+    def __init__(self) -> None:
+        self.pending: list[tuple[Job, Callable[[str | None], None]]] = []
+        self.failing = False
+
+    def revise(self, job: Job, done: Callable[[str | None], None]) -> None:
+        self.pending.append((job, done))
+
+    def submit(self, jobs: Sequence[Job], done: Callable[[str | None], None]) -> None:
+        self.pending.append((next(iter(jobs)), done))
+
+    def settle_one(self) -> None:
+        """Complete the oldest outstanding write, as the writer thread would."""
+        job, done = self.pending.pop(0)
+        done("the writer refused this revision" if self.failing else None)
+        _ = job
+
+
+def test_two_failed_revisions_leave_the_store_agreeing_with_the_disk(
+    tmp_path: Path, qapp: QApplication
+) -> None:
+    """`T016-R1`: a rollback target that itself failed is not a state anything reached.
+
+    The reviewer's third probe. Revision A is queued, then B; A fails, then B fails. The previous
+    rule kept the newest value and, on failure, restored the value it had displaced — so B's
+    failure restored **A**, which had also failed. The concrete measurement was SQLite holding
+    `QUEUED` while `PersistentJobStore.get()` answered `PROBING`: the view disagreeing with the
+    disk about a write that never happened, which is the whole of the Critical finding.
+
+    Correct for one failure and wrong for two is exactly the shape `ai/TESTING.md` §13 warns
+    about, so this drives two.
+    """
+    path = tmp_path / "queue.db"
+    connection = connect(path)
+    repository = JobRepository(connection)
+    writer = StubWriter()
+    # `StubWriter` is a stand-in rather than a `QueueWriter`: what is under test is the
+    # store's rollback rule, and a real writer cannot be made to fail twice without
+    # breaking SQLite itself.
+    store_under_test = PersistentJobStore(connection, writer)  # type: ignore[arg-type]
+    try:
+        job = a_queued_job("https://a.invalid/1")
+        repository.append([job])
+        assert repository.get(job.id) is not None
+
+        writer.failing = True
+        store_under_test.update(replace(job, status=JobStatus.PROBING), lambda _e: None)
+        store_under_test.update(
+            replace(job, status=JobStatus.CANCELLED, error_kind=ErrorKind.CANCELLED),
+            lambda _e: None,
+        )
+        writer.settle_one()
+        writer.settle_one()
+
+        on_disk = repository.get(job.id)
+        assert on_disk is not None and on_disk.status is JobStatus.QUEUED, (
+            "both revisions were supposed to fail; this proves nothing otherwise"
+        )
+        seen = store_under_test.get(job.id)
+        assert seen is not None and seen.status is JobStatus.QUEUED, (
+            "the store answered with a revision that never reached the disk"
+        )
+        assert [job.status for job in store_under_test.all_jobs()] == [JobStatus.QUEUED]
+    finally:
+        connection.close()
+        qapp.processEvents()
+
+
+def test_the_close_that_creates_a_withdrawal_is_refused_and_completes_itself(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    sink: FakeSink,
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """`T016-R1`: the dialog may not go invisible while a cancellation is unwritten.
+
+    The previous correction tested `_withdrawing` on the way into `done()` and then, four lines
+    later, retired a started probe — which populates it — and carried straight on to
+    `super().done()`. The reviewer watched the dialog become invisible with `withdrawing`
+    populated and no cancellation durable: a restart in that window brings the disowned URL back
+    as live work, having shown the user nothing but "The URL changed".
+
+    No write has to be held to see it: a probe that is actually running is cancelled through its
+    worker, so `CANCELLED` is not written until that worker has been stopped and its stream has
+    ended. The window is the real one, and once it closes the dialog has to finish the close the
+    user already asked for rather than make them ask again.
+    """
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    # Shown for real, because the finding is about the dialog *disappearing*: a widget that was
+    # never on screen is hidden whatever `done()` does, so a test that skipped this would report
+    # the correction working while observing nothing.
+    dialog.show()
+    qapp.processEvents()
+    assert dialog.isVisible()
+    type_urls(dialog, "https://held.invalid/x")
+    dialog.probe()
+    assert spin(lambda: dialog.probing_job_id is not None, timeout=30)
+    job_id = dialog.probing_job_id
+    assert job_id is not None
+
+    dialog.reject()
+    qapp.processEvents()
+    assert list(dialog.withdrawing) == [job_id], "closing did not withdraw the probed row"
+    assert store.jobs[job_id].status is not JobStatus.CANCELLED, (
+        "the cancellation was already durable, so there was no window to observe"
+    )
+    assert dialog.isVisible(), (
+        "the dialog closed while the withdrawal it had just created was still unwritten"
+    )
+
+    assert spin(lambda: dialog.withdrawing == (), timeout=30), "the withdrawal never landed"
+    assert not dialog.isVisible(), (
+        "the close the user asked for never completed once it was safe to complete it"
+    )
+    assert store.statuses(job_id)[-1] is JobStatus.CANCELLED
+
+
+def test_a_probe_whose_start_is_rejected_stops_claiming_to_be_probing(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """`T016-R3`: `start()` returning is not a worker running.
+
+    It returns once the transition is *queued*, so the rejections it can raise are only the
+    synchronous ones. When the write itself fails the manager abandons the reservation — and with
+    nothing listening for that, the dialog sat at "Probing …" forever, offering a Cancel button
+    for a worker that was never built.
+    """
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    type_urls(dialog, "https://rejected.invalid/x")
+
+    failed: list[tuple[Job, Callable[[str | None], None]]] = []
+    original = store.update
+
+    def refuse(job: Job, done: Callable[[str | None], None] | None = None) -> None:
+        assert done is not None
+        failed.append((job, done))
+
+    store.update = refuse  # type: ignore[method-assign]
+    try:
+        dialog.probe()
+        assert spin(lambda: bool(failed), timeout=30), "the start never asked for a transition"
+        for _job, done in failed:
+            done("the writer refused this transition")
+        qapp.processEvents()
+    finally:
+        store.update = original  # type: ignore[method-assign]
+
+    assert dialog.probing_job_id is None, "the dialog still claims a probe is running"
+    assert "did not start" in dialog.status_text(), (
+        f"the rejection was never reported; the dialog says {dialog.status_text()!r}"
+    )
+    assert manager.is_idle, "the manager kept a reservation for a start it abandoned"

@@ -62,6 +62,7 @@ import logging
 import multiprocessing
 import threading
 import time
+from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime
@@ -205,6 +206,46 @@ class ProcessLike(Protocol):
 
 
 @dataclass
+class _PendingStart:
+    """A start whose transition is on the writer thread and whose worker does not exist yet.
+
+    **A reservation is part of the lifecycle, not a lock** (`T016-R1`, `T016-R3`). It was a bare
+    set of ids, held only to keep the pool at one — so cancellation, shutdown and `is_idle` all
+    looked straight past it, and the reviewer watched a cancelled job spawn a worker anyway:
+    `CANCELLED` was queued behind the `PROBING` write, and that write's success callback still
+    ran unconditionally. What the set could not express is the thing that matters — that a start
+    which has been asked for can stop being wanted before it exists.
+    """
+
+    job_id: str
+    kind: SessionKind
+
+    #: Something has withdrawn this start: `cancel()`, or `shutdown()`. The transition already
+    #: queued still lands, because a job that reached `PROBING` did reach it; what is withheld
+    #: is everything that would have followed.
+    withdrawn: bool = False
+    reason: str = ""
+
+
+@dataclass
+class _Chain:
+    """One job's writes and the effects that must follow them, in the order asked for.
+
+    **Per job, one thing at a time** (`T016-R3`). Writes are asynchronous now, so two facts about
+    one job can be in flight at once, and the second was being decided against the first's
+    *queued* value as though it were durable. The reviewer measured it on progress: the first
+    stage change queued `RUNNING`, the second message read `RUNNING` back, concluded there was
+    nothing to persist, and emitted immediately — while the row on disk still said `PROBING`.
+
+    Chains are per job rather than global. Two jobs have nothing to sequence between them, and a
+    global queue would make one job's slow write hold up another's progress.
+    """
+
+    running: bool = False
+    steps: deque[Callable[[], None]] = field(default_factory=deque)
+
+
+@dataclass
 class _Session:
     """One worker process and everything the manager knows about its lifetime.
 
@@ -313,6 +354,16 @@ class DownloadManager(QObject):
     #: are.
     idle = Signal()
 
+    #: `(job_id, reason)` — a start that was accepted and then never became a session.
+    #:
+    #: **The asynchronous half of `start()`'s answer** (`T016-R3`). `start()` returns as soon as
+    #: the transition is queued, so its refusals — shutting down, a busy pool, an illegal status —
+    #: are only the ones it can still check synchronously. Everything after that point is decided
+    #: while the caller has already returned: the write can fail, a cancel can win the race, or
+    #: shutdown can begin. Without this the add-URL dialog sat at "Probing …" forever with no
+    #: worker anywhere, because nothing ever told it the start had been abandoned.
+    start_rejected = Signal(str, str)
+
     #: `(job_id, reason)` — a transition that could not be stored (`ARC-005`, `T016-R3`).
     #:
     #: Separate from `job_failed`, and not a job failure: the download may be running perfectly
@@ -342,8 +393,10 @@ class DownloadManager(QObject):
         self._user_ytdlp_directory = user_ytdlp_directory
         self._ffmpeg_override = ffmpeg_override
         self._sessions: dict[str, _Session] = {}
-        #: Jobs whose starting transition is written but not yet durable (`T016-R3`).
-        self._reserved: set[str] = set()
+        #: Jobs whose starting transition is queued but whose worker does not exist yet.
+        self._reserved: dict[str, _PendingStart] = {}
+        #: Per job, the writes and effects still to happen, in order. See `_Chain`.
+        self._chains: dict[str, _Chain] = {}
         self._shutting_down = False
         self._shutdown_deadline: float | None = None
         # The log listener's ending, which `idle` now waits on (`T038-R2`). Three states rather
@@ -365,7 +418,13 @@ class DownloadManager(QObject):
 
     @property
     def is_idle(self) -> bool:
-        return not self._sessions
+        """Nothing is running **and nothing is about to be** (`T016-R3`).
+
+        A reserved start counts. It used to not, so `idle` could go out while a start's write was
+        still on the writer thread — and composition (`T-036`) treats that signal as permission
+        to quit, which would have quit into a callback that then spawned a worker.
+        """
+        return not self._sessions and not self._reserved
 
     @property
     def gave_up_on_the_log(self) -> bool:
@@ -379,7 +438,13 @@ class DownloadManager(QObject):
         return self._gave_up_on_logging
 
     def active_job_ids(self) -> tuple[str, ...]:
-        return tuple(self._sessions)
+        """Every job this manager is holding, including starts that have no worker yet.
+
+        Sorted so the answer does not depend on which of the two collections an id happens to be
+        in — a caller that saw a job appear, vanish, and reappear as its start became a session
+        would be watching bookkeeping rather than the job (`T016-R3`).
+        """
+        return tuple(sorted(set(self._sessions) | set(self._reserved)))
 
     # --- starting -----------------------------------------------------------------------
 
@@ -415,7 +480,7 @@ class DownloadManager(QObject):
             # `_reserved` holds the starts whose transition is still being written. Without it
             # the pool of one would be a pool of however many `start()` calls fit between a write
             # and its completion — the gap `ARC-005` created and `T016-R3` is about.
-            busy = sorted(set(self._sessions) | self._reserved)
+            busy = self.active_job_ids()
             raise RuntimeError(
                 f"a session is already running for {busy}; Phase 1 runs a pool "
                 "of exactly one (T-013 scope, concurrency is Phase 2)"
@@ -434,26 +499,55 @@ class DownloadManager(QObject):
                 "probe that moved the job to running would say a download holds it."
             )
 
-        # `started_at` marks when this attempt began, so it is stamped on the way into `PROBING`
-        # — including a retry, which re-enters `QUEUED` — and left alone on the way into
-        # `RUNNING` from `READY`. That start is the same attempt continuing, and overwriting it
-        # there would report a job as having begun when the user pressed *download* rather than
-        # when they queued it.
-        entering = job if target is JobStatus.RUNNING else replace(job, started_at=_now())
+        def entering(current: Job) -> Job | None:
+            # Recomputed when the write runs rather than reused from the check above, because a
+            # queued step is decided at the moment it happens (`_persist`). Here the two are the
+            # same — the pool of one means nothing else is in this job's chain — and it is written
+            # this way so the rule holds for every caller rather than for most of them.
+            goal = _ENTRY_STATUS.get(current.status)
+            if goal is not target:
+                return None
+            # `started_at` marks when this attempt began, so it is stamped on the way into
+            # `PROBING` — including a retry, which re-enters `QUEUED` — and left alone on the way
+            # into `RUNNING` from `READY`. That start is the same attempt continuing, and
+            # overwriting it there would report a job as having begun when the user pressed
+            # *download* rather than when they queued it.
+            stamped = current if goal is JobStatus.RUNNING else replace(current, started_at=_now())
+            return self._advance(stamped, goal)
+
         # **Nothing is built until the transition is durable** (`T016-R3`). The synchronous write
         # this replaced sequenced everything after it for free; an asynchronous one does not, and
         # the first attempt at `ARC-005` moved only `job_changed` into the callback — so a worker
         # was spawned, and a pump started, while the row still said `QUEUED`. A start that is
         # never stored must never produce a process.
-        self._reserved.add(job_id)
-        self._save_and_announce(
-            self._advance(entering, target),
-            then=lambda: self._spawn(job_id, kind, job),
-            otherwise=lambda: self._reserved.discard(job_id),
+        self._reserved[job_id] = _PendingStart(job_id=job_id, kind=kind)
+        self._persist(
+            job_id,
+            entering,
+            then=lambda: self._spawn(job_id),
+            otherwise=lambda reason: self._abandon_start(job_id, reason),
         )
 
-    def _spawn(self, job_id: str, kind: SessionKind, job: Job) -> None:
+    def _abandon_start(self, job_id: str, reason: str) -> None:
+        """Release a reservation that will never become a session, and say so (`T016-R3`).
+
+        Reached when the starting transition could not be stored, or could no longer be computed
+        because something moved the job first. The caller has long since returned from `start()`,
+        so the only honest way to report this is the signal — and until there was one, the
+        add-URL dialog kept showing "Probing …" for a worker that was never built.
+        """
+        if self._reserved.pop(job_id, None) is None:
+            return
+        self.start_rejected.emit(job_id, reason)
+
+    def _spawn(self, job_id: str) -> None:
         """Build and start the session. Runs only once the job's transition is on disk.
+
+        **A reservation can be withdrawn between `start()` and here** (`T016-R1`). This used to
+        build unconditionally, so a cancel that arrived while the transition was still being
+        written produced a durable `CANCELLED` *and* a running worker for the URL the user had
+        just taken away — the Critical consequence in its strongest form, since the work that
+        started was work nobody had asked for any more. Shutdown had the same hole.
 
         **This cannot report by raising** (`T016-R3`). It is reached from a write's completion
         callback, so an exception would escape into a Qt slot rather than to whoever called
@@ -467,7 +561,16 @@ class DownloadManager(QObject):
         each start is recorded on it the instant it succeeds, and `_abort_start` reads that
         record instead of guessing.
         """
-        self._reserved.discard(job_id)
+        reservation = self._reserved.get(job_id)
+        if reservation is None:
+            return
+        if reservation.withdrawn or self._shutting_down:
+            reason = reservation.reason or "the manager began shutting down before it could start"
+            self._abandon_start(job_id, reason)
+            return
+        del self._reserved[job_id]
+        kind = reservation.kind
+        job = self._require(job_id)
         session: _Session | None = None
         queue: Any = None
         try:
@@ -543,15 +646,21 @@ class DownloadManager(QObject):
         and an observer of `protocol_violation` once read `PROBING`, because the violation was
         emitted before the failure was stored. Nothing about tidying up is worth more than the
         record of what happened, and nothing is announced before it is true.
+
+        **Cleanup is mandatory; the announcement is not** (`T016-R3`). The first correction ran
+        one function on both sides of the write, which meant a *failed* `FAILED` write still
+        emitted `job_failed` — and every observer that read the row back found `PROBING`, which is
+        precisely the guarantee the change was made to establish. So the two are separated: the
+        process and the pump are taken apart whichever way the write went, because a failure that
+        could not be recorded must not also leak a process, while the signals that assert a
+        durable outcome wait for one. On the failure path `persistence_failed` goes out instead,
+        from `_settle`, and the violation is written to the log so the cause is not lost with it.
         """
         reason = f"the worker session could not be started: {error!r}"
         message = f"The download could not be started. {reason}"
-        job = self._require(job_id)
-        self._reserved.discard(job_id)
+        self._reserved.pop(job_id, None)
 
-        def announce_and_unwind() -> None:
-            self._on_violation(job_id, reason)
-            self.job_failed.emit(job_id, ErrorKind.WORKER_CRASH, message)
+        def unwind() -> None:
             if session is None:
                 # Nothing was owned yet: construction failed before there was a session.
                 self._close_quietly(job_id, queue)
@@ -560,15 +669,28 @@ class DownloadManager(QObject):
             self._sessions.pop(job_id, None)
             self._unwind(session)
 
-        # **Both signals and the cleanup wait for the failure to be durable** (`T016-R3`). The
-        # ordering rule this file already carried — nothing is announced before it is true — was
-        # being honoured for `job_changed` alone while `protocol_violation`, `job_failed` and the
-        # unwind ran ahead of the write. `otherwise` still tears the session down, because a
-        # failure that could not even be recorded must not also leak a process.
-        self._save_and_announce(
-            replace(job.with_failure(ErrorKind.WORKER_CRASH, message), finished_at=_now()),
+        def announce_and_unwind() -> None:
+            self._on_violation(job_id, reason)
+            self.job_failed.emit(job_id, ErrorKind.WORKER_CRASH, message)
+            unwind()
+
+        def unwind_only(_: str) -> None:
+            logging.getLogger(f"{APP_SLUG}.manager").error(
+                "%s could not be recorded as failed: %s", job_id, reason
+            )
+            unwind()
+
+        self._persist(
+            job_id,
+            lambda current: (
+                None
+                if is_terminal(current.status)
+                else replace(
+                    current.with_failure(ErrorKind.WORKER_CRASH, message), finished_at=_now()
+                )
+            ),
             then=announce_and_unwind,
-            otherwise=announce_and_unwind,
+            otherwise=unwind_only,
         )
 
     def _unwind(self, session: _Session) -> None:
@@ -650,17 +772,26 @@ class DownloadManager(QObject):
 
         A job that is not running is cancelled directly in the repository, because "cancel" on a
         queued job means the same thing to the user and there is no process to ask.
+
+        **A start that has been reserved but not yet spawned is cancellable too** (`T016-R1`).
+        There is no process to signal, so cancelling it is two things rather than one: withdraw
+        the reservation, so the transition's success callback builds nothing, *and* record the
+        cancellation. Doing only the second left a durable `CANCELLED` row with a worker running
+        for it.
         """
+        reservation = self._reserved.get(job_id)
+        if reservation is not None and not reservation.withdrawn:
+            reservation.withdrawn = True
+            reservation.reason = "the job was cancelled before its worker could be started"
+
         session = self._sessions.get(job_id)
         if session is None:
-            job = self._require(job_id)
-            if is_terminal(job.status):
-                # Nothing to cancel, and saying so beats raising. A caller that retries a
-                # cancellation — `T016-R1`'s dialog does, until the write lands — would otherwise
-                # drive `CANCELLED → CANCELLED` and throw `IllegalTransitionError` out of a Qt
-                # slot the moment its first attempt had already succeeded.
-                return
-            self._save_and_announce(self._cancelled(job))
+            # Queued behind the starting transition when there is one, so `CANCELLED` is written
+            # after the `PROBING` it supersedes rather than racing it (`_Chain`).
+            self._persist(
+                job_id,
+                lambda current: None if is_terminal(current.status) else self._cancelled(current),
+            )
             return
 
         if session.cancelling:
@@ -699,7 +830,11 @@ class DownloadManager(QObject):
             return
         self._shutting_down = True
         self._shutdown_deadline = time.monotonic() + timeout
-        for job_id in list(self._sessions):
+        # Reserved starts as well as running sessions (`T016-R3`). A start whose transition is
+        # still on the writer thread has no process to cancel yet, and skipping it here is how
+        # shutdown used to announce `idle` and then spawn a worker from the callback that
+        # arrived afterwards.
+        for job_id in self.active_job_ids():
             self.cancel(job_id)
         # Keep the timer running: it is the only thing left that can finish this, and that now
         # includes the log listener's own ending. Even with no sessions to cancel, `idle` is the
@@ -739,7 +874,10 @@ class DownloadManager(QObject):
                 if now >= session.reap_at:
                     self._force_stop(session)
 
-        if self._sessions:
+        if self._sessions or self._reserved:
+            # A reservation counts as work in flight (`T016-R3`). Its transition is still on the
+            # writer thread, and the callback that settles it is what decides whether a worker
+            # appears — so `idle` here would be a promise this manager cannot keep.
             return
         if self._shutting_down and not self._the_log_has_finished(now):
             # Not idle yet, and the timer stays running. `idle` is what tells composition it may
@@ -1013,27 +1151,50 @@ class DownloadManager(QObject):
         self._claim_outcome(message)
 
     def _on_progress(self, message: Progress) -> None:
+        """Forward progress, moving the job first when this message says it has moved on.
+
+        **Both paths go through the job's chain** (`T016-R3`). The version this replaces forwarded
+        a non-moving message the instant it arrived, which read as harmless — it persists nothing.
+        It was not: the *first* message of a stage queues the transition, and the second one then
+        read the queued value back, concluded the job was already where it belonged, and emitted
+        while the row on disk still said `PROBING`. An observer that reads the repository when it
+        is told about progress therefore saw a state one transition behind the story it was being
+        told, which is the ordering `T-013` was approved for.
+        """
         session = self._sessions.get(message.job_id)
-        if session is not None and session.outcome is None:
-            target = _STAGE_STATUS.get(message.stage)
-            if target is not None:
-                job = self._require(message.job_id)
-                if job.status is not target:
-                    moved = self._advance(job, target)
-                    # This progress message *moves the job*, so the report of it waits for the
-                    # move to be durable (`T016-R3`). Progress that changes nothing is forwarded
-                    # immediately below: it is not persisted at all, and delaying it behind a
-                    # write would make a progress bar stutter for no guarantee.
-                    self._save_and_announce(
-                        replace(
-                            moved,
-                            bytes_done=message.downloaded_bytes or moved.bytes_done,
-                            bytes_total=message.total_bytes or moved.bytes_total,
-                        ),
-                        then=lambda: self.progress.emit(message),
-                    )
-                    return
-        self.progress.emit(message)
+        target = (
+            _STAGE_STATUS.get(message.stage)
+            if session is not None and session.outcome is None
+            else None
+        )
+        if target is None:
+            self._effect(message.job_id, lambda: self.progress.emit(message))
+            return
+
+        def moved(current: Job) -> Job | None:
+            if current.status not in _PIPELINE or target not in _PIPELINE:
+                return None
+            if _PIPELINE.index(current.status) >= _PIPELINE.index(target):
+                # Already there, or past it. Returning `None` rather than advancing is what keeps
+                # a late message for an earlier stage from asking the pipeline to walk backwards,
+                # which `_advance` refuses by raising — out of a Qt slot, from a timer's thread of
+                # control, for an event that is merely out of date.
+                return None
+            return replace(
+                self._advance(current, target),
+                bytes_done=message.downloaded_bytes or current.bytes_done,
+                bytes_total=message.total_bytes or current.bytes_total,
+            )
+
+        # The report of a moving message waits for the move to be durable; a message that moves
+        # nothing is still forwarded, because bytes really did arrive and progress is not a claim
+        # about persisted state.
+        self._persist(
+            message.job_id,
+            moved,
+            then=lambda: self.progress.emit(message),
+            otherwise=lambda _: self.progress.emit(message),
+        )
 
     def _on_resolution(self, message: ResolutionReport) -> None:
         self.resolution_reported.emit(message)
@@ -1079,7 +1240,6 @@ class DownloadManager(QObject):
         if session.finalized:
             return
         session.finalized = True
-        job = self._require(job_id)
 
         if session.cancelling:
             # Cancellation outranks everything, including violations. Killing a worker mid-write
@@ -1096,44 +1256,75 @@ class DownloadManager(QObject):
                 if isinstance(spoken, Failed) and spoken.kind is ErrorKind.CANCELLED
                 else None
             )
-            self._save_and_announce(self._cancelled(job, reason))
+            self._persist(job_id, lambda current: self._settled(current, self._cancelled, reason))
             return
 
         if session.violations:
-            self._fail_loudly(job, session)
+            self._fail_loudly(job_id, session)
             return
 
         outcome = session.outcome
         if outcome is None:
-            self._fail_loudly(job, session)
+            self._fail_loudly(job_id, session)
         elif isinstance(outcome, Succeeded):
-            completed = replace(
-                self._advance(job, JobStatus.COMPLETED),
-                output_path=outcome.output_path,
-                bytes_total=outcome.total_bytes or job.bytes_total,
-                finished_at=_now(),
-            )
             # `job_succeeded` waits for `COMPLETED` to be on disk (`T016-R3`): it used to arrive
             # while the row still said `RUNNING`.
-            self._save_and_announce(
-                completed, then=lambda: self.job_succeeded.emit(job_id, outcome.output_path)
+            self._persist(
+                job_id,
+                lambda current: self._settled(
+                    current,
+                    lambda job: replace(
+                        self._advance(job, JobStatus.COMPLETED),
+                        output_path=outcome.output_path,
+                        bytes_total=outcome.total_bytes or job.bytes_total,
+                        finished_at=_now(),
+                    ),
+                ),
+                then=lambda: self.job_succeeded.emit(job_id, outcome.output_path),
             )
         elif isinstance(outcome, Probed):
-            self._save_and_announce(
-                replace(self._advance(job, JobStatus.READY), title=outcome.media.title),
+            self._persist(
+                job_id,
+                lambda current: self._settled(
+                    current,
+                    lambda job: replace(
+                        self._advance(job, JobStatus.READY), title=outcome.media.title
+                    ),
+                ),
                 then=lambda: self.media_probed.emit(job_id, outcome.media),
             )
         elif outcome.kind is ErrorKind.CANCELLED:
             # Not a failure: the user asked for it, and `CANCELLED` is terminal, so presenting
             # it as `FAILED` would offer a retry for something nobody wants retried.
-            self._save_and_announce(self._cancelled(job, outcome.message))
+            self._persist(
+                job_id, lambda current: self._settled(current, self._cancelled, outcome.message)
+            )
         else:
-            self._save_and_announce(
-                replace(job.with_failure(outcome.kind, outcome.message), finished_at=_now()),
+            self._persist(
+                job_id,
+                lambda current: self._settled(
+                    current,
+                    lambda job: replace(
+                        job.with_failure(outcome.kind, outcome.message), finished_at=_now()
+                    ),
+                ),
                 then=lambda: self.job_failed.emit(job_id, outcome.kind, outcome.message),
             )
 
-    def _fail_loudly(self, job: Job, session: _Session) -> None:
+    def _settled(self, job: Job, build: Callable[..., Job], *arguments: Any) -> Job | None:
+        """`build(job, *arguments)`, unless the job has already reached a terminal state.
+
+        Every terminal transition in this file goes through here (`T016-R3`). They are computed
+        when their turn in the chain comes, and by then something ahead of them may already have
+        finished the job — a cancellation that won a race with the outcome, most concretely. The
+        state machine would refuse that with `IllegalTransitionError` raised out of a Qt slot; a
+        job that is already finished is not an error, it is the answer.
+        """
+        if is_terminal(job.status):
+            return None
+        return build(job, *arguments)
+
+    def _fail_loudly(self, job_id: str, session: _Session) -> None:
         """Record a session that cannot be believed as `WORKER_CRASH` (`REQ-028`, `REQ-018`).
 
         Covers both shapes of untrustworthy: a session that reported no outcome, and one whose
@@ -1148,9 +1339,15 @@ class DownloadManager(QObject):
             f"The download worker did not report a result this queue can trust "
             f"(exit code {exit_code}). {detail}."
         )
-        self._save_and_announce(
-            replace(job.with_failure(ErrorKind.WORKER_CRASH, message), finished_at=_now()),
-            then=lambda: self.job_failed.emit(job.id, ErrorKind.WORKER_CRASH, message),
+        self._persist(
+            job_id,
+            lambda current: self._settled(
+                current,
+                lambda job: replace(
+                    job.with_failure(ErrorKind.WORKER_CRASH, message), finished_at=_now()
+                ),
+            ),
+            then=lambda: self.job_failed.emit(job_id, ErrorKind.WORKER_CRASH, message),
         )
 
     def _on_pump_finished(self, job_id: str) -> None:
@@ -1223,11 +1420,64 @@ class DownloadManager(QObject):
             raise KeyError(f"no job with id {job_id!r}")
         return job
 
-    def _save_and_announce(
+    # --- per-job sequencing -------------------------------------------------------------
+
+    def _enqueue(self, job_id: str, step: Callable[[], None]) -> None:
+        """Put `step` at the back of this job's chain and run the chain if it is not running."""
+        chain = self._chains.setdefault(job_id, _Chain())
+        chain.steps.append(step)
+        self._run_next(job_id)
+
+    def _run_next(self, job_id: str) -> None:
+        chain = self._chains.get(job_id)
+        if chain is None or chain.running:
+            return
+        if not chain.steps:
+            del self._chains[job_id]
+            return
+        step = chain.steps.popleft()
+        chain.running = True
+        try:
+            step()
+        except BaseException:
+            # A step that raised has still finished, and a chain left marked as running is a job
+            # nothing can ever write again. The exception is re-raised rather than swallowed:
+            # this is the manager's own bug, and `T013-R3` is a standing reminder of what happens
+            # when a failure is quietly absorbed by cleanup.
+            chain.running = False
+            self._run_next(job_id)
+            raise
+
+    def _step_finished(self, job_id: str) -> None:
+        chain = self._chains.get(job_id)
+        if chain is None:
+            return
+        chain.running = False
+        self._run_next(job_id)
+
+    def _effect(self, job_id: str, run: Callable[[], None]) -> None:
+        """Do something for `job_id` — but not before its outstanding writes have settled.
+
+        The fast path matters: progress messages arrive several times a second per job, and one
+        that changes no state is not worth a deque round trip when nothing is in flight.
+        """
+        if job_id not in self._chains:
+            run()
+            return
+
+        def step() -> None:
+            run()
+            self._step_finished(job_id)
+
+        self._enqueue(job_id, step)
+
+    def _persist(
         self,
-        job: Job,
+        job_id: str,
+        revise: Callable[[Job], Job | None],
+        *,
         then: Callable[[], None] | None = None,
-        otherwise: Callable[[], None] | None = None,
+        otherwise: Callable[[str], None] | None = None,
     ) -> None:
         """Persist, **then** signal (`T-013` acceptance criterion). **Waits for neither.**
 
@@ -1235,24 +1485,46 @@ class DownloadManager(QObject):
         the UI, which recovery corrects at the next startup. The other order leaves the UI
         showing a state that was never stored, and nothing ever corrects that.
 
-        **The waiting is what changed, not the order** (`ARC-005`, `T016-R3`). This used to call
-        a synchronous `JobRepository.update()` from the GUI thread — a start, a cancel or a stage
+        **The waiting is what changed, not the order** (`ARC-005`). This used to call a
+        synchronous `JobRepository.update()` from the GUI thread — a start, a cancel or a stage
         change blocking for a measured 5.017 s under a held writer lock and then raising an
-        uncaught `OperationalError`. `JobStore.update` now takes a completion callback, and the
-        announcement is made from it, so the transition is still announced only once it is
-        durable.
+        uncaught `OperationalError`.
 
-        `JobStore.get` is contracted to reflect a queued update immediately, which is why the ten
-        callers of this method are unchanged: each still reads back what it just wrote.
+        **`revise` is a function of the job, not a job** (`T016-R3`). Asynchronous writes mean two
+        transitions for one job can be asked for before the first has landed, so a transition
+        computed at the moment it was *asked for* is computed against a state that may still
+        turn out not to have happened. It is therefore computed when its turn comes, from the job
+        as it stands then, and returning `None` says the transition no longer applies — a
+        cancelled job whose progress message is still queued behind it, say. That is a normal
+        outcome rather than an error, and it runs `otherwise` with its reason.
+
+        A failed write is surfaced rather than swallowed, and **the success-side effect does not
+        run**. It is deliberately not turned into a job failure: the download itself may be
+        running perfectly, and the honest report is that the queue's record of it is behind.
+        Recovery re-queues an interrupted job at the next startup (`NFR-003`).
         """
-        self._repository.update(job, lambda error: self._on_saved(job, error, then, otherwise))
 
-    def _on_saved(
+        def step() -> None:
+            current = self._require(job_id)
+            revised = revise(current)
+            if revised is None:
+                reason = f"{job_id} is {current.status.value}; the transition no longer applies"
+                if otherwise is not None:
+                    otherwise(reason)
+                self._step_finished(job_id)
+                return
+            self._repository.update(
+                revised, lambda error: self._settle(revised, error, then, otherwise)
+            )
+
+        self._enqueue(job_id, step)
+
+    def _settle(
         self,
         job: Job,
         error: str | None,
         then: Callable[[], None] | None,
-        otherwise: Callable[[], None] | None,
+        otherwise: Callable[[str], None] | None,
     ) -> None:
         """Announce a durable transition and run what follows it — or run neither.
 
@@ -1262,22 +1534,22 @@ class DownloadManager(QObject):
         said `RUNNING`, and startup cleanup ran before `FAILED` was durable. The old synchronous
         write sequenced every following effect for free; this is that sequencing, made explicit.
 
-        A failed write is surfaced rather than swallowed, and **the success-side effect does not
-        run**. It is deliberately not turned into a job failure: the download itself may be
-        running perfectly, and the honest report is that the queue's record of it is behind.
-        Recovery re-queues an interrupted job at the next startup (`NFR-003`).
+        The chain is released **last**, after the effects, so anything they queue for this job
+        runs behind them rather than interleaved with them.
         """
         if error is not None:
             logging.getLogger(f"{APP_SLUG}.manager").error(
                 "could not persist %s as %s: %s", job.id, job.status.value, error
             )
             if otherwise is not None:
-                otherwise()
+                otherwise(error)
             self.persistence_failed.emit(job.id, error)
+            self._step_finished(job.id)
             return
         self.job_changed.emit(job.id, job.status.value)
         if then is not None:
             then()
+        self._step_finished(job.id)
 
 
 def _now() -> datetime:

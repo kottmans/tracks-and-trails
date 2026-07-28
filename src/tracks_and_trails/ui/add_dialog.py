@@ -356,6 +356,12 @@ class AddUrlDialog(QDialog):
         #: says why.
         self._withdrawing: dict[str, str] = {}
         self._withdraw_error: str | None = None
+        #: A close was asked for and refused because it created a withdrawal (`T016-R1`).
+        #:
+        #: Holds the result code the refused close carried, so the dialog can finish that exact
+        #: close — accept or reject — once the cancellation is durable, instead of making the
+        #: user press Close a second time to achieve nothing but waiting.
+        self._closing_with: int | None = None
 
         self.setObjectName("addUrlDialog")
         self.setWindowTitle("Add URLs")
@@ -553,6 +559,7 @@ class AddUrlDialog(QDialog):
         self._manager.job_failed.connect(self._on_job_failed)
         self._manager.job_changed.connect(self._on_job_changed)
         self._manager.persistence_failed.connect(self._on_persistence_failed)
+        self._manager.start_rejected.connect(self._on_start_rejected)
 
     # --- queries used by callers and tests -----------------------------------------------
 
@@ -758,6 +765,7 @@ class AddUrlDialog(QDialog):
                 if self._status.text().startswith(WITHDRAW_FAILED_PREFIX):
                     self._status.setText("The URL changed. Probe again to see what it is.")
             self._refresh_actions()
+            self._finish_closing()
             return
 
         probe = self._probe
@@ -766,6 +774,30 @@ class AddUrlDialog(QDialog):
         if status != JobStatus.READY.value:
             probe.superseded = True
             self._refresh_actions()
+
+    def _on_start_rejected(self, job_id: str, reason: str) -> None:
+        """The probe this dialog asked for never became a session (`T016-R3`).
+
+        `DownloadManager.start()` returns once the transition is *queued*, so its synchronous
+        refusals are not the whole answer: the write can fail, or a cancel can win the race. The
+        first version of this dialog treated a returning `start()` as a running probe and had
+        nothing listening for the other outcome, so a rejected start left it saying "Probing …"
+        forever, with the Cancel button offering to stop a worker that did not exist.
+
+        The row itself is untouched here. Whatever happened to it — rolled back to `QUEUED` by a
+        failed write, or written `CANCELLED` by the cancel that beat the start — is the manager's
+        to report, and `_on_job_changed` sees it if it matters.
+        """
+        probe = self._probe
+        if probe is None or probe.job_id != job_id or probe.superseded:
+            return
+        probe.superseded = True
+        probe.started = False
+        self._status.setText(
+            f"The probe did not start: {reason}. The URL is still in the queue; probe again to "
+            "see what it is."
+        )
+        self._refresh_actions()
 
     def _on_persistence_failed(self, job_id: str, reason: str) -> None:
         """A withdrawal that could not be written is the Critical consequence, not a detail.
@@ -919,12 +951,20 @@ class AddUrlDialog(QDialog):
 
         A probe that has already returned is **not** cancelled: its job is `READY`, and
         `add_to_queue` may just have started it downloading.
+
+        **The close that *creates* a withdrawal is refused too** (`T016-R1`). The first correction
+        checked `_withdrawing` on the way in and then, four lines later, retired a started probe —
+        which populates it — and carried straight on to `super().done()`. So the dialog went
+        invisible with a cancellation that had not been written, which is the finding exactly: a
+        crash or a restart in that window brings the disowned URL back as live work, and the only
+        thing that had been on screen was "The URL changed". The check therefore happens **after**
+        the retirement as well as before it.
         """
         if self._withdrawing:
-            # **Closing is refused while a withdrawal is outstanding** (`T016-R1`). The row the
-            # user took away is still queued work until its cancellation is on disk, and a
-            # dialog that closed here would leave it for the next run to download. Pressing
+            # The row the user took away is still queued work until its cancellation is on disk,
+            # and a dialog that closed here would leave it for the next run to download. Pressing
             # Close again retries, which is the visible progress the alternative lacks.
+            self._closing_with = result
             self.retry_withdrawals()
             return
 
@@ -940,6 +980,27 @@ class AddUrlDialog(QDialog):
             probe.superseded = True
             if probe.started:
                 self._withdraw(probe.job_id, probe.url)
+
+        if self._withdrawing:
+            # Created by the line above. The dialog stays up until the cancellation is durable and
+            # then finishes this same close by itself (`_finish_closing`) — the user asked once.
+            self._closing_with = result
+            self._status.setText(
+                f"{WITHDRAW_FAILED_PREFIX} {', '.join(self._withdrawing.values())} is still in "
+                "the queue until its withdrawal is written. This closes as soon as it is."
+            )
+            self._refresh_actions()
+            return
+
+        self._thumbnails.cancel()
+        super().done(result)
+
+    def _finish_closing(self) -> None:
+        """Complete a close that was held open by a withdrawal, now that one has landed."""
+        result = self._closing_with
+        if result is None or self._withdrawing:
+            return
+        self._closing_with = None
         self._thumbnails.cancel()
         super().done(result)
 

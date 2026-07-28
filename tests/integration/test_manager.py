@@ -2024,7 +2024,13 @@ def test_no_companion_signal_arrives_before_its_transition_is_durable(
 
     try:
         download.start("job-1")
-        assert download.active_job_ids() == (), "a session was created before the write landed"
+        # A reserved start is work in flight and says so (`T016-R3`). This assertion previously
+        # read `== ()`, which encoded the defect: the reservation was invisible to every query,
+        # so shutdown skipped it and `idle` could go out while a worker was still about to be
+        # built. That no worker exists yet is gated by
+        # `test_no_worker_exists_while_the_row_still_says_queued`.
+        assert download.active_job_ids() == ("job-1",)
+        assert not download.is_idle, "idle while a start is reserved would let composition quit"
         store.release()
         app.processEvents()
         assert store.jobs["job-1"].status is JobStatus.PROBING
@@ -2087,7 +2093,8 @@ def test_a_second_session_is_refused_while_the_first_is_still_being_stored(
 
     try:
         download.start("job-1")
-        assert download.active_job_ids() == (), "the session exists already; nothing is pending"
+        assert download.active_job_ids() == ("job-1",), "the reservation is what refuses the next"
+        assert not download.is_idle
 
         with pytest.raises(RuntimeError, match="already running"):
             download.start("job-2")
@@ -2793,3 +2800,283 @@ def test_the_advance_walk_only_takes_transitions_the_state_machine_allows(
         assert can_transition(source, target), (
             f"the manager walks {source.value} → {target.value}, which the state machine forbids"
         )
+
+
+# --- the third correction: an ordered per-job lifecycle (`T016-R1`, `T016-R3`) ------------------
+
+
+class HeldStore:
+    """A `JobStore` whose writes complete only when the test says so.
+
+    The shape every claim below needs: `ARC-005` made writes asynchronous, and the defects the
+    third review found all live in the window between asking for a write and it landing. A store
+    that completes immediately closes that window and proves nothing about what happens inside it.
+
+    `failing` decides how the *next* release completes, which is how a failed transition is
+    reproduced without breaking SQLite. Read when the write completes rather than when it was
+    queued, because several transitions of one interaction are queued from inside each other's
+    callbacks and a test cannot get between them.
+    """
+
+    def __init__(self) -> None:
+        self.jobs: dict[str, Job] = {}
+        self.pending: list[tuple[Job, Callable[[str | None], None]]] = []
+        self.written: list[tuple[str, JobStatus]] = []
+        self.failing = False
+
+    def get(self, job_id: str) -> Job | None:
+        return self.jobs.get(job_id)
+
+    def update(self, job: Job, done: Callable[[str | None], None]) -> None:
+        self.pending.append((job, done))
+
+    def release(self) -> None:
+        """Complete every queued write, oldest first, as the writer thread would."""
+        pending, self.pending = self.pending, []
+        for job, done in pending:
+            if self.failing:
+                done("the writer refused this transition")
+                continue
+            self.jobs[job.id] = job
+            self.written.append((job.id, job.status))
+            done(None)
+
+    def statuses(self, job_id: str) -> list[JobStatus]:
+        return [status for stored_id, status in self.written if stored_id == job_id]
+
+
+def test_cancelling_a_reserved_start_stops_the_worker_from_ever_being_built(
+    tmp_path: Path, app: QCoreApplication
+) -> None:
+    """`T016-R1`: a start that is cancelled before it exists must not become a process.
+
+    The reviewer's probe, restated. Cancelling while `start()`'s transition is still on the
+    writer thread used to queue `CANCELLED` behind `PROBING` — correct on its own — while the
+    `PROBING` write's success callback still spawned unconditionally. The durable record ended
+    `CANCELLED` and a worker ran for it: work for the URL the user had just taken away, which is
+    the Critical consequence in its strongest form.
+    """
+    store = HeldStore()
+    store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
+    download = DownloadManager(store, entry_point=child_downloading_forever)
+    rejections: list[tuple[str, str]] = []
+    download.start_rejected.connect(lambda job_id, why: rejections.append((job_id, why)))
+
+    try:
+        download.start("job-1")
+        download.cancel("job-1")
+        store.release()
+        app.processEvents()
+        store.release()
+        app.processEvents()
+
+        assert store.statuses("job-1") == [JobStatus.PROBING, JobStatus.CANCELLED]
+        assert store.jobs["job-1"].status is JobStatus.CANCELLED
+        assert not download._sessions, (
+            "a worker was built for a job whose cancellation is already durable"
+        )
+        assert download.is_idle, "the reservation outlived the start it was holding"
+        assert rejections and rejections[0][0] == "job-1", (
+            "the caller was never told its start had been abandoned"
+        )
+    finally:
+        download.shutdown()
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not download.is_idle:
+            store.release()
+            app.processEvents()
+            time.sleep(0.005)
+
+
+def test_shutdown_while_a_start_is_reserved_neither_spawns_nor_claims_to_be_idle(
+    tmp_path: Path, app: QCoreApplication
+) -> None:
+    """`T016-R3`: `idle` is composition's permission to quit, so a reservation has to hold it.
+
+    Two halves, and the first version had neither: `shutdown()` cancelled `_sessions` only, and
+    `is_idle` read `_sessions` only. So shutdown could announce `idle` with a start still on the
+    writer thread, and the callback that arrived afterwards would build a worker into an
+    application that had already been told it was safe to quit.
+    """
+    store = HeldStore()
+    store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
+    download = DownloadManager(store, entry_point=child_downloading_forever)
+    idles: list[None] = []
+    download.idle.connect(lambda: idles.append(None))
+
+    try:
+        download.start("job-1")
+        download.shutdown()
+        app.processEvents()
+        # Read into a local first. Asserting on the property directly narrows it to `False` for
+        # the rest of the function, and mypy then calls the later `assert download.is_idle`
+        # unreachable — a test whose second half is not analysed at all is the `T-016` lesson in
+        # miniature (`ai/TESTING.md` §12).
+        idle_while_reserved = download.is_idle
+        assert not idle_while_reserved, "idle was claimed while a start was still reserved"
+        assert idles == [], "idle was announced while a start was still reserved"
+
+        store.release()
+        app.processEvents()
+        assert not download._sessions, "shutdown spawned a worker from a reserved start"
+
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not download.is_idle:
+            store.release()
+            app.processEvents()
+            time.sleep(0.005)
+        assert download.is_idle
+        assert not download._sessions
+        # `idle` arrives when the reservation is released, which is before the cancellation it
+        # queued has been written — so the writes are drained explicitly rather than inferred
+        # from idleness.
+        while store.pending:
+            store.release()
+            app.processEvents()
+        # Shutdown has to *cancel* the reservation, not merely decline to spawn it. A job left
+        # durably `PROBING` by a shutdown is a job in flight with nothing flying it, which
+        # recovery would have to clean up at the next start (`T-014`).
+        assert store.statuses("job-1") == [JobStatus.PROBING, JobStatus.CANCELLED], (
+            f"the reserved start was never withdrawn: {store.statuses('job-1')}"
+        )
+    finally:
+        download.shutdown()
+
+
+def test_a_second_progress_message_waits_for_the_first_ones_write(
+    tmp_path: Path, app: QCoreApplication
+) -> None:
+    """`T016-R3`: effects for one job are ordered behind that job's outstanding writes.
+
+    The measured defect: the first `DOWNLOADING_VIDEO` message queues `PROBING → RUNNING`, the
+    second reads the queued value back, concludes there is nothing to persist, and emits at once.
+    An observer that reads the repository when it is told about progress therefore saw `PROBING`
+    while being told the job was downloading — the ordering `T-013` was approved for, lost to the
+    write-through view being mistaken for completion.
+
+    Driven through the manager's own slot rather than a worker, because the claim is about the
+    order of two messages and a real worker cannot be asked to send them one event apart.
+    """
+    store = HeldStore()
+    store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
+    download = DownloadManager(store, entry_point=child_downloading_forever)
+    seen: list[JobStatus | None] = []
+    download.progress.connect(
+        lambda _: seen.append(store.jobs["job-1"].status if "job-1" in store.jobs else None)
+    )
+
+    try:
+        download.start("job-1")
+        store.release()
+        app.processEvents()
+        assert download._sessions, "the session never started"
+        assert store.jobs["job-1"].status is JobStatus.PROBING
+
+        def message(stage: Stage) -> Progress:
+            return Progress(job_id="job-1", stage=stage, downloaded_bytes=1, total_bytes=2)
+
+        # Three messages, covering both routes out of `_on_progress`. The first moves the job and
+        # therefore writes; the second finds it already moving there; the third carries a stage
+        # that maps to no status at all and never writes. All three must stay behind the first
+        # one's transition, because all three tell an observer the job is downloading.
+        download._on_progress(message(Stage.DOWNLOADING_VIDEO))
+        download._on_progress(message(Stage.DOWNLOADING_VIDEO))
+        download._on_progress(message(Stage.PROBING))
+        app.processEvents()
+        assert seen == [], "progress was forwarded while its own transition was still in flight"
+
+        store.release()
+        app.processEvents()
+        assert seen == [JobStatus.RUNNING] * 3, (
+            "a progress message reached an observer while the row still said probing"
+        )
+    finally:
+        download.shutdown()
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not download.is_idle:
+            store.release()
+            app.processEvents()
+            time.sleep(0.005)
+
+
+def test_a_startup_failure_that_cannot_be_stored_announces_nothing_but_still_cleans_up(
+    tmp_path: Path, app: QCoreApplication
+) -> None:
+    """`T016-R3`: mandatory cleanup and durable-state announcements are different things.
+
+    The previous correction passed one function as both `then` and `otherwise`, so a *failed*
+    `FAILED` write still emitted `job_failed` and `protocol_violation` — and every observer that
+    read the row back found `PROBING`, which is the guarantee the change existed to establish.
+    What must still happen either way is the teardown: a failure that could not be recorded must
+    not also leak a process.
+    """
+
+    def refuses_to_spawn(*_: Any, **__: Any) -> None:  # pragma: no cover - never runs
+        raise AssertionError("the entry point should never be reached")
+
+    class ExplodingProcess:
+        """A process whose `start()` fails, which is what `_abort_start` exists for."""
+
+        exitcode: int | None = None
+        pid: int | None = None
+
+        def is_alive(self) -> bool:
+            return False
+
+        def start(self) -> None:
+            raise OSError("no process for you")
+
+        def join(self, timeout: float | None = None) -> None:
+            return None
+
+        def terminate(self) -> None:
+            return None
+
+        def kill(self) -> None:
+            return None
+
+    store = HeldStore()
+    store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
+    download = DownloadManager(store, entry_point=refuses_to_spawn)
+    download._context = type(
+        "Context",
+        (),
+        {
+            "Queue": staticmethod(mp.get_context("spawn").Queue),
+            "Event": staticmethod(mp.get_context("spawn").Event),
+            "Process": staticmethod(lambda **_: ExplodingProcess()),
+        },
+    )()
+    failures: list[tuple[str, ErrorKind, str]] = []
+    violations: list[tuple[str, str]] = []
+    persistence: list[tuple[str, str]] = []
+    download.job_failed.connect(lambda *args: failures.append(args))
+    download.protocol_violation.connect(lambda *args: violations.append(args))
+    download.persistence_failed.connect(lambda *args: persistence.append(args))
+
+    try:
+        download.start("job-1")
+        store.release()
+        app.processEvents()
+        # The spawn has failed by now and `_abort_start` has queued the `FAILED` transition.
+        store.failing = True
+        assert store.pending, "no failure transition was queued"
+        store.release()
+        app.processEvents()
+
+        assert store.jobs["job-1"].status is JobStatus.PROBING, (
+            "the failure write was supposed to fail; this proves nothing otherwise"
+        )
+        assert failures == [], "job_failed was announced while the row still said probing"
+        assert violations == [], "protocol_violation was announced before the failure was durable"
+        assert persistence and persistence[0][0] == "job-1", (
+            "a write that failed has to be reported as one"
+        )
+        assert not download._sessions, "the session survived a failure it could not record"
+    finally:
+        download.shutdown()
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not download.is_idle:
+            store.release()
+            app.processEvents()
+            time.sleep(0.005)

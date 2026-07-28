@@ -1255,11 +1255,55 @@ Three clarifications, all now implemented:
   through `closed`. `QThread.wait()` on the GUI thread is the defect `T013-R2` already ruled on
   for the manager; reintroducing it one layer down was the same mistake with a new owner.
 
+### Amended 2026-07-28 — "only the announcement moved" was not true, and "callers unchanged" cost the most
+
+The amendment above is corrected rather than removed, because what it got wrong is the useful
+part. It claimed that a write-through view let asynchrony land without touching the manager's
+call sites — *"only the announcement moved into a callback"*, *"ten call sites of approved
+`T-013` code"* left alone. The third `T016-R3` review established that the equivalence does not
+hold, and the correction this amendment describes is the one that rejects it.
+
+**A synchronous write sequenced every following effect for free. An asynchronous one sequences
+nothing.** Leaving the callers unchanged therefore did not preserve their behaviour; it preserved
+their *text* while removing the ordering underneath it. Three consequences, each measured:
+
+- **A queued value is not a durable one.** The view exists so a caller can read its own pending
+  write, and the manager began treating that read as completion: a second progress message saw
+  the `RUNNING` its predecessor had only queued, concluded there was nothing to persist, and
+  announced while the row still said `PROBING`.
+- **A queued write can still fail**, so a value read back from the view may describe a state
+  nothing ever reached. Holding the newest value and rolling back to the one it displaced is
+  correct for one failure and wrong for two — the reviewer measured SQLite at `QUEUED` while the
+  store answered `PROBING`. `PersistentJobStore` now holds the revisions that are **in flight**
+  and forgets each the moment it settles, so once nothing is queued the database is the only
+  answer. That is a smaller claim than a cache, and it is one the disk can keep.
+- **A start is not a session.** `start()` returns once its transition is queued, so cancellation,
+  shutdown and `is_idle` all have to know about a start that exists but has no worker. The first
+  version knew about it only as a lock against a second start; a cancel therefore wrote
+  `CANCELLED` and the pending start still spawned.
+
+So the decision gains a fourth load-bearing part:
+
+- **Per job, writes and the effects that depend on them happen in the order they were asked
+  for**, and a transition is computed when its turn comes rather than when it was requested. The
+  manager owns this (`_Chain`), because it is the only place that knows which effects assert a
+  durable state. A transition that no longer applies by the time it runs is skipped, which is a
+  normal outcome and not an error — a job that a cancellation has already finished is the case
+  that produced it.
+
+What survives unchanged: one writer thread, one transaction per batch, `check_same_thread=True`,
+reads staying synchronous, and persist-then-announce. What does not is the claim that those
+could be had without the callers changing shape.
+
 ### Consequences
 
 - `persistence/writer.py` owns the thread and `persistence/store.py` is the single owner the rest
   of the process holds. `ui/` depends on a narrow protocol, not on either, so the dialog still
   cannot see that SQLite exists (`ARCHITECTURE.md` §3).
+- **Asynchrony is not free at the call site.** Every caller that has an effect depending on a
+  write now says so, by putting that effect where the write reports its outcome. The four
+  `T016-R1`/`T016-R3` defects were each an effect that had quietly kept running on the old
+  synchronous schedule.
 - `persistence/db.configure()` now sets `busy_timeout`. In-process contention is gone by
   construction, but a *second process* — a second instance, `sqlite3` at a prompt — can still
   hold the lock, and waiting briefly beats raising at a user.

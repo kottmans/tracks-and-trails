@@ -11,13 +11,14 @@ Reads are indexed single-row lookups against a local file and are not what block
 asynchronous would spread callbacks through every widget to fix a problem only writes have.
 
 But a write that has been *queued* is not yet a row, and `DownloadManager` reads a job back
-immediately before advancing it. So this keeps a **write-through view**: `update()` records the
-job in memory the instant it is called and `get()` consults that view first. The manager's
-read-your-writes assumption therefore holds unchanged, which is what let `ARC-005` land without
-restructuring ten call sites of approved `T-013` code.
+immediately before advancing it. So this keeps the revisions that are **still in flight**:
+`update()` records the job the instant it is called, `get()` answers with the newest one
+outstanding, and the record is dropped the moment the write settles — successfully or not.
 
-The view holds only jobs this process has written. Anything else falls through to the database,
-so a job created by an earlier run is read normally.
+That last clause is the correction `T016-R1` forced. What is held is a *queue of pending
+writes*, not a cache of the newest value: once nothing is in flight the database is the only
+answer, because it is the only thing that knows what actually landed. A cache had to guess a
+rollback target when a write failed, and guessed wrong as soon as two failed in a row.
 
 ## Persist before announce, through a callback
 
@@ -53,50 +54,78 @@ class PersistentJobStore(QObject):
         super().__init__(parent)
         self._repository = JobRepository(connection)
         self._writer = writer
-        #: Jobs written by this process, newest value first. See the module docstring.
-        self._view: dict[str, Job] = {}
+        #: Per job, the revisions queued and **not yet settled**, oldest first (`T016-R1`).
+        #:
+        #: A list rather than one value, because revisions overlap: the dialog can withdraw a
+        #: job while an earlier transition for it is still on the writer thread. Holding only
+        #: the newest, plus the value it displaced, cannot answer "what is true now" once two
+        #: of them fail — see `update`.
+        self._pending: dict[str, list[Job]] = {}
 
     # --- reads --------------------------------------------------------------------------
 
     def get(self, job_id: str) -> Job | None:
-        """The job as this process last left it, falling back to what is stored."""
-        cached = self._view.get(job_id)
-        if cached is not None:
-            return cached
+        """The newest revision this process has queued, or what the database holds.
+
+        Those are the only two answers, and which one applies is decided by whether a write is
+        still outstanding — never by a remembered value. A settled write **is** the database's
+        answer, so nothing is cached past the callback that reported it (`T016-R1`).
+        """
+        queued = self._pending.get(job_id)
+        if queued:
+            return queued[-1]
         return self._repository.get(job_id)
 
     def all_jobs(self) -> list[Job]:
-        """Every stored job, with any pending in-memory revision applied.
+        """Every stored job, with any queued revision of it applied.
 
-        Used by the queue view (`T-017`). Reading the database and then overlaying the view is
-        what stops a freshly cancelled job from reappearing as `RUNNING` for one refresh.
+        Used by the queue view (`T-017`). Reading the database and then overlaying what is still
+        in flight is what stops a freshly cancelled job from reappearing as `RUNNING` for one
+        refresh.
         """
-        return [self._view.get(job.id, job) for job in self._repository.all_jobs()]
+        return [self._newest(job) for job in self._repository.all_jobs()]
+
+    def _newest(self, stored: Job) -> Job:
+        queued = self._pending.get(stored.id)
+        return queued[-1] if queued else stored
 
     # --- writes -------------------------------------------------------------------------
 
     def update(self, job: Job, done: Callable[[str | None], None]) -> None:
-        """Record `job` and queue the write. **Returns immediately** (`ARC-005`).
+        """Queue `job` as this job's newest revision. **Returns immediately** (`ARC-005`).
 
-        The in-memory record happens first and unconditionally, so a `get()` between here and the
-        callback returns the new state rather than the old one.
+        The record happens first and unconditionally, so a `get()` between here and the callback
+        returns the new state rather than the old one.
 
-        **A failed write takes its record back** (`T016-R1`). Leaving it would make the view claim
-        a state the database never reached: the reviewer watched a withdrawal report `CANCELLED`
-        while SQLite still held the row as `QUEUED`, so a restart — which has no view — brought
-        the replaced URL back as live work. The view exists to let a caller read its own *pending*
-        write, not to disagree with the disk about a write that did not happen.
+        **A revision is forgotten the moment it settles, whichever way it settled** (`T016-R1`).
+        That is the whole model, and it replaces a newest-value cache with a rollback rule:
+
+        - **It succeeded** → the database now holds it, and the database is asked from then on.
+        - **It failed** → it never happened, and the answer is whatever is *still* queued behind
+          it, falling through to the row on disk when nothing is.
+
+        The version this replaces kept the newest value and, on failure, restored the value it
+        had displaced. That is right for one failure and wrong for two: with revisions A then B
+        both failing, B's rollback restored **A**, which had also failed — the reviewer measured
+        SQLite holding `QUEUED` while this store answered `PROBING`. A rollback target that is
+        itself a failed write is not a state anything ever reached. Only the database knows what
+        is durable, so only the database is asked once nothing is in flight.
         """
-        previous = self._view.get(job.id)
-        self._view[job.id] = job
+        queued = self._pending.setdefault(job.id, [])
+        queued.append(job)
 
         def settle(error: str | None) -> None:
-            if error is not None and self._view.get(job.id) is job:
-                # Only if nothing newer has been recorded since; a later write owns the answer.
-                if previous is None:
-                    del self._view[job.id]
-                else:
-                    self._view[job.id] = previous
+            # Removed by identity, and from anywhere in the list rather than from the front: the
+            # writer completes revisions in order, but a submission made after `close()` is
+            # answered immediately, so an earlier one can still be outstanding.
+            remaining = self._pending.get(job.id)
+            if remaining is not None:
+                for index, candidate in enumerate(remaining):
+                    if candidate is job:
+                        del remaining[index]
+                        break
+                if not remaining:
+                    del self._pending[job.id]
             done(error)
 
         self._writer.revise(job, settle)
@@ -104,15 +133,8 @@ class PersistentJobStore(QObject):
     def submit(self, jobs: Sequence[Job], done: Callable[[str | None], None]) -> None:
         """Append `jobs` in one transaction. **Returns immediately** (`ARC-005`).
 
-        Not recorded in the view before the write lands, unlike `update`: these rows do not exist
-        yet, and showing them as stored before they are would be the opposite of `REQ-012`'s
-        promise. The dialog waits for the callback before it closes.
+        Nothing is recorded in memory, unlike `update`: these rows do not exist yet, and showing
+        them as stored before they are would be the opposite of `REQ-012`'s promise. Once the
+        write lands they are rows, and `get` reads them from the database like any other.
         """
-
-        def record(error: str | None) -> None:
-            if error is None:
-                for job in jobs:
-                    self._view.setdefault(job.id, job)
-            done(error)
-
-        self._writer.submit(jobs, record)
+        self._writer.submit(jobs, done)
