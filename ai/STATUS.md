@@ -24,8 +24,10 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 - The **subjective** half of Windows verification (`OPS-004`) — whether rendering *looks* right,
   whether Narrator *sounds* coherent, whether the installer *feels* normal. Unverified, needs a
   person, and blocks **first release**, not this phase. `T-039` (installer) has no automated gate
-  yet either. `T-040` (tab order) is now **Ready** rather than blocked: `T-016` supplied the
-  focusable controls and gates their order offscreen, leaving `T-040` the real-Windows half.
+  yet either. `T-040` (tab order) is **Blocked** again as of 2026-07-28 — its tests are written and
+  have never run, because the module skips off Windows, and `T040-R1` found one of them asserting
+  a state that cannot exist. *(This said "now **Ready** rather than blocked" from 2026-07-27,
+  which was true for a day.)*
 - **`T011-R8` is closed.** `T-041` was approved at `0268e13` and the finding is functionally
   resolved. The audit behind it found the hole was not one field but every field of every model
   in `core/models.py`.
@@ -99,11 +101,20 @@ each section is a contiguous range:
 | 3 | `T-056`, `T-054` | `4a06e92` | `9c92c32` |
 | 4 | `T-059`, then `T-036` and `T-037` | `5b0ebca` | `894d794` |
 | 5 | `T-052`, `T-040` | `894d794` | `1aba441` |
+| 6 | `T036-R1` correction, `T037-R1/R2`, `T040-R1` attempt | `6ce26ec` | `306840b` |
 
-**Phase 1's critical path is built.** `T-036` composes the object graph and `T-037` proves a
-download completes and survives a kill, which are the two exit criteria that had no owner. Both
-are in review. What is left on the path is nothing — the remaining Phase 1 work is evidence
-(`T-040`, `T-056`) and review capacity.
+**Phase 1's critical path is built and approved.** `T-036` (at `306840b`) and `T-037` (at
+`894d794`) are through, which closes the two exit criteria that had no owner. **Nothing remains on
+the path.** What is left is Windows evidence — `T-040`, `T-056` and now `T-060` — and the exit
+review itself.
+
+**`T-040` is Blocked with `T040-R1` still open, carried to `T-060`.** The correction drove keyboard
+focus as asked and then asserted a state that cannot exist: on a failed job `Cancel` is disabled
+and on a running one `Retry` and the error text are hidden, so no chain offers all three controls.
+The structural half passed because `focusPolicy() != NoFocus` is true of a *disabled* widget — a
+list agreeing with a list, which is the shape that task exists to stop being satisfied by. Until
+`T-060` lands, the `windows desktop` job fails on that test, deliberately: skipping it would leave
+the one job that runs these tests green while proving nothing.
 
 **What the day's work turned on.** `T-016`'s third re-review reported its two open findings in
 three places each, and all six had one cause: **a synchronous write sequenced every following

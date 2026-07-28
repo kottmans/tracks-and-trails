@@ -4902,3 +4902,78 @@ and is not included in either substantive review boundary.
 | Configured `mypy` | Passed: no issues in **77 files**. |
 | Configured `mypy --platform win32` | Passed: no issues in **77 files**. |
 | Full default suite with localhost/process permission | **1395 passed, 11 skipped, 2 deselected in 79.29 s**. |
+
+## 2026-07-28 — Sections 4 and 5 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `6ce26ec`  **Head:** `306840b`
+**Focused scope:** `T036-R1`, `T040-R1`, `T037-R1`, `T037-R2`, and regressions or direct
+siblings in their correction diff
+**Platforms verified:** Linux locally; Windows type analysis only
+**Verdict by task:** `T-036` **Approved**; `T-037` remains **Approved with follow-ups**;
+`T-040` **Blocked**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused re-review evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T036-R1` | **High** | **Yes** | `DownloadManager.retry()` now owns both halves of the operation. `FAILED → QUEUED` goes through `_persist()`, so the durable transition is announced before its effect; `_start_when_free()` retains the one requested job until the failed session releases the pool, and the next tick starts it through the ordinary reservation path. The composition test observed `queued`, then `probing`/`running`, and the visible view left `FAILED`. Three independent weakenings all failed: restoring one swallowed start attempt left only `queued`; removing the tick pickup did the same; suppressing the queued announcement produced `probing, failed` without `queued`. The latter demonstrates that start and UI agreement are independently gated. | None. | **Resolved** |
+| `T040-R1` | **Medium** | **Yes** | **The correction now drives focus, but its chosen widget state makes its expected three-control chain impossible.** A failed job exposes Retry and the error text, but `JobProgressView._refresh()` disables Cancel for every terminal state. `_focusable()` checks only `focusPolicy`, so it still counts that disabled button. Running the corrected test offscreen after removing only the module's Windows skip failed deterministically before any platform-specific question: Tab visited `retryJobButton → errorMessage → retryJobButton`, never `cancelJobButton`. Windows cannot make a disabled control keyboard-reachable. The test therefore is not ready to produce the Windows evidence or mutations the task requires. | Test representative *reachable* chains by state instead of one structural union: for a retryable failure, drive error and Retry; for a running job, drive Cancel. Filter structural completeness by visible/enabled keyboard reachability, and mutation-check each state on the Windows desktop job. | **Open** |
+| `T037-R1` | **Low** | **No** | The Scope now accurately distinguishes real yt-dlp over a deterministic local `http.server` from the opt-in real-site test, and explains why a faked adapter could not prove bytes moved. It agrees with the implementation and Evidence. | None. | **Resolved** |
+| `T037-R2` | **Low** | **No** | The network fixture no longer calls Big Buck Bunny public domain. It records CC BY 3.0 and distinguishes downloading from redistribution requiring attribution, consistent with the Blender Foundation source cited by the finding. | None. | **Resolved** |
+
+### New non-blocking follow-ups
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T037-R3` | **Low** | **No** | The corrected network comment is not the repository's only copy of the same provenance claim. `ai/TASKS.md:3457-3460` still describes `archive_org_big_buck_bunny.json` as “public domain,” while the fixture's own `content_licence` correctly says Blender Foundation, CC BY 3.0. This is pre-existing current-truth text outside T-037's correction location, so it does not reopen the approved behavior. | Correct the stale T-012 evidence in the next named documentation/coordination task. **Owner:** Documentation Maintainer. | **Open, follow-up** |
+| `T040-R2` | **Low** | **No** | T-040 is correctly filed under `## Blocked`, but `ai/TASKS.md:46-47` and `ai/STATUS.md:25-28` still call it **Ready**. Those summaries predate the Windows-evidence blocker and now contradict the task's canonical section/status. | Update both current-truth summaries when the next task records T040-R1's carry. **Owner:** Documentation Maintainer. | **Open, follow-up** |
+
+### Review judgments
+
+- Keeping High T036-R1 in the current review was required by `AGENTS.md` §10. Correcting it did
+  not need another maintainer authorization, and resolving it here is not a downgrade or a carry.
+- The retry wait is deliberately narrower than a Phase 2 scheduler: it retains only the retry
+  just accepted while the session that produced its failure is being released. Repeated clicks
+  for the same job see the in-flight `QUEUED` revision and do not enqueue a second retry.
+- T040-R1's structural source correction is directionally right: the test now sends real keyboard
+  events and reads actual focus. Its failure is in treating controls that are mutually reachable
+  in different job states as one simultaneously reachable chain.
+- The offscreen T-040 probe does **not** substitute for the required Windows run. It establishes
+  only the platform-independent precondition that the current test already fails because Cancel
+  is disabled.
+- T-059, T-052, and T-037 are filed under `## Complete`; T-036 is under `## In Review`; T-040 is
+  under `## Blocked`. Their task entries agree with those sections.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| `git diff --check 6ce26ec..306840b` | Passed. |
+| Corrected T-036 retry test | **1 passed in 0.48 s**. |
+| Full T-036 composition suite | **12 passed in 1.49 s**. |
+| Three independent T036-R1 mutations | **All three killed**: one swallowed attempt and no tick pickup each timed out with only `queued`; an unannounced requeue timed out with `probing, failed`. |
+| Corrected Windows desktop module on Linux | **1 module-level skip; no Windows test executed**, as designed. |
+| T040-R1 prerequisite probe | **Failed as evidence:** visited `retryJobButton, errorMessage, retryJobButton`; disabled `cancelJobButton` was unreachable. |
+| T037-R1 text comparison | Scope and Evidence now agree on real yt-dlp with a local origin. |
+| T037-R2 provenance search | Corrected at the network fixture; one stale sibling remains in T-012 evidence as `T037-R3`. |
+| `ruff check .` | Passed. |
+| `ruff format --check .` | **91 files already formatted**. |
+| `mypy src` | Passed: no issues in **35 source files**. |
+| Configured `mypy` | Passed: no issues in **77 files**. |
+| Configured `mypy --platform win32` | Passed: no issues in **77 files**. |
+| Full default suite with localhost/process permission | **1395 passed, 11 skipped, 2 deselected in 79.76 s**. |
+
+### Readiness and review budget
+
+`T036-R1` is **Resolved**. T-036 is **Approved at `306840b`**.
+
+`T037-R1` and `T037-R2` are **Resolved**. T-037 remains **Approved with follow-ups at
+`306840b`**; new Low `T037-R3` is current-truth cleanup and does not reopen its behavior.
+
+`T040-R1` remains a blocking Medium finding, and T-040 remains **Blocked at `306840b`**. This was
+the ordinary focused correction re-review, so the automatic review budget for Medium-or-lower
+findings is exhausted. Per the maintainer's standing direction, do not start another T-040 pass:
+carry the state-specific focus correction, its Windows mutations, and Low `T040-R2` into the next
+named task. The Windows desktop job remains required after that correction; the current test would
+fail before it could supply the requested evidence.

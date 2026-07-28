@@ -197,6 +197,70 @@ test file.
 
 ## Ready
 
+### T-060 — Focus chains are per state, and the Windows mutations still owe evidence
+
+**Status:** Ready — filed 2026-07-28, carrying `T040-R1` from `T-040` at reviewer direction
+**Owner:** Implementer
+**Priority:** Medium — it is the difference between a Windows focus gate and a Windows focus
+*claim*, and `T-026`'s acceptance criterion cannot be marked met until it is settled
+**Phase:** Phase 1
+**Depends on:** nothing to write. **Its evidence depends on the `windows desktop` CI job**, which
+is also what `T-040` and `T-056` are blocked on
+**Relevant context:** `T040-R1`; `T-040`; `T026-R3`; `NFR-005`; `ai/TESTING.md` §12 and §13
+**Affected surfaces:** `tests/ui/test_windows_desktop.py`, `ai/TESTING.md` §12
+**Risk:** Low to write, Medium to leave — a focus test that cannot reach a control it asserts on
+is a red build for a wrong reason, and a green one would be worse
+
+#### Scope
+
+`T-040`'s progress-view test expects **three** reachable controls in one chain. That state does
+not exist. Measured on 2026-07-28:
+
+| The job is | Tab can reach | Why not the others |
+|---|---|---|
+| `FAILED`, retryable | `errorMessage`, `retryJobButton` | `cancelJobButton` is **disabled** — a terminal job cannot be cancelled (`T-017`) |
+| `RUNNING` | `cancelJobButton` | `errorMessage` and `retryJobButton` are **hidden** — nothing has failed |
+
+An isolated probe visited `retryJobButton → errorMessage → retryJobButton` and could never reach
+`cancelJobButton`.
+
+**The structural half of that test agreed with itself, which is how it got written.**
+`_focusable()` filters on `focusPolicy() != NoFocus`, and a *disabled* widget keeps its focus
+policy — so the set matched while the walk could not. Comparing a declared list against a
+computed list is the shape `T016-R4` and `T040-R1` have now each caught once; the walk is the
+only part that knows what a keyboard can do.
+
+So the chains have to be asserted **per state**, each with the set that state actually offers.
+
+#### Acceptance criteria
+
+- The failed state and the running state are asserted separately, each against the controls that
+  state makes reachable — a disabled or hidden control is not in the expectation for that state
+- Reachability is decided by driving Tab and Backtab and asking Qt what has focus, never by
+  comparing two lists this repository computes
+- A control that becomes reachable in a state without being declared for it fails
+- The `T-040` mutations that could not be run — reversing two widgets, and adding a focusable
+  control without placing it — are executed on Windows and **recorded**, for the dialog chain as
+  well as the view's
+- `ai/TESTING.md` §12 drops the "widget tab order is ungated" gap and `T-026`'s acceptance
+  criterion is marked met **only when all of the above has run on Windows**
+
+#### Out of scope
+
+- The dialog's own chain, which `T-040` asserts and the reviewer did not fault
+- Making the progress view offer more controls than a state should; the disabled Cancel and the
+  hidden Retry are `T-017`'s behaviour and are correct
+
+#### Known consequence, recorded rather than hidden
+
+**Until this lands, the `windows desktop` job will fail on
+`test_the_progress_view_focus_chain_is_walked_on_a_real_desktop`.** That is deliberate. Skipping
+or `xfail`ing it would leave the one job that exists to run these tests green while proving
+nothing — the "retire a gate and replace it with theatre" failure `T-026` warns about — and
+`T-040` is Blocked regardless, so nothing is waiting on a green run that this red one delays.
+
+---
+
 ## Proposed — Phase 0
 
 ### T-021 — Simplified small-size icon glyph
@@ -1099,7 +1163,19 @@ from the other, which is exactly what it exists not to be.
 body at all, since the host scope proves it unreachable. Bare `pytest`: **1395 passed, 11 skipped,
 2 deselected**; the new tests are among the skipped.
 
-#### Correction — `T040-R1`, 2026-07-28
+#### Correction — `T040-R1`, 2026-07-28, and why it did not close
+
+**`T040-R1` remains open and is carried to `T-060`** at reviewer direction. It is Medium, this
+task's pass budget is spent, and `T-040` is blocked on Windows evidence either way (`AGENTS.md`
+§10).
+
+**The correction below drives focus, and then asserts a state that cannot exist.** It expects all
+three of the progress view's controls to be reachable in one chain; on a failed job `Cancel` is
+*disabled*, and on a running one `Retry` and the error text are *hidden*. A probe visited
+`retryJobButton → errorMessage → retryJobButton`. The structural half passed because
+`focusPolicy() != NoFocus` is true of a disabled widget — a list agreeing with a list, which is
+the shape this task was filed to stop being satisfied by. `T-060` carries the per-state chains and
+the Windows mutations that still owe evidence.
 
 **A structural check is not a Windows test.** The progress-view test compared `focus_chain()` to a
 transcription and checked the same widgets were focusable. Both are true on any platform and
@@ -1112,8 +1188,8 @@ control otherwise (`T-017`) — a chain two controls long is one this file would
 noticing, which is the same defect one layer down.
 
 **Blocker, unchanged:** the `windows desktop` CI job. Same shape as `T-056` and `T-033`: the code
-is done, the evidence is not producible locally. `T040-R1`'s correction is equally unexecuted
-here.
+is done, the evidence is not producible locally — which is also how a test asserting an impossible
+state reached a commit. Nothing here has ever run.
 
 ---
 
@@ -2743,7 +2819,7 @@ acceptance criteria ask for — is what turned them up:
 | `## Complete` | `T-038`, `T-055`, `T-058` | `## Ready` |
 | `## Complete` | `T-019`, `T-051` | `## Proposed — Phase 1` |
 | `## In Review` | `T-017`, `T-056`, `T-057` | `## Ready` and `## Proposed — Phase 1` |
-| `## Ready` | `T-040` | `## Blocked` — unblocked on 2026-07-27, never moved |
+| `## Ready` | `T-040` | `## Blocked` — unblocked on 2026-07-27, never moved *(and Blocked again on 2026-07-28, on its own Windows evidence)* |
 
 `T-054` itself moved to `## Complete` with them.
 
@@ -3457,7 +3533,11 @@ reached the library call (`T012-R5`). 18 mutations, 18 killed.
 **Evidence.** 42 adapter tests, 17 worker integration tests including a real
 `mp.get_context("spawn")` child. The `ai/TESTING.md` §7 taxonomy is transcribed by hand rather
 than read from the code under test (§13). Fixture `archive_org_big_buck_bunny.json` is a real
-capture (public domain, stable) with `cookies`/`http_headers` redacted.
+capture with `cookies`/`http_headers` redacted. **The item is CC BY 3.0, not public domain**
+(corrected 2026-07-28 by `T037-R2`, which found the same wrong claim in the network fixture): the
+Blender Foundation's release poster carries the attribution. Capturing an `info_dict` from it is
+fine either way; the correction matters because `LIC-001` makes licence claims load-bearing and a
+wrong one repeated in two files is how it becomes something nobody re-checks.
 
 **Mutation-checked (10 of 10 killed, after two survivors became tests).** Mapping order, `orig_msg` preference, `unwrap`, `has_drm`
 `all`→`any`, `_has_drm`, the `'none'` codec sentinel, `_origin_of` trusting its candidate — and
