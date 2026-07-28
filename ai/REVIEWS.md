@@ -4042,3 +4042,80 @@ above.
 
 `T038-R2` is independently resolved. No blocking finding remains, so `T-038` is **Approved**.
 The focused-count typo is mechanical evidence bookkeeping and does not change the verdict.
+
+## 2026-07-27 — T-016 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-016` — Add-URL dialog with probe results
+**Review base:** `098ba3f93ad2f9d0e8a045d936b21f0845b7c500`
+**Head:** `33ebd118f40b4c0f4137f3c1d82db91e15706d05`
+**Implementation commits:** `d9936f4`, `57c7e5c`, and `33ebd11`
+**Excluded coordination commits in the range:** `0b914a5` preserves prior reviewer records;
+`3b9d937` records T-038's already-issued approval
+**Repository state at inspection:** clean `main`, in sync with `origin/main`; source and tests
+were inspected and run from a clean `git archive 33ebd11`
+**Platforms verified:** Linux locally; Windows from the implementer-provided GitHub Actions run
+`30320408833`
+**Verdict:** **Changes requested**
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding and required correction |
+|---|---|---:|---|
+| `T016-R1` | **Critical** | **Yes** | **The probe result is bound only to a job id, not to the first URL that is still on screen.** `_on_urls_changed()` invalidates a completed `_probed_job_id`, but returns immediately while `_probing_job_id` is set. `_on_media_probed()` later accepts that old job unconditionally. A deterministic child delayed its result while the first URL changed from `old.invalid` to `new.invalid`; the dialog accepted the old metadata, `add_to_queue()` skipped the currently displayed first URL because a probe existed, and the only queued/started job was `old.invalid`. This silently downloads the wrong URL and drops the one the user submitted, which is Critical under `AGENTS.md` §9. The same incomplete state model has a second observable edge: pressing the still-enabled default **Add to queue** button while a probe is outstanding persists the first URL a second time, because `probe()` already added its job but `add_to_queue()` skips it only after `_probed_job_id` exists. Bind every result to the input generation/current first URL; invalidate and cancel or ignore an in-flight probe when that identity changes; and make add-during-probe preserve exactly one job per entered line. Audit start refusal, cancellation, failure, repeated probe, and appended-line siblings. Add deterministic delayed-result and outstanding-add tests. |
+| `T016-R2` | **High** | **Yes** | **Closing the dialog can strand a worker and make the pool-of-one manager unusable.** The Close button connects directly to `reject()` and the dialog has no reject/close lifecycle that cancels `_probing_job_id`. A never-returning probe remained alive and `manager.is_idle` remained false two seconds after the dialog was rejected. The only cancel control was then hidden; every later Add-URL dialog can only receive “a session is already running” until the application exits. This fails the task's no-worker-behind cancellation criterion and breaks the core flow with no in-app workaround. Closing/rejecting an active dialog must initiate the same non-blocking cancellation ownership as the explicit button, and a test must close a genuinely non-returning child and prove the manager becomes idle and a later dialog can probe. |
+| `T016-R3` | **High** | **Yes** | **The new widget performs synchronous SQLite work on the GUI thread despite the unqualified no-disk-wait invariant.** `JobSink.next_queue_position()` and `add()` are synchronous, and both `probe()` and `add_to_queue()` call them directly from button slots—once per URL and once per committed row. With a real `JobRepository` and another connection holding SQLite's writer lock, a 300 ms busy timeout made `add_to_queue()` hold the GUI thread for **0.302 s** and then raise `OperationalError`. A large pasted batch also performs an unbounded number of separate queries and commits in one interaction. This violates `NFR-001` and Architecture §8, and persistence failure is not surfaced through the dialog. Move queue persistence off the GUI thread or obtain an accepted architecture change; retain the required persist-before-close ordering, and surface write failure without closing or losing the user's input. The evidence must exercise the concrete repository under deterministic contention, not only a zero-latency fake. |
+| `T016-R4` | **Medium** | **Yes** | **The repaired tab-order test is independent but still filters out focusable controls, so the full keyboard-order acceptance criterion remains ungated and the implemented order contradicts the dialog's own prose.** `titleValue`, `uploaderValue`, `durationValue`, `kindValue`, `selectorValue`, and `statusMessage` all acquire `StrongFocus` from `TextBrowserInteraction`, but `focus_chain()` names only the editor, buttons, and preset. The test skips every Qt focus-chain node outside that declared subset. The exact-head chain therefore runs `url → probe → cancel → preset → add → close → title → uploader → duration → kind → selector → status`, although `_set_tab_order()` says users read the result before choosing a preset and acting. Transcribe and assert the complete set and order of named keyboard-focusable widgets, including the selectable result/status fields; do not filter undeclared focusable nodes out of the observation. |
+| `T016-R5` | **Medium** | **Yes** | **A failed thumbnail request leaves the dialog claiming “Loading thumbnail…” forever.** `ThumbnailLoader` has only a successful-byte callback; `NetworkThumbnailLoader.finished()` calls it only on `NoError`, while `_load_thumbnail()` sets the loading text before the request and has no failure transition. A real `QNetworkAccessManager` request for a nonexistent local image finished, `_reply` became `None`, and the label still read `Loading thumbnail…`. This is a common expired/offline-thumbnail path and an observable false state. Give the loader an explicit failure/completion result and render a truthful text state such as unavailable/no thumbnail; test the shipping loader's failure path rather than a loader that can only succeed. |
+| `T016-R6` | **Medium** | **Yes** | **Extractor/site text is left in `QLabel.AutoText`, so HTML-looking titles and uploader names are interpreted as rich text instead of shown as data.** With the title `<b>VISIBLE</b>`, the exact-head title label retained that source string but rendered it as markup: its auto-text width was 47 px versus 90 px when forced to plain text, consuming the tags. `REQ-002` requires the title supplied by the probe to be shown, not interpreted as UI markup. Set `Qt.PlainText` on every label that receives extractor, site, URL, or failure text, and assert rendered/plain-text semantics with markup-shaped fixture values rather than reading `QLabel.text()` back—the latter returns the input and misses the display defect. |
+| `T016-R7` | **Low** | **No** | **The replacement manager refusal test does not cover “every status that is not an entry point” as its docstring and handoff claim.** Its parameter list omits `PROBING`, `COMPLETED`, and `CANCELLED`. Production `_ENTRY_STATUS` is correct, so this is test strength rather than a behavior finding. **Owner/target:** Implementer, T-016 correction test hardening; enumerate the complement of the two allowed statuses independently of `_ENTRY_STATUS`. |
+| `T016-R8` | **Low** | **No** | **The repository's current-truth handoff is stale after the merge and CI fixes.** `TASKS.md` still gives `eaa5b50` and `phase1-add-url-dialog`, records only the scoped mypy gates, and says the full suite has 1230 passes; the reviewed merged boundary is `098ba3f..33ebd11`, bare mypy covers 69 files, and the exact-head suite has 1239 passes. `STATUS.md` likewise retains the old branch/base and says “No widget touches any of it yet” shortly before saying T-016's widget does. The scratchpad handoff is accurate but is not canonical current truth. **Owner/target:** Implementer, T-016 correction record. |
+
+### What is established
+
+- **`ARC-004` is implemented correctly.** `_ENTRY_STATUS` has exactly `QUEUED → PROBING` and
+  `READY → RUNNING`; a probe from `READY` is refused before persistence; and a READY download
+  retains the attempt's existing `started_at`. The focused manager tests passed.
+- **The injected thumbnail seam is honest for the success half of `REQ-002`.** The committed
+  tests decode real image bytes into a real pixmap. Independently, the shipping
+  `NetworkThumbnailLoader` returned from `load()` in 0.0226 s and delivered all 213,475 bytes
+  through `QNetworkAccessManager`. R5 is the omitted failure half, not a claim that injection
+  itself hides a broken successful implementation.
+- **The tab expectation is no longer derived from production order.** Reversing two declared
+  controls is meaningfully gated now. R4 concerns the focusable controls excluded from both
+  sides, not the independence correction.
+- **The mypy scope correction is real.** Bare Linux and Windows-platform checks each analysed
+  all 69 configured files successfully. The two test-file errors caught by CI are corrected.
+- **The Windows menu contract has the new item.** The three-dot spelling and expected UIA item
+  are consistent, and the implementer-provided Windows desktop job passed all 20 tests.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| `git diff --check 098ba3f..33ebd11` | Passed. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **84 files already formatted**. |
+| `mypy src` | Passed: no issues in **33 source files**. |
+| Configured `mypy` | Passed: no issues in **69 source files**. |
+| Configured `mypy --platform win32` | Passed: no issues in **69 source files**. |
+| Focused add-dialog and manager suite | Passed: **97 passed in 48.86 s**. |
+| Canonical bare `pytest`, exact head | Passed: **1239 passed, 11 skipped, 1 deselected in 72.17 s**. |
+| Implementer-provided CI at `33ebd11` | Run `30320408833` green: Ubuntu **1239 passed, 11 skipped, 1 deselected**; Windows **1228 passed, 20 skipped, 21 deselected**; Windows desktop **20 passed, 1249 deselected**; both frozen jobs succeeded. |
+| Delayed stale-result probe | Failed as intended: after the first input changed, the old result was accepted and Add queued/started only the old URL. |
+| Add-while-probing probe | Failed as intended: one entered URL produced two persisted jobs with the same URL. |
+| Close-while-probing probe | Failed as intended: a never-returning child and the manager session remained alive two seconds after rejection. |
+| Concrete SQLite contention probe | Failed as intended: `add_to_queue()` blocked **0.302 s** on the GUI thread, then raised `OperationalError`. |
+| Complete focus-chain inspection | Failed the stated order: all six selectable result/status labels were focusable but appeared after Close and were filtered from the committed assertion. |
+| Shipping thumbnail success/failure probes | Success returned immediately and delivered the real icon bytes; a completed error left the UI at `Loading thumbnail…`. |
+| Plain-text display probe | Failed: `<b>VISIBLE</b>` was interpreted under `AutoText` (47 px) rather than displayed literally (90 px under `PlainText`). |
+
+The reviewer probes lived only in a temporary archive and did not alter repository source or
+tests.
+
+### Readiness and budget
+
+`T-016` is **Changes requested**. Critical `T016-R1`, High `T016-R2/R3`, and blocking Medium
+`T016-R4/R5/R6` must be corrected and independently verified. This is the initial comprehensive
+review; one focused correction re-review remains available for Medium-or-lower findings, while
+the Critical and High findings continue under `AGENTS.md` §9 until resolved.
