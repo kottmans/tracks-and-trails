@@ -129,6 +129,17 @@ network — Windows 10 22H2, reached over RDP in an interactive session, Python 
 executed and killed. **`T-040` and `T-060` are now In Review rather than Blocked, and `T-026`'s
 last acceptance criterion is met** — with no CI minutes spent.
 
+**The `windows desktop` job runs on the maintainer's own machine as of 2026-07-28.** `STARBASE`
+is a self-hosted runner, in a logged-on elevated session, and job `90432207805` is green end to
+end — `28 passed` under the real `windows` plugin. Self-hosted minutes are not billed, so the one
+job that cannot be replaced by reasoning survives the Actions quota being exhausted. It also gave
+the `T-066` virtualenv change its first execution anywhere.
+
+**It cost a repair to that machine first.** `actions/setup-python` is free on a hosted runner
+because the runner is discarded; this one is a computer somebody uses, and it deadlocked the real
+Python installer against `msiexec`, leaving the interpreter half-removed. The job installs nothing
+now. `docs/WINDOWS_VERIFICATION.md` carries that and the two follow-on traps.
+
 **`T-056` did not move, and now the reason is sharper.** Its defect does not reproduce on
 `STARBASE`: the pre-correction helper passes 20/20, with a positive control proving the mutation
 was really applied. A Windows machine was not enough; it wants `windows-latest`'s image.

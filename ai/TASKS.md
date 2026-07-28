@@ -239,9 +239,14 @@ launcher generation and no venv. This is **reasoned, not measured** — building
 Windows is `T-033`'s ground and no frozen build has been run on `STARBASE`. Recorded as an
 assumption rather than a result.
 
-**What is not verified:** the workflow change has never run. GitHub Actions is out of quota, so
-the first execution of these five jobs is whoever runs CI next. `ai/TESTING.md` §11's "local green
-is not evidence" applies to this task exactly.
+**Partly verified as of 2026-07-28.** The virtualenv step **has now executed on Windows**: job
+`90432207805` of run `30405803368` ran `Create the virtualenv` and then the desktop suite under
+it, green. That is the self-hosted runner, so it covers the Windows half of the change.
+
+**The four GitHub-hosted jobs have still never run it** — quota is exhausted and every hosted job
+fails before its first step. So the Linux half, the `frozen` jobs, and `cygpath -w` on a
+*hosted* Windows runner are all unverified. `ai/TESTING.md` §11's "local green is not evidence"
+still applies to those.
 
 #### `T066-R1` — the crash tests killed one level, 2026-07-28
 
@@ -1424,11 +1429,31 @@ wrong reason (`ai/TESTING.md` §13), one layer up.
 
 **What this was not, and what changed later the same day.** When first recorded this was a
 manual run on one machine rather than a gate — a regression between then and the next CI run
-would have been caught by nothing. `STARBASE` was subsequently registered as a **self-hosted
-runner** for the `windows desktop` job, started from `run.cmd` in a logged-on, elevated session
-(`Runner.Listener.exe`, Session#2), so the desktop suite runs on every push again and does not
-depend on Actions quota. The mutations themselves are still run by hand from
-`tools/windows/mutations/`; making *those* part of the job is not done.
+would have been caught by nothing.
+
+**It is a gate again as of 2026-07-28.** `STARBASE` is registered as a **self-hosted runner** for
+the `windows desktop` job, started from `run.cmd` in a logged-on, elevated session
+(`Runner.Listener.exe`, Session#2). Job `90432207805` of run `30405803368` is **green end to
+end** — `28 passed, 1410 deselected in 14.33s` under the real `windows` plugin — so the desktop
+suite runs on every push and no longer depends on Actions quota.
+
+Getting there took three corrections, each recorded in `docs/WINDOWS_VERIFICATION.md` because
+each is a trap the next person hits:
+
+1. **`actions/setup-python` provisioned the machine.** Free on a hosted runner, which is thrown
+   away; this one is not. It launched the real installer, found the existing 3.14.6, opened an
+   interactive Modify/Repair dialog nobody could see, and deadlocked against `msiexec` for the
+   full timeout — leaving `python.exe` missing from a directory that still had `Lib`. The job now
+   installs nothing and asserts the version it needs.
+2. **A wedged listener.** Killing the runner's worker out from under it left the scheduled task
+   marked running, and `schtasks /run` on a running task is a silent no-op — the runner sat
+   `offline busy=true` while jobs reported zero steps for ten minutes. `schtasks /end` first.
+3. **`bash` was not on `PATH`.** The workflow uses `shell: bash` throughout and hosted Windows
+   runners ship Git Bash; this one had it installed and unreferenced. Caught by the version guard
+   added in correction 1, which failed at step 3 rather than letting the suite fail obscurely.
+
+**Still by hand:** the `T-026` mutations run from `tools/windows/mutations/`. Making *those* part
+of the job is not done, so the mutation evidence remains a recorded run rather than a gate.
 
 #### Scope
 

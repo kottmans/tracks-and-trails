@@ -205,6 +205,21 @@ it needs, failing loudly if that is wrong. Provisioning is a setup step a human 
 side effect of running a test. Before adding any action to a self-hosted job, ask what it writes
 outside the workspace.
 
+### Three things that had to be fixed before a job would run
+
+Recorded because each looks like a broken machine and is not.
+
+1. **`schtasks /run` is a silent no-op on a task already marked running.** Killing the runner's
+   worker externally leaves the task in that state, and the runner then sits `offline busy=true`
+   while jobs report zero steps until they time out. `schtasks /end /tn ghrunner` first, then
+   `/run`.
+2. **`bash` must be on `PATH`.** The workflow sets `shell: bash` for every step and hosted Windows
+   runners ship Git Bash. A `winget install Git.Git` leaves `C:\Program Files\Git\bin` off
+   `PATH`, and the job fails with `bash: command not found` before any step of yours runs. Add it
+   to the user environment and restart the runner so it inherits the change.
+3. **The runner inherits its environment at start.** Anything you change afterwards — `PATH`, a
+   reinstalled interpreter — needs a listener restart to take effect.
+
 **If the machine is off or logged out, the job queues rather than fails.** `timeout-minutes`
 bounds that. It is a real trade: this job is now as available as one desktop machine is.
 
