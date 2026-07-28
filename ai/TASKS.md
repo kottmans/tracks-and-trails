@@ -5,195 +5,50 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-27
+**Last updated:** 2026-07-28
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-016` is **In Review** on `main` at `33ebd11`, with CI green on all five jobs.
-It is the first widget that talks to the download manager, and it implements `ARC-004`'s `READY`
-entry point.
+**Start here:** **Phase 1's critical path is built and approved.** `T-036` composed the object
+graph (approved at `306840b`) and `T-037` proved a download completes and survives a `SIGKILL`
+(approved with follow-ups at `894d794`), which closes the two exit criteria that had no owner.
+**Nothing remains on the path.**
 
-**`T-017` is the only substantive task startable right now** — its dependencies `T-013` and
-`T-014` are both complete, and it touches `ui/queue_view.py` and `ui/job_detail.py`, so it does
-not collide with the `T-016` review. The critical path to the Phase 1 exit is linear from here:
-**`T-017` → `T-036` → `T-037`**. `T-036` needs `T-016` **and** `T-017`, so composition cannot
-start the moment `T-016` clears.
+**Everything still open is Windows evidence or the exit review.** `T-040`, `T-056` and `T-060` are
+each written, type-checked under `mypy --platform win32`, and **never executed** — the
+`windows_desktop` module skips off Windows and this machine has none. `T-060` also carries
+`T040-R1`, which found one of `T-040`'s own tests asserting a focus state that cannot exist.
 
-**`T-019` and `T-038` are both approved** as of 2026-07-27 at `098ba3f`. High `T038-R2` took three
-focused corrections — a same-job reopen now returns the identical still-attached handler, and
-`idle` waits asynchronously for listener completion with a bounded escape — and is independently
-resolved. Nothing in Phase 1 is blocked.
+**`T-017` is Blocked**, with `T017-R4` carried to `T-059` and resolved there. Five review rounds,
+two of them regressions introduced by corrections; the record is in `ai/REVIEWS.md` and the
+lesson — that every test in the task began with a running view, so none reached `_load` — is in
+`T-059`'s scope.
 
-`T-013` is **approved with follow-ups** (`T-052`), `T-015` is **approved**, and `T-018` is
-**closed as Approved** on its fifth `T018-R1` correction — all three 2026-07-27. `T-051` is
-**approved** and recorded as `ARC-004`. That closed every dependency `T-016` had.
+**Approved on 2026-07-28:** `T-016` (fourth correction batch), `T-057`, `T-058`, `T-054`, `T-059`,
+`T-052`, `T-036`, `T-037`. **Blocked:** `T-017`, `T-040`, `T-056`, plus `T-033` (Phase 5 evidence)
+and `T-039` (Phase 5 installer). **Ready:** `T-060`.
 
-`T-012` was approved with follow-ups on 2026-07-26 after two review rounds; `T-014` was approved
-2026-07-26 at `db14cc2`. **`T-033` is Blocked**, not complete: its code is verified but approval
-needs frozen CI evidence this repository cannot produce locally.
+**Known and deliberate:** until `T-060` lands, the `windows desktop` job fails on
+`test_the_progress_view_focus_chain_is_walked_on_a_real_desktop`. Skipping it would leave the one
+job that runs those tests green while proving nothing.
 
-`T012-R6` is resolved by `T-018`'s verified multi-item projection, and `T-016` now displays the
-distinction it added. `T-050` sits in **Phase 2**, where the plan puts history: nothing writes
-the `history` table.
+*(This block described `T-016` as In Review at `33ebd11`, `T-017` as "the only substantive task
+startable right now", and `T-040` as Ready — all true on 2026-07-27 and none of them true a day
+later. `COORD-R1` reported it. Rewritten rather than patched, which is the same discipline the
+mandatory-area count needed twice.)*
 
-*(A previous version of this block said `T-018` was "the one task still in review" and that
-`T-016` waited on `T-051`. Both were true when written and neither survived 2026-07-27;
-`ai/REVIEWS.md` records the two verdicts that changed them.)*
-
-Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; `T-040` is
-**Ready**, unblocked by `T-016`'s focusable controls.
+Phase 0 is formally exited (2026-07-26).
 
 ---
 
 ## In Review
 
-### T-036 — Application composition and wiring
-
-**Status:** **In Review — first correction batch returned 2026-07-28.** High `T036-R1` is
-corrected by moving `retry` into the manager, where the transition and the start both belong.
-Three mutations, three killed. No finding is marked Resolved here — that is the Reviewer's to do.
-**Owner:** Implementer
-**Priority:** **High** — without it every component can pass while the product still opens an
-empty window
-**Phase:** Phase 1
-**Depends on:** `T-013`, `T-014`, `T-015`, `T-016`, `T-017`
-**Relevant context:** `ARCHITECTURE.md` §3, §4, §8; `NFR-001`, `NFR-002`, `REQ-024`
-**Affected surfaces:** `app.py`, `ui/main_window.py`, `tests/ui/`, `tests/integration/`
-**Risk:** **High** — the only task that can fail while every other task is green
-**Review base:** the last of its dependencies' merge commits
-
-#### Scope
-
-**Filed after review: nothing owned this.** `app.py`'s own docstring says `T-013` adds the
-download manager wiring, but `T-013` neither claims `app.py` nor proves the assembled path. So
-every Phase 1 task could pass in isolation while the application still did nothing — which is
-the failure the phase exists to prevent.
-
-Compose the object graph in one place: construct the repository, the manager, the result pump
-and the window; inject the concrete `JobRepository` into the manager through the protocol seam
-`T-013` defines; connect the add-URL dialog and the progress view to manager signals; and
-report the ffmpeg state `T-035` supplies at startup (`REQ-024`).
-
-Also own orderly shutdown: closing the window stops the pump on its sentinel, cancels any
-running job, reaps its process tree, and closes the database — in that order.
-
-#### Acceptance criteria
-
-- A test drives the **assembled application** — not components — from paste through to a queued
-  job, using `T-016`'s dialog and asserting the job reaches the repository
-- Wiring is asserted structurally too: the manager holds the concrete repository, and every
-  manager signal the UI needs has exactly one connection. A signal connected twice, producing
-  duplicate rows, must fail
-- Startup reports the ffmpeg state and names what will not work without it (`REQ-024`)
-- Closing the window with a job running exits with code 0, leaves no process in the tree, and
-  leaves the database consistent
-- Cold start stays inside `NFR-002`'s 3-second budget with the full graph constructed, and the
-  measurement is recorded — `T-007` measured an empty window
-- No component is constructed twice, asserted by identity, so a second manager cannot quietly
-  service a second queue
-
-#### Out of scope
-
-- Any new behavior; this task connects what the others built
-- The single-instance guard — `A-004`, Phase 2
-
-#### First correction batch — the manager owns a retry, 2026-07-28
-
-**Base:** `6ce26ec`. Three mutations, three killed. **Corrected here rather than carried**: the
-reviewer's handoff applied the standing carry direction, but `T036-R1` is **High**, and
-`AGENTS.md` §10 says a High "remains in the current review until it is corrected and independently
-verified", that further focused passes for it need no authorization, and that downgrading one
-needs stated reasons and explicit maintainer approval. Carrying it would be a downgrade in effect.
-
-**`T036-R1` (High, blocking) — reproduced first, and it had two halves.** With the failed probe
-session not yet released, pressing Retry produced: the row at `queued`, **no manager transitions
-at all**, the view still reading `failed`, and a Retry button that did nothing on a second press.
-
-- **The start was attempted once and the refusal swallowed.** The pool of one refuses while a
-  session is being released — a window of a tick or two — and nothing ever tried again. A comment
-  in the previous test argued that starting "is not what a retry promises", which was my
-  rationalisation of the defect; the reviewer measured what it costs.
-- **The re-queue was written behind the manager's back.** Composition called `store.update`
-  directly, and the store has no signal — `job_changed` is emitted from the *manager's* write
-  callback. So nothing announced `FAILED → QUEUED` and every widget kept showing the failure.
-
-**`DownloadManager.retry()` now owns both.** A retry is a state transition plus a start, and both
-are the manager's business; composition routes the widget's `retry_requested` to it exactly as it
-would route a cancel, so `ui/` still holds no writer. The transition goes through `_persist`, so
-it is announced like every other. If the pool is busy the job waits and starts on the first tick
-that finds it free — **not** Phase 2's scheduler: one job, the one the user just asked for, and
-what it waits for is a session that has already ended being released. `is_idle` counts it and
-`shutdown()` drops it, so it cannot hold the door open.
-
-**Mutations run, all killed:** attempting the start once and swallowing the refusal — the finding
-itself · the tick never picking up a waiting retry · the re-queue written without announcing it.
-
-#### Evidence, 2026-07-28
-
-**`app.compose()` builds the graph and returns it.** A `Composition` value rather than locals,
-because three of the acceptance criteria — the manager holds the concrete repository, no component
-is constructed twice, every manager signal the UI needs has exactly one connection — are claims
-about an object graph, and a graph nothing can reach is a graph nothing can check.
-
-**Shutdown is a three-step lifecycle, and the order is the point.** `DownloadManager.shutdown()`
-cancels the job and reaps its process tree, reporting `idle` when the last session is released
-*and* the worker-log listener has drained (`T038-R2`); only then does `QueueWriter.close()` run,
-because the manager's final transitions are still being written when it goes idle; only then is
-the read connection closed. `setQuitOnLastWindowClosed(False)` is what makes the order possible —
-Qt's default is to quit the moment the window disappears, which is step zero of the wrong sequence.
-
-**Three seams `T-016`, `T-017` and `T-059` left open are now connected:** `start_rejected` reaches
-the dialog, `retry_requested` reaches a composition-owned re-queue, and the window shows a
-`JobProgressView` for whichever job the manager is working on.
-
-**Two real defects this task found, both invisible to every component test:**
-
-- **A retry raised out of a write callback.** `manager.start()` refuses when the pool of one is
-  busy, and composition called it from the writer's `done` — so the refusal escaped into a Qt slot
-  instead of reaching whoever pressed the button. `FAILED → QUEUED` is what a retry promises; a
-  retry that cannot start now logs it and leaves the job durably queued.
-- **A quit that skipped the lifecycle aborted the process.** Qt terminates with `SIGABRT` when a
-  running `QThread` is destroyed, so `T-007`'s launch test — which quits from a timer, never
-  touching the window — exited **-6** with `QThread: Destroyed while thread 'queue-writer' is
-  still running` on stderr. `aboutToQuit` now runs a bounded last-resort stop. It cannot reap a
-  worker, because that needs timer ticks and the loop is ending; that limitation is recorded at
-  the method rather than left to be discovered.
-
-**Three tests were written against the store and each observed the same gap**, which is worth
-more than the fix: `T-013`'s ordering is *persist, then signal*, and `ARC-005` moved the persisting
-to another thread — so the writer commits a row and **then** posts to the GUI thread, and in
-between `store.get()` answers the new state while every widget still shows the old one. A test of
-the assembled application waits on what the application *shows*. The module docstring says so, and
-notes `is_idle`'s mirror-image trap: it is true before a session starts as well as after one ends,
-so spinning on it returns instantly and proves nothing — which one test did, reporting "nothing
-failed" for a probe that had not yet been asked to run.
-
-**Mutations run, all killed:** the window built without a manager — the `T-036` defect itself ·
-ffmpeg located and never handed to the manager · a replaced view dropped without detaching · the
-database closed before the writer finished · the writer closed on any idle rather than during
-shutdown · closing the window not beginning the lifecycle · Qt quitting with the last window ·
-the environment found and never reported.
-
-**Two of those survived their first run and both produced better tests.** Closing the writer on
-every idle survived a check that sampled `is_running` — `close()` is asynchronous, so the thread
-is briefly alive either way; the test now *writes another job* after an ordinary idle, which is
-the consequence that matters. And removing `setQuitOnLastWindowClosed(False)` has no in-process
-consequence at all — a test cannot observe its own exit — so that one is asserted structurally,
-with the reason recorded.
-
-**Cold start:** measured with the whole graph constructed and recorded as a test property
-(`cold_start_seconds`), against `NFR-002`'s 3 s. `T-007` measured an empty window at 0.178 s; this
-measures the migrated database, the writer thread, the manager and the window together.
-
-**Checks:** `ruff check .`, `ruff format --check .` (88 files), `mypy src` (35), configured `mypy`
-and `mypy --platform win32` (73 each) all pass. Bare `pytest`: **1392 passed, 11 skipped,
-1 deselected**. The wide mypy scope again found errors the `src` scope cannot see, all in the new
-test file.
-
----
+*(Empty as of 2026-07-28. Every task this session produced has a verdict: eight approved, three
+blocked on Windows evidence, one ready. An empty section is left in place rather than deleted —
+it is where the next task goes, and its absence would read as a heading nobody had written yet.)*
 
 ## Ready
 
@@ -5773,9 +5628,10 @@ coverage claim about it changed.
 
 **Status:** **Complete — approved with follow-ups**, 2026-07-28 at `894d794`. Both unowned exit
 criteria have tests against the assembled application; five mutations, five killed. Low
-`T037-R1` and `T037-R2` are corrected in the record and the fixture — the scope text described a
-faked adapter the implementation deliberately did not use, and the network fixture called Big Buck
-Bunny public domain when it is CC BY 3.0. **Phase 1 stays unready while `T-036` is blocking.**
+`T037-R1` and `T037-R2` are Resolved — the scope text described a faked adapter the implementation
+deliberately did not use, and the network fixture called Big Buck Bunny public domain when it is
+CC BY 3.0. **`T-036` is now approved too**, so nothing on the critical path is outstanding; Phase 1
+waits on Windows evidence and its exit review.
 **Owner:** Implementer
 **Priority:** **High** — two Phase 1 exit criteria are unowned without it
 **Phase:** Phase 1
@@ -6047,5 +5903,150 @@ probe case.
 
 **Checks:** `ruff check .`, `ruff format --check .`, configured `mypy` (76 files) all pass. Bare
 `pytest`: **1395 passed, 11 skipped, 2 deselected**. No production code changed.
+
+---
+### T-036 — Application composition and wiring
+
+**Status:** **Complete — approved**, 2026-07-28 at `306840b`. High `T036-R1` is Resolved: `retry`
+moved into the manager, where the transition and the start both belong. Three mutations, three
+killed. The reviewer confirmed the process reading — a High stays in its own review until
+corrected and verified (`AGENTS.md` §10) — rather than being carried.
+**Owner:** Implementer
+**Priority:** **High** — without it every component can pass while the product still opens an
+empty window
+**Phase:** Phase 1
+**Depends on:** `T-013`, `T-014`, `T-015`, `T-016`, `T-017`
+**Relevant context:** `ARCHITECTURE.md` §3, §4, §8; `NFR-001`, `NFR-002`, `REQ-024`
+**Affected surfaces:** `app.py`, `ui/main_window.py`, `tests/ui/`, `tests/integration/`
+**Risk:** **High** — the only task that can fail while every other task is green
+**Review base:** the last of its dependencies' merge commits
+
+#### Scope
+
+**Filed after review: nothing owned this.** `app.py`'s own docstring says `T-013` adds the
+download manager wiring, but `T-013` neither claims `app.py` nor proves the assembled path. So
+every Phase 1 task could pass in isolation while the application still did nothing — which is
+the failure the phase exists to prevent.
+
+Compose the object graph in one place: construct the repository, the manager, the result pump
+and the window; inject the concrete `JobRepository` into the manager through the protocol seam
+`T-013` defines; connect the add-URL dialog and the progress view to manager signals; and
+report the ffmpeg state `T-035` supplies at startup (`REQ-024`).
+
+Also own orderly shutdown: closing the window stops the pump on its sentinel, cancels any
+running job, reaps its process tree, and closes the database — in that order.
+
+#### Acceptance criteria
+
+- A test drives the **assembled application** — not components — from paste through to a queued
+  job, using `T-016`'s dialog and asserting the job reaches the repository
+- Wiring is asserted structurally too: the manager holds the concrete repository, and every
+  manager signal the UI needs has exactly one connection. A signal connected twice, producing
+  duplicate rows, must fail
+- Startup reports the ffmpeg state and names what will not work without it (`REQ-024`)
+- Closing the window with a job running exits with code 0, leaves no process in the tree, and
+  leaves the database consistent
+- Cold start stays inside `NFR-002`'s 3-second budget with the full graph constructed, and the
+  measurement is recorded — `T-007` measured an empty window
+- No component is constructed twice, asserted by identity, so a second manager cannot quietly
+  service a second queue
+
+#### Out of scope
+
+- Any new behavior; this task connects what the others built
+- The single-instance guard — `A-004`, Phase 2
+
+#### First correction batch — the manager owns a retry, 2026-07-28
+
+**Base:** `6ce26ec`. Three mutations, three killed. **Corrected here rather than carried**: the
+reviewer's handoff applied the standing carry direction, but `T036-R1` is **High**, and
+`AGENTS.md` §10 says a High "remains in the current review until it is corrected and independently
+verified", that further focused passes for it need no authorization, and that downgrading one
+needs stated reasons and explicit maintainer approval. Carrying it would be a downgrade in effect.
+
+**`T036-R1` (High, blocking) — reproduced first, and it had two halves.** With the failed probe
+session not yet released, pressing Retry produced: the row at `queued`, **no manager transitions
+at all**, the view still reading `failed`, and a Retry button that did nothing on a second press.
+
+- **The start was attempted once and the refusal swallowed.** The pool of one refuses while a
+  session is being released — a window of a tick or two — and nothing ever tried again. A comment
+  in the previous test argued that starting "is not what a retry promises", which was my
+  rationalisation of the defect; the reviewer measured what it costs.
+- **The re-queue was written behind the manager's back.** Composition called `store.update`
+  directly, and the store has no signal — `job_changed` is emitted from the *manager's* write
+  callback. So nothing announced `FAILED → QUEUED` and every widget kept showing the failure.
+
+**`DownloadManager.retry()` now owns both.** A retry is a state transition plus a start, and both
+are the manager's business; composition routes the widget's `retry_requested` to it exactly as it
+would route a cancel, so `ui/` still holds no writer. The transition goes through `_persist`, so
+it is announced like every other. If the pool is busy the job waits and starts on the first tick
+that finds it free — **not** Phase 2's scheduler: one job, the one the user just asked for, and
+what it waits for is a session that has already ended being released. `is_idle` counts it and
+`shutdown()` drops it, so it cannot hold the door open.
+
+**Mutations run, all killed:** attempting the start once and swallowing the refusal — the finding
+itself · the tick never picking up a waiting retry · the re-queue written without announcing it.
+
+#### Evidence, 2026-07-28
+
+**`app.compose()` builds the graph and returns it.** A `Composition` value rather than locals,
+because three of the acceptance criteria — the manager holds the concrete repository, no component
+is constructed twice, every manager signal the UI needs has exactly one connection — are claims
+about an object graph, and a graph nothing can reach is a graph nothing can check.
+
+**Shutdown is a three-step lifecycle, and the order is the point.** `DownloadManager.shutdown()`
+cancels the job and reaps its process tree, reporting `idle` when the last session is released
+*and* the worker-log listener has drained (`T038-R2`); only then does `QueueWriter.close()` run,
+because the manager's final transitions are still being written when it goes idle; only then is
+the read connection closed. `setQuitOnLastWindowClosed(False)` is what makes the order possible —
+Qt's default is to quit the moment the window disappears, which is step zero of the wrong sequence.
+
+**Three seams `T-016`, `T-017` and `T-059` left open are now connected:** `start_rejected` reaches
+the dialog, `retry_requested` reaches a composition-owned re-queue, and the window shows a
+`JobProgressView` for whichever job the manager is working on.
+
+**Two real defects this task found, both invisible to every component test:**
+
+- **A retry raised out of a write callback.** `manager.start()` refuses when the pool of one is
+  busy, and composition called it from the writer's `done` — so the refusal escaped into a Qt slot
+  instead of reaching whoever pressed the button. `FAILED → QUEUED` is what a retry promises; a
+  retry that cannot start now logs it and leaves the job durably queued.
+- **A quit that skipped the lifecycle aborted the process.** Qt terminates with `SIGABRT` when a
+  running `QThread` is destroyed, so `T-007`'s launch test — which quits from a timer, never
+  touching the window — exited **-6** with `QThread: Destroyed while thread 'queue-writer' is
+  still running` on stderr. `aboutToQuit` now runs a bounded last-resort stop. It cannot reap a
+  worker, because that needs timer ticks and the loop is ending; that limitation is recorded at
+  the method rather than left to be discovered.
+
+**Three tests were written against the store and each observed the same gap**, which is worth
+more than the fix: `T-013`'s ordering is *persist, then signal*, and `ARC-005` moved the persisting
+to another thread — so the writer commits a row and **then** posts to the GUI thread, and in
+between `store.get()` answers the new state while every widget still shows the old one. A test of
+the assembled application waits on what the application *shows*. The module docstring says so, and
+notes `is_idle`'s mirror-image trap: it is true before a session starts as well as after one ends,
+so spinning on it returns instantly and proves nothing — which one test did, reporting "nothing
+failed" for a probe that had not yet been asked to run.
+
+**Mutations run, all killed:** the window built without a manager — the `T-036` defect itself ·
+ffmpeg located and never handed to the manager · a replaced view dropped without detaching · the
+database closed before the writer finished · the writer closed on any idle rather than during
+shutdown · closing the window not beginning the lifecycle · Qt quitting with the last window ·
+the environment found and never reported.
+
+**Two of those survived their first run and both produced better tests.** Closing the writer on
+every idle survived a check that sampled `is_running` — `close()` is asynchronous, so the thread
+is briefly alive either way; the test now *writes another job* after an ordinary idle, which is
+the consequence that matters. And removing `setQuitOnLastWindowClosed(False)` has no in-process
+consequence at all — a test cannot observe its own exit — so that one is asserted structurally,
+with the reason recorded.
+
+**Cold start:** measured with the whole graph constructed and recorded as a test property
+(`cold_start_seconds`), against `NFR-002`'s 3 s. `T-007` measured an empty window at 0.178 s; this
+measures the migrated database, the writer thread, the manager and the window together.
+
+**Checks:** `ruff check .`, `ruff format --check .` (88 files), `mypy src` (35), configured `mypy`
+and `mypy --platform win32` (73 each) all pass. Bare `pytest`: **1392 passed, 11 skipped,
+1 deselected**. The wide mypy scope again found errors the `src` scope cannot see, all in the new
+test file.
 
 ---

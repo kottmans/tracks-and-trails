@@ -4977,3 +4977,56 @@ findings is exhausted. Per the maintainer's standing direction, do not start ano
 carry the state-specific focus correction, its Windows mutations, and Low `T040-R2` into the next
 named task. The Windows desktop job remains required after that correction; the current test would
 fail before it could supply the requested evidence.
+
+## 2026-07-28 — T040-R1 carry and coordination verification
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `306840b`  **Head:** `479f859`
+**Scope:** Carry `T040-R1` to a named task; close `T037-R3` and `T040-R2`; synchronize Phase 1
+status
+**Boundary classification:** Documentation/coordination only
+**Verdict:** **Carry accepted with one documentation follow-up**
+
+### Dispositions
+
+| ID | Severity | Blocks approval | Verification | Status |
+|---|---|---:|---|---|
+| `T040-R1` | **Medium** | **Yes** | T-060 owns the two measured state-specific chains, Tab and Backtab observations, undeclared-control failure, both Windows mutation classes, and the rule that T-026/TESTING §12 change only after real Windows execution. T-040 remains Blocked and the current intentionally failing Windows test is disclosed rather than skipped or xfailed. | **Open; carried to T-060** |
+| `T037-R3` | **Low** | **No** | T-012's evidence now calls the fixture CC BY 3.0 rather than public domain and explains why duplicated licence claims require correction. Repository search found no remaining positive public-domain claim for the item; remaining matches describe the correction. | **Resolved** |
+| `T040-R2` | **Low** | **No** | STATUS now says T-040 is Blocked, names T040-R1 and T-060, and no longer presents the Windows evidence as ready. T-054's historical relocation table preserves its original observation and records the later reversal. | **Resolved** |
+
+### New documentation follow-up
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `COORD-R1` | **Low** | **No** | `ai/STATUS.md` correctly says the critical path is approved, but canonical `ai/TASKS.md` still opens with T-016 in review, says T-017 is the only startable task and the critical path is `T-017 → T-036 → T-037`, keeps approved T-036 under `## In Review`, and says in T-037's Complete entry that Phase 1 remains unready while T-036 is blocking. These are pre-existing current-truth statements, but they now directly contradict the coordination state this commit records. | In the next coordination task, replace the stale TASKS preamble, file T-036 under Complete at `306840b`, and remove T-037's obsolete T-036 blocker sentence. **Owner:** Documentation Maintainer. | **Open, follow-up** |
+
+### Review judgments
+
+- T-060 is a complete, bounded owner for the unresolved proof. It starts from observed reachable
+  controls rather than inheriting the impossible structural union.
+- Leaving the Windows test red is explicitly recorded and does not masquerade as evidence. Nothing
+  has been pushed, and T-040 remains Blocked, so the red job cannot be mistaken for a completed
+  gate.
+- T-036's implementation approval at `306840b` stands. COORD-R1 is filing/readiness cleanup, not a
+  reopened source finding.
+- The broad TASKS preamble was already stale at the review base. Under `AGENTS.md` §10 it becomes
+  follow-up work and does not reopen the corrected tasks or require another pass here.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| Changed paths | `ai/REVIEWS.md`, `ai/STATUS.md`, `ai/TASKS.md` only. |
+| `git diff --check 306840b..479f859` | Passed. |
+| T-060 ownership audit | Every open T040-R1 behavior and Windows mutation has an explicit acceptance criterion. |
+| Licence search | No remaining positive public-domain claim for Big Buck Bunny in current project/task/test documentation. |
+| Section placement | T-060 Ready; T-040 and T-056 Blocked; T-037, T-052 and T-059 Complete. T-036's stale placement is COORD-R1. |
+| Runtime/type suites | Not rerun for this documentation-only boundary. Source head `306840b` was independently validated in the preceding re-review. |
+
+### Final disposition
+
+The T040-R1 carry is accepted at `479f859`; it remains open under T-060 and still requires the
+Windows desktop job. `T037-R3` and `T040-R2` are Resolved. COORD-R1 is a non-blocking
+current-truth cleanup for the next coordination task. Do not start another review pass for this
+carry commit.

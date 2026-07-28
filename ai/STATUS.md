@@ -105,8 +105,8 @@ each section is a contiguous range:
 
 **Phase 1's critical path is built and approved.** `T-036` (at `306840b`) and `T-037` (at
 `894d794`) are through, which closes the two exit criteria that had no owner. **Nothing remains on
-the path.** What is left is Windows evidence — `T-040`, `T-056` and now `T-060` — and the exit
-review itself.
+the path**, and `ai/TASKS.md`'s `## In Review` section is empty for the first time. What is left is
+Windows evidence — `T-040`, `T-056` and now `T-060` — and the exit review itself.
 
 **`T-040` is Blocked with `T040-R1` still open, carried to `T-060`.** The correction drove keyboard
 focus as asked and then asserted a state that cannot exist: on a failed job `Cancel` is disabled
