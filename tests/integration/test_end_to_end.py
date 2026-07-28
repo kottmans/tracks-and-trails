@@ -298,6 +298,55 @@ def test_a_url_becomes_a_file_with_the_bytes_it_reported(
         assert spin(lambda: composition.shutdown.finished, timeout=60)
 
 
+def test_a_progressive_download_completes_with_no_ffmpeg_at_all(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    media_url: Callable[..., str],
+) -> None:
+    """`T-061`'s acceptance criterion, driven end to end rather than asserted at the function.
+
+    The same path as the test above, with ffmpeg made unavailable by pointing the override at a
+    file that does not exist. The preset is still `Best video available` — `bestvideo+bestaudio/
+    best` — and the clip is a single progressive format, so the `/best` branch wins and nothing
+    needs merging.
+
+    Before `T-061` this failed `FFMPEG_MISSING` before a byte moved, which is how a user without
+    ffmpeg met four of the five presets. Driven through `compose()` rather than by hiding ffmpeg
+    from `PATH`, so the test does not depend on what the machine running it happens to have.
+    """
+    composition = application.compose(
+        qapp,
+        database=tmp_path / "queue.db",
+        output_directory=tmp_path / "downloads",
+        geometry_file=tmp_path / "window.toml",
+        ffmpeg_override=tmp_path / "no-such-ffmpeg",
+    )
+    try:
+        assert not composition.ffmpeg.available, (
+            "ffmpeg was available, so this proves nothing about doing without it"
+        )
+        job_id = queue_one(composition, media_url(total_bytes=CLIP_BYTES, chunk_delay=0.0))
+        composition.manager.start(job_id)
+
+        assert spin(
+            lambda: (
+                composition.window.progress_view is not None
+                and composition.window.progress_view.status is JobStatus.COMPLETED
+            ),
+            timeout=120,
+        ), "a download needing no merge was refused for want of ffmpeg — " + why(
+            composition, job_id
+        )
+
+        job = composition.store.get(job_id)
+        assert job is not None and job.output_path is not None
+        assert Path(job.output_path).stat().st_size == CLIP_BYTES
+    finally:
+        composition.shutdown.begin()
+        assert spin(lambda: composition.shutdown.finished, timeout=60)
+
+
 # --- 2. surviving a kill (`NFR-003`, `ai/TESTING.md` §7 crash recovery) ------------------------
 
 

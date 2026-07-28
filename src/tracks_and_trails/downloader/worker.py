@@ -46,6 +46,7 @@ import os
 import sys
 import threading
 import traceback
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Protocol
@@ -714,6 +715,35 @@ def _drm_failure(job_id: str, request: DownloadRequest, context: dict[str, str])
     )
 
 
+def _will_merge(info: Mapping[str, Any]) -> bool | None:
+    """Whether yt-dlp resolved this request to more than one format (`T-061`).
+
+    **The question is what was chosen, not what was asked for.** This gate used to read
+    `"+" in request.format_selector`, and `bestvideo+bestaudio/best` against a source offering one
+    progressive format takes the `/best` branch — no merge, no ffmpeg — and was refused anyway.
+    Four of the five built-in presets carry a `+`, so a user without ffmpeg had one usable preset
+    and the first one they would reach for told them a download was impossible when it was not.
+
+    `requested_formats` is yt-dlp's own record of the decision: a list of the formats it will
+    merge, absent when a single format satisfied the selection. It is populated during the same
+    probe this gate already runs, so the fact was in scope all along.
+
+    Returns `None` when nothing was resolved — a playlist, or an extraction that stopped early.
+    The caller falls back to the selector there rather than guessing "no merge", because a wrong
+    *refusal* is recoverable and a wrong *proceed* spends the download first.
+
+    **This is `T-057` again, one module over.** There the adapter matched a truthy string where
+    yt-dlp keeps a three-state field; here the worker matched a `+` where yt-dlp keeps the
+    resolved format list. Both read a rendering of a decision instead of the decision.
+    """
+    requested = info.get("requested_formats")
+    if isinstance(requested, list):
+        return len(requested) > 1
+    if info.get("format_id"):
+        return False
+    return None
+
+
 def _ffmpeg_gap(
     report: FfmpegReport, request: DownloadRequest, info: dict[str, Any], adapter: Any
 ) -> str | None:
@@ -724,7 +754,13 @@ def _ffmpeg_gap(
     """
     if report.available:
         return None
-    needs_merge = "+" in request.format_selector
+    needs_merge = _will_merge(info)
+    if needs_merge is None:
+        # **Nothing was resolved, so fall back to reading the selector** — a playlist, or an
+        # extraction that stopped before format selection. Being wrong in this direction costs a
+        # refusal; being wrong in the other costs the user's bandwidth and then fails at merge
+        # time anyway, which is the thing `REQ-024` exists to prevent.
+        needs_merge = "+" in request.format_selector
     # Every post-processor the request will actually install is consulted, not just the two
     # flags that used to be checked here (`T012-R5`). A request naming `FFmpegMetadata` or
     # `EmbedThumbnail` needs ffmpeg exactly as much as an audio one, and previously sailed

@@ -65,11 +65,11 @@ Phase 0 is formally exited (2026-07-26).
 produced `T-062`. `COORD-R2` caught it: an empty In Review section is a claim about readiness, and
 it outlived being true by one CI run.)*
 
-## Ready
-
 ### T-061 — The ffmpeg gate reads the selector, not the format that was chosen
 
-**Status:** Ready — filed 2026-07-28 from CI run `30380426474`
+**Status:** **In Review — implemented 2026-07-28.** The gate asks yt-dlp what it resolved rather
+than what was asked for, with the conservative reading kept exactly where nothing was resolved.
+Three mutations, three killed. See **Evidence**.
 **Owner:** Implementer
 **Priority:** Medium — a user without ffmpeg is refused downloads that need none, on four of the
 five built-in presets
@@ -124,7 +124,42 @@ format list. Both read a *rendering* of a decision instead of the decision.
 - Installing ffmpeg, prompting for it, or bundling it — `OPS-001` settles that
 - The `FFMPEG_MISSING` taxonomy entry and its retry policy
 
+#### Evidence, 2026-07-28
+
+**The fact was already in scope.** `requested_formats` is yt-dlp's own record of the decision — a
+list of the formats it will merge, absent when one format satisfied the selection — and it is
+populated by the same probe this gate already runs. Verified against a local `video/mp4`:
+`bestvideo+bestaudio/best` resolves with `requested_formats=None, format_id='mp4'`, while
+`bestvideo+bestaudio` with no fallback makes yt-dlp itself refuse.
+
+**`_will_merge` returns three answers, not two.** `True` and `False` when yt-dlp resolved the
+selection, and **`None` when it did not** — a playlist, or an extraction that stopped early.
+The caller falls back to the selector there. That asymmetry is deliberate and is the whole safety
+argument: a wrong *refusal* costs a message, a wrong *proceed* spends the download and then fails
+at merge time, which is what `REQ-024` exists to prevent.
+
+**One existing test was passing for the wrong reason.**
+`test_a_merge_without_ffmpeg_fails_before_downloading` returned `{"formats": []}`, which resolves
+to nothing — so it exercised the *fallback* rather than the merge path and would have passed with
+the merge detection removed entirely. It now returns `requested_formats` with two entries, which
+is the fact it always meant to state.
+
+**Three tests, one per branch of the answer:** a merging selector that resolved to one format is
+not blocked (the defect); a real merge still fails before downloading, same kind and message; an
+unresolved extraction still falls back to the selector. Plus the end-to-end criterion — a
+progressive download completing with ffmpeg made unavailable through `compose()`, so the test does
+not depend on what the machine running it happens to have installed.
+
+**Mutations run, all killed:** the gate reading the selector string again — the defect itself · a
+real merge no longer detected · the blind case guessing "no merge".
+
+**Checks:** `ruff check .`, `ruff format --check .`, `mypy src`, configured `mypy` and
+`mypy --platform win32` all pass. `tests/integration/test_worker.py`: **54 passed**;
+`test_end_to_end.py`: **4 passed**.
+
 ---
+
+## Ready
 
 ### T-063 — The virtualenv cannot run the application it installed
 

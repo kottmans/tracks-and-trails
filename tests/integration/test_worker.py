@@ -401,7 +401,16 @@ def test_a_merge_without_ffmpeg_fails_before_downloading(
         **_extra: Any,
     ) -> dict[str, Any]:
         calls.append(probe_only)
-        return {"title": "Clip", "webpage_url": "https://e.com/x", "formats": []}
+        # **States the fact, not the selector** (`T-061`). This returned `{"formats": []}`, which
+        # resolves to nothing, so the gate fell back to reading `+` out of the selector and this
+        # test passed without exercising the merge path at all. `requested_formats` with two
+        # entries is yt-dlp's own record that it will merge.
+        return {
+            "title": "Clip",
+            "webpage_url": "https://e.com/x",
+            "formats": [],
+            "requested_formats": [{"format_id": "v"}, {"format_id": "a"}],
+        }
 
     monkeypatch.setattr(worker_module, "_extract", counting_extract)
     monkeypatch.setattr(
@@ -437,7 +446,15 @@ def test_a_plain_download_without_ffmpeg_is_not_blocked(
     monkeypatch.setattr(
         worker_module,
         "_extract",
-        fake_extract({"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4"}),
+        # `format_id` is what says a single format satisfied the selection (`T-061`).
+        fake_extract(
+            {
+                "title": "Clip",
+                "webpage_url": "https://e.com/x",
+                "ext": "mp4",
+                "format_id": "mp4",
+            }
+        ),
     )
     monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: tmp_path / "Clip.mp4")
     queue: Queue[Any] = Queue()
@@ -1000,3 +1017,88 @@ def test_the_worker_runs_in_a_real_spawned_process_with_no_display(tmp_path: Pat
     validate_sequence(SessionKind.PROBE, messages)
     probed = next(m for m in messages if isinstance(m, Probed))
     assert probed.media.title == "Spawned"
+
+
+# --- the gate reads what was chosen, not what was asked for (`T-061`) --------------------------
+
+
+def test_a_merging_selector_that_resolved_to_one_format_is_not_blocked(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T-061`, the defect itself: `bestvideo+bestaudio/best` over a progressive file.
+
+    The `/best` branch wins, yt-dlp merges nothing, and ffmpeg is not needed — but the gate read
+    the selector and saw a `+`. Four of the five built-in presets carry one, so a user without
+    ffmpeg had a single usable preset and the first one they would reach for told them the
+    download was impossible.
+
+    `requested_formats` is absent and `format_id` is set, which is yt-dlp saying *one format
+    satisfied this*. That fact was produced by the same probe the gate already runs.
+    """
+    monkeypatch.setattr(
+        worker_module,
+        "find_ffmpeg",
+        lambda **_: FfmpegReport(path=None, source="not found on PATH"),
+    )
+    monkeypatch.setattr(
+        worker_module,
+        "_extract",
+        fake_extract(
+            {
+                "title": "Clip",
+                "webpage_url": "https://e.com/x",
+                "ext": "mp4",
+                "format_id": "mp4",
+            }
+        ),
+    )
+    monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: tmp_path / "Clip.mp4")
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(
+        SessionKind.DOWNLOAD,
+        "job-1",
+        request_for(tmp_path, format_selector="bestvideo+bestaudio/best"),
+        queue,
+    )
+
+    failures = [message for message in drain(queue) if isinstance(message, Failed)]
+    assert not failures, (
+        f"a download needing no merge was refused for want of ffmpeg: "
+        f"{[(f.kind.value, f.message) for f in failures]}"
+    )
+
+
+def test_an_unresolved_extraction_still_falls_back_to_the_selector(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The blind case keeps the conservative answer (`T-061`).
+
+    A playlist, or an extraction that stopped before format selection, leaves neither
+    `requested_formats` nor `format_id`. Guessing "no merge" there would spend the user's
+    bandwidth and fail at merge time, which is exactly what `REQ-024` exists to prevent — so the
+    selector still decides where nothing else can.
+    """
+    monkeypatch.setattr(
+        worker_module,
+        "find_ffmpeg",
+        lambda **_: FfmpegReport(
+            path=None, source="not found on PATH", unavailable_features=("merging",)
+        ),
+    )
+    monkeypatch.setattr(
+        worker_module,
+        "_extract",
+        fake_extract({"title": "Playlist", "webpage_url": "https://e.com/p"}),
+    )
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(
+        SessionKind.DOWNLOAD,
+        "job-1",
+        request_for(tmp_path, format_selector="bestvideo+bestaudio"),
+        queue,
+    )
+
+    failed = next(m for m in drain(queue) if isinstance(m, Failed))
+    assert failed.kind is ErrorKind.FFMPEG_MISSING
