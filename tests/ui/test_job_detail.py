@@ -92,7 +92,12 @@ def make_job(job_id: str, directory: Path, **overrides: Any) -> Job:
 def child_walking_every_stage(
     _kind: SessionKind, job_id: str, _request: DownloadRequest, queue: Any, **_: Any
 ) -> None:
-    """Every stage `REQ-014` names, then a success. The criterion is that all five are shown."""
+    """Every stage `REQ-014` names, then a success. The criterion is that all five are shown.
+
+    Paced deliberately: see the sleep below. A widget that coalesces cannot promise to render a
+    stage that was already stale when its turn came, so a test asserting every stage must give
+    each one long enough to have a turn.
+    """
     for index, stage in enumerate(
         (
             Stage.PROBING,
@@ -112,7 +117,17 @@ def child_walking_every_stage(
                 eta_seconds=5 - index,
             )
         )
-        time.sleep(0.02)
+        # **Each stage has to outlive a repaint interval to be seen at all** (`T-062`). This slept
+        # 0.02 s, and the test failed on `windows-latest` with "these stages were never displayed:
+        # ['Downloading video']" while passing everywhere else. That is not a Windows defect — it
+        # is coalescing working: the widget draws the *newest* message, so a stage superseded
+        # before the timer fires is never rendered, and Qt's default timer granularity there is
+        # ~15 ms against the 1 ms this test asks for.
+        #
+        # A stage held for a tenth of a second is still a hundred times faster than a human reads,
+        # and it makes the assertion about the *rendering path* rather than about winning a race
+        # with the repaint timer.
+        time.sleep(0.15)
     # Post-processing takes a moment in reality, and it has to here too: without it the success
     # arrives in the same instant as the last stage, and "the user never saw post-processing"
     # would be a fact about this child rather than about the widget.

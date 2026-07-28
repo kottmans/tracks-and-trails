@@ -142,8 +142,24 @@ the uploaded artifact and had to be inferred from a failure three files away.
 (76 files each) pass. The composition and end-to-end suites pass with ffmpeg present, and fail
 with the new diagnostic when it is removed.
 
-**Known-unverified, and it is the point of the task:** none of this is proven on CI until a run is
-green. `T-037` was approved on local evidence and had never passed on a runner — recording that
+**A fourth problem, found by the run that fixed the first three.** With ffmpeg installed,
+`ubuntu-latest` went green and `windows-latest` failed on
+`test_every_stage_req_014_names_is_shown_from_real_messages`: *"these stages were never displayed:
+['Downloading video']"*.
+
+**That is not a Windows defect — it is `T-017`'s coalescing working, against a test that asserted
+more than the design promises.** The widget renders the *newest* message, so a stage superseded
+before the repaint timer fires is legitimately never drawn. The child held each stage for 0.02 s
+and asked for a 1 ms repaint; Qt's default timer granularity on Windows is ~15 ms. Each stage now
+lasts 0.15 s — still a hundred times faster than anyone reads — which makes the assertion about
+the *rendering path* rather than about winning a race with the timer.
+
+**Run `30382752254` is the evidence for the first three fixes**: `ubuntu-latest`, both frozen
+jobs green; `windows-latest` red only on the timing test above; `windows desktop` red on `T-060`'s
+four known failures.
+
+**Known-unverified, and it is the point of the task:** the Windows half is not proven until a run
+is green. `T-037` was approved on local evidence and had never passed on a runner — recording that
 here rather than repeating it.
 
 ---
