@@ -1028,6 +1028,7 @@ def test_a_markup_shaped_title_is_displayed_and_not_interpreted(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
     spin: Callable[..., bool],
+    qapp: QApplication,
 ) -> None:
     """Asserted on what is **rendered**, not on `QLabel.text()`.
 
@@ -1051,11 +1052,23 @@ def test_a_markup_shaped_title_is_displayed_and_not_interpreted(
     title = label(dialog, "titleValue")
     assert title.text() == "<b>VISIBLE</b>"
 
+    # Room to draw the difference. On the Windows runner the laid-out label came out 84 px wide,
+    # narrow enough that both renderings clipped to the same pixels and the comparison below
+    # could not fail — the second way this assertion found to be vacuous. The width is set here
+    # rather than assumed, so the observation does not depend on how a platform lays the dialog
+    # out.
+    title.setWordWrap(False)
+    title.resize(600, 40)
+    qapp.processEvents()
+
     as_shipped = title.grab().toImage()
     title.setTextFormat(Qt.TextFormat.RichText)
     as_markup = title.grab().toImage()
     title.setTextFormat(Qt.TextFormat.PlainText)
 
+    assert as_shipped.size() == as_markup.size(), (
+        "the two renderings were not compared like for like"
+    )
     assert as_shipped != as_markup, (
         "the title renders identically whether or not Qt is told to interpret markup, so the "
         "tags are being consumed rather than displayed"
