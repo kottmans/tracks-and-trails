@@ -29,6 +29,11 @@ if ".venv" not in str(PYTHON):
 
 CASES = [
     ("baseline, unmutated", None, "pass"),
+    # The positive control runs first for a reason: if it does not fail, the plugin mechanism is
+    # broken and no verdict below means anything. This driver documented that principle and did
+    # not apply it, which is how its first table reported three clean kills from runs that had
+    # executed no tests at all.
+    ("CONTROL: focus_chain returns nothing", "mut_control_chain", "fail"),
     ("dialog: two declared widgets reordered", "mut_dialog_swap", "fail"),
     ("dialog: undeclared focusable control", "mut_dialog_stray", "fail"),
     ("progress view: undeclared focusable control", "mut_view_stray", "fail"),

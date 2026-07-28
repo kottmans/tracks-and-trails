@@ -63,8 +63,9 @@ a gate actually fails on.
 Still *known-unverified* on Windows, and to be reported as such: whether rendering **looks**
 right, whether Narrator **sounds** coherent, whether the installer **feels** normal, shell
 foreground and file-association behavior, and long-running stability. Not yet covered by
-automation: widget tab order (`T-040`, blocked until focusable controls exist) and installer
-placement and removal (`T-039`). A single real Windows session discharges the subjective
+automation: installer placement and removal (`T-039`). **Widget tab order is covered** as of
+2026-07-28 (`T-040`), on Windows as well as Linux; this said it was "blocked until focusable
+controls exist", which stopped being true when `T-016` supplied them (`COORD-R5`). A single real Windows session discharges the subjective
 residue and blocks the first public release.
 
 ## 4. Functional requirements

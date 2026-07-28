@@ -210,11 +210,13 @@ release** (§8, item 15).
 
 Two gaps in the automation are worth naming rather than discovering later:
 
-- **Widget tab order is gated on Linux but not yet on Windows.** The reason it was ungated has
-  gone: `T-016`'s add-URL dialog supplies six focusable controls, and
-  `tests/ui/test_add_dialog.py` walks Qt's own focus chain against a hand-transcribed order, so a
-  reordering fails. That runs offscreen. Asserting it under the **real** Windows platform plugin
-  is `T-040`, which this unblocks; until it lands, Windows keyboard use beyond the menu bar stays
+- **Widget tab order is gated on both platforms as of 2026-07-28** (`T-040`, `COORD-R5`).
+  Offscreen, `tests/ui/test_add_dialog.py` walks Qt's own focus chain against a hand-transcribed
+  order. Under the **real** Windows platform plugin, `tests/ui/test_windows_desktop.py` walks Tab
+  and Backtab per widget state, and both `T-026` mutation classes were executed on a real desktop
+  and killed. §12 records what that gating does *not* cover. This entry read "not yet on Windows"
+  after it had been done, which is the drift `COORD-R5` reported; until it landed, Windows
+  keyboard use beyond the menu bar stayed
   unverified.
 - **Installer behavior is not gated.** `T-039`, once Phase 5 produces an installer.
 

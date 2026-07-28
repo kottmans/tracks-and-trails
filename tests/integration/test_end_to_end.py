@@ -24,6 +24,7 @@ teardown works, which `T-036` already covers; `NFR-003` is about the other case,
 that has only ever been driven by a graceful exit is recovery nobody has tested.
 """
 
+import contextlib
 import os
 import signal
 import subprocess
@@ -36,6 +37,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
+import psutil
 import pytest
 from PySide6.QtWidgets import QApplication
 
@@ -68,16 +70,42 @@ if sys.platform == "win32":
         return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
 
     def kill_the_application(process: subprocess.Popen[str]) -> None:
-        """Kill the application without letting it unwind.
+        """Kill the application **and everything it spawned**, without letting any of it unwind.
 
-        There is no `killpg` here and there does not need to be: `ARC-002`'s worker runs a parent
-        watchdog for exactly this case, and `T-019`'s Job object kills the worker's own
-        descendants when its last handle closes.
+        `T066-R1`. This was `process.kill()` alone, on the reasoning that `ARC-002`'s worker runs
+        a parent watchdog and `T-019`'s Job object reaps the worker's descendants. Measured on
+        Windows 10, the reasoning does not survive contact:
 
-        **This branch has never been executed.** The machine that wrote it has no Windows, so it
-        is written from the design and verified by the `windows-latest` job or not at all.
+        | Process | After `process.kill()` |
+        |---|---|
+        | the pid `Popen` returned | dead |
+        | its child | dead |
+        | **its grandchild** | **alive** |
+
+        The kill reaches exactly one level. Under a virtualenv that is worse than it sounds,
+        because the venv's `python.exe` is a launcher: the pid `Popen` returns is the launcher, its
+        child is the application, and **the worker is the grandchild that survives**. So a test
+        whose whole subject is an application dying mid-download was leaving the download running
+        — the orphan `T-019` exists to prevent, created by the test that asserts recovery from it.
+
+        The POSIX branch has always killed the whole process group. This is that, for a platform
+        with no process groups: enumerate the tree **before** killing anything, because once the
+        parent is gone its children are reparented and the walk finds nothing.
+
+        Still a crash, not a shutdown — `Process.kill` is `TerminateProcess`, so nothing unwinds
+        and no handler runs, which is what the test needs.
         """
-        process.kill()
+        try:
+            parent = psutil.Process(process.pid)
+            doomed = [*parent.children(recursive=True), parent]
+        except psutil.NoSuchProcess:  # pragma: no cover - it died on its own
+            process.kill()
+            return
+
+        for victim in doomed:
+            with contextlib.suppress(psutil.Error):
+                victim.kill()
+        psutil.wait_procs(doomed, timeout=30)
 
 else:
 

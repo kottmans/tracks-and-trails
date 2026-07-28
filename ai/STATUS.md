@@ -24,10 +24,11 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 - The **subjective** half of Windows verification (`OPS-004`) — whether rendering *looks* right,
   whether Narrator *sounds* coherent, whether the installer *feels* normal. Unverified, needs a
   person, and blocks **first release**, not this phase. `T-039` (installer) has no automated gate
-  yet either. `T-040` (tab order) is **Blocked** again as of 2026-07-28 — its tests are written and
-  have never run, because the module skips off Windows, and `T040-R1` found one of them asserting
-  a state that cannot exist. *(This said "now **Ready** rather than blocked" from 2026-07-27,
-  which was true for a day.)*
+  yet either. **`T-040` is no longer among them**: its tests ran on a real Windows desktop on
+  2026-07-28 and both `T-026` mutation classes were killed there, so tab order is gated on
+  Windows. *(This entry said "Ready" on 2026-07-27, "Blocked ... never run" on 2026-07-28, and
+  was still saying the latter after the run happened — `COORD-R5`. Four documents disagreed about
+  this one fact at once; they are reconciled as of `T066-R1`'s correction batch.)*
 - **`T011-R8` is closed.** `T-041` was approved at `0268e13` and the finding is functionally
   resolved. The audit behind it found the hole was not one field but every field of every model
   in `core/models.py`.

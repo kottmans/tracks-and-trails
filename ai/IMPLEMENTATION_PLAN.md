@@ -67,7 +67,10 @@ Everything after Phase 1 is breadth on a proven spine.
 **What the phase exits with, named rather than hidden:** the subjective half of Windows
 verification (`OPS-004`) — whether rendering *looks* right, whether Narrator *sounds* coherent,
 whether the installer *feels* normal — is unverified and blocks first release, not this phase.
-Widget tab order (`T-040`) and installer behavior (`T-039`) have no automated gate yet.
+Installer behavior (`T-039`) has no automated gate yet. **Widget tab order does**, as of
+2026-07-28: `T-040` asserts it under the real Windows platform plugin, per widget state, and both
+`T-026` mutation classes were run on a real Windows desktop and killed (`COORD-R5` — this
+sentence outlived being true).
 
 **Risk retired:** PySide6 wheel availability on Python 3.14 was the phase's headline risk.
 `T-002` closed it — PySide6 ships stable-ABI (`abi3`) wheels covering every Python ≥3.10, so

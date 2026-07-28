@@ -155,10 +155,12 @@ which one.
 
 ### T-066 — CI installs the project differently from how the documentation says to
 
-**Status:** **In Review — resolved 2026-07-28.** CI now creates and uses a virtualenv in every
-job, per maintainer decision, so the gate measures the environment `docs/DEVELOPMENT.md`
-documents. The grandchild test no longer assumes the shallower tree. **The workflow change itself
-is unverified** — GitHub Actions is out of quota, so no run has executed it. See **Evidence**.
+**Status:** **In Review — resolved, and `T066-R1` corrected 2026-07-28.** CI creates and uses a
+virtualenv in every job, so the gate measures the environment `docs/DEVELOPMENT.md` documents,
+and the grandchild test no longer assumes the shallower tree. `T066-R1` then found the venv's
+extra process level reaching further than the tests did: **the Windows crash test killed one
+level and orphaned the worker**, which turned out to be the whole of `T-069`. See **Evidence**
+and **`T066-R1`**.
 **Owner:** Implementer
 **Priority:** **High** — it decides whether `T-019`'s process-tree evidence describes the
 environment a developer or a user actually has
@@ -240,6 +242,37 @@ assumption rather than a result.
 **What is not verified:** the workflow change has never run. GitHub Actions is out of quota, so
 the first execution of these five jobs is whoever runs CI next. `ai/TESTING.md` §11's "local green
 is not evidence" applies to this task exactly.
+
+#### `T066-R1` — the crash tests killed one level, 2026-07-28
+
+The finding: *Windows crash tests kill the venv launcher PID, without proving the application
+interpreter was killed.* Measured, with the crash test's own `CREATE_NEW_PROCESS_GROUP` flags:
+
+| Process | After `process.kill()` |
+|---|---|
+| the pid `Popen` returned (the venv launcher) | dead |
+| its child (the application) | dead — the launcher's Job object propagates |
+| **its grandchild (the worker)** | **alive** |
+
+So the literal mechanism in the finding is not what happens — the interpreter *is* killed, by the
+Job object the venv launcher creates. **The consequence the finding points at is real and worse**:
+the kill reaches exactly one level, and under a virtualenv the worker is two levels down. A test
+whose entire subject is an application dying mid-download was leaving the download running.
+
+`kill_the_application` now enumerates the tree **before** killing anything — once the parent is
+gone its children are reparented and the walk finds nothing — and kills all of it, which is what
+the POSIX branch has always done via `killpg`. Still `TerminateProcess`, so nothing unwinds.
+
+| Evidence | Result |
+|---|---|
+| three-level probe, before | grandchild and one sibling **survive** |
+| three-level probe, after, through the real `kill_the_application` | **tree reaped**, no survivors |
+| `test_end_to_end.py` ×5, before | **4 failed** |
+| `test_end_to_end.py` ×5, after | **5 passed** |
+
+**This is why `T-019`'s sibling tests deserve the same look.** They were written on a machine with
+no Windows, from a design argument about Job objects and parent watchdogs that is half right: the
+Job object exists and does propagate — one level.
 
 #### Out of scope
 
@@ -395,7 +428,12 @@ ignored, which is the expected case — expected, not verified.
 
 ### T-069 — An end-to-end recovery test is intermittent on Windows
 
-**Status:** **In Review — reproduced with a rate and narrowed to one interaction; not fixed.**
+**Status:** **In Review — cause found and fixed 2026-07-28.** It was `T066-R1`: the Windows crash
+test killed one process level, orphaning the worker, and the orphan is what broke the restart.
+Fixed by reaping the tree; the failure rate went from **4 of 5 to 0 of 5**. The reviewer's
+hypothesis that `T066-R1` "may explain T-069" was correct.
+
+*(Previously: reproduced with a rate and narrowed to one interaction; not fixed.)*
 Not intermittent at all once the trigger is known: **4 of 5** at file level, 0 in isolation, and
 it fails only when one specific test runs first. The failing statement and error are exact. The
 remaining work is a fix, and it is not obviously the test's rather than the product's. See
@@ -453,12 +491,23 @@ survives an application restart mid-download* criterion, and the two tests use d
 does shut its composition down through `OrderlyShutdown`. Whatever is left behind crosses between
 two tests that should not be able to affect each other.
 
-**Not fixed, and deliberately not guessed at.** Whether this is the test's fault (an in-process
-restart that does not release what a real restart would) or the product's (a `compose()` that
-cannot open a database another handle has touched) is exactly the question, and answering it with
-a plausible story is how the last two defects in this project survived a round of review. The rate
-and the trigger are recorded so the next attempt starts from a reproduction rather than from a
-hypothesis.
+#### Resolved, 2026-07-28 — it was the orphaned worker
+
+**Neither of the two candidates I named.** `T066-R1` supplied the answer: `kill_the_application`
+killed a single process, so the worker survived the crash the test was simulating, and the
+surviving worker is what made the next `compose()` fail.
+
+| | Failure rate over 5 runs of the file |
+|---|---|
+| before, one-level kill | **4 of 5** |
+| after, whole-tree kill | **0 of 5** |
+
+At the prior rate, five clean passes by chance is about 0.03%.
+
+**Recorded rather than smoothed over:** I wrote that whether this was the test's fault or the
+product's "is exactly the question", and resolved to measure instead of guess. That was right, and
+the answer still came from a reviewer noticing something in a *different* task. A reproduction is
+what makes a hypothesis cheap to test; it is not what generates the hypothesis.
 
 #### Out of scope
 

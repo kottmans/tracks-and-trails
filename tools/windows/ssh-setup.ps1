@@ -40,8 +40,20 @@ if (Test-Path $source) {
     if (-not (Test-Path $sshDir)) {
         New-Item -ItemType Directory -Path $sshDir -Force | Out-Null
     }
-    $key = Get-Content $source
-    Set-Content -Path $target -Value $key -Encoding ascii
+    $key = (Get-Content $source -Raw).Trim()
+    # **Append, never replace** (`WIN-R1`). This wrote the file outright, so running it a second
+    # time - or on a machine an administrator already had a key on - silently revoked every other
+    # key. Losing your own access to a machine you are configuring remotely is a bad way to find
+    # that out.
+    $existing = @()
+    if (Test-Path $target) {
+        $existing = @(Get-Content $target | Where-Object { $_.Trim() -ne "" })
+    }
+    if ($existing -contains $key) {
+        Write-Host "key already authorised"
+    } else {
+        Set-Content -Path $target -Value (@($existing) + $key) -Encoding ascii
+    }
     # sshd REFUSES this file if any account outside Administrators/SYSTEM can write it, and the
     # refusal is silent - it falls back to password auth. These ACLs are load-bearing.
     icacls $target /inheritance:r /grant "Administrators:F" /grant "SYSTEM:F" | Out-Null
@@ -54,7 +66,12 @@ if (Test-Path $source) {
 Write-Host "== 4. firewall =="
 $rule = Get-NetFirewallRule -Name sshd-tt -ErrorAction SilentlyContinue
 if ($rule -eq $null) {
-    New-NetFirewallRule -Name sshd-tt -DisplayName "OpenSSH Server (Tracks and Trails)" -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 | Out-Null
+    # **Scoped to the local network** (`WIN-R1`). `-Profile` defaults to Any, so the first
+    # version opened port 22 on public networks too - on a laptop, that is every coffee shop.
+    # Private plus LocalSubnet matches what this is for: reaching the machine from the same LAN.
+    New-NetFirewallRule -Name sshd-tt -DisplayName "OpenSSH Server (Tracks and Trails)" `
+        -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 `
+        -Profile Private -RemoteAddress LocalSubnet | Out-Null
 }
 Write-Host "rule present"
 
