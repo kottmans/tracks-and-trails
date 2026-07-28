@@ -49,6 +49,7 @@ Three things drive the test strategy, and they come straight from the architectu
 |---|---|
 | Documentation only — `ai/`, `docs/`, `README.md`, comments | **None.** No behavior changed. |
 | Source change | `ruff check`, `ruff format --check`, `mypy src`, plus the tests relevant to the change |
+| Change that adds or edits a **test** file | The above, plus **bare** `mypy` and `mypy --platform win32`. `mypy src` does not read `tests/`, so a test file's type errors reach no gate before the `windows desktop` CI job — see §12 |
 | Change in `core/`, `downloader/`, or `persistence/` | The above, plus the **full** `tests/unit` and `tests/integration` suites — these layers have cross-cutting effects |
 | Dependency add/remove/major bump | Full default suite on **both** platforms, plus a recorded `DECISIONS.md` entry (`AGENTS.md` §7) |
 | Anything toward a tagged release or distributed build | The full suite **and** §8's release gate, regardless of how small the change looks |
@@ -64,7 +65,9 @@ Established by `T-001`; kept in sync here as the authoritative list.
 ```bash
 ruff check .                 # lint
 ruff format --check .        # formatting
-mypy src                     # static types
+mypy src                     # static types, what the `check` CI job runs
+mypy                         # src *and* tests — the only gate that reads tests/ (§12)
+mypy --platform win32        # the same scope, with Windows-guarded bodies analysed
 pytest                       # default suite (excludes network)
 pytest tests/unit            # fast headless loop
 pytest -m network            # opt-in, real network
@@ -261,6 +264,20 @@ type gate anywhere: a deliberate `int = "not an int"` passed every check.
 `mypy --platform win32` makes the guard true and analyses them. Run it whenever those files
 change; the `windows desktop` job runs it on every push. It caught seven real errors the first
 time it was used, including `QAction.menu()` being typed as `QObject` rather than `QMenu`.
+
+**Run it bare — `mypy --platform win32`, not `mypy --platform win32 src`.** The two commands
+differ in *scope*, not just in platform, and the difference is the whole point: the `check` job
+runs `mypy src` (33 files) while the `windows desktop` job runs the unscoped command (**69
+files**, `src` **and** `tests`). So a type error in a test file is invisible to every gate except
+this one.
+
+`T-016` proved that the expensive way. Its handoff recorded `mypy src` and
+`mypy --platform win32 src` as passing, both true, and CI failed on two real errors in
+`tests/ui/test_add_dialog.py` — neither of them Windows-specific. One was `nextInFocusChain()`
+returning `QWidget | None`; the other was mypy narrowing a property to `str` at an earlier
+`assert ... is not None`, which made the later `assert ... is None` statically impossible and
+**silently stopped type-checking the rest of that test**. Adding `src` to this command narrows it
+back to the scope that cannot see any of that.
 
 ### What the environment ownership gate actually promises (`T044-R1`)
 

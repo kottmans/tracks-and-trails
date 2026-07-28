@@ -802,7 +802,12 @@ def test_editing_the_url_after_a_probe_discards_the_stale_result(
     wrong thing; a `READY` job held against a URL box that has since changed is that shape.
     """
     dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
-    assert dialog.probed_job_id is not None
+    # Read into a local before asserting. Asserting on `dialog.probed_job_id` directly narrows
+    # that member expression to `str` for the rest of the function, so the `is None` check after
+    # the edit becomes statically impossible and mypy calls everything below it unreachable —
+    # which would silently stop type-checking the real assertions.
+    probed_before = dialog.probed_job_id
+    assert probed_before is not None
 
     type_urls(dialog, "https://somewhere.else.invalid/x")
 
@@ -936,12 +941,16 @@ def test_the_tab_order_is_the_declared_one(
         "the dialog's focus chain and this test's transcription name different controls"
     )
 
-    start = dialog.findChild(QWidget, EXPECTED_TAB_ORDER[0])
-    assert start is not None
-    node: QWidget = start
+    node: QWidget | None = dialog.findChild(QWidget, EXPECTED_TAB_ORDER[0])
+    assert node is not None
     walked = [node.objectName()]
     for _ in range(500):
+        # Qt documents the chain as circular, so this should never run out. It is typed as
+        # optional and is treated as optional: a chain that ended would otherwise raise here
+        # rather than failing the comparison below with something a reader can act on.
         node = node.nextInFocusChain()
+        if node is None:
+            break
         name = node.objectName()
         if name not in declared:
             continue
