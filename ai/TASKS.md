@@ -50,10 +50,1323 @@ Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; 
 
 ## In Review
 
-*(`T-013`, `T-015` and `T-018` were all approved on 2026-07-27 and belong under `## Complete`.
-Their **Status** lines — the authoritative field — say so. Relocating three long entries is
-mechanical Planner cleanup and was deliberately not folded into `T-016`'s diff, where it would
-have buried a widget behind a thousand moved lines; `T-054` owns it.)*
+### T-016 — Add-URL dialog with probe results
+
+**Status:** **In Review — fourth correction batch returned 2026-07-28, awaiting verification.**
+Critical `T016-R1` and High `T016-R3` are corrected against the lifecycle the third re-review
+asked for rather than at the three places it caught them. `T016-R2` and `T016-R4`…`R8` remain
+verified resolved and were not reopened. No finding is marked Resolved here — that is the
+Reviewer's to do.
+`T016-R2` is verified resolved. Critical `T016-R1` and High `T016-R3` continue, both narrowed to
+what asynchronous persistence stopped guaranteeing rather than to a repeat of the original
+defect.
+`T016-R4`…`R8` are verified resolved. The three that continue — Critical `T016-R1` and High
+`T016-R2`/`R3` — are corrected again, each for a reason the first pass did not reach rather than
+a repeat of it.
+The initial review returned **Changes requested** with one Critical, two High and three blocking
+Medium findings. All six are corrected in one batch, together with both non-blocking Lows.
+`T016-R3` needed an architecture decision first: `ARC-005` is accepted, and `T-055` records it.
+No finding is marked Resolved here — that is the Reviewer's to do.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 1
+**Depends on:** `T-013`, `T-015`, `T-018` (the playlist/single-item projection this task
+displays does not exist until `T-018` adds it — `T012-R6`). **`T-051` is resolved**: `ARC-004`
+decides that a probed job downloads from `READY`, and this task implements it
+**Relevant context:** `REQ-001`, `REQ-002`, `REQ-005`, `NFR-001`, `NFR-005`, `NFR-006`
+**Affected surfaces:** `ui/add_dialog.py`, `ui/main_window.py`, `tests/ui/`, and — for
+`ARC-004` — `downloader/manager.py` with `tests/integration/test_manager.py`
+**Risk:** Medium — the first widget that talks to the manager, and the first place a blocking
+call would freeze the application
+**Review base:** `098ba3f` · **head:** `33ebd11`. Five commits span that range and **two are not
+this task**: `0b914a5` preserves the Reviewer's own records, and `3b9d937` reflects `T-038`'s
+approval into the tracking files. `T-016` is `d9936f4`, `57c7e5c` and `33ebd11`.
+**Branch:** none now. `phase1-add-url-dialog` was cut at maintainer instruction because Codex was
+reviewing `T-019`/`T-038` on `main` at the time (`AGENTS.md` §7 — isolated concurrent work), then
+rebased onto `main`, merged fast-forward and deleted once that review closed.
+
+#### Fourth correction batch — the lifecycle asynchrony needed, 2026-07-28
+
+**Base:** `6ad20f6`. Nine mutations, nine killed, and the full suite re-run.
+
+The third re-review reported both findings in three places each, and the six had one cause:
+**a synchronous write sequenced every following effect for free, and an asynchronous one
+sequences nothing.** `ARC-005` landed on the claim that a write-through view made the change
+invisible to its callers — *"only the announcement moved"*, *"callers unchanged"* — and each
+open defect is that equivalence failing somewhere different. So this batch corrects the model
+rather than the three sites, and `ARC-005` is amended to say so (`ai/DECISIONS.md`, 2026-07-28).
+
+- **`T016-R1` (Critical), first part — the close that *creates* a withdrawal is refused.**
+  `done()` tested `_withdrawing` on the way in and then, four lines later, retired a started
+  probe — which populates it — and carried on to `super().done()`. The check now happens after
+  the retirement as well, and the dialog **finishes that same close by itself** once the
+  cancellation is durable, so the user asks once rather than three times.
+- **`T016-R1`, second part — a reserved start is cancellable.** `_reserved` was a set of ids
+  held only to keep the pool at one, so `cancel()` wrote `CANCELLED` while the pending `PROBING`
+  write's success callback still spawned unconditionally: a durable cancellation and a running
+  worker for the URL the user had just taken away. It is now a `_PendingStart` that can be
+  withdrawn, `_spawn` re-reads it and re-checks shutdown, and the caller learns through a new
+  `start_rejected` signal.
+- **`T016-R1`, third part — the store no longer guesses a rollback target.** Keeping the newest
+  value and restoring the one it displaced is right for one failed revision and wrong for two:
+  the second failure restored the first, which had also failed. `PersistentJobStore` now holds
+  the revisions **in flight** and forgets each as it settles, so once nothing is queued the
+  database is the only answer. A smaller claim, and one the disk can keep.
+- **`T016-R3` (High), first part — a reservation is part of the lifecycle.** `is_idle`,
+  `active_job_ids()`, `shutdown()` and the tick's idle gate all account for it now. `idle` is
+  composition's permission to quit (`T-036`), so announcing it with a start on the writer thread
+  was a promise this manager could not keep.
+- **`T016-R3`, second part — per-job ordering of writes and effects.** `_Chain` runs one step at
+  a time per job, and a transition is **computed when its turn comes** rather than when it was
+  asked for. That closes the measured progress defect — the second message read back the
+  `RUNNING` its predecessor had only queued and announced while the row said `PROBING` — and the
+  class it belongs to: a step that no longer applies is skipped rather than walking the pipeline
+  backwards out of a Qt slot.
+- **`T016-R3`, third part — mandatory cleanup is not an announcement.** `_abort_start` passed one
+  function as both `then` and `otherwise`, so a failed `FAILED` write still emitted `job_failed`
+  and `protocol_violation` to observers that then read `PROBING`. The unwind now runs either way;
+  the signals wait for durability, and the failure path logs the violation and emits
+  `persistence_failed`.
+- **`T016-R3`, fourth part — the dialog hears about a rejected start.** It treated a returning
+  `start()` as a running probe and sat at "Probing …" forever when the write failed, offering to
+  cancel a worker that did not exist.
+
+**Two committed assertions were changed, and both encoded the defect.**
+`test_no_companion_signal_arrives_before_its_transition_is_durable` and
+`test_a_second_session_is_refused_while_the_first_is_still_being_stored` asserted
+`active_job_ids() == ()` during a reserved start — which is exactly the invisibility `T016-R3`
+is about. They now assert the reservation is reported, and the claim they were standing in for —
+that no **worker** exists while the row still says `QUEUED` — is asserted directly in
+`test_no_worker_exists_while_the_row_still_says_queued`, which was strengthened rather than
+relaxed: it now checks the sessions dictionary *and* that the reservation is tracked.
+
+**Mutations run, all killed:** `_spawn` ignoring a withdrawn reservation · `is_idle` ignoring
+reservations · the tick's idle gate ignoring them · `shutdown()` cancelling sessions only · a
+non-moving progress message forwarded at once · a failed `FAILED` write announcing anyway · the
+store's old rollback-to-displaced rule · `done()` checking withdrawals only on the way in · the
+dialog not connecting `start_rejected`.
+
+**Checks:** `ruff check .` and `ruff format --check .` pass (86 files). `mypy src` (35 files),
+configured `mypy` (71 files) and `mypy --platform win32` (71 files) all pass. Bare `pytest`:
+**1292 passed, 11 skipped, 1 deselected in 73.86 s**. The wide mypy scope found two real problems
+in the new tests, one of which made mypy stop analysing the rest of a test function — the same
+`ai/TESTING.md` §12 scope difference this task recorded last round.
+
+#### Third correction batch — durability now gates the consequences, 2026-07-27
+
+**Base:** `c5dddae`. Seven mutations, seven killed, and the earlier batteries re-run.
+
+- **`T016-R1` (Critical) — a withdrawal is owned until it is durable.** Retiring a probe cancels
+  its stored row, but that cancellation is a write, and a write can fail. The reviewer held the
+  lock through it: the view said `CANCELLED`, SQLite still said `QUEUED`, and a restart — which
+  has no view — brought the replaced URL back as live work while the dialog showed only "The URL
+  changed". Two corrections. `PersistentJobStore` **takes its view record back when a write
+  fails**, so the view can no longer disagree with the disk about something that did not happen;
+  and the dialog tracks each withdrawal until `CANCELLED` is durable, refusing to close or queue
+  while one is outstanding, saying which URL is still queued and why, and retrying when Close is
+  pressed again. The gate reads the concrete repository and finishes with a **fresh reader**,
+  which is the restart the finding is about.
+- **`T016-R3` (High) — persistence gates the effects, not just the announcement.** Moving
+  `job_changed` into the callback preserved nothing else: the old synchronous write sequenced
+  every following effect for free. A worker and its pump were built while the row still said
+  `QUEUED`; `_abort_start` emitted `protocol_violation` and `job_failed` and ran cleanup before
+  `FAILED` was durable; `job_succeeded` arrived while the row still said `RUNNING`.
+  `_save_and_announce` now takes `then` and `otherwise`, and **session construction, startup
+  cleanup, `media_probed`, `job_succeeded`, `job_failed` and state-moving `progress` all wait**.
+  A failed write runs `otherwise` and never the success-side effect.
+
+**Two consequences worth naming rather than burying.** `start()` **no longer raises for a spawn
+failure**: the session is built from a write's completion callback, so there is nobody left to
+raise to, and the failure is reported through the signals this manager already had. Five approved
+`T-013` tests changed their delivery assertion and kept every other one. And the pool of one now
+counts *reserved* starts, because otherwise it would have been "however many `start()` calls fit
+between a write and its completion".
+
+**Three of the seven mutations survived first time**, and all three were weak tests of mine rather
+than weak code: the companion-signal test produced no companion signal to observe, the
+failure-continuation test never checked that the success effect was skipped, and the pool-of-one
+test used a synchronous store where the gap cannot exist.
+
+**One defect was found by these tests, in this batch's own code.** Retrying a withdrawal while its
+first cancellation was still pending drove `CANCELLED → CANCELLED` and threw
+`IllegalTransitionError` out of `QDialog.done()`. `DownloadManager.cancel()` is now a no-op for a
+job already terminal — there is nothing to cancel, and raising there is worse than saying so —
+and the dialog retries only once a failure has actually been reported.
+
+#### Second correction batch — the three continuations, 2026-07-27
+
+**Base:** `162f286`. Nine mutations, nine killed, and the first batch's nineteen re-run and still
+killed.
+
+- **`T016-R1` (Critical) — the window before the row exists.** The first correction bound a
+  result to its URL but left the *pending save* unmodelled: between `probe()` and its write
+  landing, `started` is false, so nothing could cancel it and its callback simply recorded the
+  row. Editing then left the replaced URL durably `QUEUED`, where whatever runs the queue next
+  would download what the user took away. A probe retired during its save now has its stored row
+  **cancelled** — `QUEUED → CANCELLED` is legal and needs no worker — so the record survives as
+  something asked for and withdrawn rather than as pending work nobody wants.
+- **`T016-R1` (Critical), second half — occurrences, not membership.** `_Persisted` was keyed by
+  URL text, so once a probe had stored one occurrence, `Add` skipped *every* line with that text
+  and two identical lines became one job. `split_urls` and `REQ-001` both say two identical lines
+  are two requests. It now counts how many occurrences already have a job and creates the
+  difference.
+- **`T016-R2` (High) — `done()` reads `usable`, not `in_flight`.** A probe mid-save has
+  `started is False`, so the first correction let Close through without retiring it, and the
+  callback started a worker for a dialog the user had already closed. Four new tests exercise
+  reject/close/done against a genuinely deferred save, and prove a later dialog can still probe.
+- **`T016-R3` (High) — `ARC-005` covered appends only.** `DownloadManager._save_and_announce()`
+  still called a synchronous `JobRepository.update()` from the GUI thread for every start,
+  cancel, stage change, success and failure: 5.017 s blocked under a held lock, then an uncaught
+  `OperationalError`. `QueueWriter.revise()` and `PersistentJobStore` now put **every** queue
+  write on the one thread. `JobStore.update` takes a completion callback, so `T-013`'s
+  persist-then-signal ordering is preserved rather than traded away, and a failed write raises
+  `persistence_failed` instead of an exception nobody catches. `close()` no longer calls
+  `QThread.wait()` — it reports completion through `closed`, the same event-driven shutdown
+  `T013-R2` established for the manager, after a contended write held that wait for 4.921 s.
+
+**The store's read contract is what kept this small.** `JobStore.get` is required to reflect a
+queued `update` immediately, so all ten `_save_and_announce` call sites in approved `T-013` code
+are unchanged; only the announcement moved into a callback.
+
+**Three mutations survived the first run of this batch**, all on `T016-R3`, and each was a real
+gap: the integrated test took the writer lock *after* `start()` had already issued its status
+write, so nothing was contended; read-your-writes was asserted against a writer fast enough to
+pass either way; and no test forced a write failure at all. All three now have a gate that fails
+without the fix.
+
+#### First correction batch — all six blocking findings, 2026-07-27
+
+**Base:** `a931736`. Every correction has a test named for it, and every one of those tests was
+shown to fail when the correction is weakened (19 of 19 mutations killed).
+
+- **`T016-R1` (Critical) — a probe now belongs to a URL, not just to a job id.** `_Probe` records
+  the input line and the generation of the URL box. Changing the first line **retires** that probe
+  and cancels its session; a result is refused unless its line is still first. The refusal lives
+  in `_on_media_probed`, where the result arrives, rather than resting on the edit handler having
+  run first — which is what the defect was. **`Add to queue` is disabled while a probe is
+  outstanding**, so the state that stored one line twice is unreachable rather than reconciled.
+  `_Persisted` tracks one job per entered line, and a retired probe's URL stops counting as
+  stored so it can be queued again.
+- **`T016-R2` (High) — `done()` is the choke point.** Escape, the window button, `reject()` and
+  `accept()` all reach it, and it cancels an in-flight probe. Three parametrised routes are
+  tested, plus the consequence the finding is really about: a later dialog can still probe.
+- **`T016-R3` (High) — nothing waits on SQLite.** `ARC-005` (below). The dialog submits and is
+  told the answer later; it closes **inside** the success callback, so `REQ-012`'s ordering is
+  strengthened rather than kept.
+- **`T016-R4` (Medium) — the tab order is complete.** All twelve focusable controls are declared
+  and asserted, and the observation no longer filters by declared name: the only exclusion is the
+  combo box's popup, which lives in its own top-level window.
+- **`T016-R5` (Medium) — the thumbnail reports failure.** `ThumbnailLoader.load` takes `bytes |
+  None`; the shipping `QNetworkAccessManager` loader reports both outcomes, and its **failure**
+  path is tested against a real local URL that cannot resolve.
+- **`T016-R6` (Medium) — foreign text is `PlainText`.** Applied from one list, asserted per label
+  and by rendered width against a `<b>VISIBLE</b>` title, because reading `QLabel.text()` back
+  returns the input under either format and misses the defect entirely.
+- **`T016-R7` (Low)** — the refusal test now takes the *complement* of the two entry points over
+  the whole enum, so `PROBING`, `COMPLETED` and `CANCELLED` are covered and a new status joins
+  the day it appears. One test compares the transcription against `_ENTRY_STATUS`.
+- **`T016-R8` (Low)** — the stale records were corrected in `a931736`, before this batch; the
+  "no widget touches any of it yet" contradiction in `STATUS.md` is fixed here.
+
+**Three mutations survived the first battery**, and each exposed a real gap rather than a
+mis-aimed probe: the `_on_media_probed` identity check was **unreachable** because the edit
+handler deleted the probe record before any late result could be refused by name (fixed by
+retiring rather than deleting, which is why `_Probe.superseded` exists); the "a later dialog can
+probe" test passed with the fix reverted because the crafted child *died* on an unknown URL and
+freed the pool by accident (it now hangs); and the batched position allocation could not be seen
+by a single-batch test (a second batch now proves positions continue). All three are killed.
+
+**Two defects were found by the corrections' own tests**, not by review: `QueueWriter.close()`
+called the worker's slot directly and closed a SQLite connection from the wrong thread —
+`check_same_thread` caught it, which is exactly why `ARC-005` keeps that check on — and
+`QWidget.close()` on a never-shown dialog delivers no close event, so that test now shows the
+dialog first rather than passing for the wrong reason.
+
+**The `T016-R6` test was vacuous twice, in two different ways, and Windows CI found both.** The
+first version compared a font-metrics advance against `sizeHint()`, which is a wrapped-layout
+figure and never was a string width; it passed on Linux by luck. The second rendered the same
+label under each text format — exact, and one variable — but the Windows runner laid that label
+out 84 px wide, so both renderings clipped to identical pixels and the assertion could not fail.
+It now sizes the label explicitly and asserts the two grabs are the same size, so a future
+clipping change fails loudly rather than quietly restoring the equality.
+
+**Evidence.** `ruff`, `ruff format`, `mypy src` (34 files) and both configured 70-file scopes
+pass. Full suite **1267 passed, 11 skipped, 1 deselected**. CI green on all five jobs at
+`8bde969` (run `30324097829`): Ubuntu 1267 passed, Windows **1256 passed, 20 skipped**, Windows
+desktop 20 passed, both frozen jobs succeeded. Mutation battery: **19 of 19 killed**, including
+one mutation per blocking finding.
+
+**One unrelated intermittent was seen and is filed as `T-056`**, not swept up here: a
+`windows-latest` run failed `test_the_survival_check_can_tell_a_live_process_from_a_dead_one`,
+a `T-019` helper this batch does not touch. It passed on the runs either side.
+
+#### What was built
+
+- **`ui/add_dialog.py`** — the dialog. Probing runs in a worker process and `probe()` returns
+  immediately; results arrive on `DownloadManager`'s signals. The thumbnail is the one `REQ-002`
+  field the probe's reply does not carry — `MediaInfo` has a *URL* — so it is fetched
+  asynchronously through an injected `ThumbnailLoader`, whose shipping implementation is
+  `QNetworkAccessManager`. That seam is what lets the suite decode a real image without touching
+  the network.
+- **`downloader/manager.py`** — `ARC-004` implemented. `start()` now accepts `QUEUED` **or**
+  `READY` and moves the job to the status that says a worker holds it, and the docstring that
+  said the flow "needs the state machine amended first" is replaced by the ruling. A probe
+  session is still refused for a `READY` job: `READY → PROBING` does not exist, and moving a
+  probe to `RUNNING` would say a download holds a job that is not downloading.
+- **`ui/main_window.py`** — File → Add URLs…, disabled with a status tip naming `T-036` until
+  composition supplies a manager, a job store and an output directory. An action that appears to
+  work and quietly does nothing is the failure mode this project keeps finding.
+
+#### Two things a reviewer should look at first
+
+- **`started_at` is stamped entering `PROBING` and left alone entering `RUNNING` from `READY`.**
+  A download from `READY` continues one attempt rather than beginning a new one, while a retry —
+  which re-enters `QUEUED` — still gets a fresh stamp. Both halves have a test.
+- **`T-013`'s `test_a_job_that_is_not_queued_cannot_be_started` was replaced, not deleted.** It
+  asserted the rule `ARC-004` amended. What stands in its place is a parametrised refusal for
+  every status that is *not* an entry point, plus the four new `READY`-entry tests.
+
+#### Evidence
+
+Local at `33ebd11`: `ruff check`, `ruff format --check` (84 files), `mypy src` (33 files), and
+bare `mypy` and `mypy --platform win32` (**69** files each) all pass. Full default suite:
+**1239 passed, 11 skipped, 1 deselected** in 71 s — `T-038`'s 1195 plus this task's 44.
+
+**CI is green on all five jobs**, run `30320408833`: ubuntu-latest 1239 passed, windows-latest
+**1228 passed, 20 skipped, 21 deselected**, windows desktop **20 passed**, both frozen jobs
+succeeded. This task has real Windows evidence.
+
+**Twelve weakenings were applied and all twelve were killed** by a committed test — including a
+probe that blocks the GUI thread, a paraphrased extractor message, jobs written after the dialog
+closes, and a `READY` start that re-enters `PROBING`.
+
+**Three gates reported clean while covering nothing, and each is worth more than the fix.**
+
+- **The tab-order mutation survived the first run.** That test derived its expectation from the
+  dialog's own `focus_chain()` — the list `_set_tab_order` feeds to Qt — so reversing two entries
+  moved both sides and it proved only that the list equalled itself. Now transcribed by hand with
+  Qt's `nextInFocusChain` walked against it (`ai/TESTING.md` §13).
+- **The local type gate was the wrong scope, and CI found two real errors.** `mypy src` reads 33
+  files; the `windows desktop` job runs the command **unscoped** over 69, including `tests/`.
+  Neither error was Windows-specific. One had made mypy narrow a property at an earlier
+  `assert ... is not None`, rendering the later `is None` assertion statically impossible — so it
+  declared the rest of that test unreachable and **stopped type-checking it**. `ai/TESTING.md` §12
+  now records the scope difference, which nothing stated.
+- **The Windows UIA menu contract caught the new File-menu item**, correctly, because this task
+  added one without declaring it there. The item is spelled `Add URLs...` with ASCII dots: the
+  ellipsis returned from UI Automation as a replacement character in the CI log, and that log is
+  the only Windows evidence this project has (`ai/TESTING.md` §10).
+
+#### Scope
+
+Paste or type a URL, probe it, see what it is, choose a preset, and queue it. Probing runs in
+a worker process — **never inline** — because probe latency is unbounded and blocking the GUI
+thread on it is exactly what `NFR-001` forbids (`ARCHITECTURE.md` §8).
+
+**The probe-then-download step is settled** (`ARC-004`, from `T-051`). This task changes
+`DownloadManager.start()` to accept a job in `QUEUED` **or** `READY`, choosing the status that
+says a worker holds it — `PROBING` from the first, `RUNNING` from the second — and replaces the
+docstring note that says the flow "needs the state machine amended first" with a pointer to
+`ARC-004`. The download re-extracts rather than re-probing; the recorded title stands.
+
+Show what `REQ-002` names: title, uploader, duration, thumbnail, and whether the URL is a
+single item or a playlist. On failure, show the extractor's own message **verbatim**
+(`REQ-005`, `NFR-006`) — not a paraphrase, and not a generic "could not fetch".
+
+#### Acceptance criteria
+
+- A probe of a fixture-backed URL populates **every field `REQ-002` names** — title,
+  uploader, duration, a thumbnail decoded to a real pixmap rather than a URL, and whether the
+  URL is a single item or a playlist — asserted field by field, since "populates the dialog"
+  would pass with four of five missing
+- The GUI thread is never blocked, and a test asserts the dialog stays responsive while a
+  probe is outstanding (`NFR-001`)
+- An unsupported URL shows the extractor's message character-for-character, asserted by
+  equality against the fixture (`REQ-005`, `NFR-006`)
+- A probe that never returns can be cancelled and leaves no worker behind
+- Multi-line paste queues each URL as a separate job (`REQ-001`)
+- Full keyboard operation: every control reachable and actuable by keyboard, with a
+  deliberate tab order asserted, and an accessible name on every control (`NFR-005`)
+- No information is conveyed by color alone (`NFR-005`)
+- Queuing a job persists it before the dialog closes, so a crash immediately after does not
+  lose it (`REQ-012`)
+- A probed job in `READY` starts a download through `start()` and moves `READY → RUNNING`
+  without passing through `PROBING`, with the persisted status asserted at each step (`ARC-004`)
+- A `QUEUED` job still starts at `PROBING`, so the second entry point did not replace the first
+
+#### Out of scope
+
+- The sortable format table and per-format selection — `REQ-003`, `REQ-008`, Phase 3
+- Drag-and-drop — `REQ-001` allows it, but it is not needed to prove the slice; Phase 2
+- Playlist expansion into individual jobs — Phase 3
+
+---
+
+### T-057 — Bind DRM detection to yt-dlp's actual contract
+
+**Status:** **In Review — implemented 2026-07-28.** The `_has_drm` write is reachable offline, so
+the canary drives yt-dlp's own code rather than reading its source, and the two divergences are
+corrected to yt-dlp's rule rather than recorded as deliberate. See **Evidence**.
+**Owner:** Implementer
+**Priority:** Medium — the boundary is fail-safe today, but one half of it disagrees with yt-dlp
+and nothing would notice an upstream rename
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `SEC-001`, `REQ-EXCL-001`, `NFR-008`, `ai/TESTING.md` §5 (fixtures and the
+recorded-failure canaries) and §7 (DRM)
+**Affected surfaces:** `downloader/ytdlp_adapter.py`, `tests/unit/test_ytdlp_adapter.py`, and the
+canary test wherever the recorded-failure canaries live
+**Risk:** Medium — it is the input to a non-negotiable product boundary
+
+#### Scope
+
+Two problems at one seam. Both were found by **reading yt-dlp's own source at the pinned version**
+(`yt-dlp==2026.7.4`, `pyproject.toml:34`) rather than by a failing test, which is itself the point.
+
+**1. Nothing verifies that yt-dlp still writes the field.** `adapter.has_drm()` reads `_has_drm`,
+and `SEC-001` rests on it. The DRM fixture is `derived` by design — capturing a real one means
+probing a DRM service, which `REQ-EXCL-001` puts out of scope — so it proves this code *reads* the
+field, not that yt-dlp *writes* it. On an upstream rename `has_drm()` returns `False`, the item is
+never classified, and the product tries to download it: a non-negotiable boundary failing
+silently. That is exactly the `NFR-008` canary shape `tests/fixtures/errors/` already uses to pin
+exception types; DRM never got one. In the pinned version the write is `YoutubeDL.py:2930`, inside
+`process_video_result`.
+
+**2. The per-format fallback disagrees with yt-dlp, in both directions.** yt-dlp computes
+`any(f.get('has_drm') and f['has_drm'] != 'maybe' for f in formats) or None`. The adapter computes
+`bool(formats) and all(entry.get("has_drm") for entry in formats)`. Two divergences, neither
+verified against a live extractor:
+
+- **`'maybe'` is truthy in Python.** yt-dlp excludes it deliberately and keeps such formats
+  downloadable (`YoutubeDL.py:2933`). The adapter reads a set of `'maybe'` formats as DRM and
+  refuses. The direction is fail-safe, so this is not a `SEC-001` breach — but a user is told an
+  item is DRM-protected when yt-dlp would have downloaded it.
+- **`all` where yt-dlp uses `any`.** A mixed item is DRM to yt-dlp and not-DRM to the fallback.
+  It only bites when `_has_drm` is absent, which is the one case the fallback exists for.
+
+Also worth settling rather than inheriting: `_has_drm` is assigned `True` **or `None`**, never
+`False`, so its absence does not distinguish "not DRM" from "never processed". Decide whether that
+matters on the probe path, or record that it does not.
+
+#### Acceptance criteria
+
+- A test fails if the pinned yt-dlp stops writing `_has_drm`, and it does so by exercising
+  yt-dlp's own code path rather than by matching text in its source. Whether that write is
+  reachable offline is **unverified** and is the first thing to establish; if it is not, the
+  weaker source-level check is acceptable **only** with that reason recorded beside it
+- The canary names the yt-dlp version it was verified against, as the recorded-failure canaries do
+- The `'maybe'` and `any`/`all` divergences are each either corrected to yt-dlp's rule or recorded
+  as a deliberate difference with its reason — not left as an unexamined accident
+- A mutation restoring the current fallback rule fails a test
+- No test touches a DRM service, a real protected URL, or `allow_unplayable_formats`
+
+#### Out of scope
+
+- The taxonomy and retry policy in `core/errors.py`; `DRM_PROTECTED` stays non-retryable
+- The UI half of the boundary — that is the criterion added to `T-017`
+- Refreshing any fixture: `ai/TESTING.md` §5 makes that a deliberate act with its own task
+
+#### Evidence, 2026-07-28
+
+**The write is reachable offline, so the weaker source-level check was not needed.**
+`YoutubeDL.process_video_result` computes `_has_drm` **before** it selects a format and mutates
+the info dict in place, so the canary hands it a synthetic dict, ignores whatever the call goes
+on to do, and reads the field back. Measured at zero DNS lookups with `format="all"` and
+`check_formats=False`; without those, a `'maybe'` format sends yt-dlp looking for a host.
+
+**Both divergences are corrected rather than recorded.** `format_has_drm` now implements yt-dlp's
+three-state rule — `True`, absent, and `'maybe'`, which yt-dlp keeps downloadable — and the item
+is protected if **any** format is, matching `_has_drm`. The `any`/`all` choice was not free, and
+it is worth the reviewer's attention: a mixed item now reads as DRM, where the fallback used to
+say it did not. That is not a new refusal in practice — `_has_drm` is `any`, and it is the branch
+every real info dict takes — but it means one committed assertion changed.
+
+**`test_a_partially_protected_item_is_not_treated_as_drm_only` is now
+`…_is_treated_as_protected`.** Its old rationale ("one clean format means there is something
+lawful to fetch") is a reasonable argument about a branch that never runs: production already
+refused mixed items through `_has_drm`, and the test asserted the half of `has_drm` that does not
+answer. The two halves of one function disagreed, which is what `T-057` was filed to find.
+
+**The strongest test is the one that does not state its expectation.**
+`test_the_adapter_and_yt_dlp_agree_about_every_shape_of_has_drm` runs five format shapes through
+yt-dlp *and* through the adapter and compares. Both divergences were invisible to a test that
+wrote down the expected answer, because the answer was written by whoever wrote the code.
+
+**Mutations run, all killed:** the fallback restored to `all(entry.get("has_drm"))` · `'maybe'`
+counting as DRM again · the canary reading a field yt-dlp does not write · the selection params
+dropped so yt-dlp reaches for the network.
+
+**The offline guard had to be corrected before it gated anything.** Raising from a patched
+`getaddrinfo` does not fail the test: yt-dlp catches whatever a handler raises and re-reports it
+as `NoSupportingHandlers`, which the surrounding `contextlib.suppress` then swallows. The attempt
+is now recorded and asserted after the call, and the fourth mutation above proves it fires.
+
+**Checks:** `ruff check .`, `ruff format --check .` (87 files), `mypy src` (35), configured `mypy`
+and `mypy --platform win32` (72 each) all pass. Bare `pytest`: **1334 passed, 11 skipped,
+1 deselected in 75.05 s**.
+
+**Left open deliberately:** `_has_drm` is written as `True` or `None` and never `False`, so its
+absence still does not distinguish "not DRM" from "never processed". It does not matter on any
+path this application has — every info dict reaching `has_drm` has been through
+`process_video_result` — and inventing a third state here would be this adapter asserting
+something yt-dlp does not. Recorded rather than fixed.
+
+---
+
+### T-056 — `still_running` reports a reaped Windows process as alive, intermittently
+
+**Status:** **In Review — corrected 2026-07-28, and one gate cannot run here.** The helper now
+decides by exit status on Windows; the third acceptance criterion is answered in the helper's own
+docstring. **The mutation that proves the Windows branch can only be killed on Windows CI**, so
+approval needs that run — see **Evidence**.
+**Owner:** Implementer
+**Priority:** Medium — an intermittent failure in the helper every `T-019` assertion rests on
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T-019`, `ai/TESTING.md` §7 (Cancellation, Worker crash)
+**Affected surfaces:** `tests/integration/test_manager.py`
+**Risk:** Medium — it decides whether the process-tree suite is telling the truth
+
+#### Scope
+
+`test_the_survival_check_can_tell_a_live_process_from_a_dead_one` failed once on `windows-latest`
+in run `30323328299`: `still_running([dead_pid])` returned `[7208]` for a process the test had
+already reaped. It passed on the runs either side, so it is **intermittent, not a regression** —
+nothing in the `T-016` batch touches `process_tree.py` or that helper.
+
+The likely cause is that `still_running` treats "psutil can still see the pid" as alive, excluding
+only `NoSuchProcess` and `STATUS_ZOMBIE`. Windows has no zombie state, and a terminated process
+stays visible while a handle to it remains open, so there is a window in which a dead process
+reports as running.
+
+**This matters more than a flaky test usually would.** `still_running` is the helper the whole
+`T-019` descendant-reaping suite decides on, and its own docstring says a guard nobody watches
+fail is the shape `ai/TESTING.md` §13 exists to catch. A false *alive* fails loudly, as here; the
+concern is whether the same imprecision can produce a false *dead* and make a reaping assertion
+pass without anything having been reaped.
+
+#### Acceptance criteria
+
+- The helper distinguishes a running process from a terminated-but-visible one on Windows, by
+  exit status rather than by presence
+- The claim is demonstrated on Windows CI, not reasoned about from Linux
+- Whether the previous form could report a live process as dead is answered explicitly, and the
+  answer is recorded rather than assumed benign
+
+#### Out of scope
+
+- Changing `downloader/process_tree.py`, which is `T-019`-approved and not implicated
+
+#### Evidence, 2026-07-28
+
+**The fix is Windows-only, because the imprecision is.** On POSIX the terminated-but-visible state
+*is* the zombie state, so `status()` was already asking the right question. On Windows there is no
+zombie and a corpse stays visible while any handle to it is open, so the helper now uses
+`wait(timeout=0)` there — `WaitForSingleObject` on psutil's own handle, which neither disturbs
+anyone else's handle nor depends on visibility.
+
+**The first attempt used `wait(timeout=0)` on both platforms and broke the suite**, which is worth
+keeping: on POSIX that call is `waitpid`, so inspecting a worker *reaped* it and stole the exit
+status `multiprocessing` was waiting for. `is_alive()` then never reported the process gone and
+the manager never went idle —
+`test_cancelling_a_download_kills_what_the_worker_spawned` failed exactly that way. A survival
+check that changes what it observes is worse than an imprecise one.
+
+**The third criterion is answered, not assumed benign.** The previous form could **not** report a
+live process as dead: it answered "dead" only on `NoSuchProcess` (and `ZombieProcess`, its
+subclass) or on a `STATUS_ZOMBIE` a live process never has, and `AccessDenied` was uncaught and so
+would have failed loudly. Its one error direction was **false alive**, which fails an assertion in
+the open rather than letting a reaping assertion pass over nothing. The answer is recorded in the
+helper's docstring, where the next reader of the helper will find it.
+
+**The test now drives the failing shape**: a third process is killed and deliberately *not* waited
+on. On Linux that is a zombie, which the old form already handled; on Windows it is exactly run
+`30323328299`'s failure.
+
+**Mutations run:** answering by presence alone everywhere — killed. Reporting nothing as alive —
+killed. **Disabling the `win32` branch so it falls back to the POSIX question — survived, and
+cannot do otherwise here**: the branch is unreachable on Linux by construction. That is
+`AGENTS.md` §8's "a host-only check is not the whole gate" in its exact form, and it is why this
+task is not claiming to be done.
+
+**Checks:** `ruff check .`, `ruff format --check .`, configured `mypy` and `mypy --platform win32`
+(72 files each — the win32 scope is what analyses the new branch at all) all pass. Bare `pytest`
+green.
+
+**Blocker:** the Windows demonstration. This machine has no Windows and the branch cannot execute
+here, so approval needs the `windows desktop` job to run the corrected helper and the third
+mutation against it. Same shape as `T-033`'s blocker: the code is done, the evidence is not
+producible locally.
+
+---
+
+### T-017 — Single-job progress view with cancel
+
+**Status:** **In Review — implemented 2026-07-28.** `ui/job_detail.py` holds the view;
+`ui/queue_view.py` stays a docstring-only stub, because a multi-job table is Phase 2 and this
+task's scope is one job. Every acceptance criterion below has a named test, and eight mutations
+were run against them — see **Evidence**.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 1
+**Depends on:** `T-013`, `T-014`
+**Relevant context:** `REQ-014`, `REQ-015`, `REQ-018`, `NFR-001`, `NFR-005`, `SEC-001` and
+`REQ-EXCL-001` (the retry affordance is where the DRM boundary becomes visible — added
+2026-07-28, see the criterion below)
+**Affected surfaces:** `ui/queue_view.py`, `ui/job_detail.py`, `tests/ui/`
+**Risk:** Medium
+**Review base:** the later of the `T-013` and `T-014` merge commits
+
+#### Scope
+
+One job, visible: percent, downloaded/total, speed, ETA, and the current stage — probing,
+downloading video, downloading audio, merging, post-processing (`REQ-014`). A cancel control
+that reaches `T-013`'s cancellation path. A failed job stays visible with its error and a
+retry affordance (`REQ-018`); nothing fails silently.
+
+#### Acceptance criteria
+
+- Every stage in `REQ-014` is displayed, driven by real `T-011` messages rather than a
+  simulated sequence
+- Under a burst of progress messages the **event loop stays responsive by measurement**, not
+  by eye: either event-loop latency stays under a stated bound, or updates are coalesced to a
+  stated maximum repaint rate and a test asserts the coalescing. "Does not visibly stutter" is
+  not testable, and a per-message repaint is the obvious naive implementation — it degrades
+  exactly when a download is fastest
+- Cancel is actuable by keyboard and produces a cancelled job within the `REQ-015` budget
+- A failed job shows the extractor's verbatim message and remains in the view with a retry
+  affordance (`REQ-018`, `NFR-006`)
+- **The retry affordance is driven by `is_retryable`, not by a per-kind branch in the widget**,
+  so a `DRM_PROTECTED` job offers no retry at all — not disabled, not present. `core/errors.py`
+  states the reason where the policy lives: offering the button implies a workaround exists, and
+  `SEC-001`/`REQ-EXCL-001` say none does. A test asserts the absence, and a mutation replacing
+  the predicate with a literal kind comparison fails it. *(Added 2026-07-28. This is the UI half
+  of `ai/TESTING.md` §7's DRM row — the engine half is already gated in
+  `tests/integration/test_worker.py`, the upstream half is `T-057`, and nothing gated this one
+  because the widget did not exist.)*
+- A cancelled job is presented as cancelled, not as an error (`ARCHITECTURE.md` §7:
+  `CANCELLED` is not a failure)
+- Accessible names on all controls; no state conveyed by color alone (`NFR-005`)
+
+#### Out of scope
+
+- Multi-job queue view, reordering, bulk actions — Phase 2
+- Pause and resume — `REQ-015` includes them, but they need Phase 2's scheduler
+- Open-file and reveal-in-file-manager — `REQ-021`, Phase 2
+
+#### Evidence, 2026-07-28
+
+**What was built.** `ui/job_detail.py`: `JobProgressView`, driven by `DownloadManager`'s signals,
+with `build_progress_view` as the seam composition uses to supply the retry. 35 tests in
+`tests/ui/test_job_detail.py`, most of them driving a real child process over a real queue.
+
+**Two design decisions worth a reviewer's attention:**
+
+- **Repaints are coalesced at a stated rate**, not measured against a latency bound. `REQ-014`'s
+  criterion allows either; a rate is the one this widget can *promise*, and `pending_progress`
+  and `displayed_progress` are public so a test can tell "coalesced" from "dropped". The tail of
+  a burst is never lost — the newest message is held and drawn by the next tick.
+- **The retry is reported, not performed.** Re-queueing a failed job is a write and `ui/` holds
+  no writer (`ARCHITECTURE.md` §3), so the widget emits `retry_requested` and `T-036` connects
+  it. Cancel is different and does live here: it is a request to a process the manager owns.
+
+**The DRM criterion is met by asking the taxonomy, and the test asserts the rule rather than the
+case.** `test_the_retry_affordance_agrees_with_the_taxonomy_for_every_kind` is parametrised over
+every `ErrorKind` and compares against `is_retryable` itself, so a kind that becomes
+non-retryable in `core/errors.py` is covered here without anyone remembering to come back. The
+button is **absent** rather than disabled: a greyed-out Retry still asserts that a retry is the
+sort of thing a DRM failure could have, which is the claim `SEC-001` refuses to make.
+
+**Mutations run, all killed:** the retry rule replaced by a literal `DRM_PROTECTED` comparison ·
+retry offered for every failure · retry disabled instead of absent · every message repainting ·
+a cancellation shown as a failure · a stage dropped from `STAGE_TEXT` · the extractor's message
+truncated · the cancel control losing its keyboard focus policy.
+
+**One mutation survived at first and produced a test.** Dropping `Stage.POST_PROCESSING` from
+`STAGE_TEXT` changed nothing observable, because `_show_progress` falls back to the job's status
+text and for that stage the two strings read the same. A stage with no words of its own was
+therefore invisible. `test_every_stage_the_protocol_can_report_has_words_to_show` closes it by
+checking completeness against `Stage` — the only thing derived from the enum; the strings are
+still transcribed from `REQ-014` by hand (`ai/TESTING.md` §13).
+
+**Checks:** `ruff check .`, `ruff format --check .` (87 files), `mypy src` (35 files), configured
+`mypy` and `mypy --platform win32` (72 files each) all pass. Bare `pytest`: **1327 passed,
+11 skipped, 1 deselected in 74.95 s**. The wide mypy scope again found real problems the `src`
+scope could not see, including one that made mypy stop analysing the rest of a test.
+
+**Known-unverified:** the Windows half. Focus order is asserted offscreen here; the real
+platform plugin is `T-040`'s, and this widget adds three focusable controls to what that task
+covers.
+
+---
+
+## Ready
+
+### T-040 — Extend the Windows desktop gate to widget focus order
+
+**Status:** **Ready** — unblocked 2026-07-27 by `T-016`, whose add-URL dialog adds six focusable
+controls and gates their order offscreen. What remains is the assertion under the real Windows
+platform plugin.
+**Owner:** Implementer
+**Priority:** High once unblocked — it completes a `T-026` acceptance criterion that is
+currently unmet
+**Phase:** Phase 1, landing with the first real widgets
+**Depends on:** `T-016` **or** `T-017` (whichever first adds focusable controls), `T-026`
+**Relevant context:** `T026-R3`, `OPS-004`, `NFR-005`, `ai/TESTING.md` §9 and §12
+**Affected surfaces:** `tests/ui/test_windows_desktop.py`, `ai/TESTING.md` §12
+**Risk:** Medium — the gap is easy to forget precisely because deferring it was correct
+
+#### Scope
+
+Filed from `T026-R3`. `T-026` requires "tab order and focus chain are asserted on Windows, and
+reordering two widgets fails the test". That criterion is still **unmet on Windows**, and
+deferring it was the right call at the time: the shell window had no focusable controls, so a
+focus-chain assertion would have passed over zero widgets and gated nothing.
+
+**`T-016` removed the reason to defer.** The add-URL dialog has six focusable controls, and
+`tests/ui/test_add_dialog.py::test_the_tab_order_is_the_declared_one` walks Qt's own focus chain
+against a hand-transcribed order — a mutation reversing two entries was run and killed. That test
+runs **offscreen**, so it proves the order Qt builds, not the order a real Windows desktop
+delivers, which is exactly the half `T-026` asked for and this task still owns.
+
+Worth carrying into the Windows version: the first draft of that offscreen test derived its
+expectation from the dialog's own `focus_chain()` and therefore proved only that the list equalled
+itself. The mutation survived it. Transcribe one side and derive the other (§13).
+
+Extend the existing `windows_desktop` suite — do not start a second harness — to assert, under
+the real `windows` platform plugin:
+
+1. **Tab order** across the new controls matches the intended sequence.
+2. **The focus chain wraps**, forwards and backwards (`Tab` and `Shift+Tab`).
+3. **Every focusable control is reachable** by keyboard alone from the window's initial focus.
+
+#### Acceptance criteria
+
+- Reordering two widgets in the source **fails** the suite, demonstrated by an actual mutation
+  and recorded in the task, not asserted in the abstract
+- A control added without being placed in the tab order fails the suite
+- The assertions run under the real plugin, not offscreen — offscreen focus behavior does not
+  answer the question `NFR-005` asks
+- `ai/TESTING.md` §12 drops the "widget tab order is ungated" gap, and `T-026`'s acceptance
+  criterion is marked met **only then**
+
+#### Out of scope
+
+- Focus *appearance* — whether the focus ring is visible enough is subjective and stays with
+  the pre-release session (`OPS-004`)
+- Linux focus order, which the offscreen suite cannot meaningfully assert either
+
+---
+
+## Proposed — Phase 0
+
+### T-021 — Simplified small-size icon glyph
+
+**Status:** Proposed
+**Owner:** Implementer (needs a design decision from the maintainer first)
+**Priority:** Low
+**Phase:** Phase 4 (theming) — not a Phase 0 exit condition
+**Depends on:** `T-003`
+**Relevant context:** `T-003` completion note, `ARCHITECTURE.md` §8
+**Affected surfaces:** `src/tracks_and_trails/resources/icons/`
+**Risk:** Low — cosmetic only
+
+#### Scope
+
+**This is an enhancement, not a defect fix.** `T-003`'s 16 px asset meets its acceptance
+criterion — the note and gold trail stay recognizable (`T003-R2`). What it loses is the
+landscape: the trees and mountain collapse into the green mass. That is a property of the
+artwork's detail level, not of the scaling method, so no better downscale recovers it.
+
+Draw a reduced glyph for 16 px and 24 px that keeps only the elements that still read at that
+size — the note head and stem plus the gold trail sweep — dropping the trees and mountain.
+Ship it as a separate size-specific asset so Qt picks it for small requests.
+
+#### Acceptance criteria
+
+- At 16 px and 24 px the glyph is **more legible than the current downscale**, judged
+  side by side — not merely legible, which the current asset already is
+- The glyph is recognizably the same mark as the full logo, not a different one
+- The Windows `.ico` embeds the simplified glyph at 16/24 and the full logo at 32 and above
+- The `T-022` resource tests still pass, with their expected frame set updated if it changes
+
+#### Out of scope
+
+- Redesigning the logo itself
+- Any change to the brand hex values fixed by `T-003`
+
+**Note:** this is a judgment call about brand appearance, so it needs the maintainer's
+agreement on the reduced form before implementation.
+
+---
+
+## Proposed — Phase 1
+
+### T-052 — Make the T-013 correction tests kill their claimed mutations
+
+**Status:** Proposed — non-blocking follow-up from `T013-R5`
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 1
+**Depends on:** `T-013`
+**Relevant context:** `T013-R5`; `ai/TESTING.md` §13
+**Affected surfaces:** `tests/integration/test_manager.py`
+**Risk:** Low — production behavior is correct; the negative gate is weaker than its evidence
+record claims
+
+#### Scope
+
+Strengthen the T-013 correction evidence at the observations where a route-before-validation
+regression is currently invisible. Moving the pump's signal emission immediately before
+`SessionValidator.accept()` leaves all five cases in
+`test_an_illegal_message_never_reaches_the_job` green: the test excludes only `READY` and
+`COMPLETED`, so illegal progress may still persist `RUNNING`; it does not assert that foreign
+progress or a duplicate resolution report was withheld from the public signals.
+
+The startup-construction test also ends its useful-error assertion with `or True`, making that
+assertion unconditional. Remove the escape and prove the stored diagnostic retains the original
+failure rather than a cleanup error.
+
+#### Acceptance criteria
+
+- Reordering validation and routing makes at least one committed test fail for each affected
+  route: persisted progress state, public progress, and resolution report
+- The tests assert the complete persisted status sequence, not selected terminal states
+- The useful startup diagnostic assertion has no unconditional branch and fails if the original
+  construction error is discarded
+- The route-before-validation and diagnostic-weakening mutations are run and recorded as killed
+
+#### Out of scope
+
+- Changing `SessionValidator` or the production routing order, which are correct at `65303a2`
+- The blocking cleanup behavior in `T013-R3` and `T013-R4`
+
+---
+
+### T-036 — Application composition and wiring
+
+**Status:** Proposed — Ready once `T-013` merges
+**Owner:** Implementer
+**Priority:** **High** — without it every component can pass while the product still opens an
+empty window
+**Phase:** Phase 1
+**Depends on:** `T-013`, `T-014`, `T-015`, `T-016`, `T-017`
+**Relevant context:** `ARCHITECTURE.md` §3, §4, §8; `NFR-001`, `NFR-002`, `REQ-024`
+**Affected surfaces:** `app.py`, `ui/main_window.py`, `tests/ui/`, `tests/integration/`
+**Risk:** **High** — the only task that can fail while every other task is green
+**Review base:** the last of its dependencies' merge commits
+
+#### Scope
+
+**Filed after review: nothing owned this.** `app.py`'s own docstring says `T-013` adds the
+download manager wiring, but `T-013` neither claims `app.py` nor proves the assembled path. So
+every Phase 1 task could pass in isolation while the application still did nothing — which is
+the failure the phase exists to prevent.
+
+Compose the object graph in one place: construct the repository, the manager, the result pump
+and the window; inject the concrete `JobRepository` into the manager through the protocol seam
+`T-013` defines; connect the add-URL dialog and the progress view to manager signals; and
+report the ffmpeg state `T-035` supplies at startup (`REQ-024`).
+
+Also own orderly shutdown: closing the window stops the pump on its sentinel, cancels any
+running job, reaps its process tree, and closes the database — in that order.
+
+#### Acceptance criteria
+
+- A test drives the **assembled application** — not components — from paste through to a queued
+  job, using `T-016`'s dialog and asserting the job reaches the repository
+- Wiring is asserted structurally too: the manager holds the concrete repository, and every
+  manager signal the UI needs has exactly one connection. A signal connected twice, producing
+  duplicate rows, must fail
+- Startup reports the ffmpeg state and names what will not work without it (`REQ-024`)
+- Closing the window with a job running exits with code 0, leaves no process in the tree, and
+  leaves the database consistent
+- Cold start stays inside `NFR-002`'s 3-second budget with the full graph constructed, and the
+  measurement is recorded — `T-007` measured an empty window
+- No component is constructed twice, asserted by identity, so a second manager cannot quietly
+  service a second queue
+
+#### Out of scope
+
+- Any new behavior; this task connects what the others built
+- The single-instance guard — `A-004`, Phase 2
+
+---
+
+### T-037 — End-to-end download and restart proof
+
+**Status:** Proposed — Ready once `T-036` merges
+**Owner:** Implementer
+**Priority:** **High** — two Phase 1 exit criteria are unowned without it
+**Phase:** Phase 1
+**Depends on:** `T-036`
+**Relevant context:** `IMPLEMENTATION_PLAN.md` Phase 1 exit criteria; `REQ-012`, `REQ-014`,
+`NFR-003`; `ai/TESTING.md` §7 (Crash recovery)
+**Affected surfaces:** `tests/integration/`
+**Risk:** **High** — it is the evidence for the phase
+**Review base:** the `T-036` merge commit
+
+#### Scope
+
+**Filed after review: the phase had no proof of success.** `T-012` tests probing and failure,
+`T-019` tests cancellation and crashes — nobody proved a download *completing*. Phase 1's first
+exit criterion is "a real URL downloads to disk with accurate live progress and correct final
+bytes", and its fourth is "job state survives an application restart mid-download". Both were
+unowned.
+
+Two integration tests against the assembled application, with yt-dlp faked at the adapter seam
+so they are deterministic and offline:
+
+1. **Success.** A job runs to completion: the file exists at the expected path, its byte count
+   matches what was reported, progress advanced monotonically through the `REQ-014` stages, and
+   the job's terminal state is success in both the UI and the repository.
+2. **Restart.** Kill the application mid-download, restart it, and assert the job is recovered
+   to a retryable state, visible in the UI, with its `DownloadRequest` intact — the assembled
+   equivalent of the database-level recovery `T-014` proves.
+
+A network-marked variant downloads one real, stable, small URL end to end, so the offline fake
+is checked against reality at least once. It stays excluded by default (`ai/TESTING.md` §2).
+
+#### Acceptance criteria
+
+- The completed file exists, and its size equals the total the final progress message reported
+  — a mismatch is exactly the bug this criterion is for
+- Progress is monotonic and reaches every `REQ-014` stage the job actually used
+- Success is recorded identically in the UI and the repository; disagreement fails
+- After a mid-download kill and restart, the job is recovered, visible, retryable, and its
+  stored `DownloadRequest` is byte-identical to the original (`REQ-012`, `NFR-003`)
+- Recovery is proven by killing a real process, not by closing the application cleanly
+- The `-m network` variant completes one real download and is **not** part of the default run
+
+#### Out of scope
+
+- Multiple concurrent jobs — Phase 2
+- Resume of a partial download — Phase 2
+
+---
+
+## Proposed — Phase 2
+
+### T-050 — Write the history table
+
+**Status:** Proposed — Ready now; `T-013` produces the event that fills it
+**Owner:** Implementer
+**Priority:** Medium — `REQ-020` has no owner without it, and the table already exists empty
+**Phase:** **Phase 2** — `IMPLEMENTATION_PLAN.md` lists "History persistence and
+completed-download records (`REQ-020`)" among Phase 2's deliverables, and the plan outranks
+this file (`AGENTS.md` §5). It was filed under Phase 1 first, because `T-014` had already
+created the table and `STATUS.md` said `T-013` would fill it; that was this file drifting
+ahead of the plan, not the plan being wrong.
+**Depends on:** `T-013`
+**Relevant context:** `REQ-020`; `ARCHITECTURE.md` §5 (`HistoryEntry`);
+`persistence/schema.sql` (the `history` table `T-014` created)
+**Affected surfaces:** `core/models.py` or `persistence/` (wherever `HistoryEntry` lands),
+`persistence/repositories.py`, `downloader/manager.py`, `tests/unit/`
+**Risk:** Low — an append-only record; nothing depends on it yet
+**Review base:** the `T-013` merge commit
+
+#### Scope
+
+**Filed after implementation: nothing owned this.** `STATUS.md` said `T-013` "owns writing the
+`history` table `T-014` created but left empty", but `T-013`'s scope, acceptance criteria and
+affected surfaces never mentioned it, and `TASKS.md` outranks `STATUS.md` (`AGENTS.md` §5). It
+was left undone deliberately rather than guessed at, because two pieces are genuinely missing:
+
+- **There is no `HistoryEntry`.** `core/models.py` says so explicitly and gives the reason — it
+  is a durable record rather than live domain state, so it belongs with the schema that stores
+  it. No repository exposes the table either.
+- **`history.format_used` has no source.** Nothing reports the format yt-dlp actually selected;
+  `Succeeded` carries the path and the byte count. Filling the column from the request's
+  *format selector* would store a different fact under a truthful-looking name — `bestvideo+
+  bestaudio` is not a format that was used. Either the worker projects the chosen format into
+  the outcome, or the column is left null and the schema says why.
+
+Decide the first of those, then write a row when a job completes, from the manager, in the same
+place the terminal transition is persisted.
+
+#### Acceptance criteria
+
+- A completed download writes exactly one `history` row, and a retry of the same job does not
+  silently duplicate it
+- `format_used` either carries the format yt-dlp actually used, reported from the worker, or is
+  null with the reason recorded — never the selector wearing that name
+- A cancelled or failed job writes no history row (`REQ-020` is a record of what was obtained)
+- The manager still imports no `persistence` module: history goes through an injected protocol,
+  as the job repository does (`T-013`, `ARCHITECTURE.md` §3)
+
+#### Out of scope
+
+- Any history UI — Phase 3 (`REQ-020`'s view)
+- Pruning, retention, or export
+
+---
+
+### T-053 — Prove concurrent per-job log isolation
+
+**Status:** Proposed — blocked until the Phase 2 pool permits two live sessions
+**Owner:** Implementer
+**Priority:** Low — Phase 1's structural routing is correct; concurrency is the missing proof
+**Phase:** Phase 2
+**Depends on:** `T-038` and the Phase 2 task that implements `REQ-013`
+**Relevant context:** `T038-R2`; `ARCHITECTURE.md` §8; `REQ-013`, `REQ-019`;
+`ai/REVIEWS.md` (2026-07-27 T-019/T-038 focused correction re-review)
+**Affected surfaces:** `tests/integration/test_worker_logging.py`
+**Risk:** Low until concurrency exists; High if the pool ships without the proof
+**Review base:** the Phase 2 concurrency implementation head
+
+#### Scope
+
+Phase 1 runs one session at a time. `T-038` proves that worker records carry a job-id stamp and
+that a per-job handler rejects every other stamp, using two sequential jobs. That establishes
+per-job routing, but it cannot establish the concurrent cross-write property while the manager
+refuses to keep two sessions open.
+
+When Phase 2 first permits two live sessions, coordinate two real spawned workers so both
+per-job handlers are open at the same time. Have both workers emit interleaved, unique markers
+through the production log queue and prove that each file contains its own complete stream and
+none of the other job's.
+
+This is not the current `T038-R2` ordered-drain correction. `T-038` must already retain a
+worker's final emitted records and stop its listener without blocking the GUI thread before this
+follow-up becomes relevant.
+
+#### Acceptance criteria
+
+- Two real worker sessions are simultaneously active before either emits its test records
+- Their records are deliberately interleaved through the production worker-log queue
+- Each per-job log contains every marker its worker emitted and no marker from the other worker
+- The application log still contains both streams
+- Removing the job-id filter or stamp makes the test fail
+
+#### Out of scope
+
+- Implementing Phase 2 concurrency or its scheduling policy
+- Repairing the current single-session ordered-drain and non-blocking-shutdown defect in
+  `T038-R2`
+
+---
+
+### T-046 — Output path collision policy against the filesystem
+
+**Status:** Proposed — Phase 2, alongside resume
+**Owner:** Implementer
+**Priority:** Medium — **raise to High before first release.** Until this lands, two downloads
+whose titles sanitize to the same component contend for one path
+**Phase:** Phase 2
+**Depends on:** `T-034`, `T-045`, and the download manager (`T-013`)
+**Relevant context:** `DAT-002`; `ARCHITECTURE.md` §8; `REQ-011`
+**Affected surfaces:** the download manager's path selection; `core/paths.py` remains pure
+**Risk:** Medium — the failure mode is one download overwriting another's output
+
+#### Scope
+
+**Filed by `DAT-002`, which is where the reasoning lives.** `T-045` established that
+`sanitize_component` cannot promise a unique path: it is a pure function of one string, and
+"does this collide with something?" is a question about the filesystem. The maintainer kept
+idempotence and narrowed the sanitizer's promise to the plausible neighbour class, moving real
+uniqueness here.
+
+This task owns the guarantee at the layer that can keep it — the one that knows what is already
+on disk and what other jobs are queued. That covers the ordinary case, not only the reserved-name
+residue: two different videos whose titles sanitize identically collide today by the same
+mechanism, and always have.
+
+**`core/paths.py` stays pure.** The resolution belongs to the caller that has filesystem context;
+pushing it into the sanitizer would make it stateful and re-open `DAT-002`.
+
+#### Acceptance criteria
+
+- Two jobs whose sanitized components are equal resolve to distinct output paths
+- The resolution is visible in the `REQ-011` preview before the write, not applied silently
+  afterwards — a preview that disagrees with the write is the failure `DAT-002` protects against
+- An existing file at the target is never silently overwritten
+- Concurrent writers cannot both win the same path — asserted against real concurrent jobs
+  rather than by inspection, since Phase 2 is where the second worker arrives
+- The residual collision `T-045` pins is covered by this policy, so `DAT-002`'s assumption that
+  `T-046` lands before first release is discharged
+
+#### Out of scope
+
+- Which names are legal or reserved — settled by `T-034` and `T-045`
+- Resume semantics for a partially downloaded file, beyond not colliding with one
+
+---
+
+### T-047 — Decide whether the environment ownership gate's blind spots are worth closing
+
+**Status:** Proposed — **not scheduled.** Carries `T044-R1`'s residue
+**Owner:** Planner, then Implementer if the answer is yes
+**Priority:** **Low, and deliberately so.** The question is whether to spend anything here at
+all; the honest default answer is no
+**Phase:** unassigned
+**Depends on:** `T-044`
+**Relevant context:** `T044-R1` and its six review rounds in `ai/REVIEWS.md`; `ai/TESTING.md`
+("What the environment ownership gate actually promises"); `ARCHITECTURE.md` §6
+**Affected surfaces:** `tests/unit/test_environment.py` only
+**Risk:** Low — no production code is involved, and none ever was
+
+#### Scope
+
+`T-044`'s gate reports any public attribute of `downloader/environment.py` not bound by an
+`import` statement, under the configuration the suite runs in. Three gaps are pinned by test and
+carried here:
+
+1. **Anything behind a guard false at run time** — OS, architecture, dependency presence,
+   feature probe, environment state.
+2. **A name imported and then rebound** — `try: from x import Y / except ImportError: Y = ...`,
+   the ordinary shape of an optional dependency, where the parse subtracts a name the fallback
+   genuinely bound.
+3. **Dynamic rebinding of an imported name** — `globals()["Path"] = ...`.
+
+**Read the history before proposing a fix.** `T044-R1` was found six times. Every attempt to
+close it by recognising more syntax was defeated by syntax the author had not enumerated, and
+three attempts to state its coverage overclaimed and were disproved. That is the strongest
+available evidence that the next clever fix will also be wrong, and it is why this task's first
+deliverable is a *decision*, not a patch.
+
+The likely correct answer is **no**. Gaps 1 and 3 need a determined author to trigger; gap 2 is
+plausible but would announce itself the moment anyone read the module. The gate catches what it
+exists to catch — an accidental `get_ytdlp_version()` — and `ARCHITECTURE.md` §6's boundary is
+independently guarded by the layering test and by review.
+
+#### Acceptance criteria
+
+- A recorded decision, with reasoning, on whether any gap is worth closing
+- If **no**: this task closes, and `ai/TESTING.md`'s statement of the promise stands as the
+  durable record. Nothing in the tree changes
+- If **yes** for a given gap: the fix must come with evidence it does not reintroduce the
+  enumeration failure — specifically, a demonstration against binding syntax the fix does not
+  name, since that is how all five previous fixes died
+
+#### Out of scope
+
+- Any production change to `downloader/environment.py`. The gate is a test; the module's
+  behavior has never been in question
+- Strengthening the layering test, which uses `ast.walk` and is unaffected
+
+---
+
+### T-048 — Verify the first real data migration when one is written
+
+**Status:** Proposed — **not schedulable yet.** No migration transforms data
+**Owner:** Implementer, when the first data migration is authored
+**Priority:** Medium at that point; nothing to do before
+**Phase:** unassigned
+**Depends on:** the first migration that changes stored values
+**Relevant context:** `T014-R4`; `ai/TESTING.md` §7 (Migrations)
+**Affected surfaces:** `tests/unit/test_persistence.py`
+
+#### Scope
+
+`T-014`'s migration test asserts strict per-column equality, which is correct while every
+migration is pure DDL and any change is loss. It will be **wrong** the day a migration
+legitimately transforms values.
+
+A `TRANSFORMED_BY_MIGRATION` allowance was written and then removed: `T014-R4` established that
+an allowance can conceal a corrupt-but-readable migration, and an empty allowance protects
+nothing while adding a mechanism nobody has exercised. Designing it against a real migration
+beats designing it against an imagined one.
+
+#### Acceptance criteria
+
+- The first data migration ships with a test asserting the transformed values are **correct**,
+  not merely different — a readable row holding wrong data is the failure mode `T014-R4` named
+- Untransformed columns stay under strict equality
+- The v1 fixture remains untouched; a new version freezes its own
+
+#### Out of scope
+
+- Any change to `T-014`'s current strict comparison, which is right until then
+
+---
+
+### T-049 — Tighten DAT-003 before cookie-file support
+
+**Status:** Proposed
+**Owner:** Planner
+**Priority:** Medium before cookie-file support or first release
+**Phase:** Phase 4
+**Depends on:** none
+**Relevant context:** `DAT-003`, `REQ-026`, `T014-R1`, `T-038`
+**Affected surfaces:** `ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, `ai/TASKS.md`
+
+#### Scope
+
+The maintainer accepted DAT-003's controlling trade-off: third-party diagnostic prose is stored
+verbatim in the local, user-owned database, even when it names a cookie path. That closes
+T014-R1. Its explanatory table is narrower than the decision it records, however:
+
+- a user-supplied source URL may itself contain userinfo and is stored verbatim under the earlier
+  URL decision;
+- `cookies_from_browser` is passed to yt-dlp as a browser name, but the model currently accepts
+  any non-empty string, including a path-shaped one; and
+- arbitrary third-party prose cannot support an exhaustive claim that a cookie path is the
+  "only residue." The accepted boundary is provenance, not enumeration of what yt-dlp may say.
+
+Rewrite DAT-003's table and linked notes around that actual boundary. Add the missing reopening
+condition: REQ-026 already promises cookie-file support, so the decision must be revisited before
+the application adds a cookie-file path or any other secret-bearing field to a persisted job.
+Keep T-038 origin-agnostic: every emitted log is redacted regardless of whether its text began in
+this application or yt-dlp.
+
+#### Acceptance criteria
+
+- DAT-003 makes no exhaustive claim about the contents of arbitrary third-party diagnostics
+- User-entered source URLs, model fields supplied by the application, and yt-dlp-emitted prose
+  are distinguished explicitly
+- Adding cookie-file support or another secret-bearing persisted field is a named reopening
+  condition alongside sync, export, cloud backup, and database attachment
+- T-038 still requires redaction of the final emitted log regardless of message provenance
+- `REQ-026` and T-014's historical criterion link to the same scoped decision without acquiring
+  a second competing definition
+
+#### Out of scope
+
+- Reopening T-014 or changing its approved persistence code
+- Implementing cookie-file settings or log redaction
+
+---
+
+## Blocked
+
+### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
+
+**Status:** **Blocked** — code corrections verified 2026-07-26 (`T033-R2` resolved, the
+version-against-pin half of `T033-R1` verified). Approval requires evidence this repository
+cannot produce locally: the collection-removal negative run, Linux **and** Windows frozen
+results, and the recorded artifact-size delta. `T033-R1` stays **Open — externally blocked**;
+it is deliberately *not* closed by the commit that lands this work.
+**What landed.** `collect_submodules("yt_dlp")` + `collect_data_files("yt_dlp")` in
+`packaging/tracks-and-trails.spec`; `run_ytdlp_probe()` in `_freeze_probe.py` behind a
+`--ytdlp-probe` flag; a CI step in the `frozen` job on both platforms.
+
+**The probe resolves an extractor by name rather than importing yt-dlp.** `import yt_dlp`
+succeeds against the core alone — which is exactly what makes this failure look like site
+breakage — so the probe goes through the lazy machinery PyInstaller's static analysis cannot
+see. Resolution runs through `downloader.worker`, so it exercises the real `OPS-002` path
+inside the artifact instead of a parallel one, and stays within `ARCHITECTURE.md` §6.
+
+**Defect found by mutation-checking the probe itself.** `get_info_extractor` *raises* `KeyError`
+for an unknown name; it does not return `None`. The `matched is None` branch was therefore dead
+code and the failure escaped as a bare traceback. The job still went red, so the gate worked —
+but under `OPS-003` a Windows failure is diagnosed from this log and nothing else, and
+`KeyError: 'YoutubeIE'` does not say the artifact shipped without its extractors.
+
+**Verified locally:** 1751 extractors, `youtube` resolved, exit 0. Both probe mutations
+(threshold above reality; unresolvable name) exit non-zero, so the gate is wired to the exit
+code and not vacuous. Frozen-artifact evidence on both platforms is pending CI — the local run
+is source-mode and deliberately claims nothing about the frozen build.
+
+**Owner:** Implementer
+**Priority:** High — blocks any usable release, and fails in a way that looks like a site bug
+**Phase:** lands with `T-012`; verified by `T-020`'s CI job; gates Phase 5
+**Depends on:** `T-012` (the worker is the first thing to import `yt_dlp`)
+**Relevant context:** `OPS-002`, `REL-001`, `ARCHITECTURE.md` §6 and §12, `NFR-008`, `C-002`
+**Affected surfaces:** `packaging/tracks-and-trails.spec`, `packaging/frozen_smoke.py`,
+`.github/workflows/ci.yml`
+**Risk:** **High** — the failure mode is silent at build time and total at run time
+
+#### Scope
+
+`OPS-002` says every release bundles a pinned yt-dlp baseline. The frozen artifact currently
+contains **none of it**: a search of the built `dist/tracks-and-trails` for `yt_dlp` returns
+zero files. That is correct today — nothing imports it, because `worker.py` and
+`ytdlp_adapter.py` are still stubs — but it will not self-correct when `T-012` lands.
+
+PyInstaller's analysis follows *static* imports. yt-dlp resolves its extractors dynamically:
+1046 package files, **972 of them extractor modules**, reached through `lazy_extractors`
+rather than by direct import. Static analysis will therefore collect the yt-dlp core and miss
+essentially every extractor.
+
+The resulting failure is the dangerous kind: the artifact **builds and launches normally**,
+`import yt_dlp` succeeds, and then every real URL fails to find an extractor — which reads
+exactly like the site-breakage `C-002` teaches everyone to expect, so it will be misdiagnosed.
+
+Collect the package explicitly in the spec, and prove it from inside the artifact.
+
+#### Acceptance criteria
+
+- The frozen artifact contains the yt-dlp package, and the bundled version **equals the pin in
+  `pyproject.toml`** — asserted, not eyeballed, so a stale build cannot pass
+- A probe **inside the frozen artifact** imports `yt_dlp` and resolves a named extractor for a
+  stable URL pattern, without network access
+- Removing the collection from the spec makes that probe fail — the mutation is exercised once
+  and reverted, as `T-020`'s negative proof was
+- The `OPS-002` resolution order is honoured: with a directory present at
+  `user_data_dir/tracksandtrails/ytdlp/`, the worker reports **that** version; with it absent
+  or unimportable, it reports the baseline and says why
+- Both the Linux and Windows frozen jobs stay green, and the artifact-size change is recorded
+
+#### Out of scope
+
+- The in-app update action itself (`OPS-002`, Phase 4) — this task bundles the baseline and
+  proves the resolution order; downloading and extracting a wheel is separate
+- Trimming the bundle. 972 extractor modules is a size cost worth measuring, but excluding
+  extractors to save space would re-create this defect deliberately
+- Any change to the pin
+
+**Note:** `ai/TESTING.md` §8's release gate re-checks that yt-dlp is still pure Python. This
+task is the other half — that the pure-Python package actually *ships*. Purity without
+inclusion still yields an application that cannot download anything.
+
+---
+
+### T-039 — Verify Windows installer behavior on the runner
+
+**Status:** Proposed — blocked until Phase 5 produces an installer
+**Owner:** Implementer
+**Priority:** Medium now, High once Phase 5 starts — it must land before the first public release
+**Phase:** Phase 5
+**Depends on:** the Phase 5 installer, `T-026` (establishes the real-plugin Windows job)
+**Relevant context:** `OPS-004`, `REL-001`, `ai/TESTING.md` §9, `REQUIREMENTS.md` §3
+**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md` §9, `REQUIREMENTS.md` §3
+**Risk:** Medium — same failure mode as `T-026`: a shallow check would retire a
+release-blocking manual item without replacing it
+
+#### Scope
+
+Split out of `T-026` when `OPS-004` was accepted on 2026-07-26. `OPS-004` reclassified four
+things as automatable on the Windows runner; three of them `T-026` does now, but installer
+verification cannot be written before an installer exists, and `T-026` had to stay completable
+because it is what closes Phase 0's last exit criterion.
+
+A CI runner is a genuinely clean machine, which is what makes this worth automating at all:
+installing onto a box that has never held the application is exactly the case a developer
+machine cannot reproduce.
+
+Assert, on `windows-latest`:
+
+1. **Silent install** completes with a success exit code and no interactive prompt.
+2. **File and shortcut placement** — the installed tree, the Start Menu entry, and any
+   registered association land where the installer claims.
+3. **The installed application launches** under the real `windows` platform plugin, reusing
+   `T-026`'s harness rather than a second one.
+4. **Uninstall and removal** — the uninstaller exits clean and leaves nothing behind except
+   what is deliberately preserved (user settings and the job database, per `DAT-001`).
+
+#### Acceptance criteria
+
+- Each of the four is a **gate**, stated as a mutation that turns the suite red: a missing
+  shortcut, a file placed outside the install root, a non-zero silent-install exit code, and a
+  leftover file after uninstall each fail the job. Screenshots, if any, stay retained evidence
+  and fail nothing on their own (`T031-R2`, `P0-R7`)
+- Uninstall leaving user data behind is asserted as **intended** behavior, not tolerated as a
+  leftover — the test distinguishes the two
+- `ai/TESTING.md` §9's manual list drops installer placement and removal, and
+  `REQUIREMENTS.md` §3 narrows to match — **only once this job is landed and green**
+- The added CI time is recorded against `T-006`'s budget
+
+#### Out of scope
+
+- Whether the installer *feels* normal — `OPS-004`'s subjective residue, still human, still
+  blocks first release
+- Upgrade-over-existing-install and downgrade paths — real, but a separate task once the
+  versioning story exists
+- Any non-Windows packaging
+
+---
+
+## Complete
 
 ### T-013 — Download manager and result pump
 
@@ -438,7 +1751,6 @@ so.
 - Any widget — `T-016`, `T-017`
 
 ---
-
 
 ### T-015 — Built-in presets and selector translation
 
@@ -884,361 +2196,6 @@ personal paths (`REQ-026`, `NFR-007`). They are committed, so a leak here is per
 
 ---
 
-### T-016 — Add-URL dialog with probe results
-
-**Status:** **In Review — fourth correction batch returned 2026-07-28, awaiting verification.**
-Critical `T016-R1` and High `T016-R3` are corrected against the lifecycle the third re-review
-asked for rather than at the three places it caught them. `T016-R2` and `T016-R4`…`R8` remain
-verified resolved and were not reopened. No finding is marked Resolved here — that is the
-Reviewer's to do.
-`T016-R2` is verified resolved. Critical `T016-R1` and High `T016-R3` continue, both narrowed to
-what asynchronous persistence stopped guaranteeing rather than to a repeat of the original
-defect.
-`T016-R4`…`R8` are verified resolved. The three that continue — Critical `T016-R1` and High
-`T016-R2`/`R3` — are corrected again, each for a reason the first pass did not reach rather than
-a repeat of it.
-The initial review returned **Changes requested** with one Critical, two High and three blocking
-Medium findings. All six are corrected in one batch, together with both non-blocking Lows.
-`T016-R3` needed an architecture decision first: `ARC-005` is accepted, and `T-055` records it.
-No finding is marked Resolved here — that is the Reviewer's to do.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 1
-**Depends on:** `T-013`, `T-015`, `T-018` (the playlist/single-item projection this task
-displays does not exist until `T-018` adds it — `T012-R6`). **`T-051` is resolved**: `ARC-004`
-decides that a probed job downloads from `READY`, and this task implements it
-**Relevant context:** `REQ-001`, `REQ-002`, `REQ-005`, `NFR-001`, `NFR-005`, `NFR-006`
-**Affected surfaces:** `ui/add_dialog.py`, `ui/main_window.py`, `tests/ui/`, and — for
-`ARC-004` — `downloader/manager.py` with `tests/integration/test_manager.py`
-**Risk:** Medium — the first widget that talks to the manager, and the first place a blocking
-call would freeze the application
-**Review base:** `098ba3f` · **head:** `33ebd11`. Five commits span that range and **two are not
-this task**: `0b914a5` preserves the Reviewer's own records, and `3b9d937` reflects `T-038`'s
-approval into the tracking files. `T-016` is `d9936f4`, `57c7e5c` and `33ebd11`.
-**Branch:** none now. `phase1-add-url-dialog` was cut at maintainer instruction because Codex was
-reviewing `T-019`/`T-038` on `main` at the time (`AGENTS.md` §7 — isolated concurrent work), then
-rebased onto `main`, merged fast-forward and deleted once that review closed.
-
-#### Fourth correction batch — the lifecycle asynchrony needed, 2026-07-28
-
-**Base:** `6ad20f6`. Nine mutations, nine killed, and the full suite re-run.
-
-The third re-review reported both findings in three places each, and the six had one cause:
-**a synchronous write sequenced every following effect for free, and an asynchronous one
-sequences nothing.** `ARC-005` landed on the claim that a write-through view made the change
-invisible to its callers — *"only the announcement moved"*, *"callers unchanged"* — and each
-open defect is that equivalence failing somewhere different. So this batch corrects the model
-rather than the three sites, and `ARC-005` is amended to say so (`ai/DECISIONS.md`, 2026-07-28).
-
-- **`T016-R1` (Critical), first part — the close that *creates* a withdrawal is refused.**
-  `done()` tested `_withdrawing` on the way in and then, four lines later, retired a started
-  probe — which populates it — and carried on to `super().done()`. The check now happens after
-  the retirement as well, and the dialog **finishes that same close by itself** once the
-  cancellation is durable, so the user asks once rather than three times.
-- **`T016-R1`, second part — a reserved start is cancellable.** `_reserved` was a set of ids
-  held only to keep the pool at one, so `cancel()` wrote `CANCELLED` while the pending `PROBING`
-  write's success callback still spawned unconditionally: a durable cancellation and a running
-  worker for the URL the user had just taken away. It is now a `_PendingStart` that can be
-  withdrawn, `_spawn` re-reads it and re-checks shutdown, and the caller learns through a new
-  `start_rejected` signal.
-- **`T016-R1`, third part — the store no longer guesses a rollback target.** Keeping the newest
-  value and restoring the one it displaced is right for one failed revision and wrong for two:
-  the second failure restored the first, which had also failed. `PersistentJobStore` now holds
-  the revisions **in flight** and forgets each as it settles, so once nothing is queued the
-  database is the only answer. A smaller claim, and one the disk can keep.
-- **`T016-R3` (High), first part — a reservation is part of the lifecycle.** `is_idle`,
-  `active_job_ids()`, `shutdown()` and the tick's idle gate all account for it now. `idle` is
-  composition's permission to quit (`T-036`), so announcing it with a start on the writer thread
-  was a promise this manager could not keep.
-- **`T016-R3`, second part — per-job ordering of writes and effects.** `_Chain` runs one step at
-  a time per job, and a transition is **computed when its turn comes** rather than when it was
-  asked for. That closes the measured progress defect — the second message read back the
-  `RUNNING` its predecessor had only queued and announced while the row said `PROBING` — and the
-  class it belongs to: a step that no longer applies is skipped rather than walking the pipeline
-  backwards out of a Qt slot.
-- **`T016-R3`, third part — mandatory cleanup is not an announcement.** `_abort_start` passed one
-  function as both `then` and `otherwise`, so a failed `FAILED` write still emitted `job_failed`
-  and `protocol_violation` to observers that then read `PROBING`. The unwind now runs either way;
-  the signals wait for durability, and the failure path logs the violation and emits
-  `persistence_failed`.
-- **`T016-R3`, fourth part — the dialog hears about a rejected start.** It treated a returning
-  `start()` as a running probe and sat at "Probing …" forever when the write failed, offering to
-  cancel a worker that did not exist.
-
-**Two committed assertions were changed, and both encoded the defect.**
-`test_no_companion_signal_arrives_before_its_transition_is_durable` and
-`test_a_second_session_is_refused_while_the_first_is_still_being_stored` asserted
-`active_job_ids() == ()` during a reserved start — which is exactly the invisibility `T016-R3`
-is about. They now assert the reservation is reported, and the claim they were standing in for —
-that no **worker** exists while the row still says `QUEUED` — is asserted directly in
-`test_no_worker_exists_while_the_row_still_says_queued`, which was strengthened rather than
-relaxed: it now checks the sessions dictionary *and* that the reservation is tracked.
-
-**Mutations run, all killed:** `_spawn` ignoring a withdrawn reservation · `is_idle` ignoring
-reservations · the tick's idle gate ignoring them · `shutdown()` cancelling sessions only · a
-non-moving progress message forwarded at once · a failed `FAILED` write announcing anyway · the
-store's old rollback-to-displaced rule · `done()` checking withdrawals only on the way in · the
-dialog not connecting `start_rejected`.
-
-**Checks:** `ruff check .` and `ruff format --check .` pass (86 files). `mypy src` (35 files),
-configured `mypy` (71 files) and `mypy --platform win32` (71 files) all pass. Bare `pytest`:
-**1292 passed, 11 skipped, 1 deselected in 73.86 s**. The wide mypy scope found two real problems
-in the new tests, one of which made mypy stop analysing the rest of a test function — the same
-`ai/TESTING.md` §12 scope difference this task recorded last round.
-
-#### Third correction batch — durability now gates the consequences, 2026-07-27
-
-**Base:** `c5dddae`. Seven mutations, seven killed, and the earlier batteries re-run.
-
-- **`T016-R1` (Critical) — a withdrawal is owned until it is durable.** Retiring a probe cancels
-  its stored row, but that cancellation is a write, and a write can fail. The reviewer held the
-  lock through it: the view said `CANCELLED`, SQLite still said `QUEUED`, and a restart — which
-  has no view — brought the replaced URL back as live work while the dialog showed only "The URL
-  changed". Two corrections. `PersistentJobStore` **takes its view record back when a write
-  fails**, so the view can no longer disagree with the disk about something that did not happen;
-  and the dialog tracks each withdrawal until `CANCELLED` is durable, refusing to close or queue
-  while one is outstanding, saying which URL is still queued and why, and retrying when Close is
-  pressed again. The gate reads the concrete repository and finishes with a **fresh reader**,
-  which is the restart the finding is about.
-- **`T016-R3` (High) — persistence gates the effects, not just the announcement.** Moving
-  `job_changed` into the callback preserved nothing else: the old synchronous write sequenced
-  every following effect for free. A worker and its pump were built while the row still said
-  `QUEUED`; `_abort_start` emitted `protocol_violation` and `job_failed` and ran cleanup before
-  `FAILED` was durable; `job_succeeded` arrived while the row still said `RUNNING`.
-  `_save_and_announce` now takes `then` and `otherwise`, and **session construction, startup
-  cleanup, `media_probed`, `job_succeeded`, `job_failed` and state-moving `progress` all wait**.
-  A failed write runs `otherwise` and never the success-side effect.
-
-**Two consequences worth naming rather than burying.** `start()` **no longer raises for a spawn
-failure**: the session is built from a write's completion callback, so there is nobody left to
-raise to, and the failure is reported through the signals this manager already had. Five approved
-`T-013` tests changed their delivery assertion and kept every other one. And the pool of one now
-counts *reserved* starts, because otherwise it would have been "however many `start()` calls fit
-between a write and its completion".
-
-**Three of the seven mutations survived first time**, and all three were weak tests of mine rather
-than weak code: the companion-signal test produced no companion signal to observe, the
-failure-continuation test never checked that the success effect was skipped, and the pool-of-one
-test used a synchronous store where the gap cannot exist.
-
-**One defect was found by these tests, in this batch's own code.** Retrying a withdrawal while its
-first cancellation was still pending drove `CANCELLED → CANCELLED` and threw
-`IllegalTransitionError` out of `QDialog.done()`. `DownloadManager.cancel()` is now a no-op for a
-job already terminal — there is nothing to cancel, and raising there is worse than saying so —
-and the dialog retries only once a failure has actually been reported.
-
-#### Second correction batch — the three continuations, 2026-07-27
-
-**Base:** `162f286`. Nine mutations, nine killed, and the first batch's nineteen re-run and still
-killed.
-
-- **`T016-R1` (Critical) — the window before the row exists.** The first correction bound a
-  result to its URL but left the *pending save* unmodelled: between `probe()` and its write
-  landing, `started` is false, so nothing could cancel it and its callback simply recorded the
-  row. Editing then left the replaced URL durably `QUEUED`, where whatever runs the queue next
-  would download what the user took away. A probe retired during its save now has its stored row
-  **cancelled** — `QUEUED → CANCELLED` is legal and needs no worker — so the record survives as
-  something asked for and withdrawn rather than as pending work nobody wants.
-- **`T016-R1` (Critical), second half — occurrences, not membership.** `_Persisted` was keyed by
-  URL text, so once a probe had stored one occurrence, `Add` skipped *every* line with that text
-  and two identical lines became one job. `split_urls` and `REQ-001` both say two identical lines
-  are two requests. It now counts how many occurrences already have a job and creates the
-  difference.
-- **`T016-R2` (High) — `done()` reads `usable`, not `in_flight`.** A probe mid-save has
-  `started is False`, so the first correction let Close through without retiring it, and the
-  callback started a worker for a dialog the user had already closed. Four new tests exercise
-  reject/close/done against a genuinely deferred save, and prove a later dialog can still probe.
-- **`T016-R3` (High) — `ARC-005` covered appends only.** `DownloadManager._save_and_announce()`
-  still called a synchronous `JobRepository.update()` from the GUI thread for every start,
-  cancel, stage change, success and failure: 5.017 s blocked under a held lock, then an uncaught
-  `OperationalError`. `QueueWriter.revise()` and `PersistentJobStore` now put **every** queue
-  write on the one thread. `JobStore.update` takes a completion callback, so `T-013`'s
-  persist-then-signal ordering is preserved rather than traded away, and a failed write raises
-  `persistence_failed` instead of an exception nobody catches. `close()` no longer calls
-  `QThread.wait()` — it reports completion through `closed`, the same event-driven shutdown
-  `T013-R2` established for the manager, after a contended write held that wait for 4.921 s.
-
-**The store's read contract is what kept this small.** `JobStore.get` is required to reflect a
-queued `update` immediately, so all ten `_save_and_announce` call sites in approved `T-013` code
-are unchanged; only the announcement moved into a callback.
-
-**Three mutations survived the first run of this batch**, all on `T016-R3`, and each was a real
-gap: the integrated test took the writer lock *after* `start()` had already issued its status
-write, so nothing was contended; read-your-writes was asserted against a writer fast enough to
-pass either way; and no test forced a write failure at all. All three now have a gate that fails
-without the fix.
-
-#### First correction batch — all six blocking findings, 2026-07-27
-
-**Base:** `a931736`. Every correction has a test named for it, and every one of those tests was
-shown to fail when the correction is weakened (19 of 19 mutations killed).
-
-- **`T016-R1` (Critical) — a probe now belongs to a URL, not just to a job id.** `_Probe` records
-  the input line and the generation of the URL box. Changing the first line **retires** that probe
-  and cancels its session; a result is refused unless its line is still first. The refusal lives
-  in `_on_media_probed`, where the result arrives, rather than resting on the edit handler having
-  run first — which is what the defect was. **`Add to queue` is disabled while a probe is
-  outstanding**, so the state that stored one line twice is unreachable rather than reconciled.
-  `_Persisted` tracks one job per entered line, and a retired probe's URL stops counting as
-  stored so it can be queued again.
-- **`T016-R2` (High) — `done()` is the choke point.** Escape, the window button, `reject()` and
-  `accept()` all reach it, and it cancels an in-flight probe. Three parametrised routes are
-  tested, plus the consequence the finding is really about: a later dialog can still probe.
-- **`T016-R3` (High) — nothing waits on SQLite.** `ARC-005` (below). The dialog submits and is
-  told the answer later; it closes **inside** the success callback, so `REQ-012`'s ordering is
-  strengthened rather than kept.
-- **`T016-R4` (Medium) — the tab order is complete.** All twelve focusable controls are declared
-  and asserted, and the observation no longer filters by declared name: the only exclusion is the
-  combo box's popup, which lives in its own top-level window.
-- **`T016-R5` (Medium) — the thumbnail reports failure.** `ThumbnailLoader.load` takes `bytes |
-  None`; the shipping `QNetworkAccessManager` loader reports both outcomes, and its **failure**
-  path is tested against a real local URL that cannot resolve.
-- **`T016-R6` (Medium) — foreign text is `PlainText`.** Applied from one list, asserted per label
-  and by rendered width against a `<b>VISIBLE</b>` title, because reading `QLabel.text()` back
-  returns the input under either format and misses the defect entirely.
-- **`T016-R7` (Low)** — the refusal test now takes the *complement* of the two entry points over
-  the whole enum, so `PROBING`, `COMPLETED` and `CANCELLED` are covered and a new status joins
-  the day it appears. One test compares the transcription against `_ENTRY_STATUS`.
-- **`T016-R8` (Low)** — the stale records were corrected in `a931736`, before this batch; the
-  "no widget touches any of it yet" contradiction in `STATUS.md` is fixed here.
-
-**Three mutations survived the first battery**, and each exposed a real gap rather than a
-mis-aimed probe: the `_on_media_probed` identity check was **unreachable** because the edit
-handler deleted the probe record before any late result could be refused by name (fixed by
-retiring rather than deleting, which is why `_Probe.superseded` exists); the "a later dialog can
-probe" test passed with the fix reverted because the crafted child *died* on an unknown URL and
-freed the pool by accident (it now hangs); and the batched position allocation could not be seen
-by a single-batch test (a second batch now proves positions continue). All three are killed.
-
-**Two defects were found by the corrections' own tests**, not by review: `QueueWriter.close()`
-called the worker's slot directly and closed a SQLite connection from the wrong thread —
-`check_same_thread` caught it, which is exactly why `ARC-005` keeps that check on — and
-`QWidget.close()` on a never-shown dialog delivers no close event, so that test now shows the
-dialog first rather than passing for the wrong reason.
-
-**The `T016-R6` test was vacuous twice, in two different ways, and Windows CI found both.** The
-first version compared a font-metrics advance against `sizeHint()`, which is a wrapped-layout
-figure and never was a string width; it passed on Linux by luck. The second rendered the same
-label under each text format — exact, and one variable — but the Windows runner laid that label
-out 84 px wide, so both renderings clipped to identical pixels and the assertion could not fail.
-It now sizes the label explicitly and asserts the two grabs are the same size, so a future
-clipping change fails loudly rather than quietly restoring the equality.
-
-**Evidence.** `ruff`, `ruff format`, `mypy src` (34 files) and both configured 70-file scopes
-pass. Full suite **1267 passed, 11 skipped, 1 deselected**. CI green on all five jobs at
-`8bde969` (run `30324097829`): Ubuntu 1267 passed, Windows **1256 passed, 20 skipped**, Windows
-desktop 20 passed, both frozen jobs succeeded. Mutation battery: **19 of 19 killed**, including
-one mutation per blocking finding.
-
-**One unrelated intermittent was seen and is filed as `T-056`**, not swept up here: a
-`windows-latest` run failed `test_the_survival_check_can_tell_a_live_process_from_a_dead_one`,
-a `T-019` helper this batch does not touch. It passed on the runs either side.
-
-#### What was built
-
-- **`ui/add_dialog.py`** — the dialog. Probing runs in a worker process and `probe()` returns
-  immediately; results arrive on `DownloadManager`'s signals. The thumbnail is the one `REQ-002`
-  field the probe's reply does not carry — `MediaInfo` has a *URL* — so it is fetched
-  asynchronously through an injected `ThumbnailLoader`, whose shipping implementation is
-  `QNetworkAccessManager`. That seam is what lets the suite decode a real image without touching
-  the network.
-- **`downloader/manager.py`** — `ARC-004` implemented. `start()` now accepts `QUEUED` **or**
-  `READY` and moves the job to the status that says a worker holds it, and the docstring that
-  said the flow "needs the state machine amended first" is replaced by the ruling. A probe
-  session is still refused for a `READY` job: `READY → PROBING` does not exist, and moving a
-  probe to `RUNNING` would say a download holds a job that is not downloading.
-- **`ui/main_window.py`** — File → Add URLs…, disabled with a status tip naming `T-036` until
-  composition supplies a manager, a job store and an output directory. An action that appears to
-  work and quietly does nothing is the failure mode this project keeps finding.
-
-#### Two things a reviewer should look at first
-
-- **`started_at` is stamped entering `PROBING` and left alone entering `RUNNING` from `READY`.**
-  A download from `READY` continues one attempt rather than beginning a new one, while a retry —
-  which re-enters `QUEUED` — still gets a fresh stamp. Both halves have a test.
-- **`T-013`'s `test_a_job_that_is_not_queued_cannot_be_started` was replaced, not deleted.** It
-  asserted the rule `ARC-004` amended. What stands in its place is a parametrised refusal for
-  every status that is *not* an entry point, plus the four new `READY`-entry tests.
-
-#### Evidence
-
-Local at `33ebd11`: `ruff check`, `ruff format --check` (84 files), `mypy src` (33 files), and
-bare `mypy` and `mypy --platform win32` (**69** files each) all pass. Full default suite:
-**1239 passed, 11 skipped, 1 deselected** in 71 s — `T-038`'s 1195 plus this task's 44.
-
-**CI is green on all five jobs**, run `30320408833`: ubuntu-latest 1239 passed, windows-latest
-**1228 passed, 20 skipped, 21 deselected**, windows desktop **20 passed**, both frozen jobs
-succeeded. This task has real Windows evidence.
-
-**Twelve weakenings were applied and all twelve were killed** by a committed test — including a
-probe that blocks the GUI thread, a paraphrased extractor message, jobs written after the dialog
-closes, and a `READY` start that re-enters `PROBING`.
-
-**Three gates reported clean while covering nothing, and each is worth more than the fix.**
-
-- **The tab-order mutation survived the first run.** That test derived its expectation from the
-  dialog's own `focus_chain()` — the list `_set_tab_order` feeds to Qt — so reversing two entries
-  moved both sides and it proved only that the list equalled itself. Now transcribed by hand with
-  Qt's `nextInFocusChain` walked against it (`ai/TESTING.md` §13).
-- **The local type gate was the wrong scope, and CI found two real errors.** `mypy src` reads 33
-  files; the `windows desktop` job runs the command **unscoped** over 69, including `tests/`.
-  Neither error was Windows-specific. One had made mypy narrow a property at an earlier
-  `assert ... is not None`, rendering the later `is None` assertion statically impossible — so it
-  declared the rest of that test unreachable and **stopped type-checking it**. `ai/TESTING.md` §12
-  now records the scope difference, which nothing stated.
-- **The Windows UIA menu contract caught the new File-menu item**, correctly, because this task
-  added one without declaring it there. The item is spelled `Add URLs...` with ASCII dots: the
-  ellipsis returned from UI Automation as a replacement character in the CI log, and that log is
-  the only Windows evidence this project has (`ai/TESTING.md` §10).
-
-#### Scope
-
-Paste or type a URL, probe it, see what it is, choose a preset, and queue it. Probing runs in
-a worker process — **never inline** — because probe latency is unbounded and blocking the GUI
-thread on it is exactly what `NFR-001` forbids (`ARCHITECTURE.md` §8).
-
-**The probe-then-download step is settled** (`ARC-004`, from `T-051`). This task changes
-`DownloadManager.start()` to accept a job in `QUEUED` **or** `READY`, choosing the status that
-says a worker holds it — `PROBING` from the first, `RUNNING` from the second — and replaces the
-docstring note that says the flow "needs the state machine amended first" with a pointer to
-`ARC-004`. The download re-extracts rather than re-probing; the recorded title stands.
-
-Show what `REQ-002` names: title, uploader, duration, thumbnail, and whether the URL is a
-single item or a playlist. On failure, show the extractor's own message **verbatim**
-(`REQ-005`, `NFR-006`) — not a paraphrase, and not a generic "could not fetch".
-
-#### Acceptance criteria
-
-- A probe of a fixture-backed URL populates **every field `REQ-002` names** — title,
-  uploader, duration, a thumbnail decoded to a real pixmap rather than a URL, and whether the
-  URL is a single item or a playlist — asserted field by field, since "populates the dialog"
-  would pass with four of five missing
-- The GUI thread is never blocked, and a test asserts the dialog stays responsive while a
-  probe is outstanding (`NFR-001`)
-- An unsupported URL shows the extractor's message character-for-character, asserted by
-  equality against the fixture (`REQ-005`, `NFR-006`)
-- A probe that never returns can be cancelled and leaves no worker behind
-- Multi-line paste queues each URL as a separate job (`REQ-001`)
-- Full keyboard operation: every control reachable and actuable by keyboard, with a
-  deliberate tab order asserted, and an accessible name on every control (`NFR-005`)
-- No information is conveyed by color alone (`NFR-005`)
-- Queuing a job persists it before the dialog closes, so a crash immediately after does not
-  lose it (`REQ-012`)
-- A probed job in `READY` starts a download through `start()` and moves `READY → RUNNING`
-  without passing through `PROBING`, with the persisted status asserted at each step (`ARC-004`)
-- A `QUEUED` job still starts at `PROBING`, so the second entry point did not replace the first
-
-#### Out of scope
-
-- The sortable format table and per-format selection — `REQ-003`, `REQ-008`, Phase 3
-- Drag-and-drop — `REQ-001` allows it, but it is not needed to prove the slice; Phase 2
-- Playlist expansion into individual jobs — Phase 3
-
-
----
-
-## Ready
-
 ### T-038 — Logging with handler-level redaction
 
 **Status:** **Complete — approved**, 2026-07-27 at `098ba3f`. Critical `T038-R1` and High
@@ -1480,117 +2437,6 @@ exists to refuse (`T-011`).
 
 ---
 
-### T-057 — Bind DRM detection to yt-dlp's actual contract
-
-**Status:** **In Review — implemented 2026-07-28.** The `_has_drm` write is reachable offline, so
-the canary drives yt-dlp's own code rather than reading its source, and the two divergences are
-corrected to yt-dlp's rule rather than recorded as deliberate. See **Evidence**.
-**Owner:** Implementer
-**Priority:** Medium — the boundary is fail-safe today, but one half of it disagrees with yt-dlp
-and nothing would notice an upstream rename
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `SEC-001`, `REQ-EXCL-001`, `NFR-008`, `ai/TESTING.md` §5 (fixtures and the
-recorded-failure canaries) and §7 (DRM)
-**Affected surfaces:** `downloader/ytdlp_adapter.py`, `tests/unit/test_ytdlp_adapter.py`, and the
-canary test wherever the recorded-failure canaries live
-**Risk:** Medium — it is the input to a non-negotiable product boundary
-
-#### Scope
-
-Two problems at one seam. Both were found by **reading yt-dlp's own source at the pinned version**
-(`yt-dlp==2026.7.4`, `pyproject.toml:34`) rather than by a failing test, which is itself the point.
-
-**1. Nothing verifies that yt-dlp still writes the field.** `adapter.has_drm()` reads `_has_drm`,
-and `SEC-001` rests on it. The DRM fixture is `derived` by design — capturing a real one means
-probing a DRM service, which `REQ-EXCL-001` puts out of scope — so it proves this code *reads* the
-field, not that yt-dlp *writes* it. On an upstream rename `has_drm()` returns `False`, the item is
-never classified, and the product tries to download it: a non-negotiable boundary failing
-silently. That is exactly the `NFR-008` canary shape `tests/fixtures/errors/` already uses to pin
-exception types; DRM never got one. In the pinned version the write is `YoutubeDL.py:2930`, inside
-`process_video_result`.
-
-**2. The per-format fallback disagrees with yt-dlp, in both directions.** yt-dlp computes
-`any(f.get('has_drm') and f['has_drm'] != 'maybe' for f in formats) or None`. The adapter computes
-`bool(formats) and all(entry.get("has_drm") for entry in formats)`. Two divergences, neither
-verified against a live extractor:
-
-- **`'maybe'` is truthy in Python.** yt-dlp excludes it deliberately and keeps such formats
-  downloadable (`YoutubeDL.py:2933`). The adapter reads a set of `'maybe'` formats as DRM and
-  refuses. The direction is fail-safe, so this is not a `SEC-001` breach — but a user is told an
-  item is DRM-protected when yt-dlp would have downloaded it.
-- **`all` where yt-dlp uses `any`.** A mixed item is DRM to yt-dlp and not-DRM to the fallback.
-  It only bites when `_has_drm` is absent, which is the one case the fallback exists for.
-
-Also worth settling rather than inheriting: `_has_drm` is assigned `True` **or `None`**, never
-`False`, so its absence does not distinguish "not DRM" from "never processed". Decide whether that
-matters on the probe path, or record that it does not.
-
-#### Acceptance criteria
-
-- A test fails if the pinned yt-dlp stops writing `_has_drm`, and it does so by exercising
-  yt-dlp's own code path rather than by matching text in its source. Whether that write is
-  reachable offline is **unverified** and is the first thing to establish; if it is not, the
-  weaker source-level check is acceptable **only** with that reason recorded beside it
-- The canary names the yt-dlp version it was verified against, as the recorded-failure canaries do
-- The `'maybe'` and `any`/`all` divergences are each either corrected to yt-dlp's rule or recorded
-  as a deliberate difference with its reason — not left as an unexamined accident
-- A mutation restoring the current fallback rule fails a test
-- No test touches a DRM service, a real protected URL, or `allow_unplayable_formats`
-
-#### Out of scope
-
-- The taxonomy and retry policy in `core/errors.py`; `DRM_PROTECTED` stays non-retryable
-- The UI half of the boundary — that is the criterion added to `T-017`
-- Refreshing any fixture: `ai/TESTING.md` §5 makes that a deliberate act with its own task
-
-#### Evidence, 2026-07-28
-
-**The write is reachable offline, so the weaker source-level check was not needed.**
-`YoutubeDL.process_video_result` computes `_has_drm` **before** it selects a format and mutates
-the info dict in place, so the canary hands it a synthetic dict, ignores whatever the call goes
-on to do, and reads the field back. Measured at zero DNS lookups with `format="all"` and
-`check_formats=False`; without those, a `'maybe'` format sends yt-dlp looking for a host.
-
-**Both divergences are corrected rather than recorded.** `format_has_drm` now implements yt-dlp's
-three-state rule — `True`, absent, and `'maybe'`, which yt-dlp keeps downloadable — and the item
-is protected if **any** format is, matching `_has_drm`. The `any`/`all` choice was not free, and
-it is worth the reviewer's attention: a mixed item now reads as DRM, where the fallback used to
-say it did not. That is not a new refusal in practice — `_has_drm` is `any`, and it is the branch
-every real info dict takes — but it means one committed assertion changed.
-
-**`test_a_partially_protected_item_is_not_treated_as_drm_only` is now
-`…_is_treated_as_protected`.** Its old rationale ("one clean format means there is something
-lawful to fetch") is a reasonable argument about a branch that never runs: production already
-refused mixed items through `_has_drm`, and the test asserted the half of `has_drm` that does not
-answer. The two halves of one function disagreed, which is what `T-057` was filed to find.
-
-**The strongest test is the one that does not state its expectation.**
-`test_the_adapter_and_yt_dlp_agree_about_every_shape_of_has_drm` runs five format shapes through
-yt-dlp *and* through the adapter and compares. Both divergences were invisible to a test that
-wrote down the expected answer, because the answer was written by whoever wrote the code.
-
-**Mutations run, all killed:** the fallback restored to `all(entry.get("has_drm"))` · `'maybe'`
-counting as DRM again · the canary reading a field yt-dlp does not write · the selection params
-dropped so yt-dlp reaches for the network.
-
-**The offline guard had to be corrected before it gated anything.** Raising from a patched
-`getaddrinfo` does not fail the test: yt-dlp catches whatever a handler raises and re-reports it
-as `NoSupportingHandlers`, which the surrounding `contextlib.suppress` then swallows. The attempt
-is now recorded and asserted after the call, and the fourth mutation above proves it fires.
-
-**Checks:** `ruff check .`, `ruff format --check .` (87 files), `mypy src` (35), configured `mypy`
-and `mypy --platform win32` (72 each) all pass. Bare `pytest`: **1334 passed, 11 skipped,
-1 deselected in 75.05 s**.
-
-**Left open deliberately:** `_has_drm` is written as `True` or `None` and never `False`, so its
-absence still does not distinguish "not DRM" from "never processed". It does not matter on any
-path this application has — every info dict reaching `has_drm` has been through
-`process_video_result` — and inventing a third state here would be this adapter asserting
-something yt-dlp does not. Recorded rather than fixed.
-
----
-
 ### T-058 — Recount the DRM coverage record
 
 **Status:** **Complete — recounted 2026-07-28.** Ten of ten, not eight, and not nine. Each of the
@@ -1673,93 +2519,6 @@ coverage claim about it changed.
 
 ---
 
-### T-056 — `still_running` reports a reaped Windows process as alive, intermittently
-
-**Status:** **In Review — corrected 2026-07-28, and one gate cannot run here.** The helper now
-decides by exit status on Windows; the third acceptance criterion is answered in the helper's own
-docstring. **The mutation that proves the Windows branch can only be killed on Windows CI**, so
-approval needs that run — see **Evidence**.
-**Owner:** Implementer
-**Priority:** Medium — an intermittent failure in the helper every `T-019` assertion rests on
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `T-019`, `ai/TESTING.md` §7 (Cancellation, Worker crash)
-**Affected surfaces:** `tests/integration/test_manager.py`
-**Risk:** Medium — it decides whether the process-tree suite is telling the truth
-
-#### Scope
-
-`test_the_survival_check_can_tell_a_live_process_from_a_dead_one` failed once on `windows-latest`
-in run `30323328299`: `still_running([dead_pid])` returned `[7208]` for a process the test had
-already reaped. It passed on the runs either side, so it is **intermittent, not a regression** —
-nothing in the `T-016` batch touches `process_tree.py` or that helper.
-
-The likely cause is that `still_running` treats "psutil can still see the pid" as alive, excluding
-only `NoSuchProcess` and `STATUS_ZOMBIE`. Windows has no zombie state, and a terminated process
-stays visible while a handle to it remains open, so there is a window in which a dead process
-reports as running.
-
-**This matters more than a flaky test usually would.** `still_running` is the helper the whole
-`T-019` descendant-reaping suite decides on, and its own docstring says a guard nobody watches
-fail is the shape `ai/TESTING.md` §13 exists to catch. A false *alive* fails loudly, as here; the
-concern is whether the same imprecision can produce a false *dead* and make a reaping assertion
-pass without anything having been reaped.
-
-#### Acceptance criteria
-
-- The helper distinguishes a running process from a terminated-but-visible one on Windows, by
-  exit status rather than by presence
-- The claim is demonstrated on Windows CI, not reasoned about from Linux
-- Whether the previous form could report a live process as dead is answered explicitly, and the
-  answer is recorded rather than assumed benign
-
-#### Out of scope
-
-- Changing `downloader/process_tree.py`, which is `T-019`-approved and not implicated
-
-#### Evidence, 2026-07-28
-
-**The fix is Windows-only, because the imprecision is.** On POSIX the terminated-but-visible state
-*is* the zombie state, so `status()` was already asking the right question. On Windows there is no
-zombie and a corpse stays visible while any handle to it is open, so the helper now uses
-`wait(timeout=0)` there — `WaitForSingleObject` on psutil's own handle, which neither disturbs
-anyone else's handle nor depends on visibility.
-
-**The first attempt used `wait(timeout=0)` on both platforms and broke the suite**, which is worth
-keeping: on POSIX that call is `waitpid`, so inspecting a worker *reaped* it and stole the exit
-status `multiprocessing` was waiting for. `is_alive()` then never reported the process gone and
-the manager never went idle —
-`test_cancelling_a_download_kills_what_the_worker_spawned` failed exactly that way. A survival
-check that changes what it observes is worse than an imprecise one.
-
-**The third criterion is answered, not assumed benign.** The previous form could **not** report a
-live process as dead: it answered "dead" only on `NoSuchProcess` (and `ZombieProcess`, its
-subclass) or on a `STATUS_ZOMBIE` a live process never has, and `AccessDenied` was uncaught and so
-would have failed loudly. Its one error direction was **false alive**, which fails an assertion in
-the open rather than letting a reaping assertion pass over nothing. The answer is recorded in the
-helper's docstring, where the next reader of the helper will find it.
-
-**The test now drives the failing shape**: a third process is killed and deliberately *not* waited
-on. On Linux that is a zombie, which the old form already handled; on Windows it is exactly run
-`30323328299`'s failure.
-
-**Mutations run:** answering by presence alone everywhere — killed. Reporting nothing as alive —
-killed. **Disabling the `win32` branch so it falls back to the POSIX question — survived, and
-cannot do otherwise here**: the branch is unreachable on Linux by construction. That is
-`AGENTS.md` §8's "a host-only check is not the whole gate" in its exact form, and it is why this
-task is not claiming to be done.
-
-**Checks:** `ruff check .`, `ruff format --check .`, configured `mypy` and `mypy --platform win32`
-(72 files each — the win32 scope is what analyses the new branch at all) all pass. Bare `pytest`
-green.
-
-**Blocker:** the Windows demonstration. This machine has no Windows and the branch cannot execute
-here, so approval needs the `windows desktop` job to run the corrected helper and the third
-mutation against it. Same shape as `T-033`'s blocker: the code is done, the evidence is not
-producible locally.
-
----
-
 ### T-055 — Decide how the application writes to SQLite without blocking the GUI thread
 
 **Status:** **Complete** — decided and recorded 2026-07-27 as `ARC-005`.
@@ -1809,7 +2568,7 @@ reasoning, the two rejected alternatives, and what reopens it are in `ai/DECISIO
 
 ### T-054 — File the approved Phase 1 tasks under `## Complete`
 
-**Status:** Ready — filed 2026-07-27 by `T-016`
+**Status:** **Complete** — filed 2026-07-28. Thirteen entries moved, not three; see **Evidence**.
 **Owner:** Planner
 **Priority:** Low
 **Phase:** Phase 1
@@ -1838,51 +2597,38 @@ it into `T-016`'s diff would have hidden a widget behind a thousand moved lines 
 - Archiving completed entries into `ai/archive/` — that is a separate judgement about when the
   live queue is buried
 
----
+#### Evidence, 2026-07-28
 
-## Proposed — Phase 0
+**Thirteen entries moved, not the three this task was filed for.** The other ten were the same
+defect the three were, and checking every entry against its own `Status:` line — which the
+acceptance criteria ask for — is what turned them up:
 
-### T-021 — Simplified small-size icon glyph
+| To | Entries | Was under |
+|---|---|---|
+| `## Complete` | `T-013`, `T-015`, `T-018` | `## In Review` — the three this task named |
+| `## Complete` | `T-038`, `T-055`, `T-058` | `## Ready` |
+| `## Complete` | `T-019`, `T-051` | `## Proposed — Phase 1` |
+| `## In Review` | `T-017`, `T-056`, `T-057` | `## Ready` and `## Proposed — Phase 1` |
+| `## Ready` | `T-040` | `## Blocked` — unblocked on 2026-07-27, never moved |
 
-**Status:** Proposed
-**Owner:** Implementer (needs a design decision from the maintainer first)
-**Priority:** Low
-**Phase:** Phase 4 (theming) — not a Phase 0 exit condition
-**Depends on:** `T-003`
-**Relevant context:** `T-003` completion note, `ARCHITECTURE.md` §8
-**Affected surfaces:** `src/tracks_and_trails/resources/icons/`
-**Risk:** Low — cosmetic only
+`T-054` itself moved to `## Complete` with them.
 
-#### Scope
+**Nothing was reworded, and that is checked rather than claimed.** The move is a pure permutation
+of lines: 2327 insertions against 2327 deletions, and a line-multiset comparison against the
+previous commit shows exactly one difference — a blank line at the end of the file replaced by
+the `---` every other entry ends with, which was then removed so the file ends as it did. No
+`Status:` line, finding disposition, or evidence record differs.
 
-**This is an enhancement, not a defect fix.** `T-003`'s 16 px asset meets its acceptance
-criterion — the note and gold trail stay recognizable (`T003-R2`). What it loses is the
-landscape: the trees and mountain collapse into the green mass. That is a property of the
-artwork's detail level, not of the scaling method, so no better downscale recovers it.
+**The `## In Review` note is gone with the mismatch it described**, as the criteria require.
 
-Draw a reduced glyph for 16 px and 24 px that keeps only the elements that still read at that
-size — the note head and stem plus the gold trail sweep — dropping the trees and mountain.
-Ship it as a separate size-specific asset so Qt picks it for small requests.
-
-#### Acceptance criteria
-
-- At 16 px and 24 px the glyph is **more legible than the current downscale**, judged
-  side by side — not merely legible, which the current asset already is
-- The glyph is recognizably the same mark as the full logo, not a different one
-- The Windows `.ico` embeds the simplified glyph at 16/24 and the full logo at 32 and above
-- The `T-022` resource tests still pass, with their expected frame set updated if it changes
-
-#### Out of scope
-
-- Redesigning the logo itself
-- Any change to the brand hex values fixed by `T-003`
-
-**Note:** this is a judgment call about brand appearance, so it needs the maintainer's
-agreement on the reduced form before implementation.
+**One thing found and deliberately not fixed** (`AGENTS.md` §7 — file it, do not fix it inline):
+`## Proposed — Phase 0` now holds a single entry, `T-021`, whose own **Phase** field says Phase 4;
+`T-049` is Phase 4 and sits under `## Proposed — Phase 2`. The section headings group by proposal
+phase and two entries disagree with theirs. That is a *heading* question rather than a status
+contradiction, so it is outside this task's acceptance criteria and is left for the maintainer to
+rule on rather than resolved by an implementer's preference.
 
 ---
-
-## Proposed — Phase 1
 
 ### T-051 — Define the READY-to-download lifecycle
 
@@ -1951,249 +2697,6 @@ Answering this task's criteria one by one:
 
 **Nothing here is implemented by this task.** `T-016` owns the manager change and the docstring
 in `DownloadManager.start()` that currently says the flow needs the state machine amended first.
-
----
-
-### T-052 — Make the T-013 correction tests kill their claimed mutations
-
-**Status:** Proposed — non-blocking follow-up from `T013-R5`
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 1
-**Depends on:** `T-013`
-**Relevant context:** `T013-R5`; `ai/TESTING.md` §13
-**Affected surfaces:** `tests/integration/test_manager.py`
-**Risk:** Low — production behavior is correct; the negative gate is weaker than its evidence
-record claims
-
-#### Scope
-
-Strengthen the T-013 correction evidence at the observations where a route-before-validation
-regression is currently invisible. Moving the pump's signal emission immediately before
-`SessionValidator.accept()` leaves all five cases in
-`test_an_illegal_message_never_reaches_the_job` green: the test excludes only `READY` and
-`COMPLETED`, so illegal progress may still persist `RUNNING`; it does not assert that foreign
-progress or a duplicate resolution report was withheld from the public signals.
-
-The startup-construction test also ends its useful-error assertion with `or True`, making that
-assertion unconditional. Remove the escape and prove the stored diagnostic retains the original
-failure rather than a cleanup error.
-
-#### Acceptance criteria
-
-- Reordering validation and routing makes at least one committed test fail for each affected
-  route: persisted progress state, public progress, and resolution report
-- The tests assert the complete persisted status sequence, not selected terminal states
-- The useful startup diagnostic assertion has no unconditional branch and fails if the original
-  construction error is discarded
-- The route-before-validation and diagnostic-weakening mutations are run and recorded as killed
-
-#### Out of scope
-
-- Changing `SessionValidator` or the production routing order, which are correct at `65303a2`
-- The blocking cleanup behavior in `T013-R3` and `T013-R4`
-
----
-
-### T-017 — Single-job progress view with cancel
-
-**Status:** **In Review — implemented 2026-07-28.** `ui/job_detail.py` holds the view;
-`ui/queue_view.py` stays a docstring-only stub, because a multi-job table is Phase 2 and this
-task's scope is one job. Every acceptance criterion below has a named test, and eight mutations
-were run against them — see **Evidence**.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 1
-**Depends on:** `T-013`, `T-014`
-**Relevant context:** `REQ-014`, `REQ-015`, `REQ-018`, `NFR-001`, `NFR-005`, `SEC-001` and
-`REQ-EXCL-001` (the retry affordance is where the DRM boundary becomes visible — added
-2026-07-28, see the criterion below)
-**Affected surfaces:** `ui/queue_view.py`, `ui/job_detail.py`, `tests/ui/`
-**Risk:** Medium
-**Review base:** the later of the `T-013` and `T-014` merge commits
-
-#### Scope
-
-One job, visible: percent, downloaded/total, speed, ETA, and the current stage — probing,
-downloading video, downloading audio, merging, post-processing (`REQ-014`). A cancel control
-that reaches `T-013`'s cancellation path. A failed job stays visible with its error and a
-retry affordance (`REQ-018`); nothing fails silently.
-
-#### Acceptance criteria
-
-- Every stage in `REQ-014` is displayed, driven by real `T-011` messages rather than a
-  simulated sequence
-- Under a burst of progress messages the **event loop stays responsive by measurement**, not
-  by eye: either event-loop latency stays under a stated bound, or updates are coalesced to a
-  stated maximum repaint rate and a test asserts the coalescing. "Does not visibly stutter" is
-  not testable, and a per-message repaint is the obvious naive implementation — it degrades
-  exactly when a download is fastest
-- Cancel is actuable by keyboard and produces a cancelled job within the `REQ-015` budget
-- A failed job shows the extractor's verbatim message and remains in the view with a retry
-  affordance (`REQ-018`, `NFR-006`)
-- **The retry affordance is driven by `is_retryable`, not by a per-kind branch in the widget**,
-  so a `DRM_PROTECTED` job offers no retry at all — not disabled, not present. `core/errors.py`
-  states the reason where the policy lives: offering the button implies a workaround exists, and
-  `SEC-001`/`REQ-EXCL-001` say none does. A test asserts the absence, and a mutation replacing
-  the predicate with a literal kind comparison fails it. *(Added 2026-07-28. This is the UI half
-  of `ai/TESTING.md` §7's DRM row — the engine half is already gated in
-  `tests/integration/test_worker.py`, the upstream half is `T-057`, and nothing gated this one
-  because the widget did not exist.)*
-- A cancelled job is presented as cancelled, not as an error (`ARCHITECTURE.md` §7:
-  `CANCELLED` is not a failure)
-- Accessible names on all controls; no state conveyed by color alone (`NFR-005`)
-
-#### Out of scope
-
-- Multi-job queue view, reordering, bulk actions — Phase 2
-- Pause and resume — `REQ-015` includes them, but they need Phase 2's scheduler
-- Open-file and reveal-in-file-manager — `REQ-021`, Phase 2
-
-#### Evidence, 2026-07-28
-
-**What was built.** `ui/job_detail.py`: `JobProgressView`, driven by `DownloadManager`'s signals,
-with `build_progress_view` as the seam composition uses to supply the retry. 35 tests in
-`tests/ui/test_job_detail.py`, most of them driving a real child process over a real queue.
-
-**Two design decisions worth a reviewer's attention:**
-
-- **Repaints are coalesced at a stated rate**, not measured against a latency bound. `REQ-014`'s
-  criterion allows either; a rate is the one this widget can *promise*, and `pending_progress`
-  and `displayed_progress` are public so a test can tell "coalesced" from "dropped". The tail of
-  a burst is never lost — the newest message is held and drawn by the next tick.
-- **The retry is reported, not performed.** Re-queueing a failed job is a write and `ui/` holds
-  no writer (`ARCHITECTURE.md` §3), so the widget emits `retry_requested` and `T-036` connects
-  it. Cancel is different and does live here: it is a request to a process the manager owns.
-
-**The DRM criterion is met by asking the taxonomy, and the test asserts the rule rather than the
-case.** `test_the_retry_affordance_agrees_with_the_taxonomy_for_every_kind` is parametrised over
-every `ErrorKind` and compares against `is_retryable` itself, so a kind that becomes
-non-retryable in `core/errors.py` is covered here without anyone remembering to come back. The
-button is **absent** rather than disabled: a greyed-out Retry still asserts that a retry is the
-sort of thing a DRM failure could have, which is the claim `SEC-001` refuses to make.
-
-**Mutations run, all killed:** the retry rule replaced by a literal `DRM_PROTECTED` comparison ·
-retry offered for every failure · retry disabled instead of absent · every message repainting ·
-a cancellation shown as a failure · a stage dropped from `STAGE_TEXT` · the extractor's message
-truncated · the cancel control losing its keyboard focus policy.
-
-**One mutation survived at first and produced a test.** Dropping `Stage.POST_PROCESSING` from
-`STAGE_TEXT` changed nothing observable, because `_show_progress` falls back to the job's status
-text and for that stage the two strings read the same. A stage with no words of its own was
-therefore invisible. `test_every_stage_the_protocol_can_report_has_words_to_show` closes it by
-checking completeness against `Stage` — the only thing derived from the enum; the strings are
-still transcribed from `REQ-014` by hand (`ai/TESTING.md` §13).
-
-**Checks:** `ruff check .`, `ruff format --check .` (87 files), `mypy src` (35 files), configured
-`mypy` and `mypy --platform win32` (72 files each) all pass. Bare `pytest`: **1327 passed,
-11 skipped, 1 deselected in 74.95 s**. The wide mypy scope again found real problems the `src`
-scope could not see, including one that made mypy stop analysing the rest of a test.
-
-**Known-unverified:** the Windows half. Focus order is asserted offscreen here; the real
-platform plugin is `T-040`'s, and this widget adds three focusable controls to what that task
-covers.
-
----
-
-### T-036 — Application composition and wiring
-
-**Status:** Proposed — Ready once `T-013` merges
-**Owner:** Implementer
-**Priority:** **High** — without it every component can pass while the product still opens an
-empty window
-**Phase:** Phase 1
-**Depends on:** `T-013`, `T-014`, `T-015`, `T-016`, `T-017`
-**Relevant context:** `ARCHITECTURE.md` §3, §4, §8; `NFR-001`, `NFR-002`, `REQ-024`
-**Affected surfaces:** `app.py`, `ui/main_window.py`, `tests/ui/`, `tests/integration/`
-**Risk:** **High** — the only task that can fail while every other task is green
-**Review base:** the last of its dependencies' merge commits
-
-#### Scope
-
-**Filed after review: nothing owned this.** `app.py`'s own docstring says `T-013` adds the
-download manager wiring, but `T-013` neither claims `app.py` nor proves the assembled path. So
-every Phase 1 task could pass in isolation while the application still did nothing — which is
-the failure the phase exists to prevent.
-
-Compose the object graph in one place: construct the repository, the manager, the result pump
-and the window; inject the concrete `JobRepository` into the manager through the protocol seam
-`T-013` defines; connect the add-URL dialog and the progress view to manager signals; and
-report the ffmpeg state `T-035` supplies at startup (`REQ-024`).
-
-Also own orderly shutdown: closing the window stops the pump on its sentinel, cancels any
-running job, reaps its process tree, and closes the database — in that order.
-
-#### Acceptance criteria
-
-- A test drives the **assembled application** — not components — from paste through to a queued
-  job, using `T-016`'s dialog and asserting the job reaches the repository
-- Wiring is asserted structurally too: the manager holds the concrete repository, and every
-  manager signal the UI needs has exactly one connection. A signal connected twice, producing
-  duplicate rows, must fail
-- Startup reports the ffmpeg state and names what will not work without it (`REQ-024`)
-- Closing the window with a job running exits with code 0, leaves no process in the tree, and
-  leaves the database consistent
-- Cold start stays inside `NFR-002`'s 3-second budget with the full graph constructed, and the
-  measurement is recorded — `T-007` measured an empty window
-- No component is constructed twice, asserted by identity, so a second manager cannot quietly
-  service a second queue
-
-#### Out of scope
-
-- Any new behavior; this task connects what the others built
-- The single-instance guard — `A-004`, Phase 2
-
----
-
-### T-037 — End-to-end download and restart proof
-
-**Status:** Proposed — Ready once `T-036` merges
-**Owner:** Implementer
-**Priority:** **High** — two Phase 1 exit criteria are unowned without it
-**Phase:** Phase 1
-**Depends on:** `T-036`
-**Relevant context:** `IMPLEMENTATION_PLAN.md` Phase 1 exit criteria; `REQ-012`, `REQ-014`,
-`NFR-003`; `ai/TESTING.md` §7 (Crash recovery)
-**Affected surfaces:** `tests/integration/`
-**Risk:** **High** — it is the evidence for the phase
-**Review base:** the `T-036` merge commit
-
-#### Scope
-
-**Filed after review: the phase had no proof of success.** `T-012` tests probing and failure,
-`T-019` tests cancellation and crashes — nobody proved a download *completing*. Phase 1's first
-exit criterion is "a real URL downloads to disk with accurate live progress and correct final
-bytes", and its fourth is "job state survives an application restart mid-download". Both were
-unowned.
-
-Two integration tests against the assembled application, with yt-dlp faked at the adapter seam
-so they are deterministic and offline:
-
-1. **Success.** A job runs to completion: the file exists at the expected path, its byte count
-   matches what was reported, progress advanced monotonically through the `REQ-014` stages, and
-   the job's terminal state is success in both the UI and the repository.
-2. **Restart.** Kill the application mid-download, restart it, and assert the job is recovered
-   to a retryable state, visible in the UI, with its `DownloadRequest` intact — the assembled
-   equivalent of the database-level recovery `T-014` proves.
-
-A network-marked variant downloads one real, stable, small URL end to end, so the offline fake
-is checked against reality at least once. It stays excluded by default (`ai/TESTING.md` §2).
-
-#### Acceptance criteria
-
-- The completed file exists, and its size equals the total the final progress message reported
-  — a mismatch is exactly the bug this criterion is for
-- Progress is monotonic and reaches every `REQ-014` stage the job actually used
-- Success is recorded identically in the UI and the repository; disagreement fails
-- After a mid-download kill and restart, the job is recovered, visible, retryable, and its
-  stored `DownloadRequest` is byte-identical to the original (`REQ-012`, `NFR-003`)
-- Recovery is proven by killing a real process, not by closing the application cleanly
-- The `-m network` variant completes one real download and is **not** part of the default run
-
-#### Out of scope
-
-- Multiple concurrent jobs — Phase 2
-- Resume of a partial download — Phase 2
 
 ---
 
@@ -2454,487 +2957,6 @@ evidence that exists, and Phase 1 cannot exit without it.
   is available and is not a network test
 
 ---
-
-## Proposed — Phase 2
-
-### T-050 — Write the history table
-
-**Status:** Proposed — Ready now; `T-013` produces the event that fills it
-**Owner:** Implementer
-**Priority:** Medium — `REQ-020` has no owner without it, and the table already exists empty
-**Phase:** **Phase 2** — `IMPLEMENTATION_PLAN.md` lists "History persistence and
-completed-download records (`REQ-020`)" among Phase 2's deliverables, and the plan outranks
-this file (`AGENTS.md` §5). It was filed under Phase 1 first, because `T-014` had already
-created the table and `STATUS.md` said `T-013` would fill it; that was this file drifting
-ahead of the plan, not the plan being wrong.
-**Depends on:** `T-013`
-**Relevant context:** `REQ-020`; `ARCHITECTURE.md` §5 (`HistoryEntry`);
-`persistence/schema.sql` (the `history` table `T-014` created)
-**Affected surfaces:** `core/models.py` or `persistence/` (wherever `HistoryEntry` lands),
-`persistence/repositories.py`, `downloader/manager.py`, `tests/unit/`
-**Risk:** Low — an append-only record; nothing depends on it yet
-**Review base:** the `T-013` merge commit
-
-#### Scope
-
-**Filed after implementation: nothing owned this.** `STATUS.md` said `T-013` "owns writing the
-`history` table `T-014` created but left empty", but `T-013`'s scope, acceptance criteria and
-affected surfaces never mentioned it, and `TASKS.md` outranks `STATUS.md` (`AGENTS.md` §5). It
-was left undone deliberately rather than guessed at, because two pieces are genuinely missing:
-
-- **There is no `HistoryEntry`.** `core/models.py` says so explicitly and gives the reason — it
-  is a durable record rather than live domain state, so it belongs with the schema that stores
-  it. No repository exposes the table either.
-- **`history.format_used` has no source.** Nothing reports the format yt-dlp actually selected;
-  `Succeeded` carries the path and the byte count. Filling the column from the request's
-  *format selector* would store a different fact under a truthful-looking name — `bestvideo+
-  bestaudio` is not a format that was used. Either the worker projects the chosen format into
-  the outcome, or the column is left null and the schema says why.
-
-Decide the first of those, then write a row when a job completes, from the manager, in the same
-place the terminal transition is persisted.
-
-#### Acceptance criteria
-
-- A completed download writes exactly one `history` row, and a retry of the same job does not
-  silently duplicate it
-- `format_used` either carries the format yt-dlp actually used, reported from the worker, or is
-  null with the reason recorded — never the selector wearing that name
-- A cancelled or failed job writes no history row (`REQ-020` is a record of what was obtained)
-- The manager still imports no `persistence` module: history goes through an injected protocol,
-  as the job repository does (`T-013`, `ARCHITECTURE.md` §3)
-
-#### Out of scope
-
-- Any history UI — Phase 3 (`REQ-020`'s view)
-- Pruning, retention, or export
-
----
-
-### T-053 — Prove concurrent per-job log isolation
-
-**Status:** Proposed — blocked until the Phase 2 pool permits two live sessions
-**Owner:** Implementer
-**Priority:** Low — Phase 1's structural routing is correct; concurrency is the missing proof
-**Phase:** Phase 2
-**Depends on:** `T-038` and the Phase 2 task that implements `REQ-013`
-**Relevant context:** `T038-R2`; `ARCHITECTURE.md` §8; `REQ-013`, `REQ-019`;
-`ai/REVIEWS.md` (2026-07-27 T-019/T-038 focused correction re-review)
-**Affected surfaces:** `tests/integration/test_worker_logging.py`
-**Risk:** Low until concurrency exists; High if the pool ships without the proof
-**Review base:** the Phase 2 concurrency implementation head
-
-#### Scope
-
-Phase 1 runs one session at a time. `T-038` proves that worker records carry a job-id stamp and
-that a per-job handler rejects every other stamp, using two sequential jobs. That establishes
-per-job routing, but it cannot establish the concurrent cross-write property while the manager
-refuses to keep two sessions open.
-
-When Phase 2 first permits two live sessions, coordinate two real spawned workers so both
-per-job handlers are open at the same time. Have both workers emit interleaved, unique markers
-through the production log queue and prove that each file contains its own complete stream and
-none of the other job's.
-
-This is not the current `T038-R2` ordered-drain correction. `T-038` must already retain a
-worker's final emitted records and stop its listener without blocking the GUI thread before this
-follow-up becomes relevant.
-
-#### Acceptance criteria
-
-- Two real worker sessions are simultaneously active before either emits its test records
-- Their records are deliberately interleaved through the production worker-log queue
-- Each per-job log contains every marker its worker emitted and no marker from the other worker
-- The application log still contains both streams
-- Removing the job-id filter or stamp makes the test fail
-
-#### Out of scope
-
-- Implementing Phase 2 concurrency or its scheduling policy
-- Repairing the current single-session ordered-drain and non-blocking-shutdown defect in
-  `T038-R2`
-
----
-
-### T-046 — Output path collision policy against the filesystem
-
-**Status:** Proposed — Phase 2, alongside resume
-**Owner:** Implementer
-**Priority:** Medium — **raise to High before first release.** Until this lands, two downloads
-whose titles sanitize to the same component contend for one path
-**Phase:** Phase 2
-**Depends on:** `T-034`, `T-045`, and the download manager (`T-013`)
-**Relevant context:** `DAT-002`; `ARCHITECTURE.md` §8; `REQ-011`
-**Affected surfaces:** the download manager's path selection; `core/paths.py` remains pure
-**Risk:** Medium — the failure mode is one download overwriting another's output
-
-#### Scope
-
-**Filed by `DAT-002`, which is where the reasoning lives.** `T-045` established that
-`sanitize_component` cannot promise a unique path: it is a pure function of one string, and
-"does this collide with something?" is a question about the filesystem. The maintainer kept
-idempotence and narrowed the sanitizer's promise to the plausible neighbour class, moving real
-uniqueness here.
-
-This task owns the guarantee at the layer that can keep it — the one that knows what is already
-on disk and what other jobs are queued. That covers the ordinary case, not only the reserved-name
-residue: two different videos whose titles sanitize identically collide today by the same
-mechanism, and always have.
-
-**`core/paths.py` stays pure.** The resolution belongs to the caller that has filesystem context;
-pushing it into the sanitizer would make it stateful and re-open `DAT-002`.
-
-#### Acceptance criteria
-
-- Two jobs whose sanitized components are equal resolve to distinct output paths
-- The resolution is visible in the `REQ-011` preview before the write, not applied silently
-  afterwards — a preview that disagrees with the write is the failure `DAT-002` protects against
-- An existing file at the target is never silently overwritten
-- Concurrent writers cannot both win the same path — asserted against real concurrent jobs
-  rather than by inspection, since Phase 2 is where the second worker arrives
-- The residual collision `T-045` pins is covered by this policy, so `DAT-002`'s assumption that
-  `T-046` lands before first release is discharged
-
-#### Out of scope
-
-- Which names are legal or reserved — settled by `T-034` and `T-045`
-- Resume semantics for a partially downloaded file, beyond not colliding with one
-
----
-
-### T-047 — Decide whether the environment ownership gate's blind spots are worth closing
-
-**Status:** Proposed — **not scheduled.** Carries `T044-R1`'s residue
-**Owner:** Planner, then Implementer if the answer is yes
-**Priority:** **Low, and deliberately so.** The question is whether to spend anything here at
-all; the honest default answer is no
-**Phase:** unassigned
-**Depends on:** `T-044`
-**Relevant context:** `T044-R1` and its six review rounds in `ai/REVIEWS.md`; `ai/TESTING.md`
-("What the environment ownership gate actually promises"); `ARCHITECTURE.md` §6
-**Affected surfaces:** `tests/unit/test_environment.py` only
-**Risk:** Low — no production code is involved, and none ever was
-
-#### Scope
-
-`T-044`'s gate reports any public attribute of `downloader/environment.py` not bound by an
-`import` statement, under the configuration the suite runs in. Three gaps are pinned by test and
-carried here:
-
-1. **Anything behind a guard false at run time** — OS, architecture, dependency presence,
-   feature probe, environment state.
-2. **A name imported and then rebound** — `try: from x import Y / except ImportError: Y = ...`,
-   the ordinary shape of an optional dependency, where the parse subtracts a name the fallback
-   genuinely bound.
-3. **Dynamic rebinding of an imported name** — `globals()["Path"] = ...`.
-
-**Read the history before proposing a fix.** `T044-R1` was found six times. Every attempt to
-close it by recognising more syntax was defeated by syntax the author had not enumerated, and
-three attempts to state its coverage overclaimed and were disproved. That is the strongest
-available evidence that the next clever fix will also be wrong, and it is why this task's first
-deliverable is a *decision*, not a patch.
-
-The likely correct answer is **no**. Gaps 1 and 3 need a determined author to trigger; gap 2 is
-plausible but would announce itself the moment anyone read the module. The gate catches what it
-exists to catch — an accidental `get_ytdlp_version()` — and `ARCHITECTURE.md` §6's boundary is
-independently guarded by the layering test and by review.
-
-#### Acceptance criteria
-
-- A recorded decision, with reasoning, on whether any gap is worth closing
-- If **no**: this task closes, and `ai/TESTING.md`'s statement of the promise stands as the
-  durable record. Nothing in the tree changes
-- If **yes** for a given gap: the fix must come with evidence it does not reintroduce the
-  enumeration failure — specifically, a demonstration against binding syntax the fix does not
-  name, since that is how all five previous fixes died
-
-#### Out of scope
-
-- Any production change to `downloader/environment.py`. The gate is a test; the module's
-  behavior has never been in question
-- Strengthening the layering test, which uses `ast.walk` and is unaffected
-
----
-
-### T-048 — Verify the first real data migration when one is written
-
-**Status:** Proposed — **not schedulable yet.** No migration transforms data
-**Owner:** Implementer, when the first data migration is authored
-**Priority:** Medium at that point; nothing to do before
-**Phase:** unassigned
-**Depends on:** the first migration that changes stored values
-**Relevant context:** `T014-R4`; `ai/TESTING.md` §7 (Migrations)
-**Affected surfaces:** `tests/unit/test_persistence.py`
-
-#### Scope
-
-`T-014`'s migration test asserts strict per-column equality, which is correct while every
-migration is pure DDL and any change is loss. It will be **wrong** the day a migration
-legitimately transforms values.
-
-A `TRANSFORMED_BY_MIGRATION` allowance was written and then removed: `T014-R4` established that
-an allowance can conceal a corrupt-but-readable migration, and an empty allowance protects
-nothing while adding a mechanism nobody has exercised. Designing it against a real migration
-beats designing it against an imagined one.
-
-#### Acceptance criteria
-
-- The first data migration ships with a test asserting the transformed values are **correct**,
-  not merely different — a readable row holding wrong data is the failure mode `T014-R4` named
-- Untransformed columns stay under strict equality
-- The v1 fixture remains untouched; a new version freezes its own
-
-#### Out of scope
-
-- Any change to `T-014`'s current strict comparison, which is right until then
-
----
-
-### T-049 — Tighten DAT-003 before cookie-file support
-
-**Status:** Proposed
-**Owner:** Planner
-**Priority:** Medium before cookie-file support or first release
-**Phase:** Phase 4
-**Depends on:** none
-**Relevant context:** `DAT-003`, `REQ-026`, `T014-R1`, `T-038`
-**Affected surfaces:** `ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, `ai/TASKS.md`
-
-#### Scope
-
-The maintainer accepted DAT-003's controlling trade-off: third-party diagnostic prose is stored
-verbatim in the local, user-owned database, even when it names a cookie path. That closes
-T014-R1. Its explanatory table is narrower than the decision it records, however:
-
-- a user-supplied source URL may itself contain userinfo and is stored verbatim under the earlier
-  URL decision;
-- `cookies_from_browser` is passed to yt-dlp as a browser name, but the model currently accepts
-  any non-empty string, including a path-shaped one; and
-- arbitrary third-party prose cannot support an exhaustive claim that a cookie path is the
-  "only residue." The accepted boundary is provenance, not enumeration of what yt-dlp may say.
-
-Rewrite DAT-003's table and linked notes around that actual boundary. Add the missing reopening
-condition: REQ-026 already promises cookie-file support, so the decision must be revisited before
-the application adds a cookie-file path or any other secret-bearing field to a persisted job.
-Keep T-038 origin-agnostic: every emitted log is redacted regardless of whether its text began in
-this application or yt-dlp.
-
-#### Acceptance criteria
-
-- DAT-003 makes no exhaustive claim about the contents of arbitrary third-party diagnostics
-- User-entered source URLs, model fields supplied by the application, and yt-dlp-emitted prose
-  are distinguished explicitly
-- Adding cookie-file support or another secret-bearing persisted field is a named reopening
-  condition alongside sync, export, cloud backup, and database attachment
-- T-038 still requires redaction of the final emitted log regardless of message provenance
-- `REQ-026` and T-014's historical criterion link to the same scoped decision without acquiring
-  a second competing definition
-
-#### Out of scope
-
-- Reopening T-014 or changing its approved persistence code
-- Implementing cookie-file settings or log redaction
-
----
-
-## Blocked
-
-### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
-
-**Status:** **Blocked** — code corrections verified 2026-07-26 (`T033-R2` resolved, the
-version-against-pin half of `T033-R1` verified). Approval requires evidence this repository
-cannot produce locally: the collection-removal negative run, Linux **and** Windows frozen
-results, and the recorded artifact-size delta. `T033-R1` stays **Open — externally blocked**;
-it is deliberately *not* closed by the commit that lands this work.
-**What landed.** `collect_submodules("yt_dlp")` + `collect_data_files("yt_dlp")` in
-`packaging/tracks-and-trails.spec`; `run_ytdlp_probe()` in `_freeze_probe.py` behind a
-`--ytdlp-probe` flag; a CI step in the `frozen` job on both platforms.
-
-**The probe resolves an extractor by name rather than importing yt-dlp.** `import yt_dlp`
-succeeds against the core alone — which is exactly what makes this failure look like site
-breakage — so the probe goes through the lazy machinery PyInstaller's static analysis cannot
-see. Resolution runs through `downloader.worker`, so it exercises the real `OPS-002` path
-inside the artifact instead of a parallel one, and stays within `ARCHITECTURE.md` §6.
-
-**Defect found by mutation-checking the probe itself.** `get_info_extractor` *raises* `KeyError`
-for an unknown name; it does not return `None`. The `matched is None` branch was therefore dead
-code and the failure escaped as a bare traceback. The job still went red, so the gate worked —
-but under `OPS-003` a Windows failure is diagnosed from this log and nothing else, and
-`KeyError: 'YoutubeIE'` does not say the artifact shipped without its extractors.
-
-**Verified locally:** 1751 extractors, `youtube` resolved, exit 0. Both probe mutations
-(threshold above reality; unresolvable name) exit non-zero, so the gate is wired to the exit
-code and not vacuous. Frozen-artifact evidence on both platforms is pending CI — the local run
-is source-mode and deliberately claims nothing about the frozen build.
-
-**Owner:** Implementer
-**Priority:** High — blocks any usable release, and fails in a way that looks like a site bug
-**Phase:** lands with `T-012`; verified by `T-020`'s CI job; gates Phase 5
-**Depends on:** `T-012` (the worker is the first thing to import `yt_dlp`)
-**Relevant context:** `OPS-002`, `REL-001`, `ARCHITECTURE.md` §6 and §12, `NFR-008`, `C-002`
-**Affected surfaces:** `packaging/tracks-and-trails.spec`, `packaging/frozen_smoke.py`,
-`.github/workflows/ci.yml`
-**Risk:** **High** — the failure mode is silent at build time and total at run time
-
-#### Scope
-
-`OPS-002` says every release bundles a pinned yt-dlp baseline. The frozen artifact currently
-contains **none of it**: a search of the built `dist/tracks-and-trails` for `yt_dlp` returns
-zero files. That is correct today — nothing imports it, because `worker.py` and
-`ytdlp_adapter.py` are still stubs — but it will not self-correct when `T-012` lands.
-
-PyInstaller's analysis follows *static* imports. yt-dlp resolves its extractors dynamically:
-1046 package files, **972 of them extractor modules**, reached through `lazy_extractors`
-rather than by direct import. Static analysis will therefore collect the yt-dlp core and miss
-essentially every extractor.
-
-The resulting failure is the dangerous kind: the artifact **builds and launches normally**,
-`import yt_dlp` succeeds, and then every real URL fails to find an extractor — which reads
-exactly like the site-breakage `C-002` teaches everyone to expect, so it will be misdiagnosed.
-
-Collect the package explicitly in the spec, and prove it from inside the artifact.
-
-#### Acceptance criteria
-
-- The frozen artifact contains the yt-dlp package, and the bundled version **equals the pin in
-  `pyproject.toml`** — asserted, not eyeballed, so a stale build cannot pass
-- A probe **inside the frozen artifact** imports `yt_dlp` and resolves a named extractor for a
-  stable URL pattern, without network access
-- Removing the collection from the spec makes that probe fail — the mutation is exercised once
-  and reverted, as `T-020`'s negative proof was
-- The `OPS-002` resolution order is honoured: with a directory present at
-  `user_data_dir/tracksandtrails/ytdlp/`, the worker reports **that** version; with it absent
-  or unimportable, it reports the baseline and says why
-- Both the Linux and Windows frozen jobs stay green, and the artifact-size change is recorded
-
-#### Out of scope
-
-- The in-app update action itself (`OPS-002`, Phase 4) — this task bundles the baseline and
-  proves the resolution order; downloading and extracting a wheel is separate
-- Trimming the bundle. 972 extractor modules is a size cost worth measuring, but excluding
-  extractors to save space would re-create this defect deliberately
-- Any change to the pin
-
-**Note:** `ai/TESTING.md` §8's release gate re-checks that yt-dlp is still pure Python. This
-task is the other half — that the pure-Python package actually *ships*. Purity without
-inclusion still yields an application that cannot download anything.
-
----
-
-
-
-### T-040 — Extend the Windows desktop gate to widget focus order
-
-**Status:** **Ready** — unblocked 2026-07-27 by `T-016`, whose add-URL dialog adds six focusable
-controls and gates their order offscreen. What remains is the assertion under the real Windows
-platform plugin.
-**Owner:** Implementer
-**Priority:** High once unblocked — it completes a `T-026` acceptance criterion that is
-currently unmet
-**Phase:** Phase 1, landing with the first real widgets
-**Depends on:** `T-016` **or** `T-017` (whichever first adds focusable controls), `T-026`
-**Relevant context:** `T026-R3`, `OPS-004`, `NFR-005`, `ai/TESTING.md` §9 and §12
-**Affected surfaces:** `tests/ui/test_windows_desktop.py`, `ai/TESTING.md` §12
-**Risk:** Medium — the gap is easy to forget precisely because deferring it was correct
-
-#### Scope
-
-Filed from `T026-R3`. `T-026` requires "tab order and focus chain are asserted on Windows, and
-reordering two widgets fails the test". That criterion is still **unmet on Windows**, and
-deferring it was the right call at the time: the shell window had no focusable controls, so a
-focus-chain assertion would have passed over zero widgets and gated nothing.
-
-**`T-016` removed the reason to defer.** The add-URL dialog has six focusable controls, and
-`tests/ui/test_add_dialog.py::test_the_tab_order_is_the_declared_one` walks Qt's own focus chain
-against a hand-transcribed order — a mutation reversing two entries was run and killed. That test
-runs **offscreen**, so it proves the order Qt builds, not the order a real Windows desktop
-delivers, which is exactly the half `T-026` asked for and this task still owns.
-
-Worth carrying into the Windows version: the first draft of that offscreen test derived its
-expectation from the dialog's own `focus_chain()` and therefore proved only that the list equalled
-itself. The mutation survived it. Transcribe one side and derive the other (§13).
-
-Extend the existing `windows_desktop` suite — do not start a second harness — to assert, under
-the real `windows` platform plugin:
-
-1. **Tab order** across the new controls matches the intended sequence.
-2. **The focus chain wraps**, forwards and backwards (`Tab` and `Shift+Tab`).
-3. **Every focusable control is reachable** by keyboard alone from the window's initial focus.
-
-#### Acceptance criteria
-
-- Reordering two widgets in the source **fails** the suite, demonstrated by an actual mutation
-  and recorded in the task, not asserted in the abstract
-- A control added without being placed in the tab order fails the suite
-- The assertions run under the real plugin, not offscreen — offscreen focus behavior does not
-  answer the question `NFR-005` asks
-- `ai/TESTING.md` §12 drops the "widget tab order is ungated" gap, and `T-026`'s acceptance
-  criterion is marked met **only then**
-
-#### Out of scope
-
-- Focus *appearance* — whether the focus ring is visible enough is subjective and stays with
-  the pre-release session (`OPS-004`)
-- Linux focus order, which the offscreen suite cannot meaningfully assert either
-
----
-
-### T-039 — Verify Windows installer behavior on the runner
-
-**Status:** Proposed — blocked until Phase 5 produces an installer
-**Owner:** Implementer
-**Priority:** Medium now, High once Phase 5 starts — it must land before the first public release
-**Phase:** Phase 5
-**Depends on:** the Phase 5 installer, `T-026` (establishes the real-plugin Windows job)
-**Relevant context:** `OPS-004`, `REL-001`, `ai/TESTING.md` §9, `REQUIREMENTS.md` §3
-**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md` §9, `REQUIREMENTS.md` §3
-**Risk:** Medium — same failure mode as `T-026`: a shallow check would retire a
-release-blocking manual item without replacing it
-
-#### Scope
-
-Split out of `T-026` when `OPS-004` was accepted on 2026-07-26. `OPS-004` reclassified four
-things as automatable on the Windows runner; three of them `T-026` does now, but installer
-verification cannot be written before an installer exists, and `T-026` had to stay completable
-because it is what closes Phase 0's last exit criterion.
-
-A CI runner is a genuinely clean machine, which is what makes this worth automating at all:
-installing onto a box that has never held the application is exactly the case a developer
-machine cannot reproduce.
-
-Assert, on `windows-latest`:
-
-1. **Silent install** completes with a success exit code and no interactive prompt.
-2. **File and shortcut placement** — the installed tree, the Start Menu entry, and any
-   registered association land where the installer claims.
-3. **The installed application launches** under the real `windows` platform plugin, reusing
-   `T-026`'s harness rather than a second one.
-4. **Uninstall and removal** — the uninstaller exits clean and leaves nothing behind except
-   what is deliberately preserved (user settings and the job database, per `DAT-001`).
-
-#### Acceptance criteria
-
-- Each of the four is a **gate**, stated as a mutation that turns the suite red: a missing
-  shortcut, a file placed outside the install root, a non-zero silent-install exit code, and a
-  leftover file after uninstall each fail the job. Screenshots, if any, stay retained evidence
-  and fail nothing on their own (`T031-R2`, `P0-R7`)
-- Uninstall leaving user data behind is asserted as **intended** behavior, not tolerated as a
-  leftover — the test distinguishes the two
-- `ai/TESTING.md` §9's manual list drops installer placement and removal, and
-  `REQUIREMENTS.md` §3 narrows to match — **only once this job is landed and green**
-- The added CI time is recorded against `T-006`'s budget
-
-#### Out of scope
-
-- Whether the installer *feels* normal — `OPS-004`'s subjective residue, still human, still
-  blocks first release
-- Upgrade-over-existing-install and downgrade paths — real, but a separate task once the
-  versioning story exists
-- Any non-Windows packaging
-
----
-
-## Complete
 
 ### T-014 — Persistence: schema, migrations, and the job repository
 
@@ -3438,7 +3460,6 @@ and `T-038`; then `T-012`; then `T-013`; then `T-016`, `T-017`, `T-018`, `T-019`
 then `T-037`.
 
 ---
-
 
 ### T-034 — Filename safety and output-path containment
 
@@ -4355,6 +4376,7 @@ source run — which proves nothing about freezing, the entire point of `T-020`.
 repository root; `frozen_smoke.py` writes it beside the artifact at `dist/frozen-probe.log`,
 so the upload had been contributing nothing. Corrected, and confirmed by the negative run's
 artifact, which now contains the log.
+
 ---
 
 ### T-030 — Ratify the two Phase 0 architecture additions
@@ -4566,6 +4588,7 @@ formally **Proposed**; accepting it is the maintainer's call and is surfaced in 
 reading. `STATUS.md` said seven findings where there were eight, claimed `main` was the only
 branch while PR #7 was open, and still called `T-005` and `T-007` "in review" after both had
 merged.
+
 ---
 
 ### T-020 — Frozen-build smoke test in CI
@@ -5409,3 +5432,4 @@ repository root with the 2026 Sean Kottman copyright line; `README.md` updated.
 **Remaining:** the `pyproject.toml` license field is set by `T-001`, since no
 `pyproject.toml` exists yet. Shipping third-party license texts (Qt, ffmpeg, yt-dlp) with
 the distribution is a Phase 5 release-gate item, not part of this task.
+
