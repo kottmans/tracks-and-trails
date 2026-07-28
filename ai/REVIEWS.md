@@ -4278,3 +4278,79 @@ The remaining defects are direct Critical/High continuations and include a regre
 approved High `T013-R3` guarantees. `AGENTS.md` §9 therefore permits another correction and
 focused verification pass without maintainer authorization. It must remain confined to R1's
 durable withdrawal and R3's persistence continuations; R2 and R4–R8 are settled.
+
+## 2026-07-27 — T-016 third focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-016` — Add-URL dialog with probe results
+**Correction base:** `c5dddae46bb82f18e655636ad9c26e5ca8eeeec4`
+**Head:** `9c959ea`
+**Correction commit:** `9c959ea`
+**Excluded commit in the range:** `416c867` preserves the preceding reviewer record and changes
+no reviewed source or tests
+**Repository state at inspection:** `main` at `9c959ea`, in sync with `origin/main`; the shared
+checkout had pre-existing uncommitted edits in `AGENTS.md`, `ai/DECISIONS.md`, and
+`ai/PROMPTS.md`, so source and tests were inspected and run from a clean
+`git archive 9c959ea`. Those three edits were neither read as part of the boundary nor changed.
+**Platforms verified:** Linux locally; Windows from the implementer-provided GitHub Actions run
+`30329071900`
+**Verdict:** **Changes requested**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T016-R1` | **Critical** | **Yes** | **Open — the withdrawal is recorded, but it is still not owned across the operation that creates it or across overlapping revisions.** First, `done()` tests `_withdrawing` before retiring the current probe. Retiring a started probe then calls `_withdraw()`, but execution continues directly to `super().done()`. An exact-head probe showed the dialog becoming invisible while `withdrawing` was still populated and no cancellation was durable; an immediate crash/restart can therefore expose the disowned URL as live work. Second, cancelling while `start()` is reserved queues `CANCELLED`, but the earlier `PROBING` completion still runs its unconditional `_spawn` callback. A deterministic write-through store completed `PROBING` then `CANCELLED`; the durable record ended `CANCELLED`, yet `_spawn` ran for that job. That is the original Critical consequence in a stronger form: work for the replaced URL can start after its withdrawal is accepted. Third, the store rollback is correct for one failed revision but not two overlapping failures. If revision A is followed by B, A's failure leaves B in the view; B's failure then restores A as its `previous` record even though A also failed. The concrete probe ended with SQLite at `QUEUED` and `PersistentJobStore.get()` at `PROBING`. Model the accepted revisions as an ordered per-job lifecycle, invalidate a reserved start when cancel wins, refuse the first Close after it creates a withdrawal, and roll back to the last actually durable record rather than a failed predecessor. Gate first-close visibility, start/cancel callback ordering, and two consecutive failed revisions. |
+| `T016-R3` | **High** | **Yes** | **Open — a callback gates its own `then`, but the manager still does not sequence overlapping continuations or own a reserved start as lifecycle state.** `_reserved` prevents a second admission, but `is_idle` and `active_job_ids()` ignore it, `shutdown()` cancels only `_sessions`, and `_spawn()` does not re-check shutdown or supersession. At exact head, `is_idle` was true with a reserved start; shutdown could announce `idle`; releasing the write afterward still ran `_spawn`. Other continuations have the same hole. A second progress message observed the write-through `RUNNING` value and emitted immediately while the durable row was still `PROBING`. `_abort_start()` passes the same `announce_and_unwind` function as both `then` and `otherwise`, so a failed `FAILED` write still emitted `protocol_violation` and `job_failed`; both observers read durable `PROBING`, contradicting the new docstring's “success-side effect does not run” guarantee. Finally, a failed initial `PROBING` write discards the reservation in the manager, but the dialog has already set `probe.started = True` and ignores `persistence_failed` unless that id is in `_withdrawing`; it remains permanently at “Probing …” with no worker. Sequence per-job writes and effects rather than treating the write-through view as completion; make reserved starts cancellable and part of idle/shutdown; separate mandatory failure cleanup from signals that require durable `FAILED`; and give the probe caller an asynchronous start-rejection path. Gate two progress messages behind one held stage write, failed startup-failure persistence, start-write rejection in the real dialog, and shutdown/cancel while start is reserved. Re-derive the affected `T013-R2/R3/R4` guarantees against that lifecycle. The accepted `ARC-005` amendment also still says “only the announcement moved” and “callers unchanged,” the equivalence this correction itself rejects; the Planner must append an accurate amendment before eventual approval. |
+
+### What the correction establishes
+
+- A single start transition gates initial process and pump construction until that transition
+  succeeds. Under a held concrete row, no session appeared while SQLite still said `QUEUED`.
+- A single failed revision removes its own newest view entry, and a failed withdrawal is surfaced
+  in words, blocks Add, remains retryable, and can end durably `CANCELLED` for a fresh reader.
+  R1 concerns the first-close path and overlapping revision chain, not those single-write
+  mechanics.
+- On an isolated successful transition, `media_probed`, `job_succeeded`, `job_failed`, startup
+  violation, and the first state-moving `progress` are placed in the persistence continuation.
+- A second start is refused while the first start is reserved. R3 concerns cancellation,
+  shutdown, idle reporting, and later events while that reservation exists.
+- The revised spawn-failure delivery preserves the successful-persistence T-013 assertions: the
+  failure becomes durable and is reported through manager signals instead of being raised back
+  through `start()`.
+- `T016-R2` and `T016-R4` through `T016-R8` remain resolved. This pass did not reopen their
+  settled surfaces.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| `git diff --check c5dddae..9c959ea` | Passed. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **86 files already formatted**. |
+| `mypy src` | Passed: no issues in **35 source files**. Its first invocation was run concurrently with the other mypy scopes and hit mypy 2.3.0's cache-related internal error; the immediate standalone rerun passed and is the result reported here. |
+| Configured `mypy` | Passed: no issues in **71 source files**. |
+| Configured `mypy --platform win32` | Passed: no issues in **71 source files**. |
+| Full add-dialog and manager focused suite | Passed: **134 passed in 67.87 s**. |
+| Canonical bare `pytest`, exact head | Passed: **1285 passed, 11 skipped, 1 deselected in 90.28 s**. |
+| Implementer-provided CI at `9c959ea` | Run `30329071900` reported green on all five jobs. |
+| First Close while a start was pending | Failed the correction as intended: `withdrawing` contained the job, but the dialog was already invisible before the cancellation callback. |
+| Cancel during a reserved start | Failed the correction as intended: durable writes completed in `PROBING`, `CANCELLED` order, and the earlier completion still invoked `_spawn`. |
+| Reserved-start shutdown | Failed the correction as intended: `is_idle` was true with `_reserved` populated; the pending success continuation remained able to spawn after shutdown. |
+| Consecutive failed revisions | Failed the correction as intended: both writes failed, SQLite remained `QUEUED`, and the store view restored failed predecessor `PROBING`. |
+| Overlapping progress | Failed the correction as intended: the second message emitted while the durable record remained `PROBING`; only the write-through view said `RUNNING`. |
+| Failed probe-start transition | Failed the correction as intended: the manager rejected the write, but the dialog retained `probing_job_id` and still displayed “Probing …”. |
+| Failed startup-failure transition | Failed the correction as intended: the `FAILED` write failed, yet `job_failed` and `protocol_violation` both emitted while the durable record remained `PROBING`. |
+
+All seven reviewer probes ran only in the temporary exact-head archive and were removed before
+the submitted and canonical gates. They did not alter repository source or committed tests.
+
+### Readiness and review budget
+
+Critical `T016-R1` and High `T016-R3` remain open, so `T-016` remains **Changes requested**.
+
+These are direct continuations of the existing serious findings: R1 still permits wrong,
+withdrawn work to run, and R3 still breaks the persistence and shutdown ordering approved under
+T-013. `AGENTS.md` §9 permits another focused correction and independent verification pass
+without maintainer authorization. It must stay on durable withdrawal, ordered per-job
+continuations, and the affected T-013 lifecycle guarantees; R2 and R4–R8 remain settled.
