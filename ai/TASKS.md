@@ -53,7 +53,161 @@ Phase 0 is formally exited (2026-07-26).
 blocked on Windows evidence, one ready. An empty section is left in place rather than deleted —
 it is where the next task goes, and its absence would read as a heading nobody had written yet.)*
 
+### T-062 — The end-to-end tests need an environment CI does not have, and say nothing when they fail
+
+**Status:** **In Review — implemented 2026-07-28.** All three problems corrected; the fix is
+verified locally in both directions, and **the CI half is unproven until a run goes green** — which
+is the same trap that produced the task.
+**Owner:** Implementer
+**Priority:** **High** — Phase 1's first and fourth exit criteria have no passing evidence on any
+CI platform, and the exit review consumes exactly that
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T-037`; `ai/TESTING.md` §6; the CI failure at `48dc6a0`
+**Affected surfaces:** `.github/workflows/ci.yml`, `tests/integration/test_end_to_end.py`,
+`tests/integration/test_composition.py`
+**Risk:** **High** — these tests *are* the phase's evidence, and they have never passed on CI
+
+#### Scope
+
+`T-037` was written, reviewed and approved against a machine with ffmpeg on `PATH`. **The runners
+have none**, so both of its tests fail on `ubuntu-latest` and `windows-latest`, and have never
+passed on either. They pass locally, which is how they reached approval.
+
+Three separate problems, and only the first is about ffmpeg:
+
+1. **The tests assume ffmpeg.** They select `Best video available` — chosen because the default
+   preset filters on a height a bare `video/mp4` does not declare — and that selector carries a
+   `+`, so `_ffmpeg_gap` refuses before downloading. Reproduced locally by removing ffmpeg from
+   `PATH`: identical failures, identical messages.
+2. **The failure says nothing.** `assert spin(...), "the download never completed"` reports no
+   status, no error message, no job state. On the one test that can only fail somewhere the
+   author cannot look, the message has to carry the diagnosis — it took a downloaded artifact and
+   a local reproduction to learn the job had failed `FFMPEG_MISSING`.
+3. **A Windows-only assumption in `T-036`'s ffmpeg test.** It writes `#!/bin/sh` and `chmod 0755`;
+   Windows decides executability by `PATHEXT`, so `shutil.which` correctly returns `None` and
+   `test_a_usable_ffmpeg_is_reported_as_usable_and_reaches_the_manager` fails there and only
+   there.
+
+#### Acceptance criteria
+
+- Both `T-037` tests pass on `ubuntu-latest` and `windows-latest`, demonstrated by a green run
+  rather than by local evidence
+- Every assertion in them that can fail on CI reports the job's status and stored error message,
+  so the next failure is diagnosable from the log alone
+- `T-036`'s ffmpeg test uses something the host platform actually treats as executable
+- Whatever makes ffmpeg available to CI is recorded with its reason — this project is a front end
+  for a tool that shells out to ffmpeg, so a CI environment without it is not a neutral choice
+- The environment record uploaded by each job states whether ffmpeg was found; its absence was
+  invisible in the evidence artifact and had to be inferred
+
+#### Out of scope
+
+- `T-061`'s over-refusal. These tests would pass with it fixed *or* with ffmpeg installed, and
+  the two are independent: one is what the product does for a user, the other is what CI proves
+
+#### Evidence, 2026-07-28
+
+**Diagnosed by reproduction, not by reading.** Removing ffmpeg from `PATH` locally produced the
+identical failures on both tests, with the identical messages. The job had failed
+`FFMPEG_MISSING` before downloading — `REQ-024` working exactly as designed, against a test that
+assumed otherwise.
+
+**1. CI gets ffmpeg**, installed per platform with the reason recorded at the step: this project
+is a front end for a tool that shells out to ffmpeg, so a runner without it is not a neutral
+environment. Installing it does not paper over `T-061` — that a *user* without ffmpeg is refused
+more than they should be is a separate defect with its own gate.
+
+**2. The failures now diagnose themselves.** A `why()` helper reports the job status, error kind,
+the view's status, whether ffmpeg was found, and the stored message. Verified by running without
+ffmpeg and reading the assertion:
+
+> `the download never completed — job=failed kind=ffmpeg_missing view=failed ffmpeg=NO — not found
+> on PATH error=ffmpeg is required for this download but was not found…`
+
+One line, where before it took a downloaded artifact and a local reproduction to learn the same
+thing. The restart test does the equivalent by reading the row its killed interpreter left behind,
+since that is the only channel it has.
+
+**3. The fake ffmpeg is executable by the platform's own rule.** A `#!/bin/sh` script with mode
+0755 is not executable on Windows, where `PATHEXT` decides — which is why
+`test_a_usable_ffmpeg_is_reported_as_usable_and_reaches_the_manager` failed there and only there.
+It now writes a `.bat` on Windows. `find_ffmpeg` uses `shutil.which` precisely so the platform's
+rule applies (`T035-R2`); the test has to honour the rule it exercises.
+
+**4. The environment record now states whether ffmpeg was found.** Its absence was invisible in
+the uploaded artifact and had to be inferred from a failure three files away.
+
+**Checks:** `ruff check .`, `ruff format --check .`, configured `mypy` and `mypy --platform win32`
+(76 files each) pass. The composition and end-to-end suites pass with ffmpeg present, and fail
+with the new diagnostic when it is removed.
+
+**Known-unverified, and it is the point of the task:** none of this is proven on CI until a run is
+green. `T-037` was approved on local evidence and had never passed on a runner — recording that
+here rather than repeating it.
+
+---
+
 ## Ready
+
+### T-061 — The ffmpeg gate reads the selector, not the format that was chosen
+
+**Status:** Ready — filed 2026-07-28 from CI run `30380426474`
+**Owner:** Implementer
+**Priority:** Medium — a user without ffmpeg is refused downloads that need none, on four of the
+five built-in presets
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `REQ-024`, `OPS-001`; `downloader/worker.py::_ffmpeg_gap`; `T012-R5`;
+`T-057`, which is the same defect shape one module over
+**Affected surfaces:** `src/tracks_and_trails/downloader/worker.py`,
+`tests/integration/test_worker.py`
+**Risk:** Medium — it decides whether a download happens at all
+
+#### Scope
+
+```python
+needs_merge = "+" in request.format_selector
+```
+
+**A string, where a structured fact was already in scope.** `_ffmpeg_gap` receives the probed
+`info` and asks the *selector* instead. `bestvideo+bestaudio/best` against a source offering one
+progressive format resolves to the `/best` branch — no merge, no ffmpeg — and the gate refuses it
+anyway.
+
+Measured on 2026-07-28 against a local `video/mp4`: with ffmpeg absent, the job failed
+`FFMPEG_MISSING` before downloading, saying *"ffmpeg is required for this download"* of a file
+that needed none. Four of the five built-in presets carry a `+`; the fifth is `Audio only
+(original)`. So a user with no ffmpeg has one usable preset, and the one they would reach for
+first tells them a download is impossible when it is not.
+
+**The gate being conservative is correct and is not the problem.** Refusing *before* spending
+bandwidth is `REQ-024`'s whole point (`T012-R5` widened it to every post-processor for the same
+reason). What is wrong is the input: the answer is in `info`, and yt-dlp records a merge by
+populating `requested_formats` with more than one entry.
+
+**This is `T-057` again, one module over.** There the adapter matched a truthy string where
+yt-dlp keeps a three-state field; here the worker matches a `+` where yt-dlp keeps the resolved
+format list. Both read a *rendering* of a decision instead of the decision.
+
+#### Acceptance criteria
+
+- The gate decides from the resolved format — a merge is what yt-dlp says it is, not what a
+  selector string looks like
+- A progressive single-format download succeeds with ffmpeg absent, driven end to end rather
+  than asserted at the function
+- A genuine merge still fails **before** downloading, with the same message and kind; the
+  conservative direction is preserved where it is correct
+- Post-processors that need ffmpeg (`requires_ffmpeg`) still gate independently of the merge
+  question — `T012-R5` widened that deliberately and it is not narrowed here
+- A mutation restoring `"+" in request.format_selector` fails at least one test
+
+#### Out of scope
+
+- Installing ffmpeg, prompting for it, or bundling it — `OPS-001` settles that
+- The `FFMPEG_MISSING` taxonomy entry and its retry policy
+
+---
 
 ### T-060 — Focus chains are per state, and the Windows mutations still owe evidence
 
@@ -70,6 +224,21 @@ is also what `T-040` and `T-056` are blocked on
 is a red build for a wrong reason, and a green one would be worse
 
 #### Scope
+
+**CI run `30380426474` failed four of `T-040`'s tests, not one.** The progress-view test is the
+one `T040-R1` predicted; the other three are the *dialog's*, and they are new information:
+
+| Failing on the real Windows plugin | |
+|---|---|
+| `test_tab_visits_the_declared_order_on_a_real_desktop` | dialog |
+| `test_the_focus_chain_wraps_in_both_directions` | dialog |
+| `test_every_control_is_reachable_from_the_initial_focus` | dialog |
+| `test_the_progress_view_focus_chain_is_walked_on_a_real_desktop` | `T040-R1` |
+
+**That is what `T-040` was filed to discover**: the order Windows delivers is not the order Qt
+builds offscreen. This task therefore owns the dialog's chain as well, and the transcription in
+`EXPECTED_DIALOG_ORDER` is a hypothesis until a Windows run says otherwise — the evidence for what
+the real order *is* has to come from the job, not from a local guess.
 
 `T-040`'s progress-view test expects **three** reachable controls in one chain. That state does
 not exist. Measured on 2026-07-28:
@@ -105,7 +274,8 @@ So the chains have to be asserted **per state**, each with the set that state ac
 
 #### Out of scope
 
-- The dialog's own chain, which `T-040` asserts and the reviewer did not fault
+- Nothing in the dialog's chain is out of scope any more: CI failed three of its tests too, and
+  the same per-state and real-focus reasoning applies to whatever it turns out to want
 - Making the progress view offer more controls than a state should; the disabled Cancel and the
   hidden Retry are `T-017`'s behaviour and are correct
 

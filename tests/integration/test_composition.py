@@ -25,6 +25,7 @@ so spinning on it returns instantly and proves nothing.
 """
 
 import sqlite3
+import sys
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -398,9 +399,18 @@ def test_a_usable_ffmpeg_is_reported_as_usable_and_reaches_the_manager(
     located and never passed to the library. Locating it here and dropping it would look correct
     and produce no error.
     """
-    fake = tmp_path / "ffmpeg"
-    fake.write_text("#!/bin/sh\nexit 0\n")
-    fake.chmod(0o755)
+    # **What "executable" means is the platform's answer, not a mode bit** (`T-062`). This wrote
+    # a `#!/bin/sh` script and `chmod 0755`; Windows decides by `PATHEXT`, so `shutil.which`
+    # correctly returned `None` and this test failed there and only there. `find_ffmpeg` uses
+    # `shutil.which` precisely so the platform's own rule applies (`T035-R2`) — the test has to
+    # honour the same rule it is exercising.
+    if sys.platform == "win32":
+        fake = tmp_path / "ffmpeg.bat"
+        fake.write_text("@echo off\r\nexit /b 0\r\n")
+    else:
+        fake = tmp_path / "ffmpeg"
+        fake.write_text("#!/bin/sh\nexit 0\n")
+        fake.chmod(0o755)
     composition = composed(ffmpeg_override=fake)
 
     assert composition.ffmpeg.available

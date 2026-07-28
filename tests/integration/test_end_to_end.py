@@ -169,6 +169,25 @@ def media_url() -> Iterator[Callable[..., str]]:
 END_TO_END_PRESET = "Best video available"
 
 
+def why(composition: application.Composition, job_id: str) -> str:
+    """Everything a failure on a machine nobody can reach needs to say (`T-062`).
+
+    `assert spin(...), "the download never completed"` reports no status, no error and no
+    environment, and both `T-037` tests failed on both CI platforms with exactly that. Learning
+    that the job had failed `FFMPEG_MISSING` took a downloaded artifact and a local reproduction;
+    it should have taken reading the assertion.
+    """
+    job = composition.store.get(job_id)
+    view = composition.window.progress_view
+    return (
+        f"job={job.status.value if job else 'missing'} "
+        f"kind={job.error_kind.value if job and job.error_kind else 'none'} "
+        f"view={view.status.value if view else 'none'} "
+        f"ffmpeg={'yes' if composition.ffmpeg.available else 'NO — ' + composition.ffmpeg.source} "
+        f"error={(job.error_message if job else None) or 'none'}"
+    )
+
+
 def queue_one(
     composition: application.Composition, url: str, preset: str = END_TO_END_PRESET
 ) -> str:
@@ -233,7 +252,7 @@ def test_a_url_becomes_a_file_with_the_bytes_it_reported(
                 and composition.window.progress_view.status is JobStatus.COMPLETED
             ),
             timeout=120,
-        ), "the download never completed"
+        ), f"the download never completed — {why(composition, job_id)}"
         view = composition.window.progress_view
         assert view is not None
 
@@ -373,7 +392,21 @@ def test_a_job_killed_mid_download_is_recovered_by_the_next_start(
         deadline = time.monotonic() + 120
         while time.monotonic() < deadline and not is_running():
             time.sleep(0.05)
-        assert is_running(), "the download never reached running, so there is nothing to kill"
+        if not is_running():
+            # Same reasoning as `why()`: this runs in another interpreter, so its state is only
+            # reachable through the row it left behind and the output it printed (`T-062`).
+            reader = db.connect(database)
+            try:
+                stranded = JobRepository(reader).get(job_id)
+            finally:
+                reader.close()
+            assert stranded is not None, "the job vanished from the database"
+            raise AssertionError(
+                "the download never reached running, so there is nothing to kill — "
+                f"job={stranded.status.value} "
+                f"kind={stranded.error_kind.value if stranded.error_kind else 'none'} "
+                f"error={stranded.error_message or 'none'}"
+            )
 
         stored_before = None
         reader = db.connect(database)

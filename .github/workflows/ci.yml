@@ -78,6 +78,24 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
 
+      - name: Install ffmpeg
+        # T-062. This project is a front end for a tool that shells out to ffmpeg, so a runner
+        # without it is not a neutral environment — it is one where REQ-024's gate refuses
+        # before downloading and the end-to-end tests cannot reach their subject at all. Both
+        # T-037 tests failed on both platforms for exactly that reason and had never passed on
+        # either; they passed locally, which is how they reached approval.
+        #
+        # Installed rather than worked around: the alternative is tests that assert a download
+        # in an environment no user has. That a *user* without ffmpeg is refused more than they
+        # should be is a separate defect (T-061) with its own gate, and installing ffmpeg here
+        # does not paper over it.
+        run: |
+          if [ "${{ runner.os }}" = "Linux" ]; then
+            sudo apt-get install -y --no-install-recommends ffmpeg
+          else
+            choco install ffmpeg --no-progress -y
+          fi
+
       - name: Install the project
         run: |
           python -m pip install --upgrade pip
@@ -92,6 +110,12 @@ jobs:
             echo "runner:  ${{ runner.os }} / ${{ matrix.os }}"
             echo "ref:     ${{ github.ref }} @ ${{ github.sha }}"
             python -VV
+            echo "--- ffmpeg ---"
+            # T-062: its absence was invisible in this artifact and had to be inferred from a
+            # failure three files away. `|| true` because a missing ffmpeg is a fact to record,
+            # not a reason to fail the step that records it.
+            command -v ffmpeg || echo "ffmpeg: NOT FOUND"
+            ffmpeg -version 2>&1 | head -1 || true
             echo "--- installed ---"
             python -m pip list
           } | tee "reports/environment.txt"
