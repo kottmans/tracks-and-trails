@@ -1038,7 +1038,13 @@ mutation rather than to describe a behaviour already believed.
 | Focused logging, worker-logging and manager suite | **95 passed** |
 | Canonical bare `pytest` | **1195 passed, 11 skipped, 1 deselected** — three consecutive runs, 82 s each |
 | Mutation battery | **9 of 9 killed**, tree restored to the same hash |
-| Windows | **Not run** at this head; CI has not run yet |
+| CI at `d6f3581`, all five jobs green | Ubuntu **1195 passed, 11 skipped, 1 deselected**; Windows **1184 passed, 20 skipped, 21 deselected**; Windows desktop **20 passed, 1205 deselected**; both frozen jobs succeeded |
+
+The counts reconcile on both platforms — Ubuntu 1192 → 1195 and Windows 1181 → 1184, each the
+three new tests — so all three ran on Windows rather than being skipped. That matters most for
+the wedged-listener deadline, which is the one place platform thread timing could differ. Windows
+was still not run locally, CI exercised these once, and the three consecutive canonical runs were
+Linux only.
 
 The 82 s runs are not a slowdown: the same suite measured **81.40 s** at `dd1dad8` in the same
 session, on a machine busy with concurrent work. The 52 s recorded above was a quieter box, and
