@@ -102,11 +102,20 @@ class FakeRepository:
     def get(self, job_id: str) -> Job | None:
         return self.jobs.get(job_id)
 
-    def update(self, job: Job) -> None:
+    def update(self, job: Job, done: Callable[[str | None], None] | None = None) -> None:
+        """`ARC-005`'s asynchronous shape, completed synchronously.
+
+        A zero-latency stand-in: these tests are about what the manager persists and in what
+        order, not about how long a disk takes. `test_the_manager_drives_the_real_repository`
+        runs the same path through `PersistentJobStore` and the real writer, so this cannot
+        drift into a shape nothing implements.
+        """
         if job.id not in self.jobs:
             raise KeyError(job.id)
         self.jobs[job.id] = job
         self.writes.append((job.id, job.status))
+        if done is not None:
+            done(None)
 
     def statuses(self, job_id: str) -> list[JobStatus]:
         return [status for stored_id, status in self.writes if stored_id == job_id]
@@ -784,25 +793,47 @@ def test_the_manager_drives_the_real_repository(
     media_url: Callable[..., str],
     spin: Callable[..., bool],
 ) -> None:
-    """One integration test against the concrete `JobRepository` (`T-013` scope).
+    """One integration test against the concrete persistence stack (`T-013` scope, `ARC-005`).
 
     Everything else here uses the fake, which proves the manager needs nothing but the protocol.
     This proves the protocol is one SQLite actually satisfies — that the two are the same shape
     is otherwise an assumption on both sides.
+
+    **`JobRepository` alone no longer satisfies it**, and that is the point of `ARC-005`: its
+    `update` is synchronous and blocked the GUI thread for a measured 5.017 s under a held writer
+    lock (`T016-R3`). The manager is given `PersistentJobStore`, which serialises every write
+    through the one writer thread and answers reads from a write-through view. The assertions
+    below read through the *repository*, not the store, so they see what actually reached disk
+    rather than what the view remembers.
     """
     from tracks_and_trails.persistence import db
     from tracks_and_trails.persistence.repositories import JobRepository
+    from tracks_and_trails.persistence.store import PersistentJobStore
+    from tracks_and_trails.persistence.writer import QueueWriter
 
+    path = tmp_path / "library.sqlite3"
     url = media_url(total_bytes=64 * 1024)
-    with db.open_database(tmp_path / "library.sqlite3") as connection:
+    with db.open_database(path) as connection:
         real = JobRepository(connection)
         real.add(make_job("job-real", url, tmp_path))
-        download = DownloadManager(real)
+        writer = QueueWriter(lambda: db.connect(path))
+        store = PersistentJobStore(connection, writer)
+        download = DownloadManager(store)
         try:
             download.start("job-real")
             assert spin(lambda: download.is_idle, timeout=120)
+            # The final transition is announced from the write's callback, so idleness alone does
+            # not mean it is on disk yet. Reading the repository is what proves it landed.
+            assert spin(
+                lambda: (
+                    (job := real.get("job-real")) is not None and job.status is JobStatus.COMPLETED
+                ),
+                timeout=30,
+            )
         finally:
             download.shutdown()
+            writer.close()
+            assert spin(lambda: not writer.is_running, timeout=30), "the writer thread never quit"
 
         stored = real.get("job-real")
         assert stored is not None
@@ -1950,6 +1981,55 @@ def test_a_job_outside_the_two_entry_points_cannot_be_started(
         download.start("job-1")
 
     assert repository.jobs["job-1"].status is status, "a refused start still moved the job"
+
+
+def test_a_transition_that_cannot_be_stored_is_reported_and_not_announced(
+    tmp_path: Path, app: QCoreApplication
+) -> None:
+    """`ARC-005`: persist, **then** signal — so a write that failed announces nothing.
+
+    `T016-R3` found the synchronous version raising an `OperationalError` that reached no user at
+    all. The replacement must do the opposite of both halves: no `job_changed` for a state that
+    was never stored, and a `persistence_failed` that says so.
+
+    Not a job failure, deliberately: the download may be running perfectly while the queue's
+    record of it falls behind, and recovery re-queues an interrupted job at the next startup.
+    """
+
+    class RefusingStore:
+        """Accepts the read contract, refuses every write."""
+
+        def __init__(self) -> None:
+            self.jobs: dict[str, Job] = {}
+
+        def get(self, job_id: str) -> Job | None:
+            return self.jobs.get(job_id)
+
+        def update(self, job: Job, done: Callable[[str | None], None]) -> None:
+            self.jobs[job.id] = job  # read-your-writes still holds
+            done("OperationalError: database is locked")
+
+    store = RefusingStore()
+    store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
+    download = DownloadManager(store, entry_point=child_downloading_forever)
+    announced: list[tuple[str, str]] = []
+    reported: list[tuple[str, str]] = []
+    download.job_changed.connect(lambda job_id, status: announced.append((job_id, status)))
+    download.persistence_failed.connect(lambda job_id, why: reported.append((job_id, why)))
+
+    try:
+        download.start("job-1")
+        app.processEvents()
+
+        assert announced == [], f"a state that was never stored was announced: {announced}"
+        assert [job_id for job_id, _ in reported] == ["job-1"]
+        assert "locked" in reported[0][1]
+    finally:
+        download.shutdown()
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not download.is_idle:
+            app.processEvents()
+            time.sleep(0.005)
 
 
 def test_a_ready_job_starts_a_download_at_running(

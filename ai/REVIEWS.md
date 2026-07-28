@@ -4119,3 +4119,86 @@ tests.
 `T016-R4/R5/R6` must be corrected and independently verified. This is the initial comprehensive
 review; one focused correction re-review remains available for Medium-or-lower findings, while
 the Critical and High findings continue under `AGENTS.md` §9 until resolved.
+
+## 2026-07-27 — T-016 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-016` — Add-URL dialog with probe results
+**Correction base:** `a9317362c043825a79a85d3fde85be4609e714cd`
+**Head:** `162f2860e02d3fe7daf2c9523d9de8fd214b82e0`
+**Correction commits:** `4e1bf64`, `5ba0ea3`, and `8bde969`
+**Excluded commits in the range:** `14e63ec` preserves the initial review above; `162f286`
+records the unrelated `T-056` Windows survival-check intermittent and changes no reviewed source
+or test
+**Repository state at inspection:** clean `main`, in sync with `origin/main`; source and tests
+were inspected and run from a clean `git archive 162f286`
+**Platforms verified:** Linux locally; Windows from the implementer-provided GitHub Actions run
+`30324097829` at code head `8bde969`
+**Verdict:** **Changes requested**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T016-R1` | **Critical** | **Yes** | **Open — the result-arrival guard is now real, but the asynchronous save creates an earlier wrong-URL window.** `probe()` publishes `_probe` and submits the row before the session starts. The URL editor remains enabled while `_saving`, and `_discard_probe()` can cancel only when `probe.started` is true. If the first line changes while SQLite is still writing, `_on_probe_saved()` records the superseded URL and returns without starting or cancelling it. Under a real held SQLite writer lock, changing `old.invalid/unwanted` to `new.invalid/wanted` left the old row durably `QUEUED`; adding afterward left **both** old and new rows queued. The UI still displayed only the new URL. That can later download the URL the user replaced, so the Critical consequence remains. The multiplicity sibling is also still wrong: `_Persisted.by_url` is keyed by URL text and `fresh` excludes every occurrence whose text is present. After probing the first of two identical entered lines, Add stored only one job although `split_urls()` and the acceptance criterion say two identical lines are two requested jobs. Cover the pending-save generation, ensure a superseded saved probe cannot remain a live queued job, and track entered occurrences rather than URL membership. Add delayed-save edit and probe-then-duplicate-line tests. |
+| `T016-R2` | **High** | **Yes** | **Open — `done()` handles a started worker, not a probe whose persistence callback can still start one.** During the pending save, `_Probe.started` is false and therefore `probe.in_flight` is false. Close is not disabled, so `done()` hides the dialog without superseding the probe. Releasing a deterministic deferred save afterward invoked `_on_probe_saved()` and called `manager.start()` for the hidden dialog: **one start, zero cancellations**. The committed close tests all wait until `probing_job_id` is non-`None`, which places them after synchronous fake persistence and misses this lifecycle stage. Closing must either be refused while a write owns the outcome or retire that outcome so its callback cannot start hidden work. Exercise Close/Escape/reject during a genuinely deferred probe save and prove a later dialog can still probe. |
+| `T016-R3` | **High** | **Yes** | **Open — `ARC-005` is accepted, but the implementation serializes only appends.** `QueueWriter` owns `JobRepository.append()`, while `DownloadManager._save_and_announce()` still calls `JobRepository.update()` synchronously on the GUI thread for start, cancel, progress-stage, success, failure, and cleanup transitions. In the intended concrete flow, the writer committed the probe row and queued its GUI callback; another connection then held the writer lock. Processing that callback reached `DownloadManager.start()` and blocked the GUI event loop for **5.017 s**, then raised an **uncaught** `sqlite3.OperationalError` out of `QueueWriter._on_done()`. A direct non-running `DownloadManager.cancel()` reproduced the same synchronous write at **5.013 s**. The new writer also makes `close()` call `QThread.wait(5000)`; a submitted contended write held that GUI-thread call for **4.921 s**, contrary to the unqualified NFR and the event-driven shutdown rule already established by `T013-R2`. One persistence owner must serialize the manager's updates as well as appends, preserve persist-before-signal through callbacks, surface every failure, and expose an event-driven shutdown completion rather than waiting. The gate needs the integrated writer → dialog callback → real manager/repository path under contention, plus the contended-close sibling. |
+| `T016-R4` | **Medium** | **Yes** | **Resolved.** The declared order contains all twelve controls. The set assertion observes every `TabFocus` widget in the dialog's own window without filtering by declared name, and the chain walk independently compares Qt's order with the hand transcription. Both focused assertions passed. |
+| `T016-R5` | **Medium** | **Yes** | **Resolved.** `ThumbnailLoader` reports `bytes | None`; the dialog renders `None` and undecodable bytes as `Thumbnail unavailable`; and the shipping `QNetworkAccessManager` implementation is exercised against both a missing local file and a readable one. Both focused tests passed. |
+| `T016-R6` | **Medium** | **Yes** | **Resolved.** Every foreign-text label is set to `Qt.PlainText`. The markup-shaped title proof uses the same explicitly sized widget, asserts equal grab sizes, demonstrates that RichText renders differently, then restores PlainText and reproduces the shipped pixels. It passed locally, and the implementer-provided Windows desktop job passed the final hardened form. |
+| `T016-R7` | **Low** | **No** | **Resolved.** The two allowed statuses are independently transcribed, their complement is derived over the complete `JobStatus` enum, and a separate assertion compares the transcription with `_ENTRY_STATUS`. The previously omitted `PROBING`, `COMPLETED`, and `CANCELLED` cases are collected and passed. |
+| `T016-R8` | **Low** | **No** | **Resolved.** The stale branch/base, mypy scope, suite evidence, and “no widget” contradiction are corrected in current-truth records. This review records the exact correction head separately from the initial implementation boundary. |
+
+### What the correction establishes
+
+- A late `media_probed` signal for a retired probe is refused at the arrival point. Keeping the
+  superseded `_Probe` record makes that identity check reachable, and changing the first line
+  after the worker starts cancels the session and leaves its job `CANCELLED`.
+- Add is disabled and defensively refused while a worker probe is in flight. The original
+  add-while-running duplicate edge is closed; R1 now concerns the unmodelled persistence stage
+  and duplicate input occurrences.
+- A started never-returning worker is cancelled through `done()` for reject, visible-window
+  close, and direct done routes. R2 now concerns the callback that can create the worker only
+  after the dialog has closed.
+- `JobRepository.append()` allocates a batch's positions and inserts it atomically; a second
+  batch continues after the first. `QueueWriter` opens and closes its connection on its own
+  thread with `check_same_thread=True`, and returns append success/failure on the GUI thread.
+  R3 concerns the unconverted manager writes and blocking writer shutdown, not those mechanics.
+- `T-056` remains an explicitly open, unrelated intermittent. This range changes no
+  `process_tree.py` behavior; the canonical Linux suite passed its survival check.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| `git diff --check a931736..162f286` | Passed. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **85 files already formatted**. |
+| `mypy src` | Passed: no issues in **34 source files**. |
+| Configured `mypy` | Passed: no issues in **70 source files**. |
+| Configured `mypy --platform win32` | Passed: no issues in **70 source files**. |
+| Focused add-dialog, append, and refusal suite | Passed: **66 passed in 22.26 s**. |
+| Canonical bare `pytest`, exact head | Passed: **1267 passed, 11 skipped, 1 deselected in 79.92 s**. |
+| Implementer-provided CI at code head `8bde969` | Run `30324097829` green: Ubuntu **1267 passed, 11 skipped, 1 deselected**; Windows **1256 passed, 20 skipped**; Windows desktop **20 passed**; both frozen jobs succeeded. `162f286` changes `ai/TASKS.md` only. |
+| Edit during concrete contended probe save | Failed the correction as intended: after the lock was released, the replaced old URL was durably `QUEUED`; adding the displayed new URL left both queued. |
+| Duplicate occurrence after probe | Failed the correction as intended: two identical entered lines produced one stored row after the first occurrence had been probed. |
+| Close during deferred probe save | Failed the correction as intended: the hidden dialog's completion callback started the probe and issued no cancellation. |
+| Integrated concrete persistence path | Failed the correction as intended: writer callback → `DownloadManager.start()` → synchronous repository update blocked event processing **5.017 s** and raised an uncaught `OperationalError`. |
+| Manager cancel sibling | Failed the correction as intended: cancelling a non-running queued job blocked **5.013 s** and raised `OperationalError` under the same real lock. |
+| Writer shutdown sibling | Failed the correction as intended: `QueueWriter.close()` blocked **4.921 s** waiting for a contended write. |
+
+The first canonical-suite attempt is excluded from evidence: the sandbox denied facilities used
+by the process/IPC integration tests. The same exact archive passed when run with its normal
+local-process and IPC access. Reviewer probes lived only in temporary archives and did not alter
+repository source or tests.
+
+### Readiness and review budget
+
+`T016-R4` through `T016-R8` are independently resolved. Critical `T016-R1` and High
+`T016-R2/R3` remain open, so `T-016` remains **Changes requested**.
+
+This was the ordinary focused correction re-review. No further pass is available merely to
+revisit the resolved Medium-or-lower findings. The remaining findings are Critical/High direct
+continuations of the original blockers, so `AGENTS.md` §9 permits another focused correction and
+verification pass without maintainer authorization; it must stay confined to R1, R2, R3 and
+their correction diff.

@@ -1164,10 +1164,33 @@ rows exist, and on failure it stays open with the user's input intact.
   single-row lookups against a local file and are not what blocked. Making every read a callback
   would spread asynchrony through every widget to fix a problem only writes have.
 
+### Amended 2026-07-27 — "every queue write" means the manager's too
+
+The first implementation moved only `append` to the writer thread. `DownloadManager` kept calling
+a synchronous `JobRepository.update()` for every start, cancel, stage change, success and failure,
+so `T016-R3` remained open: the GUI thread blocked for a measured **5.017 s** under a held writer
+lock and then raised an uncaught `OperationalError`, and `close()` itself waited 4.921 s.
+
+Three clarifications, all now implemented:
+
+- **`revise()` joins `submit()` on the same thread.** One writer means every queue write, not the
+  new ones. Ordering between an append and a later revision is guaranteed by their sharing one
+  receiver.
+- **`JobStore.get` must reflect a queued `update` immediately.** `PersistentJobStore` keeps a
+  write-through view for exactly this. Without it, asynchronous updates would have meant
+  restructuring ten call sites of approved `T-013` code, because the manager reads a job back
+  before advancing it. With it, only the announcement moved into a callback — `T-013`'s
+  persist-then-signal ordering is preserved, and a failed write emits `persistence_failed`
+  rather than raising into a slot.
+- **Shutdown is a lifecycle, not a call.** `close()` returns immediately and reports completion
+  through `closed`. `QThread.wait()` on the GUI thread is the defect `T013-R2` already ruled on
+  for the manager; reintroducing it one layer down was the same mistake with a new owner.
+
 ### Consequences
 
-- `persistence/writer.py` is new and owns the thread. `ui/` depends on a narrow protocol, not on
-  it, so the dialog still cannot see that SQLite exists (`ARCHITECTURE.md` §3).
+- `persistence/writer.py` owns the thread and `persistence/store.py` is the single owner the rest
+  of the process holds. `ui/` depends on a narrow protocol, not on either, so the dialog still
+  cannot see that SQLite exists (`ARCHITECTURE.md` §3).
 - `persistence/db.configure()` now sets `busy_timeout`. In-process contention is gone by
   construction, but a *second process* — a second instance, `sqlite3` at a prompt — can still
   hold the lock, and waiting briefly beats raising at a user.

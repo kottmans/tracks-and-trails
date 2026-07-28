@@ -284,18 +284,33 @@ class _Probe:
 
 @dataclass
 class _Persisted:
-    """The jobs this dialog has written, so no input line is ever stored twice."""
+    """The jobs this dialog has written, counted **per entered occurrence** (`T016-R1`).
 
-    by_url: dict[str, str] = field(default_factory=dict)
+    Keyed by URL *membership* originally, which quietly broke `REQ-001`: two identical lines are
+    two things the user asked for and `split_urls` keeps both, but after probing the first of
+    them `Add` skipped every line whose text was already present and stored one job for two
+    entries. A count answers the real question — how many of these did we already store? — and
+    the difference is what still needs creating.
+    """
+
+    #: URL text → the ids stored for it, oldest first.
+    by_url: dict[str, list[str]] = field(default_factory=dict)
     order: list[str] = field(default_factory=list)
 
     def record(self, url: str, job_id: str) -> None:
-        self.by_url[url] = job_id
+        self.by_url.setdefault(url, []).append(job_id)
         self.order.append(job_id)
 
     def forget(self, url: str, job_id: str) -> None:
-        if self.by_url.get(url) == job_id:
-            del self.by_url[url]
+        stored = self.by_url.get(url)
+        if stored is not None and job_id in stored:
+            stored.remove(job_id)
+            if not stored:
+                del self.by_url[url]
+
+    def covered(self) -> dict[str, int]:
+        """How many entered occurrences of each URL already have a job."""
+        return {url: len(ids) for url, ids in self.by_url.items()}
 
 
 class AddUrlDialog(QDialog):
@@ -607,12 +622,19 @@ class AddUrlDialog(QDialog):
             self._refresh_actions()
             return
 
-        self._persisted.record(probe.url, job.id)
         if probe.superseded or self._probe is not probe or probe.url != self.first_url():
-            # The input moved on while the write was in flight. The job is stored — the user did
-            # type it — but this dialog no longer has anything to probe for it.
+            # **The input moved on while the write was in flight** (`T016-R1`, `T016-R2`). The row
+            # is now on disk for a URL the user has replaced or a dialog that has closed, and the
+            # first version simply recorded it and returned — leaving it durably `QUEUED`, where
+            # whatever runs the queue next would download the URL that was taken away.
+            #
+            # So it is cancelled rather than kept. `QUEUED → CANCELLED` is legal and needs no
+            # worker, and the row survives as an honest record of something asked for and
+            # withdrawn instead of as pending work nobody wants.
+            self._manager.cancel(job.id)
             self._refresh_actions()
             return
+        self._persisted.record(probe.url, job.id)
 
         try:
             self._manager.start(job.id, SessionKind.PROBE)
@@ -733,10 +755,16 @@ class AddUrlDialog(QDialog):
             self._status.setText("A probe is still running. Wait for it, or cancel it.")
             return
 
-        # One job per line, and never a second for a line already stored. `_persisted` is what
-        # makes that true across probe-then-add, rather than a rule about the first URL that only
-        # held once a probe had finished.
-        fresh = [(url, self._new_job(url)) for url in urls if url not in self._persisted.by_url]
+        # One job per **entered line**, and never a second for a line already stored. Counted
+        # rather than tested for membership, so two identical lines still become two jobs when
+        # one of them has already been stored by a probe (`T016-R1`, `REQ-001`).
+        remaining = self._persisted.covered()
+        fresh: list[tuple[str, Job]] = []
+        for url in urls:
+            if remaining.get(url, 0) > 0:
+                remaining[url] -= 1
+                continue
+            fresh.append((url, self._new_job(url)))
         self._begin_saving("Saving to the queue …")
         self._jobs.submit(
             [job for _, job in fresh], lambda error: self._on_queue_saved(fresh, error)
@@ -808,9 +836,17 @@ class AddUrlDialog(QDialog):
         `add_to_queue` may just have started it downloading.
         """
         probe = self._probe
-        if probe is not None and probe.in_flight:
+        if probe is not None and probe.usable and not probe.ready:
+            # **`usable`, not `in_flight`** (`T016-R2`). A probe whose row is still being written
+            # has `started is False`, so the first version left it alone — and its completion
+            # callback then started a worker for a dialog the user had already closed: one start,
+            # zero cancellations, and a pool-of-one manager busy on behalf of nothing.
+            #
+            # Retiring it here is what `_on_probe_saved` reads to refuse the start. The session
+            # is cancelled only if there is one; the row is cancelled by that callback.
             probe.superseded = True
-            self._manager.cancel(probe.job_id)
+            if probe.started:
+                self._manager.cancel(probe.job_id)
         self._thumbnails.cancel()
         super().done(result)
 

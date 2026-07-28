@@ -21,6 +21,15 @@ This module keeps that check: it takes a **factory** and calls it on the writer 
 time there is something to write. Passing a live connection across the boundary would have meant
 turning the check off, which is the one change that would make a real threading bug silent.
 
+## Every queue write comes here, and shutdown is a lifecycle
+
+`T016-R3`: the first version moved only `append` off the GUI thread while the manager's status
+updates stayed synchronous, so a start, a cancel or a stage change still blocked — 5.017 s under a
+held lock, ending in an uncaught `OperationalError`. `revise()` closes that half. And `close()`
+returns immediately, reporting completion through `closed`: the version that called
+`QThread.wait()` blocked the GUI thread for 4.921 s, which is the defect `T013-R2` had already
+ruled on for the manager.
+
 ## Failure is reported, not swallowed
 
 Every submission ends in the caller's callback, on the GUI thread, with either `None` or a
@@ -30,19 +39,12 @@ design doing with an exception.
 
 import sqlite3
 from collections.abc import Callable, Sequence
-from typing import Any, Final, Protocol
+from typing import Any, Protocol
 
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 
 from tracks_and_trails.core.models import Job
 from tracks_and_trails.persistence.repositories import JobRepository
-
-#: How long `close()` waits for the thread to finish its current write and exit.
-#:
-#: A bounded wait rather than none, and it is deliberately not on the interaction path: this runs
-#: at shutdown, after the last submission, where the alternative is a thread outliving the
-#: application — the same shape of orphan `T-019` spent a whole task removing.
-SHUTDOWN_WAIT_MS: Final = 5000
 
 
 class ConnectionFactory(Protocol):
@@ -73,11 +75,26 @@ class _Worker(QObject):
         arrive. So every failure becomes a message, including the one that matters most: not
         being able to open the database at all.
         """
+        self._perform(token, lambda repository: repository.append(jobs))
+
+    @Slot(int, object)
+    def revise(self, token: int, job: Job) -> None:
+        """Overwrite one stored job, then report (`T016-R3`).
+
+        The manager's status transitions come through here. They were the half `ARC-005` did not
+        cover: `append` moved to this thread while `update` stayed a synchronous call from
+        `DownloadManager._save_and_announce()`, so a start, a cancel or a stage change still
+        blocked the GUI thread — measured at 5.017 s under a held writer lock, ending in an
+        uncaught `OperationalError`. One writer means *every* queue write, not the new ones.
+        """
+        self._perform(token, lambda repository: repository.update(job))
+
+    def _perform(self, token: int, work: Callable[[JobRepository], object]) -> None:
         try:
             if self._connection is None:
                 self._connection = self._open_connection()
-            JobRepository(self._connection).append(jobs)
-        except Exception as error:  # see the docstring: nothing may escape into the event loop
+            work(JobRepository(self._connection))
+        except Exception as error:  # see `write`: nothing may escape into the event loop
             self.done.emit(token, f"{type(error).__name__}: {error}")
             return
         self.done.emit(token, "")
@@ -116,6 +133,15 @@ class QueueWriter(QObject):
     #: Internal: asks the worker to close **on its own thread**, after every queued write.
     _shutdown = Signal()
 
+    #: Internal: carries a single-job revision to the worker.
+    _revise = Signal(int, object)
+
+    #: The writer thread has finished and its connection is closed. **Shutdown is a lifecycle,
+    #: not a call** — the same rule `T013-R2` established for the manager, and for the same
+    #: reason: `close()` used to `QThread.wait(5000)` on the GUI thread, which a contended write
+    #: held for a measured 4.921 s (`T016-R3`). Composition waits for this signal instead.
+    closed = Signal()
+
     def __init__(self, open_connection: ConnectionFactory, parent: QObject | None = None) -> None:
         super().__init__(parent)
         self._thread = QThread()
@@ -124,7 +150,9 @@ class QueueWriter(QObject):
         self._worker.moveToThread(self._thread)
         self._worker.done.connect(self._on_done)
         self._submit.connect(self._worker.write)
+        self._revise.connect(self._worker.revise)
         self._shutdown.connect(self._worker.close)
+        self._thread.finished.connect(self.closed)
         self._pending: dict[int, Callable[[str | None], None]] = {}
         self._next_token = 0
         self._closed = False
@@ -140,12 +168,28 @@ class QueueWriter(QObject):
         if self._closed:
             done("the queue writer is shutting down; nothing was saved")
             return
+        # `list()` because the sequence crosses a thread boundary: a caller that mutated its own
+        # list afterwards would otherwise be editing rows already being written.
+        self._submit.emit(self._track(done), list(jobs))
+
+    def revise(self, job: Job, done: Callable[[str | None], None]) -> None:
+        """Persist one changed job. **Returns immediately**; `done` fires on the GUI thread.
+
+        The manager's transitions travel this way (`T016-R3`). Ordering with `submit` is
+        guaranteed by the single worker thread: a job appended and then revised is written in
+        that order, because both are queued to the same receiver.
+        """
+        if self._closed:
+            done("the queue writer is shutting down; nothing was saved")
+            return
+        token = self._track(done)
+        self._revise.emit(token, job)
+
+    def _track(self, done: Callable[[str | None], None]) -> int:
         token = self._next_token
         self._next_token += 1
         self._pending[token] = done
-        # `list()` because the sequence crosses a thread boundary: a caller that mutated its own
-        # list afterwards would otherwise be editing rows already being written.
-        self._submit.emit(token, list(jobs))
+        return token
 
     @Slot(int, str)
     def _on_done(self, token: int, error: str) -> None:
@@ -154,10 +198,15 @@ class QueueWriter(QObject):
             callback(error or None)
 
     def close(self) -> None:
-        """Stop the thread, after letting it finish what it has already been given.
+        """Ask the thread to finish what it has been given, and **return** (`T016-R3`).
+
+        **Nothing here waits.** The first version called `QThread.wait(5000)`, which a contended
+        write held on the GUI thread for a measured 4.921 s — the same defect `T013-R2` had
+        already ruled on for the manager, reintroduced one layer down. Completion arrives as
+        `closed`; composition quits when it does, exactly as it waits for `DownloadManager.idle`.
 
         Safe to call more than once. Submissions made after this are refused through their own
-        callback rather than silently dropped.
+        callback rather than silently dropped, so nothing is left waiting for an answer.
         """
         if self._closed:
             return
@@ -166,11 +215,6 @@ class QueueWriter(QObject):
         # connection belonging to another one; emitting queues it behind every write already
         # submitted, and the slot quits the loop once it has run. See `_Worker.close`.
         self._shutdown.emit()
-        if not self._thread.wait(SHUTDOWN_WAIT_MS):
-            # Nothing left to try that is safe: terminating a thread mid-`sqlite3` call is how
-            # `T019-R5` wedged the interpreter. Report and leave it, which at worst leaks one
-            # thread at exit rather than corrupting the database.
-            self._thread.requestInterruption()
 
     @property
     def is_running(self) -> bool:

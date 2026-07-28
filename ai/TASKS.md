@@ -886,7 +886,10 @@ personal paths (`REQ-026`, `NFR-007`). They are committed, so a leak here is per
 
 ### T-016 — Add-URL dialog with probe results
 
-**Status:** **In Review — first correction batch returned 2026-07-27, awaiting verification.**
+**Status:** **In Review — second correction batch returned 2026-07-27, awaiting verification.**
+`T016-R4`…`R8` are verified resolved. The three that continue — Critical `T016-R1` and High
+`T016-R2`/`R3` — are corrected again, each for a reason the first pass did not reach rather than
+a repeat of it.
 The initial review returned **Changes requested** with one Critical, two High and three blocking
 Medium findings. All six are corrected in one batch, together with both non-blocking Lows.
 `T016-R3` needed an architecture decision first: `ARC-005` is accepted, and `T-055` records it.
@@ -908,6 +911,47 @@ approval into the tracking files. `T-016` is `d9936f4`, `57c7e5c` and `33ebd11`.
 **Branch:** none now. `phase1-add-url-dialog` was cut at maintainer instruction because Codex was
 reviewing `T-019`/`T-038` on `main` at the time (`AGENTS.md` §7 — isolated concurrent work), then
 rebased onto `main`, merged fast-forward and deleted once that review closed.
+
+#### Second correction batch — the three continuations, 2026-07-27
+
+**Base:** `162f286`. Nine mutations, nine killed, and the first batch's nineteen re-run and still
+killed.
+
+- **`T016-R1` (Critical) — the window before the row exists.** The first correction bound a
+  result to its URL but left the *pending save* unmodelled: between `probe()` and its write
+  landing, `started` is false, so nothing could cancel it and its callback simply recorded the
+  row. Editing then left the replaced URL durably `QUEUED`, where whatever runs the queue next
+  would download what the user took away. A probe retired during its save now has its stored row
+  **cancelled** — `QUEUED → CANCELLED` is legal and needs no worker — so the record survives as
+  something asked for and withdrawn rather than as pending work nobody wants.
+- **`T016-R1` (Critical), second half — occurrences, not membership.** `_Persisted` was keyed by
+  URL text, so once a probe had stored one occurrence, `Add` skipped *every* line with that text
+  and two identical lines became one job. `split_urls` and `REQ-001` both say two identical lines
+  are two requests. It now counts how many occurrences already have a job and creates the
+  difference.
+- **`T016-R2` (High) — `done()` reads `usable`, not `in_flight`.** A probe mid-save has
+  `started is False`, so the first correction let Close through without retiring it, and the
+  callback started a worker for a dialog the user had already closed. Four new tests exercise
+  reject/close/done against a genuinely deferred save, and prove a later dialog can still probe.
+- **`T016-R3` (High) — `ARC-005` covered appends only.** `DownloadManager._save_and_announce()`
+  still called a synchronous `JobRepository.update()` from the GUI thread for every start,
+  cancel, stage change, success and failure: 5.017 s blocked under a held lock, then an uncaught
+  `OperationalError`. `QueueWriter.revise()` and `PersistentJobStore` now put **every** queue
+  write on the one thread. `JobStore.update` takes a completion callback, so `T-013`'s
+  persist-then-signal ordering is preserved rather than traded away, and a failed write raises
+  `persistence_failed` instead of an exception nobody catches. `close()` no longer calls
+  `QThread.wait()` — it reports completion through `closed`, the same event-driven shutdown
+  `T013-R2` established for the manager, after a contended write held that wait for 4.921 s.
+
+**The store's read contract is what kept this small.** `JobStore.get` is required to reflect a
+queued `update` immediately, so all ten `_save_and_announce` call sites in approved `T-013` code
+are unchanged; only the announcement moved into a callback.
+
+**Three mutations survived the first run of this batch**, all on `T016-R3`, and each was a real
+gap: the integrated test took the writer lock *after* `start()` had already issued its status
+write, so nothing was contended; read-your-writes was asserted against a writer fast enough to
+pass either way; and no test forced a write failure at all. All three now have a gate that fails
+without the fix.
 
 #### First correction batch — all six blocking findings, 2026-07-27
 

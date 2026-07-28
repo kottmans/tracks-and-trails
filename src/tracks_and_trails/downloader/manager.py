@@ -159,13 +159,23 @@ class JobStore(Protocol):
     """The persistence the manager needs, and nothing more.
 
     Two operations, named as a protocol so this module depends on the *shape* of a repository
-    rather than on `persistence.JobRepository`. `JobRepository` satisfies it structurally; so
+    rather than on `persistence.JobRepository`. `persistence.PersistentJobStore` satisfies it; so
     does a dictionary-backed fake in a test, which is the point (`ARCHITECTURE.md` §3).
+
+    **`update` is asynchronous and `get` is not** (`ARC-005`). `done` is called on the GUI thread
+    with `None` on success or a message on failure, and it is called exactly once. The
+    corresponding obligation on the implementation is that **`get` reflects a queued `update`
+    immediately** — the manager reads a job back before advancing it, and a store that answered
+    from disk alone would hand it the state it had just replaced.
+
+    `JobRepository` alone no longer satisfies this: its `update` is synchronous and blocked the
+    GUI thread for a measured 5.017 s under contention (`T016-R3`). It is now reached through
+    `PersistentJobStore`, which owns that contract.
     """
 
     def get(self, job_id: str) -> Job | None: ...
 
-    def update(self, job: Job) -> None: ...
+    def update(self, job: Job, done: Callable[[str | None], None]) -> None: ...
 
 
 class ProcessLike(Protocol):
@@ -302,6 +312,13 @@ class DownloadManager(QObject):
     #: listener stays running for the next session and this is emitted as soon as the sessions
     #: are.
     idle = Signal()
+
+    #: `(job_id, reason)` — a transition that could not be stored (`ARC-005`, `T016-R3`).
+    #:
+    #: Separate from `job_failed`, and not a job failure: the download may be running perfectly
+    #: while the queue's *record* of it falls behind. Surfaced rather than swallowed, because the
+    #: previous synchronous write raised an `OperationalError` that reached no user at all.
+    persistence_failed = Signal(str, str)
 
     def __init__(
         self,
@@ -1156,13 +1173,38 @@ class DownloadManager(QObject):
         return job
 
     def _save_and_announce(self, job: Job) -> None:
-        """Persist, **then** signal (`T-013` acceptance criterion).
+        """Persist, **then** signal (`T-013` acceptance criterion). **Waits for neither.**
 
-        This order is the whole guarantee: a crash between the two leaves the database ahead of
+        The order is the whole guarantee: a crash between the two leaves the database ahead of
         the UI, which recovery corrects at the next startup. The other order leaves the UI
         showing a state that was never stored, and nothing ever corrects that.
+
+        **The waiting is what changed, not the order** (`ARC-005`, `T016-R3`). This used to call
+        a synchronous `JobRepository.update()` from the GUI thread — a start, a cancel or a stage
+        change blocking for a measured 5.017 s under a held writer lock and then raising an
+        uncaught `OperationalError`. `JobStore.update` now takes a completion callback, and the
+        announcement is made from it, so the transition is still announced only once it is
+        durable.
+
+        `JobStore.get` is contracted to reflect a queued update immediately, which is why the ten
+        callers of this method are unchanged: each still reads back what it just wrote.
         """
-        self._repository.update(job)
+        self._repository.update(job, lambda error: self._on_saved(job, error))
+
+    def _on_saved(self, job: Job, error: str | None) -> None:
+        """Announce a durable transition, or report that it never became one.
+
+        A failed write is surfaced rather than swallowed (`T016-R3`). It is deliberately **not**
+        turned into a job failure: the download itself may be running perfectly, and the honest
+        report is that the queue's record of it is behind. Recovery re-queues an interrupted job
+        at the next startup (`NFR-003`), which is exactly the case this leaves behind.
+        """
+        if error is not None:
+            logging.getLogger(f"{APP_SLUG}.manager").error(
+                "could not persist %s as %s: %s", job.id, job.status.value, error
+            )
+            self.persistence_failed.emit(job.id, error)
+            return
         self.job_changed.emit(job.id, job.status.value)
 
 

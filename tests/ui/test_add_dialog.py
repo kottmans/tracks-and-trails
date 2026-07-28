@@ -19,7 +19,9 @@ The dialog is driven through its **object names** rather than accessors added fo
 
 import json
 import sqlite3
+import sys
 import time
+import uuid
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -52,6 +54,7 @@ from tracks_and_trails.downloader.protocol import (
 )
 from tracks_and_trails.persistence.db import connect
 from tracks_and_trails.persistence.repositories import JobRepository
+from tracks_and_trails.persistence.store import PersistentJobStore
 from tracks_and_trails.persistence.writer import QueueWriter
 from tracks_and_trails.ui.add_dialog import (
     LOADING_THUMBNAIL_TEXT,
@@ -230,11 +233,14 @@ class FakeStore:
     def get(self, job_id: str) -> Job | None:
         return self.jobs.get(job_id)
 
-    def update(self, job: Job) -> None:
+    def update(self, job: Job, done: Callable[[str | None], None] | None = None) -> None:
+        """`ARC-005`'s asynchronous shape, completed synchronously."""
         if job.id not in self.jobs:
             raise KeyError(job.id)
         self.jobs[job.id] = job
         self.writes.append((job.id, job.status))
+        if done is not None:
+            done(None)
 
     def statuses(self, job_id: str) -> list[JobStatus]:
         return [status for stored_id, status in self.writes if stored_id == job_id]
@@ -787,27 +793,221 @@ def test_every_exit_route_abandons_the_probe(
     assert spin(lambda: manager.is_idle, timeout=30), f"{route}() left the session running"
 
 
+def a_queued_job(url: str) -> Job:
+    """A minimal `QUEUED` job, for tests that drive the store directly."""
+    return Job(
+        id=f"job-{uuid.uuid4()}",
+        url=url,
+        request=DownloadRequest(
+            url=url,
+            output_directory=str(REPO_ROOT / "not-written-to"),
+            format_selector="best",
+            output_template="%(title)s.%(ext)s",
+        ),
+        status=JobStatus.QUEUED,
+    )
+
+
+# --- 3b. `T016-R1`/`T016-R2`: the window while the row is still being written -----------------
+
+
+def test_editing_during_a_pending_probe_save_leaves_no_live_job_for_the_old_url(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    sink: FakeSink,
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """The Critical defect's remaining window (`T016-R1`).
+
+    Between `probe()` and its write landing, `started` is false — so the earlier correction could
+    neither cancel the probe nor refuse its result, and the callback simply recorded the row.
+    Under a real held lock the reviewer watched the replaced URL stay durably `QUEUED`, where
+    whatever runs the queue next would download the thing the user had taken away.
+    """
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    sink.defer = True
+    type_urls(dialog, "https://old.invalid/unwanted")
+    dialog.probe()
+    assert dialog.probing_job_id is None, "the worker started before the row was written"
+
+    type_urls(dialog, "https://new.invalid/wanted")
+    sink.release()
+
+    assert spin(lambda: manager.is_idle)
+    live = [job for job in store.jobs.values() if job.status is not JobStatus.CANCELLED]
+    assert [job.url for job in live] == [], (
+        f"the replaced URL survived as live queued work: {[job.url for job in live]}"
+    )
+    assert dialog.media is None
+    assert dialog.probing_job_id is None
+
+
+def test_adding_after_editing_during_a_pending_save_queues_only_what_is_displayed(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    sink: FakeSink,
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """The reviewer's second observation: adding afterwards left **both** rows queued."""
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    sink.defer = True
+    type_urls(dialog, "https://old.invalid/unwanted")
+    dialog.probe()
+    type_urls(dialog, "https://new.invalid/wanted")
+    sink.release()
+    assert spin(lambda: manager.is_idle)
+
+    sink.defer = False
+    dialog.add_to_queue()
+
+    live = [job for job in store.jobs.values() if job.status is not JobStatus.CANCELLED]
+    assert [job.url for job in live] == ["https://new.invalid/wanted"]
+
+
+def test_closing_during_a_pending_probe_save_starts_no_worker(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    sink: FakeSink,
+    spin: Callable[..., bool],
+) -> None:
+    """`T016-R2`: the callback must not create a worker for a dialog that has closed.
+
+    The committed close tests all waited for `probing_job_id`, which put them *after* the write —
+    so this lifecycle stage had no coverage at all, and releasing the save produced one start and
+    zero cancellations.
+    """
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    dialog.show()
+    sink.defer = True
+    type_urls(dialog, "https://example.invalid/never")
+    dialog.probe()
+
+    dialog.reject()
+    sink.release()
+
+    assert manager.is_idle, "a worker was started for a dialog that had already closed"
+    assert spin(lambda: manager.is_idle, timeout=30)
+
+
+@pytest.mark.parametrize("route", ["reject", "close", "done"])
+def test_every_exit_route_survives_a_pending_probe_save(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    sink: FakeSink,
+    spin: Callable[..., bool],
+    route: str,
+) -> None:
+    """And a later dialog can still probe — the consequence the finding is about."""
+    manager = managers(entry_point=child_replaying_a_fixture)
+    dialog = dialogs(manager)
+    dialog.show()
+    sink.defer = True
+    type_urls(dialog, "https://example.invalid/never")
+    dialog.probe()
+
+    routes: dict[str, Callable[[], object]] = {
+        "reject": dialog.reject,
+        "close": dialog.close,
+        "done": lambda: dialog.done(0),
+    }
+    routes[route]()
+    sink.release()
+    assert spin(lambda: manager.is_idle, timeout=30), f"{route}() left a session running"
+
+    sink.defer = False
+    second = dialogs(manager)
+    type_urls(second, fixture_url(SINGLE_ITEM))
+    second.probe()
+    assert spin(lambda: second.media is not None), "the manager was left unusable"
+
+
+def test_two_identical_lines_are_two_jobs_even_when_one_was_probed(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """`REQ-001` and `split_urls` agree that two identical lines are two requests (`T016-R1`).
+
+    `_Persisted` was keyed by URL *membership*, so once a probe had stored one occurrence, Add
+    skipped every line with that text and one entry silently vanished.
+    """
+    url = fixture_url(SINGLE_ITEM)
+    dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
+    type_urls(dialog, f"{url}\n{url}")
+
+    dialog.add_to_queue()
+
+    stored = [store.jobs[job_id].url for job_id in dialog.queued_job_ids]
+    assert stored == [url, url], f"two identical lines produced {stored}"
+
+
 # --- 4. `T016-R3` (High): nothing waits on SQLite ---------------------------------------------
 
 
 @pytest.fixture
-def real_queue(tmp_path: Path, qapp: QApplication) -> Iterator[tuple[QueueWriter, JobRepository]]:
-    """A real `QueueWriter` over a real SQLite file, with a GUI-thread repository for reads."""
+def real_queue(
+    tmp_path: Path, qapp: QApplication, spin: Callable[..., bool]
+) -> Iterator[tuple[PersistentJobStore, JobRepository]]:
+    """The concrete persistence stack: one writer thread, one store, one read connection.
+
+    What composition (`T-036`) will build. The store is both the dialog's `JobSink` and the
+    manager's `JobStore`, which is `ARC-005`'s "one persistence owner" — giving them separate
+    owners is how the manager's writes stayed synchronous while the dialog's moved (`T016-R3`).
+    """
     path = tmp_path / "queue.db"
     connection = connect(path)
     writer = QueueWriter(lambda: connect(path))
     try:
-        yield writer, JobRepository(connection)
+        yield PersistentJobStore(connection, writer), JobRepository(connection)
     finally:
         writer.close()
+        assert spin(lambda: not writer.is_running, timeout=30), "the writer thread never quit"
         connection.close()
         qapp.processEvents()
+
+
+def test_closing_the_writer_does_not_block_the_gui_thread(
+    real_queue: tuple[PersistentJobStore, JobRepository],
+    tmp_path: Path,
+    spin: Callable[..., bool],
+) -> None:
+    """Shutdown is a lifecycle, not a call (`T016-R3`, and `T013-R2` before it).
+
+    A contended write is submitted and the lock held, so the writer thread is genuinely stuck
+    inside SQLite when `close()` is asked for. The previous `QThread.wait(5000)` held the GUI
+    thread here for a measured 4.921 s.
+    """
+    store, _ = real_queue
+    blocker = sqlite3.connect(tmp_path / "queue.db")
+    blocker.execute("BEGIN IMMEDIATE")
+    answers: list[str | None] = []
+    try:
+        store.submit([a_queued_job("https://a.invalid/1")], answers.append)
+
+        started = time.monotonic()
+        store._writer.close()
+        elapsed = time.monotonic() - started
+        assert elapsed < INTERACTION_BUDGET_SECONDS, (
+            f"close() held the GUI thread for {elapsed:.3f}s while a write was contended"
+        )
+    finally:
+        blocker.rollback()
+        blocker.close()
+
+    assert spin(lambda: not store._writer.is_running, timeout=30), "the thread never finished"
+    assert answers, "the submitted write was never answered"
 
 
 def test_adding_never_blocks_the_gui_thread_on_a_contended_database(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
-    real_queue: tuple[QueueWriter, JobRepository],
+    real_queue: tuple[PersistentJobStore, JobRepository],
     tmp_path: Path,
     spin: Callable[..., bool],
 ) -> None:
@@ -817,8 +1017,8 @@ def test_adding_never_blocks_the_gui_thread_on_a_contended_database(
     second connection holds SQLite's write lock outright; `add_to_queue()` must still return
     within an interaction budget, and the write must land once the lock is released.
     """
-    writer, repository = real_queue
-    dialog = dialogs(managers(entry_point=child_never_returning), jobs=writer)
+    store_under_test, repository = real_queue
+    dialog = dialogs(managers(entry_point=child_never_returning), jobs=store_under_test)
     type_urls(dialog, "https://a.invalid/1\nhttps://b.invalid/2\nhttps://c.invalid/3")
 
     blocker = sqlite3.connect(tmp_path / "queue.db")
@@ -840,6 +1040,114 @@ def test_adding_never_blocks_the_gui_thread_on_a_contended_database(
     stored = sorted(job.url for job in repository.all_jobs())
     assert stored == ["https://a.invalid/1", "https://b.invalid/2", "https://c.invalid/3"]
     assert sorted(job.queue_position or 0 for job in repository.all_jobs()) == [0, 1, 2]
+
+
+def test_the_integrated_probe_path_never_blocks_or_raises_under_contention(
+    dialogs: Callable[..., AddUrlDialog],
+    real_queue: tuple[PersistentJobStore, JobRepository],
+    tmp_path: Path,
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """The concrete flow the reviewer reproduced, end to end (`T016-R3`).
+
+    Writer commits the probe row → its GUI callback runs → that callback reaches
+    `DownloadManager.start()`, which persists `QUEUED → PROBING`. With another connection holding
+    the writer lock, that transition blocked the GUI event loop for **5.017 s** and then raised an
+    uncaught `sqlite3.OperationalError` out of the writer's completion slot, because `ARC-005`
+    had been implemented for appends only.
+
+    Nothing is faked here: real writer thread, real store, real manager, real repository, real
+    lock. The assertion is that the event loop keeps turning and no exception escapes a slot.
+    """
+    store_under_test, repository = real_queue
+    manager = DownloadManager(store_under_test, entry_point=child_never_returning)
+    dialog = dialogs(manager, jobs=store_under_test)
+    escaped: list[BaseException] = []
+
+    def record(kind: type[BaseException], value: BaseException, traceback: object) -> None:
+        escaped.append(value)
+
+    original, sys.excepthook = sys.excepthook, record
+    blocker = sqlite3.connect(tmp_path / "queue.db")
+    try:
+        type_urls(dialog, "https://contended.invalid/x")
+        dialog.probe()
+
+        # **The lock has to be taken between the append committing and its callback running.**
+        # An earlier version waited for the callback first, by which time `start()` had already
+        # issued the status write — so nothing was contended, and the mutation restoring the
+        # synchronous write survived. So: poll the database *without* processing events, which
+        # leaves the queued callback undelivered, and only then take the lock.
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not repository.all_jobs():
+            time.sleep(0.005)
+        stored = repository.all_jobs()
+        assert stored, "the appended row never landed"
+        job_id = stored[0].id
+        assert stored[0].status is JobStatus.QUEUED
+        blocker.execute("BEGIN IMMEDIATE")
+
+        # Now deliver the callback. It reaches `DownloadManager.start()`, which persists
+        # `QUEUED -> PROBING` against a lock somebody else is holding.
+        started = time.monotonic()
+        for _ in range(20):
+            qapp.processEvents()
+            time.sleep(0.005)
+        elapsed = time.monotonic() - started
+        assert dialog.probing_job_id is not None, "the probe never started; nothing was contended"
+        assert elapsed < INTERACTION_BUDGET_SECONDS, (
+            f"the event loop was held for {elapsed:.3f}s by a contended status write"
+        )
+    finally:
+        blocker.rollback()
+        blocker.close()
+        sys.excepthook = original
+        manager.shutdown()
+        assert spin(lambda: manager.is_idle, timeout=30)
+
+    assert not escaped, f"an exception escaped a slot: {escaped}"
+    assert spin(
+        lambda: (job := repository.get(job_id)) is not None and job.status is not JobStatus.QUEUED,
+        timeout=30,
+    ), "the status transition never reached disk once the lock was released"
+
+
+def test_the_store_reflects_a_write_it_has_only_queued(
+    real_queue: tuple[PersistentJobStore, JobRepository],
+    tmp_path: Path,
+    spin: Callable[..., bool],
+) -> None:
+    """Read-your-writes, asserted while the write is demonstrably still pending (`ARC-005`).
+
+    This obligation is what let `ARC-005` land without restructuring ten call sites of approved
+    `T-013` code: `DownloadManager` reads a job back immediately before advancing it, so a store
+    answering from disk alone would hand it the state it had just replaced. Asserted under a held
+    lock, because against a fast writer the read would pass either way.
+    """
+    store_under_test, repository = real_queue
+    job = a_queued_job("https://a.invalid/1")
+    saved: list[str | None] = []
+    store_under_test.submit([job], saved.append)
+    assert spin(lambda: bool(saved), timeout=30)
+    assert saved == [None]
+
+    blocker = sqlite3.connect(tmp_path / "queue.db")
+    blocker.execute("BEGIN IMMEDIATE")
+    try:
+        store_under_test.update(replace(job, status=JobStatus.PROBING), lambda _error: None)
+
+        on_disk = repository.get(job.id)
+        assert on_disk is not None and on_disk.status is JobStatus.QUEUED, (
+            "the write reached disk, so this proves nothing about a pending one"
+        )
+        seen = store_under_test.get(job.id)
+        assert seen is not None and seen.status is JobStatus.PROBING, (
+            "the store did not reflect a write it had accepted but not yet completed"
+        )
+    finally:
+        blocker.rollback()
+        blocker.close()
 
 
 def test_a_failed_write_keeps_the_dialog_open_with_the_input_intact(
