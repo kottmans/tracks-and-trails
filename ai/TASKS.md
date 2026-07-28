@@ -50,11 +50,12 @@ Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; 
 
 ## In Review
 
-## Ready
-
 ### T-059 — A view opened onto a finished job renders it from the wrong source
 
-**Status:** Ready — filed 2026-07-28, carrying `T017-R4` from `T-017` at maintainer direction
+**Status:** **In Review — implemented 2026-07-28.** `T017-R4`'s open half is corrected by giving
+the rule one entry point instead of two, and the rule gains the row construction exposed. Three
+mutations, three killed — including `_load` computing its own answer, which is the finding. See
+**Evidence**.
 **Owner:** Implementer
 **Priority:** Medium — it is what a user sees after every restart, which is the ordinary case
 rather than an edge one
@@ -100,7 +101,47 @@ how any completed job will first appear.
 - The rule itself, which `T-017` settled and the reviewer verified for live transitions
 - Any other `job_detail.py` behaviour; `T017-R1`, `R2`, `R3` and `R5` are resolved and closed
 
+#### Evidence, 2026-07-28
+
+**`_adopt_totals` is the one entry point**, reached from construction and from a live terminal
+transition alike. `_load` used to compute its own answer, which is why one row gave two results
+depending on whether anyone had been watching it finish.
+
+**The rule gained a row, because construction exposed a case the rule did not have.** For a
+cancelled or failed job it said "whatever was last shown" — correct while watching, and meaningless
+for a view that watched none of it, where "what was last shown" is the pair of `None`s the view was
+constructed with. A reopened stopped job takes the row, since nothing is closer:
+
+| The job is | The size comes from |
+|---|---|
+| running | the last rendered progress message |
+| `COMPLETED` | the row's `bytes_total` |
+| `CANCELLED` / `FAILED`, watched | whatever was last shown |
+| `CANCELLED` / `FAILED`, reopened | the row |
+
+That fourth row is stated rather than inherited. The previous code would have reached it by
+falling through to an empty display, and a cancelled download would have reported nothing at all
+about how far it got — a defect the tests would not have caught either, because they would have
+been asserting on the same accident.
+
+**Five parametrised construction cases**, one per row plus the two shapes `T017-R4` reported:
+a completed row whose counter lags its total, a completed row with no total, cancelled partway,
+failed partway, and cancelled before any bytes moved. Each asserts the byte line and the bar agree,
+which is the contradiction every form of this finding produced.
+
+**Mutations run, all killed:** `_load` bypassing the rule — the finding itself · a reopened stopped
+job inheriting the empty display · the watched case taking the row too.
+
+**Checks:** `ruff check .`, `ruff format --check .`, `mypy src`, configured `mypy` and
+`mypy --platform win32` all pass. Bare `pytest` green.
+
+**Why five `T-017` rounds missed it, recorded because it is about test design rather than this
+widget:** every test in that task began with a running view. A suite that never opens a view onto
+a finished job cannot observe what opening one does, however many cases it drives afterwards.
+
 ---
+
+## Ready
 
 ### T-040 — Extend the Windows desktop gate to widget focus order
 

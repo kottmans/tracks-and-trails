@@ -49,10 +49,17 @@ So the rule is written down once, in `_totals_for_ending`, and it has three rows
 |---|---|---|
 | running | the last rendered progress message | the row does not persist per-message progress |
 | `COMPLETED` | the row's `bytes_total` | the final size arrives with the outcome, not as progress |
-| `CANCELLED` / `FAILED` | whatever was last shown | the row lags; see below |
+| `CANCELLED` / `FAILED`, watched | whatever was last shown | the row lags; see below |
+| `CANCELLED` / `FAILED`, reopened | the row | nothing was watched, so nothing is closer |
 
 A stopped-partway job takes the last thing shown because the row lags **by design** and the last
-message is the closest thing to what actually transferred.
+message is the closest thing to what actually transferred. Reopening one is the case `T-059`
+added: a view that watched none of the download has no earlier display to prefer, so the row —
+lagging or not — is the only thing that knows anything.
+
+**Both entry points reach this table through `_adopt_totals`.** They did not, and that is the
+whole of `T-059`: `_load` computed its own answer, so the same row gave two results depending on
+whether anyone had been watching.
 
 A completed download is its **total**, not its progress counter: the manager writes `bytes_total`
 at the terminal transition and leaves `bytes_done` where progress left it, so a real completed row
@@ -471,8 +478,28 @@ class JobProgressView(QWidget):
         if self._is_terminal:
             self._pending = None
             self._repaint.stop()
-            self._show_totals(*self._totals_for_ending())
+            self._adopt_totals()
         self._refresh()
+
+    def _adopt_totals(self) -> None:
+        """Put the byte counts where the rule says they come from. **The one entry point.**
+
+        `T-059`. `T-017` put the rule in `_totals_for_ending` and then reached it from one of the
+        two places that need it: a job that finished *while the view was watching* went through it,
+        and a view *opened onto* a finished job did not. Opening one is not an exotic path — it is
+        what happens after every restart, and after `T-036` it is how any completed job first
+        appears — so the same row of the same table gave two different answers depending on
+        whether anyone had been looking.
+
+        Both callers arrive here now. A running job takes the row, because nothing has been
+        rendered yet that could be closer to the truth.
+        """
+        if self._is_terminal:
+            self._show_totals(*self._totals_for_ending())
+            return
+        job = self._jobs.get(self._job_id)
+        if job is not None:
+            self._show_totals(job.bytes_done, job.bytes_total)
 
     def _totals_for_ending(self) -> tuple[int | None, int | None]:
         """Where a stopped job's size comes from. **The rule, written down in one place.**
@@ -489,11 +516,19 @@ class JobProgressView(QWidget):
         Reading the row here is a `T-016` guarantee rather than an assumption: `job_changed` is
         emitted from the write's own completion callback, so the row really does hold this state.
         """
+        job = self._jobs.get(self._job_id)
         if self._status is not JobStatus.COMPLETED:
             # Stopped partway. The row does not know how far — progress is not persisted per
             # message — so what was last shown is the closest thing to what actually transferred.
-            return self._totals
-        job = self._jobs.get(self._job_id)
+            if self._displayed is not None:
+                return self._totals
+            # **Unless nothing was ever shown** (`T017-R4`, second half). A view opened onto a job
+            # that had already stopped watched none of it, so there is no earlier display to
+            # prefer and the row is all there is. Stated rather than inherited: the previous
+            # version returned `self._totals` unconditionally, which in that case is the pair of
+            # `None`s the view was constructed with, and a cancelled download would have reported
+            # nothing at all about how far it got.
+            return (job.bytes_done, job.bytes_total) if job is not None else (None, None)
         total = job.bytes_total if job is not None else None
         if not total:
             # Nothing durable says how big it was, and the progress counter is not a measurement
@@ -534,7 +569,7 @@ class JobProgressView(QWidget):
             self._title.setText(job.title or job.url)
             if job.error_kind is not None and job.status in (JobStatus.FAILED, JobStatus.CANCELLED):
                 self._failure = (job.error_kind, job.error_message or "")
-            self._show_totals(job.bytes_done, job.bytes_total)
+        self._adopt_totals()
         self._refresh()
 
     def _show_progress(self, message: Progress) -> None:

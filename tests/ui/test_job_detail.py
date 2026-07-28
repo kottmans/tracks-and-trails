@@ -580,6 +580,75 @@ def test_each_ending_takes_its_size_from_the_source_the_rule_names(
     )
 
 
+#: Every row of the size rule, as a view is **opened onto** a job in that state — the entry point
+#: five `T-017` correction rounds never drove, because every test in that task started from a
+#: running view (`T-059`).
+REOPENED: Final = [
+    ("completed, counter behind its total", JobStatus.COMPLETED, 1, 20, "20 B of 20 B", "20 B"),
+    ("completed, no recorded total", JobStatus.COMPLETED, 3, None, UNKNOWN_TEXT, "Complete"),
+    ("cancelled partway", JobStatus.CANCELLED, 5, 10, "5 B of 10 B", "50 percent"),
+    ("failed partway", JobStatus.FAILED, 5, 10, "5 B of 10 B", "50 percent"),
+    ("cancelled before any bytes", JobStatus.CANCELLED, 0, None, "0 B of Unknown", "cannot be"),
+]
+
+
+@pytest.mark.parametrize(
+    ("case", "status", "done", "total", "expected_line", "expected_words"), REOPENED
+)
+def test_a_view_opened_onto_a_finished_job_tells_one_story(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+    case: str,
+    status: JobStatus,
+    done: int,
+    total: int | None,
+    expected_line: str,
+    expected_words: str,
+) -> None:
+    """`T-059`, carrying `T017-R4`'s open half. **Construction, not transition.**
+
+    `T-017` settled where a stopped job's size comes from and put the rule in one place; `_load`
+    then computed its own answer, so the same row gave two results depending on whether anyone had
+    been watching it finish. Reopening is not an edge case — it is what happens after every
+    restart, and after `T-036` it is how a completed job first appears.
+
+    Driven by constructing the view over a stored row and asserting the byte line and the bar
+    agree, which is the contradiction every form of this finding produced.
+    """
+    store.add(make_job("job-1", tmp_path, status=status, bytes_done=done, bytes_total=total))
+    view = views(manager=managers(), jobs=store, job_id="job-1")
+    bar = view.findChild(QProgressBar, "progressBar")
+    bytes_label = view.findChild(QLabel, "bytesValue")
+    assert bar is not None and bytes_label is not None
+
+    assert bytes_label.text() == expected_line, (
+        f"{case}: the byte line reads {bytes_label.text()!r}"
+    )
+    assert expected_words in bar.accessibleDescription(), (
+        f"{case}: the bar says {bar.accessibleDescription()!r}"
+    )
+
+    # The relation the whole finding is about, restated where construction can break it.
+    described = bar.accessibleDescription()
+    if status is JobStatus.COMPLETED:
+        assert bar.value() == 100
+        assert "percent" not in described, (
+            f"{case}: a finished download reported a percentage: {described!r}"
+        )
+        if total:
+            assert bytes_label.text() == f"{format_bytes(total)} of {format_bytes(total)}"
+    else:
+        assert "Complete" not in described, (
+            f"{case}: a job that never finished claims to be complete: {described!r}"
+        )
+    if (bar.minimum(), bar.maximum()) == (0, 0):
+        assert "cannot be measured" in described
+    else:
+        assert "cannot be measured" not in described
+
+
 def test_a_completed_download_of_unrecorded_size_invents_none(
     store: FakeStore,
     managers: Callable[..., DownloadManager],
