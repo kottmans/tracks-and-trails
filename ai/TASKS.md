@@ -22,14 +22,17 @@ each written, type-checked under `mypy --platform win32`, and **never executed**
 `windows_desktop` module skips off Windows and this machine has none. `T-060` also carries
 `T040-R1`, which found one of `T-040`'s own tests asserting a focus state that cannot exist.
 
-**`T-017` is Blocked**, with `T017-R4` carried to `T-059` and resolved there. Five review rounds,
-two of them regressions introduced by corrections; the record is in `ai/REVIEWS.md` and the
-lesson — that every test in the task began with a running view, so none reached `_load` — is in
-`T-059`'s scope.
+**`T-017` is Complete**, closed 2026-07-28 once `T-059`'s approval resolved the finding carried
+out of it. Five review rounds, two of them regressions introduced by corrections; the record is in
+`ai/REVIEWS.md` and the lesson — that every test in the task began with a running view, so none
+reached `_load` — is in `T-059`'s scope.
 
-**Approved on 2026-07-28:** `T-016` (fourth correction batch), `T-057`, `T-058`, `T-054`, `T-059`,
-`T-052`, `T-036`, `T-037`. **Blocked:** `T-017`, `T-040`, `T-056`, plus `T-033` (Phase 5 evidence)
-and `T-039` (Phase 5 installer). **Ready:** `T-060`.
+**Approved on 2026-07-28:** `T-016` (fourth correction batch), `T-017`, `T-036`, `T-037`, `T-052`,
+`T-054`, `T-057`, `T-058`, `T-059`. **Blocked:** `T-040` and `T-056`, both on Windows evidence,
+plus `T-033` (Phase 5 evidence) and `T-039` (Phase 5 installer). **Ready:** `T-060`.
+
+**Every Phase 1 deliverable is now approved.** What remains is evidence the `windows desktop` job
+has to produce, and the exit review.
 
 **Known and deliberate:** until `T-060` lands, the `windows desktop` job fails on
 `test_the_progress_view_focus_chain_is_walked_on_a_real_desktop`. Skipping it would leave the one
@@ -666,262 +669,6 @@ Assert, on `windows-latest`:
 - Upgrade-over-existing-install and downgrade paths — real, but a separate task once the
   versioning story exists
 - Any non-Windows packaging
-
----
-
-### T-017 — Single-job progress view with cancel
-
-**Status:** **Blocked at `f100108`** — by maintainer direction, 2026-07-28. `T017-R1`, `T017-R2`,
-`T017-R3` and `T017-R5` are Resolved across four correction batches. **`T017-R4` remains open and
-is carried to `T-059`**, which owns it: five review rounds is enough, and the maintainer chose to
-carry rather than authorize a sixth pass (`AGENTS.md` §10).
-
-The open half is narrow and worth stating exactly: `_totals_for_ending` decides correctly for a
-job that finishes **while the view is watching**, and `_load` does not consult it, so a view
-*opened onto* an already-finished row renders it from the wrong source. Every test in this task
-starts from a running view, which is why five rounds did not reach it. `ui/job_detail.py` holds the view;
-`ui/queue_view.py` stays a docstring-only stub, because a multi-job table is Phase 2 and this
-task's scope is one job.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 1
-**Depends on:** `T-013`, `T-014`
-**Relevant context:** `REQ-014`, `REQ-015`, `REQ-018`, `NFR-001`, `NFR-005`, `SEC-001` and
-`REQ-EXCL-001` (the retry affordance is where the DRM boundary becomes visible — added
-2026-07-28, see the criterion below)
-**Affected surfaces:** `ui/queue_view.py`, `ui/job_detail.py`, `tests/ui/`
-**Risk:** Medium
-**Review base:** the later of the `T-013` and `T-014` merge commits
-
-#### Scope
-
-One job, visible: percent, downloaded/total, speed, ETA, and the current stage — probing,
-downloading video, downloading audio, merging, post-processing (`REQ-014`). A cancel control
-that reaches `T-013`'s cancellation path. A failed job stays visible with its error and a
-retry affordance (`REQ-018`); nothing fails silently.
-
-#### Acceptance criteria
-
-- Every stage in `REQ-014` is displayed, driven by real `T-011` messages rather than a
-  simulated sequence
-- Under a burst of progress messages the **event loop stays responsive by measurement**, not
-  by eye: either event-loop latency stays under a stated bound, or updates are coalesced to a
-  stated maximum repaint rate and a test asserts the coalescing. "Does not visibly stutter" is
-  not testable, and a per-message repaint is the obvious naive implementation — it degrades
-  exactly when a download is fastest
-- Cancel is actuable by keyboard and produces a cancelled job within the `REQ-015` budget
-- A failed job shows the extractor's verbatim message and remains in the view with a retry
-  affordance (`REQ-018`, `NFR-006`)
-- **The retry affordance is driven by `is_retryable`, not by a per-kind branch in the widget**,
-  so a `DRM_PROTECTED` job offers no retry at all — not disabled, not present. `core/errors.py`
-  states the reason where the policy lives: offering the button implies a workaround exists, and
-  `SEC-001`/`REQ-EXCL-001` say none does. A test asserts the absence, and a mutation replacing
-  the predicate with a literal kind comparison fails it. *(Added 2026-07-28. This is the UI half
-  of `ai/TESTING.md` §7's DRM row — the engine half is already gated in
-  `tests/integration/test_worker.py`, the upstream half is `T-057`, and nothing gated this one
-  because the widget did not exist.)*
-- A cancelled job is presented as cancelled, not as an error (`ARCHITECTURE.md` §7:
-  `CANCELLED` is not a failure)
-- Accessible names on all controls; no state conveyed by color alone (`NFR-005`)
-
-#### Out of scope
-
-- Multi-job queue view, reordering, bulk actions — Phase 2
-- Pause and resume — `REQ-015` includes them, but they need Phase 2's scheduler
-- Open-file and reveal-in-file-manager — `REQ-021`, Phase 2
-
-#### Fourth correction batch — the rule the corrections were guessing at, 2026-07-28
-
-**Base:** `5ee8d36`. Authorized by the maintainer under `AGENTS.md` §10. Four mutations, four
-killed, including the reviewer's own.
-
-**`T017-R4` (Medium, blocking) — a regression the previous batch introduced, and the second one
-this widget has had from me.** `_adopt_stored_totals` was written for completion and run for
-*every* terminal state, so:
-
-- cancelling a job displayed at 50% redrew it at the row's stale 10%;
-- a real completed row — `bytes_done=1, bytes_total=20`, which is the ordinary shape, because the
-  manager writes the total at the terminal transition and leaves the counter where progress
-  stopped — showed a 100% bar reading "Complete: 20 B downloaded" beside "1 B of 20 B";
-- completion with no recorded total presented the last stage transition's byte count as the final
-  size.
-
-**The cause is that this view has two sources of truth and I had been choosing between them at
-each call site.** `manager.py` deliberately does not persist progress per message, so the row lags
-while a job runs; the final byte count arrives with `Succeeded` rather than as progress, so the
-last message lags once it has finished. Each source is right somewhere and wrong elsewhere, and
-two of the three endings want the opposite one from the third.
-
-So the rule is written down — in the module docstring as a table, and in `_totals_for_ending` as
-the one place that applies it — rather than remembered:
-
-| The job is | The size comes from |
-|---|---|
-| running | the last rendered progress message |
-| `COMPLETED` | the row's `bytes_total` |
-| `CANCELLED` / `FAILED` | whatever was last shown |
-
-`describe_bar` also stops falling back to `done` for a finished size: a progress counter is not a
-measurement of a finished file, and with no total "Complete" on its own is the honest answer.
-
-**`T017-R5` (Low, non-blocking)** — the evidence said 35 tests when there were 71. Corrected, and
-the count is now stated once with the head it was true at.
-
-**Mutations run, all killed:** the reviewer's own — adopting the row's totals for every terminal
-state · a completed download showing its progress counter · the finished description falling back
-to the counter · a cancelled job no longer keeping what was shown.
-
-#### Third correction batch — the space, not the cases, 2026-07-28
-
-**Base:** `b3e156c`. Authorized by the maintainer under `AGENTS.md` §10. Four mutations, four
-killed — including all three of this finding's historical forms and the reviewer's own.
-
-**`T017-R2` (Medium, blocking) — three recurrences, one cause.** The determinate branch
-inheriting an indeterminate description; `_refresh` writing the bar without one; and now
-completion with an unknown total, plus a stale byte count. Every correction added a guard for the
-case just found and left the next one to whether anyone thought of it, and every test compared the
-description against a string the same author had written moments before — so it agreed with itself
-and missed the case next door.
-
-Two changes, and neither is another guard:
-
-- **`describe_bar(done, total, finished)` is a pure function**, and the space it covers is small
-  and closed: each of `done` and `total` is known or not, and the job is finished or not. A test
-  now enumerates the cross-product — thirty cases — rather than sampling it.
-- **The gate asserts a relation between what the bar *shows* and what it *says***, read off the
-  rendered widget rather than from a table beside the code. All three historical forms collapse
-  into one sentence: a determinate bar must never say progress cannot be measured, and an
-  indeterminate one must never claim a figure.
-
-**And one real defect the reviewer found underneath the ungated case.** The totals behind a
-finished bar came from whatever a repaint last drew, so a row holding 2 KB was described as
-"Complete: 1.0 KB downloaded". The final bytes arrive with `Succeeded` rather than as a progress
-update, making the last render precisely the wrong source; completion now adopts the durable row's
-counts. Reading them there is a `T-016` guarantee rather than an assumption — `job_changed` is
-emitted from the write's own callback.
-
-**`T017-R3`** — source and tests were accepted; the first correction record still said "the state
-words stay immediate", contradicting the second. Corrected in the record that is wrong, with a
-note saying so.
-
-**Mutations run, all killed:** the reviewer's own — describing a finished bar only when the total
-is known · a finished bar reporting the last size drawn · the determinate branch inheriting the
-indeterminate words · the bar drawn without describing itself.
-
-#### Second correction batch — one owner for the bar, 2026-07-28
-
-**Base:** `e66f34d`. Authorized by the maintainer under `AGENTS.md` §10 after the ordinary budget
-was exhausted. Four mutations, four killed.
-
-- **`T017-R2` (Medium, blocking) — corrected structurally, because a patch would have been the
-  third instance.** `_show_totals` was fixed and `_refresh` still set the bar to 100% on
-  completion through a path of its own, so a completed download showed a full bar described as
-  "50 percent of 10 B downloaded". The same contradiction, a different writer.
-
-  Two methods writing one widget's state independently is what produced this defect twice, so
-  there are no longer two: `_draw_bar` owns range, value and accessible description together, and
-  `_refresh` **asks** for a finished bar rather than setting one. A description is now not
-  something a caller can forget to update, because no caller writes the value either.
-
-- **`T017-R3` (Low, non-blocking) — an inaccurate claim, corrected rather than filed.** The
-  docstring said state words stay immediate; that was true only before anything had been
-  rendered. While a job runs, a status change deliberately leaves the more specific stage the
-  worker reported — "Downloading video" beats "Downloading" — and the next repaint replaces it
-  within `REPAINT_INTERVAL_MS`. An *ending* is immediate, and that is the case a user must not be
-  lied to about. Behaviour unchanged; the claim now matches it, and a new test states which of
-  the two the widget actually promises. Corrected here rather than carried as follow-up work
-  because it is a sentence in a docstring this batch was already rewriting.
-
-**Mutations run, all killed:** `_refresh` writing the bar itself again — the exact missed sibling
-· a finished bar keeping the running description · a running status change overwriting the
-reported stage · an ending waiting for the repaint like anything else.
-
-#### First correction batch — the rate limit had a second door, 2026-07-28
-
-**Base:** `9c92c32`. Four mutations, four killed.
-
-- **`T017-R1` (Medium, blocking) — a status change no longer flushes pending progress.**
-  `_on_job_changed` called `_draw_pending()`, which is a second route into `_show_progress` with
-  no rate limit on it. The reviewer interleaved three progress messages with three status changes
-  and measured three repaints inside one 100 ms interval, which is the acceptance criterion the
-  whole design exists to meet. An *ending* stays immediate — `_refresh` writes it itself, and a
-  cancelled job must not go on saying "Downloading" — but progress waits for the timer.
-  *(This read "the state words stay immediate" until 2026-07-28. `T017-R3` established that was
-  true only before anything had rendered, and the correction below says so; leaving the older
-  sentence standing left one record contradicting the next. Corrected here rather than in the
-  newer record, because this is the sentence that is wrong.)*
-
-  **At a terminal state the pending message is dropped**, not deferred. That half is not
-  bookkeeping: holding it would have let a tick after the ending replace "Cancelled" with the
-  download that is no longer happening. The reviewer's guidance named it and it needed naming.
-
-  **The burst test could not have caught this**, and that is the part worth keeping. It drives
-  `_on_progress` directly, so it never crossed the path a real download takes, where a stage
-  change persists and `job_changed` comes back. It also counted the wrong thing: it asserted on
-  messages absorbed, which stayed at zero while a second route redrew. `renders` is now public
-  and counted, because `REPAINT_INTERVAL_MS` is a promise about that number and a promise nothing
-  can count is not one.
-
-- **`T017-R2` (Medium, blocking) — the bar always describes the bar it currently is.** The
-  indeterminate branch set an accessible description and the determinate branch never cleared it,
-  so the moment a total became known the bar showed 50% while telling a screen reader that
-  progress could not be measured. Under `NFR-005` that is worse than silence: two users of one
-  widget were being told different things. Both branches now write it, and the determinate one
-  says what it shows rather than merely stopping the lie. **Gated in both directions** —
-  unknown → known and known → unknown — because an unknown total arrives late as often as first.
-
-**Mutations run, all killed:** a status change flushing pending progress again · a terminal state
-deferring the message instead of dropping it · the determinate branch not describing itself · the
-indeterminate branch not describing itself.
-
-#### Evidence, 2026-07-28
-
-**What was built.** `ui/job_detail.py`: `JobProgressView`, driven by `DownloadManager`'s signals,
-with `build_progress_view` as the seam composition uses to supply the retry. The suite is
-`tests/ui/test_job_detail.py`, much of it driving a real child process over a real queue; **76
-tests as of the fourth correction batch**, which is the batch that last changed the number. Stated
-here and nowhere else, and deliberately without a commit SHA — a commit cannot name its own hash,
-and the previous attempt at precision was a placeholder that would have been wrong on arrival.
-This read "35 tests" for four correction batches after that stopped being true, which is
-`T017-R5`.
-
-**Two design decisions worth a reviewer's attention:**
-
-- **Repaints are coalesced at a stated rate**, not measured against a latency bound. `REQ-014`'s
-  criterion allows either; a rate is the one this widget can *promise*, and `pending_progress`
-  and `displayed_progress` are public so a test can tell "coalesced" from "dropped". The tail of
-  a burst is never lost — the newest message is held and drawn by the next tick.
-- **The retry is reported, not performed.** Re-queueing a failed job is a write and `ui/` holds
-  no writer (`ARCHITECTURE.md` §3), so the widget emits `retry_requested` and `T-036` connects
-  it. Cancel is different and does live here: it is a request to a process the manager owns.
-
-**The DRM criterion is met by asking the taxonomy, and the test asserts the rule rather than the
-case.** `test_the_retry_affordance_agrees_with_the_taxonomy_for_every_kind` is parametrised over
-every `ErrorKind` and compares against `is_retryable` itself, so a kind that becomes
-non-retryable in `core/errors.py` is covered here without anyone remembering to come back. The
-button is **absent** rather than disabled: a greyed-out Retry still asserts that a retry is the
-sort of thing a DRM failure could have, which is the claim `SEC-001` refuses to make.
-
-**Mutations run, all killed:** the retry rule replaced by a literal `DRM_PROTECTED` comparison ·
-retry offered for every failure · retry disabled instead of absent · every message repainting ·
-a cancellation shown as a failure · a stage dropped from `STAGE_TEXT` · the extractor's message
-truncated · the cancel control losing its keyboard focus policy.
-
-**One mutation survived at first and produced a test.** Dropping `Stage.POST_PROCESSING` from
-`STAGE_TEXT` changed nothing observable, because `_show_progress` falls back to the job's status
-text and for that stage the two strings read the same. A stage with no words of its own was
-therefore invisible. `test_every_stage_the_protocol_can_report_has_words_to_show` closes it by
-checking completeness against `Stage` — the only thing derived from the enum; the strings are
-still transcribed from `REQ-014` by hand (`ai/TESTING.md` §13).
-
-**Checks:** `ruff check .`, `ruff format --check .` (87 files), `mypy src` (35 files), configured
-`mypy` and `mypy --platform win32` (72 files each) all pass. Bare `pytest`: **1327 passed,
-11 skipped, 1 deselected in 74.95 s**. The wide mypy scope again found real problems the `src`
-scope could not see, including one that made mypy stop analysing the rest of a test.
-
-**Known-unverified:** the Windows half. Focus order is asserted offscreen here; the real
-platform plugin is `T-040`'s, and this widget adds three focusable controls to what that task
-covers.
 
 ---
 
@@ -6048,5 +5795,270 @@ measures the migrated database, the writer thread, the manager and the window to
 and `mypy --platform win32` (73 each) all pass. Bare `pytest`: **1392 passed, 11 skipped,
 1 deselected**. The wide mypy scope again found errors the `src` scope cannot see, all in the new
 test file.
+
+---
+### T-017 — Single-job progress view with cancel
+
+**Status:** **Complete — closed 2026-07-28 at maintainer instruction.** All five findings are
+Resolved: `T017-R1`, `R2`, `R3` and `R5` across four correction batches in this task, and
+**`T017-R4` by the Reviewer when approving `T-059` at `52f0aed`**, which is where it had been
+carried.
+
+**No new verdict was issued and none was needed.** The finding was carried rather than corrected
+here, so the review that resolved it is `T-059`'s; `ai/REVIEWS.md` carries it and is not edited
+by this closure (`AGENTS.md` §4 — only the Reviewer writes there). What was left was this task's
+own **status**, which said Blocked with nothing open against it.
+
+**The delivered implementation spans two commits**, which a reviewer reading a single head should
+know: `f100108` is where this task's own corrections end, and `52f0aed` is where `T017-R4`'s fix
+landed in `ui/job_detail.py` under `T-059`. Anyone re-reading the widget wants both.
+
+*(This entry read "Blocked at `f100108` — by maintainer direction" from 2026-07-28, which was true
+when written and stopped being true the moment `T-059` was approved. The gap was reported as a
+next step rather than found later.)*
+
+`ui/job_detail.py` holds the view;
+`ui/queue_view.py` stays a docstring-only stub, because a multi-job table is Phase 2 and this
+task's scope is one job.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 1
+**Depends on:** `T-013`, `T-014`
+**Relevant context:** `REQ-014`, `REQ-015`, `REQ-018`, `NFR-001`, `NFR-005`, `SEC-001` and
+`REQ-EXCL-001` (the retry affordance is where the DRM boundary becomes visible — added
+2026-07-28, see the criterion below)
+**Affected surfaces:** `ui/queue_view.py`, `ui/job_detail.py`, `tests/ui/`
+**Risk:** Medium
+**Review base:** the later of the `T-013` and `T-014` merge commits
+
+#### Scope
+
+One job, visible: percent, downloaded/total, speed, ETA, and the current stage — probing,
+downloading video, downloading audio, merging, post-processing (`REQ-014`). A cancel control
+that reaches `T-013`'s cancellation path. A failed job stays visible with its error and a
+retry affordance (`REQ-018`); nothing fails silently.
+
+#### Acceptance criteria
+
+- Every stage in `REQ-014` is displayed, driven by real `T-011` messages rather than a
+  simulated sequence
+- Under a burst of progress messages the **event loop stays responsive by measurement**, not
+  by eye: either event-loop latency stays under a stated bound, or updates are coalesced to a
+  stated maximum repaint rate and a test asserts the coalescing. "Does not visibly stutter" is
+  not testable, and a per-message repaint is the obvious naive implementation — it degrades
+  exactly when a download is fastest
+- Cancel is actuable by keyboard and produces a cancelled job within the `REQ-015` budget
+- A failed job shows the extractor's verbatim message and remains in the view with a retry
+  affordance (`REQ-018`, `NFR-006`)
+- **The retry affordance is driven by `is_retryable`, not by a per-kind branch in the widget**,
+  so a `DRM_PROTECTED` job offers no retry at all — not disabled, not present. `core/errors.py`
+  states the reason where the policy lives: offering the button implies a workaround exists, and
+  `SEC-001`/`REQ-EXCL-001` say none does. A test asserts the absence, and a mutation replacing
+  the predicate with a literal kind comparison fails it. *(Added 2026-07-28. This is the UI half
+  of `ai/TESTING.md` §7's DRM row — the engine half is already gated in
+  `tests/integration/test_worker.py`, the upstream half is `T-057`, and nothing gated this one
+  because the widget did not exist.)*
+- A cancelled job is presented as cancelled, not as an error (`ARCHITECTURE.md` §7:
+  `CANCELLED` is not a failure)
+- Accessible names on all controls; no state conveyed by color alone (`NFR-005`)
+
+#### Out of scope
+
+- Multi-job queue view, reordering, bulk actions — Phase 2
+- Pause and resume — `REQ-015` includes them, but they need Phase 2's scheduler
+- Open-file and reveal-in-file-manager — `REQ-021`, Phase 2
+
+#### Fourth correction batch — the rule the corrections were guessing at, 2026-07-28
+
+**Base:** `5ee8d36`. Authorized by the maintainer under `AGENTS.md` §10. Four mutations, four
+killed, including the reviewer's own.
+
+**`T017-R4` (Medium, blocking) — a regression the previous batch introduced, and the second one
+this widget has had from me.** `_adopt_stored_totals` was written for completion and run for
+*every* terminal state, so:
+
+- cancelling a job displayed at 50% redrew it at the row's stale 10%;
+- a real completed row — `bytes_done=1, bytes_total=20`, which is the ordinary shape, because the
+  manager writes the total at the terminal transition and leaves the counter where progress
+  stopped — showed a 100% bar reading "Complete: 20 B downloaded" beside "1 B of 20 B";
+- completion with no recorded total presented the last stage transition's byte count as the final
+  size.
+
+**The cause is that this view has two sources of truth and I had been choosing between them at
+each call site.** `manager.py` deliberately does not persist progress per message, so the row lags
+while a job runs; the final byte count arrives with `Succeeded` rather than as progress, so the
+last message lags once it has finished. Each source is right somewhere and wrong elsewhere, and
+two of the three endings want the opposite one from the third.
+
+So the rule is written down — in the module docstring as a table, and in `_totals_for_ending` as
+the one place that applies it — rather than remembered:
+
+| The job is | The size comes from |
+|---|---|
+| running | the last rendered progress message |
+| `COMPLETED` | the row's `bytes_total` |
+| `CANCELLED` / `FAILED` | whatever was last shown |
+
+`describe_bar` also stops falling back to `done` for a finished size: a progress counter is not a
+measurement of a finished file, and with no total "Complete" on its own is the honest answer.
+
+**`T017-R5` (Low, non-blocking)** — the evidence said 35 tests when there were 71. Corrected, and
+the count is now stated once with the head it was true at.
+
+**Mutations run, all killed:** the reviewer's own — adopting the row's totals for every terminal
+state · a completed download showing its progress counter · the finished description falling back
+to the counter · a cancelled job no longer keeping what was shown.
+
+#### Third correction batch — the space, not the cases, 2026-07-28
+
+**Base:** `b3e156c`. Authorized by the maintainer under `AGENTS.md` §10. Four mutations, four
+killed — including all three of this finding's historical forms and the reviewer's own.
+
+**`T017-R2` (Medium, blocking) — three recurrences, one cause.** The determinate branch
+inheriting an indeterminate description; `_refresh` writing the bar without one; and now
+completion with an unknown total, plus a stale byte count. Every correction added a guard for the
+case just found and left the next one to whether anyone thought of it, and every test compared the
+description against a string the same author had written moments before — so it agreed with itself
+and missed the case next door.
+
+Two changes, and neither is another guard:
+
+- **`describe_bar(done, total, finished)` is a pure function**, and the space it covers is small
+  and closed: each of `done` and `total` is known or not, and the job is finished or not. A test
+  now enumerates the cross-product — thirty cases — rather than sampling it.
+- **The gate asserts a relation between what the bar *shows* and what it *says***, read off the
+  rendered widget rather than from a table beside the code. All three historical forms collapse
+  into one sentence: a determinate bar must never say progress cannot be measured, and an
+  indeterminate one must never claim a figure.
+
+**And one real defect the reviewer found underneath the ungated case.** The totals behind a
+finished bar came from whatever a repaint last drew, so a row holding 2 KB was described as
+"Complete: 1.0 KB downloaded". The final bytes arrive with `Succeeded` rather than as a progress
+update, making the last render precisely the wrong source; completion now adopts the durable row's
+counts. Reading them there is a `T-016` guarantee rather than an assumption — `job_changed` is
+emitted from the write's own callback.
+
+**`T017-R3`** — source and tests were accepted; the first correction record still said "the state
+words stay immediate", contradicting the second. Corrected in the record that is wrong, with a
+note saying so.
+
+**Mutations run, all killed:** the reviewer's own — describing a finished bar only when the total
+is known · a finished bar reporting the last size drawn · the determinate branch inheriting the
+indeterminate words · the bar drawn without describing itself.
+
+#### Second correction batch — one owner for the bar, 2026-07-28
+
+**Base:** `e66f34d`. Authorized by the maintainer under `AGENTS.md` §10 after the ordinary budget
+was exhausted. Four mutations, four killed.
+
+- **`T017-R2` (Medium, blocking) — corrected structurally, because a patch would have been the
+  third instance.** `_show_totals` was fixed and `_refresh` still set the bar to 100% on
+  completion through a path of its own, so a completed download showed a full bar described as
+  "50 percent of 10 B downloaded". The same contradiction, a different writer.
+
+  Two methods writing one widget's state independently is what produced this defect twice, so
+  there are no longer two: `_draw_bar` owns range, value and accessible description together, and
+  `_refresh` **asks** for a finished bar rather than setting one. A description is now not
+  something a caller can forget to update, because no caller writes the value either.
+
+- **`T017-R3` (Low, non-blocking) — an inaccurate claim, corrected rather than filed.** The
+  docstring said state words stay immediate; that was true only before anything had been
+  rendered. While a job runs, a status change deliberately leaves the more specific stage the
+  worker reported — "Downloading video" beats "Downloading" — and the next repaint replaces it
+  within `REPAINT_INTERVAL_MS`. An *ending* is immediate, and that is the case a user must not be
+  lied to about. Behaviour unchanged; the claim now matches it, and a new test states which of
+  the two the widget actually promises. Corrected here rather than carried as follow-up work
+  because it is a sentence in a docstring this batch was already rewriting.
+
+**Mutations run, all killed:** `_refresh` writing the bar itself again — the exact missed sibling
+· a finished bar keeping the running description · a running status change overwriting the
+reported stage · an ending waiting for the repaint like anything else.
+
+#### First correction batch — the rate limit had a second door, 2026-07-28
+
+**Base:** `9c92c32`. Four mutations, four killed.
+
+- **`T017-R1` (Medium, blocking) — a status change no longer flushes pending progress.**
+  `_on_job_changed` called `_draw_pending()`, which is a second route into `_show_progress` with
+  no rate limit on it. The reviewer interleaved three progress messages with three status changes
+  and measured three repaints inside one 100 ms interval, which is the acceptance criterion the
+  whole design exists to meet. An *ending* stays immediate — `_refresh` writes it itself, and a
+  cancelled job must not go on saying "Downloading" — but progress waits for the timer.
+  *(This read "the state words stay immediate" until 2026-07-28. `T017-R3` established that was
+  true only before anything had rendered, and the correction below says so; leaving the older
+  sentence standing left one record contradicting the next. Corrected here rather than in the
+  newer record, because this is the sentence that is wrong.)*
+
+  **At a terminal state the pending message is dropped**, not deferred. That half is not
+  bookkeeping: holding it would have let a tick after the ending replace "Cancelled" with the
+  download that is no longer happening. The reviewer's guidance named it and it needed naming.
+
+  **The burst test could not have caught this**, and that is the part worth keeping. It drives
+  `_on_progress` directly, so it never crossed the path a real download takes, where a stage
+  change persists and `job_changed` comes back. It also counted the wrong thing: it asserted on
+  messages absorbed, which stayed at zero while a second route redrew. `renders` is now public
+  and counted, because `REPAINT_INTERVAL_MS` is a promise about that number and a promise nothing
+  can count is not one.
+
+- **`T017-R2` (Medium, blocking) — the bar always describes the bar it currently is.** The
+  indeterminate branch set an accessible description and the determinate branch never cleared it,
+  so the moment a total became known the bar showed 50% while telling a screen reader that
+  progress could not be measured. Under `NFR-005` that is worse than silence: two users of one
+  widget were being told different things. Both branches now write it, and the determinate one
+  says what it shows rather than merely stopping the lie. **Gated in both directions** —
+  unknown → known and known → unknown — because an unknown total arrives late as often as first.
+
+**Mutations run, all killed:** a status change flushing pending progress again · a terminal state
+deferring the message instead of dropping it · the determinate branch not describing itself · the
+indeterminate branch not describing itself.
+
+#### Evidence, 2026-07-28
+
+**What was built.** `ui/job_detail.py`: `JobProgressView`, driven by `DownloadManager`'s signals,
+with `build_progress_view` as the seam composition uses to supply the retry. The suite is
+`tests/ui/test_job_detail.py`, much of it driving a real child process over a real queue; **76
+tests as of the fourth correction batch**, which is the batch that last changed the number. Stated
+here and nowhere else, and deliberately without a commit SHA — a commit cannot name its own hash,
+and the previous attempt at precision was a placeholder that would have been wrong on arrival.
+This read "35 tests" for four correction batches after that stopped being true, which is
+`T017-R5`.
+
+**Two design decisions worth a reviewer's attention:**
+
+- **Repaints are coalesced at a stated rate**, not measured against a latency bound. `REQ-014`'s
+  criterion allows either; a rate is the one this widget can *promise*, and `pending_progress`
+  and `displayed_progress` are public so a test can tell "coalesced" from "dropped". The tail of
+  a burst is never lost — the newest message is held and drawn by the next tick.
+- **The retry is reported, not performed.** Re-queueing a failed job is a write and `ui/` holds
+  no writer (`ARCHITECTURE.md` §3), so the widget emits `retry_requested` and `T-036` connects
+  it. Cancel is different and does live here: it is a request to a process the manager owns.
+
+**The DRM criterion is met by asking the taxonomy, and the test asserts the rule rather than the
+case.** `test_the_retry_affordance_agrees_with_the_taxonomy_for_every_kind` is parametrised over
+every `ErrorKind` and compares against `is_retryable` itself, so a kind that becomes
+non-retryable in `core/errors.py` is covered here without anyone remembering to come back. The
+button is **absent** rather than disabled: a greyed-out Retry still asserts that a retry is the
+sort of thing a DRM failure could have, which is the claim `SEC-001` refuses to make.
+
+**Mutations run, all killed:** the retry rule replaced by a literal `DRM_PROTECTED` comparison ·
+retry offered for every failure · retry disabled instead of absent · every message repainting ·
+a cancellation shown as a failure · a stage dropped from `STAGE_TEXT` · the extractor's message
+truncated · the cancel control losing its keyboard focus policy.
+
+**One mutation survived at first and produced a test.** Dropping `Stage.POST_PROCESSING` from
+`STAGE_TEXT` changed nothing observable, because `_show_progress` falls back to the job's status
+text and for that stage the two strings read the same. A stage with no words of its own was
+therefore invisible. `test_every_stage_the_protocol_can_report_has_words_to_show` closes it by
+checking completeness against `Stage` — the only thing derived from the enum; the strings are
+still transcribed from `REQ-014` by hand (`ai/TESTING.md` §13).
+
+**Checks:** `ruff check .`, `ruff format --check .` (87 files), `mypy src` (35 files), configured
+`mypy` and `mypy --platform win32` (72 files each) all pass. Bare `pytest`: **1327 passed,
+11 skipped, 1 deselected in 74.95 s**. The wide mypy scope again found real problems the `src`
+scope could not see, including one that made mypy stop analysing the rest of a test.
+
+**Known-unverified:** the Windows half. Focus order is asserted offscreen here; the real
+platform plugin is `T-040`'s, and this widget adds three focusable controls to what that task
+covers.
 
 ---

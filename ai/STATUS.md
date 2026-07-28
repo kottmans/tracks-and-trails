@@ -103,10 +103,14 @@ each section is a contiguous range:
 | 5 | `T-052`, `T-040` | `894d794` | `1aba441` |
 | 6 | `T036-R1` correction, `T037-R1/R2`, `T040-R1` attempt | `6ce26ec` | `306840b` |
 
-**Phase 1's critical path is built and approved.** `T-036` (at `306840b`) and `T-037` (at
-`894d794`) are through, which closes the two exit criteria that had no owner. **Nothing remains on
-the path**, and `ai/TASKS.md`'s `## In Review` section is empty for the first time. What is left is
-Windows evidence — `T-040`, `T-056` and now `T-060` — and the exit review itself.
+**Every Phase 1 deliverable is approved.** `T-036` (at `306840b`) and `T-037` (at `894d794`)
+closed the two exit criteria that had no owner, and `T-017` closed on 2026-07-28 with the last of
+its findings resolved under `T-059`. `ai/TASKS.md`'s `## In Review` section is empty.
+
+**What remains is not code but evidence.** `T-060` is the one task left to write, and it exists to
+make `T-040`'s focus test assert a state that can happen; after that, `T-040`, `T-056` and `T-060`
+all need the same thing — one run of the `windows desktop` job, which is also the only thing that
+can move the *verified on Linux and Windows* exit criterion. Then the exit review.
 
 **`T-040` is Blocked with `T040-R1` still open, carried to `T-060`.** The correction drove keyboard
 focus as asked and then asserted a state that cannot exist: on a failed job `Cancel` is disabled
@@ -151,9 +155,11 @@ reached for `os.killpg`, which does not exist there, so the `windows-latest` job
 reported an `AttributeError` rather than a finding. `AGENTS.md` §8's "a host-only check is not the
 whole gate", found by the gate that exists for it.
 
-**`T-017` is Blocked at `f100108` after five review rounds, and its last finding is carried.**
-Four of `T017-R1`…`R5` are resolved; `T017-R4` goes to **`T-059`** rather than a sixth pass, by
-maintainer direction. Two of the five rounds were regressions I introduced, and the shape is worth
+**`T-017` is Complete**, closed 2026-07-28 once `T-059`'s approval resolved `T017-R4` — the
+finding that had been carried out of it rather than corrected in a sixth pass. All five findings
+are resolved and no new verdict was needed: the review that settled the last one is `T-059`'s.
+Its delivered code spans two commits, `f100108` and `52f0aed`, which a reviewer reading a single
+head should know. Two of the five rounds were regressions I introduced, and the shape is worth
 keeping: the widget draws from two sources — live progress and the durable row — and each
 correction chose between them at one more call site. The fifth wrote the rule down; the reviewer
 then found the one entry point that still bypasses it, `_load`, which no test in the task reaches
