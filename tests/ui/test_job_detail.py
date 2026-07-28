@@ -124,9 +124,10 @@ def child_walking_every_stage(
         # before the timer fires is never rendered, and Qt's default timer granularity there is
         # ~15 ms against the 1 ms this test asks for.
         #
-        # A stage held for a tenth of a second is still a hundred times faster than a human reads,
-        # and it makes the assertion about the *rendering path* rather than about winning a race
-        # with the repaint timer.
+        # A tenth of a second outlives a repaint interval on both platforms, which is the property
+        # that matters: it makes the assertion about the *rendering path* rather than about winning
+        # a race with the timer. (This said "a hundred times faster than a human reads" until
+        # `T062-R1` — a number nothing here measures.)
         time.sleep(0.15)
     # Post-processing takes a moment in reality, and it has to here too: without it the success
     # arrives in the same instant as the last stage, and "the user never saw post-processing"

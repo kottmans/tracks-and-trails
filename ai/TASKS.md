@@ -39,8 +39,8 @@ reached `_load` — is in `T-059`'s scope.
 
 **Approved on 2026-07-28:** `T-016` (fourth correction batch), `T-017`, `T-036`, `T-037`, `T-052`,
 `T-054`, `T-057`, `T-058`, `T-059`. **Blocked:** `T-040` and `T-056`, both on Windows evidence,
-plus `T-033` (Phase 5 evidence) and `T-039` (Phase 5 installer). **In Review:** `T-062`.
-**Ready:** `T-060`, `T-061`, `T-063`.
+plus `T-033` (Phase 5 evidence) and `T-039` (Phase 5 installer). `T-062` is **approved with
+follow-ups**. **Ready:** `T-060`, `T-061`, `T-063` — nothing is in review.
 
 **Every Phase 1 deliverable filed *before* 2026-07-28's CI run is approved** — and that is a
 narrower claim than the one this block used to make. Running the tests where they had never run
@@ -64,120 +64,6 @@ Phase 0 is formally exited (2026-07-26).
 *(This read "Empty as of 2026-07-28" for the few hours between T-017's closure and the CI run that
 produced `T-062`. `COORD-R2` caught it: an empty In Review section is a claim about readiness, and
 it outlived being true by one CI run.)*
-
-### T-062 — The end-to-end tests need an environment CI does not have, and say nothing when they fail
-
-**Status:** **In Review — implemented 2026-07-28.** **Four** problems corrected, the fourth found
-by the run that fixed the first three. Verified green on `ubuntu-latest`, `windows-latest` and both
-frozen jobs in CI run **`30383367481`** at `a78df2f`.
-**Owner:** Implementer
-**Priority:** **High** — Phase 1's first and fourth exit criteria have no passing evidence on any
-CI platform, and the exit review consumes exactly that
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `T-037`; `ai/TESTING.md` §6; the CI failure at `48dc6a0`
-**Affected surfaces:** `.github/workflows/ci.yml`, `tests/integration/test_end_to_end.py`,
-`tests/integration/test_composition.py`, `tests/ui/test_job_detail.py`
-**Risk:** **High** — these tests *are* the phase's evidence, and they have never passed on CI
-
-#### Scope
-
-`T-037` was written, reviewed and approved against a machine with ffmpeg on `PATH`. **The runners
-have none**, so both of its tests fail on `ubuntu-latest` and `windows-latest`, and have never
-passed on either. They pass locally, which is how they reached approval.
-
-Three separate problems, and only the first is about ffmpeg:
-
-1. **The tests assume ffmpeg.** They select `Best video available` — chosen because the default
-   preset filters on a height a bare `video/mp4` does not declare — and that selector carries a
-   `+`, so `_ffmpeg_gap` refuses before downloading. Reproduced locally by removing ffmpeg from
-   `PATH`: identical failures, identical messages.
-2. **The failure says nothing.** `assert spin(...), "the download never completed"` reports no
-   status, no error message, no job state. On the one test that can only fail somewhere the
-   author cannot look, the message has to carry the diagnosis — it took a downloaded artifact and
-   a local reproduction to learn the job had failed `FFMPEG_MISSING`.
-3. **A Windows-only assumption in `T-036`'s ffmpeg test.** It writes `#!/bin/sh` and `chmod 0755`;
-   Windows decides executability by `PATHEXT`, so `shutil.which` correctly returns `None` and
-   `test_a_usable_ffmpeg_is_reported_as_usable_and_reaches_the_manager` fails there and only
-   there.
-
-#### Acceptance criteria
-
-- Both `T-037` tests pass on `ubuntu-latest` and `windows-latest`, demonstrated by a green run
-  rather than by local evidence
-- Every assertion in them that can fail on CI reports the job's status and stored error message,
-  so the next failure is diagnosable from the log alone
-- `T-036`'s ffmpeg test uses something the host platform actually treats as executable
-- Whatever makes ffmpeg available to CI is recorded with its reason — this project is a front end
-  for a tool that shells out to ffmpeg, so a CI environment without it is not a neutral choice
-- The environment record uploaded by each job states whether ffmpeg was found; its absence was
-  invisible in the evidence artifact and had to be inferred
-
-#### Out of scope
-
-- `T-061`'s over-refusal. These tests would pass with it fixed *or* with ffmpeg installed, and
-  the two are independent: one is what the product does for a user, the other is what CI proves
-
-#### Evidence, 2026-07-28
-
-**Diagnosed by reproduction, not by reading.** Removing ffmpeg from `PATH` locally produced the
-identical failures on both tests, with the identical messages. The job had failed
-`FFMPEG_MISSING` before downloading — `REQ-024` working exactly as designed, against a test that
-assumed otherwise.
-
-**1. CI gets ffmpeg**, installed per platform with the reason recorded at the step: this project
-is a front end for a tool that shells out to ffmpeg, so a runner without it is not a neutral
-environment. Installing it does not paper over `T-061` — that a *user* without ffmpeg is refused
-more than they should be is a separate defect with its own gate.
-
-**2. The end-to-end failures now diagnose themselves** — those two assertions specifically, not
-the suite at large (`T062-R1`). A `why()` helper in `tests/integration/test_end_to_end.py` reports
-the job status, error kind, the view's status, whether ffmpeg was found, and the stored message.
-Nothing else gained diagnostics. Verified by running without ffmpeg and reading the assertion:
-
-> `the download never completed — job=failed kind=ffmpeg_missing view=failed ffmpeg=NO — not found
-> on PATH error=ffmpeg is required for this download but was not found…`
-
-One line, where before it took a downloaded artifact and a local reproduction to learn the same
-thing. The restart test does the equivalent by reading the row its killed interpreter left behind,
-since that is the only channel it has.
-
-**3. The fake ffmpeg is executable by the platform's own rule.** A `#!/bin/sh` script with mode
-0755 is not executable on Windows, where `PATHEXT` decides — which is why
-`test_a_usable_ffmpeg_is_reported_as_usable_and_reaches_the_manager` failed there and only there.
-It now writes a `.bat` on Windows. `find_ffmpeg` uses `shutil.which` precisely so the platform's
-rule applies (`T035-R2`); the test has to honour the rule it exercises.
-
-**4. The environment record now states whether ffmpeg was found.** Its absence was invisible in
-the uploaded artifact and had to be inferred from a failure three files away.
-
-**Checks:** `ruff check .`, `ruff format --check .`, configured `mypy` and `mypy --platform win32`
-(76 files each) pass. The composition and end-to-end suites pass with ffmpeg present, and fail
-with the new diagnostic when it is removed.
-
-**A fourth problem, found by the run that fixed the first three.** With ffmpeg installed,
-`ubuntu-latest` went green and `windows-latest` failed on
-`test_every_stage_req_014_names_is_shown_from_real_messages`: *"these stages were never displayed:
-['Downloading video']"*.
-
-**That is not a Windows defect — it is `T-017`'s coalescing working, against a test that asserted
-more than the design promises.** The widget renders the *newest* message, so a stage superseded
-before the repaint timer fires is legitimately never drawn. The child held each stage for 0.02 s
-and asked for a 1 ms repaint; Qt's default timer granularity on Windows is ~15 ms. Each stage now
-lasts 0.15 s — still a hundred times faster than anyone reads — which makes the assertion about
-the *rendering path* rather than about winning a race with the timer.
-
-**Two runs, and the second is the one that counts.** `30382752254` proved the first three fixes —
-`ubuntu-latest` and both frozen jobs green, `windows-latest` red only on the timing test above.
-**`30383367481` at `a78df2f` is the final state**: `ubuntu-latest`, `windows-latest` and both
-frozen jobs **green**, and `windows desktop` red on exactly `T-060`'s four known tests
-(*4 failed, 21 passed*). Both environment artifacts record ffmpeg present on both platforms.
-
-**The lesson, recorded because it is the whole task:** `T-037` was written, reviewed and
-*approved* on a machine with ffmpeg, and had never passed on a runner. Four separate CI failures
-in this batch were one sentence — a test asserting something true of the author's machine.
-
----
 
 ## Ready
 
@@ -6321,5 +6207,128 @@ scope could not see, including one that made mypy stop analysing the rest of a t
 **Known-unverified:** the Windows half. Focus order is asserted offscreen here; the real
 platform plugin is `T-040`'s, and this widget adds three focusable controls to what that task
 covers.
+
+---
+### T-062 — The end-to-end tests need an environment CI does not have, and say nothing when they fail
+
+**Status:** **Complete — approved with follow-ups**, 2026-07-28 at `a78df2f`; the coordination
+corrections were approved at `8a0117e`. **Four** problems corrected, the fourth found by the run
+that fixed the first three. Verified green on `ubuntu-latest`, `windows-latest` and both frozen
+jobs in CI run **`30383367481`**. `T062-R1`'s two remaining wording corrections are applied here,
+as the Reviewer assigned: the acceptance criterion below no longer claims more than the fix
+delivered, and an invented reading-speed comparison is gone.
+**Owner:** Implementer
+**Priority:** **High** — Phase 1's first and fourth exit criteria have no passing evidence on any
+CI platform, and the exit review consumes exactly that
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T-037`; `ai/TESTING.md` §6; the CI failure at `48dc6a0`
+**Affected surfaces:** `.github/workflows/ci.yml`, `tests/integration/test_end_to_end.py`,
+`tests/integration/test_composition.py`, `tests/ui/test_job_detail.py`
+**Risk:** **High** — these tests *are* the phase's evidence, and they have never passed on CI
+
+#### Scope
+
+`T-037` was written, reviewed and approved against a machine with ffmpeg on `PATH`. **The runners
+have none**, so both of its tests fail on `ubuntu-latest` and `windows-latest`, and have never
+passed on either. They pass locally, which is how they reached approval.
+
+Three separate problems, and only the first is about ffmpeg:
+
+1. **The tests assume ffmpeg.** They select `Best video available` — chosen because the default
+   preset filters on a height a bare `video/mp4` does not declare — and that selector carries a
+   `+`, so `_ffmpeg_gap` refuses before downloading. Reproduced locally by removing ffmpeg from
+   `PATH`: identical failures, identical messages.
+2. **The failure says nothing.** `assert spin(...), "the download never completed"` reports no
+   status, no error message, no job state. On the one test that can only fail somewhere the
+   author cannot look, the message has to carry the diagnosis — it took a downloaded artifact and
+   a local reproduction to learn the job had failed `FFMPEG_MISSING`.
+3. **A Windows-only assumption in `T-036`'s ffmpeg test.** It writes `#!/bin/sh` and `chmod 0755`;
+   Windows decides executability by `PATHEXT`, so `shutil.which` correctly returns `None` and
+   `test_a_usable_ffmpeg_is_reported_as_usable_and_reaches_the_manager` fails there and only
+   there.
+
+#### Acceptance criteria
+
+- Both `T-037` tests pass on `ubuntu-latest` and `windows-latest`, demonstrated by a green run
+  rather than by local evidence
+- **The assertions that did fail on CI** report the job's status, error kind and stored message,
+  so the next failure of *those* is diagnosable from the log alone. *(Narrowed 2026-07-28 by
+  `T062-R1`. This read "every assertion in them", which the correction did not deliver and did
+  not attempt: `why()` covers the two end-to-end waits that failed. The other assertions in those
+  files still report only their own text, and that is unfinished work rather than a met
+  criterion — a criterion written wider than the fix is how a gate comes to be believed.)*
+- `T-036`'s ffmpeg test uses something the host platform actually treats as executable
+- Whatever makes ffmpeg available to CI is recorded with its reason — this project is a front end
+  for a tool that shells out to ffmpeg, so a CI environment without it is not a neutral choice
+- The environment record uploaded by each job states whether ffmpeg was found; its absence was
+  invisible in the evidence artifact and had to be inferred
+
+#### Out of scope
+
+- `T-061`'s over-refusal. These tests would pass with it fixed *or* with ffmpeg installed, and
+  the two are independent: one is what the product does for a user, the other is what CI proves
+
+#### Evidence, 2026-07-28
+
+**Diagnosed by reproduction, not by reading.** Removing ffmpeg from `PATH` locally produced the
+identical failures on both tests, with the identical messages. The job had failed
+`FFMPEG_MISSING` before downloading — `REQ-024` working exactly as designed, against a test that
+assumed otherwise.
+
+**1. CI gets ffmpeg**, installed per platform with the reason recorded at the step: this project
+is a front end for a tool that shells out to ffmpeg, so a runner without it is not a neutral
+environment. Installing it does not paper over `T-061` — that a *user* without ffmpeg is refused
+more than they should be is a separate defect with its own gate.
+
+**2. The end-to-end failures now diagnose themselves** — those two assertions specifically, not
+the suite at large (`T062-R1`). A `why()` helper in `tests/integration/test_end_to_end.py` reports
+the job status, error kind, the view's status, whether ffmpeg was found, and the stored message.
+Nothing else gained diagnostics. Verified by running without ffmpeg and reading the assertion:
+
+> `the download never completed — job=failed kind=ffmpeg_missing view=failed ffmpeg=NO — not found
+> on PATH error=ffmpeg is required for this download but was not found…`
+
+One line, where before it took a downloaded artifact and a local reproduction to learn the same
+thing. The restart test does the equivalent by reading the row its killed interpreter left behind,
+since that is the only channel it has.
+
+**3. The fake ffmpeg is executable by the platform's own rule.** A `#!/bin/sh` script with mode
+0755 is not executable on Windows, where `PATHEXT` decides — which is why
+`test_a_usable_ffmpeg_is_reported_as_usable_and_reaches_the_manager` failed there and only there.
+It now writes a `.bat` on Windows. `find_ffmpeg` uses `shutil.which` precisely so the platform's
+rule applies (`T035-R2`); the test has to honour the rule it exercises.
+
+**4. The environment record now states whether ffmpeg was found.** Its absence was invisible in
+the uploaded artifact and had to be inferred from a failure three files away.
+
+**Checks:** `ruff check .`, `ruff format --check .`, configured `mypy` and `mypy --platform win32`
+(76 files each) pass. The composition and end-to-end suites pass with ffmpeg present, and fail
+with the new diagnostic when it is removed.
+
+**A fourth problem, found by the run that fixed the first three.** With ffmpeg installed,
+`ubuntu-latest` went green and `windows-latest` failed on
+`test_every_stage_req_014_names_is_shown_from_real_messages`: *"these stages were never displayed:
+['Downloading video']"*.
+
+**That is not a Windows defect — it is `T-017`'s coalescing working, against a test that asserted
+more than the design promises.** The widget renders the *newest* message, so a stage superseded
+before the repaint timer fires is legitimately never drawn. The child held each stage for 0.02 s
+and asked for a 1 ms repaint; Qt's default timer granularity on Windows is ~15 ms. Each stage now
+lasts 0.15 s, which is long enough to outlive a repaint interval on both platforms and makes the
+assertion about the *rendering path* rather than about winning a race with the timer. *(This
+carried a "hundred times faster than anyone reads" comparison until `T062-R1`. Nothing in this
+project measures reading speed, and a number invented to sound reassuring is the kind of claim
+`AGENTS.md` §7 means by preserving uncertainty.)*
+
+**Two runs, and the second is the one that counts.** `30382752254` proved the first three fixes —
+`ubuntu-latest` and both frozen jobs green, `windows-latest` red only on the timing test above.
+**`30383367481` at `a78df2f` is the final state**: `ubuntu-latest`, `windows-latest` and both
+frozen jobs **green**, and `windows desktop` red on exactly `T-060`'s four known tests
+(*4 failed, 21 passed*). Both environment artifacts record ffmpeg present on both platforms.
+
+**The lesson, recorded because it is the whole task:** `T-037` was written, reviewed and
+*approved* on a machine with ffmpeg, and had never passed on a runner. Four separate CI failures
+in this batch were one sentence — a test asserting something true of the author's machine.
 
 ---

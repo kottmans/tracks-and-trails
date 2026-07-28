@@ -5119,3 +5119,51 @@ cannot say no code remains while T-061 is Ready or say In Review is empty while 
 it. The focused correction is documentation-only: synchronize the two summaries and T-062's
 final evidence/wording, and file the already-confirmed environment repair. No source, test, or
 workflow correction is requested.
+
+## 2026-07-28 — T-062 coordination focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `a78df2f`  **Head:** `8a0117e`
+**Focused scope:** `COORD-R2`, `T062-R1`, and `ENV-R1`
+**Boundary classification:** Documentation/coordination only
+**Verdict:** **Approved with one non-blocking documentation follow-up**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Verification | Status |
+|---|---|---:|---|---|
+| `COORD-R2` | **Medium** | **Yes** | TASKS now says the open work includes code and evidence, places T-062 In Review, lists T-060/T-061/T-063 Ready, leaves T-040/T-056 Blocked, and explicitly says Phase 1 is not ready. STATUS names the same three Ready tasks, T-062 In Review, the two Windows blockers, and the exit review. The obsolete empty-section claim is now identified as historical rather than current. | **Resolved by `8a0117e`** |
+| `T062-R1` | **Low** | **No** | The final run, fourth problem, fourth affected test surface, and Windows evidence are corrected. The evidence prose now accurately says diagnostics were added to two assertions, not the suite. **Two requested corrections remain:** the acceptance criterion at `ai/TASKS.md:108-109` still says every assertion in both T-037 tests reports status/error, and `ai/TASKS.md:167` still calls 0.15 seconds “a hundred times faster” than human reading. Both are the exact overclaims the initial finding asked to remove. | **Partially resolved; remains open, non-blocking** |
+| `ENV-R1` | **Low** | **No** | T-063 separately records the stale console-script interpreter and wrong editable-install path, reproduces both, requires both invocation forms to work without `PYTHONPATH`, requires a durable documented procedure, and prevents the STATUS environment row from implying a working install. Choosing the canonical repository path remains with the maintainer. | **Resolved by filing T-063** |
+
+### Focused review judgments
+
+- T-063 is a concrete and complete owner for ENV-R1. Its two fault descriptions and fresh-venv
+  criterion prevent repairing only the disposable local environment and calling the issue done.
+- COORD-R2 no longer overstates readiness. TASKS and STATUS agree on the operative state:
+  T-062 In Review; T-060, T-061 and T-063 Ready; T-040 and T-056 Blocked.
+- The surviving T062-R1 wording does not change behavior, evidence, or readiness. Do not spend a
+  second correction re-review on it. The Documentation Maintainer should narrow the acceptance
+  criterion to the two opaque state waits and remove the human-reading multiplier when filing
+  T-062 under Complete; no further review is required for those two mechanical edits.
+- No source, test, workflow, requirement, architecture, or decision file changed in this
+  correction boundary.
+
+### Proportional verification
+
+| Check | Result |
+|---|---|
+| Changed paths | `ai/REVIEWS.md`, `ai/STATUS.md`, and `ai/TASKS.md` only. |
+| `git diff --check a78df2f..8a0117e` | Passed. |
+| Section/status audit | T-062 In Review; T-060/T-061/T-063 Ready; T-040/T-056 Blocked. No duplicate task ID was introduced. |
+| Stale-claim search | The old “only evidence,” “only T-060,” and currently empty In Review claims are gone; remaining empty-section text is explicitly historical. |
+| Git boundary | HEAD and `origin/main` both `8a0117e`; Sean Kottman is the sole author and no AI authorship trailer is present. |
+| Runtime/type suites | Not rerun for this documentation-only correction. The implementation head was independently validated in the initial review. |
+| Pushed CI run `30385113813` | At review close, Ubuntu and both frozen jobs were green; the Windows desktop job had the expected T-060 failure; standard Windows was still running its tests. This documentation-only run is not required to resolve the three reviewed findings. |
+
+### Final disposition
+
+`COORD-R2` and `ENV-R1` are **Resolved**. The coordination correction is approved at `8a0117e`.
+T-062 remains **Approved with follow-ups**: T062-R1 is still open only for two non-blocking
+current-truth wording edits, assigned to the T-062 completion filing. The ordinary focused
+re-review is complete; those edits do not warrant another pass.
