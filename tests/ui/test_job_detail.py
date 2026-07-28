@@ -441,6 +441,113 @@ def test_only_an_ending_is_immediate_once_progress_is_on_screen(
     )
 
 
+#: Every shape the progress bar's three inputs can take. Small and closed on purpose: this is
+#: the space `T017-R2` kept escaping through, three corrections running, because each one gated
+#: the case that had just been found (`ai/TESTING.md` §13).
+BAR_INPUTS: Final = [
+    (done, total, finished)
+    for done in (None, 0, 5, 10, 20)
+    for total in (None, 0, 10)
+    for finished in (False, True)
+]
+
+
+@pytest.mark.parametrize(("done", "total", "finished"), BAR_INPUTS)
+def test_the_bar_and_its_description_never_disagree(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+    done: int | None,
+    total: int | None,
+    finished: bool,
+) -> None:
+    """`T017-R2`, gated over the whole input space rather than over remembered scenarios.
+
+    The assertion is a **relation between what the bar shows and what it says**, derived from the
+    widget's own rendered state rather than from a table written beside the code. That matters:
+    every previous version of this gate compared the description against a string the same author
+    had just written, so it agreed with itself and missed the case next door. Three findings came
+    through three different doors — the determinate branch inheriting an indeterminate
+    description, `_refresh` writing the bar without one, and completion with an unknown total —
+    and all three are one sentence: *a determinate bar must never say progress cannot be
+    measured, and an indeterminate one must never claim a figure.*
+    """
+    store.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING))
+    view = views(manager=managers(), jobs=store, job_id="job-1")
+    bar = view.findChild(QProgressBar, "progressBar")
+    assert bar is not None
+
+    view._draw_bar(done, total, finished=finished)
+    described = bar.accessibleDescription()
+    indeterminate = (bar.minimum(), bar.maximum()) == (0, 0)
+
+    assert described, f"the bar said nothing at all for {(done, total, finished)}"
+    if indeterminate:
+        assert "cannot be measured" in described, (
+            f"an indeterminate bar has to say so: {described!r}"
+        )
+        assert "percent" not in described, f"an indeterminate bar claimed a figure: {described!r}"
+        assert not finished, "a finished download was drawn as an indeterminate bar"
+        return
+
+    assert "cannot be measured" not in described, (
+        f"a determinate bar at {bar.value()}% says progress cannot be measured: {described!r}"
+    )
+    if finished:
+        assert bar.value() == 100, "a finished download did not fill its bar"
+        assert "Complete" in described, f"a full bar has to say what it means: {described!r}"
+        assert "percent" not in described, (
+            f"a finished download reported a percentage rather than its size: {described!r}"
+        )
+    else:
+        assert f"{bar.value()} percent" in described, (
+            f"the bar shows {bar.value()}% and says {described!r}"
+        )
+
+
+def test_a_finished_download_reports_the_size_its_row_holds_not_the_last_one_drawn(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T017-R2`: the totals behind a finished bar came from whatever a repaint last drew.
+
+    The final bytes normally arrive with `Succeeded` rather than as a progress update, so the
+    last rendered message is precisely the wrong source. A row holding 2 KB was described as
+    "Complete: 1.0 KB downloaded" — a stale figure presented as a final one.
+    """
+    store.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING))
+    view = views(manager=managers(), jobs=store, job_id="job-1", repaint_interval_ms=1)
+    bar = view.findChild(QProgressBar, "progressBar")
+    assert bar is not None
+
+    view._on_progress(
+        Progress(
+            job_id="job-1", stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=1024, total_bytes=1024
+        )
+    )
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and view.renders == 0:
+        qapp.processEvents()
+        time.sleep(0.005)
+    assert "1.0 KB" in bar.accessibleDescription()
+
+    # The download finished larger than the last message said, which is the ordinary case.
+    store.jobs["job-1"] = replace(
+        store.jobs["job-1"], status=JobStatus.COMPLETED, bytes_done=2048, bytes_total=2048
+    )
+    view._on_job_changed("job-1", JobStatus.COMPLETED.value)
+
+    described = bar.accessibleDescription()
+    assert "2.0 KB" in described, (
+        f"the finished bar reported the last size drawn rather than the row's: {described!r}"
+    )
+    assert "1.0 KB" not in described
+
+
 def test_a_completed_download_describes_a_full_bar_and_not_the_last_percentage(
     store: FakeStore,
     managers: Callable[..., DownloadManager],

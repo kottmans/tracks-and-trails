@@ -4580,3 +4580,67 @@ non-blocking and does not itself consume or require another pass.
 
 `T-056` remains **Blocked** on its Windows runtime/mutation evidence. It was untouched by
 `e66f34d` and is outside this focused re-review.
+
+## 2026-07-28 — T-017 and T-058 authorized third review pass
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `e66f34d`  **Head:** `b3e156c`
+**Correction commit:** `b3e156c`
+**Focused scope:** `T017-R2`, `T017-R3`, `T058-R1`, and regressions in their correction diff
+**Authorization:** Maintainer-authorized extra pass under `AGENTS.md` §10
+**Platforms verified:** Linux locally; Windows type analysis
+**Verdict by task:** `T-017` **Blocked**; `T-058` **Approved**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused re-review evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T017-R2` | **Medium** | **Yes** | **The structural single-writer change is sound, and the known-total completion is corrected, but the required unknown-total completion gate is still missing.** Every bar range/value/description write is now inside `_draw_bar()`. The supplied `5/10` → `COMPLETED` test passes and kills both restoring `_refresh` as a writer and removing the finished description. However, changing the finished branch to update its description only when `total` is known let an unknown-total bar become visibly 100% while retaining “progress cannot be measured”; the entire **40-test** job-detail suite still passed. That is the exact unknown-total sibling the prior recommendation required the correction to gate. The shipping branch has a related correctness gap: it derives the finished byte count from the last rendered progress. In a permitted sequence where the view last rendered `1024/unknown` and the store then completed at `2048`, the visible bar was 100% but its description was `"Complete: 1.0 KB downloaded"`, despite the persisted final total being 2 KB. | Gate unknown-total → completed explicitly and kill the conditional-description mutation above. A completed bar with no trustworthy final total should say simply “Complete”; alternatively refresh from the persisted success total before naming a size. Do not present the last coalesced `done` value as the final size. | **Open** |
+| `T017-R3` | **Low** | **No** | The source docstring and new post-render test now state the behavior correctly, and independently mutating either side of the distinction failed: a running status must preserve the more specific worker stage, while an ending must replace it immediately. **The current-truth task record still retains the original overclaim**, though: the first correction section at `ai/TASKS.md:147` says “The state words stay immediate.” The newer second-correction paragraph contradicts and explains it rather than replacing it. | Rewrite that older sentence to “terminal state words stay immediate,” preserving the historical explanation without leaving two current claims. **Owner/target:** Documentation Maintainer, T-017 record before closure. | **Open, non-blocking** |
+| `T058-R1` | **Medium** | **Yes** | `ai/TESTING.md` §7 now says “Every mandatory area above” without a numeral, while §12 remains the sole numeric full-set coverage statement in current-truth documents. T-014, T-034, and T-058 retain their historical numerators without repeating the denominator. The broad word/digit search was read: other matches are partial numerators, quotations describing the former defect, `REVIEWS.md`'s immutable historical snapshots, or `ARCHITECTURE.md` §7's unrelated error taxonomy. No second current coverage count remains. | None. | **Resolved** |
+
+### Review judgments
+
+- `_draw_bar()` is now the sole source writer of `QProgressBar` range, value and accessible
+  description. `_refresh()` delegates completion rather than writing the widget independently.
+- The four mutations reported for this batch are real and independently killed: restoring the
+  `_refresh()` write, retaining the running description at known-total completion, overwriting a
+  specific running stage, and delaying a terminal stage.
+- The extra unknown-total mutation is not hypothetical source-shape policing. It restores the
+  exact 100%-bar/indeterminate-description contradiction for a normal bar state and survives the
+  complete widget suite.
+- T058-R1's “single home” applies to current truth. Old review findings must remain as historical
+  evidence under `AGENTS.md` §6 and do not become competing current coverage claims.
+- Correcting T017-R3 in this batch was within scope: it changed the documentation and test of
+  already-correct behavior, not product behavior. The one remaining stale sentence is likewise a
+  non-blocking current-truth cleanup.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| `git diff --check e66f34d..b3e156c` | Passed. |
+| Current job-detail suite | **40 passed in 1.98 s**. |
+| Four reported mutations | **All four killed** by their intended focused tests. |
+| Unknown-total conditional-description mutation | **Survived: 40 passed in 1.96 s**. |
+| Unknown-total persisted-outcome probe | Stored final `2048/2048`; visible bar `0..100`, value `100`; description `"Complete: 1.0 KB downloaded"`. |
+| Repository count search | §12 is the only numeric full-set coverage statement in current truth; remaining matches were inspected and classified as partial, historical, or unrelated. |
+| `ruff check .` | Passed. |
+| `ruff format --check .` | **87 files already formatted**. |
+| `mypy src` | Passed: no issues in **35 source files**. |
+| Configured `mypy` | Passed: no issues in **72 source/test files**. |
+| Configured `mypy --platform win32` | Passed: no issues in **72 source/test files**. |
+| Full default suite with localhost/cache permission | **1339 passed, 11 skipped, 1 deselected in 76.02 s**. |
+
+### Readiness and review budget
+
+`T058-R1` is **Resolved**. T-058 is **Approved at `b3e156c`**.
+
+`T017-R2` remains a blocking Medium finding; `T017-R3` remains non-blocking. T-017 is therefore
+**Blocked pending maintainer direction**. Because this was already a maintainer-authorized pass
+after the ordinary budget was exhausted, another focused correction/re-review is not automatic:
+the maintainer must explicitly authorize it, accept the documented risk, change scope, or move
+the work into a named follow-up task.
+
+`T-056` remains **Blocked** on Windows runtime/mutation evidence. It was untouched by `b3e156c`
+and remains outside this review.

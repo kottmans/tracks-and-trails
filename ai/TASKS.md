@@ -52,12 +52,12 @@ Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; 
 
 ### T-017 — Single-job progress view with cancel
 
-**Status:** **In Review — second correction batch returned 2026-07-28**, on maintainer
-authorization (`AGENTS.md` §10; the ordinary budget was exhausted). `T017-R1` is Resolved.
-`T017-R2` continued through a sibling path and is corrected **structurally** rather than patched;
-non-blocking `T017-R3` is corrected in the same batch because it is an inaccurate claim in a
-docstring this batch was already rewriting. No finding is marked Resolved here — that is the
-Reviewer's to do. `ui/job_detail.py` holds the view;
+**Status:** **In Review — third correction batch returned 2026-07-28**, on maintainer
+authorization (`AGENTS.md` §10). `T017-R1` is Resolved. `T017-R2` has now come back **three
+times**, each through a case the previous correction had not thought of, so this batch stops
+adding guards and makes the space enumerable instead. `T017-R3`'s source and tests were accepted;
+what remained was one record contradicting another, corrected here. No finding is marked Resolved
+here — that is the Reviewer's to do. `ui/job_detail.py` holds the view;
 `ui/queue_view.py` stays a docstring-only stub, because a multi-job table is Phase 2 and this
 task's scope is one job.
 **Owner:** Implementer
@@ -108,6 +108,43 @@ retry affordance (`REQ-018`); nothing fails silently.
 - Pause and resume — `REQ-015` includes them, but they need Phase 2's scheduler
 - Open-file and reveal-in-file-manager — `REQ-021`, Phase 2
 
+#### Third correction batch — the space, not the cases, 2026-07-28
+
+**Base:** `b3e156c`. Authorized by the maintainer under `AGENTS.md` §10. Four mutations, four
+killed — including all three of this finding's historical forms and the reviewer's own.
+
+**`T017-R2` (Medium, blocking) — three recurrences, one cause.** The determinate branch
+inheriting an indeterminate description; `_refresh` writing the bar without one; and now
+completion with an unknown total, plus a stale byte count. Every correction added a guard for the
+case just found and left the next one to whether anyone thought of it, and every test compared the
+description against a string the same author had written moments before — so it agreed with itself
+and missed the case next door.
+
+Two changes, and neither is another guard:
+
+- **`describe_bar(done, total, finished)` is a pure function**, and the space it covers is small
+  and closed: each of `done` and `total` is known or not, and the job is finished or not. A test
+  now enumerates the cross-product — thirty cases — rather than sampling it.
+- **The gate asserts a relation between what the bar *shows* and what it *says***, read off the
+  rendered widget rather than from a table beside the code. All three historical forms collapse
+  into one sentence: a determinate bar must never say progress cannot be measured, and an
+  indeterminate one must never claim a figure.
+
+**And one real defect the reviewer found underneath the ungated case.** The totals behind a
+finished bar came from whatever a repaint last drew, so a row holding 2 KB was described as
+"Complete: 1.0 KB downloaded". The final bytes arrive with `Succeeded` rather than as a progress
+update, making the last render precisely the wrong source; completion now adopts the durable row's
+counts. Reading them there is a `T-016` guarantee rather than an assumption — `job_changed` is
+emitted from the write's own callback.
+
+**`T017-R3`** — source and tests were accepted; the first correction record still said "the state
+words stay immediate", contradicting the second. Corrected in the record that is wrong, with a
+note saying so.
+
+**Mutations run, all killed:** the reviewer's own — describing a finished bar only when the total
+is known · a finished bar reporting the last size drawn · the determinate branch inheriting the
+indeterminate words · the bar drawn without describing itself.
+
 #### Second correction batch — one owner for the bar, 2026-07-28
 
 **Base:** `e66f34d`. Authorized by the maintainer under `AGENTS.md` §10 after the ordinary budget
@@ -144,8 +181,12 @@ reported stage · an ending waiting for the repaint like anything else.
   `_on_job_changed` called `_draw_pending()`, which is a second route into `_show_progress` with
   no rate limit on it. The reviewer interleaved three progress messages with three status changes
   and measured three repaints inside one 100 ms interval, which is the acceptance criterion the
-  whole design exists to meet. The state *words* stay immediate — `_refresh` writes them itself,
-  and a cancelled job must not go on saying "Downloading" — but progress waits for the timer.
+  whole design exists to meet. An *ending* stays immediate — `_refresh` writes it itself, and a
+  cancelled job must not go on saying "Downloading" — but progress waits for the timer.
+  *(This read "the state words stay immediate" until 2026-07-28. `T017-R3` established that was
+  true only before anything had rendered, and the correction below says so; leaving the older
+  sentence standing left one record contradicting the next. Corrected here rather than in the
+  newer record, because this is the sentence that is wrong.)*
 
   **At a terminal state the pending message is dropped**, not deferred. That half is not
   bookkeeping: holding it would have let a tick after the ending replace "Cancelled" with the
@@ -213,128 +254,6 @@ scope could not see, including one that made mypy stop analysing the rest of a t
 **Known-unverified:** the Windows half. Focus order is asserted offscreen here; the real
 platform plugin is `T-040`'s, and this widget adds three focusable controls to what that task
 covers.
-
----
-
-### T-058 — Recount the DRM coverage record
-
-**Status:** **In Review — second correction returned 2026-07-28**, on maintainer authorization
-(`AGENTS.md` §10). `T058-R1` continued: the first correction cleaned `ai/STATUS.md` and left two
-numeric statements inside `ai/TESTING.md` itself — the file it had just declared the single home —
-because the search used to verify the claim matched only the phrasing it had removed. See
-**Evidence**.
-**Owner:** Documentation Maintainer, with the Implementer for the mutation evidence
-**Priority:** Medium — the exit review reads this record, and today it is wrong
-**Phase:** Phase 1
-**Depends on:** nothing. `T-057` and `T-017`'s DRM criterion are what the corrected record must
-**name**, not what it must wait for
-**Relevant context:** `ai/TESTING.md` §7, §12, §13; `ai/STATUS.md`; the `T-044`/`T-045` lesson
-**Affected surfaces:** `ai/TESTING.md`, `ai/STATUS.md`
-**Risk:** Low as a diff, Medium as a claim — this record is what the exit review trusts
-
-#### Scope
-
-`ai/TESTING.md` §12 says "Log redaction (`T-038`) and DRM remain uncovered", and `ai/STATUS.md`
-says in three places that DRM is the one uncovered mandatory area with no Phase 1 owner. Log
-redaction closed with `T-038`. DRM has had tests since the worker path landed:
-
-- `tests/unit/test_errors.py:56` — non-retryable and non-auto-retryable, asserted across the whole
-  taxonomy rather than for one kind
-- `tests/unit/test_ytdlp_adapter.py:422` — detection is structural, and prose *claiming* DRM is
-  explicitly asserted not to be DRM
-- `tests/integration/test_worker.py:351` — the bypass half, by counting extraction calls: a DRM
-  item fails after exactly one, because a second would be an attempt to route around the
-  protection
-
-The claim was most likely written before `T-012` and `T-013` landed that path, and was never
-recomputed. **Recount, do not adjust** — that is the discipline that caught `STATUS.md`'s stale
-module counts, and the one that would have caught this.
-
-**Do not replace one completeness claim with another.** The `T-044`/`T-045` lesson in
-`ai/TESTING.md` §13 applies directly: the corrected record states what is proven and names its
-open edges — the upstream contract (`T-057`) and the UI affordance (`T-017`) — rather than
-declaring the area closed.
-
-#### Acceptance criteria
-
-- Every test named above is run, and a mutation is run against each claim it is cited for — at
-  minimum: making `DRM_PROTECTED` retryable, and removing the single-extraction assertion. **A
-  claim whose mutation survives is not recorded as covered**
-- §12's coverage sentence is recomputed from §7's rows rather than edited in place
-- `ai/STATUS.md`'s DRM statements agree with each other and with §12 — one number, stated once
-- The corrected record names `T-057` and `T-017`'s criterion as the open edges of the boundary
-- No mandatory row's *requirement* text is reworded; only the coverage claim about it changes
-
-#### Out of scope
-
-- Adding tests. If the mutation evidence shows a claim is not actually gated, that is a finding to
-  file, not a fix to fold into a documentation task
-- `T-057`'s code change
-
-#### Second correction — the search was narrower than the claim, 2026-07-28
-
-`T058-R1` continued, and the reason is worth more than the fix. The first correction removed every
-restatement from `ai/STATUS.md`, then verified the single-home claim by grepping for `"ten of
-ten"` and `"of ten mandatory"` — **the two phrasings it had just removed**. That search cannot
-fail, and it reported success while `ai/TESTING.md` §7's own execution note two hundred lines
-above the count still read "All ten are back in the default run".
-
-Corrected: §7's note now says "Every mandatory area above", `ai/TESTING.md` §12 is the only place
-the count or its denominator appears, and three historical entries (`T-014`, `T-034`, and this
-task's own criteria and evidence) keep their numerators and drop the size of the set. The check is
-now a pattern over word-form and digit numbers near `mandatory`, `of ten` or `§7` across `ai/`,
-`AGENTS.md` and `README.md`, whose *output* is read rather than its exit status.
-
-`ARCHITECTURE.md` §7 — the error taxonomy — also has ten rows, and `T-010`'s entry says so. That
-is a different §7 and was deliberately left alone.
-
-#### Evidence, 2026-07-28
-
-**The coverage sentence in `ai/TESTING.md` §12 is recomputed from §7's rows** rather than edited
-in place, and §12 is where the number is — this entry does not restate it. The old sentence
-— "eight … Log redaction and DRM remain uncovered" — was wrong in both halves by the time anyone
-read it: `T-038` closed log redaction, and DRM had been gated since the worker path landed.
-
-**Every claim recorded was mutated first**, and all three mutations were killed:
-
-| Claim | Mutation | Result |
-|---|---|---|
-| `DRM_PROTECTED` is never retried | drop it from `_NON_RETRYABLE` in `core/errors.py` | killed by `test_drm_protected_is_non_retryable_in_the_taxonomy` and `test_a_drm_failure_offers_no_retry_at_all` |
-| No bypass path | delete the DRM check before the download in `worker.py` | killed by `test_a_drm_item_fails_without_attempting_extraction` |
-| Detection is structural | let `has_drm` match "drm" in the title | killed by `test_drm_detection_does_not_read_message_text` |
-
-**The corrected record names what it cannot cover** rather than declaring the area closed
-(`T-044`/`T-045`, §13): no recorded fixture can exist, because capturing one means probing a DRM
-service; and `_has_drm` is written as `True` or `None` and never `False`, so absence is
-ambiguous. Both are stated in `ai/TESTING.md` §12 with the reason.
-
-**One number, one home — and this claim was false when it was first written** (`T058-R1`). The
-correction recounted §7's rows honestly and then **restated the new number in `ai/STATUS.md`
-twice**, in a paragraph one of whose sentences said the file no longer stated it; the
-coordination commit `2831973` added a third. The reviewer found all three. A recount that
-replaces "nine" with "ten" in every place that had "nine" has not moved anything, and writing
-"this file does not repeat the count" beneath a repetition of it is the same defect wearing the
-fix's clothes.
-
-`ai/STATUS.md` states neither the coverage count nor its denominator anywhere, and neither does
-anywhere else outside `ai/TESTING.md` §12 — including §7's own execution note, this task's
-acceptance criteria and evidence, and the historical `T-014` and `T-034` entries, each of which
-kept its numerator and dropped the size of the set.
-
-**The first attempt at that claim was checked with the wrong search** (`T058-R1`, second pass).
-Grepping for `"ten of ten"` and `"of ten mandatory"` found nothing left in `ai/STATUS.md` and
-reported success while §7's note two hundred lines above still said "All ten". A search narrow
-enough to match only the phrasing you just removed will always succeed. The check is now a
-pattern over **word-form and digit numbers within forty characters of `mandatory`, `of ten`, or
-`§7`**, run across `ai/`, `AGENTS.md` and `README.md`, and its output is read rather than its
-exit status.
-
-The failure mode this task actually closes is therefore narrower and more useful than it first
-recorded: *two files stating one number* is what let "DRM is uncovered" outlive being true by
-four tasks, and pointing at a number is not the same act as repeating it.
-
-**No §7 requirement text was reworded.** The DRM row still reads exactly as it did; only the
-coverage claim about it changed.
 
 ---
 
@@ -5545,3 +5464,122 @@ repository root with the 2026 Sean Kottman copyright line; `README.md` updated.
 **Remaining:** the `pyproject.toml` license field is set by `T-001`, since no
 `pyproject.toml` exists yet. Shipping third-party license texts (Qt, ffmpeg, yt-dlp) with
 the distribution is a Phase 5 release-gate item, not part of this task.
+### T-058 — Recount the DRM coverage record
+
+**Status:** **Complete — approved**, 2026-07-28 at `b3e156c`. `T058-R1` is Resolved on the second
+correction: `ai/TESTING.md` §12 is the sole numeric full-set coverage statement in the
+current-truth documents. The finding continued once because the first correction cleaned
+`ai/STATUS.md` and left two statements inside the file it had just declared the single home —
+the search used to verify the claim matched only the phrasing it had removed. See **Evidence**.
+**Owner:** Documentation Maintainer, with the Implementer for the mutation evidence
+**Priority:** Medium — the exit review reads this record, and today it is wrong
+**Phase:** Phase 1
+**Depends on:** nothing. `T-057` and `T-017`'s DRM criterion are what the corrected record must
+**name**, not what it must wait for
+**Relevant context:** `ai/TESTING.md` §7, §12, §13; `ai/STATUS.md`; the `T-044`/`T-045` lesson
+**Affected surfaces:** `ai/TESTING.md`, `ai/STATUS.md`
+**Risk:** Low as a diff, Medium as a claim — this record is what the exit review trusts
+
+#### Scope
+
+`ai/TESTING.md` §12 says "Log redaction (`T-038`) and DRM remain uncovered", and `ai/STATUS.md`
+says in three places that DRM is the one uncovered mandatory area with no Phase 1 owner. Log
+redaction closed with `T-038`. DRM has had tests since the worker path landed:
+
+- `tests/unit/test_errors.py:56` — non-retryable and non-auto-retryable, asserted across the whole
+  taxonomy rather than for one kind
+- `tests/unit/test_ytdlp_adapter.py:422` — detection is structural, and prose *claiming* DRM is
+  explicitly asserted not to be DRM
+- `tests/integration/test_worker.py:351` — the bypass half, by counting extraction calls: a DRM
+  item fails after exactly one, because a second would be an attempt to route around the
+  protection
+
+The claim was most likely written before `T-012` and `T-013` landed that path, and was never
+recomputed. **Recount, do not adjust** — that is the discipline that caught `STATUS.md`'s stale
+module counts, and the one that would have caught this.
+
+**Do not replace one completeness claim with another.** The `T-044`/`T-045` lesson in
+`ai/TESTING.md` §13 applies directly: the corrected record states what is proven and names its
+open edges — the upstream contract (`T-057`) and the UI affordance (`T-017`) — rather than
+declaring the area closed.
+
+#### Acceptance criteria
+
+- Every test named above is run, and a mutation is run against each claim it is cited for — at
+  minimum: making `DRM_PROTECTED` retryable, and removing the single-extraction assertion. **A
+  claim whose mutation survives is not recorded as covered**
+- §12's coverage sentence is recomputed from §7's rows rather than edited in place
+- `ai/STATUS.md`'s DRM statements agree with each other and with §12 — one number, stated once
+- The corrected record names `T-057` and `T-017`'s criterion as the open edges of the boundary
+- No mandatory row's *requirement* text is reworded; only the coverage claim about it changes
+
+#### Out of scope
+
+- Adding tests. If the mutation evidence shows a claim is not actually gated, that is a finding to
+  file, not a fix to fold into a documentation task
+- `T-057`'s code change
+
+#### Second correction — the search was narrower than the claim, 2026-07-28
+
+`T058-R1` continued, and the reason is worth more than the fix. The first correction removed every
+restatement from `ai/STATUS.md`, then verified the single-home claim by grepping for `"ten of
+ten"` and `"of ten mandatory"` — **the two phrasings it had just removed**. That search cannot
+fail, and it reported success while `ai/TESTING.md` §7's own execution note two hundred lines
+above the count still read "All ten are back in the default run".
+
+Corrected: §7's note now says "Every mandatory area above", `ai/TESTING.md` §12 is the only place
+the count or its denominator appears, and three historical entries (`T-014`, `T-034`, and this
+task's own criteria and evidence) keep their numerators and drop the size of the set. The check is
+now a pattern over word-form and digit numbers near `mandatory`, `of ten` or `§7` across `ai/`,
+`AGENTS.md` and `README.md`, whose *output* is read rather than its exit status.
+
+`ARCHITECTURE.md` §7 — the error taxonomy — also has ten rows, and `T-010`'s entry says so. That
+is a different §7 and was deliberately left alone.
+
+#### Evidence, 2026-07-28
+
+**The coverage sentence in `ai/TESTING.md` §12 is recomputed from §7's rows** rather than edited
+in place, and §12 is where the number is — this entry does not restate it. The old sentence
+— "eight … Log redaction and DRM remain uncovered" — was wrong in both halves by the time anyone
+read it: `T-038` closed log redaction, and DRM had been gated since the worker path landed.
+
+**Every claim recorded was mutated first**, and all three mutations were killed:
+
+| Claim | Mutation | Result |
+|---|---|---|
+| `DRM_PROTECTED` is never retried | drop it from `_NON_RETRYABLE` in `core/errors.py` | killed by `test_drm_protected_is_non_retryable_in_the_taxonomy` and `test_a_drm_failure_offers_no_retry_at_all` |
+| No bypass path | delete the DRM check before the download in `worker.py` | killed by `test_a_drm_item_fails_without_attempting_extraction` |
+| Detection is structural | let `has_drm` match "drm" in the title | killed by `test_drm_detection_does_not_read_message_text` |
+
+**The corrected record names what it cannot cover** rather than declaring the area closed
+(`T-044`/`T-045`, §13): no recorded fixture can exist, because capturing one means probing a DRM
+service; and `_has_drm` is written as `True` or `None` and never `False`, so absence is
+ambiguous. Both are stated in `ai/TESTING.md` §12 with the reason.
+
+**One number, one home — and this claim was false when it was first written** (`T058-R1`). The
+correction recounted §7's rows honestly and then **restated the new number in `ai/STATUS.md`
+twice**, in a paragraph one of whose sentences said the file no longer stated it; the
+coordination commit `2831973` added a third. The reviewer found all three. A recount that
+replaces "nine" with "ten" in every place that had "nine" has not moved anything, and writing
+"this file does not repeat the count" beneath a repetition of it is the same defect wearing the
+fix's clothes.
+
+`ai/STATUS.md` states neither the coverage count nor its denominator anywhere, and neither does
+anywhere else outside `ai/TESTING.md` §12 — including §7's own execution note, this task's
+acceptance criteria and evidence, and the historical `T-014` and `T-034` entries, each of which
+kept its numerator and dropped the size of the set.
+
+**The first attempt at that claim was checked with the wrong search** (`T058-R1`, second pass).
+Grepping for `"ten of ten"` and `"of ten mandatory"` found nothing left in `ai/STATUS.md` and
+reported success while §7's note two hundred lines above still said "All ten". A search narrow
+enough to match only the phrasing you just removed will always succeed. The check is now a
+pattern over **word-form and digit numbers within forty characters of `mandatory`, `of ten`, or
+`§7`**, run across `ai/`, `AGENTS.md` and `README.md`, and its output is read rather than its
+exit status.
+
+The failure mode this task actually closes is therefore narrower and more useful than it first
+recorded: *two files stating one number* is what let "DRM is uncovered" outlive being true by
+four tasks, and pointing at a number is not the same act as repeating it.
+
+**No §7 requirement text was reworded.** The DRM row still reads exactly as it did; only the
+coverage claim about it changed.

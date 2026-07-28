@@ -137,6 +137,39 @@ def format_speed(bytes_per_second: float | None) -> str:
     return f"{format_bytes(int(bytes_per_second))}/s"
 
 
+def describe_bar(done: int | None, total: int | None, *, finished: bool) -> str:
+    """What the progress bar currently means, in words (`NFR-005`, `T017-R2`).
+
+    **A pure function of the same three values the bar itself is drawn from**, and that is the
+    whole design. This finding came back three times — the determinate branch inheriting the
+    indeterminate description, `_refresh` writing the bar without one, and completion with an
+    unknown total — and each correction added a guard for the case that had just been found while
+    leaving the next one to whether anyone thought of it. The cases are not many: `done` and
+    `total` are each known or not, and the job is finished or not. Made a function, that space can
+    be enumerated by a test rather than sampled by one.
+
+    A finished download is complete whatever the last progress message said, so it reports its
+    size rather than a percentage — the final bytes routinely arrive with the outcome instead of
+    as a progress update, and "100 percent of 1.0 KB" beside a 2.0 KB file is the stale-byte
+    defect wearing a percentage.
+    """
+    if finished:
+        size = total or done
+        return f"Complete: {format_bytes(size)} downloaded" if size else "Complete"
+    if total:
+        return f"{percent_of(done, total)} percent of {format_bytes(total)} downloaded"
+    # An unknown total is a real state, not zero percent. `REQ-011`'s indeterminate bar, and this
+    # says so in words because the animation alone does not.
+    return "Total size unknown; progress cannot be measured"
+
+
+def percent_of(done: int | None, total: int | None) -> int:
+    """How full the bar is, clamped. `0` when there is no total to be a fraction of."""
+    if not total:
+        return 0
+    return int(min((done or 0) / total, 1.0) * 100)
+
+
 def format_eta(seconds: int | None) -> str:
     """`H:MM:SS`, or `M:SS` under an hour, or `UNKNOWN_TEXT`.
 
@@ -408,7 +441,25 @@ class JobProgressView(QWidget):
         if self._is_terminal:
             self._pending = None
             self._repaint.stop()
+            self._adopt_stored_totals()
         self._refresh()
+
+    def _adopt_stored_totals(self) -> None:
+        """Take the finished job's own byte counts, not the ones a repaint last happened to draw.
+
+        `T017-R2`. The totals behind the bar came from rendered progress, and a completed download
+        reports its size — so a job whose row said 2 KB was described as "Complete: 1.0 KB
+        downloaded", because 1 KB was the last message drawn before the outcome arrived. The final
+        bytes normally come with `Succeeded` rather than as a progress update, so the last render
+        is precisely the wrong source.
+
+        Reading the row here is safe and is a `T-016` guarantee rather than an assumption:
+        `job_changed` is emitted from the write's own completion callback, so the row really does
+        hold this state by the time this runs.
+        """
+        job = self._jobs.get(self._job_id)
+        if job is not None:
+            self._show_totals(job.bytes_done, job.bytes_total)
 
     def _on_job_failed(self, job_id: str, kind: object, message: str) -> None:
         """Show the extractor's message **verbatim** (`REQ-005`, `NFR-006`).
@@ -474,28 +525,12 @@ class JobProgressView(QWidget):
         Under `NFR-005` the contradiction is worse than silence: sighted and screen-reader users
         were being told different things about the same download.
         """
-        if finished:
-            # A completed download is 100% whatever the last progress message happened to say —
-            # the final bytes routinely arrive with the outcome rather than as a progress update.
-            size = total or done
+        if finished or total:
             self._bar.setRange(0, 100)
-            self._bar.setValue(100)
-            self._bar.setAccessibleDescription(
-                f"Complete: {format_bytes(size)} downloaded" if size else "Complete"
-            )
-            return
-        if total:
-            percent = int(min((done or 0) / total, 1.0) * 100)
-            self._bar.setRange(0, 100)
-            self._bar.setValue(percent)
-            self._bar.setAccessibleDescription(
-                f"{percent} percent of {format_bytes(total)} downloaded"
-            )
-            return
-        # An unknown total is a real state, not zero percent. `REQ-011`'s indeterminate bar, and
-        # the accessible description says so in words because the animation alone does not.
-        self._bar.setRange(0, 0)
-        self._bar.setAccessibleDescription("Total size unknown; progress cannot be measured")
+            self._bar.setValue(100 if finished else percent_of(done, total))
+        else:
+            self._bar.setRange(0, 0)
+        self._bar.setAccessibleDescription(describe_bar(done, total, finished=finished))
 
     def _refresh(self) -> None:
         """Put the whole widget in the state its job is in. **Every state in words.**
