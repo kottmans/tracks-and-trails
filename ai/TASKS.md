@@ -255,6 +255,113 @@ test file.
 
 ---
 
+### T-037 — End-to-end download and restart proof
+
+**Status:** **In Review — implemented 2026-07-28.** Both unowned exit criteria now have tests
+against the assembled application. Five mutations, five killed. The `-m network` variant is
+written and **has never been run** — see **Evidence**.
+**Owner:** Implementer
+**Priority:** **High** — two Phase 1 exit criteria are unowned without it
+**Phase:** Phase 1
+**Depends on:** `T-036`
+**Relevant context:** `IMPLEMENTATION_PLAN.md` Phase 1 exit criteria; `REQ-012`, `REQ-014`,
+`NFR-003`; `ai/TESTING.md` §7 (Crash recovery)
+**Affected surfaces:** `tests/integration/`
+**Risk:** **High** — it is the evidence for the phase
+**Review base:** the `T-036` merge commit
+
+#### Scope
+
+**Filed after review: the phase had no proof of success.** `T-012` tests probing and failure,
+`T-019` tests cancellation and crashes — nobody proved a download *completing*. Phase 1's first
+exit criterion is "a real URL downloads to disk with accurate live progress and correct final
+bytes", and its fourth is "job state survives an application restart mid-download". Both were
+unowned.
+
+Two integration tests against the assembled application, with yt-dlp faked at the adapter seam
+so they are deterministic and offline:
+
+1. **Success.** A job runs to completion: the file exists at the expected path, its byte count
+   matches what was reported, progress advanced monotonically through the `REQ-014` stages, and
+   the job's terminal state is success in both the UI and the repository.
+2. **Restart.** Kill the application mid-download, restart it, and assert the job is recovered
+   to a retryable state, visible in the UI, with its `DownloadRequest` intact — the assembled
+   equivalent of the database-level recovery `T-014` proves.
+
+A network-marked variant downloads one real, stable, small URL end to end, so the offline fake
+is checked against reality at least once. It stays excluded by default (`ai/TESTING.md` §2).
+
+#### Acceptance criteria
+
+- The completed file exists, and its size equals the total the final progress message reported
+  — a mismatch is exactly the bug this criterion is for
+- Progress is monotonic and reaches every `REQ-014` stage the job actually used
+- Success is recorded identically in the UI and the repository; disagreement fails
+- After a mid-download kill and restart, the job is recovered, visible, retryable, and its
+  stored `DownloadRequest` is byte-identical to the original (`REQ-012`, `NFR-003`)
+- Recovery is proven by killing a real process, not by closing the application cleanly
+- The `-m network` variant completes one real download and is **not** part of the default run
+
+#### Out of scope
+
+- Multiple concurrent jobs — Phase 2
+- Resume of a partial download — Phase 2
+
+#### Evidence, 2026-07-28
+
+**`tests/integration/test_end_to_end.py`** — three tests, everything real except the site. Real
+yt-dlp, its generic extractor, its HTTP downloader, a real spawned worker, a real file. The server
+is a local `http.server` on `127.0.0.1`, which is the §6 exception recorded for exactly this: the
+criterion is about bytes actually moving and a faked adapter cannot move any.
+
+**The assertion that matters joins the halves.** The file on disk is the size the last progress
+message said it would be, *and* the size the queue recorded. The worker knows the bytes and the
+manager knows the messages; only the assembled thing knows whether they agree.
+
+**The restart is a `SIGKILL` to another interpreter**, mid-download, with the row confirmed
+`RUNNING` first. A clean shutdown would prove teardown works, which `T-036` covers; `NFR-003` is
+about the other case. The recovered job comes back `FAILED`/`INTERRUPTED`, retryable, visible in
+the UI, with its `DownloadRequest` byte-identical to what was submitted. A third test plants a
+`RUNNING` row directly, so the claim is about startup rather than about what the previous test
+left behind.
+
+**Two things found on the way, both worth more than the fix:**
+
+- **`mypy --platform win32` caught a test that could not run on Windows.** `os.killpg`,
+  `os.getpgid` and `signal.SIGKILL` are POSIX-only, so the `windows-latest` job would have
+  reported an `AttributeError` rather than a finding. The halves are now split at module level,
+  following `downloader/process_tree.py`'s own idiom — each is then type-checked by the run that
+  owns it, where a branch inside a function leaves the other side unreachable to whichever run is
+  looking. This is `AGENTS.md` §8's "a host-only check is not the whole gate", found by the gate
+  that exists for it.
+- **The default preset legitimately cannot download the fake clip.** Its selector filters on
+  `height` and `ext`; a bare `video/mp4` declares no height, so "Requested format is not
+  available" is the *correct* answer. The tests choose a preset instead, which is what the dialog
+  is for (`REQ-006`). Recorded at the constant rather than worked around silently, because the
+  other reading — that a preset is broken — is wrong and a future reader deserves the real one.
+
+**Mutations run, all killed:** startup no longer recovering interrupted jobs · a completed job
+forgetting its output path · recovery rewriting the request it recovers · an interruption recorded
+as a worker crash · the stored byte total drifting from the bytes that moved.
+
+**One mutation deliberately not counted.** Freezing `bytes_done` so the stored counter never
+advances survives, and should: the manager persists progress only on a *stage transition*, so with
+a single-stage download there is exactly one write and a frozen counter is indistinguishable from
+correct behaviour. Gating it would assert a promise the design does not make (`ai/TESTING.md` §13).
+
+**The `-m network` variant is written and has never been executed here.**
+`tests/network/test_real_download.py` downloads one real archive.org file through the same path,
+so the offline fake is checked against reality once. This machine ran it zero times; the first
+real run is whoever runs `pytest -m network`. Stated because "written" and "passing" are different
+claims and only the first is true. Its `conftest.py` duplicates the `spin` helper rather than
+hoisting it, which would put a Qt import in front of the deliberately Qt-free unit suite.
+
+**Checks:** `ruff check .`, `ruff format --check .` (91 files), `mypy src` (35), configured `mypy`
+and `mypy --platform win32` (76 each) all pass. Bare `pytest`: **1395 passed, 11 skipped,
+2 deselected**.
+
+---
+
 ## Ready
 
 ### T-040 — Extend the Windows desktop gate to widget focus order
@@ -395,58 +502,6 @@ failure rather than a cleanup error.
 
 - Changing `SessionValidator` or the production routing order, which are correct at `65303a2`
 - The blocking cleanup behavior in `T013-R3` and `T013-R4`
-
----
-
-### T-037 — End-to-end download and restart proof
-
-**Status:** Proposed — Ready once `T-036` merges
-**Owner:** Implementer
-**Priority:** **High** — two Phase 1 exit criteria are unowned without it
-**Phase:** Phase 1
-**Depends on:** `T-036`
-**Relevant context:** `IMPLEMENTATION_PLAN.md` Phase 1 exit criteria; `REQ-012`, `REQ-014`,
-`NFR-003`; `ai/TESTING.md` §7 (Crash recovery)
-**Affected surfaces:** `tests/integration/`
-**Risk:** **High** — it is the evidence for the phase
-**Review base:** the `T-036` merge commit
-
-#### Scope
-
-**Filed after review: the phase had no proof of success.** `T-012` tests probing and failure,
-`T-019` tests cancellation and crashes — nobody proved a download *completing*. Phase 1's first
-exit criterion is "a real URL downloads to disk with accurate live progress and correct final
-bytes", and its fourth is "job state survives an application restart mid-download". Both were
-unowned.
-
-Two integration tests against the assembled application, with yt-dlp faked at the adapter seam
-so they are deterministic and offline:
-
-1. **Success.** A job runs to completion: the file exists at the expected path, its byte count
-   matches what was reported, progress advanced monotonically through the `REQ-014` stages, and
-   the job's terminal state is success in both the UI and the repository.
-2. **Restart.** Kill the application mid-download, restart it, and assert the job is recovered
-   to a retryable state, visible in the UI, with its `DownloadRequest` intact — the assembled
-   equivalent of the database-level recovery `T-014` proves.
-
-A network-marked variant downloads one real, stable, small URL end to end, so the offline fake
-is checked against reality at least once. It stays excluded by default (`ai/TESTING.md` §2).
-
-#### Acceptance criteria
-
-- The completed file exists, and its size equals the total the final progress message reported
-  — a mismatch is exactly the bug this criterion is for
-- Progress is monotonic and reaches every `REQ-014` stage the job actually used
-- Success is recorded identically in the UI and the repository; disagreement fails
-- After a mid-download kill and restart, the job is recovered, visible, retryable, and its
-  stored `DownloadRequest` is byte-identical to the original (`REQ-012`, `NFR-003`)
-- Recovery is proven by killing a real process, not by closing the application cleanly
-- The `-m network` variant completes one real download and is **not** part of the default run
-
-#### Out of scope
-
-- Multiple concurrent jobs — Phase 2
-- Resume of a partial download — Phase 2
 
 ---
 

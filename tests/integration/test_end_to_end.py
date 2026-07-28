@@ -1,0 +1,478 @@
+"""The proof Phase 1 exists for (`T-037`).
+
+Two of the phase's exit criteria had no owner until this: *a real URL downloads to disk with
+accurate live progress and correct final bytes*, and *job state survives an application restart
+mid-download*. `T-012` proved probing, `T-019` proved cancellation and crashes, `T-036` proved the
+graph is assembled — nobody had proved a download **completing**.
+
+## What is real here, and what is not
+
+Everything except the site. `compose()` builds the application, the worker is a real spawned
+process running **real yt-dlp**, the extractor is yt-dlp's generic one, the HTTP downloader is
+yt-dlp's own, and the file lands on a real filesystem. What is faked is the server: a local
+`http.server` serving `video/mp4` from `127.0.0.1`, which is the exception `ai/TESTING.md` §6
+records for exactly this — the acceptance criterion is about bytes actually moving, and a faked
+adapter cannot move any.
+
+Nothing leaves the machine, so these are not `-m network` tests. The one test that does reach a
+real site lives in `tests/network/` and is excluded by default.
+
+## The restart is a kill, not a close
+
+`SIGKILL` to a separate interpreter, mid-download. A clean shutdown would prove that orderly
+teardown works, which `T-036` already covers; `NFR-003` is about the other case, and recovery
+that has only ever been driven by a graceful exit is recovery nobody has tested.
+"""
+
+import os
+import signal
+import subprocess
+import sys
+import threading
+import time
+from collections.abc import Callable, Iterator
+from datetime import UTC, datetime
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
+from typing import Any
+
+import pytest
+from PySide6.QtWidgets import QApplication
+
+from tracks_and_trails import app as application
+from tracks_and_trails.core.errors import ErrorKind, is_retryable
+from tracks_and_trails.core.job_state import JobStatus
+from tracks_and_trails.core.models import DownloadRequest, Job
+from tracks_and_trails.downloader.protocol import Progress, Stage
+from tracks_and_trails.persistence import db
+from tracks_and_trails.persistence.repositories import JobRepository
+
+REPO_ROOT = Path(__file__).parents[2]
+
+
+# **Split at module level, not branched inside a function** — `downloader/process_tree.py`'s own
+# idiom, and for its reason: each half is then type-checked by the run that owns it, `mypy` for
+# POSIX and `mypy --platform win32` for Windows. A branch *inside* a function leaves the other
+# side unreachable to whichever run is looking, which is how the first version of this file
+# reached `os.killpg` on a platform that has never had it.
+#
+# `mypy --platform win32` is what caught that: `os.killpg`, `os.getpgid` and `signal.SIGKILL` are
+# all POSIX-only, and this test would have failed on the `windows-latest` job with an
+# `AttributeError` rather than a finding (`AGENTS.md` §8 — a host-only check is not the whole
+# gate).
+
+if sys.platform == "win32":
+
+    def isolate_the_application() -> dict[str, Any]:
+        """`Popen` arguments that put the application in its own process group."""
+        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
+
+    def kill_the_application(process: subprocess.Popen[str]) -> None:
+        """Kill the application without letting it unwind.
+
+        There is no `killpg` here and there does not need to be: `ARC-002`'s worker runs a parent
+        watchdog for exactly this case, and `T-019`'s Job object kills the worker's own
+        descendants when its last handle closes.
+
+        **This branch has never been executed.** The machine that wrote it has no Windows, so it
+        is written from the design and verified by the `windows-latest` job or not at all.
+        """
+        process.kill()
+
+else:
+
+    def isolate_the_application() -> dict[str, Any]:
+        """`Popen` arguments that put the application in its own process group."""
+        return {"start_new_session": True}
+
+    def kill_the_application(process: subprocess.Popen[str]) -> None:
+        """Kill the application **and the worker it spawned**, without letting either unwind.
+
+        The whole group at once: killing only the parent would leave the worker downloading into
+        a database nobody owns (`T-019`).
+        """
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+
+
+#: Big enough that the download is still running when the test kills it, small enough that the
+#: success case finishes quickly. Paced by the handler rather than by its size, so neither
+#: property depends on how fast the machine is.
+CLIP_BYTES = 512 * 1024
+
+
+def media_handler(total_bytes: int, chunk_delay: float) -> type[BaseHTTPRequestHandler]:
+    """Serves `total_bytes` of `video/mp4`, paced by `chunk_delay`.
+
+    A declared `Content-Type` and `Content-Length` are all yt-dlp's generic extractor needs to
+    treat a URL as a direct media file, so this exercises the real extractor, real format
+    selection and the real downloader. The same shape `T-013` established.
+    """
+
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
+            """Silence `http.server`'s stderr logging; a test is not a web server."""
+
+        def _send_headers(self) -> None:
+            self.send_response(200)
+            self.send_header("Content-Type", "video/mp4")
+            self.send_header("Content-Length", str(total_bytes))
+            self.send_header("Accept-Ranges", "bytes")
+            self.end_headers()
+
+        def do_HEAD(self) -> None:
+            self._send_headers()
+
+        def do_GET(self) -> None:
+            self._send_headers()
+            sent = 0
+            chunk = b"\0" * (32 * 1024)
+            try:
+                while sent < total_bytes:
+                    self.wfile.write(chunk[: min(len(chunk), total_bytes - sent)])
+                    sent += len(chunk)
+                    time.sleep(chunk_delay)
+            except BrokenPipeError, ConnectionResetError:
+                # The expected end of a killed download: the worker went away mid-stream.
+                pass
+
+    return Handler
+
+
+@pytest.fixture
+def media_url() -> Iterator[Callable[..., str]]:
+    """Serves a media URL from localhost. Not a network test: nothing leaves the machine."""
+    servers: list[ThreadingHTTPServer] = []
+
+    def serve(total_bytes: int = CLIP_BYTES, chunk_delay: float = 0.0) -> str:
+        server = ThreadingHTTPServer(("127.0.0.1", 0), media_handler(total_bytes, chunk_delay))
+        servers.append(server)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return f"http://127.0.0.1:{server.server_address[1]}/clip.mp4"
+
+    yield serve
+
+    for server in servers:
+        server.shutdown()
+        server.server_close()
+
+
+#: The preset these tests choose, and why it is not the default one.
+#:
+#: The dialog opens on "Best video up to 1080p (MP4)", whose selector filters on `height` and
+#: `ext`. The local server serves a bare `video/mp4` with no declared height, so yt-dlp's generic
+#: extractor produces a format that selector legitimately cannot match — "Requested format is not
+#: available" is the *correct* answer to it. Choosing a preset is a thing the dialog exists for
+#: (`REQ-006`), so the test does what a user would: it picks one whose selector fits.
+#:
+#: Recorded rather than worked around silently, because the alternative reading — that a
+#: preset is broken — is wrong, and a future reader hitting this deserves the real reason.
+END_TO_END_PRESET = "Best video available"
+
+
+def queue_one(
+    composition: application.Composition, url: str, preset: str = END_TO_END_PRESET
+) -> str:
+    """Put one URL in the queue through the dialog the user would use, and return its job id.
+
+    Through the assembled application rather than by writing a row: `REQ-012`'s promise is that
+    what a user submits is persisted before anything acts on it, and a test that inserted the row
+    itself would be proving the download rather than the queueing.
+    """
+    dialog = composition.window.open_add_dialog()
+    dialog._urls.setPlainText(url)
+    names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
+    assert preset in names, f"no preset named {preset!r}; the dialog offers {names}"
+    dialog._preset_choice.setCurrentIndex(names.index(preset))
+    dialog.add_to_queue()
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline and not dialog.queued_job_ids:
+        composition.app.processEvents()
+        time.sleep(0.005)
+    assert dialog.queued_job_ids, f"the paste never persisted: {dialog.status_text()}"
+    job_id = dialog.queued_job_ids[0]
+    dialog.close()
+    return job_id
+
+
+# --- 1. a download that completes (`REQ-012`, `REQ-014`) --------------------------------------
+
+
+def test_a_url_becomes_a_file_with_the_bytes_it_reported(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    media_url: Callable[..., str],
+    record_property: Callable[[str, object], None],
+) -> None:
+    """Phase 1's first exit criterion, end to end through the assembled application.
+
+    Real yt-dlp, a real spawned worker, a real HTTP download, a real file. The assertion that
+    matters is the one joining them: **the file on disk is the size the last progress message
+    said it would be.** A mismatch there is a download that reported one thing and produced
+    another, which is the failure this criterion exists to catch and which no component test can
+    see — the worker knows the bytes, the manager knows the messages, and only the assembled
+    thing knows whether they agree.
+    """
+    composition = application.compose(
+        qapp,
+        database=tmp_path / "queue.db",
+        output_directory=tmp_path / "downloads",
+        geometry_file=tmp_path / "window.toml",
+    )
+    seen: list[Progress] = []
+    composition.manager.progress.connect(seen.append)
+
+    try:
+        job_id = queue_one(composition, media_url(total_bytes=CLIP_BYTES, chunk_delay=0.0))
+        composition.manager.start(job_id)
+
+        view = composition.window.progress_view
+        assert spin(
+            lambda: (
+                composition.window.progress_view is not None
+                and composition.window.progress_view.status is JobStatus.COMPLETED
+            ),
+            timeout=120,
+        ), "the download never completed"
+        view = composition.window.progress_view
+        assert view is not None
+
+        job = composition.store.get(job_id)
+        assert job is not None
+        assert job.status is JobStatus.COMPLETED
+        assert job.output_path is not None, "a completed job with no file is not a completion"
+
+        output = Path(job.output_path)
+        assert output.exists(), f"the queue claims {output} exists and it does not"
+        record_property("downloaded_bytes", output.stat().st_size)
+
+        reported = [message.total_bytes for message in seen if message.total_bytes]
+        assert reported, "no progress message ever reported a total"
+        assert output.stat().st_size == reported[-1], (
+            f"the file is {output.stat().st_size} bytes and the last progress message said "
+            f"{reported[-1]}; a download that reports one number and writes another is exactly "
+            "what this criterion is for"
+        )
+        assert output.stat().st_size == CLIP_BYTES, "the server served a different clip"
+        assert job.bytes_total == output.stat().st_size, (
+            f"the queue recorded {job.bytes_total} bytes for a {output.stat().st_size}-byte file. "
+            "The criterion names the final progress message, but a stored total nobody checks is "
+            "a wrong number the user reads later — a mutation halving it survived until this line"
+        )
+
+        # Monotonic, because a bar that goes backwards is a bar nobody can read.
+        counted = [message.downloaded_bytes for message in seen if message.downloaded_bytes]
+        assert counted == sorted(counted), f"progress went backwards: {counted}"
+
+        stages = {message.stage for message in seen}
+        assert Stage.DOWNLOADING_VIDEO in stages, (
+            f"the download never reported the stage it spent its time in: {stages}"
+        )
+
+        # **The UI and the repository agree.** Disagreement is the defect; either alone is only
+        # half the claim (`T-036` found three tests that watched one and asserted on the other).
+        assert view.status is JobStatus.COMPLETED
+        assert view.job_id == job_id
+        assert not view.can_cancel
+    finally:
+        composition.shutdown.begin()
+        assert spin(lambda: composition.shutdown.finished, timeout=60)
+
+
+# --- 2. surviving a kill (`NFR-003`, `ai/TESTING.md` §7 crash recovery) ------------------------
+
+
+#: Runs the real application against a given database and URL, starts the download, and waits.
+#:
+#: A separate interpreter because the test kills it: `SIGKILL` to the test process would take
+#: pytest with it, and recovery driven by a clean exit proves the graceful path this task is
+#: explicitly not about.
+DOWNLOAD_AND_WAIT = """
+import sys
+from PySide6.QtWidgets import QApplication
+
+from tracks_and_trails import app as application
+
+database, downloads, geometry, url = sys.argv[1:5]
+qapp = QApplication([])
+composition = application.compose(
+    qapp,
+    database=__import__("pathlib").Path(database),
+    output_directory=__import__("pathlib").Path(downloads),
+    geometry_file=__import__("pathlib").Path(geometry),
+)
+dialog = composition.window.open_add_dialog()
+dialog._urls.setPlainText(url)
+names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
+dialog._preset_choice.setCurrentIndex(names.index("Best video available"))
+dialog.add_to_queue()
+while not dialog.queued_job_ids:
+    qapp.processEvents()
+job_id = dialog.queued_job_ids[0]
+dialog.close()
+composition.manager.start(job_id)
+print(job_id, flush=True)
+sys.exit(qapp.exec())
+"""
+
+
+def test_a_job_killed_mid_download_is_recovered_by_the_next_start(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    media_url: Callable[..., str],
+) -> None:
+    """Phase 1's fourth exit criterion, proved by killing a real process (`NFR-003`).
+
+    The application is started for real in another interpreter, downloads until the row says
+    `RUNNING`, and is then `SIGKILL`ed — no handlers, no teardown, nothing flushed. What must
+    survive is not the download but the *record* of it: the next start finds a job claiming to be
+    in flight with nothing flying it, and says so.
+
+    `T-014` proves this at the database level. What is new here is that the application's own
+    startup does it — `compose()` recovers before anything can read the queue — and that the
+    request the user submitted comes back unchanged.
+    """
+    database = tmp_path / "queue.db"
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    url = media_url(total_bytes=CLIP_BYTES, chunk_delay=0.05)
+
+    environment = dict(os.environ, PYTHONPATH=str(REPO_ROOT / "src"), QT_QPA_PLATFORM="offscreen")
+    process = subprocess.Popen(
+        [
+            sys.executable,
+            "-c",
+            DOWNLOAD_AND_WAIT,
+            str(database),
+            str(downloads),
+            str(tmp_path / "window.toml"),
+            url,
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        env=environment,
+        **isolate_the_application(),
+    )
+    try:
+        assert process.stdout is not None
+        job_id = process.stdout.readline().strip()
+        assert job_id, "the application never queued anything"
+
+        # Wait for the row to say a worker holds it. Read from a separate connection, because the
+        # application that owns the database is the one about to be killed.
+        def is_running() -> bool:
+            reader = db.connect(database)
+            try:
+                job = JobRepository(reader).get(job_id)
+                return job is not None and job.status is JobStatus.RUNNING
+            finally:
+                reader.close()
+
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline and not is_running():
+            time.sleep(0.05)
+        assert is_running(), "the download never reached running, so there is nothing to kill"
+
+        stored_before = None
+        reader = db.connect(database)
+        try:
+            stored_before = JobRepository(reader).get(job_id)
+        finally:
+            reader.close()
+        assert stored_before is not None
+
+        kill_the_application(process)
+        process.wait(timeout=30)
+    finally:
+        if process.poll() is None:  # pragma: no cover - only on an unexpected path
+            kill_the_application(process)
+            process.wait(timeout=30)
+        if process.stdout is not None:
+            process.stdout.close()
+        if process.stderr is not None:
+            process.stderr.close()
+
+    # Restart: `compose()` recovers before anything can read the queue.
+    composition = application.compose(
+        qapp,
+        database=database,
+        output_directory=downloads,
+        geometry_file=tmp_path / "window2.toml",
+    )
+    try:
+        recovered = composition.store.get(job_id)
+        assert recovered is not None, "the job did not survive the kill at all"
+        assert recovered.status is JobStatus.FAILED, (
+            f"a job left {recovered.status.value} is a job the queue still thinks is running"
+        )
+        assert recovered.error_kind is ErrorKind.INTERRUPTED, (
+            f"recovered as {recovered.error_kind}; an interruption is not a worker crash — "
+            "nobody watched this one end"
+        )
+        assert is_retryable(recovered.error_kind), "a recovered job the user cannot retry is lost"
+
+        # **The request is unchanged**, field for field. `REQ-012` promises that what was
+        # submitted is what is stored, and a recovery that rewrote it would be a different job
+        # wearing the same id.
+        assert recovered.request == stored_before.request
+        assert recovered.url == stored_before.url
+
+        # Visible, and offering the retry its kind allows (`REQ-018`).
+        view = composition.window.watch(job_id)
+        assert view.status is JobStatus.FAILED
+        assert view.can_retry, "a recovered job has to be restartable from the UI"
+        assert recovered.error_message, "recovery that says nothing is recovery nobody can act on"
+    finally:
+        composition.shutdown.begin()
+        assert spin(lambda: composition.shutdown.finished, timeout=60)
+
+
+def test_recovery_is_the_applications_own_and_not_the_tests(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+) -> None:
+    """`compose()` recovers, and does it before anything can read the queue.
+
+    Asserted against a row planted directly in the database, so the claim is about startup rather
+    than about whatever the previous test happened to leave behind. A `RUNNING` row on disk is
+    always a lie — the process that could have made it true is gone — and the application has to
+    treat it as one without being asked.
+    """
+    database = tmp_path / "queue.db"
+    connection = db.connect(database)
+    try:
+        repository = JobRepository(connection)
+        job = Job(
+            id="planted",
+            url="https://planted.invalid/clip",
+            request=DownloadRequest(
+                url="https://planted.invalid/clip",
+                output_directory=str(tmp_path / "downloads"),
+                format_selector="best",
+                output_template="%(title)s.%(ext)s",
+            ),
+            created_at=datetime.now(UTC),
+        )
+        repository.append([job])
+        running = job.with_status(JobStatus.PROBING).with_status(JobStatus.READY)
+        repository.update(running.with_status(JobStatus.RUNNING))
+    finally:
+        connection.close()
+
+    composition = application.compose(
+        qapp,
+        database=database,
+        output_directory=tmp_path / "downloads",
+        geometry_file=tmp_path / "window.toml",
+    )
+    try:
+        recovered = composition.store.get("planted")
+        assert recovered is not None
+        assert recovered.status is JobStatus.FAILED
+        assert recovered.error_kind is ErrorKind.INTERRUPTED
+    finally:
+        composition.shutdown.begin()
+        assert spin(lambda: composition.shutdown.finished, timeout=60)
