@@ -5,8 +5,8 @@
 **Owner:** Claude Code (Documentation Maintainer role).
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-26
-**Last reviewed:** 2026-07-26
+**Last updated:** 2026-07-27
+**Last reviewed:** 2026-07-27
 **Update when:** Agent responsibilities, roles, ownership, validation gates, or repository-wide rules change.
 **Does not contain:** Product requirements, architecture detail, current progress, review history.
 
@@ -30,6 +30,9 @@ Do **not** read the whole repository for a narrow task. Long documents are index
 stable ID (`REQ-###`, `ARC-###`, `T-###`) — retrieve by ID or heading, not front-to-back.
 A broad audit, migration, or release review may justify wider reading; ordinary work does not.
 
+§9 (parallel work) applies only if the maintainer has told you that you are in a wave. Ordinary
+work is serial; skip it.
+
 ## 3. Roles
 
 Capability roles are authoritative; the tool assignment below is the current convention
@@ -37,11 +40,15 @@ and may change without changing the roles.
 
 | Tool | Capability roles |
 |---|---|
-| Claude Code | Planner, Implementer, Documentation Maintainer, Release Manager |
+| Claude Code | Planner, Implementer, Documentation Maintainer, Release Manager, Coordinator / Integrator |
 | Codex | Reviewer |
 
 Review is a **distinct pass by a different agent**. An implementer does not sign off on
 its own change in `ai/REVIEWS.md`.
+
+**Coordinator / Integrator** exists only while a parallel wave is open (§9). Exactly one
+agent or the maintainer holds it, and it does not implement a worker's task while also
+reviewing it.
 
 ## 4. File ownership
 
@@ -49,9 +56,14 @@ its own change in `ai/REVIEWS.md`.
 |---|---|---|
 | Planner | `AGENTS.md`, `ai/REQUIREMENTS.md`, `ai/ARCHITECTURE.md`, `ai/DECISIONS.md`, `ai/IMPLEMENTATION_PLAN.md`, `ai/TASKS.md`, `ai/STATUS.md` | source, tests, `pyproject.toml`, build config |
 | Implementer | `src/**`, `tests/**`, `pyproject.toml`, build config, `ai/TASKS.md`, `ai/STATUS.md`, `ai/TESTING.md` (to add a check the change introduces) | `ai/REQUIREMENTS.md`, `ai/ARCHITECTURE.md`, `ai/DECISIONS.md`, `ai/IMPLEMENTATION_PLAN.md` |
-| Reviewer | `ai/REVIEWS.md`, `ai/TESTING.md`, test files, `ai/TASKS.md` (approved follow-ups only) | reviewed source code, unless asked to fix findings |
+| Reviewer | `ai/REVIEWS.md` (or the assigned `ai/reviews/T-0NN.md`), `ai/TESTING.md`, test files, `ai/TASKS.md` (approved follow-ups only) | reviewed source code, unless asked to fix findings |
 | Release Manager | version sources, `CHANGELOG.md`, release metadata, `ai/STATUS.md` | product scope, during release prep |
 | Documentation Maintainer | `README.md`, `ai/PROMPTS.md`, cross-links, formatting | product or architecture *meaning* |
+| Coordinator / Integrator (wave only) | `ai/TASKS.md`, `ai/STATUS.md`, the `ai/REVIEWS.md` index and integration result, branches/worktrees the maintainer authorized | a reviewer's substantive findings; worker source outside conflict resolution |
+
+**In a parallel wave the assigned exclusive write set overrides this table** (§9). A worker
+writes only its own paths, proposes `ai/TASKS.md` / `ai/STATUS.md` changes instead of applying
+them, and never edits another worker's surfaces or the reviewer's findings.
 
 ## 5. Authority order
 
@@ -106,13 +118,13 @@ non-negotiable invariant. If an instruction appears to require that, say so and 
   through the download manager (`ARC-002`).
 
 **Git**
-- This is an individual/personal project. Normal development stays on the
-  maintainer-designated integration branch, `main`.
+- This is an individual/personal project. The designated integration branch is `main`, and
+  **serial work mode is the default**: one checkout, one writer, commits straight to `main`.
 - Do **not** create or switch branches merely because a task, phase, development cycle,
   agent session, or review starts. Commits and exact base/head SHAs on `main` are sufficient
   review boundaries.
-- A branch requires explicit maintainer instruction and a concrete need: isolated concurrent
-  work, a risky experiment, a long-running release/hotfix/backport, an external contribution,
+- A branch requires explicit maintainer instruction and a concrete need: an open parallel wave
+  (§9), a risky experiment, a long-running release/hotfix/backport, an external contribution,
   or repository protection that prevents direct work on `main`.
 - If a task begins on a non-`main` branch, do not switch, merge, rebase, or delete it without
   explicit instruction; report the branch in the handoff.
@@ -151,7 +163,95 @@ Linux the bodies of Windows-guarded modules are proved unreachable and never ana
 The same asymmetry applies to tests: a test that passes on Linux may encode a Linux assumption
 (temp-path length, `PATHEXT`, `appauthor`), and only the Windows job can tell you.
 
-## 9. Review convergence
+## 9. Parallel work (opt-in)
+
+**Skip this section unless the maintainer has told you that you are in a parallel wave.** It
+describes an option, not an expectation: most work on this project is serial (§7), nothing here
+requires a wave, and no task is worse for having been done one at a time.
+
+A **parallel wave** is several agents implementing different tasks at the same time. Only the
+maintainer opens one, per wave. An agent does not start one, create its branches, split a task
+into workers, or propose a wave in place of doing the task in front of it. Two tasks merely
+*being* independent is not a reason to run them concurrently — a wave adds base selection,
+write-set assignment, serial integration, and combined verification, and that overhead only pays
+off when the tasks are substantial as well as independent.
+
+**A task may join a wave only if all of these hold.** Otherwise sequence it, or land the
+shared piece first as its own task:
+
+1. Its dependencies are already integrated at the wave's common base.
+2. Its acceptance criteria can be checked without another worker's unfinished code.
+3. Its write set does not overlap another active worker's.
+4. The interfaces it depends on already exist — no two workers inventing the same seam.
+5. `pyproject.toml`, migration sequence numbers, generated assets, and other single-owner
+   surfaces are assigned to one worker or deferred to integration.
+6. Its runtime resources are isolated (see below).
+
+**Setup — coordinator.** Pick one stable `main` commit as the common base, assign a wave ID
+`PW-###`, and per task: branch `task/T-0NN-slug`, its own worktree, exclusive write set,
+read-only shared surfaces, runtime allocation, review-record path, integration order. Record
+those as fields on the `ai/TASKS.md` entry. Do **not** record worktree paths there — they are
+machine-specific; the branch and starting commit are the durable identifiers. Start a wave at
+two or three workers, not more.
+
+**One branch, one worktree, one writer.**
+
+```bash
+BASE="$(git rev-parse main)"
+git worktree add -b task/T-042-<slug> ../tracks-and-trails-T-042 "$BASE"
+```
+
+Branches alone are not enough: two agents in one checkout share an index and working tree, and
+switching a branch or editing the same file destroys the other's uncommitted work. That has
+already happened here — a reviewer fell back to `git archive` mid-review because unrelated work
+had entered the shared tree. The primary checkout stays on `main` for coordination.
+
+**Runtime isolation, specific to this repository.**
+
+- `.venv` holds an **editable** install pointing at the primary checkout's `src`, so a second
+  worktree silently tests the *other* agent's code. Override it:
+  `PYTHONPATH=$PWD/src /path/to/primary/.venv/bin/python -m pytest` (and the same for `mypy`),
+  then verify once with
+  `python -c "import tracks_and_trails; print(tracks_and_trails.__file__)"`.
+- `-m process_tree` tests spawn and kill real worker processes. Run them in one worktree at a
+  time; concurrent runs wedge each other.
+- Qt tests need `QT_QPA_PLATFORM=offscreen`. Every worker's tests must use their own temp,
+  database, and config paths — never a shared per-user application directory.
+
+**Write sets are permissions, not predictions.** Needing an unassigned file — a shared module,
+`pyproject.toml`, a migration, a generated asset — is a coordination event. Stop that part of
+the change and report the scope expansion; do not edit it quietly.
+
+**Shared coordination files are frozen for workers.** During a wave the coordinator is the only
+writer of `ai/TASKS.md`, `ai/STATUS.md`, and the wave-level parts of `ai/REVIEWS.md`. Workers
+propose those updates in the end-of-task report (§11).
+
+**Review records are partitioned during a wave.** The assigned reviewer writes
+`ai/reviews/T-0NN.md` directly, on the task branch, and `ai/REVIEWS.md` links to it as the
+index rather than duplicating findings. Serial work continues to use the monolithic
+`ai/REVIEWS.md`. Everything in §10 — severities, blocking rules, verdicts, the pass budget —
+applies unchanged in either mode.
+
+**Approval freezes one exact head.** Approval reads `Approved at <sha>` and covers that
+implementation head only. A later commit may advance the branch if its diff is review-only
+(the review record, review metadata). Any change to source, tests, build files, dependencies,
+generated artifacts, or evidence creates a new implementation head and needs focused re-review
+of the changed part before integration.
+
+**Integration is serial.** The coordinator merges approved branches one at a time in dependency
+order, resolves conflicts centrally, and runs the relevant checks after each step. A conflict
+resolution that changes behavior is new implementation: keep it as a distinct diff and have it
+reviewed, rather than burying it in a merge. Workers never merge or rebase a moving `main` into
+themselves — that silently moves the review boundary.
+
+**Verify the combined tree, not just the branches.** After the wave, run what `ai/TESTING.md`
+§3 requires for the *union* of the layers touched. Branch-local green does not prove the merged
+result works.
+
+**Clean up last.** Remove worktrees and delete branches only after the integrated commit and
+its evidence are secure, and never for a branch holding unique unintegrated work.
+
+## 10. Review convergence
 
 The review budget is **one initial comprehensive review plus one focused correction
 re-review**. This cap applies when the remaining findings are **Medium or lower**. It does not
@@ -236,7 +336,7 @@ Only the Reviewer marks a finding **Resolved** after independent verification. T
 records it as corrected and awaiting re-review. An Open non-blocking finding gets a `TASKS.md`
 owner/target and does not keep the original task in `In Review`.
 
-## 10. End-of-task report
+## 11. End-of-task report
 
 Every task ends with:
 
@@ -250,7 +350,14 @@ Every task ends with:
    clearly bounded uncommitted diff)
 8. Which coordination files were updated
 
-## 11. Where things go
+A worker in a parallel wave (§9) adds, and reports rather than applies:
+
+9. Its wave ID, branch, and exact base/head
+10. Runtime resources it used, and any still needing isolation
+11. Write-set expansions it needed — granted or requested
+12. **Proposed** `ai/TASKS.md` / `ai/STATUS.md` updates, for the coordinator to apply
+
+## 12. Where things go
 
 | Fact | Canonical home |
 |---|---|
@@ -260,7 +367,7 @@ Every task ends with:
 | Phase order and exit criteria | `ai/IMPLEMENTATION_PLAN.md` |
 | Concrete actionable work | `ai/TASKS.md` |
 | Where the project stands now | `ai/STATUS.md` |
-| Review findings and evidence | `ai/REVIEWS.md` |
+| Review findings and evidence | `ai/REVIEWS.md`; in a parallel wave, `ai/reviews/T-0NN.md` with `ai/REVIEWS.md` as the index |
 | Test policy and commands | `ai/TESTING.md` |
 
 Do not copy a fact into a second authoritative-looking place. Link to the canonical home.
@@ -268,7 +375,7 @@ Do not copy a fact into a second authoritative-looking place. Link to the canoni
 Create a `ai/DECISIONS.md` entry only for durable choices and real trade-offs — not as a
 completion note for routine work. Routine fixes belong in `ai/TASKS.md` and `CHANGELOG.md`.
 
-## 12. Commit messages
+## 13. Commit messages
 
 A commit message is read twice: once as a one-line subject while scanning history, and once in
 full while investigating something that broke. The two readings want different things, and the

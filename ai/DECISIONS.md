@@ -106,6 +106,75 @@ exclusions in `REQUIREMENTS.md` §8 are the authoritative security statements.
 
 ---
 
+## DOC-003 — Parallel work is available, opt-in, and maintainer-opened
+
+**Status:** Accepted
+**Date:** 2026-07-27
+**Supersedes:** None (extends `DOC-001`)
+
+### Context
+
+`DOC-001` adopted the documentation convention at revision **2026-07-18.1**, which assumed one
+agent working serially on `main`. Two agents have since run on this project at the same time,
+and the shared checkout is where that goes wrong: an uncommitted change in the working tree
+belongs to whichever agent last touched it, and a reviewer already had to fall back to
+`git archive` mid-review because unrelated work entered the tree under it. Convention revision
+**2026-07-27.2** adds a repository-collaboration mode with rules for exactly this.
+
+### Decision
+
+Adopt revision 2026-07-27.2's **repository-collaboration-mode, parallel-work, and
+review-partitioning rules**, recorded in `AGENTS.md` §9 with §3, §4, §7, §11 and §12 updated to
+match. Serial work on `main` remains the default. A parallel wave is opened by the maintainer
+per wave; an agent never starts one, creates its branches, or splits a task into workers on its
+own. During a wave: one branch and one worktree per task, one writer each, an exclusive write
+set, coordinator-only writes to `ai/TASKS.md` and `ai/STATUS.md`, reviewer-written
+`ai/reviews/T-0NN.md` records, approval frozen to one implementation head, and serial
+integration followed by verification of the combined tree.
+
+Only those deltas were applied deliberately. The rest of the gap between 2026-07-18.1 and
+2026-07-27.2 was not audited, so `DOC-001`'s recorded revision stands except where this entry
+supersedes it.
+
+### Rationale
+
+Waiting out a serial queue is the cost this is meant to remove, but the failure mode is not
+"slower" — it is losing another agent's uncommitted work, or approving a head that has since
+moved. Worktrees, exclusive write sets, and head-frozen approval are the three rules that make
+concurrency safe here; the rest is coordination overhead that only pays off when tasks are
+genuinely independent, which is why the qualification test is explicit and the wave is opt-in.
+
+The editable `.venv` install is a project-specific trap worth naming: a second worktree runs the
+*primary* checkout's `src` unless `PYTHONPATH` overrides it, so a worker can otherwise test the
+other agent's code and believe its own passed.
+
+### Alternatives considered
+
+- **Stay serial only** — rejected as the standing rule, but it remains the default. Serial work
+  needs no coordination and produces the same reviewable base/head pairs.
+- **Branches without separate worktrees** — rejected. This is the exact configuration that has
+  already destroyed work here; one checkout cannot hold two writers.
+- **Keep the monolithic `ai/REVIEWS.md` during waves** — rejected. Parallel reviewers appending
+  to one file on separate branches conflict on every merge.
+- **Let an agent open a wave when it judges the work parallelizable** — rejected. The
+  qualification test needs knowledge of what else is in flight, and the cost of a wrong call is
+  paid in lost work.
+
+### Consequences
+
+- `ai/reviews/` is created on first use, not now.
+- A wave adds coordinator overhead: qualification, base selection, write-set assignment,
+  serial integration, combined verification, and cleanup.
+- `-m process_tree` tests stay single-slot across worktrees; they cannot be parallelized.
+- Approval semantics tighten in wave mode: a post-approval commit that touches anything but the
+  review record needs focused re-review before integration.
+
+### Affected files
+
+`AGENTS.md`, `ai/REVIEWS.md`, `ai/PROMPTS.md`.
+
+---
+
 ## ARC-001 — Python + PySide6 (Qt 6) as the implementation stack
 
 **Status:** Accepted

@@ -5,7 +5,7 @@
 **Owner:** Documentation Maintainer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-25
+**Last updated:** 2026-07-27
 **Update when:** A repeated workflow needs a template, or completion-reporting requirements change.
 
 > These prompts are convenience templates only. `AGENTS.md` and the authoritative project
@@ -37,7 +37,7 @@ per ai/TESTING.md §3.
 
 Do not commit or push. Do not add AI attribution anywhere.
 
-Finish with the AGENTS.md §9 report, including the actual results of every check you ran and
+Finish with the AGENTS.md §11 report, including the actual results of every check you ran and
 the review base/head for the reviewer.
 ```
 
@@ -69,6 +69,8 @@ Do not modify source unless explicitly asked to fix findings.
 Report: verdict, findings ordered by severity with file:line, why each matters, recommended
 correction, checks run and their real results, unresolved risks, and a merge readiness call.
 Record the review in ai/REVIEWS.md and create TASKS.md entries for Open findings only.
+In a parallel wave, write ai/reviews/T-###.md on the task branch instead, name the exact
+implementation head you approved, and leave the index and task routing to the coordinator.
 ```
 
 ## Planning task
@@ -94,6 +96,52 @@ Record a DECISIONS.md entry only for a durable choice or a real trade-off — no
 completion note.
 
 Report conflicts between documents rather than silently resolving them.
+```
+
+## Opening a parallel wave (coordinator)
+
+```text
+Act as the Coordinator / Integrator for Tracks & Trails. Read AGENTS.md §9 first.
+
+Candidate tasks: T-###, T-###
+Integration branch: main
+
+For each candidate, check the six qualification conditions in AGENTS.md §9 and say which
+fail. Do not open the wave for a task that fails one — sequence it instead, or propose the
+shared piece as its own task first.
+
+Then propose, and wait for my approval before creating anything:
+- wave ID PW-###, and the exact main commit used as the common base
+- per task: branch name, exclusive write set, read-only shared surfaces, runtime allocation
+  (PYTHONPATH/venv, process_tree slot, temp and DB paths), required checks, reviewer,
+  review-record path, integration order
+
+Do not implement any worker's task yourself. Do not create branches or worktrees, or write
+ai/TASKS.md and ai/STATUS.md, until I authorize the wave.
+```
+
+## Parallel worker
+
+```text
+Act as the Implementer for Tracks & Trails, as a worker in a parallel wave.
+Read AGENTS.md §9, then the T-### entry in ai/TASKS.md.
+
+Task: T-###          Wave: PW-###
+Branch: task/T-###-<slug>, already created from main@<sha> — stay on it
+Worktree: <path> — work only here; the shared checkout belongs to another agent
+Exclusive write set: <paths>
+Read-only shared surfaces: <paths>
+Runtime: run tests as
+  PYTHONPATH=$PWD/src <primary-checkout>/.venv/bin/python -m pytest <args>
+  and verify once that tracks_and_trails resolves inside this worktree
+
+Do not switch, merge, rebase, or delete branches. Do not edit another worker's paths,
+ai/TASKS.md, ai/STATUS.md, or any review record. If the task turns out to need a file outside
+your write set, stop that part and report the scope expansion instead of editing it.
+
+Finish with the AGENTS.md §11 report including the worker items (9–12): wave, branch, exact
+base/head, runtime resources used, write-set expansions needed, and proposed — not applied —
+TASKS.md/STATUS.md updates.
 ```
 
 ## Debugging a download failure
