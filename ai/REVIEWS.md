@@ -5352,3 +5352,78 @@ at all.
 that is now blocked on more than a job: GitHub Actions usage is exhausted as of 2026-07-28 and CI
 cannot run for several days (maintainer). `T-040` stays Blocked, `ai/TESTING.md` §12 keeps its
 gap, and `T-026`'s acceptance criterion stays unmet. `T-056` is untouched.
+
+## 2026-07-28 — T-060 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `11e1203`  **Head:** `12dff92`
+**Focused scope:** `T060-R1`, `T060-R2`, their sibling dialog traversal assertion, COORD-R4, and
+the correction commit itself
+**Boundary classification:** Test code and documentation/coordination only; no production source
+**Verdict:** Both blocking findings **Resolved**; T-060 **Blocked on external Windows mutation
+evidence**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Verification | Status |
+|---|---|---:|---|---|
+| `T060-R1` | **Medium** | **Yes** | The hand-authored matrix now includes the in-flight-probe state with `cancelProbeButton` reachable and Probe/Add unavailable. `_ProbeThatNeverAnswers` lets the dialog's real save callback and state transition run without spawning a worker, and the fixture independently asserts `probing_job_id` before testing focus. The three-state forward and reverse walks pass. An independent mutation that disabled Cancel after `_refresh_actions` failed the checked-in assertion. | **Resolved by `12dff92`** |
+| `T060-R2` | **Medium** | **Yes** | The progress-view walk is no longer a set: focus is explicitly anchored, Tab and Backtab each run two laps, and their sequences are asserted. The sibling dialog wrap test now compares ordered two-lap sequences in both directions too. An independent mutation making Backtab walk forward failed the dialog assertion. The requested two-control view reversal cannot be observed: with only A and B reachable, either orientation maps A to B and B to A under both keys. Accepting that measured limit is more accurate than claiming a mutation can distinguish it; T-040's observable reorder criterion remains owned by the nine-to-twelve-control dialog. | **Resolved by `12dff92`** |
+| `COORD-R4` | **Low** | **No** | TASKS' summary and STATUS now record T-061 approved, T-063 approved with T-064, T-060 in correction review, T-040/T-056 blocked, and normal green run `30388380440`. However, the individual T-061 and T-063 entries remain marked In Review and remain under that section. The operative summary is accurate for the correction head, so readiness is no longer misstated, but the canonical task entries still need filing under Complete; filing this verdict must also move T-060 from In Review to Blocked on Windows evidence. | **Partially resolved; completion filing remains** |
+| `GIT-R1` | **Low** | **No** | Published commit `12dff92` contains `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`, directly contrary to `AGENTS.md` §7/§13, and omits the required `Task: T-060` trailer. Correcting it would require rewriting published `main`, which is separately forbidden without confirmation. This does not affect the reviewed tree or reopen T060-R1/R2. | **Open; T-065 filed Blocked on maintainer decision** |
+
+### Focused judgments
+
+- The in-flight state is reached through the dialog's behavior rather than manufactured by
+  toggling button properties. The manager subclass changes only the external session boundary:
+  `start()` accepts and records the probe, while the dialog owns `started`,
+  `probing_job_id`, and `_refresh_actions`.
+- No worker or process-lifetime obligation is introduced. The direct pre-flight closed the
+  window cleanly after all cases.
+- The two-cycle explanation is correct. A keyboard transition over exactly two reachable controls
+  has one possible next control from either anchor; reversing the declared orientation produces
+  the same observations for Tab and Backtab. The progress test still asserts the strongest
+  observable sequence and will begin distinguishing orientation if a third control becomes
+  reachable.
+- T-060's original Windows acceptance remains deliberately unmet. The normal tests passed under
+  the real plugin at `11e1203`, but the reordered-widget and undeclared-control mutations have not
+  run there. T-040 and TESTING §12 therefore remain Blocked/ungated rather than being closed from
+  offscreen evidence.
+- T-056 is outside this correction and remains blocked on its separate Windows branch evidence.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Checked-in focused functions loaded with only the platform skip disabled | **8/8 parameter cases passed offscreen** |
+| Independent T060-R1 weakening | Disabling `cancelProbeButton` in the in-flight state **failed** |
+| Independent T060-R2 weakening | Making Backtab always walk forward **failed** on the dialog |
+| Two-control transition model | Confirmed forward and backward both map A→B and B→A |
+| Full default suite | **1398 passed, 11 skipped, 2 deselected in 85.96 s** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | **91 files already formatted** |
+| `python -m mypy src` | Passed: **35 source files** |
+| Configured `python -m mypy` | Passed: **76 source files** |
+| Configured `python -m mypy --platform win32` | Passed: **76 source files** |
+| `git diff --check 11e1203..12dff92` | Passed |
+| Git boundary | HEAD and `origin/main` both `12dff92`; one commit authored by Sean Kottman |
+
+Workflow run `30392139504` is at exact head `12dff92` and failed before executing any project
+step. All five jobs have empty step lists. The Windows desktop annotation says the job was not
+started because account payments failed or the spending limit must be increased. This confirms
+the external billing/quota blocker and supplies no code or mutation evidence.
+
+### Final disposition
+
+`T060-R1` and `T060-R2` are **Resolved at `12dff92`**. No open correction finding remains.
+
+T-060 itself is **Blocked**, not Approved, because its pre-existing acceptance criterion still
+requires the two mutation classes to be executed and recorded under the real Windows plugin.
+Once Actions can run, execute the observable reorder mutation on the dialog and the
+undeclared-control mutation on both surfaces; execute and record the progress-view reorder as the
+documented two-cycle survivor. Then the resulting evidence-only filing can close T-060 and
+T-040 without another broad review.
+
+COORD-R4 still needs the already-approved T-061 and T-063 entries moved to Complete and T-060
+moved to Blocked when this verdict is filed. GIT-R1 is a non-blocking published-history issue
+owned by T-065; no history was rewritten during this review.

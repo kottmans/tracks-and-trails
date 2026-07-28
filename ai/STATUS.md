@@ -117,13 +117,15 @@ sentence carrying a status is a second place for that status to live, which is t
 `COORD-R2` and the mandatory-area count each landed on — the operative list below is the one
 that is meant to hold it.)*
 
-**What remains is evidence, and it is scheduled rather than merely outstanding.** `T-061` is
-approved at `11e1203` and `T-063` is approved with `T-064` carried; `T-060` is in its
-`T060-R1`/`T060-R2` correction round. `T-040` and `T-056` still need the `windows desktop` job —
+**What remains is evidence, and it is scheduled rather than merely outstanding.** `T-061` and
+`T-063` are **Complete** at `11e1203` (`T-063` carrying `T-064`), and `T-060`'s two findings were
+**Resolved** at `12dff92` with no further correction requested — it is **Blocked**, not in review,
+because all that is left of it is a Windows run. `T-040` and `T-056` still need the `windows desktop` job —
 `T-040` for the two `T-026` mutations, which a green normal run does not supply, and `T-056` for a
 branch that has never executed. **GitHub Actions usage is exhausted as of 2026-07-28 and CI cannot
-run for several days** (maintainer), so the *verified on Linux and Windows* criterion cannot move
-until it resets. Then the exit review.
+run for several days** (maintainer) — workflow `30392139504` failed before executing a single
+step, on GitHub's billing annotation — so the *verified on Linux and Windows* criterion cannot
+move until it resets or another Windows runner appears. Then the exit review.
 
 **The lesson is about method, not ffmpeg.** `T-037` was written, reviewed and approved on a machine
 that had what the runners did not, and had never passed on either. Four CI failures in one batch

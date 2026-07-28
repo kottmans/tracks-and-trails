@@ -32,9 +32,10 @@ graph (approved at `306840b`) and `T-037` proved a download completes and surviv
 - **`T-063`** — **Approved with follow-up at `11e1203`.** `T063-R1` is carried to `T-064`:
   39 dependency-owned launchers under `.venv/bin/` still name the parent checkout's interpreter,
   so the documented bare `mypy` and `pytest` commands fail. Module invocations work.
-- **`T-060`** — **In Review, correction round.** `T060-R1` and `T060-R2` are corrected and await
-  re-review. Its earlier claim that "the order Windows delivers is not the order Qt builds" was
-  **wrong**: Tab skips disabled and hidden controls, and that reproduces offscreen.
+- **`T-060`** — **Blocked.** `T060-R1` and `T060-R2` are **Resolved** at `12dff92`, with no
+  further correction requested; only the Windows mutation evidence remains. Its earlier claim that
+  "the order Windows delivers is not the order Qt builds" was **wrong**: Tab skips disabled and
+  hidden controls, and that reproduces offscreen.
 
 `T-040` and `T-056` remain Blocked on Windows evidence. `T-060`'s normal tests have now passed
 under the real `windows` plugin, but **the two mutations `T-026` requires have never been run
@@ -43,6 +44,8 @@ there**, and a green normal job is not evidence for a mutation nobody committed.
 integration suite.
 
 **CI is unavailable until GitHub Actions usage resets** (maintainer, 2026-07-28: several days).
+Workflow `30392139504` confirms it from the other side: it failed before executing a single step,
+on GitHub's billing/spending-limit annotation.
 Every remaining piece of Windows evidence is therefore *scheduled* rather than merely outstanding,
 and nothing that needs a runner can be closed in the meantime.
 
@@ -53,9 +56,10 @@ reached `_load` — is in `T-059`'s scope.
 
 **Approved on 2026-07-28:** `T-016` (fourth correction batch), `T-017`, `T-036`, `T-037`, `T-052`,
 `T-054`, `T-057`, `T-058`, `T-059`, `T-061`. **Approved with follow-ups:** `T-062`, and `T-063`
-(carrying `T-064`). **In Review:** `T-060`, on its `T060-R1`/`T060-R2` correction round.
-**Blocked:** `T-040` and `T-056`, both on Windows evidence, plus `T-033` (Phase 5 evidence) and
-`T-039` (Phase 5 installer). **Ready:** `T-064`.
+(carrying `T-064`). **In Review:** nothing.
+**Blocked:** `T-060`, `T-040` and `T-056`, all three on Windows evidence no runner can currently
+produce, plus `T-033` (Phase 5 evidence), `T-039` (Phase 5 installer) and `T-065`
+(published-history decision). **Ready:** `T-064`.
 
 **Every Phase 1 deliverable filed *before* 2026-07-28's CI run is approved** — and that is a
 narrower claim than the one this block used to make. Running the tests where they had never run
@@ -76,377 +80,11 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
+*(Empty as of 2026-07-28. `T-061` and `T-063` are approved and Complete; `T-060` moved to
+Blocked when its findings were resolved and only Windows evidence remained. `COORD-R2` is why
+this says so rather than sitting blank: an empty section is a claim about readiness, and the
+last time it was left unlabelled it outlived being true by one CI run.)*
 
-*(This read "Empty as of 2026-07-28" for the few hours between T-017's closure and the CI run that
-produced `T-062`. `COORD-R2` caught it: an empty In Review section is a claim about readiness, and
-it outlived being true by one CI run.)*
-
-### T-061 — The ffmpeg gate reads the selector, not the format that was chosen
-
-**Status:** **In Review — implemented 2026-07-28.** The gate asks yt-dlp what it resolved rather
-than what was asked for, with the conservative reading kept exactly where nothing was resolved.
-Three mutations, three killed. See **Evidence**.
-**Owner:** Implementer
-**Priority:** Medium — a user without ffmpeg is refused downloads that need none, on four of the
-five built-in presets
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `REQ-024`, `OPS-001`; `downloader/worker.py::_ffmpeg_gap`; `T012-R5`;
-`T-057`, which is the same defect shape one module over
-**Affected surfaces:** `src/tracks_and_trails/downloader/worker.py`,
-`tests/integration/test_worker.py`
-**Risk:** Medium — it decides whether a download happens at all
-
-#### Scope
-
-```python
-needs_merge = "+" in request.format_selector
-```
-
-**A string, where a structured fact was already in scope.** `_ffmpeg_gap` receives the probed
-`info` and asks the *selector* instead. `bestvideo+bestaudio/best` against a source offering one
-progressive format resolves to the `/best` branch — no merge, no ffmpeg — and the gate refuses it
-anyway.
-
-Measured on 2026-07-28 against a local `video/mp4`: with ffmpeg absent, the job failed
-`FFMPEG_MISSING` before downloading, saying *"ffmpeg is required for this download"* of a file
-that needed none. Four of the five built-in presets carry a `+`; the fifth is `Audio only
-(original)`. So a user with no ffmpeg has one usable preset, and the one they would reach for
-first tells them a download is impossible when it is not.
-
-**The gate being conservative is correct and is not the problem.** Refusing *before* spending
-bandwidth is `REQ-024`'s whole point (`T012-R5` widened it to every post-processor for the same
-reason). What is wrong is the input: the answer is in `info`, and yt-dlp records a merge by
-populating `requested_formats` with more than one entry.
-
-**This is `T-057` again, one module over.** There the adapter matched a truthy string where
-yt-dlp keeps a three-state field; here the worker matches a `+` where yt-dlp keeps the resolved
-format list. Both read a *rendering* of a decision instead of the decision.
-
-#### Acceptance criteria
-
-- The gate decides from the resolved format — a merge is what yt-dlp says it is, not what a
-  selector string looks like
-- A progressive single-format download succeeds with ffmpeg absent, driven end to end rather
-  than asserted at the function
-- A genuine merge still fails **before** downloading, with the same message and kind; the
-  conservative direction is preserved where it is correct
-- Post-processors that need ffmpeg (`requires_ffmpeg`) still gate independently of the merge
-  question — `T012-R5` widened that deliberately and it is not narrowed here
-- A mutation restoring `"+" in request.format_selector` fails at least one test
-
-#### Out of scope
-
-- Installing ffmpeg, prompting for it, or bundling it — `OPS-001` settles that
-- The `FFMPEG_MISSING` taxonomy entry and its retry policy
-
-#### Evidence, 2026-07-28
-
-**The fact was already in scope.** `requested_formats` is yt-dlp's own record of the decision — a
-list of the formats it will merge, absent when one format satisfied the selection — and it is
-populated by the same probe this gate already runs. Verified against a local `video/mp4`:
-`bestvideo+bestaudio/best` resolves with `requested_formats=None, format_id='mp4'`, while
-`bestvideo+bestaudio` with no fallback makes yt-dlp itself refuse.
-
-**`_will_merge` returns three answers, not two.** `True` and `False` when yt-dlp resolved the
-selection, and **`None` when it did not** — a playlist, or an extraction that stopped early.
-The caller falls back to the selector there. That asymmetry is deliberate and is the whole safety
-argument: a wrong *refusal* costs a message, a wrong *proceed* spends the download and then fails
-at merge time, which is what `REQ-024` exists to prevent.
-
-**One existing test was passing for the wrong reason.**
-`test_a_merge_without_ffmpeg_fails_before_downloading` returned `{"formats": []}`, which resolves
-to nothing — so it exercised the *fallback* rather than the merge path and would have passed with
-the merge detection removed entirely. It now returns `requested_formats` with two entries, which
-is the fact it always meant to state.
-
-**Three tests, one per branch of the answer:** a merging selector that resolved to one format is
-not blocked (the defect); a real merge still fails before downloading, same kind and message; an
-unresolved extraction still falls back to the selector. Plus the end-to-end criterion — a
-progressive download completing with ffmpeg made unavailable through `compose()`, so the test does
-not depend on what the machine running it happens to have installed.
-
-**Mutations run, all killed:** the gate reading the selector string again — the defect itself · a
-real merge no longer detected · the blind case guessing "no merge".
-
-**Checks:** `ruff check .`, `ruff format --check .`, `mypy src`, configured `mypy` and
-`mypy --platform win32` all pass. `tests/integration/test_worker.py`: **54 passed**;
-`test_end_to_end.py`: **4 passed**.
-
----
-
-### T-060 — Focus chains are per state, and the Windows mutations still owe evidence
-
-**Status:** **In Review — corrections for `T060-R1` and `T060-R2` implemented 2026-07-28**, on top
-of the implementation reviewed at `11e1203`. Chains are asserted per state, and the cause of all
-four CI failures turned out to be one thing. **The Windows-divergence claim in this task and in
-`T-040` was wrong** and is corrected below. Pre-flighted offscreen, where the walk is identical;
-the Windows job is still what proves it — **and it cannot run until GitHub Actions usage resets**
-(maintainer, 2026-07-28: several days).
-**Owner:** Implementer
-**Priority:** Medium — it is the difference between a Windows focus gate and a Windows focus
-*claim*, and `T-026`'s acceptance criterion cannot be marked met until it is settled
-**Phase:** Phase 1
-**Depends on:** nothing to write. **Its evidence depends on the `windows desktop` CI job**, which
-is also what `T-040` and `T-056` are blocked on
-**Relevant context:** `T040-R1`; `T-040`; `T026-R3`; `NFR-005`; `ai/TESTING.md` §12 and §13
-**Affected surfaces:** `tests/ui/test_windows_desktop.py`, `ai/TESTING.md` §12
-**Risk:** Low to write, Medium to leave — a focus test that cannot reach a control it asserts on
-is a red build for a wrong reason, and a green one would be worse
-
-#### Scope
-
-**CI run `30380426474` failed four of `T-040`'s tests, not one.** The progress-view test is the
-one `T040-R1` predicted; the other three are the *dialog's*, and they are new information:
-
-| Failing on the real Windows plugin | |
-|---|---|
-| `test_tab_visits_the_declared_order_on_a_real_desktop` | dialog |
-| `test_the_focus_chain_wraps_in_both_directions` | dialog |
-| `test_every_control_is_reachable_from_the_initial_focus` | dialog |
-| `test_the_progress_view_focus_chain_is_walked_on_a_real_desktop` | `T040-R1` |
-
-**That reading was wrong, and correcting it is the most useful thing in this task.** This entry
-said the failures showed "the order Windows delivers is not the order Qt builds offscreen".
-They showed nothing of the kind. All four have one cause, and it reproduces offscreen:
-
-**Tab skips a control that is disabled or hidden, and every state of these widgets disables
-some.** The dialog disables `probeButton`, `cancelProbeButton` and `addButton` until there is a
-URL to act on — which is exactly the three CI reported unreachable — and the progress view
-disables `Cancel` on a terminal job and hides `Retry` on a running one. Walking Tab through the
-dialog offscreen with no URL typed produces the **identical** sequence `windows-latest` reported,
-ending `selectorValue → closeButton → urlInput`.
-
-So `EXPECTED_DIALOG_ORDER` was never the problem: the *order* is right, and what was missing was
-that a chain is the declared order **filtered by what the current state offers**. The offscreen
-suite had never pressed Tab, so nothing had observed this anywhere — not a platform difference,
-an untested behaviour.
-
-`T-040`'s progress-view test expects **three** reachable controls in one chain. That state does
-not exist. Measured on 2026-07-28:
-
-| The job is | Tab can reach | Why not the others |
-|---|---|---|
-| `FAILED`, retryable | `errorMessage`, `retryJobButton` | `cancelJobButton` is **disabled** — a terminal job cannot be cancelled (`T-017`) |
-| `RUNNING` | `cancelJobButton` | `errorMessage` and `retryJobButton` are **hidden** — nothing has failed |
-
-An isolated probe visited `retryJobButton → errorMessage → retryJobButton` and could never reach
-`cancelJobButton`.
-
-**The structural half of that test agreed with itself, which is how it got written.**
-`_focusable()` filters on `focusPolicy() != NoFocus`, and a *disabled* widget keeps its focus
-policy — so the set matched while the walk could not. Comparing a declared list against a
-computed list is the shape `T016-R4` and `T040-R1` have now each caught once; the walk is the
-only part that knows what a keyboard can do.
-
-So the chains have to be asserted **per state**, each with the set that state actually offers.
-
-#### Acceptance criteria
-
-- The failed state and the running state are asserted separately, each against the controls that
-  state makes reachable — a disabled or hidden control is not in the expectation for that state
-- Reachability is decided by driving Tab and Backtab and asking Qt what has focus, never by
-  comparing two lists this repository computes
-- A control that becomes reachable in a state without being declared for it fails
-- The `T-040` mutations that could not be run — reversing two widgets, and adding a focusable
-  control without placing it — are executed on Windows and **recorded**, for the dialog chain as
-  well as the view's
-- `ai/TESTING.md` §12 drops the "widget tab order is ungated" gap and `T-026`'s acceptance
-  criterion is marked met **only when all of the above has run on Windows**
-
-#### Out of scope
-
-- Nothing in the dialog's chain is out of scope any more: CI failed three of its tests too, and
-  the same per-state and real-focus reasoning applies to whatever it turns out to want
-- Making the progress view offer more controls than a state should; the disabled Cancel and the
-  hidden Retry are `T-017`'s behaviour and are correct
-
-#### Evidence, 2026-07-28
-
-**One cause, four failures.** See the correction above: Tab skips disabled and hidden controls,
-and both widgets disable some in every state. Not a platform difference.
-
-**Chains are now asserted per state.** The declared order is transcribed once; **availability is
-transcribed per state**, by hand, from what the dialog is *for* — "with no URL there is nothing to
-probe or add" is a design statement worth asserting, and reading it back from `_refresh_actions`
-would make the test agree with the code (`ai/TESTING.md` §13). **Three** dialog states and two
-progress view states, each checked for the set it offers, the order Tab walks, and wrapping both
-ways. (The third dialog state — a probe in flight — arrived with the correction round below; the
-first version left it out.)
-
-**`_focusable` was the structural half of the same mistake.** It filtered on
-`focusPolicy() != NoFocus`, which is true of a *disabled* widget — so it counted three controls
-the walk could never visit, and the two lists agreed with each other while disagreeing with the
-keyboard. It now also requires enabled and not hidden.
-
-**Pre-flighted offscreen, and that is evidence rather than hope.** Because the walk is identical
-there, all four states were driven locally before committing: reachable sets, walked order, and
-both wrap directions all match what the tests expect. **This is not a substitute for the Windows
-job** — the real plugin is the subject — but it is the difference between a test written from a
-design and one written from a guess.
-
-#### Correction round, 2026-07-28 — `T060-R1` and `T060-R2`
-
-**`T060-R1` — the probe-in-flight state is now asserted, and the gap it left was real.** The
-first version recorded `cancelProbeButton`'s absence as a deliberate gap. Recording a gap is not
-the same as being allowed to have one: that control is enabled in exactly one state and disabled
-in every other, so excluding that state excluded the only control that stops a running probe from
-every assertion in this file. A gate that skips the one state a control lives in does not gate
-that control.
-
-The state is reached without a worker. `_ProbeThatNeverAnswers` subclasses `DownloadManager` and
-overrides `start` to record the call and return; the dialog's own `_on_probe_saved` then sets
-`started`, `probing_job_id` becomes non-`None`, and `_refresh_actions` swaps Probe and Add out for
-Cancel. Deliberately **not** `entry_point=child_never_returning`, which is how `test_add_dialog.py`
-holds a probe open — that spawns a real process, and a worker left alive by a failed assertion
-here would be attributed to whichever test ran next. The factory asserts the state was actually
-reached, so a change to `_refresh_actions` cannot silently leave the chain asserted over an idle
-dialog.
-
-**`T060-R2` — the set is gone, and the finding's own mutation turns out to be unkillable.** The
-walk is now compared as a sequence, anchored on the control focus was placed on rather than
-rotated into place, and Backtab is driven for two full laps in both the dialog tests and the
-progress-view test. The same weakness was in `test_the_dialog_chain_wraps_in_both_directions`,
-which asserted set containment in both directions; it is corrected in the same batch.
-
-**But the reversal `T060-R2` names cannot be caught by any keyboard observation.** No state of the
-progress view offers more than two reachable controls, and *a two-element focus cycle has no
-observable orientation*: `A → B → A` and `B → A → B` are the same cycle, so from either control,
-Tab and Backtab both deliver the other one, from any starting point. Measured, not argued — the
-mutation was run and survived, and a four-line model of a 2-cycle shows why it must. This is
-recorded as unobservable rather than answered with an assertion that appears to catch it.
-
-Ordering is therefore gated where it is observable — the dialog's three states offer nine to
-twelve reachable controls — and the anchored sequence is asserted for the view anyway, because it
-costs nothing and begins gating order by itself the day a third control becomes simultaneously
-reachable.
-
-**Mutation results, offscreen, 2026-07-28 — 7 of 9 killed, both survivors explained:**
-
-| Mutation | |
-|---|---|
-| `titleValue`/`uploaderValue` swapped, each of the three dialog states | **killed** ×3 |
-| an undeclared focusable control appears in the dialog | **killed** |
-| an undeclared focusable control appears in the progress view | **killed** |
-| `cancelProbeButton` removed from the chain, probe in flight | **killed** |
-| the walk ignores `backwards` and always presses Tab (dialog) | **killed** |
-| progress view's delivered order reversed, declaration untouched | **survives — 2-cycle** |
-| the walk ignores `backwards` (progress view) | **survives — 2-cycle** |
-
-`probeButton`/`cancelProbeButton` is *not* a usable swap for the first mutation class: they are
-never enabled at the same time, so no walk can distinguish the two arrangements. That is the same
-2-cycle limitation seen from the other side, and it is why the swap is done on two controls that
-are reachable in every state.
-
-**Pre-flight method, so it can be repeated.** `tests/ui/test_windows_desktop.py` skips itself off
-Windows, so the pre-flight loads the module's source with *only* the platform guard disabled and
-calls the real test functions with hand-built fixture values. Nothing is re-implemented: a
-pre-flight that paraphrased the assertions could pass while the file failed. All eight
-parametrised cases pass offscreen.
-
-**Still owed, and now blocked on more than a job run:** the two `T-040` mutations must be executed
-**on Windows** and recorded, for the dialog chain as well as the view's. Nothing here has run
-there. GitHub Actions usage is exhausted as of 2026-07-28 and CI cannot run for several days, so
-this evidence is *scheduled*, not merely outstanding. `ai/TESTING.md` §12 keeps its gap and
-`T-026`'s criterion stays unmet until it has run.
-
----
-
-### T-063 — The virtualenv cannot run the application it installed
-
-**Status:** **In Review — fixed 2026-07-28.** Both entry points work without `PYTHONPATH`, and
-the full suite passes without it. The procedure and the symptom are in `docs/DEVELOPMENT.md`. See
-**Evidence**.
-**Owner:** Implementer
-**Priority:** Low — it blocks no gate, and it is the first thing a new checkout hits
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `ENV-R1`; `ai/STATUS.md`'s Environment baseline, "Repository path —
-**Unsettled**"; `T-001` (the toolchain this is supposed to be)
-**Affected surfaces:** `.venv/` is not tracked, so this is a documented procedure plus whatever
-`docs/DEVELOPMENT.md` needs; possibly `ai/STATUS.md`'s Environment baseline row
-**Risk:** Low to fix, and it is a standing tax on every session that does not know the workaround
-
-#### Scope
-
-Found by launching the application (2026-07-28), and reproduced independently by the Reviewer.
-**Neither documented way to run this project works:**
-
-```
-$ .venv/bin/tracks-and-trails --version
-bad interpreter: /mnt/.../tracks-and-trails/.venv/bin/python: No such file or directory
-
-$ .venv/bin/python -m tracks_and_trails --version
-No module named tracks_and_trails
-```
-
-Two independent faults:
-
-1. **The console script's shebang names an interpreter that does not exist** — a path one
-   directory above the real checkout.
-2. **The editable install points at the wrong tree.** `_editable_impl_tracks_and_trails.pth`
-   contains `/mnt/projects/software_projects/tracks-and-trails/src`, while the checkout is
-   `/mnt/projects/software_projects/tracks-and-trails/tracks-and-trails/src`.
-
-`PYTHONPATH=$PWD/src .venv/bin/python -m tracks_and_trails` works and is what every command in
-this session used.
-
-**This is `ai/STATUS.md`'s "Repository path — Unsettled" row showing up as a broken install**, and
-that row already says the right thing: it should record a machine, not a truth, and it needs a
-maintainer answer rather than a third edit. The venv was created from one path and the work
-happens at another.
-
-#### Acceptance criteria
-
-- Both `tracks-and-trails` and `python -m tracks_and_trails` run from a fresh checkout without
-  `PYTHONPATH`
-- The procedure that achieves it is written down where a new session will find it, not just
-  performed once
-- `ai/STATUS.md`'s Environment baseline says which path the venv belongs to, or says that the
-  question is open — it must not imply a working install that is not
-- Whatever is decided survives `.venv/` being deleted, since it is git-ignored and does not
-  survive a fresh clone (`ai/STATUS.md` records that happening twice already)
-
-#### Out of scope
-
-- Choosing between the two repository paths, which is the maintainer's (`ai/STATUS.md`)
-- Packaging or distribution; `REL-001` and Phase 5 own those
-
-#### Evidence, 2026-07-28
-
-**One cause, two symptoms.** An editable install records absolute paths in two places — a `.pth`
-naming the source tree and a shebang in each console script naming the interpreter — and neither
-follows the venv. This one had been installed from the *parent* directory, so the `.pth` read
-`…/tracks-and-trails/src` while the checkout is `…/tracks-and-trails/tracks-and-trails/src`.
-
-**Fixed by re-running the install from the checkout**, which rewrote both:
-
-```
-$ .venv/bin/tracks-and-trails --version              → 0.1.0.dev0
-$ .venv/bin/python -m tracks_and_trails --version    → 0.1.0.dev0
-$ .venv/bin/python -c "import tracks_and_trails; print(tracks_and_trails.__file__)"
-  …/tracks-and-trails/tracks-and-trails/src/tracks_and_trails/__init__.py
-```
-
-**The whole suite now passes with no `PYTHONPATH` at all**: 1398 passed, 11 skipped, 2 deselected.
-Every command in the session before this one carried `PYTHONPATH=$PWD/src`.
-
-**Written down, because the venv is git-ignored and does not survive a clone.**
-`docs/DEVELOPMENT.md` gains the two symptoms, the fix, and a three-command check — including
-`print(tracks_and_trails.__file__)`, which is the one worth keeping: a venv pointing at the *wrong*
-checkout imports someone else's code and passes tests against it, silently. It also says plainly
-that `PYTHONPATH=$PWD/src` makes the symptom go away without fixing it.
-
-**The repository-path question is untouched and still the maintainer's.** This did not choose
-between the two paths; it made the venv agree with the checkout it lives in. `ai/STATUS.md`'s
-Environment baseline now records what was wrong and what fixed it, rather than implying a working
-install.
-
-**Nothing tracked by git changed for the fix itself** — `.venv/` is ignored. What is committed is
-the documentation that makes the fix reproducible, which is what the acceptance criteria asked
-for.
-
----
 
 ## Ready
 
@@ -818,6 +456,227 @@ this application or yt-dlp.
 
 ## Blocked
 
+### T-060 — Focus chains are per state, and the Windows mutations still owe evidence
+
+**Status:** **Blocked — both findings Resolved, only Windows evidence remains.** `T060-R1` and
+`T060-R2` were independently verified resolved at `12dff92` on 2026-07-28, with **no further code
+correction requested**. What blocks it is the two `T-026` mutations, which must be executed on a
+real Windows desktop and recorded — and GitHub Actions cannot run: workflow `30392139504` failed
+before executing any step, on the billing/spending-limit annotation. Reviewer's independent
+checks: 8/8 focused cases, and both of its own mutations (disabling the in-flight Cancel, making
+Backtab walk forward) correctly failed. Chains are asserted per state, and the cause of all
+four CI failures turned out to be one thing. **The Windows-divergence claim in this task and in
+`T-040` was wrong** and is corrected below. Pre-flighted offscreen, where the walk is identical;
+the Windows job is still what proves it — **and it cannot run until GitHub Actions usage resets**
+(maintainer, 2026-07-28: several days).
+**Owner:** Implementer
+**Priority:** Medium — it is the difference between a Windows focus gate and a Windows focus
+*claim*, and `T-026`'s acceptance criterion cannot be marked met until it is settled
+**Phase:** Phase 1
+**Depends on:** nothing to write. **Its evidence depends on the `windows desktop` CI job**, which
+is also what `T-040` and `T-056` are blocked on
+**Relevant context:** `T040-R1`; `T-040`; `T026-R3`; `NFR-005`; `ai/TESTING.md` §12 and §13
+**Affected surfaces:** `tests/ui/test_windows_desktop.py`, `ai/TESTING.md` §12
+**Risk:** Low to write, Medium to leave — a focus test that cannot reach a control it asserts on
+is a red build for a wrong reason, and a green one would be worse
+
+#### Scope
+
+**CI run `30380426474` failed four of `T-040`'s tests, not one.** The progress-view test is the
+one `T040-R1` predicted; the other three are the *dialog's*, and they are new information:
+
+| Failing on the real Windows plugin | |
+|---|---|
+| `test_tab_visits_the_declared_order_on_a_real_desktop` | dialog |
+| `test_the_focus_chain_wraps_in_both_directions` | dialog |
+| `test_every_control_is_reachable_from_the_initial_focus` | dialog |
+| `test_the_progress_view_focus_chain_is_walked_on_a_real_desktop` | `T040-R1` |
+
+**That reading was wrong, and correcting it is the most useful thing in this task.** This entry
+said the failures showed "the order Windows delivers is not the order Qt builds offscreen".
+They showed nothing of the kind. All four have one cause, and it reproduces offscreen:
+
+**Tab skips a control that is disabled or hidden, and every state of these widgets disables
+some.** The dialog disables `probeButton`, `cancelProbeButton` and `addButton` until there is a
+URL to act on — which is exactly the three CI reported unreachable — and the progress view
+disables `Cancel` on a terminal job and hides `Retry` on a running one. Walking Tab through the
+dialog offscreen with no URL typed produces the **identical** sequence `windows-latest` reported,
+ending `selectorValue → closeButton → urlInput`.
+
+So `EXPECTED_DIALOG_ORDER` was never the problem: the *order* is right, and what was missing was
+that a chain is the declared order **filtered by what the current state offers**. The offscreen
+suite had never pressed Tab, so nothing had observed this anywhere — not a platform difference,
+an untested behaviour.
+
+`T-040`'s progress-view test expects **three** reachable controls in one chain. That state does
+not exist. Measured on 2026-07-28:
+
+| The job is | Tab can reach | Why not the others |
+|---|---|---|
+| `FAILED`, retryable | `errorMessage`, `retryJobButton` | `cancelJobButton` is **disabled** — a terminal job cannot be cancelled (`T-017`) |
+| `RUNNING` | `cancelJobButton` | `errorMessage` and `retryJobButton` are **hidden** — nothing has failed |
+
+An isolated probe visited `retryJobButton → errorMessage → retryJobButton` and could never reach
+`cancelJobButton`.
+
+**The structural half of that test agreed with itself, which is how it got written.**
+`_focusable()` filters on `focusPolicy() != NoFocus`, and a *disabled* widget keeps its focus
+policy — so the set matched while the walk could not. Comparing a declared list against a
+computed list is the shape `T016-R4` and `T040-R1` have now each caught once; the walk is the
+only part that knows what a keyboard can do.
+
+So the chains have to be asserted **per state**, each with the set that state actually offers.
+
+#### Acceptance criteria
+
+- The failed state and the running state are asserted separately, each against the controls that
+  state makes reachable — a disabled or hidden control is not in the expectation for that state
+- Reachability is decided by driving Tab and Backtab and asking Qt what has focus, never by
+  comparing two lists this repository computes
+- A control that becomes reachable in a state without being declared for it fails
+- The `T-040` mutations that could not be run — reversing two widgets, and adding a focusable
+  control without placing it — are executed on Windows and **recorded**, for the dialog chain as
+  well as the view's
+- `ai/TESTING.md` §12 drops the "widget tab order is ungated" gap and `T-026`'s acceptance
+  criterion is marked met **only when all of the above has run on Windows**
+
+#### Out of scope
+
+- Nothing in the dialog's chain is out of scope any more: CI failed three of its tests too, and
+  the same per-state and real-focus reasoning applies to whatever it turns out to want
+- Making the progress view offer more controls than a state should; the disabled Cancel and the
+  hidden Retry are `T-017`'s behaviour and are correct
+
+#### Evidence, 2026-07-28
+
+**One cause, four failures.** See the correction above: Tab skips disabled and hidden controls,
+and both widgets disable some in every state. Not a platform difference.
+
+**Chains are now asserted per state.** The declared order is transcribed once; **availability is
+transcribed per state**, by hand, from what the dialog is *for* — "with no URL there is nothing to
+probe or add" is a design statement worth asserting, and reading it back from `_refresh_actions`
+would make the test agree with the code (`ai/TESTING.md` §13). **Three** dialog states and two
+progress view states, each checked for the set it offers, the order Tab walks, and wrapping both
+ways. (The third dialog state — a probe in flight — arrived with the correction round below; the
+first version left it out.)
+
+**`_focusable` was the structural half of the same mistake.** It filtered on
+`focusPolicy() != NoFocus`, which is true of a *disabled* widget — so it counted three controls
+the walk could never visit, and the two lists agreed with each other while disagreeing with the
+keyboard. It now also requires enabled and not hidden.
+
+**Pre-flighted offscreen, and that is evidence rather than hope.** Because the walk is identical
+there, all four states were driven locally before committing: reachable sets, walked order, and
+both wrap directions all match what the tests expect. **This is not a substitute for the Windows
+job** — the real plugin is the subject — but it is the difference between a test written from a
+design and one written from a guess.
+
+#### Correction round, 2026-07-28 — `T060-R1` and `T060-R2`
+
+**`T060-R1` — the probe-in-flight state is now asserted, and the gap it left was real.** The
+first version recorded `cancelProbeButton`'s absence as a deliberate gap. Recording a gap is not
+the same as being allowed to have one: that control is enabled in exactly one state and disabled
+in every other, so excluding that state excluded the only control that stops a running probe from
+every assertion in this file. A gate that skips the one state a control lives in does not gate
+that control.
+
+The state is reached without a worker. `_ProbeThatNeverAnswers` subclasses `DownloadManager` and
+overrides `start` to record the call and return; the dialog's own `_on_probe_saved` then sets
+`started`, `probing_job_id` becomes non-`None`, and `_refresh_actions` swaps Probe and Add out for
+Cancel. Deliberately **not** `entry_point=child_never_returning`, which is how `test_add_dialog.py`
+holds a probe open — that spawns a real process, and a worker left alive by a failed assertion
+here would be attributed to whichever test ran next. The factory asserts the state was actually
+reached, so a change to `_refresh_actions` cannot silently leave the chain asserted over an idle
+dialog.
+
+**`T060-R2` — the set is gone, and the finding's own mutation turns out to be unkillable.** The
+walk is now compared as a sequence, anchored on the control focus was placed on rather than
+rotated into place, and Backtab is driven for two full laps in both the dialog tests and the
+progress-view test. The same weakness was in `test_the_dialog_chain_wraps_in_both_directions`,
+which asserted set containment in both directions; it is corrected in the same batch.
+
+**But the reversal `T060-R2` names cannot be caught by any keyboard observation.** No state of the
+progress view offers more than two reachable controls, and *a two-element focus cycle has no
+observable orientation*: `A → B → A` and `B → A → B` are the same cycle, so from either control,
+Tab and Backtab both deliver the other one, from any starting point. Measured, not argued — the
+mutation was run and survived, and a four-line model of a 2-cycle shows why it must. This is
+recorded as unobservable rather than answered with an assertion that appears to catch it.
+
+Ordering is therefore gated where it is observable — the dialog's three states offer nine to
+twelve reachable controls — and the anchored sequence is asserted for the view anyway, because it
+costs nothing and begins gating order by itself the day a third control becomes simultaneously
+reachable.
+
+**Mutation results, offscreen, 2026-07-28 — 7 of 9 killed, both survivors explained:**
+
+| Mutation | |
+|---|---|
+| `titleValue`/`uploaderValue` swapped, each of the three dialog states | **killed** ×3 |
+| an undeclared focusable control appears in the dialog | **killed** |
+| an undeclared focusable control appears in the progress view | **killed** |
+| `cancelProbeButton` removed from the chain, probe in flight | **killed** |
+| the walk ignores `backwards` and always presses Tab (dialog) | **killed** |
+| progress view's delivered order reversed, declaration untouched | **survives — 2-cycle** |
+| the walk ignores `backwards` (progress view) | **survives — 2-cycle** |
+
+`probeButton`/`cancelProbeButton` is *not* a usable swap for the first mutation class: they are
+never enabled at the same time, so no walk can distinguish the two arrangements. That is the same
+2-cycle limitation seen from the other side, and it is why the swap is done on two controls that
+are reachable in every state.
+
+**Pre-flight method, so it can be repeated.** `tests/ui/test_windows_desktop.py` skips itself off
+Windows, so the pre-flight loads the module's source with *only* the platform guard disabled and
+calls the real test functions with hand-built fixture values. Nothing is re-implemented: a
+pre-flight that paraphrased the assertions could pass while the file failed. All eight
+parametrised cases pass offscreen.
+
+**Still owed, and now blocked on more than a job run:** the two `T-040` mutations must be executed
+**on Windows** and recorded, for the dialog chain as well as the view's. Nothing here has run
+there. GitHub Actions usage is exhausted as of 2026-07-28 and CI cannot run for several days, so
+this evidence is *scheduled*, not merely outstanding. `ai/TESTING.md` §12 keeps its gap and
+`T-026`'s criterion stays unmet until it has run.
+
+---
+
+### T-065 — Resolve the forbidden AI authorship trailer
+
+**Status:** Blocked — requires an explicit maintainer decision because the commit is published
+**Owner:** Maintainer
+**Priority:** Low — repository provenance and process; no product behavior is affected
+**Phase:** Phase 1 coordination
+**Depends on:** nothing technical
+**Relevant context:** `GIT-R1`; `AGENTS.md` §7 and §13
+**Affected surfaces:** published commit `12dff92` and `origin/main`
+**Risk:** Low if left documented; High to correct because doing so rewrites published `main`
+
+#### Scope
+
+Commit `12dff92` contains `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`. That directly
+violates the repository's hard rule that commit history names the human maintainer only. The same
+message also omits the required `Task: T-060` trailer.
+
+The commit is already on `origin/main`, so correcting its message requires rewriting published
+history and force-pushing. `AGENTS.md` independently forbids that without confirmation. Do not
+silently choose one rule over the other.
+
+#### Acceptance criteria
+
+- The maintainer explicitly chooses either to preserve the published exception or authorize an
+  exact, bounded history rewrite
+- If a rewrite is authorized, the replacement commit preserves the reviewed tree, removes the AI
+  authorship trailer, adds the task/review trailers, and the force-push target is confirmed before
+  execution
+- If the exception is preserved, the violation and reason for not rewriting published history
+  remain recorded
+- Subsequent commits contain no AI authorship or generation trailers
+
+#### Out of scope
+
+- Any history rewrite without explicit maintainer authorization
+- Changing the code or tests reviewed at `12dff92`
+
+---
+
 ### T-056 — `still_running` reports a reaped Windows process as alive, intermittently
 
 **Status:** **Blocked — on Windows evidence, not on code**, 2026-07-28 at `9c92c32`. The reviewer
@@ -1170,6 +1029,198 @@ state reached a commit. Nothing here has ever run.
 ---
 
 ## Complete
+
+### T-061 — The ffmpeg gate reads the selector, not the format that was chosen
+
+**Status:** **Complete — approved**, 2026-07-28 at `11e1203`. The gate asks yt-dlp what it resolved rather
+than what was asked for, with the conservative reading kept exactly where nothing was resolved.
+Three mutations, three killed. See **Evidence**.
+**Owner:** Implementer
+**Priority:** Medium — a user without ffmpeg is refused downloads that need none, on four of the
+five built-in presets
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `REQ-024`, `OPS-001`; `downloader/worker.py::_ffmpeg_gap`; `T012-R5`;
+`T-057`, which is the same defect shape one module over
+**Affected surfaces:** `src/tracks_and_trails/downloader/worker.py`,
+`tests/integration/test_worker.py`
+**Risk:** Medium — it decides whether a download happens at all
+
+#### Scope
+
+```python
+needs_merge = "+" in request.format_selector
+```
+
+**A string, where a structured fact was already in scope.** `_ffmpeg_gap` receives the probed
+`info` and asks the *selector* instead. `bestvideo+bestaudio/best` against a source offering one
+progressive format resolves to the `/best` branch — no merge, no ffmpeg — and the gate refuses it
+anyway.
+
+Measured on 2026-07-28 against a local `video/mp4`: with ffmpeg absent, the job failed
+`FFMPEG_MISSING` before downloading, saying *"ffmpeg is required for this download"* of a file
+that needed none. Four of the five built-in presets carry a `+`; the fifth is `Audio only
+(original)`. So a user with no ffmpeg has one usable preset, and the one they would reach for
+first tells them a download is impossible when it is not.
+
+**The gate being conservative is correct and is not the problem.** Refusing *before* spending
+bandwidth is `REQ-024`'s whole point (`T012-R5` widened it to every post-processor for the same
+reason). What is wrong is the input: the answer is in `info`, and yt-dlp records a merge by
+populating `requested_formats` with more than one entry.
+
+**This is `T-057` again, one module over.** There the adapter matched a truthy string where
+yt-dlp keeps a three-state field; here the worker matches a `+` where yt-dlp keeps the resolved
+format list. Both read a *rendering* of a decision instead of the decision.
+
+#### Acceptance criteria
+
+- The gate decides from the resolved format — a merge is what yt-dlp says it is, not what a
+  selector string looks like
+- A progressive single-format download succeeds with ffmpeg absent, driven end to end rather
+  than asserted at the function
+- A genuine merge still fails **before** downloading, with the same message and kind; the
+  conservative direction is preserved where it is correct
+- Post-processors that need ffmpeg (`requires_ffmpeg`) still gate independently of the merge
+  question — `T012-R5` widened that deliberately and it is not narrowed here
+- A mutation restoring `"+" in request.format_selector` fails at least one test
+
+#### Out of scope
+
+- Installing ffmpeg, prompting for it, or bundling it — `OPS-001` settles that
+- The `FFMPEG_MISSING` taxonomy entry and its retry policy
+
+#### Evidence, 2026-07-28
+
+**The fact was already in scope.** `requested_formats` is yt-dlp's own record of the decision — a
+list of the formats it will merge, absent when one format satisfied the selection — and it is
+populated by the same probe this gate already runs. Verified against a local `video/mp4`:
+`bestvideo+bestaudio/best` resolves with `requested_formats=None, format_id='mp4'`, while
+`bestvideo+bestaudio` with no fallback makes yt-dlp itself refuse.
+
+**`_will_merge` returns three answers, not two.** `True` and `False` when yt-dlp resolved the
+selection, and **`None` when it did not** — a playlist, or an extraction that stopped early.
+The caller falls back to the selector there. That asymmetry is deliberate and is the whole safety
+argument: a wrong *refusal* costs a message, a wrong *proceed* spends the download and then fails
+at merge time, which is what `REQ-024` exists to prevent.
+
+**One existing test was passing for the wrong reason.**
+`test_a_merge_without_ffmpeg_fails_before_downloading` returned `{"formats": []}`, which resolves
+to nothing — so it exercised the *fallback* rather than the merge path and would have passed with
+the merge detection removed entirely. It now returns `requested_formats` with two entries, which
+is the fact it always meant to state.
+
+**Three tests, one per branch of the answer:** a merging selector that resolved to one format is
+not blocked (the defect); a real merge still fails before downloading, same kind and message; an
+unresolved extraction still falls back to the selector. Plus the end-to-end criterion — a
+progressive download completing with ffmpeg made unavailable through `compose()`, so the test does
+not depend on what the machine running it happens to have installed.
+
+**Mutations run, all killed:** the gate reading the selector string again — the defect itself · a
+real merge no longer detected · the blind case guessing "no merge".
+
+**Checks:** `ruff check .`, `ruff format --check .`, `mypy src`, configured `mypy` and
+`mypy --platform win32` all pass. `tests/integration/test_worker.py`: **54 passed**;
+`test_end_to_end.py`: **4 passed**.
+
+---
+
+### T-063 — The virtualenv cannot run the application it installed
+
+**Status:** **Complete — approved with follow-up**, 2026-07-28 at `11e1203`. `T063-R1` is carried
+to `T-064`: 39 dependency-owned launchers still name the parent checkout's interpreter, so the
+documented bare `mypy` and `pytest` fail, while module invocations work. Both entry points work without `PYTHONPATH`, and
+the full suite passes without it. The procedure and the symptom are in `docs/DEVELOPMENT.md`. See
+**Evidence**.
+**Owner:** Implementer
+**Priority:** Low — it blocks no gate, and it is the first thing a new checkout hits
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `ENV-R1`; `ai/STATUS.md`'s Environment baseline, "Repository path —
+**Unsettled**"; `T-001` (the toolchain this is supposed to be)
+**Affected surfaces:** `.venv/` is not tracked, so this is a documented procedure plus whatever
+`docs/DEVELOPMENT.md` needs; possibly `ai/STATUS.md`'s Environment baseline row
+**Risk:** Low to fix, and it is a standing tax on every session that does not know the workaround
+
+#### Scope
+
+Found by launching the application (2026-07-28), and reproduced independently by the Reviewer.
+**Neither documented way to run this project works:**
+
+```
+$ .venv/bin/tracks-and-trails --version
+bad interpreter: /mnt/.../tracks-and-trails/.venv/bin/python: No such file or directory
+
+$ .venv/bin/python -m tracks_and_trails --version
+No module named tracks_and_trails
+```
+
+Two independent faults:
+
+1. **The console script's shebang names an interpreter that does not exist** — a path one
+   directory above the real checkout.
+2. **The editable install points at the wrong tree.** `_editable_impl_tracks_and_trails.pth`
+   contains `/mnt/projects/software_projects/tracks-and-trails/src`, while the checkout is
+   `/mnt/projects/software_projects/tracks-and-trails/tracks-and-trails/src`.
+
+`PYTHONPATH=$PWD/src .venv/bin/python -m tracks_and_trails` works and is what every command in
+this session used.
+
+**This is `ai/STATUS.md`'s "Repository path — Unsettled" row showing up as a broken install**, and
+that row already says the right thing: it should record a machine, not a truth, and it needs a
+maintainer answer rather than a third edit. The venv was created from one path and the work
+happens at another.
+
+#### Acceptance criteria
+
+- Both `tracks-and-trails` and `python -m tracks_and_trails` run from a fresh checkout without
+  `PYTHONPATH`
+- The procedure that achieves it is written down where a new session will find it, not just
+  performed once
+- `ai/STATUS.md`'s Environment baseline says which path the venv belongs to, or says that the
+  question is open — it must not imply a working install that is not
+- Whatever is decided survives `.venv/` being deleted, since it is git-ignored and does not
+  survive a fresh clone (`ai/STATUS.md` records that happening twice already)
+
+#### Out of scope
+
+- Choosing between the two repository paths, which is the maintainer's (`ai/STATUS.md`)
+- Packaging or distribution; `REL-001` and Phase 5 own those
+
+#### Evidence, 2026-07-28
+
+**One cause, two symptoms.** An editable install records absolute paths in two places — a `.pth`
+naming the source tree and a shebang in each console script naming the interpreter — and neither
+follows the venv. This one had been installed from the *parent* directory, so the `.pth` read
+`…/tracks-and-trails/src` while the checkout is `…/tracks-and-trails/tracks-and-trails/src`.
+
+**Fixed by re-running the install from the checkout**, which rewrote both:
+
+```
+$ .venv/bin/tracks-and-trails --version              → 0.1.0.dev0
+$ .venv/bin/python -m tracks_and_trails --version    → 0.1.0.dev0
+$ .venv/bin/python -c "import tracks_and_trails; print(tracks_and_trails.__file__)"
+  …/tracks-and-trails/tracks-and-trails/src/tracks_and_trails/__init__.py
+```
+
+**The whole suite now passes with no `PYTHONPATH` at all**: 1398 passed, 11 skipped, 2 deselected.
+Every command in the session before this one carried `PYTHONPATH=$PWD/src`.
+
+**Written down, because the venv is git-ignored and does not survive a clone.**
+`docs/DEVELOPMENT.md` gains the two symptoms, the fix, and a three-command check — including
+`print(tracks_and_trails.__file__)`, which is the one worth keeping: a venv pointing at the *wrong*
+checkout imports someone else's code and passes tests against it, silently. It also says plainly
+that `PYTHONPATH=$PWD/src` makes the symptom go away without fixing it.
+
+**The repository-path question is untouched and still the maintainer's.** This did not choose
+between the two paths; it made the venv agree with the checkout it lives in. `ai/STATUS.md`'s
+Environment baseline now records what was wrong and what fixed it, rather than implying a working
+install.
+
+**Nothing tracked by git changed for the fix itself** — `.venv/` is ignored. What is committed is
+the documentation that makes the fix reproducible, which is what the acceptance criteria asked
+for.
+
+---
 
 ### T-016 — Add-URL dialog with probe results
 
