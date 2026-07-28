@@ -640,7 +640,9 @@ this evidence is *scheduled*, not merely outstanding. `ai/TESTING.md` §12 keeps
 
 ### T-065 — Resolve the forbidden AI authorship trailer
 
-**Status:** Blocked — requires an explicit maintainer decision because the commit is published
+**Status:** **Decided 2026-07-28 — the exception is preserved; published history is not
+rewritten.** Maintainer decision, on the Implementer's recommendation. The remaining criterion is
+standing rather than open: no later commit carries an AI authorship trailer.
 **Owner:** Maintainer
 **Priority:** Low — repository provenance and process; no product behavior is affected
 **Phase:** Phase 1 coordination
@@ -670,9 +672,33 @@ silently choose one rule over the other.
   remain recorded
 - Subsequent commits contain no AI authorship or generation trailers
 
+#### Decision, 2026-07-28
+
+**Preserve the published commit; do not rewrite `origin/main`.**
+
+The cause is not in dispute: the Implementer used its own default commit footer instead of this
+repository's rule, and `AGENTS.md` §7 is unambiguous. What was weighed is the correction, not the
+defect.
+
+**Rewriting costs more than the defect does.** Two records already cite `12dff92` by name — the
+focused re-review at `ai/REVIEWS.md` covers the range `11e1203 → 12dff92`, and the roadmap
+artifact cites it as the correction's head. A rewrite makes both point at a commit that does not
+exist, which trades a findable-by-search defect for two provably wrong citations. This project has
+twice found a record that read clean while describing something that was not there; manufacturing
+a third deliberately is the worse outcome.
+
+**What the defect actually costs, stated plainly:** `git log --grep='Task:.*T-060'` will not
+return `12dff92`. That is the entire practical consequence.
+
+**Mitigated, not hidden.** Commit `61fb8fb` carries `Task: T-060, T-061, T-063` and
+`Review: COORD-R4, GIT-R1`, and names `12dff92` in its body, so the trailer search reaches a
+commit that points at it. The violation stays visible in the history rather than being tidied
+away, which is the same reasoning that keeps superseded claims in these files struck through
+rather than deleted.
+
 #### Out of scope
 
-- Any history rewrite without explicit maintainer authorization
+- Any history rewrite; the decision above closes that option unless the maintainer reopens it
 - Changing the code or tests reviewed at `12dff92`
 
 ---
