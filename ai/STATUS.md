@@ -88,8 +88,8 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-**Session of 2026-07-28 — six tasks, three review boundaries.** The maintainer asked for the work
-to be split into three reviews, and the commits are grouped to match:
+**Session of 2026-07-28 — eleven tasks, split into review sections.** The commits are grouped so
+each section is a contiguous range:
 
 | Review | Tasks | Base | Head |
 |---|---|---|---|
@@ -97,6 +97,13 @@ to be split into three reviews, and the commits are grouped to match:
 | 1a | `T-017` corrections, four batches | `9c92c32` | `f100108` |
 | 2 | `T-057`, `T-058` | `6ce195a` | `4a06e92` |
 | 3 | `T-056`, `T-054` | `4a06e92` | `9c92c32` |
+| 4 | `T-059`, then `T-036` and `T-037` | `5b0ebca` | `894d794` |
+| 5 | `T-052`, `T-040` | `894d794` | `1aba441` |
+
+**Phase 1's critical path is built.** `T-036` composes the object graph and `T-037` proves a
+download completes and survives a kill, which are the two exit criteria that had no owner. Both
+are in review. What is left on the path is nothing — the remaining Phase 1 work is evidence
+(`T-040`, `T-056`) and review capacity.
 
 **What the day's work turned on.** `T-016`'s third re-review reported its two open findings in
 three places each, and all six had one cause: **a synchronous write sequenced every following
@@ -113,6 +120,25 @@ where the count lives, and where this file now sends you rather than restating i
 two real divergences on the way: the adapter read `has_drm='maybe'` as protected, and its fallback
 used `all` where `_has_drm` — the branch that actually runs — uses `any`, so the two halves of one
 function disagreed about a mixed item.
+
+**`T-036` and `T-037` found two defects nothing else could see.** Composition's retry raised out
+of a write callback — the pool of one refuses while something else runs, and the refusal escaped
+into a Qt slot instead of reaching whoever pressed the button. And a quit that skipped the
+shutdown lifecycle *aborted the process*: Qt terminates with `SIGABRT` when a running `QThread` is
+destroyed, so `T-007`'s launch test exited `-6`. Neither is visible to a component test, which is
+the argument for `T-036` existing at all.
+
+**Three `T-036` tests were written against the store and each caught the same thing.** `T-013`'s
+ordering is *persist, then signal*, and `ARC-005` moved the persisting to another thread — so the
+writer commits a row and **then** posts to the GUI thread, and in between `store.get()` answers
+the new state while every widget still shows the old one. A test of the assembled application
+waits on what the application shows. `is_idle` has the mirror-image trap: it is true before a
+session starts as well as after one ends.
+
+**`mypy --platform win32` caught a test that could not run on Windows.** `T-037`'s kill helper
+reached for `os.killpg`, which does not exist there, so the `windows-latest` job would have
+reported an `AttributeError` rather than a finding. `AGENTS.md` §8's "a host-only check is not the
+whole gate", found by the gate that exists for it.
 
 **`T-017` is Blocked at `f100108` after five review rounds, and its last finding is carried.**
 Four of `T017-R1`…`R5` are resolved; `T017-R4` goes to **`T-059`** rather than a sixth pass, by
