@@ -79,12 +79,27 @@ class PersistentJobStore(QObject):
         """Record `job` and queue the write. **Returns immediately** (`ARC-005`).
 
         The in-memory record happens first and unconditionally, so a `get()` between here and the
-        callback returns the new state rather than the old one. A *failed* write leaves the view
-        ahead of the database, which is the honest ordering: recovery corrects a database that
-        trails the UI at the next startup (`NFR-003`), and the failure itself is reported.
+        callback returns the new state rather than the old one.
+
+        **A failed write takes its record back** (`T016-R1`). Leaving it would make the view claim
+        a state the database never reached: the reviewer watched a withdrawal report `CANCELLED`
+        while SQLite still held the row as `QUEUED`, so a restart — which has no view — brought
+        the replaced URL back as live work. The view exists to let a caller read its own *pending*
+        write, not to disagree with the disk about a write that did not happen.
         """
+        previous = self._view.get(job.id)
         self._view[job.id] = job
-        self._writer.revise(job, done)
+
+        def settle(error: str | None) -> None:
+            if error is not None and self._view.get(job.id) is job:
+                # Only if nothing newer has been recorded since; a later write owns the answer.
+                if previous is None:
+                    del self._view[job.id]
+                else:
+                    self._view[job.id] = previous
+            done(error)
+
+        self._writer.revise(job, settle)
 
     def submit(self, jobs: Sequence[Job], done: Callable[[str | None], None]) -> None:
         """Append `jobs` in one transaction. **Returns immediately** (`ARC-005`).

@@ -62,6 +62,7 @@ from tracks_and_trails.ui.add_dialog import (
     NOT_PROBED_TEXT,
     THUMBNAIL_FAILED_TEXT,
     UNKNOWN_TEXT,
+    WITHDRAW_FAILED_PREFIX,
     AddUrlDialog,
     NetworkThumbnailLoader,
     describe_kind,
@@ -1113,6 +1114,61 @@ def test_the_integrated_probe_path_never_blocks_or_raises_under_contention(
     ), "the status transition never reached disk once the lock was released"
 
 
+def test_no_worker_exists_while_the_row_still_says_queued(
+    dialogs: Callable[..., AddUrlDialog],
+    real_queue: tuple[PersistentJobStore, JobRepository],
+    tmp_path: Path,
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """Persistence gates worker construction, read from the concrete row (`T016-R3`).
+
+    The previous correction moved `job_changed` into the write's callback and left everything
+    else on the synchronous path, so the process and the pump started while SQLite still said
+    `QUEUED`. Asserted against the repository — not the write-through view, which by design
+    already shows the pending state.
+    """
+    store_under_test, repository = real_queue
+    manager = DownloadManager(store_under_test, entry_point=child_never_returning)
+    dialog = dialogs(manager, jobs=store_under_test)
+    type_urls(dialog, "https://gated.invalid/x")
+    dialog.probe()
+
+    # Wait for the append without pumping events, so the start's transition is the contended one.
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline and not repository.all_jobs():
+        time.sleep(0.005)
+    stored = repository.all_jobs()
+    assert stored and stored[0].status is JobStatus.QUEUED
+    job_id = stored[0].id
+
+    blocker = sqlite3.connect(tmp_path / "queue.db")
+    blocker.execute("BEGIN IMMEDIATE")
+    try:
+        for _ in range(20):
+            qapp.processEvents()
+            time.sleep(0.005)
+        on_disk = repository.get(job_id)
+        assert on_disk is not None and on_disk.status is JobStatus.QUEUED, (
+            "the contended transition somehow landed; this proves nothing"
+        )
+        assert manager.active_job_ids() == (), (
+            "a worker was constructed while the row still said queued"
+        )
+    finally:
+        blocker.rollback()
+        blocker.close()
+
+    assert spin(lambda: manager.active_job_ids() != (), timeout=30), (
+        "the session never started once the transition became durable"
+    )
+    landed = repository.get(job_id)
+    assert landed is not None and landed.status is JobStatus.PROBING
+    manager.shutdown()
+    assert spin(lambda: manager.is_idle, timeout=30)
+    qapp.processEvents()
+
+
 def test_the_store_reflects_a_write_it_has_only_queued(
     real_queue: tuple[PersistentJobStore, JobRepository],
     tmp_path: Path,
@@ -1148,6 +1204,87 @@ def test_the_store_reflects_a_write_it_has_only_queued(
     finally:
         blocker.rollback()
         blocker.close()
+
+
+def test_a_withdrawal_that_cannot_be_written_blocks_the_dialog_and_is_retryable(
+    dialogs: Callable[..., AddUrlDialog],
+    real_queue: tuple[PersistentJobStore, JobRepository],
+    tmp_path: Path,
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """The Critical consequence, gated against the concrete repository (`T016-R1`).
+
+    A probe's row is durable; the user replaces the URL; the cancellation that withdraws it
+    cannot be written because another connection holds the lock. Previously the dialog said only
+    "The URL changed", the write-through view claimed `CANCELLED`, and SQLite still held the row
+    as `QUEUED` — so a restart, which has no view, brought the replaced URL back as live work.
+
+    Everything below is read from the **repository**, and the final check opens a **fresh store**
+    to stand in for that restart.
+
+    The lock is taken between the append landing and its callback being delivered, which is what
+    makes this deterministic: an earlier version waited for the probe to be running first, so
+    whether the status write had already succeeded depended on machine load.
+    """
+    store_under_test, repository = real_queue
+    manager = DownloadManager(store_under_test, entry_point=child_never_returning)
+    dialog = dialogs(manager, jobs=store_under_test)
+    type_urls(dialog, "https://old.invalid/unwanted")
+    dialog.probe()
+
+    deadline = time.monotonic() + 30
+    while time.monotonic() < deadline and not repository.all_jobs():
+        time.sleep(0.005)
+    stored = repository.all_jobs()
+    assert stored, "the appended row never landed"
+    job_id = stored[0].id
+    assert stored[0].status is JobStatus.QUEUED
+
+    blocker = sqlite3.connect(tmp_path / "queue.db")
+    blocker.execute("BEGIN IMMEDIATE")
+    try:
+        # Deliver the append callback: the dialog starts its probe and the manager's `PROBING`
+        # write is issued against the held lock.
+        assert spin(lambda: dialog.probing_job_id is not None, timeout=30)
+
+        type_urls(dialog, "https://new.invalid/wanted")
+        assert spin(lambda: dialog.withdraw_failed is not None, timeout=60), (
+            "the failed withdrawal was never surfaced"
+        )
+        assert dialog.withdrawing == (job_id,)
+        assert not button(dialog, "addButton").isEnabled()
+        assert WITHDRAW_FAILED_PREFIX in dialog.status_text(), (
+            f"the failure was not stated in words: {dialog.status_text()!r}"
+        )
+
+        # Close retries rather than closing, which is the visible progress the finding asked for.
+        dialog.reject()
+        assert dialog.withdrawing == (job_id,), "the dialog gave up on the withdrawal"
+        assert "Retrying" in dialog.status_text()
+
+        on_disk = repository.get(job_id)
+        assert on_disk is not None and on_disk.status is not JobStatus.CANCELLED
+    finally:
+        blocker.rollback()
+        blocker.close()
+
+    dialog.retry_withdrawals()
+    assert spin(lambda: not dialog.withdrawing, timeout=60), "the retry never succeeded"
+
+    # A restart has no in-memory view. This is the read that previously exposed live work.
+    fresh_connection = connect(tmp_path / "queue.db")
+    try:
+        restarted = JobRepository(fresh_connection).get(job_id)
+        assert restarted is not None
+        assert restarted.status is JobStatus.CANCELLED, (
+            f"a fresh reader still sees the replaced URL as {restarted.status.value}"
+        )
+    finally:
+        fresh_connection.close()
+    manager.shutdown()
+    assert spin(lambda: manager.is_idle, timeout=30)
+    qapp.processEvents()
 
 
 def test_a_failed_write_keeps_the_dialog_open_with_the_input_intact(

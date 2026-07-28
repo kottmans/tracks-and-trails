@@ -886,7 +886,10 @@ personal paths (`REQ-026`, `NFR-007`). They are committed, so a leak here is per
 
 ### T-016 — Add-URL dialog with probe results
 
-**Status:** **In Review — second correction batch returned 2026-07-27, awaiting verification.**
+**Status:** **In Review — third correction batch returned 2026-07-27, awaiting verification.**
+`T016-R2` is verified resolved. Critical `T016-R1` and High `T016-R3` continue, both narrowed to
+what asynchronous persistence stopped guaranteeing rather than to a repeat of the original
+defect.
 `T016-R4`…`R8` are verified resolved. The three that continue — Critical `T016-R1` and High
 `T016-R2`/`R3` — are corrected again, each for a reason the first pass did not reach rather than
 a repeat of it.
@@ -911,6 +914,47 @@ approval into the tracking files. `T-016` is `d9936f4`, `57c7e5c` and `33ebd11`.
 **Branch:** none now. `phase1-add-url-dialog` was cut at maintainer instruction because Codex was
 reviewing `T-019`/`T-038` on `main` at the time (`AGENTS.md` §7 — isolated concurrent work), then
 rebased onto `main`, merged fast-forward and deleted once that review closed.
+
+#### Third correction batch — durability now gates the consequences, 2026-07-27
+
+**Base:** `c5dddae`. Seven mutations, seven killed, and the earlier batteries re-run.
+
+- **`T016-R1` (Critical) — a withdrawal is owned until it is durable.** Retiring a probe cancels
+  its stored row, but that cancellation is a write, and a write can fail. The reviewer held the
+  lock through it: the view said `CANCELLED`, SQLite still said `QUEUED`, and a restart — which
+  has no view — brought the replaced URL back as live work while the dialog showed only "The URL
+  changed". Two corrections. `PersistentJobStore` **takes its view record back when a write
+  fails**, so the view can no longer disagree with the disk about something that did not happen;
+  and the dialog tracks each withdrawal until `CANCELLED` is durable, refusing to close or queue
+  while one is outstanding, saying which URL is still queued and why, and retrying when Close is
+  pressed again. The gate reads the concrete repository and finishes with a **fresh reader**,
+  which is the restart the finding is about.
+- **`T016-R3` (High) — persistence gates the effects, not just the announcement.** Moving
+  `job_changed` into the callback preserved nothing else: the old synchronous write sequenced
+  every following effect for free. A worker and its pump were built while the row still said
+  `QUEUED`; `_abort_start` emitted `protocol_violation` and `job_failed` and ran cleanup before
+  `FAILED` was durable; `job_succeeded` arrived while the row still said `RUNNING`.
+  `_save_and_announce` now takes `then` and `otherwise`, and **session construction, startup
+  cleanup, `media_probed`, `job_succeeded`, `job_failed` and state-moving `progress` all wait**.
+  A failed write runs `otherwise` and never the success-side effect.
+
+**Two consequences worth naming rather than burying.** `start()` **no longer raises for a spawn
+failure**: the session is built from a write's completion callback, so there is nobody left to
+raise to, and the failure is reported through the signals this manager already had. Five approved
+`T-013` tests changed their delivery assertion and kept every other one. And the pool of one now
+counts *reserved* starts, because otherwise it would have been "however many `start()` calls fit
+between a write and its completion".
+
+**Three of the seven mutations survived first time**, and all three were weak tests of mine rather
+than weak code: the companion-signal test produced no companion signal to observe, the
+failure-continuation test never checked that the success effect was skipped, and the pool-of-one
+test used a synchronous store where the gap cannot exist.
+
+**One defect was found by these tests, in this batch's own code.** Retrying a withdrawal while its
+first cancellation was still pending drove `CANCELLED → CANCELLED` and threw
+`IllegalTransitionError` out of `QDialog.done()`. `DownloadManager.cancel()` is now a no-op for a
+job already terminal — there is nothing to cancel, and raising there is worse than saying so —
+and the dialog retries only once a failure has actually been reported.
 
 #### Second correction batch — the three continuations, 2026-07-27
 

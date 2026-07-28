@@ -21,7 +21,6 @@ the instant it is signalled, and a process inside yt-dlp's download loop does no
 import contextlib
 import multiprocessing as mp
 import os
-import pickle
 import subprocess
 import sys
 import threading
@@ -1983,6 +1982,124 @@ def test_a_job_outside_the_two_entry_points_cannot_be_started(
     assert repository.jobs["job-1"].status is status, "a refused start still moved the job"
 
 
+def test_no_companion_signal_arrives_before_its_transition_is_durable(
+    tmp_path: Path, app: QCoreApplication
+) -> None:
+    """`T-013`'s acceptance criterion, restored under asynchronous persistence (`T016-R3`).
+
+    Every signal that accompanies a state change waits for that change to be on disk. The first
+    `ARC-005` implementation gated only `job_changed`, so `job_succeeded` arrived while the row
+    still said `RUNNING` and a startup failure announced itself before `FAILED` was durable.
+
+    A worker that reports nothing gives a real `job_failed` to hold, and the store completes
+    writes only when told — against a fast writer both orders look identical.
+    """
+
+    class HeldStore:
+        """Accepts writes and completes them only when released."""
+
+        def __init__(self) -> None:
+            self.jobs: dict[str, Job] = {}
+            self.pending: list[tuple[Job, Callable[[str | None], None]]] = []
+
+        def get(self, job_id: str) -> Job | None:
+            return self.jobs.get(job_id)
+
+        def update(self, job: Job, done: Callable[[str | None], None]) -> None:
+            self.pending.append((job, done))
+
+        def release(self) -> None:
+            pending, self.pending = self.pending, []
+            for job, done in pending:
+                self.jobs[job.id] = job
+                done(None)
+
+    store = HeldStore()
+    store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
+    download = DownloadManager(store, entry_point=child_reporting_nothing)
+    failures: list[JobStatus | None] = []
+    download.job_failed.connect(
+        lambda *_: failures.append(store.jobs["job-1"].status if "job-1" in store.jobs else None)
+    )
+
+    try:
+        download.start("job-1")
+        assert download.active_job_ids() == (), "a session was created before the write landed"
+        store.release()
+        app.processEvents()
+        assert store.jobs["job-1"].status is JobStatus.PROBING
+        assert download.active_job_ids() == ("job-1",)
+
+        # The worker exits having said nothing, so the session ends as WORKER_CRASH. Its write is
+        # held, so `job_failed` must not have arrived yet.
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not store.pending:
+            app.processEvents()
+            time.sleep(0.005)
+        assert store.pending, "the session never produced a terminal transition"
+        assert failures == [], "job_failed arrived before the failure was durable"
+
+        store.release()
+        app.processEvents()
+        assert failures, "job_failed never arrived once the failure was stored"
+        assert failures[0] is JobStatus.FAILED, (
+            f"job_failed observed the job as {failures[0]}, not the status it announces"
+        )
+    finally:
+        download.shutdown()
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not download.is_idle:
+            store.release()
+            app.processEvents()
+            time.sleep(0.005)
+
+
+def test_a_second_session_is_refused_while_the_first_is_still_being_stored(
+    tmp_path: Path, app: QCoreApplication
+) -> None:
+    """The pool of one covers a start whose transition has not landed yet (`T016-R3`).
+
+    Without that, the pool would be "however many `start()` calls fit between a write and its
+    completion" — a gap `ARC-005` created by deferring session construction.
+    """
+
+    class HeldStore:
+        def __init__(self) -> None:
+            self.jobs: dict[str, Job] = {}
+            self.pending: list[tuple[Job, Callable[[str | None], None]]] = []
+
+        def get(self, job_id: str) -> Job | None:
+            return self.jobs.get(job_id)
+
+        def update(self, job: Job, done: Callable[[str | None], None]) -> None:
+            self.pending.append((job, done))
+
+        def release(self) -> None:
+            pending, self.pending = self.pending, []
+            for job, done in pending:
+                self.jobs[job.id] = job
+                done(None)
+
+    store = HeldStore()
+    store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
+    store.jobs["job-2"] = make_job("job-2", "https://example.invalid/y", tmp_path)
+    download = DownloadManager(store, entry_point=child_downloading_forever)
+
+    try:
+        download.start("job-1")
+        assert download.active_job_ids() == (), "the session exists already; nothing is pending"
+
+        with pytest.raises(RuntimeError, match="already running"):
+            download.start("job-2")
+    finally:
+        download.shutdown()
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not download.is_idle:
+            store.release()
+            app.processEvents()
+            time.sleep(0.005)
+
+
 def test_a_transition_that_cannot_be_stored_is_reported_and_not_announced(
     tmp_path: Path, app: QCoreApplication
 ) -> None:
@@ -2024,6 +2141,9 @@ def test_a_transition_that_cannot_be_stored_is_reported_and_not_announced(
         assert announced == [], f"a state that was never stored was announced: {announced}"
         assert [job_id for job_id, _ in reported] == ["job-1"]
         assert "locked" in reported[0][1]
+        # And the success-side effect did not run: a start whose transition was never stored must
+        # not produce a worker (`T016-R3`).
+        assert download.active_job_ids() == (), "a session was built on a write that failed"
     finally:
         download.shutdown()
         deadline = time.monotonic() + 30
@@ -2149,8 +2269,12 @@ def test_a_worker_that_cannot_be_spawned_leaves_no_thread_behind(
     download = manager(entry_point=unpicklable_entry_point)
     recorder = Recorder(download, repository)
 
-    with pytest.raises((AttributeError, TypeError, pickle.PicklingError)):
-        download.start("job-1")
+    # **`start()` no longer raises for a spawn failure** (`ARC-005`, `T016-R3`). The session is
+    # built from the completion callback of the job's own transition write, so by the time
+    # construction fails there is nobody left to raise to. The failure is reported exactly as it
+    # was before — durably stored, then announced — and every assertion below is unchanged; only
+    # the delivery mechanism moved from an exception to the signals this manager already had.
+    download.start("job-1")
 
     assert spin(lambda: download.is_idle, timeout=30), "the pump was left blocked on Queue.get()"
     assert any("could not be started" in reason for _, reason in recorder.violations)
@@ -2252,8 +2376,12 @@ def test_a_startup_failure_leaves_a_failed_job_rather_than_a_phantom_one(
     # happens in the parent, before a child could exist.
     download._context = BrokenContext(fail_on)  # type: ignore[assignment]
 
-    with pytest.raises(OSError, match=r"Too many open files|Resource temporarily"):
-        download.start("job-1")
+    # **`start()` no longer raises for a spawn failure** (`ARC-005`, `T016-R3`). The session is
+    # built from the completion callback of the job's own transition write, so by the time
+    # construction fails there is nobody left to raise to. The failure is reported exactly as it
+    # was before — durably stored, then announced — and every assertion below is unchanged; only
+    # the delivery mechanism moved from an exception to the signals this manager already had.
+    download.start("job-1")
 
     assert spin(lambda: download.is_idle, timeout=30), "a session survived a failed start"
     stored = repository.jobs["job-1"]
@@ -2306,11 +2434,18 @@ def test_a_failure_while_cleaning_up_cannot_hide_the_failure_that_caused_it(
     recorder = Recorder(download, repository)
     download._context = BrokenContext("process_start", queue_writes_fail=True)  # type: ignore[assignment]
 
-    with pytest.raises(OSError, match=r"Resource temporarily") as raised:
-        download.start("job-1")
+    # **`start()` no longer raises for a spawn failure** (`ARC-005`, `T016-R3`). The session is
+    # built from the completion callback of the job's own transition write, so by the time
+    # construction fails there is nobody left to raise to. The failure is reported exactly as it
+    # was before — durably stored, then announced — and every assertion below is unchanged; only
+    # the delivery mechanism moved from an exception to the signals this manager already had.
+    download.start("job-1")
 
-    assert "no longer be written" not in str(raised.value), (
-        "the cleanup failure replaced the spawn failure, so the log names the wrong cause"
+    # The cause is read from what was *stored* rather than from a raised exception, for the same
+    # reason: there is no longer one to inspect. It is the stronger reading anyway — the stored
+    # diagnostic is what a user and a later session actually see.
+    assert "no longer be written" not in (repository.jobs["job-1"].error_message or ""), (
+        "the cleanup failure replaced the spawn failure, so the record names the wrong cause"
     )
     stored = repository.jobs["job-1"]
     assert stored.status is JobStatus.FAILED, (
@@ -2413,8 +2548,12 @@ def test_a_failure_signal_never_arrives_before_the_failure_is_stored(
         )
     )
 
-    with pytest.raises(OSError, match="cannot create a thread"):
-        download.start("job-1")
+    # **`start()` no longer raises for a spawn failure** (`ARC-005`, `T016-R3`). The session is
+    # built from the completion callback of the job's own transition write, so by the time
+    # construction fails there is nobody left to raise to. The failure is reported exactly as it
+    # was before — durably stored, then announced — and every assertion below is unchanged; only
+    # the delivery mechanism moved from an exception to the signals this manager already had.
+    download.start("job-1")
 
     assert seen == [JobStatus.FAILED], f"a violation was announced while the job read {seen}"
     assert spin(lambda: download.is_idle, timeout=30)
@@ -2447,8 +2586,12 @@ def test_a_pump_that_cannot_start_does_not_leave_its_worker_running(
     repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
     download = manager(entry_point=child_downloading_forever, reap_seconds=0.2)
 
-    with pytest.raises(OSError, match="cannot create a thread"):
-        download.start("job-1")
+    # **`start()` no longer raises for a spawn failure** (`ARC-005`, `T016-R3`). The session is
+    # built from the completion callback of the job's own transition write, so by the time
+    # construction fails there is nobody left to raise to. The failure is reported exactly as it
+    # was before — durably stored, then announced — and every assertion below is unchanged; only
+    # the delivery mechanism moved from an exception to the signals this manager already had.
+    download.start("job-1")
 
     assert spin(lambda: not worker_processes(existing_children), timeout=30), (
         "the worker was left running after its reader failed to start"
