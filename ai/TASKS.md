@@ -17,10 +17,20 @@ graph (approved at `306840b`) and `T-037` proved a download completes and surviv
 (approved with follow-ups at `894d794`), which closes the two exit criteria that had no owner.
 **Nothing remains on the path.**
 
-**Everything still open is Windows evidence or the exit review.** `T-040`, `T-056` and `T-060` are
-each written, type-checked under `mypy --platform win32`, and **never executed** — the
-`windows_desktop` module skips off Windows and this machine has none. `T-060` also carries
-`T040-R1`, which found one of `T-040`'s own tests asserting a focus state that cannot exist.
+**Open work is now code as well as evidence** (`COORD-R2`). The first real Windows run, CI
+`30380426474`, produced three tasks:
+
+- **`T-062`** — In Review. Both `T-037` tests failed on *both* platforms and had never passed on
+  either: the runners have no ffmpeg, so `REQ-024`'s gate refused every download before it
+  started. Fixed at `a78df2f`; four of five jobs green.
+- **`T-061`** — Ready, and the first **product** defect of the batch. `_ffmpeg_gap` reads
+  `"+" in request.format_selector` rather than the format yt-dlp chose, so a user without ffmpeg
+  is refused downloads that need none, on four of the five presets.
+- **`T-060`** — Ready, and wider than when it was filed: CI failed **four** focus tests, three of
+  them the dialog's. The order Windows delivers is not the order Qt builds.
+
+`T-040` and `T-056` remain Blocked on Windows evidence; their branches are type-checked under
+`mypy --platform win32` and have still never executed.
 
 **`T-017` is Complete**, closed 2026-07-28 once `T-059`'s approval resolved the finding carried
 out of it. Five review rounds, two of them regressions introduced by corrections; the record is in
@@ -29,10 +39,12 @@ reached `_load` — is in `T-059`'s scope.
 
 **Approved on 2026-07-28:** `T-016` (fourth correction batch), `T-017`, `T-036`, `T-037`, `T-052`,
 `T-054`, `T-057`, `T-058`, `T-059`. **Blocked:** `T-040` and `T-056`, both on Windows evidence,
-plus `T-033` (Phase 5 evidence) and `T-039` (Phase 5 installer). **Ready:** `T-060`.
+plus `T-033` (Phase 5 evidence) and `T-039` (Phase 5 installer). **In Review:** `T-062`.
+**Ready:** `T-060`, `T-061`, `T-063`.
 
-**Every Phase 1 deliverable is now approved.** What remains is evidence the `windows desktop` job
-has to produce, and the exit review.
+**Every Phase 1 deliverable filed *before* 2026-07-28's CI run is approved** — and that is a
+narrower claim than the one this block used to make. Running the tests where they had never run
+added three tasks, one of which is a defect a user would meet. Phase 1 is not ready.
 
 **Known and deliberate:** until `T-060` lands, the `windows desktop` job fails on
 `test_the_progress_view_focus_chain_is_walked_on_a_real_desktop`. Skipping it would leave the one
@@ -49,15 +61,15 @@ Phase 0 is formally exited (2026-07-26).
 
 ## In Review
 
-*(Empty as of 2026-07-28. Every task this session produced has a verdict: eight approved, three
-blocked on Windows evidence, one ready. An empty section is left in place rather than deleted —
-it is where the next task goes, and its absence would read as a heading nobody had written yet.)*
+*(This read "Empty as of 2026-07-28" for the few hours between T-017's closure and the CI run that
+produced `T-062`. `COORD-R2` caught it: an empty In Review section is a claim about readiness, and
+it outlived being true by one CI run.)*
 
 ### T-062 — The end-to-end tests need an environment CI does not have, and say nothing when they fail
 
-**Status:** **In Review — implemented 2026-07-28.** All three problems corrected; the fix is
-verified locally in both directions, and **the CI half is unproven until a run goes green** — which
-is the same trap that produced the task.
+**Status:** **In Review — implemented 2026-07-28.** **Four** problems corrected, the fourth found
+by the run that fixed the first three. Verified green on `ubuntu-latest`, `windows-latest` and both
+frozen jobs in CI run **`30383367481`** at `a78df2f`.
 **Owner:** Implementer
 **Priority:** **High** — Phase 1's first and fourth exit criteria have no passing evidence on any
 CI platform, and the exit review consumes exactly that
@@ -65,7 +77,7 @@ CI platform, and the exit review consumes exactly that
 **Depends on:** nothing
 **Relevant context:** `T-037`; `ai/TESTING.md` §6; the CI failure at `48dc6a0`
 **Affected surfaces:** `.github/workflows/ci.yml`, `tests/integration/test_end_to_end.py`,
-`tests/integration/test_composition.py`
+`tests/integration/test_composition.py`, `tests/ui/test_job_detail.py`
 **Risk:** **High** — these tests *are* the phase's evidence, and they have never passed on CI
 
 #### Scope
@@ -118,9 +130,10 @@ is a front end for a tool that shells out to ffmpeg, so a runner without it is n
 environment. Installing it does not paper over `T-061` — that a *user* without ffmpeg is refused
 more than they should be is a separate defect with its own gate.
 
-**2. The failures now diagnose themselves.** A `why()` helper reports the job status, error kind,
-the view's status, whether ffmpeg was found, and the stored message. Verified by running without
-ffmpeg and reading the assertion:
+**2. The end-to-end failures now diagnose themselves** — those two assertions specifically, not
+the suite at large (`T062-R1`). A `why()` helper in `tests/integration/test_end_to_end.py` reports
+the job status, error kind, the view's status, whether ffmpeg was found, and the stored message.
+Nothing else gained diagnostics. Verified by running without ffmpeg and reading the assertion:
 
 > `the download never completed — job=failed kind=ffmpeg_missing view=failed ffmpeg=NO — not found
 > on PATH error=ffmpeg is required for this download but was not found…`
@@ -154,13 +167,15 @@ and asked for a 1 ms repaint; Qt's default timer granularity on Windows is ~15 m
 lasts 0.15 s — still a hundred times faster than anyone reads — which makes the assertion about
 the *rendering path* rather than about winning a race with the timer.
 
-**Run `30382752254` is the evidence for the first three fixes**: `ubuntu-latest`, both frozen
-jobs green; `windows-latest` red only on the timing test above; `windows desktop` red on `T-060`'s
-four known failures.
+**Two runs, and the second is the one that counts.** `30382752254` proved the first three fixes —
+`ubuntu-latest` and both frozen jobs green, `windows-latest` red only on the timing test above.
+**`30383367481` at `a78df2f` is the final state**: `ubuntu-latest`, `windows-latest` and both
+frozen jobs **green**, and `windows desktop` red on exactly `T-060`'s four known tests
+(*4 failed, 21 passed*). Both environment artifacts record ffmpeg present on both platforms.
 
-**Known-unverified, and it is the point of the task:** the Windows half is not proven until a run
-is green. `T-037` was approved on local evidence and had never passed on a runner — recording that
-here rather than repeating it.
+**The lesson, recorded because it is the whole task:** `T-037` was written, reviewed and
+*approved* on a machine with ffmpeg, and had never passed on a runner. Four separate CI failures
+in this batch were one sentence — a test asserting something true of the author's machine.
 
 ---
 
@@ -222,6 +237,66 @@ format list. Both read a *rendering* of a decision instead of the decision.
 
 - Installing ffmpeg, prompting for it, or bundling it — `OPS-001` settles that
 - The `FFMPEG_MISSING` taxonomy entry and its retry policy
+
+---
+
+### T-063 — The virtualenv cannot run the application it installed
+
+**Status:** Ready — filed 2026-07-28 as `ENV-R1`, reproduced independently by the Reviewer
+**Owner:** Implementer
+**Priority:** Low — it blocks no gate, and it is the first thing a new checkout hits
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `ENV-R1`; `ai/STATUS.md`'s Environment baseline, "Repository path —
+**Unsettled**"; `T-001` (the toolchain this is supposed to be)
+**Affected surfaces:** `.venv/` is not tracked, so this is a documented procedure plus whatever
+`docs/DEVELOPMENT.md` needs; possibly `ai/STATUS.md`'s Environment baseline row
+**Risk:** Low to fix, and it is a standing tax on every session that does not know the workaround
+
+#### Scope
+
+Found by launching the application (2026-07-28), and reproduced independently by the Reviewer.
+**Neither documented way to run this project works:**
+
+```
+$ .venv/bin/tracks-and-trails --version
+bad interpreter: /mnt/.../tracks-and-trails/.venv/bin/python: No such file or directory
+
+$ .venv/bin/python -m tracks_and_trails --version
+No module named tracks_and_trails
+```
+
+Two independent faults:
+
+1. **The console script's shebang names an interpreter that does not exist** — a path one
+   directory above the real checkout.
+2. **The editable install points at the wrong tree.** `_editable_impl_tracks_and_trails.pth`
+   contains `/mnt/projects/software_projects/tracks-and-trails/src`, while the checkout is
+   `/mnt/projects/software_projects/tracks-and-trails/tracks-and-trails/src`.
+
+`PYTHONPATH=$PWD/src .venv/bin/python -m tracks_and_trails` works and is what every command in
+this session used.
+
+**This is `ai/STATUS.md`'s "Repository path — Unsettled" row showing up as a broken install**, and
+that row already says the right thing: it should record a machine, not a truth, and it needs a
+maintainer answer rather than a third edit. The venv was created from one path and the work
+happens at another.
+
+#### Acceptance criteria
+
+- Both `tracks-and-trails` and `python -m tracks_and_trails` run from a fresh checkout without
+  `PYTHONPATH`
+- The procedure that achieves it is written down where a new session will find it, not just
+  performed once
+- `ai/STATUS.md`'s Environment baseline says which path the venv belongs to, or says that the
+  question is open — it must not imply a working install that is not
+- Whatever is decided survives `.venv/` being deleted, since it is git-ignored and does not
+  survive a fresh clone (`ai/STATUS.md` records that happening twice already)
+
+#### Out of scope
+
+- Choosing between the two repository paths, which is the maintainer's (`ai/STATUS.md`)
+- Packaging or distribution; `REL-001` and Phase 5 own those
 
 ---
 

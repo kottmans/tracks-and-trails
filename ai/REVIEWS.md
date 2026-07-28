@@ -5030,3 +5030,92 @@ The T040-R1 carry is accepted at `479f859`; it remains open under T-060 and stil
 Windows desktop job. `T037-R3` and `T040-R2` are Resolved. COORD-R1 is a non-blocking
 current-truth cleanup for the next coordination task. Do not start another review pass for this
 carry commit.
+
+## 2026-07-28 — T-062 and coordination review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `479f859`  **Head:** `a78df2f`
+**Scope:** COORD-R1 correction, T-017 closure, T-062, and the T-060/T-061 coordination added in
+the same boundary
+**Boundary classification:** Documentation/coordination, test code, and CI workflow; no
+production source
+**Verdict by scope:** `T-062` **Approved with follow-ups**; T-017 closure **confirmed**;
+coordination **Changes requested**
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `COORD-R2` | **Medium** | **Yes** | The range correctly adds user-visible code defect `T-061` as Ready and `T-062` as In Review, but both current-truth summaries still describe the state before those additions. `ai/TASKS.md:20-35` says everything open is Windows evidence, lists only T-060 as Ready, and says only Windows evidence plus the exit review remain; `ai/TASKS.md:52-54` calls its nonempty In Review section empty. `ai/STATUS.md:106-113` likewise says In Review is empty, “what remains is not code,” and T-060 is the one task left to write. T-061 affects whether four of five built-in presets download at all for a user without ffmpeg, so this materially misstates Phase 1 readiness rather than merely missing a task count. It also reproduces the current-truth drift COORD-R1 had just corrected. | Rewrite both summaries from the final head: T-061 and T-060 are Ready, T-062 has this review verdict, T-040/T-056 remain blocked on Windows evidence, and the exit review follows the open work. Remove the “empty” In Review note while that section contains an entry. Keep the critical-path statement if desired, but distinguish “critical path built” from “no code remains.” | **Open** |
+| `T062-R1` | **Low** | **No** | T-062's record stops at the penultimate CI run. Its status still says “all three” problems and Windows is unproven, its affected surfaces omit `tests/ui/test_job_detail.py`, and its evidence cites red run `30382752254` rather than final run `30383367481`. The diagnostic acceptance criterion at `ai/TASKS.md:96-97` also says **every** assertion in both T-037 tests reports job status and stored error, while the implementation deliberately augments the two opaque state waits only; ordinary assertions at `test_end_to_end.py:257-298` and `403-462` retain their specific messages. The narrower implementation is sensible—adding `job=completed error=none` to a size mismatch would add noise—but the current claim is false. The new stage note also calls 0.15 seconds “a hundred times faster” than human reading, which is not a supportable measurement. | Record final run `30383367481`, all four corrected surfaces, and the now-proven Windows half. Narrow the diagnostic criterion/evidence to the long-running state waits whose failures otherwise concealed the durable row and environment, and remove the volatile human-reading multiplier. **Owner/target:** Documentation Maintainer, in the COORD-R2 correction batch. | **Open, non-blocking** |
+| `ENV-R1` | **Low** | **No** | The handoff's unfiled environment problem reproduces. `.venv/bin/tracks-and-trails` names `/mnt/projects/software_projects/tracks-and-trails/.venv/bin/python`, which does not exist, while the editable install's `direct_url.json` targets `file:///mnt/projects/software_projects/tracks-and-trails`, one directory above this checkout. Running this checkout's `.venv/bin/python` cannot import `tracks_and_trails` without an explicit `PYTHONPATH`. This predates the review boundary and does not affect CI or the reviewed code, but “Repository path — Unsettled” in STATUS is not an actionable owner. | Have the Planner file a small environment-repair task in the COORD-R2 correction batch. Until it lands, use this checkout's `.venv/bin/python -m …` with an explicit checkout `PYTHONPATH`, as this review did. | **Open, non-blocking; pre-existing** |
+
+### Implementation judgments
+
+- **Installing ffmpeg in the standard matrix is the correct boundary.** `REQ-024` correctly
+  refuses a selector the present worker believes needs ffmpeg; T-037 is supposed to prove a real
+  download and restart path, not that refusal. Linux's supported environment uses a system
+  ffmpeg, and the Windows test only needs the supported executable boundary. Skipping T-037 or
+  changing its preset would weaken the exit evidence.
+- This does **not** hide T-061. The defect remains observable when ffmpeg is deliberately absent,
+  is filed against production code with an end-to-end no-ffmpeg criterion, and is independent of
+  whether CI's ordinary supported environment provides the dependency.
+- The platform-executable fake is correct: a `.bat` reaches Windows' `PATHEXT` rule while the
+  executable shell file preserves the POSIX case. Both standard CI jobs execute this test.
+- The 0.15-second pacing is still timing-based, but it is ten times Windows' stated coarse timer
+  interval, the view requests a 1 ms repaint, and the actual Windows runner passed. No defect is
+  established from the pacing change.
+- T-017's closure is sound. The prior T-059 review explicitly resolved carried `T017-R4` at
+  `52f0aed`; `48dc6a0` changes task/status records only and does not manufacture another verdict.
+- The task-ID multiset across the coordination rewrite is unchanged except for the intended new
+  T-061 and T-062 entries; no prior task was lost or duplicated.
+
+### Independent CI verification
+
+Run `30383367481` is at exact head `a78df2f`.
+
+| Job/evidence | Result |
+|---|---|
+| `ubuntu-latest` | **Passed**; 1395 passed, 11 skipped, 2 deselected. Both T-037 tests, the T-036 ffmpeg test, and the paced stage test passed. |
+| `windows-latest` | **Passed**; 1384 passed, 20 skipped, 27 deselected. The same four named tests passed. |
+| Ubuntu environment artifact | `/usr/bin/ffmpeg`; ffmpeg 6.1.1 recorded. |
+| Windows environment artifact | `/c/ProgramData/Chocolatey/bin/ffmpeg`; ffmpeg 8.1.2 recorded. |
+| Both frozen jobs | **Passed**. |
+| `windows desktop` | **Failed only on T-060's four disclosed tests**: three dialog-chain assertions and the progress-view state-union assertion; 4 failed, 21 passed, 1406 deselected. |
+
+The overall workflow is red only because the deliberately unskipped T-060 evidence is red. That
+does not invalidate the green standard-platform evidence T-062 requires.
+
+### Independent local checks
+
+The checked-in console scripts and editable path are stale as ENV-R1 records, so every Python
+command below used this checkout's `.venv/bin/python -m …` with
+`PYTHONPATH=/mnt/projects/software_projects/tracks-and-trails/tracks-and-trails/src`.
+
+| Check | Result |
+|---|---|
+| Four focused changed tests | **4 passed in 2.83 s**: T-036 fake ffmpeg, T-062 stage pacing, and both T-037 end-to-end cases. |
+| Full default suite with localhost/process permission | **1395 passed, 11 skipped, 2 deselected in 80.35 s**. |
+| `ruff check .` | Passed. |
+| `ruff format --check .` | **91 files already formatted**. |
+| `mypy src` | Passed: no issues in **35 source files**. |
+| Configured `mypy` | Passed: no issues in **76 source files**. |
+| Configured `mypy --platform win32` | Passed: no issues in **76 source files**. |
+| `git diff --check 479f859..a78df2f` | Passed. |
+| Git boundary | HEAD and `origin/main` both `a78df2f`; four commits, all authored by Sean Kottman, with no AI authorship trailers. |
+
+The first sandboxed focused run failed before application code because binding the local fixture
+server was denied; the same four tests were rerun with localhost permission and passed. That
+sandbox denial is not counted as project evidence.
+
+### Final disposition
+
+T-062's workflow and test changes are **Approved with follow-ups at `a78df2f`**. The final
+standard Linux and Windows jobs supply the evidence T-037 previously lacked, and installing
+ffmpeg is accepted.
+
+The combined coordination boundary is **Changes requested** on `COORD-R2`: current-truth files
+cannot say no code remains while T-061 is Ready or say In Review is empty while T-062 occupies
+it. The focused correction is documentation-only: synchronize the two summaries and T-062's
+final evidence/wording, and file the already-confirmed environment repair. No source, test, or
+workflow correction is requested.

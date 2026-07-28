@@ -105,12 +105,22 @@ each section is a contiguous range:
 
 **Every Phase 1 deliverable is approved.** `T-036` (at `306840b`) and `T-037` (at `894d794`)
 closed the two exit criteria that had no owner, and `T-017` closed on 2026-07-28 with the last of
-its findings resolved under `T-059`. `ai/TASKS.md`'s `## In Review` section is empty.
+its findings resolved under `T-059`.
 
-**What remains is not code but evidence.** `T-060` is the one task left to write, and it exists to
-make `T-040`'s focus test assert a state that can happen; after that, `T-040`, `T-056` and `T-060`
-all need the same thing — one run of the `windows desktop` job, which is also the only thing that
-can move the *verified on Linux and Windows* exit criterion. Then the exit review.
+**Then CI ran, and the claim that only evidence remained did not survive it** (`COORD-R2`). The
+first real Windows run of this work produced three tasks: `T-062` (In Review — both `T-037` tests
+had failed on *both* platforms since the day they were approved, because the runners have no
+ffmpeg), `T-061` (Ready — `_ffmpeg_gap` reads the selector string rather than the format yt-dlp
+chose, so a user without ffmpeg is refused downloads needing none), and a widened `T-060` (CI
+failed **four** focus tests, three of them the dialog's).
+
+**What remains is code and evidence.** `T-060`, `T-061` and `T-063` are ready to write; `T-040`
+and `T-056` still need one run of the `windows desktop` job, which is also the only thing that can
+move the *verified on Linux and Windows* criterion. Then the exit review.
+
+**The lesson is about method, not ffmpeg.** `T-037` was written, reviewed and approved on a machine
+that had what the runners did not, and had never passed on either. Four CI failures in one batch
+were one sentence: a test asserting something true of the author's machine.
 
 **`T-040` is Blocked with `T040-R1` still open, carried to `T-060`.** The correction drove keyboard
 focus as asked and then asserted a state that cannot exist: on a failed job `Cancel` is disabled
