@@ -5,7 +5,7 @@
 **Owner:** Reviewer (Codex) — policy; Implementer may add checks a change introduces.
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-27
+**Last updated:** 2026-07-28
 **Last reviewed:** 2026-07-26
 **Update when:** A test type, CI requirement, mandatory command, coverage rule, or gate changes.
 **Does not contain:** Local setup instructions (`docs/DEVELOPMENT.md`, once created).
@@ -347,13 +347,39 @@ Tracked honestly; each should become a task or be accepted deliberately.
 - **The suite is structural, not behavioral.** It covers the toolchain (`T-001`), shipped
   asset invariants (`T-022`), the layering guard (`T-005`), and the shell window including
   hostile stored geometry (`T-007`, `T-027`) — real tests, and they have caught real defects.
-  Of §7's ten mandatory areas **eight** are now covered: Layering (`T-005`), the State machine
-  (`T-010`, checked against a transition relation transcribed independently from
-  `ARCHITECTURE.md` §5), Path safety (`T-034`), Crash recovery, Migrations and the Settings
-  freeze (`T-014`), and — new with `T-013` — Cancellation and Worker crash, both proven against
-  real spawned processes. **Log redaction (`T-038`) and DRM remain uncovered.** This bullet
-  previously read "two", written when nothing downloaded or persisted; the count is now
-  recomputed rather than adjusted.
+  Of §7's ten mandatory areas **ten** are now covered, recounted row by row on 2026-07-28
+  (`T-058`): Layering (`T-005`), the State machine (`T-010`, checked against a transition
+  relation transcribed independently from `ARCHITECTURE.md` §5), Path safety (`T-034`), Crash
+  recovery, Migrations and the Settings freeze (`T-014`), Cancellation and Worker crash
+  (`T-013`, with the process-tree half proved by `T-019`), Log redaction (`T-038`), and DRM
+  (`T-012`, `T-017`, `T-057` — see the next bullet). **Recomputed from §7's rows rather than
+  adjusted**, which is the discipline that caught this bullet's own error: it said "eight … Log
+  redaction and DRM remain uncovered" for weeks after `T-038` closed one and while three tests
+  already gated the other.
+
+- **DRM is covered, and what it cannot cover is named** (`T-058`, 2026-07-28). §7 asks that
+  `DRM_PROTECTED` is never auto-retried and has no bypass path. Four layers answer, and each
+  claim below was mutation-checked before being recorded here:
+  - `tests/unit/test_errors.py` — non-retryable and non-auto-retryable, asserted across the
+    whole taxonomy rather than for one kind. *Mutation: dropping `DRM_PROTECTED` from
+    `_NON_RETRYABLE` — killed.*
+  - `tests/unit/test_ytdlp_adapter.py` — detection is structural, prose claiming DRM is
+    explicitly not DRM, and the adapter's rule is compared against **yt-dlp's own** across five
+    format shapes (`T-057`). *Mutations: reading prose; the old `all`/`'maybe'` fallback —
+    killed.*
+  - `tests/integration/test_worker.py` — the bypass half, by counting extraction calls: a DRM
+    item fails after exactly one, because a second would be an attempt to route around the
+    protection. *Mutation: letting the download proceed past detection — killed.*
+  - `tests/ui/test_job_detail.py` — the UI half (`T-017`): a `DRM_PROTECTED` job offers no retry
+    **at all**, and the affordance is driven by `is_retryable` rather than by a kind named in a
+    widget. *Mutation: a literal kind comparison — killed by the `CANCELLED` case.*
+
+  Two limits stand, neither closable here. **No recorded fixture can exist**: capturing one
+  means probing a DRM service, which `REQ-EXCL-001` and `SEC-001` put out of scope, so
+  `derived_drm_protected` is constructed and says so (§5). And yt-dlp writes `_has_drm` as
+  `True` or `None` and never `False`, so its absence does not distinguish "not DRM" from "never
+  processed" — harmless on every path this application has, and recorded in `T-057` rather than
+  papered over.
 - **Windows has automated coverage only** (`OPS-004`, narrowing `OPS-003`). The runner is a
   real desktop, so the application launch, menu keyboard reachability, and the UI Automation
   name/role contract are now gated. Still unverified there: whether rendering *looks* right,

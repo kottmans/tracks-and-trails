@@ -5,8 +5,8 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-27
-**Last verified against repository:** 2026-07-27
+**Last updated:** 2026-07-28
+**Last verified against repository:** 2026-07-28
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -106,8 +106,8 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
   the identical still-attached handler, and `idle` is withheld while the listener thread is alive,
   polled by the existing timer and never joined, with `gave_up_on_the_log` as the bounded escape
   if it wedges past `reap_seconds`. `T013-R2/R3/R4` were re-examined and remain resolved.
-  **`ai/TESTING.md` §7 now covers nine of ten mandatory areas**; only DRM is uncovered, and it
-  still has no Phase 1 owner.
+  `ai/TESTING.md` §7's coverage was recounted on 2026-07-28 by `T-058`: **ten of ten**, with the
+  DRM row's four claims each mutation-checked before being recorded.
 - **`T-013` closed after three correction passes.** `T013-R1`, `T013-R2` and `T013-R4` were
   verified resolved; `T013-R3` came back twice more with a different sibling each time, so the
   maintainer authorized **restructuring** the startup transaction rather than patching it again:
@@ -125,14 +125,16 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
   something was being kept without a reader for it, and the argument for keeping it was always
   "it's only shape / only names / only the parts we recognise". The allowlist survived review
   because it starts from what is *read*. Anything else in a fixture is a liability with a story.
-- **`ai/TESTING.md` §7 covers nine of ten mandatory areas, all in the default local run.**
+- **`ai/TESTING.md` §7 covers ten of ten mandatory areas, all in the default local run.**
   `T-013` added Cancellation and Worker crash against real spawned processes; both moved behind
   `-m process_tree` in `9010794`, because `T-019`'s live defect left descendants that wedged later
   runs. **`T019-R1` caught that the same marker removed them from CI**, which ran a bare `pytest`
   and inherited the exclusion — so for one day two mandatory areas gated nothing anywhere, while
   three records said CI still covered them. `T-019` removed the marker along with the defect.
-  Log redaction closed with `T-038`'s approval. **DRM is the one uncovered area and still has no
-  Phase 1 owner** — worth settling deliberately rather than discovering it at the exit review.
+  Log redaction closed with `T-038`'s approval. **DRM was never the uncovered area this file
+  claimed it was** — three tests already gated it, and the record had simply never been
+  recomputed. `T-058` recounted it; `T-017` added the UI half and `T-057` the upstream contract.
+  The count is now stated in one place, `ai/TESTING.md` §12, and this bullet points at it.
 - **The lesson from `T-044`, `T-045` and `T-014`, now three for three:** each blocking finding
   came from filtering unbounded input instead of constraining what the input could be. `T-044`
   stopped parsing for exports and read the interpreter's namespace; `T-045` dropped a completeness
@@ -187,9 +189,9 @@ exactly that — the contradiction `T016-R8` reported.)*
 
 5. **`T-017` is the only substantive task startable now**, and the critical path to the phase
    exit is linear: **`T-017` → `T-036` → `T-037`**. `T-036` depends on `T-016` *and* `T-017`, so
-   composition does not begin the moment `T-016` clears review. **DRM is the one uncovered
-   mandatory area and still has no owner** — worth settling before `T-037` rather than at the
-   exit review.
+   composition does not begin the moment `T-016` clears review. *(This item used to end "DRM is
+   the one uncovered mandatory area and still has no owner". It was neither: see
+   `ai/TESTING.md` §12.)*
 6. **`T-050`** — **Phase 2**, not Phase 1: the `history` table is still empty, and
    `IMPLEMENTATION_PLAN.md` puts `REQ-020`'s history persistence in Phase 2. This file's claim
    that `T-013` owned it was `STATUS.md` running ahead of both the plan and `T-013`'s own scope;
@@ -317,11 +319,7 @@ The `core/` modules remain **domain vocabulary plus pure functions** — what a 
 a failure *are*, the rules for moving between states, and filename safety. `persistence/` is the
 first module that keeps something across a restart.
 
-Of `TESTING.md` §7's ten mandatory areas, **nine** are now covered: Layering (`T-005`), the
-State machine (`T-010`), Path safety (`T-034`), Crash recovery, Migrations and the Settings
-freeze (`T-014`), Cancellation and Worker crash (`T-013`, with the process-tree half proved by
-`T-019`), and Log redaction (`T-038`). **DRM is the one outstanding, and has no Phase 1 owner.**
-
-*(This paragraph read "eight … the two outstanding are Log redaction and DRM" until 2026-07-27,
-contradicting the count in `In progress` above after `T-038` was approved. Two statements of one
-number in one file is the defect; this is now the only one.)*
+**`TESTING.md` §12 holds the count of §7's ten mandatory areas, and this file does not repeat
+it.** Two statements of one number in one file was the defect the last correction named; two
+files stating it was the defect that survived that correction, and it is why "DRM is uncovered"
+outlived being true by four tasks. `T-058` recounted the rows and moved the number to one home.

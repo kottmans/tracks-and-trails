@@ -1593,7 +1593,8 @@ something yt-dlp does not. Recorded rather than fixed.
 
 ### T-058 — Recount the DRM coverage record
 
-**Status:** Ready — filed 2026-07-28
+**Status:** **Complete — recounted 2026-07-28.** Ten of ten, not eight, and not nine. Each of the
+DRM row's four claims was mutation-checked before being recorded. See **Evidence**.
 **Owner:** Documentation Maintainer, with the Implementer for the mutation evidence
 **Priority:** Medium — the exit review reads this record, and today it is wrong
 **Phase:** Phase 1
@@ -1641,6 +1642,34 @@ declaring the area closed.
 - Adding tests. If the mutation evidence shows a claim is not actually gated, that is a finding to
   file, not a fix to fold into a documentation task
 - `T-057`'s code change
+
+#### Evidence, 2026-07-28
+
+**The count is ten of ten**, recomputed from §7's rows rather than edited in place. The old
+sentence — "eight … Log redaction and DRM remain uncovered" — was wrong in both halves by the
+time anyone read it: `T-038` closed log redaction, and DRM had been gated since the worker path
+landed.
+
+**Every claim recorded was mutated first**, and all three mutations were killed:
+
+| Claim | Mutation | Result |
+|---|---|---|
+| `DRM_PROTECTED` is never retried | drop it from `_NON_RETRYABLE` in `core/errors.py` | killed by `test_drm_protected_is_non_retryable_in_the_taxonomy` and `test_a_drm_failure_offers_no_retry_at_all` |
+| No bypass path | delete the DRM check before the download in `worker.py` | killed by `test_a_drm_item_fails_without_attempting_extraction` |
+| Detection is structural | let `has_drm` match "drm" in the title | killed by `test_drm_detection_does_not_read_message_text` |
+
+**The corrected record names what it cannot cover** rather than declaring the area closed
+(`T-044`/`T-045`, §13): no recorded fixture can exist, because capturing one means probing a DRM
+service; and `_has_drm` is written as `True` or `None` and never `False`, so absence is
+ambiguous. Both are stated in `ai/TESTING.md` §12 with the reason.
+
+**One number, one home.** `ai/STATUS.md` no longer states the count at all — it points at
+§12. The previous correction fixed *two statements of one number in one file*; two **files**
+stating it is what let "DRM is uncovered" outlive being true by four tasks, and that is the
+failure mode this task actually closes.
+
+**No §7 requirement text was reworded.** The DRM row still reads exactly as it did; only the
+coverage claim about it changed.
 
 ---
 
