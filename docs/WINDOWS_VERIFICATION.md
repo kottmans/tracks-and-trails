@@ -139,6 +139,52 @@ table of numbers:
   must fail. Without one, "the mutation survived" and "the mutation never applied" look identical
   — which is how a real survival gets misread as a broken harness, and vice versa.
 
+## The self-hosted runner
+
+`STARBASE` runs the `windows desktop` CI job as of 2026-07-28. Self-hosted minutes are not
+billed, so that job survives the Actions quota running out — which is what took it away in the
+first place.
+
+Setup, once:
+
+```powershell
+# in C:\actions-runner, from an elevated shell
+config.cmd --unattended --replace --url https://github.com/<owner>/<repo> `
+           --token <registration token> --name STARBASE --labels desktop --work _work
+```
+
+Get the token with `gh api -X POST /repos/<owner>/<repo>/actions/runners/registration-token -q .token`.
+It expires in an hour.
+
+**Start it with `run.cmd` from a logged-on session. Never install it as a Windows service.** A
+service runs in session 0, and every focus test in that job would pass while proving nothing. A
+scheduled task registered `/sc onlogon /it /rl highest` gives an interactive *and* elevated
+session, which is the combination that matters:
+
+```
+schtasks /create /tn ghrunner /tr "C:\actions-runner\run.cmd" /sc onlogon /rl highest /it /f
+schtasks /run /tn ghrunner
+```
+
+Elevation is deliberate — GitHub-hosted runners are elevated, so matching it keeps the symlink
+tests `T-070` made conditional actually running here rather than skipping.
+
+Verify both properties rather than assuming them:
+
+```bash
+# must report Session#2 (or any non-zero), not 0
+ssh <host> 'tasklist /FI "IMAGENAME eq Runner.Listener.exe" /FO LIST'
+# must report online
+gh api /repos/<owner>/<repo>/actions/runners -q '.runners[] | "\(.name) \(.status)"'
+```
+
+A `.env` file in the runner root points `TEMP`/`TMP` at `C:\actions-runner\_temp`. Without it,
+the elevated runner and an unelevated manual run share `%LOCALAPPDATA%\Temp\pytest-of-<user>`,
+and whichever comes second fails with `PermissionError: [WinError 5]` on hundreds of tests.
+
+**If the machine is off or logged out, the job queues rather than fails.** `timeout-minutes`
+bounds that. It is a real trade: this job is now as available as one desktop machine is.
+
 ## What CI does differently
 
 Kept here because each row was a failing test before it was understood.

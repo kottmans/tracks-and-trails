@@ -1373,9 +1373,13 @@ a kill and reports any other non-zero code as `NO RESULT`. A result table that c
 "the test caught it" from "nothing ran" is the same defect class as a test that passes for the
 wrong reason (`ai/TESTING.md` §13), one layer up.
 
-**What this is not.** It is a recorded manual run on one machine, not a gate that runs on every
-push. Until a runner executes it, a regression between now and then would not be caught by
-anything.
+**What this was not, and what changed later the same day.** When first recorded this was a
+manual run on one machine rather than a gate — a regression between then and the next CI run
+would have been caught by nothing. `STARBASE` was subsequently registered as a **self-hosted
+runner** for the `windows desktop` job, started from `run.cmd` in a logged-on, elevated session
+(`Runner.Listener.exe`, Session#2), so the desktop suite runs on every push again and does not
+depend on Actions quota. The mutations themselves are still run by hand from
+`tools/windows/mutations/`; making *those* part of the job is not done.
 
 #### Scope
 

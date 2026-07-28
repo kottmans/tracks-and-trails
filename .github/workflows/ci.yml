@@ -191,9 +191,27 @@ jobs:
   # Windows only. The Linux runner has no display server, so the equivalent there would need
   # xvfb and would prove something different; Linux launch is verified by the maintainer's own
   # desktop, which Windows has never had (OPS-003).
+  #
+  # **Self-hosted as of 2026-07-28.** `STARBASE` is a Windows 10 machine on the maintainer's
+  # network, and it runs this job because a GitHub-hosted runner cannot be relied on for it:
+  # Actions usage ran out mid-Phase-1 and the one job that proves the window reaches a desktop
+  # went with it. Self-hosted minutes are not billed, so this job survives that.
+  #
+  # **The runner is started from `run.cmd` in a logged-on session, never installed as a Windows
+  # service.** A service runs in session 0, which has no window station: Qt does not fail there,
+  # it degrades — the offscreen platform loses its font database and the real `windows` plugin
+  # cannot set DPI awareness. Every focus assertion in this job would pass while proving
+  # nothing, which is precisely the "retire a gate and replace it with theatre" failure `T-026`
+  # exists to prevent. Verified: `Runner.Listener.exe` reports Session#2, RDP-Tcp#2.
+  #
+  # It also runs **elevated**, matching a GitHub-hosted runner, so the symlink tests `T-070`
+  # made conditional still execute here rather than skipping.
+  #
+  # `docs/WINDOWS_VERIFICATION.md` carries the setup and both traps. If the machine is off or
+  # logged out this job queues rather than failing, which `timeout-minutes` bounds.
   windows-desktop:
     name: windows desktop
-    runs-on: windows-latest
+    runs-on: [self-hosted, windows, desktop]
     timeout-minutes: 15
 
     env:
