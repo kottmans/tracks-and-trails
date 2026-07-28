@@ -24,6 +24,11 @@
 - **Corrections get a focused re-review** as a distinct follow-up diff, before the work unit
   expands.
 - Only **Open** findings require a `TASKS.md` entry. Closed outcomes are recorded here.
+- **This file is the record for serial work.** During a parallel wave (`AGENTS.md` §9) reviews
+  are partitioned: the assigned reviewer writes `ai/reviews/T-0NN.md` on the task branch, this
+  file carries only the index entry and the integration result, and approval names the exact
+  implementation head it covers. Every severity, blocking, verdict, and budget rule below is
+  the same in both modes.
 
 **Severity:** Critical · High · Medium · Low · Note
 **Finding status:** Open · Resolved · Accepted Risk · Won't Fix · Superseded
@@ -4202,3 +4207,74 @@ revisit the resolved Medium-or-lower findings. The remaining findings are Critic
 continuations of the original blockers, so `AGENTS.md` §9 permits another focused correction and
 verification pass without maintainer authorization; it must stay confined to R1, R2, R3 and
 their correction diff.
+
+## 2026-07-27 — T-016 second focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-016` — Add-URL dialog with probe results
+**Correction base:** `162f2860e02d3fe7daf2c9523d9de8fd214b82e0`
+**Head:** `c5dddae46bb82f18e655636ad9c26e5ca8eeeec4`
+**Correction commit:** `c5dddae`
+**Excluded content in the commit:** the preceding focused review record was committed verbatim
+with the correction; that historical text is not implementation
+**Repository state at inspection:** clean `main`, in sync with `origin/main`; source and tests
+were inspected and run from a clean `git archive c5dddae`
+**Platforms verified:** Linux locally; Windows from the implementer-provided GitHub Actions run
+`30326537991`
+**Verdict:** **Changes requested**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T016-R1` | **Critical** | **Yes** | **Open, narrowed — the successful path is corrected, but withdrawal does not fail closed when its revision cannot be written.** The pending-save callback now cancels a superseded row, and occurrence counting correctly makes two identical entered lines two jobs. Under ordinary completion, the old row becomes `CANCELLED` and only the displayed URL remains live. But that cancellation is an asynchronous manager revision whose result the dialog does not own. With the append already durable and a real SQLite writer lock held through the revision timeout, `persistence_failed` fired while the dialog continued to say only “The URL changed. Probe again”; the write-through view said `CANCELLED`, but the concrete repository still held the replaced URL as `QUEUED`. A restart discards the view and exposes it as live work again — the original wrong-URL consequence. A Critical withdrawal cannot depend on a best-effort revision. Either make edit/close unable to retire a not-yet-finalized append, or keep the interaction pending and visibly retry/refuse progress until the cancellation is durable. Gate the failure path against the concrete repository and a fresh-store/restart read, not the in-memory view. |
+| `T016-R2` | **High** | **Yes** | **Resolved.** `done()` retires every usable, not-ready probe, including one whose row is still being saved. Its callback sees `superseded` and never starts a worker. Reject, visible-window close, and direct done were exercised with genuinely deferred saves; all left the manager idle and a later dialog could probe. The cancellation-write failure above can leave a durable queued row, but it does not recreate R2's hidden worker or occupied pool and remains part of Critical R1. |
+| `T016-R3` | **High** | **Yes** | **Open — every write is on the writer thread, but moving only `job_changed` into the callback does not preserve the ordering that synchronous persistence used to provide.** `QueueWriter.revise()`, `PersistentJobStore`, read-your-writes, `persistence_failed`, and event-driven `closed` all work as mechanisms. The write-through view, however, is not durable persistence. Under a held real lock, `DownloadManager.start()` started both the process and pump while the concrete row was still `QUEUED`; `_abort_start()` emitted `protocol_violation` and `job_failed` and ran queue cleanup while the row was still `QUEUED`; and `job_succeeded` observed the row still `RUNNING`, with only `job_changed` waiting until `COMPLETED` was durable. A failed revision can therefore announce success/failure or start work before later emitting `persistence_failed`. This directly regresses T-013's approved startup transaction, cleanup-before-persistence guard, and acceptance criterion that every transition is persisted before its corresponding UI signal. Keeping the ten call sites unchanged is the cause, not proof of equivalence: the old synchronous call sequenced all following effects. Make persistence completion gate worker construction, cleanup, and every companion signal (`progress` when it moves state, `media_probed`, `job_succeeded`, `job_failed`, and startup violation), with an explicit failure continuation that does not perform the success-side effect. Test the concrete repository's status at process/pump start, cleanup, and each companion signal under a held lock. |
+
+### What is independently established
+
+- `_Persisted` now tracks lists/counts per URL. After one occurrence is probed, the difference
+  calculation creates a job for the second identical line; the regression test passed.
+- A pending save retired by edit or close cannot start a worker. The normal successful
+  cancellation ordering is append then revision on the same writer thread.
+- `QueueWriter.submit()` and `revise()` share one receiver and connection with
+  `check_same_thread=True`; manager reads see accepted revisions immediately through
+  `PersistentJobStore`.
+- A contended manager revision returns immediately, completes after the lock is released, and
+  no exception escapes the Qt slot. A failed write emits `persistence_failed`.
+- `QueueWriter.close()` returns immediately, drains prior writes, closes the connection on its
+  owning thread, and emits `closed`; the former GUI-thread `QThread.wait()` is gone.
+- `T016-R4` through `T016-R8` remain resolved. `T-056` remains separately open and this commit
+  changes no process-survival helper.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| `git diff --check 162f286..c5dddae` | Passed. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **86 files already formatted**. |
+| `mypy src` | Passed: no issues in **35 source files**. |
+| Configured `mypy` | Passed: no issues in **71 source files**. |
+| Configured `mypy --platform win32` | Passed: no issues in **71 source files**. |
+| Full add-dialog and manager focused suite | Passed: **130 passed in 63.06 s**. |
+| Canonical bare `pytest`, exact head | Passed: **1281 passed, 11 skipped, 1 deselected in 85.58 s**. |
+| Implementer-provided CI at `c5dddae` | Run `30326537991` green: Ubuntu **1281 passed**; Windows **1270 passed, 20 skipped**; Windows desktop and both frozen jobs succeeded. |
+| Failed pending-save withdrawal | Failed the correction as intended: `persistence_failed` arrived, the store view was `CANCELLED`, but the replaced URL remained durably `QUEUED` and the dialog displayed no persistence failure. |
+| Start-side-effect ordering | Failed the correction as intended: both fake process start and pump start observed the concrete database still at `QUEUED`; only the write-through view held `PROBING`. |
+| Startup-failure signal ordering | Failed the correction as intended: `protocol_violation` and `job_failed` each observed the concrete row at `QUEUED`; it became durably `FAILED` only after the lock was released. |
+| Startup cleanup ordering | Failed the correction as intended: the cleanup queue's `close()` observed the concrete row at `QUEUED`, reopening the exact `T013-R3` mechanism that required durable failure before cleanup. |
+| Success-signal ordering | Failed the correction as intended: `job_succeeded` observed the concrete row at `RUNNING`; `job_changed` arrived only after `COMPLETED` was durable. |
+
+Reviewer probes lived only in the temporary exact-head archive and did not alter repository
+source or tests.
+
+### Readiness and review budget
+
+`T016-R2` is independently resolved. Critical `T016-R1` and High `T016-R3` remain open, so
+`T-016` remains **Changes requested**.
+
+The remaining defects are direct Critical/High continuations and include a regression of the
+approved High `T013-R3` guarantees. `AGENTS.md` §9 therefore permits another correction and
+focused verification pass without maintainer authorization. It must remain confined to R1's
+durable withdrawal and R3's persistence continuations; R2 and R4–R8 are settled.
