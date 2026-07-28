@@ -23,6 +23,7 @@ import ctypes
 import os
 import subprocess
 import sys
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -469,6 +470,10 @@ def test_escape_does_not_close_the_main_window(shown_window: MainWindow) -> None
 #: The add-URL dialog's controls, in the order a user should meet them, transcribed from what the
 #: dialog is *for*: type the URLs, probe them, read the result, choose how to download, then act.
 #: Written out rather than read from `focus_chain()` — that is the whole point.
+#:
+#: **This is the order, not the reachable set** (`T040-R1`). Tab skips a control that is disabled
+#: or hidden, and this dialog disables three of them until there is a URL to act on, so the chain
+#: a user actually walks is this list filtered by what the current state offers.
 EXPECTED_DIALOG_ORDER = (
     "urlInput",
     "probeButton",
@@ -484,143 +489,186 @@ EXPECTED_DIALOG_ORDER = (
     "closeButton",
 )
 
+#: What each dialog state makes available, written by hand from what the dialog is *for* rather
+#: than read back from `_refresh_actions` (`ai/TESTING.md` §13).
+#:
+#: `cancelProbeButton` is in neither: it is enabled only while a probe is running, and starting one
+#: here would mean spawning a worker in a file whose subject is which control the caret reaches
+#: next. That gap is deliberate and is recorded rather than hidden.
+DIALOG_STATES = (
+    (
+        "nothing typed",
+        "",
+        # Probe, Cancel and Add are all unavailable: there is no URL to act on.
+        frozenset(EXPECTED_DIALOG_ORDER) - {"probeButton", "cancelProbeButton", "addButton"},
+    ),
+    (
+        "a URL typed",
+        "https://focus.invalid/clip",
+        # Probe and Add become available; Cancel stays out until a probe is running.
+        frozenset(EXPECTED_DIALOG_ORDER) - {"cancelProbeButton"},
+    ),
+)
+
+#: The progress view's controls, in order, and what each ending makes available.
+#:
+#: A terminal job cannot be cancelled and a running one has nothing to retry (`T-017`), so no
+#: state offers all three — which is exactly what `T040-R1` caught this file asserting.
+EXPECTED_VIEW_ORDER = ("errorMessage", "cancelJobButton", "retryJobButton")
+VIEW_STATES = (
+    (
+        "failed, retryable",
+        JobStatus.FAILED,
+        ErrorKind.NETWORK,
+        frozenset({"errorMessage", "retryJobButton"}),
+    ),
+    ("running", JobStatus.RUNNING, None, frozenset({"cancelJobButton"})),
+)
+
+
+def _reachable(widget: QWidget, declared: tuple[str, ...], available: frozenset[str]) -> list[str]:
+    """The chain a keyboard actually walks: the declared order, minus what this state withholds."""
+    _ = widget
+    return [name for name in declared if name in available]
+
 
 def _focusable(widget: QWidget) -> list[str]:
-    """Every focusable child of `widget`, named, as Qt reports them."""
+    """Every child of `widget` that a keyboard can reach **now** — enabled, visible, focusable.
+
+    `focusPolicy() != NoFocus` alone is not that question (`T040-R1`): a *disabled* widget keeps
+    its focus policy and Tab skips it, so a structural check counted three controls the walk could
+    never visit and the two lists agreed with each other while disagreeing with the keyboard.
+    """
     return [
         child.objectName()
         for child in widget.findChildren(QWidget)
-        if child.focusPolicy() != Qt.FocusPolicy.NoFocus and child.objectName()
+        if child.objectName()
+        and child.focusPolicy() != Qt.FocusPolicy.NoFocus
+        and child.isEnabled()
+        and not child.isHidden()
     ]
 
 
-def _walk_focus_chain(dialog: QWidget, steps: int) -> list[str]:
-    """Press Tab `steps` times and record what holds focus after each, under the real plugin.
+def _walk_focus_chain(window: QWidget, steps: int, *, backwards: bool = False) -> list[str]:
+    """Press Tab (or Shift+Backtab) `steps` times and record what holds focus after each.
 
     `QTest.keyClick` on a shown, activated window goes through Qt's real focus machinery on this
     platform rather than through `setFocus()` — which is the difference this file exists for.
     """
+    key = Qt.Key.Key_Backtab if backwards else Qt.Key.Key_Tab
+    modifier = Qt.KeyboardModifier.ShiftModifier if backwards else Qt.KeyboardModifier.NoModifier
     seen: list[str] = []
     for _ in range(steps):
-        QTest.keyClick(dialog, Qt.Key.Key_Tab)
+        QTest.keyClick(window, key, modifier)
         QApplication.processEvents()
         focused = QApplication.focusWidget()
         seen.append(focused.objectName() if focused is not None else "")
     return seen
 
 
+def _rotated_to(visited: list[str], expected: list[str]) -> list[str]:
+    """Line `visited` up with `expected`'s first entry, since focus starts wherever Qt put it."""
+    if expected and expected[0] in visited:
+        start = visited.index(expected[0])
+        return visited[start:] + visited[:start]
+    return visited
+
+
 @pytest.fixture
-def shown_dialog(shown_window: MainWindow, tmp_path: Path) -> AddUrlDialog:
-    """The add-URL dialog, visible and activated on the real desktop.
+def dialog_factory(shown_window: MainWindow, tmp_path: Path) -> Callable[[str], AddUrlDialog]:
+    """Builds the add-URL dialog, visible and activated on the real desktop, with given text.
 
     Built directly rather than through `MainWindow.open_add_dialog`, because that path needs a
     manager, a job sink and an output directory (`T-036`) and none of them is what this asserts.
-    A `DownloadManager` over an empty store is enough to construct the widget, and no session is
-    ever started.
+    A `DownloadManager` over an empty store is enough, and no session is ever started.
     """
-    manager = DownloadManager(_EmptyStore())
-    dialog = AddUrlDialog(
-        manager=manager,
-        jobs=_EmptyStore(),
-        output_directory=tmp_path / "downloads",
-        parent=shown_window,
-    )
-    dialog.show()
-    dialog.raise_()
-    dialog.activateWindow()
-    QApplication.processEvents()
-    return dialog
+
+    def build(text: str) -> AddUrlDialog:
+        dialog = AddUrlDialog(
+            manager=DownloadManager(_EmptyStore()),
+            jobs=_EmptyStore(),
+            output_directory=tmp_path / "downloads",
+            parent=shown_window,
+        )
+        dialog._urls.setPlainText(text)
+        dialog.show()
+        dialog.raise_()
+        dialog.activateWindow()
+        QApplication.processEvents()
+        return dialog
+
+    return build
 
 
-def test_every_focusable_control_is_in_the_declared_tab_order(shown_dialog: AddUrlDialog) -> None:
-    """A tab order that omits reachable controls is not a tab order (`T016-R4`).
+@pytest.mark.parametrize(("case", "text", "available"), DIALOG_STATES)
+def test_the_dialog_chain_offers_exactly_what_its_state_allows(
+    dialog_factory: Callable[[str], AddUrlDialog],
+    case: str,
+    text: str,
+    available: frozenset[str],
+) -> None:
+    """`T040-R1`: a focus chain is a property of *state*, not of the widget tree.
 
-    Compared against the hand-written list above, so a control that becomes focusable without
-    being placed fails here rather than landing silently at the end of the chain.
+    The first version of this file asserted one chain for all states and CI failed three of its
+    tests, reporting `probeButton`, `cancelProbeButton` and `addButton` unreachable. They were —
+    all three are disabled until there is a URL to act on, and Tab skips a disabled control.
+
+    **That was never a Windows behaviour.** The identical walk reproduces offscreen; the offscreen
+    suite simply never pressed Tab, so nothing had observed it anywhere.
     """
-    reachable = set(_focusable(shown_dialog))
-    declared = set(EXPECTED_DIALOG_ORDER)
-    assert reachable == declared, (
-        f"focusable but undeclared: {sorted(reachable - declared)}; "
-        f"declared but not focusable: {sorted(declared - reachable)}"
-    )
+    dialog = dialog_factory(text)
+    expected = _reachable(dialog, EXPECTED_DIALOG_ORDER, available)
 
-
-def test_tab_visits_the_declared_order_on_a_real_desktop(shown_dialog: AddUrlDialog) -> None:
-    """`T-040`'s first criterion, under the real `windows` platform plugin.
-
-    The offscreen suite asserts the order Qt *builds*; this asserts the order Windows
-    *delivers*, by pressing Tab and asking who has focus. Reversing two entries in
-    `AddUrlDialog.focus_chain` fails this, which is the mutation `T-026` asked for.
-    """
-    first = shown_dialog.focusWidget()
-    assert first is not None, "nothing had focus when the dialog opened"
-
-    visited = _walk_focus_chain(shown_dialog, len(EXPECTED_DIALOG_ORDER))
-    start = visited.index(EXPECTED_DIALOG_ORDER[1]) if EXPECTED_DIALOG_ORDER[1] in visited else 0
-    rotated = visited[start:] + visited[:start]
-    expected = [*EXPECTED_DIALOG_ORDER[1:], EXPECTED_DIALOG_ORDER[0]]
-    assert rotated == expected, (
-        f"Tab visited {rotated} on a real desktop; the declared order is {expected}"
+    assert sorted(_focusable(dialog)) == sorted(expected), (
+        f"{case}: reachable now is {sorted(_focusable(dialog))}, this state should offer "
+        f"{sorted(expected)}"
     )
 
+    visited = _walk_focus_chain(dialog, len(expected))
+    assert _rotated_to(visited, expected) == expected, (
+        f"{case}: Tab visited {visited} on a real desktop; this state's chain is {expected}"
+    )
 
-def test_the_focus_chain_wraps_in_both_directions(shown_dialog: AddUrlDialog) -> None:
+
+@pytest.mark.parametrize(("case", "text", "available"), DIALOG_STATES)
+def test_the_dialog_chain_wraps_in_both_directions(
+    dialog_factory: Callable[[str], AddUrlDialog],
+    case: str,
+    text: str,
+    available: frozenset[str],
+) -> None:
     """`T-040`'s second criterion: forwards and backwards, all the way round.
 
     A chain that wraps one way and dead-ends the other strands a keyboard user at whichever end
-    they reach first, and neither direction is observable offscreen.
+    they reach first, and neither direction is observable without pressing the key.
     """
-    forwards = _walk_focus_chain(shown_dialog, len(EXPECTED_DIALOG_ORDER) * 2)
-    assert set(forwards) >= set(EXPECTED_DIALOG_ORDER), (
-        f"two full passes forwards missed {sorted(set(EXPECTED_DIALOG_ORDER) - set(forwards))}"
-    )
+    dialog = dialog_factory(text)
+    expected = set(_reachable(dialog, EXPECTED_DIALOG_ORDER, available))
 
-    backwards: list[str] = []
-    for _ in range(len(EXPECTED_DIALOG_ORDER) * 2):
-        QTest.keyClick(shown_dialog, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ShiftModifier)
-        QApplication.processEvents()
-        focused = QApplication.focusWidget()
-        backwards.append(focused.objectName() if focused is not None else "")
-    assert set(backwards) >= set(EXPECTED_DIALOG_ORDER), (
-        f"two full passes backwards missed {sorted(set(EXPECTED_DIALOG_ORDER) - set(backwards))}"
-    )
+    forwards = set(_walk_focus_chain(dialog, len(expected) * 2))
+    assert forwards >= expected, f"{case}: forwards missed {sorted(expected - forwards)}"
+
+    backwards = set(_walk_focus_chain(dialog, len(expected) * 2, backwards=True))
+    assert backwards >= expected, f"{case}: backwards missed {sorted(expected - backwards)}"
 
 
-def test_every_control_is_reachable_from_the_initial_focus(shown_dialog: AddUrlDialog) -> None:
-    """`T-040`'s third criterion: keyboard alone, from wherever focus starts.
-
-    Reachability is the property a user has; an order that is correct but enters a sub-loop
-    leaves controls no amount of tabbing will find.
-    """
-    visited = set(_walk_focus_chain(shown_dialog, len(EXPECTED_DIALOG_ORDER) * 2))
-    unreachable = set(EXPECTED_DIALOG_ORDER) - visited
-    assert not unreachable, f"unreachable by keyboard from the initial focus: {sorted(unreachable)}"
-
-
-#: The progress view's controls, in the order a user should meet them: read what went wrong,
-#: then act on it. Transcribed by hand, like the dialog's, and for the same reason.
-EXPECTED_VIEW_ORDER = ("errorMessage", "cancelJobButton", "retryJobButton")
-
-
-def test_the_progress_view_focus_chain_is_walked_on_a_real_desktop(
-    shown_window: MainWindow, tmp_path: Path
+@pytest.mark.parametrize(("case", "status", "kind", "available"), VIEW_STATES)
+def test_the_progress_view_chain_offers_exactly_what_its_state_allows(
+    shown_window: MainWindow,
+    case: str,
+    status: JobStatus,
+    kind: ErrorKind | None,
+    available: frozenset[str],
 ) -> None:
-    """`T-017` added three more focusable controls, and they are this task's too.
+    """`T040-R1`, the case it was filed for, per state.
 
-    **`T040-R1`: this compared two lists and called it a Windows test.** It asserted that
-    `focus_chain()` matched a transcription and that the same widgets were focusable — both true
-    on any platform, neither touching the `windows` plugin this file exists for. A structural
-    check that never presses Tab proves the order Qt was *told*, which the offscreen suite
-    already covers; what is unproved is the order Windows *delivers*.
-
-    So this drives it: Tab through the chain, Backtab back, and ask Qt who actually has focus.
-    The job is `FAILED` with a retryable kind so all three controls are present — a hidden Retry
-    would make the chain two long and the test would be asserting over a different widget.
+    A terminal job cannot be cancelled and a running one has nothing to retry, so the three
+    controls never coexist. The version this replaces expected all three at once and a probe
+    visited `retryJobButton → errorMessage → retryJobButton`, unable to reach `Cancel` because it
+    was disabled.
     """
-    store = _EmptyStore(status=JobStatus.FAILED, kind=ErrorKind.NETWORK)
-    manager = DownloadManager(store)
-    view = build_progress_view(manager, store, "job-1", None)
+    store = _EmptyStore(status=status, kind=kind)
+    view = build_progress_view(DownloadManager(store), store, "job-1", None)
     shown_window.setCentralWidget(view)
     view.show()
     shown_window.raise_()
@@ -629,26 +677,20 @@ def test_the_progress_view_focus_chain_is_walked_on_a_real_desktop(
 
     declared = [widget.objectName() for widget in view.focus_chain()]
     assert declared == list(EXPECTED_VIEW_ORDER), f"the declared order changed: {declared}"
-    assert set(_focusable(view)) == set(EXPECTED_VIEW_ORDER), (
-        f"focusable: {sorted(set(_focusable(view)))}, declared: {sorted(EXPECTED_VIEW_ORDER)}"
+
+    expected = _reachable(view, EXPECTED_VIEW_ORDER, available)
+    assert sorted(_focusable(view)) == sorted(expected), (
+        f"{case}: reachable now is {sorted(_focusable(view))}, this state should offer "
+        f"{sorted(expected)}"
     )
 
-    first = view.findChild(QWidget, EXPECTED_VIEW_ORDER[0])
+    first = view.findChild(QWidget, expected[0])
     assert first is not None
     first.setFocus()
     QApplication.processEvents()
 
-    visited = _walk_focus_chain(shown_window, len(EXPECTED_VIEW_ORDER))
-    assert set(visited) >= set(EXPECTED_VIEW_ORDER), (
-        f"Tab did not reach every control on a real desktop: visited {visited}"
-    )
-
-    backwards: list[str] = []
-    for _ in range(len(EXPECTED_VIEW_ORDER)):
-        QTest.keyClick(shown_window, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ShiftModifier)
-        QApplication.processEvents()
-        focused = QApplication.focusWidget()
-        backwards.append(focused.objectName() if focused is not None else "")
-    assert set(backwards) >= set(EXPECTED_VIEW_ORDER), (
-        f"Shift+Tab did not reach every control on a real desktop: visited {backwards}"
+    visited = set(_walk_focus_chain(shown_window, max(len(expected) * 2, 4)))
+    assert visited >= set(expected), (
+        f"{case}: Tab did not reach every control this state offers; visited {sorted(visited)}, "
+        f"expected at least {sorted(expected)}"
     )

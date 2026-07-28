@@ -159,6 +159,122 @@ real merge no longer detected · the blind case guessing "no merge".
 
 ---
 
+### T-060 — Focus chains are per state, and the Windows mutations still owe evidence
+
+**Status:** **In Review — implemented 2026-07-28.** Chains are asserted per state, and the cause
+of all four CI failures turned out to be one thing. **The Windows-divergence claim in this task
+and in `T-040` was wrong** and is corrected below. Pre-flighted offscreen, where the walk is
+identical; the Windows job is still what proves it.
+**Owner:** Implementer
+**Priority:** Medium — it is the difference between a Windows focus gate and a Windows focus
+*claim*, and `T-026`'s acceptance criterion cannot be marked met until it is settled
+**Phase:** Phase 1
+**Depends on:** nothing to write. **Its evidence depends on the `windows desktop` CI job**, which
+is also what `T-040` and `T-056` are blocked on
+**Relevant context:** `T040-R1`; `T-040`; `T026-R3`; `NFR-005`; `ai/TESTING.md` §12 and §13
+**Affected surfaces:** `tests/ui/test_windows_desktop.py`, `ai/TESTING.md` §12
+**Risk:** Low to write, Medium to leave — a focus test that cannot reach a control it asserts on
+is a red build for a wrong reason, and a green one would be worse
+
+#### Scope
+
+**CI run `30380426474` failed four of `T-040`'s tests, not one.** The progress-view test is the
+one `T040-R1` predicted; the other three are the *dialog's*, and they are new information:
+
+| Failing on the real Windows plugin | |
+|---|---|
+| `test_tab_visits_the_declared_order_on_a_real_desktop` | dialog |
+| `test_the_focus_chain_wraps_in_both_directions` | dialog |
+| `test_every_control_is_reachable_from_the_initial_focus` | dialog |
+| `test_the_progress_view_focus_chain_is_walked_on_a_real_desktop` | `T040-R1` |
+
+**That reading was wrong, and correcting it is the most useful thing in this task.** This entry
+said the failures showed "the order Windows delivers is not the order Qt builds offscreen".
+They showed nothing of the kind. All four have one cause, and it reproduces offscreen:
+
+**Tab skips a control that is disabled or hidden, and every state of these widgets disables
+some.** The dialog disables `probeButton`, `cancelProbeButton` and `addButton` until there is a
+URL to act on — which is exactly the three CI reported unreachable — and the progress view
+disables `Cancel` on a terminal job and hides `Retry` on a running one. Walking Tab through the
+dialog offscreen with no URL typed produces the **identical** sequence `windows-latest` reported,
+ending `selectorValue → closeButton → urlInput`.
+
+So `EXPECTED_DIALOG_ORDER` was never the problem: the *order* is right, and what was missing was
+that a chain is the declared order **filtered by what the current state offers**. The offscreen
+suite had never pressed Tab, so nothing had observed this anywhere — not a platform difference,
+an untested behaviour.
+
+`T-040`'s progress-view test expects **three** reachable controls in one chain. That state does
+not exist. Measured on 2026-07-28:
+
+| The job is | Tab can reach | Why not the others |
+|---|---|---|
+| `FAILED`, retryable | `errorMessage`, `retryJobButton` | `cancelJobButton` is **disabled** — a terminal job cannot be cancelled (`T-017`) |
+| `RUNNING` | `cancelJobButton` | `errorMessage` and `retryJobButton` are **hidden** — nothing has failed |
+
+An isolated probe visited `retryJobButton → errorMessage → retryJobButton` and could never reach
+`cancelJobButton`.
+
+**The structural half of that test agreed with itself, which is how it got written.**
+`_focusable()` filters on `focusPolicy() != NoFocus`, and a *disabled* widget keeps its focus
+policy — so the set matched while the walk could not. Comparing a declared list against a
+computed list is the shape `T016-R4` and `T040-R1` have now each caught once; the walk is the
+only part that knows what a keyboard can do.
+
+So the chains have to be asserted **per state**, each with the set that state actually offers.
+
+#### Acceptance criteria
+
+- The failed state and the running state are asserted separately, each against the controls that
+  state makes reachable — a disabled or hidden control is not in the expectation for that state
+- Reachability is decided by driving Tab and Backtab and asking Qt what has focus, never by
+  comparing two lists this repository computes
+- A control that becomes reachable in a state without being declared for it fails
+- The `T-040` mutations that could not be run — reversing two widgets, and adding a focusable
+  control without placing it — are executed on Windows and **recorded**, for the dialog chain as
+  well as the view's
+- `ai/TESTING.md` §12 drops the "widget tab order is ungated" gap and `T-026`'s acceptance
+  criterion is marked met **only when all of the above has run on Windows**
+
+#### Out of scope
+
+- Nothing in the dialog's chain is out of scope any more: CI failed three of its tests too, and
+  the same per-state and real-focus reasoning applies to whatever it turns out to want
+- Making the progress view offer more controls than a state should; the disabled Cancel and the
+  hidden Retry are `T-017`'s behaviour and are correct
+
+#### Evidence, 2026-07-28
+
+**One cause, four failures.** See the correction above: Tab skips disabled and hidden controls,
+and both widgets disable some in every state. Not a platform difference.
+
+**Chains are now asserted per state.** The declared order is transcribed once; **availability is
+transcribed per state**, by hand, from what the dialog is *for* — "with no URL there is nothing to
+probe or add" is a design statement worth asserting, and reading it back from `_refresh_actions`
+would make the test agree with the code (`ai/TESTING.md` §13). Two dialog states and two progress
+view states, each checked for the set it offers, the order Tab walks, and wrapping both ways.
+
+**`_focusable` was the structural half of the same mistake.** It filtered on
+`focusPolicy() != NoFocus`, which is true of a *disabled* widget — so it counted three controls
+the walk could never visit, and the two lists agreed with each other while disagreeing with the
+keyboard. It now also requires enabled and not hidden.
+
+**Pre-flighted offscreen, and that is evidence rather than hope.** Because the walk is identical
+there, all four states were driven locally before committing: reachable sets, walked order, and
+both wrap directions all match what the tests expect. **This is not a substitute for the Windows
+job** — the real plugin is the subject — but it is the difference between a test written from a
+design and one written from a guess.
+
+**One gap, deliberate and recorded:** `cancelProbeButton` is in no state's expected set. It is
+enabled only while a probe is running, and starting one would mean spawning a worker in a file
+whose subject is which control the caret reaches next.
+
+**Still owed, and unchanged:** the two `T-040` mutations — reversing two widgets, and adding a
+focusable control without placing it — must be executed **on Windows** and recorded. Nothing here
+has run there. `ai/TESTING.md` §12 keeps its gap and `T-026`'s criterion stays unmet until it has.
+
+---
+
 ## Ready
 
 ### T-063 — The virtualenv cannot run the application it installed
@@ -218,86 +334,6 @@ happens at another.
 
 - Choosing between the two repository paths, which is the maintainer's (`ai/STATUS.md`)
 - Packaging or distribution; `REL-001` and Phase 5 own those
-
----
-
-### T-060 — Focus chains are per state, and the Windows mutations still owe evidence
-
-**Status:** Ready — filed 2026-07-28, carrying `T040-R1` from `T-040` at reviewer direction
-**Owner:** Implementer
-**Priority:** Medium — it is the difference between a Windows focus gate and a Windows focus
-*claim*, and `T-026`'s acceptance criterion cannot be marked met until it is settled
-**Phase:** Phase 1
-**Depends on:** nothing to write. **Its evidence depends on the `windows desktop` CI job**, which
-is also what `T-040` and `T-056` are blocked on
-**Relevant context:** `T040-R1`; `T-040`; `T026-R3`; `NFR-005`; `ai/TESTING.md` §12 and §13
-**Affected surfaces:** `tests/ui/test_windows_desktop.py`, `ai/TESTING.md` §12
-**Risk:** Low to write, Medium to leave — a focus test that cannot reach a control it asserts on
-is a red build for a wrong reason, and a green one would be worse
-
-#### Scope
-
-**CI run `30380426474` failed four of `T-040`'s tests, not one.** The progress-view test is the
-one `T040-R1` predicted; the other three are the *dialog's*, and they are new information:
-
-| Failing on the real Windows plugin | |
-|---|---|
-| `test_tab_visits_the_declared_order_on_a_real_desktop` | dialog |
-| `test_the_focus_chain_wraps_in_both_directions` | dialog |
-| `test_every_control_is_reachable_from_the_initial_focus` | dialog |
-| `test_the_progress_view_focus_chain_is_walked_on_a_real_desktop` | `T040-R1` |
-
-**That is what `T-040` was filed to discover**: the order Windows delivers is not the order Qt
-builds offscreen. This task therefore owns the dialog's chain as well, and the transcription in
-`EXPECTED_DIALOG_ORDER` is a hypothesis until a Windows run says otherwise — the evidence for what
-the real order *is* has to come from the job, not from a local guess.
-
-`T-040`'s progress-view test expects **three** reachable controls in one chain. That state does
-not exist. Measured on 2026-07-28:
-
-| The job is | Tab can reach | Why not the others |
-|---|---|---|
-| `FAILED`, retryable | `errorMessage`, `retryJobButton` | `cancelJobButton` is **disabled** — a terminal job cannot be cancelled (`T-017`) |
-| `RUNNING` | `cancelJobButton` | `errorMessage` and `retryJobButton` are **hidden** — nothing has failed |
-
-An isolated probe visited `retryJobButton → errorMessage → retryJobButton` and could never reach
-`cancelJobButton`.
-
-**The structural half of that test agreed with itself, which is how it got written.**
-`_focusable()` filters on `focusPolicy() != NoFocus`, and a *disabled* widget keeps its focus
-policy — so the set matched while the walk could not. Comparing a declared list against a
-computed list is the shape `T016-R4` and `T040-R1` have now each caught once; the walk is the
-only part that knows what a keyboard can do.
-
-So the chains have to be asserted **per state**, each with the set that state actually offers.
-
-#### Acceptance criteria
-
-- The failed state and the running state are asserted separately, each against the controls that
-  state makes reachable — a disabled or hidden control is not in the expectation for that state
-- Reachability is decided by driving Tab and Backtab and asking Qt what has focus, never by
-  comparing two lists this repository computes
-- A control that becomes reachable in a state without being declared for it fails
-- The `T-040` mutations that could not be run — reversing two widgets, and adding a focusable
-  control without placing it — are executed on Windows and **recorded**, for the dialog chain as
-  well as the view's
-- `ai/TESTING.md` §12 drops the "widget tab order is ungated" gap and `T-026`'s acceptance
-  criterion is marked met **only when all of the above has run on Windows**
-
-#### Out of scope
-
-- Nothing in the dialog's chain is out of scope any more: CI failed three of its tests too, and
-  the same per-state and real-focus reasoning applies to whatever it turns out to want
-- Making the progress view offer more controls than a state should; the disabled Cancel and the
-  hidden Retry are `T-017`'s behaviour and are correct
-
-#### Known consequence, recorded rather than hidden
-
-**Until this lands, the `windows desktop` job will fail on
-`test_the_progress_view_focus_chain_is_walked_on_a_real_desktop`.** That is deliberate. Skipping
-or `xfail`ing it would leave the one job that exists to run these tests green while proving
-nothing — the "retire a gate and replace it with theatre" failure `T-026` warns about — and
-`T-040` is Blocked regardless, so nothing is waiting on a green run that this red one delays.
 
 ---
 
@@ -920,6 +956,9 @@ scope requires: every focusable control is in the declared order; Tab visits tha
 real plugin; the chain wraps forwards *and* backwards; every control is reachable from the initial
 focus. A fifth covers the three focusable controls `T-017` added after this task was written — it
 was filed when the dialog was the only widget with any.
+
+*(The claim below that CI revealed a Windows-specific order was corrected on 2026-07-28 — see
+`T-060`. The failures reproduce offscreen and are about disabled controls.)*
 
 **One side is transcribed by hand and the other walked out of Qt**, which is the lesson carried
 from `T-016`'s own review: the first draft of the offscreen test derived its expectation from the
