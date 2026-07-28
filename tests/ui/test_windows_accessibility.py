@@ -342,7 +342,10 @@ def test_no_interactive_control_reaches_the_tree_without_a_name(tree: Tree) -> N
 
 @pytest.mark.parametrize(
     ("menu_title", "expected_items"),
-    [("&File", ["Quit"]), ("&Help", [f"About {APP_NAME}"])],
+    # Transcribed by hand, not read from the window: this is the statement of what the menus
+    # are supposed to publish, and deriving it from `menuBar()` would only prove the menu equals
+    # itself. `T-016` added "Add URLs...", and this line is where that had to be declared.
+    [("&File", ["Add URLs...", "Quit"]), ("&Help", [f"About {APP_NAME}"])],
 )
 def test_each_menu_publishes_exactly_its_actions(
     window: MainWindow, menu_title: str, expected_items: list[str]

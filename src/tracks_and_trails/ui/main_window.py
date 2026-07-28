@@ -259,7 +259,12 @@ class MainWindow(QMainWindow):
 
         file_menu = menu_bar.addMenu("&File")
 
-        add_action = QAction("&Add URLs…", self)
+        # Three ASCII dots rather than U+2026. The Windows convention for "this opens a dialog"
+        # is "...", and the character also has to survive being read back out of UI Automation
+        # and printed into a CI log — which is the *only* Windows debugging evidence this project
+        # has (`ai/TESTING.md` §10), and which mangled the ellipsis to a replacement character on
+        # its first run.
+        add_action = QAction("&Add URLs...", self)
         add_action.setShortcut(QKeySequence.StandardKey.New)
         add_action.setMenuRole(QAction.MenuRole.NoRole)
         add_action.setObjectName("actionAddUrls")
