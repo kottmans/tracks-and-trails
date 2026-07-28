@@ -22,6 +22,17 @@
 
 End users need none of this — released builds bundle their own interpreter (`REL-001`).
 
+## Verifying on Windows
+
+`docs/WINDOWS_VERIFICATION.md` covers running the suite on a real Windows machine rather than a CI
+runner — how to reach it, and the two traps that make a run look valid when it is not (SSH lands
+in session 0 with no desktop; an SSH session authorised by `administrators_authorized_keys` runs
+elevated, which a developer's shell does not).
+
+Worth reading before trusting any Windows result: the runners are elevated, have long paths
+enabled, and until `T-066` installed without a virtualenv. Every one of those differences was a
+test that passed on CI and failed on a desk.
+
 ## Setup
 
 ```bash

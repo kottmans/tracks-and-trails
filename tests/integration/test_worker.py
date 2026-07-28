@@ -932,7 +932,7 @@ def test_a_traversal_title_lands_inside_the_output_directory(
     assert is_contained(Path(succeeded.output_path), tmp_path)
 
 
-def test_a_symlink_out_of_the_directory_is_still_refused(tmp_path: Path) -> None:
+def test_a_symlink_out_of_the_directory_is_still_refused(tmp_path: Path, symlinks: None) -> None:
     """`T-034`'s own guarantee, kept as a direct check because no template can express it."""
     outside = tmp_path / "elsewhere"
     outside.mkdir()

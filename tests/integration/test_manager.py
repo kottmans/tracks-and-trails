@@ -745,9 +745,26 @@ def test_the_detector_sees_a_grandchild_and_not_just_a_worker(
         # spawned two *siblings* and asserted their relationship with `... or True`, which cannot
         # fail — so it proved the detector saw two direct children and said nothing at all about
         # the depth it exists to check (`T019-R4`).
-        assert psutil.Process(grandchild_pid).ppid() == child.pid, (
-            f"{grandchild_pid} is not a child of {child.pid}, so this test is not about a "
-            "grandchild at all"
+        #
+        # **Depth below *this* process, not one hop below `child`** (`T-066`). This asserted
+        # `ppid() == child.pid`, which is a stronger claim than the test needs and is true only
+        # when `sys.executable` starts the interpreter directly. In a virtualenv on Windows it
+        # does not: `.venv\Scripts\python.exe` is a launcher that *spawns* the real interpreter,
+        # so `child.pid` is the launcher and the grandchild sits one level further down. The test
+        # failed with "this test is not about a grandchild at all" while looking at a tree that
+        # was, if anything, deeper than it expected.
+        #
+        # CI installs without a virtualenv while `docs/DEVELOPMENT.md` documents one, so this
+        # held on every runner and failed for a developer following our own instructions.
+        #
+        # What the detector must actually do is reach a process that is **not a direct child of
+        # the process doing the walking**, which is exactly `worker_processes(existing_children)`'s
+        # subject. Two generations from here is that property, and it holds under both install
+        # shapes rather than pinning the one CI happens to use.
+        generations = _generations_between(os.getpid(), grandchild_pid)
+        assert generations is not None and generations >= 2, (
+            f"{grandchild_pid} is {generations} generation(s) below this test process, so it is "
+            "not the second-level process this test is about"
         )
 
         found = {process.pid for process in worker_processes(existing_children)}
@@ -763,6 +780,29 @@ def test_the_detector_sees_a_grandchild_and_not_just_a_worker(
                 with contextlib.suppress(psutil.Error):
                     psutil.Process(pid).kill()
         child.wait(timeout=30)
+
+
+def _generations_between(ancestor_pid: int, descendant_pid: int) -> int | None:
+    """How many parent hops separate the two pids, or `None` if they are unrelated (`T-066`).
+
+    Walks up rather than down: a descendant walk would have to enumerate every child at every
+    level, and the question here is only about one process's ancestry.
+
+    Bounded rather than trusting the walk to terminate. A pid whose parent chain is longer than
+    this is not the shape any test here creates, and an unbounded loop over a process tree that
+    is being torn down concurrently is a hang rather than a failure.
+    """
+    hops = 0
+    process = psutil.Process(descendant_pid)
+    while hops < 20:
+        parent = process.parent()
+        if parent is None:
+            return None
+        hops += 1
+        if parent.pid == ancestor_pid:
+            return hops
+        process = parent
+    return None
 
 
 def test_the_detector_still_ignores_the_resource_tracker(existing_children: set[int]) -> None:

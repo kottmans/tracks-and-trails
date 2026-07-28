@@ -132,7 +132,12 @@ last acceptance criterion is met** — with no CI minutes spent.
 `STARBASE`: the pre-correction helper passes 20/20, with a positive control proving the mutation
 was really applied. A Windows machine was not enough; it wants `windows-latest`'s image.
 
-**The same first run found four things CI structurally cannot see** (`T-066`…`T-069`). The largest
+**The same first run found five things CI structurally cannot see** (`T-066`…`T-070`), and all
+five are implemented as of 2026-07-28. STARBASE now runs **1384 passed, 24 skipped, 0 failed** as
+an ordinary unelevated user, from 8 failures at the start. Two are honestly incomplete: `T-068`
+cannot say why the runners do not show the empty font database, and `T-069` is reproduced and
+narrowed but not fixed. `docs/WINDOWS_VERIFICATION.md` records the machine, the harness, and the
+two traps that make a Windows run look valid when it is not. The original four: The largest
 is that `ci.yml` installs with no virtualenv while `docs/DEVELOPMENT.md` tells developers to use
 one — and on Windows a venv's `python.exe` spawns the real interpreter as a child, so every
 `multiprocessing` spawn sits one level deeper than CI ever tests. That is exactly the tree shape

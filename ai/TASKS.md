@@ -64,10 +64,15 @@ reached `_load` — is in `T-059`'s scope.
 
 **Approved on 2026-07-28:** `T-016` (fourth correction batch), `T-017`, `T-036`, `T-037`, `T-052`,
 `T-054`, `T-057`, `T-058`, `T-059`, `T-061`. **Approved with follow-ups:** `T-062`, and `T-063`
-(carrying `T-064`). **In Review:** `T-060` and `T-040`, both with Windows evidence supplied from
-`STARBASE`. **Blocked:** `T-056` (wants the `windows-latest` image specifically), `T-033`
-(Phase 5 evidence) and `T-039` (Phase 5 installer). **Decided:** `T-065`. **Ready:** `T-064`,
-`T-066`, `T-067`, `T-068`, `T-069`.
+(carrying `T-064`). **In Review:** `T-060` and `T-040` with Windows evidence from `STARBASE`,
+plus `T-066`…`T-070`, the five findings that first run produced — all five implemented in one
+batch on 2026-07-28. **Blocked:** `T-056` (wants the `windows-latest` image specifically),
+`T-033` (Phase 5 evidence) and `T-039` (Phase 5 installer). **Decided:** `T-065`.
+**Ready:** `T-064`.
+
+**Two of those five are not fully closed, and say so:** `T-068` cannot explain why the runners do
+not show the empty font database, and `T-069` is reproduced and narrowed but not fixed. Both need
+a runner or more work, and neither is presented as done.
 
 **Every Phase 1 deliverable filed *before* 2026-07-28's CI run is approved** — and that is a
 narrower claim than the one this block used to make. Running the tests where they had never run
@@ -96,9 +101,64 @@ last time it was left unlabelled it outlived being true by one CI run.)*
 
 ## Ready
 
+### T-070 — The suite silently requires Windows privileges it never states
+
+**Status:** **In Review — filed and fixed 2026-07-28**, in the same batch that found it
+**Owner:** Implementer
+**Priority:** Medium — four tests failed on an ordinary desktop for a reason no message named
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T-067`, `T-066`, `docs/WINDOWS_VERIFICATION.md`, `ai/TESTING.md` §12
+**Affected surfaces:** `tests/capabilities.py`, `tests/conftest.py`, `tests/unit/test_paths.py`,
+`tests/integration/test_worker.py`
+**Risk:** Low to fix, Medium to leave — it reads as a broken checkout
+
+#### Scope
+
+Four tests create symlinks. On Windows that needs `SeCreateSymbolicLinkPrivilege` — Administrator
+rights, or Developer Mode. They failed with a bare `OSError` on a normal desktop session and
+passed when the same machine ran them elevated.
+
+**CI could never have reported this**, because GitHub's runners are elevated. It surfaced only
+when the suite was first run as an ordinary user, and the failure named a privilege nowhere: it
+reads like a broken checkout.
+
+#### Acceptance criteria
+
+- A machine without the capability says so, in words that name the privilege and the fix
+- The tests are otherwise unchanged and still gate wherever the capability exists
+- The capability is **attempted**, not inferred from `os.name` or an elevation check
+- `docs/WINDOWS_VERIFICATION.md` records elevation as one of the axes CI differs on
+
+#### Evidence, 2026-07-28
+
+`tests/capabilities.py` answers the question by making a symlink and removing it. A proxy —
+`os.name`, an elevation check, a Developer Mode registry read — would be wrong in some
+configuration; the attempt is the question itself.
+
+| Environment | Result |
+|---|---|
+| Windows, unelevated desktop session | **4 skipped**, each naming the privilege and Developer Mode |
+| Windows, elevated | **4 pass**, unchanged |
+| Linux | **4 pass**, unchanged |
+
+The skip is not the "retire a gate and replace it with theatre" failure `T-026` warns about: these
+tests still gate on Linux and on CI. What changed is that a machine lacking the capability says
+which one.
+
+#### Out of scope
+
+- Requiring Developer Mode to develop on Windows; the point is to name the requirement, not impose it
+- The other Windows configuration differences (`T-066`, `T-067`, `T-068`)
+
+---
+
 ### T-066 — CI installs the project differently from how the documentation says to
 
-**Status:** Ready — filed 2026-07-28 from the first run on a Windows machine that is not a runner
+**Status:** **In Review — resolved 2026-07-28.** CI now creates and uses a virtualenv in every
+job, per maintainer decision, so the gate measures the environment `docs/DEVELOPMENT.md`
+documents. The grandchild test no longer assumes the shallower tree. **The workflow change itself
+is unverified** — GitHub Actions is out of quota, so no run has executed it. See **Evidence**.
 **Owner:** Implementer
 **Priority:** **High** — it decides whether `T-019`'s process-tree evidence describes the
 environment a developer or a user actually has
@@ -145,6 +205,42 @@ install produces too.
   since that is what a user actually runs
 - `test_the_detector_sees_a_grandchild_and_not_just_a_worker` states which shape it assumes
 
+#### Evidence, 2026-07-28
+
+**Resolution: CI adopts the virtualenv** (maintainer decision). Every job creates `.venv` and
+prepends it to `GITHUB_PATH`, so the commands `ai/TESTING.md` §4 publishes stay identical. On
+Windows the path is converted with `cygpath -w`: `shell: bash` there is Git Bash, whose `$PWD` is
+an MSYS path the runner itself cannot resolve.
+
+Testing the deeper tree is the superset — reaping that works with an extra generation works
+without one — which is why this direction rather than deleting the venv from the docs.
+
+**`test_the_detector_sees_a_grandchild_and_not_just_a_worker` asserted more than it needed.** It
+required `ppid() == child.pid`: exactly one hop. That is true only when `sys.executable` starts
+the interpreter directly, and in a venv on Windows `Scripts\python.exe` is a launcher that spawns
+the real interpreter, so `child.pid` is the launcher and the grandchild sits one level further
+down. The test failed with "this test is not about a grandchild at all" while looking at a tree
+that was *deeper* than it expected.
+
+It now asserts **at least two generations below the test process**, which is the property the
+detector actually has to satisfy, and which holds under both install shapes. Verified passing in
+both the venv and the no-venv checkout on Windows, and on Linux.
+
+**My first attempt at that fix was wrong**, and it is worth recording why: I measured generations
+from `child.pid` rather than from the test process, so a correct Linux tree (test → child →
+grandchild) reported one hop and failed. "Grandchild" is relative to the process doing the
+walking, not to the process that was spawned.
+
+**The frozen artifact has neither shape.** Under PyInstaller `sys.executable` is the frozen
+executable and `multiprocessing` re-launches it through `freeze_support()`, so there is no
+launcher generation and no venv. This is **reasoned, not measured** — building the artifact on
+Windows is `T-033`'s ground and no frozen build has been run on `STARBASE`. Recorded as an
+assumption rather than a result.
+
+**What is not verified:** the workflow change has never run. GitHub Actions is out of quota, so
+the first execution of these five jobs is whoever runs CI next. `ai/TESTING.md` §11's "local green
+is not evidence" applies to this task exactly.
+
 #### Out of scope
 
 - Changing how `multiprocessing` starts workers
@@ -154,7 +250,10 @@ install produces too.
 
 ### T-067 — Path behaviour is gated only with long paths enabled, which is not the default
 
-**Status:** Ready — filed 2026-07-28
+**Status:** **In Review — resolved 2026-07-28.** The test no longer creates the directory it
+never needed, so it runs with `LongPathsEnabled=0`, and a new test writes a real file at the
+budget so the constant is tied to what the filesystem accepts rather than to itself. Verified on
+a Windows machine with the default setting. See **Evidence**.
 **Owner:** Implementer
 **Priority:** Medium — a real user configuration is untested, and it is the majority one
 **Phase:** Phase 1
@@ -186,6 +285,26 @@ of the gap rather than an inconvenience.
   output path exceeds `MAX_PATH`, and whether `REQ`-level behaviour still holds
 - `ai/TESTING.md` §12 records which Windows configurations are gated, rather than implying "Windows"
 
+#### Evidence, 2026-07-28
+
+**The `mkdir` was the only filesystem access in the test**, and the code under test has none on
+this branch: `safe_output_path` raises at the length budget several lines before the one call that
+resolves anything. So the directory was created only to be named, and creating it is what died
+with `WinError 206` when `LongPathsEnabled=0`. Removing it changes no assertion.
+
+**A new test ties the constant to the filesystem rather than to itself.** Every other length test
+here compares `safe_output_path`'s output against `MAX_PATH_CHARACTERS`, so all of them would pass
+unchanged if that constant were raised past what Windows accepts.
+`test_a_path_this_accepts_is_one_the_filesystem_will_actually_take` writes the file.
+
+| Check | Result |
+|---|---|
+| Both tests, Windows, `LongPathsEnabled=0`, unelevated | **pass** |
+| Both tests, Linux | **pass** |
+
+The budget is 240 and Windows' limit is 260, which is why this passes — but that margin was
+previously an arithmetic argument nobody had executed on a machine where it mattered.
+
 #### Out of scope
 
 - Enabling long paths on any machine to make the test pass; that hides the finding
@@ -194,7 +313,11 @@ of the gap rather than an inconvenience.
 
 ### T-068 — Qt writes a font warning to stderr on a real Windows machine
 
-**Status:** Ready — filed 2026-07-28
+**Status:** **In Review — cause found, larger than filed, fixed in the environment.** The warning
+was the symptom; the defect is that Qt had **zero font families** under `offscreen` on that
+machine, so the whole offscreen UI suite ran with no fonts. Fixed by pointing Qt at the Windows
+font directory in `tests/conftest.py`. **One question stays open and needs CI:** why the runners
+do not show it. See **Evidence**.
 **Owner:** Implementer
 **Priority:** Medium — an assertion about a *clean* run is failing, and the cause is not understood
 **Phase:** Phase 1
@@ -229,6 +352,41 @@ artifact, which is what a user runs.
 - If the warning is benign, the test says so deliberately rather than being loosened to pass
 - If it is not benign, the fix is in packaging or startup, not in the assertion
 
+#### Evidence, 2026-07-28
+
+**The warning was the symptom. The defect is an empty font database.** Measured under
+`QT_QPA_PLATFORM=offscreen` on `STARBASE`, in the interactive desktop session:
+
+```
+FAMILIES 0
+SAMPLE  []
+DEFAULT Sans Serif
+```
+
+Zero families. So the **entire offscreen UI suite** runs there against no fonts: every assertion
+about a widget's size, about elision, or about anything else derived from font metrics is measured
+against nothing — and passes. A suite that agrees with itself while measuring an empty font set is
+the shape `ai/TESTING.md` §13 exists to catch, which is why this was not allowlisted into
+`PLUGIN_NOISE` alongside `propagateSizeHints`. That allowlist is for artifacts that change no
+measurement; this one changes every measurement.
+
+**Not our code.** A bare `QApplication` produces nothing; a bare `QLabel` reproduces it in full,
+with no project code involved. Same result in the venv and the no-venv checkout, which also
+corrects the first guess recorded against this task — it is not the virtualenv.
+
+**Not the session either.** It reproduces identically in session 2, so it is not an artifact of
+running over SSH, which was the other plausible explanation and had to be ruled out because
+several other results were.
+
+**Fix:** `tests/conftest.py` sets `QT_QPA_FONTDIR` to `%WINDIR%\Fonts` on Windows, with
+`setdefault` so an explicit value wins. Verified: `families()` goes from 0 to a populated list and
+`test_application_launches_and_exits_cleanly` passes.
+
+**Open, and it needs a runner:** *why the runners do not show this.* Their offscreen Qt evidently
+finds fonts by some route this machine lacks, and until CI runs it is unknown whether
+`QT_QPA_FONTDIR` changes anything there. If their database is already populated the variable is
+ignored, which is the expected case — expected, not verified.
+
 #### Out of scope
 
 - Weakening the empty-stderr assertion to make the run green; that assertion caught this
@@ -237,7 +395,11 @@ artifact, which is what a user runs.
 
 ### T-069 — An end-to-end recovery test is intermittent on Windows
 
-**Status:** Ready — filed 2026-07-28
+**Status:** **In Review — reproduced with a rate and narrowed to one interaction; not fixed.**
+Not intermittent at all once the trigger is known: **4 of 5** at file level, 0 in isolation, and
+it fails only when one specific test runs first. The failing statement and error are exact. The
+remaining work is a fix, and it is not obviously the test's rather than the product's. See
+**Evidence**.
 **Owner:** Implementer
 **Priority:** Medium — an intermittent test in the suite that proves the restart criterion
 **Phase:** Phase 1
@@ -262,6 +424,41 @@ common cause, and it is not nothing either.
 - The failure is reproduced with a rate, or a bounded search is recorded as not reproducing it
 - If it shares a cause with `T-056` or `T-066`, that is stated; if it does not, that is stated
 - Any fix is demonstrated by making the fixed behaviour fail when reverted
+
+#### Evidence, 2026-07-28
+
+**It is not intermittent; it is conditional, and the condition is now known.**
+
+| Run shape | Result |
+|---|---|
+| the test alone | **passes** |
+| whole `test_end_to_end.py`, 5 runs | **4 failed, 1 passed** |
+| after `test_a_url_becomes_a_file_with_the_bytes_it_reported` | **fails** |
+| after `test_a_progressive_download_completes_with_no_ffmpeg_at_all` | **passes** |
+
+So one specific predecessor triggers it, which is a 30-second reproduction for whoever fixes it.
+
+**Where it fails, exactly.** The restart half — the second `compose()`, the one that stands for
+the application starting again after the kill:
+
+```
+src/tracks_and_trails/app.py:206:  connection = db.connect(database_path)
+src/tracks_and_trails/persistence/db.py:171:  connection.execute("PRAGMA journal_mode = WAL")
+E   sqlite3.OperationalError: disk I/O error
+```
+
+**Why it matters more than a flaky test.** That statement is on the path of Phase 1's *job state
+survives an application restart mid-download* criterion, and the two tests use different
+`tmp_path` directories — so a shared database file is not the explanation, and the predecessor
+does shut its composition down through `OrderlyShutdown`. Whatever is left behind crosses between
+two tests that should not be able to affect each other.
+
+**Not fixed, and deliberately not guessed at.** Whether this is the test's fault (an in-process
+restart that does not release what a real restart would) or the product's (a `compose()` that
+cannot open a database another handle has touched) is exactly the question, and answering it with
+a plausible story is how the last two defects in this project survived a round of review. The rate
+and the trigger are recorded so the next attempt starts from a reproduction rather than from a
+hypothesis.
 
 #### Out of scope
 

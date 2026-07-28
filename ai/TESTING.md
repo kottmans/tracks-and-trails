@@ -392,12 +392,18 @@ Tracked honestly; each should become a task or be accepted deliberately.
   criterion is met and the previous "ungated" entry is no longer true. What is still missing is
   **repetition**: it ran once, on one machine, and nothing re-runs it on a push. A regression
   between now and the first runner execution would not be caught.
-- **Which Windows configurations are gated is narrower than "Windows"** (`T-067`, `T-066`,
-  `T-068`). Measured 2026-07-28 on a non-runner Windows machine: `LongPathsEnabled=0` (the
-  default) fails a path test that CI passes; a virtualenv install — the one
-  `docs/DEVELOPMENT.md` documents — puts an extra process level under every spawn that CI's
-  venv-less install does not have; and Qt writes a font warning there that it does not write on a
-  runner. CI is one Windows configuration, and it is an unusual one.
+- **Which Windows configurations are gated is narrower than "Windows"** — now measured, and
+  mostly closed (`T-066`…`T-070`, `docs/WINDOWS_VERIFICATION.md`). The first run on a machine
+  that is not a runner failed 8 tests as an ordinary user and 4 as an elevated one; it now passes
+  **1384 with 24 skipped**. What each difference was:
+  **elevation** — four symlink tests needed a privilege nothing named, and now skip saying which
+  (`T-070`); **`LongPathsEnabled=0`**, the Windows default — a path test died in its own setup
+  (`T-067`); **the virtualenv** — `Scripts\python.exe` is a launcher, so every spawn sits a
+  generation deeper than CI tested, and CI now installs the same way (`T-066`); **fonts** — Qt's
+  offscreen font database was *empty*, so the whole offscreen UI suite measured layout against no
+  fonts and passed (`T-068`).
+  The runners remain elevated and long-path-enabled, so those two axes are still gated on one
+  configuration only. **CI is one Windows configuration, and it is an unusual one.**
 - **A two-control focus chain has no order to gate** (`T060-R2`, measured offscreen 2026-07-28
   and **confirmed on Windows the same day** — the reversal mutation survives there too). No state of
   the progress view offers more than two reachable controls, and a two-element cycle is its own

@@ -250,7 +250,7 @@ def test_a_sibling_directory_with_a_shared_prefix_is_not_contained(tmp_path: Pat
     assert not is_contained(sibling / "clip.mp4", tmp_path / "Downloads")
 
 
-def test_a_symlink_out_of_the_directory_is_not_contained(tmp_path: Path) -> None:
+def test_a_symlink_out_of_the_directory_is_not_contained(tmp_path: Path, symlinks: None) -> None:
     """A symlink inside the output directory pointing elsewhere is still an escape.
 
     The file would be written outside the directory the user chose, which is the property, not
@@ -264,7 +264,9 @@ def test_a_symlink_out_of_the_directory_is_not_contained(tmp_path: Path) -> None
     assert not is_contained(target / "link" / "clip.mp4", target)
 
 
-def test_a_symlink_escape_is_rejected_through_the_public_entry_point(tmp_path: Path) -> None:
+def test_a_symlink_escape_is_rejected_through_the_public_entry_point(
+    tmp_path: Path, symlinks: None
+) -> None:
     """`T034-R1`. The security gate must be exercised through `safe_output_path`, not only
     through `is_contained`.
 
@@ -284,7 +286,7 @@ def test_a_symlink_escape_is_rejected_through_the_public_entry_point(tmp_path: P
         safe_output_path(target, "link/clip.mp4")
 
 
-def test_a_symlink_inside_the_directory_is_still_allowed(tmp_path: Path) -> None:
+def test_a_symlink_inside_the_directory_is_still_allowed(tmp_path: Path, symlinks: None) -> None:
     """The rejection must be about *where it resolves*, not about symlinks as such."""
     target = tmp_path / "Downloads"
     (target / "real").mkdir(parents=True)
@@ -564,16 +566,48 @@ def test_shortening_keeps_the_extension_whenever_it_can() -> None:
 
 
 def test_a_directory_leaving_no_room_for_a_filename_raises(tmp_path: Path) -> None:
-    """Better a clear error than a zero-length filename or a silent write elsewhere."""
+    """Better a clear error than a zero-length filename or a silent write elsewhere.
+
+    **The directory is not created** (`T-067`). It used to be, and that `mkdir` was the only
+    thing in this test that touched a filesystem — so on Windows with `LongPathsEnabled=0`,
+    which is the *default*, the test died in its own setup with `WinError 206` before reaching
+    a single assertion. It passed on CI only because GitHub's runner images set that value to
+    `1`.
+
+    Removing it costs nothing, because `safe_output_path` never consults the filesystem on this
+    branch: the raise below fires at the length budget, several lines before the one call that
+    resolves anything. A directory that exists and a directory that is merely named are the
+    same input to the code under test.
+    """
     # Sized past the budget from wherever tmp_path happens to start, so this holds on both
     # platforms rather than only where tmp_path is short.
     overshoot = MAX_PATH_CHARACTERS - len(str(tmp_path)) + 20
     long_dir = tmp_path / ("d" * min(max(overshoot, 1), 100))
     while len(str(long_dir)) < MAX_PATH_CHARACTERS:
         long_dir = long_dir / ("e" * 60)
-    long_dir.mkdir(parents=True)
     with pytest.raises(UnsafePathError):
         safe_output_path(long_dir, "clip.mp4")
+
+
+def test_a_path_this_accepts_is_one_the_filesystem_will_actually_take(tmp_path: Path) -> None:
+    """The budget has to stay inside what the OS will create, not merely inside itself (`T-067`).
+
+    Every other length test here compares `safe_output_path`'s output against
+    `MAX_PATH_CHARACTERS`, which is this project's own constant — so all of them would still
+    pass if that constant were raised past what Windows accepts. This one writes the file.
+
+    That is the question `T-067` is really about. Windows refuses a path beyond `MAX_PATH` (260)
+    unless `LongPathsEnabled` is set, and its default is `0`; the runners set it to `1`, so a
+    budget that had drifted too high would have been invisible on every CI run and immediate on
+    an ordinary desktop.
+    """
+    path = safe_output_path(tmp_path, "x" * 400 + ".mp4")
+    assert len(str(path)) <= MAX_PATH_CHARACTERS
+
+    # The real assertion is that this line does not raise.
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"")
+    assert path.is_file(), f"{path} passed the budget but the filesystem would not take it"
 
 
 def test_shortening_two_names_differing_only_past_the_cut_does_not_collide() -> None:
