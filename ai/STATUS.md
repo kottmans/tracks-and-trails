@@ -117,10 +117,28 @@ sentence carrying a status is a second place for that status to live, which is t
 `COORD-R2` and the mandatory-area count each landed on — the operative list below is the one
 that is meant to hold it.)*
 
-**What remains is evidence, and it is scheduled rather than merely outstanding.** `T-061` and
-`T-063` are **Complete** at `11e1203` (`T-063` carrying `T-064`), and `T-060`'s two findings were
-**Resolved** at `12dff92` with no further correction requested — it is **Blocked**, not in review,
-because all that is left of it is a Windows run. `T-040` and `T-056` still need the `windows desktop` job —
+**What remains is evidence.** `T-061` and `T-063` are **Complete** at `11e1203` (`T-063` carrying
+`T-064`), and `T-060`'s two findings were **Resolved** at `12dff92` with no further correction
+requested.
+
+**Then a Windows machine appeared that is not a CI runner.** `STARBASE`, on the maintainer's
+network — Windows 10 22H2, reached over RDP in an interactive session, Python 3.14.6 and PySide6
+6.11.1 matching the runners exactly. It supplied the evidence `T-040` had owed since it was filed:
+28 desktop tests passing under the real `windows` plugin, and both `T-026` mutation classes
+executed and killed. **`T-040` and `T-060` are now In Review rather than Blocked, and `T-026`'s
+last acceptance criterion is met** — with no CI minutes spent.
+
+**`T-056` did not move, and now the reason is sharper.** Its defect does not reproduce on
+`STARBASE`: the pre-correction helper passes 20/20, with a positive control proving the mutation
+was really applied. A Windows machine was not enough; it wants `windows-latest`'s image.
+
+**The same first run found four things CI structurally cannot see** (`T-066`…`T-069`). The largest
+is that `ci.yml` installs with no virtualenv while `docs/DEVELOPMENT.md` tells developers to use
+one — and on Windows a venv's `python.exe` spawns the real interpreter as a child, so every
+`multiprocessing` spawn sits one level deeper than CI ever tests. That is exactly the tree shape
+`T-019`'s reaping evidence is about. Also: `LongPathsEnabled=0` is the Windows default and fails a
+path test CI passes; Qt writes a font warning there and not on a runner; and an end-to-end
+recovery test is intermittent. **CI is one Windows configuration, and an unusual one.** `T-040` and `T-056` still need the `windows desktop` job —
 `T-040` for the two `T-026` mutations, which a green normal run does not supply, and `T-056` for a
 branch that has never executed. **GitHub Actions usage is exhausted as of 2026-07-28 and CI cannot
 run for several days** (maintainer) — workflow `30392139504` failed before executing a single

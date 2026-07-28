@@ -386,13 +386,20 @@ Tracked honestly; each should become a task or be accepted deliberately.
   name/role contract are now gated. Still unverified there: whether rendering *looks* right,
   whether Narrator *sounds* coherent, native dialog foreground and file-association behavior,
   theming, and installer UX. Discharged by the pre-release session in §8 item 15.
-- **Widget tab order is ungated on Windows** (`T-040`, `T-060`). Narrower than it was, and still
-  a gap. The assertions now exist and passed under the real `windows` plugin in CI run
-  `30388380440`, per state, driving Tab and Backtab. What has **never run there** is the pair of
-  mutations `T-026` requires — reversing two widgets, and adding a focusable control without
-  placing it — and a passing normal run is not evidence for a mutation nobody executed. Both are
-  killed offscreen. This entry stays until they are run on Windows and recorded.
-- **A two-control focus chain has no order to gate** (`T060-R2`, measured 2026-07-28). No state of
+- **Widget tab order is gated on Windows by a recorded manual run, not by CI** (`T-040`,
+  `T-060`). Both `T-026` mutation classes were executed on a real Windows desktop on 2026-07-28
+  and killed — 6, 6 and 2 failing tests respectively, against a 28-passing baseline — so the
+  criterion is met and the previous "ungated" entry is no longer true. What is still missing is
+  **repetition**: it ran once, on one machine, and nothing re-runs it on a push. A regression
+  between now and the first runner execution would not be caught.
+- **Which Windows configurations are gated is narrower than "Windows"** (`T-067`, `T-066`,
+  `T-068`). Measured 2026-07-28 on a non-runner Windows machine: `LongPathsEnabled=0` (the
+  default) fails a path test that CI passes; a virtualenv install — the one
+  `docs/DEVELOPMENT.md` documents — puts an extra process level under every spawn that CI's
+  venv-less install does not have; and Qt writes a font warning there that it does not write on a
+  runner. CI is one Windows configuration, and it is an unusual one.
+- **A two-control focus chain has no order to gate** (`T060-R2`, measured offscreen 2026-07-28
+  and **confirmed on Windows the same day** — the reversal mutation survives there too). No state of
   the progress view offers more than two reachable controls, and a two-element cycle is its own
   reverse: from either control, Tab and Backtab both deliver the other, from any start. So
   reversing those two is unkillable by any keyboard observation — not a weak assertion, an
