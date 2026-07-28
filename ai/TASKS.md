@@ -441,62 +441,6 @@ probe case.
 
 ## Ready
 
-### T-040 — Extend the Windows desktop gate to widget focus order
-
-**Status:** **Ready** — unblocked 2026-07-27 by `T-016`, whose add-URL dialog adds six focusable
-controls and gates their order offscreen. What remains is the assertion under the real Windows
-platform plugin.
-**Owner:** Implementer
-**Priority:** High once unblocked — it completes a `T-026` acceptance criterion that is
-currently unmet
-**Phase:** Phase 1, landing with the first real widgets
-**Depends on:** `T-016` **or** `T-017` (whichever first adds focusable controls), `T-026`
-**Relevant context:** `T026-R3`, `OPS-004`, `NFR-005`, `ai/TESTING.md` §9 and §12
-**Affected surfaces:** `tests/ui/test_windows_desktop.py`, `ai/TESTING.md` §12
-**Risk:** Medium — the gap is easy to forget precisely because deferring it was correct
-
-#### Scope
-
-Filed from `T026-R3`. `T-026` requires "tab order and focus chain are asserted on Windows, and
-reordering two widgets fails the test". That criterion is still **unmet on Windows**, and
-deferring it was the right call at the time: the shell window had no focusable controls, so a
-focus-chain assertion would have passed over zero widgets and gated nothing.
-
-**`T-016` removed the reason to defer.** The add-URL dialog has six focusable controls, and
-`tests/ui/test_add_dialog.py::test_the_tab_order_is_the_declared_one` walks Qt's own focus chain
-against a hand-transcribed order — a mutation reversing two entries was run and killed. That test
-runs **offscreen**, so it proves the order Qt builds, not the order a real Windows desktop
-delivers, which is exactly the half `T-026` asked for and this task still owns.
-
-Worth carrying into the Windows version: the first draft of that offscreen test derived its
-expectation from the dialog's own `focus_chain()` and therefore proved only that the list equalled
-itself. The mutation survived it. Transcribe one side and derive the other (§13).
-
-Extend the existing `windows_desktop` suite — do not start a second harness — to assert, under
-the real `windows` platform plugin:
-
-1. **Tab order** across the new controls matches the intended sequence.
-2. **The focus chain wraps**, forwards and backwards (`Tab` and `Shift+Tab`).
-3. **Every focusable control is reachable** by keyboard alone from the window's initial focus.
-
-#### Acceptance criteria
-
-- Reordering two widgets in the source **fails** the suite, demonstrated by an actual mutation
-  and recorded in the task, not asserted in the abstract
-- A control added without being placed in the tab order fails the suite
-- The assertions run under the real plugin, not offscreen — offscreen focus behavior does not
-  answer the question `NFR-005` asks
-- `ai/TESTING.md` §12 drops the "widget tab order is ungated" gap, and `T-026`'s acceptance
-  criterion is marked met **only then**
-
-#### Out of scope
-
-- Focus *appearance* — whether the focus ring is visible enough is subjective and stays with
-  the pre-release session (`OPS-004`)
-- Linux focus order, which the offscreen suite cannot meaningfully assert either
-
----
-
 ## Proposed — Phase 0
 
 ### T-021 — Simplified small-size icon glyph
@@ -1303,6 +1247,103 @@ scope could not see, including one that made mypy stop analysing the rest of a t
 **Known-unverified:** the Windows half. Focus order is asserted offscreen here; the real
 platform plugin is `T-040`'s, and this widget adds three focusable controls to what that task
 covers.
+
+---
+
+### T-040 — Extend the Windows desktop gate to widget focus order
+
+**Status:** **Blocked — on Windows evidence, not on code**, 2026-07-28. Four tests are written
+into the existing `windows_desktop` suite and type-check under `mypy --platform win32`, which is
+the only scope that analyses them here. **The acceptance criteria require a demonstrated
+mutation, and that cannot be produced on this machine**: the module skips off Windows by design,
+so the tests have never executed. `ai/TESTING.md` §12 keeps its "widget tab order is ungated"
+gap and `T-026`'s criterion stays unmet until the `windows desktop` job runs them. See
+**Evidence**.
+**Owner:** Implementer
+**Priority:** High once unblocked — it completes a `T-026` acceptance criterion that is
+currently unmet
+**Phase:** Phase 1, landing with the first real widgets
+**Depends on:** `T-016` **or** `T-017` (whichever first adds focusable controls), `T-026`
+**Relevant context:** `T026-R3`, `OPS-004`, `NFR-005`, `ai/TESTING.md` §9 and §12
+**Affected surfaces:** `tests/ui/test_windows_desktop.py`, `ai/TESTING.md` §12
+**Risk:** Medium — the gap is easy to forget precisely because deferring it was correct
+
+#### Scope
+
+Filed from `T026-R3`. `T-026` requires "tab order and focus chain are asserted on Windows, and
+reordering two widgets fails the test". That criterion is still **unmet on Windows**, and
+deferring it was the right call at the time: the shell window had no focusable controls, so a
+focus-chain assertion would have passed over zero widgets and gated nothing.
+
+**`T-016` removed the reason to defer.** The add-URL dialog has six focusable controls, and
+`tests/ui/test_add_dialog.py::test_the_tab_order_is_the_declared_one` walks Qt's own focus chain
+against a hand-transcribed order — a mutation reversing two entries was run and killed. That test
+runs **offscreen**, so it proves the order Qt builds, not the order a real Windows desktop
+delivers, which is exactly the half `T-026` asked for and this task still owns.
+
+Worth carrying into the Windows version: the first draft of that offscreen test derived its
+expectation from the dialog's own `focus_chain()` and therefore proved only that the list equalled
+itself. The mutation survived it. Transcribe one side and derive the other (§13).
+
+Extend the existing `windows_desktop` suite — do not start a second harness — to assert, under
+the real `windows` platform plugin:
+
+1. **Tab order** across the new controls matches the intended sequence.
+2. **The focus chain wraps**, forwards and backwards (`Tab` and `Shift+Tab`).
+3. **Every focusable control is reachable** by keyboard alone from the window's initial focus.
+
+#### Acceptance criteria
+
+- Reordering two widgets in the source **fails** the suite, demonstrated by an actual mutation
+  and recorded in the task, not asserted in the abstract
+- A control added without being placed in the tab order fails the suite
+- The assertions run under the real plugin, not offscreen — offscreen focus behavior does not
+  answer the question `NFR-005` asks
+- `ai/TESTING.md` §12 drops the "widget tab order is ungated" gap, and `T-026`'s acceptance
+  criterion is marked met **only then**
+
+#### Out of scope
+
+- Focus *appearance* — whether the focus ring is visible enough is subjective and stays with
+  the pre-release session (`OPS-004`)
+- Linux focus order, which the offscreen suite cannot meaningfully assert either
+
+#### Evidence, 2026-07-28
+
+**Four tests, added to the existing `windows_desktop` suite rather than a second harness**, as the
+scope requires: every focusable control is in the declared order; Tab visits that order under the
+real plugin; the chain wraps forwards *and* backwards; every control is reachable from the initial
+focus. A fifth covers the three focusable controls `T-017` added after this task was written — it
+was filed when the dialog was the only widget with any.
+
+**One side is transcribed by hand and the other walked out of Qt**, which is the lesson carried
+from `T-016`'s own review: the first draft of the offscreen test derived its expectation from the
+dialog's own `focus_chain()`, so it proved the list equalled itself and the reversing mutation
+survived it. `EXPECTED_DIALOG_ORDER` is written out from what the dialog is *for* — type the URLs,
+probe them, read the result, choose, act — not read from the source.
+
+**Checked once locally that the transcription and the dialog currently agree**, so the Windows job
+fails for the reason it is meant to rather than because the two drifted. That check was run by
+hand, not committed as a test: a committed one comparing the two lists would make this one derived
+from the other, which is exactly what it exists not to be.
+
+**What cannot be done here, and is therefore not claimed:**
+
+- The tests have **never executed**. The module skips unless `sys.platform == "win32"`, and this
+  machine has no Windows and no VM (`ai/STATUS.md`, Environment baseline).
+- The acceptance criteria require the reversing mutation and the added-control mutation to be
+  **demonstrated**, not argued. Neither can run.
+- So `ai/TESTING.md` §12 **keeps** its "widget tab order is ungated on Windows" entry, and
+  `T-026`'s acceptance criterion stays **unmet**. The criteria say "only then" and this is what
+  "only then" means.
+
+**Checks that could run:** `ruff check .`, `ruff format --check .`, configured `mypy` and
+`mypy --platform win32` (76 files each) all pass — the win32 scope is what analyses this module's
+body at all, since the host scope proves it unreachable. Bare `pytest`: **1395 passed, 11 skipped,
+2 deselected**; the new tests are among the skipped.
+
+**Blocker:** the `windows desktop` CI job. Same shape as `T-056` and `T-033`: the code is done,
+the evidence is not producible locally.
 
 ---
 

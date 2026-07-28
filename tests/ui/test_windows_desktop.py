@@ -29,8 +29,12 @@ import pytest
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QMenu
+from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
+from tracks_and_trails.core.models import Job
+from tracks_and_trails.downloader.manager import DownloadManager
+from tracks_and_trails.ui.add_dialog import AddUrlDialog
+from tracks_and_trails.ui.job_detail import build_progress_view
 from tracks_and_trails.ui.main_window import APP_NAME, MainWindow
 
 pytestmark = pytest.mark.windows_desktop
@@ -45,6 +49,29 @@ if sys.platform != "win32":
 
 #: Written next to the other CI evidence, so one artifact download carries the whole run.
 SCREENSHOT_DIR = Path("reports/screenshots")
+
+
+class _EmptyStore:
+    """A store with nothing in it, satisfying every protocol the widgets here need.
+
+    These tests are about **focus**, not about jobs: no session is ever started and no row is
+    ever written. A real store would add a writer thread and a database to a file whose subject
+    is which control Windows hands the caret to next.
+    """
+
+    def get(self, job_id: str) -> Job | None:
+        return None
+
+    def all_jobs(self) -> list[Job]:
+        return []
+
+    def update(self, job: Job, done: object = None) -> None:
+        if callable(done):
+            done(None)
+
+    def submit(self, jobs: object, done: object = None) -> None:
+        if callable(done):
+            done(None)
 
 
 def _screenshot(widget: object, name: str) -> Path:
@@ -391,3 +418,173 @@ def test_escape_does_not_close_the_main_window(shown_window: MainWindow) -> None
     QTest.keyClick(shown_window, Qt.Key.Key_Escape)
     QApplication.processEvents()
     assert shown_window.isVisible(), "Escape closed the main window"
+
+
+# --- widget focus order under the real plugin (`T-040`, `T026-R3`, `NFR-005`) ----------------
+#
+# `T-026` required that "tab order and focus chain are asserted on Windows, and reordering two
+# widgets fails the test". Deferring it was right at the time: the shell window had no focusable
+# controls, so the assertion would have passed over nothing.
+#
+# `T-016` and `T-017` supplied them — an add-URL dialog with six, a progress view with three —
+# and both gate their order **offscreen**. Offscreen proves the order Qt builds; it does not
+# prove the order a real Windows desktop delivers, and that is the half this owns.
+#
+# The lesson carried forward from `T-016`'s own review: the first draft of the offscreen test
+# derived its expectation from the dialog's own `focus_chain()`, so it proved only that the list
+# equalled itself and the mutation reversing two entries survived. **One side is transcribed by
+# hand here** and the other is walked out of Qt (`ai/TESTING.md` §13).
+
+
+#: The add-URL dialog's controls, in the order a user should meet them, transcribed from what the
+#: dialog is *for*: type the URLs, probe them, read the result, choose how to download, then act.
+#: Written out rather than read from `focus_chain()` — that is the whole point.
+EXPECTED_DIALOG_ORDER = (
+    "urlInput",
+    "probeButton",
+    "cancelProbeButton",
+    "titleValue",
+    "uploaderValue",
+    "durationValue",
+    "kindValue",
+    "statusMessage",
+    "presetChoice",
+    "selectorValue",
+    "addButton",
+    "closeButton",
+)
+
+
+def _focusable(widget: QWidget) -> list[str]:
+    """Every focusable child of `widget`, named, as Qt reports them."""
+    return [
+        child.objectName()
+        for child in widget.findChildren(QWidget)
+        if child.focusPolicy() != Qt.FocusPolicy.NoFocus and child.objectName()
+    ]
+
+
+def _walk_focus_chain(dialog: QWidget, steps: int) -> list[str]:
+    """Press Tab `steps` times and record what holds focus after each, under the real plugin.
+
+    `QTest.keyClick` on a shown, activated window goes through Qt's real focus machinery on this
+    platform rather than through `setFocus()` — which is the difference this file exists for.
+    """
+    seen: list[str] = []
+    for _ in range(steps):
+        QTest.keyClick(dialog, Qt.Key.Key_Tab)
+        QApplication.processEvents()
+        focused = QApplication.focusWidget()
+        seen.append(focused.objectName() if focused is not None else "")
+    return seen
+
+
+@pytest.fixture
+def shown_dialog(shown_window: MainWindow, tmp_path: Path) -> AddUrlDialog:
+    """The add-URL dialog, visible and activated on the real desktop.
+
+    Built directly rather than through `MainWindow.open_add_dialog`, because that path needs a
+    manager, a job sink and an output directory (`T-036`) and none of them is what this asserts.
+    A `DownloadManager` over an empty store is enough to construct the widget, and no session is
+    ever started.
+    """
+    manager = DownloadManager(_EmptyStore())
+    dialog = AddUrlDialog(
+        manager=manager,
+        jobs=_EmptyStore(),
+        output_directory=tmp_path / "downloads",
+        parent=shown_window,
+    )
+    dialog.show()
+    dialog.raise_()
+    dialog.activateWindow()
+    QApplication.processEvents()
+    return dialog
+
+
+def test_every_focusable_control_is_in_the_declared_tab_order(shown_dialog: AddUrlDialog) -> None:
+    """A tab order that omits reachable controls is not a tab order (`T016-R4`).
+
+    Compared against the hand-written list above, so a control that becomes focusable without
+    being placed fails here rather than landing silently at the end of the chain.
+    """
+    reachable = set(_focusable(shown_dialog))
+    declared = set(EXPECTED_DIALOG_ORDER)
+    assert reachable == declared, (
+        f"focusable but undeclared: {sorted(reachable - declared)}; "
+        f"declared but not focusable: {sorted(declared - reachable)}"
+    )
+
+
+def test_tab_visits_the_declared_order_on_a_real_desktop(shown_dialog: AddUrlDialog) -> None:
+    """`T-040`'s first criterion, under the real `windows` platform plugin.
+
+    The offscreen suite asserts the order Qt *builds*; this asserts the order Windows
+    *delivers*, by pressing Tab and asking who has focus. Reversing two entries in
+    `AddUrlDialog.focus_chain` fails this, which is the mutation `T-026` asked for.
+    """
+    first = shown_dialog.focusWidget()
+    assert first is not None, "nothing had focus when the dialog opened"
+
+    visited = _walk_focus_chain(shown_dialog, len(EXPECTED_DIALOG_ORDER))
+    start = visited.index(EXPECTED_DIALOG_ORDER[1]) if EXPECTED_DIALOG_ORDER[1] in visited else 0
+    rotated = visited[start:] + visited[:start]
+    expected = [*EXPECTED_DIALOG_ORDER[1:], EXPECTED_DIALOG_ORDER[0]]
+    assert rotated == expected, (
+        f"Tab visited {rotated} on a real desktop; the declared order is {expected}"
+    )
+
+
+def test_the_focus_chain_wraps_in_both_directions(shown_dialog: AddUrlDialog) -> None:
+    """`T-040`'s second criterion: forwards and backwards, all the way round.
+
+    A chain that wraps one way and dead-ends the other strands a keyboard user at whichever end
+    they reach first, and neither direction is observable offscreen.
+    """
+    forwards = _walk_focus_chain(shown_dialog, len(EXPECTED_DIALOG_ORDER) * 2)
+    assert set(forwards) >= set(EXPECTED_DIALOG_ORDER), (
+        f"two full passes forwards missed {sorted(set(EXPECTED_DIALOG_ORDER) - set(forwards))}"
+    )
+
+    backwards: list[str] = []
+    for _ in range(len(EXPECTED_DIALOG_ORDER) * 2):
+        QTest.keyClick(shown_dialog, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ShiftModifier)
+        QApplication.processEvents()
+        focused = QApplication.focusWidget()
+        backwards.append(focused.objectName() if focused is not None else "")
+    assert set(backwards) >= set(EXPECTED_DIALOG_ORDER), (
+        f"two full passes backwards missed {sorted(set(EXPECTED_DIALOG_ORDER) - set(backwards))}"
+    )
+
+
+def test_every_control_is_reachable_from_the_initial_focus(shown_dialog: AddUrlDialog) -> None:
+    """`T-040`'s third criterion: keyboard alone, from wherever focus starts.
+
+    Reachability is the property a user has; an order that is correct but enters a sub-loop
+    leaves controls no amount of tabbing will find.
+    """
+    visited = set(_walk_focus_chain(shown_dialog, len(EXPECTED_DIALOG_ORDER) * 2))
+    unreachable = set(EXPECTED_DIALOG_ORDER) - visited
+    assert not unreachable, f"unreachable by keyboard from the initial focus: {sorted(unreachable)}"
+
+
+def test_the_progress_view_controls_are_reachable_too(
+    shown_window: MainWindow, tmp_path: Path
+) -> None:
+    """`T-017` added three more focusable controls, and they are this task's too.
+
+    `T-040` was filed when the dialog was the only widget with any; the progress view arrived
+    afterwards and its order is asserted offscreen for the same reason and with the same gap.
+    """
+    store = _EmptyStore()
+    manager = DownloadManager(store)
+    view = build_progress_view(manager, store, "job-1", None)
+    shown_window.setCentralWidget(view)
+    view.show()
+    QApplication.processEvents()
+
+    declared = [widget.objectName() for widget in view.focus_chain()]
+    assert declared == ["errorMessage", "cancelJobButton", "retryJobButton"]
+    assert set(_focusable(view)) == set(declared), (
+        f"focusable: {sorted(set(_focusable(view)))}, declared: {sorted(set(declared))}"
+    )
