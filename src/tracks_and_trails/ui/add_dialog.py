@@ -3,43 +3,66 @@
 The first widget that talks to the download manager, and therefore the first place a blocking
 call would freeze the application.
 
-## Nothing here waits for a worker
+## Nothing here waits — not on a worker, and not on the database
 
 **Probing is a worker process, not a "quick" inline call** (`ARCHITECTURE.md` §8, `NFR-001`).
 Probe latency is unbounded — a network round trip through an extractor that may itself fetch
-several pages — so `probe()` starts a session and returns. What comes back arrives on
-`DownloadManager`'s signals, on the GUI thread, one event-loop turn later.
+several pages — so `probe()` starts a session and returns. Results arrive on `DownloadManager`'s
+signals, on the GUI thread, one event-loop turn later.
 
-The same rule covers the thumbnail, which is the one piece of `REQ-002` that is not in the
-probe's own reply: `MediaInfo` carries a *URL*, and turning it into a pixmap means fetching
-bytes. That fetch is asynchronous too (`ThumbnailLoader`), and it is injected rather than
-imported so the suite can decode a recorded image without touching the network.
+**Persistence is asynchronous too** (`ARC-005`). The first version called `JobRepository` straight
+from a button slot, and `T016-R3` measured 0.302 s of frozen GUI under a contended writer lock
+followed by an `OperationalError` no user ever saw. Jobs now go to a `JobSink` that answers on a
+callback. `REQ-012`'s persist-before-close rule is *strengthened* by that: this dialog closes
+**inside** the success callback, so it cannot close before the rows exist, and a failed write
+leaves it open with the user's input intact.
 
-## Probe first, then download the job you probed
+The thumbnail is the third: `MediaInfo` carries a *URL*, so a pixmap means fetching bytes, and
+that fetch is asynchronous and injected (`ThumbnailLoader`).
 
-`ARC-004` settled what happens between the two. A probed job is left in `READY`, and **Add to
-queue starts the download from `READY`** — the same job, the same record, no second one and no
-return to `PROBING`. URLs the user pasted but did not probe become `QUEUED` jobs, which start by
-probing when something runs them (`T-036`).
+## A probe belongs to a URL, not just to a job id
 
-**Every job is persisted before this dialog closes** (`REQ-012`). A crash on the way out loses
-nothing, which is only true because the write happens here rather than in whatever runs the
-queue next.
+`T016-R1` was Critical and this is its lesson. The first version bound a result to the job id it
+asked about, invalidated a *finished* probe when the input changed, and returned early while one
+was still in flight — so a late result was accepted for a URL that was no longer on screen, and
+`Add to queue` started the old one while dropping what the user had actually typed.
+
+Every probe now records **the input line it was started for** and the generation of the URL box
+at that moment. A result is accepted only if that line is still the first one. When the first
+line changes, an in-flight probe is cancelled rather than left to land later, which also returns
+the pool-of-one manager to idle.
+
+The same state model closes the second edge: **`Add to queue` is disabled while a probe is
+outstanding**, so the state in which the dialog held one persisted job and was about to create
+another for the same line is unreachable rather than reconciled. Making an invalid state
+unrepresentable is what this project has learned four times over — see `T-014`'s proxy
+credentials and `T-044`'s exports.
+
+## Closing is abandoning
+
+Rejecting, closing, or pressing Escape cancels an outstanding probe (`T016-R2`). Without that,
+closing the dialog stranded a worker and left the pool-of-one manager permanently busy, so every
+later Add-URL dialog could only report "a session is already running". `done()` is the single
+choke point every one of those routes goes through.
 
 ## What the user is shown
 
 Every field `REQ-002` names — title, uploader, duration, thumbnail, and whether the URL is a
 single item or a playlist — and on failure the extractor's own message, character for character
-(`REQ-005`, `NFR-006`). Not a paraphrase and not a generic "could not fetch": the extractor's
-text is usually the only actionable thing the user has.
+(`REQ-005`, `NFR-006`).
 
-`NFR-005` throughout: every control has an accessible name, the tab order is stated rather than
-inherited from construction order, and **no state is signalled by colour**. Each outcome —
-probing, probed, failed, cancelled — says what it is in words.
+**Every label that displays text this application did not write is `PlainText`** (`T016-R6`).
+A title of `<b>VISIBLE</b>` is a title, not markup: under Qt's default `AutoText` it was being
+rendered as rich text, which consumes the tags and shows something the site did not send.
+
+`NFR-005` throughout: an accessible name on every control, the **complete** keyboard order stated
+and asserted — including the selectable result fields, which `T016-R4` found focusable but
+undeclared — and no state signalled by colour.
 """
 
 import uuid
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 from itertools import pairwise
 from pathlib import Path
@@ -72,43 +95,60 @@ from tracks_and_trails.downloader.protocol import SessionKind
 #: 1920-wide thumbnail does not resize the dialog around it.
 THUMBNAIL_SIZE: Final = (192, 108)
 
-#: Shown in place of the thumbnail before there is one, and when the extractor supplied no URL.
-#: Text rather than an empty frame: `NFR-005` forbids conveying a state by appearance alone, and
-#: "no thumbnail" and "not probed yet" are different states a blank box cannot distinguish.
-NO_THUMBNAIL_TEXT: Final = "No thumbnail"
+#: The thumbnail box's four states, each in words. `NFR-005` forbids conveying a state by
+#: appearance alone, and "not probed", "the site supplied none", "the fetch failed" and "loading"
+#: are four different things a blank frame cannot distinguish. `T016-R5`: the failed state did
+#: not exist, so a failed fetch claimed to be loading forever.
 NOT_PROBED_TEXT: Final = "Not probed yet"
+LOADING_THUMBNAIL_TEXT: Final = "Loading thumbnail…"
+NO_THUMBNAIL_TEXT: Final = "No thumbnail"
+THUMBNAIL_FAILED_TEXT: Final = "Thumbnail unavailable"
 
 #: What an unfilled `REQ-002` field reads as. `MediaInfo` models these as genuinely optional —
 #: yt-dlp omits an uploader for some sites and a duration for a live stream — so this is the
 #: honest rendering of a missing value rather than an invented one.
 UNKNOWN_TEXT: Final = "Unknown"
 
+#: Every label that renders text this application did not author: extractor messages, site
+#: metadata, and the selector a user may have typed. All are forced to `PlainText` (`T016-R6`).
+UNTRUSTED_TEXT_LABELS: Final = (
+    "titleValue",
+    "uploaderValue",
+    "durationValue",
+    "kindValue",
+    "selectorValue",
+    "statusMessage",
+)
+
 
 class JobSink(Protocol):
-    """The persistence this dialog needs, and nothing more.
+    """Persists jobs **without blocking the caller** (`ARC-005`).
+
+    `done` is called exactly once, on the GUI thread, with `None` on success or a message on
+    failure. The whole sequence is one transaction: either every job of an interaction is stored
+    or none is, so a half-queued paste cannot exist.
 
     Narrower than `manager.JobStore`, and deliberately a separate protocol: the manager *updates*
-    jobs that exist, while this creates them. `persistence.JobRepository` satisfies both, and
-    `app.py` hands the real one over at composition time (`T-036`). Depending on the shape rather
-    than the class is what keeps `ui/` free of any knowledge that SQLite exists
-    (`ARCHITECTURE.md` §3).
+    jobs that exist, this creates them. Depending on the shape rather than the class is what keeps
+    `ui/` free of any knowledge that SQLite exists (`ARCHITECTURE.md` §3) — including, now, that
+    it is written from another thread.
     """
 
-    def add(self, job: Job) -> None: ...
-
-    def next_queue_position(self) -> int: ...
+    def submit(self, jobs: Sequence[Job], done: Callable[[str | None], None]) -> None: ...
 
 
 class ThumbnailLoader(Protocol):
     """Fetches thumbnail bytes without blocking the GUI thread.
 
+    `done` receives the bytes, or **`None` when the fetch failed** — the half `T016-R5` found
+    missing, which left the dialog claiming to be loading a thumbnail that was never coming.
+
     A seam, not a mock: `NetworkThumbnailLoader` below is the real implementation and is what
-    ships. It exists as a protocol because `REQ-002`'s thumbnail is the one field that is not in
-    the probe's reply — `MediaInfo` carries a URL — and a suite that decoded it for real would
-    have to reach the network, which `ai/TESTING.md` §1 keeps out of the default run.
+    ships. It exists as a protocol because `REQ-002`'s thumbnail is the one field not in the
+    probe's reply, and a suite that decoded it for real would have to reach the network.
     """
 
-    def load(self, url: str, deliver: Callable[[bytes], None]) -> None: ...
+    def load(self, url: str, done: Callable[[bytes | None], None]) -> None: ...
 
     def cancel(self) -> None: ...
 
@@ -117,9 +157,11 @@ class NetworkThumbnailLoader(QObject):
     """Fetches a thumbnail with `QNetworkAccessManager`, which never blocks.
 
     Qt's own network stack rather than `urllib`: it is asynchronous by construction, so there is
-    no version of this that accidentally waits on a socket from the GUI thread. A failed or
-    refused fetch is simply not delivered — a missing thumbnail is a cosmetic loss, and turning
-    it into an error message would bury the probe result that did arrive.
+    no version of this that accidentally waits on a socket from the GUI thread.
+
+    **Both outcomes are reported.** The first version called back only on `NoError` and left
+    every other ending silent (`T016-R5`) — an expired or offline thumbnail is the ordinary case,
+    not an exotic one, and silence rendered as a permanent "Loading…".
     """
 
     def __init__(self, parent: QObject | None = None) -> None:
@@ -132,7 +174,7 @@ class NetworkThumbnailLoader(QObject):
         self._access = QNetworkAccessManager(self)
         self._reply: Any = None
 
-    def load(self, url: str, deliver: Callable[[bytes], None]) -> None:
+    def load(self, url: str, done: Callable[[bytes | None], None]) -> None:
         from PySide6.QtCore import QUrl
         from PySide6.QtNetwork import QNetworkRequest
 
@@ -142,15 +184,18 @@ class NetworkThumbnailLoader(QObject):
 
         def finished() -> None:
             if self._reply is not reply:
+                # Superseded by a later request; that one owns the answer.
+                reply.deleteLater()
                 return
             self._reply = None
-            if reply.error() == reply.NetworkError.NoError:
-                deliver(bytes(reply.readAll().data()))
+            failed = reply.error() != reply.NetworkError.NoError
+            done(None if failed else bytes(reply.readAll().data()))
             reply.deleteLater()
 
         reply.finished.connect(finished)
 
     def cancel(self) -> None:
+        """Abandon any request in flight. Its callback will not fire."""
         reply, self._reply = self._reply, None
         if reply is not None:
             reply.abort()
@@ -200,6 +245,59 @@ def describe_kind(media: MediaInfo) -> str:
     return f"Playlist ({media.entry_count} items)"
 
 
+@dataclass
+class _Probe:
+    """One probe, and the input it belongs to (`T016-R1`).
+
+    `url` is the text of the first line **as the user typed it**, not `MediaInfo.url`: yt-dlp's
+    canonical `webpage_url` routinely differs from what was pasted, so comparing against that
+    would discard valid results. `generation` counts changes to the first line, so a result can
+    be attributed even if the same text is typed, cleared and retyped.
+    """
+
+    job_id: str
+    url: str
+    generation: int
+
+    #: `start()` has been issued for this job — the session is genuinely in flight.
+    started: bool = False
+    #: The probe reported `Probed`; the job is `READY` and can be downloaded.
+    ready: bool = False
+
+    #: The input this probe belongs to has moved on. **The record is kept rather than dropped**,
+    #: which is what makes the identity check in `_on_media_probed` reachable: a result already
+    #: queued as a signal still arrives, and something has to refuse it by name. Clearing the
+    #: probe instead left that refusal unreachable — a guard that reads as protection while
+    #: protecting nothing, which `ai/TESTING.md` §13 exists to catch.
+    superseded: bool = False
+
+    @property
+    def in_flight(self) -> bool:
+        """A worker is running for this probe and its answer is still wanted."""
+        return self.started and not self.ready and not self.superseded
+
+    @property
+    def usable(self) -> bool:
+        """This probe still describes what the user is looking at."""
+        return not self.superseded
+
+
+@dataclass
+class _Persisted:
+    """The jobs this dialog has written, so no input line is ever stored twice."""
+
+    by_url: dict[str, str] = field(default_factory=dict)
+    order: list[str] = field(default_factory=list)
+
+    def record(self, url: str, job_id: str) -> None:
+        self.by_url[url] = job_id
+        self.order.append(job_id)
+
+    def forget(self, url: str, job_id: str) -> None:
+        if self.by_url.get(url) == job_id:
+            del self.by_url[url]
+
+
 class AddUrlDialog(QDialog):
     """Paste URLs, probe one, choose a preset, and queue them all."""
 
@@ -220,22 +318,15 @@ class AddUrlDialog(QDialog):
         self._presets = tuple(presets)
         self._thumbnails: ThumbnailLoader = thumbnail_loader or NetworkThumbnailLoader(self)
 
-        #: The job whose probe session is in flight, and the job a finished probe left in
-        #: `READY`. Separate fields: a cancelled probe clears the first and must not leave the
-        #: second pointing at a job that never resolved.
-        self._probing_job_id: str | None = None
-        self._probed_job_id: str | None = None
-
-        #: The URL text that was probed, as the user typed it. `MediaInfo.url` is yt-dlp's
-        #: canonical `webpage_url` and routinely differs from what was pasted, so comparing
-        #: against that would drop a valid probe result the moment the user touched the box.
-        self._probed_input_url: str | None = None
-
+        self._probe: _Probe | None = None
+        self._persisted = _Persisted()
         self._media: MediaInfo | None = None
         self._thumbnail: QPixmap | None = None
-
-        #: Every job this dialog persisted, oldest first.
-        self._queued_job_ids: list[str] = []
+        #: Bumped whenever the first input line changes. See `_Probe`.
+        self._generation = 0
+        self._first_url: str | None = None
+        #: A write is outstanding. Every control that could start a second one is disabled.
+        self._saving = False
 
         self.setObjectName("addUrlDialog")
         self.setWindowTitle("Add URLs")
@@ -261,7 +352,6 @@ class AddUrlDialog(QDialog):
 
         layout.addWidget(self._build_probe_row())
         layout.addWidget(self._build_results())
-        layout.addWidget(self._build_preset_row())
 
         self._status = QLabel(self)
         self._status.setObjectName("statusMessage")
@@ -272,6 +362,8 @@ class AddUrlDialog(QDialog):
         self._status.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
         self._status.setText("Paste a URL, then probe it or add it to the queue.")
         layout.addWidget(self._status)
+
+        layout.addWidget(self._build_preset_row())
 
         self._buttons = QDialogButtonBox(self)
         self._buttons.setObjectName("dialogButtons")
@@ -289,6 +381,14 @@ class AddUrlDialog(QDialog):
         self._close_button.clicked.connect(self.reject)
         self._buttons.addButton(self._close_button, QDialogButtonBox.ButtonRole.RejectRole)
         layout.addWidget(self._buttons)
+
+        # `T016-R6`: every label carrying text this application did not author is plain. Applied
+        # from one list rather than at each construction site, so a label added to that list is
+        # protected without anyone remembering a second call.
+        for name in UNTRUSTED_TEXT_LABELS:
+            label = self.findChild(QLabel, name)
+            if label is not None:
+                label.setTextFormat(Qt.TextFormat.PlainText)
 
     def _build_probe_row(self) -> QWidget:
         row = QWidget(self)
@@ -345,6 +445,11 @@ class AddUrlDialog(QDialog):
         The accessible name is set explicitly rather than left to the form's label text: Qt
         associates the two on most platforms, and "most" is what regresses without anyone
         noticing.
+
+        These are **keyboard focusable**, because `TextBrowserInteraction` includes
+        `TextSelectableByKeyboard`. That is deliberate — a screen-reader user has to be able to
+        reach the answer — and `T016-R4` found the consequence: they belong in the declared tab
+        order, not filtered out of it.
         """
         label = QLabel(parent)
         label.setObjectName(name)
@@ -379,26 +484,37 @@ class AddUrlDialog(QDialog):
         return box
 
     def _set_tab_order(self) -> None:
-        """The tab order, stated rather than inherited (`NFR-005`).
+        """The **complete** keyboard order, stated rather than inherited (`NFR-005`).
 
-        Construction order already produces something close to this, which is exactly why it is
-        written down: an order that is merely a side effect of the order widgets were built in
-        changes silently the first time a widget moves. `tests/ui/test_add_dialog.py` asserts
-        this chain, so a reordering has to be deliberate.
+        `T016-R4`: the first version declared only the editor, buttons and preset, while six
+        result and status labels were keyboard-focusable too — so Qt put them after Close, and
+        the test filtered them out of its own observation. A tab order that omits reachable
+        controls is not a tab order; it is a subset that happens to be asserted.
 
-        It follows the task the dialog exists for: type the URLs, probe them, read the result,
-        choose how to download, then act.
+        The order follows the task the dialog exists for, which is what its prose always claimed:
+        type the URLs, probe them, **read the result**, choose how to download, then act.
         """
         for earlier, later in pairwise(self.focus_chain()):
             self.setTabOrder(earlier, later)
 
     def focus_chain(self) -> list[QWidget]:
-        """The controls in their intended tab order. One list, used and asserted."""
+        """Every keyboard-focusable control, in its intended order.
+
+        `tests/ui/test_add_dialog.py` asserts that this list is exactly the set of focusable
+        widgets Qt reports, so a control that gains focus without being placed here fails rather
+        than silently landing at the end.
+        """
         return [
             self._urls,
             self._probe_button,
             self._cancel_button,
+            self._title_value,
+            self._uploader_value,
+            self._duration_value,
+            self._kind_value,
+            self._status,
             self._preset_choice,
+            self._selector_value,
             self._add_button,
             self._close_button,
         ]
@@ -413,12 +529,14 @@ class AddUrlDialog(QDialog):
     @property
     def probing_job_id(self) -> str | None:
         """The job whose probe session is in flight, if any."""
-        return self._probing_job_id
+        probe = self._probe
+        return probe.job_id if probe is not None and probe.in_flight else None
 
     @property
     def probed_job_id(self) -> str | None:
         """The job a finished probe left in `READY`, if any."""
-        return self._probed_job_id
+        probe = self._probe
+        return probe.job_id if probe is not None and probe.ready and probe.usable else None
 
     @property
     def media(self) -> MediaInfo | None:
@@ -433,83 +551,129 @@ class AddUrlDialog(QDialog):
     @property
     def queued_job_ids(self) -> tuple[str, ...]:
         """Every job this dialog persisted, oldest first."""
-        return tuple(self._queued_job_ids)
+        return tuple(self._persisted.order)
+
+    @property
+    def is_saving(self) -> bool:
+        """A write is outstanding. Nothing may start another, and nothing may close."""
+        return self._saving
 
     @property
     def selected_preset(self) -> Preset:
         return self._presets[max(self._preset_choice.currentIndex(), 0)]
 
     def status_text(self) -> str:
-        """Whatever the status line currently says.
-
-        The one piece of the dialog's *display* exposed as an accessor rather than left to be
-        read off the widget: it is the only place an extractor message appears (`NFR-006`), and
-        composition will want to surface the same text elsewhere.
-        """
+        """Whatever the status line currently says."""
         return self._status.text()
+
+    def first_url(self) -> str | None:
+        """The first input line, or `None` when the box holds nothing usable."""
+        urls = split_urls(self._urls.toPlainText())
+        return urls[0] if urls else None
 
     # --- probing ------------------------------------------------------------------------
 
     def probe(self) -> None:
-        """Start a probe session for the first URL. **Returns immediately** (`NFR-001`).
+        """Persist the first URL, then start a probe session for it. **Returns immediately.**
+
+        Two asynchronous steps, in that order: the job is stored before any worker is asked about
+        it (`REQ-012`), and neither step blocks the GUI thread (`NFR-001`, `ARC-005`).
 
         The first URL rather than all of them: Phase 1 runs a pool of exactly one
         (`downloader/manager.py`), so probing a pasted batch would be a queue of probes with no
-        scheduler to run it. The rest of the batch is still queued by `add_to_queue`, and each
-        starts by probing when something runs it.
+        scheduler to run it.
         """
-        urls = split_urls(self._urls.toPlainText())
-        if not urls:
+        url = self.first_url()
+        if url is None:
             self._status.setText("Enter a URL first.")
             return
-        if self._probing_job_id is not None:
+        if (self._probe is not None and self._probe.usable) or self._saving:
             return
 
-        job = self._new_job(urls[0])
-        # Persisted before the session starts, because `start()` reads the job back out of the
-        # repository — and because a probe that crashes the application should still leave the
-        # URL the user pasted in the queue (`REQ-012`).
-        self._jobs.add(job)
-        self._queued_job_ids.append(job.id)
-        self._probing_job_id = job.id
-        self._probed_job_id = None
-        self._probed_input_url = job.url
+        job = self._new_job(url)
+        probe = _Probe(job_id=job.id, url=url, generation=self._generation)
+        self._probe = probe
         self._media = None
         self._reset_fields()
-        self._status.setText(f"Probing {job.url} …")
-        self._refresh_actions()
+        self._begin_saving(f"Saving {url} …")
+        self._jobs.submit([job], lambda error: self._on_probe_saved(probe, job, error))
+
+    def _on_probe_saved(self, probe: _Probe, job: Job, error: str | None) -> None:
+        """The probe's job is stored, or it is not. Only then is a worker asked for anything."""
+        self._saving = False
+        if error is not None:
+            probe.superseded = True
+            self._status.setText(f"Nothing was saved, so nothing was probed. {error}")
+            self._refresh_actions()
+            return
+
+        self._persisted.record(probe.url, job.id)
+        if probe.superseded or self._probe is not probe or probe.url != self.first_url():
+            # The input moved on while the write was in flight. The job is stored — the user did
+            # type it — but this dialog no longer has anything to probe for it.
+            self._refresh_actions()
+            return
+
         try:
             self._manager.start(job.id, SessionKind.PROBE)
-        except (RuntimeError, ValueError) as error:
+        except (RuntimeError, ValueError) as start_error:
             # A busy manager, or a job the state machine refuses. Reported rather than raised out
-            # of a button press: the dialog stays usable, and an unhandled exception in a slot
-            # would take down the event loop over something the user can simply retry.
-            self._probing_job_id = None
-            self._status.setText(f"Could not start a probe: {error}")
+            # of a callback: the dialog stays usable, and the job is already safely stored.
+            probe.superseded = True
+            self._status.setText(f"Could not start a probe: {start_error}")
             self._refresh_actions()
+            return
+        probe.started = True
+        self._status.setText(f"Probing {probe.url} …")
+        self._refresh_actions()
 
     def cancel_probe(self) -> None:
         """Ask the manager to stop the running probe (`REQ-015`).
 
         The worker and everything it spawned are reaped by `DownloadManager.cancel`, which
-        escalates on its own timer; nothing here waits for that. The dialog stops *waiting* on
-        the probe immediately, which is what the user asked for.
+        escalates on its own timer; nothing here waits for that.
         """
-        job_id = self._probing_job_id
-        if job_id is None:
+        if self._probe is None:
             return
-        self._probing_job_id = None
-        self._probed_job_id = None
-        self._probed_input_url = None
-        self._status.setText("Probe cancelled. The URL is still queued.")
-        self._manager.cancel(job_id)
+        self._discard_probe("Probe cancelled. The URL is still queued.")
+
+    def _discard_probe(self, message: str | None) -> None:
+        """Retire the current probe, cancelling its session if one is in flight.
+
+        The single place a probe stops mattering, reached by cancelling, by editing the first
+        URL, and by closing the dialog. One route means one set of consequences: the session is
+        cancelled, the URL stops counting as already-persisted so re-entering it queues it again,
+        and nothing is left claiming to be probed.
+
+        **The record is marked, not deleted.** A `Probed` signal already queued still arrives
+        after this returns, and `_on_media_probed` refuses it by name. Deleting the record would
+        make that refusal unreachable and leave the acceptance rule resting on this method being
+        called first — which is exactly the ordering assumption `T016-R1` was.
+        """
+        probe = self._probe
+        if probe is None:
+            return
+        probe.superseded = True
+        self._persisted.forget(probe.url, probe.job_id)
+        if probe.started and not probe.ready:
+            self._manager.cancel(probe.job_id)
+        self._media = None
+        self._reset_fields()
+        if message is not None:
+            self._status.setText(message)
         self._refresh_actions()
 
     def _on_media_probed(self, job_id: str, media: object) -> None:
-        if job_id != self._probing_job_id or not isinstance(media, MediaInfo):
+        """Accept a result only if it describes the URL still on screen (`T016-R1`)."""
+        probe = self._probe
+        if probe is None or probe.job_id != job_id or not isinstance(media, MediaInfo):
             return
-        self._probing_job_id = None
-        self._probed_job_id = job_id
+        if probe.superseded or probe.url != self.first_url():
+            # **This is the binding**, not a backstop for it. `_on_urls_changed` retires a probe
+            # whose line changed, but the signal carrying its result may already be queued, so
+            # the refusal has to live where the result is received (`T016-R1`).
+            return
+        probe.ready = True
         self._media = media
         self._show(media)
         self._refresh_actions()
@@ -521,11 +685,10 @@ class AddUrlDialog(QDialog):
         classification is shown beside it rather than instead of it: the kind tells the user
         whether retrying could help, and the text is the only thing that says what happened.
         """
-        if job_id != self._probing_job_id:
+        probe = self._probe
+        if probe is None or probe.job_id != job_id or probe.superseded:
             return
-        self._probing_job_id = None
-        self._probed_job_id = None
-        self._probed_input_url = None
+        probe.superseded = True
         self._media = None
         self._reset_fields()
         label = kind.value if isinstance(kind, ErrorKind) else str(kind)
@@ -537,13 +700,13 @@ class AddUrlDialog(QDialog):
 
         A job left `READY` by a probe can still be cancelled from elsewhere — the queue view
         (`T-017`), or a shutdown — and `Add to queue` would then call `start()` on a job the
-        state machine refuses. Reading the persisted status rather than assuming this dialog is
-        the only thing touching the job is the cheaper half of that (`ARC-004`).
+        state machine refuses.
         """
-        if job_id != self._probed_job_id:
+        probe = self._probe
+        if probe is None or probe.job_id != job_id or not probe.ready or probe.superseded:
             return
         if status != JobStatus.READY.value:
-            self._probed_job_id = None
+            probe.superseded = True
             self._refresh_actions()
 
     # --- queueing -----------------------------------------------------------------------
@@ -551,44 +714,73 @@ class AddUrlDialog(QDialog):
     def add_to_queue(self) -> None:
         """Persist a job per URL, start the probed one, and close (`REQ-001`, `REQ-012`).
 
-        **Every job is written before `accept()`**, so a crash between this dialog closing and
-        the queue view opening cannot lose what the user asked for.
+        **The dialog closes inside the success callback**, so it cannot close before the rows
+        exist. A failed write leaves it open with the user's input untouched, which is the only
+        way the user can retry (`ARC-005`).
 
-        The probed job is the one already in `READY`; it starts as a download and moves
-        `READY → RUNNING` without re-entering `PROBING` (`ARC-004`). The rest are new `QUEUED`
-        jobs that start by probing when something runs them — scheduling those is `T-036`'s work,
-        not this dialog's.
+        **Refused while a probe is outstanding.** The button is disabled then, and this checks
+        again: that is the state in which the first line already had a persisted job and a second
+        would have been created for it (`T016-R1`).
         """
+        if self._saving:
+            return
         urls = split_urls(self._urls.toPlainText())
         if not urls:
             self._status.setText("Enter a URL first.")
             return
+        probe = self._probe
+        if probe is not None and probe.in_flight:
+            self._status.setText("A probe is still running. Wait for it, or cancel it.")
+            return
 
-        probed = self._probed_job_id
-        # The probed job already covers the first URL. Skipping it here is what keeps
-        # probe-then-add from queueing the same URL twice — `ARC-004` names that as stranding or
-        # duplicating the probed record.
-        remaining = urls[1:] if probed is not None else urls
-        for url in remaining:
-            job = self._new_job(url)
-            self._jobs.add(job)
-            self._queued_job_ids.append(job.id)
+        # One job per line, and never a second for a line already stored. `_persisted` is what
+        # makes that true across probe-then-add, rather than a rule about the first URL that only
+        # held once a probe had finished.
+        fresh = [(url, self._new_job(url)) for url in urls if url not in self._persisted.by_url]
+        self._begin_saving("Saving to the queue …")
+        self._jobs.submit(
+            [job for _, job in fresh], lambda error: self._on_queue_saved(fresh, error)
+        )
 
-        if probed is not None:
+    def _on_queue_saved(self, fresh: Sequence[tuple[str, Job]], error: str | None) -> None:
+        self._saving = False
+        if error is not None:
+            self._status.setText(
+                f"Nothing was saved and the queue is unchanged. {error} "
+                "Your URLs are still here; try again."
+            )
+            self._refresh_actions()
+            return
+        for url, job in fresh:
+            self._persisted.record(url, job.id)
+
+        probe = self._probe
+        if probe is not None and probe.ready and probe.usable:
             try:
-                self._manager.start(probed, SessionKind.DOWNLOAD)
-            except (RuntimeError, ValueError) as error:
-                # The jobs are already persisted, so nothing is lost by not starting: whatever
-                # runs the queue picks it up. Saying so beats closing on a silent failure.
+                self._manager.start(probe.job_id, SessionKind.DOWNLOAD)
+            except (RuntimeError, ValueError) as start_error:
+                # The jobs are stored, so nothing is lost by not starting: whatever runs the
+                # queue picks it up. Saying so beats closing on a silent failure.
                 self._status.setText(
-                    f"Queued, but the download did not start: {error} "
+                    f"Queued, but the download did not start: {start_error} "
                     "It stays in the queue and can be started from there."
                 )
                 self._refresh_actions()
                 return
         self.accept()
 
+    def _begin_saving(self, message: str) -> None:
+        self._saving = True
+        self._status.setText(message)
+        self._refresh_actions()
+
     def _new_job(self, url: str) -> Job:
+        """A `QUEUED` job for `url`, with **no** queue position.
+
+        The position is allocated by the writer, inside the same transaction as the insert
+        (`ARC-005`). Reading `MAX(queue_position)` here would be both a GUI-thread database call
+        and a guess against every other writer.
+        """
         request = preset_registry.to_request(
             self.selected_preset, url=url, output_directory=str(self._output_directory)
         )
@@ -598,8 +790,29 @@ class AddUrlDialog(QDialog):
             request=request,
             status=JobStatus.QUEUED,
             created_at=datetime.now().astimezone(),
-            queue_position=self._jobs.next_queue_position(),
         )
+
+    # --- closing ------------------------------------------------------------------------
+
+    # Qt's override name, hence the camelCase: this is not a project naming choice.
+    def done(self, result: int) -> None:
+        """Every exit route funnels through here, so every exit route abandons the probe.
+
+        `T016-R2`: closing the dialog used to leave a never-returning worker alive and the
+        pool-of-one manager permanently busy, with the only cancel control now hidden — so every
+        later Add-URL dialog could report nothing but "a session is already running". Escape, the
+        window button, `reject()` and `accept()` all reach `done()`, which is why the ownership
+        lives here rather than on the Close button.
+
+        A probe that has already returned is **not** cancelled: its job is `READY`, and
+        `add_to_queue` may just have started it downloading.
+        """
+        probe = self._probe
+        if probe is not None and probe.in_flight:
+            probe.superseded = True
+            self._manager.cancel(probe.job_id)
+        self._thumbnails.cancel()
+        super().done(result)
 
     # --- display ------------------------------------------------------------------------
 
@@ -620,25 +833,32 @@ class AddUrlDialog(QDialog):
                 f"No thumbnail was supplied for {media.title}"
             )
             return
-        self._thumbnail_label.setText("Loading thumbnail…")
+        self._thumbnail_label.setText(LOADING_THUMBNAIL_TEXT)
         self._thumbnail_label.setAccessibleDescription(f"Thumbnail for {media.title}")
         url = media.thumbnail_url
 
-        def deliver(data: bytes) -> None:
+        def delivered(data: bytes | None) -> None:
             # Guards a reply that arrives after the user probed something else: the loader is
             # asked to cancel, but a fetch already in flight can still land.
             if self._media is None or self._media.thumbnail_url != url:
                 return
             self._set_thumbnail(data)
 
-        self._thumbnails.load(url, deliver)
+        self._thumbnails.load(url, delivered)
 
-    def _set_thumbnail(self, data: bytes) -> None:
+    def _set_thumbnail(self, data: bytes | None) -> None:
+        """Render the fetch's outcome, whatever it was (`T016-R5`).
+
+        Failure and undecodable bytes are the same thing to a user — no picture — and neither is
+        worth interrupting the probe result they actually asked for. What matters is that the
+        label stops claiming to be loading something.
+        """
+        if data is None:
+            self._thumbnail_label.setText(THUMBNAIL_FAILED_TEXT)
+            return
         pixmap = QPixmap()
         if not pixmap.loadFromData(data):
-            # Undecodable bytes are not worth interrupting the user for; the probe result they
-            # asked for is on screen either way.
-            self._thumbnail_label.setText(NO_THUMBNAIL_TEXT)
+            self._thumbnail_label.setText(THUMBNAIL_FAILED_TEXT)
             return
         scaled = pixmap.scaled(
             *THUMBNAIL_SIZE,
@@ -669,35 +889,37 @@ class AddUrlDialog(QDialog):
         self._selector_value.setText(f"Format selector: {selector}")
 
     def _on_urls_changed(self) -> None:
-        """A changed URL box invalidates a probe of the old first URL.
+        """A changed first line invalidates the probe bound to the old one (`T016-R1`).
 
-        Otherwise `Add to queue` would start a download of whatever was probed a minute ago
-        while the box shows something else — the shape of silent wrong result this project keeps
-        finding, where a value is computed correctly and then applied to the wrong thing.
+        Fired on every keystroke, and it acts only when the *first* line actually changes —
+        appending a second URL leaves a completed probe alone, which is the ordinary
+        probe-one-then-paste-more flow.
+
+        An in-flight probe is **cancelled**, not merely ignored. Ignoring would leave the
+        pool-of-one manager busy on a result nobody will read, so the next probe could not start.
         """
-        if self._probed_job_id is None:
-            self._refresh_actions()
-            return
-        urls = split_urls(self._urls.toPlainText())
-        if urls and urls[0] == self._probed_input_url:
-            self._refresh_actions()
-            return
-        self._probed_job_id = None
-        self._probed_input_url = None
-        self._media = None
-        self._reset_fields()
-        self._status.setText("The URL changed. Probe again to see what it is.")
+        current = self.first_url()
+        if current != self._first_url:
+            self._first_url = current
+            self._generation += 1
+            if self._probe is not None:
+                self._discard_probe("The URL changed. Probe again to see what it is.")
+                return
         self._refresh_actions()
 
     def _refresh_actions(self) -> None:
         """Enable exactly the controls that can do something right now.
 
         `core.job_state.can_transition` exists so a UI can disable an action rather than offer it
-        and catch the exception; the same reasoning applies to a probe that is already running
-        and to an empty URL box.
+        and catch the exception; the same reasoning applies to a probe already running, a write
+        already outstanding, and an empty URL box.
+
+        **Add is disabled while a probe is outstanding** (`T016-R1`). That is not cosmetic: it is
+        what makes "one persisted job per entered line" hold, by removing the state in which the
+        dialog would have created a second job for a line it had already stored.
         """
-        probing = self._probing_job_id is not None
+        probing = self.probing_job_id is not None
         has_urls = bool(split_urls(self._urls.toPlainText()))
-        self._probe_button.setEnabled(has_urls and not probing)
-        self._cancel_button.setEnabled(probing)
-        self._add_button.setEnabled(has_urls)
+        self._probe_button.setEnabled(has_urls and not probing and not self._saving)
+        self._cancel_button.setEnabled(probing and not self._saving)
+        self._add_button.setEnabled(has_urls and not probing and not self._saving)

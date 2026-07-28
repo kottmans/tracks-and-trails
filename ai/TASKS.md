@@ -886,11 +886,11 @@ personal paths (`REQ-026`, `NFR-007`). They are committed, so a leak here is per
 
 ### T-016 — Add-URL dialog with probe results
 
-**Status:** **In Review — merged to `main` and pushed, awaiting review.** Implemented 2026-07-27;
-the `phase1-add-url-dialog` branch was cut only to stay clear of a review running on trunk, and
-was rebased, merged and deleted once that review closed. All four dependencies are closed:
-`T-013` and `T-015` approved, `T-018` approved on its fifth correction, `T-051` approved as
-`ARC-004`. CI is green on all five jobs at `33ebd11`.
+**Status:** **In Review — first correction batch returned 2026-07-27, awaiting verification.**
+The initial review returned **Changes requested** with one Critical, two High and three blocking
+Medium findings. All six are corrected in one batch, together with both non-blocking Lows.
+`T016-R3` needed an architecture decision first: `ARC-005` is accepted, and `T-055` records it.
+No finding is marked Resolved here — that is the Reviewer's to do.
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 1
@@ -908,6 +908,54 @@ approval into the tracking files. `T-016` is `d9936f4`, `57c7e5c` and `33ebd11`.
 **Branch:** none now. `phase1-add-url-dialog` was cut at maintainer instruction because Codex was
 reviewing `T-019`/`T-038` on `main` at the time (`AGENTS.md` §7 — isolated concurrent work), then
 rebased onto `main`, merged fast-forward and deleted once that review closed.
+
+#### First correction batch — all six blocking findings, 2026-07-27
+
+**Base:** `a931736`. Every correction has a test named for it, and every one of those tests was
+shown to fail when the correction is weakened (19 of 19 mutations killed).
+
+- **`T016-R1` (Critical) — a probe now belongs to a URL, not just to a job id.** `_Probe` records
+  the input line and the generation of the URL box. Changing the first line **retires** that probe
+  and cancels its session; a result is refused unless its line is still first. The refusal lives
+  in `_on_media_probed`, where the result arrives, rather than resting on the edit handler having
+  run first — which is what the defect was. **`Add to queue` is disabled while a probe is
+  outstanding**, so the state that stored one line twice is unreachable rather than reconciled.
+  `_Persisted` tracks one job per entered line, and a retired probe's URL stops counting as
+  stored so it can be queued again.
+- **`T016-R2` (High) — `done()` is the choke point.** Escape, the window button, `reject()` and
+  `accept()` all reach it, and it cancels an in-flight probe. Three parametrised routes are
+  tested, plus the consequence the finding is really about: a later dialog can still probe.
+- **`T016-R3` (High) — nothing waits on SQLite.** `ARC-005` (below). The dialog submits and is
+  told the answer later; it closes **inside** the success callback, so `REQ-012`'s ordering is
+  strengthened rather than kept.
+- **`T016-R4` (Medium) — the tab order is complete.** All twelve focusable controls are declared
+  and asserted, and the observation no longer filters by declared name: the only exclusion is the
+  combo box's popup, which lives in its own top-level window.
+- **`T016-R5` (Medium) — the thumbnail reports failure.** `ThumbnailLoader.load` takes `bytes |
+  None`; the shipping `QNetworkAccessManager` loader reports both outcomes, and its **failure**
+  path is tested against a real local URL that cannot resolve.
+- **`T016-R6` (Medium) — foreign text is `PlainText`.** Applied from one list, asserted per label
+  and by rendered width against a `<b>VISIBLE</b>` title, because reading `QLabel.text()` back
+  returns the input under either format and misses the defect entirely.
+- **`T016-R7` (Low)** — the refusal test now takes the *complement* of the two entry points over
+  the whole enum, so `PROBING`, `COMPLETED` and `CANCELLED` are covered and a new status joins
+  the day it appears. One test compares the transcription against `_ENTRY_STATUS`.
+- **`T016-R8` (Low)** — the stale records were corrected in `a931736`, before this batch; the
+  "no widget touches any of it yet" contradiction in `STATUS.md` is fixed here.
+
+**Three mutations survived the first battery**, and each exposed a real gap rather than a
+mis-aimed probe: the `_on_media_probed` identity check was **unreachable** because the edit
+handler deleted the probe record before any late result could be refused by name (fixed by
+retiring rather than deleting, which is why `_Probe.superseded` exists); the "a later dialog can
+probe" test passed with the fix reverted because the crafted child *died* on an unknown URL and
+freed the pool by accident (it now hangs); and the batched position allocation could not be seen
+by a single-batch test (a second batch now proves positions continue). All three are killed.
+
+**Two defects were found by the corrections' own tests**, not by review: `QueueWriter.close()`
+called the worker's slot directly and closed a SQLite connection from the wrong thread —
+`check_same_thread` caught it, which is exactly why `ARC-005` keeps that check on — and
+`QWidget.close()` on a never-shown dialog delivers no close event, so that test now shows the
+dialog first rather than passing for the wrong reason.
 
 #### What was built
 
@@ -1252,6 +1300,53 @@ exists to refuse (`T-011`).
 - A log viewer in the UI — Phase 3
 - Rotation and retention policy — Phase 4
 - Crash reporting of any kind; there is none (`NFR-007`)
+
+---
+
+### T-055 — Decide how the application writes to SQLite without blocking the GUI thread
+
+**Status:** **Complete** — decided and recorded 2026-07-27 as `ARC-005`.
+**Owner:** Planner
+**Priority:** High — blocked `T-016`'s `T016-R3`
+**Phase:** Phase 1
+**Depends on:** `T-014`
+**Relevant context:** `NFR-001`; `ARCHITECTURE.md` §3 and §8; `DAT-001`; `T016-R3`
+**Affected surfaces:** `ai/DECISIONS.md`, `ai/ARCHITECTURE.md`; implementation is `T-016`'s
+**Risk:** Medium — deciding persistence threading inside a widget would set application-wide
+policy from the narrowest possible place
+**Blocks:** `T-016`
+
+#### Scope
+
+`T-016`'s review found the first widget to touch persistence doing it synchronously on the GUI
+thread, and measured 0.302 s of blocked interaction plus an `OperationalError` that reached no
+user. `NFR-001` is unqualified, so the widget was wrong — but *how* the application writes without
+blocking was never decided, and `persistence/db.connect()` leaves `check_same_thread=True`, so a
+repository built on the GUI thread cannot be used from another one at all.
+
+The same shape as `T-051`: a review found a gap the narrow task could not close without inventing
+architecture, so the Planner decides and the implementing task builds it. The maintainer chose
+this route on 2026-07-27 over deciding it inside `T-016` or seeking an `NFR-001` carve-out.
+
+#### The decision — `ARC-005`
+
+**Queue writes happen on one dedicated writer thread that owns its own connection**, opened
+inside that thread from an injected factory. A batch is one transaction, and the result is
+reported back on the GUI thread so a failed write is surfaced rather than swallowed. Full
+reasoning, the two rejected alternatives, and what reopens it are in `ai/DECISIONS.md`.
+
+#### Acceptance criteria
+
+- The architecture names which thread writes, and how a caller learns the outcome
+- `check_same_thread` stays on, so a wrong-thread use raises rather than corrupting
+- Any durable trade-off is recorded in `ai/DECISIONS.md`
+- No source code is changed by this Planner task
+
+#### Out of scope
+
+- Making reads asynchronous. Indexed single-row lookups against a local file are not what
+  blocked, and every widget would pay for it.
+- Constructing and shutting down the writer, which is composition's (`T-036`).
 
 ---
 

@@ -1098,3 +1098,81 @@ edge), or start the download from `READY` and let its own extraction stand in fo
   the download — a paid API, a rate-limited extractor, an interactive auth step. Then the
   question becomes how to hand an extraction to the worker, which is a protocol change and not
   this one.
+
+---
+
+## ARC-005 — The GUI thread never waits on SQLite; one writer thread owns every queue write
+
+**Status:** **Accepted**
+**Date:** 2026-07-27
+**Decides:** `T-055`. **Blocks were:** `T-016` (`T016-R3`).
+**Supersedes:** nothing. **Amends:** `ARCHITECTURE.md` §3 and §8, which said persistence is
+injected but never said on which thread it runs.
+
+### Context
+
+`T-016`'s review found the first widget to touch persistence doing it synchronously on the GUI
+thread. `JobRepository.next_queue_position()` and `add()` were called straight from button slots,
+once per URL. With another connection holding SQLite's writer lock, the reviewer measured
+**0.302 s** of blocked GUI thread followed by an `OperationalError` that reached no user.
+
+`NFR-001` is unqualified — "UI thread is never blocked on network, **disk**, or subprocess
+work" — and `ARCHITECTURE.md` §8 repeats it. So the widget was wrong. But *how* the application
+writes without blocking was never decided: §3 says `DownloadManager` is given a repository, and
+says nothing about threads. `persistence/db.connect()` uses `sqlite3.connect()` with the default
+`check_same_thread=True`, so a repository built on the GUI thread **cannot be called from another
+thread at all**. Fixing this inside a widget would have set application-wide policy from the
+narrowest possible place, which is what `AGENTS.md` §5 forbids and what `T-051`/`ARC-004` exists
+as the precedent against.
+
+### The decision
+
+**Queue writes happen on one dedicated writer thread that owns its own connection. The GUI
+thread submits and is told the answer later; it never waits.**
+
+Three parts, and each is load-bearing:
+
+- **One writer, not a connection per caller.** SQLite permits exactly one writer at a time
+  regardless, so serialising in-process removes self-contention entirely rather than converting
+  it into `SQLITE_BUSY` retries. It also gives queue positions a single ordering authority —
+  two threads racing `MAX(queue_position) + 1` would otherwise hand out the same position.
+- **The connection is opened inside that thread**, from an injected factory rather than handed
+  over. `check_same_thread=True` stays on, so a connection used from the wrong thread raises
+  instead of corrupting quietly. Nothing about this decision weakens that check.
+- **A batch is one transaction.** `JobRepository.append()` takes every job of one interaction,
+  reads the next position, and inserts them with a single `executemany`. The previous shape —
+  a `SELECT` and an `INSERT` with its own commit per URL — made a pasted batch's cost unbounded
+  in the number of round trips.
+
+**Submission is asynchronous and its result is reported back on the GUI thread.** The caller
+passes a completion callback; success and failure both arrive there, so a write that fails is
+surfaced rather than swallowed. `REQ-012`'s persist-before-close ordering is *preserved and
+strengthened*: a dialog now closes **in** the success callback, so it cannot close before the
+rows exist, and on failure it stays open with the user's input intact.
+
+### Considered and rejected
+
+- **A connection per thread.** Simpler to write, and WAL supports it. Rejected because it turns
+  our own concurrency into lock contention we then have to tune a `busy_timeout` against, and
+  because it leaves `queue_position` allocation racy between threads.
+- **Keeping writes synchronous and carving `NFR-001` down** to exclude "fast local disk". The
+  measurement is the answer: 0.302 s is not fast, contention is not exotic — a second
+  application instance, a backup, or an antivirus scan produces it — and the failure mode was an
+  unhandled exception, not a slow success. A carve-out would have been documenting a known
+  freeze.
+- **Making the whole repository asynchronous.** Reads on the GUI thread are indexed
+  single-row lookups against a local file and are not what blocked. Making every read a callback
+  would spread asynchrony through every widget to fix a problem only writes have.
+
+### Consequences
+
+- `persistence/writer.py` is new and owns the thread. `ui/` depends on a narrow protocol, not on
+  it, so the dialog still cannot see that SQLite exists (`ARCHITECTURE.md` §3).
+- `persistence/db.configure()` now sets `busy_timeout`. In-process contention is gone by
+  construction, but a *second process* — a second instance, `sqlite3` at a prompt — can still
+  hold the lock, and waiting briefly beats raising at a user.
+- Composition (`T-036`) owns constructing the writer and shutting it down. A writer thread that
+  outlives the application is the same shape of orphan `T-019` spent a task on.
+- **This decision reopens** if a write ever needs to be ordered against a read the GUI thread
+  just made — a read-modify-write on a job. Nothing does that today: the manager owns job
+  updates and runs its own transitions.

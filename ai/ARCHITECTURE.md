@@ -104,6 +104,16 @@ Constraints this imposes:
 re-emits each message as a Qt signal on the GUI thread. Widgets never touch the
 multiprocessing queue and never block (`NFR-001`).
 
+**Queue writing** (`T-055`, `ARC-005`). The same rule binds the database, and it was previously
+unstated: this section said persistence is *injected* without saying on which thread it runs, and
+the first widget to store anything blocked the GUI thread for a measured 0.302 s under a contended
+writer lock. **One dedicated writer thread owns every queue write**, holding a connection it opens
+itself — `sqlite3`'s `check_same_thread` stays on, so a connection used from the wrong thread
+raises rather than corrupting quietly. A caller submits a batch and is called back on the GUI
+thread with success or a message; one interaction is one transaction, which also gives
+`queue_position` a single allocating authority. **Reads stay synchronous on the GUI thread**: they
+are indexed single-row lookups against a local file, and they are not what blocked.
+
 ## 4. Layers
 
 Dependencies point downward only. The two rules below are enforced by an automated test,

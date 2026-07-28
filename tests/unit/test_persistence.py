@@ -428,6 +428,41 @@ def test_two_jobs_cannot_hold_the_same_queue_position(repository: JobRepository)
         repository.add(a_job("b", queue_position=0))
 
 
+def test_append_allocates_positions_at_the_end_of_the_queue(repository: JobRepository) -> None:
+    """`ARC-005`: a batch goes to the end, and the next batch goes after it.
+
+    Two batches, because one cannot tell "read the current maximum" from "start at zero" — an
+    empty database gives 0, 1, 2 either way. That is exactly how a mutation replacing the
+    `MAX(queue_position)` read with a constant survived the first battery.
+    """
+    first = repository.append([a_job("a"), a_job("b")])
+    second = repository.append([a_job("c"), a_job("d")])
+
+    assert [job.queue_position for job in first] == [0, 1]
+    assert [job.queue_position for job in second] == [2, 3]
+    assert [job.id for job in repository.queued()] == ["a", "b", "c", "d"]
+
+
+def test_append_writes_every_job_or_none_of_them(repository: JobRepository) -> None:
+    """One transaction (`ARC-005`), so a half-queued paste cannot exist.
+
+    The second batch repeats an id, which the primary key refuses. What matters is that its
+    *other*, valid job did not land either.
+    """
+    repository.append([a_job("a")])
+
+    with pytest.raises(sqlite3.IntegrityError):
+        repository.append([a_job("fresh"), a_job("a")])
+
+    assert [job.id for job in repository.all_jobs()] == ["a"]
+
+
+def test_append_of_nothing_is_a_no_op(repository: JobRepository) -> None:
+    """A caller with no new URLs should not have to special-case the empty batch."""
+    assert repository.append([]) == []
+    assert repository.all_jobs() == []
+
+
 def test_updating_a_job_that_is_not_stored_raises(repository: JobRepository) -> None:
     """Silently inserting would hide that the caller's model of the queue is wrong."""
     with pytest.raises(KeyError):

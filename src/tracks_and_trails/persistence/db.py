@@ -45,6 +45,10 @@ SCHEMA_SNAPSHOT: Final = Path(__file__).parent / "schema.sql"
 
 DATABASE_FILENAME: Final = "library.sqlite3"
 
+#: How long a contended write waits before giving up, in milliseconds (`ARC-005`). See
+#: `configure` for why this exists and why it is not zero.
+BUSY_TIMEOUT_MS: Final = 5000
+
 
 def database_path() -> Path:
     """The database location under `platformdirs` (`ARCHITECTURE.md` §5, `NFR-004`)."""
@@ -167,6 +171,14 @@ def configure(connection: sqlite3.Connection) -> None:
     connection.execute("PRAGMA journal_mode = WAL")
     connection.execute("PRAGMA synchronous = NORMAL")
     connection.execute("PRAGMA foreign_keys = ON")
+    # `ARC-005`: wait for a contended writer instead of raising immediately. In-process
+    # contention is gone by construction — one writer thread owns every queue write — but a
+    # *second process* can still hold the lock: a second instance of this application, a backup,
+    # or `sqlite3` at a prompt. Without this, SQLite's default is to fail instantly, which
+    # `T016-R3` observed as an `OperationalError` reaching a button press. Five seconds is long
+    # enough to outlast any write this application makes and short enough to be a bounded wait on
+    # a thread that is not the GUI's.
+    connection.execute(f"PRAGMA busy_timeout = {BUSY_TIMEOUT_MS}")
 
 
 def connect(path: Path | str) -> sqlite3.Connection:

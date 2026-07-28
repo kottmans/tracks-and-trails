@@ -1900,10 +1900,36 @@ def test_a_message_type_without_a_signal_is_refused_at_construction(
 # --- what the manager refuses ---------------------------------------------------------------
 
 
-@pytest.mark.parametrize(
-    "status",
-    [JobStatus.RUNNING, JobStatus.PAUSED, JobStatus.POST_PROCESSING, JobStatus.FAILED],
+#: The two statuses `ARC-004` makes entry points, **transcribed** from `ARCHITECTURE.md` §5's
+#: table rather than read from `manager._ENTRY_STATUS` (`T016-R7`). Deriving them from the
+#: production mapping would make the refusal test agree with whatever that mapping said,
+#: including a wrong one — `ai/TESTING.md` §13.
+ENTRY_POINT_STATUSES: Final = (JobStatus.QUEUED, JobStatus.READY)
+
+#: Everything else, as the *complement* over the whole enum rather than a hand-picked sample.
+#: The previous list named four of the seven and its docstring claimed "every status that is not
+#: an entry point"; `PROBING`, `COMPLETED` and `CANCELLED` went untested. A complement cannot
+#: silently omit a status, and a status added to `JobStatus` joins this set the day it appears.
+NON_ENTRY_STATUSES: Final = tuple(
+    status for status in JobStatus if status not in ENTRY_POINT_STATUSES
 )
+
+
+def test_the_entry_point_statuses_are_the_ones_the_manager_implements() -> None:
+    """The transcription and the production mapping must agree — asserted once, here.
+
+    This is the one place the two sides are compared. Every other test below reads only the
+    transcription, so a wrong `_ENTRY_STATUS` fails *this* test rather than quietly redefining
+    what the others are checking.
+    """
+    from tracks_and_trails.downloader.manager import _ENTRY_STATUS
+
+    assert tuple(_ENTRY_STATUS) == ENTRY_POINT_STATUSES
+    assert set(NON_ENTRY_STATUSES) | set(ENTRY_POINT_STATUSES) == set(JobStatus)
+    assert not set(NON_ENTRY_STATUSES) & set(ENTRY_POINT_STATUSES)
+
+
+@pytest.mark.parametrize("status", NON_ENTRY_STATUSES)
 def test_a_job_outside_the_two_entry_points_cannot_be_started(
     tmp_path: Path,
     repository: FakeRepository,

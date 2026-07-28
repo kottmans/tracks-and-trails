@@ -88,9 +88,16 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-016` — merged to `main` at `33ebd11`, awaiting review.** The add-URL dialog, plus
-  `ARC-004`'s `READY` entry point in `DownloadManager.start()`. CI green on all five jobs. Its
-  branch existed only to stay clear of a review running on trunk and is gone. See `Next` item 4.
+- **`T-016` — Changes requested, first correction batch returned 2026-07-27.** The initial review
+  found one Critical, two High and three blocking Medium defects; all six are corrected in one
+  batch. The Critical is worth carrying forward: a probe result was bound to a **job id** and not
+  to the URL still on screen, so editing the first line mid-probe made the dialog accept the old
+  metadata, start the old URL, and silently drop the one the user had submitted.
+  **`T016-R3` needed an architecture decision** — the widget was writing to SQLite on the GUI
+  thread, measured at 0.302 s blocked plus an unhandled `OperationalError`, and how the
+  application writes *without* blocking had never been decided. `T-055` decides it as `ARC-005`:
+  one writer thread owning its own connection, batches as single transactions, results reported
+  back on the GUI thread.
 - **`T-019` and `T-038` are both Approved**, 2026-07-27 — `T-019` at `eaa5b50`, `T-038` at
   `098ba3f` after three focused corrections of High `T038-R2`. That finding was the one that
   "directly regresses High `T013-R2`": the per-job log handler closed when the *result* pump
@@ -139,8 +146,11 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 reports typed messages back (`T-012`); a job survives a restart and an unclean kill (`T-014`);
 and, in a test, a URL becomes a file on disk through `T-013`. T-013 is now approved, so that path
 is something to build on, and cancellation now reaps the worker's descendants too (`T-019`).
-**No widget touches any of it yet**: composition is `T-036` and the first *user-visible* download
-is `T-037`.
+**`T-016`'s dialog is the one widget that touches it**, and it is in review rather than reachable:
+composition is `T-036`, so `app.py` still builds a window with no manager and the menu item stays
+disabled. The first *user-visible* download is `T-037`. *(This paragraph said "no widget touches
+any of it yet" until 2026-07-27, a few lines before another that described `T-016`'s widget doing
+exactly that — the contradiction `T016-R8` reported.)*
 
 1. **`T-018` is approved and closed** (2026-07-27, `T018-R1` and `T019-R1` both Resolved). The
    fifth correction removed the schema fingerprint that could carry captured mapping keys;

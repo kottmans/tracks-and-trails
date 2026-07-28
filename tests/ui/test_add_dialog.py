@@ -1,28 +1,26 @@
-"""The add-URL dialog (`T-016`).
+"""The add-URL dialog (`T-016`), including the six blocking findings of its first review.
 
 **The process boundary is not mocked** (`ai/TESTING.md` §6). Every probe below spawns a real
 process over a real `multiprocessing.Queue`; what the child *is* varies, exactly as in
-`tests/integration/test_manager.py`:
-
-- **A child that replays a recorded fixture** through the real `project_media`, for the cases
-  about what the dialog displays. The projection is the one that ships, so an upstream schema
-  change `T-018` catches would fail here too rather than being papered over by a hand-built
-  `MediaInfo`.
-- **A child that never answers**, for cancellation. A probe that returns cannot prove that one
-  which does not can be stopped.
+`tests/integration/test_manager.py` — a child replaying a recorded fixture, a child that fails
+with recorded text, a child that never answers, and a child that answers only when told to.
 
 What *is* faked is the network: fixtures instead of sites (`ai/TESTING.md` §1), and an injected
-`ThumbnailLoader` handing over the bytes of a file already in this repository. Qt still decodes
-the pixmap for real, which is the half `REQ-002` is about.
+`ThumbnailLoader` over bytes already in this repository. Qt still decodes the pixmap for real.
+The **shipping** loader's failure path is exercised too (`T016-R5`), against a local URL that
+cannot resolve — a loader that can only succeed cannot prove what happens when one does not.
 
-The dialog is driven through its **object names** rather than through accessors added for the
-suite. Every control it builds is named for `NFR-005` anyway, so reading the widget tree costs
-nothing and keeps the production class free of methods only a test calls.
+Persistence is real where the claim is about persistence. `FakeSink` is a zero-latency stand-in
+for the tests that are about the dialog's logic; the `ARC-005` tests drive the concrete
+`QueueWriter` over a real SQLite file, under a genuinely held writer lock (`T016-R3`).
+
+The dialog is driven through its **object names** rather than accessors added for the suite.
 """
 
 import json
+import sqlite3
 import time
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any, Final
@@ -52,11 +50,17 @@ from tracks_and_trails.downloader.protocol import (
     Stage,
     WorkerFinished,
 )
+from tracks_and_trails.persistence.db import connect
+from tracks_and_trails.persistence.repositories import JobRepository
+from tracks_and_trails.persistence.writer import QueueWriter
 from tracks_and_trails.ui.add_dialog import (
+    LOADING_THUMBNAIL_TEXT,
     NO_THUMBNAIL_TEXT,
     NOT_PROBED_TEXT,
+    THUMBNAIL_FAILED_TEXT,
     UNKNOWN_TEXT,
     AddUrlDialog,
+    NetworkThumbnailLoader,
     describe_kind,
     format_duration,
     split_urls,
@@ -68,21 +72,43 @@ INFODICTS: Final = REPO_ROOT / "tests" / "fixtures" / "infodicts"
 ERRORS: Final = REPO_ROOT / "tests" / "fixtures" / "errors"
 
 #: A real image already in this repository, used as thumbnail bytes. Reusing the application icon
-#: rather than committing a second PNG: the claim is that Qt decoded *something* into a pixmap,
-#: and any real image establishes that while an invented byte string would not.
+#: rather than committing a second PNG: the claim is that Qt decoded *something* into a pixmap.
 THUMBNAIL_SOURCE: Final = (
     REPO_ROOT / "src" / "tracks_and_trails" / "resources" / "icons" / "icon.png"
 )
 
-#: `NFR-001`: an interaction responds within ~100 ms. Half a second here, for the same reason
+#: `NFR-001`: an interaction responds within ~100 ms. Half a second here for the same reason
 #: `tests/integration/test_manager.py` uses that figure — `spawn` genuinely costs a process start
-#: on a loaded runner, and the property under test is that nothing *waits on the worker*, which a
-#: blocking probe would miss by seconds rather than by milliseconds.
+#: on a loaded runner, and the property under test is that nothing *waits*, which a blocking call
+#: misses by seconds rather than by milliseconds.
 INTERACTION_BUDGET_SECONDS: Final = 0.5
 
 SINGLE_ITEM: Final = "archive_org_big_buck_bunny"
 PLAYLIST: Final = "archive_org_art_of_war_playlist"
 AUDIO_ONLY: Final = "archive_org_test_mp3"
+
+#: The complete keyboard order `NFR-005` requires, **transcribed by hand** (`T016-R4`).
+#:
+#: Two corrections live in this one constant. The first version of the test derived it from
+#: `AddUrlDialog.focus_chain()` — the list the dialog feeds to Qt — so it proved only that the
+#: list equalled itself, and a mutation reversing two entries survived. The second version was
+#: independent but named only the editor, buttons and preset, and *filtered every other focusable
+#: node out of its own observation*; six selectable result and status labels were reachable by
+#: keyboard, landed after Close, and gated nothing. This names all twelve.
+EXPECTED_TAB_ORDER: Final = (
+    "urlInput",
+    "probeButton",
+    "cancelProbeButton",
+    "titleValue",
+    "uploaderValue",
+    "durationValue",
+    "kindValue",
+    "statusMessage",
+    "presetChoice",
+    "selectorValue",
+    "addButton",
+    "closeButton",
+)
 
 
 # --- the recorded fixtures, read the same way here and in the spawned child -------------------
@@ -100,12 +126,7 @@ def load_error(name: str) -> dict[str, Any]:
 
 
 def fixture_url(name: str) -> str:
-    """The URL a fixture describes, which is what a test pastes into the dialog.
-
-    The recorded `webpage_url` rather than an invented string, so the child finds its fixture by
-    the URL it was asked to probe — the lookup a real extractor performs against a real site,
-    minus the site.
-    """
+    """The URL a fixture describes, which is what a test pastes into the dialog."""
     info = load_info(name)
     url = info.get("webpage_url") or info.get("original_url") or info.get("url")
     assert isinstance(url, str) and url, f"{name} records no URL to probe"
@@ -132,19 +153,45 @@ def child_replaying_a_fixture(
     """Probe from a recorded fixture; download by starting and not stopping.
 
     Kind-aware because `SessionValidator` is: `Probed` is not a legal outcome for a download
-    session, so a child that sent one regardless would fail the job it was meant to be running
-    and this file would be testing the violation path by accident.
+    session, so a child that sent one regardless would fail the job it was meant to be running.
     """
     if kind is SessionKind.PROBE:
         from tracks_and_trails.downloader.ytdlp_adapter import project_media
 
-        queue.put(Probed(job_id=job_id, media=project_media(_fixture_for(request.url))))
+        try:
+            info = _fixture_for(request.url)
+        except LookupError:
+            # **A URL with no fixture never answers**, rather than dying. A child that exits
+            # ends its session and returns the manager to idle, which silently satisfied
+            # `test_a_later_dialog_can_still_probe_after_one_is_closed_mid_probe` even with the
+            # `T016-R2` fix reverted — the mutation survived because the worker died on its own.
+            while True:
+                time.sleep(0.05)
+        queue.put(Probed(job_id=job_id, media=project_media(info)))
         queue.put(WorkerFinished(job_id=job_id, exit_code=0))
         return
 
     queue.put(Progress(job_id=job_id, stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=1))
     while True:
         time.sleep(0.05)
+
+
+def child_probing_a_markup_title(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """A site whose title and uploader look like HTML (`T016-R6`).
+
+    Not hypothetical: a title is arbitrary text chosen by whoever uploaded the item, and `<b>` is
+    two keystrokes. What matters is that the dialog shows it rather than interpreting it.
+    """
+    media = MediaInfo(
+        url=request.url,
+        title="<b>VISIBLE</b>",
+        uploader="<i>uploader</i>",
+        duration_seconds=61.0,
+    )
+    queue.put(Probed(job_id=job_id, media=media))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
 
 
 def child_failing_as_recorded(
@@ -169,19 +216,14 @@ def child_never_returning(
 # --- the queue the dialog writes into ---------------------------------------------------------
 
 
-class FakeRepository:
-    """An in-memory store satisfying both `JobSink` and the manager's `JobStore`.
-
-    A fake rather than SQLite for most tests, because the contract is the *shape* of a repository
-    (`ARCHITECTURE.md` §3). `test_the_dialog_drives_the_real_repository` runs the same path
-    against `JobRepository`, so this cannot drift into a shape nothing implements.
-    """
+class FakeStore:
+    """An in-memory `JobStore` for the manager, and the rows `FakeSink` writes into."""
 
     def __init__(self) -> None:
         self.jobs: dict[str, Job] = {}
         self.writes: list[tuple[str, JobStatus]] = []
 
-    def add(self, job: Job) -> None:
+    def insert(self, job: Job) -> None:
         self.jobs[job.id] = job
         self.writes.append((job.id, job.status))
 
@@ -194,24 +236,60 @@ class FakeRepository:
         self.jobs[job.id] = job
         self.writes.append((job.id, job.status))
 
-    def next_queue_position(self) -> int:
-        return len(self.jobs)
-
     def statuses(self, job_id: str) -> list[JobStatus]:
         return [status for stored_id, status in self.writes if stored_id == job_id]
+
+
+class FakeSink:
+    """A `JobSink` whose completion the test controls.
+
+    Zero-latency by default, because most tests are about the dialog's logic rather than about
+    storage. `defer=True` holds every submission until `release()`, which is how the ordering
+    claims — persist *before* close, probe only after the write lands — are asserted without a
+    sleep.
+    """
+
+    def __init__(self, store: FakeStore) -> None:
+        self._store = store
+        self.defer = False
+        self.error: str | None = None
+        self.pending: list[tuple[list[Job], Callable[[str | None], None]]] = []
+        self.submissions: list[list[Job]] = []
+
+    def submit(self, jobs: Sequence[Job], done: Callable[[str | None], None]) -> None:
+        batch = list(jobs)
+        self.submissions.append(batch)
+        if self.defer:
+            self.pending.append((batch, done))
+            return
+        self._apply(batch, done)
+
+    def release(self) -> None:
+        pending, self.pending = self.pending, []
+        for batch, done in pending:
+            self._apply(batch, done)
+
+    def _apply(self, jobs: list[Job], done: Callable[[str | None], None]) -> None:
+        if self.error is not None:
+            done(self.error)
+            return
+        start = len(self._store.jobs)
+        for offset, job in enumerate(jobs):
+            self._store.insert(replace(job, queue_position=start + offset))
+        done(None)
 
 
 class RecordingThumbnailLoader:
     """Hands over real image bytes without a network, and records what it was asked for."""
 
-    def __init__(self, data: bytes) -> None:
+    def __init__(self, data: bytes | None) -> None:
         self._data = data
         self.requested: list[str] = []
         self.cancels = 0
 
-    def load(self, url: str, deliver: Callable[[bytes], None]) -> None:
+    def load(self, url: str, done: Callable[[bytes | None], None]) -> None:
         self.requested.append(url)
-        deliver(self._data)
+        done(self._data)
 
     def cancel(self) -> None:
         self.cancels += 1
@@ -221,14 +299,17 @@ class RecordingThumbnailLoader:
 
 
 @pytest.fixture
-def repository() -> FakeRepository:
-    return FakeRepository()
+def store() -> FakeStore:
+    return FakeStore()
 
 
 @pytest.fixture
-def managers(
-    repository: FakeRepository, qapp: QApplication
-) -> Iterator[Callable[..., DownloadManager]]:
+def sink(store: FakeStore) -> FakeSink:
+    return FakeSink(store)
+
+
+@pytest.fixture
+def managers(store: FakeStore, qapp: QApplication) -> Iterator[Callable[..., DownloadManager]]:
     """Builds managers and guarantees they are shut down, whatever the test did.
 
     Teardown is not tidiness: a leaked worker would outlive the test and be attributed to
@@ -237,7 +318,7 @@ def managers(
     built: list[DownloadManager] = []
 
     def build(**overrides: Any) -> DownloadManager:
-        manager = DownloadManager(repository, **overrides)
+        manager = DownloadManager(store, **overrides)
         built.append(manager)
         return manager
 
@@ -259,7 +340,7 @@ def thumbnails() -> RecordingThumbnailLoader:
 
 @pytest.fixture
 def dialogs(
-    repository: FakeRepository,
+    sink: FakeSink,
     thumbnails: RecordingThumbnailLoader,
     tmp_path: Path,
     qapp: QApplication,
@@ -268,13 +349,9 @@ def dialogs(
     built: list[AddUrlDialog] = []
 
     def build(manager: DownloadManager, **overrides: Any) -> AddUrlDialog:
-        dialog = AddUrlDialog(
-            manager=manager,
-            jobs=repository,
-            output_directory=tmp_path / "downloads",
-            thumbnail_loader=thumbnails,
-            **overrides,
-        )
+        overrides.setdefault("jobs", sink)
+        overrides.setdefault("thumbnail_loader", thumbnails)
+        dialog = AddUrlDialog(manager=manager, output_directory=tmp_path / "downloads", **overrides)
         built.append(dialog)
         return dialog
 
@@ -317,20 +394,35 @@ def choose_preset(dialog: AddUrlDialog, name: str) -> None:
     box.setCurrentText(name)
 
 
+def focusable_widgets(dialog: AddUrlDialog) -> list[QWidget]:
+    """Every keyboard-focusable widget belonging to this dialog's own window.
+
+    The only exclusion is by **window**, not by name: `QComboBox` owns a popup `QListView` that is
+    focusable but lives in its own top-level window and is never in the dialog's tab chain.
+    Excluding by name is what `T016-R4` found — the observation filtered to the declared subset,
+    so undeclared focusable controls could not fail it.
+    """
+    return [
+        widget
+        for widget in dialog.findChildren(QWidget)
+        if widget.focusPolicy() & Qt.FocusPolicy.TabFocus and widget.window() is dialog
+    ]
+
+
 def probe_of(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
     spin: Callable[..., bool],
     name: str,
+    entry_point: Any = child_replaying_a_fixture,
 ) -> tuple[AddUrlDialog, DownloadManager]:
     """Paste a fixture-backed URL, probe it, and return once the result has landed.
 
-    The manager is returned as well, and is spun to idle: a probe session is released a tick
-    after its result is emitted, and Phase 1 runs a pool of exactly one, so a test that queued a
-    download immediately would be refused for reasons that have nothing to do with what it
-    asserts.
+    The manager is spun to idle: a probe session is released a tick after its result is emitted,
+    and Phase 1 runs a pool of exactly one, so a test that queued a download immediately would be
+    refused for reasons that have nothing to do with what it asserts.
     """
-    manager = managers(entry_point=child_replaying_a_fixture)
+    manager = managers(entry_point=entry_point)
     dialog = dialogs(manager)
     type_urls(dialog, fixture_url(name))
     dialog.probe()
@@ -358,24 +450,17 @@ def test_a_probe_populates_every_field_req_002_names(
     thumbnails: RecordingThumbnailLoader,
     spin: Callable[..., bool],
 ) -> None:
-    """Field by field, because "populates the dialog" would pass with four of five missing.
-
-    Each expected value is read out of the fixture here and compared with what the widget shows,
-    so this also fails for a dialog that renders the right *shape* from the wrong data.
-    """
+    """Field by field, because "populates the dialog" would pass with four of five missing."""
     info = load_info(SINGLE_ITEM)
     dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
 
     assert text_of(dialog, "titleValue") == info["title"] == "Big Buck Bunny"
     assert text_of(dialog, "uploaderValue") == info["uploader"] == "jake@archive.org"
-    # 596.46 s. Truncated rather than rounded: a duration is a fact about the file, and rounding
-    # up to 9:57 would report a second that does not exist.
+    # 596.46 s. Truncated rather than rounded: rounding up to 9:57 would report a second that
+    # does not exist.
     assert text_of(dialog, "durationValue") == "9:56"
     assert text_of(dialog, "kindValue") == "Single item"
 
-    # The thumbnail is a decoded pixmap, not the URL it came from — the distinction the criterion
-    # is about. Asserted on the widget as well as on the property, so a pixmap held but never
-    # shown would still fail.
     assert thumbnails.requested == [info["thumbnail"]]
     pixmap = dialog.thumbnail
     assert pixmap is not None and not pixmap.isNull()
@@ -398,8 +483,6 @@ def test_a_playlist_is_shown_as_a_playlist_with_its_recorded_count(
     assert media.entry_count == info["playlist_count"] == 7
     assert text_of(dialog, "kindValue") == "Playlist (7 items)"
     assert text_of(dialog, "titleValue") == "The Art of War"
-    # This fixture records no duration and no thumbnail, and the dialog says so rather than
-    # rendering `0:00` and an empty frame.
     assert text_of(dialog, "durationValue") == UNKNOWN_TEXT
     assert dialog.thumbnail is None
     assert text_of(dialog, "thumbnail") == NO_THUMBNAIL_TEXT
@@ -441,7 +524,417 @@ def test_a_playlist_of_unknown_length_says_so_rather_than_showing_zero() -> None
     assert describe_kind(replace(unknown, entry_count=0)) == "Playlist (0 items)"
 
 
-# --- 2. the GUI thread is never blocked (`NFR-001`) -------------------------------------------
+# --- 2. `T016-R1` (Critical): a result belongs to a URL, not just to a job id -----------------
+
+
+def test_a_result_arriving_after_the_url_changed_is_never_accepted(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """The Critical defect, reproduced in the shape the reviewer reported it.
+
+    A probe is started for the first URL, the user replaces that line before the worker answers,
+    and the result then lands. Previously the dialog accepted it, `add_to_queue()` skipped the
+    displayed URL because "a probe existed", and the only job started was the one the user had
+    already replaced — downloading the wrong thing and silently dropping the right one.
+    """
+    manager = managers(entry_point=child_replaying_a_fixture)
+    dialog = dialogs(manager)
+    old = fixture_url(SINGLE_ITEM)
+    type_urls(dialog, old)
+    dialog.probe()
+    old_job = dialog.probing_job_id
+    assert old_job is not None
+
+    type_urls(dialog, "https://new.invalid/wanted")
+
+    # Whatever the worker does now, nothing about the old URL may reach the display.
+    assert spin(lambda: manager.is_idle), "the superseded probe was left holding the pool"
+    assert dialog.media is None
+    assert dialog.probed_job_id is None
+    assert text_of(dialog, "titleValue") == UNKNOWN_TEXT
+    assert store.jobs[old_job].status is JobStatus.CANCELLED, (
+        "the superseded probe's session was not cancelled"
+    )
+
+    dialog.add_to_queue()
+
+    queued = [store.jobs[job_id] for job_id in dialog.queued_job_ids]
+    assert "https://new.invalid/wanted" in [job.url for job in queued], (
+        "the URL the user actually submitted was dropped"
+    )
+    started = [job for job in queued if job.status is not JobStatus.CANCELLED]
+    assert [job.url for job in started] == ["https://new.invalid/wanted"]
+
+
+def test_a_result_for_a_superseded_probe_is_ignored_even_if_it_arrives(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """The binding is a property of the result, not of one code path remembering to fire.
+
+    `_on_media_probed` is called directly with the superseded job's id, which is what a signal
+    already queued before the cancellation would do.
+    """
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    type_urls(dialog, "https://old.invalid/x")
+    dialog.probe()
+    stale_job = dialog.probing_job_id
+    assert stale_job is not None
+
+    type_urls(dialog, "https://new.invalid/y")
+    dialog._on_media_probed(stale_job, MediaInfo(url="https://old.invalid/x", title="STALE"))
+
+    assert dialog.media is None
+    assert text_of(dialog, "titleValue") == UNKNOWN_TEXT
+    assert spin(lambda: manager.is_idle)
+
+
+def test_adding_while_a_probe_is_outstanding_cannot_store_a_url_twice(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """The second edge of the same incomplete state model.
+
+    `probe()` had already persisted the first URL, and `add_to_queue()` skipped it only once a
+    *completed* probe existed — so pressing the still-enabled default button mid-probe stored the
+    same line a second time. The state is now unreachable: Add is disabled while a probe is
+    outstanding, and the method refuses as well.
+    """
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    type_urls(dialog, "https://only.invalid/once")
+    dialog.probe()
+    assert dialog.probing_job_id is not None
+
+    assert not button(dialog, "addButton").isEnabled(), "Add stays clickable during a probe"
+    dialog.add_to_queue()
+
+    urls = [store.jobs[job_id].url for job_id in dialog.queued_job_ids]
+    assert urls.count("https://only.invalid/once") == 1, f"stored twice: {urls}"
+    assert dialog.isVisible() is False or not dialog.result()
+    assert spin(lambda: True)
+
+
+def test_a_probed_url_is_not_stored_again_when_the_batch_is_added(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """`ARC-004`: reuse the probed record rather than stranding or duplicating it."""
+    url = fixture_url(SINGLE_ITEM)
+    dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
+    type_urls(dialog, f"{url}\nhttps://second.invalid/2")
+
+    dialog.add_to_queue()
+
+    urls = [store.jobs[job_id].url for job_id in dialog.queued_job_ids]
+    assert urls == [url, "https://second.invalid/2"], "the probed URL was queued twice"
+
+
+def test_a_cancelled_probes_url_can_be_queued_again(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """Cancelling must not make a URL permanently unqueueable.
+
+    The job the probe created is `CANCELLED`, which is terminal — so if the dialog kept counting
+    that line as "already stored", Add would silently skip it and the user would lose the URL.
+    """
+    dialog = dialogs(managers(entry_point=child_never_returning))
+    type_urls(dialog, "https://retry.invalid/x")
+    dialog.probe()
+    (cancelled,) = dialog.queued_job_ids
+    dialog.cancel_probe()
+    # Cancellation is a lifecycle, not a call: the manager escalates on its own timer, so the
+    # job reaches CANCELLED some ticks later. Asserting before that would compare against a job
+    # still in PROBING and pass for the wrong reason.
+    assert spin(lambda: store.jobs[cancelled].status is JobStatus.CANCELLED, timeout=30)
+
+    dialog.add_to_queue()
+
+    live = [
+        store.jobs[job_id]
+        for job_id in dialog.queued_job_ids
+        if store.jobs[job_id].status is not JobStatus.CANCELLED
+    ]
+    assert [job.url for job in live] == ["https://retry.invalid/x"]
+
+
+def test_editing_the_url_after_a_completed_probe_discards_the_stale_result(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """The already-covered half: a finished probe is dropped when its line changes."""
+    dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
+    probed_before = dialog.probed_job_id
+    assert probed_before is not None
+
+    type_urls(dialog, "https://somewhere.else.invalid/x")
+
+    assert dialog.probed_job_id is None
+    assert dialog.media is None
+    assert text_of(dialog, "titleValue") == UNKNOWN_TEXT
+    assert text_of(dialog, "thumbnail") == NOT_PROBED_TEXT
+
+
+def test_re_typing_the_same_url_keeps_the_probe_result(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """Appending a second line must not discard the first line's result."""
+    url = fixture_url(SINGLE_ITEM)
+    dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
+    probed = dialog.probed_job_id
+
+    type_urls(dialog, f"{url}\nhttps://second.invalid/2")
+
+    assert dialog.probed_job_id == probed
+    assert dialog.media is not None
+
+
+# --- 3. `T016-R2` (High): closing abandons the probe ------------------------------------------
+
+
+def test_closing_the_dialog_cancels_an_outstanding_probe(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """A never-returning child, closed rather than cancelled, must still leave nothing behind.
+
+    Previously the worker stayed alive and the pool-of-one manager stayed busy forever, with the
+    only cancel control now hidden — so every later dialog could report nothing but "a session is
+    already running".
+    """
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    type_urls(dialog, "https://example.invalid/never")
+    dialog.probe()
+    job_id = dialog.probing_job_id
+    assert job_id is not None
+    process = live_session_process(manager, job_id)
+    assert spin(lambda: process.pid is not None)
+
+    dialog.reject()
+
+    assert spin(lambda: manager.is_idle, timeout=30), "the session outlived the dialog"
+    assert not process.is_alive(), "the worker outlived the dialog that started it"
+    assert store.jobs[job_id].status is JobStatus.CANCELLED
+
+
+def test_a_later_dialog_can_still_probe_after_one_is_closed_mid_probe(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """The consequence the finding is really about: the feature must not be dead afterwards."""
+    manager = managers(entry_point=child_replaying_a_fixture)
+    first = dialogs(manager)
+    type_urls(first, "https://example.invalid/never")
+    first.probe()
+    first.reject()
+    assert spin(lambda: manager.is_idle, timeout=30)
+
+    second = dialogs(manager)
+    type_urls(second, fixture_url(SINGLE_ITEM))
+    second.probe()
+
+    assert spin(lambda: second.media is not None), (
+        "a closed dialog left the manager unusable for the next one"
+    )
+
+
+@pytest.mark.parametrize("route", ["reject", "close", "done"])
+def test_every_exit_route_abandons_the_probe(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    route: str,
+) -> None:
+    """Escape, the window button and `reject()` all reach `done()`, so all three are covered.
+
+    **Shown first, deliberately.** `QWidget.close()` on a widget that was never visible returns
+    without delivering a close event, so a hidden dialog would take no route at all and the
+    `close` case would pass for the wrong reason. A user closes a window they can see.
+    """
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    dialog.show()
+    type_urls(dialog, "https://example.invalid/never")
+    dialog.probe()
+    assert dialog.probing_job_id is not None
+
+    routes: dict[str, Callable[[], object]] = {
+        "reject": dialog.reject,
+        "close": dialog.close,
+        "done": lambda: dialog.done(0),
+    }
+    routes[route]()
+
+    assert spin(lambda: manager.is_idle, timeout=30), f"{route}() left the session running"
+
+
+# --- 4. `T016-R3` (High): nothing waits on SQLite ---------------------------------------------
+
+
+@pytest.fixture
+def real_queue(tmp_path: Path, qapp: QApplication) -> Iterator[tuple[QueueWriter, JobRepository]]:
+    """A real `QueueWriter` over a real SQLite file, with a GUI-thread repository for reads."""
+    path = tmp_path / "queue.db"
+    connection = connect(path)
+    writer = QueueWriter(lambda: connect(path))
+    try:
+        yield writer, JobRepository(connection)
+    finally:
+        writer.close()
+        connection.close()
+        qapp.processEvents()
+
+
+def test_adding_never_blocks_the_gui_thread_on_a_contended_database(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    real_queue: tuple[QueueWriter, JobRepository],
+    tmp_path: Path,
+    spin: Callable[..., bool],
+) -> None:
+    """The concrete repository, under a genuinely held writer lock (`ARC-005`).
+
+    The reviewer measured 0.302 s of blocked GUI thread and then an `OperationalError`. Here a
+    second connection holds SQLite's write lock outright; `add_to_queue()` must still return
+    within an interaction budget, and the write must land once the lock is released.
+    """
+    writer, repository = real_queue
+    dialog = dialogs(managers(entry_point=child_never_returning), jobs=writer)
+    type_urls(dialog, "https://a.invalid/1\nhttps://b.invalid/2\nhttps://c.invalid/3")
+
+    blocker = sqlite3.connect(tmp_path / "queue.db")
+    blocker.execute("BEGIN IMMEDIATE")
+    try:
+        started = time.monotonic()
+        dialog.add_to_queue()
+        elapsed = time.monotonic() - started
+        assert elapsed < INTERACTION_BUDGET_SECONDS, (
+            f"add_to_queue() held the GUI thread for {elapsed:.3f}s under contention"
+        )
+        assert dialog.is_saving, "the write was not actually outstanding"
+        assert dialog.isVisible() is False or not dialog.result()
+    finally:
+        blocker.rollback()
+        blocker.close()
+
+    assert spin(lambda: not dialog.is_saving, timeout=30), "the deferred write never completed"
+    stored = sorted(job.url for job in repository.all_jobs())
+    assert stored == ["https://a.invalid/1", "https://b.invalid/2", "https://c.invalid/3"]
+    assert sorted(job.queue_position or 0 for job in repository.all_jobs()) == [0, 1, 2]
+
+
+def test_a_failed_write_keeps_the_dialog_open_with_the_input_intact(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    sink: FakeSink,
+    spin: Callable[..., bool],
+) -> None:
+    """Persistence failure is surfaced, not swallowed, and costs the user nothing typed."""
+    dialog = dialogs(managers(entry_point=child_never_returning))
+    sink.error = "OperationalError: database is locked"
+    type_urls(dialog, "https://a.invalid/1\nhttps://b.invalid/2")
+
+    dialog.add_to_queue()
+
+    assert "database is locked" in dialog.status_text()
+    assert dialog.queued_job_ids == ()
+    box = dialog.findChild(QPlainTextEdit, "urlInput")
+    assert box is not None
+    assert box.toPlainText() == "https://a.invalid/1\nhttps://b.invalid/2"
+    assert not dialog.is_saving
+    assert button(dialog, "addButton").isEnabled(), "the user cannot retry"
+    assert spin(lambda: True)
+
+
+def test_the_dialog_closes_only_after_the_rows_exist(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    sink: FakeSink,
+    store: FakeStore,
+) -> None:
+    """`REQ-012`, strengthened by `ARC-005`: close happens *inside* the success callback.
+
+    The write is held open, so if the dialog could close before the rows existed it would do so
+    here — the ordering is asserted against a write that has demonstrably not completed yet.
+    """
+    dialog = dialogs(managers(entry_point=child_never_returning))
+    dialog.show()
+    sink.defer = True
+    type_urls(dialog, "https://a.invalid/1\nhttps://b.invalid/2")
+
+    dialog.add_to_queue()
+    assert dialog.isVisible(), "the dialog closed before its jobs were stored"
+    assert store.jobs == {}
+
+    stored_when_accepted: list[int] = []
+    dialog.accepted.connect(lambda: stored_when_accepted.append(len(store.jobs)))
+    sink.release()
+
+    assert stored_when_accepted == [2], "accepted fired without both rows written"
+    assert not dialog.isVisible()
+
+
+def test_a_probe_starts_no_worker_until_its_job_is_stored(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    sink: FakeSink,
+    store: FakeStore,
+) -> None:
+    """The same ordering on the probe path (`REQ-012`)."""
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    sink.defer = True
+    type_urls(dialog, fixture_url(SINGLE_ITEM))
+
+    dialog.probe()
+    assert store.jobs == {}
+    assert manager.is_idle, "a worker was started for a job that was not stored"
+    assert dialog.probing_job_id is None
+
+    sink.release()
+    assert len(store.jobs) == 1
+    assert dialog.probing_job_id is not None
+
+
+def test_one_paste_is_one_transaction(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    sink: FakeSink,
+) -> None:
+    """A batch is submitted once, not once per URL (`ARC-005`).
+
+    The previous shape performed a `SELECT` and an `INSERT` with its own commit per line, which is
+    what made a large paste's cost unbounded in round trips.
+    """
+    dialog = dialogs(managers(entry_point=child_never_returning))
+    type_urls(dialog, "\n".join(f"https://a.invalid/{index}" for index in range(25)))
+
+    dialog.add_to_queue()
+
+    assert len(sink.submissions) == 1
+    assert len(sink.submissions[0]) == 25
+
+
+# --- 5. the GUI thread is never blocked (`NFR-001`) -------------------------------------------
 
 
 def test_the_dialog_stays_responsive_while_a_probe_is_outstanding(
@@ -449,12 +942,7 @@ def test_the_dialog_stays_responsive_while_a_probe_is_outstanding(
     managers: Callable[..., DownloadManager],
     qapp: QApplication,
 ) -> None:
-    """Two halves, because either alone would pass while the application froze.
-
-    First: `probe()` returns without waiting for the worker. Second: with a probe genuinely
-    outstanding — this child never answers — the dialog still processes events and its slots
-    still run, which is what "responsive" means to a user holding the mouse.
-    """
+    """`probe()` returns without waiting, and slots still fire while a worker is outstanding."""
     manager = managers(entry_point=child_never_returning)
     dialog = dialogs(manager)
     type_urls(dialog, "https://example.invalid/never")
@@ -470,7 +958,6 @@ def test_the_dialog_stays_responsive_while_a_probe_is_outstanding(
         assert dialog.probing_job_id is not None
         assert dialog.isEnabled()
 
-    # A slot still fires: changing the preset re-renders the selector while the worker runs.
     before = text_of(dialog, "selectorValue")
     choose_preset(dialog, BUILT_IN_PRESETS[2].name)
     qapp.processEvents()
@@ -480,20 +967,7 @@ def test_the_dialog_stays_responsive_while_a_probe_is_outstanding(
     assert dialog.probing_job_id is not None, "the probe finished; this proved nothing"
 
 
-def test_adding_to_the_queue_does_not_wait_on_a_worker(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
-    spin: Callable[..., bool],
-) -> None:
-    """The other call a widget makes into the manager, held to the same budget."""
-    dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
-    started = time.monotonic()
-    dialog.add_to_queue()
-    elapsed = time.monotonic() - started
-    assert elapsed < INTERACTION_BUDGET_SECONDS, f"add_to_queue() blocked for {elapsed:.3f}s"
-
-
-# --- 3. the extractor's own words (`REQ-005`, `NFR-006`) --------------------------------------
+# --- 6. the extractor's own words (`REQ-005`, `NFR-006`) --------------------------------------
 
 
 def test_an_unsupported_url_shows_the_extractors_message_character_for_character(
@@ -501,12 +975,7 @@ def test_an_unsupported_url_shows_the_extractors_message_character_for_character
     managers: Callable[..., DownloadManager],
     spin: Callable[..., bool],
 ) -> None:
-    """Equality against the recorded message, not a substring and not a paraphrase.
-
-    An `in` assertion would pass for a dialog that wrapped the text in an apology, and wrapping
-    it is what `NFR-006` forbids. The classification is shown *beside* the message, on its own
-    line, so the message itself survives unaltered.
-    """
+    """Equality against the recorded message, not a substring and not a paraphrase."""
     recorded = load_error("unsupported_url")
     dialog = dialogs(managers(entry_point=child_failing_as_recorded))
     type_urls(dialog, "https://example.com/")
@@ -517,7 +986,6 @@ def test_an_unsupported_url_shows_the_extractors_message_character_for_character
     kind_line, _, message = dialog.status_text().partition("\n")
     assert message == recorded["message"] == "Unsupported URL: https://example.com/"
     assert kind_line == ErrorKind.UNSUPPORTED_URL.value
-    # Nothing was probed, so nothing may be presented as probed.
     assert dialog.media is None
     assert dialog.probed_job_id is None
     assert text_of(dialog, "titleValue") == UNKNOWN_TEXT
@@ -526,7 +994,7 @@ def test_an_unsupported_url_shows_the_extractors_message_character_for_character
 def test_a_failed_probe_leaves_the_job_failed_and_recorded(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
-    repository: FakeRepository,
+    store: FakeStore,
     spin: Callable[..., bool],
 ) -> None:
     """`REQ-018`: a failure is recorded, never assumed away, and the URL stays in the queue."""
@@ -536,61 +1004,138 @@ def test_a_failed_probe_leaves_the_job_failed_and_recorded(
     assert spin(lambda: dialog.probing_job_id is None)
 
     (job_id,) = dialog.queued_job_ids
-    assert spin(lambda: repository.jobs[job_id].status is JobStatus.FAILED)
-    stored = repository.jobs[job_id]
+    assert spin(lambda: store.jobs[job_id].status is JobStatus.FAILED)
+    stored = store.jobs[job_id]
     assert stored.error_kind is ErrorKind.UNSUPPORTED_URL
     assert stored.error_message == load_error("unsupported_url")["message"]
 
 
-# --- 4. cancellation (`REQ-015`) --------------------------------------------------------------
+# --- 7. `T016-R6`: site text is data, never markup --------------------------------------------
 
 
-def test_a_probe_that_never_returns_can_be_cancelled_and_leaves_no_worker_behind(
+@pytest.mark.parametrize("name", ["titleValue", "uploaderValue", "statusMessage", "selectorValue"])
+def test_labels_that_show_foreign_text_are_plain_text(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
-    repository: FakeRepository,
-    spin: Callable[..., bool],
+    name: str,
 ) -> None:
-    """The probe under test genuinely never answers, so only cancellation can end it."""
-    manager = managers(entry_point=child_never_returning)
-    dialog = dialogs(manager)
-    type_urls(dialog, "https://example.invalid/never")
-    dialog.probe()
-
-    job_id = dialog.probing_job_id
-    assert job_id is not None
-    process = live_session_process(manager, job_id)
-    assert spin(lambda: process.pid is not None)
-    pid = process.pid
-
-    dialog.cancel_probe()
-    assert dialog.probing_job_id is None
-    assert "cancelled" in dialog.status_text().lower()
-
-    assert spin(lambda: manager.is_idle, timeout=30), "the session was never released"
-    assert not process.is_alive(), f"worker {pid} outlived its cancelled probe"
-    assert repository.jobs[job_id].status is JobStatus.CANCELLED
-
-
-def test_cancelling_clears_the_probe_without_claiming_a_result(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
-    spin: Callable[..., bool],
-) -> None:
-    """A cancelled probe leaves nothing that `Add to queue` could start from `READY`."""
+    """The property, asserted directly: Qt's default `AutoText` guesses, and guessed wrong."""
     dialog = dialogs(managers(entry_point=child_never_returning))
-    type_urls(dialog, "https://example.invalid/never")
+    assert label(dialog, name).textFormat() == Qt.TextFormat.PlainText
+
+
+def test_a_markup_shaped_title_is_displayed_and_not_interpreted(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """Asserted on what is **rendered**, not on `QLabel.text()`.
+
+    Reading the text back returns the input under either format, which is exactly why the defect
+    survived the first round of tests. The observable difference is width: interpreted markup
+    consumes the tags and lays out narrower than the literal string.
+    """
+    manager = managers(entry_point=child_probing_a_markup_title)
+    dialog = dialogs(manager)
+    type_urls(dialog, "https://markup.invalid/x")
     dialog.probe()
-    dialog.cancel_probe()
+    assert spin(lambda: dialog.media is not None)
 
-    assert dialog.probed_job_id is None
-    assert dialog.media is None
-    assert button(dialog, "cancelProbeButton").isEnabled() is False
-    assert button(dialog, "probeButton").isEnabled() is True
-    assert spin(lambda: True)
+    title = label(dialog, "titleValue")
+    assert title.text() == "<b>VISIBLE</b>"
+
+    plain_width = title.fontMetrics().horizontalAdvance("<b>VISIBLE</b>")
+    interpreted_width = title.fontMetrics().horizontalAdvance("VISIBLE")
+    rendered = title.sizeHint().width()
+    assert rendered >= plain_width, (
+        f"the title rendered at {rendered}px, narrower than the {plain_width}px its literal text "
+        f"needs and close to the {interpreted_width}px of the tags consumed as markup"
+    )
 
 
-# --- 5. multi-line paste (`REQ-001`) ----------------------------------------------------------
+# --- 8. `T016-R5`: the thumbnail's failure half -----------------------------------------------
+
+
+def test_a_failed_thumbnail_fetch_stops_claiming_to_be_loading(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """An expired or offline thumbnail is ordinary; a permanent "Loading…" is a false state."""
+    manager = managers(entry_point=child_replaying_a_fixture)
+    dialog = dialogs(manager, thumbnail_loader=RecordingThumbnailLoader(None))
+    type_urls(dialog, fixture_url(SINGLE_ITEM))
+    dialog.probe()
+    assert spin(lambda: dialog.media is not None)
+
+    assert dialog.thumbnail is None
+    assert text_of(dialog, "thumbnail") == THUMBNAIL_FAILED_TEXT
+    assert text_of(dialog, "thumbnail") != LOADING_THUMBNAIL_TEXT
+
+
+def test_undecodable_thumbnail_bytes_are_reported_as_unavailable(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """Bytes that arrive but are not an image are the same thing to a user: no picture."""
+    manager = managers(entry_point=child_replaying_a_fixture)
+    dialog = dialogs(manager, thumbnail_loader=RecordingThumbnailLoader(b"not an image"))
+    type_urls(dialog, fixture_url(SINGLE_ITEM))
+    dialog.probe()
+    assert spin(lambda: dialog.media is not None)
+
+    assert dialog.thumbnail is None
+    assert text_of(dialog, "thumbnail") == THUMBNAIL_FAILED_TEXT
+
+
+@pytest.fixture
+def shipping_loader(qapp: QApplication) -> Iterator[NetworkThumbnailLoader]:
+    """The real loader, owned for exactly as long as the test.
+
+    Parented and explicitly torn down because it holds a `QNetworkAccessManager` and a live
+    reply: letting a local go out of scope while a request is in flight segfaults the
+    interpreter, which is how the first version of these two tests ended.
+    """
+    owner = QWidget()
+    loader = NetworkThumbnailLoader(owner)
+    yield loader
+    loader.cancel()
+    qapp.processEvents()
+    owner.deleteLater()
+    qapp.processEvents()
+
+
+def test_the_shipping_loader_reports_a_failed_fetch(
+    shipping_loader: NetworkThumbnailLoader, spin: Callable[..., bool], tmp_path: Path
+) -> None:
+    """The **shipping** `QNetworkAccessManager` loader, not a stand-in that can only succeed.
+
+    A `file://` URL to a path that does not exist: a real request through the real stack, with a
+    real error, and no network. The seam is honest only if the thing behind it reports both
+    outcomes — `T016-R5` was precisely the missing one.
+    """
+    answers: list[bytes | None] = []
+    shipping_loader.load((tmp_path / "absent.png").as_uri(), answers.append)
+
+    assert spin(lambda: bool(answers), timeout=10), "the shipping loader never called back"
+    assert answers == [None]
+
+
+def test_the_shipping_loader_delivers_bytes_it_can_read(
+    shipping_loader: NetworkThumbnailLoader, spin: Callable[..., bool], tmp_path: Path
+) -> None:
+    """The success half, through the same real stack, so the failure test is not vacuous."""
+    image = tmp_path / "present.png"
+    image.write_bytes(THUMBNAIL_SOURCE.read_bytes())
+    answers: list[bytes | None] = []
+    shipping_loader.load(image.as_uri(), answers.append)
+
+    assert spin(lambda: bool(answers), timeout=10)
+    assert answers[0] == THUMBNAIL_SOURCE.read_bytes()
+
+
+# --- 9. multi-line paste (`REQ-001`) ----------------------------------------------------------
 
 
 @pytest.mark.parametrize(
@@ -617,7 +1162,7 @@ def test_urls_are_split_one_per_line(text: str, expected: list[str]) -> None:
 def test_multi_line_paste_queues_each_url_as_a_separate_job(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
-    repository: FakeRepository,
+    store: FakeStore,
 ) -> None:
     """`REQ-001`: three lines, three jobs, each carrying its own URL and its own request."""
     dialog = dialogs(managers(entry_point=child_never_returning))
@@ -626,19 +1171,18 @@ def test_multi_line_paste_queues_each_url_as_a_separate_job(
 
     dialog.add_to_queue()
 
-    queued = [repository.jobs[job_id] for job_id in dialog.queued_job_ids]
+    queued = [store.jobs[job_id] for job_id in dialog.queued_job_ids]
     assert [job.url for job in queued] == urls
     assert [job.request.url for job in queued] == urls
     assert len({job.id for job in queued}) == 3
     assert all(job.status is JobStatus.QUEUED for job in queued)
-    # Distinct queue positions, so the order the user pasted survives into the queue.
     assert len({job.queue_position for job in queued}) == 3
 
 
 def test_the_chosen_preset_reaches_every_queued_job(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
-    repository: FakeRepository,
+    store: FakeStore,
 ) -> None:
     """`REQ-009`: the selector the user was shown is the one the job carries."""
     dialog = dialogs(managers(entry_point=child_never_returning))
@@ -650,131 +1194,43 @@ def test_the_chosen_preset_reaches_every_queued_job(
     dialog.add_to_queue()
 
     for job_id in dialog.queued_job_ids:
-        request = repository.jobs[job_id].request
+        request = store.jobs[job_id].request
         assert request.format_selector == effective_selector(chosen)
         assert request.media_kind is chosen.media_kind
         assert request.audio_codec is chosen.audio_codec
 
 
-# --- 6. persistence before the dialog closes (`REQ-012`) --------------------------------------
-
-
-def test_queuing_persists_every_job_before_the_dialog_closes(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
-    repository: FakeRepository,
-) -> None:
-    """The ordering is the guarantee, so the ordering is what is asserted.
-
-    Recorded from the `accepted` signal rather than checked afterwards: a dialog that wrote its
-    jobs during teardown would satisfy "the rows exist" while losing everything to a crash
-    between closing and the queue view opening.
-    """
-    dialog = dialogs(managers(entry_point=child_never_returning))
-    type_urls(dialog, "https://a.invalid/1\nhttps://b.invalid/2")
-
-    stored_when_accepted: list[str] = []
-    dialog.accepted.connect(lambda: stored_when_accepted.extend(repository.jobs))
-
-    dialog.add_to_queue()
-
-    assert len(stored_when_accepted) == 2, "a job was still unwritten when the dialog closed"
-    assert set(stored_when_accepted) == set(dialog.queued_job_ids)
-    assert not dialog.isVisible()
-
-
-def test_a_probed_url_is_persisted_before_its_session_starts(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
-    repository: FakeRepository,
-) -> None:
-    """A probe that crashes the application still leaves the URL in the queue (`REQ-012`)."""
-    dialog = dialogs(managers(entry_point=child_never_returning))
-    type_urls(dialog, fixture_url(SINGLE_ITEM))
-    dialog.probe()
-
-    job_id = dialog.probing_job_id
-    assert job_id is not None
-    assert job_id in repository.jobs
-    # The first write is the creation, before the manager moved it on to `PROBING`.
-    assert repository.statuses(job_id)[0] is JobStatus.QUEUED
-
-
-def test_the_dialog_drives_the_real_repository(
-    tmp_path: Path, qapp: QApplication, thumbnails: RecordingThumbnailLoader
-) -> None:
-    """The same path against `JobRepository`, so `FakeRepository` cannot drift.
-
-    A fake satisfying a protocol nothing real implements is a test that passes alone
-    (`ai/TESTING.md` §13). SQLite is used for real, in `tmp_path`.
-    """
-    from tracks_and_trails.persistence.db import connect, migrate
-    from tracks_and_trails.persistence.repositories import JobRepository
-
-    connection = connect(tmp_path / "queue.db")
-    migrate(connection)
-    real = JobRepository(connection)
-    manager = DownloadManager(real, entry_point=child_never_returning)
-    dialog = AddUrlDialog(
-        manager=manager,
-        jobs=real,
-        output_directory=tmp_path / "downloads",
-        thumbnail_loader=thumbnails,
-    )
-    try:
-        type_urls(dialog, "https://a.invalid/1\nhttps://b.invalid/2")
-        dialog.add_to_queue()
-
-        stored = [real.get(job_id) for job_id in dialog.queued_job_ids]
-        assert [job.url for job in stored if job is not None] == [
-            "https://a.invalid/1",
-            "https://b.invalid/2",
-        ]
-        assert all(job is not None and job.status is JobStatus.QUEUED for job in stored)
-    finally:
-        dialog.close()
-        dialog.deleteLater()
-        manager.shutdown()
-        qapp.processEvents()
-        connection.close()
-
-
-# --- 7. the two entry points (`ARC-004`) ------------------------------------------------------
+# --- 10. the two entry points (`ARC-004`) -----------------------------------------------------
 
 
 def test_a_probed_job_downloads_from_ready_without_re_entering_probing(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
-    repository: FakeRepository,
+    store: FakeStore,
     spin: Callable[..., bool],
 ) -> None:
-    """`ARC-004`, asserted as the whole persisted sequence rather than as the final state.
-
-    The sequence is what the decision is about: a second `PROBING` anywhere in it would mean the
-    dialog re-probed a job that had already been probed, which is what `READY → PROBING` was
-    refused for. Reading only the last status would miss it entirely.
-    """
+    """`ARC-004`, asserted as the whole persisted sequence rather than as the final state."""
     dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
     (job_id,) = dialog.queued_job_ids
-    assert repository.jobs[job_id].status is JobStatus.READY
-    assert repository.statuses(job_id) == [JobStatus.QUEUED, JobStatus.PROBING, JobStatus.READY]
+    assert store.jobs[job_id].status is JobStatus.READY
+    assert store.statuses(job_id) == [JobStatus.QUEUED, JobStatus.PROBING, JobStatus.READY]
 
     dialog.add_to_queue()
 
-    assert spin(lambda: repository.jobs[job_id].status is JobStatus.RUNNING)
-    assert repository.statuses(job_id) == [
+    assert spin(lambda: store.jobs[job_id].status is JobStatus.RUNNING)
+    assert store.statuses(job_id) == [
         JobStatus.QUEUED,
         JobStatus.PROBING,
         JobStatus.READY,
         JobStatus.RUNNING,
     ]
-    assert repository.statuses(job_id).count(JobStatus.PROBING) == 1
+    assert store.statuses(job_id).count(JobStatus.PROBING) == 1
 
 
 def test_a_queued_job_still_starts_at_probing(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
-    repository: FakeRepository,
+    store: FakeStore,
     spin: Callable[..., bool],
 ) -> None:
     """The second entry point did not replace the first (`ARC-004`)."""
@@ -784,103 +1240,22 @@ def test_a_queued_job_still_starts_at_probing(
     dialog.add_to_queue()
 
     (job_id,) = dialog.queued_job_ids
-    assert repository.jobs[job_id].status is JobStatus.QUEUED
+    assert store.jobs[job_id].status is JobStatus.QUEUED
 
     manager.start(job_id, SessionKind.DOWNLOAD)
-    assert spin(lambda: repository.jobs[job_id].status is JobStatus.PROBING)
-    assert repository.statuses(job_id) == [JobStatus.QUEUED, JobStatus.PROBING]
+    assert spin(lambda: store.jobs[job_id].status is JobStatus.PROBING)
+    assert store.statuses(job_id) == [JobStatus.QUEUED, JobStatus.PROBING]
 
 
-def test_editing_the_url_after_a_probe_discards_the_stale_result(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
-    spin: Callable[..., bool],
-) -> None:
-    """Otherwise `Add to queue` would download what was probed a minute ago.
-
-    The recurring defect in this project is a value computed correctly and then applied to the
-    wrong thing; a `READY` job held against a URL box that has since changed is that shape.
-    """
-    dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
-    # Read into a local before asserting. Asserting on `dialog.probed_job_id` directly narrows
-    # that member expression to `str` for the rest of the function, so the `is None` check after
-    # the edit becomes statically impossible and mypy calls everything below it unreachable —
-    # which would silently stop type-checking the real assertions.
-    probed_before = dialog.probed_job_id
-    assert probed_before is not None
-
-    type_urls(dialog, "https://somewhere.else.invalid/x")
-
-    assert dialog.probed_job_id is None
-    assert dialog.media is None
-    assert text_of(dialog, "titleValue") == UNKNOWN_TEXT
-    assert text_of(dialog, "thumbnail") == NOT_PROBED_TEXT
-
-
-def test_re_typing_the_same_url_keeps_the_probe_result(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
-    spin: Callable[..., bool],
-) -> None:
-    """The guard above must not fire on an edit that did not change the first URL.
-
-    Appending a second line is the ordinary case — probe one, then paste more — and discarding
-    the result there would make the probe button useless for a batch.
-    """
-    url = fixture_url(SINGLE_ITEM)
-    dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
-    probed = dialog.probed_job_id
-
-    type_urls(dialog, f"{url}\nhttps://second.invalid/2")
-
-    assert dialog.probed_job_id == probed
-    assert dialog.media is not None
-
-
-def test_the_probed_job_is_not_queued_a_second_time(
-    dialogs: Callable[..., AddUrlDialog],
-    managers: Callable[..., DownloadManager],
-    repository: FakeRepository,
-    spin: Callable[..., bool],
-) -> None:
-    """`ARC-004`: reuse the probed record rather than stranding or duplicating it."""
-    url = fixture_url(SINGLE_ITEM)
-    dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
-    type_urls(dialog, f"{url}\nhttps://second.invalid/2")
-
-    dialog.add_to_queue()
-
-    urls = [repository.jobs[job_id].url for job_id in dialog.queued_job_ids]
-    assert urls == [url, "https://second.invalid/2"], "the probed URL was queued twice"
-
-
-# --- 8. accessibility (`NFR-005`) -------------------------------------------------------------
+# --- 11. accessibility (`NFR-005`) ------------------------------------------------------------
 
 
 def test_every_control_has_an_accessible_name(
     dialogs: Callable[..., AddUrlDialog], managers: Callable[..., DownloadManager]
 ) -> None:
-    """Not "the visible text is usually announced": `NFR-005` asks for the label to be set.
-
-    Every focusable control plus the read-only result fields, which a screen-reader user reaches
-    by review cursor and which would otherwise be announced as bare text with no field name.
-    """
+    """Every focusable control plus the thumbnail, which a review cursor reaches."""
     dialog = dialogs(managers(entry_point=child_never_returning))
-    named: list[QWidget] = [
-        *dialog.focus_chain(),
-        *(
-            label(dialog, name)
-            for name in (
-                "thumbnail",
-                "titleValue",
-                "uploaderValue",
-                "durationValue",
-                "kindValue",
-                "selectorValue",
-                "statusMessage",
-            )
-        ),
-    ]
+    named: list[QWidget] = [*focusable_widgets(dialog), label(dialog, "thumbnail")]
     unnamed = [
         widget.objectName() or type(widget).__name__
         for widget in named
@@ -903,21 +1278,20 @@ def test_every_control_is_reachable_and_actuable_by_keyboard(
     assert not without, f"buttons with no keyboard mnemonic: {without}"
 
 
-#: The tab order `NFR-005` requires, **transcribed by hand** rather than read from the dialog.
-#:
-#: The first version of the test below derived its expectation from `AddUrlDialog.focus_chain()`
-#: — the same list `_set_tab_order` feeds to Qt — so it proved only that the list equals itself.
-#: A mutation reversing two entries survived it. Transcribe one side and derive the other
-#: (`ai/TESTING.md` §13): this literal is the statement of intent, Qt's own chain is the
-#: observation, and changing the dialog's order now has to change this line too.
-EXPECTED_TAB_ORDER: Final = (
-    "urlInput",
-    "probeButton",
-    "cancelProbeButton",
-    "presetChoice",
-    "addButton",
-    "closeButton",
-)
+def test_no_keyboard_focusable_control_is_left_out_of_the_declared_order(
+    dialogs: Callable[..., AddUrlDialog], managers: Callable[..., DownloadManager]
+) -> None:
+    """`T016-R4`: the set is observed from Qt, not taken from the dialog's own list.
+
+    This is the assertion whose absence let six focusable labels sit after Close, unnoticed,
+    while a green test reported the tab order was gated.
+    """
+    dialog = dialogs(managers(entry_point=child_never_returning))
+    observed = sorted(widget.objectName() for widget in focusable_widgets(dialog))
+    assert observed == sorted(EXPECTED_TAB_ORDER), (
+        "the focusable controls Qt reports differ from the transcribed order"
+    )
+    assert sorted(widget.objectName() for widget in dialog.focus_chain()) == observed
 
 
 def test_the_tab_order_is_the_declared_one(
@@ -925,38 +1299,30 @@ def test_the_tab_order_is_the_declared_one(
     managers: Callable[..., DownloadManager],
     qapp: QApplication,
 ) -> None:
-    """Walk Qt's own chain, so a reordering fails here rather than being found by a user.
+    """Walk Qt's own chain and keep **every** focusable node in this window (`T016-R4`).
 
-    `nextInFocusChain` reports what Qt will actually do, which is the point: the dialog's own
-    list says what was *intended*, and only Qt can say what was achieved.
+    The only exclusion is the combo box's popup view, which lives in its own top-level window and
+    is never in the dialog's tab chain. Filtering by declared name — the previous version — meant
+    an undeclared control could not fail this.
     """
     dialog = dialogs(managers(entry_point=child_never_returning))
     dialog.show()
     qapp.processEvents()
 
-    # The dialog's declared chain and the transcription must agree as *sets*, so a control added
-    # to the dialog and forgotten here fails rather than being silently skipped by the walk.
-    declared = {widget.objectName() for widget in dialog.focus_chain()}
-    assert declared == set(EXPECTED_TAB_ORDER), (
-        "the dialog's focus chain and this test's transcription name different controls"
-    )
-
-    node: QWidget | None = dialog.findChild(QWidget, EXPECTED_TAB_ORDER[0])
-    assert node is not None
-    walked = [node.objectName()]
+    start = dialog.findChild(QWidget, EXPECTED_TAB_ORDER[0])
+    assert start is not None
+    node: QWidget | None = start
+    walked = [start.objectName()]
     for _ in range(500):
-        # Qt documents the chain as circular, so this should never run out. It is typed as
-        # optional and is treated as optional: a chain that ended would otherwise raise here
-        # rather than failing the comparison below with something a reader can act on.
+        assert node is not None
         node = node.nextInFocusChain()
         if node is None:
             break
-        name = node.objectName()
-        if name not in declared:
+        if not (node.focusPolicy() & Qt.FocusPolicy.TabFocus) or node.window() is not dialog:
             continue
-        if name == EXPECTED_TAB_ORDER[0]:
+        if node.objectName() == EXPECTED_TAB_ORDER[0]:
             break
-        walked.append(name)
+        walked.append(node.objectName())
     assert tuple(walked) == EXPECTED_TAB_ORDER
 
     dialog.close()
@@ -967,12 +1333,7 @@ def test_no_state_is_conveyed_by_colour_alone(
     managers: Callable[..., DownloadManager],
     spin: Callable[..., bool],
 ) -> None:
-    """Every state the dialog can be in says what it is, in words (`NFR-005`).
-
-    Two assertions, because either alone is weak: the four states must produce four *distinct*
-    texts, and no widget may carry a stylesheet — the only way this dialog could start signalling
-    with colour, and the thing a future edit would reach for first.
-    """
+    """Every state the dialog can be in says what it is, in words (`NFR-005`)."""
     dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
     probed_text = dialog.status_text()
 
@@ -994,7 +1355,7 @@ def test_no_state_is_conveyed_by_colour_alone(
         assert not widget.styleSheet(), f"{widget.objectName()} signals with a stylesheet"
 
 
-# --- 9. the way in from the shell window -----------------------------------------------------
+# --- 12. the way in from the shell window -----------------------------------------------------
 
 
 def add_action(window: MainWindow) -> QAction:
@@ -1023,7 +1384,7 @@ def test_the_menu_item_is_disabled_until_composition_supplies_the_queue(
 
 def test_the_menu_item_opens_the_dialog_once_the_queue_is_wired(
     qapp: QApplication,
-    repository: FakeRepository,
+    sink: FakeSink,
     managers: Callable[..., DownloadManager],
     tmp_path: Path,
 ) -> None:
@@ -1031,7 +1392,7 @@ def test_the_menu_item_opens_the_dialog_once_the_queue_is_wired(
     window = MainWindow(
         geometry_file=tmp_path / "window.toml",
         manager=managers(entry_point=child_never_returning),
-        jobs=repository,
+        jobs=sink,
         output_directory=tmp_path / "downloads",
     )
     try:

@@ -22,6 +22,7 @@ and belongs to `T-038`.
 
 import json
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import fields, replace
 from datetime import datetime
 from typing import Any, Final
@@ -188,6 +189,40 @@ class JobRepository:
                 f"INSERT INTO jobs ({columns}) VALUES ({placeholders})",  # noqa: S608
                 _job_to_values(job),
             )
+
+    def append(self, jobs: Sequence[JobModel]) -> list[JobModel]:
+        """Insert `jobs` at the end of the queue, in **one** transaction (`ARC-005`).
+
+        Returns them carrying the positions they were given, because the caller cannot know those
+        until they are allocated and a caller that guessed would be guessing against every other
+        writer.
+
+        **One read and one `executemany`, not one of each per job.** The per-job path this exists
+        beside makes a pasted batch cost a round trip and a commit per URL, which `T016-R3` found
+        an interaction paying on the GUI thread. Allocating the whole run inside a single
+        transaction is also what stops two callers reading the same `MAX(queue_position)` and
+        handing out the same position twice — `ARC-005` puts every write on one thread, and this
+        is the half of that guarantee the database itself enforces.
+
+        An empty sequence is a no-op that still returns a list, so a caller need not special-case
+        "nothing to add".
+        """
+        if not jobs:
+            return []
+        columns = ", ".join(_JOB_COLUMNS)
+        placeholders = ", ".join(f":{name}" for name in _JOB_COLUMNS)
+        with self._connection:
+            row = self._connection.execute("SELECT MAX(queue_position) FROM jobs").fetchone()
+            start = 0 if row[0] is None else int(row[0]) + 1
+            placed = [
+                replace(job, queue_position=start + offset) for offset, job in enumerate(jobs)
+            ]
+            # S608: see `add` — literal identifiers interpolated, every value parameterised.
+            self._connection.executemany(
+                f"INSERT INTO jobs ({columns}) VALUES ({placeholders})",  # noqa: S608
+                [_job_to_values(job) for job in placed],
+            )
+        return placed
 
     def update(self, job: JobModel) -> None:
         """Overwrite the stored job with this one. Raises if it is not there.
