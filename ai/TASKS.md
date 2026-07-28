@@ -275,11 +275,11 @@ has run there. `ai/TESTING.md` §12 keeps its gap and `T-026`'s criterion stays 
 
 ---
 
-## Ready
-
 ### T-063 — The virtualenv cannot run the application it installed
 
-**Status:** Ready — filed 2026-07-28 as `ENV-R1`, reproduced independently by the Reviewer
+**Status:** **In Review — fixed 2026-07-28.** Both entry points work without `PYTHONPATH`, and
+the full suite passes without it. The procedure and the symptom are in `docs/DEVELOPMENT.md`. See
+**Evidence**.
 **Owner:** Implementer
 **Priority:** Low — it blocks no gate, and it is the first thing a new checkout hits
 **Phase:** Phase 1
@@ -335,7 +335,43 @@ happens at another.
 - Choosing between the two repository paths, which is the maintainer's (`ai/STATUS.md`)
 - Packaging or distribution; `REL-001` and Phase 5 own those
 
+#### Evidence, 2026-07-28
+
+**One cause, two symptoms.** An editable install records absolute paths in two places — a `.pth`
+naming the source tree and a shebang in each console script naming the interpreter — and neither
+follows the venv. This one had been installed from the *parent* directory, so the `.pth` read
+`…/tracks-and-trails/src` while the checkout is `…/tracks-and-trails/tracks-and-trails/src`.
+
+**Fixed by re-running the install from the checkout**, which rewrote both:
+
+```
+$ .venv/bin/tracks-and-trails --version              → 0.1.0.dev0
+$ .venv/bin/python -m tracks_and_trails --version    → 0.1.0.dev0
+$ .venv/bin/python -c "import tracks_and_trails; print(tracks_and_trails.__file__)"
+  …/tracks-and-trails/tracks-and-trails/src/tracks_and_trails/__init__.py
+```
+
+**The whole suite now passes with no `PYTHONPATH` at all**: 1398 passed, 11 skipped, 2 deselected.
+Every command in the session before this one carried `PYTHONPATH=$PWD/src`.
+
+**Written down, because the venv is git-ignored and does not survive a clone.**
+`docs/DEVELOPMENT.md` gains the two symptoms, the fix, and a three-command check — including
+`print(tracks_and_trails.__file__)`, which is the one worth keeping: a venv pointing at the *wrong*
+checkout imports someone else's code and passes tests against it, silently. It also says plainly
+that `PYTHONPATH=$PWD/src` makes the symptom go away without fixing it.
+
+**The repository-path question is untouched and still the maintainer's.** This did not choose
+between the two paths; it made the venv agree with the checkout it lives in. `ai/STATUS.md`'s
+Environment baseline now records what was wrong and what fixed it, rather than implying a working
+install.
+
+**Nothing tracked by git changed for the fix itself** — `.venv/` is ignored. What is committed is
+the documentation that makes the fix reproducible, which is what the acceptance criteria asked
+for.
+
 ---
+
+## Ready
 
 ## Proposed — Phase 0
 

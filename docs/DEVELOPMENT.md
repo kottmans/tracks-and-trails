@@ -150,9 +150,53 @@ CI sets this on both platforms.
 | `No module named pip` | Fedora ships pip separately: `python3 -m ensurepip --user`. |
 | `error: externally-managed-environment` | You are outside the venv. Activate `.venv` first. |
 | `qt.qpa.plugin: could not load the Qt platform plugin` | No display. Set `QT_QPA_PLATFORM=offscreen`. |
-| `ModuleNotFoundError: tracks_and_trails` | The editable install did not run: `pip install -e ".[dev]"`. |
+| `ModuleNotFoundError: tracks_and_trails` | The editable install did not run, **or it ran from a different directory** — see below. |
+| `.venv/bin/tracks-and-trails: bad interpreter` | Same cause. The console script hard-codes the interpreter path it was installed with. |
+| ffmpeg missing and a download refuses before starting | Expected: `REQ-024` refuses a *merge* it cannot perform, before spending bandwidth. A download needing no merge proceeds (`T-061`). |
 | mypy passes locally but fails in CI | Run bare `mypy` — it reads paths from `pyproject.toml`. Passing a path overrides them. |
-| ffmpeg-related runtime errors | Install ffmpeg. It is not a build dependency, so tests pass without it. |
+| ffmpeg-related runtime errors | Install ffmpeg. It is not a build dependency, and the suite passes without it. |
+
+### An editable install remembers where it was run
+
+**Both faults above have one cause and one fix** (`T-063`). An editable install records absolute
+paths in two places — a `.pth` under `site-packages` naming the source tree, and a shebang in each
+console script naming the interpreter — and neither follows the venv if the checkout moves, is
+cloned to a second path, or was installed from a parent directory by mistake.
+
+The symptom is a venv that looks healthy and cannot run the thing it installed:
+
+```
+$ .venv/bin/tracks-and-trails --version
+bad interpreter: .../tracks-and-trails/.venv/bin/python: No such file or directory
+
+$ .venv/bin/python -m tracks_and_trails --version
+No module named tracks_and_trails
+```
+
+**Fix: re-run the install from the checkout you actually work in.**
+
+```bash
+cd /path/to/your/tracks-and-trails      # the directory containing pyproject.toml
+.venv/bin/python -m pip install -e ".[dev]"
+```
+
+Then check both entry points, because they fail independently:
+
+```bash
+.venv/bin/tracks-and-trails --version           # exercises the shebang
+.venv/bin/python -m tracks_and_trails --version # exercises the .pth
+.venv/bin/python -c "import tracks_and_trails; print(tracks_and_trails.__file__)"
+```
+
+The third command is the one worth keeping: it prints which tree is actually imported, and a venv
+pointing at the *wrong* checkout will happily import someone else's code and pass tests against it.
+
+`PYTHONPATH=$PWD/src` makes the symptom go away without fixing it, which is worth knowing and
+worth not settling for — under that workaround the console script stays broken and the imported
+tree is still whatever the `.pth` says.
+
+**`.venv/` is git-ignored and does not survive a clone.** `ai/STATUS.md` records it being missing
+twice already, so this is a recurring first-five-minutes problem rather than a one-off.
 
 ## Windows
 
