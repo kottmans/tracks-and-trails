@@ -1031,12 +1031,19 @@ def test_a_markup_shaped_title_is_displayed_and_not_interpreted(
 ) -> None:
     """Asserted on what is **rendered**, not on `QLabel.text()`.
 
-    Reading the text back returns the input under either format, which is exactly why the defect
-    survived the first round of tests. The observable difference is width: interpreted markup
-    consumes the tags and lays out narrower than the literal string.
+    Reading the text back returns the input under either format, which is why the defect survived
+    the first round of tests entirely.
+
+    **The comparison is the same widget against itself**, with only the text format changed. An
+    earlier version compared `sizeHint().width()` against a font-metrics advance and passed on
+    Linux by luck: the label wraps, so its size hint is a wrapped-layout figure rather than a
+    string width, and on Windows the numbers landed the other way round. Rendering the identical
+    widget — same geometry, same font, same string — under each format removes every variable
+    except the one under test, and proves the setting is load-bearing rather than merely present.
     """
     manager = managers(entry_point=child_probing_a_markup_title)
     dialog = dialogs(manager)
+    dialog.show()
     type_urls(dialog, "https://markup.invalid/x")
     dialog.probe()
     assert spin(lambda: dialog.media is not None)
@@ -1044,13 +1051,16 @@ def test_a_markup_shaped_title_is_displayed_and_not_interpreted(
     title = label(dialog, "titleValue")
     assert title.text() == "<b>VISIBLE</b>"
 
-    plain_width = title.fontMetrics().horizontalAdvance("<b>VISIBLE</b>")
-    interpreted_width = title.fontMetrics().horizontalAdvance("VISIBLE")
-    rendered = title.sizeHint().width()
-    assert rendered >= plain_width, (
-        f"the title rendered at {rendered}px, narrower than the {plain_width}px its literal text "
-        f"needs and close to the {interpreted_width}px of the tags consumed as markup"
+    as_shipped = title.grab().toImage()
+    title.setTextFormat(Qt.TextFormat.RichText)
+    as_markup = title.grab().toImage()
+    title.setTextFormat(Qt.TextFormat.PlainText)
+
+    assert as_shipped != as_markup, (
+        "the title renders identically whether or not Qt is told to interpret markup, so the "
+        "tags are being consumed rather than displayed"
     )
+    assert title.grab().toImage() == as_shipped
 
 
 # --- 8. `T016-R5`: the thumbnail's failure half -----------------------------------------------
