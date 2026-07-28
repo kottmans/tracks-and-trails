@@ -4768,3 +4768,137 @@ remains a blocking Medium finding and T-017 cannot be marked Approved at `f10010
 
 Do not start a sixth T-017 correction/re-review loop. Carry `T017-R4` and its two construction
 probes into the next named task, assign an owner there, and close T-017 when that task lands.
+
+## 2026-07-28 — Section 4 independent review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `5b0ebca`  **Head:** `894d794`
+**Tasks:** `T-059`, then `T-036` and `T-037`
+**Excluded:** coordination-only commit `6ce26ec`
+**Platforms verified:** Linux locally; Windows type analysis
+**Verdict by task:** `T-059` **Approved**; `T-036` **Changes requested**; `T-037`
+**Approved with follow-ups**
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T036-R1` | **High** | **Yes** | **Retry can strand a job durably `QUEUED` without starting it or leaving any usable retry affordance.** `app.retry()` persists `FAILED → QUEUED`, then calls `manager.start()` from the writer callback. The failed session still occupies the pool when that callback runs, so `start()` ordinarily refuses; the exception is logged and discarded at `app.py:236-246`. There is no Phase 1 scheduler to revisit the row. The committed test at `test_composition.py:584-590` asserts only that the store left `FAILED`, explicitly treating start as optional. An independent probe added an observation at the manager boundary and reproduced the defect: after five seconds there were no transitions at all, the store was `QUEUED`, and the view was still `FAILED`. A second Retry does nothing because the durable row is no longer failed. This breaks the retry behavior required by `REQ-015`/`REQ-018`, through the exact composition seam T-036 owns. | Make retry start only after the prior session has released, or give the queue an in-scope owner that starts it then. Keep the persistence ordering, but do not turn a start refusal into an inert durable state. Gate an actual second attempt—at minimum `PROBING`, preferably its terminal result—and agreement between the visible view and durable row; merely leaving `FAILED` is not enough. | **Open** |
+| `T037-R1` | **Low** | **No** | The current-truth Scope at `ai/TASKS.md:281-292` says the two integration tests fake yt-dlp at the adapter seam and that only the opt-in network test is real. The implementation and Evidence at lines 312-315 correctly say the opposite: the default tests run real yt-dlp and its HTTP downloader against a local server. The later paragraph does not make the earlier specification cease to be current truth. | Rewrite the Scope to distinguish a real downloader over a deterministic local origin from the opt-in real-site extractor test. **Owner/target:** Documentation Maintainer, next named coordination/documentation task. | **Open, non-blocking** |
+| `T037-R2` | **Low** | **No** | `tests/network/test_real_download.py:32-38` calls Big Buck Bunny “public domain.” The Blender Foundation identifies the film as Creative Commons Attribution 3.0 on its [official release poster](https://download.blender.org/ED/poster.pdf). The file may be freely reusable, but CC BY and public domain are not equivalent provenance claims. The test has never run, so its availability and size remain separately unverified. | Replace “public domain” with the actual CC BY attribution and retain the existing “never executed” caveat. **Owner/target:** Documentation Maintainer, next named coordination/documentation task. | **Open, non-blocking** |
+
+### Prior finding disposition
+
+| ID | Severity | Blocks approval | Independent evidence | Status |
+|---|---|---:|---|---|
+| `T017-R4` | **Medium** | **Yes** | `T-059` routes both live terminal transitions and construction from stopped rows through the same total-selection rule. The focused construction suite passed, and three independent weakenings were killed: bypassing the rule in `_load()`, giving an unopened cancelled/failed row an empty display source, and making a watched cancelled/failed row adopt its lagging durable counts. | **Resolved by `52f0aed`** |
+
+### Review judgments
+
+- T-059 closes the carried half of T017-R4 at the missing entry point. Its opened-row cases are
+  construction tests, not transition tests wearing different inputs.
+- T-036's object graph, environment propagation, view replacement, shutdown lifecycle, and
+  cold-start evidence are otherwise coherent. The eight mutations named in its record are real
+  and independently killed.
+- Catching `manager.start()` prevents a Qt-slot exception, but it converts the refusal into a
+  silent liveness failure. A durable `QUEUED` row is not a retry when no component will ever
+  consume it.
+- T-037's default end-to-end tests genuinely cross the worker, yt-dlp, local HTTP, persistence,
+  and UI boundaries. Its success and unclean-restart claims do not rely on the broken retry
+  callback: recovery proves that the affordance is offered, while T-036 owns performing it.
+- T-037's POSIX kill path ran locally. Its Windows kill implementation type-checks but remains
+  runtime-unverified until the Windows job. The opt-in real-site test remains explicitly unrun.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| `git diff --check 5b0ebca..894d794` | Passed. |
+| T-059 focused opened/ending tests | **8 passed, 85 deselected**. |
+| Three independent T-059 mutations | **All three killed**. |
+| Current T-036 composition suite | **12 passed in 1.32 s**. |
+| Eight mutations reported for T-036 | **All eight independently killed**; the ordinary-idle writer mutation failed only at the consequential second write, as intended. |
+| Retry-start probe | **Failed the intended guarantee:** no manager transition in five seconds; durable state `QUEUED`; visible state `FAILED`. |
+| Current T-037 end-to-end suite | **3 passed in 1.84 s** with a local HTTP origin and real worker. |
+| Five mutations reported for T-037 | **All five independently killed:** omitted startup recovery, wrong interruption kind, missing output path, halved stored total including its progress fallback, and rewritten stored request. |
+| Opt-in `-m network` test | **Not run**, matching the task's explicit caveat. |
+
+### Readiness
+
+T-059 is **Approved at `52f0aed`**, and `T017-R4` is **Resolved**.
+
+T-036 has a blocking High retry defect and is **Changes requested at `c794555`**. This is a
+functional failure in the composition seam, not a request for stronger evidence around correct
+behavior.
+
+T-037 is **Approved with follow-ups at `894d794`** for its end-to-end behavior. `T037-R1` and
+`T037-R2` are non-blocking documentation/provenance corrections and, by maintainer direction,
+should be assigned to the next named task rather than start another pass here. T-037's dependency
+and the Phase 1 aggregate remain unready while `T036-R1` is open.
+
+## 2026-07-28 — Section 5 independent review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `894d794`  **Head:** `1aba441`
+**Tasks:** `T-052`, `T-040`
+**Excluded:** coordination-only commit `6ce26ec`
+**Platforms verified:** Linux locally; Windows type analysis only
+**Verdict by task:** `T-052` **Approved**; `T-040` **Blocked**
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T040-R1` | **Medium** | **Yes** | **The progress-view half does not exercise Windows focus traversal.** The dialog tests press Tab/Backtab on a shown, active window and read `QApplication.focusWidget()`. By contrast, `test_the_progress_view_controls_are_reachable_too()` at `test_windows_desktop.py:571-590` only compares `view.focus_chain()` with a literal and compares sets of focusable children. It never presses a key, observes focus, checks order/wrapping, or proves reachability from initial focus. It could run identically under the offscreen plugin. The task evidence at `ai/TASKS.md:1313-1317` says the fifth test covers the three T-017 controls, and T-017's own known-unverified note assigns those controls to T-040; the evidence therefore overstates the real-plugin boundary the test gates. Per the repository severity table, a gate that does not gate what it claims is Medium. | Show and activate the progress view under the real Windows plugin, drive Tab and Backtab through its controls, assert the hand-authored order, wrapping, and reachability, then mutation-check a reordered and an omitted/added control. Keep T-040 blocked until those mutations and all five tests execute on the Windows desktop job. | **Open** |
+
+### Prior finding disposition
+
+| ID | Severity | Blocks approval | Independent evidence | Status |
+|---|---|---:|---|---|
+| `T013-R5` | **Low** | **No** | T-052 now observes all three effects that routing before validation would leak: the complete persisted status sequence, public progress, and the resolution report. Moving routing before `SessionValidator.accept()` failed one parametrization for each route. Independently weakening either startup diagnostic also failed all three construction cases. | **Resolved by `7d67e77`** |
+
+### Review judgments
+
+- T-052 is a test-only correction and now proves the negative boundary it records. The production
+  validation order did not need changing.
+- T-040's four add-dialog tests have the right source of independence: one side is hand-authored,
+  while actual focus is walked from the rendered widget with keyboard events.
+- The Linux skip is correct and honest. This review does not infer Windows behavior from source
+  shape or type analysis.
+- The progress-view test is useful as a structural completeness check, but it is not evidence that
+  the real Windows desktop delivers that chain.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| `git diff --check 894d794..1aba441` | Passed. |
+| T-052 selected manager tests | **8 passed, 63 deselected**. |
+| Route-before-validation mutation | **Killed on all three named parametrizations:** stored progress stage, public progress, and resolution report. |
+| Two startup-diagnostic mutations | **Both killed**; each failed all three startup cases. |
+| Windows desktop module on Linux | **1 module-level skip; no Windows tests executed**, as designed. |
+| `mypy --platform win32 .` at coordination head | Passed: no issues in **77 files**. |
+
+### Readiness
+
+T-052 is **Approved at `7d67e77`**, and `T013-R5` is **Resolved**.
+
+T-040 remains **Blocked at `1aba441`** on the Windows desktop job and its required demonstrated
+mutations. `T040-R1` adds a proof gap that must be corrected before that job can close the task:
+even a green Windows run of the current file would not establish focus traversal for the T-017
+progress controls.
+
+## 2026-07-28 — Sections 4 and 5 combined validation
+
+The two reviews above were performed against their own base/head boundaries. Afterward, the
+following checks were run on coordination head `6ce26ec`; that commit changes `ai/STATUS.md` only
+and is not included in either substantive review boundary.
+
+| Check | Result |
+|---|---|
+| `ruff check .` | Passed. |
+| `ruff format --check .` | **91 files already formatted**. |
+| `mypy src` | Passed: no issues in **35 source files**. |
+| Configured `mypy` | Passed: no issues in **77 files**. |
+| Configured `mypy --platform win32` | Passed: no issues in **77 files**. |
+| Full default suite with localhost/process permission | **1395 passed, 11 skipped, 2 deselected in 79.29 s**. |

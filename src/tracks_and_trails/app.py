@@ -218,34 +218,18 @@ def compose(
     )
 
     def retry(job_id: str) -> None:
-        """Re-queue a failed job and start it. **Composition's, because it is a write.**
+        """Hand a retry to the manager, which owns job transitions (`T036-R1`).
 
-        The progress view reports `retry_requested` and performs nothing: `ui/` holds no writer
-        (`ARCHITECTURE.md` §3). `FAILED → QUEUED` is the state machine's only edge back, so
-        anything else is refused here rather than raising out of a slot.
+        This used to write `FAILED → QUEUED` through the store and then call `manager.start()`
+        itself. Both halves were wrong: the store has no signal, so nothing announced the
+        transition and the progress view kept showing a failure over a re-queued row; and the
+        start was attempted once, while the failed session was still being released, so the pool
+        of one refused it and nothing tried again.
+
+        `ui/` still holds no writer (`ARCHITECTURE.md` §3) — the view reports `retry_requested`
+        and composition routes it, exactly as it would route a cancel.
         """
-        job = store.get(job_id)
-        if job is None or job.status is not JobStatus.FAILED:
-            return
-
-        def started(error: str | None) -> None:
-            if error is not None:
-                # The re-queue itself failed. `persistence_failed` has already gone out, and the
-                # job is still `FAILED`, which is the truth.
-                return
-            try:
-                manager.start(job_id)
-            except (RuntimeError, ValueError) as refusal:
-                # **A retry may not raise out of a completion callback.** This runs from the
-                # writer's `done`, so an exception here escapes into a Qt slot rather than to
-                # whoever pressed the button — the same shape `_spawn` documents. The pool is one
-                # (`T-013`), so retrying while another job runs is an ordinary refusal, not an
-                # error: the job is durably `QUEUED` either way, which is what a retry means.
-                logging.getLogger("tracksandtrails.app").info(
-                    "%s was re-queued but not started: %s", job_id, refusal
-                )
-
-        store.update(job.with_status(JobStatus.QUEUED), started)
+        manager.retry(job_id)
 
     window = MainWindow(
         geometry_file,

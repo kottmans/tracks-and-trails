@@ -50,102 +50,11 @@ Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; 
 
 ## In Review
 
-### T-059 — A view opened onto a finished job renders it from the wrong source
-
-**Status:** **In Review — implemented 2026-07-28.** `T017-R4`'s open half is corrected by giving
-the rule one entry point instead of two, and the rule gains the row construction exposed. Three
-mutations, three killed — including `_load` computing its own answer, which is the finding. See
-**Evidence**.
-**Owner:** Implementer
-**Priority:** Medium — it is what a user sees after every restart, which is the ordinary case
-rather than an edge one
-**Phase:** Phase 1
-**Depends on:** nothing. **Lands before or with `T-036`**, which is the first code that will
-construct a view over a job it did not watch finish
-**Relevant context:** `T017-R4`; `ai/REVIEWS.md` (fifth `T-017` re-review); `NFR-005`
-**Affected surfaces:** `src/tracks_and_trails/ui/job_detail.py`, `tests/ui/test_job_detail.py`
-**Risk:** Low to fix, Medium to leave — a screen reader and the visible byte line disagree
-
-#### Scope
-
-`T-017` established a rule for where a stopped job's displayed size comes from, and put it in one
-place — `_totals_for_ending`. **`_load` does not go through that place.** So the rule holds for a
-job that finishes while the view is watching and not for one the view is opened onto:
-
-- an already-`COMPLETED` row of `bytes_done=1, bytes_total=20` shows a full bar described as
-  "Complete: 20 B downloaded" beside a byte line reading "1 B of 20 B";
-- with no recorded total it shows "Complete" beside "3 B of Unknown".
-
-Both are the same contradiction `T017-R2` and `T017-R4` were about, reached through the one entry
-point none of the five correction batches drove. **Every test in `T-017` starts from a running
-view**, which is exactly why: a suite that never opens a view onto a finished job cannot see what
-opening one does.
-
-Reopening is not an exotic path. It is what happens after every restart, and after `T-036` it is
-how any completed job will first appear.
-
-#### Acceptance criteria
-
-- Construction goes through the same rule as a live terminal transition — one place decides,
-  reached from both entry points, rather than two places agreeing
-- A view opened onto a `COMPLETED` row whose counter lags its total shows one consistent story:
-  the bar, the byte line and the accessible description agree
-- A view opened onto a `COMPLETED` row with no recorded total states no size it does not have
-- A view opened onto a `CANCELLED` or `FAILED` row shows what the row holds, since there is no
-  earlier display to preserve — state the answer rather than inheriting it by accident
-- The tests drive **construction**, not only transition, for every row of the rule; a mutation
-  that makes `_load` bypass the rule fails at least one of them
-
-#### Out of scope
-
-- The rule itself, which `T-017` settled and the reviewer verified for live transitions
-- Any other `job_detail.py` behaviour; `T017-R1`, `R2`, `R3` and `R5` are resolved and closed
-
-#### Evidence, 2026-07-28
-
-**`_adopt_totals` is the one entry point**, reached from construction and from a live terminal
-transition alike. `_load` used to compute its own answer, which is why one row gave two results
-depending on whether anyone had been watching it finish.
-
-**The rule gained a row, because construction exposed a case the rule did not have.** For a
-cancelled or failed job it said "whatever was last shown" — correct while watching, and meaningless
-for a view that watched none of it, where "what was last shown" is the pair of `None`s the view was
-constructed with. A reopened stopped job takes the row, since nothing is closer:
-
-| The job is | The size comes from |
-|---|---|
-| running | the last rendered progress message |
-| `COMPLETED` | the row's `bytes_total` |
-| `CANCELLED` / `FAILED`, watched | whatever was last shown |
-| `CANCELLED` / `FAILED`, reopened | the row |
-
-That fourth row is stated rather than inherited. The previous code would have reached it by
-falling through to an empty display, and a cancelled download would have reported nothing at all
-about how far it got — a defect the tests would not have caught either, because they would have
-been asserting on the same accident.
-
-**Five parametrised construction cases**, one per row plus the two shapes `T017-R4` reported:
-a completed row whose counter lags its total, a completed row with no total, cancelled partway,
-failed partway, and cancelled before any bytes moved. Each asserts the byte line and the bar agree,
-which is the contradiction every form of this finding produced.
-
-**Mutations run, all killed:** `_load` bypassing the rule — the finding itself · a reopened stopped
-job inheriting the empty display · the watched case taking the row too.
-
-**Checks:** `ruff check .`, `ruff format --check .`, `mypy src`, configured `mypy` and
-`mypy --platform win32` all pass. Bare `pytest` green.
-
-**Why five `T-017` rounds missed it, recorded because it is about test design rather than this
-widget:** every test in that task began with a running view. A suite that never opens a view onto
-a finished job cannot observe what opening one does, however many cases it drives afterwards.
-
----
-
 ### T-036 — Application composition and wiring
 
-**Status:** **In Review — implemented 2026-07-28.** The object graph is built in one place,
-`app.compose()`, which returns it so the wiring criteria can be asserted at all. Eight mutations,
-eight killed. See **Evidence**.
+**Status:** **In Review — first correction batch returned 2026-07-28.** High `T036-R1` is
+corrected by moving `retry` into the manager, where the transition and the start both belong.
+Three mutations, three killed. No finding is marked Resolved here — that is the Reviewer's to do.
 **Owner:** Implementer
 **Priority:** **High** — without it every component can pass while the product still opens an
 empty window
@@ -190,6 +99,37 @@ running job, reaps its process tree, and closes the database — in that order.
 
 - Any new behavior; this task connects what the others built
 - The single-instance guard — `A-004`, Phase 2
+
+#### First correction batch — the manager owns a retry, 2026-07-28
+
+**Base:** `6ce26ec`. Three mutations, three killed. **Corrected here rather than carried**: the
+reviewer's handoff applied the standing carry direction, but `T036-R1` is **High**, and
+`AGENTS.md` §10 says a High "remains in the current review until it is corrected and independently
+verified", that further focused passes for it need no authorization, and that downgrading one
+needs stated reasons and explicit maintainer approval. Carrying it would be a downgrade in effect.
+
+**`T036-R1` (High, blocking) — reproduced first, and it had two halves.** With the failed probe
+session not yet released, pressing Retry produced: the row at `queued`, **no manager transitions
+at all**, the view still reading `failed`, and a Retry button that did nothing on a second press.
+
+- **The start was attempted once and the refusal swallowed.** The pool of one refuses while a
+  session is being released — a window of a tick or two — and nothing ever tried again. A comment
+  in the previous test argued that starting "is not what a retry promises", which was my
+  rationalisation of the defect; the reviewer measured what it costs.
+- **The re-queue was written behind the manager's back.** Composition called `store.update`
+  directly, and the store has no signal — `job_changed` is emitted from the *manager's* write
+  callback. So nothing announced `FAILED → QUEUED` and every widget kept showing the failure.
+
+**`DownloadManager.retry()` now owns both.** A retry is a state transition plus a start, and both
+are the manager's business; composition routes the widget's `retry_requested` to it exactly as it
+would route a cancel, so `ui/` still holds no writer. The transition goes through `_persist`, so
+it is announced like every other. If the pool is busy the job waits and starts on the first tick
+that finds it free — **not** Phase 2's scheduler: one job, the one the user just asked for, and
+what it waits for is a session that has already ended being released. `is_idle` counts it and
+`shutdown()` drops it, so it cannot hold the door open.
+
+**Mutations run, all killed:** attempting the start once and swallowing the refusal — the finding
+itself · the tick never picking up a waiting retry · the re-queue written without announcing it.
 
 #### Evidence, 2026-07-28
 
@@ -252,190 +192,6 @@ measures the migrated database, the writer thread, the manager and the window to
 and `mypy --platform win32` (73 each) all pass. Bare `pytest`: **1392 passed, 11 skipped,
 1 deselected**. The wide mypy scope again found errors the `src` scope cannot see, all in the new
 test file.
-
----
-
-### T-037 — End-to-end download and restart proof
-
-**Status:** **In Review — implemented 2026-07-28.** Both unowned exit criteria now have tests
-against the assembled application. Five mutations, five killed. The `-m network` variant is
-written and **has never been run** — see **Evidence**.
-**Owner:** Implementer
-**Priority:** **High** — two Phase 1 exit criteria are unowned without it
-**Phase:** Phase 1
-**Depends on:** `T-036`
-**Relevant context:** `IMPLEMENTATION_PLAN.md` Phase 1 exit criteria; `REQ-012`, `REQ-014`,
-`NFR-003`; `ai/TESTING.md` §7 (Crash recovery)
-**Affected surfaces:** `tests/integration/`
-**Risk:** **High** — it is the evidence for the phase
-**Review base:** the `T-036` merge commit
-
-#### Scope
-
-**Filed after review: the phase had no proof of success.** `T-012` tests probing and failure,
-`T-019` tests cancellation and crashes — nobody proved a download *completing*. Phase 1's first
-exit criterion is "a real URL downloads to disk with accurate live progress and correct final
-bytes", and its fourth is "job state survives an application restart mid-download". Both were
-unowned.
-
-Two integration tests against the assembled application, with yt-dlp faked at the adapter seam
-so they are deterministic and offline:
-
-1. **Success.** A job runs to completion: the file exists at the expected path, its byte count
-   matches what was reported, progress advanced monotonically through the `REQ-014` stages, and
-   the job's terminal state is success in both the UI and the repository.
-2. **Restart.** Kill the application mid-download, restart it, and assert the job is recovered
-   to a retryable state, visible in the UI, with its `DownloadRequest` intact — the assembled
-   equivalent of the database-level recovery `T-014` proves.
-
-A network-marked variant downloads one real, stable, small URL end to end, so the offline fake
-is checked against reality at least once. It stays excluded by default (`ai/TESTING.md` §2).
-
-#### Acceptance criteria
-
-- The completed file exists, and its size equals the total the final progress message reported
-  — a mismatch is exactly the bug this criterion is for
-- Progress is monotonic and reaches every `REQ-014` stage the job actually used
-- Success is recorded identically in the UI and the repository; disagreement fails
-- After a mid-download kill and restart, the job is recovered, visible, retryable, and its
-  stored `DownloadRequest` is byte-identical to the original (`REQ-012`, `NFR-003`)
-- Recovery is proven by killing a real process, not by closing the application cleanly
-- The `-m network` variant completes one real download and is **not** part of the default run
-
-#### Out of scope
-
-- Multiple concurrent jobs — Phase 2
-- Resume of a partial download — Phase 2
-
-#### Evidence, 2026-07-28
-
-**`tests/integration/test_end_to_end.py`** — three tests, everything real except the site. Real
-yt-dlp, its generic extractor, its HTTP downloader, a real spawned worker, a real file. The server
-is a local `http.server` on `127.0.0.1`, which is the §6 exception recorded for exactly this: the
-criterion is about bytes actually moving and a faked adapter cannot move any.
-
-**The assertion that matters joins the halves.** The file on disk is the size the last progress
-message said it would be, *and* the size the queue recorded. The worker knows the bytes and the
-manager knows the messages; only the assembled thing knows whether they agree.
-
-**The restart is a `SIGKILL` to another interpreter**, mid-download, with the row confirmed
-`RUNNING` first. A clean shutdown would prove teardown works, which `T-036` covers; `NFR-003` is
-about the other case. The recovered job comes back `FAILED`/`INTERRUPTED`, retryable, visible in
-the UI, with its `DownloadRequest` byte-identical to what was submitted. A third test plants a
-`RUNNING` row directly, so the claim is about startup rather than about what the previous test
-left behind.
-
-**Two things found on the way, both worth more than the fix:**
-
-- **`mypy --platform win32` caught a test that could not run on Windows.** `os.killpg`,
-  `os.getpgid` and `signal.SIGKILL` are POSIX-only, so the `windows-latest` job would have
-  reported an `AttributeError` rather than a finding. The halves are now split at module level,
-  following `downloader/process_tree.py`'s own idiom — each is then type-checked by the run that
-  owns it, where a branch inside a function leaves the other side unreachable to whichever run is
-  looking. This is `AGENTS.md` §8's "a host-only check is not the whole gate", found by the gate
-  that exists for it.
-- **The default preset legitimately cannot download the fake clip.** Its selector filters on
-  `height` and `ext`; a bare `video/mp4` declares no height, so "Requested format is not
-  available" is the *correct* answer. The tests choose a preset instead, which is what the dialog
-  is for (`REQ-006`). Recorded at the constant rather than worked around silently, because the
-  other reading — that a preset is broken — is wrong and a future reader deserves the real one.
-
-**Mutations run, all killed:** startup no longer recovering interrupted jobs · a completed job
-forgetting its output path · recovery rewriting the request it recovers · an interruption recorded
-as a worker crash · the stored byte total drifting from the bytes that moved.
-
-**One mutation deliberately not counted.** Freezing `bytes_done` so the stored counter never
-advances survives, and should: the manager persists progress only on a *stage transition*, so with
-a single-stage download there is exactly one write and a frozen counter is indistinguishable from
-correct behaviour. Gating it would assert a promise the design does not make (`ai/TESTING.md` §13).
-
-**The `-m network` variant is written and has never been executed here.**
-`tests/network/test_real_download.py` downloads one real archive.org file through the same path,
-so the offline fake is checked against reality once. This machine ran it zero times; the first
-real run is whoever runs `pytest -m network`. Stated because "written" and "passing" are different
-claims and only the first is true. Its `conftest.py` duplicates the `spin` helper rather than
-hoisting it, which would put a Qt import in front of the deliberately Qt-free unit suite.
-
-**Checks:** `ruff check .`, `ruff format --check .` (91 files), `mypy src` (35), configured `mypy`
-and `mypy --platform win32` (76 each) all pass. Bare `pytest`: **1395 passed, 11 skipped,
-2 deselected**.
-
----
-
-### T-052 — Make the T-013 correction tests kill their claimed mutations
-
-**Status:** **In Review — implemented 2026-07-28.** Both named mutations are killed, and the
-route-before-validation one is killed on **each** of the three routes the criteria list. Half of
-this task turned out to be already done — see **Evidence**.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 1
-**Depends on:** `T-013`
-**Relevant context:** `T013-R5`; `ai/TESTING.md` §13
-**Affected surfaces:** `tests/integration/test_manager.py`
-**Risk:** Low — production behavior is correct; the negative gate is weaker than its evidence
-record claims
-
-#### Scope
-
-Strengthen the T-013 correction evidence at the observations where a route-before-validation
-regression is currently invisible. Moving the pump's signal emission immediately before
-`SessionValidator.accept()` leaves all five cases in
-`test_an_illegal_message_never_reaches_the_job` green: the test excludes only `READY` and
-`COMPLETED`, so illegal progress may still persist `RUNNING`; it does not assert that foreign
-progress or a duplicate resolution report was withheld from the public signals.
-
-The startup-construction test also ends its useful-error assertion with `or True`, making that
-assertion unconditional. Remove the escape and prove the stored diagnostic retains the original
-failure rather than a cleanup error.
-
-#### Acceptance criteria
-
-- Reordering validation and routing makes at least one committed test fail for each affected
-  route: persisted progress state, public progress, and resolution report
-- The tests assert the complete persisted status sequence, not selected terminal states
-- The useful startup diagnostic assertion has no unconditional branch and fails if the original
-  construction error is discarded
-- The route-before-validation and diagnostic-weakening mutations are run and recorded as killed
-
-#### Out of scope
-
-- Changing `SessionValidator` or the production routing order, which are correct at `65303a2`
-- The blocking cleanup behavior in `T013-R3` and `T013-R4`
-
-#### Evidence, 2026-07-28
-
-**The `or True` was already gone**, removed by a later `T-013` pass that cited this task. Removing
-it had shown the production behaviour was right and the *assertion* was wrong: it looked for a
-parametrised component name the message never claimed to carry. What the message must carry — and
-does — is the `OSError` that stopped the start rather than whatever the unwind hit afterwards.
-Recorded rather than quietly dropped from the scope, because "already fixed" and "not a problem"
-are different findings.
-
-**What was still missing was the shape of the assertions, not their subject.**
-
-- `test_an_illegal_message_never_reaches_the_job` excluded `COMPLETED` and `READY` **by name**,
-  which left `RUNNING` unexamined — so an illegal *progress* message routed before validation
-  persisted a state that never legitimately existed and nothing noticed. It now asserts the
-  **complete persisted sequence**.
-- It checked `succeeded` and `probed` and not `progress` or `resolution_reported`, so a message
-  the validator went on to reject could still have reached a widget first. All four public routes
-  are checked now.
-
-**Mutations run, all killed:**
-
-| Mutation | Killed by |
-|---|---|
-| The pump routes before it validates | `probe-stage` (persisted progress state), `foreign-job-id` (public progress), `two-reports` (resolution report) — one per route, as the criteria ask |
-| The stored diagnostic discards the original cause | `test_a_startup_failure_leaves_a_failed_job_rather_than_a_phantom_one`, both parametrisations |
-| The failure message replaces the cause with the cleanup's | the same test, both parametrisations |
-
-The first mutation was the point of the task and it now fails on **three** parametrisations rather
-than the two it would have before, because the persisted-sequence assertion is what catches the
-probe case.
-
-**Checks:** `ruff check .`, `ruff format --check .`, configured `mypy` (76 files) all pass. Bare
-`pytest`: **1395 passed, 11 skipped, 2 deselected**. No production code changed.
 
 ---
 
@@ -1252,7 +1008,8 @@ covers.
 
 ### T-040 — Extend the Windows desktop gate to widget focus order
 
-**Status:** **Blocked — on Windows evidence, not on code**, 2026-07-28. Four tests are written
+**Status:** **Blocked — on Windows evidence, and `T040-R1` is corrected**, 2026-07-28. Five tests
+are written
 into the existing `windows_desktop` suite and type-check under `mypy --platform win32`, which is
 the only scope that analyses them here. **The acceptance criteria require a demonstrated
 mutation, and that cannot be produced on this machine**: the module skips off Windows by design,
@@ -1342,8 +1099,21 @@ from the other, which is exactly what it exists not to be.
 body at all, since the host scope proves it unreachable. Bare `pytest`: **1395 passed, 11 skipped,
 2 deselected**; the new tests are among the skipped.
 
-**Blocker:** the `windows desktop` CI job. Same shape as `T-056` and `T-033`: the code is done,
-the evidence is not producible locally.
+#### Correction — `T040-R1`, 2026-07-28
+
+**A structural check is not a Windows test.** The progress-view test compared `focus_chain()` to a
+transcription and checked the same widgets were focusable. Both are true on any platform and
+neither touches the `windows` plugin this file exists for — it proved the order Qt was *told*,
+which the offscreen suite already covers, while claiming to prove the order Windows *delivers*.
+
+It now drives Tab and Shift+Backtab and asks Qt who holds focus, like the dialog tests beside it.
+The stand-in store also returns a **failed, retryable** job, because the view hides its Retry
+control otherwise (`T-017`) — a chain two controls long is one this file would have walked without
+noticing, which is the same defect one layer down.
+
+**Blocker, unchanged:** the `windows desktop` CI job. Same shape as `T-056` and `T-033`: the code
+is done, the evidence is not producible locally. `T040-R1`'s correction is equally unexecuted
+here.
 
 ---
 
@@ -5919,3 +5689,283 @@ four tasks, and pointing at a number is not the same act as repeating it.
 
 **No §7 requirement text was reworded.** The DRM row still reads exactly as it did; only the
 coverage claim about it changed.
+### T-037 — End-to-end download and restart proof
+
+**Status:** **Complete — approved with follow-ups**, 2026-07-28 at `894d794`. Both unowned exit
+criteria have tests against the assembled application; five mutations, five killed. Low
+`T037-R1` and `T037-R2` are corrected in the record and the fixture — the scope text described a
+faked adapter the implementation deliberately did not use, and the network fixture called Big Buck
+Bunny public domain when it is CC BY 3.0. **Phase 1 stays unready while `T-036` is blocking.**
+**Owner:** Implementer
+**Priority:** **High** — two Phase 1 exit criteria are unowned without it
+**Phase:** Phase 1
+**Depends on:** `T-036`
+**Relevant context:** `IMPLEMENTATION_PLAN.md` Phase 1 exit criteria; `REQ-012`, `REQ-014`,
+`NFR-003`; `ai/TESTING.md` §7 (Crash recovery)
+**Affected surfaces:** `tests/integration/`
+**Risk:** **High** — it is the evidence for the phase
+**Review base:** the `T-036` merge commit
+
+#### Scope
+
+**Filed after review: the phase had no proof of success.** `T-012` tests probing and failure,
+`T-019` tests cancellation and crashes — nobody proved a download *completing*. Phase 1's first
+exit criterion is "a real URL downloads to disk with accurate live progress and correct final
+bytes", and its fourth is "job state survives an application restart mid-download". Both were
+unowned.
+
+Two integration tests against the assembled application, deterministic and offline. *(This read
+"with yt-dlp faked at the adapter seam" when the task was filed, and the implementation
+deliberately did not do that — `T037-R1`. A faked adapter cannot move bytes, and the first exit
+criterion is about bytes moving, so the tests run **real yt-dlp against a local `http.server`**,
+which is the exception `ai/TESTING.md` §6 records for exactly this case. The scope text is
+corrected to what was built and why, rather than the implementation being bent back to a sentence
+written before the constraint was understood.)*
+
+1. **Success.** A job runs to completion: the file exists at the expected path, its byte count
+   matches what was reported, progress advanced monotonically through the `REQ-014` stages, and
+   the job's terminal state is success in both the UI and the repository.
+2. **Restart.** Kill the application mid-download, restart it, and assert the job is recovered
+   to a retryable state, visible in the UI, with its `DownloadRequest` intact — the assembled
+   equivalent of the database-level recovery `T-014` proves.
+
+A network-marked variant downloads one real, stable, small URL end to end, so the offline fake
+is checked against reality at least once. It stays excluded by default (`ai/TESTING.md` §2).
+
+#### Acceptance criteria
+
+- The completed file exists, and its size equals the total the final progress message reported
+  — a mismatch is exactly the bug this criterion is for
+- Progress is monotonic and reaches every `REQ-014` stage the job actually used
+- Success is recorded identically in the UI and the repository; disagreement fails
+- After a mid-download kill and restart, the job is recovered, visible, retryable, and its
+  stored `DownloadRequest` is byte-identical to the original (`REQ-012`, `NFR-003`)
+- Recovery is proven by killing a real process, not by closing the application cleanly
+- The `-m network` variant completes one real download and is **not** part of the default run
+
+#### Out of scope
+
+- Multiple concurrent jobs — Phase 2
+- Resume of a partial download — Phase 2
+
+#### Evidence, 2026-07-28
+
+**`tests/integration/test_end_to_end.py`** — three tests, everything real except the site. Real
+yt-dlp, its generic extractor, its HTTP downloader, a real spawned worker, a real file. The server
+is a local `http.server` on `127.0.0.1`, which is the §6 exception recorded for exactly this: the
+criterion is about bytes actually moving and a faked adapter cannot move any.
+
+**The assertion that matters joins the halves.** The file on disk is the size the last progress
+message said it would be, *and* the size the queue recorded. The worker knows the bytes and the
+manager knows the messages; only the assembled thing knows whether they agree.
+
+**The restart is a `SIGKILL` to another interpreter**, mid-download, with the row confirmed
+`RUNNING` first. A clean shutdown would prove teardown works, which `T-036` covers; `NFR-003` is
+about the other case. The recovered job comes back `FAILED`/`INTERRUPTED`, retryable, visible in
+the UI, with its `DownloadRequest` byte-identical to what was submitted. A third test plants a
+`RUNNING` row directly, so the claim is about startup rather than about what the previous test
+left behind.
+
+**Two things found on the way, both worth more than the fix:**
+
+- **`mypy --platform win32` caught a test that could not run on Windows.** `os.killpg`,
+  `os.getpgid` and `signal.SIGKILL` are POSIX-only, so the `windows-latest` job would have
+  reported an `AttributeError` rather than a finding. The halves are now split at module level,
+  following `downloader/process_tree.py`'s own idiom — each is then type-checked by the run that
+  owns it, where a branch inside a function leaves the other side unreachable to whichever run is
+  looking. This is `AGENTS.md` §8's "a host-only check is not the whole gate", found by the gate
+  that exists for it.
+- **The default preset legitimately cannot download the fake clip.** Its selector filters on
+  `height` and `ext`; a bare `video/mp4` declares no height, so "Requested format is not
+  available" is the *correct* answer. The tests choose a preset instead, which is what the dialog
+  is for (`REQ-006`). Recorded at the constant rather than worked around silently, because the
+  other reading — that a preset is broken — is wrong and a future reader deserves the real one.
+
+**Mutations run, all killed:** startup no longer recovering interrupted jobs · a completed job
+forgetting its output path · recovery rewriting the request it recovers · an interruption recorded
+as a worker crash · the stored byte total drifting from the bytes that moved.
+
+**One mutation deliberately not counted.** Freezing `bytes_done` so the stored counter never
+advances survives, and should: the manager persists progress only on a *stage transition*, so with
+a single-stage download there is exactly one write and a frozen counter is indistinguishable from
+correct behaviour. Gating it would assert a promise the design does not make (`ai/TESTING.md` §13).
+
+**The `-m network` variant is written and has never been executed here.**
+`tests/network/test_real_download.py` downloads one real archive.org file through the same path,
+so the offline fake is checked against reality once. This machine ran it zero times; the first
+real run is whoever runs `pytest -m network`. Stated because "written" and "passing" are different
+claims and only the first is true. Its `conftest.py` duplicates the `spin` helper rather than
+hoisting it, which would put a Qt import in front of the deliberately Qt-free unit suite.
+
+**Checks:** `ruff check .`, `ruff format --check .` (91 files), `mypy src` (35), configured `mypy`
+and `mypy --platform win32` (76 each) all pass. Bare `pytest`: **1395 passed, 11 skipped,
+2 deselected**.
+
+---
+
+### T-059 — A view opened onto a finished job renders it from the wrong source
+
+**Status:** **Complete — approved**, 2026-07-28 at `52f0aed`. `T017-R4` is Resolved. The rule
+gained one entry point instead of two, and the row construction exposed. Three mutations, three
+killed — including `_load` computing its own answer, which was the finding.
+**Owner:** Implementer
+**Priority:** Medium — it is what a user sees after every restart, which is the ordinary case
+rather than an edge one
+**Phase:** Phase 1
+**Depends on:** nothing. **Lands before or with `T-036`**, which is the first code that will
+construct a view over a job it did not watch finish
+**Relevant context:** `T017-R4`; `ai/REVIEWS.md` (fifth `T-017` re-review); `NFR-005`
+**Affected surfaces:** `src/tracks_and_trails/ui/job_detail.py`, `tests/ui/test_job_detail.py`
+**Risk:** Low to fix, Medium to leave — a screen reader and the visible byte line disagree
+
+#### Scope
+
+`T-017` established a rule for where a stopped job's displayed size comes from, and put it in one
+place — `_totals_for_ending`. **`_load` does not go through that place.** So the rule holds for a
+job that finishes while the view is watching and not for one the view is opened onto:
+
+- an already-`COMPLETED` row of `bytes_done=1, bytes_total=20` shows a full bar described as
+  "Complete: 20 B downloaded" beside a byte line reading "1 B of 20 B";
+- with no recorded total it shows "Complete" beside "3 B of Unknown".
+
+Both are the same contradiction `T017-R2` and `T017-R4` were about, reached through the one entry
+point none of the five correction batches drove. **Every test in `T-017` starts from a running
+view**, which is exactly why: a suite that never opens a view onto a finished job cannot see what
+opening one does.
+
+Reopening is not an exotic path. It is what happens after every restart, and after `T-036` it is
+how any completed job will first appear.
+
+#### Acceptance criteria
+
+- Construction goes through the same rule as a live terminal transition — one place decides,
+  reached from both entry points, rather than two places agreeing
+- A view opened onto a `COMPLETED` row whose counter lags its total shows one consistent story:
+  the bar, the byte line and the accessible description agree
+- A view opened onto a `COMPLETED` row with no recorded total states no size it does not have
+- A view opened onto a `CANCELLED` or `FAILED` row shows what the row holds, since there is no
+  earlier display to preserve — state the answer rather than inheriting it by accident
+- The tests drive **construction**, not only transition, for every row of the rule; a mutation
+  that makes `_load` bypass the rule fails at least one of them
+
+#### Out of scope
+
+- The rule itself, which `T-017` settled and the reviewer verified for live transitions
+- Any other `job_detail.py` behaviour; `T017-R1`, `R2`, `R3` and `R5` are resolved and closed
+
+#### Evidence, 2026-07-28
+
+**`_adopt_totals` is the one entry point**, reached from construction and from a live terminal
+transition alike. `_load` used to compute its own answer, which is why one row gave two results
+depending on whether anyone had been watching it finish.
+
+**The rule gained a row, because construction exposed a case the rule did not have.** For a
+cancelled or failed job it said "whatever was last shown" — correct while watching, and meaningless
+for a view that watched none of it, where "what was last shown" is the pair of `None`s the view was
+constructed with. A reopened stopped job takes the row, since nothing is closer:
+
+| The job is | The size comes from |
+|---|---|
+| running | the last rendered progress message |
+| `COMPLETED` | the row's `bytes_total` |
+| `CANCELLED` / `FAILED`, watched | whatever was last shown |
+| `CANCELLED` / `FAILED`, reopened | the row |
+
+That fourth row is stated rather than inherited. The previous code would have reached it by
+falling through to an empty display, and a cancelled download would have reported nothing at all
+about how far it got — a defect the tests would not have caught either, because they would have
+been asserting on the same accident.
+
+**Five parametrised construction cases**, one per row plus the two shapes `T017-R4` reported:
+a completed row whose counter lags its total, a completed row with no total, cancelled partway,
+failed partway, and cancelled before any bytes moved. Each asserts the byte line and the bar agree,
+which is the contradiction every form of this finding produced.
+
+**Mutations run, all killed:** `_load` bypassing the rule — the finding itself · a reopened stopped
+job inheriting the empty display · the watched case taking the row too.
+
+**Checks:** `ruff check .`, `ruff format --check .`, `mypy src`, configured `mypy` and
+`mypy --platform win32` all pass. Bare `pytest` green.
+
+**Why five `T-017` rounds missed it, recorded because it is about test design rather than this
+widget:** every test in that task began with a running view. A suite that never opens a view onto
+a finished job cannot observe what opening one does, however many cases it drives afterwards.
+
+---
+
+### T-052 — Make the T-013 correction tests kill their claimed mutations
+
+**Status:** **Complete — approved**, 2026-07-28 at `7d67e77`. `T013-R5` is Resolved. Both named
+mutations are killed, and the route-before-validation one on **each** of the three routes the
+criteria list. Half of this task turned out to be already done — see **Evidence**.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 1
+**Depends on:** `T-013`
+**Relevant context:** `T013-R5`; `ai/TESTING.md` §13
+**Affected surfaces:** `tests/integration/test_manager.py`
+**Risk:** Low — production behavior is correct; the negative gate is weaker than its evidence
+record claims
+
+#### Scope
+
+Strengthen the T-013 correction evidence at the observations where a route-before-validation
+regression is currently invisible. Moving the pump's signal emission immediately before
+`SessionValidator.accept()` leaves all five cases in
+`test_an_illegal_message_never_reaches_the_job` green: the test excludes only `READY` and
+`COMPLETED`, so illegal progress may still persist `RUNNING`; it does not assert that foreign
+progress or a duplicate resolution report was withheld from the public signals.
+
+The startup-construction test also ends its useful-error assertion with `or True`, making that
+assertion unconditional. Remove the escape and prove the stored diagnostic retains the original
+failure rather than a cleanup error.
+
+#### Acceptance criteria
+
+- Reordering validation and routing makes at least one committed test fail for each affected
+  route: persisted progress state, public progress, and resolution report
+- The tests assert the complete persisted status sequence, not selected terminal states
+- The useful startup diagnostic assertion has no unconditional branch and fails if the original
+  construction error is discarded
+- The route-before-validation and diagnostic-weakening mutations are run and recorded as killed
+
+#### Out of scope
+
+- Changing `SessionValidator` or the production routing order, which are correct at `65303a2`
+- The blocking cleanup behavior in `T013-R3` and `T013-R4`
+
+#### Evidence, 2026-07-28
+
+**The `or True` was already gone**, removed by a later `T-013` pass that cited this task. Removing
+it had shown the production behaviour was right and the *assertion* was wrong: it looked for a
+parametrised component name the message never claimed to carry. What the message must carry — and
+does — is the `OSError` that stopped the start rather than whatever the unwind hit afterwards.
+Recorded rather than quietly dropped from the scope, because "already fixed" and "not a problem"
+are different findings.
+
+**What was still missing was the shape of the assertions, not their subject.**
+
+- `test_an_illegal_message_never_reaches_the_job` excluded `COMPLETED` and `READY` **by name**,
+  which left `RUNNING` unexamined — so an illegal *progress* message routed before validation
+  persisted a state that never legitimately existed and nothing noticed. It now asserts the
+  **complete persisted sequence**.
+- It checked `succeeded` and `probed` and not `progress` or `resolution_reported`, so a message
+  the validator went on to reject could still have reached a widget first. All four public routes
+  are checked now.
+
+**Mutations run, all killed:**
+
+| Mutation | Killed by |
+|---|---|
+| The pump routes before it validates | `probe-stage` (persisted progress state), `foreign-job-id` (public progress), `two-reports` (resolution report) — one per route, as the criteria ask |
+| The stored diagnostic discards the original cause | `test_a_startup_failure_leaves_a_failed_job_rather_than_a_phantom_one`, both parametrisations |
+| The failure message replaces the cause with the cleanup's | the same test, both parametrisations |
+
+The first mutation was the point of the task and it now fails on **three** parametrisations rather
+than the two it would have before, because the persisted-sequence assertion is what catches the
+probe case.
+
+**Checks:** `ruff check .`, `ruff format --check .`, configured `mypy` (76 files) all pass. Bare
+`pytest`: **1395 passed, 11 skipped, 2 deselected**. No production code changed.
+
+---

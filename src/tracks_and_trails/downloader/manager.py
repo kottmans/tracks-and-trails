@@ -397,6 +397,8 @@ class DownloadManager(QObject):
         self._reserved: dict[str, _PendingStart] = {}
         #: Per job, the writes and effects still to happen, in order. See `_Chain`.
         self._chains: dict[str, _Chain] = {}
+        #: A job re-queued by `retry()` and waiting for the pool of one to free up (`T036-R1`).
+        self._pending_retry: str | None = None
         self._shutting_down = False
         self._shutdown_deadline: float | None = None
         # The log listener's ending, which `idle` now waits on (`T038-R2`). Three states rather
@@ -423,8 +425,11 @@ class DownloadManager(QObject):
         A reserved start counts. It used to not, so `idle` could go out while a start's write was
         still on the writer thread — and composition (`T-036`) treats that signal as permission
         to quit, which would have quit into a callback that then spawned a worker.
+
+        So does a retry waiting for the pool (`T036-R1`): it is work this manager has accepted and
+        will begin. `shutdown()` drops it, which is what stops that from holding the door.
         """
-        return not self._sessions and not self._reserved
+        return not self._sessions and not self._reserved and self._pending_retry is None
 
     @property
     def gave_up_on_the_log(self) -> bool:
@@ -805,6 +810,59 @@ class DownloadManager(QObject):
         # next timer interval to escalate.
         self._tick()
 
+    def retry(self, job_id: str) -> None:
+        """Re-queue a failed job and start it as soon as the pool can take it (`REQ-018`).
+
+        **The manager owns this, and `T036-R1` is what it cost to have composition own it.** A
+        retry is a state transition plus a start, and both are this object's business — so when
+        composition wrote `FAILED → QUEUED` through the store itself, two things went wrong at
+        once. Nothing announced the transition, because `job_changed` is emitted from *this*
+        object's write callback and the store has no signal; so a progress view went on showing
+        `FAILED` over a row that said `QUEUED`. And the start was attempted exactly once,
+        immediately, while the failed session was still being released — the pool of one refused
+        it, the refusal was logged and swallowed, and nothing ever tried again. The reviewer
+        measured no transitions at all five seconds after pressing Retry.
+
+        The waiting half is deliberately small. This is **not** Phase 2's scheduler: one job may
+        be waiting, it is the one the user just asked for, and it starts on the tick that finds
+        the pool free — which is normally the next one, because what it is waiting for is a
+        session that has already ended being released.
+
+        A job that is not `FAILED` is not retried, and saying so beats raising: this is reached
+        from a widget's signal (`T-017`), and `FAILED → QUEUED` is the state machine's only edge
+        back.
+        """
+        job = self._repository.get(job_id)
+        if job is None or job.status is not JobStatus.FAILED:
+            return
+        self._persist(
+            job_id,
+            lambda current: (
+                current.with_status(JobStatus.QUEUED)
+                if current.status is JobStatus.FAILED
+                else None
+            ),
+            then=lambda: self._start_when_free(job_id),
+        )
+
+    def _start_when_free(self, job_id: str) -> None:
+        """Start `job_id` now, or on the first tick that finds the pool of one free."""
+        if self._shutting_down:
+            return
+        if self._sessions or self._reserved:
+            self._pending_retry = job_id
+            # The tick is what will notice; without this the timer may not be running at all.
+            self._timer.start()
+            return
+        self._pending_retry = None
+        try:
+            self.start(job_id)
+        except (RuntimeError, ValueError) as refusal:
+            # Reported, not swallowed. `start_rejected` is the asynchronous half of `start()`'s
+            # answer and the dialog already listens to it; a retry that cannot start has exactly
+            # the same shape as a probe that cannot.
+            self.start_rejected.emit(job_id, str(refusal))
+
     def shutdown(self, timeout: float = DEFAULT_SHUTDOWN_SECONDS) -> None:
         """Begin teardown and return. **Nothing here waits** (`T013-R2`).
 
@@ -830,6 +888,9 @@ class DownloadManager(QObject):
             return
         self._shutting_down = True
         self._shutdown_deadline = time.monotonic() + timeout
+        # A retry that has not started yet never will. Dropped rather than carried, so `idle`
+        # is not held open by work this manager has just decided not to do (`T036-R1`).
+        self._pending_retry = None
         # Reserved starts as well as running sessions (`T016-R3`). A start whose transition is
         # still on the writer thread has no process to cancel yet, and skipping it here is how
         # shutdown used to announce `idle` and then spawn a worker from the callback that
@@ -874,10 +935,17 @@ class DownloadManager(QObject):
                 if now >= session.reap_at:
                     self._force_stop(session)
 
-        if self._sessions or self._reserved:
+        waiting = self._pending_retry
+        if waiting is not None and not self._sessions and not self._reserved:
+            # The pool freed up. This is the whole of the retry's "scheduling" (`T036-R1`).
+            self._pending_retry = None
+            self._start_when_free(waiting)
+
+        if self._sessions or self._reserved or self._pending_retry is not None:
             # A reservation counts as work in flight (`T016-R3`). Its transition is still on the
             # writer thread, and the callback that settles it is what decides whether a worker
-            # appears — so `idle` here would be a promise this manager cannot keep.
+            # appears — so `idle` here would be a promise this manager cannot keep. A retry
+            # waiting for the pool is the same claim.
             return
         if self._shutting_down and not self._the_log_has_finished(now):
             # Not idle yet, and the timer stays running. `idle` is what tells composition it may

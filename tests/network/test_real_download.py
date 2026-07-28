@@ -29,12 +29,18 @@ from PySide6.QtWidgets import QApplication
 from tracks_and_trails import app as application
 from tracks_and_trails.core.job_state import JobStatus
 
-#: A small, stable, licence-clear file on a host that exists to serve archives.
+#: A small, stable, openly licensed file on a host that exists to serve archives.
 #:
 #: Chosen for durability rather than convenience: the Internet Archive keeps identifiers stable,
-#: this item is public domain, and the file is a few megabytes rather than a few hundred. The
-#: project already pins recorded `info_dict` fixtures from the same host (`tests/fixtures/`), so
-#: a change there shows up in two places at once, which is the useful behaviour.
+#: and the file is a few megabytes rather than a few hundred. The project already pins recorded
+#: `info_dict` fixtures from the same host (`tests/fixtures/`), so a change there shows up in two
+#: places at once, which is the useful behaviour.
+#:
+#: **Big Buck Bunny is CC BY 3.0, not public domain** (`T037-R2`) — the Blender Foundation's own
+#: release poster carries the attribution. This comment said "public domain", which is the sort of
+#: claim that is easy to repeat and wrong to rely on: `LIC-001` makes licence compatibility a
+#: standing concern, and nothing here should teach a future reader a licence it does not have.
+#: Downloading it in a test is fine under CC BY; redistributing it would need the attribution.
 REAL_URL = "https://archive.org/download/BigBuckBunny_124/Content/big_buck_bunny_720p_surround.mp4"
 
 #: The preset whose selector suits a direct media file — the same reasoning as the offline test:

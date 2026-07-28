@@ -579,12 +579,26 @@ def test_retrying_a_failed_job_re_queues_it_and_starts_it_again(
     )
     failed = composition.store.get(failed_id)
     assert failed is not None and failed.status is JobStatus.FAILED
+    transitions: list[str] = []
+    composition.manager.job_changed.connect(lambda job_id, status: transitions.append(status))
+
     view.retry_requested.emit(failed_id)
 
-    # Whether it *starts* depends on the pool of one, and that is not what a retry promises:
-    # `FAILED → QUEUED` is the durable part. A retry that could not start logs it and leaves the
-    # job queued, rather than raising out of the write callback it runs from.
-    assert spin(
-        lambda: (composition.store.get(failed_id) or failed).status is not JobStatus.FAILED,
-        timeout=60,
-    ), "the retry never moved the job out of failed"
+    # **A retry that leaves an inert queued row is not a retry** (`T036-R1`). The previous version
+    # of this test asserted only that the job left `FAILED`, and a comment here argued that
+    # starting was not part of the promise. The reviewer measured what that argument costs: the
+    # failed session had not been released yet, the pool of one refused the start, the refusal was
+    # swallowed, and five seconds later nothing had happened — a queued row nobody was running, a
+    # view still showing the old failure, and a Retry button that did nothing the second time.
+    assert spin(lambda: "queued" in transitions, timeout=60), (
+        f"the re-queue was never announced, so no widget could learn about it: {transitions}"
+    )
+    assert spin(lambda: any(s in transitions for s in ("probing", "running")), timeout=60), (
+        f"the retry re-queued the job and never started it: {transitions}"
+    )
+
+    # The view stops showing the old failure, because the manager announced the transition. When
+    # composition wrote it through the store instead, nothing did.
+    assert spin(lambda: view.status is not JobStatus.FAILED, timeout=60), (
+        "the progress view still shows the failure this retry replaced"
+    )

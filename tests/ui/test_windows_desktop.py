@@ -23,6 +23,8 @@ import ctypes
 import os
 import subprocess
 import sys
+from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
@@ -31,7 +33,9 @@ from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QMenu, QWidget
 
-from tracks_and_trails.core.models import Job
+from tracks_and_trails.core.errors import ErrorKind
+from tracks_and_trails.core.job_state import JobStatus
+from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.add_dialog import AddUrlDialog
 from tracks_and_trails.ui.job_detail import build_progress_view
@@ -52,15 +56,41 @@ SCREENSHOT_DIR = Path("reports/screenshots")
 
 
 class _EmptyStore:
-    """A store with nothing in it, satisfying every protocol the widgets here need.
+    """A store holding at most one job, satisfying every protocol the widgets here need.
 
     These tests are about **focus**, not about jobs: no session is ever started and no row is
     ever written. A real store would add a writer thread and a database to a file whose subject
     is which control Windows hands the caret to next.
+
+    It can return a *failed* job because the progress view hides its Retry control unless the
+    failure is retryable (`T-017`), and a chain missing a control is a chain this file would
+    walk without noticing (`T040-R1`).
     """
 
+    def __init__(self, status: JobStatus | None = None, kind: ErrorKind | None = None) -> None:
+        self._status = status
+        self._kind = kind
+
     def get(self, job_id: str) -> Job | None:
-        return None
+        if self._status is None:
+            return None
+        job = Job(
+            id=job_id,
+            url="https://focus.invalid/x",
+            request=DownloadRequest(
+                url="https://focus.invalid/x",
+                output_directory=".",
+                format_selector="best",
+                output_template="%(title)s.%(ext)s",
+            ),
+            created_at=datetime.now(UTC),
+        )
+        return replace(
+            job.with_status(JobStatus.PROBING).with_status(JobStatus.READY),
+            status=self._status,
+            error_kind=self._kind,
+            error_message="something went wrong",
+        )
 
     def all_jobs(self) -> list[Job]:
         return []
@@ -568,23 +598,57 @@ def test_every_control_is_reachable_from_the_initial_focus(shown_dialog: AddUrlD
     assert not unreachable, f"unreachable by keyboard from the initial focus: {sorted(unreachable)}"
 
 
-def test_the_progress_view_controls_are_reachable_too(
+#: The progress view's controls, in the order a user should meet them: read what went wrong,
+#: then act on it. Transcribed by hand, like the dialog's, and for the same reason.
+EXPECTED_VIEW_ORDER = ("errorMessage", "cancelJobButton", "retryJobButton")
+
+
+def test_the_progress_view_focus_chain_is_walked_on_a_real_desktop(
     shown_window: MainWindow, tmp_path: Path
 ) -> None:
     """`T-017` added three more focusable controls, and they are this task's too.
 
-    `T-040` was filed when the dialog was the only widget with any; the progress view arrived
-    afterwards and its order is asserted offscreen for the same reason and with the same gap.
+    **`T040-R1`: this compared two lists and called it a Windows test.** It asserted that
+    `focus_chain()` matched a transcription and that the same widgets were focusable — both true
+    on any platform, neither touching the `windows` plugin this file exists for. A structural
+    check that never presses Tab proves the order Qt was *told*, which the offscreen suite
+    already covers; what is unproved is the order Windows *delivers*.
+
+    So this drives it: Tab through the chain, Backtab back, and ask Qt who actually has focus.
+    The job is `FAILED` with a retryable kind so all three controls are present — a hidden Retry
+    would make the chain two long and the test would be asserting over a different widget.
     """
-    store = _EmptyStore()
+    store = _EmptyStore(status=JobStatus.FAILED, kind=ErrorKind.NETWORK)
     manager = DownloadManager(store)
     view = build_progress_view(manager, store, "job-1", None)
     shown_window.setCentralWidget(view)
     view.show()
+    shown_window.raise_()
+    shown_window.activateWindow()
     QApplication.processEvents()
 
     declared = [widget.objectName() for widget in view.focus_chain()]
-    assert declared == ["errorMessage", "cancelJobButton", "retryJobButton"]
-    assert set(_focusable(view)) == set(declared), (
-        f"focusable: {sorted(set(_focusable(view)))}, declared: {sorted(set(declared))}"
+    assert declared == list(EXPECTED_VIEW_ORDER), f"the declared order changed: {declared}"
+    assert set(_focusable(view)) == set(EXPECTED_VIEW_ORDER), (
+        f"focusable: {sorted(set(_focusable(view)))}, declared: {sorted(EXPECTED_VIEW_ORDER)}"
+    )
+
+    first = view.findChild(QWidget, EXPECTED_VIEW_ORDER[0])
+    assert first is not None
+    first.setFocus()
+    QApplication.processEvents()
+
+    visited = _walk_focus_chain(shown_window, len(EXPECTED_VIEW_ORDER))
+    assert set(visited) >= set(EXPECTED_VIEW_ORDER), (
+        f"Tab did not reach every control on a real desktop: visited {visited}"
+    )
+
+    backwards: list[str] = []
+    for _ in range(len(EXPECTED_VIEW_ORDER)):
+        QTest.keyClick(shown_window, Qt.Key.Key_Backtab, Qt.KeyboardModifier.ShiftModifier)
+        QApplication.processEvents()
+        focused = QApplication.focusWidget()
+        backwards.append(focused.objectName() if focused is not None else "")
+    assert set(backwards) >= set(EXPECTED_VIEW_ORDER), (
+        f"Shift+Tab did not reach every control on a real desktop: visited {backwards}"
     )
