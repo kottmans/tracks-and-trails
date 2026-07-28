@@ -356,6 +356,144 @@ def test_absorbing_a_burst_stays_inside_the_interaction_budget(
     )
 
 
+def test_a_status_change_does_not_redraw_progress_outside_the_rate_limit(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T017-R1`: the second route into the progress fields had no rate limit on it.
+
+    The burst test above drives `_on_progress` alone, so it never crossed the path a real
+    download takes — where a stage change persists, `job_changed` arrives, and the widget was
+    calling `_draw_pending()` from that slot. Three messages interleaved with three status
+    changes redrew three times inside one interval, and the rate is the whole promise.
+
+    What must stay immediate is the *state word*: a cancelled job may not go on saying
+    "Downloading" until the next tick. That is written by `_refresh`, not by drawing progress.
+    """
+    store.add(make_job("job-1", tmp_path, status=JobStatus.PROBING))
+    manager = managers()
+    view = views(manager=manager, jobs=store, job_id="job-1", repaint_interval_ms=100)
+
+    def message(index: int) -> Progress:
+        return Progress(
+            job_id="job-1", stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=index, total_bytes=3
+        )
+
+    view._on_progress(message(1))
+    view._on_job_changed("job-1", JobStatus.RUNNING.value)
+    view._on_progress(message(2))
+    view._on_job_changed("job-1", JobStatus.POST_PROCESSING.value)
+    view._on_progress(message(3))
+
+    assert view.renders == 0, (
+        f"{view.renders} repaints inside one interval; a status change flushed pending progress "
+        "past the rate limit"
+    )
+    assert view.stage_text() == "Post-processing", (
+        "the state word has to stay immediate even though the progress behind it waits"
+    )
+
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and view.renders == 0:
+        qapp.processEvents()
+        time.sleep(0.005)
+    assert view.renders == 1, f"the interval produced {view.renders} repaints, not one"
+    drawn = view.displayed_progress
+    assert drawn is not None and drawn.downloaded_bytes == 3, "the repaint drew a stale message"
+
+
+def test_a_terminal_state_drops_progress_that_can_no_longer_be_true(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T017-R1`, the other half: deferring a message past the ending would overwrite it.
+
+    Holding pending progress behind the rate limit is right while a job is running and wrong once
+    it has stopped — nothing a worker said before the end is still true afterwards, and a tick
+    later it would replace "Cancelled" with the download that is not happening.
+    """
+    store.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING))
+    view = views(manager=managers(), jobs=store, job_id="job-1", repaint_interval_ms=10)
+
+    view._on_progress(
+        Progress(job_id="job-1", stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=5, total_bytes=10)
+    )
+    view._on_job_changed("job-1", JobStatus.CANCELLED.value)
+
+    assert view.pending_progress is None, "a message that can no longer be true was kept"
+    assert view.stage_text() == "Cancelled"
+
+    deadline = time.monotonic() + 0.5
+    while time.monotonic() < deadline:
+        qapp.processEvents()
+        time.sleep(0.005)
+    assert view.renders == 0
+    assert view.stage_text() == "Cancelled", "a deferred progress message overwrote the ending"
+
+
+def test_the_bar_never_describes_itself_as_the_bar_it_no_longer_is(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T017-R2`, gated in **both** directions.
+
+    An unknown total is the ordinary opening state of a download and a known one arrives moments
+    later, so the transition is common rather than exotic. The indeterminate branch set an
+    accessible description and the determinate branch never cleared it: the bar showed 50 percent
+    while telling a screen reader that progress could not be measured. Under `NFR-005` that is
+    worse than silence — two users of the same widget were being told different things.
+    """
+    store.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING))
+    view = views(manager=managers(), jobs=store, job_id="job-1", repaint_interval_ms=1)
+    bar = view.findChild(QProgressBar, "progressBar")
+    assert bar is not None
+
+    def deliver(done: int, total: int | None) -> None:
+        view._on_progress(
+            Progress(
+                job_id="job-1",
+                stage=Stage.DOWNLOADING_VIDEO,
+                downloaded_bytes=done,
+                total_bytes=total,
+            )
+        )
+        renders = view.renders
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and view.renders == renders:
+            qapp.processEvents()
+            time.sleep(0.005)
+
+    deliver(1024, None)
+    assert (bar.minimum(), bar.maximum()) == (0, 0)
+    assert "cannot be measured" in bar.accessibleDescription()
+
+    deliver(5, 10)
+    assert (bar.minimum(), bar.maximum()) == (0, 100)
+    assert bar.value() == 50
+    assert "cannot be measured" not in bar.accessibleDescription(), (
+        f"the determinate bar still says progress cannot be measured: "
+        f"{bar.accessibleDescription()!r}"
+    )
+    assert "50" in bar.accessibleDescription(), (
+        "a determinate bar has to say what it shows, not merely stop lying"
+    )
+
+    deliver(2048, None)
+    assert (bar.minimum(), bar.maximum()) == (0, 0)
+    assert "cannot be measured" in bar.accessibleDescription(), (
+        "going back to an unknown total left the old percentage in the description"
+    )
+
+
 # --- 3. cancel (`REQ-015`) --------------------------------------------------------------------
 
 

@@ -107,25 +107,26 @@ say so (2026-07-28): asynchrony is not free at the call site.
 
 **DRM was never the uncovered mandatory area this file claimed.** Reading the tests rather than
 the record found three layers already gating it; `T-017` added the fourth (the UI half), `T-057`
-canaried the yt-dlp field the whole boundary rests on, and `T-058` recounted `ai/TESTING.md` §7 to
-**ten of ten**. `T-057` found two real divergences on the way: the adapter read `has_drm='maybe'`
-as protected, and its fallback used `all` where `_has_drm` — the branch that actually runs — uses
-`any`, so the two halves of one function disagreed about a mixed item.
+canaried the yt-dlp field the whole boundary rests on, and `T-058` recounted `ai/TESTING.md` §7 —
+where the count lives, and where this file now sends you rather than restating it. `T-057` found
+two real divergences on the way: the adapter read `has_drm='maybe'` as protected, and its fallback
+used `all` where `_has_drm` — the branch that actually runs — uses `any`, so the two halves of one
+function disagreed about a mixed item.
 
 **`T-056` is corrected but not demonstrable here.** The fix is Windows-only, and the mutation that
 proves it survives on Linux by construction. That is `AGENTS.md` §8's "a host-only check is not
 the whole gate" in its exact form, and it needs the Windows job.
 
-- **`T-016` — Changes requested, first correction batch returned 2026-07-27.** The initial review
-  found one Critical, two High and three blocking Medium defects; all six are corrected in one
-  batch. The Critical is worth carrying forward: a probe result was bound to a **job id** and not
-  to the URL still on screen, so editing the first line mid-probe made the dialog accept the old
-  metadata, start the old URL, and silently drop the one the user had submitted.
-  **`T016-R3` needed an architecture decision** — the widget was writing to SQLite on the GUI
-  thread, measured at 0.302 s blocked plus an unhandled `OperationalError`, and how the
-  application writes *without* blocking had never been decided. `T-055` decides it as `ARC-005`:
-  one writer thread owning its own connection, batches as single transactions, results reported
-  back on the GUI thread.
+- **`T-016` is Approved**, 2026-07-28 at `6ce195a`. Four correction batches; `T016-R1` and
+  `T016-R3` were independently verified resolved on the fourth. The Critical is worth carrying
+  forward past approval, because each round restated it rather than repeating it: a probe result
+  was first bound to a **job id** and not to the URL on screen, then to a withdrawal nothing
+  owned until it was durable, then to a start that could be cancelled after it had been reserved
+  and before it existed. Every version had the same consequence — work the user had taken away
+  running anyway — and the last two only became reachable when `ARC-005` made writes
+  asynchronous. *(This bullet said "Changes requested, first correction batch returned" until
+  2026-07-28, three batches after that stopped being true, and sat directly above a description
+  of the fourth. `T-054`'s reviewer found it.)*
 - **`T-019` and `T-038` are both Approved**, 2026-07-27 — `T-019` at `eaa5b50`, `T-038` at
   `098ba3f` after three focused corrections of High `T038-R2`. That finding was the one that
   "directly regresses High `T013-R2`": the per-job log handler closed when the *result* pump
@@ -134,8 +135,9 @@ the whole gate" in its exact form, and it needs the Windows job.
   the identical still-attached handler, and `idle` is withheld while the listener thread is alive,
   polled by the existing timer and never joined, with `gave_up_on_the_log` as the bounded escape
   if it wedges past `reap_seconds`. `T013-R2/R3/R4` were re-examined and remain resolved.
-  `ai/TESTING.md` §7's coverage was recounted on 2026-07-28 by `T-058`: **ten of ten**, with the
-  DRM row's four claims each mutation-checked before being recorded.
+  `ai/TESTING.md` §7's coverage was recounted by `T-058` on 2026-07-28, with the DRM row's four
+  claims each mutation-checked before being recorded. The count itself lives in §12 and is not
+  repeated here.
 - **`T-013` closed after three correction passes.** `T013-R1`, `T013-R2` and `T013-R4` were
   verified resolved; `T013-R3` came back twice more with a different sibling each time, so the
   maintainer authorized **restructuring** the startup transaction rather than patching it again:
@@ -153,7 +155,8 @@ the whole gate" in its exact form, and it needs the Windows job.
   something was being kept without a reader for it, and the argument for keeping it was always
   "it's only shape / only names / only the parts we recognise". The allowlist survived review
   because it starts from what is *read*. Anything else in a fixture is a liability with a story.
-- **`ai/TESTING.md` §7 covers ten of ten mandatory areas, all in the default local run.**
+- **`ai/TESTING.md` §12 holds the mandatory-area coverage count; §7's areas are all in the
+  default local run.**
   `T-013` added Cancellation and Worker crash against real spawned processes; both moved behind
   `-m process_tree` in `9010794`, because `T-019`'s live defect left descendants that wedged later
   runs. **`T019-R1` caught that the same marker removed them from CI**, which ran a bare `pytest`
@@ -346,7 +349,10 @@ The `core/` modules remain **domain vocabulary plus pure functions** — what a 
 a failure *are*, the rules for moving between states, and filename safety. `persistence/` is the
 first module that keeps something across a restart.
 
-**`TESTING.md` §12 holds the count of §7's ten mandatory areas, and this file does not repeat
-it.** Two statements of one number in one file was the defect the last correction named; two
-files stating it was the defect that survived that correction, and it is why "DRM is uncovered"
-outlived being true by four tasks. `T-058` recounted the rows and moved the number to one home.
+**`TESTING.md` §12 holds the mandatory-area coverage count, and this file does not repeat it —
+including the denominator.** Two statements of one number in one file was the defect the last
+correction named; two files stating it was the defect that survived that correction, and it is
+why "DRM is uncovered" outlived being true by four tasks. `T-058` recounted the rows; `T058-R1`
+then found that the correction had *restated* the new number here three times while claiming this
+very sentence was true. Pointing at a number and repeating it are not the same act, and only the
+first one keeps.

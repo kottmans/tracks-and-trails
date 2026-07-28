@@ -4354,3 +4354,163 @@ withdrawn work to run, and R3 still breaks the persistence and shutdown ordering
 T-013. `AGENTS.md` §9 permits another focused correction and independent verification pass
 without maintainer authorization. It must stay on durable withdrawal, ordered per-job
 continuations, and the affected T-013 lifecycle guarantees; R2 and R4–R8 remain settled.
+
+## 2026-07-28 — T-016 fourth correction and T-017 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** `T-016`, `T-017`
+**Base:** `6ad20f6`  **Head:** `6ce195a`
+**Implementation commits:** `68c978d` (`T-016`), `6ce195a` (`T-017`)
+**Later commits excluded from the implementation boundary:** `63f9e69`, `4a06e92`, `257b7c7`,
+`9c92c32`, and coordination-only `2831973`
+**Platforms verified:** Linux locally; Windows type analysis only
+**Verdict by task:** `T-016` **Approved**; `T-017` **Changes requested**
+
+### T-016 finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T016-R1` | **Critical** | **Yes** | **Resolved.** A reserved start is now an owned `_PendingStart` that cancellation can withdraw; `_spawn()` re-checks the reservation and shutdown before constructing anything. The first Close that creates a withdrawal remains visible and completes itself only after durable `CANCELLED`. `PersistentJobStore` retains only in-flight revisions and falls back to the concrete repository after they settle, so two failed revisions cannot restore a failed predecessor. The committed regression tests reproduce all three exact-head probes from the preceding review. |
+| `T016-R3` | **High** | **Yes** | **Resolved.** `_Chain` sequences each job's writes and dependent effects, computes transitions when their turn arrives, and orders non-moving progress behind a pending state transition. Reservations participate in `is_idle`, `active_job_ids()`, shutdown, and the tick gate. Startup cleanup is separated from announcements that require durable `FAILED`, and `start_rejected` gives the dialog the asynchronous half of `start()`'s outcome. The 2026-07-28 amendment to `ARC-005` explicitly retracts the false “only the announcement moved” equivalence. |
+
+The two changed `active_job_ids() == ()` assertions encoded the defect rather than protecting a
+useful guarantee. They now assert that the reserved job is visible and the manager is not idle;
+`test_no_worker_exists_while_the_row_still_says_queued` independently checks `_sessions` and was
+strengthened to assert both worker absence and reservation ownership. The judgment is accepted.
+`T016-R2` and `T016-R4` through `T016-R8` remain resolved.
+
+### T-017 findings
+
+| ID | Severity | Blocks approval | Finding and evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T017-R1` | **Medium** | **Yes** | **The promised maximum repaint rate is not enforced when progress crosses job-status changes.** `_on_job_changed()` calls `_draw_pending()` immediately. A deterministic probe with a 100 ms interval interleaved three progress messages with `RUNNING`, `POST_PROCESSING`, and `COMPLETED`; `_show_progress()` ran three times before the first timer interval elapsed. The committed burst test calls `_on_progress()` directly and therefore never exercises the manager's `job_changed` signal that bypasses the rate limit. This leaves T-017's explicit coalescing acceptance criterion unmet. | Keep state words responsive without flushing pending progress outside the rate limiter; clear obsolete pending progress at a terminal transition if needed. Add an interleaved `progress`/`job_changed` test that counts renders inside one interval. | **Open** |
+| `T017-R2` | **Medium** | **Yes** | **An indeterminate progress bar keeps a false accessible description after it becomes determinate.** `_show_totals()` sets “Total size unknown; progress cannot be measured” when `total` is absent, but the determinate branch never clears or replaces it. The reviewer drove unknown total followed by `5/10`; the bar became 50% with range `0..100` while its accessible description still said progress could not be measured. This is a common progress transition and gives screen-reader users contradictory state under `NFR-005`. | Clear the indeterminate description, or replace it with a truthful determinate description, whenever `total` becomes known. Gate both unknown→known and known→unknown transitions. | **Open** |
+
+### Independent checks and probes
+
+| Check | Result |
+|---|---|
+| `git diff --check 6ad20f6..6ce195a` | Passed. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **87 files already formatted**. |
+| `mypy src` | Passed: no issues in **35 source files**. |
+| Configured `mypy` | Passed: no issues in **72 source files**. |
+| Configured `mypy --platform win32` | Passed: no issues in **72 source files**. |
+| Focused manager/add-dialog/job-detail run | **166 passed**; ten localhost-server cases were blocked by the filesystem/network sandbox, not by assertions. |
+| Full default suite with localhost permission | **1334 passed, 11 skipped, 1 deselected in 75.58 s**. |
+| Repaint-rate probe | Three `_show_progress()` calls occurred inside one 100 ms interval when status changes were interleaved. |
+| Accessible-description probe | After unknown→known total, the bar was determinate at 50% but retained “progress cannot be measured.” |
+
+### Readiness and review budget
+
+`T-016` is **Approved at `6ce195a`**. This resolves the remaining Critical and High findings;
+no open blocker remains on that task.
+
+`T-017` is **Changes requested**. Both findings are blocking Medium acceptance/correctness gaps.
+The ordinary budget has its one focused correction re-review remaining; that pass should verify
+these two findings and inspect only their correction diff for regressions.
+
+## 2026-07-28 — T-057 and T-058 independent review
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** `T-057`, `T-058`
+**Base:** `6ce195a`  **Head:** `4a06e92`
+**Implementation commits:** `63f9e69` (`T-057`), `4a06e92` (`T-058`)
+**Platforms verified:** Linux locally; Windows type analysis
+**Verdict by task:** `T-057` **Approved**; `T-058` **Changes requested**
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding and evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T058-R1` | **Medium** | **Yes** | **The count was not moved to one canonical home, contrary to the task's acceptance criterion and evidence.** At exact head `4a06e92`, `ai/STATUS.md` states “ten of ten” at lines 109 and 128; the latter immediately claims the count is stated only in `ai/TESTING.md` §12. T-058's evidence says `STATUS.md` no longer states the count at all. Coordination commit `2831973` adds a third numeric statement rather than repairing the contradiction. The task exists because duplicated counts drifted before, so retaining three copies is the same defect class, not cosmetic wording. | Leave the number only in `ai/TESTING.md` §12. Make every `STATUS.md` reference point there without restating it, and correct T-058's evidence only after the single-home claim is true. | **Open** |
+
+### Review judgments
+
+- The pinned local yt-dlp is **2026.07.04**, matching `pyproject.toml`. Its own
+  `YoutubeDL.process_video_result()` still writes `_has_drm` using the `any` rule and excludes
+  `has_drm == "maybe"`.
+- `format_has_drm()` and the `has_drm()` fallback match that upstream rule. The offline canary
+  drives yt-dlp's code rather than source text, records attempted DNS separately from yt-dlp's
+  suppressed exception path, and fails if `_has_drm` stops being written.
+- The changed mixed-format assertion is correct. The old expectation described only the fallback
+  and contradicted the `_has_drm` branch every processed production info dict takes.
+- `ai/TESTING.md` §7's DRM requirement text is unchanged, and §12 honestly names the two limits:
+  no protected fixture under `REQ-EXCL-001`, and `_has_drm`'s absent/`None` ambiguity.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| `git diff --check 6ce195a..4a06e92` | Passed. |
+| DRM-focused adapter/errors/worker/UI suite | **196 passed in 3.97 s**. |
+| Pinned upstream probe | Version **2026.07.04**; `_has_drm` assignment and `any` computation confirmed from the installed code. |
+| Combined lint, type and default-suite gates | Passed; see the preceding review entry for exact counts. |
+
+### Readiness and review budget
+
+`T-057` is **Approved at `4a06e92`** with no findings.
+
+`T-058` is **Changes requested** on blocking Medium `T058-R1`. Its one focused correction
+re-review remains in the ordinary budget.
+
+## 2026-07-28 — T-056 and T-054 independent review
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** `T-056`, `T-054`
+**Base:** `4a06e92`  **Head:** `9c92c32`
+**Implementation commits:** `257b7c7` (`T-056`), `9c92c32` (`T-054`)
+**Platforms verified:** Linux locally; Windows branch type-checked but not executed
+**Verdict by task:** `T-056` **Blocked**; `T-054` **Approved with follow-ups**
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding and evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T054-R1` | **Low** | **No** | **The filing is correct, but its mechanical evidence overclaims.** Every task now sits under a section compatible with its `Status:` line. However, T-054 says a line-multiset comparison differs only by one separator; comparing `257b7c7..9c92c32` also shows the new T-054 entry/evidence, removal of the former In Review note, and extra blank lines. `git diff --check` reports a new blank line at EOF. None of those changes rewords another task's status, finding, or evidence, so the acceptance behavior holds; the stated proof does not. | Correct the evidence to state the exclusions used for the permutation check and remove the trailing blank line. **Owner/target:** Documentation Maintainer, `T-054` record correction. | **Open, non-blocking follow-up** |
+
+### Review judgments
+
+- On Windows, `psutil.Process.wait(timeout=0)` asks exit status through the process handle and is
+  the correct distinction between a running process and a terminated-but-visible one. Keeping
+  POSIX on `status() != STATUS_ZOMBIE` avoids reaping a child with `waitpid` and stealing the exit
+  status from `multiprocessing`.
+- The helper's stated error direction is correct: the prior implementation could return false
+  alive on Windows, while `NoSuchProcess`, `ZombieProcess`, or `STATUS_ZOMBIE` could not turn an
+  actually running process into false dead; `AccessDenied` failed loudly.
+- The added killed-but-unwaited process exercises the right Windows shape. The Linux run can
+  exercise only the already-correct zombie branch, so it does not discharge the Windows criterion.
+- T-054's section/status audit found no remaining status contradiction. The two phase-heading
+  questions it left out are genuinely outside its status-filing scope.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| `git diff --check 4a06e92..9c92c32` | Failed only on `ai/TASKS.md`: new blank line at EOF (`T054-R1`). |
+| Linux survival-helper test | **1 passed in 0.10 s**. |
+| Configured `mypy --platform win32` | Passed: no issues in **72 source/test files**. |
+| Full default suite | **1334 passed, 11 skipped, 1 deselected in 75.58 s**. |
+| Windows runtime/mutation | **Not run; unavailable until the branch is pushed and the Windows job executes.** |
+
+### Readiness and review budget
+
+`T-056` is **Blocked**, not Changes requested: the implementation is ready for the external
+Windows evidence its acceptance criterion requires, but approval cannot be produced on Linux.
+The Windows job must run the killed-but-unwaited case and kill the mutation that disables the
+`win32` branch. If it does, a focused evidence verification is sufficient.
+
+`T-054` is **Approved with follow-ups at `9c92c32`**. `T054-R1` is non-blocking and has an owner
+and target above.
+
+### Coordination-only commit `2831973`
+
+The commit changes no reviewed source or tests and preserves all three implementation boundaries.
+It correctly records the ranges, T-056's Windows blocker, and the new `T-036 → T-037` critical
+path. Two current-truth corrections remain:
+
+- `T058-R1` continues and is stronger at `2831973`: `STATUS.md` now spells out “ten of ten” three
+  times while its Notes section says the file does not repeat the count.
+- `STATUS.md` still summarizes T-016 as “Changes requested, first correction batch returned”
+  immediately after adding the fourth-correction summary. This does not change readiness, but the
+  stale bullet should be updated when the blocking review findings are reflected.

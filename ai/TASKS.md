@@ -50,562 +50,13 @@ Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; 
 
 ## In Review
 
-### T-016 — Add-URL dialog with probe results
-
-**Status:** **In Review — fourth correction batch returned 2026-07-28, awaiting verification.**
-Critical `T016-R1` and High `T016-R3` are corrected against the lifecycle the third re-review
-asked for rather than at the three places it caught them. `T016-R2` and `T016-R4`…`R8` remain
-verified resolved and were not reopened. No finding is marked Resolved here — that is the
-Reviewer's to do.
-`T016-R2` is verified resolved. Critical `T016-R1` and High `T016-R3` continue, both narrowed to
-what asynchronous persistence stopped guaranteeing rather than to a repeat of the original
-defect.
-`T016-R4`…`R8` are verified resolved. The three that continue — Critical `T016-R1` and High
-`T016-R2`/`R3` — are corrected again, each for a reason the first pass did not reach rather than
-a repeat of it.
-The initial review returned **Changes requested** with one Critical, two High and three blocking
-Medium findings. All six are corrected in one batch, together with both non-blocking Lows.
-`T016-R3` needed an architecture decision first: `ARC-005` is accepted, and `T-055` records it.
-No finding is marked Resolved here — that is the Reviewer's to do.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 1
-**Depends on:** `T-013`, `T-015`, `T-018` (the playlist/single-item projection this task
-displays does not exist until `T-018` adds it — `T012-R6`). **`T-051` is resolved**: `ARC-004`
-decides that a probed job downloads from `READY`, and this task implements it
-**Relevant context:** `REQ-001`, `REQ-002`, `REQ-005`, `NFR-001`, `NFR-005`, `NFR-006`
-**Affected surfaces:** `ui/add_dialog.py`, `ui/main_window.py`, `tests/ui/`, and — for
-`ARC-004` — `downloader/manager.py` with `tests/integration/test_manager.py`
-**Risk:** Medium — the first widget that talks to the manager, and the first place a blocking
-call would freeze the application
-**Review base:** `098ba3f` · **head:** `33ebd11`. Five commits span that range and **two are not
-this task**: `0b914a5` preserves the Reviewer's own records, and `3b9d937` reflects `T-038`'s
-approval into the tracking files. `T-016` is `d9936f4`, `57c7e5c` and `33ebd11`.
-**Branch:** none now. `phase1-add-url-dialog` was cut at maintainer instruction because Codex was
-reviewing `T-019`/`T-038` on `main` at the time (`AGENTS.md` §7 — isolated concurrent work), then
-rebased onto `main`, merged fast-forward and deleted once that review closed.
-
-#### Fourth correction batch — the lifecycle asynchrony needed, 2026-07-28
-
-**Base:** `6ad20f6`. Nine mutations, nine killed, and the full suite re-run.
-
-The third re-review reported both findings in three places each, and the six had one cause:
-**a synchronous write sequenced every following effect for free, and an asynchronous one
-sequences nothing.** `ARC-005` landed on the claim that a write-through view made the change
-invisible to its callers — *"only the announcement moved"*, *"callers unchanged"* — and each
-open defect is that equivalence failing somewhere different. So this batch corrects the model
-rather than the three sites, and `ARC-005` is amended to say so (`ai/DECISIONS.md`, 2026-07-28).
-
-- **`T016-R1` (Critical), first part — the close that *creates* a withdrawal is refused.**
-  `done()` tested `_withdrawing` on the way in and then, four lines later, retired a started
-  probe — which populates it — and carried on to `super().done()`. The check now happens after
-  the retirement as well, and the dialog **finishes that same close by itself** once the
-  cancellation is durable, so the user asks once rather than three times.
-- **`T016-R1`, second part — a reserved start is cancellable.** `_reserved` was a set of ids
-  held only to keep the pool at one, so `cancel()` wrote `CANCELLED` while the pending `PROBING`
-  write's success callback still spawned unconditionally: a durable cancellation and a running
-  worker for the URL the user had just taken away. It is now a `_PendingStart` that can be
-  withdrawn, `_spawn` re-reads it and re-checks shutdown, and the caller learns through a new
-  `start_rejected` signal.
-- **`T016-R1`, third part — the store no longer guesses a rollback target.** Keeping the newest
-  value and restoring the one it displaced is right for one failed revision and wrong for two:
-  the second failure restored the first, which had also failed. `PersistentJobStore` now holds
-  the revisions **in flight** and forgets each as it settles, so once nothing is queued the
-  database is the only answer. A smaller claim, and one the disk can keep.
-- **`T016-R3` (High), first part — a reservation is part of the lifecycle.** `is_idle`,
-  `active_job_ids()`, `shutdown()` and the tick's idle gate all account for it now. `idle` is
-  composition's permission to quit (`T-036`), so announcing it with a start on the writer thread
-  was a promise this manager could not keep.
-- **`T016-R3`, second part — per-job ordering of writes and effects.** `_Chain` runs one step at
-  a time per job, and a transition is **computed when its turn comes** rather than when it was
-  asked for. That closes the measured progress defect — the second message read back the
-  `RUNNING` its predecessor had only queued and announced while the row said `PROBING` — and the
-  class it belongs to: a step that no longer applies is skipped rather than walking the pipeline
-  backwards out of a Qt slot.
-- **`T016-R3`, third part — mandatory cleanup is not an announcement.** `_abort_start` passed one
-  function as both `then` and `otherwise`, so a failed `FAILED` write still emitted `job_failed`
-  and `protocol_violation` to observers that then read `PROBING`. The unwind now runs either way;
-  the signals wait for durability, and the failure path logs the violation and emits
-  `persistence_failed`.
-- **`T016-R3`, fourth part — the dialog hears about a rejected start.** It treated a returning
-  `start()` as a running probe and sat at "Probing …" forever when the write failed, offering to
-  cancel a worker that did not exist.
-
-**Two committed assertions were changed, and both encoded the defect.**
-`test_no_companion_signal_arrives_before_its_transition_is_durable` and
-`test_a_second_session_is_refused_while_the_first_is_still_being_stored` asserted
-`active_job_ids() == ()` during a reserved start — which is exactly the invisibility `T016-R3`
-is about. They now assert the reservation is reported, and the claim they were standing in for —
-that no **worker** exists while the row still says `QUEUED` — is asserted directly in
-`test_no_worker_exists_while_the_row_still_says_queued`, which was strengthened rather than
-relaxed: it now checks the sessions dictionary *and* that the reservation is tracked.
-
-**Mutations run, all killed:** `_spawn` ignoring a withdrawn reservation · `is_idle` ignoring
-reservations · the tick's idle gate ignoring them · `shutdown()` cancelling sessions only · a
-non-moving progress message forwarded at once · a failed `FAILED` write announcing anyway · the
-store's old rollback-to-displaced rule · `done()` checking withdrawals only on the way in · the
-dialog not connecting `start_rejected`.
-
-**Checks:** `ruff check .` and `ruff format --check .` pass (86 files). `mypy src` (35 files),
-configured `mypy` (71 files) and `mypy --platform win32` (71 files) all pass. Bare `pytest`:
-**1292 passed, 11 skipped, 1 deselected in 73.86 s**. The wide mypy scope found two real problems
-in the new tests, one of which made mypy stop analysing the rest of a test function — the same
-`ai/TESTING.md` §12 scope difference this task recorded last round.
-
-#### Third correction batch — durability now gates the consequences, 2026-07-27
-
-**Base:** `c5dddae`. Seven mutations, seven killed, and the earlier batteries re-run.
-
-- **`T016-R1` (Critical) — a withdrawal is owned until it is durable.** Retiring a probe cancels
-  its stored row, but that cancellation is a write, and a write can fail. The reviewer held the
-  lock through it: the view said `CANCELLED`, SQLite still said `QUEUED`, and a restart — which
-  has no view — brought the replaced URL back as live work while the dialog showed only "The URL
-  changed". Two corrections. `PersistentJobStore` **takes its view record back when a write
-  fails**, so the view can no longer disagree with the disk about something that did not happen;
-  and the dialog tracks each withdrawal until `CANCELLED` is durable, refusing to close or queue
-  while one is outstanding, saying which URL is still queued and why, and retrying when Close is
-  pressed again. The gate reads the concrete repository and finishes with a **fresh reader**,
-  which is the restart the finding is about.
-- **`T016-R3` (High) — persistence gates the effects, not just the announcement.** Moving
-  `job_changed` into the callback preserved nothing else: the old synchronous write sequenced
-  every following effect for free. A worker and its pump were built while the row still said
-  `QUEUED`; `_abort_start` emitted `protocol_violation` and `job_failed` and ran cleanup before
-  `FAILED` was durable; `job_succeeded` arrived while the row still said `RUNNING`.
-  `_save_and_announce` now takes `then` and `otherwise`, and **session construction, startup
-  cleanup, `media_probed`, `job_succeeded`, `job_failed` and state-moving `progress` all wait**.
-  A failed write runs `otherwise` and never the success-side effect.
-
-**Two consequences worth naming rather than burying.** `start()` **no longer raises for a spawn
-failure**: the session is built from a write's completion callback, so there is nobody left to
-raise to, and the failure is reported through the signals this manager already had. Five approved
-`T-013` tests changed their delivery assertion and kept every other one. And the pool of one now
-counts *reserved* starts, because otherwise it would have been "however many `start()` calls fit
-between a write and its completion".
-
-**Three of the seven mutations survived first time**, and all three were weak tests of mine rather
-than weak code: the companion-signal test produced no companion signal to observe, the
-failure-continuation test never checked that the success effect was skipped, and the pool-of-one
-test used a synchronous store where the gap cannot exist.
-
-**One defect was found by these tests, in this batch's own code.** Retrying a withdrawal while its
-first cancellation was still pending drove `CANCELLED → CANCELLED` and threw
-`IllegalTransitionError` out of `QDialog.done()`. `DownloadManager.cancel()` is now a no-op for a
-job already terminal — there is nothing to cancel, and raising there is worse than saying so —
-and the dialog retries only once a failure has actually been reported.
-
-#### Second correction batch — the three continuations, 2026-07-27
-
-**Base:** `162f286`. Nine mutations, nine killed, and the first batch's nineteen re-run and still
-killed.
-
-- **`T016-R1` (Critical) — the window before the row exists.** The first correction bound a
-  result to its URL but left the *pending save* unmodelled: between `probe()` and its write
-  landing, `started` is false, so nothing could cancel it and its callback simply recorded the
-  row. Editing then left the replaced URL durably `QUEUED`, where whatever runs the queue next
-  would download what the user took away. A probe retired during its save now has its stored row
-  **cancelled** — `QUEUED → CANCELLED` is legal and needs no worker — so the record survives as
-  something asked for and withdrawn rather than as pending work nobody wants.
-- **`T016-R1` (Critical), second half — occurrences, not membership.** `_Persisted` was keyed by
-  URL text, so once a probe had stored one occurrence, `Add` skipped *every* line with that text
-  and two identical lines became one job. `split_urls` and `REQ-001` both say two identical lines
-  are two requests. It now counts how many occurrences already have a job and creates the
-  difference.
-- **`T016-R2` (High) — `done()` reads `usable`, not `in_flight`.** A probe mid-save has
-  `started is False`, so the first correction let Close through without retiring it, and the
-  callback started a worker for a dialog the user had already closed. Four new tests exercise
-  reject/close/done against a genuinely deferred save, and prove a later dialog can still probe.
-- **`T016-R3` (High) — `ARC-005` covered appends only.** `DownloadManager._save_and_announce()`
-  still called a synchronous `JobRepository.update()` from the GUI thread for every start,
-  cancel, stage change, success and failure: 5.017 s blocked under a held lock, then an uncaught
-  `OperationalError`. `QueueWriter.revise()` and `PersistentJobStore` now put **every** queue
-  write on the one thread. `JobStore.update` takes a completion callback, so `T-013`'s
-  persist-then-signal ordering is preserved rather than traded away, and a failed write raises
-  `persistence_failed` instead of an exception nobody catches. `close()` no longer calls
-  `QThread.wait()` — it reports completion through `closed`, the same event-driven shutdown
-  `T013-R2` established for the manager, after a contended write held that wait for 4.921 s.
-
-**The store's read contract is what kept this small.** `JobStore.get` is required to reflect a
-queued `update` immediately, so all ten `_save_and_announce` call sites in approved `T-013` code
-are unchanged; only the announcement moved into a callback.
-
-**Three mutations survived the first run of this batch**, all on `T016-R3`, and each was a real
-gap: the integrated test took the writer lock *after* `start()` had already issued its status
-write, so nothing was contended; read-your-writes was asserted against a writer fast enough to
-pass either way; and no test forced a write failure at all. All three now have a gate that fails
-without the fix.
-
-#### First correction batch — all six blocking findings, 2026-07-27
-
-**Base:** `a931736`. Every correction has a test named for it, and every one of those tests was
-shown to fail when the correction is weakened (19 of 19 mutations killed).
-
-- **`T016-R1` (Critical) — a probe now belongs to a URL, not just to a job id.** `_Probe` records
-  the input line and the generation of the URL box. Changing the first line **retires** that probe
-  and cancels its session; a result is refused unless its line is still first. The refusal lives
-  in `_on_media_probed`, where the result arrives, rather than resting on the edit handler having
-  run first — which is what the defect was. **`Add to queue` is disabled while a probe is
-  outstanding**, so the state that stored one line twice is unreachable rather than reconciled.
-  `_Persisted` tracks one job per entered line, and a retired probe's URL stops counting as
-  stored so it can be queued again.
-- **`T016-R2` (High) — `done()` is the choke point.** Escape, the window button, `reject()` and
-  `accept()` all reach it, and it cancels an in-flight probe. Three parametrised routes are
-  tested, plus the consequence the finding is really about: a later dialog can still probe.
-- **`T016-R3` (High) — nothing waits on SQLite.** `ARC-005` (below). The dialog submits and is
-  told the answer later; it closes **inside** the success callback, so `REQ-012`'s ordering is
-  strengthened rather than kept.
-- **`T016-R4` (Medium) — the tab order is complete.** All twelve focusable controls are declared
-  and asserted, and the observation no longer filters by declared name: the only exclusion is the
-  combo box's popup, which lives in its own top-level window.
-- **`T016-R5` (Medium) — the thumbnail reports failure.** `ThumbnailLoader.load` takes `bytes |
-  None`; the shipping `QNetworkAccessManager` loader reports both outcomes, and its **failure**
-  path is tested against a real local URL that cannot resolve.
-- **`T016-R6` (Medium) — foreign text is `PlainText`.** Applied from one list, asserted per label
-  and by rendered width against a `<b>VISIBLE</b>` title, because reading `QLabel.text()` back
-  returns the input under either format and misses the defect entirely.
-- **`T016-R7` (Low)** — the refusal test now takes the *complement* of the two entry points over
-  the whole enum, so `PROBING`, `COMPLETED` and `CANCELLED` are covered and a new status joins
-  the day it appears. One test compares the transcription against `_ENTRY_STATUS`.
-- **`T016-R8` (Low)** — the stale records were corrected in `a931736`, before this batch; the
-  "no widget touches any of it yet" contradiction in `STATUS.md` is fixed here.
-
-**Three mutations survived the first battery**, and each exposed a real gap rather than a
-mis-aimed probe: the `_on_media_probed` identity check was **unreachable** because the edit
-handler deleted the probe record before any late result could be refused by name (fixed by
-retiring rather than deleting, which is why `_Probe.superseded` exists); the "a later dialog can
-probe" test passed with the fix reverted because the crafted child *died* on an unknown URL and
-freed the pool by accident (it now hangs); and the batched position allocation could not be seen
-by a single-batch test (a second batch now proves positions continue). All three are killed.
-
-**Two defects were found by the corrections' own tests**, not by review: `QueueWriter.close()`
-called the worker's slot directly and closed a SQLite connection from the wrong thread —
-`check_same_thread` caught it, which is exactly why `ARC-005` keeps that check on — and
-`QWidget.close()` on a never-shown dialog delivers no close event, so that test now shows the
-dialog first rather than passing for the wrong reason.
-
-**The `T016-R6` test was vacuous twice, in two different ways, and Windows CI found both.** The
-first version compared a font-metrics advance against `sizeHint()`, which is a wrapped-layout
-figure and never was a string width; it passed on Linux by luck. The second rendered the same
-label under each text format — exact, and one variable — but the Windows runner laid that label
-out 84 px wide, so both renderings clipped to identical pixels and the assertion could not fail.
-It now sizes the label explicitly and asserts the two grabs are the same size, so a future
-clipping change fails loudly rather than quietly restoring the equality.
-
-**Evidence.** `ruff`, `ruff format`, `mypy src` (34 files) and both configured 70-file scopes
-pass. Full suite **1267 passed, 11 skipped, 1 deselected**. CI green on all five jobs at
-`8bde969` (run `30324097829`): Ubuntu 1267 passed, Windows **1256 passed, 20 skipped**, Windows
-desktop 20 passed, both frozen jobs succeeded. Mutation battery: **19 of 19 killed**, including
-one mutation per blocking finding.
-
-**One unrelated intermittent was seen and is filed as `T-056`**, not swept up here: a
-`windows-latest` run failed `test_the_survival_check_can_tell_a_live_process_from_a_dead_one`,
-a `T-019` helper this batch does not touch. It passed on the runs either side.
-
-#### What was built
-
-- **`ui/add_dialog.py`** — the dialog. Probing runs in a worker process and `probe()` returns
-  immediately; results arrive on `DownloadManager`'s signals. The thumbnail is the one `REQ-002`
-  field the probe's reply does not carry — `MediaInfo` has a *URL* — so it is fetched
-  asynchronously through an injected `ThumbnailLoader`, whose shipping implementation is
-  `QNetworkAccessManager`. That seam is what lets the suite decode a real image without touching
-  the network.
-- **`downloader/manager.py`** — `ARC-004` implemented. `start()` now accepts `QUEUED` **or**
-  `READY` and moves the job to the status that says a worker holds it, and the docstring that
-  said the flow "needs the state machine amended first" is replaced by the ruling. A probe
-  session is still refused for a `READY` job: `READY → PROBING` does not exist, and moving a
-  probe to `RUNNING` would say a download holds a job that is not downloading.
-- **`ui/main_window.py`** — File → Add URLs…, disabled with a status tip naming `T-036` until
-  composition supplies a manager, a job store and an output directory. An action that appears to
-  work and quietly does nothing is the failure mode this project keeps finding.
-
-#### Two things a reviewer should look at first
-
-- **`started_at` is stamped entering `PROBING` and left alone entering `RUNNING` from `READY`.**
-  A download from `READY` continues one attempt rather than beginning a new one, while a retry —
-  which re-enters `QUEUED` — still gets a fresh stamp. Both halves have a test.
-- **`T-013`'s `test_a_job_that_is_not_queued_cannot_be_started` was replaced, not deleted.** It
-  asserted the rule `ARC-004` amended. What stands in its place is a parametrised refusal for
-  every status that is *not* an entry point, plus the four new `READY`-entry tests.
-
-#### Evidence
-
-Local at `33ebd11`: `ruff check`, `ruff format --check` (84 files), `mypy src` (33 files), and
-bare `mypy` and `mypy --platform win32` (**69** files each) all pass. Full default suite:
-**1239 passed, 11 skipped, 1 deselected** in 71 s — `T-038`'s 1195 plus this task's 44.
-
-**CI is green on all five jobs**, run `30320408833`: ubuntu-latest 1239 passed, windows-latest
-**1228 passed, 20 skipped, 21 deselected**, windows desktop **20 passed**, both frozen jobs
-succeeded. This task has real Windows evidence.
-
-**Twelve weakenings were applied and all twelve were killed** by a committed test — including a
-probe that blocks the GUI thread, a paraphrased extractor message, jobs written after the dialog
-closes, and a `READY` start that re-enters `PROBING`.
-
-**Three gates reported clean while covering nothing, and each is worth more than the fix.**
-
-- **The tab-order mutation survived the first run.** That test derived its expectation from the
-  dialog's own `focus_chain()` — the list `_set_tab_order` feeds to Qt — so reversing two entries
-  moved both sides and it proved only that the list equalled itself. Now transcribed by hand with
-  Qt's `nextInFocusChain` walked against it (`ai/TESTING.md` §13).
-- **The local type gate was the wrong scope, and CI found two real errors.** `mypy src` reads 33
-  files; the `windows desktop` job runs the command **unscoped** over 69, including `tests/`.
-  Neither error was Windows-specific. One had made mypy narrow a property at an earlier
-  `assert ... is not None`, rendering the later `is None` assertion statically impossible — so it
-  declared the rest of that test unreachable and **stopped type-checking it**. `ai/TESTING.md` §12
-  now records the scope difference, which nothing stated.
-- **The Windows UIA menu contract caught the new File-menu item**, correctly, because this task
-  added one without declaring it there. The item is spelled `Add URLs...` with ASCII dots: the
-  ellipsis returned from UI Automation as a replacement character in the CI log, and that log is
-  the only Windows evidence this project has (`ai/TESTING.md` §10).
-
-#### Scope
-
-Paste or type a URL, probe it, see what it is, choose a preset, and queue it. Probing runs in
-a worker process — **never inline** — because probe latency is unbounded and blocking the GUI
-thread on it is exactly what `NFR-001` forbids (`ARCHITECTURE.md` §8).
-
-**The probe-then-download step is settled** (`ARC-004`, from `T-051`). This task changes
-`DownloadManager.start()` to accept a job in `QUEUED` **or** `READY`, choosing the status that
-says a worker holds it — `PROBING` from the first, `RUNNING` from the second — and replaces the
-docstring note that says the flow "needs the state machine amended first" with a pointer to
-`ARC-004`. The download re-extracts rather than re-probing; the recorded title stands.
-
-Show what `REQ-002` names: title, uploader, duration, thumbnail, and whether the URL is a
-single item or a playlist. On failure, show the extractor's own message **verbatim**
-(`REQ-005`, `NFR-006`) — not a paraphrase, and not a generic "could not fetch".
-
-#### Acceptance criteria
-
-- A probe of a fixture-backed URL populates **every field `REQ-002` names** — title,
-  uploader, duration, a thumbnail decoded to a real pixmap rather than a URL, and whether the
-  URL is a single item or a playlist — asserted field by field, since "populates the dialog"
-  would pass with four of five missing
-- The GUI thread is never blocked, and a test asserts the dialog stays responsive while a
-  probe is outstanding (`NFR-001`)
-- An unsupported URL shows the extractor's message character-for-character, asserted by
-  equality against the fixture (`REQ-005`, `NFR-006`)
-- A probe that never returns can be cancelled and leaves no worker behind
-- Multi-line paste queues each URL as a separate job (`REQ-001`)
-- Full keyboard operation: every control reachable and actuable by keyboard, with a
-  deliberate tab order asserted, and an accessible name on every control (`NFR-005`)
-- No information is conveyed by color alone (`NFR-005`)
-- Queuing a job persists it before the dialog closes, so a crash immediately after does not
-  lose it (`REQ-012`)
-- A probed job in `READY` starts a download through `start()` and moves `READY → RUNNING`
-  without passing through `PROBING`, with the persisted status asserted at each step (`ARC-004`)
-- A `QUEUED` job still starts at `PROBING`, so the second entry point did not replace the first
-
-#### Out of scope
-
-- The sortable format table and per-format selection — `REQ-003`, `REQ-008`, Phase 3
-- Drag-and-drop — `REQ-001` allows it, but it is not needed to prove the slice; Phase 2
-- Playlist expansion into individual jobs — Phase 3
-
----
-
-### T-057 — Bind DRM detection to yt-dlp's actual contract
-
-**Status:** **In Review — implemented 2026-07-28.** The `_has_drm` write is reachable offline, so
-the canary drives yt-dlp's own code rather than reading its source, and the two divergences are
-corrected to yt-dlp's rule rather than recorded as deliberate. See **Evidence**.
-**Owner:** Implementer
-**Priority:** Medium — the boundary is fail-safe today, but one half of it disagrees with yt-dlp
-and nothing would notice an upstream rename
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `SEC-001`, `REQ-EXCL-001`, `NFR-008`, `ai/TESTING.md` §5 (fixtures and the
-recorded-failure canaries) and §7 (DRM)
-**Affected surfaces:** `downloader/ytdlp_adapter.py`, `tests/unit/test_ytdlp_adapter.py`, and the
-canary test wherever the recorded-failure canaries live
-**Risk:** Medium — it is the input to a non-negotiable product boundary
-
-#### Scope
-
-Two problems at one seam. Both were found by **reading yt-dlp's own source at the pinned version**
-(`yt-dlp==2026.7.4`, `pyproject.toml:34`) rather than by a failing test, which is itself the point.
-
-**1. Nothing verifies that yt-dlp still writes the field.** `adapter.has_drm()` reads `_has_drm`,
-and `SEC-001` rests on it. The DRM fixture is `derived` by design — capturing a real one means
-probing a DRM service, which `REQ-EXCL-001` puts out of scope — so it proves this code *reads* the
-field, not that yt-dlp *writes* it. On an upstream rename `has_drm()` returns `False`, the item is
-never classified, and the product tries to download it: a non-negotiable boundary failing
-silently. That is exactly the `NFR-008` canary shape `tests/fixtures/errors/` already uses to pin
-exception types; DRM never got one. In the pinned version the write is `YoutubeDL.py:2930`, inside
-`process_video_result`.
-
-**2. The per-format fallback disagrees with yt-dlp, in both directions.** yt-dlp computes
-`any(f.get('has_drm') and f['has_drm'] != 'maybe' for f in formats) or None`. The adapter computes
-`bool(formats) and all(entry.get("has_drm") for entry in formats)`. Two divergences, neither
-verified against a live extractor:
-
-- **`'maybe'` is truthy in Python.** yt-dlp excludes it deliberately and keeps such formats
-  downloadable (`YoutubeDL.py:2933`). The adapter reads a set of `'maybe'` formats as DRM and
-  refuses. The direction is fail-safe, so this is not a `SEC-001` breach — but a user is told an
-  item is DRM-protected when yt-dlp would have downloaded it.
-- **`all` where yt-dlp uses `any`.** A mixed item is DRM to yt-dlp and not-DRM to the fallback.
-  It only bites when `_has_drm` is absent, which is the one case the fallback exists for.
-
-Also worth settling rather than inheriting: `_has_drm` is assigned `True` **or `None`**, never
-`False`, so its absence does not distinguish "not DRM" from "never processed". Decide whether that
-matters on the probe path, or record that it does not.
-
-#### Acceptance criteria
-
-- A test fails if the pinned yt-dlp stops writing `_has_drm`, and it does so by exercising
-  yt-dlp's own code path rather than by matching text in its source. Whether that write is
-  reachable offline is **unverified** and is the first thing to establish; if it is not, the
-  weaker source-level check is acceptable **only** with that reason recorded beside it
-- The canary names the yt-dlp version it was verified against, as the recorded-failure canaries do
-- The `'maybe'` and `any`/`all` divergences are each either corrected to yt-dlp's rule or recorded
-  as a deliberate difference with its reason — not left as an unexamined accident
-- A mutation restoring the current fallback rule fails a test
-- No test touches a DRM service, a real protected URL, or `allow_unplayable_formats`
-
-#### Out of scope
-
-- The taxonomy and retry policy in `core/errors.py`; `DRM_PROTECTED` stays non-retryable
-- The UI half of the boundary — that is the criterion added to `T-017`
-- Refreshing any fixture: `ai/TESTING.md` §5 makes that a deliberate act with its own task
-
-#### Evidence, 2026-07-28
-
-**The write is reachable offline, so the weaker source-level check was not needed.**
-`YoutubeDL.process_video_result` computes `_has_drm` **before** it selects a format and mutates
-the info dict in place, so the canary hands it a synthetic dict, ignores whatever the call goes
-on to do, and reads the field back. Measured at zero DNS lookups with `format="all"` and
-`check_formats=False`; without those, a `'maybe'` format sends yt-dlp looking for a host.
-
-**Both divergences are corrected rather than recorded.** `format_has_drm` now implements yt-dlp's
-three-state rule — `True`, absent, and `'maybe'`, which yt-dlp keeps downloadable — and the item
-is protected if **any** format is, matching `_has_drm`. The `any`/`all` choice was not free, and
-it is worth the reviewer's attention: a mixed item now reads as DRM, where the fallback used to
-say it did not. That is not a new refusal in practice — `_has_drm` is `any`, and it is the branch
-every real info dict takes — but it means one committed assertion changed.
-
-**`test_a_partially_protected_item_is_not_treated_as_drm_only` is now
-`…_is_treated_as_protected`.** Its old rationale ("one clean format means there is something
-lawful to fetch") is a reasonable argument about a branch that never runs: production already
-refused mixed items through `_has_drm`, and the test asserted the half of `has_drm` that does not
-answer. The two halves of one function disagreed, which is what `T-057` was filed to find.
-
-**The strongest test is the one that does not state its expectation.**
-`test_the_adapter_and_yt_dlp_agree_about_every_shape_of_has_drm` runs five format shapes through
-yt-dlp *and* through the adapter and compares. Both divergences were invisible to a test that
-wrote down the expected answer, because the answer was written by whoever wrote the code.
-
-**Mutations run, all killed:** the fallback restored to `all(entry.get("has_drm"))` · `'maybe'`
-counting as DRM again · the canary reading a field yt-dlp does not write · the selection params
-dropped so yt-dlp reaches for the network.
-
-**The offline guard had to be corrected before it gated anything.** Raising from a patched
-`getaddrinfo` does not fail the test: yt-dlp catches whatever a handler raises and re-reports it
-as `NoSupportingHandlers`, which the surrounding `contextlib.suppress` then swallows. The attempt
-is now recorded and asserted after the call, and the fourth mutation above proves it fires.
-
-**Checks:** `ruff check .`, `ruff format --check .` (87 files), `mypy src` (35), configured `mypy`
-and `mypy --platform win32` (72 each) all pass. Bare `pytest`: **1334 passed, 11 skipped,
-1 deselected in 75.05 s**.
-
-**Left open deliberately:** `_has_drm` is written as `True` or `None` and never `False`, so its
-absence still does not distinguish "not DRM" from "never processed". It does not matter on any
-path this application has — every info dict reaching `has_drm` has been through
-`process_video_result` — and inventing a third state here would be this adapter asserting
-something yt-dlp does not. Recorded rather than fixed.
-
----
-
-### T-056 — `still_running` reports a reaped Windows process as alive, intermittently
-
-**Status:** **In Review — corrected 2026-07-28, and one gate cannot run here.** The helper now
-decides by exit status on Windows; the third acceptance criterion is answered in the helper's own
-docstring. **The mutation that proves the Windows branch can only be killed on Windows CI**, so
-approval needs that run — see **Evidence**.
-**Owner:** Implementer
-**Priority:** Medium — an intermittent failure in the helper every `T-019` assertion rests on
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `T-019`, `ai/TESTING.md` §7 (Cancellation, Worker crash)
-**Affected surfaces:** `tests/integration/test_manager.py`
-**Risk:** Medium — it decides whether the process-tree suite is telling the truth
-
-#### Scope
-
-`test_the_survival_check_can_tell_a_live_process_from_a_dead_one` failed once on `windows-latest`
-in run `30323328299`: `still_running([dead_pid])` returned `[7208]` for a process the test had
-already reaped. It passed on the runs either side, so it is **intermittent, not a regression** —
-nothing in the `T-016` batch touches `process_tree.py` or that helper.
-
-The likely cause is that `still_running` treats "psutil can still see the pid" as alive, excluding
-only `NoSuchProcess` and `STATUS_ZOMBIE`. Windows has no zombie state, and a terminated process
-stays visible while a handle to it remains open, so there is a window in which a dead process
-reports as running.
-
-**This matters more than a flaky test usually would.** `still_running` is the helper the whole
-`T-019` descendant-reaping suite decides on, and its own docstring says a guard nobody watches
-fail is the shape `ai/TESTING.md` §13 exists to catch. A false *alive* fails loudly, as here; the
-concern is whether the same imprecision can produce a false *dead* and make a reaping assertion
-pass without anything having been reaped.
-
-#### Acceptance criteria
-
-- The helper distinguishes a running process from a terminated-but-visible one on Windows, by
-  exit status rather than by presence
-- The claim is demonstrated on Windows CI, not reasoned about from Linux
-- Whether the previous form could report a live process as dead is answered explicitly, and the
-  answer is recorded rather than assumed benign
-
-#### Out of scope
-
-- Changing `downloader/process_tree.py`, which is `T-019`-approved and not implicated
-
-#### Evidence, 2026-07-28
-
-**The fix is Windows-only, because the imprecision is.** On POSIX the terminated-but-visible state
-*is* the zombie state, so `status()` was already asking the right question. On Windows there is no
-zombie and a corpse stays visible while any handle to it is open, so the helper now uses
-`wait(timeout=0)` there — `WaitForSingleObject` on psutil's own handle, which neither disturbs
-anyone else's handle nor depends on visibility.
-
-**The first attempt used `wait(timeout=0)` on both platforms and broke the suite**, which is worth
-keeping: on POSIX that call is `waitpid`, so inspecting a worker *reaped* it and stole the exit
-status `multiprocessing` was waiting for. `is_alive()` then never reported the process gone and
-the manager never went idle —
-`test_cancelling_a_download_kills_what_the_worker_spawned` failed exactly that way. A survival
-check that changes what it observes is worse than an imprecise one.
-
-**The third criterion is answered, not assumed benign.** The previous form could **not** report a
-live process as dead: it answered "dead" only on `NoSuchProcess` (and `ZombieProcess`, its
-subclass) or on a `STATUS_ZOMBIE` a live process never has, and `AccessDenied` was uncaught and so
-would have failed loudly. Its one error direction was **false alive**, which fails an assertion in
-the open rather than letting a reaping assertion pass over nothing. The answer is recorded in the
-helper's docstring, where the next reader of the helper will find it.
-
-**The test now drives the failing shape**: a third process is killed and deliberately *not* waited
-on. On Linux that is a zombie, which the old form already handled; on Windows it is exactly run
-`30323328299`'s failure.
-
-**Mutations run:** answering by presence alone everywhere — killed. Reporting nothing as alive —
-killed. **Disabling the `win32` branch so it falls back to the POSIX question — survived, and
-cannot do otherwise here**: the branch is unreachable on Linux by construction. That is
-`AGENTS.md` §8's "a host-only check is not the whole gate" in its exact form, and it is why this
-task is not claiming to be done.
-
-**Checks:** `ruff check .`, `ruff format --check .`, configured `mypy` and `mypy --platform win32`
-(72 files each — the win32 scope is what analyses the new branch at all) all pass. Bare `pytest`
-green.
-
-**Blocker:** the Windows demonstration. This machine has no Windows and the branch cannot execute
-here, so approval needs the `windows desktop` job to run the corrected helper and the third
-mutation against it. Same shape as `T-033`'s blocker: the code is done, the evidence is not
-producible locally.
-
----
-
 ### T-017 — Single-job progress view with cancel
 
-**Status:** **In Review — implemented 2026-07-28.** `ui/job_detail.py` holds the view;
+**Status:** **In Review — first correction batch returned 2026-07-28.** Blocking Medium
+`T017-R1` and `T017-R2` are both corrected, and each has a gate the reviewer named. No finding is
+marked Resolved here — that is the Reviewer's to do. `ui/job_detail.py` holds the view;
 `ui/queue_view.py` stays a docstring-only stub, because a multi-job table is Phase 2 and this
-task's scope is one job. Every acceptance criterion below has a named test, and eight mutations
-were run against them — see **Evidence**.
+task's scope is one job.
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 1
@@ -654,6 +105,40 @@ retry affordance (`REQ-018`); nothing fails silently.
 - Pause and resume — `REQ-015` includes them, but they need Phase 2's scheduler
 - Open-file and reveal-in-file-manager — `REQ-021`, Phase 2
 
+#### First correction batch — the rate limit had a second door, 2026-07-28
+
+**Base:** `9c92c32`. Four mutations, four killed.
+
+- **`T017-R1` (Medium, blocking) — a status change no longer flushes pending progress.**
+  `_on_job_changed` called `_draw_pending()`, which is a second route into `_show_progress` with
+  no rate limit on it. The reviewer interleaved three progress messages with three status changes
+  and measured three repaints inside one 100 ms interval, which is the acceptance criterion the
+  whole design exists to meet. The state *words* stay immediate — `_refresh` writes them itself,
+  and a cancelled job must not go on saying "Downloading" — but progress waits for the timer.
+
+  **At a terminal state the pending message is dropped**, not deferred. That half is not
+  bookkeeping: holding it would have let a tick after the ending replace "Cancelled" with the
+  download that is no longer happening. The reviewer's guidance named it and it needed naming.
+
+  **The burst test could not have caught this**, and that is the part worth keeping. It drives
+  `_on_progress` directly, so it never crossed the path a real download takes, where a stage
+  change persists and `job_changed` comes back. It also counted the wrong thing: it asserted on
+  messages absorbed, which stayed at zero while a second route redrew. `renders` is now public
+  and counted, because `REPAINT_INTERVAL_MS` is a promise about that number and a promise nothing
+  can count is not one.
+
+- **`T017-R2` (Medium, blocking) — the bar always describes the bar it currently is.** The
+  indeterminate branch set an accessible description and the determinate branch never cleared it,
+  so the moment a total became known the bar showed 50% while telling a screen reader that
+  progress could not be measured. Under `NFR-005` that is worse than silence: two users of one
+  widget were being told different things. Both branches now write it, and the determinate one
+  says what it shows rather than merely stopping the lie. **Gated in both directions** —
+  unknown → known and known → unknown — because an unknown total arrives late as often as first.
+
+**Mutations run, all killed:** a status change flushing pending progress again · a terminal state
+deferring the message instead of dropping it · the determinate branch not describing itself · the
+indeterminate branch not describing itself.
+
 #### Evidence, 2026-07-28
 
 **What was built.** `ui/job_detail.py`: `JobProgressView`, driven by `DownloadManager`'s signals,
@@ -697,6 +182,101 @@ scope could not see, including one that made mypy stop analysing the rest of a t
 **Known-unverified:** the Windows half. Focus order is asserted offscreen here; the real
 platform plugin is `T-040`'s, and this widget adds three focusable controls to what that task
 covers.
+
+---
+
+### T-058 — Recount the DRM coverage record
+
+**Status:** **In Review — corrected 2026-07-28** after `T058-R1`. The recount itself stood; what
+did not was the single-home claim, which the correction restated the new number three times while
+making. `ai/TESTING.md` §12 is now the only place either the count or its denominator appears.
+See **Evidence**.
+**Owner:** Documentation Maintainer, with the Implementer for the mutation evidence
+**Priority:** Medium — the exit review reads this record, and today it is wrong
+**Phase:** Phase 1
+**Depends on:** nothing. `T-057` and `T-017`'s DRM criterion are what the corrected record must
+**name**, not what it must wait for
+**Relevant context:** `ai/TESTING.md` §7, §12, §13; `ai/STATUS.md`; the `T-044`/`T-045` lesson
+**Affected surfaces:** `ai/TESTING.md`, `ai/STATUS.md`
+**Risk:** Low as a diff, Medium as a claim — this record is what the exit review trusts
+
+#### Scope
+
+`ai/TESTING.md` §12 says "Log redaction (`T-038`) and DRM remain uncovered", and `ai/STATUS.md`
+says in three places that DRM is the one uncovered mandatory area with no Phase 1 owner. Log
+redaction closed with `T-038`. DRM has had tests since the worker path landed:
+
+- `tests/unit/test_errors.py:56` — non-retryable and non-auto-retryable, asserted across the whole
+  taxonomy rather than for one kind
+- `tests/unit/test_ytdlp_adapter.py:422` — detection is structural, and prose *claiming* DRM is
+  explicitly asserted not to be DRM
+- `tests/integration/test_worker.py:351` — the bypass half, by counting extraction calls: a DRM
+  item fails after exactly one, because a second would be an attempt to route around the
+  protection
+
+The claim was most likely written before `T-012` and `T-013` landed that path, and was never
+recomputed. **Recount, do not adjust** — that is the discipline that caught `STATUS.md`'s stale
+module counts, and the one that would have caught this.
+
+**Do not replace one completeness claim with another.** The `T-044`/`T-045` lesson in
+`ai/TESTING.md` §13 applies directly: the corrected record states what is proven and names its
+open edges — the upstream contract (`T-057`) and the UI affordance (`T-017`) — rather than
+declaring the area closed.
+
+#### Acceptance criteria
+
+- Every test named above is run, and a mutation is run against each claim it is cited for — at
+  minimum: making `DRM_PROTECTED` retryable, and removing the single-extraction assertion. **A
+  claim whose mutation survives is not recorded as covered**
+- §12's "eight of ten" sentence is recomputed from §7's ten rows rather than edited in place
+- `ai/STATUS.md`'s DRM statements agree with each other and with §12 — one number, stated once
+- The corrected record names `T-057` and `T-017`'s criterion as the open edges of the boundary
+- No mandatory row's *requirement* text is reworded; only the coverage claim about it changes
+
+#### Out of scope
+
+- Adding tests. If the mutation evidence shows a claim is not actually gated, that is a finding to
+  file, not a fix to fold into a documentation task
+- `T-057`'s code change
+
+#### Evidence, 2026-07-28
+
+**The count is ten of ten**, recomputed from §7's rows rather than edited in place. The old
+sentence — "eight … Log redaction and DRM remain uncovered" — was wrong in both halves by the
+time anyone read it: `T-038` closed log redaction, and DRM had been gated since the worker path
+landed.
+
+**Every claim recorded was mutated first**, and all three mutations were killed:
+
+| Claim | Mutation | Result |
+|---|---|---|
+| `DRM_PROTECTED` is never retried | drop it from `_NON_RETRYABLE` in `core/errors.py` | killed by `test_drm_protected_is_non_retryable_in_the_taxonomy` and `test_a_drm_failure_offers_no_retry_at_all` |
+| No bypass path | delete the DRM check before the download in `worker.py` | killed by `test_a_drm_item_fails_without_attempting_extraction` |
+| Detection is structural | let `has_drm` match "drm" in the title | killed by `test_drm_detection_does_not_read_message_text` |
+
+**The corrected record names what it cannot cover** rather than declaring the area closed
+(`T-044`/`T-045`, §13): no recorded fixture can exist, because capturing one means probing a DRM
+service; and `_has_drm` is written as `True` or `None` and never `False`, so absence is
+ambiguous. Both are stated in `ai/TESTING.md` §12 with the reason.
+
+**One number, one home — and this claim was false when it was first written** (`T058-R1`). The
+correction recounted §7's rows honestly and then **restated the new number in `ai/STATUS.md`
+twice**, in a paragraph one of whose sentences said the file no longer stated it; the
+coordination commit `2831973` added a third. The reviewer found all three. A recount that
+replaces "nine" with "ten" in every place that had "nine" has not moved anything, and writing
+"this file does not repeat the count" beneath a repetition of it is the same defect wearing the
+fix's clothes.
+
+`ai/STATUS.md` now states neither the coverage count nor its denominator anywhere; every mention
+points at `ai/TESTING.md` §12. Verified by grep at the correcting head, not by intent: no
+occurrence of "ten of ten" or "of ten mandatory" remains in that file.
+
+The failure mode this task actually closes is therefore narrower and more useful than it first
+recorded: *two files stating one number* is what let "DRM is uncovered" outlive being true by
+four tasks, and pointing at a number is not the same act as repeating it.
+
+**No §7 requirement text was reworded.** The DRM row still reads exactly as it did; only the
+coverage claim about it changed.
 
 ---
 
@@ -1229,6 +809,94 @@ this application or yt-dlp.
 
 ## Blocked
 
+### T-056 — `still_running` reports a reaped Windows process as alive, intermittently
+
+**Status:** **Blocked — on Windows evidence, not on code**, 2026-07-28 at `9c92c32`. The reviewer
+found the implementation correct and could not verify it: the changed branch does not execute on
+Linux, so neither the runtime behaviour nor the mutation that proves it can be observed here. The
+helper decides by exit status on Windows and the third acceptance criterion is answered in its own
+docstring. Clears when the `windows desktop` job runs the corrected helper.
+**Owner:** Implementer
+**Priority:** Medium — an intermittent failure in the helper every `T-019` assertion rests on
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T-019`, `ai/TESTING.md` §7 (Cancellation, Worker crash)
+**Affected surfaces:** `tests/integration/test_manager.py`
+**Risk:** Medium — it decides whether the process-tree suite is telling the truth
+
+#### Scope
+
+`test_the_survival_check_can_tell_a_live_process_from_a_dead_one` failed once on `windows-latest`
+in run `30323328299`: `still_running([dead_pid])` returned `[7208]` for a process the test had
+already reaped. It passed on the runs either side, so it is **intermittent, not a regression** —
+nothing in the `T-016` batch touches `process_tree.py` or that helper.
+
+The likely cause is that `still_running` treats "psutil can still see the pid" as alive, excluding
+only `NoSuchProcess` and `STATUS_ZOMBIE`. Windows has no zombie state, and a terminated process
+stays visible while a handle to it remains open, so there is a window in which a dead process
+reports as running.
+
+**This matters more than a flaky test usually would.** `still_running` is the helper the whole
+`T-019` descendant-reaping suite decides on, and its own docstring says a guard nobody watches
+fail is the shape `ai/TESTING.md` §13 exists to catch. A false *alive* fails loudly, as here; the
+concern is whether the same imprecision can produce a false *dead* and make a reaping assertion
+pass without anything having been reaped.
+
+#### Acceptance criteria
+
+- The helper distinguishes a running process from a terminated-but-visible one on Windows, by
+  exit status rather than by presence
+- The claim is demonstrated on Windows CI, not reasoned about from Linux
+- Whether the previous form could report a live process as dead is answered explicitly, and the
+  answer is recorded rather than assumed benign
+
+#### Out of scope
+
+- Changing `downloader/process_tree.py`, which is `T-019`-approved and not implicated
+
+#### Evidence, 2026-07-28
+
+**The fix is Windows-only, because the imprecision is.** On POSIX the terminated-but-visible state
+*is* the zombie state, so `status()` was already asking the right question. On Windows there is no
+zombie and a corpse stays visible while any handle to it is open, so the helper now uses
+`wait(timeout=0)` there — `WaitForSingleObject` on psutil's own handle, which neither disturbs
+anyone else's handle nor depends on visibility.
+
+**The first attempt used `wait(timeout=0)` on both platforms and broke the suite**, which is worth
+keeping: on POSIX that call is `waitpid`, so inspecting a worker *reaped* it and stole the exit
+status `multiprocessing` was waiting for. `is_alive()` then never reported the process gone and
+the manager never went idle —
+`test_cancelling_a_download_kills_what_the_worker_spawned` failed exactly that way. A survival
+check that changes what it observes is worse than an imprecise one.
+
+**The third criterion is answered, not assumed benign.** The previous form could **not** report a
+live process as dead: it answered "dead" only on `NoSuchProcess` (and `ZombieProcess`, its
+subclass) or on a `STATUS_ZOMBIE` a live process never has, and `AccessDenied` was uncaught and so
+would have failed loudly. Its one error direction was **false alive**, which fails an assertion in
+the open rather than letting a reaping assertion pass over nothing. The answer is recorded in the
+helper's docstring, where the next reader of the helper will find it.
+
+**The test now drives the failing shape**: a third process is killed and deliberately *not* waited
+on. On Linux that is a zombie, which the old form already handled; on Windows it is exactly run
+`30323328299`'s failure.
+
+**Mutations run:** answering by presence alone everywhere — killed. Reporting nothing as alive —
+killed. **Disabling the `win32` branch so it falls back to the POSIX question — survived, and
+cannot do otherwise here**: the branch is unreachable on Linux by construction. That is
+`AGENTS.md` §8's "a host-only check is not the whole gate" in its exact form, and it is why this
+task is not claiming to be done.
+
+**Checks:** `ruff check .`, `ruff format --check .`, configured `mypy` and `mypy --platform win32`
+(72 files each — the win32 scope is what analyses the new branch at all) all pass. Bare `pytest`
+green.
+
+**Blocker:** the Windows demonstration. This machine has no Windows and the branch cannot execute
+here, so approval needs the `windows desktop` job to run the corrected helper and the third
+mutation against it. Same shape as `T-033`'s blocker: the code is done, the evidence is not
+producible locally.
+
+---
+
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
 **Status:** **Blocked** — code corrections verified 2026-07-26 (`T033-R2` resolved, the
@@ -1367,6 +1035,469 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-016 — Add-URL dialog with probe results
+
+**Status:** **Complete — approved**, 2026-07-28 at `6ce195a`. Critical `T016-R1` and High
+`T016-R3` were independently verified resolved on the **fourth** correction batch, which
+corrected the lifecycle the third re-review asked for rather than the three places it caught
+each finding. `T016-R2` and `T016-R4`…`R8` were resolved earlier and were not reopened.
+`T016-R2` is verified resolved. Critical `T016-R1` and High `T016-R3` continue, both narrowed to
+what asynchronous persistence stopped guaranteeing rather than to a repeat of the original
+defect.
+`T016-R4`…`R8` are verified resolved. The three that continue — Critical `T016-R1` and High
+`T016-R2`/`R3` — are corrected again, each for a reason the first pass did not reach rather than
+a repeat of it.
+The initial review returned **Changes requested** with one Critical, two High and three blocking
+Medium findings. All six are corrected in one batch, together with both non-blocking Lows.
+`T016-R3` needed an architecture decision first: `ARC-005` is accepted, and `T-055` records it.
+No finding is marked Resolved here — that is the Reviewer's to do.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 1
+**Depends on:** `T-013`, `T-015`, `T-018` (the playlist/single-item projection this task
+displays does not exist until `T-018` adds it — `T012-R6`). **`T-051` is resolved**: `ARC-004`
+decides that a probed job downloads from `READY`, and this task implements it
+**Relevant context:** `REQ-001`, `REQ-002`, `REQ-005`, `NFR-001`, `NFR-005`, `NFR-006`
+**Affected surfaces:** `ui/add_dialog.py`, `ui/main_window.py`, `tests/ui/`, and — for
+`ARC-004` — `downloader/manager.py` with `tests/integration/test_manager.py`
+**Risk:** Medium — the first widget that talks to the manager, and the first place a blocking
+call would freeze the application
+**Review base:** `098ba3f` · **head:** `33ebd11`. Five commits span that range and **two are not
+this task**: `0b914a5` preserves the Reviewer's own records, and `3b9d937` reflects `T-038`'s
+approval into the tracking files. `T-016` is `d9936f4`, `57c7e5c` and `33ebd11`.
+**Branch:** none now. `phase1-add-url-dialog` was cut at maintainer instruction because Codex was
+reviewing `T-019`/`T-038` on `main` at the time (`AGENTS.md` §7 — isolated concurrent work), then
+rebased onto `main`, merged fast-forward and deleted once that review closed.
+
+#### Fourth correction batch — the lifecycle asynchrony needed, 2026-07-28
+
+**Base:** `6ad20f6`. Nine mutations, nine killed, and the full suite re-run.
+
+The third re-review reported both findings in three places each, and the six had one cause:
+**a synchronous write sequenced every following effect for free, and an asynchronous one
+sequences nothing.** `ARC-005` landed on the claim that a write-through view made the change
+invisible to its callers — *"only the announcement moved"*, *"callers unchanged"* — and each
+open defect is that equivalence failing somewhere different. So this batch corrects the model
+rather than the three sites, and `ARC-005` is amended to say so (`ai/DECISIONS.md`, 2026-07-28).
+
+- **`T016-R1` (Critical), first part — the close that *creates* a withdrawal is refused.**
+  `done()` tested `_withdrawing` on the way in and then, four lines later, retired a started
+  probe — which populates it — and carried on to `super().done()`. The check now happens after
+  the retirement as well, and the dialog **finishes that same close by itself** once the
+  cancellation is durable, so the user asks once rather than three times.
+- **`T016-R1`, second part — a reserved start is cancellable.** `_reserved` was a set of ids
+  held only to keep the pool at one, so `cancel()` wrote `CANCELLED` while the pending `PROBING`
+  write's success callback still spawned unconditionally: a durable cancellation and a running
+  worker for the URL the user had just taken away. It is now a `_PendingStart` that can be
+  withdrawn, `_spawn` re-reads it and re-checks shutdown, and the caller learns through a new
+  `start_rejected` signal.
+- **`T016-R1`, third part — the store no longer guesses a rollback target.** Keeping the newest
+  value and restoring the one it displaced is right for one failed revision and wrong for two:
+  the second failure restored the first, which had also failed. `PersistentJobStore` now holds
+  the revisions **in flight** and forgets each as it settles, so once nothing is queued the
+  database is the only answer. A smaller claim, and one the disk can keep.
+- **`T016-R3` (High), first part — a reservation is part of the lifecycle.** `is_idle`,
+  `active_job_ids()`, `shutdown()` and the tick's idle gate all account for it now. `idle` is
+  composition's permission to quit (`T-036`), so announcing it with a start on the writer thread
+  was a promise this manager could not keep.
+- **`T016-R3`, second part — per-job ordering of writes and effects.** `_Chain` runs one step at
+  a time per job, and a transition is **computed when its turn comes** rather than when it was
+  asked for. That closes the measured progress defect — the second message read back the
+  `RUNNING` its predecessor had only queued and announced while the row said `PROBING` — and the
+  class it belongs to: a step that no longer applies is skipped rather than walking the pipeline
+  backwards out of a Qt slot.
+- **`T016-R3`, third part — mandatory cleanup is not an announcement.** `_abort_start` passed one
+  function as both `then` and `otherwise`, so a failed `FAILED` write still emitted `job_failed`
+  and `protocol_violation` to observers that then read `PROBING`. The unwind now runs either way;
+  the signals wait for durability, and the failure path logs the violation and emits
+  `persistence_failed`.
+- **`T016-R3`, fourth part — the dialog hears about a rejected start.** It treated a returning
+  `start()` as a running probe and sat at "Probing …" forever when the write failed, offering to
+  cancel a worker that did not exist.
+
+**Two committed assertions were changed, and both encoded the defect.**
+`test_no_companion_signal_arrives_before_its_transition_is_durable` and
+`test_a_second_session_is_refused_while_the_first_is_still_being_stored` asserted
+`active_job_ids() == ()` during a reserved start — which is exactly the invisibility `T016-R3`
+is about. They now assert the reservation is reported, and the claim they were standing in for —
+that no **worker** exists while the row still says `QUEUED` — is asserted directly in
+`test_no_worker_exists_while_the_row_still_says_queued`, which was strengthened rather than
+relaxed: it now checks the sessions dictionary *and* that the reservation is tracked.
+
+**Mutations run, all killed:** `_spawn` ignoring a withdrawn reservation · `is_idle` ignoring
+reservations · the tick's idle gate ignoring them · `shutdown()` cancelling sessions only · a
+non-moving progress message forwarded at once · a failed `FAILED` write announcing anyway · the
+store's old rollback-to-displaced rule · `done()` checking withdrawals only on the way in · the
+dialog not connecting `start_rejected`.
+
+**Checks:** `ruff check .` and `ruff format --check .` pass (86 files). `mypy src` (35 files),
+configured `mypy` (71 files) and `mypy --platform win32` (71 files) all pass. Bare `pytest`:
+**1292 passed, 11 skipped, 1 deselected in 73.86 s**. The wide mypy scope found two real problems
+in the new tests, one of which made mypy stop analysing the rest of a test function — the same
+`ai/TESTING.md` §12 scope difference this task recorded last round.
+
+#### Third correction batch — durability now gates the consequences, 2026-07-27
+
+**Base:** `c5dddae`. Seven mutations, seven killed, and the earlier batteries re-run.
+
+- **`T016-R1` (Critical) — a withdrawal is owned until it is durable.** Retiring a probe cancels
+  its stored row, but that cancellation is a write, and a write can fail. The reviewer held the
+  lock through it: the view said `CANCELLED`, SQLite still said `QUEUED`, and a restart — which
+  has no view — brought the replaced URL back as live work while the dialog showed only "The URL
+  changed". Two corrections. `PersistentJobStore` **takes its view record back when a write
+  fails**, so the view can no longer disagree with the disk about something that did not happen;
+  and the dialog tracks each withdrawal until `CANCELLED` is durable, refusing to close or queue
+  while one is outstanding, saying which URL is still queued and why, and retrying when Close is
+  pressed again. The gate reads the concrete repository and finishes with a **fresh reader**,
+  which is the restart the finding is about.
+- **`T016-R3` (High) — persistence gates the effects, not just the announcement.** Moving
+  `job_changed` into the callback preserved nothing else: the old synchronous write sequenced
+  every following effect for free. A worker and its pump were built while the row still said
+  `QUEUED`; `_abort_start` emitted `protocol_violation` and `job_failed` and ran cleanup before
+  `FAILED` was durable; `job_succeeded` arrived while the row still said `RUNNING`.
+  `_save_and_announce` now takes `then` and `otherwise`, and **session construction, startup
+  cleanup, `media_probed`, `job_succeeded`, `job_failed` and state-moving `progress` all wait**.
+  A failed write runs `otherwise` and never the success-side effect.
+
+**Two consequences worth naming rather than burying.** `start()` **no longer raises for a spawn
+failure**: the session is built from a write's completion callback, so there is nobody left to
+raise to, and the failure is reported through the signals this manager already had. Five approved
+`T-013` tests changed their delivery assertion and kept every other one. And the pool of one now
+counts *reserved* starts, because otherwise it would have been "however many `start()` calls fit
+between a write and its completion".
+
+**Three of the seven mutations survived first time**, and all three were weak tests of mine rather
+than weak code: the companion-signal test produced no companion signal to observe, the
+failure-continuation test never checked that the success effect was skipped, and the pool-of-one
+test used a synchronous store where the gap cannot exist.
+
+**One defect was found by these tests, in this batch's own code.** Retrying a withdrawal while its
+first cancellation was still pending drove `CANCELLED → CANCELLED` and threw
+`IllegalTransitionError` out of `QDialog.done()`. `DownloadManager.cancel()` is now a no-op for a
+job already terminal — there is nothing to cancel, and raising there is worse than saying so —
+and the dialog retries only once a failure has actually been reported.
+
+#### Second correction batch — the three continuations, 2026-07-27
+
+**Base:** `162f286`. Nine mutations, nine killed, and the first batch's nineteen re-run and still
+killed.
+
+- **`T016-R1` (Critical) — the window before the row exists.** The first correction bound a
+  result to its URL but left the *pending save* unmodelled: between `probe()` and its write
+  landing, `started` is false, so nothing could cancel it and its callback simply recorded the
+  row. Editing then left the replaced URL durably `QUEUED`, where whatever runs the queue next
+  would download what the user took away. A probe retired during its save now has its stored row
+  **cancelled** — `QUEUED → CANCELLED` is legal and needs no worker — so the record survives as
+  something asked for and withdrawn rather than as pending work nobody wants.
+- **`T016-R1` (Critical), second half — occurrences, not membership.** `_Persisted` was keyed by
+  URL text, so once a probe had stored one occurrence, `Add` skipped *every* line with that text
+  and two identical lines became one job. `split_urls` and `REQ-001` both say two identical lines
+  are two requests. It now counts how many occurrences already have a job and creates the
+  difference.
+- **`T016-R2` (High) — `done()` reads `usable`, not `in_flight`.** A probe mid-save has
+  `started is False`, so the first correction let Close through without retiring it, and the
+  callback started a worker for a dialog the user had already closed. Four new tests exercise
+  reject/close/done against a genuinely deferred save, and prove a later dialog can still probe.
+- **`T016-R3` (High) — `ARC-005` covered appends only.** `DownloadManager._save_and_announce()`
+  still called a synchronous `JobRepository.update()` from the GUI thread for every start,
+  cancel, stage change, success and failure: 5.017 s blocked under a held lock, then an uncaught
+  `OperationalError`. `QueueWriter.revise()` and `PersistentJobStore` now put **every** queue
+  write on the one thread. `JobStore.update` takes a completion callback, so `T-013`'s
+  persist-then-signal ordering is preserved rather than traded away, and a failed write raises
+  `persistence_failed` instead of an exception nobody catches. `close()` no longer calls
+  `QThread.wait()` — it reports completion through `closed`, the same event-driven shutdown
+  `T013-R2` established for the manager, after a contended write held that wait for 4.921 s.
+
+**The store's read contract is what kept this small.** `JobStore.get` is required to reflect a
+queued `update` immediately, so all ten `_save_and_announce` call sites in approved `T-013` code
+are unchanged; only the announcement moved into a callback.
+
+**Three mutations survived the first run of this batch**, all on `T016-R3`, and each was a real
+gap: the integrated test took the writer lock *after* `start()` had already issued its status
+write, so nothing was contended; read-your-writes was asserted against a writer fast enough to
+pass either way; and no test forced a write failure at all. All three now have a gate that fails
+without the fix.
+
+#### First correction batch — all six blocking findings, 2026-07-27
+
+**Base:** `a931736`. Every correction has a test named for it, and every one of those tests was
+shown to fail when the correction is weakened (19 of 19 mutations killed).
+
+- **`T016-R1` (Critical) — a probe now belongs to a URL, not just to a job id.** `_Probe` records
+  the input line and the generation of the URL box. Changing the first line **retires** that probe
+  and cancels its session; a result is refused unless its line is still first. The refusal lives
+  in `_on_media_probed`, where the result arrives, rather than resting on the edit handler having
+  run first — which is what the defect was. **`Add to queue` is disabled while a probe is
+  outstanding**, so the state that stored one line twice is unreachable rather than reconciled.
+  `_Persisted` tracks one job per entered line, and a retired probe's URL stops counting as
+  stored so it can be queued again.
+- **`T016-R2` (High) — `done()` is the choke point.** Escape, the window button, `reject()` and
+  `accept()` all reach it, and it cancels an in-flight probe. Three parametrised routes are
+  tested, plus the consequence the finding is really about: a later dialog can still probe.
+- **`T016-R3` (High) — nothing waits on SQLite.** `ARC-005` (below). The dialog submits and is
+  told the answer later; it closes **inside** the success callback, so `REQ-012`'s ordering is
+  strengthened rather than kept.
+- **`T016-R4` (Medium) — the tab order is complete.** All twelve focusable controls are declared
+  and asserted, and the observation no longer filters by declared name: the only exclusion is the
+  combo box's popup, which lives in its own top-level window.
+- **`T016-R5` (Medium) — the thumbnail reports failure.** `ThumbnailLoader.load` takes `bytes |
+  None`; the shipping `QNetworkAccessManager` loader reports both outcomes, and its **failure**
+  path is tested against a real local URL that cannot resolve.
+- **`T016-R6` (Medium) — foreign text is `PlainText`.** Applied from one list, asserted per label
+  and by rendered width against a `<b>VISIBLE</b>` title, because reading `QLabel.text()` back
+  returns the input under either format and misses the defect entirely.
+- **`T016-R7` (Low)** — the refusal test now takes the *complement* of the two entry points over
+  the whole enum, so `PROBING`, `COMPLETED` and `CANCELLED` are covered and a new status joins
+  the day it appears. One test compares the transcription against `_ENTRY_STATUS`.
+- **`T016-R8` (Low)** — the stale records were corrected in `a931736`, before this batch; the
+  "no widget touches any of it yet" contradiction in `STATUS.md` is fixed here.
+
+**Three mutations survived the first battery**, and each exposed a real gap rather than a
+mis-aimed probe: the `_on_media_probed` identity check was **unreachable** because the edit
+handler deleted the probe record before any late result could be refused by name (fixed by
+retiring rather than deleting, which is why `_Probe.superseded` exists); the "a later dialog can
+probe" test passed with the fix reverted because the crafted child *died* on an unknown URL and
+freed the pool by accident (it now hangs); and the batched position allocation could not be seen
+by a single-batch test (a second batch now proves positions continue). All three are killed.
+
+**Two defects were found by the corrections' own tests**, not by review: `QueueWriter.close()`
+called the worker's slot directly and closed a SQLite connection from the wrong thread —
+`check_same_thread` caught it, which is exactly why `ARC-005` keeps that check on — and
+`QWidget.close()` on a never-shown dialog delivers no close event, so that test now shows the
+dialog first rather than passing for the wrong reason.
+
+**The `T016-R6` test was vacuous twice, in two different ways, and Windows CI found both.** The
+first version compared a font-metrics advance against `sizeHint()`, which is a wrapped-layout
+figure and never was a string width; it passed on Linux by luck. The second rendered the same
+label under each text format — exact, and one variable — but the Windows runner laid that label
+out 84 px wide, so both renderings clipped to identical pixels and the assertion could not fail.
+It now sizes the label explicitly and asserts the two grabs are the same size, so a future
+clipping change fails loudly rather than quietly restoring the equality.
+
+**Evidence.** `ruff`, `ruff format`, `mypy src` (34 files) and both configured 70-file scopes
+pass. Full suite **1267 passed, 11 skipped, 1 deselected**. CI green on all five jobs at
+`8bde969` (run `30324097829`): Ubuntu 1267 passed, Windows **1256 passed, 20 skipped**, Windows
+desktop 20 passed, both frozen jobs succeeded. Mutation battery: **19 of 19 killed**, including
+one mutation per blocking finding.
+
+**One unrelated intermittent was seen and is filed as `T-056`**, not swept up here: a
+`windows-latest` run failed `test_the_survival_check_can_tell_a_live_process_from_a_dead_one`,
+a `T-019` helper this batch does not touch. It passed on the runs either side.
+
+#### What was built
+
+- **`ui/add_dialog.py`** — the dialog. Probing runs in a worker process and `probe()` returns
+  immediately; results arrive on `DownloadManager`'s signals. The thumbnail is the one `REQ-002`
+  field the probe's reply does not carry — `MediaInfo` has a *URL* — so it is fetched
+  asynchronously through an injected `ThumbnailLoader`, whose shipping implementation is
+  `QNetworkAccessManager`. That seam is what lets the suite decode a real image without touching
+  the network.
+- **`downloader/manager.py`** — `ARC-004` implemented. `start()` now accepts `QUEUED` **or**
+  `READY` and moves the job to the status that says a worker holds it, and the docstring that
+  said the flow "needs the state machine amended first" is replaced by the ruling. A probe
+  session is still refused for a `READY` job: `READY → PROBING` does not exist, and moving a
+  probe to `RUNNING` would say a download holds a job that is not downloading.
+- **`ui/main_window.py`** — File → Add URLs…, disabled with a status tip naming `T-036` until
+  composition supplies a manager, a job store and an output directory. An action that appears to
+  work and quietly does nothing is the failure mode this project keeps finding.
+
+#### Two things a reviewer should look at first
+
+- **`started_at` is stamped entering `PROBING` and left alone entering `RUNNING` from `READY`.**
+  A download from `READY` continues one attempt rather than beginning a new one, while a retry —
+  which re-enters `QUEUED` — still gets a fresh stamp. Both halves have a test.
+- **`T-013`'s `test_a_job_that_is_not_queued_cannot_be_started` was replaced, not deleted.** It
+  asserted the rule `ARC-004` amended. What stands in its place is a parametrised refusal for
+  every status that is *not* an entry point, plus the four new `READY`-entry tests.
+
+#### Evidence
+
+Local at `33ebd11`: `ruff check`, `ruff format --check` (84 files), `mypy src` (33 files), and
+bare `mypy` and `mypy --platform win32` (**69** files each) all pass. Full default suite:
+**1239 passed, 11 skipped, 1 deselected** in 71 s — `T-038`'s 1195 plus this task's 44.
+
+**CI is green on all five jobs**, run `30320408833`: ubuntu-latest 1239 passed, windows-latest
+**1228 passed, 20 skipped, 21 deselected**, windows desktop **20 passed**, both frozen jobs
+succeeded. This task has real Windows evidence.
+
+**Twelve weakenings were applied and all twelve were killed** by a committed test — including a
+probe that blocks the GUI thread, a paraphrased extractor message, jobs written after the dialog
+closes, and a `READY` start that re-enters `PROBING`.
+
+**Three gates reported clean while covering nothing, and each is worth more than the fix.**
+
+- **The tab-order mutation survived the first run.** That test derived its expectation from the
+  dialog's own `focus_chain()` — the list `_set_tab_order` feeds to Qt — so reversing two entries
+  moved both sides and it proved only that the list equalled itself. Now transcribed by hand with
+  Qt's `nextInFocusChain` walked against it (`ai/TESTING.md` §13).
+- **The local type gate was the wrong scope, and CI found two real errors.** `mypy src` reads 33
+  files; the `windows desktop` job runs the command **unscoped** over 69, including `tests/`.
+  Neither error was Windows-specific. One had made mypy narrow a property at an earlier
+  `assert ... is not None`, rendering the later `is None` assertion statically impossible — so it
+  declared the rest of that test unreachable and **stopped type-checking it**. `ai/TESTING.md` §12
+  now records the scope difference, which nothing stated.
+- **The Windows UIA menu contract caught the new File-menu item**, correctly, because this task
+  added one without declaring it there. The item is spelled `Add URLs...` with ASCII dots: the
+  ellipsis returned from UI Automation as a replacement character in the CI log, and that log is
+  the only Windows evidence this project has (`ai/TESTING.md` §10).
+
+#### Scope
+
+Paste or type a URL, probe it, see what it is, choose a preset, and queue it. Probing runs in
+a worker process — **never inline** — because probe latency is unbounded and blocking the GUI
+thread on it is exactly what `NFR-001` forbids (`ARCHITECTURE.md` §8).
+
+**The probe-then-download step is settled** (`ARC-004`, from `T-051`). This task changes
+`DownloadManager.start()` to accept a job in `QUEUED` **or** `READY`, choosing the status that
+says a worker holds it — `PROBING` from the first, `RUNNING` from the second — and replaces the
+docstring note that says the flow "needs the state machine amended first" with a pointer to
+`ARC-004`. The download re-extracts rather than re-probing; the recorded title stands.
+
+Show what `REQ-002` names: title, uploader, duration, thumbnail, and whether the URL is a
+single item or a playlist. On failure, show the extractor's own message **verbatim**
+(`REQ-005`, `NFR-006`) — not a paraphrase, and not a generic "could not fetch".
+
+#### Acceptance criteria
+
+- A probe of a fixture-backed URL populates **every field `REQ-002` names** — title,
+  uploader, duration, a thumbnail decoded to a real pixmap rather than a URL, and whether the
+  URL is a single item or a playlist — asserted field by field, since "populates the dialog"
+  would pass with four of five missing
+- The GUI thread is never blocked, and a test asserts the dialog stays responsive while a
+  probe is outstanding (`NFR-001`)
+- An unsupported URL shows the extractor's message character-for-character, asserted by
+  equality against the fixture (`REQ-005`, `NFR-006`)
+- A probe that never returns can be cancelled and leaves no worker behind
+- Multi-line paste queues each URL as a separate job (`REQ-001`)
+- Full keyboard operation: every control reachable and actuable by keyboard, with a
+  deliberate tab order asserted, and an accessible name on every control (`NFR-005`)
+- No information is conveyed by color alone (`NFR-005`)
+- Queuing a job persists it before the dialog closes, so a crash immediately after does not
+  lose it (`REQ-012`)
+- A probed job in `READY` starts a download through `start()` and moves `READY → RUNNING`
+  without passing through `PROBING`, with the persisted status asserted at each step (`ARC-004`)
+- A `QUEUED` job still starts at `PROBING`, so the second entry point did not replace the first
+
+#### Out of scope
+
+- The sortable format table and per-format selection — `REQ-003`, `REQ-008`, Phase 3
+- Drag-and-drop — `REQ-001` allows it, but it is not needed to prove the slice; Phase 2
+- Playlist expansion into individual jobs — Phase 3
+
+---
+
+### T-057 — Bind DRM detection to yt-dlp's actual contract
+
+**Status:** **Complete — approved**, 2026-07-28 at `4a06e92`. The reviewer confirmed the adapter
+and the offline canary match yt-dlp 2026.07.04's actual DRM rule. The `_has_drm` write is
+reachable offline, so the canary drives yt-dlp's own code rather than reading its source, and the
+two divergences are corrected to yt-dlp's rule rather than recorded as deliberate.
+**Owner:** Implementer
+**Priority:** Medium — the boundary is fail-safe today, but one half of it disagrees with yt-dlp
+and nothing would notice an upstream rename
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `SEC-001`, `REQ-EXCL-001`, `NFR-008`, `ai/TESTING.md` §5 (fixtures and the
+recorded-failure canaries) and §7 (DRM)
+**Affected surfaces:** `downloader/ytdlp_adapter.py`, `tests/unit/test_ytdlp_adapter.py`, and the
+canary test wherever the recorded-failure canaries live
+**Risk:** Medium — it is the input to a non-negotiable product boundary
+
+#### Scope
+
+Two problems at one seam. Both were found by **reading yt-dlp's own source at the pinned version**
+(`yt-dlp==2026.7.4`, `pyproject.toml:34`) rather than by a failing test, which is itself the point.
+
+**1. Nothing verifies that yt-dlp still writes the field.** `adapter.has_drm()` reads `_has_drm`,
+and `SEC-001` rests on it. The DRM fixture is `derived` by design — capturing a real one means
+probing a DRM service, which `REQ-EXCL-001` puts out of scope — so it proves this code *reads* the
+field, not that yt-dlp *writes* it. On an upstream rename `has_drm()` returns `False`, the item is
+never classified, and the product tries to download it: a non-negotiable boundary failing
+silently. That is exactly the `NFR-008` canary shape `tests/fixtures/errors/` already uses to pin
+exception types; DRM never got one. In the pinned version the write is `YoutubeDL.py:2930`, inside
+`process_video_result`.
+
+**2. The per-format fallback disagrees with yt-dlp, in both directions.** yt-dlp computes
+`any(f.get('has_drm') and f['has_drm'] != 'maybe' for f in formats) or None`. The adapter computes
+`bool(formats) and all(entry.get("has_drm") for entry in formats)`. Two divergences, neither
+verified against a live extractor:
+
+- **`'maybe'` is truthy in Python.** yt-dlp excludes it deliberately and keeps such formats
+  downloadable (`YoutubeDL.py:2933`). The adapter reads a set of `'maybe'` formats as DRM and
+  refuses. The direction is fail-safe, so this is not a `SEC-001` breach — but a user is told an
+  item is DRM-protected when yt-dlp would have downloaded it.
+- **`all` where yt-dlp uses `any`.** A mixed item is DRM to yt-dlp and not-DRM to the fallback.
+  It only bites when `_has_drm` is absent, which is the one case the fallback exists for.
+
+Also worth settling rather than inheriting: `_has_drm` is assigned `True` **or `None`**, never
+`False`, so its absence does not distinguish "not DRM" from "never processed". Decide whether that
+matters on the probe path, or record that it does not.
+
+#### Acceptance criteria
+
+- A test fails if the pinned yt-dlp stops writing `_has_drm`, and it does so by exercising
+  yt-dlp's own code path rather than by matching text in its source. Whether that write is
+  reachable offline is **unverified** and is the first thing to establish; if it is not, the
+  weaker source-level check is acceptable **only** with that reason recorded beside it
+- The canary names the yt-dlp version it was verified against, as the recorded-failure canaries do
+- The `'maybe'` and `any`/`all` divergences are each either corrected to yt-dlp's rule or recorded
+  as a deliberate difference with its reason — not left as an unexamined accident
+- A mutation restoring the current fallback rule fails a test
+- No test touches a DRM service, a real protected URL, or `allow_unplayable_formats`
+
+#### Out of scope
+
+- The taxonomy and retry policy in `core/errors.py`; `DRM_PROTECTED` stays non-retryable
+- The UI half of the boundary — that is the criterion added to `T-017`
+- Refreshing any fixture: `ai/TESTING.md` §5 makes that a deliberate act with its own task
+
+#### Evidence, 2026-07-28
+
+**The write is reachable offline, so the weaker source-level check was not needed.**
+`YoutubeDL.process_video_result` computes `_has_drm` **before** it selects a format and mutates
+the info dict in place, so the canary hands it a synthetic dict, ignores whatever the call goes
+on to do, and reads the field back. Measured at zero DNS lookups with `format="all"` and
+`check_formats=False`; without those, a `'maybe'` format sends yt-dlp looking for a host.
+
+**Both divergences are corrected rather than recorded.** `format_has_drm` now implements yt-dlp's
+three-state rule — `True`, absent, and `'maybe'`, which yt-dlp keeps downloadable — and the item
+is protected if **any** format is, matching `_has_drm`. The `any`/`all` choice was not free, and
+it is worth the reviewer's attention: a mixed item now reads as DRM, where the fallback used to
+say it did not. That is not a new refusal in practice — `_has_drm` is `any`, and it is the branch
+every real info dict takes — but it means one committed assertion changed.
+
+**`test_a_partially_protected_item_is_not_treated_as_drm_only` is now
+`…_is_treated_as_protected`.** Its old rationale ("one clean format means there is something
+lawful to fetch") is a reasonable argument about a branch that never runs: production already
+refused mixed items through `_has_drm`, and the test asserted the half of `has_drm` that does not
+answer. The two halves of one function disagreed, which is what `T-057` was filed to find.
+
+**The strongest test is the one that does not state its expectation.**
+`test_the_adapter_and_yt_dlp_agree_about_every_shape_of_has_drm` runs five format shapes through
+yt-dlp *and* through the adapter and compares. Both divergences were invisible to a test that
+wrote down the expected answer, because the answer was written by whoever wrote the code.
+
+**Mutations run, all killed:** the fallback restored to `all(entry.get("has_drm"))` · `'maybe'`
+counting as DRM again · the canary reading a field yt-dlp does not write · the selection params
+dropped so yt-dlp reaches for the network.
+
+**The offline guard had to be corrected before it gated anything.** Raising from a patched
+`getaddrinfo` does not fail the test: yt-dlp catches whatever a handler raises and re-reports it
+as `NoSupportingHandlers`, which the surrounding `contextlib.suppress` then swallows. The attempt
+is now recorded and asserted after the call, and the fourth mutation above proves it fires.
+
+**Checks:** `ruff check .`, `ruff format --check .` (87 files), `mypy src` (35), configured `mypy`
+and `mypy --platform win32` (72 each) all pass. Bare `pytest`: **1334 passed, 11 skipped,
+1 deselected in 75.05 s**.
+
+**Left open deliberately:** `_has_drm` is written as `True` or `None` and never `False`, so its
+absence still does not distinguish "not DRM" from "never processed". It does not matter on any
+path this application has — every info dict reaching `has_drm` has been through
+`process_video_result` — and inventing a third state here would be this adapter asserting
+something yt-dlp does not. Recorded rather than fixed.
+
+---
 
 ### T-013 — Download manager and result pump
 
@@ -2437,88 +2568,6 @@ exists to refuse (`T-011`).
 
 ---
 
-### T-058 — Recount the DRM coverage record
-
-**Status:** **Complete — recounted 2026-07-28.** Ten of ten, not eight, and not nine. Each of the
-DRM row's four claims was mutation-checked before being recorded. See **Evidence**.
-**Owner:** Documentation Maintainer, with the Implementer for the mutation evidence
-**Priority:** Medium — the exit review reads this record, and today it is wrong
-**Phase:** Phase 1
-**Depends on:** nothing. `T-057` and `T-017`'s DRM criterion are what the corrected record must
-**name**, not what it must wait for
-**Relevant context:** `ai/TESTING.md` §7, §12, §13; `ai/STATUS.md`; the `T-044`/`T-045` lesson
-**Affected surfaces:** `ai/TESTING.md`, `ai/STATUS.md`
-**Risk:** Low as a diff, Medium as a claim — this record is what the exit review trusts
-
-#### Scope
-
-`ai/TESTING.md` §12 says "Log redaction (`T-038`) and DRM remain uncovered", and `ai/STATUS.md`
-says in three places that DRM is the one uncovered mandatory area with no Phase 1 owner. Log
-redaction closed with `T-038`. DRM has had tests since the worker path landed:
-
-- `tests/unit/test_errors.py:56` — non-retryable and non-auto-retryable, asserted across the whole
-  taxonomy rather than for one kind
-- `tests/unit/test_ytdlp_adapter.py:422` — detection is structural, and prose *claiming* DRM is
-  explicitly asserted not to be DRM
-- `tests/integration/test_worker.py:351` — the bypass half, by counting extraction calls: a DRM
-  item fails after exactly one, because a second would be an attempt to route around the
-  protection
-
-The claim was most likely written before `T-012` and `T-013` landed that path, and was never
-recomputed. **Recount, do not adjust** — that is the discipline that caught `STATUS.md`'s stale
-module counts, and the one that would have caught this.
-
-**Do not replace one completeness claim with another.** The `T-044`/`T-045` lesson in
-`ai/TESTING.md` §13 applies directly: the corrected record states what is proven and names its
-open edges — the upstream contract (`T-057`) and the UI affordance (`T-017`) — rather than
-declaring the area closed.
-
-#### Acceptance criteria
-
-- Every test named above is run, and a mutation is run against each claim it is cited for — at
-  minimum: making `DRM_PROTECTED` retryable, and removing the single-extraction assertion. **A
-  claim whose mutation survives is not recorded as covered**
-- §12's "eight of ten" sentence is recomputed from §7's ten rows rather than edited in place
-- `ai/STATUS.md`'s DRM statements agree with each other and with §12 — one number, stated once
-- The corrected record names `T-057` and `T-017`'s criterion as the open edges of the boundary
-- No mandatory row's *requirement* text is reworded; only the coverage claim about it changes
-
-#### Out of scope
-
-- Adding tests. If the mutation evidence shows a claim is not actually gated, that is a finding to
-  file, not a fix to fold into a documentation task
-- `T-057`'s code change
-
-#### Evidence, 2026-07-28
-
-**The count is ten of ten**, recomputed from §7's rows rather than edited in place. The old
-sentence — "eight … Log redaction and DRM remain uncovered" — was wrong in both halves by the
-time anyone read it: `T-038` closed log redaction, and DRM had been gated since the worker path
-landed.
-
-**Every claim recorded was mutated first**, and all three mutations were killed:
-
-| Claim | Mutation | Result |
-|---|---|---|
-| `DRM_PROTECTED` is never retried | drop it from `_NON_RETRYABLE` in `core/errors.py` | killed by `test_drm_protected_is_non_retryable_in_the_taxonomy` and `test_a_drm_failure_offers_no_retry_at_all` |
-| No bypass path | delete the DRM check before the download in `worker.py` | killed by `test_a_drm_item_fails_without_attempting_extraction` |
-| Detection is structural | let `has_drm` match "drm" in the title | killed by `test_drm_detection_does_not_read_message_text` |
-
-**The corrected record names what it cannot cover** rather than declaring the area closed
-(`T-044`/`T-045`, §13): no recorded fixture can exist, because capturing one means probing a DRM
-service; and `_has_drm` is written as `True` or `None` and never `False`, so absence is
-ambiguous. Both are stated in `ai/TESTING.md` §12 with the reason.
-
-**One number, one home.** `ai/STATUS.md` no longer states the count at all — it points at
-§12. The previous correction fixed *two statements of one number in one file*; two **files**
-stating it is what let "DRM is uncovered" outlive being true by four tasks, and that is the
-failure mode this task actually closes.
-
-**No §7 requirement text was reworded.** The DRM row still reads exactly as it did; only the
-coverage claim about it changed.
-
----
-
 ### T-055 — Decide how the application writes to SQLite without blocking the GUI thread
 
 **Status:** **Complete** — decided and recorded 2026-07-27 as `ARC-005`.
@@ -2568,7 +2617,9 @@ reasoning, the two rejected alternatives, and what reopens it are in `ai/DECISIO
 
 ### T-054 — File the approved Phase 1 tasks under `## Complete`
 
-**Status:** **Complete** — filed 2026-07-28. Thirteen entries moved, not three; see **Evidence**.
+**Status:** **Complete — approved with follow-ups**, 2026-07-28 at `9c92c32`. Thirteen entries
+moved, not three. `T054-R1` (Low, non-blocking) is corrected here: the permutation evidence now
+names what it excluded, and the blank line at EOF is gone.
 **Owner:** Planner
 **Priority:** Low
 **Phase:** Phase 1
@@ -2613,11 +2664,14 @@ acceptance criteria ask for — is what turned them up:
 
 `T-054` itself moved to `## Complete` with them.
 
-**Nothing was reworded, and that is checked rather than claimed.** The move is a pure permutation
-of lines: 2327 insertions against 2327 deletions, and a line-multiset comparison against the
-previous commit shows exactly one difference — a blank line at the end of the file replaced by
-the `---` every other entry ends with, which was then removed so the file ends as it did. No
-`Status:` line, finding disposition, or evidence record differs.
+**Nothing was reworded — but the proof offered for it overclaimed** (`T054-R1`). The *relocation*
+was a pure permutation, and that is what the 2327-against-2327 line-multiset comparison actually
+measured: it was run against the working tree **before** this entry's own status change, evidence
+block, and the removal of the `## In Review` note were written. Compared against `257b7c7`, the
+committed diff necessarily also contains those three, so "differs by one separator" was true of a
+snapshot and not of the commit. The acceptance criterion still holds — no other task's `Status:`
+line, finding disposition, or evidence record differs — but a mechanical claim has to name what it
+excluded, or it is doing the same work as "looks fine to me".
 
 **The `## In Review` note is gone with the mismatch it described**, as the criteria require.
 
@@ -5432,4 +5486,3 @@ repository root with the 2026 Sean Kottman copyright line; `README.md` updated.
 **Remaining:** the `pyproject.toml` license field is set by `T-001`, since no
 `pyproject.toml` exists yet. Shipping third-party license texts (Qt, ffmpeg, yt-dlp) with
 the distribution is a Phase 5 release-gate item, not part of this task.
-

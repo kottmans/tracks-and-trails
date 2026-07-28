@@ -174,6 +174,8 @@ class JobProgressView(QWidget):
         self._pending: Progress | None = None
         #: The message the fields currently show.
         self._displayed: Progress | None = None
+        #: How many times the progress fields have been redrawn. See `renders`.
+        self._renders = 0
         self._status = JobStatus.QUEUED
         #: The classified failure and its verbatim text. The kind is `None` when the signal
         #: carried something this widget cannot classify — see `_on_job_failed`.
@@ -298,8 +300,24 @@ class JobProgressView(QWidget):
         return self._displayed
 
     @property
+    def renders(self) -> int:
+        """How many times the progress fields have been redrawn (`T017-R1`).
+
+        Public for the same reason `pending_progress` is: `REPAINT_INTERVAL_MS` is a promise
+        about *this number*, and a promise nothing can count is not one. The first version of
+        the burst test counted messages the widget had absorbed, which is a different quantity —
+        it stayed at zero while a second route was redrawing on every status change.
+        """
+        return self._renders
+
+    @property
     def status(self) -> JobStatus:
         return self._status
+
+    @property
+    def _is_terminal(self) -> bool:
+        """Whether the job has ended. Asked by the repaint rule as well as by the rendering."""
+        return self._status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)
 
     @property
     def failure(self) -> tuple[ErrorKind | None, str] | None:
@@ -360,13 +378,25 @@ class JobProgressView(QWidget):
         self._show_progress(pending)
 
     def _on_job_changed(self, job_id: str, status: str) -> None:
+        """A state change is the newer fact, and is shown at once — but it is not progress.
+
+        **It does not flush pending progress** (`T017-R1`). It used to call `_draw_pending()`,
+        which is a second route into `_show_progress` with no rate limit on it: interleaving
+        three progress messages with three status changes redrew three times inside one
+        interval, and the promise this widget makes is about that number. The state *words* stay
+        responsive because `_refresh` writes them itself, which is the part a user needs
+        immediately — a job that has just been cancelled must not keep saying "Downloading".
+
+        At a terminal state the pending message is **dropped** rather than deferred. Nothing a
+        worker said before the end can still be true afterwards, and drawing it a tick later
+        would overwrite the ending with the download that is no longer happening.
+        """
         if job_id != self._job_id:
             return
         self._status = JobStatus(status)
-        # Whatever the last progress message said, a state change is the newer fact and is drawn
-        # at once: a job that has just been cancelled must not keep showing "Downloading" until
-        # the next repaint tick.
-        self._draw_pending()
+        if self._is_terminal:
+            self._pending = None
+            self._repaint.stop()
         self._refresh()
 
     def _on_job_failed(self, job_id: str, kind: object, message: str) -> None:
@@ -403,16 +433,31 @@ class JobProgressView(QWidget):
         self._refresh()
 
     def _show_progress(self, message: Progress) -> None:
+        self._renders += 1
         self._stage.setText(STAGE_TEXT.get(message.stage, STATUS_TEXT[self._status]))
         self._show_totals(message.downloaded_bytes, message.total_bytes)
         self._speed.setText(format_speed(message.speed_bytes_per_second))
         self._eta.setText(format_eta(message.eta_seconds))
 
     def _show_totals(self, done: int | None, total: int | None) -> None:
+        """Draw the bar and the byte counts, **and say what the bar currently means**.
+
+        `T017-R2`: the indeterminate branch set an accessible description and the determinate
+        branch never cleared it, so the moment a total became known the bar showed 50% while
+        telling a screen reader that progress could not be measured. Under `NFR-005` that is
+        worse than saying nothing — sighted and screen-reader users were being given
+        contradictory states. Both branches now write the description, so neither can inherit
+        the other's, in either direction: unknown totals arrive late as often as they arrive
+        first.
+        """
         self._bytes.setText(f"{format_bytes(done)} of {format_bytes(total)}")
         if total:
+            percent = int(min((done or 0) / total, 1.0) * 100)
             self._bar.setRange(0, 100)
-            self._bar.setValue(int(min((done or 0) / total, 1.0) * 100))
+            self._bar.setValue(percent)
+            self._bar.setAccessibleDescription(
+                f"{percent} percent of {format_bytes(total)} downloaded"
+            )
             return
         # An unknown total is a real state, not zero percent. `REQ-011`'s indeterminate bar, and
         # the accessible description says so in words because the animation alone does not.
@@ -426,7 +471,7 @@ class JobProgressView(QWidget):
         what is happening — including for the three endings, which no progress message ever
         describes because there is no worker left to describe them.
         """
-        terminal = self._status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)
+        terminal = self._is_terminal
         if terminal or self._displayed is None:
             self._stage.setText(STATUS_TEXT[self._status])
 
