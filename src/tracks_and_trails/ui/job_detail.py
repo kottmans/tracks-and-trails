@@ -177,6 +177,9 @@ class JobProgressView(QWidget):
         #: How many times the progress fields have been redrawn. See `renders`.
         self._renders = 0
         self._status = JobStatus.QUEUED
+        #: The last totals the bar was drawn from, so completion can redraw it truthfully
+        #: without a second method reaching into the bar (`T017-R2`).
+        self._totals: tuple[int | None, int | None] = (None, None)
         #: The classified failure and its verbatim text. The kind is `None` when the signal
         #: carried something this widget cannot classify — see `_on_job_failed`.
         self._failure: tuple[ErrorKind | None, str] | None = None
@@ -383,9 +386,17 @@ class JobProgressView(QWidget):
         **It does not flush pending progress** (`T017-R1`). It used to call `_draw_pending()`,
         which is a second route into `_show_progress` with no rate limit on it: interleaving
         three progress messages with three status changes redrew three times inside one
-        interval, and the promise this widget makes is about that number. The state *words* stay
-        responsive because `_refresh` writes them itself, which is the part a user needs
-        immediately — a job that has just been cancelled must not keep saying "Downloading".
+        interval, and the promise this widget makes is about that number.
+
+        **What is immediate is an *ending*, not every state word** (`T017-R3`, correcting an
+        overclaim in the previous version of this docstring). `_refresh` writes the stage line
+        itself when the job has finished or when no progress has been drawn yet, so a cancelled
+        job never goes on saying "Downloading" — that is the case a user must not be lied to
+        about. While a job is *running*, a status change leaves the stage line showing the more
+        specific thing a worker reported: "Downloading video" is better information than
+        "Downloading", and it is replaced by the next repaint within `REPAINT_INTERVAL_MS`. The
+        earlier wording claimed all state words were immediate, which was true only before
+        anything had been rendered.
 
         At a terminal state the pending message is **dropped** rather than deferred. Nothing a
         worker said before the end can still be true afterwards, and drawing it a tick later
@@ -440,17 +451,39 @@ class JobProgressView(QWidget):
         self._eta.setText(format_eta(message.eta_seconds))
 
     def _show_totals(self, done: int | None, total: int | None) -> None:
-        """Draw the bar and the byte counts, **and say what the bar currently means**.
-
-        `T017-R2`: the indeterminate branch set an accessible description and the determinate
-        branch never cleared it, so the moment a total became known the bar showed 50% while
-        telling a screen reader that progress could not be measured. Under `NFR-005` that is
-        worse than saying nothing — sighted and screen-reader users were being given
-        contradictory states. Both branches now write the description, so neither can inherit
-        the other's, in either direction: unknown totals arrive late as often as they arrive
-        first.
-        """
+        """Write the byte counts, and hand the bar to the one method that owns it."""
+        self._totals = (done, total)
         self._bytes.setText(f"{format_bytes(done)} of {format_bytes(total)}")
+        self._draw_bar(done, total)
+
+    def _draw_bar(self, done: int | None, total: int | None, *, finished: bool = False) -> None:
+        """**The only place the progress bar is written**, range, value and words together.
+
+        `T017-R2`, twice. The first version set an accessible description in the indeterminate
+        branch and never cleared it, so a bar that became determinate showed 50% while telling a
+        screen reader that progress could not be measured. The correction wrote the description
+        in both branches of *this* computation — and missed that `_refresh` set the bar to 100%
+        on completion through a path of its own, which left "50 percent of 10 B downloaded"
+        standing over a full bar.
+
+        Two methods writing one widget's state independently is what produced the same defect
+        twice, so there are no longer two. `_refresh` asks for a finished bar rather than
+        setting one, and a description is not something a caller can forget to update, because
+        no caller writes the value either.
+
+        Under `NFR-005` the contradiction is worse than silence: sighted and screen-reader users
+        were being told different things about the same download.
+        """
+        if finished:
+            # A completed download is 100% whatever the last progress message happened to say —
+            # the final bytes routinely arrive with the outcome rather than as a progress update.
+            size = total or done
+            self._bar.setRange(0, 100)
+            self._bar.setValue(100)
+            self._bar.setAccessibleDescription(
+                f"Complete: {format_bytes(size)} downloaded" if size else "Complete"
+            )
+            return
         if total:
             percent = int(min((done or 0) / total, 1.0) * 100)
             self._bar.setRange(0, 100)
@@ -476,8 +509,7 @@ class JobProgressView(QWidget):
             self._stage.setText(STATUS_TEXT[self._status])
 
         if self._status is JobStatus.COMPLETED:
-            self._bar.setRange(0, 100)
-            self._bar.setValue(100)
+            self._draw_bar(*self._totals, finished=True)
 
         failure = self._failure
         if self._status is JobStatus.CANCELLED:

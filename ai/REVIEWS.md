@@ -4514,3 +4514,69 @@ path. Two current-truth corrections remain:
 - `STATUS.md` still summarizes T-016 as “Changes requested, first correction batch returned”
   immediately after adding the fourth-correction summary. This does not change readiness, but the
   stale bullet should be updated when the blocking review findings are reflected.
+
+## 2026-07-28 — T-017, T-058 and T-054 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Review boundary supplied:** `9c92c32` → `e66f34d`
+**Correction commit:** `e66f34d` (parent `2831973`)
+**Focused scope:** `T017-R1`, `T017-R2`, `T058-R1`, `T054-R1`, and regressions in their
+correction diff
+**Platforms verified:** Linux locally; Windows type analysis
+**Verdict by task:** `T-017` **Blocked**; `T-058` **Blocked**; `T-054` **Approved**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused re-review evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T017-R1` | **Medium** | **Yes** | `_on_job_changed()` no longer calls `_draw_pending()`. An interleaved progress/status test observes the promised quantity, `renders`, and stays at zero inside the interval; a terminal transition clears pending progress and stops the timer. Independently restoring the unmetered draw made the rate test fail with two renders, and independently retaining the terminal message made the terminal test fail. | None. | **Resolved** |
+| `T017-R2` | **Medium** | **Yes** | **The correction covers the two `_show_totals()` branches but not the third route that changes the bar.** After rendering `5/10`, `_on_job_changed(..., COMPLETED)` reaches `_refresh()`, which changes the visible bar from 50 to 100 at `job_detail.py:478-480` without changing its accessible description. The deterministic probe read range `0..100`, value `100`, description `"50 percent of 10 B downloaded"`. A job loaded completed with no stored total likewise becomes a determinate 100% bar while retaining the indeterminate “cannot be measured” description. This is the same sighted/screen-reader contradiction as the original finding, through a sibling call path the correction did not gate. | Make the completed override describe 100% truthfully, and gate completion from both a partial determinate bar and an unknown-total bar. Audit every path that changes the bar's range/value, not only `_show_totals()`. | **Open** |
+| `T017-R3` | **Low** | **No** | **The new immediate-state assertion proves only the pre-first-render case.** Its view still has `_displayed is None`, so `_refresh()` writes the nonterminal word. After one progress message has rendered, `_displayed` is non-`None`; a deterministic `RUNNING` → `POST_PROCESSING` status change then left “Downloading video” until the timer-rendered progress arrived. Terminal words are immediate and the delay is bounded by the stated 100 ms interval, so this does not reopen the repaint-rate acceptance criterion, but the source and task evidence overstate what the test proves. | Either state the narrower guarantee—terminal state words are immediate and nonterminal stage changes follow the coalesced progress render—or strengthen the implementation and test after a prior render. **Owner/target:** Implementer, next authorized T-017 correction; otherwise Documentation Maintainer before T-017 closes. | **Open, non-blocking** |
+| `T058-R1` | **Medium** | **Yes** | `ai/STATUS.md` no longer states the mandatory-area count or denominator, so that half is corrected. **The claimed single home is still false inside `ai/TESTING.md`.** Line 142 says “All ten are back in the default run”; line 350 says “Of §7's ten mandatory areas ten are now covered.” Both are numeric claims over the same enumerated §7 set and must change together if that set changes. The handoff's claim that line 350 is the only remaining occurrence is disproved by `rg -n '\\b(ten|nine|eight)\\b' ai/STATUS.md ai/TESTING.md`. This is a direct continuation of the duplicated-count defect, not an adjacent documentation observation. | Keep the numeric mandatory-area count/denominator in §12 only. Rewrite §7's execution note without restating the size of the set, then rerun a search broad enough to find word-form numbers rather than only “ten of ten”/“of ten mandatory.” | **Open** |
+| `T054-R1` | **Low** | **No** | The evidence now says the permutation comparison covered the relocation snapshot and explicitly names the later status/evidence/note edits it excluded. `git diff --check 9c92c32..e66f34d` is clean, and `ai/TASKS.md` ends with one newline. The six affected task entries sit under sections compatible with their status lines. | None. | **Resolved** |
+
+### Review judgments
+
+- `renders` is the right public observation for `REPAINT_INTERVAL_MS`; the correction test now
+  measures progress-field redraws rather than the absence of a displayed message.
+- Dropping pending progress at a terminal transition is correct. Deferring it would let an older
+  worker report overwrite the newer terminal state on the next tick.
+- The determinate and indeterminate `_show_totals()` descriptions are individually correct, and
+  both branch-removal mutations are killed. The remaining T017-R2 defect is `_refresh()` changing
+  the same control outside those branches.
+- `ai/STATUS.md` now points to `ai/TESTING.md` §12 without restating its numeric coverage result.
+  The remaining T058-R1 duplication is within `TESTING.md` itself.
+- T-016 and T-057 are correctly filed under `## Complete`; T-056 is correctly filed under
+  `## Blocked`; T-017 and T-058 are correctly filed under `## In Review` at the reviewed head.
+  This re-review does not revisit T-056's untouched Windows-only implementation or evidence.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| `git diff --check 9c92c32..e66f34d` | Passed. |
+| Corrected T-017 tests | **3 passed, 35 deselected**. |
+| Four isolated mutations named in T-017's evidence | **All four killed**: unmetered status draw, retained terminal message, missing determinate description, and missing indeterminate description each failed its named test. |
+| Completion accessible-description probe | Visible bar `0..100`, value `100`; accessible description remained `"50 percent of 10 B downloaded"`. |
+| Post-render status-word probe | `RUNNING` → `POST_PROCESSING` left `"Downloading video"` until the coalesced progress render. |
+| Coverage-count search | Found numeric §7 coverage statements at `ai/TESTING.md:142` and `ai/TESTING.md:350`; none in `ai/STATUS.md`. |
+| `ruff check .` | Passed. |
+| `ruff format --check .` | **87 files already formatted**. |
+| `mypy src` | Passed: no issues in **35 source files**. |
+| Configured `mypy` | Passed: no issues in **72 source/test files**. |
+| Configured `mypy --platform win32` | Passed: no issues in **72 source/test files**. |
+| Full default suite with localhost/cache permission | **1337 passed, 11 skipped, 1 deselected in 76.24 s**. |
+
+### Readiness and review budget
+
+`T017-R1` and `T054-R1` are **Resolved**. T-054 is therefore **Approved at `e66f34d`**.
+
+`T017-R2` and `T058-R1` remain blocking Medium findings. This was the one focused correction
+re-review allowed by the ordinary convergence budget, so `T-017` and `T-058` are now **Blocked
+pending maintainer direction**, not automatically returned for a third pass. Per `AGENTS.md`
+§10, the maintainer must choose one of: authorize another focused pass, accept the documented
+risk, change scope, or carry either correction into a named follow-up task. `T017-R3` is
+non-blocking and does not itself consume or require another pass.
+
+`T-056` remains **Blocked** on its Windows runtime/mutation evidence. It was untouched by
+`e66f34d` and is outside this focused re-review.

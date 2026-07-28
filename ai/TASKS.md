@@ -52,9 +52,12 @@ Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; 
 
 ### T-017 — Single-job progress view with cancel
 
-**Status:** **In Review — first correction batch returned 2026-07-28.** Blocking Medium
-`T017-R1` and `T017-R2` are both corrected, and each has a gate the reviewer named. No finding is
-marked Resolved here — that is the Reviewer's to do. `ui/job_detail.py` holds the view;
+**Status:** **In Review — second correction batch returned 2026-07-28**, on maintainer
+authorization (`AGENTS.md` §10; the ordinary budget was exhausted). `T017-R1` is Resolved.
+`T017-R2` continued through a sibling path and is corrected **structurally** rather than patched;
+non-blocking `T017-R3` is corrected in the same batch because it is an inaccurate claim in a
+docstring this batch was already rewriting. No finding is marked Resolved here — that is the
+Reviewer's to do. `ui/job_detail.py` holds the view;
 `ui/queue_view.py` stays a docstring-only stub, because a multi-job table is Phase 2 and this
 task's scope is one job.
 **Owner:** Implementer
@@ -104,6 +107,34 @@ retry affordance (`REQ-018`); nothing fails silently.
 - Multi-job queue view, reordering, bulk actions — Phase 2
 - Pause and resume — `REQ-015` includes them, but they need Phase 2's scheduler
 - Open-file and reveal-in-file-manager — `REQ-021`, Phase 2
+
+#### Second correction batch — one owner for the bar, 2026-07-28
+
+**Base:** `e66f34d`. Authorized by the maintainer under `AGENTS.md` §10 after the ordinary budget
+was exhausted. Four mutations, four killed.
+
+- **`T017-R2` (Medium, blocking) — corrected structurally, because a patch would have been the
+  third instance.** `_show_totals` was fixed and `_refresh` still set the bar to 100% on
+  completion through a path of its own, so a completed download showed a full bar described as
+  "50 percent of 10 B downloaded". The same contradiction, a different writer.
+
+  Two methods writing one widget's state independently is what produced this defect twice, so
+  there are no longer two: `_draw_bar` owns range, value and accessible description together, and
+  `_refresh` **asks** for a finished bar rather than setting one. A description is now not
+  something a caller can forget to update, because no caller writes the value either.
+
+- **`T017-R3` (Low, non-blocking) — an inaccurate claim, corrected rather than filed.** The
+  docstring said state words stay immediate; that was true only before anything had been
+  rendered. While a job runs, a status change deliberately leaves the more specific stage the
+  worker reported — "Downloading video" beats "Downloading" — and the next repaint replaces it
+  within `REPAINT_INTERVAL_MS`. An *ending* is immediate, and that is the case a user must not be
+  lied to about. Behaviour unchanged; the claim now matches it, and a new test states which of
+  the two the widget actually promises. Corrected here rather than carried as follow-up work
+  because it is a sentence in a docstring this batch was already rewriting.
+
+**Mutations run, all killed:** `_refresh` writing the bar itself again — the exact missed sibling
+· a finished bar keeping the running description · a running status change overwriting the
+reported stage · an ending waiting for the repaint like anything else.
 
 #### First correction batch — the rate limit had a second door, 2026-07-28
 
@@ -187,10 +218,11 @@ covers.
 
 ### T-058 — Recount the DRM coverage record
 
-**Status:** **In Review — corrected 2026-07-28** after `T058-R1`. The recount itself stood; what
-did not was the single-home claim, which the correction restated the new number three times while
-making. `ai/TESTING.md` §12 is now the only place either the count or its denominator appears.
-See **Evidence**.
+**Status:** **In Review — second correction returned 2026-07-28**, on maintainer authorization
+(`AGENTS.md` §10). `T058-R1` continued: the first correction cleaned `ai/STATUS.md` and left two
+numeric statements inside `ai/TESTING.md` itself — the file it had just declared the single home —
+because the search used to verify the claim matched only the phrasing it had removed. See
+**Evidence**.
 **Owner:** Documentation Maintainer, with the Implementer for the mutation evidence
 **Priority:** Medium — the exit review reads this record, and today it is wrong
 **Phase:** Phase 1
@@ -228,7 +260,7 @@ declaring the area closed.
 - Every test named above is run, and a mutation is run against each claim it is cited for — at
   minimum: making `DRM_PROTECTED` retryable, and removing the single-extraction assertion. **A
   claim whose mutation survives is not recorded as covered**
-- §12's "eight of ten" sentence is recomputed from §7's ten rows rather than edited in place
+- §12's coverage sentence is recomputed from §7's rows rather than edited in place
 - `ai/STATUS.md`'s DRM statements agree with each other and with §12 — one number, stated once
 - The corrected record names `T-057` and `T-017`'s criterion as the open edges of the boundary
 - No mandatory row's *requirement* text is reworded; only the coverage claim about it changes
@@ -239,12 +271,29 @@ declaring the area closed.
   file, not a fix to fold into a documentation task
 - `T-057`'s code change
 
+#### Second correction — the search was narrower than the claim, 2026-07-28
+
+`T058-R1` continued, and the reason is worth more than the fix. The first correction removed every
+restatement from `ai/STATUS.md`, then verified the single-home claim by grepping for `"ten of
+ten"` and `"of ten mandatory"` — **the two phrasings it had just removed**. That search cannot
+fail, and it reported success while `ai/TESTING.md` §7's own execution note two hundred lines
+above the count still read "All ten are back in the default run".
+
+Corrected: §7's note now says "Every mandatory area above", `ai/TESTING.md` §12 is the only place
+the count or its denominator appears, and three historical entries (`T-014`, `T-034`, and this
+task's own criteria and evidence) keep their numerators and drop the size of the set. The check is
+now a pattern over word-form and digit numbers near `mandatory`, `of ten` or `§7` across `ai/`,
+`AGENTS.md` and `README.md`, whose *output* is read rather than its exit status.
+
+`ARCHITECTURE.md` §7 — the error taxonomy — also has ten rows, and `T-010`'s entry says so. That
+is a different §7 and was deliberately left alone.
+
 #### Evidence, 2026-07-28
 
-**The count is ten of ten**, recomputed from §7's rows rather than edited in place. The old
-sentence — "eight … Log redaction and DRM remain uncovered" — was wrong in both halves by the
-time anyone read it: `T-038` closed log redaction, and DRM had been gated since the worker path
-landed.
+**The coverage sentence in `ai/TESTING.md` §12 is recomputed from §7's rows** rather than edited
+in place, and §12 is where the number is — this entry does not restate it. The old sentence
+— "eight … Log redaction and DRM remain uncovered" — was wrong in both halves by the time anyone
+read it: `T-038` closed log redaction, and DRM had been gated since the worker path landed.
 
 **Every claim recorded was mutated first**, and all three mutations were killed:
 
@@ -267,9 +316,18 @@ replaces "nine" with "ten" in every place that had "nine" has not moved anything
 "this file does not repeat the count" beneath a repetition of it is the same defect wearing the
 fix's clothes.
 
-`ai/STATUS.md` now states neither the coverage count nor its denominator anywhere; every mention
-points at `ai/TESTING.md` §12. Verified by grep at the correcting head, not by intent: no
-occurrence of "ten of ten" or "of ten mandatory" remains in that file.
+`ai/STATUS.md` states neither the coverage count nor its denominator anywhere, and neither does
+anywhere else outside `ai/TESTING.md` §12 — including §7's own execution note, this task's
+acceptance criteria and evidence, and the historical `T-014` and `T-034` entries, each of which
+kept its numerator and dropped the size of the set.
+
+**The first attempt at that claim was checked with the wrong search** (`T058-R1`, second pass).
+Grepping for `"ten of ten"` and `"of ten mandatory"` found nothing left in `ai/STATUS.md` and
+reported success while §7's note two hundred lines above still said "All ten". A search narrow
+enough to match only the phrasing you just removed will always succeed. The check is now a
+pattern over **word-form and digit numbers within forty characters of `mandatory`, `of ten`, or
+`§7`**, run across `ai/`, `AGENTS.md` and `README.md`, and its output is read rather than its
+exit status.
 
 The failure mode this task actually closes is therefore narrower and more useful than it first
 recorded: *two files stating one number* is what let "DRM is uncovered" outlive being true by
@@ -3019,8 +3077,8 @@ rounds; `T014-R1` (Critical), `R2`, `R3`, `R4`, `R5` and `R7` all resolved, `R6`
 reviewer. Follow-ups: `T-048` (verify the first real data migration) and `T-049` (tighten
 `DAT-003`'s explanatory guarantees before cookie-file support).
 
-Closes three of `ai/TESTING.md` §7's ten mandatory areas — crash recovery, migrations, and the
-settings freeze — taking §7 from three to six. **Unblocks `T-013`**, and with it the rest of the
+Closes three of `ai/TESTING.md` §7's mandatory areas — crash recovery, migrations, and the
+settings freeze — taking the covered set from three to six. **Unblocks `T-013`**, and with it the rest of the
 Phase 1 chain.
 
 **`T014-R1` was the most expensive finding this project has had**, and the lesson is worth more
@@ -3519,7 +3577,8 @@ then `T-037`.
 
 **Status:** **Complete — approved with follow-ups**, 2026-07-26 at `313198d`.
 
-Closes `ai/TESTING.md` §7's **Path safety** mandatory area, taking §7 from two of ten to three.
+Closes `ai/TESTING.md` §7's **Path safety** mandatory area, taking the covered set from two to
+three.
 Four review rounds and two maintainer-authorized exception passes; the reviewer independently
 probed `C:../evil.mp4` and `C:..\evil.mp4` and confirmed both stay contained.
 
@@ -4500,7 +4559,7 @@ artifact, which now contains the log.
   modules, 26 docstring-only stubs, and 5 modules with code
 - `TASKS.md` headings agree with task statuses, and the exit-review next step is current
 - `TESTING.md`'s status note acknowledges resource, layering, and shell-window tests while
-  retaining the honest boundary that only one of §7's ten mandatory areas is covered
+  retaining the honest boundary that only one of §7's mandatory areas is covered
 
 ---
 

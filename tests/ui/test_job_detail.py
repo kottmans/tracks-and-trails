@@ -393,7 +393,8 @@ def test_a_status_change_does_not_redraw_progress_outside_the_rate_limit(
         "past the rate limit"
     )
     assert view.stage_text() == "Post-processing", (
-        "the state word has to stay immediate even though the progress behind it waits"
+        "before anything has been rendered the state word is all there is, so it has to be "
+        "immediate even though the progress behind it waits"
     )
 
     deadline = time.monotonic() + 5
@@ -403,6 +404,81 @@ def test_a_status_change_does_not_redraw_progress_outside_the_rate_limit(
     assert view.renders == 1, f"the interval produced {view.renders} repaints, not one"
     drawn = view.displayed_progress
     assert drawn is not None and drawn.downloaded_bytes == 3, "the repaint drew a stale message"
+
+
+def test_only_an_ending_is_immediate_once_progress_is_on_screen(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T017-R3`: the previous test only covered the state *before* anything had rendered.
+
+    Once a stage has been drawn, a non-terminal status change deliberately leaves it alone —
+    "Downloading video" is better information than "Downloading", and the next repaint replaces
+    it within one interval. An *ending* is different and is written at once, because a job that
+    has stopped must never go on claiming to be running. This states which of the two the widget
+    actually promises; the earlier assertion read as though it promised both.
+    """
+    store.add(make_job("job-1", tmp_path, status=JobStatus.PROBING))
+    view = views(manager=managers(), jobs=store, job_id="job-1", repaint_interval_ms=1000)
+
+    view._on_progress(
+        Progress(job_id="job-1", stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=1, total_bytes=2)
+    )
+    view._draw_pending()
+    assert view.stage_text() == "Downloading video"
+
+    view._on_job_changed("job-1", JobStatus.RUNNING.value)
+    assert view.stage_text() == "Downloading video", (
+        "a running status overwrote the more specific stage the worker had reported"
+    )
+
+    view._on_job_changed("job-1", JobStatus.CANCELLED.value)
+    assert view.stage_text() == "Cancelled", (
+        "an ending waited for a repaint; a stopped job may not go on claiming to run"
+    )
+
+
+def test_a_completed_download_describes_a_full_bar_and_not_the_last_percentage(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T017-R2` through its sibling path, which the first correction missed.
+
+    `_show_totals` was fixed and `_refresh` still set the bar to 100% by itself, so a completed
+    download showed a full bar whose accessible description said "50 percent of 10 B
+    downloaded". Same contradiction, different writer — which is why the bar now has exactly one.
+    """
+    store.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING))
+    view = views(manager=managers(), jobs=store, job_id="job-1", repaint_interval_ms=1)
+    bar = view.findChild(QProgressBar, "progressBar")
+    assert bar is not None
+
+    view._on_progress(
+        Progress(job_id="job-1", stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=5, total_bytes=10)
+    )
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and view.renders == 0:
+        qapp.processEvents()
+        time.sleep(0.005)
+    assert bar.value() == 50 and "50" in bar.accessibleDescription()
+
+    view._on_job_changed("job-1", JobStatus.COMPLETED.value)
+
+    assert bar.value() == 100, "the bar did not fill on completion"
+    described = bar.accessibleDescription()
+    assert "50" not in described, (
+        f"the completed bar still describes the last percentage it drew: {described!r}"
+    )
+    assert "Complete" in described, (
+        f"a full bar has to say what it means, not merely stop saying the wrong thing: "
+        f"{described!r}"
+    )
 
 
 def test_a_terminal_state_drops_progress_that_can_no_longer_be_true(

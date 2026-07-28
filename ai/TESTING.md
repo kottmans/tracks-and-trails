@@ -139,7 +139,8 @@ failure mode is silent, destructive, or both.
 | Migrations | Every migration runs forward from every prior schema version with data intact |
 | Settings freeze | A settings change mid-flight does not alter a running job's `DownloadRequest` |
 
-**All ten are back in the default run as of `T-019`** (2026-07-27). Cancellation and Worker
+**Every mandatory area above is back in the default run as of `T-019`** (2026-07-27).
+Cancellation and Worker
 crash spent one day behind `-m process_tree`, because the defect `T-019` owned left descendants
 that wedged later runs; that defect is fixed, so the reason is gone and the marker with it. The
 episode is worth keeping in mind rather than in a marker: while the exclusion stood, `T019-R1`
