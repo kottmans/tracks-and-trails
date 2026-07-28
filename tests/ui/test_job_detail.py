@@ -500,10 +500,149 @@ def test_the_bar_and_its_description_never_disagree(
         assert "percent" not in described, (
             f"a finished download reported a percentage rather than its size: {described!r}"
         )
+        # `T017-R4`: `done` is a progress counter, and a progress counter is not a measurement of
+        # a finished file. With no total there is nothing durable saying how big it was.
+        if total:
+            assert format_bytes(total) in described, (
+                f"a finished download knew its size and did not say it: {described!r}"
+            )
+        else:
+            assert described == "Complete", (
+                f"a finished download with no recorded total stated a size anyway: {described!r}"
+            )
     else:
         assert f"{bar.value()} percent" in described, (
             f"the bar shows {bar.value()}% and says {described!r}"
         )
+
+
+#: One row per ending, from the rule in `job_detail`'s module docstring. The rule exists because
+#: two of the three endings want the opposite source from the third, which is what `T017-R4` came
+#: of not writing down.
+ENDINGS: Final = [
+    (JobStatus.CANCELLED, "what was last shown"),
+    (JobStatus.FAILED, "what was last shown"),
+    (JobStatus.COMPLETED, "the row's total"),
+]
+
+
+@pytest.mark.parametrize(("ending", "source"), ENDINGS)
+def test_each_ending_takes_its_size_from_the_source_the_rule_names(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+    qapp: QApplication,
+    ending: JobStatus,
+    source: str,
+) -> None:
+    """`T017-R4`. One case per row of the rule, driven through the same interleaving.
+
+    The row is left deliberately behind the display — 1 of 10 stored, 5 of 10 rendered — which is
+    the ordinary state of affairs while a job runs, because `manager.py` does not persist progress
+    per message. A stopped job then has to pick a source, and the previous correction picked the
+    same one for all three endings: cancelling at 50% redrew the bar at the row's stale 10%.
+    """
+    store.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING, bytes_done=1, bytes_total=10))
+    view = views(manager=managers(), jobs=store, job_id="job-1", repaint_interval_ms=1)
+    bar = view.findChild(QProgressBar, "progressBar")
+    bytes_label = view.findChild(QLabel, "bytesValue")
+    assert bar is not None and bytes_label is not None
+
+    view._on_progress(
+        Progress(job_id="job-1", stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=5, total_bytes=10)
+    )
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and view.renders == 0:
+        qapp.processEvents()
+        time.sleep(0.005)
+    assert bar.value() == 50 and bytes_label.text() == "5 B of 10 B"
+
+    store.jobs["job-1"] = replace(store.jobs["job-1"], status=ending)
+    view._on_job_changed("job-1", ending.value)
+
+    if ending is JobStatus.COMPLETED:
+        assert bar.value() == 100
+        assert bytes_label.text() == "10 B of 10 B", (
+            f"a completed download showed its progress counter, not its size ({source}): "
+            f"{bytes_label.text()!r}"
+        )
+        assert "10 B" in bar.accessibleDescription()
+        return
+
+    assert bar.value() == 50, (
+        f"{ending.value} rolled the display backward to the row's stale figure "
+        f"({bar.value()}%); the rule says {source}, and the row lags on purpose"
+    )
+    assert bytes_label.text() == "5 B of 10 B", (
+        f"{ending.value} replaced what was transferred with what the row happened to hold: "
+        f"{bytes_label.text()!r}"
+    )
+
+
+def test_a_completed_download_of_unrecorded_size_invents_none(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T017-R4`: with no durable total, the last progress counter is not a final size.
+
+    It reported "Complete: 3 B downloaded" over a file nobody had measured — a stage transition's
+    byte count promoted to a measurement by being the only number to hand.
+    """
+    store.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING, bytes_done=3))
+    view = views(manager=managers(), jobs=store, job_id="job-1", repaint_interval_ms=1)
+    bar = view.findChild(QProgressBar, "progressBar")
+    bytes_label = view.findChild(QLabel, "bytesValue")
+    assert bar is not None and bytes_label is not None
+
+    view._on_progress(Progress(job_id="job-1", stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=3))
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and view.renders == 0:
+        qapp.processEvents()
+        time.sleep(0.005)
+
+    store.jobs["job-1"] = replace(store.jobs["job-1"], status=JobStatus.COMPLETED)
+    view._on_job_changed("job-1", JobStatus.COMPLETED.value)
+
+    assert bar.value() == 100
+    assert bar.accessibleDescription() == "Complete", (
+        f"a size was stated for a download nothing measured: {bar.accessibleDescription()!r}"
+    )
+    assert bytes_label.text() == UNKNOWN_TEXT, (
+        f"the byte line invented a figure too: {bytes_label.text()!r}"
+    )
+
+
+def test_a_completed_row_whose_counter_lags_its_total_says_one_thing(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+) -> None:
+    """`T017-R4`: a real completed row routinely holds `bytes_done < bytes_total`.
+
+    `manager.py` writes `bytes_total` at the terminal transition and leaves the counter wherever
+    progress stopped, so this is the ordinary shape rather than a corrupt one. The widget showed a
+    100% bar reading "Complete: 20 B downloaded" beside a byte line reading "1 B of 20 B" — both
+    from the same row, disagreeing.
+    """
+    store.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING, bytes_done=1, bytes_total=20))
+    view = views(manager=managers(), jobs=store, job_id="job-1")
+    bar = view.findChild(QProgressBar, "progressBar")
+    bytes_label = view.findChild(QLabel, "bytesValue")
+    assert bar is not None and bytes_label is not None
+
+    store.jobs["job-1"] = replace(store.jobs["job-1"], status=JobStatus.COMPLETED)
+    view._on_job_changed("job-1", JobStatus.COMPLETED.value)
+
+    assert bar.value() == 100
+    assert bytes_label.text() == "20 B of 20 B", (
+        f"the byte line contradicts a full bar: {bytes_label.text()!r}"
+    )
+    assert "20 B" in bar.accessibleDescription()
 
 
 def test_a_finished_download_reports_the_size_its_row_holds_not_the_last_one_drawn(

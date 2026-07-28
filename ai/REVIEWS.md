@@ -4644,3 +4644,68 @@ the work into a named follow-up task.
 
 `T-056` remains **Blocked** on Windows runtime/mutation evidence. It was untouched by `b3e156c`
 and remains outside this review.
+
+## 2026-07-28 — T-017 additional authorized focused pass
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `b3e156c`  **Head:** `5ee8d36`
+**Correction commit:** `5ee8d36`
+**Focused scope:** `T017-R2`, `T017-R3`, their correction regressions, and T-058 filing
+**Authorization:** Maintainer-authorized extra pass under `AGENTS.md` §10
+**Platforms verified:** Linux locally; Windows type analysis
+**Verdict by task:** `T-017` **Blocked**; T-058 remains **Approved**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused re-review evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T017-R2` | **Medium** | **Yes** | `describe_bar()` and `_draw_bar()` now cover the closed value space, and the widget test derives its assertions from the rendered range/value/description relation. The 30-case cross-product kills the reviewer's prior survivor: describing a finished bar only when `total` is known failed all ten finished/unknown-total cases. Removing durable-total adoption, making a determinate bar inherit indeterminate words, and drawing without a description also failed their intended gates. A completed row with `bytes_done == bytes_total == 2048` now renders a 100% bar described as complete at 2 KB. | None. | **Resolved** |
+| `T017-R3` | **Low** | **No** | The first correction entry now says an ending—not every state word—is immediate and records the former wording. It agrees with the source docstring and the post-render behavior test. | None. | **Resolved** |
+| `T017-R4` | **Medium** | **Yes** | **The durable-row correction applies completion policy to every ending and assumes a row invariant the manager does not provide.** `_on_job_changed()` calls `_adopt_stored_totals()` for `COMPLETED`, `FAILED`, and `CANCELLED`. The manager deliberately does not persist same-stage progress messages. A cancel probe therefore rendered `5/10`, then jumped backwards to the row's older `1/10` when `CANCELLED` arrived. Restricting adoption to `COMPLETED` survived the entire **71-test** widget suite. Completion has a second manifestation: the manager's success transition updates `bytes_total` but not `bytes_done` (`manager.py:1276-1280`). With a legitimate completed row at `1/20`, the view displayed a full bar and `"Complete: 20 B downloaded"` beside `"1 B of 20 B"`. If success has no total, `describe_bar()` presents the row's last stage-transition `bytes_done` as a final size even though later same-stage progress was never persisted. These are ordinary protocol states, not malformed rows. | Adopt durable data only for `COMPLETED`. When a final `bytes_total` exists, render completion consistently from that total rather than pairing it with stale `bytes_done`; when it does not, say simply “Complete” and do not present persisted `bytes_done` as a final size. Gate cancellation and failure preserving the newest rendered progress, completion with `bytes_done != bytes_total`, and completion with no trustworthy total. | **Open** |
+| `T017-R5` | **Low** | **No** | T-017's current evidence still says `tests/ui/test_job_detail.py` contains **35 tests** at `ai/TASKS.md:217`; the reviewed file now contains 71 after the three correction batches. This does not affect behavior or approval by itself, but it is stale current truth in the entry being corrected. | Recount or remove the volatile test count before T-017 closes. **Owner/target:** Documentation Maintainer, T-017 record. | **Open, non-blocking** |
+
+### Review judgments
+
+- The move from remembered examples to a rendered-state relation is the right correction to
+  T017-R2. The test no longer asserts a production-authored description against a duplicated
+  expected string.
+- All four mutations reported for `5ee8d36` are independently killed.
+- The cross-product closes the bar's local `(done, total, finished)` presentation space. It
+  cannot by itself prove that the values supplied to that space are temporally appropriate;
+  T017-R4 is at that caller/data-contract boundary.
+- `job_changed` does guarantee that a durable row is readable. It does not guarantee that every
+  field in that row was refreshed by the transition: success writes `bytes_total` but leaves
+  `bytes_done`, and cancellation/failure leave both progress fields as previously persisted.
+- T-058 is correctly recorded Approved at `b3e156c` and filed under `## Complete`. T-017 remains
+  under `## In Review`, and T-056 remains under `## Blocked`; no reviewed entry contradicts its
+  section.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| `git diff --check b3e156c..5ee8d36` | Passed. |
+| Current job-detail suite | **71 passed in 2.03 s**. |
+| Four reported mutations | **All four killed** by the cross-product or durable-row test. |
+| Completion-only adoption mutation | **Survived: 71 passed in 2.03 s**. |
+| Cancelled-row probe | Before ending: `5 B of 10 B`, 50%; after durable `CANCELLED`: `1 B of 10 B`, 10%. |
+| Completed-row probe | Durable row `1/20`; rendered bytes `"1 B of 20 B"`, bar 100%, description `"Complete: 20 B downloaded"`. |
+| `ruff check .` | Passed. |
+| `ruff format --check .` | **87 files already formatted**. |
+| `mypy src` | Passed: no issues in **35 source files**. |
+| Configured `mypy` | Passed: no issues in **72 source/test files**. |
+| Configured `mypy --platform win32` | Passed: no issues in **72 source/test files**. |
+| Full default suite with localhost/cache permission | **1370 passed, 11 skipped, 1 deselected in 75.98 s**. |
+
+### Readiness and review budget
+
+`T017-R2` and `T017-R3` are **Resolved**. `T017-R4` is a new blocking Medium correction
+regression; `T017-R5` is non-blocking. T-017 is therefore **Blocked pending maintainer
+direction**.
+
+Because this was another maintainer-authorized pass after the ordinary budget was exhausted,
+another focused correction/re-review is not automatic. The maintainer must explicitly authorize
+it, accept the documented risk, change scope, or move the work into a named follow-up task.
+
+T-058 remains **Approved at `b3e156c`**. T-056 remains **Blocked** on Windows runtime/mutation
+evidence and was untouched by `5ee8d36`.

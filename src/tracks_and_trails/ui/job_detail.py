@@ -33,6 +33,30 @@ retried, just not now".
 `CANCELLED` is excluded by the same predicate for a different reason: it is not a failure at all
 (`ARCHITECTURE.md` §7), and retrying it means starting new work, which is the caller's decision.
 
+## Two sources of truth, and which one answers when
+
+The size a user sees can come from a live progress message or from the durable row, and they do
+not agree — deliberately. `manager.py` does not persist progress per message ("an unbounded write
+rate for a fact that is worthless after a crash"), so the row lags while a job runs; and the final
+byte count arrives with `Succeeded` rather than as a progress update, so the last message lags
+once it has finished. Each is right somewhere and wrong elsewhere.
+
+`T017-R4` is what choosing between them ad hoc at each site costs: a helper written for completion
+was applied to every terminal state, and cancelling a job at 50% redrew it at the row's stale 10%.
+So the rule is written down once, in `_totals_for_ending`, and it has three rows:
+
+| The job is | The size shown comes from | Because |
+|---|---|---|
+| running | the last rendered progress message | the row does not persist per-message progress |
+| `COMPLETED` | the row's `bytes_total` | the final size arrives with the outcome, not as progress |
+| `CANCELLED` / `FAILED` | whatever was last shown | the row lags by design; the last message
+  is the closest thing to what actually transferred |
+
+A completed download is its **total**, not its progress counter: the manager writes `bytes_total`
+at the terminal transition and leaves `bytes_done` where progress left it, so a real completed row
+routinely holds `bytes_done < bytes_total`. Presenting that counter as a final size is how
+`Complete: 3 B downloaded` appeared over a file nobody had measured.
+
 ## What the view does not own
 
 The retry itself. Re-queueing a failed job is a write, and `ui/` holds no writer — the widget
@@ -152,10 +176,14 @@ def describe_bar(done: int | None, total: int | None, *, finished: bool) -> str:
     size rather than a percentage — the final bytes routinely arrive with the outcome instead of
     as a progress update, and "100 percent of 1.0 KB" beside a 2.0 KB file is the stale-byte
     defect wearing a percentage.
+
+    **The finished size is the total, and never `done`** (`T017-R4`). `done` is a progress counter,
+    and a progress counter is not a measurement of a finished file: falling back to it turned the
+    last stage transition's byte count into a stated final size. With no total there is nothing
+    durable saying how big the download was, and "Complete" on its own is the honest answer.
     """
     if finished:
-        size = total or done
-        return f"Complete: {format_bytes(size)} downloaded" if size else "Complete"
+        return f"Complete: {format_bytes(total)} downloaded" if total else "Complete"
     if total:
         return f"{percent_of(done, total)} percent of {format_bytes(total)} downloaded"
     # An unknown total is a real state, not zero percent. `REQ-011`'s indeterminate bar, and this
@@ -441,25 +469,38 @@ class JobProgressView(QWidget):
         if self._is_terminal:
             self._pending = None
             self._repaint.stop()
-            self._adopt_stored_totals()
+            self._show_totals(*self._totals_for_ending())
         self._refresh()
 
-    def _adopt_stored_totals(self) -> None:
-        """Take the finished job's own byte counts, not the ones a repaint last happened to draw.
+    def _totals_for_ending(self) -> tuple[int | None, int | None]:
+        """Where a stopped job's size comes from. **The rule, written down in one place.**
 
-        `T017-R2`. The totals behind the bar came from rendered progress, and a completed download
-        reports its size — so a job whose row said 2 KB was described as "Complete: 1.0 KB
-        downloaded", because 1 KB was the last message drawn before the outcome arrived. The final
-        bytes normally come with `Succeeded` rather than as a progress update, so the last render
-        is precisely the wrong source.
+        See the module docstring for the table this implements and why the two sources disagree.
 
-        Reading the row here is safe and is a `T-016` guarantee rather than an assumption:
-        `job_changed` is emitted from the write's own completion callback, so the row really does
-        hold this state by the time this runs.
+        `T017-R2` established that a *completed* download must take its size from the row, because
+        the final bytes arrive with the outcome rather than as progress. `T017-R4` is what came of
+        applying that to all three endings without saying so: a job cancelled at 50% was redrawn at
+        the row's stale 10%, since the row lags on purpose while a job runs. Two of the three
+        endings want the opposite source from the third, which is exactly the kind of thing that
+        has to be written down rather than remembered at each call site.
+
+        Reading the row here is a `T-016` guarantee rather than an assumption: `job_changed` is
+        emitted from the write's own completion callback, so the row really does hold this state.
         """
+        if self._status is not JobStatus.COMPLETED:
+            # Stopped partway. The row does not know how far — progress is not persisted per
+            # message — so what was last shown is the closest thing to what actually transferred.
+            return self._totals
         job = self._jobs.get(self._job_id)
-        if job is not None:
-            self._show_totals(job.bytes_done, job.bytes_total)
+        total = job.bytes_total if job is not None else None
+        if not total:
+            # Nothing durable says how big it was, and the progress counter is not a measurement
+            # of a finished file. `describe_bar` says "Complete" without inventing a size.
+            return (None, None)
+        # A completed download **is** its total. `bytes_done` is left wherever progress stopped —
+        # the manager writes `bytes_total` at the terminal transition and does not touch the
+        # counter — so a real completed row routinely holds `bytes_done < bytes_total`.
+        return (total, total)
 
     def _on_job_failed(self, job_id: str, kind: object, message: str) -> None:
         """Show the extractor's message **verbatim** (`REQ-005`, `NFR-006`).
@@ -504,7 +545,13 @@ class JobProgressView(QWidget):
     def _show_totals(self, done: int | None, total: int | None) -> None:
         """Write the byte counts, and hand the bar to the one method that owns it."""
         self._totals = (done, total)
-        self._bytes.setText(f"{format_bytes(done)} of {format_bytes(total)}")
+        # "Unknown of Unknown" is noise; one word says the same thing. Reachable only from a
+        # completed download whose size nothing durable recorded (`_totals_for_ending`).
+        self._bytes.setText(
+            UNKNOWN_TEXT
+            if done is None and total is None
+            else f"{format_bytes(done)} of {format_bytes(total)}"
+        )
         self._draw_bar(done, total)
 
     def _draw_bar(self, done: int | None, total: int | None, *, finished: bool = False) -> None:

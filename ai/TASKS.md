@@ -52,12 +52,11 @@ Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; 
 
 ### T-017 — Single-job progress view with cancel
 
-**Status:** **In Review — third correction batch returned 2026-07-28**, on maintainer
-authorization (`AGENTS.md` §10). `T017-R1` is Resolved. `T017-R2` has now come back **three
-times**, each through a case the previous correction had not thought of, so this batch stops
-adding guards and makes the space enumerable instead. `T017-R3`'s source and tests were accepted;
-what remained was one record contradicting another, corrected here. No finding is marked Resolved
-here — that is the Reviewer's to do. `ui/job_detail.py` holds the view;
+**Status:** **In Review — fourth correction batch returned 2026-07-28**, on maintainer
+authorization (`AGENTS.md` §10). `T017-R1`, `T017-R2` and `T017-R3` are Resolved. `T017-R4` is a
+**regression the third batch introduced** — a helper written for completion applied to every
+terminal state — and is corrected by writing down the rule it was guessing at. `T017-R5` is
+corrected with it. No finding is marked Resolved here — that is the Reviewer's to do. `ui/job_detail.py` holds the view;
 `ui/queue_view.py` stays a docstring-only stub, because a multi-job table is Phase 2 and this
 task's scope is one job.
 **Owner:** Implementer
@@ -107,6 +106,47 @@ retry affordance (`REQ-018`); nothing fails silently.
 - Multi-job queue view, reordering, bulk actions — Phase 2
 - Pause and resume — `REQ-015` includes them, but they need Phase 2's scheduler
 - Open-file and reveal-in-file-manager — `REQ-021`, Phase 2
+
+#### Fourth correction batch — the rule the corrections were guessing at, 2026-07-28
+
+**Base:** `5ee8d36`. Authorized by the maintainer under `AGENTS.md` §10. Four mutations, four
+killed, including the reviewer's own.
+
+**`T017-R4` (Medium, blocking) — a regression the previous batch introduced, and the second one
+this widget has had from me.** `_adopt_stored_totals` was written for completion and run for
+*every* terminal state, so:
+
+- cancelling a job displayed at 50% redrew it at the row's stale 10%;
+- a real completed row — `bytes_done=1, bytes_total=20`, which is the ordinary shape, because the
+  manager writes the total at the terminal transition and leaves the counter where progress
+  stopped — showed a 100% bar reading "Complete: 20 B downloaded" beside "1 B of 20 B";
+- completion with no recorded total presented the last stage transition's byte count as the final
+  size.
+
+**The cause is that this view has two sources of truth and I had been choosing between them at
+each call site.** `manager.py` deliberately does not persist progress per message, so the row lags
+while a job runs; the final byte count arrives with `Succeeded` rather than as progress, so the
+last message lags once it has finished. Each source is right somewhere and wrong elsewhere, and
+two of the three endings want the opposite one from the third.
+
+So the rule is written down — in the module docstring as a table, and in `_totals_for_ending` as
+the one place that applies it — rather than remembered:
+
+| The job is | The size comes from |
+|---|---|
+| running | the last rendered progress message |
+| `COMPLETED` | the row's `bytes_total` |
+| `CANCELLED` / `FAILED` | whatever was last shown |
+
+`describe_bar` also stops falling back to `done` for a finished size: a progress counter is not a
+measurement of a finished file, and with no total "Complete" on its own is the honest answer.
+
+**`T017-R5` (Low, non-blocking)** — the evidence said 35 tests when there were 71. Corrected, and
+the count is now stated once with the head it was true at.
+
+**Mutations run, all killed:** the reviewer's own — adopting the row's totals for every terminal
+state · a completed download showing its progress counter · the finished description falling back
+to the counter · a cancelled job no longer keeping what was shown.
 
 #### Third correction batch — the space, not the cases, 2026-07-28
 
@@ -214,8 +254,13 @@ indeterminate branch not describing itself.
 #### Evidence, 2026-07-28
 
 **What was built.** `ui/job_detail.py`: `JobProgressView`, driven by `DownloadManager`'s signals,
-with `build_progress_view` as the seam composition uses to supply the retry. 35 tests in
-`tests/ui/test_job_detail.py`, most of them driving a real child process over a real queue.
+with `build_progress_view` as the seam composition uses to supply the retry. The suite is
+`tests/ui/test_job_detail.py`, much of it driving a real child process over a real queue; **76
+tests as of the fourth correction batch**, which is the batch that last changed the number. Stated
+here and nowhere else, and deliberately without a commit SHA — a commit cannot name its own hash,
+and the previous attempt at precision was a placeholder that would have been wrong on arrival.
+This read "35 tests" for four correction batches after that stopped being true, which is
+`T017-R5`.
 
 **Two design decisions worth a reviewer's attention:**
 
