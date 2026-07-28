@@ -1877,7 +1877,10 @@ failure rather than a cleanup error.
 
 ### T-017 — Single-job progress view with cancel
 
-**Status:** Proposed — Ready once `T-013` and `T-014` merge
+**Status:** **In Review — implemented 2026-07-28.** `ui/job_detail.py` holds the view;
+`ui/queue_view.py` stays a docstring-only stub, because a multi-job table is Phase 2 and this
+task's scope is one job. Every acceptance criterion below has a named test, and eight mutations
+were run against them — see **Evidence**.
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 1
@@ -1925,6 +1928,50 @@ retry affordance (`REQ-018`); nothing fails silently.
 - Multi-job queue view, reordering, bulk actions — Phase 2
 - Pause and resume — `REQ-015` includes them, but they need Phase 2's scheduler
 - Open-file and reveal-in-file-manager — `REQ-021`, Phase 2
+
+#### Evidence, 2026-07-28
+
+**What was built.** `ui/job_detail.py`: `JobProgressView`, driven by `DownloadManager`'s signals,
+with `build_progress_view` as the seam composition uses to supply the retry. 35 tests in
+`tests/ui/test_job_detail.py`, most of them driving a real child process over a real queue.
+
+**Two design decisions worth a reviewer's attention:**
+
+- **Repaints are coalesced at a stated rate**, not measured against a latency bound. `REQ-014`'s
+  criterion allows either; a rate is the one this widget can *promise*, and `pending_progress`
+  and `displayed_progress` are public so a test can tell "coalesced" from "dropped". The tail of
+  a burst is never lost — the newest message is held and drawn by the next tick.
+- **The retry is reported, not performed.** Re-queueing a failed job is a write and `ui/` holds
+  no writer (`ARCHITECTURE.md` §3), so the widget emits `retry_requested` and `T-036` connects
+  it. Cancel is different and does live here: it is a request to a process the manager owns.
+
+**The DRM criterion is met by asking the taxonomy, and the test asserts the rule rather than the
+case.** `test_the_retry_affordance_agrees_with_the_taxonomy_for_every_kind` is parametrised over
+every `ErrorKind` and compares against `is_retryable` itself, so a kind that becomes
+non-retryable in `core/errors.py` is covered here without anyone remembering to come back. The
+button is **absent** rather than disabled: a greyed-out Retry still asserts that a retry is the
+sort of thing a DRM failure could have, which is the claim `SEC-001` refuses to make.
+
+**Mutations run, all killed:** the retry rule replaced by a literal `DRM_PROTECTED` comparison ·
+retry offered for every failure · retry disabled instead of absent · every message repainting ·
+a cancellation shown as a failure · a stage dropped from `STAGE_TEXT` · the extractor's message
+truncated · the cancel control losing its keyboard focus policy.
+
+**One mutation survived at first and produced a test.** Dropping `Stage.POST_PROCESSING` from
+`STAGE_TEXT` changed nothing observable, because `_show_progress` falls back to the job's status
+text and for that stage the two strings read the same. A stage with no words of its own was
+therefore invisible. `test_every_stage_the_protocol_can_report_has_words_to_show` closes it by
+checking completeness against `Stage` — the only thing derived from the enum; the strings are
+still transcribed from `REQ-014` by hand (`ai/TESTING.md` §13).
+
+**Checks:** `ruff check .`, `ruff format --check .` (87 files), `mypy src` (35 files), configured
+`mypy` and `mypy --platform win32` (72 files each) all pass. Bare `pytest`: **1327 passed,
+11 skipped, 1 deselected in 74.95 s**. The wide mypy scope again found real problems the `src`
+scope could not see, including one that made mypy stop analysing the rest of a test.
+
+**Known-unverified:** the Windows half. Focus order is asserted offscreen here; the real
+platform plugin is `T-040`'s, and this widget adds three focusable controls to what that task
+covers.
 
 ---
 
