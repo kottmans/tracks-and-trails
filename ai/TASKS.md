@@ -957,6 +957,24 @@ called the worker's slot directly and closed a SQLite connection from the wrong 
 `QWidget.close()` on a never-shown dialog delivers no close event, so that test now shows the
 dialog first rather than passing for the wrong reason.
 
+**The `T016-R6` test was vacuous twice, in two different ways, and Windows CI found both.** The
+first version compared a font-metrics advance against `sizeHint()`, which is a wrapped-layout
+figure and never was a string width; it passed on Linux by luck. The second rendered the same
+label under each text format — exact, and one variable — but the Windows runner laid that label
+out 84 px wide, so both renderings clipped to identical pixels and the assertion could not fail.
+It now sizes the label explicitly and asserts the two grabs are the same size, so a future
+clipping change fails loudly rather than quietly restoring the equality.
+
+**Evidence.** `ruff`, `ruff format`, `mypy src` (34 files) and both configured 70-file scopes
+pass. Full suite **1267 passed, 11 skipped, 1 deselected**. CI green on all five jobs at
+`8bde969` (run `30324097829`): Ubuntu 1267 passed, Windows **1256 passed, 20 skipped**, Windows
+desktop 20 passed, both frozen jobs succeeded. Mutation battery: **19 of 19 killed**, including
+one mutation per blocking finding.
+
+**One unrelated intermittent was seen and is filed as `T-056`**, not swept up here: a
+`windows-latest` run failed `test_the_survival_check_can_tell_a_live_process_from_a_dead_one`,
+a `T-019` helper this batch does not touch. It passed on the runs either side.
+
 #### What was built
 
 - **`ui/add_dialog.py`** — the dialog. Probing runs in a worker process and `probe()` returns
@@ -1300,6 +1318,49 @@ exists to refuse (`T-011`).
 - A log viewer in the UI — Phase 3
 - Rotation and retention policy — Phase 4
 - Crash reporting of any kind; there is none (`NFR-007`)
+
+---
+
+### T-056 — `still_running` reports a reaped Windows process as alive, intermittently
+
+**Status:** Ready — observed 2026-07-27 during `T-016`'s correction batch
+**Owner:** Implementer
+**Priority:** Medium — an intermittent failure in the helper every `T-019` assertion rests on
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T-019`, `ai/TESTING.md` §7 (Cancellation, Worker crash)
+**Affected surfaces:** `tests/integration/test_manager.py`
+**Risk:** Medium — it decides whether the process-tree suite is telling the truth
+
+#### Scope
+
+`test_the_survival_check_can_tell_a_live_process_from_a_dead_one` failed once on `windows-latest`
+in run `30323328299`: `still_running([dead_pid])` returned `[7208]` for a process the test had
+already reaped. It passed on the runs either side, so it is **intermittent, not a regression** —
+nothing in the `T-016` batch touches `process_tree.py` or that helper.
+
+The likely cause is that `still_running` treats "psutil can still see the pid" as alive, excluding
+only `NoSuchProcess` and `STATUS_ZOMBIE`. Windows has no zombie state, and a terminated process
+stays visible while a handle to it remains open, so there is a window in which a dead process
+reports as running.
+
+**This matters more than a flaky test usually would.** `still_running` is the helper the whole
+`T-019` descendant-reaping suite decides on, and its own docstring says a guard nobody watches
+fail is the shape `ai/TESTING.md` §13 exists to catch. A false *alive* fails loudly, as here; the
+concern is whether the same imprecision can produce a false *dead* and make a reaping assertion
+pass without anything having been reaped.
+
+#### Acceptance criteria
+
+- The helper distinguishes a running process from a terminated-but-visible one on Windows, by
+  exit status rather than by presence
+- The claim is demonstrated on Windows CI, not reasoned about from Linux
+- Whether the previous form could report a live process as dead is answered explicitly, and the
+  answer is recorded rather than assumed benign
+
+#### Out of scope
+
+- Changing `downloader/process_tree.py`, which is `T-019`-approved and not implicated
 
 ---
 
