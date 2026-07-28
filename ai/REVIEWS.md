@@ -5532,3 +5532,82 @@ carrying COORD-R5 into a named coordination task.
 
 The combined boundary is **Changes requested** on WIN-R1 and WIN-R2. WIN-R3 and GIT-R2 are
 non-blocking cleanup, but they should travel with the same local-runner hardening work.
+
+## 2026-07-28 — STARBASE correction focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `1e9694c`  **Implementation head:** `8938478`
+**Evidence/status follow-up included:** `ec60fe4`
+**Scope:** `T066-R1`, `COORD-R5`, `WIN-R1` through `WIN-R3`, `GIT-R2`, `T-069`, and the
+self-hosted `windows desktop` job introduced while the correction was in flight
+**Boundary classification:** Tests, workflow, privileged developer tooling, and
+documentation/coordination; no production source
+
+`ec60fe4` landed while this re-review was running. It changes only TASKS, STATUS, and the
+Windows-verification guide, and records the completed job whose status the reviewer had already
+queried. It is included for evidence accuracy; every code judgment remains bounded to
+`1e9694c..8938478`.
+
+This is the focused correction pass. Per the maintainer's direction that this is the last pass,
+remaining Medium-or-lower work is to be carried into the next named task rather than starting
+another correction loop.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused re-review result | Status |
+|---|---|---:|---|---|
+| `T066-R1` | **Medium** | **Yes — T-066** | The measured cause is credible and important: under the Windows venv launcher, killing the returned PID killed the launcher and application but left the worker; whole-tree termination removed T-069's 4/5 predecessor failure. The correction enumerates descendants before termination, which is the right order. It still suppresses every `psutil` kill error and discards both lists returned by `wait_procs` (`test_end_to_end.py:98-108`), so `kill_the_application()` may return and reopen the database with a known survivor. The direct no-survivors probe is reported but is not a lasting assertion. The task also says the unchanged T-019 siblings “deserve the same look,” while the new self-hosted job runs only `windows_desktop`; it does not execute or record T-019's `process_tree` assertions under the venv. Consequently `ai/TASKS.md:242-248` calls this the Windows half of T-066 even though its explicit T-019 criterion at lines 204-205 remains unrun. | **Partially resolved; carry.** T-069 is resolved. The next task should make a surviving `wait_procs` result fail, retain the expected descendant set as an assertion, and run/record the T-019 process-tree cases from the Windows venv. T-066 also remains externally Blocked on the four hosted/frozen jobs. |
+| `COORD-R5` | **Medium** | **Yes — coordination closure** | REQUIREMENTS, IMPLEMENTATION_PLAN, TESTING, and T-026 now agree that Windows tab order is gated. The canonical task/status structure still does not: `## In Review` says it is empty while T-066 through T-070 are In Review under `## Ready`; T-040 and T-060 are In Review under `## Blocked`; TASKS' preamble still calls T-060 Blocked; and STATUS first says T-040/T-060 are In Review, then says T-069 is unfixed and T-040 remains Blocked (`ai/STATUS.md:147-175`). These are current-truth files, not an archive, and the stale paragraphs are not labelled as superseded. | **Partially resolved; carry.** The required gate statement is corrected, so the residual is task readiness/filing rather than behavior. File a named coordination follow-up and then T-040/T-060 can close with that carry. |
+| `WIN-R1` | **Medium** | **Yes — Windows setup tooling** | Existing administrator keys are now preserved and deduplicated. A newly created firewall rule is correctly Private + LocalSubnet. But the script's idempotent path looks up `sshd-tt` and does nothing when it already exists (`ssh-setup.ps1:66-76`). A machine that ran the reviewed broad `Any` rule therefore stays broad on every later run of the correction. The maintainer separately fixed STARBASE, but the checked-in “safe to run more than once” tool does not repair the unsafe state it created. | **Partially resolved; carry.** Update or recreate an existing named rule, then report/verify its effective profile and remote-address filter. |
+| `WIN-R2` | **Medium** | **Yes** | Independent fake-transport probes returned **0** for remote success, **7** for remote exit 7, **124** for timeout, **125** for a missing result marker, and **126** for a run already in flight. `run.cmd` isolates a bare remote `exit` in a child `cmd` and writes the marker with the redirection before the digit. | **Resolved.** |
+| `WIN-R3` | **Low** | **No** | The focus mutation driver now runs a relevant positive control first and accepts only pytest exit 1 as a kill. The guide still names the old T-056 plugin `mut_control_always_dead.py`; the actual new control is `mut_control_chain.py`. | **Functionally resolved; documentation follow-up.** |
+| `GIT-R2` | **Low** | **No** | `.gitattributes` declares CRLF for `*.cmd` and `*.ps1`; `git diff --check 1e9694c..ec60fe4` is clean, and `git check-attr` reports the intended policy. | **Resolved.** |
+| `RUNNER-R1` | **Medium** | **No** | The workflow comment and Windows guide say `timeout-minutes: 15` bounds time spent queued while STARBASE is offline. GitHub documents two different clocks: `timeout-minutes` is the maximum time to let a job **run**, while an unmatched self-hosted job remains queued for up to **24 hours**. The current text therefore understates this single-machine gate's outage window by almost a day. See GitHub's [workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idtimeout-minutes) and [self-hosted routing](https://docs.github.com/en/actions/reference/runners/self-hosted-runners#routing-precedence-for-self-hosted-runners). | **Open, non-blocking; carry with runner documentation.** |
+
+### Task judgments
+
+- **T-069:** **Approved at `8938478`.** The failure's exact predecessor is retained, reverting
+  the whole-tree termination restores the high failure rate, and five clean file-level runs after
+  the correction are strong evidence against the prior 4/5 rate. The helper-strengthening residue
+  belongs to T-066's evidence contract, not to the now-explained WAL failure.
+- **T-066:** **Blocked.** One real Windows venv job is now green, but it is the 28-test desktop
+  slice, not the T-019 process-tree suite. Four hosted jobs—including both frozen jobs—failed
+  before step 1 because of quota. The deeper T-019 shape and frozen-artifact shape therefore
+  remain unverified exactly where the acceptance criteria require evidence, and T066-R1 still
+  permits an unreported survivor.
+- **T-040/T-060:** their behavior and manual mutation evidence are accepted. The self-hosted
+  desktop job is now a repeatable normal-run gate: job `90432207805` passed all 28 selected tests
+  under the real Windows plugin. Their mutation executions remain correctly described as manual.
+  They are **Blocked only on carrying COORD-R5's remaining filing/current-truth cleanup into a
+  named follow-up**, after which they may be filed Approved with follow-up without another
+  behavioral review.
+- **T-068:** unchanged: **Blocked** on the disclosed runner/frozen explanation.
+- **Windows tooling:** WIN-R2 is approved. The setup script remains **Changes requested** on
+  WIN-R1; WIN-R3 and RUNNER-R1 are non-blocking documentation carries.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Full default suite | **1399 passed, 11 skipped, 2 deselected in 81.15 s** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | **102 files already formatted** |
+| `python -m mypy src` | Passed: **35 source files** |
+| Configured `python -m mypy` | Passed: **78 source files** |
+| Configured `python -m mypy --platform win32` | Passed: **78 source files** |
+| WIN-R2 fake transport | Exit codes **0 / 7 / 124 / 125 / 126** for success / remote failure / timeout / missing result / busy |
+| Self-hosted workflow job | Run `30405803368`, job `90432207805`: **28 passed, 1410 deselected in 14.33 s**, Windows-platform mypy passed, Python 3.14.6 |
+| Same workflow's hosted jobs | Four failures with **zero steps**, consistent with exhausted hosted quota; the workflow as a whole is red |
+| `git diff --check 1e9694c..ec60fe4` | Clean |
+| Git boundary | `main` and `origin/main` at `ec60fe4`; all four included commits authored by Sean Kottman, no AI authorship trailer |
+
+### Final disposition
+
+T-069 is **Approved**. The self-hosted Windows desktop gate is operational and its normal run is
+accepted evidence for T-040/T-060.
+
+The combined boundary is **Blocked / Changes requested** on the remaining parts of T066-R1,
+COORD-R5, and WIN-R1. Under the maintainer's last-pass direction, do not begin a further automatic
+correction round: Claude should file a named next task carrying those three items, plus the
+non-blocking WIN-R3 and RUNNER-R1 documentation corrections. T-040/T-060 may then close with that
+follow-up; T-066 remains Blocked until its process-tree and hosted/frozen evidence exists.
