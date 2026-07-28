@@ -4709,3 +4709,62 @@ it, accept the documented risk, change scope, or move the work into a named foll
 
 T-058 remains **Approved at `b3e156c`**. T-056 remains **Blocked** on Windows runtime/mutation
 evidence and was untouched by `5ee8d36`.
+
+## 2026-07-28 — T-017 final authorized focused pass
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `5ee8d36`  **Head:** `f100108`
+**Correction commit:** `f100108`
+**Focused scope:** `T017-R4`, `T017-R5`, and regressions in their correction diff
+**Authorization:** Maintainer-authorized final pass under `AGENTS.md` §10; remaining work is to
+be carried into the next task rather than another T-017 correction/re-review loop
+**Platforms verified:** Linux locally; Windows type analysis
+**Verdict:** `T-017` **Blocked; carry `T017-R4` into the next named task**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused re-review evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T017-R4` | **Medium** | **Yes** | The ending rule is now explicit and `_totals_for_ending()` applies it correctly when `_on_job_changed()` receives a live transition. Cancellation and failure preserve the rendered `5/10`; completion normalizes a durable `bytes_done=1, bytes_total=20` row to `20/20`; completion without a durable total says `Complete` and shows `Unknown`. All four reported mutations are independently killed. **Initialization still bypasses the rule:** `_load()` sends `job.bytes_done, job.bytes_total` directly to `_show_totals()` and only then `_refresh()` marks the bar finished. Opening a view on an already-completed `1/20` row therefore renders a 100% bar described as `"Complete: 20 B downloaded"` beside `"1 B of 20 B"`. With `bytes_done=3, bytes_total=None`, it says `"Complete"` beside `"3 B of Unknown"`. The new completed-row tests create a running view and then call `_on_job_changed()`, so neither gate covers reopen/restart. | Carry the same completed-row normalization into initial loading and gate construction from already-`COMPLETED` rows both with and without `bytes_total`. The maintainer has directed that this be resolved in the next task, not through a sixth T-017 pass; the coordinator must give it a named task owner before T-017 can close. | **Open; follow-up directed** |
+| `T017-R5` | **Low** | **No** | The evidence now states **76 tests as of the fourth correction batch**, which matches independent collection at `f100108`. It avoids a self-referential commit hash and records why the earlier count was stale. | None. | **Resolved** |
+
+### Review judgments
+
+- The correction fixes every terminal-transition manifestation previously reported. The source
+  selection rule is coherent: live display while running, durable total on completion, and the
+  last rendered progress on cancellation or failure.
+- The remaining manifestation is not a new source-selection rule. It is the same completed-row
+  rule bypassed by the view's initialization call path.
+- The completed-row gate at `tests/ui/test_job_detail.py:619` starts with a `RUNNING` row and
+  exercises `_on_job_changed()`; it does not construct the view from the completed row it claims
+  to represent.
+- The module docstring's final table row wraps onto a second physical line, so it is not a valid
+  Markdown table row. This is a non-blocking documentation cleanup and may travel with the same
+  next task.
+- `T-056` was untouched and remains Blocked on its Windows runtime/mutation evidence.
+
+### Independent checks
+
+| Check | Result |
+|---|---|
+| `git diff --check 5ee8d36..f100108` | Passed. |
+| Job-detail collection | **76 tests collected**. |
+| Four reported mutations | **All four killed**: adopting durable totals for every ending failed cancellation and failure; retaining the completion counter failed the lagging-counter test; falling back to `done` failed six finished/unknown-total cross-product cases; discarding last-shown totals failed cancellation and failure. |
+| Already-completed row probe | Durable `1/20` row opened directly: bytes `"1 B of 20 B"`, bar 100%, description `"Complete: 20 B downloaded"`. |
+| Already-completed unknown-total probe | Durable `3/None` row opened directly: bytes `"3 B of Unknown"`, bar 100%, description `"Complete"`. |
+| `ruff check .` | Passed. |
+| `ruff format --check .` | **87 files already formatted**. |
+| `mypy src` | Passed: no issues in **35 source files**. |
+| Configured `mypy` | Passed: no issues in **72 source/test files**. |
+| Configured `mypy --platform win32` | Passed: no issues in **72 source/test files**. |
+| Full default suite with localhost/cache permission | **1375 passed, 11 skipped, 1 deselected in 76.24 s**. |
+
+### Final disposition
+
+This is the final T-017 review pass by maintainer direction. `T017-R5` is **Resolved** and
+`T017-R4` is corrected for live transitions but remains open for initialization from an already
+completed durable row. Because that is observable progress correctness under `REQ-014`, it
+remains a blocking Medium finding and T-017 cannot be marked Approved at `f100108`.
+
+Do not start a sixth T-017 correction/re-review loop. Carry `T017-R4` and its two construction
+probes into the next named task, assign an owner there, and close T-017 when that task lands.
