@@ -60,6 +60,7 @@ decides whenever there is one, and the exit code decides only when there is not.
 
 import logging
 import multiprocessing
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
@@ -279,7 +280,13 @@ class DownloadManager(QObject):
     protocol_violation = Signal(str, str)
 
     #: Emitted when the last session has been released. `T-036` uses it to know that quitting
-    #: is safe.
+    #: is safe, and it is that meaning — not the session count — that decides when it goes out.
+    #:
+    #: **During shutdown it also waits for the worker-log listener** (`T038-R2`). Sessions being
+    #: gone is not the whole of "safe to quit": the listener is a daemon thread, so a record it
+    #: is still holding is dropped by interpreter exit and never written. Outside shutdown the
+    #: listener stays running for the next session and this is emitted as soon as the sessions
+    #: are.
     idle = Signal()
 
     def __init__(
@@ -306,6 +313,13 @@ class DownloadManager(QObject):
         self._sessions: dict[str, _Session] = {}
         self._shutting_down = False
         self._shutdown_deadline: float | None = None
+        # The log listener's ending, which `idle` now waits on (`T038-R2`). Three states rather
+        # than one flag: asked, still going, and given up on — the last is how a wedged listener
+        # fails to stop the application from closing.
+        self._logging_stopped = False
+        self._logging_deadline: float | None = None
+        self._gave_up_on_logging = False
+        self._stopping_listener: threading.Thread | None = None
         # `spawn` on every platform, including Linux: forking a process that has already created
         # a `QApplication` is unsafe, and Windows has only spawn — so choosing it everywhere
         # means both platforms exercise the same path (`ARC-002`, `ARCHITECTURE.md` §3).
@@ -319,6 +333,17 @@ class DownloadManager(QObject):
     @property
     def is_idle(self) -> bool:
         return not self._sessions
+
+    @property
+    def gave_up_on_the_log(self) -> bool:
+        """Whether shutdown stopped waiting for the worker-log listener (`T038-R2`).
+
+        `True` means the listener was still inside a handler when the deadline expired and
+        records it was holding went with the process. Exposed rather than logged, because the
+        state it reports is one where writing a log line is what blocks — see
+        `_the_log_has_finished`.
+        """
+        return self._gave_up_on_logging
 
     def active_job_ids(self) -> tuple[str, ...]:
         return tuple(self._sessions)
@@ -560,10 +585,12 @@ class DownloadManager(QObject):
 
         So shutdown is a **lifecycle, not a call**. It refuses new sessions, cancels the running
         ones, and lets the same timer that drives cancellation finish the job. When the last
-        session is released, `idle` is emitted — that signal is how composition code
-        (`T-036`) knows it may quit, and quitting before it arrives is what would leave an
-        orphan. `timeout` bounds the escalation, after which anything still alive is killed by
-        the tick rather than by a wait here.
+        session is released **and the worker-log listener has stopped**, `idle` is emitted — that
+        signal is how composition code (`T-036`) knows it may quit, and quitting before it
+        arrives is what would leave an orphan, or drop the records the listener was still
+        holding. `timeout` bounds the escalation, after which anything still alive is killed by
+        the tick rather than by a wait here; the listener has its own bound so it cannot keep the
+        application open either.
 
         The application therefore closes in two steps: ask, then quit when told. A window that
         calls `QCoreApplication.quit()` immediately after this returns has not shut down; it has
@@ -575,13 +602,11 @@ class DownloadManager(QObject):
         self._shutdown_deadline = time.monotonic() + timeout
         for job_id in list(self._sessions):
             self.cancel(job_id)
-        if not self._sessions:
-            self._timer.stop()
-            self._stop_logging()
-            self.idle.emit()
-            return
-        # Keep the timer running: it is the only thing left that can finish this.
+        # Keep the timer running: it is the only thing left that can finish this, and that now
+        # includes the log listener's own ending. Even with no sessions to cancel, `idle` is the
+        # tick's to emit rather than this method's — see `_tick` (`T038-R2`).
         self._timer.start()
+        self._tick()
 
     # --- the tick -----------------------------------------------------------------------
 
@@ -615,13 +640,51 @@ class DownloadManager(QObject):
                 if now >= session.reap_at:
                     self._force_stop(session)
 
-        if not self._sessions:
-            self._timer.stop()
-            if self._shutting_down:
-                self._stop_logging()
-            self.idle.emit()
+        if self._sessions:
+            return
+        if self._shutting_down and not self._the_log_has_finished(now):
+            # Not idle yet, and the timer stays running. `idle` is what tells composition it may
+            # quit (`T-036`), and quitting while the listener thread still holds records drops
+            # them: it is a daemon thread, so nothing at interpreter exit will write them
+            # (`T038-R2`). The wait is the tick's, never the GUI thread's.
+            return
+        self._timer.stop()
+        self.idle.emit()
 
-    def _stop_logging(self) -> None:
+    def _the_log_has_finished(self, now: float) -> bool:
+        """Ask the listener to stop the first time, then report whether it has. **Never waits.**
+
+        Bounded, because a log must not be able to stop the application from closing. If the
+        listener is still inside a handler after `reap_seconds` the manager says so and goes
+        idle anyway — the same shape as the pump's abandon deadline, and for the same reason:
+        every wait here is a deadline checked on a tick rather than a thread being joined.
+        """
+        if not self._logging_stopped:
+            self._logging_stopped = True
+            self._stopping_listener = self._stop_logging()
+            self._logging_deadline = now + self._reap_seconds
+        # **The thread this manager stopped**, not "the listener". The queue and its listener are
+        # process-wide, so asking the module later would make a manager that never started a
+        # worker wait on a thread somebody else is responsible for.
+        thread = self._stopping_listener
+        if self._gave_up_on_logging or thread is None or not thread.is_alive():
+            return True
+        deadline = self._logging_deadline
+        if deadline is not None and now >= deadline:
+            # **Recorded, not logged**, and that is the whole point of the flag. `Handler.handle`
+            # takes the handler's lock *before* calling `emit`, so a warning written here would
+            # block this thread on the lock the wedged listener is holding — the GUI thread
+            # stopped by log I/O, on the one path that exists because log I/O has stopped. A
+            # probe measured five seconds of frozen event loop from exactly that call.
+            #
+            # This is the general shape rather than a defect of this method: every GUI-thread
+            # `logger` call in this application blocks on a handler that will not return. What is
+            # specific here is that this path *knows* one is stuck, so it does not add one more.
+            self._gave_up_on_logging = True
+            return True
+        return False
+
+    def _stop_logging(self) -> threading.Thread | None:
         """Ask the thread draining worker log records to finish (`T038-R2`). **Does not wait.**
 
         Only on the way out, and only once: the queue and its listener are process-wide, so a
@@ -636,8 +699,11 @@ class DownloadManager(QObject):
         `T013-R2`'s blocking teardown restored under a different name. The sentinel is queued
         behind whatever this session's release put there, so the ordering the per-job logs
         depend on survives the stop.
+
+        Returns the thread it asked to stop, which is what `idle` then watches — see
+        `_the_log_has_finished`.
         """
-        app_logging.stop_listening_for_worker_logs()
+        return app_logging.stop_listening_for_worker_logs()
 
     def _escalate(self, session: _Session, now: float) -> None:
         """Walk one session through the two deadlines, signalling the **tree** at each.

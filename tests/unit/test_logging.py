@@ -490,29 +490,83 @@ def test_a_job_log_stays_open_until_its_queued_records_have_come_through(
     assert handler.stream is None, "the handler was detached but its file was left open"  # type: ignore[attr-defined]
 
 
-def test_reopening_a_jobs_log_closes_the_one_still_draining(
+def test_reopening_a_jobs_log_never_leaves_that_file_unattended(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """A probe and then a download of the same job must not both hold that file open.
+    """A record dispatched between reopening a job's log and attaching it must still be written.
 
-    The ordinary `T-016` flow releases a session and starts another for the same job immediately.
-    With the first handler still waiting for its marker, both would be attached, and every line
-    the second session emitted would be written to the file twice. Nothing is lost by closing the
-    first: the records it was waiting for carry this job's stamp, so the new handler admits them.
+    The ordinary `T-016` flow releases a session and starts another for the same job at once, so
+    the reopen lands while the first handler may still be waiting for its marker. Closing the
+    first here and handing back a new one looks equivalent and is not: the caller attaches the
+    replacement in a separate step, and a stamped record dispatched in the gap belongs to a job
+    whose file nothing is holding open. It is written nowhere, and there is no second chance.
+
+    So the gap is what this test holds open. The listener dispatches a record at exactly the
+    moment the manager has a handler in its hand and has not attached it yet.
     """
-    a_local_queue(monkeypatch)
+    queue = a_local_queue(monkeypatch)
+    listener = app_logging._ToWhicheverHandlersWeHaveNow(queue)
     tree = logging.getLogger("tracksandtrails")
     first = app_logging.open_job_log("job-1", directory=tmp_path)
     tree.addHandler(first)
     app_logging.close_job_log_when_drained("job-1", first)
 
     second = app_logging.open_job_log("job-1", directory=tmp_path)
+    in_the_gap = logging.LogRecord(
+        name="tracksandtrails.worker",
+        level=logging.WARNING,
+        pathname=__file__,
+        lineno=1,
+        msg="a line from the session that just ended",
+        args=None,
+        exc_info=None,
+    )
+    setattr(in_the_gap, app_logging.JOB_FIELD, "job-1")
+    listener.handle(in_the_gap)
+    tree.addHandler(second)
+    second.flush()
+    written = app_logging.job_log_path("job-1", tmp_path).read_text(encoding="utf-8")
+
+    assert "a line from the session that just ended" in written, (
+        f"a stamped record dispatched between the reopen and the attach was written nowhere: "
+        f"{written!r}"
+    )
+    assert second is first, (
+        "reopening a job's log while its previous handler is still draining should hand the same "
+        "open handler back; a replacement cannot be attached without leaving that gap"
+    )
+    assert [handler for handler in tree.handlers if handler is second] == [second], (
+        "one job's file has two handlers on it; every line would be written twice"
+    )
+
+
+def test_a_drain_onto_a_different_file_is_never_taken_back(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Handing a draining handler back is right only when it writes where the caller asked.
+
+    `open_job_log` takes a `directory`, so "the same job" and "the same file" are not the same
+    condition. A handler taken back on the job id alone would send the new session's records to
+    the directory the *previous* one was opened with — the log misrouted rather than lost, which
+    is harder to notice. The pending drain is left alone instead: different files have no
+    conflict, and it closes when its own marker arrives.
+    """
+    a_local_queue(monkeypatch)
+    tree = logging.getLogger("tracksandtrails")
+    first = app_logging.open_job_log("job-1", directory=tmp_path / "first")
+    tree.addHandler(first)
+    app_logging.close_job_log_when_drained("job-1", first)
+
+    second = app_logging.open_job_log("job-1", directory=tmp_path / "second")
     tree.addHandler(second)
 
-    assert first not in tree.handlers, (
-        "two handlers are open on one job's file; every line would be written twice"
+    assert second is not first, (
+        "a handler still draining onto a different file was handed back for this one; every "
+        "record of the new session would be written to the previous session's directory"
     )
-    assert second in tree.handlers
+    assert Path(second.baseFilename).parent == tmp_path / "second" / "jobs", (  # type: ignore[attr-defined]
+        f"the handler does not write where it was asked to: {second.baseFilename}"  # type: ignore[attr-defined]
+    )
 
 
 def test_a_marker_that_will_never_arrive_does_not_hold_a_job_log_open(

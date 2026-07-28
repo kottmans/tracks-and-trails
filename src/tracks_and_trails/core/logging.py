@@ -303,14 +303,24 @@ def open_job_log(
     application log (`T038-R2`). `DownloadManager` installs it for the life of a session and
     hands it back through `close_job_log_when_drained()`.
 
-    **A still-draining handler for the same job is closed first.** Otherwise a job probed and then
-    downloaded — the ordinary `T-016` flow — would briefly have two handlers open on one file,
-    and every line the second session emitted in that window would be written twice. Nothing is
-    lost by closing the first: the records it was waiting for carry this job's stamp, so the
-    handler opening here admits them into the very same file.
+    **A handler still draining onto this same file is taken back, not replaced.** A job probed
+    and then downloaded — the ordinary `T-016` flow — reopens its log while the previous
+    session's marker may still be in the queue. Closing that handler here and opening a new one
+    looks equivalent and is not: the caller cannot attach the replacement in the same breath, and
+    a stamped record dispatched in between belongs to a job whose file nothing is holding open.
+    It is not written anywhere and there is no later chance to write it, which is the loss this
+    whole finding is about. Handing the same open handler back has no such window — and no second
+    handler on one file to write every line twice, which was the reason the first version closed
+    it.
+
+    A pending drain onto a **different** file is left alone. It has no conflict with this one and
+    closes when its own marker arrives.
     """
-    _close_any_drain_for(job_id)
-    handler = _file_handler(job_log_path(job_id, directory), level)
+    path = job_log_path(job_id, directory)
+    still_draining = _take_the_drain_back(job_id, path)
+    if still_draining is not None:
+        return still_draining
+    handler = _file_handler(path, level)
     handler.addFilter(_OnlyThisJob(job_id))
     return handler
 
@@ -394,9 +404,23 @@ def _finish_the_drain(token: int) -> None:
         _detach_and_close(drain.handler)
 
 
-def _close_any_drain_for(job_id: str) -> None:
-    """Stop waiting for `job_id`'s marker and close its handler now."""
-    _close_the_drains(lambda drain: drain.job_id == job_id)
+def _take_the_drain_back(job_id: str, path: Path) -> logging.Handler | None:
+    """Stop waiting for this job's marker and return its handler, still attached and still open.
+
+    Popping under the lock is what makes this safe: whoever pops owns the handler, so the
+    listener cannot close the one being handed back here, and a marker arriving afterwards finds
+    nothing under its token and does nothing.
+    """
+    # Both sides resolved the same way, rather than one of them compared against whatever
+    # `FileHandler` stored. Same file under two spellings is the case this has to get right.
+    wanted = path.resolve()
+    with _drain_lock:
+        for token, drain in _drains.items():
+            written = getattr(drain.handler, "baseFilename", None)
+            if drain.job_id == job_id and written is not None and Path(written).resolve() == wanted:
+                del _drains[token]
+                return drain.handler
+    return None
 
 
 def _close_the_drains(chosen: Callable[[_Drain], bool]) -> None:
@@ -515,7 +539,7 @@ def worker_log_queue() -> Any:
     return _worker_queue
 
 
-def stop_listening_for_worker_logs() -> None:
+def stop_listening_for_worker_logs() -> threading.Thread | None:
     """Ask the listener to stop and drop the queue with it. **Waits for nothing** (`T038-R2`).
 
     **Both, or neither.** Stopping the listener while keeping the queue leaves the next caller of
@@ -530,13 +554,20 @@ def stop_listening_for_worker_logs() -> None:
     time and closes the queue as it goes — see `_ToWhicheverHandlersWeHaveNow._monitor`. A
     caller that genuinely needs the thread to be gone, which no GUI path does, asks for it
     explicitly through `wait_for_the_log_listener_to_stop()`.
+
+    **Returns the thread it just asked to stop**, or `None` when nothing was running. Callers
+    that need to know when the records are safely written hold that thread rather than asking
+    this module later: "the listener" is process-wide, and a caller which never started one
+    would otherwise find itself waiting on somebody else's.
     """
     global _listener, _stopping, _worker_queue
+    stopping = None
     if _listener is not None:
-        _stopping = _listener.thread
+        stopping = _stopping = _listener.thread
         _listener.stop()
         _listener = None
     _worker_queue = None
+    return stopping
 
 
 #: The thread of the listener that was stopped most recently, kept for the one caller that has to

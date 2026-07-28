@@ -955,8 +955,7 @@ feeder before it goes. When the listener reaches the marker it has, by construct
 every one of those records to that handler, so the close happens **there, on the listener thread**,
 and nothing on the GUI thread waits for it. It fails closed in every direction that was reachable:
 no listener, a queue that refuses the marker, a marker that never comes back, and a second session
-opening the same job's file — that last one closes the still-draining handler first, because two
-handlers on one file would write every line of the new session twice.
+opening the same job's file — see the third correction below for what that last one had to become.
 
 **The stop joined the listener on the GUI thread**, which is `T013-R2`'s rejected blocking teardown
 restored under a different name — a two-second handler call held `shutdown()` for 2.001 s.
@@ -981,9 +980,69 @@ killed by the test named for it; the tree hashed identical before and after the 
 | Mutation battery | **6 of 6 killed**, tree restored to the same hash |
 | CI at `b0879d7`, all five jobs green | Ubuntu **1192 passed, 11 skipped, 1 deselected**; Windows **1181 passed, 20 skipped, 21 deselected**; Windows desktop **20 passed, 1202 deselected**; both frozen jobs succeeded |
 
+**Superseded in part.** Both statements above still hold, and the re-review confirmed them —
+ordinary marker draining is ordered, and `shutdown()` no longer joins. Two siblings survived at
+the edges; see the third correction below. The evidence table here is the one for `b0879d7`.
+
 Windows was not run locally — no Windows-specific code path is involved, but the listener thread
 and the queue are platform behaviour, so those CI jobs are the whole of that evidence. The three
 consecutive canonical runs were Linux only.
+
+#### `T038-R2` — third correction, 2026-07-27, awaiting re-review
+
+Two siblings at the edges of the second correction, both found by deterministic probe, both
+still High: the drain got the ordinary path right and lost records at its two boundaries.
+
+**Reopening a job's log left its file unattended.** `open_job_log()` closed a still-draining
+handler so that two would never hold one file. But the caller attaches the replacement in a
+*separate* step, and a stamped record dispatched in between belonged to a job whose file nothing
+was holding open: written nowhere, with no later chance. The claim recorded above — "nothing is
+lost, the new handler admits them into the very same file" — was true only of records dispatched
+after the attach, and that qualifier is exactly what a review exists to catch.
+
+The same open handler is now **handed back** rather than replaced, so there is no window and
+still only one handler per file. It is handed back only when it writes to the file being asked
+for: `open_job_log` takes a `directory`, so same job and same file are different conditions, and
+taking one back on the job id alone would misroute the new session into the previous directory.
+A pending drain onto a different file is left alone — no conflict, and it closes on its own
+marker.
+
+**`idle` was announced while the listener was still working.** `idle` means composition may quit
+(`T-036`), the listener runs on a daemon thread, and a record it still holds when the process
+exits is not written late but never — the per-job log ends mid-session. During shutdown `idle`
+now waits for the listener thread as well as for the sessions, on the tick, never by joining.
+Outside shutdown nothing changes: the listener stays up for the next session.
+
+The wait is **bounded by `reap_seconds`**, because a log that can stop the application from
+closing is worse than a truncated one. Giving up sets `gave_up_on_the_log` and writes **no log
+line**, which is not an oversight: `Handler.handle` takes the handler's lock before calling
+`emit`, so a warning on that path blocks on the lock the wedged listener is holding. The first
+version did exactly that and a probe measured eleven event-loop turns in five seconds. The
+general shape — any GUI-thread `logger` call blocks on a handler that will not return — is
+application-wide and older than this task; what is specific here is that this path knows one is
+stuck and does not add another.
+
+`stop_listening_for_worker_logs()` now **returns the thread it asked to stop**, and the manager
+holds it. Asking the module afterwards would have made a manager that never started a worker
+wait on a listener another one was responsible for.
+
+**Evidence.** Nine mutations, each killed by the test named for it, tree hashed identical before
+and after. One survived the first battery — dropping the same-file check — and is the reason
+`test_a_drain_onto_a_different_file_is_never_taken_back` exists; it was written to kill that
+mutation rather than to describe a behaviour already believed.
+
+| Check | Result |
+|---|---|
+| `ruff check` / `ruff format --check` | Passed |
+| `mypy` and `mypy --platform win32` | Passed — 68 source files each |
+| Focused logging, worker-logging and manager suite | **95 passed** |
+| Canonical bare `pytest` | **1195 passed, 11 skipped, 1 deselected** — three consecutive runs, 82 s each |
+| Mutation battery | **9 of 9 killed**, tree restored to the same hash |
+| Windows | **Not run** at this head; CI has not run yet |
+
+The 82 s runs are not a slowdown: the same suite measured **81.40 s** at `dd1dad8` in the same
+session, on a machine busy with concurrent work. The 52 s recorded above was a quieter box, and
+absolute timings between sessions are not comparable.
 
 #### What landed
 

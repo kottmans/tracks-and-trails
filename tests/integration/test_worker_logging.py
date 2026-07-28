@@ -32,12 +32,19 @@ GATE_SECONDS = 5.0
 
 
 class GatedHandler(logging.Handler):
-    """A handler that parks the listener thread inside `emit` until it is let go.
+    """A handler that parks the **listener thread** inside `emit` until it is let go.
 
     This is the reviewer's probe, made into a fixture. Delaying the listener is what separates
     "the per-job log happened to be written first" from "the per-job log is written because the
     ordering is established" — and, for shutdown, what turns a join on the GUI thread from an
     invisible cost into a measurable one.
+
+    **Records emitted on the main thread pass straight through**, and that is a deliberate limit
+    rather than a convenience. A handler blocks whoever calls it, so a gate that held every
+    thread would also hold the manager's own `logger.warning` calls — which is true of every
+    logging call this application makes and has nothing to do with what is under test here. The
+    probe is a *queued* handler call, so the gate closes only on the thread the queue is drained
+    by.
     """
 
     def __init__(self) -> None:
@@ -47,6 +54,8 @@ class GatedHandler(logging.Handler):
         self.let_go = threading.Event()
 
     def emit(self, record: logging.LogRecord) -> None:
+        if threading.current_thread() is threading.main_thread():
+            return
         self.entered.set()
         self.let_go.wait(GATE_SECONDS)
         self.left.set()
@@ -303,6 +312,116 @@ def test_shutdown_does_not_wait_for_a_blocked_log_listener(
     assert elapsed < 1.0, (
         f"shutdown() took {elapsed:.3f} s while a log handler was blocked. It joined the "
         "listener thread on the GUI thread, which is the teardown wait T013-R2 rejected."
+    )
+
+
+def test_idle_is_not_announced_while_the_listener_still_holds_records(
+    tmp_path: Path, qapp: QCoreApplication, spin: Callable[..., bool]
+) -> None:
+    """`T038-R2`: `idle` means composition may quit, so it must outlast the listener.
+
+    The sessions being gone is not the whole of "safe to quit". The listener runs on a daemon
+    thread, so a record it is still holding when the process exits is not written late — it is
+    not written at all, and the per-job log a user was pointed at ends mid-session.
+
+    The gate holds the listener inside `emit`, which is the state a slow disk or a large final
+    burst produces on its own; the assertion is that no `idle` is announced during it.
+    """
+    app_logging.configure_logging(directory=tmp_path, level=logging.DEBUG)
+    gate = GatedHandler()
+    logging.getLogger("tracksandtrails").addHandler(gate)
+    download = DownloadManager(FakeRepository())
+    announced: list[bool] = []
+    download.idle.connect(lambda: announced.append(True))
+
+    try:
+        app_logging.worker_log_queue().put(
+            logging.LogRecord(
+                name="tracksandtrails.worker",
+                level=logging.WARNING,
+                pathname=__file__,
+                lineno=1,
+                msg="a record the listener has not finished with",
+                args=None,
+                exc_info=None,
+            )
+        )
+        assert gate.entered.wait(30.0), "the listener never picked the record up"
+
+        download.shutdown()
+        spin(lambda: False, 0.75)  # ticks keep running; none of them may announce idle
+        held = list(announced)
+
+        gate.let_go.set()
+        arrived = spin(lambda: bool(announced), 30.0)
+    finally:
+        gate.let_go.set()
+        quiet_the_logging()
+
+    assert not held, (
+        "idle was announced while the listener was still inside a handler. Composition takes "
+        "that as permission to quit, and the records it is holding go with the process."
+    )
+    assert arrived, "idle never arrived after the listener finished; shutdown cannot complete"
+
+
+def test_a_wedged_listener_cannot_keep_the_application_open(
+    tmp_path: Path, qapp: QCoreApplication, spin: Callable[..., bool]
+) -> None:
+    """The other half of the same rule: waiting for the log must be bounded.
+
+    A log that can stop the application from closing is worse than a truncated log. The wait is a
+    deadline checked on a tick — `reap_seconds` here, shortened so the test does not have to
+    spend it — never a thread being joined, so nothing on the GUI thread blocks either way.
+
+    Giving up is reported through `gave_up_on_the_log` rather than written to the log, and this
+    test is where that costs something: a warning emitted here would take the wedged handler's
+    lock, which `Handler.handle` acquires before `emit` is ever called. An earlier version did
+    exactly that and froze the event loop for the gate's full hold — eleven turns in five
+    seconds — which is how the flag came to exist.
+    """
+    app_logging.configure_logging(directory=tmp_path, level=logging.DEBUG)
+    gate = GatedHandler()
+    logging.getLogger("tracksandtrails").addHandler(gate)
+    download = DownloadManager(FakeRepository(), reap_seconds=0.2)
+    announced: list[bool] = []
+    download.idle.connect(lambda: announced.append(True))
+
+    try:
+        app_logging.worker_log_queue().put(
+            logging.LogRecord(
+                name="tracksandtrails.worker",
+                level=logging.WARNING,
+                pathname=__file__,
+                lineno=1,
+                msg="a record the listener will not let go of",
+                args=None,
+                exc_info=None,
+            )
+        )
+        assert gate.entered.wait(30.0), "the listener never picked the record up"
+
+        started = time.monotonic()
+        download.shutdown()
+        gave_up = spin(lambda: bool(announced), 10.0)
+        elapsed = time.monotonic() - started
+        still_blocked = not gate.left.is_set()
+        reported = download.gave_up_on_the_log
+    finally:
+        gate.let_go.set()
+        quiet_the_logging()
+
+    assert gave_up, (
+        "idle never arrived while the listener stayed inside a handler, so the application "
+        "could not close. A log must not be able to prevent quitting."
+    )
+    assert still_blocked, (
+        f"the handler had already returned after {elapsed:.3f} s, so this run proved nothing "
+        "about the deadline"
+    )
+    assert reported, (
+        "shutdown stopped waiting for the listener without recording that it had; a log that "
+        "loses its tail silently is the failure this whole finding is about"
     )
 
 
