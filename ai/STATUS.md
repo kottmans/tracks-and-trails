@@ -108,20 +108,22 @@ closed the two exit criteria that had no owner, and `T-017` closed on 2026-07-28
 its findings resolved under `T-059`.
 
 **Then CI ran, and the claim that only evidence remained did not survive it** (`COORD-R2`). The
-first real Windows run of this work produced three tasks: `T-062` (**approved and complete** at
-`00ce157` — both `T-037` tests had failed on *both* platforms since the day they were approved,
-because the runners have no ffmpeg), `T-061` (Ready — `_ffmpeg_gap` reads the selector string
-rather than the format yt-dlp chose, so a user without ffmpeg is refused downloads needing none),
-and a widened `T-060` (CI failed **four** focus tests, three of them the dialog's).
+first real Windows run of this work produced three tasks — `T-062`, `T-061` and a widened
+`T-060` — and all three are written. **CI run `30388380440` then passed all five jobs at
+`11e1203`**, `windows desktop` included; it is the first run of this project with none red.
 
 *(This paragraph called `T-062` "In Review" for as long as it took to approve it. A narrative
 sentence carrying a status is a second place for that status to live, which is the shape
 `COORD-R2` and the mandatory-area count each landed on — the operative list below is the one
 that is meant to hold it.)*
 
-**What remains is code and evidence.** `T-060`, `T-061` and `T-063` are ready to write; `T-040`
-and `T-056` still need one run of the `windows desktop` job, which is also the only thing that can
-move the *verified on Linux and Windows* criterion. Then the exit review.
+**What remains is evidence, and it is scheduled rather than merely outstanding.** `T-061` is
+approved at `11e1203` and `T-063` is approved with `T-064` carried; `T-060` is in its
+`T060-R1`/`T060-R2` correction round. `T-040` and `T-056` still need the `windows desktop` job —
+`T-040` for the two `T-026` mutations, which a green normal run does not supply, and `T-056` for a
+branch that has never executed. **GitHub Actions usage is exhausted as of 2026-07-28 and CI cannot
+run for several days** (maintainer), so the *verified on Linux and Windows* criterion cannot move
+until it resets. Then the exit review.
 
 **The lesson is about method, not ffmpeg.** `T-037` was written, reviewed and approved on a machine
 that had what the runners did not, and had never passed on either. Four CI failures in one batch
@@ -131,9 +133,16 @@ were one sentence: a test asserting something true of the author's machine.
 focus as asked and then asserted a state that cannot exist: on a failed job `Cancel` is disabled
 and on a running one `Retry` and the error text are hidden, so no chain offers all three controls.
 The structural half passed because `focusPolicy() != NoFocus` is true of a *disabled* widget — a
-list agreeing with a list, which is the shape that task exists to stop being satisfied by. Until
-`T-060` lands, the `windows desktop` job fails on that test, deliberately: skipping it would leave
-the one job that runs these tests green while proving nothing.
+list agreeing with a list, which is the shape that task exists to stop being satisfied by.
+`T-060` has since landed and the job is green, but `T-040` stays Blocked: what it owes is the two
+`T-026` mutations run **on Windows**, and a passing normal run is not evidence for a mutation that
+was never executed.
+
+**And one of those mutations turns out to be unkillable** (`T060-R2`, measured). No state of the
+progress view offers more than two reachable controls, and a two-element focus cycle is its own
+reverse — from either control, Tab and Backtab both deliver the other. Reversing those two cannot
+be observed by any keyboard walk. Order is gated on the add-URL dialog instead, whose states offer
+nine to twelve controls, and where the swap is killed in all three states.
 
 **What the day's work turned on.** `T-016`'s third re-review reported its two open findings in
 three places each, and all six had one cause: **a synchronous write sequenced every following

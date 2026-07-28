@@ -386,9 +386,18 @@ Tracked honestly; each should become a task or be accepted deliberately.
   name/role contract are now gated. Still unverified there: whether rendering *looks* right,
   whether Narrator *sounds* coherent, native dialog foreground and file-association behavior,
   theming, and installer UX. Discharged by the pre-release session in §8 item 15.
-- **Widget tab order is ungated on Windows** (`T-040`). No longer for want of controls: `T-016`
-  added six focusable ones and gates their order offscreen. What is missing is the assertion
-  under the real Windows platform plugin, where focus behaviour can differ. `T-040` is unblocked.
+- **Widget tab order is ungated on Windows** (`T-040`, `T-060`). Narrower than it was, and still
+  a gap. The assertions now exist and passed under the real `windows` plugin in CI run
+  `30388380440`, per state, driving Tab and Backtab. What has **never run there** is the pair of
+  mutations `T-026` requires — reversing two widgets, and adding a focusable control without
+  placing it — and a passing normal run is not evidence for a mutation nobody executed. Both are
+  killed offscreen. This entry stays until they are run on Windows and recorded.
+- **A two-control focus chain has no order to gate** (`T060-R2`, measured 2026-07-28). No state of
+  the progress view offers more than two reachable controls, and a two-element cycle is its own
+  reverse: from either control, Tab and Backtab both deliver the other, from any start. So
+  reversing those two is unkillable by any keyboard observation — not a weak assertion, an
+  unobservable property. Order is gated on the add-URL dialog, whose states offer nine to twelve.
+  Worth knowing before writing a tab-order test for any small widget.
 - **macOS is untested and unsupported** (`REQUIREMENTS.md` §3).
 - **Network tests are inherently flaky** — sites change. Failures are triaged as "our bug" vs
   "site changed" before being acted on.

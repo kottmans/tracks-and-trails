@@ -38,6 +38,7 @@ from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
+from tracks_and_trails.downloader.protocol import SessionKind
 from tracks_and_trails.ui.add_dialog import AddUrlDialog
 from tracks_and_trails.ui.job_detail import build_progress_view
 from tracks_and_trails.ui.main_window import APP_NAME, MainWindow
@@ -492,21 +493,37 @@ EXPECTED_DIALOG_ORDER = (
 #: What each dialog state makes available, written by hand from what the dialog is *for* rather
 #: than read back from `_refresh_actions` (`ai/TESTING.md` §13).
 #:
-#: `cancelProbeButton` is in neither: it is enabled only while a probe is running, and starting one
-#: here would mean spawning a worker in a file whose subject is which control the caret reaches
-#: next. That gap is deliberate and is recorded rather than hidden.
+#: **All three of the dialog's states, including the one with a probe running** (`T060-R1`). The
+#: first version stopped at the two a bare fixture could reach and recorded the third as a
+#: deliberate gap — but `cancelProbeButton` is enabled in that state and in no other, so leaving
+#: it out meant the only control that stops a running probe was reachable by no assertion here. A
+#: gate that skips the one state a control lives in does not gate that control.
+#:
+#: The third element says whether the state is reached by starting a probe; `dialog_factory`
+#: creates it without a worker (see `_ProbeThatNeverAnswers`).
 DIALOG_STATES = (
     (
         "nothing typed",
         "",
+        False,
         # Probe, Cancel and Add are all unavailable: there is no URL to act on.
         frozenset(EXPECTED_DIALOG_ORDER) - {"probeButton", "cancelProbeButton", "addButton"},
     ),
     (
         "a URL typed",
         "https://focus.invalid/clip",
+        False,
         # Probe and Add become available; Cancel stays out until a probe is running.
         frozenset(EXPECTED_DIALOG_ORDER) - {"cancelProbeButton"},
+    ),
+    (
+        "a probe in flight",
+        "https://focus.invalid/clip",
+        True,
+        # The exchange: Cancel becomes the live control, and Probe and Add step out — a second
+        # probe would have nowhere to run in a pool of one, and `Add` is disabled while a probe is
+        # outstanding because that is what keeps one job per entered line (`T016-R1`).
+        frozenset(EXPECTED_DIALOG_ORDER) - {"probeButton", "addButton"},
     ),
 )
 
@@ -574,18 +591,49 @@ def _rotated_to(visited: list[str], expected: list[str]) -> list[str]:
     return visited
 
 
+class _ProbeThatNeverAnswers(DownloadManager):
+    """A real manager whose `start` accepts the session and then does nothing (`T060-R1`).
+
+    The dialog treats a returning `start()` as a probe in flight: `_on_probe_saved` sets
+    `started`, `probing_job_id` becomes non-`None`, and `_refresh_actions` swaps Probe and Add out
+    for Cancel. That is the whole state this file needs, and none of it depends on a worker
+    existing.
+
+    **Deliberately not `entry_point=child_never_returning`**, which is how `tests/ui/`
+    `test_add_dialog.py` holds a probe open. That spawns a real process, and a file whose subject
+    is which control the caret reaches next should not also be a process-lifetime test — a worker
+    left alive by a failed assertion here would be attributed to whichever test ran next.
+
+    A subclass rather than a stand-in object so the dialog still connects to the real signals: a
+    fake with five hand-declared `Signal`s could drift from the manager's own and the connection
+    would still succeed.
+    """
+
+    def __init__(self, store: _EmptyStore) -> None:
+        super().__init__(store)
+        self.started: list[tuple[str, SessionKind]] = []
+
+    def start(self, job_id: str, kind: SessionKind = SessionKind.DOWNLOAD) -> None:
+        self.started.append((job_id, kind))
+
+
 @pytest.fixture
-def dialog_factory(shown_window: MainWindow, tmp_path: Path) -> Callable[[str], AddUrlDialog]:
+def dialog_factory(shown_window: MainWindow, tmp_path: Path) -> Callable[..., AddUrlDialog]:
     """Builds the add-URL dialog, visible and activated on the real desktop, with given text.
 
     Built directly rather than through `MainWindow.open_add_dialog`, because that path needs a
     manager, a job sink and an output directory (`T-036`) and none of them is what this asserts.
-    A `DownloadManager` over an empty store is enough, and no session is ever started.
+    A manager over an empty store is enough, and no worker is ever spawned.
+
+    `probing=True` drives the dialog's own `probe()` and then asserts the state was actually
+    reached. Without that check a change to `_refresh_actions` or to the save path could leave the
+    dialog idle, and the two focus tests below would go on passing over the wrong state — the
+    "gate that reports clean while covering nothing" this file exists to avoid.
     """
 
-    def build(text: str) -> AddUrlDialog:
+    def build(text: str, *, probing: bool = False) -> AddUrlDialog:
         dialog = AddUrlDialog(
-            manager=DownloadManager(_EmptyStore()),
+            manager=_ProbeThatNeverAnswers(_EmptyStore()),
             jobs=_EmptyStore(),
             output_directory=tmp_path / "downloads",
             parent=shown_window,
@@ -595,16 +643,25 @@ def dialog_factory(shown_window: MainWindow, tmp_path: Path) -> Callable[[str], 
         dialog.raise_()
         dialog.activateWindow()
         QApplication.processEvents()
+        if probing:
+            dialog.probe()
+            QApplication.processEvents()
+            assert dialog.probing_job_id is not None, (
+                "the dialog was asked for a probe and did not enter the in-flight state, so the "
+                "chain below would be asserted over the wrong one. Status: "
+                f"{dialog.status_text()!r}"
+            )
         return dialog
 
     return build
 
 
-@pytest.mark.parametrize(("case", "text", "available"), DIALOG_STATES)
+@pytest.mark.parametrize(("case", "text", "probing", "available"), DIALOG_STATES)
 def test_the_dialog_chain_offers_exactly_what_its_state_allows(
-    dialog_factory: Callable[[str], AddUrlDialog],
+    dialog_factory: Callable[..., AddUrlDialog],
     case: str,
     text: str,
+    probing: bool,
     available: frozenset[str],
 ) -> None:
     """`T040-R1`: a focus chain is a property of *state*, not of the widget tree.
@@ -616,7 +673,7 @@ def test_the_dialog_chain_offers_exactly_what_its_state_allows(
     **That was never a Windows behaviour.** The identical walk reproduces offscreen; the offscreen
     suite simply never pressed Tab, so nothing had observed it anywhere.
     """
-    dialog = dialog_factory(text)
+    dialog = dialog_factory(text, probing=probing)
     expected = _reachable(dialog, EXPECTED_DIALOG_ORDER, available)
 
     assert sorted(_focusable(dialog)) == sorted(expected), (
@@ -630,26 +687,38 @@ def test_the_dialog_chain_offers_exactly_what_its_state_allows(
     )
 
 
-@pytest.mark.parametrize(("case", "text", "available"), DIALOG_STATES)
+@pytest.mark.parametrize(("case", "text", "probing", "available"), DIALOG_STATES)
 def test_the_dialog_chain_wraps_in_both_directions(
-    dialog_factory: Callable[[str], AddUrlDialog],
+    dialog_factory: Callable[..., AddUrlDialog],
     case: str,
     text: str,
+    probing: bool,
     available: frozenset[str],
 ) -> None:
     """`T-040`'s second criterion: forwards and backwards, all the way round.
 
     A chain that wraps one way and dead-ends the other strands a keyboard user at whichever end
     they reach first, and neither direction is observable without pressing the key.
+
+    **Two full laps, compared as sequences** (`T060-R2`, applied to this file's sibling). This
+    asserted set containment, which cannot see order and so could not tell a wrap from a chain
+    that visits everything in the wrong sequence. Backtab through a reversed chain is exactly the
+    defect a keyboard user meets and a set cannot express.
     """
-    dialog = dialog_factory(text)
-    expected = set(_reachable(dialog, EXPECTED_DIALOG_ORDER, available))
+    dialog = dialog_factory(text, probing=probing)
+    expected = _reachable(dialog, EXPECTED_DIALOG_ORDER, available)
+    reversed_expected = list(reversed(expected))
 
-    forwards = set(_walk_focus_chain(dialog, len(expected) * 2))
-    assert forwards >= expected, f"{case}: forwards missed {sorted(expected - forwards)}"
+    forwards = _walk_focus_chain(dialog, len(expected) * 2)
+    assert _rotated_to(forwards, expected) == expected * 2, (
+        f"{case}: two laps of Tab visited {forwards}; this state's chain is {expected}"
+    )
 
-    backwards = set(_walk_focus_chain(dialog, len(expected) * 2, backwards=True))
-    assert backwards >= expected, f"{case}: backwards missed {sorted(expected - backwards)}"
+    backwards = _walk_focus_chain(dialog, len(expected) * 2, backwards=True)
+    assert _rotated_to(backwards, reversed_expected) == reversed_expected * 2, (
+        f"{case}: two laps of Backtab visited {backwards}; reversed this state's chain is "
+        f"{reversed_expected}"
+    )
 
 
 @pytest.mark.parametrize(("case", "status", "kind", "available"), VIEW_STATES)
@@ -666,6 +735,23 @@ def test_the_progress_view_chain_offers_exactly_what_its_state_allows(
     controls never coexist. The version this replaces expected all three at once and a probe
     visited `retryJobButton → errorMessage → retryJobButton`, unable to reach `Cancel` because it
     was disabled.
+
+    ## What this cannot prove, and why it is written this way anyway
+
+    **No state of this view offers more than two reachable controls, and a two-element focus
+    cycle has no observable orientation.** `A → B → A` and `B → A → B` are the same cycle: from
+    either control, Tab and Backtab both deliver the other one, from any starting point. So
+    reversing the failed state's two controls is unkillable *here* — not because the assertion is
+    weak, but because the keyboard cannot distinguish the two arrangements. `T060-R2` names that
+    reversal as the mutation this should catch; it is recorded as unobservable rather than
+    answered with an assertion that appears to catch it.
+
+    Ordering is gated where it is observable: the dialog's states offer nine to twelve reachable
+    controls, and swapping two of them fails the dialog chain test above, in all three states.
+
+    The anchored sequence is asserted regardless, because it costs nothing and it starts gating
+    order by itself the day a third control becomes simultaneously reachable — which is a change
+    nobody would think to add a test for.
     """
     store = _EmptyStore(status=status, kind=kind)
     view = build_progress_view(DownloadManager(store), store, "job-1", None)
@@ -689,8 +775,21 @@ def test_the_progress_view_chain_offers_exactly_what_its_state_allows(
     first.setFocus()
     QApplication.processEvents()
 
-    visited = set(_walk_focus_chain(shown_window, max(len(expected) * 2, 4)))
-    assert visited >= set(expected), (
-        f"{case}: Tab did not reach every control this state offers; visited {sorted(visited)}, "
-        f"expected at least {sorted(expected)}"
+    # **Anchored, not rotated** (`T060-R2`). This collected the walk into a *set*, which proved
+    # every control was reached and nothing about the order. Focus is placed deliberately above,
+    # so the sequence can be predicted outright rather than lined up after the fact — and an
+    # anchored sequence is the strongest statement this walk can make.
+    laps = len(expected) * 2
+    forwards = _walk_focus_chain(shown_window, laps)
+    assert forwards == [expected[step % len(expected)] for step in range(1, laps + 1)], (
+        f"{case}: from {expected[0]}, two laps of Tab visited {forwards}; this state's chain is "
+        f"{expected}"
+    )
+
+    first.setFocus()
+    QApplication.processEvents()
+    backwards = _walk_focus_chain(shown_window, laps, backwards=True)
+    assert backwards == [expected[-step % len(expected)] for step in range(1, laps + 1)], (
+        f"{case}: from {expected[0]}, two laps of Backtab visited {backwards}; reversed this "
+        f"state's chain is {list(reversed(expected))}"
     )

@@ -18,19 +18,33 @@ graph (approved at `306840b`) and `T-037` proved a download completes and surviv
 **Nothing remains on the path.**
 
 **Open work is now code as well as evidence** (`COORD-R2`). The first real Windows run, CI
-`30380426474`, produced three tasks:
+`30380426474`, produced three tasks — `T-062`, `T-061` and `T-060` — and all three are written.
+**CI run `30388380440` then passed all five jobs at `11e1203`, the first run with none red**,
+`windows desktop` included.
 
-- **`T-062`** — In Review. Both `T-037` tests failed on *both* platforms and had never passed on
-  either: the runners have no ffmpeg, so `REQ-024`'s gate refused every download before it
-  started. Fixed at `a78df2f`; four of five jobs green.
-- **`T-061`** — Ready, and the first **product** defect of the batch. `_ffmpeg_gap` reads
-  `"+" in request.format_selector` rather than the format yt-dlp chose, so a user without ffmpeg
-  is refused downloads that need none, on four of the five presets.
-- **`T-060`** — Ready, and wider than when it was filed: CI failed **four** focus tests, three of
-  them the dialog's. The order Windows delivers is not the order Qt builds.
+- **`T-062`** — **Approved with follow-ups.** Neither `T-037` test had ever passed on either
+  platform: the runners have no ffmpeg, so `REQ-024`'s gate refused every download before it
+  started.
+- **`T-061`** — **Approved at `11e1203`.** `_ffmpeg_gap` read `"+" in request.format_selector`
+  rather than the format yt-dlp chose, so a user without ffmpeg was refused downloads that need
+  none on four of the five presets. It now reads `requested_formats` and falls back to the
+  selector only when yt-dlp resolved nothing.
+- **`T-063`** — **Approved with follow-up at `11e1203`.** `T063-R1` is carried to `T-064`:
+  39 dependency-owned launchers under `.venv/bin/` still name the parent checkout's interpreter,
+  so the documented bare `mypy` and `pytest` commands fail. Module invocations work.
+- **`T-060`** — **In Review, correction round.** `T060-R1` and `T060-R2` are corrected and await
+  re-review. Its earlier claim that "the order Windows delivers is not the order Qt builds" was
+  **wrong**: Tab skips disabled and hidden controls, and that reproduces offscreen.
 
-`T-040` and `T-056` remain Blocked on Windows evidence; their branches are type-checked under
-`mypy --platform win32` and have still never executed.
+`T-040` and `T-056` remain Blocked on Windows evidence. `T-060`'s normal tests have now passed
+under the real `windows` plugin, but **the two mutations `T-026` requires have never been run
+there**, and a green normal job is not evidence for a mutation nobody committed. `T-056`'s
+`still_running` branch has never executed at all — the desktop job runs the UI suite, not the
+integration suite.
+
+**CI is unavailable until GitHub Actions usage resets** (maintainer, 2026-07-28: several days).
+Every remaining piece of Windows evidence is therefore *scheduled* rather than merely outstanding,
+and nothing that needs a runner can be closed in the meantime.
 
 **`T-017` is Complete**, closed 2026-07-28 once `T-059`'s approval resolved the finding carried
 out of it. Five review rounds, two of them regressions introduced by corrections; the record is in
@@ -38,17 +52,19 @@ out of it. Five review rounds, two of them regressions introduced by corrections
 reached `_load` — is in `T-059`'s scope.
 
 **Approved on 2026-07-28:** `T-016` (fourth correction batch), `T-017`, `T-036`, `T-037`, `T-052`,
-`T-054`, `T-057`, `T-058`, `T-059`. **Blocked:** `T-040` and `T-056`, both on Windows evidence,
-plus `T-033` (Phase 5 evidence) and `T-039` (Phase 5 installer). `T-062` is **approved with
-follow-ups**. **Ready:** `T-060`, `T-061`, `T-063` — nothing is in review.
+`T-054`, `T-057`, `T-058`, `T-059`, `T-061`. **Approved with follow-ups:** `T-062`, and `T-063`
+(carrying `T-064`). **In Review:** `T-060`, on its `T060-R1`/`T060-R2` correction round.
+**Blocked:** `T-040` and `T-056`, both on Windows evidence, plus `T-033` (Phase 5 evidence) and
+`T-039` (Phase 5 installer). **Ready:** `T-064`.
 
 **Every Phase 1 deliverable filed *before* 2026-07-28's CI run is approved** — and that is a
 narrower claim than the one this block used to make. Running the tests where they had never run
 added three tasks, one of which is a defect a user would meet. Phase 1 is not ready.
 
-**Known and deliberate:** until `T-060` lands, the `windows desktop` job fails on
-`test_the_progress_view_focus_chain_is_walked_on_a_real_desktop`. Skipping it would leave the one
-job that runs those tests green while proving nothing.
+*(This block read "until `T-060` lands, the `windows desktop` job fails on
+`test_the_progress_view_focus_chain_is_walked_on_a_real_desktop`". It landed: run `30388380440`
+is green on all five jobs. Kept as a note rather than deleted, because the reasoning stands — a
+skip would have left the one job that runs those tests green while proving nothing.)*
 
 *(This block described `T-016` as In Review at `33ebd11`, `T-017` as "the only substantive task
 startable right now", and `T-040` as Ready — all true on 2026-07-27 and none of them true a day
@@ -161,10 +177,12 @@ real merge no longer detected · the blind case guessing "no merge".
 
 ### T-060 — Focus chains are per state, and the Windows mutations still owe evidence
 
-**Status:** **In Review — implemented 2026-07-28.** Chains are asserted per state, and the cause
-of all four CI failures turned out to be one thing. **The Windows-divergence claim in this task
-and in `T-040` was wrong** and is corrected below. Pre-flighted offscreen, where the walk is
-identical; the Windows job is still what proves it.
+**Status:** **In Review — corrections for `T060-R1` and `T060-R2` implemented 2026-07-28**, on top
+of the implementation reviewed at `11e1203`. Chains are asserted per state, and the cause of all
+four CI failures turned out to be one thing. **The Windows-divergence claim in this task and in
+`T-040` was wrong** and is corrected below. Pre-flighted offscreen, where the walk is identical;
+the Windows job is still what proves it — **and it cannot run until GitHub Actions usage resets**
+(maintainer, 2026-07-28: several days).
 **Owner:** Implementer
 **Priority:** Medium — it is the difference between a Windows focus gate and a Windows focus
 *claim*, and `T-026`'s acceptance criterion cannot be marked met until it is settled
@@ -251,8 +269,10 @@ and both widgets disable some in every state. Not a platform difference.
 **Chains are now asserted per state.** The declared order is transcribed once; **availability is
 transcribed per state**, by hand, from what the dialog is *for* — "with no URL there is nothing to
 probe or add" is a design statement worth asserting, and reading it back from `_refresh_actions`
-would make the test agree with the code (`ai/TESTING.md` §13). Two dialog states and two progress
-view states, each checked for the set it offers, the order Tab walks, and wrapping both ways.
+would make the test agree with the code (`ai/TESTING.md` §13). **Three** dialog states and two
+progress view states, each checked for the set it offers, the order Tab walks, and wrapping both
+ways. (The third dialog state — a probe in flight — arrived with the correction round below; the
+first version left it out.)
 
 **`_focusable` was the structural half of the same mistake.** It filtered on
 `focusPolicy() != NoFocus`, which is true of a *disabled* widget — so it counted three controls
@@ -265,13 +285,70 @@ both wrap directions all match what the tests expect. **This is not a substitute
 job** — the real plugin is the subject — but it is the difference between a test written from a
 design and one written from a guess.
 
-**One gap, deliberate and recorded:** `cancelProbeButton` is in no state's expected set. It is
-enabled only while a probe is running, and starting one would mean spawning a worker in a file
-whose subject is which control the caret reaches next.
+#### Correction round, 2026-07-28 — `T060-R1` and `T060-R2`
 
-**Still owed, and unchanged:** the two `T-040` mutations — reversing two widgets, and adding a
-focusable control without placing it — must be executed **on Windows** and recorded. Nothing here
-has run there. `ai/TESTING.md` §12 keeps its gap and `T-026`'s criterion stays unmet until it has.
+**`T060-R1` — the probe-in-flight state is now asserted, and the gap it left was real.** The
+first version recorded `cancelProbeButton`'s absence as a deliberate gap. Recording a gap is not
+the same as being allowed to have one: that control is enabled in exactly one state and disabled
+in every other, so excluding that state excluded the only control that stops a running probe from
+every assertion in this file. A gate that skips the one state a control lives in does not gate
+that control.
+
+The state is reached without a worker. `_ProbeThatNeverAnswers` subclasses `DownloadManager` and
+overrides `start` to record the call and return; the dialog's own `_on_probe_saved` then sets
+`started`, `probing_job_id` becomes non-`None`, and `_refresh_actions` swaps Probe and Add out for
+Cancel. Deliberately **not** `entry_point=child_never_returning`, which is how `test_add_dialog.py`
+holds a probe open — that spawns a real process, and a worker left alive by a failed assertion
+here would be attributed to whichever test ran next. The factory asserts the state was actually
+reached, so a change to `_refresh_actions` cannot silently leave the chain asserted over an idle
+dialog.
+
+**`T060-R2` — the set is gone, and the finding's own mutation turns out to be unkillable.** The
+walk is now compared as a sequence, anchored on the control focus was placed on rather than
+rotated into place, and Backtab is driven for two full laps in both the dialog tests and the
+progress-view test. The same weakness was in `test_the_dialog_chain_wraps_in_both_directions`,
+which asserted set containment in both directions; it is corrected in the same batch.
+
+**But the reversal `T060-R2` names cannot be caught by any keyboard observation.** No state of the
+progress view offers more than two reachable controls, and *a two-element focus cycle has no
+observable orientation*: `A → B → A` and `B → A → B` are the same cycle, so from either control,
+Tab and Backtab both deliver the other one, from any starting point. Measured, not argued — the
+mutation was run and survived, and a four-line model of a 2-cycle shows why it must. This is
+recorded as unobservable rather than answered with an assertion that appears to catch it.
+
+Ordering is therefore gated where it is observable — the dialog's three states offer nine to
+twelve reachable controls — and the anchored sequence is asserted for the view anyway, because it
+costs nothing and begins gating order by itself the day a third control becomes simultaneously
+reachable.
+
+**Mutation results, offscreen, 2026-07-28 — 7 of 9 killed, both survivors explained:**
+
+| Mutation | |
+|---|---|
+| `titleValue`/`uploaderValue` swapped, each of the three dialog states | **killed** ×3 |
+| an undeclared focusable control appears in the dialog | **killed** |
+| an undeclared focusable control appears in the progress view | **killed** |
+| `cancelProbeButton` removed from the chain, probe in flight | **killed** |
+| the walk ignores `backwards` and always presses Tab (dialog) | **killed** |
+| progress view's delivered order reversed, declaration untouched | **survives — 2-cycle** |
+| the walk ignores `backwards` (progress view) | **survives — 2-cycle** |
+
+`probeButton`/`cancelProbeButton` is *not* a usable swap for the first mutation class: they are
+never enabled at the same time, so no walk can distinguish the two arrangements. That is the same
+2-cycle limitation seen from the other side, and it is why the swap is done on two controls that
+are reachable in every state.
+
+**Pre-flight method, so it can be repeated.** `tests/ui/test_windows_desktop.py` skips itself off
+Windows, so the pre-flight loads the module's source with *only* the platform guard disabled and
+calls the real test functions with hand-built fixture values. Nothing is re-implemented: a
+pre-flight that paraphrased the assertions could pass while the file failed. All eight
+parametrised cases pass offscreen.
+
+**Still owed, and now blocked on more than a job run:** the two `T-040` mutations must be executed
+**on Windows** and recorded, for the dialog chain as well as the view's. Nothing here has run
+there. GitHub Actions usage is exhausted as of 2026-07-28 and CI cannot run for several days, so
+this evidence is *scheduled*, not merely outstanding. `ai/TESTING.md` §12 keeps its gap and
+`T-026`'s criterion stays unmet until it has run.
 
 ---
 
@@ -372,6 +449,46 @@ for.
 ---
 
 ## Ready
+
+### T-064 — Repair stale developer-tool launchers
+
+**Status:** Ready — filed from `T063-R1`
+**Owner:** Implementer
+**Priority:** Low — the application runs, but the documented bare developer commands do not
+**Phase:** Phase 1
+**Depends on:** `T-063`
+**Relevant context:** `T063-R1`; `docs/DEVELOPMENT.md` setup, Everyday commands, and editable
+install repair sections
+**Affected surfaces:** `docs/DEVELOPMENT.md`; the local, git-ignored `.venv/`
+**Risk:** Low — developer-environment repair only
+
+#### Scope
+
+`T-063` repaired the application console script and editable source path by reinstalling this
+project from the current checkout. It did not repair console scripts installed by the development
+dependencies: at review time 39 launchers under `.venv/bin/`, including `mypy` and `pytest`, still
+named the nonexistent parent-checkout interpreter. Consequently the documented bare `mypy` and
+`pytest` commands fail with `bad interpreter`, while `.venv/bin/python -m mypy` and
+`.venv/bin/python -m pytest` work.
+
+Make the documented recovery procedure repair the whole development environment, not only this
+project's own entry point. Recreating the venv from the current checkout is the simplest known
+route; a narrower procedure is acceptable only if it demonstrably rewrites dependency-owned
+launchers too.
+
+#### Acceptance criteria
+
+- Following the documented repair from the stale moved-venv state makes both application entry
+  points and the documented bare `mypy` and `pytest` commands runnable without `PYTHONPATH`
+- The import-location check still resolves `tracks_and_trails` from this checkout
+- The same instructions work after `.venv/` is deleted and recreated
+- The procedure does not choose between repository paths; it makes the environment agree with the
+  checkout in which it is run
+
+#### Out of scope
+
+- Product, packaging, or CI behavior
+- Choosing the canonical repository path
 
 ## Proposed — Phase 0
 

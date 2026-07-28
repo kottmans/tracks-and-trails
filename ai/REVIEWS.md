@@ -5197,3 +5197,158 @@ and the implementer reports 1395 passed, 11 skipped, 2 deselected. Its pushed CI
 
 **Final disposition:** T062-R1 is **Resolved**, and T-062 is **Approved and Complete at
 `00ce157`**. COORD-R3 is a non-blocking follow-up and requires no additional T-062 review.
+
+## 2026-07-28 — T-060, T-061 and T-063 review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `00ce157`  **Head:** `11e1203`
+**Scope:** COORD-R3, T-061's ffmpeg decision gate, T-060's state-specific Windows focus
+evidence, and T-063's virtualenv repair
+**Boundary classification:** Production source, tests, documentation/coordination, and a local
+git-ignored environment repair
+**Verdict by task:** T-061 **Approved**; T-063 **Approved with follow-up**; T-060
+**Changes requested**
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T060-R1` | **Medium** | **Yes** | `DIALOG_STATES` covers only an empty editor and a typed URL (`tests/ui/test_windows_desktop.py:498-510`). Both deliberately exclude `cancelProbeButton`, even though it is the only cancellation control enabled while a probe is in flight. T-060 says nothing in the dialog chain remains out of scope and requires a newly reachable undeclared control to fail. The task record itself acknowledges that this state is absent because the present fixture cannot create it. A keyboard regression in the in-flight probe state therefore remains ungated. | Add an in-flight-probe state through a purpose-built fake manager/store or another controlled state seam; drive its real Tab and Backtab chain and include `cancelProbeButton` in the hand-authored expectation. Do not start a real worker merely to create widget state. Run the two required mutation classes against this state on Windows too. | **Open** |
+| `T060-R2` | **Medium** | **Yes** | The progress-view test converts the forward-only walk to a set (`tests/ui/test_windows_desktop.py:687-695`). It never drives Backtab and never compares the delivered sequence with `EXPECTED_VIEW_ORDER`; reversing the actual two-control failed-state order still satisfies the assertion. The separate declaration assertion proves only what `focus_chain()` returns, not what Windows delivers. This does not meet T-060's real-focus Tab/Backtab criterion or its evidence claim that every state checks walked order and both wrap directions. | For each progress-view state, assert the observed forward sequence in order and drive the reverse sequence through Backtab, including wrap. Keep the hand-authored per-state availability independent of the production declaration. Mutation-check reversal and undeclared-control insertion on Windows as the task already requires. | **Open** |
+| `T063-R1` | **Low** | **No** | T-063 repairs the two application entry points exactly as scoped, but reinstalling only this editable project leaves dependency-owned launchers untouched. At this head, 39 scripts under `.venv/bin/` still name `/mnt/projects/software_projects/tracks-and-trails/.venv/bin/python`; bare `.venv/bin/mypy` and `.venv/bin/pytest` both fail with `bad interpreter`. `docs/DEVELOPMENT.md:66-76` documents those bare commands, while its repair step at lines 176-181 does not repair them. Module invocations pass, so this is developer-environment residue rather than a product or T-063 acceptance failure. | Filed `T-064` under Ready to make the repair procedure rebuild or otherwise refresh the complete development environment and prove the documented bare commands. | **Open; carried to T-064** |
+| `COORD-R4` | **Low** | **No** | All three task entries are under `## In Review`, and the handoff states that accurately, but the TASKS preamble still calls T-060/T-061/T-063 Ready and says nothing is in review (`ai/TASKS.md:20-43`). STATUS likewise says they are ready to write (`ai/STATUS.md:110-124`) and does not record the successful T-060 Windows run. Phase readiness is not overstated—the same text says code/evidence remain—so this is current-truth drift rather than a blocking readiness claim. | Synchronize TASKS and STATUS when filing the review results: T-061 approved, T-063 approved with T-064, T-060 in correction review, and T-040/T-056 still blocked. Record run `30388380440` as normal Windows evidence without claiming the unrun mutations. **Owner/target:** Documentation Maintainer, focused correction filing. | **Open, non-blocking** |
+
+### Task judgments
+
+- **T-061 is sound.** `_will_merge` prefers yt-dlp's resolved `requested_formats`, recognizes a
+  single resolved `format_id`, and returns `None` for the blind case so the caller retains the
+  conservative selector fallback. The merge-refusal test now contains two requested formats, the
+  progressive unit case exercises the defect, and the end-to-end case proves the supported preset
+  completes when the application reports ffmpeg unavailable.
+- **T-060's diagnosis is correct but its gate is incomplete.** CI's original failures were caused
+  by state availability, not a Windows/offscreen ordering difference. The new normal Windows run
+  confirms the corrected expectations that are present. It cannot close T-040 or TESTING §12
+  until T060-R1/R2 and the already-disclosed Windows mutation evidence are complete.
+- **T-063 meets its application-facing acceptance criteria.** Both invocation forms work without
+  `PYTHONPATH`, the import-location check points into this checkout, and the repair is documented.
+  T063-R1 is intentionally carried because it concerns dependency-owned development launchers,
+  not either application entry point the task was filed to restore.
+- **COORD-R3 is resolved.** STATUS now describes T-062 as approved and complete. COORD-R4 is a
+  later status transition left unsynchronized, not a recurrence that invalidates that correction.
+
+### Independent CI verification
+
+Run `30388380440`, attempt 2, is successful at exact head `11e1203`.
+
+| Job/evidence | Result |
+|---|---|
+| `ubuntu-latest` | **Passed** |
+| `windows-latest` | **Passed** |
+| `frozen ubuntu-latest` | **Passed** |
+| `frozen windows-latest` | **Passed** |
+| `windows desktop` | **Passed** under the real `windows` Qt plugin |
+
+Attempt 1 was cancelled only in Ubuntu's `Install ffmpeg` step after 14 minutes 49 seconds; its
+other four jobs passed. The same step completed in 9 seconds on attempt 2, supporting the
+handoff's infrastructure diagnosis. A green normal desktop job is not evidence for mutations
+that were never committed and run.
+
+### Independent local checks
+
+| Check | Result |
+|---|---|
+| Four focused T-061 tests | **4 passed in 0.99 s** with localhost permission |
+| Full default suite | **1398 passed, 11 skipped, 2 deselected in 83.51 s** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | **91 files already formatted** |
+| `python -m mypy src` | Passed: **35 source files** |
+| Configured `python -m mypy` | Passed: **76 source files** |
+| Configured `python -m mypy --platform win32` | Passed: **76 source files** |
+| Application entry points and import location | Both report `0.1.0.dev0`; import resolves to this checkout |
+| Bare developer entry points | `mypy` and `pytest` fail on the stale parent-checkout shebang; filed as T-064 |
+| `git diff --check 00ce157..11e1203` | Passed |
+| Git boundary | HEAD and `origin/main` both `11e1203`; four commits by Sean Kottman, no AI authorship trailers |
+
+The first sandboxed focused run passed the three unit cases and failed before application code
+when the end-to-end fixture could not bind localhost. The identical four-test command was rerun
+with localhost permission and passed; the sandbox denial is not project evidence.
+
+### Final disposition
+
+T-061 is **Approved at `11e1203`**. T-063 is **Approved with follow-up at `11e1203`**; T063-R1
+is owned by Ready task T-064 and does not keep T-063 in review.
+
+T-060 is **Changes requested** on T060-R1 and T060-R2. The focused correction re-review should
+inspect only those two test gaps, the Windows mutation evidence already required by T-060, and
+the correction diff. Until then T-040 remains Blocked and the Windows tab-order gap in
+`ai/TESTING.md` remains accurate. T-056 is untouched by this review and remains blocked on its
+own Windows mutation evidence.
+
+---
+
+## 2026-07-28 — T-060 correction batch (Implementer)
+
+**Implementer:** Claude (Opus 5)
+**Responds to:** the 2026-07-28 review of `00ce157..11e1203`
+**Status:** both blocking findings **corrected, awaiting re-review**. Appended, not edited into
+the reviewer's table (`AGENTS.md` §6, §9). Nothing below is marked Resolved; that is the
+Reviewer's to do.
+
+**One of the two findings is corrected in a way its recommendation did not anticipate**, and that
+is flagged here rather than buried: the mutation `T060-R2` names cannot be killed by any keyboard
+observation. See the row below.
+
+### Corrections
+
+| ID | Correction | Evidence that weakening it fails |
+|---|---|---|
+| `T060-R1` | A third dialog state — **a probe in flight** — is asserted, with `cancelProbeButton` in its hand-authored expectation and `probeButton`/`addButton` out of it. Reached without a worker: `_ProbeThatNeverAnswers` subclasses `DownloadManager` and overrides `start` to record and return, so the dialog's own `_on_probe_saved` sets `started` and `_refresh_actions` does the rest. Not `entry_point=child_never_returning` — that spawns a real process, and a worker stranded by a failed assertion in this file would be attributed to the next test. The factory asserts the state was actually entered, so the chain cannot be asserted over an idle dialog. | Removing `cancelProbeButton` from the chain: **killed**. An undeclared focusable control added to the dialog: **killed**. Swapping `titleValue`/`uploaderValue`: **killed in all three states**, this one included. |
+| `T060-R2` | The set is gone. Both progress-view directions are compared as **anchored sequences** — focus is placed deliberately, so the expected sequence is predicted outright rather than rotated into place — and Backtab is driven for two full laps. The identical set-containment weakness in `test_the_dialog_chain_wraps_in_both_directions` is corrected in the same batch (sibling audit, `AGENTS.md` §10). | Swapping two dialog controls: **killed ×3**. A walk that ignores `backwards` and always presses Tab: **killed** on the dialog. An undeclared focusable control in the progress view: **killed**. The two progress-view order mutations **survive**, necessarily — see below. |
+
+### The reversal `T060-R2` names is unobservable, and that is a measurement
+
+The finding asks that reversing the failed state's two-control order fail the test. It does not,
+and it cannot: **no state of the progress view offers more than two reachable controls, and a
+two-element focus cycle has no observable orientation.** `A → B → A` and `B → A → B` are the same
+cycle — from either control, Tab and Backtab both deliver the other one, from any starting point.
+
+This was run, not assumed. The mutation reverses what `setTabOrder` delivers while leaving
+`focus_chain()`'s declaration untouched — exactly the scenario the finding describes — and it
+survives an anchored, unrotated, both-directions sequence assertion. A four-line model of a
+2-cycle shows the same thing independently.
+
+The same limitation explains why `probeButton`/`cancelProbeButton` is not a usable swap for
+`T-026`'s first mutation class: they are never enabled simultaneously, so no walk distinguishes
+the two arrangements. The swap is therefore done on two controls reachable in every state.
+
+Ordering is gated where it is observable — the dialog's three states offer nine to twelve
+reachable controls — and the anchored sequence is asserted for the progress view regardless,
+because it costs nothing and starts gating order by itself the day a third control becomes
+simultaneously reachable. Recorded in `ai/TESTING.md` §12 as a property of small widgets, not as a
+property of this test.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| Focus tests, all 8 parametrised cases, offscreen pre-flight | **8/8 passed** |
+| Mutation battery | **7 of 9 killed**; both survivors are the 2-cycle cases above |
+| Full default suite | **1398 passed, 11 skipped, 2 deselected** |
+| `ruff check .` / `ruff format --check .` | Passed / 91 files already formatted |
+| `mypy src` / configured `mypy` / `mypy --platform win32` | 35 / 76 / 76 source files, all clean |
+
+**Method, so the pre-flight can be repeated and audited.** `tests/ui/test_windows_desktop.py`
+skips itself off Windows, so the harness loads the module's source with **only** the platform
+guard disabled and calls the real test functions with hand-built fixture values. Nothing is
+re-implemented — a pre-flight that paraphrased the assertions could pass while the file failed.
+
+**Offscreen is not the Windows job and nothing here claims otherwise.** It answers the one
+question a runner cannot answer this week: whether these assertions hold against the real widgets
+at all.
+
+### What this batch does not supply
+
+**The `T-026` mutations still have not run on Windows**, for the dialog chain or the view's, and
+that is now blocked on more than a job: GitHub Actions usage is exhausted as of 2026-07-28 and CI
+cannot run for several days (maintainer). `T-040` stays Blocked, `ai/TESTING.md` §12 keeps its
+gap, and `T-026`'s acceptance criterion stays unmet. `T-056` is untouched.
