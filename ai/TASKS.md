@@ -979,7 +979,11 @@ killed by the test named for it; the tree hashed identical before and after the 
 | Focused logging, worker-logging and manager suite | **93 passed** |
 | Canonical bare `pytest` | **1192 passed, 11 skipped, 1 deselected** — three consecutive runs, 52–53 s each |
 | Mutation battery | **6 of 6 killed**, tree restored to the same hash |
-| Windows | **Not run.** No Windows-specific code path here, but the listener thread and the queue are platform behaviour; CI is the evidence |
+| CI at `b0879d7`, all five jobs green | Ubuntu **1192 passed, 11 skipped, 1 deselected**; Windows **1181 passed, 20 skipped, 21 deselected**; Windows desktop **20 passed, 1202 deselected**; both frozen jobs succeeded |
+
+Windows was not run locally — no Windows-specific code path is involved, but the listener thread
+and the queue are platform behaviour, so those CI jobs are the whole of that evidence. The three
+consecutive canonical runs were Linux only.
 
 #### What landed
 
