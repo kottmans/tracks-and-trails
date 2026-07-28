@@ -94,6 +94,7 @@ to be split into three reviews, and the commits are grouped to match:
 | Review | Tasks | Base | Head |
 |---|---|---|---|
 | 1 | `T-016` fourth correction, `T-017` | `6ad20f6` | `6ce195a` |
+| 1a | `T-017` corrections, four batches | `9c92c32` | `f100108` |
 | 2 | `T-057`, `T-058` | `6ce195a` | `4a06e92` |
 | 3 | `T-056`, `T-054` | `4a06e92` | `9c92c32` |
 
@@ -112,6 +113,15 @@ where the count lives, and where this file now sends you rather than restating i
 two real divergences on the way: the adapter read `has_drm='maybe'` as protected, and its fallback
 used `all` where `_has_drm` — the branch that actually runs — uses `any`, so the two halves of one
 function disagreed about a mixed item.
+
+**`T-017` is Blocked at `f100108` after five review rounds, and its last finding is carried.**
+Four of `T017-R1`…`R5` are resolved; `T017-R4` goes to **`T-059`** rather than a sixth pass, by
+maintainer direction. Two of the five rounds were regressions I introduced, and the shape is worth
+keeping: the widget draws from two sources — live progress and the durable row — and each
+correction chose between them at one more call site. The fifth wrote the rule down; the reviewer
+then found the one entry point that still bypasses it, `_load`, which no test in the task reaches
+because **every test starts from a running view**. A suite that never opens a view onto a finished
+job cannot see what opening one does. `T-059` owns that, and should land before or with `T-036`.
 
 **`T-056` is corrected but not demonstrable here.** The fix is Windows-only, and the mutation that
 proves it survives on Linux by construction. That is `AGENTS.md` §8's "a host-only check is not

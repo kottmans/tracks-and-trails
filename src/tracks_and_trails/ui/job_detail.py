@@ -49,8 +49,10 @@ So the rule is written down once, in `_totals_for_ending`, and it has three rows
 |---|---|---|
 | running | the last rendered progress message | the row does not persist per-message progress |
 | `COMPLETED` | the row's `bytes_total` | the final size arrives with the outcome, not as progress |
-| `CANCELLED` / `FAILED` | whatever was last shown | the row lags by design; the last message
-  is the closest thing to what actually transferred |
+| `CANCELLED` / `FAILED` | whatever was last shown | the row lags; see below |
+
+A stopped-partway job takes the last thing shown because the row lags **by design** and the last
+message is the closest thing to what actually transferred.
 
 A completed download is its **total**, not its progress counter: the manager writes `bytes_total`
 at the terminal transition and leaves `bytes_done` where progress left it, so a real completed row
