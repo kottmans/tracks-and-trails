@@ -1900,16 +1900,110 @@ def test_a_message_type_without_a_signal_is_refused_at_construction(
 # --- what the manager refuses ---------------------------------------------------------------
 
 
-def test_a_job_that_is_not_queued_cannot_be_started(
-    tmp_path: Path, repository: FakeRepository, manager: Callable[..., DownloadManager]
+@pytest.mark.parametrize(
+    "status",
+    [JobStatus.RUNNING, JobStatus.PAUSED, JobStatus.POST_PROCESSING, JobStatus.FAILED],
+)
+def test_a_job_outside_the_two_entry_points_cannot_be_started(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    status: JobStatus,
 ) -> None:
-    """`ARCHITECTURE.md` §5 has no `READY → PROBING` edge; the refusal is explicit, not a crash."""
+    """`ARC-004` gives a start two entry points, not "anything the pipeline can reach".
+
+    **This test used to assert that only a `QUEUED` job could start**, which was right until
+    `T-051` ruled on the probe-then-download flow. `READY` is now the second entry point and has
+    its own tests below; the rest are still refused explicitly rather than by a crash.
+    """
+    job = make_job("job-1", "https://example.invalid/x", tmp_path)
+    repository.add(replace(job, status=status))
+    download = manager(entry_point=child_downloading_forever)
+
+    with pytest.raises(ValueError, match="a session starts from"):
+        download.start("job-1")
+
+    assert repository.jobs["job-1"].status is status, "a refused start still moved the job"
+
+
+def test_a_ready_job_starts_a_download_at_running(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`ARC-004`'s second entry point: `READY → RUNNING`, never back through `PROBING`.
+
+    The whole persisted sequence is asserted rather than the final state. A start that re-entered
+    `PROBING` would still end at `RUNNING` once the worker reported progress, so reading only the
+    last status would miss exactly the thing the decision refused.
+    """
     job = make_job("job-1", "https://example.invalid/x", tmp_path)
     repository.add(replace(job, status=JobStatus.READY))
-    download = manager()
+    download = manager(entry_point=child_downloading_forever)
 
-    with pytest.raises(ValueError, match="only a queued job"):
-        download.start("job-1")
+    download.start("job-1", SessionKind.DOWNLOAD)
+
+    assert spin(lambda: repository.jobs["job-1"].status is JobStatus.RUNNING)
+    assert repository.statuses("job-1") == [JobStatus.RUNNING]
+    assert JobStatus.PROBING not in repository.statuses("job-1")
+
+
+def test_a_probe_session_is_refused_for_a_ready_job(
+    tmp_path: Path, repository: FakeRepository, manager: Callable[..., DownloadManager]
+) -> None:
+    """`READY → PROBING` does not exist, and a probe has no other status it could claim.
+
+    Without this, the `READY` entry point would quietly have let probe sessions in: they would
+    move the job to `RUNNING`, which says a download holds a job that is not downloading.
+    """
+    job = make_job("job-1", "https://example.invalid/x", tmp_path)
+    repository.add(replace(job, status=JobStatus.READY))
+    download = manager(entry_point=child_downloading_forever)
+
+    with pytest.raises(ValueError, match="probe session starts from queued only"):
+        download.start("job-1", SessionKind.PROBE)
+
+    assert repository.jobs["job-1"].status is JobStatus.READY
+
+
+def test_starting_from_ready_keeps_the_time_the_job_actually_began(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """A download from `READY` continues one attempt rather than beginning a new one.
+
+    Overwriting `started_at` there would report a job as having begun when the user pressed
+    *download* rather than when they queued it. A start from `QUEUED` does stamp it — including a
+    retry, which re-enters `QUEUED` — and the test below is the other half of that pair.
+    """
+    began = datetime(2026, 7, 1, 12, 0, tzinfo=UTC)
+    job = make_job("job-1", "https://example.invalid/x", tmp_path)
+    repository.add(replace(job, status=JobStatus.READY, started_at=began))
+    download = manager(entry_point=child_downloading_forever)
+
+    download.start("job-1", SessionKind.DOWNLOAD)
+
+    assert spin(lambda: repository.jobs["job-1"].status is JobStatus.RUNNING)
+    assert repository.jobs["job-1"].started_at == began
+
+
+def test_starting_from_queued_stamps_this_attempt(
+    tmp_path: Path,
+    repository: FakeRepository,
+    manager: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """The other half: a job entering `PROBING` records when this attempt began."""
+    repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
+    download = manager(entry_point=child_downloading_forever)
+
+    download.start("job-1", SessionKind.DOWNLOAD)
+
+    assert spin(lambda: repository.jobs["job-1"].status is JobStatus.PROBING)
+    assert repository.jobs["job-1"].started_at is not None
 
 
 def test_a_second_session_is_refused_while_one_is_running(

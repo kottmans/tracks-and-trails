@@ -1,9 +1,14 @@
-"""The application shell window (`T-007`).
+"""The application shell window (`T-007`), and the way in to the add-URL dialog (`T-016`).
 
-A titled, icon-bearing window with a menu bar and nothing else. No queue, no settings, no
-downloading — those arrive with Phase 1. What this establishes is the frame everything later
-hangs off, plus the two behaviors that are annoying to retrofit: geometry that survives a
+A titled, icon-bearing window with a menu bar. What `T-007` established is the frame everything
+later hangs off, plus the two behaviors that are annoying to retrofit: geometry that survives a
 restart, and a clean shutdown that leaves nothing on stderr.
+
+**`T-016` adds File → Add URLs…, and nothing else.** The queue view is `T-017`; wiring a real
+manager and repository into this window is `T-036`. Until that lands the window can be built
+without either, and the menu item is **disabled with a status tip that says why** rather than
+opening a dialog with nothing behind it — an action that appears to work and quietly does
+nothing is the failure mode this project keeps finding.
 
 Window geometry is stored separately from user settings. `ARCHITECTURE.md` §5 assigns
 `settings.toml` to `core/settings.py`, which does not exist yet, and window position is not a
@@ -22,6 +27,8 @@ from PySide6.QtGui import QAction, QCloseEvent, QGuiApplication, QIcon, QKeySequ
 from PySide6.QtWidgets import QMainWindow, QMessageBox, QWidget
 
 from tracks_and_trails import __version__
+from tracks_and_trails.downloader.manager import DownloadManager
+from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
 
 APP_NAME: Final = "Tracks & Trails"
 
@@ -189,17 +196,60 @@ def save_geometry(window: QWidget, path: Path | None = None) -> None:
 class MainWindow(QMainWindow):
     """The shell window. Owns the menu bar and its own geometry."""
 
-    def __init__(self, geometry_file: Path | None = None) -> None:
+    def __init__(
+        self,
+        geometry_file: Path | None = None,
+        *,
+        manager: DownloadManager | None = None,
+        jobs: JobSink | None = None,
+        output_directory: Path | None = None,
+    ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
+        #: Supplied together or not at all: the add-URL dialog needs all three, and a window
+        #: holding two of them could only offer an action that fails. `T-036` passes them.
+        self._manager = manager
+        self._jobs = jobs
+        self._output_directory = output_directory
         self.setObjectName("mainWindow")
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon())
         self._build_menus()
         self._restore_geometry()
 
+    @property
+    def can_add_urls(self) -> bool:
+        """Whether this window was given everything the add-URL dialog needs (`T-036`)."""
+        return (
+            self._manager is not None
+            and self._jobs is not None
+            and self._output_directory is not None
+        )
+
+    def open_add_dialog(self) -> AddUrlDialog:
+        """Build and show the add-URL dialog (`T-016`).
+
+        Returned rather than only shown, so a test can assert on it without driving a modal
+        dialog — the same reason `show_about` returns its message box. `open()` rather than
+        `exec()` for the same reason: `exec()` starts a nested event loop, and a test that
+        entered one would never reach its assertions.
+        """
+        if self._manager is None or self._jobs is None or self._output_directory is None:
+            raise RuntimeError(
+                "this window has no download manager, job store or output directory, so it "
+                "cannot add URLs; composition supplies all three (T-036)"
+            )
+        dialog = AddUrlDialog(
+            manager=self._manager,
+            jobs=self._jobs,
+            output_directory=self._output_directory,
+            parent=self,
+        )
+        dialog.open()
+        return dialog
+
     def _build_menus(self) -> None:
-        """File → Quit and Help → About.
+        """File → Add URLs…, File → Quit, and Help → About.
 
         Every action gets an explicit status tip and object name. Visible text is usually
         announced anyway, but `NFR-005` requires screen-reader labels on all controls, and
@@ -208,6 +258,21 @@ class MainWindow(QMainWindow):
         menu_bar = self.menuBar()
 
         file_menu = menu_bar.addMenu("&File")
+
+        add_action = QAction("&Add URLs…", self)
+        add_action.setShortcut(QKeySequence.StandardKey.New)
+        add_action.setMenuRole(QAction.MenuRole.NoRole)
+        add_action.setObjectName("actionAddUrls")
+        add_action.setEnabled(self.can_add_urls)
+        add_action.setStatusTip(
+            "Paste one or more URLs, probe them, and add them to the queue"
+            if self.can_add_urls
+            else "Unavailable until the download queue is wired up (T-036)"
+        )
+        add_action.triggered.connect(self.open_add_dialog)
+        file_menu.addAction(add_action)
+        file_menu.addSeparator()
+
         quit_action = QAction("&Quit", self)
         quit_action.setShortcut(QKeySequence.StandardKey.Quit)
         # Without NoRole, Qt may treat this as an OS-level quit item and relocate or hide it.

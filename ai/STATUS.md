@@ -23,8 +23,9 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 - The **subjective** half of Windows verification (`OPS-004`) — whether rendering *looks* right,
   whether Narrator *sounds* coherent, whether the installer *feels* normal. Unverified, needs a
-  person, and blocks **first release**, not this phase. `T-040` (tab order) and `T-039`
-  (installer) have no automated gate yet either.
+  person, and blocks **first release**, not this phase. `T-039` (installer) has no automated gate
+  yet either. `T-040` (tab order) is now **Ready** rather than blocked: `T-016` supplied the
+  focusable controls and gates their order offscreen, leaving `T-040` the real-Windows half.
 - **`T011-R8` is closed.** `T-041` was approved at `0268e13` and the finding is functionally
   resolved. The audit behind it found the hole was not one field but every field of every model
   in `core/models.py`.
@@ -87,20 +88,30 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-013` — third correction batch returned 2026-07-27, awaiting verification.** Three review
-  passes. `T013-R1`, `T013-R2` and `T013-R4` are verified resolved. `T013-R3` came back twice
-  more with a different sibling each time, so the maintainer authorized **restructuring** the
-  startup transaction rather than patching it again: the session now records each start as it
-  happens, and the unwind reads that record instead of inferring it. `T013-R5` remains
-  non-blocking hardening owned by `T-052`.
-- **`T-013` approved with follow-ups and `T-015` approved**, 2026-07-27. `T-018` is on its
+- **`T-016` — implemented 2026-07-27 on `phase1-add-url-dialog`, awaiting review.** The add-URL
+  dialog, plus `ARC-004`'s `READY` entry point in `DownloadManager.start()`. See `Next` item 4.
+- **`T-019` is Approved and `T-038` is Changes requested**, 2026-07-27, on the focused correction
+  re-review at `eaa5b50`. `T019-R3/R4/R5` and Critical `T038-R1` are all independently resolved.
+  **High `T038-R2` is open** and, in the reviewer's words, "directly regresses High `T013-R2`":
+  the per-job log handler is closed when the *result* pump finishes, without establishing that
+  the *log* listener drained what the worker emitted before `WorkerFinished` — a delayed probe
+  left the per-job log empty while the line reached the application log — and
+  `stop_listening_for_worker_logs()` calls a blocking `QueueListener.stop()` from the GUI thread,
+  measured at **2.001 s**. A High defect continues through correction under `AGENTS.md` §9
+  regardless of the pass budget.
+- **`T-013` closed after three correction passes.** `T013-R1`, `T013-R2` and `T013-R4` were
+  verified resolved; `T013-R3` came back twice more with a different sibling each time, so the
+  maintainer authorized **restructuring** the startup transaction rather than patching it again:
+  the session now records each start as it happens, and the unwind reads that record instead of
+  inferring it. `T013-R5` remains non-blocking hardening owned by `T-052`.
+- **`T-013` approved with follow-ups and `T-015` approved**, 2026-07-27. `T-018` reached its
   **fifth** correction of the same Critical (`T018-R1`). Three recogniser passes each closed the
   reported spellings and left another the rule had not been written to see; the fourth made an
-  allowlist the control (`SEC-002`), and the reviewer verified that it works. The fifth removes
+  allowlist the control (`SEC-002`), and the reviewer verified that it works. The fifth removed
   what stood beside it: the schema fingerprint copied captured mapping **keys** verbatim, so a
   secret used as a key was written to disk while all three gates called the file clean. `SEC-002`
   is amended — the fingerprint is gone, `write()` derives everything it writes, and a playlist
-  entry is a count rather than a record.
+  entry is a count rather than a record. **`T-018` is closed as Approved on that fifth pass.**
 - **The lesson, a fourth time in one task:** every one of the five rounds ended the same way —
   something was being kept without a reader for it, and the argument for keeping it was always
   "it's only shape / only names / only the parts we recognise". The allowlist survived review
@@ -145,9 +156,20 @@ is `T-037`.
    "verified on Linux *and* Windows" criterion has moved for the first time since it was written,
    and the move was worth more than the confirmation: pushing bought a defect nothing local
    could have found (`T019-R2`).
-4. **`T-016` and `T-017` are the next widgets**, and both are now unblocked: `T-018` is closed,
-   `T-051` answered the lifecycle question, and `T-013` is approved. They are the first code that
-   makes any of the engine visible to a person.
+4. **`T-016` is implemented and in review** on `phase1-add-url-dialog`, cut from `eaa5b50` at the
+   maintainer's instruction because Codex was reviewing `T-019`/`T-038` on `main`. It is the
+   first code that makes any of the engine visible to a person: paste URLs, probe one in a worker
+   process, see title, uploader, duration, a decoded thumbnail and whether it is a playlist, pick
+   a preset, queue them all. It also implements `ARC-004` — `DownloadManager.start()` now takes a
+   `READY` job as well as a `QUEUED` one — which amends code `T-013` was approved with, and
+   replaces the `T-013` test that asserted the older rule. **`T-017` is still unblocked and not
+   started.**
+
+   Twelve deliberate weakenings were run against the new tests and all twelve were killed. One —
+   the tab order — **survived the first attempt**, because the test derived its expected order
+   from the same list the dialog hands to Qt and so proved only that the list equalled itself.
+   That is `ai/TESTING.md` §13's rule found the hard way for the second time this phase: the
+   expectation is now transcribed by hand and Qt's own focus chain is walked against it.
 5. **`T-050`** — new, and **Phase 2**, not Phase 1: the `history` table is still empty, and
    `IMPLEMENTATION_PLAN.md` puts `REQ-020`'s history persistence in Phase 2. This file's claim
    that `T-013` owned it was `STATUS.md` running ahead of both the plan and `T-013`'s own scope;
@@ -247,21 +269,29 @@ Development machine, verified 2026-07-25:
 
 ## Notes
 
-**Something downloads now — in a test.** A window opens (`T-007`) and knows nothing about any
-of this. What `T-013` connected is the *engine*: given a job in the repository, a real spawned
-worker downloads a real URL to a real file and every transition is persisted. **No widget calls
-it** — composition is `T-036`, and the first URL a *user* can download is `T-037`. Treat
-`ARCHITECTURE.md` as the approved target rather than a description of what a user can do.
+**Something downloads now — in a test.** What `T-013` connected is the *engine*: given a job in
+the repository, a real spawned worker downloads a real URL to a real file and every transition is
+persisted. `T-016` adds the first widget that calls it — the add-URL dialog probes, displays and
+queues through `DownloadManager`, and its tests drive that path end to end.
+
+**A user still cannot reach any of it.** `app.py` builds `MainWindow` with no manager, no job
+store and no output directory, so File → Add URLs… is **disabled**, saying so in its status tip.
+Supplying those three is composition (`T-036`); the first URL a *user* can download is `T-037`.
+Treat `ARCHITECTURE.md` as the approved target rather than a description of what a user can do.
 
 Precisely, recounted 2026-07-27 by parsing each module for anything beyond its docstring: of the
-**31** modules under `src/`, **13 are still docstring-only stubs** and **18 have code**. Those
-eighteen are `__init__.py`, `__main__.py`, `_freeze_probe.py`, `app.py`, `ui/main_window.py`,
+**33** modules under `src/`, **12 are still docstring-only stubs** and **21 have code**. Those
+twenty-one are `__init__.py`, `__main__.py`, `_freeze_probe.py`, `app.py`, `ui/main_window.py`,
 `core/{models,job_state,errors,paths}.py`,
 `downloader/{environment,protocol,worker,ytdlp_adapter}.py`, `persistence/{db,repositories}.py`,
-`downloader/{manager,result_pump}.py` (`T-013`), and — new with `T-015` — `core/presets.py`.
+`downloader/{manager,result_pump}.py` (`T-013`), `core/presets.py` (`T-015`),
+`core/logging.py` (`T-038`), `downloader/process_tree.py` (`T-019`), and — new with `T-016` —
+`ui/add_dialog.py`, **the first widget beyond the shell window**.
 
 *(Before `T-014` this said 23 stubs and eight coded, recomputed at `697e024`; it had gone stale
-across four tasks. Each count since has been recounted rather than adjusted.)*
+across four tasks. The previous count of 31/13/18 was itself two modules stale, missing
+`core/logging.py` and `downloader/process_tree.py`, which landed with `T-038` and `T-019`. Each
+count is recounted rather than adjusted, which is how that was caught.)*
 
 The `core/` modules remain **domain vocabulary plus pure functions** — what a job, a request and
 a failure *are*, the rules for moving between states, and filename safety. `persistence/` is the

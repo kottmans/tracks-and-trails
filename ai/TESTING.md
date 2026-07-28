@@ -206,9 +206,12 @@ release** (§8, item 15).
 
 Two gaps in the automation are worth naming rather than discovering later:
 
-- **Widget tab order is not gated.** The shell window has no focusable controls yet, so a
-  focus-chain assertion would pass over zero widgets. It arrives with Phase 1's first widgets
-  (`T-016`, `T-017`); until then Windows keyboard use beyond the menu bar stays unverified.
+- **Widget tab order is gated on Linux but not yet on Windows.** The reason it was ungated has
+  gone: `T-016`'s add-URL dialog supplies six focusable controls, and
+  `tests/ui/test_add_dialog.py` walks Qt's own focus chain against a hand-transcribed order, so a
+  reordering fails. That runs offscreen. Asserting it under the **real** Windows platform plugin
+  is `T-040`, which this unblocks; until it lands, Windows keyboard use beyond the menu bar stays
+  unverified.
 - **Installer behavior is not gated.** `T-039`, once Phase 5 produces an installer.
 
 Do not record a manual item as passed because this job is green. It covers what it covers.
@@ -339,9 +342,9 @@ Tracked honestly; each should become a task or be accepted deliberately.
   name/role contract are now gated. Still unverified there: whether rendering *looks* right,
   whether Narrator *sounds* coherent, native dialog foreground and file-association behavior,
   theming, and installer UX. Discharged by the pre-release session in §8 item 15.
-- **Widget tab order is ungated on Windows** (`T-040`). The shell window has no focusable
-  controls, so a focus-chain assertion would pass over zero widgets. Owned and scheduled to
-  land with the first real controls.
+- **Widget tab order is ungated on Windows** (`T-040`). No longer for want of controls: `T-016`
+  added six focusable ones and gates their order offscreen. What is missing is the assertion
+  under the real Windows platform plugin, where focus behaviour can differ. `T-040` is unblocked.
 - **macOS is untested and unsupported** (`REQUIREMENTS.md` §3).
 - **Network tests are inherently flaky** — sites change. Failures are triaged as "our bug" vs
   "site changed" before being acted on.

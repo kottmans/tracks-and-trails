@@ -12,37 +12,55 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-013` is **approved with follow-ups** (`T-052`) and `T-015` is **approved**,
-both 2026-07-27. **`T-018` is the one task still in review**: Critical `T018-R1` is corrected a
-fifth time — the allowlist held, and `SEC-002` is amended to remove the schema fingerprint
-beside it, because a mapping key is captured data. `T-019` carries Medium `T019-R1`, corrected:
-the process-tree marker was excluding those 43 tests from CI as well as from the local run.
+**Start here:** `T-016` is **In Review**, implemented 2026-07-27 on `phase1-add-url-dialog`. It
+is the first widget that talks to the download manager, and it implements `ARC-004`'s `READY`
+entry point.
+
+**`T-038` is the open blocker.** Its focused re-review on 2026-07-27 approved `T-019` and
+resolved Critical `T038-R1`, but High **`T038-R2` remains open** and regresses `T013-R2`: the
+per-job log handler closes before the log listener has drained, and listener shutdown blocks the
+GUI thread for two seconds. It continues through correction under `AGENTS.md` §9.
+
+`T-013` is **approved with follow-ups** (`T-052`), `T-015` is **approved**, and `T-018` is
+**closed as Approved** on its fifth `T018-R1` correction — all three 2026-07-27. `T-051` is
+**approved** and recorded as `ARC-004`. That closed every dependency `T-016` had.
 
 `T-012` was approved with follow-ups on 2026-07-26 after two review rounds; `T-014` was approved
 2026-07-26 at `db14cc2`. **`T-033` is Blocked**, not complete: its code is verified but approval
 needs frozen CI evidence this repository cannot produce locally.
 
-Also Ready and independent: `T-038` (log redaction — one of `ai/TESTING.md` §7's two remaining
-uncovered mandatory areas, and the one `T-013`'s diagnostics make urgent). `T012-R6` is resolved
-by T-018's verified multi-item projection, but T-018 itself remains unapproved on its Critical
-privacy gate. `T-016` is unblocked on code and now waits only on `T-051` and that verdict.
-`T-050` sits in **Phase 2**, where the plan puts history: nothing writes the
-`history` table.
+`T012-R6` is resolved by `T-018`'s verified multi-item projection, and `T-016` now displays the
+distinction it added. `T-050` sits in **Phase 2**, where the plan puts history: nothing writes
+the `history` table.
 
-Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; `T-040` for the
-first focusable widgets.
+*(A previous version of this block said `T-018` was "the one task still in review" and that
+`T-016` waited on `T-051`. Both were true when written and neither survived 2026-07-27;
+`ai/REVIEWS.md` records the two verdicts that changed them.)*
+
+Phase 0 is formally exited (2026-07-26). `T-039` waits for a Phase 5 installer; `T-040` is
+**Ready**, unblocked by `T-016`'s focusable controls.
 
 ---
 
 ## In Review
 
+*(`T-013`, `T-015` and `T-018` were all approved on 2026-07-27 and belong under `## Complete`.
+Their **Status** lines — the authoritative field — say so. Relocating three long entries is
+mechanical Planner cleanup and was deliberately not folded into `T-016`'s diff, where it would
+have buried a widget behind a thousand moved lines; `T-054` owns it.)*
+
 ### T-013 — Download manager and result pump
 
-**Status:** **In Review — third correction batch returned 2026-07-27, awaiting verification.**
-`T013-R1`, `T013-R2` and `T013-R4` are verified resolved. `T013-R3` is corrected again — this
-time by **restructuring** the startup transaction rather than patching a third sibling of it,
-which is the option the maintainer chose when authorizing the pass (`AGENTS.md` §9). `T013-R5`
-stays non-blocking test hardening owned by `T-052`.
+**Status:** **Complete — approved with follow-ups**, 2026-07-27. `T013-R1`, `T013-R2`, `T013-R3`
+and `T013-R4` are all verified resolved; `T013-R3` took three passes and was closed by
+**restructuring** the startup transaction rather than patching a third sibling of it, which is
+the option the maintainer chose when authorizing the pass (`AGENTS.md` §9). `T013-R5` stays
+non-blocking test hardening owned by `T-052`.
+
+**Amended after approval by `T-016`** (`ARC-004`): `start()` now takes a `READY` job as well as a
+`QUEUED` one, and `test_a_job_that_is_not_queued_cannot_be_started` — which asserted the older
+rule — was replaced rather than deleted. This is the decision `T-051` made, not a defect in the
+approved code; see `T-016`.
 
 #### Third correction batch — `T013-R3`, restructured
 
@@ -418,9 +436,9 @@ so.
 
 ### T-015 — Built-in presets and selector translation
 
-**Status:** **In Review — corrections returned 2026-07-27, awaiting verification.** `T015-R1`
-is verified resolved. `T015-R2` — the High regression its correction introduced — is corrected
-and awaiting the Reviewer's check.
+**Status:** **Complete — approved**, 2026-07-27. `T015-R1` and `T015-R2` are both verified
+resolved; `T015-R2` was the High regression the first correction introduced, and closing it meant
+removing the widened fallback rather than widening it once more.
 
 #### Reviewer result on `0973fee`
 
@@ -548,11 +566,12 @@ output of translation, not an internal detail.
 
 ### T-018 — Recorded `info_dict` fixtures and projection tests
 
-**Status:** **In Review — fifth correction batch returned 2026-07-27, awaiting verification.**
+**Status:** **Complete — closed as Approved**, 2026-07-27 on the fifth correction.
 `T018-R2` is verified resolved, closing `T012-R6`. `T018-R1` (Critical) survived three recogniser
 corrections; the fourth made the allowlist the control, which the reviewer verified works. The
-fifth removes the *secondary* record that came with it — `SEC-002` is **amended**: a schema
-fingerprint copies mapping keys verbatim, and a mapping key is captured data.
+fifth removed the *secondary* record that came with it — `SEC-002` is **amended**: a schema
+fingerprint copies mapping keys verbatim, and a mapping key is captured data. The reviewer
+confirmed no privacy-boundary escape remains.
 
 #### Fifth correction batch — `T018-R1` (Critical, in the authorized design; `SEC-002` amended)
 
@@ -859,6 +878,110 @@ personal paths (`REQ-026`, `NFR-007`). They are committed, so a leak here is per
 
 ---
 
+### T-016 — Add-URL dialog with probe results
+
+**Status:** **In Review — implemented 2026-07-27 on `phase1-add-url-dialog`, awaiting review.**
+All four dependencies are closed: `T-013` and `T-015` approved, `T-018` approved on its fifth
+correction, `T-051` approved as `ARC-004`.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 1
+**Depends on:** `T-013`, `T-015`, `T-018` (the playlist/single-item projection this task
+displays does not exist until `T-018` adds it — `T012-R6`). **`T-051` is resolved**: `ARC-004`
+decides that a probed job downloads from `READY`, and this task implements it
+**Relevant context:** `REQ-001`, `REQ-002`, `REQ-005`, `NFR-001`, `NFR-005`, `NFR-006`
+**Affected surfaces:** `ui/add_dialog.py`, `ui/main_window.py`, `tests/ui/`, and — for
+`ARC-004` — `downloader/manager.py` with `tests/integration/test_manager.py`
+**Risk:** Medium — the first widget that talks to the manager, and the first place a blocking
+call would freeze the application
+**Review base:** `eaa5b50` (the branch point on `main`)
+**Branch:** `phase1-add-url-dialog`, cut at maintainer instruction on 2026-07-27 because Codex
+was reviewing `T-019`/`T-038` on `main` at the time (`AGENTS.md` §7 — isolated concurrent work)
+
+#### What was built
+
+- **`ui/add_dialog.py`** — the dialog. Probing runs in a worker process and `probe()` returns
+  immediately; results arrive on `DownloadManager`'s signals. The thumbnail is the one `REQ-002`
+  field the probe's reply does not carry — `MediaInfo` has a *URL* — so it is fetched
+  asynchronously through an injected `ThumbnailLoader`, whose shipping implementation is
+  `QNetworkAccessManager`. That seam is what lets the suite decode a real image without touching
+  the network.
+- **`downloader/manager.py`** — `ARC-004` implemented. `start()` now accepts `QUEUED` **or**
+  `READY` and moves the job to the status that says a worker holds it, and the docstring that
+  said the flow "needs the state machine amended first" is replaced by the ruling. A probe
+  session is still refused for a `READY` job: `READY → PROBING` does not exist, and moving a
+  probe to `RUNNING` would say a download holds a job that is not downloading.
+- **`ui/main_window.py`** — File → Add URLs…, disabled with a status tip naming `T-036` until
+  composition supplies a manager, a job store and an output directory. An action that appears to
+  work and quietly does nothing is the failure mode this project keeps finding.
+
+#### Two things a reviewer should look at first
+
+- **`started_at` is stamped entering `PROBING` and left alone entering `RUNNING` from `READY`.**
+  A download from `READY` continues one attempt rather than beginning a new one, while a retry —
+  which re-enters `QUEUED` — still gets a fresh stamp. Both halves have a test.
+- **`T-013`'s `test_a_job_that_is_not_queued_cannot_be_started` was replaced, not deleted.** It
+  asserted the rule `ARC-004` amended. What stands in its place is a parametrised refusal for
+  every status that is *not* an entry point, plus the four new `READY`-entry tests.
+
+#### Evidence
+
+`ruff check`, `ruff format --check` (84 files), `mypy src` and `mypy --platform win32 src`
+(33 files) all pass. Full default suite: **1230 passed, 11 skipped, 1 deselected** in 70 s.
+
+**Twelve weakenings were applied and all twelve were killed** by a committed test — including a
+probe that blocks the GUI thread, a paraphrased extractor message, jobs written after the dialog
+closes, and a `READY` start that re-enters `PROBING`. The tab-order mutation **survived the first
+run**: that test derived its expectation from the dialog's own `focus_chain()`, so it proved only
+that the list equalled itself. The expected order is now transcribed by hand and Qt's own
+`nextInFocusChain` is walked against it (`ai/TESTING.md` §13), and the mutation is killed.
+
+#### Scope
+
+Paste or type a URL, probe it, see what it is, choose a preset, and queue it. Probing runs in
+a worker process — **never inline** — because probe latency is unbounded and blocking the GUI
+thread on it is exactly what `NFR-001` forbids (`ARCHITECTURE.md` §8).
+
+**The probe-then-download step is settled** (`ARC-004`, from `T-051`). This task changes
+`DownloadManager.start()` to accept a job in `QUEUED` **or** `READY`, choosing the status that
+says a worker holds it — `PROBING` from the first, `RUNNING` from the second — and replaces the
+docstring note that says the flow "needs the state machine amended first" with a pointer to
+`ARC-004`. The download re-extracts rather than re-probing; the recorded title stands.
+
+Show what `REQ-002` names: title, uploader, duration, thumbnail, and whether the URL is a
+single item or a playlist. On failure, show the extractor's own message **verbatim**
+(`REQ-005`, `NFR-006`) — not a paraphrase, and not a generic "could not fetch".
+
+#### Acceptance criteria
+
+- A probe of a fixture-backed URL populates **every field `REQ-002` names** — title,
+  uploader, duration, a thumbnail decoded to a real pixmap rather than a URL, and whether the
+  URL is a single item or a playlist — asserted field by field, since "populates the dialog"
+  would pass with four of five missing
+- The GUI thread is never blocked, and a test asserts the dialog stays responsive while a
+  probe is outstanding (`NFR-001`)
+- An unsupported URL shows the extractor's message character-for-character, asserted by
+  equality against the fixture (`REQ-005`, `NFR-006`)
+- A probe that never returns can be cancelled and leaves no worker behind
+- Multi-line paste queues each URL as a separate job (`REQ-001`)
+- Full keyboard operation: every control reachable and actuable by keyboard, with a
+  deliberate tab order asserted, and an accessible name on every control (`NFR-005`)
+- No information is conveyed by color alone (`NFR-005`)
+- Queuing a job persists it before the dialog closes, so a crash immediately after does not
+  lose it (`REQ-012`)
+- A probed job in `READY` starts a download through `start()` and moves `READY → RUNNING`
+  without passing through `PROBING`, with the persisted status asserted at each step (`ARC-004`)
+- A `QUEUED` job still starts at `PROBING`, so the second entry point did not replace the first
+
+#### Out of scope
+
+- The sortable format table and per-format selection — `REQ-003`, `REQ-008`, Phase 3
+- Drag-and-drop — `REQ-001` allows it, but it is not needed to prove the slice; Phase 2
+- Playlist expansion into individual jobs — Phase 3
+
+
+---
+
 ## Ready
 
 ### T-038 — Logging with handler-level redaction
@@ -1091,6 +1214,39 @@ exists to refuse (`T-011`).
 
 ---
 
+### T-054 — File the approved Phase 1 tasks under `## Complete`
+
+**Status:** Ready — filed 2026-07-27 by `T-016`
+**Owner:** Planner
+**Priority:** Low
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `AGENTS.md` §6 (`TASKS.md` is current truth), `ai/REVIEWS.md`
+**Affected surfaces:** `ai/TASKS.md`
+**Risk:** Low — no source or behavior changes
+
+#### Scope
+
+`T-013`, `T-015` and `T-018` were approved on 2026-07-27 and their **Status** lines say so, but
+their entries still sit under `## In Review`. Move all three to `## Complete`, and check the
+section each remaining entry sits in against its own status while doing it.
+
+Filed rather than fixed inline because it is three long entries of pure relocation, and folding
+it into `T-016`'s diff would have hidden a widget behind a thousand moved lines (`AGENTS.md` §7).
+
+#### Acceptance criteria
+
+- No entry sits in a section that contradicts its `Status:` line
+- The note at the top of `## In Review` explaining the mismatch is removed with the mismatch
+- No `Status:` line, finding disposition or evidence record is reworded by the move
+
+#### Out of scope
+
+- Archiving completed entries into `ai/archive/` — that is a separate judgement about when the
+  live queue is buried
+
+---
+
 ## Proposed — Phase 0
 
 ### T-021 — Simplified small-size icon glyph
@@ -1134,66 +1290,6 @@ agreement on the reduced form before implementation.
 ---
 
 ## Proposed — Phase 1
-
-### T-016 — Add-URL dialog with probe results
-
-**Status:** Proposed — Ready once `T-013`, `T-015`, `T-018` and `T-051` merge
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 1
-**Depends on:** `T-013`, `T-015`, `T-018` (the playlist/single-item projection this task
-displays does not exist until `T-018` adds it — `T012-R6`). **`T-051` is resolved**: `ARC-004`
-decides that a probed job downloads from `READY`, and this task implements it
-**Relevant context:** `REQ-001`, `REQ-002`, `REQ-005`, `NFR-001`, `NFR-005`, `NFR-006`
-**Affected surfaces:** `ui/add_dialog.py`, `ui/main_window.py`, `tests/ui/`
-**Risk:** Medium — the first widget that talks to the manager, and the first place a blocking
-call would freeze the application
-**Review base:** the later of the `T-013` and `T-015` merge commits
-
-#### Scope
-
-Paste or type a URL, probe it, see what it is, choose a preset, and queue it. Probing runs in
-a worker process — **never inline** — because probe latency is unbounded and blocking the GUI
-thread on it is exactly what `NFR-001` forbids (`ARCHITECTURE.md` §8).
-
-**The probe-then-download step is settled** (`ARC-004`, from `T-051`). This task changes
-`DownloadManager.start()` to accept a job in `QUEUED` **or** `READY`, choosing the status that
-says a worker holds it — `PROBING` from the first, `RUNNING` from the second — and replaces the
-docstring note that says the flow "needs the state machine amended first" with a pointer to
-`ARC-004`. The download re-extracts rather than re-probing; the recorded title stands.
-
-Show what `REQ-002` names: title, uploader, duration, thumbnail, and whether the URL is a
-single item or a playlist. On failure, show the extractor's own message **verbatim**
-(`REQ-005`, `NFR-006`) — not a paraphrase, and not a generic "could not fetch".
-
-#### Acceptance criteria
-
-- A probe of a fixture-backed URL populates **every field `REQ-002` names** — title,
-  uploader, duration, a thumbnail decoded to a real pixmap rather than a URL, and whether the
-  URL is a single item or a playlist — asserted field by field, since "populates the dialog"
-  would pass with four of five missing
-- The GUI thread is never blocked, and a test asserts the dialog stays responsive while a
-  probe is outstanding (`NFR-001`)
-- An unsupported URL shows the extractor's message character-for-character, asserted by
-  equality against the fixture (`REQ-005`, `NFR-006`)
-- A probe that never returns can be cancelled and leaves no worker behind
-- Multi-line paste queues each URL as a separate job (`REQ-001`)
-- Full keyboard operation: every control reachable and actuable by keyboard, with a
-  deliberate tab order asserted, and an accessible name on every control (`NFR-005`)
-- No information is conveyed by color alone (`NFR-005`)
-- Queuing a job persists it before the dialog closes, so a crash immediately after does not
-  lose it (`REQ-012`)
-- A probed job in `READY` starts a download through `start()` and moves `READY → RUNNING`
-  without passing through `PROBING`, with the persisted status asserted at each step (`ARC-004`)
-- A `QUEUED` job still starts at `PROBING`, so the second entry point did not replace the first
-
-#### Out of scope
-
-- The sortable format table and per-format selection — `REQ-003`, `REQ-008`, Phase 3
-- Drag-and-drop — `REQ-001` allows it, but it is not needed to prove the slice; Phase 2
-- Playlist expansion into individual jobs — Phase 3
-
----
 
 ### T-051 — Define the READY-to-download lifecycle
 
@@ -1763,6 +1859,51 @@ place the terminal transition is persisted.
 
 ---
 
+### T-053 — Prove concurrent per-job log isolation
+
+**Status:** Proposed — blocked until the Phase 2 pool permits two live sessions
+**Owner:** Implementer
+**Priority:** Low — Phase 1's structural routing is correct; concurrency is the missing proof
+**Phase:** Phase 2
+**Depends on:** `T-038` and the Phase 2 task that implements `REQ-013`
+**Relevant context:** `T038-R2`; `ARCHITECTURE.md` §8; `REQ-013`, `REQ-019`;
+`ai/REVIEWS.md` (2026-07-27 T-019/T-038 focused correction re-review)
+**Affected surfaces:** `tests/integration/test_worker_logging.py`
+**Risk:** Low until concurrency exists; High if the pool ships without the proof
+**Review base:** the Phase 2 concurrency implementation head
+
+#### Scope
+
+Phase 1 runs one session at a time. `T-038` proves that worker records carry a job-id stamp and
+that a per-job handler rejects every other stamp, using two sequential jobs. That establishes
+per-job routing, but it cannot establish the concurrent cross-write property while the manager
+refuses to keep two sessions open.
+
+When Phase 2 first permits two live sessions, coordinate two real spawned workers so both
+per-job handlers are open at the same time. Have both workers emit interleaved, unique markers
+through the production log queue and prove that each file contains its own complete stream and
+none of the other job's.
+
+This is not the current `T038-R2` ordered-drain correction. `T-038` must already retain a
+worker's final emitted records and stop its listener without blocking the GUI thread before this
+follow-up becomes relevant.
+
+#### Acceptance criteria
+
+- Two real worker sessions are simultaneously active before either emits its test records
+- Their records are deliberately interleaved through the production worker-log queue
+- Each per-job log contains every marker its worker emitted and no marker from the other worker
+- The application log still contains both streams
+- Removing the job-id filter or stamp makes the test fail
+
+#### Out of scope
+
+- Implementing Phase 2 concurrency or its scheduling policy
+- Repairing the current single-session ordered-drain and non-blocking-shutdown defect in
+  `T038-R2`
+
+---
+
 ### T-046 — Output path collision policy against the filesystem
 
 **Status:** Proposed — Phase 2, alongside resume
@@ -2032,7 +2173,9 @@ inclusion still yields an application that cannot download anything.
 
 ### T-040 — Extend the Windows desktop gate to widget focus order
 
-**Status:** Proposed — blocked until `T-016` or `T-017` adds focusable controls
+**Status:** **Ready** — unblocked 2026-07-27 by `T-016`, whose add-URL dialog adds six focusable
+controls and gates their order offscreen. What remains is the assertion under the real Windows
+platform plugin.
 **Owner:** Implementer
 **Priority:** High once unblocked — it completes a `T-026` acceptance criterion that is
 currently unmet
@@ -2045,14 +2188,19 @@ currently unmet
 #### Scope
 
 Filed from `T026-R3`. `T-026` requires "tab order and focus chain are asserted on Windows, and
-reordering two widgets fails the test". That criterion is **unmet**, and deferring it was the
-right call: the shell window has no focusable controls, so a focus-chain assertion would pass
-over zero widgets and gate nothing.
+reordering two widgets fails the test". That criterion is still **unmet on Windows**, and
+deferring it was the right call at the time: the shell window had no focusable controls, so a
+focus-chain assertion would have passed over zero widgets and gated nothing.
 
-The reviewer's point stands, though — unlike the installer gap, which became `T-039`, this had
-no owner. A criterion deferred into a comment is a criterion that quietly disappears. `T-016`
-mentions a deliberate tab order but does not require extending the real-plugin Windows suite,
-and `T-017` does not mention tab order at all.
+**`T-016` removed the reason to defer.** The add-URL dialog has six focusable controls, and
+`tests/ui/test_add_dialog.py::test_the_tab_order_is_the_declared_one` walks Qt's own focus chain
+against a hand-transcribed order — a mutation reversing two entries was run and killed. That test
+runs **offscreen**, so it proves the order Qt builds, not the order a real Windows desktop
+delivers, which is exactly the half `T-026` asked for and this task still owns.
+
+Worth carrying into the Windows version: the first draft of that offscreen test derived its
+expectation from the dialog's own `focus_chain()` and therefore proved only that the list equalled
+itself. The mutation survived it. Transcribe one side and derive the other (§13).
 
 Extend the existing `windows_desktop` suite — do not start a second harness — to assert, under
 the real `windows` platform plugin:

@@ -129,6 +129,20 @@ _PIPELINE: Final[tuple[JobStatus, ...]] = (
     JobStatus.COMPLETED,
 )
 
+#: The status each starting state moves to, which is the status that says a worker holds the job
+#: (`ARC-004`, decided by `T-051`, implemented by `T-016`).
+#:
+#: Two entry points, using two edges `ARCHITECTURE.md` §5 already draws. `READY → PROBING` is not
+#: among them and is not added: a job that has been probed does not become unprobed, and a
+#: download session's own extraction is part of downloading rather than a return to an earlier
+#: state. A start from any other status is refused — the invariant is that a job with a live
+#: session is `PROBING` or `RUNNING`, so the manager's active set and the persisted statuses
+#: cannot disagree about whether work is in flight.
+_ENTRY_STATUS: Final[dict[JobStatus, JobStatus]] = {
+    JobStatus.QUEUED: JobStatus.PROBING,
+    JobStatus.READY: JobStatus.RUNNING,
+}
+
 #: Which pipeline state each reported stage means the job has reached (`REQ-014`).
 #:
 #: `PROBING` is absent deliberately: `start()` has already moved the job there, and mapping it
@@ -351,16 +365,30 @@ class DownloadManager(QObject):
     # --- starting -----------------------------------------------------------------------
 
     def start(self, job_id: str, kind: SessionKind = SessionKind.DOWNLOAD) -> None:
-        """Spawn a worker for `job_id` and move the job to `PROBING`.
+        """Spawn a worker for `job_id` and move it to the status that says a worker holds it.
 
-        Both session kinds start by probing, because a download session probes first so DRM and
-        a missing ffmpeg are caught before any bytes move (`downloader/worker.py`).
+        **Two entry points** (`ARC-004`, decided by `T-051` and implemented here by `T-016`):
 
-        **Only a `QUEUED` job may be started.** `ARCHITECTURE.md` §5 has no `READY → PROBING`
-        edge, so a job that a previous probe left in `READY` cannot be handed to a download
-        session that will probe again. Phase 1's flow — queue a URL, download it — never
-        produces that state; a probe-then-download flow needs the state machine amended first,
-        which is a Planner decision rather than something to paper over here.
+        | The job is | It moves to | Because |
+        |---|---|---|
+        | `QUEUED` | `PROBING` | nothing is resolved yet; the session's first act is to extract |
+        | `READY` | `RUNNING` | a probe resolved it; this session downloads what was chosen |
+
+        A download session started from `QUEUED` still probes first, so DRM and a missing ffmpeg
+        are caught before any bytes move (`downloader/worker.py`). One started from `READY`
+        re-extracts rather than re-probing — `YoutubeDL.download()` resolves the URL itself and
+        cannot be handed a previous extraction — and reports no `Probed` outcome, so the title
+        the probe recorded stands.
+
+        **A probe session may only start from `QUEUED`.** `READY → PROBING` does not exist, and
+        moving a probe session to `RUNNING` would say a download holds a job that is not
+        downloading. A job that has been probed does not become unprobed; probe it again by
+        creating a job, not by re-entering an earlier state.
+
+        This is the one place the previous version of this docstring pointed at when it said the
+        flow "needs the state machine amended first". Nothing was amended: both edges were
+        already in `ARCHITECTURE.md` §5's diagram, and what was missing was the ruling on which
+        one a start uses.
         """
         if self._shutting_down:
             raise RuntimeError("the manager is shutting down; no new session can be started")
@@ -370,14 +398,26 @@ class DownloadManager(QObject):
                 "of exactly one (T-013 scope, concurrency is Phase 2)"
             )
         job = self._require(job_id)
-        if job.status is not JobStatus.QUEUED:
+        target = _ENTRY_STATUS.get(job.status)
+        if target is None:
             raise ValueError(
-                f"{job_id!r} is {job.status.value}; only a queued job can be started. See the "
-                "note on READY in DownloadManager.start."
+                f"{job_id!r} is {job.status.value}; a session starts from "
+                f"{' or '.join(sorted(status.value for status in _ENTRY_STATUS))} only (ARC-004)."
+            )
+        if kind is SessionKind.PROBE and job.status is not JobStatus.QUEUED:
+            raise ValueError(
+                f"{job_id!r} is {job.status.value}; a probe session starts from "
+                f"{JobStatus.QUEUED.value} only. ARC-004 has no READY -> PROBING edge, and a "
+                "probe that moved the job to running would say a download holds it."
             )
 
-        started = self._advance(replace(job, started_at=_now()), JobStatus.PROBING)
-        self._save_and_announce(started)
+        # `started_at` marks when this attempt began, so it is stamped on the way into `PROBING`
+        # — including a retry, which re-enters `QUEUED` — and left alone on the way into
+        # `RUNNING` from `READY`. That start is the same attempt continuing, and overwriting it
+        # there would report a job as having begun when the user pressed *download* rather than
+        # when they queued it.
+        entering = job if target is JobStatus.RUNNING else replace(job, started_at=_now())
+        self._save_and_announce(self._advance(entering, target))
 
         # **One transaction, one unwind** (`T013-R3`, third pass). This block has now failed
         # review three times, in three different places, and every one had the same cause: the
