@@ -16,10 +16,10 @@ IDs are never reused. Completed tasks move to `ai/archive/` once they bury the l
 is the first widget that talks to the download manager, and it implements `ARC-004`'s `READY`
 entry point.
 
-**`T-038` is the open blocker.** Its focused re-review on 2026-07-27 approved `T-019` and
-resolved Critical `T038-R1`, but High **`T038-R2` remains open** and regresses `T013-R2`: the
-per-job log handler closes before the log listener has drained, and listener shutdown blocks the
-GUI thread for two seconds. It continues through correction under `AGENTS.md` §9.
+**`T-019` and `T-038` are both approved** as of 2026-07-27 at `098ba3f`. High `T038-R2` took three
+focused corrections — a same-job reopen now returns the identical still-attached handler, and
+`idle` waits asynchronously for listener completion with a bounded escape — and is independently
+resolved. Nothing in Phase 1 is blocked.
 
 `T-013` is **approved with follow-ups** (`T-052`), `T-015` is **approved**, and `T-018` is
 **closed as Approved** on its fifth `T018-R1` correction — all three 2026-07-27. `T-051` is
@@ -986,7 +986,13 @@ single item or a playlist. On failure, show the extractor's own message **verbat
 
 ### T-038 — Logging with handler-level redaction
 
-**Status:** **In Review — implemented 2026-07-27** on `phase1-orphans-logging-lifecycle`.
+**Status:** **Complete — approved**, 2026-07-27 at `098ba3f`. Critical `T038-R1` and High
+`T038-R2` are both independently resolved; `T038-R2` took three focused corrections, the last of
+which made a same-job reopen return the identical still-attached handler and made `idle` wait
+asynchronously for listener completion with a bounded escape (`gave_up_on_the_log`). `T013-R2`,
+`T013-R3` and `T013-R4` were re-examined and remain resolved. Known limits the reviewer named and
+did not treat as blocking: a single Windows CI run, GUI-thread calls through independently wedged
+handlers, and the live-handler-list concurrency proof deferred to `T-053`.
 **Owner:** Implementer
 **Priority:** High — `NFR-007` is a privacy promise and worker diagnostics are where it leaks
 **Phase:** Phase 1
@@ -1158,10 +1164,15 @@ mutation rather than to describe a behaviour already believed.
 |---|---|
 | `ruff check` / `ruff format --check` | Passed |
 | `mypy` and `mypy --platform win32` | Passed — 68 source files each |
-| Focused logging, worker-logging and manager suite | **95 passed** |
+| Focused logging, worker-logging and manager suite | **96 passed** at `098ba3f` |
 | Canonical bare `pytest` | **1195 passed, 11 skipped, 1 deselected** — three consecutive runs, 82 s each |
 | Mutation battery | **9 of 9 killed**, tree restored to the same hash |
 | CI at `d6f3581`, all five jobs green | Ubuntu **1195 passed, 11 skipped, 1 deselected**; Windows **1184 passed, 20 skipped, 21 deselected**; Windows desktop **20 passed, 1205 deselected**; both frozen jobs succeeded |
+
+*(The focused figure read **95** until 2026-07-27. The reviewer flagged it as a non-blocking
+bookkeeping discrepancy against the three-file command this row names, and re-running that
+command confirms **96**; `T-016` has since added seven tests to `test_manager.py`, so the same
+command now reports 103. The count is corrected rather than the command narrowed.)*
 
 The counts reconcile on both platforms — Ubuntu 1192 → 1195 and Windows 1181 → 1184, each the
 three new tests — so all three ran on Windows rather than being skipped. That matters most for

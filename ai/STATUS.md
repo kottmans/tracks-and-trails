@@ -90,15 +90,16 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 - **`T-016` — implemented 2026-07-27 on `phase1-add-url-dialog`, awaiting review.** The add-URL
   dialog, plus `ARC-004`'s `READY` entry point in `DownloadManager.start()`. See `Next` item 4.
-- **`T-019` is Approved and `T-038` is Changes requested**, 2026-07-27, on the focused correction
-  re-review at `eaa5b50`. `T019-R3/R4/R5` and Critical `T038-R1` are all independently resolved.
-  **High `T038-R2` is open** and, in the reviewer's words, "directly regresses High `T013-R2`":
-  the per-job log handler is closed when the *result* pump finishes, without establishing that
-  the *log* listener drained what the worker emitted before `WorkerFinished` — a delayed probe
-  left the per-job log empty while the line reached the application log — and
-  `stop_listening_for_worker_logs()` calls a blocking `QueueListener.stop()` from the GUI thread,
-  measured at **2.001 s**. A High defect continues through correction under `AGENTS.md` §9
-  regardless of the pass budget.
+- **`T-019` and `T-038` are both Approved**, 2026-07-27 — `T-019` at `eaa5b50`, `T-038` at
+  `098ba3f` after three focused corrections of High `T038-R2`. That finding was the one that
+  "directly regresses High `T013-R2`": the per-job log handler closed when the *result* pump
+  finished, without establishing that the *log* listener had drained, and listener shutdown
+  blocked the GUI thread for a measured 2.001 s. Both halves are fixed — a same-job reopen returns
+  the identical still-attached handler, and `idle` is withheld while the listener thread is alive,
+  polled by the existing timer and never joined, with `gave_up_on_the_log` as the bounded escape
+  if it wedges past `reap_seconds`. `T013-R2/R3/R4` were re-examined and remain resolved.
+  **`ai/TESTING.md` §7 now covers nine of ten mandatory areas**; only DRM is uncovered, and it
+  still has no Phase 1 owner.
 - **`T-013` closed after three correction passes.** `T013-R1`, `T013-R2` and `T013-R4` were
   verified resolved; `T013-R3` came back twice more with a different sibling each time, so the
   maintainer authorized **restructuring** the startup transaction rather than patching it again:
@@ -116,15 +117,14 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
   something was being kept without a reader for it, and the argument for keeping it was always
   "it's only shape / only names / only the parts we recognise". The allowlist survived review
   because it starts from what is *read*. Anything else in a fixture is a liability with a story.
-- **`ai/TESTING.md` §7 covers eight of ten mandatory areas, but only six are in the default local
-  run.** `T-013` added Cancellation and Worker crash against real spawned processes; both moved
-  behind `-m process_tree` in `9010794`, because `T-019`'s live defect leaves descendants that
-  wedge later runs. **`T019-R1` caught that the same marker removed them from CI**, which ran a
-  bare `pytest` and inherited the exclusion — so for one day two mandatory areas gated nothing
-  anywhere, while three records said CI still covered them. CI now runs an explicit
-  `-m process_tree` step on both platforms; `T-019` removes the marker with the defect. The two
-  genuinely uncovered are Log redaction (`T-038`) and DRM. **DRM has no Phase 1 owner** — worth
-  settling deliberately rather than discovering it at the exit review.
+- **`ai/TESTING.md` §7 covers nine of ten mandatory areas, all in the default local run.**
+  `T-013` added Cancellation and Worker crash against real spawned processes; both moved behind
+  `-m process_tree` in `9010794`, because `T-019`'s live defect left descendants that wedged later
+  runs. **`T019-R1` caught that the same marker removed them from CI**, which ran a bare `pytest`
+  and inherited the exclusion — so for one day two mandatory areas gated nothing anywhere, while
+  three records said CI still covered them. `T-019` removed the marker along with the defect.
+  Log redaction closed with `T-038`'s approval. **DRM is the one uncovered area and still has no
+  Phase 1 owner** — worth settling deliberately rather than discovering it at the exit review.
 - **The lesson from `T-044`, `T-045` and `T-014`, now three for three:** each blocking finding
   came from filtering unbounded input instead of constraining what the input could be. `T-044`
   stopped parsing for exports and read the interpreter's namespace; `T-045` dropped a completeness
