@@ -5167,3 +5167,33 @@ workflow correction is requested.
 T-062 remains **Approved with follow-ups**: T062-R1 is still open only for two non-blocking
 current-truth wording edits, assigned to the T-062 completion filing. The ordinary focused
 re-review is complete; those edits do not warrant another pass.
+
+### T062-R1 mechanical closure at `00ce157`
+
+This is confirmation of the two edits assigned above, not another substantive review pass.
+
+- **T062-R1 is Resolved.** The acceptance criterion now names only the two opaque waits the
+  correction actually changed and explicitly distinguishes the other assertions from delivered
+  evidence. The unsupported reading-speed multiplier is gone from both the task record and the
+  test comment; both now state the relevant relation, that a stage must outlive a repaint
+  interval.
+- T-062 is correctly filed under Complete, and the top-level TASKS summary says nothing is in
+  review. Moving the task did not change executable test behavior.
+- CI run `30385113813` at `8a0117e` independently finished in the expected shape: Ubuntu,
+  standard Windows, and both frozen jobs passed; Windows desktop failed only T-060's four known
+  focus tests.
+
+One adjacent current-truth cleanup does not reopen T-062:
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `COORD-R3` | **Low** | **No** | `ai/STATUS.md:111` still labels T-062 “In Review” in the paragraph describing what the CI run produced, after TASKS filed it Complete at `00ce157`. The following “What remains” list is correct and omits T-062, so readiness is not materially overstated, but the status label is stale. | Change it to “then In Review, now Complete” or equivalent in the next coordination update. **Owner/target:** Documentation Maintainer, next T-060/T-061/T-063 status update. | **Open, non-blocking** |
+
+`git diff --check 8a0117e..00ce157` passed. HEAD and `origin/main` both resolve to `00ce157`;
+Sean Kottman is the sole author and no AI authorship trailer is present. The filing commit's
+runtime suite was not rerun locally for this confirmation: its only test-file change is a comment,
+and the implementer reports 1395 passed, 11 skipped, 2 deselected. Its pushed CI run
+`30386164244` was still in progress when this closure was recorded.
+
+**Final disposition:** T062-R1 is **Resolved**, and T-062 is **Approved and Complete at
+`00ce157`**. COORD-R3 is a non-blocking follow-up and requires no additional T-062 review.

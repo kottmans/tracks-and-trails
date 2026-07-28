@@ -108,11 +108,16 @@ closed the two exit criteria that had no owner, and `T-017` closed on 2026-07-28
 its findings resolved under `T-059`.
 
 **Then CI ran, and the claim that only evidence remained did not survive it** (`COORD-R2`). The
-first real Windows run of this work produced three tasks: `T-062` (In Review — both `T-037` tests
-had failed on *both* platforms since the day they were approved, because the runners have no
-ffmpeg), `T-061` (Ready — `_ffmpeg_gap` reads the selector string rather than the format yt-dlp
-chose, so a user without ffmpeg is refused downloads needing none), and a widened `T-060` (CI
-failed **four** focus tests, three of them the dialog's).
+first real Windows run of this work produced three tasks: `T-062` (**approved and complete** at
+`00ce157` — both `T-037` tests had failed on *both* platforms since the day they were approved,
+because the runners have no ffmpeg), `T-061` (Ready — `_ffmpeg_gap` reads the selector string
+rather than the format yt-dlp chose, so a user without ffmpeg is refused downloads needing none),
+and a widened `T-060` (CI failed **four** focus tests, three of them the dialog's).
+
+*(This paragraph called `T-062` "In Review" for as long as it took to approve it. A narrative
+sentence carrying a status is a second place for that status to live, which is the shape
+`COORD-R2` and the mandatory-area count each landed on — the operative list below is the one
+that is meant to hold it.)*
 
 **What remains is code and evidence.** `T-060`, `T-061` and `T-063` are ready to write; `T-040`
 and `T-056` still need one run of the `windows desktop` job, which is also the only thing that can
