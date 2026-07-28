@@ -88,6 +88,34 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
+**Session of 2026-07-28 — six tasks, three review boundaries.** The maintainer asked for the work
+to be split into three reviews, and the commits are grouped to match:
+
+| Review | Tasks | Base | Head |
+|---|---|---|---|
+| 1 | `T-016` fourth correction, `T-017` | `6ad20f6` | `6ce195a` |
+| 2 | `T-057`, `T-058` | `6ce195a` | `4a06e92` |
+| 3 | `T-056`, `T-054` | `4a06e92` | `9c92c32` |
+
+**What the day's work turned on.** `T-016`'s third re-review reported its two open findings in
+three places each, and all six had one cause: **a synchronous write sequenced every following
+effect for free, and an asynchronous one sequences nothing.** `ARC-005` had landed on the claim
+that a write-through view made the change invisible to its callers — *"only the announcement
+moved"*, *"callers unchanged"* — and each defect was that equivalence failing somewhere different.
+The correction is a per-job lifecycle rather than three patches, and `ARC-005` is **amended** to
+say so (2026-07-28): asynchrony is not free at the call site.
+
+**DRM was never the uncovered mandatory area this file claimed.** Reading the tests rather than
+the record found three layers already gating it; `T-017` added the fourth (the UI half), `T-057`
+canaried the yt-dlp field the whole boundary rests on, and `T-058` recounted `ai/TESTING.md` §7 to
+**ten of ten**. `T-057` found two real divergences on the way: the adapter read `has_drm='maybe'`
+as protected, and its fallback used `all` where `_has_drm` — the branch that actually runs — uses
+`any`, so the two halves of one function disagreed about a mixed item.
+
+**`T-056` is corrected but not demonstrable here.** The fix is Windows-only, and the mutation that
+proves it survives on Linux by construction. That is `AGENTS.md` §8's "a host-only check is not
+the whole gate" in its exact form, and it needs the Windows job.
+
 - **`T-016` — Changes requested, first correction batch returned 2026-07-27.** The initial review
   found one Critical, two High and three blocking Medium defects; all six are corrected in one
   batch. The Critical is worth carrying forward: a probe result was bound to a **job id** and not
@@ -187,9 +215,9 @@ exactly that — the contradiction `T016-R8` reported.)*
    added without declaring it. Each was corrected, and `ai/TESTING.md` §12 now states the scope
    difference that nothing had written down.
 
-5. **`T-017` is the only substantive task startable now**, and the critical path to the phase
-   exit is linear: **`T-017` → `T-036` → `T-037`**. `T-036` depends on `T-016` *and* `T-017`, so
-   composition does not begin the moment `T-016` clears review. *(This item used to end "DRM is
+5. **`T-017` is implemented** (2026-07-28) and in review, so the critical path to the phase exit
+   is now **`T-036` → `T-037`**. `T-036` depends on `T-016` *and* `T-017`, so composition begins
+   when both clear review rather than when either does. *(This item used to end "DRM is
    the one uncovered mandatory area and still has no owner". It was neither: see
    `ai/TESTING.md` §12.)*
 6. **`T-050`** — **Phase 2**, not Phase 1: the `history` table is still empty, and
@@ -301,14 +329,13 @@ store and no output directory, so File → Add URLs… is **disabled**, saying s
 Supplying those three is composition (`T-036`); the first URL a *user* can download is `T-037`.
 Treat `ARCHITECTURE.md` as the approved target rather than a description of what a user can do.
 
-Precisely, recounted 2026-07-27 by parsing each module for anything beyond its docstring: of the
-**33** modules under `src/`, **12 are still docstring-only stubs** and **21 have code**. Those
-twenty-one are `__init__.py`, `__main__.py`, `_freeze_probe.py`, `app.py`, `ui/main_window.py`,
-`core/{models,job_state,errors,paths}.py`,
-`downloader/{environment,protocol,worker,ytdlp_adapter}.py`, `persistence/{db,repositories}.py`,
-`downloader/{manager,result_pump}.py` (`T-013`), `core/presets.py` (`T-015`),
-`core/logging.py` (`T-038`), `downloader/process_tree.py` (`T-019`), and — new with `T-016` —
-`ui/add_dialog.py`, **the first widget beyond the shell window**.
+Precisely, recounted 2026-07-28 by parsing each module for anything beyond its docstring: of the
+**35** modules under `src/`, **11 are still docstring-only stubs** and **24 have code**. Two of
+the three changes since the 2026-07-27 count came from `ARC-005` — `persistence/store.py` and
+`persistence/writer.py` are new modules, which is why the denominator moved as well as the split
+— and the third is `ui/job_detail.py`, `T-017`'s progress view and **the second widget beyond the
+shell window**. `ui/queue_view.py` stays a stub deliberately: a multi-job table is Phase 2, and
+`T-017`'s scope is one job.
 
 *(Before `T-014` this said 23 stubs and eight coded, recomputed at `697e024`; it had gone stale
 across four tasks. The previous count of 31/13/18 was itself two modules stale, missing
