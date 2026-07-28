@@ -3802,3 +3802,243 @@ is a UUID. `test_two_jobs_cannot_write_into_each_others_logs` and
 | **Canonical bare `pytest`** | **1186 passed, 11 skipped, 1 deselected** — three consecutive runs, 40 s each |
 | Mutation battery | **14 of 14 killed** |
 | Windows | Not re-run locally; CI will exercise it on push |
+
+## 2026-07-27 — T-019 and T-038 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** `T-019`, `T-038`; focused re-review of `T019-R3`, `T019-R4`, `T019-R5`,
+`T038-R1`, and `T038-R2`
+**Correction base:** `e08c265051552624a0447d18ef803c3c8f30879a`
+**Head:** `eaa5b504d57bec14e55b38b36b4f40f168662523`
+**Review unit:** the correction commit at `eaa5b50`; final runtime checks used a clean archive
+of that exact head because unrelated `T-016` work began in the shared worktree during review
+**Platforms verified:** Linux locally; Windows from the maintainer-reported green CI jobs at
+this head
+**T-019 verdict:** **Approved**
+**T-038 verdict:** **Changes requested**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T019-R3` | **Medium** | **No** | **Resolved.** `spawn_session()` checks the result of `prepare_this_worker()` before `run_session()` and emits exactly one `Failed` outcome followed by `WorkerFinished` when containment is unavailable. The direct test forces containment failure, proves `run_session()` is never reached, and checks the distinct exit code and diagnostic. The maintainer reports the same refusal path green on Windows. |
+| `T019-R4` | **Medium** | **No** | **Resolved.** The detector test now constructs and asserts a real parent→grandchild relationship before consulting `worker_processes()`. Cancellation asserts both the partial file's presence and the completed file's absence. `cancel_seconds`, `cancel_budget_seconds`, and `tree_cleanup_seconds` are retained with `record_property`; the generated test path ran in the focused and full suites. The autouse cleanup fixture scans by the test-only marker after every outcome, including assertion failure, instead of relying on code after the assertion. |
+| `T019-R5` | **Medium** | **No** | **Resolved.** No production call to `QThread.terminate()` remains. `ResultPump.stop()` sets a thread-safe event, the queue read polls only to observe that event, and the pump returns through its `finally`, emitting `session_ended`. The focused stopped-pump test passed, as did three consecutive exact-head canonical runs: **1186 passed, 11 skipped, 1 deselected** each, in 53.21 s, 52.57 s, and 52.38 s. None wedged at the former 46-test boundary. |
+| `T038-R1` | **Critical** | **No** | **Resolved under the maintainer-authorized boundary.** Real-handler tests remove the identifying part of the spaced cookie path, relative cookie filename, malformed tokenized URL, and scheme-less proxy credential. `_bare_url()` fails closed when parsing fails. Ordinary cookie prose remains readable. `ARCHITECTURE.md` §8 now records the authorized bare `NAME=value` carve-out and reconciles the stored-diagnostic rule in `REQ-026`/`DAT-003` with the stricter emitted-log sink. |
+| `T038-R2` | **High** | **Yes** | **Open — the production wiring routes and filters by job, but its two lifecycle ends are not correct yet.** First, result messages and log records use separate multiprocessing queues. `_release()` closes and removes the per-job handler as soon as the result pump and process finish, without establishing that the log listener drained records the worker emitted before `WorkerFinished`. A deterministic probe delayed the listener for two seconds: the worker emitted its stamped line first, the manager became idle and closed the job handler, and the line later reached the application log while the per-job log remained empty. Second, `stop_listening_for_worker_logs()` calls blocking `QueueListener.stop()` from `shutdown()` or its GUI-thread timer completion. Holding one queued handler call for two seconds held `DownloadManager.shutdown()` for **2.001 s**. That reopens `T013-R2`'s exact High consequence: teardown again waits on the GUI thread, only now on log I/O rather than a process or pump. Establish an ordered per-session log drain before closing its handler, and stop/drain the process-wide listener without joining it on the GUI thread. Add deterministic tests for a delayed final worker record and a blocked listener handler. |
+
+### Re-examination of the T-013 guarantees
+
+- **`T013-R4` remains resolved.** `_abandon()` now requests `pump.stop()` rather than killing
+  the thread, durably finalizes the job, and retains the session until `finished` or
+  `isFinished()` establishes that the thread actually returned. The direct stubborn-pump test
+  and the cooperative-stop test both passed.
+- **`T013-R3`'s startup unwind remains resolved.** A failed cleanup write requests a cooperative
+  pump stop and keeps the session under watch; the original startup failure is persisted before
+  cleanup and remains the diagnostic.
+- **`T013-R2` is reopened by the logging correction, not by the pump change.** The event-driven
+  process/pump lifecycle still performs no blocking wait, but its new final logging call invokes
+  `QueueListener.stop()`, which joins the listener on the GUI thread. The open `T038-R2`
+  disposition owns that correction regression; it is not a second independent fix.
+
+### Per-job isolation scope
+
+The job-id stamp and rejecting handler filter establish per-job routing for Phase 1's
+one-session-at-a-time manager. They cannot establish concurrent non-cross-write because Phase 1
+cannot keep two sessions open simultaneously. `T-053` owns that non-blocking Phase 2 proof when
+the pool first permits concurrency; it does not excuse the current ordered-drain failure above.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| `git diff --check e08c265..eaa5b50` | Passed. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **83 files already formatted**. |
+| `mypy` | Passed: no issues in **68 source files**. |
+| `mypy --platform win32` | Passed: no issues in **68 source files**. |
+| Focused logging/process-tree/worker-logging/manager suite | Passed: **94 passed in 33.27 s** with normal localhost access. The sandboxed attempt's ten loopback `PermissionError`s were environmental and excluded. |
+| Canonical bare `pytest`, exact head | Passed three consecutive runs: **1186 passed, 11 skipped, 1 deselected** each. |
+| Maintainer-reported CI | Green: Ubuntu **1186 passed, 11 skipped, 1 deselected**; Windows **1175 passed, 20 skipped, 21 deselected**; both Windows desktop/frozen jobs succeeded. |
+| QThread termination search | No production `QThread.terminate()` call; remaining executable `.terminate()` calls target processes. |
+| Delayed final-log probe | Failed as described: application log contained the worker's stamped line; the per-job log was empty. |
+| Listener-shutdown probe | Failed as described: a queued two-second handler delay made `shutdown()` take **2.001 s**. |
+| Working-tree isolation | One repeated run was discarded after unrelated uncommitted `T-016` changes appeared mid-run. The final two runs used a clean `git archive eaa5b50`; no reviewed-source file was changed by the reviewer. |
+
+### Verdict and budget
+
+`T-019` is **Approved**: R3, R4, and R5 are independently resolved, and the Windows
+containment and cooperative-pump paths have the requested CI evidence.
+
+`T-038` remains **Changes requested** because High `T038-R2` is still open and directly
+regresses High `T013-R2`. This is the focused correction re-review. The remaining High defect
+continues through correction and independent verification under `AGENTS.md` §9; it is not
+stopped by the ordinary pass budget. `T038-R1` is resolved.
+
+## 2026-07-27 — T-038 R2 second focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-038`; focused re-review of High `T038-R2`
+**Correction base:** `eaa5b504d57bec14e55b38b36b4f40f168662523`
+**Head:** `dd1dad8`
+**Review unit:** `b0879d7` contains every source/test correction; `dd1dad8` adds only its CI
+evidence record
+**Repository state at inspection:** source and tests inspected and run from a clean
+`git archive dd1dad8`; the shared checkout's unrelated uncommitted `T-016` work was not used
+**Platforms verified:** Linux locally; Windows from GitHub Actions run `30315752749`
+**Verdict:** **Changes requested**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T038-R2` | **High** | **Yes** | **Open — both original probes are corrected, but two direct lifecycle siblings still lose the guarantee.** The marker establishes ordering for one session's ordinary release, and the listener stop no longer joins on the GUI thread. However, reopening the same job closes its pending handler before the replacement is created and attached. A deterministic probe queued a stamped record before the old marker, held replacement-handler creation after `_close_any_drain_for()`, and dispatched both queued records in that interval: the old handler was closed, the new one was later attached, and the per-job log remained empty. This is the ordinary `T-016` probe→download path the correction claims to support. Separately, non-blocking stop is not yet a complete shutdown lifecycle: `DownloadManager` emits `idle` immediately after requesting listener stop, although its own contract says `idle` is when composition may quit. With a handler held inside `emit`, the reviewer observed `idle` while that handler was still blocked and the listener thread was alive. A process that obeys `idle` may therefore exit before the daemon listener drains the marker and final records. Reuse or atomically hand over a same-job draining handler so there is never a no-handler interval; and make listener completion part of the event-driven shutdown lifecycle, emitting `idle` only after the listener has actually returned and its drains have been swept, without waiting on the GUI thread. Add deterministic assertions for the reopen gap and for withholding safe-to-quit `idle` while the listener is blocked. |
+
+### What the correction does establish
+
+- **The ordinary end-of-session marker is ordered correctly.** The worker process has exited
+  before `_release()` queues the marker, so its multiprocessing feeder has flushed the worker's
+  records first. A shutdown sentinel queued by the parent afterwards follows the marker on the
+  same parent-side queue.
+- **The original delayed-record probe is fixed.** The gated integration test holds a worker
+  record in dispatch while the session releases, then proves it reaches the still-attached
+  per-job handler before the marker detaches and closes that handler.
+- **The original GUI-thread join is removed.** The listener's `stop()` enqueues its sentinel
+  and returns. The committed blocked-handler test and reviewer inspection confirm neither
+  `shutdown()` nor `_tick()` joins the listener.
+- **The four exceptional drain edges are useful and tested:** no active queue, marker enqueue
+  failure, listener exit before a marker, and an attempted same-job reopen all close their old
+  handler. The last edge's resource cleanup is real; its claim that queued records cannot be
+  lost during the handover is the remaining defect above.
+
+### T-013 regression check
+
+- **`T013-R2`'s original no-GUI-wait consequence is resolved again.** A blocked log handler no
+  longer holds `shutdown()`. The open problem is the new logging subsystem announcing safe
+  completion too early, and remains owned by `T038-R2`.
+- **`T013-R3` and `T013-R4` remain resolved.** No startup-unwind, pump-stop, session-retention,
+  or durable-finalization line changed in this correction. The focused manager module passed,
+  including the direct cleanup and stubborn-pump mechanisms.
+
+### Live-handler iteration
+
+The listener still iterates `logging.getLogger(APP_SLUG).handlers` live. That does not create a
+separate Phase 1 blocker once the same-job handover is made atomic: ordinary marker removal
+happens on the listener thread between records, and Phase 1 has only one live session. It
+remains a concurrency-sensitive shape. `T-053` should exercise handler addition/removal while
+both Phase 2 job streams are active, not only compare their final file contents.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| `git diff --check eaa5b50..dd1dad8` | Passed. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **83 files already formatted**. |
+| `mypy` | Passed: no issues in **68 source files**. |
+| `mypy --platform win32` | Passed: no issues in **68 source files**. |
+| Focused logging/worker-logging/manager suite | Passed: **93 passed in 50.85 s**. |
+| Canonical bare `pytest`, exact head | Passed: **1192 passed, 11 skipped, 1 deselected in 82.01 s**. |
+| Maintainer correction runs | Three Linux bare runs passed; six claimed mutations were killed. |
+| CI at code head `b0879d7` | Run `30315752749` green: Ubuntu **1192 passed, 11 skipped, 1 deselected**; Windows **1181 passed, 20 skipped, 21 deselected**; Windows desktop **20 passed, 1202 deselected**; both frozen jobs succeeded. |
+| Same-job handover probe | Failed as described: old handler closed, replacement attached later, queued stamped record absent from the per-job file. |
+| Safe-to-quit probe | Failed as described: `idle` observed while the gated handler was blocked and the listener thread was alive; listener stopped only after the gate was released. |
+
+### Readiness and budget
+
+`T-038` remains **Changes requested** on High `T038-R2`. The original two deterministic
+failures are fixed, but the correction has not yet made the per-job drain lossless across the
+normal same-job handover or made asynchronous listener completion part of the shutdown
+lifecycle. Because the survivor is High, focused correction and independent verification
+continue under `AGENTS.md` §9 regardless of the ordinary review-pass budget.
+
+## 2026-07-27 — T-038 R2 third focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-038`; focused re-review of High `T038-R2`
+**Correction base:** `dd1dad83ae1e327421fb593d4e700c524fd55e86`
+**Head:** `098ba3f93ad2f9d0e8a045d936b21f0845b7c500`
+**Review unit:** `d6f3581` contains every source/test correction; `098ba3f` adds only the CI
+evidence record
+**Repository state at inspection:** source and tests inspected and run from a clean
+`git archive 098ba3f`; the shared checkout's unrelated uncommitted `T-016` work was not used
+**Platforms verified:** Linux locally; Windows from the implementer-provided GitHub Actions run
+`30317992554`
+**Verdict:** **Approved**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Disposition and evidence |
+|---|---|---:|---|
+| `T038-R2` | **High** | **No** | **Resolved.** A same-job, same-file reopen now atomically removes the pending drain and returns the identical still-open, still-attached handler. The listener therefore has no interval in which a stamped record lacks a per-job sink; the obsolete marker later finds no drain and cannot close the reclaimed handler. The file comparison is independently exercised: a pending handler for the same job but a different path is not reclaimed or misrouted. During shutdown, `idle` is withheld while the exact listener thread returned by the stop request remains alive. Completion is polled by the existing Qt timer, never joined; if the listener remains wedged past the bounded `reap_seconds` deadline, shutdown records `gave_up_on_the_log` and proceeds. The committed gap, different-file, in-flight-listener, and bounded-wedge tests all passed, as did the full exact-head suite. |
+
+### Shutdown failure reporting
+
+The `gave_up_on_the_log` property is sufficient for this correction; a new signal is not
+required to resolve the finding. An `idle` consumer can query the property synchronously when
+the lifecycle completes. Writing a warning through the same logger is unsafe on precisely this
+path because `Handler.handle()` may be waiting on the lock held by the wedged listener, restoring
+the GUI-thread freeze. Adding a second signal without a current composition consumer would not
+make the condition more visible yet; `T-036` may decide how the assembled application presents
+this exceptional state.
+
+The bounded escape deliberately weakens “all records are written before `idle`” only when a
+handler has failed to return for the full reap deadline. That is an explicit, observable
+fail-open choice between a truncated diagnostic and an application that cannot close, not the
+ordinary loss that opened `T038-R2`.
+
+### T-013 regression check
+
+- **`T013-R2` remains resolved.** `shutdown()` starts the lifecycle and returns; `_tick()` polls
+  listener liveness and deadlines. No positive-duration process join, listener join,
+  `QThread.wait()`, sleep loop, manual event pumping, or `QThread.terminate()` is present.
+- **`T013-R3` remains resolved.** The startup transaction still records process and pump starts
+  independently, persists the original failure before signaling, and retains half-built work
+  until cooperative cleanup completes.
+- **`T013-R4` remains resolved.** `_abandon()` requests `pump.stop()`, finalizes durably, and
+  retains the session until `finished` or `isFinished()` proves that the pump returned.
+
+The manager-inclusive focused suite passed all of those paths. The changed logging lifecycle
+adds only timer-driven listener observation and does not alter the startup or pump ownership
+mechanisms.
+
+### Remaining limits
+
+- Windows exercised the three new tests once in CI; the repeated local runs reported by the
+  implementer and this reviewer's run were Linux only.
+- The test gate deliberately does not wedge GUI-thread log calls. A GUI-thread call through an
+  independently wedged handler can still block; that application-wide logging shape predates
+  this correction and is not evidence that the listener lifecycle itself waits.
+- The listener still iterates the live application-handler list. Phase 1's single-session
+  routing is established, but `T-053` still owns concurrent add/remove and cross-write proof
+  when Phase 2 permits two live sessions.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| `git diff --check dd1dad8..098ba3f` | Passed. |
+| `ruff check .` | Passed: “All checks passed!” |
+| `ruff format --check .` | Passed: **83 files already formatted**. |
+| `mypy src` | Passed: no issues in **33 source files**. |
+| `mypy --platform win32 src` | Passed: no issues in **33 source files**. |
+| Configured `mypy` | Passed: no issues in **68 source files**. |
+| Configured `mypy --platform win32` | Passed: no issues in **68 source files**. |
+| Logging and worker-logging subset | Passed: **43 passed in 2.75 s**. |
+| Focused logging/worker-logging/manager suite | Passed: **96 passed in 34.08 s**. The `95 passed` in the handoff and `ai/TASKS.md` is an off-by-one evidence-record error; all selected tests passed and the canonical count below matches the correction record. |
+| Canonical bare `pytest`, exact head | Passed: **1195 passed, 11 skipped, 1 deselected in 54.60 s**. |
+| Implementer-provided CI at code head `d6f3581` | Run `30317992554` green: Ubuntu **1195 passed, 11 skipped, 1 deselected**; Windows **1184 passed, 20 skipped, 21 deselected**; Windows desktop **20 passed, 1205 deselected**; both frozen jobs succeeded. |
+| Same-job reopen mechanism | Passed: the handler is identical before and after reclaim, the record dispatched before caller reattachment is written, and adding the returned handler does not duplicate it. |
+| Different-file mechanism | Passed: the old drain is not reclaimed for another path. |
+| Listener completion mechanisms | Passed: `idle` remained withheld while the gated listener was alive, arrived after release, and arrived with `gave_up_on_the_log == True` when the shortened deadline expired while the handler remained blocked. |
+
+The first focused attempt is excluded from product evidence: the shared virtual environment's
+editable install took import precedence over the archive, pairing archived tests with the dirty
+shared source, and the sandbox denied localhost sockets. Forcing the archive's `src` first and
+granting normal local-process/socket access produced the clean focused and canonical results
+above.
+
+### Readiness
+
+`T038-R2` is independently resolved. No blocking finding remains, so `T-038` is **Approved**.
+The focused-count typo is mechanical evidence bookkeeping and does not change the verdict.
