@@ -362,6 +362,83 @@ and `mypy --platform win32` (76 each) all pass. Bare `pytest`: **1395 passed, 11
 
 ---
 
+### T-052 — Make the T-013 correction tests kill their claimed mutations
+
+**Status:** **In Review — implemented 2026-07-28.** Both named mutations are killed, and the
+route-before-validation one is killed on **each** of the three routes the criteria list. Half of
+this task turned out to be already done — see **Evidence**.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 1
+**Depends on:** `T-013`
+**Relevant context:** `T013-R5`; `ai/TESTING.md` §13
+**Affected surfaces:** `tests/integration/test_manager.py`
+**Risk:** Low — production behavior is correct; the negative gate is weaker than its evidence
+record claims
+
+#### Scope
+
+Strengthen the T-013 correction evidence at the observations where a route-before-validation
+regression is currently invisible. Moving the pump's signal emission immediately before
+`SessionValidator.accept()` leaves all five cases in
+`test_an_illegal_message_never_reaches_the_job` green: the test excludes only `READY` and
+`COMPLETED`, so illegal progress may still persist `RUNNING`; it does not assert that foreign
+progress or a duplicate resolution report was withheld from the public signals.
+
+The startup-construction test also ends its useful-error assertion with `or True`, making that
+assertion unconditional. Remove the escape and prove the stored diagnostic retains the original
+failure rather than a cleanup error.
+
+#### Acceptance criteria
+
+- Reordering validation and routing makes at least one committed test fail for each affected
+  route: persisted progress state, public progress, and resolution report
+- The tests assert the complete persisted status sequence, not selected terminal states
+- The useful startup diagnostic assertion has no unconditional branch and fails if the original
+  construction error is discarded
+- The route-before-validation and diagnostic-weakening mutations are run and recorded as killed
+
+#### Out of scope
+
+- Changing `SessionValidator` or the production routing order, which are correct at `65303a2`
+- The blocking cleanup behavior in `T013-R3` and `T013-R4`
+
+#### Evidence, 2026-07-28
+
+**The `or True` was already gone**, removed by a later `T-013` pass that cited this task. Removing
+it had shown the production behaviour was right and the *assertion* was wrong: it looked for a
+parametrised component name the message never claimed to carry. What the message must carry — and
+does — is the `OSError` that stopped the start rather than whatever the unwind hit afterwards.
+Recorded rather than quietly dropped from the scope, because "already fixed" and "not a problem"
+are different findings.
+
+**What was still missing was the shape of the assertions, not their subject.**
+
+- `test_an_illegal_message_never_reaches_the_job` excluded `COMPLETED` and `READY` **by name**,
+  which left `RUNNING` unexamined — so an illegal *progress* message routed before validation
+  persisted a state that never legitimately existed and nothing noticed. It now asserts the
+  **complete persisted sequence**.
+- It checked `succeeded` and `probed` and not `progress` or `resolution_reported`, so a message
+  the validator went on to reject could still have reached a widget first. All four public routes
+  are checked now.
+
+**Mutations run, all killed:**
+
+| Mutation | Killed by |
+|---|---|
+| The pump routes before it validates | `probe-stage` (persisted progress state), `foreign-job-id` (public progress), `two-reports` (resolution report) — one per route, as the criteria ask |
+| The stored diagnostic discards the original cause | `test_a_startup_failure_leaves_a_failed_job_rather_than_a_phantom_one`, both parametrisations |
+| The failure message replaces the cause with the cleanup's | the same test, both parametrisations |
+
+The first mutation was the point of the task and it now fails on **three** parametrisations rather
+than the two it would have before, because the persisted-sequence assertion is what catches the
+probe case.
+
+**Checks:** `ruff check .`, `ruff format --check .`, configured `mypy` (76 files) all pass. Bare
+`pytest`: **1395 passed, 11 skipped, 2 deselected**. No production code changed.
+
+---
+
 ## Ready
 
 ### T-040 — Extend the Windows desktop gate to widget focus order
@@ -463,47 +540,6 @@ agreement on the reduced form before implementation.
 ---
 
 ## Proposed — Phase 1
-
-### T-052 — Make the T-013 correction tests kill their claimed mutations
-
-**Status:** Proposed — non-blocking follow-up from `T013-R5`
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 1
-**Depends on:** `T-013`
-**Relevant context:** `T013-R5`; `ai/TESTING.md` §13
-**Affected surfaces:** `tests/integration/test_manager.py`
-**Risk:** Low — production behavior is correct; the negative gate is weaker than its evidence
-record claims
-
-#### Scope
-
-Strengthen the T-013 correction evidence at the observations where a route-before-validation
-regression is currently invisible. Moving the pump's signal emission immediately before
-`SessionValidator.accept()` leaves all five cases in
-`test_an_illegal_message_never_reaches_the_job` green: the test excludes only `READY` and
-`COMPLETED`, so illegal progress may still persist `RUNNING`; it does not assert that foreign
-progress or a duplicate resolution report was withheld from the public signals.
-
-The startup-construction test also ends its useful-error assertion with `or True`, making that
-assertion unconditional. Remove the escape and prove the stored diagnostic retains the original
-failure rather than a cleanup error.
-
-#### Acceptance criteria
-
-- Reordering validation and routing makes at least one committed test fail for each affected
-  route: persisted progress state, public progress, and resolution report
-- The tests assert the complete persisted status sequence, not selected terminal states
-- The useful startup diagnostic assertion has no unconditional branch and fails if the original
-  construction error is discarded
-- The route-before-validation and diagnostic-weakening mutations are run and recorded as killed
-
-#### Out of scope
-
-- Changing `SessionValidator` or the production routing order, which are correct at `65303a2`
-- The blocking cleanup behavior in `T013-R3` and `T013-R4`
-
----
 
 ## Proposed — Phase 2
 

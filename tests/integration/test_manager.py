@@ -1280,12 +1280,32 @@ def test_an_illegal_message_never_reaches_the_job(
     assert any(reason in text for _, text in recorder.violations), (
         f"the violation was not reported: {recorder.violations}"
     )
-    assert JobStatus.COMPLETED not in repository.statuses("job-1")
-    assert JobStatus.READY not in repository.statuses("job-1")
+
+    # **The complete persisted sequence, not selected terminal states** (`T013-R5`, `T-052`).
+    # Excluding `COMPLETED` and `READY` by name left `RUNNING` unexamined, so a receiver that
+    # routed an illegal *progress* message before validating it wrote a state that never
+    # legitimately existed and no assertion here noticed. A crash-recovery pass reads that state
+    # and believes it (`T-014`), which is the cost.
+    persisted = repository.statuses("job-1")
+    legitimate = ([JobStatus.PROBING, JobStatus.FAILED], [JobStatus.RUNNING, JobStatus.FAILED])
+    assert persisted in legitimate, (
+        f"the job passed through states it never legitimately reached: "
+        f"{[status.value for status in persisted]}"
+    )
     assert repository.jobs["job-1"].status is JobStatus.FAILED
     assert repository.jobs["job-1"].error_kind is ErrorKind.WORKER_CRASH
+
+    # **Every public route, not only the outcomes.** `succeeded` and `probed` were checked and
+    # `progress` and `resolution_reported` were not, so a message the validator rejected could
+    # still have reached a widget on its way to being discarded.
     assert not recorder.succeeded, "an illegal outcome was announced to the GUI"
     assert not recorder.probed, "an illegal outcome was announced to the GUI"
+    assert not recorder.progress, (
+        f"an illegal message was forwarded as progress before it was rejected: {recorder.progress}"
+    )
+    assert len(recorder.resolutions) <= 1, (
+        f"a duplicate resolution report reached the GUI: {recorder.resolutions}"
+    )
 
 
 def test_a_worker_that_never_sent_its_sentinel_is_reported(
