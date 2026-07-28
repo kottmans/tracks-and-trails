@@ -5427,3 +5427,108 @@ T-040 without another broad review.
 COORD-R4 still needs the already-approved T-061 and T-063 entries moved to Complete and T-060
 moved to Blocked when this verdict is filed. GIT-R1 is a non-blocking published-history issue
 owned by T-065; no history was rewritten during this review.
+
+## 2026-07-28 — STARBASE evidence and T-066 through T-070 review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `12dff92`  **Head:** `1e9694c`
+**Scope:** T-040/T-060's Windows evidence, T-065's coordination decision, T-066 through T-070,
+and the new Windows verification workflow, documentation, and tools
+**Boundary classification:** Workflow, tests, documentation/coordination, and privileged
+developer tooling; no production source
+**Verdict by task:** T-067 and T-070 **Approved**; T-068 **Blocked on its disclosed Windows
+runner/frozen evidence**; T-066 and T-069 **Changes requested**; T-040/T-060 **Changes requested
+on their unmet documentation criterion**; Windows verification tooling **Changes requested**
+
+The checkout advanced to `1dd2f50` while this review was running. That later self-hosted-runner
+commit is excluded from every verdict below. It did not change source or tests, so the local
+runtime/type results still exercise the exact executable tree at `1e9694c`; workflow and
+documentation judgments use the requested head itself.
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T066-R1` | **Medium** | **Yes** | T-066 measured that on Windows in a venv `Popen(sys.executable)` returns the launcher PID while a different PID runs the interpreter (`ai/TASKS.md:180-186`). The recovery test nevertheless calls `process.kill()` on that returned handle and immediately treats `process.wait()` as proof that it killed the application (`tests/integration/test_end_to_end.py:70-80,410-469`). The two T-019 kill-parent tests have the same shape (`tests/integration/test_manager.py:1911-1938,1975-2003`). None identifies the PID reported from inside the application or asserts that interpreter ended. Therefore moving CI into a venv does not establish the crash/reaping property under the deeper shape; it establishes only that the launcher ended. This is also a concrete sibling of T-069's conditional restart failure: an application left alive can still own the database, though that causal link needs a Windows probe rather than an assertion. | Have each driver report its own `os.getpid()` in the startup handshake. Kill that interpreter PID without gracefully unwinding it, then independently assert the interpreter and the expected worker/descendant set have ended before reopening the database. Audit every Windows `Popen([sys.executable, ...])` + `kill(parent.pid)` path, reproduce T-069's predecessor sequence, and mutation-check killing only the launcher. | **Open** |
+| `COORD-R5` | **Medium** | **Yes** | T-040 and T-060 each require `ai/TESTING.md` to drop the Windows tab-order gap and T-026's criterion to be marked met. Their new evidence says both happened (`ai/TASKS.md:918-919,1320-1325`), but `ai/TESTING.md:211-218`, `ai/REQUIREMENTS.md:63-68`, `ai/IMPLEMENTATION_PLAN.md:67-70`, and T-026's own current task text at `ai/TASKS.md:4897-4901` still say the gate does not exist. STATUS says T-040 is both never-run/Blocked (`ai/STATUS.md:24-30,157-164`) and In Review with the criterion met (`ai/STATUS.md:124-129`). The five new task entries are under `## Ready` while each says In Review, and the preamble says In Review contains them. This materially disagrees about whether a required gate exists, not merely where a task is filed. | Reconcile the current-truth chain in authority order: REQUIREMENTS, IMPLEMENTATION_PLAN, TESTING, T-026, T-040/T-060, STATUS, and section placement. Preserve historical statements as explicitly historical, but leave one unambiguous current answer about the manual STARBASE mutation evidence and the still-unautomated mutation run. T-040/T-060 cannot be filed Complete until their explicit documentation criterion is actually met. | **Open** |
+| `WIN-R1` | **Medium** | **Yes** | `tools/windows/ssh-setup.ps1:35-48` uses `Set-Content` on the machine-wide `administrators_authorized_keys`, silently replacing any administrator keys already present; Microsoft's own setup example appends instead. Lines 54-58 then install an inbound TCP/22 allow rule without a remote-address restriction and without a profile, whose documented default is `Any`, while the script makes `sshd` automatic and the project documents that this path yields elevated administrator sessions. Running a repository helper should not delete existing access or expose privileged SSH on every network profile without an explicit choice. | Preserve and deduplicate existing authorized keys. Default the firewall rule to a deliberately scoped source (`LocalSubnet` or an explicit maintainer host) and appropriate profile, make broader exposure an explicit parameter, report the effective rule, and document removal/rollback. See Microsoft's `New-NetFirewallRule` and Windows OpenSSH key-management documentation. | **Open** |
+| `WIN-R2` | **Medium** | **Yes** | `run.cmd` records the remote command's `EXITCODE`, but `tools/windows/run-on-starbase.sh:25-33` only prints the file and returns the final `ssh | sed` status. A deterministic fake transport printed `EXITCODE=1`; the wrapper exited **0**. The timeout branch likewise breaks out and can return success if the partial-output read succeeds. A local runner or caller can therefore report a red remote suite as green—the exact gate-vacuity class this harness says it prevents. | Parse and validate the final `EXITCODE=<n>` marker, return that value, and return a distinct nonzero status on timeout, missing marker, malformed output, or transport failure. Add a platform-neutral harness test with fake `ssh`/`scp` for remote 0, remote nonzero, timeout, and missing marker. | **Open** |
+| `WIN-R3` | **Low** | **No** | `docs/WINDOWS_VERIFICATION.md:120-140` says `run_mutations.py` executes “both classes plus a control” and specifically says `mut_control_always_dead.py` must fail. The driver's `CASES` at `tools/windows/mutations/run_mutations.py:30-36` contains the baseline and four focus mutations only; the named control targets T-056's `still_running`, not the T-026 focus harness. | Either add a relevant positive control to the focus driver and report it, or narrow the documentation to the controls the driver actually runs. Keep the T-056 control in the T-056 procedure rather than presenting it as T-026 evidence. | **Open, non-blocking** |
+| `GIT-R2` | **Low** | **No** | `git diff --check 12dff92..1e9694c` exits 2 because every added line in `tools/windows/run.cmd` and `tools/windows/ssh-setup.ps1` is seen as trailing whitespace: CRLF was committed without repository whitespace/eol configuration that treats CR at EOL correctly. | Normalize these scripts to LF if Windows PowerShell/cmd compatibility permits, or add an explicit repository eol/whitespace policy that makes intentional CRLF pass the project's ordinary diff check. | **Open, non-blocking** |
+
+### Task judgments
+
+- **T-040/T-060:** the recorded STARBASE table has the expected shape: 28 baseline tests,
+  observable dialog reorder and undeclared-control mutations killed, and the two-control view
+  reversal surviving for the already-reviewed reason. The checked-in driver correctly
+  distinguishes pytest failure from usage/internal/no-test exits. That is sufficient behavioral
+  evidence for the manual run. COORD-R5 still blocks closure because the acceptance criterion
+  required the current-truth documents to change and they did not. WIN-R2/R3 affect repeatability
+  and the claimed harness, not the already-read raw table.
+- **T-065:** the maintainer's keep-history decision is accurately recorded. All four commits in
+  this boundary are authored by Sean Kottman and none adds another AI authorship trailer.
+- **T-066:** creating a venv in every workflow job and using a native Windows path in
+  `GITHUB_PATH` is structurally sound. The changed detector assertion also states the right
+  relation—depth from the walker rather than one hop from the launcher. T066-R1 means the
+  kill/reaping siblings have not actually been shown under that same shape. Independently, the
+  workflow and the frozen-artifact process shape remain openly unexecuted, so correction of
+  T066-R1 would leave the task Blocked on Windows runner/frozen evidence rather than Approved.
+- **T-067:** removing a fixture `mkdir` from a pre-filesystem rejection path is correct. The new
+  test asks the OS to create a file at the accepted budget, so raising the project constant past
+  what the default Windows configuration accepts can no longer agree with itself. Approved at
+  `1e9694c`.
+- **T-068:** `QT_QPA_FONTDIR` is set before PySide6 is imported, is Windows-only, and honors an
+  explicit caller value. The STARBASE before/after evidence is credible. The task's own
+  acceptance criteria still require the runner difference to be explained and a Windows frozen
+  artifact to be checked; both are explicitly open. Verdict: Blocked, not Changes requested on
+  the environment fix.
+- **T-069:** the reproduction and predecessor are useful, but the task says plainly that no fix
+  exists. T066-R1 gives the first concrete process-shape question to answer. Verdict: Changes
+  requested; do not retry or xfail the WAL error.
+- **T-070:** the capability is attempted in the test's own temporary directory, its skip tells a
+  Windows developer which privilege or setting is missing, and the four original tests remain
+  unchanged wherever the capability exists. Approved at `1e9694c`.
+- **Windows tooling:** the session-0 warning and scheduled-task design are valuable, but WIN-R1
+  and WIN-R2 block approval of the new setup/transport scripts. They should be corrected before
+  the tools become the unattended local-runner boundary.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Focused T-066/T-067/T-070 tests | **7 passed, 53 deselected in 0.09 s** |
+| Full default suite | **1399 passed, 11 skipped, 2 deselected in 81.84 s** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | **101 files already formatted** |
+| `python -m mypy src` | Passed: **35 source files** |
+| Configured `python -m mypy` | Passed: **78 source files** |
+| Configured `python -m mypy --platform win32` | Passed: **78 source files** |
+| Remote-failure harness probe | Wrapper printed `EXITCODE=1` and returned **0** |
+| Exact-head workflow `30401845377` | Failed all five jobs with **zero steps**; confirms the external quota outage and supplies no workflow evidence |
+| `git diff --check 12dff92..1e9694c` | **Failed** on the two CRLF Windows scripts (GIT-R2) |
+| Git boundary at review start | HEAD and `origin/main` both `1e9694c`; four commits by Sean Kottman, no new AI trailer |
+
+The first sandboxed full-suite attempt produced 15 environment failures: localhost sockets were
+denied and two launch subprocesses could not write the sandboxed user cache. The identical run
+outside that sandbox passed as recorded above; none was a project failure. The local `.venv`'s
+dependency-owned console scripts still have T064-R1's stale shebang, so validation used its
+working interpreter as `python -m ...` with this checkout's `src` on `PYTHONPATH`; the import
+resolved to this checkout.
+
+### Final disposition
+
+T-067 and T-070 are **Approved at `1e9694c`**. T-068 is **Blocked** on its already-disclosed
+runner/frozen questions.
+
+T-066 and T-069 are **Changes requested** on T066-R1. The focused correction should cover the
+launcher/interpreter distinction, its raw-Popen siblings, and T-069's deterministic predecessor
+sequence; T-066 will still need actual Windows workflow and frozen evidence afterward.
+
+T-040/T-060's manual Windows behavior evidence is accepted, but the tasks remain **Changes
+requested/Blocked on COORD-R5** because their own current-truth criterion is unmet. Their ordinary
+Medium review budget was already exhausted before this evidence filing; do not start another
+automatic loop without the maintainer either authorizing a documentation-only focused pass or
+carrying COORD-R5 into a named coordination task.
+
+The combined boundary is **Changes requested** on WIN-R1 and WIN-R2. WIN-R3 and GIT-R2 are
+non-blocking cleanup, but they should travel with the same local-runner hardening work.

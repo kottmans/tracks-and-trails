@@ -224,11 +224,24 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v7
-        with:
-          python-version: "3.14"
-          cache: pip
-          cache-dependency-path: pyproject.toml
+      # **No `actions/setup-python` here, and that is the point.**
+      #
+      # A GitHub-hosted runner is discarded after every job, so an action that installs software
+      # costs nothing. This runner is a machine somebody uses, and the difference is not
+      # academic: the first run of this job on `STARBASE` launched the real Python installer,
+      # which found the existing 3.14.6, opened an interactive Modify/Repair dialog on the
+      # desktop, and deadlocked against `msiexec` in session 0 for the full 15-minute timeout.
+      # It left the machine's interpreter half-removed — `python.exe` gone from a directory that
+      # still had `Lib` and `Scripts`. Recovering it took a forced reinstall.
+      #
+      # So this job uses the Python already on the machine. `docs/WINDOWS_VERIFICATION.md`
+      # records the required version, and the check below fails loudly if it is not there —
+      # which is the right failure, because a self-hosted runner should never be *provisioning*
+      # itself as a side effect of running a test.
+      - name: Check the machine's Python
+        run: |
+          python --version
+          python -c "import sys; assert sys.version_info[:2] == (3, 14), sys.version"
 
       # T-066: the suite runs in a virtualenv, because `docs/DEVELOPMENT.md` tells developers
       # to use one and a gate that measures a different environment is measuring the wrong

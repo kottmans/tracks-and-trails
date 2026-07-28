@@ -182,6 +182,29 @@ A `.env` file in the runner root points `TEMP`/`TMP` at `C:\actions-runner\_temp
 the elevated runner and an unelevated manual run share `%LOCALAPPDATA%\Temp\pytest-of-<user>`,
 and whichever comes second fails with `PermissionError: [WinError 5]` on hundreds of tests.
 
+### A self-hosted runner is a machine, not a container
+
+This is the trap that cost the most, and it is not obvious from GitHub's documentation, because
+their runners make it invisible: **a hosted runner is discarded after every job, so an action that
+installs software is free. This one is a computer somebody uses.**
+
+The first run of the `windows desktop` job on `STARBASE` included `actions/setup-python@v7`. On a
+hosted runner that is silent and unattended. Here it downloaded `python-3.14.6-amd64.exe`, found
+the machine's existing 3.14.6, and opened an **interactive Modify/Repair dialog** — then
+deadlocked against `msiexec` in session 0. Three installer processes sat in session 2 with
+unchanging memory for the full 15-minute timeout, with no window visible on the desktop, and left
+`C:\Users\<user>\AppData\Local\Programs\Python\Python314` without its `python.exe` while
+`Lib`, `Scripts` and `DLLs` remained. The virtualenv then could not start at all: its launcher
+resolves the base interpreter by absolute path.
+
+Recovery was `taskkill /F /IM msiexec.exe`, then
+`winget install --id Python.Python.3.14 -e --force`, then confirming the venv resolved again.
+
+**So the job installs nothing.** It uses the Python already on the machine and asserts the version
+it needs, failing loudly if that is wrong. Provisioning is a setup step a human does once, not a
+side effect of running a test. Before adding any action to a self-hosted job, ask what it writes
+outside the workspace.
+
 **If the machine is off or logged out, the job queues rather than fails.** `timeout-minutes`
 bounds that. It is a real trade: this job is now as available as one desktop machine is.
 
