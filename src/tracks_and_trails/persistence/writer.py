@@ -220,6 +220,23 @@ class QueueWriter(QObject):
     def is_running(self) -> bool:
         return self._thread.isRunning()
 
+    def wait_for_close(self, timeout_ms: int = 5000) -> bool:
+        """Block until the writer thread has finished. **Only on the way out of the process.**
+
+        This is the one wait in this class, and it exists because the alternative is worse:
+        Qt *aborts the process* when a `QThread` is destroyed while still running, so a quit that
+        did not go through the shutdown lifecycle takes the application down with `SIGABRT`
+        instead of an exit code. `T-036` measured that as `exit -6` and a `QThread: Destroyed
+        while thread 'queue-writer' is still running` on stderr.
+
+        `T013-R2` rejected blocking the GUI thread during teardown, and this does not contradict
+        it: that ruling is about a *lifecycle* being implemented as a wait, which is why
+        `close()` still returns immediately and reports through `closed`. This runs from
+        `aboutToQuit`, when the event loop is ending and there is no interaction left to block —
+        and it is bounded, so a wedged writer costs seconds rather than the process.
+        """
+        return bool(self._thread.wait(timeout_ms))
+
 
 def open_connection_factory(path: Any) -> ConnectionFactory:
     """A factory that opens (and migrates) the database at `path`, on whichever thread calls it.

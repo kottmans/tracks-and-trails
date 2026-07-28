@@ -18,17 +18,19 @@ state at all; see `T-007`'s record, where that gap is reported rather than decid
 """
 
 import tomllib
+from collections.abc import Callable
 from pathlib import Path
 from typing import Final
 
 from platformdirs import user_config_dir
-from PySide6.QtCore import QRect, QSize
+from PySide6.QtCore import QRect, QSize, Qt, Signal
 from PySide6.QtGui import QAction, QCloseEvent, QGuiApplication, QIcon, QKeySequence
-from PySide6.QtWidgets import QMainWindow, QMessageBox, QWidget
+from PySide6.QtWidgets import QLabel, QMainWindow, QMessageBox, QWidget
 
 from tracks_and_trails import __version__
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
+from tracks_and_trails.ui.job_detail import JobProgressView, JobReader, build_progress_view
 
 APP_NAME: Final = "Tracks & Trails"
 
@@ -194,7 +196,13 @@ def save_geometry(window: QWidget, path: Path | None = None) -> None:
 
 
 class MainWindow(QMainWindow):
-    """The shell window. Owns the menu bar and its own geometry."""
+    """The shell window. Owns the menu bar, its own geometry, and the view of the live job."""
+
+    #: The user asked to close. **A request, not an event** — `T-036` connects this to the
+    #: shutdown lifecycle, which cancels the running job, reaps its process tree and closes the
+    #: database before anything quits. The window hides immediately either way; what waits is
+    #: the process, and `AGENTS.md`-approved `T013-R2` is why none of it happens on this thread.
+    closing = Signal()
 
     def __init__(
         self,
@@ -203,9 +211,14 @@ class MainWindow(QMainWindow):
         manager: DownloadManager | None = None,
         jobs: JobSink | None = None,
         output_directory: Path | None = None,
+        job_reader: JobReader | None = None,
+        retry: Callable[[str], None] | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
+        self._job_reader = job_reader
+        self._retry = retry
+        self._view: JobProgressView | None = None
         #: Supplied together or not at all: the add-URL dialog needs all three, and a window
         #: holding two of them could only offer an action that fails. `T-036` passes them.
         self._manager = manager
@@ -215,7 +228,60 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon())
         self._build_menus()
+        self._environment = QLabel(self)
+        self._environment.setObjectName("environmentSummary")
+        self._environment.setAccessibleName("Environment")
+        self._environment.setTextFormat(Qt.TextFormat.PlainText)
+        self.statusBar().addPermanentWidget(self._environment)
         self._restore_geometry()
+
+    @property
+    def watched_job_id(self) -> str | None:
+        """The job the progress view is showing, if a view is installed."""
+        return self._view.job_id if self._view is not None else None
+
+    @property
+    def progress_view(self) -> JobProgressView | None:
+        return self._view
+
+    def watch(self, job_id: str) -> JobProgressView:
+        """Show `job_id`'s progress, replacing whatever was shown before (`T-036`, `REQ-014`).
+
+        **The old view is detached, not merely dropped.** `deleteLater` is asynchronous, so a
+        replaced view would answer manager signals for however many event loop turns it took to
+        die — a second listener rather than a leak, and a second listener is how one job becomes
+        two of everything the UI derives from a signal.
+        """
+        if self._job_reader is None:
+            raise RuntimeError(
+                "this window has no job reader, so it cannot show progress; composition "
+                "supplies one (T-036)"
+            )
+        if self._view is not None:
+            if self._view.job_id == job_id:
+                return self._view
+            self._view.detach()
+            self._view.setParent(None)
+            self._view.deleteLater()
+        assert self._manager is not None
+        self._view = build_progress_view(self._manager, self._job_reader, job_id, self._retry)
+        self.setCentralWidget(self._view)
+        return self._view
+
+    def report_environment(self, summary: str) -> None:
+        """State what this installation can and cannot do, on screen (`REQ-024`).
+
+        In the status bar rather than a dialog: a missing ffmpeg disables features, it does not
+        stop the application, and a modal on every start for a condition the user may have chosen
+        is how people learn to dismiss dialogs without reading them. It is a permanent widget
+        rather than a timed message, because the fact does not stop being true after five seconds.
+        """
+        self._environment.setText(summary)
+        self._environment.setAccessibleName("Environment")
+        self._environment.setToolTip(summary)
+
+    def environment_text(self) -> str:
+        return self._environment.text()
 
     @property
     def can_add_urls(self) -> bool:
@@ -330,6 +396,11 @@ class MainWindow(QMainWindow):
 
         Runs for every close path — the menu item, the window button, or `close()` from a
         test — so no exit route silently loses the position.
+
+        **And announces the close** (`T-036`). Quitting here would be quitting while a worker is
+        still running and the database still open; `closing` starts the lifecycle that stops
+        those in order, and the application exits when it reports itself finished.
         """
         save_geometry(self, self._geometry_file)
+        self.closing.emit()
         super().closeEvent(event)

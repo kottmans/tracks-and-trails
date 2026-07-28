@@ -1,0 +1,590 @@
+"""The assembled application (`T-036`).
+
+**Nothing here builds a component.** Every test calls `app.compose()` and then drives what it
+returns, because this task exists for the failure that no component test can see: every Phase 1
+piece passing while the application still opens an empty window. A test that constructed a
+manager and a store and wired them itself would be asserting on its own wiring.
+
+The database is real, the writer thread is real, the worker is a real spawned process
+(`ai/TESTING.md` §6). What varies is only which program the child runs.
+
+## Wait on the UI, never on the store
+
+`T-013`'s ordering is *persist, then signal*, and `ARC-005` made the persisting happen on another
+thread. So the writer commits a row and **then** posts a signal to the GUI thread, and in between
+`store.get()` answers the new state while every widget still shows the old one. That gap is the
+guarantee working, not a race.
+
+Three tests in this file were written against the store first and each of them observed the gap:
+one read `COMPLETED` from disk and asserted on a view that had not been told, another decided a
+probe had failed before the manager announced it. A test about the assembled *application* waits
+on what the application shows. `store.get()` is for asserting agreement afterwards.
+
+`is_idle` has the mirror-image trap: it is true before a session starts as well as after one ends,
+so spinning on it returns instantly and proves nothing.
+"""
+
+import sqlite3
+import time
+from collections.abc import Callable, Iterator
+from pathlib import Path
+from typing import Any
+
+import pytest
+from PySide6.QtCore import QMetaMethod, QObject
+from PySide6.QtWidgets import QApplication
+
+from tracks_and_trails import app as application
+from tracks_and_trails.core.errors import ErrorKind
+from tracks_and_trails.core.job_state import JobStatus
+from tracks_and_trails.core.models import DownloadRequest
+from tracks_and_trails.downloader.protocol import (
+    Failed,
+    Probed,
+    Progress,
+    SessionKind,
+    Stage,
+    Succeeded,
+    WorkerFinished,
+)
+from tracks_and_trails.persistence import db
+from tracks_and_trails.persistence.repositories import JobRepository
+
+# --- children the composed application spawns -------------------------------------------------
+
+
+def child_probing_then_waiting(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **kwargs: Any
+) -> None:
+    """A probe that answers, then a download that runs until it is cancelled.
+
+    One function for both session kinds because the composed application chooses the kind, not
+    the test — which is the point of driving the assembled thing.
+    """
+    from tracks_and_trails.core.models import MediaInfo
+
+    if kind is SessionKind.PROBE:
+        queue.put(
+            Probed(
+                job_id=job_id,
+                media=MediaInfo(
+                    url=request.url,
+                    title="A video that exists",
+                    uploader="Somebody",
+                    duration_seconds=12,
+                ),
+            )
+        )
+        queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+        return
+
+    cancel = kwargs.get("cancel")
+    sent = 0
+    while cancel is None or not cancel.is_set():
+        sent += 1024
+        queue.put(
+            Progress(
+                job_id=job_id,
+                stage=Stage.DOWNLOADING_VIDEO,
+                downloaded_bytes=sent,
+                total_bytes=1024 * 100,
+            )
+        )
+        time.sleep(0.02)
+    queue.put(Failed(job_id=job_id, kind=ErrorKind.CANCELLED, message="Stopped on request."))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+
+
+def child_probing_then_succeeding(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    from tracks_and_trails.core.models import MediaInfo
+
+    if kind is SessionKind.PROBE:
+        queue.put(
+            Probed(
+                job_id=job_id,
+                media=MediaInfo(
+                    url=request.url,
+                    title="A video that exists",
+                ),
+            )
+        )
+        queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+        return
+
+    output = Path(request.output_directory) / "A video that exists.mp4"
+    output.write_bytes(b"x" * 2048)
+    queue.put(
+        Progress(
+            job_id=job_id, stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=1024, total_bytes=2048
+        )
+    )
+    queue.put(Succeeded(job_id=job_id, output_path=str(output), total_bytes=2048))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+
+
+def child_failing_to_extract(
+    kind: SessionKind, job_id: str, _request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    queue.put(
+        Failed(
+            job_id=job_id,
+            kind=ErrorKind.NETWORK,
+            message="ERROR: Unable to download webpage: <urlopen error timed out>",
+        )
+    )
+    queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+
+
+# --- fixtures ---------------------------------------------------------------------------------
+
+
+@pytest.fixture
+def composed(
+    qapp: QApplication, tmp_path: Path, spin: Callable[..., bool]
+) -> Iterator[Callable[..., application.Composition]]:
+    """Build composed applications and take each one down through its own shutdown lifecycle.
+
+    Teardown drives the real thing rather than closing handles behind its back: a test that left
+    a worker running would have it attributed to whichever test ran next, and one that closed the
+    connection itself would prove nothing about the order `T-036` exists to establish.
+    """
+    built: list[application.Composition] = []
+
+    def build(**overrides: Any) -> application.Composition:
+        overrides.setdefault("database", tmp_path / "queue.db")
+        overrides.setdefault("output_directory", tmp_path / "downloads")
+        overrides.setdefault("geometry_file", tmp_path / "window.toml")
+        composition = application.compose(qapp, **overrides)
+        built.append(composition)
+        return composition
+
+    yield build
+
+    for composition in built:
+        composition.shutdown.begin()
+    for composition in built:
+        assert spin(lambda c=composition: c.shutdown.finished, timeout=60), (
+            "a composed application never finished shutting down"
+        )
+
+
+def connection_count(sender: QObject, signal_name: str) -> int:
+    """How many slots are connected to `signal_name` on `sender`.
+
+    Asked of Qt rather than of our own bookkeeping (`ai/TESTING.md` §13): a count this code kept
+    would agree with this code. `receivers()` wants the `SIGNAL()`-encoded signature, which the
+    meta-object supplies.
+    """
+    meta = sender.metaObject()
+    for index in range(meta.methodCount()):
+        method = meta.method(index)
+        if (
+            method.methodType() == QMetaMethod.MethodType.Signal
+            and bytes(method.name().data()).decode("ascii") == signal_name
+        ):
+            signature = bytes(method.methodSignature().data()).decode("ascii")
+            return int(sender.receivers("2" + signature))
+    raise LookupError(f"{sender} has no signal named {signal_name!r}")
+
+
+def type_urls(dialog: Any, text: str) -> None:
+    dialog._urls.setPlainText(text)
+
+
+# --- 1. the assembled path (`REQ-001`, `REQ-012`) ---------------------------------------------
+
+
+def test_pasting_a_url_into_the_assembled_application_reaches_the_database(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """`T-036`'s first acceptance criterion, and the failure the task was filed for.
+
+    Every component of this path had passing tests while `app.py` built a window with no manager,
+    no job store and no output directory — so File → Add URLs… was disabled and none of it was
+    reachable. This drives the *composed* application: open the real dialog from the real window,
+    type, add, and read the row back out of SQLite through a connection the application does not
+    own.
+    """
+    composition = composed(entry_point=child_probing_then_waiting)
+    assert composition.window.can_add_urls, (
+        "the window was built without everything the dialog needs; that is the defect T-036 "
+        "exists to prevent"
+    )
+
+    dialog = composition.window.open_add_dialog()
+    type_urls(dialog, "https://composed.invalid/one\nhttps://composed.invalid/two")
+    dialog.add_to_queue()
+    assert spin(lambda: len(dialog.queued_job_ids) == 2, timeout=30), "the paste never persisted"
+
+    # Read through a *different* connection: the point is that the rows are on disk, not that the
+    # application remembers writing them.
+    reader = sqlite3.connect(tmp_path / "queue.db")
+    try:
+        urls = [row[0] for row in reader.execute("SELECT url FROM jobs ORDER BY queue_position")]
+    finally:
+        reader.close()
+    assert urls == ["https://composed.invalid/one", "https://composed.invalid/two"]
+
+
+def test_the_composed_application_downloads_a_file_and_shows_it_finished(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """Probe, queue, download, complete — through the assembled graph and nothing else.
+
+    The progress view appears because the manager moved the job, not because a test built one:
+    `T-036` connects `job_changed` to the window, and that connection is what makes the engine
+    visible to a person at all.
+    """
+    composition = composed(entry_point=child_probing_then_succeeding)
+    dialog = composition.window.open_add_dialog()
+    type_urls(dialog, "https://composed.invalid/movie")
+    dialog.probe()
+
+    assert spin(lambda: dialog.media is not None, timeout=60), "the probe never reported"
+    assert dialog.media is not None and dialog.media.title == "A video that exists"
+    assert composition.window.watched_job_id is not None, (
+        "the window never showed the job the manager was working on"
+    )
+
+    # The probe's *session* outlives its result: the manager releases it on a later tick. Adding
+    # before then is refused by the pool of one, which the dialog reports rather than raises.
+    assert spin(lambda: composition.manager.is_idle, timeout=60), "the probe session never ended"
+    dialog.add_to_queue()
+    assert "did not start" not in dialog.status_text(), dialog.status_text()
+    # **Waited on the view, not on the store**, and the difference is `T-013`'s ordering rather
+    # than a detail. The writer thread commits the row and *then* signals the GUI thread, so
+    # `store.get()` answers `COMPLETED` from disk while `job_changed` is still queued. The
+    # database leading the UI is exactly the guarantee; a test that polled the store would be
+    # asserting on the window in the gap between the two, and this one did.
+    view = composition.window.progress_view
+    assert view is not None
+    assert spin(lambda: view.status is JobStatus.COMPLETED, timeout=60), (
+        f"the download never completed; the view says {view.status.value}"
+    )
+
+    job_id = dialog.queued_job_ids[0]
+    job = composition.store.get(job_id)
+    assert job is not None and job.output_path is not None
+    assert Path(job.output_path).exists(), "the file the queue claims to have downloaded is absent"
+
+    assert view.job_id == job_id
+    assert not view.can_cancel, "a finished job still offers to be cancelled"
+
+
+# --- 2. the wiring itself ---------------------------------------------------------------------
+
+
+def test_the_manager_holds_the_store_composition_built(
+    composed: Callable[..., application.Composition],
+) -> None:
+    """Asserted by identity, so a second store cannot quietly service a second queue.
+
+    `T-036`'s criterion is that *no component is constructed twice*. Two stores over one database
+    would each hold their own in-flight revisions, and `ARC-005`'s ordering guarantee is a
+    property of there being one writer — not of there being one writer per object.
+    """
+    composition = composed()
+
+    assert composition.manager._repository is composition.store
+    assert composition.window._manager is composition.manager
+    assert composition.window._jobs is composition.store
+    assert composition.window._job_reader is composition.store
+
+
+def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
+    composed: Callable[..., application.Composition],
+) -> None:
+    """A signal connected twice is how one queued job becomes two of everything downstream.
+
+    Counted through Qt's own `receivers()`, not through bookkeeping this code keeps, because
+    bookkeeping this code keeps would agree with this code (`ai/TESTING.md` §13).
+    """
+    composition = composed()
+    manager = composition.manager
+
+    assert connection_count(manager, "job_changed") == 1, (
+        "job_changed is connected more than once; composition connects it, and each widget that "
+        "wants it connects its own"
+    )
+
+    dialog = composition.window.open_add_dialog()
+    # The dialog adds its own four. Named individually rather than counted in bulk, so a signal
+    # gaining a second listener is reported as itself.
+    for name, expected in (
+        ("media_probed", 1),
+        ("job_failed", 1),
+        ("persistence_failed", 1),
+        ("start_rejected", 1),
+        ("job_changed", 2),
+    ):
+        assert connection_count(manager, name) == expected, (
+            f"{name} has {connection_count(manager, name)} connections, expected {expected}"
+        )
+    dialog.close()
+
+
+def test_replacing_the_watched_job_leaves_no_second_listener(
+    composed: Callable[..., application.Composition],
+) -> None:
+    """`deleteLater` is asynchronous, so a replaced view answers signals until it dies.
+
+    With a pool of one that is not a leak; it is a second listener, and a second listener is
+    exactly what the criterion above forbids. `JobProgressView.detach` is what makes replacement
+    deterministic rather than dependent on how many event-loop turns happen to pass.
+    """
+    composition = composed()
+    manager = composition.manager
+    before = connection_count(manager, "progress")
+
+    composition.window.watch("job-a")
+    with_one = connection_count(manager, "progress")
+    assert with_one == before + 1
+
+    composition.window.watch("job-b")
+    assert connection_count(manager, "progress") == with_one, (
+        "the replaced view is still listening; two views would render one job twice"
+    )
+    assert composition.window.watched_job_id == "job-b"
+
+
+def test_watching_the_same_job_twice_does_not_rebuild_the_view(
+    composed: Callable[..., application.Composition],
+) -> None:
+    """`job_changed` fires per transition, and a job passes through several."""
+    composition = composed()
+
+    first = composition.window.watch("job-a")
+    assert composition.window.watch("job-a") is first, (
+        "each transition of one job rebuilt its view, discarding what it was showing"
+    )
+
+
+# --- 3. the environment (`REQ-024`) -----------------------------------------------------------
+
+
+def test_startup_states_what_this_installation_cannot_do(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """`REQ-024`: report the ffmpeg state and name what will not work without it.
+
+    Driven with an override that does not exist, because that is the case with something to say.
+    A missing ffmpeg disables features; it does not stop the application, and the window has to
+    say so where a user will see it rather than in a log they will not read.
+    """
+    composition = composed(ffmpeg_override=tmp_path / "no-such-ffmpeg")
+
+    assert not composition.ffmpeg.available
+    summary = composition.window.environment_text()
+    assert "ffmpeg was not found" in summary, f"the window says {summary!r}"
+    assert "Unavailable:" in summary, (
+        "the report named no features, so a user learns that something is wrong and not what"
+    )
+
+
+def test_a_usable_ffmpeg_is_reported_as_usable_and_reaches_the_manager(
+    composed: Callable[..., application.Composition],
+    tmp_path: Path,
+) -> None:
+    """The path is *passed on*, not merely found — the defect class this project met five times.
+
+    `ai/STATUS.md` records it: the resolved yt-dlp version never left the worker, ffmpeg was
+    located and never passed to the library. Locating it here and dropping it would look correct
+    and produce no error.
+    """
+    fake = tmp_path / "ffmpeg"
+    fake.write_text("#!/bin/sh\nexit 0\n")
+    fake.chmod(0o755)
+    composition = composed(ffmpeg_override=fake)
+
+    assert composition.ffmpeg.available
+    assert "all post-processing features are available" in composition.window.environment_text()
+    assert composition.manager._ffmpeg_override == composition.ffmpeg.path, (
+        "ffmpeg was located and then not handed to the manager, so no worker would ever see it"
+    )
+
+
+# --- 4. shutdown (`T013-R2`, `T038-R2`, `ARC-005`) --------------------------------------------
+
+
+def test_closing_the_window_with_a_download_running_stops_everything_in_order(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """The whole of `T-036`'s shutdown criterion, driven from the window's own close.
+
+    Order matters and each step is asynchronous: the manager stops the worker and reaps its tree,
+    the writer then finishes the transitions the manager queued on its way down, and only then is
+    the database closed. Quitting earlier leaves an orphaned process or loses a row.
+    """
+    composition = composed(entry_point=child_probing_then_waiting)
+    dialog = composition.window.open_add_dialog()
+    type_urls(dialog, "https://composed.invalid/long")
+    dialog.probe()
+    assert spin(lambda: dialog.media is not None, timeout=60)
+    assert spin(lambda: composition.manager.is_idle, timeout=60), "the probe session never ended"
+    dialog.add_to_queue()
+    assert spin(lambda: composition.manager.active_job_ids() != (), timeout=60), (
+        "no download was running, so this proves nothing about closing with one"
+    )
+    job_id = composition.manager.active_job_ids()[0]
+
+    # Qt's default is to quit the instant the last window closes, which is step zero of the wrong
+    # order: the worker is still alive and the database still open. Asserted structurally because
+    # its absence has no in-process consequence — the process would simply be gone, and a test
+    # cannot observe its own exit.
+    assert composition.app.quitOnLastWindowClosed() is False, (
+        "Qt will quit when the window closes, before the worker is stopped or the database "
+        "is closed"
+    )
+
+    composition.window.close()
+
+    assert composition.shutdown.begun, "closing the window did not begin the shutdown lifecycle"
+    assert spin(lambda: composition.shutdown.finished, timeout=60), "shutdown never finished"
+    assert composition.manager.is_idle
+    assert not composition.writer.is_running, "the writer thread outlived the shutdown"
+
+    # The database is closed, and closed *after* the writes: a fresh reader sees the cancellation.
+    with pytest.raises(sqlite3.ProgrammingError):
+        composition.connection.execute("SELECT 1")
+    reader = db.connect(tmp_path / "queue.db")
+    try:
+        stored = JobRepository(reader).get(job_id)
+    finally:
+        reader.close()
+    assert stored is not None
+    assert stored.status is JobStatus.CANCELLED, (
+        f"the job was left {stored.status.value} on disk; closing the window cancels what is "
+        "running, and the writer finishes before the connection closes"
+    )
+
+
+def test_shutdown_is_idempotent_and_does_not_quit_on_an_ordinary_idle(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+) -> None:
+    """`idle` is emitted whenever the last session is released, not only while shutting down.
+
+    Closing the writer on an ordinary idle would end persistence while the application was still
+    running — the queue would keep working and nothing would ever reach disk again.
+    """
+    composition = composed(entry_point=child_probing_then_succeeding)
+    dialog = composition.window.open_add_dialog()
+    type_urls(dialog, "https://composed.invalid/short")
+    dialog.probe()
+    assert spin(lambda: dialog.media is not None, timeout=60)
+    assert spin(lambda: composition.manager.is_idle, timeout=60), "the probe never finished"
+
+    assert not composition.shutdown.finished, "an ordinary idle closed the writer"
+
+    # **Asserted by writing, not by asking whether the thread is alive.** `close()` is
+    # asynchronous, so `is_running` can still be true for a moment after an early close — a check
+    # that samples it proves nothing, and a mutation closing the writer on every idle survived
+    # exactly that check. What must still be true is that persistence *works*.
+    second = composition.window.open_add_dialog()
+    type_urls(second, "https://composed.invalid/after-idle")
+    second.add_to_queue()
+    assert spin(lambda: len(second.queued_job_ids) == 1, timeout=60), (
+        "nothing could be queued after an ordinary idle; the writer was closed while the "
+        "application was still running"
+    )
+    second.close()
+
+    composition.shutdown.begin()
+    composition.shutdown.begin()
+    assert spin(lambda: composition.shutdown.finished, timeout=60)
+
+
+# --- 5. cold start (`NFR-002`) ----------------------------------------------------------------
+
+
+def test_cold_start_with_the_whole_graph_fits_the_budget(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    record_property: Callable[[str, object], None],
+) -> None:
+    """`NFR-002`: three seconds, measured with everything constructed.
+
+    `T-007` measured an empty window at 0.178 s and said so; this measures the graph that window
+    now hangs off — a migrated database, a writer thread, a manager, and the window itself.
+    Recorded as a property rather than asserted alone, so the number is in the run's output when
+    it starts drifting toward the budget rather than only when it crosses it.
+    """
+    started = time.perf_counter()
+    composition = application.compose(
+        qapp,
+        database=tmp_path / "cold.db",
+        output_directory=tmp_path / "downloads",
+        geometry_file=tmp_path / "window.toml",
+    )
+    composition.window.show()
+    qapp.processEvents()
+    elapsed = time.perf_counter() - started
+
+    record_property("cold_start_seconds", round(elapsed, 3))
+    try:
+        assert elapsed < 3.0, (
+            f"cold start took {elapsed:.3f}s against NFR-002's 3s budget, with the full graph "
+            "constructed"
+        )
+    finally:
+        composition.window.close()
+        assert spin(lambda: composition.shutdown.finished, timeout=60)
+
+
+# --- 6. retry is composition's, and it is a write ---------------------------------------------
+
+
+def test_retrying_a_failed_job_re_queues_it_and_starts_it_again(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+) -> None:
+    """The seam `T-017` left open: the widget reports `retry_requested`, this performs it.
+
+    `ui/` holds no writer (`ARCHITECTURE.md` §3), so a retry that the view performed itself would
+    be the layering violation `T-005` fails the suite for. What it costs is that nothing retried
+    anything until composition existed — which is exactly the shape of gap `T-036` was filed for.
+    """
+    composition = composed(entry_point=child_failing_to_extract)
+    dialog = composition.window.open_add_dialog()
+    type_urls(dialog, "https://composed.invalid/gone")
+    dialog.probe()
+
+    # Waited on the view, per the module docstring: the row is `FAILED` on disk before the
+    # manager announces it, and a retry control that exists only after the announcement cannot
+    # be asserted on before it. Waiting on `is_idle` here would be worse still — it is true
+    # before the probe starts.
+    assert spin(
+        lambda: (
+            composition.window.progress_view is not None
+            and composition.window.progress_view.status is JobStatus.FAILED
+        ),
+        timeout=60,
+    ), "the probe never failed, so there is nothing to retry"
+
+    view = composition.window.progress_view
+    assert view is not None
+    failed_id = view.job_id
+    assert view.can_retry, (
+        f"a network failure is retryable and the control is absent: failure={view.failure}"
+    )
+    failed = composition.store.get(failed_id)
+    assert failed is not None and failed.status is JobStatus.FAILED
+    view.retry_requested.emit(failed_id)
+
+    # Whether it *starts* depends on the pool of one, and that is not what a retry promises:
+    # `FAILED → QUEUED` is the durable part. A retry that could not start logs it and leaves the
+    # job queued, rather than raising out of the write callback it runs from.
+    assert spin(
+        lambda: (composition.store.get(failed_id) or failed).status is not JobStatus.FAILED,
+        timeout=60,
+    ), "the retry never moved the job out of failed"

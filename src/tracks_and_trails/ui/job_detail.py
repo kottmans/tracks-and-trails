@@ -78,6 +78,7 @@ shown, and nothing signalled by colour.
 """
 
 from collections.abc import Callable
+from contextlib import suppress
 from typing import Final, Protocol
 
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -350,6 +351,28 @@ class JobProgressView(QWidget):
         self._manager.job_changed.connect(self._on_job_changed)
         self._manager.job_failed.connect(self._on_job_failed)
         self._manager.job_succeeded.connect(self._on_job_succeeded)
+
+    def detach(self) -> None:
+        """Stop listening to the manager. **Called before a view is replaced** (`T-036`).
+
+        Qt drops a connection when its receiver is destroyed, but `deleteLater` is asynchronous,
+        so a view swapped out mid-download would go on answering signals for however many event
+        loop turns it took to die. With a pool of one that is not a leak, it is a *second*
+        listener — and `T-036` has to assert that every manager signal the UI needs has exactly
+        one connection, because a signal connected twice is how one queued job becomes two rows.
+
+        Safe to call more than once: a disconnect of something already disconnected raises, and
+        being asked twice to stop listening is not an error worth propagating out of a slot.
+        """
+        for signal, slot in (
+            (self._manager.progress, self._on_progress),
+            (self._manager.job_changed, self._on_job_changed),
+            (self._manager.job_failed, self._on_job_failed),
+            (self._manager.job_succeeded, self._on_job_succeeded),
+        ):
+            with suppress(RuntimeError):
+                signal.disconnect(slot)
+        self._repaint.stop()
 
     # --- queries used by callers and tests -----------------------------------------------
 

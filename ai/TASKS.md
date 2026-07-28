@@ -141,6 +141,120 @@ a finished job cannot observe what opening one does, however many cases it drive
 
 ---
 
+### T-036 — Application composition and wiring
+
+**Status:** **In Review — implemented 2026-07-28.** The object graph is built in one place,
+`app.compose()`, which returns it so the wiring criteria can be asserted at all. Eight mutations,
+eight killed. See **Evidence**.
+**Owner:** Implementer
+**Priority:** **High** — without it every component can pass while the product still opens an
+empty window
+**Phase:** Phase 1
+**Depends on:** `T-013`, `T-014`, `T-015`, `T-016`, `T-017`
+**Relevant context:** `ARCHITECTURE.md` §3, §4, §8; `NFR-001`, `NFR-002`, `REQ-024`
+**Affected surfaces:** `app.py`, `ui/main_window.py`, `tests/ui/`, `tests/integration/`
+**Risk:** **High** — the only task that can fail while every other task is green
+**Review base:** the last of its dependencies' merge commits
+
+#### Scope
+
+**Filed after review: nothing owned this.** `app.py`'s own docstring says `T-013` adds the
+download manager wiring, but `T-013` neither claims `app.py` nor proves the assembled path. So
+every Phase 1 task could pass in isolation while the application still did nothing — which is
+the failure the phase exists to prevent.
+
+Compose the object graph in one place: construct the repository, the manager, the result pump
+and the window; inject the concrete `JobRepository` into the manager through the protocol seam
+`T-013` defines; connect the add-URL dialog and the progress view to manager signals; and
+report the ffmpeg state `T-035` supplies at startup (`REQ-024`).
+
+Also own orderly shutdown: closing the window stops the pump on its sentinel, cancels any
+running job, reaps its process tree, and closes the database — in that order.
+
+#### Acceptance criteria
+
+- A test drives the **assembled application** — not components — from paste through to a queued
+  job, using `T-016`'s dialog and asserting the job reaches the repository
+- Wiring is asserted structurally too: the manager holds the concrete repository, and every
+  manager signal the UI needs has exactly one connection. A signal connected twice, producing
+  duplicate rows, must fail
+- Startup reports the ffmpeg state and names what will not work without it (`REQ-024`)
+- Closing the window with a job running exits with code 0, leaves no process in the tree, and
+  leaves the database consistent
+- Cold start stays inside `NFR-002`'s 3-second budget with the full graph constructed, and the
+  measurement is recorded — `T-007` measured an empty window
+- No component is constructed twice, asserted by identity, so a second manager cannot quietly
+  service a second queue
+
+#### Out of scope
+
+- Any new behavior; this task connects what the others built
+- The single-instance guard — `A-004`, Phase 2
+
+#### Evidence, 2026-07-28
+
+**`app.compose()` builds the graph and returns it.** A `Composition` value rather than locals,
+because three of the acceptance criteria — the manager holds the concrete repository, no component
+is constructed twice, every manager signal the UI needs has exactly one connection — are claims
+about an object graph, and a graph nothing can reach is a graph nothing can check.
+
+**Shutdown is a three-step lifecycle, and the order is the point.** `DownloadManager.shutdown()`
+cancels the job and reaps its process tree, reporting `idle` when the last session is released
+*and* the worker-log listener has drained (`T038-R2`); only then does `QueueWriter.close()` run,
+because the manager's final transitions are still being written when it goes idle; only then is
+the read connection closed. `setQuitOnLastWindowClosed(False)` is what makes the order possible —
+Qt's default is to quit the moment the window disappears, which is step zero of the wrong sequence.
+
+**Three seams `T-016`, `T-017` and `T-059` left open are now connected:** `start_rejected` reaches
+the dialog, `retry_requested` reaches a composition-owned re-queue, and the window shows a
+`JobProgressView` for whichever job the manager is working on.
+
+**Two real defects this task found, both invisible to every component test:**
+
+- **A retry raised out of a write callback.** `manager.start()` refuses when the pool of one is
+  busy, and composition called it from the writer's `done` — so the refusal escaped into a Qt slot
+  instead of reaching whoever pressed the button. `FAILED → QUEUED` is what a retry promises; a
+  retry that cannot start now logs it and leaves the job durably queued.
+- **A quit that skipped the lifecycle aborted the process.** Qt terminates with `SIGABRT` when a
+  running `QThread` is destroyed, so `T-007`'s launch test — which quits from a timer, never
+  touching the window — exited **-6** with `QThread: Destroyed while thread 'queue-writer' is
+  still running` on stderr. `aboutToQuit` now runs a bounded last-resort stop. It cannot reap a
+  worker, because that needs timer ticks and the loop is ending; that limitation is recorded at
+  the method rather than left to be discovered.
+
+**Three tests were written against the store and each observed the same gap**, which is worth
+more than the fix: `T-013`'s ordering is *persist, then signal*, and `ARC-005` moved the persisting
+to another thread — so the writer commits a row and **then** posts to the GUI thread, and in
+between `store.get()` answers the new state while every widget still shows the old one. A test of
+the assembled application waits on what the application *shows*. The module docstring says so, and
+notes `is_idle`'s mirror-image trap: it is true before a session starts as well as after one ends,
+so spinning on it returns instantly and proves nothing — which one test did, reporting "nothing
+failed" for a probe that had not yet been asked to run.
+
+**Mutations run, all killed:** the window built without a manager — the `T-036` defect itself ·
+ffmpeg located and never handed to the manager · a replaced view dropped without detaching · the
+database closed before the writer finished · the writer closed on any idle rather than during
+shutdown · closing the window not beginning the lifecycle · Qt quitting with the last window ·
+the environment found and never reported.
+
+**Two of those survived their first run and both produced better tests.** Closing the writer on
+every idle survived a check that sampled `is_running` — `close()` is asynchronous, so the thread
+is briefly alive either way; the test now *writes another job* after an ordinary idle, which is
+the consequence that matters. And removing `setQuitOnLastWindowClosed(False)` has no in-process
+consequence at all — a test cannot observe its own exit — so that one is asserted structurally,
+with the reason recorded.
+
+**Cold start:** measured with the whole graph constructed and recorded as a test property
+(`cold_start_seconds`), against `NFR-002`'s 3 s. `T-007` measured an empty window at 0.178 s; this
+measures the migrated database, the writer thread, the manager and the window together.
+
+**Checks:** `ruff check .`, `ruff format --check .` (88 files), `mypy src` (35), configured `mypy`
+and `mypy --platform win32` (73 each) all pass. Bare `pytest`: **1392 passed, 11 skipped,
+1 deselected**. The wide mypy scope again found errors the `src` scope cannot see, all in the new
+test file.
+
+---
+
 ## Ready
 
 ### T-040 — Extend the Windows desktop gate to widget focus order
@@ -281,56 +395,6 @@ failure rather than a cleanup error.
 
 - Changing `SessionValidator` or the production routing order, which are correct at `65303a2`
 - The blocking cleanup behavior in `T013-R3` and `T013-R4`
-
----
-
-### T-036 — Application composition and wiring
-
-**Status:** Proposed — Ready once `T-013` merges
-**Owner:** Implementer
-**Priority:** **High** — without it every component can pass while the product still opens an
-empty window
-**Phase:** Phase 1
-**Depends on:** `T-013`, `T-014`, `T-015`, `T-016`, `T-017`
-**Relevant context:** `ARCHITECTURE.md` §3, §4, §8; `NFR-001`, `NFR-002`, `REQ-024`
-**Affected surfaces:** `app.py`, `ui/main_window.py`, `tests/ui/`, `tests/integration/`
-**Risk:** **High** — the only task that can fail while every other task is green
-**Review base:** the last of its dependencies' merge commits
-
-#### Scope
-
-**Filed after review: nothing owned this.** `app.py`'s own docstring says `T-013` adds the
-download manager wiring, but `T-013` neither claims `app.py` nor proves the assembled path. So
-every Phase 1 task could pass in isolation while the application still did nothing — which is
-the failure the phase exists to prevent.
-
-Compose the object graph in one place: construct the repository, the manager, the result pump
-and the window; inject the concrete `JobRepository` into the manager through the protocol seam
-`T-013` defines; connect the add-URL dialog and the progress view to manager signals; and
-report the ffmpeg state `T-035` supplies at startup (`REQ-024`).
-
-Also own orderly shutdown: closing the window stops the pump on its sentinel, cancels any
-running job, reaps its process tree, and closes the database — in that order.
-
-#### Acceptance criteria
-
-- A test drives the **assembled application** — not components — from paste through to a queued
-  job, using `T-016`'s dialog and asserting the job reaches the repository
-- Wiring is asserted structurally too: the manager holds the concrete repository, and every
-  manager signal the UI needs has exactly one connection. A signal connected twice, producing
-  duplicate rows, must fail
-- Startup reports the ffmpeg state and names what will not work without it (`REQ-024`)
-- Closing the window with a job running exits with code 0, leaves no process in the tree, and
-  leaves the database consistent
-- Cold start stays inside `NFR-002`'s 3-second budget with the full graph constructed, and the
-  measurement is recorded — `T-007` measured an empty window
-- No component is constructed twice, asserted by identity, so a second manager cannot quietly
-  service a second queue
-
-#### Out of scope
-
-- Any new behavior; this task connects what the others built
-- The single-instance guard — `A-004`, Phase 2
 
 ---
 
