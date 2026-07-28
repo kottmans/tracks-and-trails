@@ -602,14 +602,46 @@ def still_running(pids: Iterable[int]) -> list[int]:
 
     So a test that is about survival captures the pids while the tree is still intact and asks
     about them by identity afterwards.
+
+    **On Windows, aliveness is decided by exit status rather than by visibility** (`T-056`). The
+    previous form asked `status()` everywhere and treated anything but `STATUS_ZOMBIE` as running.
+    That is a POSIX answer: Windows has no zombie state, and a terminated process stays visible
+    for as long as any handle to it remains open — including the `Popen` handle the test that
+    killed it is still holding. `windows-latest` produced the consequence once, in run
+    `30323328299`, where `still_running([dead_pid])` returned a pid the test had already reaped.
+
+    `wait(timeout=0)` asks whether the process has *ended*: it returns an exit status if it has,
+    raises `TimeoutExpired` if it has not, and raises `NoSuchProcess` if there is nothing there.
+    On Windows psutil implements it with `WaitForSingleObject` on its own handle, which neither
+    disturbs anyone else's handle nor depends on visibility.
+
+    **It is deliberately not used on POSIX**, and the reason is a defect this correction caused
+    before it caught it: there, `wait()` on a child of this process is `waitpid`, so it *reaps*
+    the worker and steals the exit status `multiprocessing` is waiting for. `is_alive()` then
+    never reports the process as gone and the manager never goes idle —
+    `test_cancelling_a_download_kills_what_the_worker_spawned` failed exactly that way. On POSIX
+    the zombie state is the terminated-but-visible state, so `status()` is already the right
+    question and there is nothing to fix.
+
+    **Could the previous form have reported a live process as dead?** No, and this is worth
+    stating rather than assuming, because a false *dead* would make a reaping assertion pass
+    without anything having been reaped. It answered "dead" only on `NoSuchProcess` — raised when
+    the pid is gone, and by `ZombieProcess`, its subclass — or on a `STATUS_ZOMBIE` that a live
+    process never has. `AccessDenied` was not caught, so it would have failed loudly rather than
+    lied. Its one error direction was **false alive**, which fails an assertion in the open.
     """
     alive = []
     for pid in pids:
         try:
-            if psutil.Process(pid).status() != psutil.STATUS_ZOMBIE:
+            process = psutil.Process(pid)
+            if sys.platform == "win32":
+                process.wait(timeout=0)
+            elif process.status() != psutil.STATUS_ZOMBIE:
                 alive.append(pid)
         except psutil.NoSuchProcess:
             continue
+        except psutil.TimeoutExpired:
+            alive.append(pid)
     return alive
 
 
@@ -653,13 +685,35 @@ def test_the_survival_check_can_tell_a_live_process_from_a_dead_one() -> None:
     dead_pid = dead.pid
     dead.kill()
     dead.wait(timeout=30)
+
+    # **Killed and deliberately not waited on** (`T-056`). This is the shape that failed on
+    # `windows-latest` in run `30323328299`: the process has ended, and the handle the killer is
+    # still holding keeps it visible, so a presence check calls it alive. On POSIX the same shape
+    # is a zombie, which the previous form already handled — which is exactly why the gap could
+    # only ever have been found on Windows, and why this assertion means more there than here.
+    unreaped = start_a_grandchild()
+    unreaped_pid = unreaped.pid
+    unreaped.kill()
     try:
         assert still_running([alive.pid]) == [alive.pid], "a running process was reported dead"
         assert still_running([dead_pid]) == [], "a reaped process was reported alive"
         assert still_running([]) == []
+        # A short spin rather than an instant assertion: `kill()` asks, and the process ends a
+        # moment later on either platform.
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and still_running([unreaped_pid]):
+            time.sleep(0.02)
+        assert still_running([unreaped_pid]) == [], (
+            "a killed process that nobody has waited on was reported alive; on Windows that is "
+            "the whole of T-056, and every T-019 reaping assertion rests on this answer"
+        )
+        assert still_running([alive.pid]) == [alive.pid], (
+            "asking about the dead one changed the answer about the live one"
+        )
     finally:
         alive.kill()
         alive.wait(timeout=30)
+        unreaped.wait(timeout=30)
 
 
 def test_the_detector_sees_a_grandchild_and_not_just_a_worker(

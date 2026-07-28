@@ -1675,7 +1675,10 @@ coverage claim about it changed.
 
 ### T-056 — `still_running` reports a reaped Windows process as alive, intermittently
 
-**Status:** Ready — observed 2026-07-27 during `T-016`'s correction batch
+**Status:** **In Review — corrected 2026-07-28, and one gate cannot run here.** The helper now
+decides by exit status on Windows; the third acceptance criterion is answered in the helper's own
+docstring. **The mutation that proves the Windows branch can only be killed on Windows CI**, so
+approval needs that run — see **Evidence**.
 **Owner:** Implementer
 **Priority:** Medium — an intermittent failure in the helper every `T-019` assertion rests on
 **Phase:** Phase 1
@@ -1713,6 +1716,47 @@ pass without anything having been reaped.
 #### Out of scope
 
 - Changing `downloader/process_tree.py`, which is `T-019`-approved and not implicated
+
+#### Evidence, 2026-07-28
+
+**The fix is Windows-only, because the imprecision is.** On POSIX the terminated-but-visible state
+*is* the zombie state, so `status()` was already asking the right question. On Windows there is no
+zombie and a corpse stays visible while any handle to it is open, so the helper now uses
+`wait(timeout=0)` there — `WaitForSingleObject` on psutil's own handle, which neither disturbs
+anyone else's handle nor depends on visibility.
+
+**The first attempt used `wait(timeout=0)` on both platforms and broke the suite**, which is worth
+keeping: on POSIX that call is `waitpid`, so inspecting a worker *reaped* it and stole the exit
+status `multiprocessing` was waiting for. `is_alive()` then never reported the process gone and
+the manager never went idle —
+`test_cancelling_a_download_kills_what_the_worker_spawned` failed exactly that way. A survival
+check that changes what it observes is worse than an imprecise one.
+
+**The third criterion is answered, not assumed benign.** The previous form could **not** report a
+live process as dead: it answered "dead" only on `NoSuchProcess` (and `ZombieProcess`, its
+subclass) or on a `STATUS_ZOMBIE` a live process never has, and `AccessDenied` was uncaught and so
+would have failed loudly. Its one error direction was **false alive**, which fails an assertion in
+the open rather than letting a reaping assertion pass over nothing. The answer is recorded in the
+helper's docstring, where the next reader of the helper will find it.
+
+**The test now drives the failing shape**: a third process is killed and deliberately *not* waited
+on. On Linux that is a zombie, which the old form already handled; on Windows it is exactly run
+`30323328299`'s failure.
+
+**Mutations run:** answering by presence alone everywhere — killed. Reporting nothing as alive —
+killed. **Disabling the `win32` branch so it falls back to the POSIX question — survived, and
+cannot do otherwise here**: the branch is unreachable on Linux by construction. That is
+`AGENTS.md` §8's "a host-only check is not the whole gate" in its exact form, and it is why this
+task is not claiming to be done.
+
+**Checks:** `ruff check .`, `ruff format --check .`, configured `mypy` and `mypy --platform win32`
+(72 files each — the win32 scope is what analyses the new branch at all) all pass. Bare `pytest`
+green.
+
+**Blocker:** the Windows demonstration. This machine has no Windows and the branch cannot execute
+here, so approval needs the `windows desktop` job to run the corrected helper and the third
+mutation against it. Same shape as `T-033`'s blocker: the code is done, the evidence is not
+producible locally.
 
 ---
 
