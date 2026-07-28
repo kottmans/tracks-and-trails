@@ -8,9 +8,10 @@ the only reason recording it is worth the maintenance.
 §5 and §7, never read back out of the adapter.
 """
 
+import contextlib
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Final, cast
 
 import pytest
 from yt_dlp.networking.exceptions import (
@@ -433,14 +434,155 @@ def test_drm_is_detected_when_every_format_is_protected() -> None:
     assert adapter.has_drm({"formats": [{"has_drm": True}, {"has_drm": True}]})
 
 
-def test_a_partially_protected_item_is_not_treated_as_drm_only() -> None:
-    """One clean format means there is something lawful to fetch; failing would be wrong."""
-    assert not adapter.has_drm({"formats": [{"has_drm": True}, {"has_drm": False}]})
+def test_a_partially_protected_item_is_treated_as_protected() -> None:
+    """Changed by `T-057`, and the change is the point.
+
+    This read `assert not adapter.has_drm(...)`, arguing that one clean format means there is
+    something lawful to fetch. The argument is reasonable; the problem is that it described a
+    branch which does not run. `_has_drm` — the field the branch above reads, and the one every
+    real info dict carries — is computed by yt-dlp as `any`, so production already refused a
+    mixed item. The two halves of one function disagreed, and the test asserted the half that
+    never answers.
+
+    Aligned on `any`, which is also the answer `SEC-001` wants: this project does not go looking
+    for a non-DRM route through an item that has been flagged.
+    """
+    assert adapter.has_drm({"formats": [{"has_drm": True}, {"has_drm": False}]})
+
+
+def test_a_format_yt_dlp_is_unsure_about_is_not_treated_as_protected() -> None:
+    """`'maybe'` is a third state, and Python's truthiness collapsed it into the wrong one.
+
+    yt-dlp keeps `has_drm='maybe'` formats downloadable and excludes them from `_has_drm`. A
+    non-empty string is truthy, so the previous `all(entry.get("has_drm") ...)` read a set of
+    them as protected — fail-safe in direction, and therefore never a `SEC-001` breach, but a
+    user told an item is DRM-protected when yt-dlp would have downloaded it (`T-057`).
+    """
+    assert not adapter.has_drm({"formats": [{"has_drm": "maybe"}, {"has_drm": "maybe"}]})
+    assert adapter.has_drm({"formats": [{"has_drm": "maybe"}, {"has_drm": True}]})
 
 
 def test_drm_detection_does_not_read_message_text() -> None:
     """The prose says DRM; the structure does not. Structure wins (`ai/TESTING.md` §13)."""
     assert not adapter.has_drm({"title": "This video is DRM protected", "formats": []})
+
+
+# --- the upstream contract this boundary rests on (`T-057`, `NFR-008`) ------------------------
+#
+# `tests/fixtures/errors/` pins the exception *types* this adapter maps, so an upstream rename
+# fails a test instead of a download. DRM never got the same treatment, and it is the one
+# boundary `SEC-001` calls non-negotiable: `has_drm` reads a single yt-dlp field, and the DRM
+# fixture is `derived` by design — capturing a real one means probing a DRM service, which
+# `REQ-EXCL-001` puts out of scope — so nothing established that yt-dlp still *writes* it.
+#
+# On a rename `has_drm` returns `False`, the item is never classified, and the product tries to
+# download it: a non-negotiable boundary failing silently. These two tests are the canary.
+#
+# **They drive yt-dlp's own code and reach no network.** `process_video_result` writes the field
+# before it selects anything, and the guard below fails the test if a name is resolved — the
+# claim "no packet leaves the machine" is gated rather than asserted in prose.
+
+#: Params that keep format selection from *testing* formats. Without them a `'maybe'` format
+#: sends yt-dlp looking for a host, which was measured: two DNS lookups for `.invalid`.
+_OFFLINE_PARAMS: Final[dict[str, Any]] = {
+    "quiet": True,
+    "simulate": True,
+    "skip_download": True,
+    "format": "all",
+    "check_formats": False,
+}
+
+
+def _what_yt_dlp_says(formats: list[dict[str, Any]], monkeypatch: pytest.MonkeyPatch) -> Any:
+    """Run yt-dlp's own DRM computation over `formats` and return the `_has_drm` it wrote."""
+    import socket
+
+    from yt_dlp import YoutubeDL
+
+    # **Recorded as well as refused.** Raising alone does not gate anything: yt-dlp catches
+    # whatever a handler raises and re-reports it as `NoSupportingHandlers`, which the suppression
+    # below then swallows — so the guard was neutralised by the very thing that makes the call
+    # survivable. The attempt is therefore remembered and checked afterwards, outside it.
+    attempts: list[tuple[Any, ...]] = []
+
+    def refuse(*args: Any, **kwargs: Any) -> Any:
+        attempts.append(args)
+        raise AssertionError("the contract check tried to resolve a name")
+
+    monkeypatch.setattr(socket, "getaddrinfo", refuse)
+    payload: dict[str, Any] = {
+        "id": "x",
+        "title": "t",
+        "extractor": "test",
+        "extractor_key": "Test",
+        "webpage_url": "https://example.invalid/x",
+        "webpage_url_basename": "x",
+        "formats": formats,
+    }
+    # Mutates `payload` in place, and the write happens before format selection can fail — so an
+    # item whose every format is protected still tells us what we came to ask. The outcome of the
+    # call is not the subject; the field it wrote on the way is.
+    with contextlib.suppress(Exception):
+        YoutubeDL(_OFFLINE_PARAMS).process_video_result(payload, download=False)
+    assert not attempts, (
+        f"the contract check reached for the network: {attempts!r}. It must stay offline — "
+        "`REQ-EXCL-001` puts probing a DRM service out of scope, and a unit test that resolves "
+        "a name is one that fails on a machine with no DNS."
+    )
+    return payload.get("_has_drm")
+
+
+def test_yt_dlp_still_writes_the_field_this_boundary_reads(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The canary. Verified against yt-dlp 2026.7.4, the version `pyproject.toml` pins.
+
+    If this fails, `_has_drm` has been renamed or stopped being written, and `has_drm` is
+    silently answering `False` for everything. That is not a test failure to route around: it
+    means the DRM boundary is open until the adapter is taught the new contract.
+    """
+    protected = [{"format_id": "a", "url": "https://example.invalid/a", "has_drm": True}]
+    assert _what_yt_dlp_says(protected, monkeypatch), (
+        "yt-dlp no longer writes _has_drm for a protected format; SEC-001's detection rests on "
+        "that field and is now blind. See T-057."
+    )
+
+
+@pytest.mark.parametrize(
+    ("case", "flags"),
+    [
+        ("none", [None, None]),
+        ("all protected", [True, True]),
+        ("mixed", [True, None]),
+        ("all undecided", ["maybe", "maybe"]),
+        ("one undecided, one protected", ["maybe", True]),
+    ],
+)
+def test_the_adapter_and_yt_dlp_agree_about_every_shape_of_has_drm(
+    case: str, flags: list[Any], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fallback's rule, compared against the rule itself rather than against a transcription.
+
+    This is what `T-057` exists for. Both divergences it fixed — `'maybe'` counting as DRM, and
+    `all` where yt-dlp uses `any` — were invisible to a test that stated the expected answer,
+    because the expected answer was written by the same person who wrote the code. Here yt-dlp
+    computes the expectation.
+    """
+    formats: list[dict[str, Any]] = [
+        {"format_id": f"f{index}", "url": f"https://example.invalid/f{index}"}
+        for index, _ in enumerate(flags)
+    ]
+    for entry, flag in zip(formats, flags, strict=True):
+        if flag is not None:
+            entry["has_drm"] = flag
+
+    upstream = bool(_what_yt_dlp_says([dict(entry) for entry in formats], monkeypatch))
+    # The fallback branch specifically: no `_has_drm`, so the per-format flags have to answer.
+    ours = adapter.has_drm({"formats": formats})
+    assert ours is upstream, (
+        f"{case}: this adapter says {ours} and yt-dlp says {upstream}; the fallback is computing "
+        "a different rule from the field it falls back from"
+    )
 
 
 def test_drm_protected_is_non_retryable_in_the_taxonomy() -> None:

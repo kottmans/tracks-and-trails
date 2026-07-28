@@ -1482,7 +1482,9 @@ exists to refuse (`T-011`).
 
 ### T-057 — Bind DRM detection to yt-dlp's actual contract
 
-**Status:** Ready — filed 2026-07-28 while auditing the DRM coverage record
+**Status:** **In Review — implemented 2026-07-28.** The `_has_drm` write is reachable offline, so
+the canary drives yt-dlp's own code rather than reading its source, and the two divergences are
+corrected to yt-dlp's rule rather than recorded as deliberate. See **Evidence**.
 **Owner:** Implementer
 **Priority:** Medium — the boundary is fail-safe today, but one half of it disagrees with yt-dlp
 and nothing would notice an upstream rename
@@ -1541,6 +1543,51 @@ matters on the probe path, or record that it does not.
 - The taxonomy and retry policy in `core/errors.py`; `DRM_PROTECTED` stays non-retryable
 - The UI half of the boundary — that is the criterion added to `T-017`
 - Refreshing any fixture: `ai/TESTING.md` §5 makes that a deliberate act with its own task
+
+#### Evidence, 2026-07-28
+
+**The write is reachable offline, so the weaker source-level check was not needed.**
+`YoutubeDL.process_video_result` computes `_has_drm` **before** it selects a format and mutates
+the info dict in place, so the canary hands it a synthetic dict, ignores whatever the call goes
+on to do, and reads the field back. Measured at zero DNS lookups with `format="all"` and
+`check_formats=False`; without those, a `'maybe'` format sends yt-dlp looking for a host.
+
+**Both divergences are corrected rather than recorded.** `format_has_drm` now implements yt-dlp's
+three-state rule — `True`, absent, and `'maybe'`, which yt-dlp keeps downloadable — and the item
+is protected if **any** format is, matching `_has_drm`. The `any`/`all` choice was not free, and
+it is worth the reviewer's attention: a mixed item now reads as DRM, where the fallback used to
+say it did not. That is not a new refusal in practice — `_has_drm` is `any`, and it is the branch
+every real info dict takes — but it means one committed assertion changed.
+
+**`test_a_partially_protected_item_is_not_treated_as_drm_only` is now
+`…_is_treated_as_protected`.** Its old rationale ("one clean format means there is something
+lawful to fetch") is a reasonable argument about a branch that never runs: production already
+refused mixed items through `_has_drm`, and the test asserted the half of `has_drm` that does not
+answer. The two halves of one function disagreed, which is what `T-057` was filed to find.
+
+**The strongest test is the one that does not state its expectation.**
+`test_the_adapter_and_yt_dlp_agree_about_every_shape_of_has_drm` runs five format shapes through
+yt-dlp *and* through the adapter and compares. Both divergences were invisible to a test that
+wrote down the expected answer, because the answer was written by whoever wrote the code.
+
+**Mutations run, all killed:** the fallback restored to `all(entry.get("has_drm"))` · `'maybe'`
+counting as DRM again · the canary reading a field yt-dlp does not write · the selection params
+dropped so yt-dlp reaches for the network.
+
+**The offline guard had to be corrected before it gated anything.** Raising from a patched
+`getaddrinfo` does not fail the test: yt-dlp catches whatever a handler raises and re-reports it
+as `NoSupportingHandlers`, which the surrounding `contextlib.suppress` then swallows. The attempt
+is now recorded and asserted after the call, and the fourth mutation above proves it fires.
+
+**Checks:** `ruff check .`, `ruff format --check .` (87 files), `mypy src` (35), configured `mypy`
+and `mypy --platform win32` (72 each) all pass. Bare `pytest`: **1334 passed, 11 skipped,
+1 deselected in 75.05 s**.
+
+**Left open deliberately:** `_has_drm` is written as `True` or `None` and never `False`, so its
+absence still does not distinguish "not DRM" from "never processed". It does not matter on any
+path this application has — every info dict reaching `has_drm` has been through
+`process_video_result` — and inventing a third state here would be this adapter asserting
+something yt-dlp does not. Recorded rather than fixed.
 
 ---
 

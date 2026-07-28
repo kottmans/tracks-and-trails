@@ -190,6 +190,22 @@ def _http_status_kind(status: int) -> ErrorKind:
     return ErrorKind.EXTRACTOR_ERROR
 
 
+#: The one per-format value of `has_drm` that does **not** mean DRM (`T-057`).
+#:
+#: yt-dlp uses three states, not two: `True`, absent, and `'maybe'` — the last for a format it
+#: suspects but has not established. It deliberately keeps those downloadable
+#: (`YoutubeDL.py:2933` at the pin) and excludes them from `_has_drm`. Python disagrees by
+#: default, because a non-empty string is truthy, which is how this adapter came to read a set of
+#: `'maybe'` formats as protected and refuse an item yt-dlp would have downloaded.
+UNDECIDED_DRM: Final = "maybe"
+
+
+def format_has_drm(entry: Mapping[str, Any]) -> bool:
+    """Whether one format is DRM-protected, by yt-dlp's own three-state rule."""
+    flag = entry.get("has_drm")
+    return bool(flag) and flag != UNDECIDED_DRM
+
+
 def has_drm(info: Mapping[str, Any]) -> bool:
     """Whether yt-dlp reports this item as DRM-protected (`REQ-EXCL-001`, `SEC-001`).
 
@@ -197,11 +213,26 @@ def has_drm(info: Mapping[str, Any]) -> bool:
     Both are structured fields. **No message text is consulted**, and no attempt is made to
     find a non-DRM route — this project does not work around DRM and offering to retry would
     imply it might.
+
+    **The fallback computes yt-dlp's rule, and used to compute a different one** (`T-057`). Its
+    two divergences were found by reading `YoutubeDL.process_video_result` rather than by a
+    failing test, which is the argument for the canary that now sits beside this in
+    `tests/unit/test_ytdlp_adapter.py`:
+
+    - It treated `'maybe'` as DRM, because the string is truthy. That refuses an item yt-dlp
+      would download — fail-safe in direction, so never a `SEC-001` breach, but a user told
+      something is protected when it is not.
+    - It required **every** format to be flagged, where yt-dlp requires **any**. That mattered
+      more than it looks: `_has_drm` is `any`, and it is what the primary branch above reads, so
+      the two branches of this one function disagreed about a mixed item.
+
+    Aligning on `any` is also the answer to what a mixed item *should* mean here. yt-dlp reports
+    it as having DRM and then downloads the unprotected formats; this project does not go looking
+    for a non-DRM route, so a flagged item is refused whichever branch answers.
     """
     if info.get("_has_drm"):
         return True
-    formats = info.get("formats") or ()
-    return bool(formats) and all(entry.get("has_drm") for entry in formats)
+    return any(format_has_drm(entry) for entry in info.get("formats") or ())
 
 
 def project_format(entry: Mapping[str, Any]) -> FormatInfo:
