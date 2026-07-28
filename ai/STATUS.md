@@ -88,8 +88,9 @@ proving the layering test still fails on a deliberate `PySide6` import in `core/
 
 ## In progress
 
-- **`T-016` — implemented 2026-07-27 on `phase1-add-url-dialog`, awaiting review.** The add-URL
-  dialog, plus `ARC-004`'s `READY` entry point in `DownloadManager.start()`. See `Next` item 4.
+- **`T-016` — merged to `main` at `33ebd11`, awaiting review.** The add-URL dialog, plus
+  `ARC-004`'s `READY` entry point in `DownloadManager.start()`. CI green on all five jobs. Its
+  branch existed only to stay clear of a review running on trunk and is gone. See `Next` item 4.
 - **`T-019` and `T-038` are both Approved**, 2026-07-27 — `T-019` at `eaa5b50`, `T-038` at
   `098ba3f` after three focused corrections of High `T038-R2`. That finding was the one that
   "directly regresses High `T013-R2`": the per-job log handler closed when the *result* pump
@@ -144,10 +145,11 @@ is `T-037`.
 1. **`T-018` is approved and closed** (2026-07-27, `T018-R1` and `T019-R1` both Resolved). The
    fifth correction removed the schema fingerprint that could carry captured mapping keys;
    `SEC-002` records the amendment and what it gives up.
-2. **`T-019`, `T-038` and `T-051` are implemented** on `phase1-orphans-logging-lifecycle` and
-   await review. `T-019` fixes the live defect — cancelling now reaps the worker's whole process
-   group, and the `process_tree` marker is gone with the reason for it. `T-038` puts redaction in
-   a formatter, so no call site can leak by forgetting. `T-051` is a decision, `ARC-004`.
+2. **`T-019`, `T-038` and `T-051` are all approved and on `main`.** `T-019` fixed the live defect
+   — cancelling now reaps the worker's whole process group, and the `process_tree` marker is gone
+   with the reason for it. `T-038` puts redaction in a formatter, so no call site can leak by
+   forgetting, and its High `T038-R2` took three focused corrections. `T-051` is a decision,
+   `ARC-004`. The `phase1-orphans-logging-lifecycle` branch that carried them is merged.
 3. **Windows has runtime evidence, and it found a real bug.** `30293051118` first ran the
    process-tree suite on both platforms; `30302798113` then ran `T-019`'s new descendant tests
    there and **failed**, because `ctypes` had truncated the Job object's handle — invisible on
@@ -156,21 +158,29 @@ is `T-037`.
    "verified on Linux *and* Windows" criterion has moved for the first time since it was written,
    and the move was worth more than the confirmation: pushing bought a defect nothing local
    could have found (`T019-R2`).
-4. **`T-016` is implemented and in review** on `phase1-add-url-dialog`, cut from `eaa5b50` at the
-   maintainer's instruction because Codex was reviewing `T-019`/`T-038` on `main`. It is the
-   first code that makes any of the engine visible to a person: paste URLs, probe one in a worker
-   process, see title, uploader, duration, a decoded thumbnail and whether it is a playlist, pick
-   a preset, queue them all. It also implements `ARC-004` — `DownloadManager.start()` now takes a
-   `READY` job as well as a `QUEUED` one — which amends code `T-013` was approved with, and
-   replaces the `T-013` test that asserted the older rule. **`T-017` is still unblocked and not
-   started.**
+4. **`T-016` is merged to `main` at `33ebd11` and in review.** It is the first code that makes
+   any of the engine visible to a person: paste URLs, probe one in a worker process, see title,
+   uploader, duration, a decoded thumbnail and whether it is a playlist, pick a preset, queue them
+   all. It also implements `ARC-004` — `DownloadManager.start()` now takes a `READY` job as well
+   as a `QUEUED` one — which amends code `T-013` was approved with, and replaces the `T-013` test
+   that asserted the older rule.
 
-   Twelve deliberate weakenings were run against the new tests and all twelve were killed. One —
-   the tab order — **survived the first attempt**, because the test derived its expected order
-   from the same list the dialog hands to Qt and so proved only that the list equalled itself.
-   That is `ai/TESTING.md` §13's rule found the hard way for the second time this phase: the
-   expectation is now transcribed by hand and Qt's own focus chain is walked against it.
-5. **`T-050`** — new, and **Phase 2**, not Phase 1: the `history` table is still empty, and
+   Twelve deliberate weakenings were run against the new tests and all twelve were killed, but
+   **three gates reported clean while covering nothing**, and that is the part worth keeping. The
+   tab-order test derived its expected order from the same list the dialog hands to Qt, so it
+   proved only that the list equalled itself and the mutation survived. The local type gate was
+   the wrong *scope* — `mypy src` reads 33 files, the `windows desktop` job reads 69 including
+   `tests/` — and CI found two real errors, one of which had silently stopped mypy analysing the
+   rest of a test. The Windows UI Automation menu contract then caught a File-menu item this task
+   added without declaring it. Each was corrected, and `ai/TESTING.md` §12 now states the scope
+   difference that nothing had written down.
+
+5. **`T-017` is the only substantive task startable now**, and the critical path to the phase
+   exit is linear: **`T-017` → `T-036` → `T-037`**. `T-036` depends on `T-016` *and* `T-017`, so
+   composition does not begin the moment `T-016` clears review. **DRM is the one uncovered
+   mandatory area and still has no owner** — worth settling before `T-037` rather than at the
+   exit review.
+6. **`T-050`** — **Phase 2**, not Phase 1: the `history` table is still empty, and
    `IMPLEMENTATION_PLAN.md` puts `REQ-020`'s history persistence in Phase 2. This file's claim
    that `T-013` owned it was `STATUS.md` running ahead of both the plan and `T-013`'s own scope;
    the task entry records the two things still missing before it can be written honestly.
@@ -297,7 +307,11 @@ The `core/` modules remain **domain vocabulary plus pure functions** — what a 
 a failure *are*, the rules for moving between states, and filename safety. `persistence/` is the
 first module that keeps something across a restart.
 
-Of `TESTING.md` §7's ten mandatory areas, **eight** are now covered: Layering (`T-005`), the
+Of `TESTING.md` §7's ten mandatory areas, **nine** are now covered: Layering (`T-005`), the
 State machine (`T-010`), Path safety (`T-034`), Crash recovery, Migrations and the Settings
-freeze (`T-014`), and — new with `T-013` — Cancellation and Worker crash. The two outstanding
-are Log redaction (`T-038`) and DRM.
+freeze (`T-014`), Cancellation and Worker crash (`T-013`, with the process-tree half proved by
+`T-019`), and Log redaction (`T-038`). **DRM is the one outstanding, and has no Phase 1 owner.**
+
+*(This paragraph read "eight … the two outstanding are Log redaction and DRM" until 2026-07-27,
+contradicting the count in `In progress` above after `T-038` was approved. Two statements of one
+number in one file is the defect; this is now the only one.)*

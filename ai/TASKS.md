@@ -12,9 +12,15 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** `T-016` is **In Review**, implemented 2026-07-27 on `phase1-add-url-dialog`. It
-is the first widget that talks to the download manager, and it implements `ARC-004`'s `READY`
+**Start here:** `T-016` is **In Review** on `main` at `33ebd11`, with CI green on all five jobs.
+It is the first widget that talks to the download manager, and it implements `ARC-004`'s `READY`
 entry point.
+
+**`T-017` is the only substantive task startable right now** — its dependencies `T-013` and
+`T-014` are both complete, and it touches `ui/queue_view.py` and `ui/job_detail.py`, so it does
+not collide with the `T-016` review. The critical path to the Phase 1 exit is linear from here:
+**`T-017` → `T-036` → `T-037`**. `T-036` needs `T-016` **and** `T-017`, so composition cannot
+start the moment `T-016` clears.
 
 **`T-019` and `T-038` are both approved** as of 2026-07-27 at `098ba3f`. High `T038-R2` took three
 focused corrections — a same-job reopen now returns the identical still-attached handler, and
@@ -880,9 +886,11 @@ personal paths (`REQ-026`, `NFR-007`). They are committed, so a leak here is per
 
 ### T-016 — Add-URL dialog with probe results
 
-**Status:** **In Review — implemented 2026-07-27 on `phase1-add-url-dialog`, awaiting review.**
-All four dependencies are closed: `T-013` and `T-015` approved, `T-018` approved on its fifth
-correction, `T-051` approved as `ARC-004`.
+**Status:** **In Review — merged to `main` and pushed, awaiting review.** Implemented 2026-07-27;
+the `phase1-add-url-dialog` branch was cut only to stay clear of a review running on trunk, and
+was rebased, merged and deleted once that review closed. All four dependencies are closed:
+`T-013` and `T-015` approved, `T-018` approved on its fifth correction, `T-051` approved as
+`ARC-004`. CI is green on all five jobs at `33ebd11`.
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 1
@@ -894,9 +902,12 @@ decides that a probed job downloads from `READY`, and this task implements it
 `ARC-004` — `downloader/manager.py` with `tests/integration/test_manager.py`
 **Risk:** Medium — the first widget that talks to the manager, and the first place a blocking
 call would freeze the application
-**Review base:** `eaa5b50` (the branch point on `main`)
-**Branch:** `phase1-add-url-dialog`, cut at maintainer instruction on 2026-07-27 because Codex
-was reviewing `T-019`/`T-038` on `main` at the time (`AGENTS.md` §7 — isolated concurrent work)
+**Review base:** `098ba3f` · **head:** `33ebd11`. Five commits span that range and **two are not
+this task**: `0b914a5` preserves the Reviewer's own records, and `3b9d937` reflects `T-038`'s
+approval into the tracking files. `T-016` is `d9936f4`, `57c7e5c` and `33ebd11`.
+**Branch:** none now. `phase1-add-url-dialog` was cut at maintainer instruction because Codex was
+reviewing `T-019`/`T-038` on `main` at the time (`AGENTS.md` §7 — isolated concurrent work), then
+rebased onto `main`, merged fast-forward and deleted once that review closed.
 
 #### What was built
 
@@ -926,15 +937,34 @@ was reviewing `T-019`/`T-038` on `main` at the time (`AGENTS.md` §7 — isolate
 
 #### Evidence
 
-`ruff check`, `ruff format --check` (84 files), `mypy src` and `mypy --platform win32 src`
-(33 files) all pass. Full default suite: **1230 passed, 11 skipped, 1 deselected** in 70 s.
+Local at `33ebd11`: `ruff check`, `ruff format --check` (84 files), `mypy src` (33 files), and
+bare `mypy` and `mypy --platform win32` (**69** files each) all pass. Full default suite:
+**1239 passed, 11 skipped, 1 deselected** in 71 s — `T-038`'s 1195 plus this task's 44.
+
+**CI is green on all five jobs**, run `30320408833`: ubuntu-latest 1239 passed, windows-latest
+**1228 passed, 20 skipped, 21 deselected**, windows desktop **20 passed**, both frozen jobs
+succeeded. This task has real Windows evidence.
 
 **Twelve weakenings were applied and all twelve were killed** by a committed test — including a
 probe that blocks the GUI thread, a paraphrased extractor message, jobs written after the dialog
-closes, and a `READY` start that re-enters `PROBING`. The tab-order mutation **survived the first
-run**: that test derived its expectation from the dialog's own `focus_chain()`, so it proved only
-that the list equalled itself. The expected order is now transcribed by hand and Qt's own
-`nextInFocusChain` is walked against it (`ai/TESTING.md` §13), and the mutation is killed.
+closes, and a `READY` start that re-enters `PROBING`.
+
+**Three gates reported clean while covering nothing, and each is worth more than the fix.**
+
+- **The tab-order mutation survived the first run.** That test derived its expectation from the
+  dialog's own `focus_chain()` — the list `_set_tab_order` feeds to Qt — so reversing two entries
+  moved both sides and it proved only that the list equalled itself. Now transcribed by hand with
+  Qt's `nextInFocusChain` walked against it (`ai/TESTING.md` §13).
+- **The local type gate was the wrong scope, and CI found two real errors.** `mypy src` reads 33
+  files; the `windows desktop` job runs the command **unscoped** over 69, including `tests/`.
+  Neither error was Windows-specific. One had made mypy narrow a property at an earlier
+  `assert ... is not None`, rendering the later `is None` assertion statically impossible — so it
+  declared the rest of that test unreachable and **stopped type-checking it**. `ai/TESTING.md` §12
+  now records the scope difference, which nothing stated.
+- **The Windows UIA menu contract caught the new File-menu item**, correctly, because this task
+  added one without declaring it there. The item is spelled `Add URLs...` with ASCII dots: the
+  ellipsis returned from UI Automation as a replacement character in the CI log, and that log is
+  the only Windows evidence this project has (`ai/TESTING.md` §10).
 
 #### Scope
 
@@ -1560,9 +1590,11 @@ is checked against reality at least once. It stays excluded by default (`ai/TEST
 
 ### T-019 — Kill the process *tree*, and prove it on Windows
 
-**Status:** **In Review — implemented 2026-07-27** on `phase1-orphans-logging-lifecycle`.
-`T019-R1` is corrected and verified running in CI. The descendant-reaping defect is fixed and
-the `process_tree` marker is removed.
+**Status:** **Complete — approved**, 2026-07-27 at `eaa5b50`. `T019-R1` is verified running in
+CI, and `T019-R2`, `T019-R3`, `T019-R4` and `T019-R5` are all independently resolved. The
+descendant-reaping defect is fixed and the `process_tree` marker is gone with the reason for it.
+`T019-R2` is the one worth remembering: pushing bought a Windows defect nothing local could have
+found, where `ctypes` had truncated the Job object's handle.
 **Owner:** Implementer
 **Priority:** **High** — carries a live defect, plus the only Windows evidence Phase 1's exit
 criteria can ever have
