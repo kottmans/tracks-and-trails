@@ -321,6 +321,17 @@ set. One mutation is killed on Linux; the other survives there **by design**, be
 kills the group regardless of the captured set, so its gate belongs on Windows and is still owed.
 `T-064` is **Approved**.
 
+**All five of `T-072`'s carries are now written** (2026-07-29). `WIN-R1` was the last: the
+existing-rule branch of `ssh-setup.ps1` did nothing and printed `rule present`, so a machine
+carrying the earlier broad `Any` rule kept port 22 open on every profile forever while the script
+reported success. It now reapplies the scope, reads the rule back, and reports the profile and
+remote-address filter separately — they live on different objects, so a rule can look right and
+still allow the world. **Two things are owed before `T-072` closes**, both needing a Windows
+machine rather than more code: the `mut_tree_drop_worker` mutation, and a run of the script
+against a deliberately broadened rule. Neither is verifiable from the Linux box, and neither
+belongs in CI — reconfiguring a machine's firewall from a workflow is the provisioning hazard the
+runner exists to avoid.
+
 **Four of `T-072`'s five carries are done, and `T-064` with them** (2026-07-28). `COORD-R5` is
 discharged — every task is filed in the section its verdict names, the `## In Review` note no
 longer claims an emptiness it did not have, and `T-040`/`T-060` are Complete on that carry.

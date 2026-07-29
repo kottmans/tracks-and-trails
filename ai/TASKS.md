@@ -176,8 +176,10 @@ question about collection rather than a defect, but it is not something to wave 
 **Status:** **In Progress — four of the five carries are done, 2026-07-29.** `COORD-R5` is
 discharged and `T-040`/`T-060` are filed Complete on it; `WIN-R3` and `RUNNER-R1` are corrected;
 the `T-019` process-tree cases run on `STARBASE`. `T066-R1` was **Changes requested** at
-`f20a9c8` (`T072-R1`) and is corrected below, with one mutation still owed on Windows.
-**`WIN-R1` is the only carry not started.** See **Progress**.
+`f20a9c8` (`T072-R1`) and is corrected below. **`WIN-R1` is written too**, so all five carries are
+addressed — but two things are owed before this can close: the `mut_tree_drop_worker` mutation on
+Windows, and a run of `ssh-setup.ps1` against a machine carrying the broad rule. Both are
+described with their exact commands below. See **Progress**.
 
 *(This block said "three of the five" and called `T066-R1` unexecuted after its run had already
 happened — `T072-R2`, and the same current-truth drift `COORD-R5` is about, in the task that owns
@@ -255,7 +257,7 @@ two are not closed.
 | `WIN-R3` | **Done.** The guide now names `mut_control_chain.py`, says it runs first, and records why the `T-056` control does not belong here |
 | `RUNNER-R1` | **Done.** `ci.yml` and the guide now say `timeout-minutes` bounds *run* time, and an unmatched self-hosted job queues for up to 24 hours |
 | `T066-R1` | **Corrected after `T072-R1`.** One mutation still owed on Windows — see **The `T072-R1` correction** |
-| `WIN-R1` | **Not started** — the one carry left |
+| `WIN-R1` | **Written, unverified.** See **The `WIN-R1` correction** |
 | `T-019` cases under the venv | **Done.** Run `30414186949`, 72 passed, 3 skipped |
 | `T072-R2` | **Resolved.** This status block was the drift it reported |
 
@@ -373,6 +375,42 @@ and nothing survived the kill.
 approved on exactly this kind of gap: a green run is not a demonstrated kill. The two mutations
 have not executed on Windows. `mut_tree_drop_worker` in particular can only be gated there, and
 until it runs, the completeness of the captured set is argued rather than measured.
+
+#### The `WIN-R1` correction — 2026-07-29
+
+The existing-rule branch did nothing and then printed `rule present`, so a machine that had run
+the earlier broad `Any` version kept port 22 open on every network profile, on every subsequent
+run, while the script reported success. **A tool documented as safe to re-run has to repair the
+state it created, not merely decline to make it worse.**
+
+- The branch now reapplies the intended scope with `Set-NetFirewallRule` — `Private` profile,
+  `LocalSubnet` remote — instead of skipping.
+- The rule is then **read back and reported**: enabled, action, profile, remote address, port.
+  The scope lives on two different objects — the profile on the rule, the remote address on an
+  associated filter — so a rule that looks correct in `Get-NetFirewallRule` alone can still allow
+  the world. Both are printed.
+- A mismatch warns and names the rollback: `Remove-NetFirewallRule -Name sshd-tt`, then re-run.
+
+**Unverified, and not verifiable from here.** There is no PowerShell on the Linux development
+machine, and the repair path specifically needs a Windows box **already carrying the broad rule** —
+a state that has to be created deliberately to test against. What was checked is static: balanced
+braces and parentheses, no statements inside string interpolation (the Windows PowerShell 5.1
+hazard this file documents), and the CRLF policy `.gitattributes` sets.
+
+The CI runner cannot answer this either, and should not: reconfiguring a machine's firewall from a
+workflow is the *provisioning* hazard `T-073` and the job's own comments exist to prevent.
+
+**How to verify on `STARBASE`**, in an elevated session:
+
+```powershell
+New-NetFirewallRule -Name sshd-tt -DisplayName "OpenSSH Server (Tracks and Trails)" `
+    -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 | Out-Null
+.\tools\windows\ssh-setup.ps1
+```
+
+The first command recreates the defective broad rule — `-Profile` omitted, so `Any`. The script
+must then report `rule profile : Private` and `rule remote : LocalSubnet`. Before this correction
+it would have reported `rule present` and changed nothing.
 
 #### Out of scope
 
