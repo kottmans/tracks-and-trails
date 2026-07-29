@@ -326,6 +326,16 @@ set. One mutation is killed on Linux; the other survives there **by design**, be
 kills the group regardless of the captured set, so its gate belongs on Windows and is still owed.
 `T-064` is **Approved**.
 
+**`T-074` narrowed on 2026-07-29, without being solved.** It does not reproduce on Linux — 40
+iterations of the crashing test and 5 whole-module runs, all clean — which does not clear Linux
+(`T-069` was ordering-dependent) but does say the fault is not reachable by repetition here. More
+usefully, **the obvious cause is already defended against**: the classic PySide6 fault of this
+shape is a `QThread` destroyed while `run()` executes, and `manager.py`'s `_release()` refuses to
+drop a session while its pump is live. The first hypothesis anyone would reach for is not it. Also
+recorded: the Phase 1 exit criteria now have an evidence table in `IMPLEMENTATION_PLAN.md`, which
+they never had, and it shows the *unsupported URL* criterion is thinner than the others — proved
+against recorded fixtures rather than a live session.
+
 **The new Windows gate found something on its fourth run** (`T-074`, 2026-07-29). The full suite
 died with an **access violation**, exit 139, in
 `test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget` — with the `ResultPump`
@@ -535,9 +545,15 @@ on the worker's side of the queue. `ai/TESTING.md` §13 now has the general form
 
 - **`T-033` — blocked on CI evidence, not on code.** Its corrections are reviewed and verified,
   but approval needs the collection-removal negative run, Linux **and** Windows frozen results,
-  and the recorded artifact-size delta. PyInstaller is in the `build` extra and absent from the
-  working venv, so none of it can be produced here. Clears when the frozen jobs run against the
-  pushed boundary.
+  and the recorded artifact-size delta. Clears when the frozen jobs run against the pushed
+  boundary — and **both `frozen` jobs are still GitHub-hosted**, which is the actual constraint.
+
+  *(This said "PyInstaller is in the `build` extra and absent from the working venv, so none of it
+  can be produced here." **It is present, at 6.21.0** — `T-064` reinstalled the venv with
+  `.[dev,build]` deliberately, and it was installed before that too. The reviewer placed the
+  sentence at `a2966156`, well before any recent boundary, and asked for it as separate cleanup
+  rather than folded into `T-064`. Corrected here; what blocks `T-033` is the hosted frozen jobs,
+  not a missing local dependency.)*
 
 *(the `T-003` logo blocker cleared on 2026-07-25 when the maintainer supplied the source
 asset)*

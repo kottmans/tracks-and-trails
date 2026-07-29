@@ -249,6 +249,42 @@ Everything about the cause. Recorded as a question rather than a hypothesis dres
 - Whether it reproduces at all outside `STARBASE`. It has never been seen on Linux across many
   full-suite runs, but Linux has never been where this project's process faults show up.
 
+#### Diagnostic progress, 2026-07-29 — two things narrowed, cause still unknown
+
+**It does not reproduce on Linux.** Two attempts, both clean:
+
+| Attempt | Result |
+|---|---|
+| The crashing test alone, 40 iterations | **40 passed, 0 non-zero exits** |
+| `tests/integration/test_manager.py` entire, 5 runs | **5 × 71 passed**, no crash, no fatal exception |
+
+That is a negative result and is worth exactly what a negative result is worth. It does **not**
+clear Linux: `T-069` was ordering-dependent and failed only when one specific test ran first, and
+the Windows crash happened inside a full-suite run, not a module run. What it does establish is
+that the fault is not reachable by simple repetition of the failing test on this platform, so
+whatever it is depends on the platform, on suite-wide ordering, or on both.
+
+**The most obvious cause is already defended against, and this is the more useful half.** The
+classic PySide6 access violation of this shape is a `QThread` object being destroyed while its
+`run()` is still executing — and `ResultPump` emits `session_ended` from *inside* `run()`, so a
+slot that dropped the last reference would do exactly that. It cannot: `_release()` in
+`manager.py` refuses to drop a session while its pump is live —
+
+```python
+if session.pump_started and not (session.pump_finished or session.pump.isFinished()):
+    return
+```
+
+— and `_sessions.pop()` is the only thing holding the pump. `_Session` even documents the two
+moments as distinct: "the thread emits `session_ended` from inside `run()`." So the first
+hypothesis anyone would reach for is not it, which is worth recording so nobody spends the
+afternoon re-deriving it.
+
+**Still open.** The crash traceback named two threads — `[ResultPump]` and
+`Thread-50 (_monitor)`, which is `multiprocessing`'s — and the fault was at the wait for the first
+progress message. Whether it is the pump, the queue read beneath it, the interaction between them,
+or the harness remains unanswered. Nothing here should be read as narrowing it to product code.
+
 #### Acceptance criteria
 
 - The failure is **reproduced deliberately**, with a rate, rather than waited for

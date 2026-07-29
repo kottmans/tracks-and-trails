@@ -127,6 +127,19 @@ Prove `ARC-002`.
 > `windows desktop` job. A finding that reproduces only on a GitHub-hosted image and not there does
 > not block this exit — `T-056` and `T-068` are open on exactly that basis.
 >
+**Not exited. Standing as of 2026-07-29:**
+
+| Criterion | Evidence |
+|---|---|
+| A real URL downloads to disk with accurate live progress and correct final bytes | `T-037`, `test_a_url_becomes_a_file_with_the_bytes_it_reported`. Real yt-dlp, its generic extractor and its HTTP downloader against a local `http.server` — the §6 exception recorded for exactly this. The assertion joins the halves: the file's size equals both what the last progress message reported *and* what the queue recorded |
+| Cancel stops the download within 2 seconds with no orphaned process | `T-013` and `T-019`. `CANCEL_BUDGET_SECONDS = 2.0` is asserted by `test_cancel_stops_a_real_in_flight_download_within_the_budget`, and the escalation path — a worker that ignores both the event and `SIGTERM` — by `test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget`. Orphans are covered separately by `test_cancelling_a_download_kills_what_the_worker_spawned` and `test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind` |
+| `kill -9` of the worker is reported as `WORKER_CRASH` and the app stays responsive | `test_a_killed_worker_becomes_worker_crash_with_its_exit_code` and `test_the_application_survives_a_worker_crash_and_can_start_another`. `test_a_worker_that_exits_zero_without_an_outcome_is_a_crash_not_a_success` covers the case `REQ-028` cares about most |
+| Job state survives an application restart mid-download | `T-037`, `test_a_job_killed_mid_download_is_recovered_by_the_next_start` — a real `SIGKILL` to a separate interpreter with the row confirmed `RUNNING` first. `test_recovery_is_the_applications_own_and_not_the_tests` plants the row directly, so the claim is about startup rather than about what the previous test left behind |
+| An unsupported URL produces a failed job showing the extractor's own message | `test_the_extractor_message_survives_verbatim` (`T-057`, `T-018`'s recorded fixtures). **Thinner than the rest**: the projection is proved against recorded `info_dict` fixtures, not by putting an unsupported URL through a live session |
+| Worker code runs with no display attached | `tests/unit/test_layering.py` — `core/**` and `downloader/worker.py` may not import `PySide6` or `shiboken6`, mutation-verified. The whole suite runs under `QT_QPA_PLATFORM=offscreen` |
+| **Verified on Linux and Windows** | **Not met.** See below |
+| **Reviewed and signed off in `REVIEWS.md`** | **Not met.** The exit review has not been called |
+
 > **The Windows half is measured** (`T-073`, 2026-07-29): run `30415333608` ran lint, format,
 > Windows-platform types, the Qt baseline, the real-plugin desktop slice and the full suite on
 > `STARBASE` — 1388 passed, 20 skipped, with ffmpeg present.
