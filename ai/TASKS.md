@@ -81,499 +81,13 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(Holds `T-073`, `T-075`, `T-076` and `T-077` as of 2026-07-29. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling,
+*(Holds `T-073` and `T-074` as of 2026-07-29. `T-075`, `T-076` and `T-077` were approved and are filed Complete; leaving them here after approval is the placement drift `COORD-R7` reported, so they moved with the verdict rather than later. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling,
 and this note went on claiming that after `T-073` was filed In Review under `## Ready` —
 `COORD-R6`, which is `COORD-R5`'s own failure mode recurring one day later. `COORD-R2` is why this
 section carries a note at all rather than sitting blank: an empty section is a claim about
 readiness, and the last time it was left unlabelled it outlived being true by one CI run. The
 lesson this file keeps relearning is that the claim has to be rewritten when the section changes,
 not when someone notices.)*
-
-### T-076 — Choose the MP3 bitrate, rather than taking the preset's 192
-
-**Status:** **In Review — `T076-R1` corrected 2026-07-29.** A bitrate control beside the preset,
-320/256/192/160/128 kbps, defaulting to 192, offered **for MP3 specifically**. The first version
-gated on "converts audio", which is every codec but the original. See **Evidence**.
-**Owner:** Implementer
-**Priority:** Medium — `REQ-010` capability, pulled forward from Phase 3 at maintainer request
-**Phase:** Phase 1 (pulled forward; `REQ-010` is a Phase 3 deliverable)
-**Depends on:** `T-075`, which had to land first — a control added while the preset was frozen at
-probe time would have inherited the freeze and read as doing nothing
-**Relevant context:** `REQ-009`, `REQ-010`, `T015-R1`, `T-060`, `NFR-005`
-**Affected surfaces:** `core/presets.py`, `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`,
-`tests/ui/test_windows_desktop.py`
-**Risk:** Low — the model already carried `audio_quality`; this is a control, not new plumbing
-
-#### Scope
-
-`MP3_QUALITY = "192"` was already documented as a default rather than a policy — *"Overridable per
-request; the preset states a default, it does not decide policy for anyone."* `DownloadRequest`
-already carried `audio_quality` through to yt-dlp's `preferredquality`. What was missing was a way
-to say so.
-
-**Shape chosen: a control beside the preset, not five MP3 presets.** Bitrate is a property of the
-conversion, which is how the model already represents it; five presets would encode one parameter
-as five products and take the dropdown from five entries to nine.
-
-#### Acceptance criteria
-
-- 320, 256, 192, 160 and 128 kbps are offered, defaulting to 192
-- The chosen value reaches the stored request, and a control wired to nothing fails a test
-- It is offered only where it applies, and refuses rather than silently drops otherwise
-- What the dialog displays includes the bitrate that will run (`REQ-009`)
-- The keyboard chain is asserted in the state where the control is reachable
-
-#### Evidence, 2026-07-29
-
-**A derived preset, not a request override** (`T015-R1`). `audio_quality` is declared by both
-`Preset` and `DownloadRequest`, so it is preset-owned and `to_request` refuses to override it —
-because a request that disagrees with the preset the user was shown defeats `REQ-009`.
-`presets.with_audio_quality` returns a preset carrying the chosen bitrate, so the displayed string
-and the stored request stay in step by construction rather than by remembering.
-
-`AddUrlDialog.selected_preset` applies it, so `_request_for` and `_show_selector` both read one
-answer. That is the same structural point `T-075` was about: when two paths each derive "what the
-user chose", they can disagree, and one of them will be the one that runs.
-
-**`with_audio_quality` refuses a preset that does not convert audio.** "Download the video at
-320 kbps" is not expressible, and quietly dropping the number is exactly the failure `T-075` was.
-The control is disabled in that case — disabled rather than hidden, so the layout does not move
-under someone reading it.
-
-**The display carries it.** `Format selector: bestaudio/best · 320 kbps MP3`. `REQ-009` promises
-that what is shown is what runs, and after `T-075` a bitrate that changed the download without
-changing the display would be the same defect one field over.
-
-| Check | Result |
-|---|---|
-| `test_the_chosen_bitrate_is_what_gets_stored` | passes; **fails when the choice is ignored** |
-| `test_what_is_displayed_includes_the_bitrate_that_will_run` | passes; **fails on the same mutation** |
-| `test_the_bitrate_is_offered_only_where_it_applies` | passes — video and original-audio disabled, MP3 enabled |
-| `tests/ui/test_add_dialog.py` | 75 passed |
-| Full suite | 1406 passed, 11 skipped, 2 deselected |
-
-**A fourth Windows focus state, because the control is state-dependent.** `EXPECTED_DIALOG_ORDER`
-gains `audioBitrateChoice` between `presetChoice` and `selectorValue` — with the preset it
-qualifies, so a user who has just chosen MP3 is one Tab from the bitrate. It is disabled in the
-three existing states, so `DIALOG_STATES` gains *an audio preset chosen*: without it the control
-would be declared and unreachable in every state the suite walks, which is `T060-R1` exactly.
-Pre-flighted offscreen, 10/10.
-
-**Still owed:** the real-plugin run on `STARBASE`. The self-hosted `windows desktop` job covers it
-on push.
-
-#### `T076-R1` — the gate was "converts audio", not "is MP3", 2026-07-29
-
-`CONVERTING_AUDIO_CODECS` is every codec but `ORIGINAL` — which includes `FLAC`, `WAV` and `ALAC`,
-where a constant kbps bitrate is not a worse choice but a meaningless one, and `OPUS`, whose
-useful range is nothing like MP3's. `MP3_BITRATES` are MP3's scale.
-
-Only MP3 is offered today, so the wrong gate behaved identically and would have gone on doing so
-until a second converting preset appeared — which is exactly when nobody would be looking at this.
-`with_audio_quality`, the control's enablement and the displayed line all now test
-`audio_codec is AudioCodec.MP3`.
-
-`test_no_other_codec_accepts_mp3s_bitrates` is parametrised over **every** other codec, so the
-next one added is covered without anyone remembering. Widening the gate back to "converting" fails
-it eight times.
-
-#### Out of scope
-
-- A quality scale for another codec, which is that codec's to define — `REQ-010`'s wider surface
-  is Phase 3
-- Remembering the choice between sessions; that is Phase 4 settings
-
----
-
-### T-075 — Probing freezes the preset, so the download ignores what the user chose
-
-**Status:** **In Review — `T075-R1` corrected 2026-07-29.** The original defect is fixed; the
-review then found the fix's own shortcut could start a download against a revision that never
-landed, and that is corrected too. See **Evidence** and **`T075-R1`**.
-**Owner:** Implementer
-**Priority:** **Critical** — the application downloaded something other than what the user
-selected, silently, while displaying the correct selector
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `REQ-009`, `REQ-012`, `T-016`, `T-051`, `ARC-004`, `ARC-005`, `T036-R1`
-**Affected surfaces:** `ui/add_dialog.py`, `downloader/manager.py`, `core/models.py`,
-`tests/ui/test_add_dialog.py`
-**Risk:** Was High to leave — it is the product's central promise, and nothing failed loudly
-
-#### Scope
-
-**The order a user works in is the order that was broken.** Paste a URL, probe it to find out what
-it is, then decide how to download it. `probe()` must persist a job before asking a worker anything
-(`REQ-012`), and it built that job from whichever preset was selected at that moment. Choosing
-another preset afterwards called `_show_selector`, which updates the displayed string and nothing
-else. `add_to_queue` then deliberately skips creating a job for a URL it has already stored, and
-started the one the probe wrote.
-
-Measured before the fix — probe with the default preset, then select *Audio only (MP3)*:
-
-| | |
-|---|---|
-| Label displayed | `Format selector: bestaudio/best` |
-| Request actually stored | `bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[...]` |
-| `audio_codec` | `best`, not `mp3` |
-
-Without probing first, the same selection stored `bestaudio/best`, `audio_codec=mp3`, 192 kbps —
-correct. **So the presets were never broken; probing froze them.** That is why it read as "none of
-the options do anything": with probing in the loop, every download used the default.
-
-**`REQ-009` makes the visible selector part of the promise** — it is shown so a user can learn the
-syntax and trust it. A dialog that displays one selector and queues another breaks that
-specifically rather than incidentally.
-
-#### Acceptance criteria
-
-- The request that runs is the one selected when **Add to queue** was pressed, whether or not the
-  URL was probed first
-- A user who does not touch the dropdown gets exactly what the probe stored, with no extra
-  revision of the row
-- A job a worker already holds cannot be retargeted
-- If the chosen request cannot be stored, **nothing starts** — the old request must not run behind
-  a message saying the choice was saved
-- The regression fails when the fix is reverted
-
-#### Evidence, 2026-07-29
-
-**The fix binds the preset at Add, not at probe.** `DownloadManager.retarget` writes the new
-request through the same `_persist` path every other state change uses, and starts the job from its
-completion callback — persist, then act. That routing is `T036-R1`'s lesson: when composition wrote
-a status change through the store directly, nothing announced it and a view showed a state the row
-no longer held. A request change has the same shape.
-
-`Job.with_request` guards the one thing that must never happen — retargeting a job a worker already
-holds — via `Job.RETARGETABLE` (`QUEUED`, `READY`). `READY` is included deliberately: a probe
-answers *what this URL is*, which is a different question from *how to download it*, so the
-download request is still open at that point.
-
-**It writes only when the request differs.** The first version rewrote unconditionally, on the
-argument that a rule with no exceptions is easier to trust. That argument was the Implementer's
-rather than the project's, and it cost a real property:
-`test_a_probed_job_downloads_from_ready_without_re_entering_probing` asserts the persisted status
-sequence, and an unconditional write added a second `READY` revision to every probed job.
-`DownloadRequest` is frozen, so the comparison is structural — not the subtle kind the
-unconditional version was defending against.
-
-**Failure is refusal, not a silent fallback.** If the write fails or the job has moved, the dialog
-says so and starts nothing. Starting would run the request the probe wrote — the defect itself —
-after telling the user their choice was saved.
-
-| Check | Result |
-|---|---|
-| `test_the_preset_chosen_after_probing_is_the_one_that_downloads` | passes; **fails when the retarget is removed** |
-| `test_a_preset_left_alone_is_still_the_one_that_downloads` | passes, and pins the no-redundant-write half |
-| Full suite | 1403 passed, 11 skipped, 2 deselected |
-
-**Why no test caught it.** Every dialog test either does not probe, or does not change the preset
-after probing — the defect's existence proves it. `ai/TESTING.md` §13 already records that a task's
-tests can share one blind spot; here the blind spot was an ordering the tests never perform and
-users always do. **The maintainer found it by using the application**, which is the one method no
-suite here replaces.
-
-#### `T075-R1` — Critical: the shortcut decided outside the chain, 2026-07-29
-
-`retarget` skips the write when the job already carries the request asked for. The first version
-decided that **before enqueuing anything**, by reading the store and comparing.
-
-`PersistentJobStore.get()` answers with *"the newest revision this process has queued, or what the
-database holds"* — durable or not. So the comparison could match a write still in flight, and if
-that write then failed, `then` had already run: the download started against the request the
-database actually held, after the dialog had reported the user's choice as saved. The same defect
-`T-075` is about, reintroduced by its own fix.
-
-**The decision now happens inside the per-job chain**, where every other transition is decided —
-against the job as it stands when its turn comes. That needed a third outcome from a revision:
-`_persist` already distinguished "here is a new job" from "this no longer applies", and now also
-recognises `UNCHANGED`, which writes nothing and runs the successor. Skipping the write is still
-worth doing: `test_a_probed_job_downloads_from_ready_without_re_entering_probing` asserts the
-persisted status sequence, and writing anyway adds a second `READY` revision to every probed job.
-
-**Asserted as the invariant, not the mechanism.**
-`test_a_retarget_never_starts_against_a_revision_that_did_not_land` records the durable
-`format_selector` at the moment each successor runs and requires every one of them to be the
-request that was asked for. A test that checked "no shortcut was taken" would pass against any
-number of other wrong implementations.
-
-It needed a fake that could express the failure. `HeldStore.get()` answers only from what has
-landed, which cannot produce the defect at all; `OverlayingHeldStore` overlays the queue the way
-the real store does. **Mutation: restoring the pre-chain shortcut fails the test.**
-
-#### Out of scope
-
-- Per-bitrate selection for MP3 (`REQ-010`) — the control this was found while discussing
-- A probe whose result *failed*: the dialog marks it superseded and leaves the stored row alone, so
-  `add_to_queue` neither retargets nor replaces it. Narrower, pre-existing, and not this
-
----
-
-### T-073 — Run the full Windows gate on the machine that can run it
-
-**Status:** **In Review — approved with a documentation follow-up**, 2026-07-29 at `c41e2ef`.
-The reviewer accepted the job shape: the real `windows` plugin for the 28-test desktop slice,
-`offscreen` for the Qt baseline and the default suite, no provisioning of the self-hosted machine,
-ffmpeg recorded, and 30 minutes allowed. All fourteen functional steps passed. `T073-R1` is the
-open follow-up — two evidence statements in this task were wrong, corrected below.
-**Owner:** Implementer
-**Priority:** **High** — it is what makes Phase 1's seventh exit criterion attemptable again
-**Phase:** Phase 1
-**Depends on:** `OPS-005`; the self-hosted runner established 2026-07-28
-**Relevant context:** `OPS-005`, `T-066`, `T-062`, `ai/TESTING.md` §12, `IMPLEMENTATION_PLAN.md`
-Phase 1 exit criteria
-**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md`
-**Risk:** Medium — it puts the project's whole Windows gate on one machine
-
-#### Scope
-
-`OPS-005` made `STARBASE` the platform *verified on Windows* is measured against, and then had to
-record that the criterion was still unmet: the self-hosted job ran the 28-test desktop slice and
-two integration modules, while `check (windows-latest)` — lint, format, types, the Qt baseline and
-the full suite — had not run anywhere since the hosted quota ran out.
-
-Give the self-hosted job the rest of that gate. It already builds a virtualenv on a real Windows
-machine, so the marginal cost is steps rather than infrastructure.
-
-**No provisioning.** The one hard rule this job already carries is that a self-hosted runner must
-never install software as a side effect of running a test — the first run of it launched the real
-Python installer, opened an interactive dialog, and deadlocked against `msiexec` for the full
-timeout. So where `check` runs `choco install ffmpeg`, this job **records** ffmpeg instead. That is
-affordable because the default suite does not need it: measured on Linux with `ffmpeg` removed from
-`PATH`, **1399 passed, 11 skipped, 2 deselected** — the same numbers as with it.
-
-**The job keeps its name.** `windows desktop` is referenced by `ai/TESTING.md`, `ai/REQUIREMENTS.md`
-and `IMPLEMENTATION_PLAN.md`, all describing a desktop role that is still true and still its
-reason for existing. Renaming would invalidate those and the review record for no gain; the
-expanded role is recorded in `ai/TESTING.md` instead.
-
-#### Acceptance criteria
-
-- The self-hosted job runs lint, format, the Qt baseline and the full suite, in addition to what it
-  already ran
-- The full-suite step runs **offscreen**, and the desktop slice keeps the real `windows` plugin
-- Nothing in the job installs software on the machine
-- ffmpeg's presence or absence is recorded, and the run states which configuration it measured
-- The job's timeout accommodates a full suite, rather than passing by finishing early
-- `ai/TESTING.md` records that this job now carries the Windows gate, and what still differs from
-  the hosted one
-
-#### Evidence, 2026-07-29
-
-Run **`30415333608`** at `c41e2ef`, job `windows desktop` on `STARBASE`. **All fourteen steps
-green**, **6 m 29 s** wall (job `90460498381`).
-
-*(This said 3 m 40 s — `T073-R1`. That was the gap between two log timestamps I happened to grep,
-not the job's wall time, which Actions records directly. Corrected rather than left as a number
-nobody would re-derive.)*
-
-| Step | Result |
-|---|---|
-| Types under the Windows platform | Passed |
-| Windows desktop suite (real `windows` plugin) | 28 passed |
-| Lint | All checks passed |
-| Format check | 103 files already formatted |
-| Qt baseline | OK: Qt baseline verified on this runner |
-| **Full suite** (offscreen) | **1388 passed, 20 skipped, 30 deselected in 208.44 s** |
-
-**The machine has ffmpeg**, which the plan did not assume: `ffmpeg 8.1.2-full_build`, installed by
-winget at `…/Gyan.FFmpeg…/bin/ffmpeg`. So this run measured the **with-ffmpeg** configuration, the
-same one `check (windows-latest)` measures via `choco`. The no-ffmpeg wording in the environment
-step is the branch that did not fire, and the recording is what makes that knowable rather than
-assumed.
-
-**Reconciling the counts against Linux**, which is where a difference would otherwise look like a
-gap:
-
-| | Linux | Windows |
-|---|---|---|
-| Passed | 1399 | 1388 |
-| Skipped | 11 | 20 |
-| Deselected | 2 | 30 |
-
-The deselections explain themselves: Linux deselects the 2 network tests, Windows deselects those
-plus the 28 `windows_desktop` tests — which is correct, because step 8 already ran them under the
-real plugin. The extra 9 Windows skips are the POSIX-only half of platform-split modules.
-
-**The residual is explained, and it is an identity rather than a discrepancy** (`T073-R1`). Total
-collected plus deselected is 1412 on Linux and 1438 on Windows. Linux's JUnit carries two
-module-level **"collection skipped"** placeholders, for `tests.ui.test_windows_accessibility` and
-`tests.ui.test_windows_desktop`; Windows replaces those two placeholders with the 28 real desktop
-cases. `1412 - 2 + 28 = 1438`, exactly the recorded count.
-
-*(This was filed as "two tests unaccounted for … not something to wave through", which was the
-right instinct and the wrong conclusion — the answer was in the JUnit output rather than in the
-counts. Kept because a reader who re-derives the arithmetic will hit the same 26-against-28 and
-deserves the resolution, not the question.)*
-
-#### Out of scope
-
-- Retiring `check (windows-latest)` or the `frozen` jobs. They stay; this makes their absence
-  survivable, not permanent
-- The Linux half of `check`, which is unaffected
-- `T-056` and `T-068`, downgraded by `OPS-005` and not revisited here
-
----
-
-## Ready
-
-### T-077 — Four of the five download options have never produced a file
-
-**Status:** **In Review — `T077-R1` corrected 2026-07-29. All five presets now execute.** The
-first version covered three and recorded the other two as structural limits of network-free
-testing. They were limits of the *direct-file* fixture, and an HLS fixture removes both. See
-**Evidence** and **`T077-R1`**.
-**Owner:** Implementer
-**Priority:** **High** — these are the application's user-visible choices, and the only one ever
-executed end to end is the one the tests happen to pin
-**Phase:** Phase 1
-**Depends on:** nothing. `T-075` is fixed, so a preset chosen in the dialog now reaches the request
-**Relevant context:** `T-037`, `T-061`, `T-062`, `T-015`, `T-012`, `REQ-010`, `ai/TESTING.md` §13
-**Affected surfaces:** `tests/integration/test_end_to_end.py`, `tests/capabilities.py`
-**Risk:** Medium — the postprocessor path is unit-tested, so this is about whether it *works*,
-not whether it is wired
-
-#### Scope
-
-Every end-to-end test pins one preset. `test_end_to_end.py` sets
-`END_TO_END_PRESET = "Best video available"`, and the opt-in network test pins the same string.
-
-| Preset | Selector translation | A real file, produced by ffmpeg |
-|---|---|---|
-| Best video available | tested | **tested** |
-| Best video up to 1080p (MP4) | tested | never |
-| Audio only (MP3) | tested | **never** |
-| Audio only (original) | tested | never |
-| Video with embedded subtitles | tested | never |
-
-**Nothing in this repository has ever produced an MP3 or an embedded subtitle track.**
-`build_postprocessors` is asserted down to its `FFmpegExtractAudio` spec and validated against
-yt-dlp's own registry, and `T-061`'s gate decides from the resolved format — but no test runs
-ffmpeg and then looks at what came out. A postprocessor that is correctly *specified* and
-silently ineffective would pass everything here.
-
-`T-076` sharpened this: the bitrate now reaches `preferredquality` and a test proves it reaches
-the stored request. Whether a 320 kbps MP3 arrives on disk is a different claim, and nothing makes
-it.
-
-**Why this is more than a coverage number.** `T-075` existed because the dialog's tests shared a
-blind spot — none of them changed a preset after probing. This is the same shape one layer down:
-the download tests share a preset, so four of the five things a user can pick are exercised only
-as far as the request that describes them. The maintainer found `T-075` by using the application;
-this is the part of that discovery a suite can hold on to.
-
-#### Acceptance criteria
-
-- Each built-in preset completes end to end against the local `http.server` and the resulting
-  **file is inspected**, not merely reported: an audio preset yields audio, and the MP3 one yields
-  MP3 at the requested bitrate
-- The MP3 case asserts a **non-default** bitrate, so a conversion that ignores `preferredquality`
-  fails rather than passing at 192 by coincidence
-- Each new case is mutation-verified: removing the postprocessor spec, or the codec, makes it fail
-- The suite states honestly what it needs. ffmpeg is required for conversion, and CI installs it
-  (`T-062`) — a machine without it **skips with a reason naming ffmpeg**, in the shape
-  `tests/capabilities.py` established for symlinks (`T-070`), rather than failing obscurely
-- No network. The `http.server` fixture already serves the bytes; this adds conversion, not reach
-
-#### Out of scope
-
-- The opt-in network test's preset. It is `-m network`, still never executed anywhere, and
-  widening a test nobody runs adds no evidence
-- Per-preset coverage on Windows specifically. Do it on Linux first; the Windows question is
-  whether ffmpeg behaves the same, which is a separate and narrower claim
-- Playlist and format-table depth (`REQ-003`, `REQ-004`) — Phase 3
-
-#### Evidence, 2026-07-29
-
-**The fixture had to be able to hold a conversion.** `media_handler` serves half a megabyte of
-zeros under a `video/mp4` header — enough for yt-dlp's generic extractor to download, and exactly
-nothing for ffmpeg to work with. A preset that extracts audio would have failed on it, so the
-converting presets could never have been tested against the existing fixture.
-
-The source is now **generated by ffmpeg at test time**: two seconds of a 440 Hz tone under a
-320x240 test pattern, h264 + AAC, about 47 kB. No binary enters the repository, no licence
-question follows it, and the tool is already required for the conversion under test.
-
-| Preset | Result |
-|---|---|
-| Best video available | **passes** — video + audio streams |
-| Audio only (MP3) | **passes** — `mp3`, and the bitrate measured near 320 kbps |
-| Audio only (original) | **passes** — `aac`, the source codec, audio only |
-
-**This is the first MP3 this repository has ever produced.**
-
-| Mutation | Result |
-|---|---|
-| drop the `FFmpegExtractAudio` spec | **killed** — both audio presets produce video |
-| drop `preferredquality` | **killed** — 320 kbps became **66,684 bps** |
-
-The second is why the criterion asked for a non-default bitrate: at 192 the assertion would have
-agreed with the preset's own default rather than with the user's choice.
-
-**Two presets are structurally uncoverable here, which is the finding.** They are named in
-`UNCOVERABLE_BY_THIS_FIXTURE` rather than quietly absent, because "not in the table" and "cannot
-be in the table" are different claims:
-
-- **Best video up to 1080p (MP4)** — its selector filters on `height` and `ext`, and the generic
-  extractor does not parse the container, so a direct media URL yields one format with neither.
-  `Requested format is not available` is the *correct* answer, which `END_TO_END_PRESET`'s note
-  already recorded for the same reason. Covering it needs a fixture whose extractor reports real
-  formats — an HLS or DASH manifest — which is `REQ-003`'s ground in Phase 3.
-- **Video with embedded subtitles** — as anticipated below. `FFmpegEmbedSubtitle` embeds subtitles
-  yt-dlp *downloaded*, and the generic extractor offers none for a direct file, so the case would
-  pass while proving nothing.
-
-**ffmpeg is required and says so.** `tests/capabilities.py` gains an `ffmpeg` fixture probing for
-both `ffmpeg` and `ffprobe` — both, because these tests convert *and* inspect, and a machine with
-one would fail at the assertion rather than at the skip. CI installs them (`T-062`).
-
-**Cost: 2.86 s for all three.** A first run took 183 s, which was entirely the 1080p case waiting
-out its 180 s timeout before being removed.
-
-#### `T077-R1` — the limit was the fixture, not the approach, 2026-07-29
-
-The criterion says **each built-in preset**, and naming two exclusions does not meet it.
-
-A direct `video/mp4` URL gives yt-dlp's generic extractor one format with no `height` and no `ext`
-to filter on, and no subtitles — so the 1080p selector matched nothing and `FFmpegEmbedSubtitle`
-had nothing to embed. Both are properties of that fixture. Measured against a local HLS master
-playlist, the same extractor reports:
-
-```
-FORMATS:   [('400', 'mp4', 240)]
-SUBTITLES: {'en': ['vtt']}
-```
-
-A `RESOLUTION` attribute gives the selector a height and an ext; an `EXT-X-MEDIA` subtitle group
-gives the postprocessor something to embed. Both playlists and the segments are rendered by ffmpeg
-at test time from the same 47 kB source — still no network, still no binary in the repository.
-
-| Preset | Result |
-|---|---|
-| Best video available | passes |
-| **Best video up to 1080p (MP4)** | **passes** — the selector matches a real format |
-| Audio only (MP3) at 320 | passes |
-| Audio only (original) | passes |
-| **Video with embedded subtitles** | **passes** — a subtitle stream in the output |
-
-Five cases in 5.47 s. Removing `FFmpegEmbedSubtitle` fails the subtitle case with
-`produced ['video', 'audio'], expected ['audio', 'subtitle', 'video']`.
-
-**The list is now pinned to the registry.** `test_the_preset_table_covers_every_built_in_preset`
-asserts the covered set equals `BUILT_IN_PRESETS` exactly, so a preset added tomorrow is covered
-by something or reported by something. Two hand-maintained lists with no such assertion were the
-third half of this finding.
-
-#### A difficulty worth naming before starting
-
-**Embedded subtitles may have nothing to embed.** The local server serves `video/mp4` and yt-dlp's
-generic extractor will find no subtitle track, so `FFmpegEmbedSubtitle` would have nothing to do
-and the test could pass while proving nothing — the exact shape `ai/TESTING.md` §13 is about. That
-case likely needs the fixture to serve a subtitle track, or an honest statement that the subtitle
-preset is covered only as far as its specification. Decide it in the open rather than discovering
-it in the assertion.
-
----
 
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
@@ -865,6 +379,114 @@ the maintainer's to record.
 - `T-056`, which is a different intermittent on a different platform and is `OPS-005`-downgraded
 
 ---
+
+### T-073 — Run the full Windows gate on the machine that can run it
+
+**Status:** **In Review — approved with a documentation follow-up**, 2026-07-29 at `c41e2ef`.
+The reviewer accepted the job shape: the real `windows` plugin for the 28-test desktop slice,
+`offscreen` for the Qt baseline and the default suite, no provisioning of the self-hosted machine,
+ffmpeg recorded, and 30 minutes allowed. All fourteen functional steps passed. `T073-R1` is the
+open follow-up — two evidence statements in this task were wrong, corrected below.
+**Owner:** Implementer
+**Priority:** **High** — it is what makes Phase 1's seventh exit criterion attemptable again
+**Phase:** Phase 1
+**Depends on:** `OPS-005`; the self-hosted runner established 2026-07-28
+**Relevant context:** `OPS-005`, `T-066`, `T-062`, `ai/TESTING.md` §12, `IMPLEMENTATION_PLAN.md`
+Phase 1 exit criteria
+**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md`
+**Risk:** Medium — it puts the project's whole Windows gate on one machine
+
+#### Scope
+
+`OPS-005` made `STARBASE` the platform *verified on Windows* is measured against, and then had to
+record that the criterion was still unmet: the self-hosted job ran the 28-test desktop slice and
+two integration modules, while `check (windows-latest)` — lint, format, types, the Qt baseline and
+the full suite — had not run anywhere since the hosted quota ran out.
+
+Give the self-hosted job the rest of that gate. It already builds a virtualenv on a real Windows
+machine, so the marginal cost is steps rather than infrastructure.
+
+**No provisioning.** The one hard rule this job already carries is that a self-hosted runner must
+never install software as a side effect of running a test — the first run of it launched the real
+Python installer, opened an interactive dialog, and deadlocked against `msiexec` for the full
+timeout. So where `check` runs `choco install ffmpeg`, this job **records** ffmpeg instead. That is
+affordable because the default suite does not need it: measured on Linux with `ffmpeg` removed from
+`PATH`, **1399 passed, 11 skipped, 2 deselected** — the same numbers as with it.
+
+**The job keeps its name.** `windows desktop` is referenced by `ai/TESTING.md`, `ai/REQUIREMENTS.md`
+and `IMPLEMENTATION_PLAN.md`, all describing a desktop role that is still true and still its
+reason for existing. Renaming would invalidate those and the review record for no gain; the
+expanded role is recorded in `ai/TESTING.md` instead.
+
+#### Acceptance criteria
+
+- The self-hosted job runs lint, format, the Qt baseline and the full suite, in addition to what it
+  already ran
+- The full-suite step runs **offscreen**, and the desktop slice keeps the real `windows` plugin
+- Nothing in the job installs software on the machine
+- ffmpeg's presence or absence is recorded, and the run states which configuration it measured
+- The job's timeout accommodates a full suite, rather than passing by finishing early
+- `ai/TESTING.md` records that this job now carries the Windows gate, and what still differs from
+  the hosted one
+
+#### Evidence, 2026-07-29
+
+Run **`30415333608`** at `c41e2ef`, job `windows desktop` on `STARBASE`. **All fourteen steps
+green**, **6 m 29 s** wall (job `90460498381`).
+
+*(This said 3 m 40 s — `T073-R1`. That was the gap between two log timestamps I happened to grep,
+not the job's wall time, which Actions records directly. Corrected rather than left as a number
+nobody would re-derive.)*
+
+| Step | Result |
+|---|---|
+| Types under the Windows platform | Passed |
+| Windows desktop suite (real `windows` plugin) | 28 passed |
+| Lint | All checks passed |
+| Format check | 103 files already formatted |
+| Qt baseline | OK: Qt baseline verified on this runner |
+| **Full suite** (offscreen) | **1388 passed, 20 skipped, 30 deselected in 208.44 s** |
+
+**The machine has ffmpeg**, which the plan did not assume: `ffmpeg 8.1.2-full_build`, installed by
+winget at `…/Gyan.FFmpeg…/bin/ffmpeg`. So this run measured the **with-ffmpeg** configuration, the
+same one `check (windows-latest)` measures via `choco`. The no-ffmpeg wording in the environment
+step is the branch that did not fire, and the recording is what makes that knowable rather than
+assumed.
+
+**Reconciling the counts against Linux**, which is where a difference would otherwise look like a
+gap:
+
+| | Linux | Windows |
+|---|---|---|
+| Passed | 1399 | 1388 |
+| Skipped | 11 | 20 |
+| Deselected | 2 | 30 |
+
+The deselections explain themselves: Linux deselects the 2 network tests, Windows deselects those
+plus the 28 `windows_desktop` tests — which is correct, because step 8 already ran them under the
+real plugin. The extra 9 Windows skips are the POSIX-only half of platform-split modules.
+
+**The residual is explained, and it is an identity rather than a discrepancy** (`T073-R1`). Total
+collected plus deselected is 1412 on Linux and 1438 on Windows. Linux's JUnit carries two
+module-level **"collection skipped"** placeholders, for `tests.ui.test_windows_accessibility` and
+`tests.ui.test_windows_desktop`; Windows replaces those two placeholders with the 28 real desktop
+cases. `1412 - 2 + 28 = 1438`, exactly the recorded count.
+
+*(This was filed as "two tests unaccounted for … not something to wave through", which was the
+right instinct and the wrong conclusion — the answer was in the JUnit output rather than in the
+counts. Kept because a reader who re-derives the arithmetic will hit the same 26-against-28 and
+deserves the resolution, not the question.)*
+
+#### Out of scope
+
+- Retiring `check (windows-latest)` or the `frozen` jobs. They stay; this makes their absence
+  survivable, not permanent
+- The Linux half of `check`, which is unaffected
+- `T-056` and `T-068`, downgraded by `OPS-005` and not revisited here
+
+---
+
+## Ready
 
 ### T-072 — Carry the three unresolved findings the last-pass direction stopped
 
@@ -2593,6 +2215,384 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-075 — Probing freezes the preset, so the download ignores what the user chose
+
+**Status:** **Complete — Approved**, 2026-07-29. **In Review — `T075-R1` corrected 2026-07-29.** The original defect is fixed; the
+review then found the fix's own shortcut could start a download against a revision that never
+landed, and that is corrected too. See **Evidence** and **`T075-R1`**.
+**Owner:** Implementer
+**Priority:** **Critical** — the application downloaded something other than what the user
+selected, silently, while displaying the correct selector
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `REQ-009`, `REQ-012`, `T-016`, `T-051`, `ARC-004`, `ARC-005`, `T036-R1`
+**Affected surfaces:** `ui/add_dialog.py`, `downloader/manager.py`, `core/models.py`,
+`tests/ui/test_add_dialog.py`
+**Risk:** Was High to leave — it is the product's central promise, and nothing failed loudly
+
+#### Scope
+
+**The order a user works in is the order that was broken.** Paste a URL, probe it to find out what
+it is, then decide how to download it. `probe()` must persist a job before asking a worker anything
+(`REQ-012`), and it built that job from whichever preset was selected at that moment. Choosing
+another preset afterwards called `_show_selector`, which updates the displayed string and nothing
+else. `add_to_queue` then deliberately skips creating a job for a URL it has already stored, and
+started the one the probe wrote.
+
+Measured before the fix — probe with the default preset, then select *Audio only (MP3)*:
+
+| | |
+|---|---|
+| Label displayed | `Format selector: bestaudio/best` |
+| Request actually stored | `bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[...]` |
+| `audio_codec` | `best`, not `mp3` |
+
+Without probing first, the same selection stored `bestaudio/best`, `audio_codec=mp3`, 192 kbps —
+correct. **So the presets were never broken; probing froze them.** That is why it read as "none of
+the options do anything": with probing in the loop, every download used the default.
+
+**`REQ-009` makes the visible selector part of the promise** — it is shown so a user can learn the
+syntax and trust it. A dialog that displays one selector and queues another breaks that
+specifically rather than incidentally.
+
+#### Acceptance criteria
+
+- The request that runs is the one selected when **Add to queue** was pressed, whether or not the
+  URL was probed first
+- A user who does not touch the dropdown gets exactly what the probe stored, with no extra
+  revision of the row
+- A job a worker already holds cannot be retargeted
+- If the chosen request cannot be stored, **nothing starts** — the old request must not run behind
+  a message saying the choice was saved
+- The regression fails when the fix is reverted
+
+#### Evidence, 2026-07-29
+
+**The fix binds the preset at Add, not at probe.** `DownloadManager.retarget` writes the new
+request through the same `_persist` path every other state change uses, and starts the job from its
+completion callback — persist, then act. That routing is `T036-R1`'s lesson: when composition wrote
+a status change through the store directly, nothing announced it and a view showed a state the row
+no longer held. A request change has the same shape.
+
+`Job.with_request` guards the one thing that must never happen — retargeting a job a worker already
+holds — via `Job.RETARGETABLE` (`QUEUED`, `READY`). `READY` is included deliberately: a probe
+answers *what this URL is*, which is a different question from *how to download it*, so the
+download request is still open at that point.
+
+**It writes only when the request differs.** The first version rewrote unconditionally, on the
+argument that a rule with no exceptions is easier to trust. That argument was the Implementer's
+rather than the project's, and it cost a real property:
+`test_a_probed_job_downloads_from_ready_without_re_entering_probing` asserts the persisted status
+sequence, and an unconditional write added a second `READY` revision to every probed job.
+`DownloadRequest` is frozen, so the comparison is structural — not the subtle kind the
+unconditional version was defending against.
+
+**Failure is refusal, not a silent fallback.** If the write fails or the job has moved, the dialog
+says so and starts nothing. Starting would run the request the probe wrote — the defect itself —
+after telling the user their choice was saved.
+
+| Check | Result |
+|---|---|
+| `test_the_preset_chosen_after_probing_is_the_one_that_downloads` | passes; **fails when the retarget is removed** |
+| `test_a_preset_left_alone_is_still_the_one_that_downloads` | passes, and pins the no-redundant-write half |
+| Full suite | 1403 passed, 11 skipped, 2 deselected |
+
+**Why no test caught it.** Every dialog test either does not probe, or does not change the preset
+after probing — the defect's existence proves it. `ai/TESTING.md` §13 already records that a task's
+tests can share one blind spot; here the blind spot was an ordering the tests never perform and
+users always do. **The maintainer found it by using the application**, which is the one method no
+suite here replaces.
+
+#### `T075-R1` — Critical: the shortcut decided outside the chain, 2026-07-29
+
+`retarget` skips the write when the job already carries the request asked for. The first version
+decided that **before enqueuing anything**, by reading the store and comparing.
+
+`PersistentJobStore.get()` answers with *"the newest revision this process has queued, or what the
+database holds"* — durable or not. So the comparison could match a write still in flight, and if
+that write then failed, `then` had already run: the download started against the request the
+database actually held, after the dialog had reported the user's choice as saved. The same defect
+`T-075` is about, reintroduced by its own fix.
+
+**The decision now happens inside the per-job chain**, where every other transition is decided —
+against the job as it stands when its turn comes. That needed a third outcome from a revision:
+`_persist` already distinguished "here is a new job" from "this no longer applies", and now also
+recognises `UNCHANGED`, which writes nothing and runs the successor. Skipping the write is still
+worth doing: `test_a_probed_job_downloads_from_ready_without_re_entering_probing` asserts the
+persisted status sequence, and writing anyway adds a second `READY` revision to every probed job.
+
+**Asserted as the invariant, not the mechanism.**
+`test_a_retarget_never_starts_against_a_revision_that_did_not_land` records the durable
+`format_selector` at the moment each successor runs and requires every one of them to be the
+request that was asked for. A test that checked "no shortcut was taken" would pass against any
+number of other wrong implementations.
+
+It needed a fake that could express the failure. `HeldStore.get()` answers only from what has
+landed, which cannot produce the defect at all; `OverlayingHeldStore` overlays the queue the way
+the real store does. **Mutation: restoring the pre-chain shortcut fails the test.**
+
+#### Out of scope
+
+- Per-bitrate selection for MP3 (`REQ-010`) — the control this was found while discussing
+- A probe whose result *failed*: the dialog marks it superseded and leaves the stored row alone, so
+  `add_to_queue` neither retargets nor replaces it. Narrower, pre-existing, and not this
+
+---
+
+### T-076 — Choose the MP3 bitrate, rather than taking the preset's 192
+
+**Status:** **Complete — Approved with follow-up `T-089`**, 2026-07-29. **In Review — `T076-R1` corrected 2026-07-29.** A bitrate control beside the preset,
+320/256/192/160/128 kbps, defaulting to 192, offered **for MP3 specifically**. The first version
+gated on "converts audio", which is every codec but the original. See **Evidence**.
+**Owner:** Implementer
+**Priority:** Medium — `REQ-010` capability, pulled forward from Phase 3 at maintainer request
+**Phase:** Phase 1 (pulled forward; `REQ-010` is a Phase 3 deliverable)
+**Depends on:** `T-075`, which had to land first — a control added while the preset was frozen at
+probe time would have inherited the freeze and read as doing nothing
+**Relevant context:** `REQ-009`, `REQ-010`, `T015-R1`, `T-060`, `NFR-005`
+**Affected surfaces:** `core/presets.py`, `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`,
+`tests/ui/test_windows_desktop.py`
+**Risk:** Low — the model already carried `audio_quality`; this is a control, not new plumbing
+
+#### Scope
+
+`MP3_QUALITY = "192"` was already documented as a default rather than a policy — *"Overridable per
+request; the preset states a default, it does not decide policy for anyone."* `DownloadRequest`
+already carried `audio_quality` through to yt-dlp's `preferredquality`. What was missing was a way
+to say so.
+
+**Shape chosen: a control beside the preset, not five MP3 presets.** Bitrate is a property of the
+conversion, which is how the model already represents it; five presets would encode one parameter
+as five products and take the dropdown from five entries to nine.
+
+#### Acceptance criteria
+
+- 320, 256, 192, 160 and 128 kbps are offered, defaulting to 192
+- The chosen value reaches the stored request, and a control wired to nothing fails a test
+- It is offered only where it applies, and refuses rather than silently drops otherwise
+- What the dialog displays includes the bitrate that will run (`REQ-009`)
+- The keyboard chain is asserted in the state where the control is reachable
+
+#### Evidence, 2026-07-29
+
+**A derived preset, not a request override** (`T015-R1`). `audio_quality` is declared by both
+`Preset` and `DownloadRequest`, so it is preset-owned and `to_request` refuses to override it —
+because a request that disagrees with the preset the user was shown defeats `REQ-009`.
+`presets.with_audio_quality` returns a preset carrying the chosen bitrate, so the displayed string
+and the stored request stay in step by construction rather than by remembering.
+
+`AddUrlDialog.selected_preset` applies it, so `_request_for` and `_show_selector` both read one
+answer. That is the same structural point `T-075` was about: when two paths each derive "what the
+user chose", they can disagree, and one of them will be the one that runs.
+
+**`with_audio_quality` refuses a preset that does not convert audio.** "Download the video at
+320 kbps" is not expressible, and quietly dropping the number is exactly the failure `T-075` was.
+The control is disabled in that case — disabled rather than hidden, so the layout does not move
+under someone reading it.
+
+**The display carries it.** `Format selector: bestaudio/best · 320 kbps MP3`. `REQ-009` promises
+that what is shown is what runs, and after `T-075` a bitrate that changed the download without
+changing the display would be the same defect one field over.
+
+| Check | Result |
+|---|---|
+| `test_the_chosen_bitrate_is_what_gets_stored` | passes; **fails when the choice is ignored** |
+| `test_what_is_displayed_includes_the_bitrate_that_will_run` | passes; **fails on the same mutation** |
+| `test_the_bitrate_is_offered_only_where_it_applies` | passes — video and original-audio disabled, MP3 enabled |
+| `tests/ui/test_add_dialog.py` | 75 passed |
+| Full suite | 1406 passed, 11 skipped, 2 deselected |
+
+**A fourth Windows focus state, because the control is state-dependent.** `EXPECTED_DIALOG_ORDER`
+gains `audioBitrateChoice` between `presetChoice` and `selectorValue` — with the preset it
+qualifies, so a user who has just chosen MP3 is one Tab from the bitrate. It is disabled in the
+three existing states, so `DIALOG_STATES` gains *an audio preset chosen*: without it the control
+would be declared and unreachable in every state the suite walks, which is `T060-R1` exactly.
+Pre-flighted offscreen, 10/10.
+
+**Still owed:** the real-plugin run on `STARBASE`. The self-hosted `windows desktop` job covers it
+on push.
+
+#### `T076-R1` — the gate was "converts audio", not "is MP3", 2026-07-29
+
+`CONVERTING_AUDIO_CODECS` is every codec but `ORIGINAL` — which includes `FLAC`, `WAV` and `ALAC`,
+where a constant kbps bitrate is not a worse choice but a meaningless one, and `OPUS`, whose
+useful range is nothing like MP3's. `MP3_BITRATES` are MP3's scale.
+
+Only MP3 is offered today, so the wrong gate behaved identically and would have gone on doing so
+until a second converting preset appeared — which is exactly when nobody would be looking at this.
+`with_audio_quality`, the control's enablement and the displayed line all now test
+`audio_codec is AudioCodec.MP3`.
+
+`test_no_other_codec_accepts_mp3s_bitrates` is parametrised over **every** other codec, so the
+next one added is covered without anyone remembering. Widening the gate back to "converting" fails
+it eight times.
+
+#### Out of scope
+
+- A quality scale for another codec, which is that codec's to define — `REQ-010`'s wider surface
+  is Phase 3
+- Remembering the choice between sessions; that is Phase 4 settings
+
+---
+
+### T-077 — Four of the five download options have never produced a file
+
+**Status:** **Complete — Approved**, 2026-07-29. **In Review — `T077-R1` corrected 2026-07-29. All five presets now execute.** The
+first version covered three and recorded the other two as structural limits of network-free
+testing. They were limits of the *direct-file* fixture, and an HLS fixture removes both. See
+**Evidence** and **`T077-R1`**.
+**Owner:** Implementer
+**Priority:** **High** — these are the application's user-visible choices, and the only one ever
+executed end to end is the one the tests happen to pin
+**Phase:** Phase 1
+**Depends on:** nothing. `T-075` is fixed, so a preset chosen in the dialog now reaches the request
+**Relevant context:** `T-037`, `T-061`, `T-062`, `T-015`, `T-012`, `REQ-010`, `ai/TESTING.md` §13
+**Affected surfaces:** `tests/integration/test_end_to_end.py`, `tests/capabilities.py`
+**Risk:** Medium — the postprocessor path is unit-tested, so this is about whether it *works*,
+not whether it is wired
+
+#### Scope
+
+Every end-to-end test pins one preset. `test_end_to_end.py` sets
+`END_TO_END_PRESET = "Best video available"`, and the opt-in network test pins the same string.
+
+| Preset | Selector translation | A real file, produced by ffmpeg |
+|---|---|---|
+| Best video available | tested | **tested** |
+| Best video up to 1080p (MP4) | tested | never |
+| Audio only (MP3) | tested | **never** |
+| Audio only (original) | tested | never |
+| Video with embedded subtitles | tested | never |
+
+**Nothing in this repository has ever produced an MP3 or an embedded subtitle track.**
+`build_postprocessors` is asserted down to its `FFmpegExtractAudio` spec and validated against
+yt-dlp's own registry, and `T-061`'s gate decides from the resolved format — but no test runs
+ffmpeg and then looks at what came out. A postprocessor that is correctly *specified* and
+silently ineffective would pass everything here.
+
+`T-076` sharpened this: the bitrate now reaches `preferredquality` and a test proves it reaches
+the stored request. Whether a 320 kbps MP3 arrives on disk is a different claim, and nothing makes
+it.
+
+**Why this is more than a coverage number.** `T-075` existed because the dialog's tests shared a
+blind spot — none of them changed a preset after probing. This is the same shape one layer down:
+the download tests share a preset, so four of the five things a user can pick are exercised only
+as far as the request that describes them. The maintainer found `T-075` by using the application;
+this is the part of that discovery a suite can hold on to.
+
+#### Acceptance criteria
+
+- Each built-in preset completes end to end against the local `http.server` and the resulting
+  **file is inspected**, not merely reported: an audio preset yields audio, and the MP3 one yields
+  MP3 at the requested bitrate
+- The MP3 case asserts a **non-default** bitrate, so a conversion that ignores `preferredquality`
+  fails rather than passing at 192 by coincidence
+- Each new case is mutation-verified: removing the postprocessor spec, or the codec, makes it fail
+- The suite states honestly what it needs. ffmpeg is required for conversion, and CI installs it
+  (`T-062`) — a machine without it **skips with a reason naming ffmpeg**, in the shape
+  `tests/capabilities.py` established for symlinks (`T-070`), rather than failing obscurely
+- No network. The `http.server` fixture already serves the bytes; this adds conversion, not reach
+
+#### Out of scope
+
+- The opt-in network test's preset. It is `-m network`, still never executed anywhere, and
+  widening a test nobody runs adds no evidence
+- Per-preset coverage on Windows specifically. Do it on Linux first; the Windows question is
+  whether ffmpeg behaves the same, which is a separate and narrower claim
+- Playlist and format-table depth (`REQ-003`, `REQ-004`) — Phase 3
+
+#### Evidence, 2026-07-29
+
+**The fixture had to be able to hold a conversion.** `media_handler` serves half a megabyte of
+zeros under a `video/mp4` header — enough for yt-dlp's generic extractor to download, and exactly
+nothing for ffmpeg to work with. A preset that extracts audio would have failed on it, so the
+converting presets could never have been tested against the existing fixture.
+
+The source is now **generated by ffmpeg at test time**: two seconds of a 440 Hz tone under a
+320x240 test pattern, h264 + AAC, about 47 kB. No binary enters the repository, no licence
+question follows it, and the tool is already required for the conversion under test.
+
+| Preset | Result |
+|---|---|
+| Best video available | **passes** — video + audio streams |
+| Audio only (MP3) | **passes** — `mp3`, and the bitrate measured near 320 kbps |
+| Audio only (original) | **passes** — `aac`, the source codec, audio only |
+
+**This is the first MP3 this repository has ever produced.**
+
+| Mutation | Result |
+|---|---|
+| drop the `FFmpegExtractAudio` spec | **killed** — both audio presets produce video |
+| drop `preferredquality` | **killed** — 320 kbps became **66,684 bps** |
+
+The second is why the criterion asked for a non-default bitrate: at 192 the assertion would have
+agreed with the preset's own default rather than with the user's choice.
+
+**Two presets are structurally uncoverable here, which is the finding.** They are named in
+`UNCOVERABLE_BY_THIS_FIXTURE` rather than quietly absent, because "not in the table" and "cannot
+be in the table" are different claims:
+
+- **Best video up to 1080p (MP4)** — its selector filters on `height` and `ext`, and the generic
+  extractor does not parse the container, so a direct media URL yields one format with neither.
+  `Requested format is not available` is the *correct* answer, which `END_TO_END_PRESET`'s note
+  already recorded for the same reason. Covering it needs a fixture whose extractor reports real
+  formats — an HLS or DASH manifest — which is `REQ-003`'s ground in Phase 3.
+- **Video with embedded subtitles** — as anticipated below. `FFmpegEmbedSubtitle` embeds subtitles
+  yt-dlp *downloaded*, and the generic extractor offers none for a direct file, so the case would
+  pass while proving nothing.
+
+**ffmpeg is required and says so.** `tests/capabilities.py` gains an `ffmpeg` fixture probing for
+both `ffmpeg` and `ffprobe` — both, because these tests convert *and* inspect, and a machine with
+one would fail at the assertion rather than at the skip. CI installs them (`T-062`).
+
+**Cost: 2.86 s for all three.** A first run took 183 s, which was entirely the 1080p case waiting
+out its 180 s timeout before being removed.
+
+#### `T077-R1` — the limit was the fixture, not the approach, 2026-07-29
+
+The criterion says **each built-in preset**, and naming two exclusions does not meet it.
+
+A direct `video/mp4` URL gives yt-dlp's generic extractor one format with no `height` and no `ext`
+to filter on, and no subtitles — so the 1080p selector matched nothing and `FFmpegEmbedSubtitle`
+had nothing to embed. Both are properties of that fixture. Measured against a local HLS master
+playlist, the same extractor reports:
+
+```
+FORMATS:   [('400', 'mp4', 240)]
+SUBTITLES: {'en': ['vtt']}
+```
+
+A `RESOLUTION` attribute gives the selector a height and an ext; an `EXT-X-MEDIA` subtitle group
+gives the postprocessor something to embed. Both playlists and the segments are rendered by ffmpeg
+at test time from the same 47 kB source — still no network, still no binary in the repository.
+
+| Preset | Result |
+|---|---|
+| Best video available | passes |
+| **Best video up to 1080p (MP4)** | **passes** — the selector matches a real format |
+| Audio only (MP3) at 320 | passes |
+| Audio only (original) | passes |
+| **Video with embedded subtitles** | **passes** — a subtitle stream in the output |
+
+Five cases in 5.47 s. Removing `FFmpegEmbedSubtitle` fails the subtitle case with
+`produced ['video', 'audio'], expected ['audio', 'subtitle', 'video']`.
+
+**The list is now pinned to the registry.** `test_the_preset_table_covers_every_built_in_preset`
+asserts the covered set equals `BUILT_IN_PRESETS` exactly, so a preset added tomorrow is covered
+by something or reported by something. Two hand-maintained lists with no such assertion were the
+third half of this finding.
+
+#### A difficulty worth naming before starting
+
+**Embedded subtitles may have nothing to embed.** The local server serves `video/mp4` and yt-dlp's
+generic extractor will find no subtitle track, so `FFmpegEmbedSubtitle` would have nothing to do
+and the test could pass while proving nothing — the exact shape `ai/TESTING.md` §13 is about. That
+case likely needs the fixture to serve a subtitle track, or an honest statement that the subtitle
+preset is covered only as far as its specification. Decide it in the open rather than discovering
+it in the assertion.
+
+---
 
 ### T-064 — Repair stale developer-tool launchers
 
