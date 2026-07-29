@@ -365,6 +365,80 @@ deserves the resolution, not the question.)*
 
 ## Ready
 
+### T-077 — Four of the five download options have never produced a file
+
+**Status:** **Ready — filed 2026-07-29**, from a gap found while diagnosing `T-075`
+**Owner:** Implementer
+**Priority:** **High** — these are the application's user-visible choices, and the only one ever
+executed end to end is the one the tests happen to pin
+**Phase:** Phase 1
+**Depends on:** nothing. `T-075` is fixed, so a preset chosen in the dialog now reaches the request
+**Relevant context:** `T-037`, `T-061`, `T-062`, `T-015`, `T-012`, `REQ-010`, `ai/TESTING.md` §13
+**Affected surfaces:** `tests/integration/test_end_to_end.py`, `tests/capabilities.py`
+**Risk:** Medium — the postprocessor path is unit-tested, so this is about whether it *works*,
+not whether it is wired
+
+#### Scope
+
+Every end-to-end test pins one preset. `test_end_to_end.py` sets
+`END_TO_END_PRESET = "Best video available"`, and the opt-in network test pins the same string.
+
+| Preset | Selector translation | A real file, produced by ffmpeg |
+|---|---|---|
+| Best video available | tested | **tested** |
+| Best video up to 1080p (MP4) | tested | never |
+| Audio only (MP3) | tested | **never** |
+| Audio only (original) | tested | never |
+| Video with embedded subtitles | tested | never |
+
+**Nothing in this repository has ever produced an MP3 or an embedded subtitle track.**
+`build_postprocessors` is asserted down to its `FFmpegExtractAudio` spec and validated against
+yt-dlp's own registry, and `T-061`'s gate decides from the resolved format — but no test runs
+ffmpeg and then looks at what came out. A postprocessor that is correctly *specified* and
+silently ineffective would pass everything here.
+
+`T-076` sharpened this: the bitrate now reaches `preferredquality` and a test proves it reaches
+the stored request. Whether a 320 kbps MP3 arrives on disk is a different claim, and nothing makes
+it.
+
+**Why this is more than a coverage number.** `T-075` existed because the dialog's tests shared a
+blind spot — none of them changed a preset after probing. This is the same shape one layer down:
+the download tests share a preset, so four of the five things a user can pick are exercised only
+as far as the request that describes them. The maintainer found `T-075` by using the application;
+this is the part of that discovery a suite can hold on to.
+
+#### Acceptance criteria
+
+- Each built-in preset completes end to end against the local `http.server` and the resulting
+  **file is inspected**, not merely reported: an audio preset yields audio, and the MP3 one yields
+  MP3 at the requested bitrate
+- The MP3 case asserts a **non-default** bitrate, so a conversion that ignores `preferredquality`
+  fails rather than passing at 192 by coincidence
+- Each new case is mutation-verified: removing the postprocessor spec, or the codec, makes it fail
+- The suite states honestly what it needs. ffmpeg is required for conversion, and CI installs it
+  (`T-062`) — a machine without it **skips with a reason naming ffmpeg**, in the shape
+  `tests/capabilities.py` established for symlinks (`T-070`), rather than failing obscurely
+- No network. The `http.server` fixture already serves the bytes; this adds conversion, not reach
+
+#### Out of scope
+
+- The opt-in network test's preset. It is `-m network`, still never executed anywhere, and
+  widening a test nobody runs adds no evidence
+- Per-preset coverage on Windows specifically. Do it on Linux first; the Windows question is
+  whether ffmpeg behaves the same, which is a separate and narrower claim
+- Playlist and format-table depth (`REQ-003`, `REQ-004`) — Phase 3
+
+#### A difficulty worth naming before starting
+
+**Embedded subtitles may have nothing to embed.** The local server serves `video/mp4` and yt-dlp's
+generic extractor will find no subtitle track, so `FFmpegEmbedSubtitle` would have nothing to do
+and the test could pass while proving nothing — the exact shape `ai/TESTING.md` §13 is about. That
+case likely needs the fixture to serve a subtitle track, or an honest statement that the subtitle
+preset is covered only as far as its specification. Decide it in the open rather than discovering
+it in the assertion.
+
+---
+
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
 **Status:** **Ready — observed and filed 2026-07-29**, not diagnosed
