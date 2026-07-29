@@ -335,6 +335,15 @@ headless anyway. **`P1EXIT-R1` remains open and blocking**; the criterion is not
 sign-off. `P1EXIT-R2` is open too — the replacement row cites a `GeoRestrictedError` test for an
 *unsupported URL* criterion, repeating the original mapping defect with a different error class.
 
+**`T-074` has exhausted Linux and now has an instrument** (2026-07-29). The last untested Linux
+hypothesis was suite ordering — the Windows crash happened inside a full-suite run and `T-069` was
+ordering-dependent. Six deliberate full-suite runs: **6 × 1401 passed, every exit code 0**. With
+the earlier 40 single-test iterations and 5 module runs, that is three shapes of attempt and no
+reproduction. Not proof of a Windows-only fault; the absence of a Linux one after looking where it
+was worth looking. `.github/workflows/t074-repeat.yml` now runs the suite N times on `STARBASE` and
+reports a rate, separating crashes from ordinary test failures by exit code — manual dispatch, in
+its own workflow, because `ci.yml` is a gate and this is an instrument. **Authored, not yet run.**
+
 **`T-074` narrowed on 2026-07-29, without being solved.** It does not reproduce on Linux — 40
 iterations of the crashing test and 5 whole-module runs, all clean — which does not clear Linux
 (`T-069` was ordering-dependent) but does say the fault is not reachable by repetition here. More

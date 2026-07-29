@@ -1,0 +1,105 @@
+# T-074. Runs the suite N times on `STARBASE` and reports how many times it crashed.
+#
+# **A separate workflow, and manual only.** `ci.yml` runs on every push and must stay a gate; this
+# is an instrument. Putting it there would mean either paying its cost on every push or adding a
+# conditional to a job whose whole value is that it runs unconditionally.
+#
+# `T-074`'s acceptance criteria ask for the failure to be **reproduced deliberately, with a rate,
+# rather than waited for**. Four ordinary CI runs gave "about one in four", which is an
+# observation and not a measurement: the denominator was however many times the gate happened to
+# run. This job makes the denominator a choice.
+#
+# It does not stop on the first crash. A rate needs every iteration attempted, and the failures
+# that matter here are intermittent by definition — stopping early would turn a rate back into an
+# anecdote.
+name: T-074 repeat
+
+on:
+  workflow_dispatch:
+    inputs:
+      iterations:
+        description: "How many times to run the full suite"
+        required: false
+        default: "10"
+      target:
+        description: "pytest target; leave blank for the whole suite"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+jobs:
+  repeat:
+    name: repeat on STARBASE
+    runs-on: [self-hosted, windows, desktop]
+    # Ten full-suite runs at roughly three and a half minutes each, plus setup. Generous because
+    # the failure mode under investigation is a crash, and a job killed by its own timeout would
+    # be indistinguishable from the thing being measured.
+    timeout-minutes: 90
+
+    env:
+      QT_QPA_PLATFORM: offscreen
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+    defaults:
+      run:
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Same reasoning as the `windows desktop` job: this runner is a machine somebody uses, and
+      # a workflow must never provision it. See `ci.yml` for what installing Python here cost.
+      - name: Check the machine's Python
+        run: python -c "import sys; assert sys.version_info[:2] == (3, 14), sys.version"
+
+      - name: Create the virtualenv
+        run: |
+          python -m venv .venv
+          cygpath -w "$PWD/.venv/Scripts" >> "$GITHUB_PATH"
+
+      - name: Install the project
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e ".[dev]"
+
+      - name: Run the suite repeatedly
+        run: |
+          mkdir -p reports
+          ITERATIONS="${{ github.event.inputs.iterations }}"
+          TARGET="${{ github.event.inputs.target }}"
+          crashes=0
+          failures=0
+          for i in $(seq 1 "$ITERATIONS"); do
+            echo "=== iteration $i of $ITERATIONS ==="
+            set +e
+            pytest -q $TARGET > "reports/run-$i.txt" 2>&1
+            code=$?
+            set -e
+            tail -3 "reports/run-$i.txt"
+            # pytest exits 1 for ordinary test failures. A crash takes the interpreter with it,
+            # so the exit code is a signal or an access violation -- anything but 0 or 1. That
+            # distinction is the whole point: T-074 is not a failing assertion.
+            if [ "$code" -eq 0 ]; then
+              echo "iteration $i: pass"
+            elif [ "$code" -eq 1 ]; then
+              failures=$((failures + 1)); echo "iteration $i: TEST FAILURE (exit 1)"
+            else
+              crashes=$((crashes + 1)); echo "iteration $i: CRASH (exit $code)"
+            fi
+          done
+          {
+            echo "iterations: $ITERATIONS"
+            echo "crashes:    $crashes"
+            echo "failures:   $failures"
+          } | tee "reports/t074-rate.txt"
+
+      - name: Upload every run
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: t074-repeat
+          path: reports/
+          retention-days: 30
+          if-no-files-found: warn

@@ -285,6 +285,42 @@ afternoon re-deriving it.
 progress message. Whether it is the pump, the queue read beneath it, the interaction between them,
 or the harness remains unanswered. Nothing here should be read as narrowing it to product code.
 
+#### The ordering hypothesis, tested — 2026-07-29
+
+The earlier attempts ran the crashing test alone and its module. The Windows failure happened
+inside a **full-suite** run, and `T-069`'s precedent is that suite ordering was the entire story,
+so that was the remaining Linux hypothesis. Six deliberate full-suite runs:
+
+| Attempt | Result |
+|---|---|
+| Crashing test alone, 40 iterations | 40 passed |
+| `test_manager.py` entire, 5 runs | 5 × 71 passed |
+| **Full suite, 6 runs** | **6 × 1401 passed, every exit code 0** |
+
+**Linux is now exhausted as a route to this defect**, at least by repetition. Three shapes of
+attempt, none of which reproduced it. That is not proof of a Windows-only fault — it is the
+absence of a Linux reproduction after looking in the three places worth looking.
+
+**So the measurement has to happen on the machine that shows it.** `.github/workflows/t074-repeat.yml`
+runs the suite N times on `STARBASE` and reports a rate. Three things about it are deliberate:
+
+- **Manual dispatch, in its own workflow.** `ci.yml` is a gate and runs on every push; this is an
+  instrument. Folding it in would mean paying its cost on every push or making a gate
+  conditional.
+- **It does not stop on the first crash.** A rate needs every iteration attempted; stopping early
+  turns it back into an anecdote.
+- **It separates crashes from failures by exit code.** `pytest` exits 1 for a failing assertion.
+  A crash takes the interpreter with it, so the code is a signal or an access violation — and
+  `T-074` is not a failing assertion. Counting them together would let an ordinary red test
+  inflate the crash rate.
+
+"About one in four" came from four ordinary CI runs, where the denominator was however many times
+the gate happened to run. This makes the denominator a choice, which is what the acceptance
+criteria ask for.
+
+**Not yet run.** The job is authored and pushed; executing it needs `STARBASE` and is the next
+step on this task.
+
 #### Acceptance criteria
 
 - The failure is **reproduced deliberately**, with a rate, rather than waited for
