@@ -5904,3 +5904,58 @@ T-072 remains **In Progress / Changes requested** on T072-R1. The new list separ
 necessary but the positive control is still killed by the resource tracker after the actual
 worker exits, so it does not demonstrate the worker-specific gate. The Windows drop-worker
 mutation and corrected firewall procedure are also still explicitly owed.
+
+## 2026-07-29 — T-072 worker-oracle focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `825e3cd`  **Head:** `9802a6a`
+**Scope:** T072-R1's worker oracle and positive control; the remaining T072-R2 and T073-R1
+current-truth corrections
+**Boundary classification:** Integration-test helper, mutation plugins, and
+documentation/coordination; no production source
+**Verdict by finding:** T072-R1 **Code correction accepted; remains open on Windows evidence**;
+T072-R2 **Resolved**; T073-R1 **Resolved**
+**Overall verdict:** No new findings. T-072 remains **In Progress / evidence pending**, not
+Approved, because the Windows drop-worker mutation and WIN-R1 procedure are still owed.
+
+The maintainer supplied this boundary in direct response to the preceding focused review; this
+review treats that handoff as authorization for the additional pass. The boundary is the single
+commit `9802a6a`. `HEAD` and `origin/main` both resolved to it, and the tree was clean.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused evidence | Status |
+|---|---|---:|---|---|
+| `T072-R1` | **Medium** | **Yes — external Windows evidence remains** | `the_workers_that_must_die()` now excludes command lines containing `multiprocessing.resource_tracker`, while retaining the actual spawn worker and any work-producing descendants. The end-to-end clip now needs about eight seconds to stream and the survivor wait is five seconds, so a missed worker cannot finish naturally before the assertion. The positive control failed after 6.36 s naming one PID—the actual spawn worker. The shallow plugin now changes only `capture_the_doomed_tree`, leaving the oracle recursive. The prior spare-worker mutation passed in 1.38 s after the application died, consistent with the product's parent-watch orphan guard; with the application left alive, the control proves the same worker remains active beyond the assertion. | **Correction accepted; still open until `mut_tree_drop_worker` runs on Windows** |
+| `T072-R2` | **Low** | **No** | The stale old-mutation rows are removed from TASKS. STATUS preserves “WIN-R1 is the last carry” as an explicitly superseded historical statement and points to T-072's Progress table for current truth. | **Resolved** |
+| `T073-R1` | **Low** | **No** | STATUS now carries the JUnit identity reconciliation—two Linux collection-skip placeholders replaced by 28 Windows desktop cases—and explicitly preserves the superseded “two unexplained” reading as history. | **Resolved** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Corrected baseline | **1 passed** in 1.42 s |
+| `mut_control_worker_survives` | **Killed** in 6.36 s; one surviving PID, the actual spawn worker |
+| `mut_tree_shallow_walk` on Linux | **Survived**, 1 passed in 1.45 s; capture-only mutation |
+| `mut_tree_drop_worker` on Linux | **Survived**, 1 passed in 1.39 s; POSIX group kill reached the worker |
+| Reviewer spare-worker mutation | **Survived**, 1 passed in 1.38 s; worker exited through the parent-watch orphan guard |
+| Full Linux default suite | **1399 passed, 11 skipped, 2 deselected** in 99.77 s |
+| Bare `mypy` | Passed: **78 source files** |
+| Bare `mypy --platform win32` | Passed: **78 source files** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | **106 files already formatted** |
+| `git diff --check 825e3cd..9802a6a` | Passed |
+| Exact-head Actions run `30419125646` | STARBASE job green in 6 m 7 s; **1388 passed, 20 skipped, 30 deselected** in the full suite |
+
+The temporary spare-worker reviewer plugin remained under `/tmp`; it did not modify the
+repository.
+
+### Final disposition
+
+The worker-oracle correction is accepted. It now identifies the work process rather than the
+resource tracker, keeps the worker active past the observation window, and leaves the oracle
+untouched by the shallow-capture mutation. T072-R2 and T073-R1 are Resolved.
+
+T-072 remains **In Progress / evidence pending** for the two already-disclosed Windows actions:
+run `mut_tree_drop_worker` on STARBASE and execute the corrected WIN-R1 procedure against a
+deliberately broadened rule. Those are evidence gaps, not additional code findings.
