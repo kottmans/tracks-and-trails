@@ -5736,3 +5736,91 @@ inferring it from `len(doomed) > 1`, and the correction is mutation-checked on W
 
 T-072 remains **In Progress / Changes requested**: `T072-R1` needs correction, `T072-R2` needs
 current-truth cleanup, and WIN-R1 was already openly unfinished at the reviewed head.
+
+## 2026-07-29 — OPS-005, T-073, and T-072 correction review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `f20a9c8`  **Head:** `dc02084`
+**Scope:** OPS-005; T-073's self-hosted full Windows gate and evidence; the focused correction of
+`T072-R1`/`T072-R2`; WIN-R1's firewall repair; and the T-074 filing
+**Boundary classification:** Workflow, integration-test helper and mutation plugins, Windows
+operator tooling, and documentation/coordination; no production source
+**Verdict by task:** OPS-005 **Accepted as the maintainer's scope decision**; T-073
+**Approved with a documentation follow-up**; T-074's filing **Accepted**; T072-R1
+**Still open / Changes requested**; T072-R2 **Still open**; WIN-R1 **Changes requested on its
+verification gate**; T-072 remains **In Progress / Changes requested**
+
+The supplied boundary contains **seven commits, not eight**. `HEAD` and `origin/main` both
+resolved to `dc02084` when the review began, and the tree was clean.
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T072-R1` | **Medium** | **Yes — T066-R1's process-tree half** | The application-PID handshake fixes the old launcher/application ambiguity, but the checked-in mutations do not prove the expected worker set. `mut_tree_shallow_walk.py` returns `[]`; it does not perform the direct-child walk that produced the reviewed survivor. It therefore proves only that an entirely empty walk trips `assert workers`. `mut_tree_drop_worker.py` removes every worker *before* `kill_the_application()` receives `doomed`; Windows then calls `wait_procs(doomed)`, so `assert not alive` cannot possibly report the omitted process as the plugin says it must. The mutation survived locally, and neither mutation has run on Windows. Run `30416156751` proves the normal path executes, not that weakening it is detected. | Retain an independently obtained worker PID (for example in the child handshake or an external expected-PID set) through the kill and wait, so removing it from `doomed` cannot remove it from the assertion. Make the shallow mutation return the application's real direct children rather than none, and make the dropped-worker mutation assert against the independent set. Demonstrate both kills on Windows; a normal green run is not a substitute. | **Still open** |
+| `T072-R2` | **Low** | **No** | `ai/TASKS.md`'s T-072 status block is corrected, but `ai/STATUS.md:346-364` still presents the superseded “four of five / assertions unexecuted / WIN-R1 last” state as ordinary current prose immediately after the new state. The previous review required the older reading to remain only if explicitly historical. | Mark the older block explicitly historical or replace it with the current state while preserving the superseded reading in a historical parenthetical. | **Still open, non-blocking** |
+| `T072-R3` | **Medium** | **Yes — WIN-R1's evidence criterion** | The proposed Windows proof uses `New-NetFirewallRule -Name sshd-tt` to “recreate” the broad rule. On the machine this repair targets, that name already exists; the command can fail while the following script merely reapplies and reports an already-scoped rule. That produces a green-looking report without ever exercising broad-to-scoped repair. The script itself is statically plausible, but the acceptance criterion requires this exact repair path to be demonstrated. | Deliberately broaden the existing rule with `Set-NetFirewallRule -Name sshd-tt -Profile Any -RemoteAddress Any`, read it back and assert both values are `Any`, run `ssh-setup.ps1`, then assert `Private` and `LocalSubnet`. Make setup failures terminating for the evidence procedure. | **Open** |
+| `COORD-R6` | **Medium** | **Yes — T-072's current-truth acceptance criterion** | The same filing class COORD-R5 was meant to close has recurred. `ai/TASKS.md:15-21` says nothing remains on the critical path and lists only a carry, runner evidence, and exit review, omitting newly filed High-priority T-074. Lines 29-30 still call T-072 and completed T-064 Ready. Lines 70-77 say In Review is genuinely empty while T-073 is marked In Review at lines 159-163 under Ready. `ai/STATUS.md:166-172` still says criterion 7 cannot move until hosted quota resets, contradicted by its T-073 account at lines 377-389. This materially misstates the live queue and release readiness. | Rewrite the opening queue and section placement from current task states, include T-074, and turn superseded status prose into explicitly historical notes. | **Open** |
+| `T073-R1` | **Low** | **No** | The Windows behavior and counts are valid, but two evidence statements are not. Actions timestamps put job `90460498381` at **6 m 29 s** wall, not 3 m 40 s. The alleged two-test collection residual is also explained: Linux's JUnit has two module-level “collection skipped” cases for `tests.ui.test_windows_accessibility` and `tests.ui.test_windows_desktop`; Windows replaces those two placeholders with the 28 real desktop cases. `1412 - 2 + 28 = 1438`, exactly the recorded collection count. | Correct the wall time and replace the open arithmetic question with the JUnit identity reconciliation. Documentation Maintainer, target T-073 filing cleanup; no behavioral re-review needed. | **Open, non-blocking** |
+
+### Task judgments
+
+- **OPS-005:** Accepted as the maintainer's explicit scope decision. It preserves T-056 and
+  T-068 as open, records that STARBASE non-reproduction does not prove the Windows-general
+  helper correct, and does not pretend the decision alone satisfies the platform gate. This is
+  the same non-phase-blocking disposition the prior review recommended.
+- **T-073:** Approved with `T073-R1` as a documentation follow-up. The workflow retains the real
+  `windows` plugin for the 28-test desktop slice, overrides to `offscreen` for the Qt baseline
+  and default suite, does not provision the self-hosted machine, records ffmpeg, and allows 30
+  minutes. Run `30415333608` is at exact implementation head `c41e2ef`; all fourteen functional
+  steps in the STARBASE job passed, including 1388 passed, 20 skipped, and 30 deselected in the
+  full suite. The overall workflow is red only because all four hosted jobs failed before
+  executing steps on the billing annotation.
+- **T-074:** The filing accurately preserves uncertainty. Run `30416495270` is at documentation-
+  only head `454b80e`; the full suite exited 139 at the first-progress wait in
+  `test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget`, with ResultPump blocked
+  in `multiprocessing.Queue.get()`. The same code passed immediately before and after in runs
+  `30416156751` and `30416723791`. Calling the cause unknown and excluding retry/xfail is correct.
+- **T072-R1:** The production-facing test-helper shape is materially better: it handshakes the
+  application interpreter PID, captures recursively before killing parents, and checks all
+  processes it was handed. Approval is withheld because the correction still has no independent
+  identity for a worker omitted from that handed-in set, and its mutation claims overstate what
+  the assertions can observe.
+- **WIN-R1:** Static review found the existing-rule branch reapplies and reads back profile,
+  remote address, port, enabled state, and action; the file remains CRLF as required. Runtime
+  approval is withheld because the documented broad-rule setup can fail vacuously and STARBASE
+  was unreachable during review.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Exact-head Actions run `30415333608` | STARBASE job green; 28 desktop tests and **1388 passed, 20 skipped, 30 deselected** in the full suite |
+| T072 baseline on Linux | **1 passed** |
+| `mut_tree_shallow_walk` on Linux | **Killed** by the empty-descendants assertion |
+| `mut_tree_drop_worker` on Linux | **Survived**, 1 passed; confirms an omitted process is outside the `wait_procs(doomed)` assertion |
+| Full Linux default suite | **1399 passed, 11 skipped, 2 deselected** in 101.59 s |
+| Linux/Windows JUnit identity comparison | Both contain 1408 selected test identities; Linux alone has two collection-skip placeholders for the Windows-only modules |
+| Bare `mypy` | Passed: **78 source files** |
+| Bare `mypy --platform win32` | Passed: **78 source files** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | **105 files already formatted** |
+| `git diff --check f20a9c8..dc02084` | Passed |
+| STARBASE mutation/firewall attempt | **Not run** — SSH to `192.168.68.65:22` timed out |
+
+The first three focused test invocations were blocked before project behavior because the
+filesystem/network sandbox denied creation of their loopback HTTP server. The identical
+baseline and mutation runs with localhost sockets enabled produced the results above.
+
+### Final disposition
+
+T-073 is **Approved with follow-up at `dc02084`**; T-074's filing and OPS-005 are accepted.
+
+T-072 remains **In Progress / Changes requested**. T072-R1 is not resolved until a Windows
+mutation proves that omitting the independently identified worker fails, WIN-R1's broad-rule
+repair needs a non-vacuous setup and Windows execution, and COORD-R6 must restore one current
+answer about the live queue. `T072-R2` and `T073-R1` are non-blocking documentation corrections.
+
+This was T-072's focused correction re-review. With only Medium-or-lower findings remaining, the
+ordinary pass budget is exhausted; another focused pass requires the maintainer to authorize it,
+accept the documented risk, change scope, or carry the work into another named follow-up.
