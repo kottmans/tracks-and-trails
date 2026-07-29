@@ -1105,6 +1105,40 @@ for review findings (`AGENTS.md` §12).
 
 ---
 
+### T-089 — Gate the MP3 bitrate control's complete UI contract
+
+**Status:** Ready — non-blocking follow-up carried from `T076-R2`
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 1 follow-up; does not block T-076 approval
+**Depends on:** `T-076`
+**Relevant context:** `T076-R1`, `T076-R2`, `REQ-009`, `REQ-010`
+**Affected surfaces:** `tests/ui/test_add_dialog.py`
+**Risk:** Low — the behavior is correct; the missing evidence would let adjacent UI paths drift
+
+#### Scope
+
+T-076 offers the requested values and its correction gates the control on MP3. The review found
+three parts of that UI contract still inferred from production rather than independently gated:
+
+- the exact ordered values `320, 256, 192, 160, 128` and the default `192`;
+- the historically load-bearing flow **Probe → choose MP3 → choose 320 → Add**, asserted against
+  the durable request rather than the label; and
+- the dialog behavior for a non-MP3 converting preset. The core helper is parametrised over every
+  other codec, but no dialog test would fail if its enablement, display, or derived-preset gate
+  widened independently.
+
+#### Acceptance criteria
+
+- Transcribe and assert the exact combo-box values, order, and default without deriving the
+  expectation from `MP3_BITRATES`
+- Probe, choose MP3 and 320, add, then assert the durable request carries MP3 at 320
+- Inject at least one non-MP3 converting preset into the dialog and assert the control is disabled,
+  no bitrate is displayed, and `selected_preset` preserves the base preset
+- Mutation-check the post-probe quality persistence and at least one dialog-side MP3-only gate
+
+---
+
 ## Proposed — Phase 0
 
 ### T-021 — Simplified small-size icon glyph

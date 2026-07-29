@@ -6270,3 +6270,63 @@ on its defining message-pump path is unexplained.
 
 T072-R1 is **Resolved**. T-072 remains open only on WIN-R1, plus the current-truth cleanup in
 `COORD-R7`.
+
+## 2026-07-29 — T-075 through T-077 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Original review head:** `71ca6dc`
+**Correction boundary:** `70c96e9..0cd6321`
+**Scope:** Focused verification of `T075-R1`, `T076-R1`, `T077-R1`, `T074-R1`, and
+`COORD-R7`; disposition of the existing non-blocking `T076-R2`
+**Concurrent-work exclusion:** The two intervening Phase 2 planning commits were not reviewed.
+**Verdict by task:** T-075 **Approved**; T-076 **Approved with follow-up T-089**; T-077
+**Approved**; T-074 remains **Ready and blocking Phase 1**; T-072 remains **In Progress on
+WIN-R1**
+**Overall verdict:** **Blocked on COORD-R7 pending maintainer direction**
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Independent evidence | Status |
+|---|---|---:|---|---|
+| `T075-R1` | **Critical** | **Yes — resolved** | The equality decision now executes inside the per-job chain against the settled candidate. `UNCHANGED` distinguishes a successful no-write result from a declined transition and runs the successor without adding a redundant READY revision. The new overlaying held store reproduces the real store's in-flight view. The regression passed normally. Independently restoring the pre-chain shortcut failed immediately: the second successor observed durable selector `best` before any write landed. | **Resolved** |
+| `T076-R1` | **Medium** | **Yes — resolved** | The helper, selected-preset derivation, display, and enablement now all require `AudioCodec.MP3`. The unit test rejects all eight other enum members. An independent offscreen FLAC dialog probe observed `enabled=False`, preserved the FLAC preset exactly, and displayed `Format selector: bestaudio/best` with no bitrate. | **Resolved** |
+| `T076-R2` | **Low** | **No** | The correction adds production-derived coverage over `MP3_BITRATES`, but still does not transcribe the exact ordered five values/default or exercise Probe → MP3 → 320 → Add against the durable request. The dialog also lacks a non-MP3 converting-preset regression even though the corrected behavior is independently verified. | **Open, non-blocking — carried to T-089** |
+| `T077-R1` | **High** | **Yes — resolved** | The local HLS fixture supplies real format metadata and a real VTT subtitle group. All five built-in presets execute, the two formerly excluded cases inspect the promised format/subtitle outcome, and a separate equality asserts the table's names exactly match `BUILT_IN_PRESETS`. All six focused tests passed. Independently removing `FFmpegEmbedSubtitle` failed the subtitle case with only video/audio streams observed. | **Resolved** |
+| `T074-R1` | **High** | **Yes — resolved as a review finding; T-074 remains blocking** | TASKS, STATUS, and IMPLEMENTATION_PLAN now record `0/12 at ea53c71` as a clean batch rather than a stable rate, preserve the different-head limitation, and keep the unexplained ordinary-ResultPump access violation as a Phase 1 blocker requiring explicit maintainer action to downgrade. | **Resolved** |
+| `COORD-R7` | **Medium** | **Yes — Phase 1 exit review** | Most cited current-truth blocks and the mutation docstring are corrected, but two live contradictions remain in canonical TASKS. The start-here preamble still says T-074 crashes “roughly one run in four” and says both T066-R1 and WIN-R1 remain open (`ai/TASKS.md:20-26`). T-072's opening first says WIN-R1 is its sole remaining item, then still says two things are owed, including the already executed drop-worker mutation (`ai/TASKS.md:755-770`). These are the exact blocker/rate claims this finding required the batch to reconcile. | **Partially resolved; still open and blocking** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary identity | `HEAD == 0cd6321`; correction commit isolated from preceding Phase 2 planning |
+| `git diff --check 70c96e9..0cd6321` | Passed |
+| T075-R1 regression | **1 passed** |
+| Restored pre-chain shortcut mutation | **Killed**: successor ran with durable selector `best` before any write landed |
+| T-076 focused unit tests | **14 passed** |
+| T-076 existing UI tests | **4 passed** |
+| Independent FLAC dialog probe | Disabled control; unchanged FLAC preset; no bitrate displayed |
+| T-077 complete preset gate | **6 passed** |
+| Removed subtitle-embedding mutation | **Killed**: observed video/audio, expected video/audio/subtitle |
+| `ruff check .` / `ruff format --check .` | Passed; **106 files** already formatted |
+| `mypy src` | Passed: **35 source files** |
+| Configured `mypy` / `mypy --platform win32` | Passed: **78 files** in each scope |
+| Full local suite | **1427 passed, 11 skipped, 2 deselected** in 90.54 s |
+
+Both temporary source mutations were reverted, and the production/source tree matches
+`0cd6321`.
+
+### Final disposition
+
+The three implementation corrections are approved. T-075's Critical durability invariant is now
+sequenced by the same per-job chain as every other transition. T-076 is behaviorally correct and
+approved with its remaining Low evidence work filed as T-089. T-077 now executes and inspects all
+five user-visible presets, including real subtitle embedding.
+
+T074-R1 is resolved because the project now preserves the uncertainty correctly; the underlying
+T-074 crash deliberately remains a High Phase 1 blocker.
+
+COORD-R7 is not resolved. This was the ordinary focused correction re-review, so the §10 review
+budget is exhausted with only a blocking Medium finding remaining. No further automatic pass is
+authorized. The maintainer must choose whether to authorize one final documentation-only pass,
+accept the documented contradiction, change scope, or carry COORD-R7 into a named follow-up.
