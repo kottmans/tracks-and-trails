@@ -20,6 +20,7 @@ constraint from the other direction.
 """
 
 import contextlib
+import shutil
 from pathlib import Path
 
 import pytest
@@ -60,3 +61,38 @@ def symlinks(tmp_path: Path) -> None:
     """Skip with a reason a human can act on when this machine cannot create symlinks."""
     if not can_create_symlinks(tmp_path):
         pytest.skip(NO_SYMLINKS)
+
+
+#: Why a machine may not be able to run the conversion tests, in words that name the fix.
+#:
+#: CI installs ffmpeg on both platforms (`T-062`), and the application requires it for any preset
+#: that converts or merges — so this is a developer-machine gap rather than a product one. Naming
+#: the tool matters: without it these fail somewhere inside yt-dlp's postprocessor with a message
+#: about a missing executable, which reads as a broken checkout.
+NO_FFMPEG = (
+    "this machine has no ffmpeg/ffprobe on PATH. The conversion tests need it to build their "
+    "source media and to inspect what came out — see T-077. CI installs it (T-062); locally, "
+    "install ffmpeg or accept that preset conversion is unverified here."
+)
+
+
+def ffmpeg_tools() -> tuple[str, str] | None:
+    """Paths to `ffmpeg` and `ffprobe`, or `None` if either is missing.
+
+    Both, not just `ffmpeg`: the tests convert *and* inspect, and a machine with one and not the
+    other would fail at the assertion rather than at the skip.
+    """
+    ffmpeg = shutil.which("ffmpeg")
+    ffprobe = shutil.which("ffprobe")
+    if ffmpeg is None or ffprobe is None:
+        return None
+    return ffmpeg, ffprobe
+
+
+@pytest.fixture
+def ffmpeg() -> tuple[str, str]:
+    """`(ffmpeg, ffprobe)` paths, skipping with a reason a human can act on."""
+    tools = ffmpeg_tools()
+    if tools is None:
+        pytest.skip(NO_FFMPEG)
+    return tools

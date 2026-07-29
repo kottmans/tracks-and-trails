@@ -15,9 +15,9 @@ import os
 import sys
 from pathlib import Path
 
-from tests.capabilities import symlinks
+from tests.capabilities import ffmpeg, symlinks
 
-__all__ = ["symlinks"]
+__all__ = ["ffmpeg", "symlinks"]
 
 # --- Qt needs to be told where Windows keeps its fonts (`T-068`) -------------------------------
 #
