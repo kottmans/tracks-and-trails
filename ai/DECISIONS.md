@@ -1392,6 +1392,65 @@ a phase exit. It stays open as a follow-up, with its non-reproduction recorded.
 - **This decision reopens** if hosted CI returns and `T-056` reproduces again, or if a
   hosted-only finding is ever traced to a defect reachable on Windows 10/11.
 
+### Amended 2026-07-29 — the rule covers evidence obtainable only on a hosted image, not only findings that reproduce there
+
+**Status:** **Accepted** (2026-07-29) — maintainer decision
+**Occasioned by:** `T-066`, and by a reviewer disposition that read this entry the other way
+
+**What needed extending, stated precisely.** The **Decision** above speaks of *a finding that
+reproduces **only** on a GitHub-hosted image*. `T-066` is not that shape. Nothing about it
+reproduces anywhere: what it owes is **evidence obtainable only** on a hosted runner, because both
+`frozen` jobs run there. Reproduction and obtainability are different things, and the decision as
+drafted named only the first. It is extended to the second.
+
+**The rationale already covered it.** *"Blocking on an environment nobody can reach is not a gate,
+it is a stall. The hosted quota is an external billing state. A criterion that cannot be attempted
+teaches nothing about the software."* That argument turns on the environment being unreachable,
+not on which direction the evidence runs. `OPS-006` then stated it generally — *"a criterion that
+waits on a payment is not a gate"* — and rejected *"wait for hosted CI"* on the ground that *"an
+external billing state is not a measurement."*
+
+**`T-066` is downgraded accordingly: still open and Blocked, no longer a Phase 1 exit dependency.**
+
+### Why the frozen shape is not Phase 1's to answer
+
+- **Every frozen criterion in the plan belongs to Phase 0, and is met.** `IMPLEMENTATION_PLAN.md`
+  mentions a frozen artifact four times and all four are in §Phase 0, including its exit row:
+  *"Frozen artifact spawns a child without relaunching itself, both platforms — `T-020`; `frozen
+  ubuntu-latest` and `frozen windows-latest` green."* Phase 0 formally exited 2026-07-26.
+- **Phase 1's section names no frozen, install, virtualenv or packaging concern at all.** Its eight
+  exit criteria are claims about product behaviour — a download, a cancel, a crash, a restart, an
+  unsupported URL, a headless worker, two platforms, a sign-off. `T-066` is a claim about the
+  environment a gate measures, which is a different kind of thing.
+- **The remaining frozen work is already assigned to Phase 5.** `T-033` owns the Windows frozen
+  build and gates Phase 5. Holding Phase 1 for evidence that Phase 5 will produce anyway inverts
+  the sequencing principle.
+
+### What this gives up, precisely
+
+The frozen process-tree shape stays **reasoned rather than measured**. `T-066` records the
+reasoning — under PyInstaller `sys.executable` is the frozen executable and `multiprocessing`
+re-launches it through `freeze_support()`, so there is no launcher generation and no virtualenv —
+and explicitly records it as an assumption. If that assumption is wrong, `T-019`'s process-tree
+reaping evidence may not describe the application a user actually runs. **That risk is real and it
+lands in Phase 5**, next to `T-033`, which is where a Windows frozen build gets made.
+
+### On the enumeration
+
+`OPS-005`'s Context named `T-056` and `T-068`; this amendment names a third task, and the title's
+rule was always the general statement. Reading the two examples as exhaustive is the failure class
+`T-044`, `T-045` and `T-014` each produced and `ai/TESTING.md` §13 records — an enumerated set
+treated as complete. The condition is *hosted-only and unreachable*, not *one of two named tasks*.
+
+**This amendment reopens** if the frozen shape is ever measured and differs from the assumption
+above, or if hosted CI returns and the `frozen` jobs contradict it. Either would make the residue
+a real finding rather than an unobtainable one.
+
+*(A reviewer's final disposition on 2026-07-29 recorded "the explicit `T-066` frozen-artifact
+evidence blocker remains" — written before this amendment and without reference to `OPS-005` or
+`OPS-006`. It stands in `ai/REVIEWS.md` as what was said on the evidence then; this supersedes it
+rather than erasing it.)*
+
 ---
 
 ## OPS-006 — Linux verification is the maintainer's own machine
@@ -1471,3 +1530,107 @@ passed on either."* The risk is accepted with its name written down, not waved a
   their real numbers, because nothing else will hold them.
 - **This decision reopens** if a system-library regression ever reaches a user, or when hosted CI
   returns — at which point `check (ubuntu-latest)` simply resumes and this becomes moot.
+
+---
+
+## OPS-007 — `T-074`'s unreproduced access violation is accepted as residual risk
+
+**Status:** **Accepted** (2026-07-29) — maintainer decision
+**Date:** 2026-07-29
+**Supersedes:** `OPS-006`'s Consequences sentence *"The Windows suite exits with an access
+violation roughly one run in four."* That figure was the anecdote's denominator, not a
+measurement, and `T074-R1` rejected it. `OPS-006` is otherwise unchanged.
+
+### Context
+
+**The event, once.** The full suite on `STARBASE` died with exit **139**, *Windows fatal
+exception: access violation*, in
+`test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget`, with the `ResultPump` thread
+in the traceback. Run `30416495270` at `454b80e` — a **documentation-only** commit, byte-identical
+in code to `38650dd`, which had passed the same suite minutes earlier.
+
+**Everything tried since, with numbers, kept separate by head** — `T074-R1`'s rule is that samples
+from materially different heads are not one population:
+
+| Attempt | Head | Result |
+|---|---|---|
+| 12 deliberate full-suite runs, run `30429327464` | `ea53c71` (pre-`T-090`) | **0 crashes** |
+| 24 deliberate full-suite runs, run `30454206697` | recent, pre-`T-090` | **0 crashes** |
+| *(the two batches above are the "0 in 36" the task records — one population of 36, not two of 12 and 36)* | | |
+| 15 deliberate full-suite runs, run `30478557533` | `35fc7ec` (post-`T-090`) | **0 crashes, 0 failures** |
+| 60 runs of the crashing test alone, on Windows | current | 60 passed, 0 crashed |
+| 250 in-process iterations of its shape | current | clean |
+| A direct stress of the logging-teardown race | Linux | **unusable** — hung in its own setup before the first iteration |
+
+That is **51 deliberate full-suite runs**, plus 60 single-test runs and 250 in-process iterations —
+**361 attempts with zero events**, across three shapes and two heads. The failed stress harness is
+counted as neither a positive nor a negative, which is how the task records it.
+
+**`T-090` is not established as the cause, and this decision does not claim it.** `T-090` fixed a
+real, deterministic race on the same thread the fatal dump named — a listener left in an overlapped
+`ReadFile` on a finalised queue. But the access violation was **already not reproducing before that
+fix** (0/12), so a clean run after it carries no causal weight. `T074-R4` made exactly this point
+and it stands.
+
+**The obvious candidate is already defended against.** The classic PySide6 fault of this shape is a
+`QThread` destroyed while `run()` executes; `manager.py`'s `_release()` refuses to drop a session
+while its pump is live. The first hypothesis anyone would reach for is not it.
+
+### Decision
+
+`T-074`'s access violation is **accepted as residual risk**. It does **not** hold Phase 1's seventh
+exit criterion.
+
+`T-074` stays **open**, downgraded **High → Medium**, with its four acceptance criteria recorded as
+**unmet** — not rewritten to match what turned out to be achievable. Whether criterion 7 is called
+met is the **exit review's** to record; this decision removes `T-074` as the reason it cannot be.
+
+### Rationale
+
+- **Reproduction is the only entry to the criteria, and it is exhausted.** All four criteria
+  presuppose a deliberate reproduction: criteria 1–3 cannot be attempted without one, and 4 is a
+  conditional needing a diagnosis either way. Every method available has been run.
+- **Continuing costs the gate it protects.** At ~4.1 minutes per Windows suite run, a rate low
+  enough to survive 51 deliberate full-suite runs would need days of continuous `STARBASE` time —
+  the one machine Windows verification depends on, and a computer somebody uses.
+- **This is not hiding it.** `T-069`'s rule, restated in `T-074`'s own out-of-scope list, forbids
+  retry, `xfail` and rerun plugins: an intermittent gets its trigger found, not its symptom hidden.
+  Accepting a named unknown with a trap set is a different act from suppressing a signal.
+- **The failure mode is loud, not silent.** It reddens the gate and takes the interpreter with it.
+  It is not the class this project treats as Critical — a silent wrong result, downloading the
+  wrong thing, or writing outside the chosen directory.
+
+### What this gives up, precisely
+
+**An intermittent access violation in or adjacent to `ARC-002`'s result-delivery path is
+unexplained, in a module under `src/`.** If it recurs, every green Windows run before it is worth
+slightly less than it appeared. Product-versus-harness is unresolved, so if it is the product, the
+user-facing consequence is **unknown** — that is the actual concession, and it should not be
+softened.
+
+### The trap, so a recurrence is not another anecdote
+
+`T-092` arms `STARBASE` to capture a crash dump on an access violation. `faulthandler` gives a
+thread list, and `T-074`'s second criterion is explicit that *a stack is not a cause*; a minidump
+names the faulting module and address, which is what that criterion actually asks for. This turns
+an unbounded hunt into a bounded one: the next occurrence is diagnostic rather than anecdotal.
+
+### Alternatives considered
+
+- **Push for a reproduction.** Rejected on cost above, not on principle. It reopens the moment
+  there is a cheaper instrument than repetition.
+- **Close `T-074` as fixed by `T-090`.** Rejected: that is precisely the causal claim `T074-R4`
+  refused, and the pre-fix clean sample means the evidence cannot support it.
+- **Cancel `T-074`.** Rejected for `OPS-005`'s reason on `T-056`: it was really observed once, and
+  an undiagnosed intermittent deserves to stay on the books.
+- **Retry, `xfail`, or a rerun plugin.** Out of scope by `T-069`'s rule, and it would convert a
+  known unknown into an invisible one.
+
+### Consequences
+
+- `T-074` remains **open at Medium**, its criteria **unmet**, and blocks no phase exit.
+- **`T-092`** owns the dump trap and is the instrument this decision leans on.
+- The exit review records criterion 7 against `T-073`'s measured Windows run, with this decision
+  named as the disposition of the residual.
+- **This decision reopens** if the access violation recurs anywhere — at which point `T-092`'s dump
+  should supply criterion 2 — or if any user-reachable defect is ever traced to `result_pump.py`.

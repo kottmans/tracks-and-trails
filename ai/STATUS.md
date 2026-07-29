@@ -5,8 +5,8 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-28
-**Last verified against repository:** 2026-07-28
+**Last updated:** 2026-07-29
+**Last verified against repository:** 2026-07-29
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -18,6 +18,35 @@ evidence is recorded in `IMPLEMENTATION_PLAN.md` §Phase 0 — including a fresh
 proving the layering test still fails on a deliberate `PySide6` import in `core/`.
 
 `T-010`, `T-011` and `T-026` are complete. `ARC-003` settled the IPC versioning question.
+
+**Where Phase 1 stands, 2026-07-29. The exit review is the next step, and no task blocks it.**
+Six of the eight exit criteria have evidence in `IMPLEMENTATION_PLAN.md`'s table, and
+`P1EXIT-R1`/`P1EXIT-R2` are Resolved. Criterion 8 (*the exit review*) has not been called;
+`COORD-R8` was its stated precondition and is discharged. Criterion 7 (*verified on Linux and
+Windows*) rests on `T-073`'s measured `STARBASE` run — 1388 passed, 20 skipped — with `T-074`'s
+residual dispositioned by **`OPS-007`** rather than resolved. **Nothing is In Review:** `T-072`,
+`T-073` and `T-090` are Approved and filed Complete.
+
+**Two blockers were dispositioned by decision, not by being fixed, and the difference matters.**
+`T-066` by the `OPS-005` amendment; `T-074` by `OPS-007`, which accepts its unreproduced access
+violation as residual risk after **361 attempts produced no event** — 51 deliberate full-suite runs
+across two heads, 60 runs of the crashing test, 250 in-process iterations. Both tasks stay **open**.
+`T-074` keeps its four acceptance criteria recorded **unmet** rather than rewritten, and `T-090` is
+explicitly **not** established as the crash's cause: the pre-fix sample was equally clean, so a
+clean post-fix run carries no causal weight. `T-092` arms `STARBASE` to capture a crash dump so a
+recurrence answers criterion 2 — *a stack is not a cause* — instead of adding another anecdote.
+Calling criterion 7 met is the exit review's to record, not this file's.
+
+**`T-066` no longer blocks the exit** (`OPS-005` amended 2026-07-29, maintainer decision). Its
+remaining frozen-artifact evidence can only be gathered on GitHub-hosted runners and the quota is
+out — the unreachable-environment condition `OPS-005` covers, which `OPS-006` states generally as
+*a criterion that waits on a payment is not a gate*. The amendment also records why the frozen
+shape was never Phase 1's question: all four frozen references in `IMPLEMENTATION_PLAN.md` are
+Phase 0's and met by `T-020`, Phase 1's section names none, and `T-033` owns the Windows frozen
+build in Phase 5. What that gives up is named there — the frozen process-tree shape stays reasoned
+rather than measured, and if the assumption is wrong `T-019`'s reaping evidence may not describe
+the shipped application. *(A reviewer disposition of 2026-07-29 called `T-066` a standing Phase 1
+blocker; it predates the amendment and stands in `ai/REVIEWS.md` as history.)*
 
 **Two things the phase exits with, named rather than hidden:**
 
@@ -148,9 +177,13 @@ was really applied. A Windows machine was not enough; it wants `windows-latest`'
 **The same first run found five things CI structurally cannot see** (`T-066`…`T-070`), all five
 implemented on 2026-07-28 and all five since reviewed. STARBASE now runs **1384 passed, 24
 skipped, 0 failed** as an ordinary unelevated user, from 8 failures at the start.
-`T-067`, `T-069` and `T-070` are **Approved**. `T-066` and `T-068` are **Blocked on evidence**:
-`T-066`'s own `T-019` process-tree cases have never run under the venv shape it exists to cover,
-and `T-068` still cannot say why the runners do not show the empty font database.
+`T-067`, `T-069` and `T-070` are **Approved**. `T-066` and `T-068` are **Blocked on evidence**, and
+`OPS-005` as amended makes neither a phase blocker: `T-066` owes only the frozen-artifact shape —
+its `T-019` process-tree cases **have** since run under the venv shape, in run `30414186949` — and
+`T-068` still cannot say why the runners do not show the empty font database.
+*(This read "`T-066`'s own `T-019` process-tree cases have never run under the venv shape it exists
+to cover" after run `30414186949` had executed exactly those cases, including the grandchild case.
+The correction is recorded further down this file and in the task; it had not reached here.)*
 `docs/WINDOWS_VERIFICATION.md` records the machine, the harness, and the two traps that make a
 Windows run look valid when it is not.
 
@@ -173,7 +206,8 @@ before executing a single step, on GitHub's billing annotation.
 **That no longer stops the criterion**, which is the part this paragraph got wrong for a day.
 `OPS-005` and `OPS-006` gave both halves a platform that does not depend on the quota, and `T-073`
 made the Windows half actually run. What holds criterion 7 now is `T-074`, not billing. The hosted
-jobs still gate `T-066`'s frozen artifacts.
+jobs still gate `T-066`'s frozen artifacts — which, as of the `OPS-005` amendment, gate no phase
+exit; that evidence lands with `T-033` in Phase 5.
 
 *(This paragraph said `T-069` was "reproduced and narrowed but not fixed" and that `T-040` still
 needed the `windows desktop` job, after both had moved — `COORD-R5`. It then said the criterion
@@ -326,14 +360,19 @@ set. One mutation is killed on Linux; the other survives there **by design**, be
 kills the group regardless of the captured set, so its gate belongs on Windows and is still owed.
 `T-064` is **Approved**.
 
-**The Phase 1 evidence table paid for itself twice, and is not finished** (2026-07-29). Building it
+**The Phase 1 evidence table paid for itself twice, and is now finished** (2026-07-29). Building it
 exposed that the *headless* criterion rested on a static import guard and an environment variable
-that does not remove a display. The correction made a genuinely display-free child — and the
-re-review then found the correction **still incomplete**: that child only calls `_import_ytdlp()`,
-while the test that runs a real `run_session` inherits the desktop environment and calls its child
-headless anyway. **`P1EXIT-R1` remains open and blocking**; the criterion is not ready for
-sign-off. `P1EXIT-R2` is open too — the replacement row cites a `GeoRestrictedError` test for an
-*unsupported URL* criterion, repeating the original mapping defect with a different error class.
+that does not remove a display, and that the *unsupported URL* row cited the wrong error class.
+Both took three passes. **`P1EXIT-R1` and `P1EXIT-R2` are Resolved.** The scrub and the worker
+session are one observation now — the parent removes `DISPLAY` and `WAYLAND_DISPLAY` before
+`spawn`, the child asserts their absence and then runs a real `run_session`, and both halves are
+mutation-verified. The unsupported-URL row raises a real `UnsupportedError` through `run_session`
+and asserts `UNSUPPORTED_URL` plus the exact message, with the honest limit retained: yt-dlp's own
+recognition of such a URL is injected rather than live.
+
+*(This block said **`P1EXIT-R1` remains open and blocking** and `P1EXIT-R2` "is open too" for as
+long as it took someone to read it against the review that resolved both. `COORD-R8` named it as
+the same current-truth failure as the `TASKS.md` filing drift, one document over.)*
 
 **`T-074` has exhausted Linux and now has an instrument** (2026-07-29). The last untested Linux
 hypothesis was suite ordering — the Windows crash happened inside a full-suite run and `T-069` was
@@ -373,9 +412,12 @@ existing-rule branch of `ssh-setup.ps1` did nothing and printed `rule present`, 
 carrying the earlier broad `Any` rule kept port 22 open on every profile forever while the script
 reported success. It now reapplies the scope, reads the rule back, and reports the profile and
 remote-address filter separately — they live on different objects, so a rule can look right and
-still allow the world. **`T-072` is complete and in review** (2026-07-29): `WIN-R1` was verified on `STARBASE` against
-a deliberately broadened rule — `defective state confirmed: profile=Any remote=Any`, then the
-repair, then `WIN-R1 PASS`. *(This previously read "One thing is owed before `T-072` closes.")*
+still allow the world. **`T-072` is Approved and filed Complete** (2026-07-29): `WIN-R1` was
+verified on `STARBASE` against a deliberately broadened rule — `defective state confirmed:
+profile=Any remote=Any`, then the repair, then `WIN-R1 PASS`. The reviewer found the evidence
+non-vacuous on the ground that the precondition would have stopped the procedure had the broad
+state not really been created. *(This previously read "One thing is owed before `T-072` closes.",
+then "complete and in review" after the approval had landed — `COORD-R8`.)*
 
 **Superseded reading.** `mut_tree_drop_worker` has run on
 Windows: it **survives**, because `worker.spawn_session()`'s `parent-watchdog` exits the worker

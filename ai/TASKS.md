@@ -5,7 +5,7 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-28
+**Last updated:** 2026-07-29
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
@@ -14,31 +14,44 @@ IDs are never reused. Completed tasks move to `ai/archive/` once they bury the l
 
 **Start here:** **Phase 1's critical path is built and approved**, and the queue is no longer
 only paperwork. `T-036` composed the object graph and `T-037` proved a download completes and
-survives a `SIGKILL`. **What stands between the phase and its exit review is a crash, a carry, and
-frozen-artifact evidence.**
+survives a `SIGKILL`. **No task now blocks the exit review — it is the next step.** The carry is
+closed: `T-072`, `T-073` and `T-090` are Approved and filed Complete, and `## In Review` is empty.
+Two blockers were dispositioned by maintainer decision on 2026-07-29 rather than completed, and
+that distinction is the point: **`T-066`** by the `OPS-005` amendment (its frozen evidence is
+unobtainable while the hosted quota is out, and every frozen criterion in the plan is Phase 0's),
+and **`T-074`** by **`OPS-007`** (accepted as residual risk after 361 attempts produced no
+reproduction). Both stay open. Neither is fixed. The exit review is where criterion 7 is recorded
+against `T-073`'s measured Windows run, with `OPS-007` named as the disposition of the residual.
 
-- **`T-074` — the live problem.** The Windows suite exited once with an **access violation**, in
-  the result pump's ordinary message delivery. **High**, filed 2026-07-29, **not diagnosed**: the
-  faulting object is unknown and product-versus-harness is unresolved. A deliberate batch ran
-  `0/12` at `ea53c71`, which argues against the original "roughly one in four" without replacing
-  it — those runs came from materially different heads and one event supports no bound
-  (`T074-R1`). It matters out of proportion to its age because `OPS-005` and `T-073` made that
-  suite Phase 1's only Windows gate, and a gate that has crashed once and cannot be explained does
-  not verify the criterion. *(This bullet said "roughly one run in four", which was the anecdote's
-  denominator rather than a measurement.)*
-- **`T-072` — In Progress.** `COORD-R5`, `WIN-R3`, `RUNNER-R1` and **`T072-R1`** are resolved:
-  `mut_tree_drop_worker` ran on Windows, survives through the orphan guard, and the reviewer
-  accepted that capture-list completeness is not the product invariant. **`WIN-R1` is the only
-  remaining item** — a run of `ssh-setup.ps1` against a deliberately broadened rule. Also carrying
-  `T072-R2` and this preamble's own `COORD-R6`. *(This bullet said `T066-R1` and `WIN-R1` were
-  "both still open on their evidence" after the first had run.)*
-- **`T-073` — In Review**, approved with the `T073-R1` documentation follow-up. The self-hosted
-  job now runs the whole Windows gate: 1388 passed, 20 skipped.
-- **Blocked on evidence:** `T-066`, narrowed to frozen-artifact evidence alone once its
-  process-tree half was discharged. `T-033` and `T-039` are Phase 5.
+- **`T-074` — open, Medium, accepted as residual risk** (`OPS-007`). The Windows suite exited once
+  with an **access violation** in the result pump's ordinary message delivery, and it has never
+  been reproduced: **361 attempts, zero events**, across 51 deliberate full-suite runs, 60 runs of
+  the crashing test and 250 in-process iterations, on two heads. **Still not diagnosed** — the
+  faulting object is unknown and product-versus-harness is unresolved, and its four acceptance
+  criteria are recorded unmet rather than rewritten. `T-090` fixed a real race on the same thread
+  but is **not** established as the cause: the pre-fix sample was equally clean. `T-092` arms
+  `STARBASE` to capture a dump so a recurrence supplies criterion 2. *(This bullet said "roughly one
+  run in four", the anecdote's denominator rather than a measurement — `T074-R1`. It then called the
+  task a Phase 1 blocker until `OPS-007`.)*
+- **Blocked on evidence, and not phase blockers** (`OPS-005` as amended): `T-066`, narrowed to
+  frozen-artifact evidence alone once its process-tree half was discharged. Both `frozen` jobs are
+  GitHub-hosted and the quota is out, so the frozen shape stays reasoned rather than measured and
+  the evidence lands with `T-033` in Phase 5. `T-033` and `T-039` are Phase 5.
+- **Ready, blocking nothing:** `T-089` (Low, MP3 bitrate UI contract), `T-091` (Medium, carried
+  from `T090-R1`/`T090-R2` — `dequeue()` treats every `OSError` as end-of-stream, wider than its own
+  contract), and `T-092` (Medium, the `OPS-007` dump trap; needs the maintainer's consent before
+  anything is written to `STARBASE`).
 - **Open, not phase blockers** (`OPS-005`): `T-056` and `T-068`. Both need a GitHub-hosted image,
   neither is a defect a user would meet.
-- **Complete:** `T-040`, `T-060`, `T-064`, `T-065`, `T-067`, `T-069`, `T-070`, `T-071`.
+- **Complete:** `T-040`, `T-060`, `T-064`, `T-065`, `T-067`, `T-069`, `T-070`, `T-071`, and now
+  `T-072`, `T-073` and `T-090`.
+
+*(This list carried three wrong live answers at once until `COORD-R8`: `T-072` was called
+**In Progress** with `WIN-R1` outstanding after both the run and the approval had landed;
+`T-073` was called **In Review** after `T073-R1` was Resolved at `9802a6a` and the task
+approved; and the opening summary still counted a carry that was closed. Rewritten from the
+final dispositions rather than patched, which is what `COORD-R5` through `R7` each asked for and
+did not get.)*
 
 **Both halves of exit criterion 7 now have a platform, and it is still unmet.** `OPS-005` made
 `STARBASE` the Windows platform; `OPS-006` made the maintainer's own machine the Linux one, rather
@@ -81,670 +94,44 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(Holds `T-072`, `T-073` and `T-090` as of 2026-07-29. `T-074` moved back to Ready when `T074-R4` found its "diagnosed and fixed" unsupported; what was fixed is `T-090`. `T-075`, `T-076` and `T-077` were approved and are filed Complete; leaving them here after approval is the placement drift `COORD-R7` reported, so they moved with the verdict rather than later. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling,
-and this note went on claiming that after `T-073` was filed In Review under `## Ready` —
-`COORD-R6`, which is `COORD-R5`'s own failure mode recurring one day later. `COORD-R2` is why this
-section carries a note at all rather than sitting blank: an empty section is a claim about
-readiness, and the last time it was left unlabelled it outlived being true by one CI run. The
-lesson this file keeps relearning is that the claim has to be rewritten when the section changes,
-not when someone notices.)*
-
-### T-072 — Carry the three unresolved findings the last-pass direction stopped
-
-**Status:** **In Review — all five carries discharged, 2026-07-29.** `WIN-R1` was verified on
-`STARBASE` against a deliberately broadened rule; see **`WIN-R1` verified** below.
-
-*(Superseded: "In Progress — `T072-R1` Resolved; `WIN-R1` is the only remaining item".)*
-`mut_tree_drop_worker` ran on Windows and **survives**, through the orphan guard rather than
-because the mutation was inert — established with a positive control and a probe that had to be
-fixed before it could see anything. The reviewer accepted that result and marked `T072-R1`
-**Resolved**: the omitted worker was independently observed exiting through a legitimate
-containment path, and capture-list completeness is not itself the product invariant.
-
-**`WIN-R1` is verified.** It needed a deliberately widened firewall rule, which the implementer's
-tooling was not permitted to create; the maintainer ran the recorded procedure on `STARBASE` on
-2026-07-29. Everything else is done:
-`COORD-R5` is discharged and `T-040`/`T-060` are filed Complete on it, `WIN-R3` and `RUNNER-R1`
-are corrected, the `T-019` process-tree cases run on `STARBASE`, and `T066-R1` — **Changes
-requested** at `f20a9c8` — is corrected and its mutation has been executed there. See
-**Progress**.
-
-*(This block said "four of the five carries are done", then "one of the two owed items", and a
-correction to it left the older tail attached — so it read "`WIN-R1` is the only remaining item"
-and, three lines later, that two were owed including a mutation that had run. `COORD-R7`.
-Replacing a segment and leaving what followed it is how a document contradicts itself in the same
-paragraph.)*
-
-*(This block said "three of the five" and called `T066-R1` unexecuted after its run had already
-happened — `T072-R2`, and the same current-truth drift `COORD-R5` is about, in the task that owns
-`COORD-R5`. Rewritten rather than patched.)*
-**Owner:** Implementer
-**Priority:** Medium — it is the only thing standing between `T-040`/`T-060` and closure
-**Phase:** Phase 1
-**Depends on:** nothing to start. Its `T066-R1` half **needs a Windows runner**; the other two
-halves do not
-**Relevant context:** `ai/REVIEWS.md` — "STARBASE evidence and T-066 through T-070 review" and
-"STARBASE correction focused re-review", both 2026-07-28
-**Affected surfaces:** `tests/integration/test_end_to_end.py`, `tests/integration/test_manager.py`,
-`tools/windows/ssh-setup.ps1`, `docs/WINDOWS_VERIFICATION.md`, `.github/workflows/`,
-`ai/TASKS.md`, `ai/STATUS.md`
-**Risk:** Low per item; Medium as a group, because two of the three are gate-vacuity problems
-
-#### Scope
-
-The correction re-review closed under the maintainer's **last-pass direction**: remaining
-Medium-or-lower work is carried into a named task rather than starting another correction loop.
-This is that task. It exists because the reviewer asked for it by name, and until it did not
-exist, `T-040` and `T-060` had nowhere to carry their residue — which is the only reason those
-two are not closed.
-
-**Three blocking carries:**
-
-- **`T066-R1` (Medium).** The whole-tree termination fix is accepted and it resolved `T-069`. What
-  remains is that `kill_the_application()` suppresses every `psutil` kill error and discards both
-  lists returned by `wait_procs`, so it can return and reopen the database with a known survivor.
-  The no-survivors probe is reported but is not a lasting assertion. Separately, `T-066`'s own
-  criterion covering the `T-019` process-tree cases has never run under the Windows venv — the
-  self-hosted job runs `windows_desktop` only.
-- **`COORD-R5` (Medium).** The gate statement is corrected: `REQUIREMENTS`, `IMPLEMENTATION_PLAN`,
-  `TESTING` and `T-026` now agree Windows tab order is gated. The residual is filing. `## In
-  Review` still says it is empty while `T-066`…`T-070` sit In Review under `## Ready`; `T-040` and
-  `T-060` sit In Review under `## Blocked`; the `TASKS` preamble still calls `T-060` Blocked; and
-  `STATUS` says `T-040`/`T-060` are In Review and then, later in the same file, that `T-069` is
-  unfixed and `T-040` is Blocked. These are current-truth files and the stale paragraphs are not
-  marked superseded.
-- **`WIN-R1` (Medium).** `ssh-setup.ps1` now preserves and deduplicates administrator keys, and a
-  newly created firewall rule is correctly Private + LocalSubnet. But its idempotent path looks up
-  `sshd-tt` and does nothing when it already exists, so a machine that ran the earlier broad `Any`
-  rule stays broad on every later run. A tool documented as safe to re-run does not repair the
-  unsafe state it created.
-
-**Two non-blocking carries**, which the re-review asked to travel with this work:
-
-- **`WIN-R3` (Low).** `docs/WINDOWS_VERIFICATION.md` still names `mut_control_always_dead.py` as
-  the focus driver's control; the actual control is `mut_control_chain.py`. The named file belongs
-  to `T-056`, not to the `T-026` focus harness.
-- **`RUNNER-R1` (Low).** The workflow comment and the Windows guide say `timeout-minutes: 15`
-  bounds time spent queued while `STARBASE` is offline. It bounds how long a job may **run**; an
-  unmatched self-hosted job stays queued for up to **24 hours**. The current text understates this
-  single-machine gate's outage window by almost a day.
-
-#### Acceptance criteria
-
-- A surviving process in either `wait_procs` list **fails the test**; the expected descendant set
-  is a lasting assertion rather than a reported probe
-- `T-019`'s process-tree cases are executed and recorded from the Windows venv, or `T-066`'s
-  criterion is rewritten to say what is actually gated and why
-- Re-running `ssh-setup.ps1` against a machine carrying the broad `Any` rule leaves it scoped, and
-  the script reports the effective profile and remote-address filter it ended with
-- One unambiguous current answer, in authority order, about which tasks are In Review, Blocked and
-  Complete — including the `## In Review` section's own emptiness claim. (`T-071` was the same
-  class of drift and was filed to `## Complete` on 2026-07-28, ahead of this task.)
-- Historical statements are preserved as explicitly historical, not deleted
-- `WIN-R3` and `RUNNER-R1`'s documentation is corrected to what the code and GitHub actually do
-
-#### Progress, 2026-07-28
-
-| Carry | State |
-|---|---|
-| `COORD-R5` | **Done.** See below |
-| `WIN-R3` | **Done.** The guide now names `mut_control_chain.py`, says it runs first, and records why the `T-056` control does not belong here |
-| `RUNNER-R1` | **Done.** `ci.yml` and the guide now say `timeout-minutes` bounds *run* time, and an unmatched self-hosted job queues for up to 24 hours |
-| `T066-R1` | **Corrected after `T072-R1`.** One mutation still owed on Windows — see **The `T072-R1` correction** |
-| `WIN-R1` | **Written, unverified.** See **The `WIN-R1` correction** |
-| `T-019` cases under the venv | **Done.** Run `30414186949`, 72 passed, 3 skipped |
-| `T072-R2` | **Resolved.** This status block was the drift it reported |
-
-**`COORD-R5` is discharged.** Every task now sits in the section its verdict says it belongs in:
-`T-040`, `T-060`, `T-067`, `T-069`, `T-070` and `T-065` to `## Complete`; `T-066` and `T-068` to
-`## Blocked`. The `## In Review` note no longer claims an emptiness it did not have, and names
-where each former occupant went. The `TASKS` preamble and `ai/STATUS.md`'s Windows and `T-040`
-paragraphs are rewritten from the current head, with every superseded reading kept as an
-explicitly historical parenthetical rather than deleted.
-
-**`T066-R1` is written but has not run, and that matters.** `kill_the_application()` now asserts
-that the walked tree is deeper than the pid `Popen` returned, and that `wait_procs` reports **no**
-survivors before the caller reopens the database; refused kills are collected and reported in the
-failure rather than suppressed. `NoSuchProcess` during the kill loop is still tolerated, because
-racing with a tree that is already dying is a kill and not a miss.
-
-That code is inside `if sys.platform == "win32"`, so **the Linux suite did not execute one line of
-it.** What it has: `mypy --platform win32` passes on it, which is `AGENTS.md` §8's check and is
-what caught the previous POSIX-only mistake in this same file. What it does not have: any runtime
-evidence at all. It needs the Windows job before it can be called resolved.
-
-**The runner is the answer to that, and it did not need the quota.** `STARBASE` is online and
-green — run `30413774102`, job `windows desktop`, **28 passed, 1410 deselected in 12.83s**, while
-all four hosted jobs failed at zero steps on the billing annotation. Since that job already builds
-a venv on a real Windows machine, it is the only place the required process shape exists. It now
-carries a *Process trees under the venv* step running `tests/integration/test_manager.py` and
-`tests/integration/test_end_to_end.py` by path.
-
-Pre-flighted on Linux with `ffmpeg` removed from `PATH`, because the desktop job installs none:
-**75 passed**. That is what says the step will not turn the one green job red for a missing
-dependency rather than for a finding.
-
-#### Evidence, on the runner — 2026-07-29
-
-Run **`30414186949`** at `185ea6d`, job `windows desktop` on `STARBASE`. All ten steps green;
-*Process trees under the venv* reports **72 passed, 3 skipped in 79.69s**.
-
-**The caveat above is discharged.** `test_a_job_killed_mid_download_is_recovered_by_the_next_start`
-PASSED, and it is the test that calls `kill_the_application()` — so the `T066-R1` assertions
-executed on Windows, under a virtualenv, and the tree they walk really was deeper than the pid
-`Popen` returned. Had it been one level, the first assertion would have failed rather than the
-step passing.
-
-The `T-019` cases ran under the same shape for the first time anywhere:
-
-| Case | Result |
-|---|---|
-| `test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind` | **PASSED** — the grandchild case, which is the whole subject |
-| `test_cancelling_a_download_kills_what_the_worker_spawned` | **PASSED** |
-| `test_a_real_worker_leads_its_own_process_group` | Skipped — POSIX process groups |
-| `test_a_descendant_is_asked_to_stop_before_it_is_killed` | Skipped — POSIX signalling |
-| `test_the_detector_still_ignores_the_resource_tracker` | Skipped — POSIX only |
-
-The three skips are the POSIX-only half of a file that is deliberately split by platform; nothing
-Windows-relevant was skipped. **No hosted minutes were used**, and all four hosted jobs in the
-same run failed at zero steps on the billing annotation.
-
-| Check | Result |
-|---|---|
-| `ruff check .` | All checks passed |
-| `ruff format --check .` | 103 files already formatted |
-| `mypy` | Success: no issues found in 78 source files |
-| `mypy --platform win32` | Success: no issues found in 78 source files |
-| `pytest` (full default suite) | **1399 passed, 11 skipped, 2 deselected** |
-| `pytest tests/integration/test_end_to_end.py` | 4 passed |
-
-#### The `T072-R1` correction — 2026-07-29
-
-**The assertion was vacuous, and the review proved it rather than argued it.**
-`len(doomed) > 1` reads like a check on the walk and is not one: under the venv shape the launcher
-and the application interpreter already make that two, so the **worker** could be missing and it
-still passed. Codex reduced `children(recursive=True)` to direct children — `len(doomed) == 2`,
-the helper returned successfully, and the omitted worker went on downloading. The handoff had
-flagged this assertion as the least certain one; the failure mode found is sharper than the one
-guessed at.
-
-**Identity now comes from a handshake, not from a count.** `DOWNLOAD_AND_WAIT` prints
-`os.getpid()` alongside the job id, so the test knows the application interpreter rather than the
-launcher. `capture_the_doomed_tree()` walks from *that* pid while the row still says `RUNNING`,
-asserts the application has at least one descendant — the worker, which is the entire reason the
-kill means anything — and returns that exact set. `kill_the_application()` no longer walks; it
-kills what it was handed and asserts nothing survived.
-
-#### `T072-R1`, third round — the oracle was counting the wrong process
-
-**The second correction separated the lists and then conflated the processes.**
-`the_workers_that_must_die()` returned *every* descendant, which under `multiprocessing` means the
-**resource tracker** as well as the worker. The tracker outlives the worker, so the positive
-control failed on the tracker while calling it a worker — and a reviewer's mutation that killed the
-application and the tracker but deliberately spared the real worker **passed in 1.38 s**. The
-control had teeth only for "some long-lived descendant".
-
-Three things were wrong, and the third was the one that mattered:
-
-1. **The tracker was in the set.** Excluded now, by the same `multiprocessing.resource_tracker`
-   marker `tests/integration/test_manager.py` has always used for the same reason.
-2. **`mut_tree_shallow_walk` patched the oracle as well as the capture**, so it shrank the check
-   and the checked thing together. It now touches `capture_the_doomed_tree` only.
-3. **The clip was too short for the assertion to mean anything.** 512 KiB in 32 KiB chunks at
-   0.05 s finished in under a second, so a worker that survived the kill exited *naturally* long
-   before any check noticed — the assertion would have passed with no kill at all. The test now
-   paces at 0.5 s and waits **5 s**, deliberately shorter than the download still in flight. The
-   passing case costs nothing: `wait_procs` returns as soon as everything is gone.
-
-**Measured, on Linux:**
-
-| Plugin | Result | Why |
-|---|---|---|
-| `mut_control_worker_survives` | **KILLED**, 6.4 s | The kill is disabled, the worker is genuinely still downloading, and the failure names **one** pid — the worker, with the tracker excluded |
-| `mut_tree_shallow_walk` | Survives | The capture walks from the application, whose direct children already include the worker. Shallow and recursive differ only if the worker spawned its own child. Unobservable, like `T060-R2`'s reversal |
-| `mut_tree_drop_worker` | Survives | `killpg` reaches the whole group whatever was captured |
-| Reviewer's spare-the-worker | Survives | **And this is the interesting one — see below** |
-
-**Sparing the worker is unkillable on Linux because the product handles it.** `worker.py`'s
-**orphan guard** — `spawn_session()` watches the parent and exits if it disappears — reaps the
-worker when the application dies, whether or not anything killed it directly. The two controls
-prove it as a pair: with the kill disabled the application lives and the worker is still running at
-6 s; with the application killed and the worker deliberately spared, the worker is gone in 1.4 s.
-That is `REQ-015`'s orphan guard working, not a hole in the oracle, and it is recorded as the
-measured outcome the re-review asked for rather than forced into a kill.
-
-**Which makes the Windows run the whole remaining question.** `T-066` measured the opposite there:
-the grandchild **survived** `process.kill()`. Either the orphan guard does not fire on Windows or
-it does not fire in time, and that difference is exactly what `mut_tree_drop_worker` is for on
-`STARBASE`.
-
-#### `T072-R1`, second round — the assertion was still circular
-
-**The first correction moved the fault rather than fixing it.** It asserted `not alive` against
-`doomed` — *the same list the kill was handed* — so a fault that dropped the worker from that list
-also dropped it from the assertion, and nothing could fail on any platform. Both checked-in
-mutations were built on that misunderstanding: one returned `[]` and proved only that an entirely
-empty walk trips a guard nobody doubted, and the other could not be caught even on Windows.
-
-**The check and the thing it checks now come from different sources.**
-`the_workers_that_must_die()` is the test's own record of the worker set, taken while the row says
-`RUNNING`. `capture_the_doomed_tree()` is what the kill is handed. Nothing downstream can shrink
-the first, so a `doomed` missing the worker fails against it.
-
-| Plugin | Linux | Why |
-|---|---|---|
-| `mut_control_worker_survives` | **KILLED** | The positive control. `kill_the_application` does nothing, the worker outlives it, and the independent set catches it by pid |
-| `mut_tree_shallow_walk` | Survives | The capture walks from the *application*, whose direct children already include the worker. Shallow and recursive differ only if the worker has spawned its own child — ffmpeg, on a merge — which a progressive download does not. **Unobservable, like `T060-R2`'s reversal**, not a gap |
-| `mut_tree_drop_worker` | Survives | `killpg` reaches the whole group whatever was captured. Structurally ungateable on POSIX |
-
-**The control is why the two survivals are readable.** Two surviving mutations and no kills is
-indistinguishable from an assertion that cannot fail — which is the exact shape `T072-R1` found
-twice. `mut_control_worker_survives` fails with the surviving pid *and* the list the kill was
-handed, so the diagnostic names which of the two possibilities occurred. Same reasoning that puts
-`mut_control_chain` first in the focus driver.
-
-#### `mut_tree_drop_worker` ran on Windows — and survives there too, 2026-07-29
-
-Run on `STARBASE` at `ea53c71` against
-`test_a_job_killed_mid_download_is_recovered_by_the_next_start`:
-
-| Run | Handed to the kill | Result |
-|---|---|---|
-| unmutated | 3 pids | passes |
-| **`mut_tree_drop_worker`** | **2 pids — the worker dropped** | **passes** |
-| `mut_control_worker_survives` (kill nothing) | — | **fails**, naming the worker's pid |
-
-**The mutation applies and survives.** Both halves had to be established separately, and the first
-attempt to do so was blind: a probe wrapping `capture_the_doomed_tree` in `pytest_configure`
-printed the *unmutated* list regardless, because the mutation's own `configure` then wrapped the
-probe rather than the other way round. Moving the probe to `pytest_sessionstart` — after every
-`configure` — made it wrap outermost, and the handed list dropped from three pids to two. An
-instrument that cannot see the thing it is pointed at reports a survival and a non-application
-identically, which is `T072-R1`'s shape one level up.
-
-**Why it survives is product behaviour, and correct.** `worker.spawn_session()` starts a
-`parent-watchdog` thread — the orphan guard `ARC-002` documents — which exits the worker when the
-parent disappears. The kill is handed the application either way, so the worker dies whether or
-not its pid was in the captured set. The control confirms the mechanism: with **no** kill at all
-the parent survives, the watchdog never fires, and the worker is still running when the assertion
-looks.
-
-**So the expectation this task recorded is wrong, and that is the finding.** It said the captured
-set's completeness "can only be gated there" — on Windows. It cannot be gated *anywhere* by this
-test, on either platform, because the orphan guard removes the dependency the mutation targets.
-What protects against orphans is the guard, not the completeness of the list the test builds.
-
-Two consequences worth stating rather than leaving implied. The gate that matters for orphans is
-whatever exercises the **orphan guard**, and `mut_control_worker_survives` is the closest thing to
-it here. And `capture_the_doomed_tree`'s completeness is now an unasserted property — its own
-docstring already says "this list is not evidence of its own completeness", which is exactly right
-and now also means nothing tests it.
-
-*(Superseded: this section previously said `mut_tree_drop_worker` was still owed on Windows and
-that the captured set's completeness "can only be gated there". It ran; it survives; and the
-reason it survives is that no platform can gate that property while the orphan guard exists.)*
-
-#### The `WIN-R1` correction — 2026-07-29
-
-The existing-rule branch did nothing and then printed `rule present`, so a machine that had run
-the earlier broad `Any` version kept port 22 open on every network profile, on every subsequent
-run, while the script reported success. **A tool documented as safe to re-run has to repair the
-state it created, not merely decline to make it worse.**
-
-- The branch now reapplies the intended scope with `Set-NetFirewallRule` — `Private` profile,
-  `LocalSubnet` remote — instead of skipping.
-- The rule is then **read back and reported**: enabled, action, profile, remote address, port.
-  The scope lives on two different objects — the profile on the rule, the remote address on an
-  associated filter — so a rule that looks correct in `Get-NetFirewallRule` alone can still allow
-  the world. Both are printed.
-- A mismatch warns and names the rollback: `Remove-NetFirewallRule -Name sshd-tt`, then re-run.
-
-**Unverified, and not verifiable from here.** There is no PowerShell on the Linux development
-machine, and the repair path specifically needs a Windows box **already carrying the broad rule** —
-a state that has to be created deliberately to test against. What was checked is static: balanced
-braces and parentheses, no statements inside string interpolation (the Windows PowerShell 5.1
-hazard this file documents), and the CRLF policy `.gitattributes` sets.
-
-The CI runner cannot answer this either, and should not: reconfiguring a machine's firewall from a
-workflow is the *provisioning* hazard `T-073` and the job's own comments exist to prevent.
-
-**How to verify on `STARBASE`**, in an elevated session:
-
-```powershell
-$ErrorActionPreference = "Stop"
-
-# Broaden the EXISTING rule. Do not try to create it.
-Set-NetFirewallRule -Name sshd-tt -Profile Any -RemoteAddress Any
-
-# Assert the defective state really exists, or the run below proves nothing.
-$before = Get-NetFirewallRule -Name sshd-tt
-$beforeRemote = (Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $before).RemoteAddress
-if ($before.Profile.ToString() -ne "Any") { throw "setup failed: profile is not Any" }
-if ($beforeRemote -ne "Any") { throw "setup failed: remote address is not Any" }
-
-.\tools\windows\ssh-setup.ps1
-```
-
-The script must then report `rule profile : Private` and `rule remote : LocalSubnet`. Before this
-correction it would have reported `rule present` and changed nothing.
-
-**`T072-R3` corrected this procedure, and the way it was wrong is the point.** It previously used
-`New-NetFirewallRule -Name sshd-tt` to "recreate" the broad rule. On the machine this repair
-targets that name **already exists**, so the command fails — and the script then reapplies and
-reports an already-scoped rule, producing a green-looking report *without ever exercising
-broad-to-scoped repair*. A verification procedure that passes when the thing it verifies never
-ran is the same class of fault as the assertion `T072-R1` found. Hence `$ErrorActionPreference`
-and the two explicit `throw`s: the setup has to fail loudly rather than quietly leave the machine
-in the state that makes the test vacuous.
-
-#### `WIN-R1` verified — 2026-07-29, `STARBASE`
-
-Run by the maintainer in an elevated session, from the procedure recorded above.
-
-```
-== 1. broaden the EXISTING rule ==
-defective state confirmed: profile=Any remote=Any
-== 2. run the repair ==
-== 3. authorised key ==
-key already authorised
-== 4. firewall ==
-rule existed - reapplied the intended scope
-rule profile : Private
-rule remote  : LocalSubnet
-== 3. read the rule back ==
-profile : Private       (want Private)
-remote  : LocalSubnet   (want LocalSubnet)
-WIN-R1 PASS
-```
-
-**The first line is what makes the rest evidence.** `defective state confirmed: profile=Any
-remote=Any` is the assertion `T072-R3` added: without it a run against an already-scoped rule
-would reapply the scope, print a correct-looking report, and never exercise broad-to-scoped repair
-at all. The rule was genuinely `Any/Any` when the repair ran.
-
-**`rule existed - reapplied the intended scope`** is the branch that previously did nothing and
-printed `rule present`. It now reads the rule back and reports the profile and the remote-address
-filter separately, because they live on different objects — a rule can look right in
-`Get-NetFirewallRule` alone and still allow the world.
-
-**`key already authorised`** verifies the other half of `WIN-R1` in passing: the script appends to
-`administrators_authorized_keys` and recognises a key it has already written, rather than
-replacing the file and silently revoking every other administrator's access.
-
-#### Out of scope
-
-- Another behavioural review of `T-040` or `T-060`. The re-review states they may close as
-  Approved-with-follow-up on this carry **without** one
-- `T-066`'s external blockers — the four hosted and frozen jobs — which need quota, not work
-- `T-056`, which wants `windows-latest`'s image and is not part of this carry
-- Any further automatic correction round on the findings above
-
-**Note:** the reviewer's closing instruction is the authority for this task's existence and its
-contents. If a carry here disagrees with a task's own status line, `ai/REVIEWS.md` is canonical
-for review findings (`AGENTS.md` §12).
-
----
-
-### T-090 — The log listener could be left reading a queue something else had closed
-
-**Status:** **In Review — fixed 2026-07-29**, with `T074-R2` and `T074-R3` corrected on top.
-Split out of `T-074` at `T074-R4`'s direction: it is a real defect found while investigating that
-crash, and it is **not** that crash.
-**Owner:** Implementer
-**Priority:** **High** — an unhandled fault in a daemon thread during interpreter teardown, and
-silently lost log records
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `T-038`, `T038-R2`, `T-074`, `ARC-002`
-**Affected surfaces:** `core/logging.py`, `tests/unit/test_logging.py`
-**Risk:** Medium — it costs log records, and its failure mode is a thread exception with no
-traceback, which reads as unexplainable
-
-#### Scope
-
-`stop_listening_for_worker_logs()` deliberately waits for nothing (`T038-R2`) — the GUI thread must
-not block on a slow handler, and that is right. But nothing waited for the listener **anywhere**,
-so a process could exit with the thread still inside `queue.get()`, which on Windows is an
-overlapped `ReadFile` on the queue's pipe. When `multiprocessing` finalised the queue first, the
-read was left holding a handle that no longer existed.
-
-Three findings, in the order they were found:
-
-- the wait had to be registered **after** the queue exists, not at import (below)
-- `T074-R2` — a single `_stopping` slot forgot every listener but the newest
-- `T074-R3` — the wait is bounded, so it can expire, and the listener has to survive that
-
-#### Acceptance criteria
-
-- A process that exits with a listener still draining does so without a thread exception
-- **Every** stopped listener is waited for, not only the most recent
-- A handler slower than the wait's own timeout does not leave a raising thread
-- Each is mutation-verified, and the mutations are the defects themselves
-
-#### Evidence, 2026-07-29
-
-**`_monitor` is the `T-038` log listener, and it was reading a queue something else had closed.**
-
-Counting stopped working: 0 crashes in 36 full-suite runs, and 60 clean runs of the crashing test
-alone. So the search moved to the thread the traceback named. Repeating the crashing test's shape
-**inside one process** — 250 iterations, rather than 250 interpreter startups — ended with
-
-```
-Exception in thread Thread-250 (_monitor):
-```
-
-and no traceback. That truncation is itself the clue: at interpreter finalisation
-`threading.excepthook` is already gone, so only the header is written. Capturing it properly gave:
-
-```
-File "logging/handlers.py", in dequeue -> self.queue.get(block)
-File "multiprocessing/queues.py", in get -> res = self._recv_bytes()
-File "multiprocessing/connection.py", in _get_more_data
-  ov, err = _winapi.ReadFile(self._handle, left, overlapped=True)
-OSError: [WinError 6] The handle is invalid
-```
-
-The listener sits in an **overlapped `ReadFile`** on the queue's pipe, and the handle is closed
-underneath it.
-
-**The cause is `atexit` ordering, which is why the obvious fix did nothing.** Handlers run
-last-registered-first. `multiprocessing` registers its own the first time it is used — and that
-handler finalises queues. A wait registered at *import* of `core/logging.py` is registered
-**earlier** and therefore runs **later**: after multiprocessing has already closed the queue it was
-meant to protect. The first attempt did exactly that and changed nothing, twice, including with the
-timeout raised from 2 s to 30 s. Registering the wait where the queue is *created* puts it after
-multiprocessing's and so ahead of it.
-
-**Deterministic in both directions, on both platforms.** A probe that floods the queue, stops the
-listener and exits immediately:
-
-| | Linux | Windows |
-|---|---|---|
-| before | **6/6 raced** | **8/8 raced** |
-| after | **0/6** | **0/8** |
-
-The 250-iteration shape then ran clean, with no thread exception at all.
-
-`test_the_log_listener_is_not_left_reading_a_closed_queue` asserts it on the stderr of a real
-process, because that is the only place the failure appears — a daemon thread raising during
-finalisation cannot be caught in-process. Reverting `core/logging.py` fails it.
-
-#### What this does not establish
-
-**The access violation has never been reproduced, and this does not claim to have fixed it.** What
-is fixed is a real, deterministic race on the exact thread and the exact queue the crash traceback
-named — an overlapped read on a closed handle, which is a documented route to a native fault
-rather than an `OSError`, depending on where the close lands. That is a strong candidate and it is
-not proof.
-
-**So the honest reading is:** the only defect anyone has found on this path is gone, and whether
-`T-074`'s crash was that defect cannot be settled by its absence — it was already absent 0 times
-in 36. Whether that is enough to verify Phase 1's Windows criterion is the exit review's call, and
-the maintainer's to record.
-
-#### `T074-R2` — one slot cannot hold every listener, 2026-07-29
-
-`_stopping` held a single thread, so a second lifecycle displaced the first: the exit wait joined
-the newest and returned while an older listener was still draining. It is now a list, pruned as
-threads finish, and the wait joins all of them under one deadline.
-
-**Registration is now once per process, not once per queue.** That is part of the same finding
-rather than tidiness: `atexit.register` ran from every `worker_log_queue()`, so a two-lifecycle
-process got two handlers and the second pass collected what the first had skipped — the wait was
-wrong and a duplicate registration covered for it. With one registration the list is the only
-thing that remembers, which is what makes the defect reachable by a test at all.
-
-#### `T074-R3` — the bounded wait can expire, 2026-07-29
-
-Five seconds is deliberate; an unbounded wait at exit is a hang. So a handler slower than it
-leaves the thread reading, and the answer cannot be "wait longer" — measured, a 5.1 s handler
-reproduced the exception. `dequeue` now treats a closed queue as the end of the stream, because
-that is what it is, and raises only for anything else. The ordering fix makes the stop *prompt*;
-this makes it *safe*.
-
-#### Evidence for the corrections
-
-| Mutation | Result |
-|---|---|
-| register at import instead of at queue creation | **killed**, 6/6 |
-| wait only for the newest listener (`[-1:]`) | **killed** — 1 of 41 records delivered |
-| never record the stopping thread at all | **killed** |
-| `dequeue` catches `RuntimeError` instead of the close errors | **killed** |
-
-**Two of those tests were vacuous first, and how they were vacuous is the lesson.** The listener
-resolves handlers from the *app* logger, not root, so probes that installed a slow handler on root
-drained instantly and passed against the very defects they were written for. And once `T074-R3`'s
-guard was in place, an orphaned listener ends *cleanly* — so `T074-R2` can no longer show up as a
-thread exception at all, and its test had to be rewritten to count delivered records instead.
-A fix can hide the symptom its sibling test was watching for.
-
-| Check | Result |
-|---|---|
-| `tests/unit/test_logging.py` | 39 passed, Linux **and** `STARBASE` |
-| The exit-race probe on Windows | **0/8 raced**, from 8/8 before |
-| Full suite | 1430 passed, 11 skipped, 2 deselected |
-
-#### Out of scope
-
-- `T-074`'s access violation. This is a real race on the same thread and **not** evidence about
-  that crash (`T074-R4`)
-
----
-
-### T-073 — Run the full Windows gate on the machine that can run it
-
-**Status:** **In Review — approved with a documentation follow-up**, 2026-07-29 at `c41e2ef`.
-The reviewer accepted the job shape: the real `windows` plugin for the 28-test desktop slice,
-`offscreen` for the Qt baseline and the default suite, no provisioning of the self-hosted machine,
-ffmpeg recorded, and 30 minutes allowed. All fourteen functional steps passed. `T073-R1` is the
-open follow-up — two evidence statements in this task were wrong, corrected below.
-**Owner:** Implementer
-**Priority:** **High** — it is what makes Phase 1's seventh exit criterion attemptable again
-**Phase:** Phase 1
-**Depends on:** `OPS-005`; the self-hosted runner established 2026-07-28
-**Relevant context:** `OPS-005`, `T-066`, `T-062`, `ai/TESTING.md` §12, `IMPLEMENTATION_PLAN.md`
-Phase 1 exit criteria
-**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md`
-**Risk:** Medium — it puts the project's whole Windows gate on one machine
-
-#### Scope
-
-`OPS-005` made `STARBASE` the platform *verified on Windows* is measured against, and then had to
-record that the criterion was still unmet: the self-hosted job ran the 28-test desktop slice and
-two integration modules, while `check (windows-latest)` — lint, format, types, the Qt baseline and
-the full suite — had not run anywhere since the hosted quota ran out.
-
-Give the self-hosted job the rest of that gate. It already builds a virtualenv on a real Windows
-machine, so the marginal cost is steps rather than infrastructure.
-
-**No provisioning.** The one hard rule this job already carries is that a self-hosted runner must
-never install software as a side effect of running a test — the first run of it launched the real
-Python installer, opened an interactive dialog, and deadlocked against `msiexec` for the full
-timeout. So where `check` runs `choco install ffmpeg`, this job **records** ffmpeg instead. That is
-affordable because the default suite does not need it: measured on Linux with `ffmpeg` removed from
-`PATH`, **1399 passed, 11 skipped, 2 deselected** — the same numbers as with it.
-
-**The job keeps its name.** `windows desktop` is referenced by `ai/TESTING.md`, `ai/REQUIREMENTS.md`
-and `IMPLEMENTATION_PLAN.md`, all describing a desktop role that is still true and still its
-reason for existing. Renaming would invalidate those and the review record for no gain; the
-expanded role is recorded in `ai/TESTING.md` instead.
-
-#### Acceptance criteria
-
-- The self-hosted job runs lint, format, the Qt baseline and the full suite, in addition to what it
-  already ran
-- The full-suite step runs **offscreen**, and the desktop slice keeps the real `windows` plugin
-- Nothing in the job installs software on the machine
-- ffmpeg's presence or absence is recorded, and the run states which configuration it measured
-- The job's timeout accommodates a full suite, rather than passing by finishing early
-- `ai/TESTING.md` records that this job now carries the Windows gate, and what still differs from
-  the hosted one
-
-#### Evidence, 2026-07-29
-
-Run **`30415333608`** at `c41e2ef`, job `windows desktop` on `STARBASE`. **All fourteen steps
-green**, **6 m 29 s** wall (job `90460498381`).
-
-*(This said 3 m 40 s — `T073-R1`. That was the gap between two log timestamps I happened to grep,
-not the job's wall time, which Actions records directly. Corrected rather than left as a number
-nobody would re-derive.)*
-
-| Step | Result |
-|---|---|
-| Types under the Windows platform | Passed |
-| Windows desktop suite (real `windows` plugin) | 28 passed |
-| Lint | All checks passed |
-| Format check | 103 files already formatted |
-| Qt baseline | OK: Qt baseline verified on this runner |
-| **Full suite** (offscreen) | **1388 passed, 20 skipped, 30 deselected in 208.44 s** |
-
-**The machine has ffmpeg**, which the plan did not assume: `ffmpeg 8.1.2-full_build`, installed by
-winget at `…/Gyan.FFmpeg…/bin/ffmpeg`. So this run measured the **with-ffmpeg** configuration, the
-same one `check (windows-latest)` measures via `choco`. The no-ffmpeg wording in the environment
-step is the branch that did not fire, and the recording is what makes that knowable rather than
-assumed.
-
-**Reconciling the counts against Linux**, which is where a difference would otherwise look like a
-gap:
-
-| | Linux | Windows |
-|---|---|---|
-| Passed | 1399 | 1388 |
-| Skipped | 11 | 20 |
-| Deselected | 2 | 30 |
-
-The deselections explain themselves: Linux deselects the 2 network tests, Windows deselects those
-plus the 28 `windows_desktop` tests — which is correct, because step 8 already ran them under the
-real plugin. The extra 9 Windows skips are the POSIX-only half of platform-split modules.
-
-**The residual is explained, and it is an identity rather than a discrepancy** (`T073-R1`). Total
-collected plus deselected is 1412 on Linux and 1438 on Windows. Linux's JUnit carries two
-module-level **"collection skipped"** placeholders, for `tests.ui.test_windows_accessibility` and
-`tests.ui.test_windows_desktop`; Windows replaces those two placeholders with the 28 real desktop
-cases. `1412 - 2 + 28 = 1438`, exactly the recorded count.
-
-*(This was filed as "two tests unaccounted for … not something to wave through", which was the
-right instinct and the wrong conclusion — the answer was in the JUnit output rather than in the
-counts. Kept because a reader who re-derives the arithmetic will hit the same 26-against-28 and
-deserves the resolution, not the question.)*
-
-#### Out of scope
-
-- Retiring `check (windows-latest)` or the `frozen` jobs. They stay; this makes their absence
-  survivable, not permanent
-- The Linux half of `check`, which is unaffected
-- `T-056` and `T-068`, downgraded by `OPS-005` and not revisited here
-
----
+*(**Empty as of 2026-07-29, and that is the claim being made:** nothing is awaiting a verdict.
+`T-090` was approved with `T-091` carried as a non-blocking follow-up, and `T-072` and `T-073`
+were approved before it; all three are filed Complete. `T-074` is Ready, not here — `T074-R4`
+found its "diagnosed and fixed" unsupported, and what was fixed is `T-090`.
+`COORD-R8` is why all three moved at once. Its wording says "narrow In Review to `T-074`", which
+was current when it was written and is not now: the `T-074`/`T-090` split happened afterwards, so
+the section empties rather than narrows. Filed from the dispositions rather than from the
+finding's letter.
+`COORD-R2` is why this section carries a note at all rather than sitting blank: an empty section
+is a claim about readiness, and the last time it was left unlabelled it outlived being true by one
+CI run. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling, and this note went on
+claiming that after `T-073` was filed In Review under `## Ready` — `COORD-R6`, which is
+`COORD-R5`'s own failure mode recurring one day later. `T-075`, `T-076` and `T-077` were left here
+after approval, which is the placement drift `COORD-R7` reported. The lesson this file keeps
+relearning is that the claim has to be rewritten when the section changes, not when someone
+notices.)*
 
 ## Ready
 
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
-**Status:** **Ready — still undiagnosed and still blocking Phase 1** (`T074-R4`, 2026-07-29).
-The faulting object of the access violation is unknown, product-versus-harness is unresolved, and
-the crash has never been reproduced: 0 in 36 full-suite runs, 60 clean runs of the crashing test,
-250 clean in-process iterations.
+**Status:** **Open — still undiagnosed, no longer blocking Phase 1** (`OPS-007`, maintainer risk
+decision 2026-07-29). Downgraded **High → Medium**. The faulting object of the access violation is
+unknown, product-versus-harness is unresolved, and the crash has never been reproduced: the
+recorded **0 in 36** deliberate full-suite runs, plus **0/15 at `35fc7ec`** (run `30478557533`,
+post-`T-090`) — **51 full-suite runs** in total, with 60 clean runs of the crashing test and 250
+clean in-process iterations beside them. **361 attempts, zero events**, across three shapes and two
+heads.
+
+**The four acceptance criteria below stay unmet, deliberately not rewritten.** All four presuppose
+a deliberate reproduction, which is the one thing no instrument has produced, so `OPS-007` accepts
+the residual rather than redefining the bar. `T-092` arms `STARBASE` to capture a crash dump so a
+recurrence supplies criterion 2 — *a stack is not a cause* — instead of another anecdote.
+
+*(This read "Ready — still undiagnosed and still blocking Phase 1" until `OPS-007`. Before that it
+read "In Review — diagnosed and fixed", which `T074-R4` found unsupported; what was fixed is
+`T-090`, and `T-090` is **not** established as this crash's cause — the pre-fix sample was equally
+clean, so a clean post-fix run carries no causal weight.)*
 
 **A separate defect was found on the way and is `T-090`.** The `T-038` log listener could be left
 reading a queue that something else had closed — a real race on the same thread the crash
@@ -762,8 +149,10 @@ object is unknown, product-pump versus harness is unresolved, and there is no co
 **Phase 1's Windows criterion stays unverified.** *(This block claimed "1 in 16, not 1 in 4"; that
 promoted samples from changed heads into a stable rate.)*
 **Owner:** Implementer
-**Priority:** **High** — it is an access violation in a module under `src/`, and it lands in the
-suite that `OPS-005` and `T-073` just made Phase 1's only Windows gate
+**Priority:** **Medium** — downgraded from High by `OPS-007`. It is still an access violation in a
+module under `src/`, in the suite `OPS-005` and `T-073` made Phase 1's only Windows gate; what
+changed is that 361 attempts produced no reproduction, so there is no work left that repetition can
+do. It returns to High the moment it recurs
 **Phase:** Phase 1
 **Depends on:** nothing. It needs the Windows runner, which exists
 **Relevant context:** `T-073`, `OPS-005`, `ARC-002`, `src/tracks_and_trails/downloader/result_pump.py`
@@ -946,6 +335,7 @@ rather than from the whole suite.
 |---|---|
 | Repeat batch, 24 full-suite iterations on `STARBASE` | **0 crashes** (run `30454206697`) |
 | Both batches together, recent heads | **0 in 36** |
+| Repeat batch, 15 full-suite iterations at `35fc7ec`, **post-`T-090`** | **0 crashes, 0 failures** (run `30478557533`) |
 | The crashing test alone, 60 iterations on Windows | **60 passed, 0 failed, 0 crashed** |
 | A direct stress of the logging-teardown race | **unusable — it hung on Linux before its first iteration** |
 
@@ -1021,6 +411,102 @@ three parts of that UI contract still inferred from production rather than indep
 - Inject at least one non-MP3 converting preset into the dialog and assert the control is disabled,
   no bitrate is displayed, and `selected_preset` preserves the base preset
 - Mutation-check the post-probe quality persistence and at least one dialog-side MP3-only gate
+
+---
+
+### T-091 — Distinguish a closed log queue from a broken one
+
+**Status:** Ready — non-blocking follow-up carried from `T090-R1` and `T090-R2`
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 1 follow-up; does not block T-090 approval
+**Depends on:** `T-090`
+**Relevant context:** `T090-R1`, `T090-R2`, `T074-R3`, `T038-R2`
+**Affected surfaces:** `core/logging.py`, `tests/unit/test_logging.py`
+**Risk:** Medium — a rare queue transport fault can stop logging silently; one named regression
+also no longer proves the ordering it describes
+
+#### Scope
+
+T-090 correctly treats a queue closed during bounded exit as end-of-stream. Its `dequeue()` catch
+is wider than that contract: every `OSError` becomes the sentinel, including a non-closure
+transport error. The listener then exits normally and closes its pending drains, so the remaining
+records disappear without the thread exception that would identify the fault.
+
+The new guard also conceals the symptom used by
+`test_the_log_listener_is_not_left_reading_a_closed_queue`. Moving `_wait_at_exit` back to import
+time now passes that named test: multiprocessing closes the queue first, and `dequeue()` ends the
+listener cleanly. The full logging file still kills the mutation because the later two-lifecycle
+test counts only 1 of 41 records delivered, so this is hardening rather than a reopened T-090
+blocker.
+
+#### Acceptance criteria
+
+- Suppress only the queue-closure forms verified on the supported platforms; a non-closure
+  `OSError` from a real `multiprocessing.Queue.get()` path still raises
+- Give the post-queue-registration rule its own one-lifecycle record-delivery assertion, using a
+  handler on the application logger rather than root
+- With the `T074-R3` closure guard still present, moving registration back to import fails that
+  assertion by losing records
+- Keep the direct mutations for “newest listener only,” “record no stopped listener,” and the
+  slow-handler timeout killed
+
+#### Out of scope
+
+- `T-074`'s unreproduced Windows access violation
+- Changing the five-second exit bound
+
+---
+
+### T-092 — Arm `STARBASE` so the next access violation leaves a cause, not a stack
+
+**Status:** Ready — the instrument `OPS-007` leans on
+**Owner:** Implementer
+**Priority:** Medium — it buys nothing today and is the whole diagnostic plan if `T-074` recurs
+**Phase:** Phase 1 origin; it is an instrument, not a deliverable, and gates no exit
+**Depends on:** `STARBASE`, which exists. Needs the maintainer's consent to write dumps on a
+machine they use
+**Relevant context:** `OPS-007`, `T-074`, `T-073`, `docs/WINDOWS_VERIFICATION.md`
+**Affected surfaces:** `docs/WINDOWS_VERIFICATION.md`, `.github/workflows/ci.yml` and
+`t074-repeat.yml` (artifact upload only), `STARBASE` machine configuration
+**Risk:** Low to the product — it touches no source. The real risk is on the machine: dumps are
+written unattended and a full-memory dump of a Python process with Qt loaded is not small
+
+#### Scope
+
+`T-074`'s second acceptance criterion is that **the faulting thread and the object it touched are
+identified — a stack is not a cause.** `faulthandler` cannot supply that: it printed
+`[ResultPump]` and `Thread-50 (_monitor)` and named neither the faulting module nor the address.
+A minidump does.
+
+So: configure Windows Error Reporting local dumps on `STARBASE` for the interpreter that runs the
+suite, and have the `t074-repeat.yml` and `windows desktop` jobs upload any dump they find as an
+artifact. Then a recurrence — in CI or in an ordinary run — produces something a debugger can read
+instead of another anecdote.
+
+**Consent first, and this is not a formality.** `STARBASE` is the maintainer's own desktop.
+`OPS-005` and `T-073` both carry the rule that a workflow must never provision it, and
+`docs/WINDOWS_VERIFICATION.md` records what installing Python there already cost. Dump capture is
+machine configuration and belongs in that document as a manual, reversible step — not in a
+workflow.
+
+#### Acceptance criteria
+
+- A **deliberately crashed** Python process on `STARBASE` leaves a dump at a known path — proven by
+  causing an access violation on purpose, not by trusting the registry keys
+- That dump, opened, names a faulting module and address. If it cannot, this task has failed at the
+  thing it exists for and says so rather than reporting the keys as success
+- Dump size and retention are bounded and stated; the disk cost on a real machine is named
+- The jobs upload a dump when one exists and stay green when none does — a missing dump is the
+  normal case and must not redden the gate
+- `docs/WINDOWS_VERIFICATION.md` records the configuration, how to undo it, and the disk cost
+
+#### Out of scope
+
+- Diagnosing `T-074` — this task cannot, and pretending otherwise is what `T074-R4` caught
+- Any change to `src/`
+- Dump capture on Linux, or on hosted runners, which are discarded anyway
+- Making `T-074`'s recurrence more likely; this is passive capture, not a stress test
 
 ---
 
@@ -1796,19 +1282,25 @@ this application or yt-dlp.
 
 ### T-066 — CI installs the project differently from how the documentation says to
 
-**Status:** **Blocked — on frozen-artifact evidence only**, narrowed 2026-07-29. **The
-process-tree half is discharged:** `T-072` added a *Process trees under the venv* step to the
-self-hosted `windows desktop` job, and run `30414186949` executed the `T-019` cases under the venv
-shape for the first time anywhere — 72 passed, 3 skipped, the grandchild case among the passes.
-`T066-R1`'s survivor assertions ran there too. What remains is the frozen-artifact shape: both
-`frozen` jobs are hosted and have not started since the quota ran out.
+**Status:** **Blocked — on frozen-artifact evidence only, and no longer a Phase 1 exit
+dependency** (`OPS-005` as amended 2026-07-29). **The process-tree half is discharged:** `T-072`
+added a *Process trees under the venv* step to the self-hosted `windows desktop` job, and run
+`30414186949` executed the `T-019` cases under the venv shape for the first time anywhere — 72
+passed, 3 skipped, the grandchild case among the passes. `T066-R1`'s survivor assertions ran there
+too. What remains is the frozen-artifact shape: both `frozen` jobs are hosted and have not started
+since the quota ran out, which is the unreachable-environment condition `OPS-005` covers and
+`OPS-006` states generally — *a criterion that waits on a payment is not a gate*.
 
 *(This said "on Windows process-tree and frozen evidence" until the runner supplied the first
-half.)*
+half. It then stood as a Phase 1 blocker until the `OPS-005` amendment: every frozen criterion in
+the plan is Phase 0's and met by `T-020`, Phase 1's section names none, and `T-033` owns the
+Windows frozen build in Phase 5.)*
 **Owner:** Implementer
 **Priority:** **High** — it decides whether `T-019`'s process-tree evidence describes the
-environment a developer or a user actually has
-**Phase:** Phase 1
+environment a developer or a user actually has. High for what it decides, not for when: it gates
+no phase exit
+**Phase:** Phase 1 origin; its remaining evidence lands with `T-033` in Phase 5. **Does not gate
+the Phase 1 exit** (`OPS-005`, amended)
 **Depends on:** nothing
 **Relevant context:** `T-019`, `T-056`, `docs/DEVELOPMENT.md`, `.github/workflows/ci.yml`
 **Affected surfaces:** `.github/workflows/ci.yml`, `docs/DEVELOPMENT.md`, possibly
@@ -2359,6 +1851,664 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-090 — The log listener could be left reading a queue something else had closed
+
+**Status:** **Complete — Approved with non-blocking follow-up `T-091`**, 2026-07-29 at `35fc7ec`.
+Split out of `T-074` at `T074-R4`'s direction: it is a real defect found while investigating that
+crash, and it is **not** that crash. The reviewer treated the split as giving this task its **own
+initial comprehensive review budget**, since its acceptance criteria had never had an initial
+review — while holding the inherited `T074-R2` and `T074-R3` to the High rule regardless. All
+three inherited findings are independently **Resolved**; `T090-R1` (Medium) and `T090-R2` (Low)
+are carried to `T-091` and block nothing.
+**Owner:** Implementer
+**Priority:** **High** — an unhandled fault in a daemon thread during interpreter teardown, and
+silently lost log records
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T-038`, `T038-R2`, `T-074`, `ARC-002`
+**Affected surfaces:** `core/logging.py`, `tests/unit/test_logging.py`
+**Risk:** Medium — it costs log records, and its failure mode is a thread exception with no
+traceback, which reads as unexplainable
+
+#### Scope
+
+`stop_listening_for_worker_logs()` deliberately waits for nothing (`T038-R2`) — the GUI thread must
+not block on a slow handler, and that is right. But nothing waited for the listener **anywhere**,
+so a process could exit with the thread still inside `queue.get()`, which on Windows is an
+overlapped `ReadFile` on the queue's pipe. When `multiprocessing` finalised the queue first, the
+read was left holding a handle that no longer existed.
+
+Three findings, in the order they were found:
+
+- the wait had to be registered **after** the queue exists, not at import (below)
+- `T074-R2` — a single `_stopping` slot forgot every listener but the newest
+- `T074-R3` — the wait is bounded, so it can expire, and the listener has to survive that
+
+#### Acceptance criteria
+
+- A process that exits with a listener still draining does so without a thread exception
+- **Every** stopped listener is waited for, not only the most recent
+- A handler slower than the wait's own timeout does not leave a raising thread
+- Each is mutation-verified, and the mutations are the defects themselves
+
+#### Evidence, 2026-07-29
+
+**`_monitor` is the `T-038` log listener, and it was reading a queue something else had closed.**
+
+Counting stopped working: 0 crashes in 36 full-suite runs, and 60 clean runs of the crashing test
+alone. So the search moved to the thread the traceback named. Repeating the crashing test's shape
+**inside one process** — 250 iterations, rather than 250 interpreter startups — ended with
+
+```
+Exception in thread Thread-250 (_monitor):
+```
+
+and no traceback. That truncation is itself the clue: at interpreter finalisation
+`threading.excepthook` is already gone, so only the header is written. Capturing it properly gave:
+
+```
+File "logging/handlers.py", in dequeue -> self.queue.get(block)
+File "multiprocessing/queues.py", in get -> res = self._recv_bytes()
+File "multiprocessing/connection.py", in _get_more_data
+  ov, err = _winapi.ReadFile(self._handle, left, overlapped=True)
+OSError: [WinError 6] The handle is invalid
+```
+
+The listener sits in an **overlapped `ReadFile`** on the queue's pipe, and the handle is closed
+underneath it.
+
+**The cause is `atexit` ordering, which is why the obvious fix did nothing.** Handlers run
+last-registered-first. `multiprocessing` registers its own the first time it is used — and that
+handler finalises queues. A wait registered at *import* of `core/logging.py` is registered
+**earlier** and therefore runs **later**: after multiprocessing has already closed the queue it was
+meant to protect. The first attempt did exactly that and changed nothing, twice, including with the
+timeout raised from 2 s to 30 s. Registering the wait where the queue is *created* puts it after
+multiprocessing's and so ahead of it.
+
+**Deterministic in both directions, on both platforms.** A probe that floods the queue, stops the
+listener and exits immediately:
+
+| | Linux | Windows |
+|---|---|---|
+| before | **6/6 raced** | **8/8 raced** |
+| after | **0/6** | **0/8** |
+
+The 250-iteration shape then ran clean, with no thread exception at all.
+
+`test_the_log_listener_is_not_left_reading_a_closed_queue` asserts it on the stderr of a real
+process, because that is the only place the failure appears — a daemon thread raising during
+finalisation cannot be caught in-process. Reverting `core/logging.py` fails it.
+
+#### What this does not establish
+
+**The access violation has never been reproduced, and this does not claim to have fixed it.** What
+is fixed is a real, deterministic race on the exact thread and the exact queue the crash traceback
+named — an overlapped read on a closed handle, which is a documented route to a native fault
+rather than an `OSError`, depending on where the close lands. That is a strong candidate and it is
+not proof.
+
+**So the honest reading is:** the only defect anyone has found on this path is gone, and whether
+`T-074`'s crash was that defect cannot be settled by its absence — it was already absent 0 times
+in 36. Whether that is enough to verify Phase 1's Windows criterion is the exit review's call, and
+the maintainer's to record.
+
+#### `T074-R2` — one slot cannot hold every listener, 2026-07-29
+
+`_stopping` held a single thread, so a second lifecycle displaced the first: the exit wait joined
+the newest and returned while an older listener was still draining. It is now a list, pruned as
+threads finish, and the wait joins all of them under one deadline.
+
+**Registration is now once per process, not once per queue.** That is part of the same finding
+rather than tidiness: `atexit.register` ran from every `worker_log_queue()`, so a two-lifecycle
+process got two handlers and the second pass collected what the first had skipped — the wait was
+wrong and a duplicate registration covered for it. With one registration the list is the only
+thing that remembers, which is what makes the defect reachable by a test at all.
+
+#### `T074-R3` — the bounded wait can expire, 2026-07-29
+
+Five seconds is deliberate; an unbounded wait at exit is a hang. So a handler slower than it
+leaves the thread reading, and the answer cannot be "wait longer" — measured, a 5.1 s handler
+reproduced the exception. `dequeue` now treats a closed queue as the end of the stream, because
+that is what it is, and raises only for anything else. The ordering fix makes the stop *prompt*;
+this makes it *safe*.
+
+#### Evidence for the corrections
+
+| Mutation | Result |
+|---|---|
+| register at import instead of at queue creation | **killed**, 6/6 |
+| wait only for the newest listener (`[-1:]`) | **killed** — 1 of 41 records delivered |
+| never record the stopping thread at all | **killed** |
+| `dequeue` catches `RuntimeError` instead of the close errors | **killed** |
+
+**Two of those tests were vacuous first, and how they were vacuous is the lesson.** The listener
+resolves handlers from the *app* logger, not root, so probes that installed a slow handler on root
+drained instantly and passed against the very defects they were written for. And once `T074-R3`'s
+guard was in place, an orphaned listener ends *cleanly* — so `T074-R2` can no longer show up as a
+thread exception at all, and its test had to be rewritten to count delivered records instead.
+A fix can hide the symptom its sibling test was watching for.
+
+| Check | Result |
+|---|---|
+| `tests/unit/test_logging.py` | 39 passed, Linux **and** `STARBASE` |
+| The exit-race probe on Windows | **0/8 raced**, from 8/8 before |
+| Full suite | 1430 passed, 11 skipped, 2 deselected |
+
+#### Out of scope
+
+- `T-074`'s access violation. This is a real race on the same thread and **not** evidence about
+  that crash (`T074-R4`)
+
+---
+
+### T-072 — Carry the three unresolved findings the last-pass direction stopped
+
+**Status:** **Complete — Approved**, 2026-07-29. All five carries are discharged; `WIN-R1` was
+verified on `STARBASE` against a deliberately broadened rule, and the reviewer accepted that the
+precondition would have stopped the procedure had the broad state not really been created. See
+**`WIN-R1` verified** below. *(This read "In Review — all five carries discharged" until the
+approval was filed here; `COORD-R8`.)*
+
+*(Superseded: "In Progress — `T072-R1` Resolved; `WIN-R1` is the only remaining item".)*
+`mut_tree_drop_worker` ran on Windows and **survives**, through the orphan guard rather than
+because the mutation was inert — established with a positive control and a probe that had to be
+fixed before it could see anything. The reviewer accepted that result and marked `T072-R1`
+**Resolved**: the omitted worker was independently observed exiting through a legitimate
+containment path, and capture-list completeness is not itself the product invariant.
+
+**`WIN-R1` is verified.** It needed a deliberately widened firewall rule, which the implementer's
+tooling was not permitted to create; the maintainer ran the recorded procedure on `STARBASE` on
+2026-07-29. Everything else is done:
+`COORD-R5` is discharged and `T-040`/`T-060` are filed Complete on it, `WIN-R3` and `RUNNER-R1`
+are corrected, the `T-019` process-tree cases run on `STARBASE`, and `T066-R1` — **Changes
+requested** at `f20a9c8` — is corrected and its mutation has been executed there. See
+**Progress**.
+
+*(This block said "four of the five carries are done", then "one of the two owed items", and a
+correction to it left the older tail attached — so it read "`WIN-R1` is the only remaining item"
+and, three lines later, that two were owed including a mutation that had run. `COORD-R7`.
+Replacing a segment and leaving what followed it is how a document contradicts itself in the same
+paragraph.)*
+
+*(This block said "three of the five" and called `T066-R1` unexecuted after its run had already
+happened — `T072-R2`, and the same current-truth drift `COORD-R5` is about, in the task that owns
+`COORD-R5`. Rewritten rather than patched.)*
+**Owner:** Implementer
+**Priority:** Medium — it is the only thing standing between `T-040`/`T-060` and closure
+**Phase:** Phase 1
+**Depends on:** nothing to start. Its `T066-R1` half **needs a Windows runner**; the other two
+halves do not
+**Relevant context:** `ai/REVIEWS.md` — "STARBASE evidence and T-066 through T-070 review" and
+"STARBASE correction focused re-review", both 2026-07-28
+**Affected surfaces:** `tests/integration/test_end_to_end.py`, `tests/integration/test_manager.py`,
+`tools/windows/ssh-setup.ps1`, `docs/WINDOWS_VERIFICATION.md`, `.github/workflows/`,
+`ai/TASKS.md`, `ai/STATUS.md`
+**Risk:** Low per item; Medium as a group, because two of the three are gate-vacuity problems
+
+#### Scope
+
+The correction re-review closed under the maintainer's **last-pass direction**: remaining
+Medium-or-lower work is carried into a named task rather than starting another correction loop.
+This is that task. It exists because the reviewer asked for it by name, and until it did not
+exist, `T-040` and `T-060` had nowhere to carry their residue — which is the only reason those
+two are not closed.
+
+**Three blocking carries:**
+
+- **`T066-R1` (Medium).** The whole-tree termination fix is accepted and it resolved `T-069`. What
+  remains is that `kill_the_application()` suppresses every `psutil` kill error and discards both
+  lists returned by `wait_procs`, so it can return and reopen the database with a known survivor.
+  The no-survivors probe is reported but is not a lasting assertion. Separately, `T-066`'s own
+  criterion covering the `T-019` process-tree cases has never run under the Windows venv — the
+  self-hosted job runs `windows_desktop` only.
+- **`COORD-R5` (Medium).** The gate statement is corrected: `REQUIREMENTS`, `IMPLEMENTATION_PLAN`,
+  `TESTING` and `T-026` now agree Windows tab order is gated. The residual is filing. `## In
+  Review` still says it is empty while `T-066`…`T-070` sit In Review under `## Ready`; `T-040` and
+  `T-060` sit In Review under `## Blocked`; the `TASKS` preamble still calls `T-060` Blocked; and
+  `STATUS` says `T-040`/`T-060` are In Review and then, later in the same file, that `T-069` is
+  unfixed and `T-040` is Blocked. These are current-truth files and the stale paragraphs are not
+  marked superseded.
+- **`WIN-R1` (Medium).** `ssh-setup.ps1` now preserves and deduplicates administrator keys, and a
+  newly created firewall rule is correctly Private + LocalSubnet. But its idempotent path looks up
+  `sshd-tt` and does nothing when it already exists, so a machine that ran the earlier broad `Any`
+  rule stays broad on every later run. A tool documented as safe to re-run does not repair the
+  unsafe state it created.
+
+**Two non-blocking carries**, which the re-review asked to travel with this work:
+
+- **`WIN-R3` (Low).** `docs/WINDOWS_VERIFICATION.md` still names `mut_control_always_dead.py` as
+  the focus driver's control; the actual control is `mut_control_chain.py`. The named file belongs
+  to `T-056`, not to the `T-026` focus harness.
+- **`RUNNER-R1` (Low).** The workflow comment and the Windows guide say `timeout-minutes: 15`
+  bounds time spent queued while `STARBASE` is offline. It bounds how long a job may **run**; an
+  unmatched self-hosted job stays queued for up to **24 hours**. The current text understates this
+  single-machine gate's outage window by almost a day.
+
+#### Acceptance criteria
+
+- A surviving process in either `wait_procs` list **fails the test**; the expected descendant set
+  is a lasting assertion rather than a reported probe
+- `T-019`'s process-tree cases are executed and recorded from the Windows venv, or `T-066`'s
+  criterion is rewritten to say what is actually gated and why
+- Re-running `ssh-setup.ps1` against a machine carrying the broad `Any` rule leaves it scoped, and
+  the script reports the effective profile and remote-address filter it ended with
+- One unambiguous current answer, in authority order, about which tasks are In Review, Blocked and
+  Complete — including the `## In Review` section's own emptiness claim. (`T-071` was the same
+  class of drift and was filed to `## Complete` on 2026-07-28, ahead of this task.)
+- Historical statements are preserved as explicitly historical, not deleted
+- `WIN-R3` and `RUNNER-R1`'s documentation is corrected to what the code and GitHub actually do
+
+#### Progress, 2026-07-28
+
+| Carry | State |
+|---|---|
+| `COORD-R5` | **Done.** See below |
+| `WIN-R3` | **Done.** The guide now names `mut_control_chain.py`, says it runs first, and records why the `T-056` control does not belong here |
+| `RUNNER-R1` | **Done.** `ci.yml` and the guide now say `timeout-minutes` bounds *run* time, and an unmatched self-hosted job queues for up to 24 hours |
+| `T066-R1` | **Corrected after `T072-R1`.** One mutation still owed on Windows — see **The `T072-R1` correction** |
+| `WIN-R1` | **Written, unverified.** See **The `WIN-R1` correction** |
+| `T-019` cases under the venv | **Done.** Run `30414186949`, 72 passed, 3 skipped |
+| `T072-R2` | **Resolved.** This status block was the drift it reported |
+
+**`COORD-R5` is discharged.** Every task now sits in the section its verdict says it belongs in:
+`T-040`, `T-060`, `T-067`, `T-069`, `T-070` and `T-065` to `## Complete`; `T-066` and `T-068` to
+`## Blocked`. The `## In Review` note no longer claims an emptiness it did not have, and names
+where each former occupant went. The `TASKS` preamble and `ai/STATUS.md`'s Windows and `T-040`
+paragraphs are rewritten from the current head, with every superseded reading kept as an
+explicitly historical parenthetical rather than deleted.
+
+**`T066-R1` is written but has not run, and that matters.** `kill_the_application()` now asserts
+that the walked tree is deeper than the pid `Popen` returned, and that `wait_procs` reports **no**
+survivors before the caller reopens the database; refused kills are collected and reported in the
+failure rather than suppressed. `NoSuchProcess` during the kill loop is still tolerated, because
+racing with a tree that is already dying is a kill and not a miss.
+
+That code is inside `if sys.platform == "win32"`, so **the Linux suite did not execute one line of
+it.** What it has: `mypy --platform win32` passes on it, which is `AGENTS.md` §8's check and is
+what caught the previous POSIX-only mistake in this same file. What it does not have: any runtime
+evidence at all. It needs the Windows job before it can be called resolved.
+
+**The runner is the answer to that, and it did not need the quota.** `STARBASE` is online and
+green — run `30413774102`, job `windows desktop`, **28 passed, 1410 deselected in 12.83s**, while
+all four hosted jobs failed at zero steps on the billing annotation. Since that job already builds
+a venv on a real Windows machine, it is the only place the required process shape exists. It now
+carries a *Process trees under the venv* step running `tests/integration/test_manager.py` and
+`tests/integration/test_end_to_end.py` by path.
+
+Pre-flighted on Linux with `ffmpeg` removed from `PATH`, because the desktop job installs none:
+**75 passed**. That is what says the step will not turn the one green job red for a missing
+dependency rather than for a finding.
+
+#### Evidence, on the runner — 2026-07-29
+
+Run **`30414186949`** at `185ea6d`, job `windows desktop` on `STARBASE`. All ten steps green;
+*Process trees under the venv* reports **72 passed, 3 skipped in 79.69s**.
+
+**The caveat above is discharged.** `test_a_job_killed_mid_download_is_recovered_by_the_next_start`
+PASSED, and it is the test that calls `kill_the_application()` — so the `T066-R1` assertions
+executed on Windows, under a virtualenv, and the tree they walk really was deeper than the pid
+`Popen` returned. Had it been one level, the first assertion would have failed rather than the
+step passing.
+
+The `T-019` cases ran under the same shape for the first time anywhere:
+
+| Case | Result |
+|---|---|
+| `test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind` | **PASSED** — the grandchild case, which is the whole subject |
+| `test_cancelling_a_download_kills_what_the_worker_spawned` | **PASSED** |
+| `test_a_real_worker_leads_its_own_process_group` | Skipped — POSIX process groups |
+| `test_a_descendant_is_asked_to_stop_before_it_is_killed` | Skipped — POSIX signalling |
+| `test_the_detector_still_ignores_the_resource_tracker` | Skipped — POSIX only |
+
+The three skips are the POSIX-only half of a file that is deliberately split by platform; nothing
+Windows-relevant was skipped. **No hosted minutes were used**, and all four hosted jobs in the
+same run failed at zero steps on the billing annotation.
+
+| Check | Result |
+|---|---|
+| `ruff check .` | All checks passed |
+| `ruff format --check .` | 103 files already formatted |
+| `mypy` | Success: no issues found in 78 source files |
+| `mypy --platform win32` | Success: no issues found in 78 source files |
+| `pytest` (full default suite) | **1399 passed, 11 skipped, 2 deselected** |
+| `pytest tests/integration/test_end_to_end.py` | 4 passed |
+
+#### The `T072-R1` correction — 2026-07-29
+
+**The assertion was vacuous, and the review proved it rather than argued it.**
+`len(doomed) > 1` reads like a check on the walk and is not one: under the venv shape the launcher
+and the application interpreter already make that two, so the **worker** could be missing and it
+still passed. Codex reduced `children(recursive=True)` to direct children — `len(doomed) == 2`,
+the helper returned successfully, and the omitted worker went on downloading. The handoff had
+flagged this assertion as the least certain one; the failure mode found is sharper than the one
+guessed at.
+
+**Identity now comes from a handshake, not from a count.** `DOWNLOAD_AND_WAIT` prints
+`os.getpid()` alongside the job id, so the test knows the application interpreter rather than the
+launcher. `capture_the_doomed_tree()` walks from *that* pid while the row still says `RUNNING`,
+asserts the application has at least one descendant — the worker, which is the entire reason the
+kill means anything — and returns that exact set. `kill_the_application()` no longer walks; it
+kills what it was handed and asserts nothing survived.
+
+#### `T072-R1`, third round — the oracle was counting the wrong process
+
+**The second correction separated the lists and then conflated the processes.**
+`the_workers_that_must_die()` returned *every* descendant, which under `multiprocessing` means the
+**resource tracker** as well as the worker. The tracker outlives the worker, so the positive
+control failed on the tracker while calling it a worker — and a reviewer's mutation that killed the
+application and the tracker but deliberately spared the real worker **passed in 1.38 s**. The
+control had teeth only for "some long-lived descendant".
+
+Three things were wrong, and the third was the one that mattered:
+
+1. **The tracker was in the set.** Excluded now, by the same `multiprocessing.resource_tracker`
+   marker `tests/integration/test_manager.py` has always used for the same reason.
+2. **`mut_tree_shallow_walk` patched the oracle as well as the capture**, so it shrank the check
+   and the checked thing together. It now touches `capture_the_doomed_tree` only.
+3. **The clip was too short for the assertion to mean anything.** 512 KiB in 32 KiB chunks at
+   0.05 s finished in under a second, so a worker that survived the kill exited *naturally* long
+   before any check noticed — the assertion would have passed with no kill at all. The test now
+   paces at 0.5 s and waits **5 s**, deliberately shorter than the download still in flight. The
+   passing case costs nothing: `wait_procs` returns as soon as everything is gone.
+
+**Measured, on Linux:**
+
+| Plugin | Result | Why |
+|---|---|---|
+| `mut_control_worker_survives` | **KILLED**, 6.4 s | The kill is disabled, the worker is genuinely still downloading, and the failure names **one** pid — the worker, with the tracker excluded |
+| `mut_tree_shallow_walk` | Survives | The capture walks from the application, whose direct children already include the worker. Shallow and recursive differ only if the worker spawned its own child. Unobservable, like `T060-R2`'s reversal |
+| `mut_tree_drop_worker` | Survives | `killpg` reaches the whole group whatever was captured |
+| Reviewer's spare-the-worker | Survives | **And this is the interesting one — see below** |
+
+**Sparing the worker is unkillable on Linux because the product handles it.** `worker.py`'s
+**orphan guard** — `spawn_session()` watches the parent and exits if it disappears — reaps the
+worker when the application dies, whether or not anything killed it directly. The two controls
+prove it as a pair: with the kill disabled the application lives and the worker is still running at
+6 s; with the application killed and the worker deliberately spared, the worker is gone in 1.4 s.
+That is `REQ-015`'s orphan guard working, not a hole in the oracle, and it is recorded as the
+measured outcome the re-review asked for rather than forced into a kill.
+
+**Which makes the Windows run the whole remaining question.** `T-066` measured the opposite there:
+the grandchild **survived** `process.kill()`. Either the orphan guard does not fire on Windows or
+it does not fire in time, and that difference is exactly what `mut_tree_drop_worker` is for on
+`STARBASE`.
+
+#### `T072-R1`, second round — the assertion was still circular
+
+**The first correction moved the fault rather than fixing it.** It asserted `not alive` against
+`doomed` — *the same list the kill was handed* — so a fault that dropped the worker from that list
+also dropped it from the assertion, and nothing could fail on any platform. Both checked-in
+mutations were built on that misunderstanding: one returned `[]` and proved only that an entirely
+empty walk trips a guard nobody doubted, and the other could not be caught even on Windows.
+
+**The check and the thing it checks now come from different sources.**
+`the_workers_that_must_die()` is the test's own record of the worker set, taken while the row says
+`RUNNING`. `capture_the_doomed_tree()` is what the kill is handed. Nothing downstream can shrink
+the first, so a `doomed` missing the worker fails against it.
+
+| Plugin | Linux | Why |
+|---|---|---|
+| `mut_control_worker_survives` | **KILLED** | The positive control. `kill_the_application` does nothing, the worker outlives it, and the independent set catches it by pid |
+| `mut_tree_shallow_walk` | Survives | The capture walks from the *application*, whose direct children already include the worker. Shallow and recursive differ only if the worker has spawned its own child — ffmpeg, on a merge — which a progressive download does not. **Unobservable, like `T060-R2`'s reversal**, not a gap |
+| `mut_tree_drop_worker` | Survives | `killpg` reaches the whole group whatever was captured. Structurally ungateable on POSIX |
+
+**The control is why the two survivals are readable.** Two surviving mutations and no kills is
+indistinguishable from an assertion that cannot fail — which is the exact shape `T072-R1` found
+twice. `mut_control_worker_survives` fails with the surviving pid *and* the list the kill was
+handed, so the diagnostic names which of the two possibilities occurred. Same reasoning that puts
+`mut_control_chain` first in the focus driver.
+
+#### `mut_tree_drop_worker` ran on Windows — and survives there too, 2026-07-29
+
+Run on `STARBASE` at `ea53c71` against
+`test_a_job_killed_mid_download_is_recovered_by_the_next_start`:
+
+| Run | Handed to the kill | Result |
+|---|---|---|
+| unmutated | 3 pids | passes |
+| **`mut_tree_drop_worker`** | **2 pids — the worker dropped** | **passes** |
+| `mut_control_worker_survives` (kill nothing) | — | **fails**, naming the worker's pid |
+
+**The mutation applies and survives.** Both halves had to be established separately, and the first
+attempt to do so was blind: a probe wrapping `capture_the_doomed_tree` in `pytest_configure`
+printed the *unmutated* list regardless, because the mutation's own `configure` then wrapped the
+probe rather than the other way round. Moving the probe to `pytest_sessionstart` — after every
+`configure` — made it wrap outermost, and the handed list dropped from three pids to two. An
+instrument that cannot see the thing it is pointed at reports a survival and a non-application
+identically, which is `T072-R1`'s shape one level up.
+
+**Why it survives is product behaviour, and correct.** `worker.spawn_session()` starts a
+`parent-watchdog` thread — the orphan guard `ARC-002` documents — which exits the worker when the
+parent disappears. The kill is handed the application either way, so the worker dies whether or
+not its pid was in the captured set. The control confirms the mechanism: with **no** kill at all
+the parent survives, the watchdog never fires, and the worker is still running when the assertion
+looks.
+
+**So the expectation this task recorded is wrong, and that is the finding.** It said the captured
+set's completeness "can only be gated there" — on Windows. It cannot be gated *anywhere* by this
+test, on either platform, because the orphan guard removes the dependency the mutation targets.
+What protects against orphans is the guard, not the completeness of the list the test builds.
+
+Two consequences worth stating rather than leaving implied. The gate that matters for orphans is
+whatever exercises the **orphan guard**, and `mut_control_worker_survives` is the closest thing to
+it here. And `capture_the_doomed_tree`'s completeness is now an unasserted property — its own
+docstring already says "this list is not evidence of its own completeness", which is exactly right
+and now also means nothing tests it.
+
+*(Superseded: this section previously said `mut_tree_drop_worker` was still owed on Windows and
+that the captured set's completeness "can only be gated there". It ran; it survives; and the
+reason it survives is that no platform can gate that property while the orphan guard exists.)*
+
+#### The `WIN-R1` correction — 2026-07-29
+
+The existing-rule branch did nothing and then printed `rule present`, so a machine that had run
+the earlier broad `Any` version kept port 22 open on every network profile, on every subsequent
+run, while the script reported success. **A tool documented as safe to re-run has to repair the
+state it created, not merely decline to make it worse.**
+
+- The branch now reapplies the intended scope with `Set-NetFirewallRule` — `Private` profile,
+  `LocalSubnet` remote — instead of skipping.
+- The rule is then **read back and reported**: enabled, action, profile, remote address, port.
+  The scope lives on two different objects — the profile on the rule, the remote address on an
+  associated filter — so a rule that looks correct in `Get-NetFirewallRule` alone can still allow
+  the world. Both are printed.
+- A mismatch warns and names the rollback: `Remove-NetFirewallRule -Name sshd-tt`, then re-run.
+
+**Unverified, and not verifiable from here.** There is no PowerShell on the Linux development
+machine, and the repair path specifically needs a Windows box **already carrying the broad rule** —
+a state that has to be created deliberately to test against. What was checked is static: balanced
+braces and parentheses, no statements inside string interpolation (the Windows PowerShell 5.1
+hazard this file documents), and the CRLF policy `.gitattributes` sets.
+
+The CI runner cannot answer this either, and should not: reconfiguring a machine's firewall from a
+workflow is the *provisioning* hazard `T-073` and the job's own comments exist to prevent.
+
+**How to verify on `STARBASE`**, in an elevated session:
+
+```powershell
+$ErrorActionPreference = "Stop"
+
+# Broaden the EXISTING rule. Do not try to create it.
+Set-NetFirewallRule -Name sshd-tt -Profile Any -RemoteAddress Any
+
+# Assert the defective state really exists, or the run below proves nothing.
+$before = Get-NetFirewallRule -Name sshd-tt
+$beforeRemote = (Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $before).RemoteAddress
+if ($before.Profile.ToString() -ne "Any") { throw "setup failed: profile is not Any" }
+if ($beforeRemote -ne "Any") { throw "setup failed: remote address is not Any" }
+
+.\tools\windows\ssh-setup.ps1
+```
+
+The script must then report `rule profile : Private` and `rule remote : LocalSubnet`. Before this
+correction it would have reported `rule present` and changed nothing.
+
+**`T072-R3` corrected this procedure, and the way it was wrong is the point.** It previously used
+`New-NetFirewallRule -Name sshd-tt` to "recreate" the broad rule. On the machine this repair
+targets that name **already exists**, so the command fails — and the script then reapplies and
+reports an already-scoped rule, producing a green-looking report *without ever exercising
+broad-to-scoped repair*. A verification procedure that passes when the thing it verifies never
+ran is the same class of fault as the assertion `T072-R1` found. Hence `$ErrorActionPreference`
+and the two explicit `throw`s: the setup has to fail loudly rather than quietly leave the machine
+in the state that makes the test vacuous.
+
+#### `WIN-R1` verified — 2026-07-29, `STARBASE`
+
+Run by the maintainer in an elevated session, from the procedure recorded above.
+
+```
+== 1. broaden the EXISTING rule ==
+defective state confirmed: profile=Any remote=Any
+== 2. run the repair ==
+== 3. authorised key ==
+key already authorised
+== 4. firewall ==
+rule existed - reapplied the intended scope
+rule profile : Private
+rule remote  : LocalSubnet
+== 3. read the rule back ==
+profile : Private       (want Private)
+remote  : LocalSubnet   (want LocalSubnet)
+WIN-R1 PASS
+```
+
+**The first line is what makes the rest evidence.** `defective state confirmed: profile=Any
+remote=Any` is the assertion `T072-R3` added: without it a run against an already-scoped rule
+would reapply the scope, print a correct-looking report, and never exercise broad-to-scoped repair
+at all. The rule was genuinely `Any/Any` when the repair ran.
+
+**`rule existed - reapplied the intended scope`** is the branch that previously did nothing and
+printed `rule present`. It now reads the rule back and reports the profile and the remote-address
+filter separately, because they live on different objects — a rule can look right in
+`Get-NetFirewallRule` alone and still allow the world.
+
+**`key already authorised`** verifies the other half of `WIN-R1` in passing: the script appends to
+`administrators_authorized_keys` and recognises a key it has already written, rather than
+replacing the file and silently revoking every other administrator's access.
+
+#### Out of scope
+
+- Another behavioural review of `T-040` or `T-060`. The re-review states they may close as
+  Approved-with-follow-up on this carry **without** one
+- `T-066`'s external blockers — the four hosted and frozen jobs — which need quota, not work
+- `T-056`, which wants `windows-latest`'s image and is not part of this carry
+- Any further automatic correction round on the findings above
+
+**Note:** the reviewer's closing instruction is the authority for this task's existence and its
+contents. If a carry here disagrees with a task's own status line, `ai/REVIEWS.md` is canonical
+for review findings (`AGENTS.md` §12).
+
+---
+
+### T-073 — Run the full Windows gate on the machine that can run it
+
+**Status:** **Complete — Approved**, 2026-07-29 at `c41e2ef`. `T073-R1`, the documentation
+follow-up, was independently **Resolved** at `9802a6a`, and no later evidence reopens it.
+*(This read "In Review — approved with a documentation follow-up" after both the approval and the
+resolution had landed; `COORD-R8`.)*
+The reviewer accepted the job shape: the real `windows` plugin for the 28-test desktop slice,
+`offscreen` for the Qt baseline and the default suite, no provisioning of the self-hosted machine,
+ffmpeg recorded, and 30 minutes allowed. All fourteen functional steps passed. `T073-R1` is the
+open follow-up — two evidence statements in this task were wrong, corrected below.
+**Owner:** Implementer
+**Priority:** **High** — it is what makes Phase 1's seventh exit criterion attemptable again
+**Phase:** Phase 1
+**Depends on:** `OPS-005`; the self-hosted runner established 2026-07-28
+**Relevant context:** `OPS-005`, `T-066`, `T-062`, `ai/TESTING.md` §12, `IMPLEMENTATION_PLAN.md`
+Phase 1 exit criteria
+**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md`
+**Risk:** Medium — it puts the project's whole Windows gate on one machine
+
+#### Scope
+
+`OPS-005` made `STARBASE` the platform *verified on Windows* is measured against, and then had to
+record that the criterion was still unmet: the self-hosted job ran the 28-test desktop slice and
+two integration modules, while `check (windows-latest)` — lint, format, types, the Qt baseline and
+the full suite — had not run anywhere since the hosted quota ran out.
+
+Give the self-hosted job the rest of that gate. It already builds a virtualenv on a real Windows
+machine, so the marginal cost is steps rather than infrastructure.
+
+**No provisioning.** The one hard rule this job already carries is that a self-hosted runner must
+never install software as a side effect of running a test — the first run of it launched the real
+Python installer, opened an interactive dialog, and deadlocked against `msiexec` for the full
+timeout. So where `check` runs `choco install ffmpeg`, this job **records** ffmpeg instead. That is
+affordable because the default suite does not need it: measured on Linux with `ffmpeg` removed from
+`PATH`, **1399 passed, 11 skipped, 2 deselected** — the same numbers as with it.
+
+**The job keeps its name.** `windows desktop` is referenced by `ai/TESTING.md`, `ai/REQUIREMENTS.md`
+and `IMPLEMENTATION_PLAN.md`, all describing a desktop role that is still true and still its
+reason for existing. Renaming would invalidate those and the review record for no gain; the
+expanded role is recorded in `ai/TESTING.md` instead.
+
+#### Acceptance criteria
+
+- The self-hosted job runs lint, format, the Qt baseline and the full suite, in addition to what it
+  already ran
+- The full-suite step runs **offscreen**, and the desktop slice keeps the real `windows` plugin
+- Nothing in the job installs software on the machine
+- ffmpeg's presence or absence is recorded, and the run states which configuration it measured
+- The job's timeout accommodates a full suite, rather than passing by finishing early
+- `ai/TESTING.md` records that this job now carries the Windows gate, and what still differs from
+  the hosted one
+
+#### Evidence, 2026-07-29
+
+Run **`30415333608`** at `c41e2ef`, job `windows desktop` on `STARBASE`. **All fourteen steps
+green**, **6 m 29 s** wall (job `90460498381`).
+
+*(This said 3 m 40 s — `T073-R1`. That was the gap between two log timestamps I happened to grep,
+not the job's wall time, which Actions records directly. Corrected rather than left as a number
+nobody would re-derive.)*
+
+| Step | Result |
+|---|---|
+| Types under the Windows platform | Passed |
+| Windows desktop suite (real `windows` plugin) | 28 passed |
+| Lint | All checks passed |
+| Format check | 103 files already formatted |
+| Qt baseline | OK: Qt baseline verified on this runner |
+| **Full suite** (offscreen) | **1388 passed, 20 skipped, 30 deselected in 208.44 s** |
+
+**The machine has ffmpeg**, which the plan did not assume: `ffmpeg 8.1.2-full_build`, installed by
+winget at `…/Gyan.FFmpeg…/bin/ffmpeg`. So this run measured the **with-ffmpeg** configuration, the
+same one `check (windows-latest)` measures via `choco`. The no-ffmpeg wording in the environment
+step is the branch that did not fire, and the recording is what makes that knowable rather than
+assumed.
+
+**Reconciling the counts against Linux**, which is where a difference would otherwise look like a
+gap:
+
+| | Linux | Windows |
+|---|---|---|
+| Passed | 1399 | 1388 |
+| Skipped | 11 | 20 |
+| Deselected | 2 | 30 |
+
+The deselections explain themselves: Linux deselects the 2 network tests, Windows deselects those
+plus the 28 `windows_desktop` tests — which is correct, because step 8 already ran them under the
+real plugin. The extra 9 Windows skips are the POSIX-only half of platform-split modules.
+
+**The residual is explained, and it is an identity rather than a discrepancy** (`T073-R1`). Total
+collected plus deselected is 1412 on Linux and 1438 on Windows. Linux's JUnit carries two
+module-level **"collection skipped"** placeholders, for `tests.ui.test_windows_accessibility` and
+`tests.ui.test_windows_desktop`; Windows replaces those two placeholders with the 28 real desktop
+cases. `1412 - 2 + 28 = 1438`, exactly the recorded count.
+
+*(This was filed as "two tests unaccounted for … not something to wave through", which was the
+right instinct and the wrong conclusion — the answer was in the JUnit output rather than in the
+counts. Kept because a reader who re-derives the arithmetic will hit the same 26-against-28 and
+deserves the resolution, not the question.)*
+
+#### Out of scope
+
+- Retiring `check (windows-latest)` or the `frozen` jobs. They stay; this makes their absence
+  survivable, not permanent
+- The Linux half of `check`, which is unaffected
+- `T-056` and `T-068`, downgraded by `OPS-005` and not revisited here
+
+---
 
 ### T-075 — Probing freezes the preset, so the download ignores what the user chose
 
