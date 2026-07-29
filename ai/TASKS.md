@@ -17,66 +17,38 @@ graph (approved at `306840b`) and `T-037` proved a download completes and surviv
 (approved with follow-ups at `894d794`), which closes the two exit criteria that had no owner.
 **Nothing remains on the path.**
 
-**Open work is now code as well as evidence** (`COORD-R2`). The first real Windows run, CI
-`30380426474`, produced three tasks — `T-062`, `T-061` and `T-060` — and all three are written.
-**CI run `30388380440` then passed all five jobs at `11e1203`, the first run with none red**,
-`windows desktop` included.
+**Three review passes on 2026-07-28 settled most of the open queue** (`ai/REVIEWS.md`). What
+remains is one carry task, evidence only a runner can produce, and the exit review.
 
-- **`T-062`** — **Approved with follow-ups.** Neither `T-037` test had ever passed on either
-  platform: the runners have no ffmpeg, so `REQ-024`'s gate refused every download before it
-  started.
-- **`T-061`** — **Approved at `11e1203`.** `_ffmpeg_gap` read `"+" in request.format_selector`
-  rather than the format yt-dlp chose, so a user without ffmpeg was refused downloads that need
-  none on four of the five presets. It now reads `requested_formats` and falls back to the
-  selector only when yt-dlp resolved nothing.
-- **`T-063`** — **Approved with follow-up at `11e1203`.** `T063-R1` is carried to `T-064`:
-  39 dependency-owned launchers under `.venv/bin/` still name the parent checkout's interpreter,
-  so the documented bare `mypy` and `pytest` commands fail. Module invocations work.
-- **`T-060`** — **Blocked.** `T060-R1` and `T060-R2` are **Resolved** at `12dff92`, with no
-  further correction requested; only the Windows mutation evidence remains. Its earlier claim that
-  "the order Windows delivers is not the order Qt builds" was **wrong**: Tab skips disabled and
-  hidden controls, and that reproduces offscreen.
+- **Approved, no findings:** `T-067` and `T-070` at `1e9694c`; `T-069` at `8938478`; `T-071`
+  at `3327fd3`.
+- **Approved with follow-up:** `T-040` and `T-060`. Their behaviour and manual Windows mutation
+  evidence are accepted, and the self-hosted desktop job (`90432207805`, 28 passed) is a
+  repeatable normal-run gate. `COORD-R5`'s remaining filing is carried to `T-072`, and the
+  re-review states both close on that carry **without another behavioural review**.
+- **Ready:** **`T-072`**, the named carry the last-pass direction asked for — `T066-R1`'s
+  remainder, `COORD-R5`, `WIN-R1`, plus non-blocking `WIN-R3` and `RUNNER-R1`. Also `T-064`.
+- **Blocked, all on evidence rather than code:** `T-066` (the `T-019` process-tree cases have
+  never run under the venv shape, and four hosted/frozen jobs failed before step 1 on quota),
+  `T-068` (why the runners never show the empty font database), `T-056` (wants
+  `windows-latest`'s image specifically), `T-033` and `T-039` (Phase 5).
+- **Decided and Complete:** `T-065`.
 
 **A Windows machine on the maintainer's network — `STARBASE` — supplied what CI could not**
-(2026-07-28). Windows 10 22H2, reached over RDP in an interactive session, Python 3.14.6 and
-PySide6 6.11.1 matching the runners. GitHub Actions is unavailable until usage resets (workflow
-`30392139504` failed before executing a step, on the billing annotation), and it turned out not to
-be needed for most of what was owed.
-
-- **`T-040` is unblocked and In Review.** Both `T-026` mutation classes ran there and were killed;
-  `T-026`'s criterion is met and `ai/TESTING.md` §12's tab-order gap is rewritten.
-- **`T-060` is unblocked and In Review** — that evidence was its only remaining dependency.
-- **`T-056` is still Blocked, and the target is narrower.** Its defect does **not** reproduce on
-  `STARBASE`: the pre-correction helper passes 20/20 there, with a positive control proving the
-  mutation applied. It wants `windows-latest`'s image specifically, not Windows as such.
-
-**That first run also found four things CI cannot see**, filed as `T-066`…`T-069`: CI installs
-without a virtualenv while `docs/DEVELOPMENT.md` documents one — and on Windows a venv puts an
-extra process level under every spawn, which is the shape `T-019`'s reaping evidence does *not*
-cover; `LongPathsEnabled=0`, the Windows default, fails a path test that CI passes; Qt writes a
-font warning there that it does not write on a runner; and an end-to-end recovery test is
-intermittent. **CI is one Windows configuration, and an unusual one.**
-
-**`T-017` is Complete**, closed 2026-07-28 once `T-059`'s approval resolved the finding carried
-out of it. Five review rounds, two of them regressions introduced by corrections; the record is in
-`ai/REVIEWS.md` and the lesson — that every test in the task began with a running view, so none
-reached `_load` — is in `T-059`'s scope.
-
-**Approved on 2026-07-28:** `T-016` (fourth correction batch), `T-017`, `T-036`, `T-037`, `T-052`,
-`T-054`, `T-057`, `T-058`, `T-059`, `T-061`. **Approved with follow-ups:** `T-062`, and `T-063`
-(carrying `T-064`). **In Review:** `T-060` and `T-040` with Windows evidence from `STARBASE`,
-plus `T-066`…`T-070`, the five findings that first run produced — all five implemented in one
-batch on 2026-07-28. **Blocked:** `T-056` (wants the `windows-latest` image specifically),
-`T-033` (Phase 5 evidence) and `T-039` (Phase 5 installer). **Decided:** `T-065`.
-**Ready:** `T-064`.
-
-**Two of those five are not fully closed, and say so:** `T-068` cannot explain why the runners do
-not show the empty font database, and `T-069` is reproduced and narrowed but not fixed. Both need
-a runner or more work, and neither is presented as done.
+(2026-07-28), and is now a self-hosted runner. Windows 10 22H2, Python 3.14.6 and PySide6 6.11.1
+matching the runners. GitHub Actions hosted usage is exhausted (workflow `30392139504` failed
+before executing a step, on the billing annotation). STARBASE answered most of what was owed, but
+it is **not** a substitute for `windows-latest`: `T-056`'s defect does not reproduce there at all,
+20/20, with a positive control proving the mutation applied.
 
 **Every Phase 1 deliverable filed *before* 2026-07-28's CI run is approved** — and that is a
 narrower claim than the one this block used to make. Running the tests where they had never run
-added three tasks, one of which is a defect a user would meet. Phase 1 is not ready.
+added tasks, one of which is a defect a user would meet. **Phase 1 is not ready.**
+
+*(This block previously said `T-068` and `T-069` were "not fully closed", listed `T-060` as
+Blocked and `T-066`…`T-070` as In Review, and described `T-062`, `T-061` and `T-063` as the
+current front. All of that outlived being true: `T-069` is approved, `T-060` is complete, and the
+three named tasks are long filed. `COORD-R5` reported the drift; rewritten rather than patched.)*
 
 *(This block read "until `T-060` lands, the `windows desktop` job fails on
 `test_the_progress_view_focus_chain_is_walked_on_a_real_desktop`". It landed: run `30388380440`
@@ -93,17 +65,24 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(Empty as of 2026-07-28. `T-061` and `T-063` are approved and Complete; `T-060` moved to
-Blocked when its findings were resolved and only Windows evidence remained. `COORD-R2` is why
-this says so rather than sitting blank: an empty section is a claim about readiness, and the
-last time it was left unlabelled it outlived being true by one CI run.)*
+*(Genuinely empty as of 2026-07-28, after `T-072`'s `COORD-R5` carry refiled everything. The
+tasks that used to sit here are Complete — `T-040`, `T-060`, `T-067`, `T-069`, `T-070`, `T-071` —
+or Blocked on evidence: `T-066` and `T-068`. `COORD-R2` is why this says so rather than sitting
+blank: an empty section is a claim about readiness, and the last time it was left unlabelled it
+outlived being true by one CI run. `COORD-R5` then caught this note itself claiming emptiness
+while seven tasks carried an In Review status from other sections — the reason that claim now
+names where each of them went.)*
 
 
 ## Ready
 
 ### T-072 — Carry the three unresolved findings the last-pass direction stopped
 
-**Status:** Ready — filed 2026-07-28 from the STARBASE correction re-review's closing direction
+**Status:** **In Progress — three of the five carries are done, 2026-07-28.** `COORD-R5`'s filing
+and current-truth cleanup is complete, and `T-040`/`T-060` are filed Complete on it. `WIN-R3` and
+`RUNNER-R1` are corrected. `T066-R1`'s survivor assertions are written but **unexecuted** — they
+are in the Windows branch. `WIN-R1` and the `T-019` process-tree run are not started. See
+**Progress**.
 **Owner:** Implementer
 **Priority:** Medium — it is the only thing standing between `T-040`/`T-060` and closure
 **Phase:** Phase 1
@@ -169,6 +148,44 @@ two are not closed.
 - Historical statements are preserved as explicitly historical, not deleted
 - `WIN-R3` and `RUNNER-R1`'s documentation is corrected to what the code and GitHub actually do
 
+#### Progress, 2026-07-28
+
+| Carry | State |
+|---|---|
+| `COORD-R5` | **Done.** See below |
+| `WIN-R3` | **Done.** The guide now names `mut_control_chain.py`, says it runs first, and records why the `T-056` control does not belong here |
+| `RUNNER-R1` | **Done.** `ci.yml` and the guide now say `timeout-minutes` bounds *run* time, and an unmatched self-hosted job queues for up to 24 hours |
+| `T066-R1` | **Written, unexecuted.** See the caveat below |
+| `WIN-R1` | **Not started** |
+| `T-019` cases under the venv | **Not started**; needs a runner |
+
+**`COORD-R5` is discharged.** Every task now sits in the section its verdict says it belongs in:
+`T-040`, `T-060`, `T-067`, `T-069`, `T-070` and `T-065` to `## Complete`; `T-066` and `T-068` to
+`## Blocked`. The `## In Review` note no longer claims an emptiness it did not have, and names
+where each former occupant went. The `TASKS` preamble and `ai/STATUS.md`'s Windows and `T-040`
+paragraphs are rewritten from the current head, with every superseded reading kept as an
+explicitly historical parenthetical rather than deleted.
+
+**`T066-R1` is written but has not run, and that matters.** `kill_the_application()` now asserts
+that the walked tree is deeper than the pid `Popen` returned, and that `wait_procs` reports **no**
+survivors before the caller reopens the database; refused kills are collected and reported in the
+failure rather than suppressed. `NoSuchProcess` during the kill loop is still tolerated, because
+racing with a tree that is already dying is a kill and not a miss.
+
+That code is inside `if sys.platform == "win32"`, so **the Linux suite did not execute one line of
+it.** What it has: `mypy --platform win32` passes on it, which is `AGENTS.md` §8's check and is
+what caught the previous POSIX-only mistake in this same file. What it does not have: any runtime
+evidence at all. It needs the Windows job before it can be called resolved.
+
+| Check | Result |
+|---|---|
+| `ruff check .` | All checks passed |
+| `ruff format --check .` | 103 files already formatted |
+| `mypy` | Success: no issues found in 78 source files |
+| `mypy --platform win32` | Success: no issues found in 78 source files |
+| `pytest` (full default suite) | **1399 passed, 11 skipped, 2 deselected** |
+| `pytest tests/integration/test_end_to_end.py` | 4 passed |
+
 #### Out of scope
 
 - Another behavioural review of `T-040` or `T-060`. The re-review states they may close as
@@ -183,428 +200,12 @@ for review findings (`AGENTS.md` §12).
 
 ---
 
-### T-070 — The suite silently requires Windows privileges it never states
-
-**Status:** **In Review — filed and fixed 2026-07-28**, in the same batch that found it
-**Owner:** Implementer
-**Priority:** Medium — four tests failed on an ordinary desktop for a reason no message named
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `T-067`, `T-066`, `docs/WINDOWS_VERIFICATION.md`, `ai/TESTING.md` §12
-**Affected surfaces:** `tests/capabilities.py`, `tests/conftest.py`, `tests/unit/test_paths.py`,
-`tests/integration/test_worker.py`
-**Risk:** Low to fix, Medium to leave — it reads as a broken checkout
-
-#### Scope
-
-Four tests create symlinks. On Windows that needs `SeCreateSymbolicLinkPrivilege` — Administrator
-rights, or Developer Mode. They failed with a bare `OSError` on a normal desktop session and
-passed when the same machine ran them elevated.
-
-**CI could never have reported this**, because GitHub's runners are elevated. It surfaced only
-when the suite was first run as an ordinary user, and the failure named a privilege nowhere: it
-reads like a broken checkout.
-
-#### Acceptance criteria
-
-- A machine without the capability says so, in words that name the privilege and the fix
-- The tests are otherwise unchanged and still gate wherever the capability exists
-- The capability is **attempted**, not inferred from `os.name` or an elevation check
-- `docs/WINDOWS_VERIFICATION.md` records elevation as one of the axes CI differs on
-
-#### Evidence, 2026-07-28
-
-`tests/capabilities.py` answers the question by making a symlink and removing it. A proxy —
-`os.name`, an elevation check, a Developer Mode registry read — would be wrong in some
-configuration; the attempt is the question itself.
-
-| Environment | Result |
-|---|---|
-| Windows, unelevated desktop session | **4 skipped**, each naming the privilege and Developer Mode |
-| Windows, elevated | **4 pass**, unchanged |
-| Linux | **4 pass**, unchanged |
-
-The skip is not the "retire a gate and replace it with theatre" failure `T-026` warns about: these
-tests still gate on Linux and on CI. What changed is that a machine lacking the capability says
-which one.
-
-#### Out of scope
-
-- Requiring Developer Mode to develop on Windows; the point is to name the requirement, not impose it
-- The other Windows configuration differences (`T-066`, `T-067`, `T-068`)
-
----
-
-### T-066 — CI installs the project differently from how the documentation says to
-
-**Status:** **In Review — resolved, and `T066-R1` corrected 2026-07-28.** CI creates and uses a
-virtualenv in every job, so the gate measures the environment `docs/DEVELOPMENT.md` documents,
-and the grandchild test no longer assumes the shallower tree. `T066-R1` then found the venv's
-extra process level reaching further than the tests did: **the Windows crash test killed one
-level and orphaned the worker**, which turned out to be the whole of `T-069`. See **Evidence**
-and **`T066-R1`**.
-**Owner:** Implementer
-**Priority:** **High** — it decides whether `T-019`'s process-tree evidence describes the
-environment a developer or a user actually has
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `T-019`, `T-056`, `docs/DEVELOPMENT.md`, `.github/workflows/ci.yml`
-**Affected surfaces:** `.github/workflows/ci.yml`, `docs/DEVELOPMENT.md`, possibly
-`tests/integration/test_manager.py`
-**Risk:** Medium — no product code is wrong; what is wrong is the environment the gate measures
-
-#### Scope
-
-`docs/DEVELOPMENT.md` tells a developer to work in a virtualenv. `ci.yml` installs with
-`python -m pip install -e ".[dev]"` straight into the `setup-python` interpreter, with no venv at
-any point. **The gate and the documentation describe different environments**, and on Windows the
-difference is not cosmetic.
-
-`python -m venv` on Windows does not copy the interpreter into `Scripts\python.exe`; it installs a
-launcher that **spawns the real interpreter as a child**. Measured on `STARBASE`, 2026-07-28:
-
-| Install | `Popen(sys.executable)` | interpreter that ran |
-|---|---|---|
-| venv, as `DEVELOPMENT.md` documents | 10500 | **7356** |
-| no venv, as CI installs | 11352 | 11352 |
-
-So under the documented setup every `multiprocessing` spawn sits one level deeper than it does on
-CI, because `sys.executable` is a redirector. `test_the_detector_sees_a_grandchild_and_not_just_a_worker`
-fails in the venv checkout and passes in the CI-style one, on the same machine and the same
-commit — an A/B, not an inference.
-
-**Why this is more than a failing test.** `T-019` exists to prove the application reaps a process
-*tree* on Windows, and `T-056` exists because the helper that decides those assertions was
-imprecise. Both are verified only against the shallower tree. The deeper tree is the one a
-developer following our own instructions produces, and plausibly the one a user of a venv-based
-install produces too.
-
-#### Acceptance criteria
-
-- The divergence is resolved rather than documented: either CI installs the way `DEVELOPMENT.md`
-  says to, or `DEVELOPMENT.md` stops saying it, and whichever is chosen is justified in writing
-- If the venv shape is the one to support, `T-019`'s descendant-reaping assertions are shown to
-  hold under it, on Windows, with the extra level present
-- Whether the frozen artifact (`T-020`, `T-033`) has the shallow or the deep shape is answered,
-  since that is what a user actually runs
-- `test_the_detector_sees_a_grandchild_and_not_just_a_worker` states which shape it assumes
-
-#### Evidence, 2026-07-28
-
-**Resolution: CI adopts the virtualenv** (maintainer decision). Every job creates `.venv` and
-prepends it to `GITHUB_PATH`, so the commands `ai/TESTING.md` §4 publishes stay identical. On
-Windows the path is converted with `cygpath -w`: `shell: bash` there is Git Bash, whose `$PWD` is
-an MSYS path the runner itself cannot resolve.
-
-Testing the deeper tree is the superset — reaping that works with an extra generation works
-without one — which is why this direction rather than deleting the venv from the docs.
-
-**`test_the_detector_sees_a_grandchild_and_not_just_a_worker` asserted more than it needed.** It
-required `ppid() == child.pid`: exactly one hop. That is true only when `sys.executable` starts
-the interpreter directly, and in a venv on Windows `Scripts\python.exe` is a launcher that spawns
-the real interpreter, so `child.pid` is the launcher and the grandchild sits one level further
-down. The test failed with "this test is not about a grandchild at all" while looking at a tree
-that was *deeper* than it expected.
-
-It now asserts **at least two generations below the test process**, which is the property the
-detector actually has to satisfy, and which holds under both install shapes. Verified passing in
-both the venv and the no-venv checkout on Windows, and on Linux.
-
-**My first attempt at that fix was wrong**, and it is worth recording why: I measured generations
-from `child.pid` rather than from the test process, so a correct Linux tree (test → child →
-grandchild) reported one hop and failed. "Grandchild" is relative to the process doing the
-walking, not to the process that was spawned.
-
-**The frozen artifact has neither shape.** Under PyInstaller `sys.executable` is the frozen
-executable and `multiprocessing` re-launches it through `freeze_support()`, so there is no
-launcher generation and no venv. This is **reasoned, not measured** — building the artifact on
-Windows is `T-033`'s ground and no frozen build has been run on `STARBASE`. Recorded as an
-assumption rather than a result.
-
-**Partly verified as of 2026-07-28.** The virtualenv step **has now executed on Windows**: job
-`90432207805` of run `30405803368` ran `Create the virtualenv` and then the desktop suite under
-it, green. That is the self-hosted runner, so it covers the Windows half of the change.
-
-**The four GitHub-hosted jobs have still never run it** — quota is exhausted and every hosted job
-fails before its first step. So the Linux half, the `frozen` jobs, and `cygpath -w` on a
-*hosted* Windows runner are all unverified. `ai/TESTING.md` §11's "local green is not evidence"
-still applies to those.
-
-#### `T066-R1` — the crash tests killed one level, 2026-07-28
-
-The finding: *Windows crash tests kill the venv launcher PID, without proving the application
-interpreter was killed.* Measured, with the crash test's own `CREATE_NEW_PROCESS_GROUP` flags:
-
-| Process | After `process.kill()` |
-|---|---|
-| the pid `Popen` returned (the venv launcher) | dead |
-| its child (the application) | dead — the launcher's Job object propagates |
-| **its grandchild (the worker)** | **alive** |
-
-So the literal mechanism in the finding is not what happens — the interpreter *is* killed, by the
-Job object the venv launcher creates. **The consequence the finding points at is real and worse**:
-the kill reaches exactly one level, and under a virtualenv the worker is two levels down. A test
-whose entire subject is an application dying mid-download was leaving the download running.
-
-`kill_the_application` now enumerates the tree **before** killing anything — once the parent is
-gone its children are reparented and the walk finds nothing — and kills all of it, which is what
-the POSIX branch has always done via `killpg`. Still `TerminateProcess`, so nothing unwinds.
-
-| Evidence | Result |
-|---|---|
-| three-level probe, before | grandchild and one sibling **survive** |
-| three-level probe, after, through the real `kill_the_application` | **tree reaped**, no survivors |
-| `test_end_to_end.py` ×5, before | **4 failed** |
-| `test_end_to_end.py` ×5, after | **5 passed** |
-
-**This is why `T-019`'s sibling tests deserve the same look.** They were written on a machine with
-no Windows, from a design argument about Job objects and parent watchdogs that is half right: the
-Job object exists and does propagate — one level.
-
-#### Out of scope
-
-- Changing how `multiprocessing` starts workers
-- The Qt font failure and the long-path failure seen in the same run (`T-067`, `T-068`)
-
----
-
-### T-067 — Path behaviour is gated only with long paths enabled, which is not the default
-
-**Status:** **In Review — resolved 2026-07-28.** The test no longer creates the directory it
-never needed, so it runs with `LongPathsEnabled=0`, and a new test writes a real file at the
-budget so the constant is tied to what the filesystem accepts rather than to itself. Verified on
-a Windows machine with the default setting. See **Evidence**.
-**Owner:** Implementer
-**Priority:** Medium — a real user configuration is untested, and it is the majority one
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `T-046`, `T-045`, `tests/unit/test_paths.py`
-**Affected surfaces:** `tests/unit/test_paths.py`, possibly `core/paths.py`, `ai/TESTING.md` §12
-**Risk:** Medium — the failure mode is a download that cannot be written
-
-#### Scope
-
-`test_a_directory_leaving_no_room_for_a_filename_raises` fails on `STARBASE` in **both** the venv
-and the CI-style checkout, with `FileNotFoundError: [WinError 206]` raised by the test's own
-setup while creating the deep directory it needs.
-
-`HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled` is **`0`** there, which is
-the Windows default. GitHub's runner images set it to `1`. So the test passes on CI because CI is
-configured unusually, and the behaviour this project ships is gated only under a setting most
-users do not have.
-
-The test is about what happens when a directory leaves no room for a filename — precisely a
-`MAX_PATH` question — so being unable to run it on a default-configured Windows is the sharp end
-of the gap rather than an inconvenience.
-
-#### Acceptance criteria
-
-- The test either constructs its fixture in a way that works with long paths disabled, or is
-  parameterised over both settings, or is explicitly scoped to one and says which
-- The application's own behaviour with `LongPathsEnabled=0` is stated: what a user sees when an
-  output path exceeds `MAX_PATH`, and whether `REQ`-level behaviour still holds
-- `ai/TESTING.md` §12 records which Windows configurations are gated, rather than implying "Windows"
-
-#### Evidence, 2026-07-28
-
-**The `mkdir` was the only filesystem access in the test**, and the code under test has none on
-this branch: `safe_output_path` raises at the length budget several lines before the one call that
-resolves anything. So the directory was created only to be named, and creating it is what died
-with `WinError 206` when `LongPathsEnabled=0`. Removing it changes no assertion.
-
-**A new test ties the constant to the filesystem rather than to itself.** Every other length test
-here compares `safe_output_path`'s output against `MAX_PATH_CHARACTERS`, so all of them would pass
-unchanged if that constant were raised past what Windows accepts.
-`test_a_path_this_accepts_is_one_the_filesystem_will_actually_take` writes the file.
-
-| Check | Result |
-|---|---|
-| Both tests, Windows, `LongPathsEnabled=0`, unelevated | **pass** |
-| Both tests, Linux | **pass** |
-
-The budget is 240 and Windows' limit is 260, which is why this passes — but that margin was
-previously an arithmetic argument nobody had executed on a machine where it mattered.
-
-#### Out of scope
-
-- Enabling long paths on any machine to make the test pass; that hides the finding
-
----
-
-### T-068 — Qt writes a font warning to stderr on a real Windows machine
-
-**Status:** **In Review — cause found, larger than filed, fixed in the environment.** The warning
-was the symptom; the defect is that Qt had **zero font families** under `offscreen` on that
-machine, so the whole offscreen UI suite ran with no fonts. Fixed by pointing Qt at the Windows
-font directory in `tests/conftest.py`. **One question stays open and needs CI:** why the runners
-do not show it. See **Evidence**.
-**Owner:** Implementer
-**Priority:** Medium — an assertion about a *clean* run is failing, and the cause is not understood
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `T-007`, `tests/ui/test_app_launch.py`, `OPS-004`
-**Affected surfaces:** `tests/ui/test_app_launch.py`, possibly packaging
-**Risk:** Medium — unknown cause; it may be cosmetic, and it may be a deployment gap
-
-#### Scope
-
-`test_application_launches_and_exits_cleanly` asserts the application writes nothing to stderr on
-a clean run. On `STARBASE` it writes:
-
-```
-QFontDatabase: Cannot find font directory <prefix>/PySide6/lib/fonts.
-Note that Qt no longer ships fonts. Deploy some ... or switch to fontconfig.
-```
-
-**It fails in both the venv and the CI-style install**, so it is not the virtualenv — an
-A/B that also corrects the implementer's first guess, which was that the venv caused it. The
-cause is genuinely unknown and this task exists to find it rather than to silence it.
-
-Two reasons not to treat it as noise. It only appears on a machine that is not a CI runner, which
-is exactly the population `OPS-004` was written to stop assuming about. And a Qt that cannot find
-a font directory under the offscreen platform raises an unanswered question about the **frozen**
-artifact, which is what a user runs.
-
-#### Acceptance criteria
-
-- The cause is identified — not "PySide6 does that", but why this machine and not the runner
-- Whether the frozen build (`T-020`, `T-033`) shows the same warning is answered on Windows
-- If the warning is benign, the test says so deliberately rather than being loosened to pass
-- If it is not benign, the fix is in packaging or startup, not in the assertion
-
-#### Evidence, 2026-07-28
-
-**The warning was the symptom. The defect is an empty font database.** Measured under
-`QT_QPA_PLATFORM=offscreen` on `STARBASE`, in the interactive desktop session:
-
-```
-FAMILIES 0
-SAMPLE  []
-DEFAULT Sans Serif
-```
-
-Zero families. So the **entire offscreen UI suite** runs there against no fonts: every assertion
-about a widget's size, about elision, or about anything else derived from font metrics is measured
-against nothing — and passes. A suite that agrees with itself while measuring an empty font set is
-the shape `ai/TESTING.md` §13 exists to catch, which is why this was not allowlisted into
-`PLUGIN_NOISE` alongside `propagateSizeHints`. That allowlist is for artifacts that change no
-measurement; this one changes every measurement.
-
-**Not our code.** A bare `QApplication` produces nothing; a bare `QLabel` reproduces it in full,
-with no project code involved. Same result in the venv and the no-venv checkout, which also
-corrects the first guess recorded against this task — it is not the virtualenv.
-
-**Not the session either.** It reproduces identically in session 2, so it is not an artifact of
-running over SSH, which was the other plausible explanation and had to be ruled out because
-several other results were.
-
-**Fix:** `tests/conftest.py` sets `QT_QPA_FONTDIR` to `%WINDIR%\Fonts` on Windows, with
-`setdefault` so an explicit value wins. Verified: `families()` goes from 0 to a populated list and
-`test_application_launches_and_exits_cleanly` passes.
-
-**Open, and it needs a runner:** *why the runners do not show this.* Their offscreen Qt evidently
-finds fonts by some route this machine lacks, and until CI runs it is unknown whether
-`QT_QPA_FONTDIR` changes anything there. If their database is already populated the variable is
-ignored, which is the expected case — expected, not verified.
-
-#### Out of scope
-
-- Weakening the empty-stderr assertion to make the run green; that assertion caught this
-
----
-
-### T-069 — An end-to-end recovery test is intermittent on Windows
-
-**Status:** **In Review — cause found and fixed 2026-07-28.** It was `T066-R1`: the Windows crash
-test killed one process level, orphaning the worker, and the orphan is what broke the restart.
-Fixed by reaping the tree; the failure rate went from **4 of 5 to 0 of 5**. The reviewer's
-hypothesis that `T066-R1` "may explain T-069" was correct.
-
-*(Previously: reproduced with a rate and narrowed to one interaction; not fixed.)*
-Not intermittent at all once the trigger is known: **4 of 5** at file level, 0 in isolation, and
-it fails only when one specific test runs first. The failing statement and error are exact. The
-remaining work is a fix, and it is not obviously the test's rather than the product's. See
-**Evidence**.
-**Owner:** Implementer
-**Priority:** Medium — an intermittent test in the suite that proves the restart criterion
-**Phase:** Phase 1
-**Depends on:** nothing
-**Relevant context:** `T-037`, `T-056`, `T-019`
-**Affected surfaces:** `tests/integration/test_end_to_end.py`
-**Risk:** Medium — it gates a Phase 1 exit criterion
-
-#### Scope
-
-`test_a_job_killed_mid_download_is_recovered_by_the_next_start` failed once on `STARBASE` in the
-venv checkout, then passed on re-run and passed in the CI-style checkout. One observation, so the
-rate is unknown and the cause is unidentified.
-
-It is filed rather than dismissed because it gates *job state survives an application restart
-mid-download*, and because it sits in the same process-reaping neighbourhood as `T-056`, whose
-own defect has been seen exactly once. Two single observations in one area is not proof of a
-common cause, and it is not nothing either.
-
-#### Acceptance criteria
-
-- The failure is reproduced with a rate, or a bounded search is recorded as not reproducing it
-- If it shares a cause with `T-056` or `T-066`, that is stated; if it does not, that is stated
-- Any fix is demonstrated by making the fixed behaviour fail when reverted
-
-#### Evidence, 2026-07-28
-
-**It is not intermittent; it is conditional, and the condition is now known.**
-
-| Run shape | Result |
-|---|---|
-| the test alone | **passes** |
-| whole `test_end_to_end.py`, 5 runs | **4 failed, 1 passed** |
-| after `test_a_url_becomes_a_file_with_the_bytes_it_reported` | **fails** |
-| after `test_a_progressive_download_completes_with_no_ffmpeg_at_all` | **passes** |
-
-So one specific predecessor triggers it, which is a 30-second reproduction for whoever fixes it.
-
-**Where it fails, exactly.** The restart half — the second `compose()`, the one that stands for
-the application starting again after the kill:
-
-```
-src/tracks_and_trails/app.py:206:  connection = db.connect(database_path)
-src/tracks_and_trails/persistence/db.py:171:  connection.execute("PRAGMA journal_mode = WAL")
-E   sqlite3.OperationalError: disk I/O error
-```
-
-**Why it matters more than a flaky test.** That statement is on the path of Phase 1's *job state
-survives an application restart mid-download* criterion, and the two tests use different
-`tmp_path` directories — so a shared database file is not the explanation, and the predecessor
-does shut its composition down through `OrderlyShutdown`. Whatever is left behind crosses between
-two tests that should not be able to affect each other.
-
-#### Resolved, 2026-07-28 — it was the orphaned worker
-
-**Neither of the two candidates I named.** `T066-R1` supplied the answer: `kill_the_application`
-killed a single process, so the worker survived the crash the test was simulating, and the
-surviving worker is what made the next `compose()` fail.
-
-| | Failure rate over 5 runs of the file |
-|---|---|
-| before, one-level kill | **4 of 5** |
-| after, whole-tree kill | **0 of 5** |
-
-At the prior rate, five clean passes by chance is about 0.03%.
-
-**Recorded rather than smoothed over:** I wrote that whether this was the test's fault or the
-product's "is exactly the question", and resolved to measure instead of guess. That was right, and
-the answer still came from a reviewer noticing something in a *different* task. A reproduction is
-what makes a hypothesis cheap to test; it is not what generates the hypothesis.
-
-#### Out of scope
-
-- Adding a retry to the test; that converts a real intermittency into a hidden one
-
----
-
 ### T-064 — Repair stale developer-tool launchers
 
-**Status:** Ready — filed from `T063-R1`
+**Status:** **In Review — fixed 2026-07-28.** The venv is recreated from this checkout and the
+documented repair now prescribes `python3 -m venv --clear`, because reinstalling this project
+alone repairs only its own two artefacts while every dependency-owned launcher stays stale. See
+**Evidence**.
 **Owner:** Implementer
 **Priority:** Low — the application runs, but the documented bare developer commands do not
 **Phase:** Phase 1
@@ -637,10 +238,42 @@ launchers too.
 - The procedure does not choose between repository paths; it makes the environment agree with the
   checkout in which it is run
 
+#### Evidence, 2026-07-28
+
+**The count was worse than filed.** `T063-R1` measured 39 stale launchers; at repair time it was
+**45 of 46**, with `tracks-and-trails` the only healthy one — because `T-063`'s reinstall had
+repaired exactly that one and nothing else. That is the trap the documentation now names: the
+application starts, so the environment looks fixed, while `mypy` and `pytest` stay broken.
+
+`python3 -m venv --clear .venv` followed by `pip install -e ".[dev,build]"`. The `build` extra was
+included because this venv already had PyInstaller 6.21.0 installed and dropping it would have
+been a silent regression.
+
+| Check | Result |
+|---|---|
+| Launchers naming this checkout's interpreter | **46 of 46** (was 1 of 46) |
+| `mypy --version` (bare, activated) | 2.3.0 |
+| `pytest --version` (bare) | 9.1.1 |
+| `ruff --version` (bare) | 0.16.0 |
+| `tracks-and-trails --version` (bare) | 0.1.0.dev0 |
+| Import location, no `PYTHONPATH` | resolves to this checkout's `src/tracks_and_trails/` |
+| `ruff check .` · `ruff format --check .` | Passed · 103 files already formatted |
+| `mypy` · `mypy --platform win32` | Success, 78 source files · Success, 78 source files |
+| `pytest` (full default suite) | **1399 passed, 11 skipped, 2 deselected** |
+
+Every command in that table was run **bare**, through the activated venv, with no `PYTHONPATH` —
+which is the acceptance criterion rather than a convenience.
+
+**Adjacent correction, made inline rather than filed.** `docs/DEVELOPMENT.md`'s Windows section
+still said "there is currently no Windows machine available, so Windows is verified through CI
+only", while the *same file's* "Verifying on Windows" section described running the suite on
+`STARBASE`. One file, two answers; corrected to name `STARBASE` and the self-hosted runner.
+
 #### Out of scope
 
 - Product, packaging, or CI behavior
 - Choosing the canonical repository path
+- The `build` extra's contents; it was preserved as found, not chosen here
 
 ## Proposed — Phase 0
 
@@ -970,250 +603,221 @@ this application or yt-dlp.
 
 ## Blocked
 
-### T-060 — Focus chains are per state, and the Windows mutations still owe evidence
+### T-066 — CI installs the project differently from how the documentation says to
 
-**Status:** **In Review — unblocked; the Windows evidence exists.** `T060-R1` and `T060-R2` were
-independently verified resolved at `12dff92` on 2026-07-28, with **no further code correction
-requested**, and the mutation evidence that was its last dependency was produced on `STARBASE` the
-same day (recorded under `T-040`). Reviewer's independent checks: 8/8 focused cases, and both of
-its own mutations (disabling the in-flight Cancel, making Backtab walk forward) correctly failed.
-The corrected tests also pass under the real `windows` plugin on a machine that is not GitHub's —
-28 passed, including all three dialog states. Chains are asserted per state, and the cause of all
-four CI failures turned out to be one thing. **The Windows-divergence claim in this task and in
-`T-040` was wrong** and is corrected below. Pre-flighted offscreen, where the walk is identical;
-the Windows job is still what proves it — **and it cannot run until GitHub Actions usage resets**
-(maintainer, 2026-07-28: several days).
+**Status:** **Blocked — on Windows process-tree and frozen evidence**, 2026-07-28. Creating a
+virtualenv in every workflow job is accepted as structurally sound, and one real Windows venv job
+is green — but it is the 28-test desktop slice, not the `T-019` process-tree suite, whose cases
+have never executed under the venv shape this task exists to cover. Four hosted jobs, both frozen
+jobs among them, failed before step 1 on exhausted quota. `T066-R1` is **partially resolved** and
+its remainder is carried to `T-072`: `kill_the_application()` still suppresses every `psutil` kill
+error and discards both lists `wait_procs` returns, so it can return with a known survivor.
 **Owner:** Implementer
-**Priority:** Medium — it is the difference between a Windows focus gate and a Windows focus
-*claim*, and `T-026`'s acceptance criterion cannot be marked met until it is settled
+**Priority:** **High** — it decides whether `T-019`'s process-tree evidence describes the
+environment a developer or a user actually has
 **Phase:** Phase 1
-**Depends on:** nothing to write. **Its evidence depends on the `windows desktop` CI job**, which
-is also what `T-040` and `T-056` are blocked on
-**Relevant context:** `T040-R1`; `T-040`; `T026-R3`; `NFR-005`; `ai/TESTING.md` §12 and §13
-**Affected surfaces:** `tests/ui/test_windows_desktop.py`, `ai/TESTING.md` §12
-**Risk:** Low to write, Medium to leave — a focus test that cannot reach a control it asserts on
-is a red build for a wrong reason, and a green one would be worse
+**Depends on:** nothing
+**Relevant context:** `T-019`, `T-056`, `docs/DEVELOPMENT.md`, `.github/workflows/ci.yml`
+**Affected surfaces:** `.github/workflows/ci.yml`, `docs/DEVELOPMENT.md`, possibly
+`tests/integration/test_manager.py`
+**Risk:** Medium — no product code is wrong; what is wrong is the environment the gate measures
 
 #### Scope
 
-**CI run `30380426474` failed four of `T-040`'s tests, not one.** The progress-view test is the
-one `T040-R1` predicted; the other three are the *dialog's*, and they are new information:
+`docs/DEVELOPMENT.md` tells a developer to work in a virtualenv. `ci.yml` installs with
+`python -m pip install -e ".[dev]"` straight into the `setup-python` interpreter, with no venv at
+any point. **The gate and the documentation describe different environments**, and on Windows the
+difference is not cosmetic.
 
-| Failing on the real Windows plugin | |
-|---|---|
-| `test_tab_visits_the_declared_order_on_a_real_desktop` | dialog |
-| `test_the_focus_chain_wraps_in_both_directions` | dialog |
-| `test_every_control_is_reachable_from_the_initial_focus` | dialog |
-| `test_the_progress_view_focus_chain_is_walked_on_a_real_desktop` | `T040-R1` |
+`python -m venv` on Windows does not copy the interpreter into `Scripts\python.exe`; it installs a
+launcher that **spawns the real interpreter as a child**. Measured on `STARBASE`, 2026-07-28:
 
-**That reading was wrong, and correcting it is the most useful thing in this task.** This entry
-said the failures showed "the order Windows delivers is not the order Qt builds offscreen".
-They showed nothing of the kind. All four have one cause, and it reproduces offscreen:
-
-**Tab skips a control that is disabled or hidden, and every state of these widgets disables
-some.** The dialog disables `probeButton`, `cancelProbeButton` and `addButton` until there is a
-URL to act on — which is exactly the three CI reported unreachable — and the progress view
-disables `Cancel` on a terminal job and hides `Retry` on a running one. Walking Tab through the
-dialog offscreen with no URL typed produces the **identical** sequence `windows-latest` reported,
-ending `selectorValue → closeButton → urlInput`.
-
-So `EXPECTED_DIALOG_ORDER` was never the problem: the *order* is right, and what was missing was
-that a chain is the declared order **filtered by what the current state offers**. The offscreen
-suite had never pressed Tab, so nothing had observed this anywhere — not a platform difference,
-an untested behaviour.
-
-`T-040`'s progress-view test expects **three** reachable controls in one chain. That state does
-not exist. Measured on 2026-07-28:
-
-| The job is | Tab can reach | Why not the others |
+| Install | `Popen(sys.executable)` | interpreter that ran |
 |---|---|---|
-| `FAILED`, retryable | `errorMessage`, `retryJobButton` | `cancelJobButton` is **disabled** — a terminal job cannot be cancelled (`T-017`) |
-| `RUNNING` | `cancelJobButton` | `errorMessage` and `retryJobButton` are **hidden** — nothing has failed |
+| venv, as `DEVELOPMENT.md` documents | 10500 | **7356** |
+| no venv, as CI installs | 11352 | 11352 |
 
-An isolated probe visited `retryJobButton → errorMessage → retryJobButton` and could never reach
-`cancelJobButton`.
+So under the documented setup every `multiprocessing` spawn sits one level deeper than it does on
+CI, because `sys.executable` is a redirector. `test_the_detector_sees_a_grandchild_and_not_just_a_worker`
+fails in the venv checkout and passes in the CI-style one, on the same machine and the same
+commit — an A/B, not an inference.
 
-**The structural half of that test agreed with itself, which is how it got written.**
-`_focusable()` filters on `focusPolicy() != NoFocus`, and a *disabled* widget keeps its focus
-policy — so the set matched while the walk could not. Comparing a declared list against a
-computed list is the shape `T016-R4` and `T040-R1` have now each caught once; the walk is the
-only part that knows what a keyboard can do.
-
-So the chains have to be asserted **per state**, each with the set that state actually offers.
+**Why this is more than a failing test.** `T-019` exists to prove the application reaps a process
+*tree* on Windows, and `T-056` exists because the helper that decides those assertions was
+imprecise. Both are verified only against the shallower tree. The deeper tree is the one a
+developer following our own instructions produces, and plausibly the one a user of a venv-based
+install produces too.
 
 #### Acceptance criteria
 
-- The failed state and the running state are asserted separately, each against the controls that
-  state makes reachable — a disabled or hidden control is not in the expectation for that state
-- Reachability is decided by driving Tab and Backtab and asking Qt what has focus, never by
-  comparing two lists this repository computes
-- A control that becomes reachable in a state without being declared for it fails
-- The `T-040` mutations that could not be run — reversing two widgets, and adding a focusable
-  control without placing it — are executed on Windows and **recorded**, for the dialog chain as
-  well as the view's
-- `ai/TESTING.md` §12 drops the "widget tab order is ungated" gap and `T-026`'s acceptance
-  criterion is marked met **only when all of the above has run on Windows**
-
-#### Out of scope
-
-- Nothing in the dialog's chain is out of scope any more: CI failed three of its tests too, and
-  the same per-state and real-focus reasoning applies to whatever it turns out to want
-- Making the progress view offer more controls than a state should; the disabled Cancel and the
-  hidden Retry are `T-017`'s behaviour and are correct
+- The divergence is resolved rather than documented: either CI installs the way `DEVELOPMENT.md`
+  says to, or `DEVELOPMENT.md` stops saying it, and whichever is chosen is justified in writing
+- If the venv shape is the one to support, `T-019`'s descendant-reaping assertions are shown to
+  hold under it, on Windows, with the extra level present
+- Whether the frozen artifact (`T-020`, `T-033`) has the shallow or the deep shape is answered,
+  since that is what a user actually runs
+- `test_the_detector_sees_a_grandchild_and_not_just_a_worker` states which shape it assumes
 
 #### Evidence, 2026-07-28
 
-**One cause, four failures.** See the correction above: Tab skips disabled and hidden controls,
-and both widgets disable some in every state. Not a platform difference.
+**Resolution: CI adopts the virtualenv** (maintainer decision). Every job creates `.venv` and
+prepends it to `GITHUB_PATH`, so the commands `ai/TESTING.md` §4 publishes stay identical. On
+Windows the path is converted with `cygpath -w`: `shell: bash` there is Git Bash, whose `$PWD` is
+an MSYS path the runner itself cannot resolve.
 
-**Chains are now asserted per state.** The declared order is transcribed once; **availability is
-transcribed per state**, by hand, from what the dialog is *for* — "with no URL there is nothing to
-probe or add" is a design statement worth asserting, and reading it back from `_refresh_actions`
-would make the test agree with the code (`ai/TESTING.md` §13). **Three** dialog states and two
-progress view states, each checked for the set it offers, the order Tab walks, and wrapping both
-ways. (The third dialog state — a probe in flight — arrived with the correction round below; the
-first version left it out.)
+Testing the deeper tree is the superset — reaping that works with an extra generation works
+without one — which is why this direction rather than deleting the venv from the docs.
 
-**`_focusable` was the structural half of the same mistake.** It filtered on
-`focusPolicy() != NoFocus`, which is true of a *disabled* widget — so it counted three controls
-the walk could never visit, and the two lists agreed with each other while disagreeing with the
-keyboard. It now also requires enabled and not hidden.
+**`test_the_detector_sees_a_grandchild_and_not_just_a_worker` asserted more than it needed.** It
+required `ppid() == child.pid`: exactly one hop. That is true only when `sys.executable` starts
+the interpreter directly, and in a venv on Windows `Scripts\python.exe` is a launcher that spawns
+the real interpreter, so `child.pid` is the launcher and the grandchild sits one level further
+down. The test failed with "this test is not about a grandchild at all" while looking at a tree
+that was *deeper* than it expected.
 
-**Pre-flighted offscreen, and that is evidence rather than hope.** Because the walk is identical
-there, all four states were driven locally before committing: reachable sets, walked order, and
-both wrap directions all match what the tests expect. **This is not a substitute for the Windows
-job** — the real plugin is the subject — but it is the difference between a test written from a
-design and one written from a guess.
+It now asserts **at least two generations below the test process**, which is the property the
+detector actually has to satisfy, and which holds under both install shapes. Verified passing in
+both the venv and the no-venv checkout on Windows, and on Linux.
 
-#### Correction round, 2026-07-28 — `T060-R1` and `T060-R2`
+**My first attempt at that fix was wrong**, and it is worth recording why: I measured generations
+from `child.pid` rather than from the test process, so a correct Linux tree (test → child →
+grandchild) reported one hop and failed. "Grandchild" is relative to the process doing the
+walking, not to the process that was spawned.
 
-**`T060-R1` — the probe-in-flight state is now asserted, and the gap it left was real.** The
-first version recorded `cancelProbeButton`'s absence as a deliberate gap. Recording a gap is not
-the same as being allowed to have one: that control is enabled in exactly one state and disabled
-in every other, so excluding that state excluded the only control that stops a running probe from
-every assertion in this file. A gate that skips the one state a control lives in does not gate
-that control.
+**The frozen artifact has neither shape.** Under PyInstaller `sys.executable` is the frozen
+executable and `multiprocessing` re-launches it through `freeze_support()`, so there is no
+launcher generation and no venv. This is **reasoned, not measured** — building the artifact on
+Windows is `T-033`'s ground and no frozen build has been run on `STARBASE`. Recorded as an
+assumption rather than a result.
 
-The state is reached without a worker. `_ProbeThatNeverAnswers` subclasses `DownloadManager` and
-overrides `start` to record the call and return; the dialog's own `_on_probe_saved` then sets
-`started`, `probing_job_id` becomes non-`None`, and `_refresh_actions` swaps Probe and Add out for
-Cancel. Deliberately **not** `entry_point=child_never_returning`, which is how `test_add_dialog.py`
-holds a probe open — that spawns a real process, and a worker left alive by a failed assertion
-here would be attributed to whichever test ran next. The factory asserts the state was actually
-reached, so a change to `_refresh_actions` cannot silently leave the chain asserted over an idle
-dialog.
+**Partly verified as of 2026-07-28.** The virtualenv step **has now executed on Windows**: job
+`90432207805` of run `30405803368` ran `Create the virtualenv` and then the desktop suite under
+it, green. That is the self-hosted runner, so it covers the Windows half of the change.
 
-**`T060-R2` — the set is gone, and the finding's own mutation turns out to be unkillable.** The
-walk is now compared as a sequence, anchored on the control focus was placed on rather than
-rotated into place, and Backtab is driven for two full laps in both the dialog tests and the
-progress-view test. The same weakness was in `test_the_dialog_chain_wraps_in_both_directions`,
-which asserted set containment in both directions; it is corrected in the same batch.
+**The four GitHub-hosted jobs have still never run it** — quota is exhausted and every hosted job
+fails before its first step. So the Linux half, the `frozen` jobs, and `cygpath -w` on a
+*hosted* Windows runner are all unverified. `ai/TESTING.md` §11's "local green is not evidence"
+still applies to those.
 
-**But the reversal `T060-R2` names cannot be caught by any keyboard observation.** No state of the
-progress view offers more than two reachable controls, and *a two-element focus cycle has no
-observable orientation*: `A → B → A` and `B → A → B` are the same cycle, so from either control,
-Tab and Backtab both deliver the other one, from any starting point. Measured, not argued — the
-mutation was run and survived, and a four-line model of a 2-cycle shows why it must. This is
-recorded as unobservable rather than answered with an assertion that appears to catch it.
+#### `T066-R1` — the crash tests killed one level, 2026-07-28
 
-Ordering is therefore gated where it is observable — the dialog's three states offer nine to
-twelve reachable controls — and the anchored sequence is asserted for the view anyway, because it
-costs nothing and begins gating order by itself the day a third control becomes simultaneously
-reachable.
+The finding: *Windows crash tests kill the venv launcher PID, without proving the application
+interpreter was killed.* Measured, with the crash test's own `CREATE_NEW_PROCESS_GROUP` flags:
 
-**Mutation results, offscreen, 2026-07-28 — 7 of 9 killed, both survivors explained:**
-
-| Mutation | |
+| Process | After `process.kill()` |
 |---|---|
-| `titleValue`/`uploaderValue` swapped, each of the three dialog states | **killed** ×3 |
-| an undeclared focusable control appears in the dialog | **killed** |
-| an undeclared focusable control appears in the progress view | **killed** |
-| `cancelProbeButton` removed from the chain, probe in flight | **killed** |
-| the walk ignores `backwards` and always presses Tab (dialog) | **killed** |
-| progress view's delivered order reversed, declaration untouched | **survives — 2-cycle** |
-| the walk ignores `backwards` (progress view) | **survives — 2-cycle** |
+| the pid `Popen` returned (the venv launcher) | dead |
+| its child (the application) | dead — the launcher's Job object propagates |
+| **its grandchild (the worker)** | **alive** |
 
-`probeButton`/`cancelProbeButton` is *not* a usable swap for the first mutation class: they are
-never enabled at the same time, so no walk can distinguish the two arrangements. That is the same
-2-cycle limitation seen from the other side, and it is why the swap is done on two controls that
-are reachable in every state.
+So the literal mechanism in the finding is not what happens — the interpreter *is* killed, by the
+Job object the venv launcher creates. **The consequence the finding points at is real and worse**:
+the kill reaches exactly one level, and under a virtualenv the worker is two levels down. A test
+whose entire subject is an application dying mid-download was leaving the download running.
 
-**Pre-flight method, so it can be repeated.** `tests/ui/test_windows_desktop.py` skips itself off
-Windows, so the pre-flight loads the module's source with *only* the platform guard disabled and
-calls the real test functions with hand-built fixture values. Nothing is re-implemented: a
-pre-flight that paraphrased the assertions could pass while the file failed. All eight
-parametrised cases pass offscreen.
+`kill_the_application` now enumerates the tree **before** killing anything — once the parent is
+gone its children are reparented and the walk finds nothing — and kills all of it, which is what
+the POSIX branch has always done via `killpg`. Still `TerminateProcess`, so nothing unwinds.
 
-**Still owed, and now blocked on more than a job run:** the two `T-040` mutations must be executed
-**on Windows** and recorded, for the dialog chain as well as the view's. Nothing here has run
-there. GitHub Actions usage is exhausted as of 2026-07-28 and CI cannot run for several days, so
-this evidence is *scheduled*, not merely outstanding. `ai/TESTING.md` §12 keeps its gap and
-`T-026`'s criterion stays unmet until it has run.
+| Evidence | Result |
+|---|---|
+| three-level probe, before | grandchild and one sibling **survive** |
+| three-level probe, after, through the real `kill_the_application` | **tree reaped**, no survivors |
+| `test_end_to_end.py` ×5, before | **4 failed** |
+| `test_end_to_end.py` ×5, after | **5 passed** |
 
----
-
-### T-065 — Resolve the forbidden AI authorship trailer
-
-**Status:** **Decided 2026-07-28 — the exception is preserved; published history is not
-rewritten.** Maintainer decision, on the Implementer's recommendation. The remaining criterion is
-standing rather than open: no later commit carries an AI authorship trailer.
-**Owner:** Maintainer
-**Priority:** Low — repository provenance and process; no product behavior is affected
-**Phase:** Phase 1 coordination
-**Depends on:** nothing technical
-**Relevant context:** `GIT-R1`; `AGENTS.md` §7 and §13
-**Affected surfaces:** published commit `12dff92` and `origin/main`
-**Risk:** Low if left documented; High to correct because doing so rewrites published `main`
-
-#### Scope
-
-Commit `12dff92` contains `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`. That directly
-violates the repository's hard rule that commit history names the human maintainer only. The same
-message also omits the required `Task: T-060` trailer.
-
-The commit is already on `origin/main`, so correcting its message requires rewriting published
-history and force-pushing. `AGENTS.md` independently forbids that without confirmation. Do not
-silently choose one rule over the other.
-
-#### Acceptance criteria
-
-- The maintainer explicitly chooses either to preserve the published exception or authorize an
-  exact, bounded history rewrite
-- If a rewrite is authorized, the replacement commit preserves the reviewed tree, removes the AI
-  authorship trailer, adds the task/review trailers, and the force-push target is confirmed before
-  execution
-- If the exception is preserved, the violation and reason for not rewriting published history
-  remain recorded
-- Subsequent commits contain no AI authorship or generation trailers
-
-#### Decision, 2026-07-28
-
-**Preserve the published commit; do not rewrite `origin/main`.**
-
-The cause is not in dispute: the Implementer used its own default commit footer instead of this
-repository's rule, and `AGENTS.md` §7 is unambiguous. What was weighed is the correction, not the
-defect.
-
-**Rewriting costs more than the defect does.** Two records already cite `12dff92` by name — the
-focused re-review at `ai/REVIEWS.md` covers the range `11e1203 → 12dff92`, and the roadmap
-artifact cites it as the correction's head. A rewrite makes both point at a commit that does not
-exist, which trades a findable-by-search defect for two provably wrong citations. This project has
-twice found a record that read clean while describing something that was not there; manufacturing
-a third deliberately is the worse outcome.
-
-**What the defect actually costs, stated plainly:** `git log --grep='Task:.*T-060'` will not
-return `12dff92`. That is the entire practical consequence.
-
-**Mitigated, not hidden.** Commit `61fb8fb` carries `Task: T-060, T-061, T-063` and
-`Review: COORD-R4, GIT-R1`, and names `12dff92` in its body, so the trailer search reaches a
-commit that points at it. The violation stays visible in the history rather than being tidied
-away, which is the same reasoning that keeps superseded claims in these files struck through
-rather than deleted.
+**This is why `T-019`'s sibling tests deserve the same look.** They were written on a machine with
+no Windows, from a design argument about Job objects and parent watchdogs that is half right: the
+Job object exists and does propagate — one level.
 
 #### Out of scope
 
-- Any history rewrite; the decision above closes that option unless the maintainer reopens it
-- Changing the code or tests reviewed at `12dff92`
+- Changing how `multiprocessing` starts workers
+- The Qt font failure and the long-path failure seen in the same run (`T-067`, `T-068`)
+
+---
+
+### T-068 — Qt writes a font warning to stderr on a real Windows machine
+
+**Status:** **Blocked — on the disclosed runner and frozen questions**, 2026-07-28. The
+environment fix itself was not contested: the warning was the symptom, and the defect is that Qt
+had **zero font families** under `offscreen` on that machine, so the whole offscreen UI suite ran
+with no fonts. `QT_QPA_FONTDIR` is set before PySide6 is imported, is Windows-only, and honours an
+explicit caller value. The task's own acceptance criteria still require the runner difference to
+be explained and a Windows frozen artifact to be checked; both need a hosted runner. See
+**Evidence**.
+**Owner:** Implementer
+**Priority:** Medium — an assertion about a *clean* run is failing, and the cause is not understood
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T-007`, `tests/ui/test_app_launch.py`, `OPS-004`
+**Affected surfaces:** `tests/ui/test_app_launch.py`, possibly packaging
+**Risk:** Medium — unknown cause; it may be cosmetic, and it may be a deployment gap
+
+#### Scope
+
+`test_application_launches_and_exits_cleanly` asserts the application writes nothing to stderr on
+a clean run. On `STARBASE` it writes:
+
+```
+QFontDatabase: Cannot find font directory <prefix>/PySide6/lib/fonts.
+Note that Qt no longer ships fonts. Deploy some ... or switch to fontconfig.
+```
+
+**It fails in both the venv and the CI-style install**, so it is not the virtualenv — an
+A/B that also corrects the implementer's first guess, which was that the venv caused it. The
+cause is genuinely unknown and this task exists to find it rather than to silence it.
+
+Two reasons not to treat it as noise. It only appears on a machine that is not a CI runner, which
+is exactly the population `OPS-004` was written to stop assuming about. And a Qt that cannot find
+a font directory under the offscreen platform raises an unanswered question about the **frozen**
+artifact, which is what a user runs.
+
+#### Acceptance criteria
+
+- The cause is identified — not "PySide6 does that", but why this machine and not the runner
+- Whether the frozen build (`T-020`, `T-033`) shows the same warning is answered on Windows
+- If the warning is benign, the test says so deliberately rather than being loosened to pass
+- If it is not benign, the fix is in packaging or startup, not in the assertion
+
+#### Evidence, 2026-07-28
+
+**The warning was the symptom. The defect is an empty font database.** Measured under
+`QT_QPA_PLATFORM=offscreen` on `STARBASE`, in the interactive desktop session:
+
+```
+FAMILIES 0
+SAMPLE  []
+DEFAULT Sans Serif
+```
+
+Zero families. So the **entire offscreen UI suite** runs there against no fonts: every assertion
+about a widget's size, about elision, or about anything else derived from font metrics is measured
+against nothing — and passes. A suite that agrees with itself while measuring an empty font set is
+the shape `ai/TESTING.md` §13 exists to catch, which is why this was not allowlisted into
+`PLUGIN_NOISE` alongside `propagateSizeHints`. That allowlist is for artifacts that change no
+measurement; this one changes every measurement.
+
+**Not our code.** A bare `QApplication` produces nothing; a bare `QLabel` reproduces it in full,
+with no project code involved. Same result in the venv and the no-venv checkout, which also
+corrects the first guess recorded against this task — it is not the virtualenv.
+
+**Not the session either.** It reproduces identically in session 2, so it is not an artifact of
+running over SSH, which was the other plausible explanation and had to be ruled out because
+several other results were.
+
+**Fix:** `tests/conftest.py` sets `QT_QPA_FONTDIR` to `%WINDIR%\Fonts` on Windows, with
+`setdefault` so an explicit value wins. Verified: `families()` goes from 0 to a populated list and
+`test_application_launches_and_exits_cleanly` passes.
+
+**Open, and it needs a runner:** *why the runners do not show this.* Their offscreen Qt evidently
+finds fonts by some route this machine lacks, and until CI runs it is unknown whether
+`QT_QPA_FONTDIR` changes anything there. If their database is already populated the variable is
+ignored, which is the expected case — expected, not verified.
+
+#### Out of scope
+
+- Weakening the empty-stderr assertion to make the run green; that assertion caught this
 
 ---
 
@@ -1451,14 +1055,17 @@ Assert, on `windows-latest`:
 
 ---
 
+## Complete
+
 ### T-040 — Extend the Windows desktop gate to widget focus order
 
-**Status:** **In Review — the Windows mutation evidence exists**, 2026-07-28, produced on
-`STARBASE` rather than on CI. Baseline 28 passed under the real `windows` plugin in an interactive
-session; both `T-026` mutation classes were executed and killed; the one mutation that survives is
-the one measured as unobservable. `T-026`'s criterion is met and `ai/TESTING.md` §12's tab-order
-gap is rewritten rather than kept. **What it is not:** a repeatable gate. It is a recorded manual
-run on one machine, and it stays that way until a runner executes it. See **Evidence, on Windows**.
+**Status:** **Complete — approved with follow-up**, 2026-07-28. The behaviour and the manual
+mutation evidence are accepted: both `T-026` mutation classes were executed and killed on
+`STARBASE`, and the self-hosted desktop job is now a repeatable normal-run gate — job
+`90432207805` passed all 28 selected tests under the real Windows plugin. The mutation executions
+remain correctly described as **manual**, not automated. `COORD-R5`'s remaining filing and
+current-truth cleanup is carried to `T-072`; the re-review states this task may close on that
+carry **without another behavioural review**. See **Evidence, on Windows**.
 **Owner:** Implementer
 **Priority:** High once unblocked — it completes a `T-026` acceptance criterion that is
 currently unmet
@@ -1644,7 +1251,454 @@ state reached a commit. Nothing here has ever run.
 
 ---
 
-## Complete
+### T-060 — Focus chains are per state, and the Windows mutations still owe evidence
+
+**Status:** **Complete — approved with follow-up**, 2026-07-28 at `12dff92`. `T060-R1` and
+`T060-R2` were independently verified resolved with **no further code correction requested**, and
+the mutation evidence that was its last dependency was produced on `STARBASE` the same day
+(recorded under `T-040`). **The Windows-divergence claim in this task and in `T-040` was wrong**
+and is corrected below: Tab skips disabled and hidden controls, and that reproduces offscreen.
+`COORD-R5`'s remaining filing is carried to `T-072`; the re-review states this task may close on
+that carry **without another behavioural review**.
+**Owner:** Implementer
+**Priority:** Medium — it is the difference between a Windows focus gate and a Windows focus
+*claim*, and `T-026`'s acceptance criterion cannot be marked met until it is settled
+**Phase:** Phase 1
+**Depends on:** nothing to write. **Its evidence depends on the `windows desktop` CI job**, which
+is also what `T-040` and `T-056` are blocked on
+**Relevant context:** `T040-R1`; `T-040`; `T026-R3`; `NFR-005`; `ai/TESTING.md` §12 and §13
+**Affected surfaces:** `tests/ui/test_windows_desktop.py`, `ai/TESTING.md` §12
+**Risk:** Low to write, Medium to leave — a focus test that cannot reach a control it asserts on
+is a red build for a wrong reason, and a green one would be worse
+
+#### Scope
+
+**CI run `30380426474` failed four of `T-040`'s tests, not one.** The progress-view test is the
+one `T040-R1` predicted; the other three are the *dialog's*, and they are new information:
+
+| Failing on the real Windows plugin | |
+|---|---|
+| `test_tab_visits_the_declared_order_on_a_real_desktop` | dialog |
+| `test_the_focus_chain_wraps_in_both_directions` | dialog |
+| `test_every_control_is_reachable_from_the_initial_focus` | dialog |
+| `test_the_progress_view_focus_chain_is_walked_on_a_real_desktop` | `T040-R1` |
+
+**That reading was wrong, and correcting it is the most useful thing in this task.** This entry
+said the failures showed "the order Windows delivers is not the order Qt builds offscreen".
+They showed nothing of the kind. All four have one cause, and it reproduces offscreen:
+
+**Tab skips a control that is disabled or hidden, and every state of these widgets disables
+some.** The dialog disables `probeButton`, `cancelProbeButton` and `addButton` until there is a
+URL to act on — which is exactly the three CI reported unreachable — and the progress view
+disables `Cancel` on a terminal job and hides `Retry` on a running one. Walking Tab through the
+dialog offscreen with no URL typed produces the **identical** sequence `windows-latest` reported,
+ending `selectorValue → closeButton → urlInput`.
+
+So `EXPECTED_DIALOG_ORDER` was never the problem: the *order* is right, and what was missing was
+that a chain is the declared order **filtered by what the current state offers**. The offscreen
+suite had never pressed Tab, so nothing had observed this anywhere — not a platform difference,
+an untested behaviour.
+
+`T-040`'s progress-view test expects **three** reachable controls in one chain. That state does
+not exist. Measured on 2026-07-28:
+
+| The job is | Tab can reach | Why not the others |
+|---|---|---|
+| `FAILED`, retryable | `errorMessage`, `retryJobButton` | `cancelJobButton` is **disabled** — a terminal job cannot be cancelled (`T-017`) |
+| `RUNNING` | `cancelJobButton` | `errorMessage` and `retryJobButton` are **hidden** — nothing has failed |
+
+An isolated probe visited `retryJobButton → errorMessage → retryJobButton` and could never reach
+`cancelJobButton`.
+
+**The structural half of that test agreed with itself, which is how it got written.**
+`_focusable()` filters on `focusPolicy() != NoFocus`, and a *disabled* widget keeps its focus
+policy — so the set matched while the walk could not. Comparing a declared list against a
+computed list is the shape `T016-R4` and `T040-R1` have now each caught once; the walk is the
+only part that knows what a keyboard can do.
+
+So the chains have to be asserted **per state**, each with the set that state actually offers.
+
+#### Acceptance criteria
+
+- The failed state and the running state are asserted separately, each against the controls that
+  state makes reachable — a disabled or hidden control is not in the expectation for that state
+- Reachability is decided by driving Tab and Backtab and asking Qt what has focus, never by
+  comparing two lists this repository computes
+- A control that becomes reachable in a state without being declared for it fails
+- The `T-040` mutations that could not be run — reversing two widgets, and adding a focusable
+  control without placing it — are executed on Windows and **recorded**, for the dialog chain as
+  well as the view's
+- `ai/TESTING.md` §12 drops the "widget tab order is ungated" gap and `T-026`'s acceptance
+  criterion is marked met **only when all of the above has run on Windows**
+
+#### Out of scope
+
+- Nothing in the dialog's chain is out of scope any more: CI failed three of its tests too, and
+  the same per-state and real-focus reasoning applies to whatever it turns out to want
+- Making the progress view offer more controls than a state should; the disabled Cancel and the
+  hidden Retry are `T-017`'s behaviour and are correct
+
+#### Evidence, 2026-07-28
+
+**One cause, four failures.** See the correction above: Tab skips disabled and hidden controls,
+and both widgets disable some in every state. Not a platform difference.
+
+**Chains are now asserted per state.** The declared order is transcribed once; **availability is
+transcribed per state**, by hand, from what the dialog is *for* — "with no URL there is nothing to
+probe or add" is a design statement worth asserting, and reading it back from `_refresh_actions`
+would make the test agree with the code (`ai/TESTING.md` §13). **Three** dialog states and two
+progress view states, each checked for the set it offers, the order Tab walks, and wrapping both
+ways. (The third dialog state — a probe in flight — arrived with the correction round below; the
+first version left it out.)
+
+**`_focusable` was the structural half of the same mistake.** It filtered on
+`focusPolicy() != NoFocus`, which is true of a *disabled* widget — so it counted three controls
+the walk could never visit, and the two lists agreed with each other while disagreeing with the
+keyboard. It now also requires enabled and not hidden.
+
+**Pre-flighted offscreen, and that is evidence rather than hope.** Because the walk is identical
+there, all four states were driven locally before committing: reachable sets, walked order, and
+both wrap directions all match what the tests expect. **This is not a substitute for the Windows
+job** — the real plugin is the subject — but it is the difference between a test written from a
+design and one written from a guess.
+
+#### Correction round, 2026-07-28 — `T060-R1` and `T060-R2`
+
+**`T060-R1` — the probe-in-flight state is now asserted, and the gap it left was real.** The
+first version recorded `cancelProbeButton`'s absence as a deliberate gap. Recording a gap is not
+the same as being allowed to have one: that control is enabled in exactly one state and disabled
+in every other, so excluding that state excluded the only control that stops a running probe from
+every assertion in this file. A gate that skips the one state a control lives in does not gate
+that control.
+
+The state is reached without a worker. `_ProbeThatNeverAnswers` subclasses `DownloadManager` and
+overrides `start` to record the call and return; the dialog's own `_on_probe_saved` then sets
+`started`, `probing_job_id` becomes non-`None`, and `_refresh_actions` swaps Probe and Add out for
+Cancel. Deliberately **not** `entry_point=child_never_returning`, which is how `test_add_dialog.py`
+holds a probe open — that spawns a real process, and a worker left alive by a failed assertion
+here would be attributed to whichever test ran next. The factory asserts the state was actually
+reached, so a change to `_refresh_actions` cannot silently leave the chain asserted over an idle
+dialog.
+
+**`T060-R2` — the set is gone, and the finding's own mutation turns out to be unkillable.** The
+walk is now compared as a sequence, anchored on the control focus was placed on rather than
+rotated into place, and Backtab is driven for two full laps in both the dialog tests and the
+progress-view test. The same weakness was in `test_the_dialog_chain_wraps_in_both_directions`,
+which asserted set containment in both directions; it is corrected in the same batch.
+
+**But the reversal `T060-R2` names cannot be caught by any keyboard observation.** No state of the
+progress view offers more than two reachable controls, and *a two-element focus cycle has no
+observable orientation*: `A → B → A` and `B → A → B` are the same cycle, so from either control,
+Tab and Backtab both deliver the other one, from any starting point. Measured, not argued — the
+mutation was run and survived, and a four-line model of a 2-cycle shows why it must. This is
+recorded as unobservable rather than answered with an assertion that appears to catch it.
+
+Ordering is therefore gated where it is observable — the dialog's three states offer nine to
+twelve reachable controls — and the anchored sequence is asserted for the view anyway, because it
+costs nothing and begins gating order by itself the day a third control becomes simultaneously
+reachable.
+
+**Mutation results, offscreen, 2026-07-28 — 7 of 9 killed, both survivors explained:**
+
+| Mutation | |
+|---|---|
+| `titleValue`/`uploaderValue` swapped, each of the three dialog states | **killed** ×3 |
+| an undeclared focusable control appears in the dialog | **killed** |
+| an undeclared focusable control appears in the progress view | **killed** |
+| `cancelProbeButton` removed from the chain, probe in flight | **killed** |
+| the walk ignores `backwards` and always presses Tab (dialog) | **killed** |
+| progress view's delivered order reversed, declaration untouched | **survives — 2-cycle** |
+| the walk ignores `backwards` (progress view) | **survives — 2-cycle** |
+
+`probeButton`/`cancelProbeButton` is *not* a usable swap for the first mutation class: they are
+never enabled at the same time, so no walk can distinguish the two arrangements. That is the same
+2-cycle limitation seen from the other side, and it is why the swap is done on two controls that
+are reachable in every state.
+
+**Pre-flight method, so it can be repeated.** `tests/ui/test_windows_desktop.py` skips itself off
+Windows, so the pre-flight loads the module's source with *only* the platform guard disabled and
+calls the real test functions with hand-built fixture values. Nothing is re-implemented: a
+pre-flight that paraphrased the assertions could pass while the file failed. All eight
+parametrised cases pass offscreen.
+
+**Still owed, and now blocked on more than a job run:** the two `T-040` mutations must be executed
+**on Windows** and recorded, for the dialog chain as well as the view's. Nothing here has run
+there. GitHub Actions usage is exhausted as of 2026-07-28 and CI cannot run for several days, so
+this evidence is *scheduled*, not merely outstanding. `ai/TESTING.md` §12 keeps its gap and
+`T-026`'s criterion stays unmet until it has run.
+
+---
+
+### T-067 — Path behaviour is gated only with long paths enabled, which is not the default
+
+**Status:** **Complete — approved**, 2026-07-28 at `1e9694c`. No findings. The reviewer judged
+removing a fixture `mkdir` from a pre-filesystem rejection path correct, and the new test asks the
+OS to create a file at the accepted budget, so raising the project constant past what the default
+Windows configuration accepts can no longer agree with itself. See **Evidence**.
+**Owner:** Implementer
+**Priority:** Medium — a real user configuration is untested, and it is the majority one
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T-046`, `T-045`, `tests/unit/test_paths.py`
+**Affected surfaces:** `tests/unit/test_paths.py`, possibly `core/paths.py`, `ai/TESTING.md` §12
+**Risk:** Medium — the failure mode is a download that cannot be written
+
+#### Scope
+
+`test_a_directory_leaving_no_room_for_a_filename_raises` fails on `STARBASE` in **both** the venv
+and the CI-style checkout, with `FileNotFoundError: [WinError 206]` raised by the test's own
+setup while creating the deep directory it needs.
+
+`HKLM\SYSTEM\CurrentControlSet\Control\FileSystem\LongPathsEnabled` is **`0`** there, which is
+the Windows default. GitHub's runner images set it to `1`. So the test passes on CI because CI is
+configured unusually, and the behaviour this project ships is gated only under a setting most
+users do not have.
+
+The test is about what happens when a directory leaves no room for a filename — precisely a
+`MAX_PATH` question — so being unable to run it on a default-configured Windows is the sharp end
+of the gap rather than an inconvenience.
+
+#### Acceptance criteria
+
+- The test either constructs its fixture in a way that works with long paths disabled, or is
+  parameterised over both settings, or is explicitly scoped to one and says which
+- The application's own behaviour with `LongPathsEnabled=0` is stated: what a user sees when an
+  output path exceeds `MAX_PATH`, and whether `REQ`-level behaviour still holds
+- `ai/TESTING.md` §12 records which Windows configurations are gated, rather than implying "Windows"
+
+#### Evidence, 2026-07-28
+
+**The `mkdir` was the only filesystem access in the test**, and the code under test has none on
+this branch: `safe_output_path` raises at the length budget several lines before the one call that
+resolves anything. So the directory was created only to be named, and creating it is what died
+with `WinError 206` when `LongPathsEnabled=0`. Removing it changes no assertion.
+
+**A new test ties the constant to the filesystem rather than to itself.** Every other length test
+here compares `safe_output_path`'s output against `MAX_PATH_CHARACTERS`, so all of them would pass
+unchanged if that constant were raised past what Windows accepts.
+`test_a_path_this_accepts_is_one_the_filesystem_will_actually_take` writes the file.
+
+| Check | Result |
+|---|---|
+| Both tests, Windows, `LongPathsEnabled=0`, unelevated | **pass** |
+| Both tests, Linux | **pass** |
+
+The budget is 240 and Windows' limit is 260, which is why this passes — but that margin was
+previously an arithmetic argument nobody had executed on a machine where it mattered.
+
+#### Out of scope
+
+- Enabling long paths on any machine to make the test pass; that hides the finding
+
+---
+
+### T-069 — An end-to-end recovery test is intermittent on Windows
+
+**Status:** **Complete — approved**, 2026-07-28 at `8938478`. It was `T066-R1`: the Windows crash
+test killed one process level, orphaning the worker, and the orphan is what broke the restart.
+Fixed by reaping the tree; the failure rate went from **4 of 5 to 0 of 5**, reverting the fix
+restores the rate, and five clean file-level runs followed. The helper-strengthening residue
+belongs to `T-066`'s evidence contract and is carried to `T-072`.
+
+*(Previously: reproduced with a rate and narrowed to one interaction; not fixed. That reading
+outlived being true and is kept here as historical.)*
+**Owner:** Implementer
+**Priority:** Medium — an intermittent test in the suite that proves the restart criterion
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T-037`, `T-056`, `T-019`
+**Affected surfaces:** `tests/integration/test_end_to_end.py`
+**Risk:** Medium — it gates a Phase 1 exit criterion
+
+#### Scope
+
+`test_a_job_killed_mid_download_is_recovered_by_the_next_start` failed once on `STARBASE` in the
+venv checkout, then passed on re-run and passed in the CI-style checkout. One observation, so the
+rate is unknown and the cause is unidentified.
+
+It is filed rather than dismissed because it gates *job state survives an application restart
+mid-download*, and because it sits in the same process-reaping neighbourhood as `T-056`, whose
+own defect has been seen exactly once. Two single observations in one area is not proof of a
+common cause, and it is not nothing either.
+
+#### Acceptance criteria
+
+- The failure is reproduced with a rate, or a bounded search is recorded as not reproducing it
+- If it shares a cause with `T-056` or `T-066`, that is stated; if it does not, that is stated
+- Any fix is demonstrated by making the fixed behaviour fail when reverted
+
+#### Evidence, 2026-07-28
+
+**It is not intermittent; it is conditional, and the condition is now known.**
+
+| Run shape | Result |
+|---|---|
+| the test alone | **passes** |
+| whole `test_end_to_end.py`, 5 runs | **4 failed, 1 passed** |
+| after `test_a_url_becomes_a_file_with_the_bytes_it_reported` | **fails** |
+| after `test_a_progressive_download_completes_with_no_ffmpeg_at_all` | **passes** |
+
+So one specific predecessor triggers it, which is a 30-second reproduction for whoever fixes it.
+
+**Where it fails, exactly.** The restart half — the second `compose()`, the one that stands for
+the application starting again after the kill:
+
+```
+src/tracks_and_trails/app.py:206:  connection = db.connect(database_path)
+src/tracks_and_trails/persistence/db.py:171:  connection.execute("PRAGMA journal_mode = WAL")
+E   sqlite3.OperationalError: disk I/O error
+```
+
+**Why it matters more than a flaky test.** That statement is on the path of Phase 1's *job state
+survives an application restart mid-download* criterion, and the two tests use different
+`tmp_path` directories — so a shared database file is not the explanation, and the predecessor
+does shut its composition down through `OrderlyShutdown`. Whatever is left behind crosses between
+two tests that should not be able to affect each other.
+
+#### Resolved, 2026-07-28 — it was the orphaned worker
+
+**Neither of the two candidates I named.** `T066-R1` supplied the answer: `kill_the_application`
+killed a single process, so the worker survived the crash the test was simulating, and the
+surviving worker is what made the next `compose()` fail.
+
+| | Failure rate over 5 runs of the file |
+|---|---|
+| before, one-level kill | **4 of 5** |
+| after, whole-tree kill | **0 of 5** |
+
+At the prior rate, five clean passes by chance is about 0.03%.
+
+**Recorded rather than smoothed over:** I wrote that whether this was the test's fault or the
+product's "is exactly the question", and resolved to measure instead of guess. That was right, and
+the answer still came from a reviewer noticing something in a *different* task. A reproduction is
+what makes a hypothesis cheap to test; it is not what generates the hypothesis.
+
+#### Out of scope
+
+- Adding a retry to the test; that converts a real intermittency into a hidden one
+
+---
+
+### T-070 — The suite silently requires Windows privileges it never states
+
+**Status:** **Complete — approved**, 2026-07-28 at `1e9694c`. No findings. The capability is
+attempted in the test's own temporary directory, the skip tells a Windows developer which
+privilege or setting is missing, and the four original tests are unchanged wherever the capability
+exists. See **Evidence**.
+**Owner:** Implementer
+**Priority:** Medium — four tests failed on an ordinary desktop for a reason no message named
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T-067`, `T-066`, `docs/WINDOWS_VERIFICATION.md`, `ai/TESTING.md` §12
+**Affected surfaces:** `tests/capabilities.py`, `tests/conftest.py`, `tests/unit/test_paths.py`,
+`tests/integration/test_worker.py`
+**Risk:** Low to fix, Medium to leave — it reads as a broken checkout
+
+#### Scope
+
+Four tests create symlinks. On Windows that needs `SeCreateSymbolicLinkPrivilege` — Administrator
+rights, or Developer Mode. They failed with a bare `OSError` on a normal desktop session and
+passed when the same machine ran them elevated.
+
+**CI could never have reported this**, because GitHub's runners are elevated. It surfaced only
+when the suite was first run as an ordinary user, and the failure named a privilege nowhere: it
+reads like a broken checkout.
+
+#### Acceptance criteria
+
+- A machine without the capability says so, in words that name the privilege and the fix
+- The tests are otherwise unchanged and still gate wherever the capability exists
+- The capability is **attempted**, not inferred from `os.name` or an elevation check
+- `docs/WINDOWS_VERIFICATION.md` records elevation as one of the axes CI differs on
+
+#### Evidence, 2026-07-28
+
+`tests/capabilities.py` answers the question by making a symlink and removing it. A proxy —
+`os.name`, an elevation check, a Developer Mode registry read — would be wrong in some
+configuration; the attempt is the question itself.
+
+| Environment | Result |
+|---|---|
+| Windows, unelevated desktop session | **4 skipped**, each naming the privilege and Developer Mode |
+| Windows, elevated | **4 pass**, unchanged |
+| Linux | **4 pass**, unchanged |
+
+The skip is not the "retire a gate and replace it with theatre" failure `T-026` warns about: these
+tests still gate on Linux and on CI. What changed is that a machine lacking the capability says
+which one.
+
+#### Out of scope
+
+- Requiring Developer Mode to develop on Windows; the point is to name the requirement, not impose it
+- The other Windows configuration differences (`T-066`, `T-067`, `T-068`)
+
+---
+
+### T-065 — Resolve the forbidden AI authorship trailer
+
+**Status:** **Complete — decided** 2026-07-28. The exception is preserved and published history is
+not rewritten. Maintainer decision, on the Implementer's recommendation. The remaining criterion
+is standing rather than open: no later commit carries an AI authorship trailer, which the reviewer
+confirmed across every commit in the boundary.
+**Owner:** Maintainer
+**Priority:** Low — repository provenance and process; no product behavior is affected
+**Phase:** Phase 1 coordination
+**Depends on:** nothing technical
+**Relevant context:** `GIT-R1`; `AGENTS.md` §7 and §13
+**Affected surfaces:** published commit `12dff92` and `origin/main`
+**Risk:** Low if left documented; High to correct because doing so rewrites published `main`
+
+#### Scope
+
+Commit `12dff92` contains `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>`. That directly
+violates the repository's hard rule that commit history names the human maintainer only. The same
+message also omits the required `Task: T-060` trailer.
+
+The commit is already on `origin/main`, so correcting its message requires rewriting published
+history and force-pushing. `AGENTS.md` independently forbids that without confirmation. Do not
+silently choose one rule over the other.
+
+#### Acceptance criteria
+
+- The maintainer explicitly chooses either to preserve the published exception or authorize an
+  exact, bounded history rewrite
+- If a rewrite is authorized, the replacement commit preserves the reviewed tree, removes the AI
+  authorship trailer, adds the task/review trailers, and the force-push target is confirmed before
+  execution
+- If the exception is preserved, the violation and reason for not rewriting published history
+  remain recorded
+- Subsequent commits contain no AI authorship or generation trailers
+
+#### Decision, 2026-07-28
+
+**Preserve the published commit; do not rewrite `origin/main`.**
+
+The cause is not in dispute: the Implementer used its own default commit footer instead of this
+repository's rule, and `AGENTS.md` §7 is unambiguous. What was weighed is the correction, not the
+defect.
+
+**Rewriting costs more than the defect does.** Two records already cite `12dff92` by name — the
+focused re-review at `ai/REVIEWS.md` covers the range `11e1203 → 12dff92`, and the roadmap
+artifact cites it as the correction's head. A rewrite makes both point at a commit that does not
+exist, which trades a findable-by-search defect for two provably wrong citations. This project has
+twice found a record that read clean while describing something that was not there; manufacturing
+a third deliberately is the worse outcome.
+
+**What the defect actually costs, stated plainly:** `git log --grep='Task:.*T-060'` will not
+return `12dff92`. That is the entire practical consequence.
+
+**Mitigated, not hidden.** Commit `61fb8fb` carries `Task: T-060, T-061, T-063` and
+`Review: COORD-R4, GIT-R1`, and names `12dff92` in its body, so the trailer search reaches a
+commit that points at it. The violation stays visible in the history rather than being tidied
+away, which is the same reasoning that keeps superseded claims in these files struck through
+rather than deleted.
+
+#### Out of scope
+
+- Any history rewrite; the decision above closes that option unless the maintainer reopens it
+- Changing the code or tests reviewed at `12dff92`
+
+---
 
 ### T-071 — The icon reads as undersized beside other taskbar icons
 

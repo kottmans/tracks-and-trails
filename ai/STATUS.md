@@ -126,8 +126,9 @@ requested.
 network — Windows 10 22H2, reached over RDP in an interactive session, Python 3.14.6 and PySide6
 6.11.1 matching the runners exactly. It supplied the evidence `T-040` had owed since it was filed:
 28 desktop tests passing under the real `windows` plugin, and both `T-026` mutation classes
-executed and killed. **`T-040` and `T-060` are now In Review rather than Blocked, and `T-026`'s
-last acceptance criterion is met** — with no CI minutes spent.
+executed and killed. **`T-040` and `T-060` are Complete, approved with follow-up, and `T-026`'s
+last acceptance criterion is met** — with no CI minutes spent. *(This read "now In Review rather
+than Blocked" until their approvals landed later the same day; `COORD-R5`.)*
 
 **The `windows desktop` job runs on the maintainer's own machine as of 2026-07-28.** `STARBASE`
 is a self-hosted runner, in a logged-on elevated session, and job `90432207805` is green end to
@@ -144,36 +145,50 @@ now. `docs/WINDOWS_VERIFICATION.md` carries that and the two follow-on traps.
 `STARBASE`: the pre-correction helper passes 20/20, with a positive control proving the mutation
 was really applied. A Windows machine was not enough; it wants `windows-latest`'s image.
 
-**The same first run found five things CI structurally cannot see** (`T-066`…`T-070`), and all
-five are implemented as of 2026-07-28. STARBASE now runs **1384 passed, 24 skipped, 0 failed** as
-an ordinary unelevated user, from 8 failures at the start. Two are honestly incomplete: `T-068`
-cannot say why the runners do not show the empty font database, and `T-069` is reproduced and
-narrowed but not fixed. `docs/WINDOWS_VERIFICATION.md` records the machine, the harness, and the
-two traps that make a Windows run look valid when it is not. The original four: The largest
-is that `ci.yml` installs with no virtualenv while `docs/DEVELOPMENT.md` tells developers to use
-one — and on Windows a venv's `python.exe` spawns the real interpreter as a child, so every
-`multiprocessing` spawn sits one level deeper than CI ever tests. That is exactly the tree shape
-`T-019`'s reaping evidence is about. Also: `LongPathsEnabled=0` is the Windows default and fails a
-path test CI passes; Qt writes a font warning there and not on a runner; and an end-to-end
-recovery test is intermittent. **CI is one Windows configuration, and an unusual one.** `T-040` and `T-056` still need the `windows desktop` job —
-`T-040` for the two `T-026` mutations, which a green normal run does not supply, and `T-056` for a
-branch that has never executed. **GitHub Actions usage is exhausted as of 2026-07-28 and CI cannot
-run for several days** (maintainer) — workflow `30392139504` failed before executing a single
-step, on GitHub's billing annotation — so the *verified on Linux and Windows* criterion cannot
-move until it resets or another Windows runner appears. Then the exit review.
+**The same first run found five things CI structurally cannot see** (`T-066`…`T-070`), all five
+implemented on 2026-07-28 and all five since reviewed. STARBASE now runs **1384 passed, 24
+skipped, 0 failed** as an ordinary unelevated user, from 8 failures at the start.
+`T-067`, `T-069` and `T-070` are **Approved**. `T-066` and `T-068` are **Blocked on evidence**:
+`T-066`'s own `T-019` process-tree cases have never run under the venv shape it exists to cover,
+and `T-068` still cannot say why the runners do not show the empty font database.
+`docs/WINDOWS_VERIFICATION.md` records the machine, the harness, and the two traps that make a
+Windows run look valid when it is not.
+
+The largest of the five is that `ci.yml` installed with no virtualenv while `docs/DEVELOPMENT.md`
+tells developers to use one — and on Windows a venv's `python.exe` spawns the real interpreter as
+a child, so every `multiprocessing` spawn sits one level deeper than CI ever tested. That is
+exactly the tree shape `T-019`'s reaping evidence is about, and it is why `T-066` is not closed by
+a green desktop job. Also: `LongPathsEnabled=0` is the Windows default and fails a path test CI
+passes; Qt writes a font warning there and not on a runner; and an end-to-end recovery test was
+intermittent, which turned out to be `T066-R1` and is now fixed. **CI is one Windows
+configuration, and an unusual one.**
+
+**`T-040` is Complete, approved with follow-up.** STARBASE ran both `T-026` mutation classes and
+killed them, and the self-hosted `windows desktop` job is now a repeatable normal-run gate — job
+`90432207805`, 28 passed under the real Windows plugin. The mutation executions remain **manual**.
+`T-056` is the one that still needs the hosted image: its defect does not reproduce on STARBASE at
+all. **GitHub Actions hosted usage is exhausted as of 2026-07-28** — workflow `30392139504` failed
+before executing a single step, on GitHub's billing annotation — so the *verified on Linux and
+Windows* criterion cannot move until it resets. Then the exit review.
+
+*(This paragraph said `T-069` was "reproduced and narrowed but not fixed" and that `T-040` still
+needed the `windows desktop` job, after both had moved. `COORD-R5` reported the drift; it is
+rewritten rather than patched, and the superseded readings are named here rather than deleted.)*
 
 **The lesson is about method, not ffmpeg.** `T-037` was written, reviewed and approved on a machine
 that had what the runners did not, and had never passed on either. Four CI failures in one batch
 were one sentence: a test asserting something true of the author's machine.
 
-**`T-040` is Blocked with `T040-R1` still open, carried to `T-060`.** The correction drove keyboard
-focus as asked and then asserted a state that cannot exist: on a failed job `Cancel` is disabled
-and on a running one `Retry` and the error text are hidden, so no chain offers all three controls.
-The structural half passed because `focusPolicy() != NoFocus` is true of a *disabled* widget — a
-list agreeing with a list, which is the shape that task exists to stop being satisfied by.
-`T-060` has since landed and the job is green, but `T-040` stays Blocked: what it owes is the two
-`T-026` mutations run **on Windows**, and a passing normal run is not evidence for a mutation that
-was never executed.
+**`T040-R1` is closed, and what it caught is worth keeping.** The correction drove keyboard focus
+as asked and then asserted a state that cannot exist: on a failed job `Cancel` is disabled and on
+a running one `Retry` and the error text are hidden, so no chain offers all three controls. The
+structural half passed because `focusPolicy() != NoFocus` is true of a *disabled* widget — a list
+agreeing with a list, which is the shape that task exists to stop being satisfied by. It was
+carried to `T-060`, resolved there, and the mutations it demanded were finally executed on
+STARBASE.
+
+*(This paragraph opened "`T-040` is Blocked with `T040-R1` still open" until 2026-07-28, when the
+task was approved with follow-up. `COORD-R5`.)*
 
 **And one of those mutations turns out to be unkillable** (`T060-R2`, measured). No state of the
 progress view offers more than two reachable controls, and a two-element focus cycle is its own
@@ -295,6 +310,17 @@ unrun `T-019` process-tree cases, `COORD-R5`'s filing and current-truth cleanup,
 firewall-rule repair, plus the non-blocking `WIN-R3` and `RUNNER-R1` documentation corrections.
 `T-040` and `T-060` may close as Approved-with-follow-up on this carry **without another
 behavioural review**. See `T-072`.
+
+**Three of `T-072`'s five carries are done, and `T-064` with them** (2026-07-28). `COORD-R5` is
+discharged — every task is filed in the section its verdict names, the `## In Review` note no
+longer claims an emptiness it did not have, and `T-040`/`T-060` are Complete on that carry.
+`WIN-R3` and `RUNNER-R1` are corrected: the focus driver's control is `mut_control_chain.py`, and
+`timeout-minutes` bounds a job's *run* time while an unmatched self-hosted job queues for up to
+**24 hours** — a day-long failure mode that was documented as a fifteen-minute one. `T-064`
+recreated the venv: **45 of 46** launchers had been stale, not the 39 filed, because `T-063` had
+repaired this project's own two artefacts and nothing else. `T066-R1`'s survivor assertions are
+written and type-check under `--platform win32`, but they live in the Windows branch and **have
+not executed anywhere**. `WIN-R1` and the `T-019` process-tree run remain.
 
 **`T-071` — the icon was undersized, and the master says why.** Reported from a taskbar
 screenshot and fixed the same day: every derived asset drew the logo at ~66% of its canvas with

@@ -135,9 +135,15 @@ table of numbers:
   `NO RESULT`. The first version of this driver treated every non-zero exit as a kill and, having
   forgotten to pass its environment to the subprocess, reported three clean kills from runs that
   had executed no tests at all.
-- **A positive control.** `mutations/mut_control_always_dead.py` breaks the helper outright and
-  must fail. Without one, "the mutation survived" and "the mutation never applied" look identical
-  — which is how a real survival gets misread as a broken harness, and vice versa.
+- **A positive control, run first.** `mutations/mut_control_chain.py` makes `focus_chain()` return
+  nothing, which must fail the focus tests. Without one, "the mutation survived" and "the mutation
+  never applied" look identical — which is how a real survival gets misread as a broken harness,
+  and vice versa. It runs before the mutations for that reason: if the control does not fail, no
+  verdict after it means anything.
+
+  *(This named `mut_control_always_dead.py`, which is `T-056`'s control for `still_running` and
+  has nothing to do with the `T-026` focus harness. Corrected under `WIN-R3`; keep the `T-056`
+  control in the `T-056` procedure rather than presenting it as `T-026` evidence.)*
 
 ## The self-hosted runner
 
@@ -220,8 +226,18 @@ Recorded because each looks like a broken machine and is not.
 3. **The runner inherits its environment at start.** Anything you change afterwards — `PATH`, a
    reinstalled interpreter — needs a listener restart to take effect.
 
-**If the machine is off or logged out, the job queues rather than fails.** `timeout-minutes`
-bounds that. It is a real trade: this job is now as available as one desktop machine is.
+**If the machine is off or logged out, the job queues rather than fails — for up to 24 hours.**
+`timeout-minutes` does **not** bound this. It caps how long a job may *run* after a runner picks
+it up; a self-hosted job that no runner ever matches stays queued for about a day before GitHub
+discards it. See GitHub's
+[workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax#jobsjob_idtimeout-minutes)
+and [self-hosted routing](https://docs.github.com/en/actions/reference/runners/self-hosted-runners#routing-precedence-for-self-hosted-runners).
+
+It is a real trade: this job is now as available as one desktop machine is, and its failure mode
+when that machine is unreachable is a day-long hang rather than a prompt red.
+
+*(This said `timeout-minutes` bounded the queue wait. It does not, and the difference is 15
+minutes against 24 hours. Corrected under `RUNNER-R1`.)*
 
 ## What CI does differently
 

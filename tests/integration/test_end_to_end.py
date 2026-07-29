@@ -24,7 +24,6 @@ teardown works, which `T-036` already covers; `NFR-003` is about the other case,
 that has only ever been driven by a graceful exit is recovery nobody has tested.
 """
 
-import contextlib
 import os
 import signal
 import subprocess
@@ -94,6 +93,14 @@ if sys.platform == "win32":
 
         Still a crash, not a shutdown — `Process.kill` is `TerminateProcess`, so nothing unwinds
         and no handler runs, which is what the test needs.
+
+        **`T066-R1`, second half.** The first correction enumerated the tree and killed it, and
+        then discarded everything that said whether the killing had worked: every `psutil` error
+        was suppressed, and both lists `wait_procs` returns were thrown away. So this could return
+        — and let the caller reopen the database — with the worker still writing to it, which is
+        the orphan the whole test exists to rule out. The two assertions below are that gap
+        closed. They are assertions and not a reported probe on purpose: a survivor is not a
+        diagnostic here, it is the failure.
         """
         try:
             parent = psutil.Process(process.pid)
@@ -102,10 +109,31 @@ if sys.platform == "win32":
             process.kill()
             return
 
+        # Under a virtualenv the pid `Popen` returns is the launcher, not the interpreter running
+        # the application, so the tree is always deeper than the handle we were given. If it is
+        # not, the walk found nothing and killing it would prove nothing — which is exactly what
+        # made the original one-level `process.kill()` look sufficient for as long as it did.
+        assert len(doomed) > 1, (
+            f"the process tree under pid {process.pid} is only that pid. Expected at least the "
+            f"interpreter beneath the venv launcher. A walk that finds nothing makes the kill "
+            f"below meaningless, which is the T066-R1 failure shape."
+        )
+
+        refused: list[str] = []
         for victim in doomed:
-            with contextlib.suppress(psutil.Error):
+            try:
                 victim.kill()
-        psutil.wait_procs(doomed, timeout=30)
+            except psutil.NoSuchProcess:
+                continue  # raced with the tree tearing itself down; that is a kill, not a miss
+            except psutil.Error as error:
+                refused.append(f"pid {victim.pid}: {error!r}")
+
+        _, alive = psutil.wait_procs(doomed, timeout=30)
+        assert not alive, (
+            f"{len(alive)} process(es) survived the kill and still own the database this test is "
+            f"about to reopen: {sorted(survivor.pid for survivor in alive)}. "
+            f"Kills refused: {refused or 'none'}."
+        )
 
 else:
 

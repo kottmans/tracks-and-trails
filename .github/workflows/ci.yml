@@ -208,7 +208,11 @@ jobs:
   # made conditional still execute here rather than skipping.
   #
   # `docs/WINDOWS_VERIFICATION.md` carries the setup and both traps. If the machine is off or
-  # logged out this job queues rather than failing, which `timeout-minutes` bounds.
+  # logged out this job queues rather than failing, and `timeout-minutes` does NOT bound that:
+  # it caps how long a job may *run* once a runner picks it up. An unmatched self-hosted job
+  # stays queued for up to **24 hours** before GitHub discards it (RUNNER-R1). Availability of
+  # this job is the availability of one desktop machine, with a day-long failure mode, not a
+  # 15-minute one.
   windows-desktop:
     name: windows desktop
     runs-on: [self-hosted, windows, desktop]

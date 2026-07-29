@@ -184,19 +184,30 @@ $ .venv/bin/python -m tracks_and_trails --version
 No module named tracks_and_trails
 ```
 
-**Fix: re-run the install from the checkout you actually work in.**
+**Fix: recreate the venv from the checkout you actually work in** (`T-064`).
 
 ```bash
 cd /path/to/your/tracks-and-trails      # the directory containing pyproject.toml
-.venv/bin/python -m pip install -e ".[dev]"
+python3 -m venv --clear .venv
+.venv/bin/python -m pip install --upgrade pip
+.venv/bin/python -m pip install -e ".[dev]"      # add ,build for PyInstaller
 ```
 
-Then check both entry points, because they fail independently:
+**Reinstalling this project alone is not enough, and that is the trap.** It rewrites *our*
+`.pth` and *our* console script, so the application starts and the fault looks fixed — while
+every launcher installed by a dependency still names the old interpreter. After a move this
+checkout had **45 of 46** launchers stale, `mypy` and `pytest` among them, with
+`tracks-and-trails` the only healthy one. The documented bare commands keep failing for a reason
+the application's own success actively hides. `--clear` is what rewrites all of them.
+
+Then check the entry points and the tools, because they fail independently:
 
 ```bash
 .venv/bin/tracks-and-trails --version           # exercises the shebang
 .venv/bin/python -m tracks_and_trails --version # exercises the .pth
 .venv/bin/python -c "import tracks_and_trails; print(tracks_and_trails.__file__)"
+.venv/bin/mypy --version                        # a dependency-owned launcher
+.venv/bin/pytest --version                      # the other one you will reach for first
 ```
 
 The third command is the one worth keeping: it prints which tree is actually imported, and a venv
@@ -211,7 +222,12 @@ twice already, so this is a recurring first-five-minutes problem rather than a o
 
 ## Windows
 
-There is currently **no Windows machine available**, so Windows is verified through CI only
-(`OPS-003`). Setup there is the same apart from venv activation. If you *do* have a Windows
-machine, several things need a human — see `ai/TESTING.md` §9; that list blocks the first
-public release.
+Windows is verified on **`STARBASE`**, the maintainer's own machine, which is both an interactive
+verification target and a self-hosted runner for the `windows desktop` job (2026-07-28). Setup
+there is the same apart from venv activation. `docs/WINDOWS_VERIFICATION.md` is the procedure.
+Several things still need a human — see `ai/TESTING.md` §9; that list blocks the first public
+release.
+
+*(This section said "there is currently no Windows machine available, so Windows is verified
+through CI only" while the same file's "Verifying on Windows" section above described running the
+suite on exactly such a machine. Corrected under `T-064`.)*
