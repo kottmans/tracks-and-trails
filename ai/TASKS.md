@@ -360,6 +360,19 @@ gate cannot be discharged on Linux.
 | `tests/integration/test_end_to_end.py` | 4 passed |
 | `ruff check .` · `ruff format --check .` | Passed · 105 files already formatted |
 | `mypy` · `mypy --platform win32` | Success, 78 source files · Success, 78 source files |
+| Full suite | 1399 passed, 11 skipped, 2 deselected |
+
+**On Windows**, run `30416156751` at `38650dd`:
+`test_a_job_killed_mid_download_is_recovered_by_the_next_start` **PASSED** inside the full suite —
+1388 passed, 20 skipped, 205 s. That exercises the correction end to end on the platform it was
+written for: the handshake parsed, `capture_the_doomed_tree` found the worker as a descendant of
+the *reported* pid under the venv shape (a walk that had not would have failed the new assertion),
+and nothing survived the kill.
+
+**What that run does not establish**, stated because the previous version of this task was
+approved on exactly this kind of gap: a green run is not a demonstrated kill. The two mutations
+have not executed on Windows. `mut_tree_drop_worker` in particular can only be gated there, and
+until it runs, the completeness of the captured set is argued rather than measured.
 
 #### Out of scope
 
