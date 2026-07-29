@@ -35,7 +35,7 @@ from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import psutil
 import pytest
@@ -147,21 +147,49 @@ else:
         )
 
 
-def the_workers_that_must_die(application_pid: int) -> list[psutil.Process]:
-    """The worker set, obtained by the test **independently of what will do the killing**.
+#: `multiprocessing`'s bookkeeping child, which is not a worker and must never be counted as one.
+#: `tests/integration/test_manager.py` excludes it from `worker_processes()` for the same reason,
+#: and names the same string.
+RESOURCE_TRACKER_MARKER: Final = "multiprocessing.resource_tracker"
 
-    `T072-R1`, second round. The first correction asserted `not alive` against `doomed` — the same
-    list the kill was given — so a fault that dropped the worker from that list also dropped it
-    from the assertion, on every platform. The check and the thing it checks cannot come from one
-    source. This function is that second source: nothing downstream can shrink it, so a `doomed`
-    that is missing the worker fails against the set recorded here.
+
+def the_workers_that_must_die(application_pid: int) -> list[psutil.Process]:
+    """The **worker** set, obtained independently of whatever will do the killing.
+
+    `T072-R1`, third round. Two faults preceded this, and both were assertions that looked like
+    checks:
+
+    1. The first asserted against `doomed` — the same list the kill was handed — so a fault that
+       dropped the worker from that list dropped it from the assertion too.
+    2. The second separated the lists but returned *every descendant*, which on `multiprocessing`
+       means the resource tracker as well as the worker. The tracker outlives the worker, so the
+       positive control failed on the tracker while calling it a worker, and a reviewer's mutation
+       that killed the application and tracker but deliberately spared the real worker **passed in
+       1.38 s**.
+
+    So the exclusion below is the whole point of this function rather than a detail: the tracker is
+    infrastructure, it is long-lived, and counting it means the check can be satisfied by something
+    that was never doing any work. Everything else is kept — an `ffmpeg` grandchild is not a worker
+    either, but it *is* a process that would go on writing to the disk, which is the property these
+    tests are actually about (`T-019`).
     """
     application = psutil.Process(application_pid)
-    workers: list[psutil.Process] = application.children(recursive=True)
+    workers: list[psutil.Process] = []
+    for child in application.children(recursive=True):
+        try:
+            if RESOURCE_TRACKER_MARKER in " ".join(child.cmdline()):
+                continue
+            if child.status() == psutil.STATUS_ZOMBIE:
+                continue
+            workers.append(child)
+        except psutil.NoSuchProcess, psutil.AccessDenied:  # it exited mid-question
+            continue
+
     assert workers, (
-        f"the application (pid {application_pid}) has no descendants while its job says RUNNING. "
-        f"The worker is what makes this kill meaningful, and T072-R1 is precisely the failure of "
-        f"asserting a tree shape that a worker-less tree also satisfies."
+        f"the application (pid {application_pid}) has no worker while its job says RUNNING — "
+        f"only {[child.pid for child in application.children(recursive=True)]}, which after "
+        f"excluding the resource tracker leaves nothing. The worker is what makes this kill "
+        f"meaningful; without one, killing proves nothing about orphans."
     )
     return workers
 
@@ -502,7 +530,13 @@ def test_a_job_killed_mid_download_is_recovered_by_the_next_start(
     database = tmp_path / "queue.db"
     downloads = tmp_path / "downloads"
     downloads.mkdir()
-    url = media_url(total_bytes=CLIP_BYTES, chunk_delay=0.05)
+    # **Paced so that a worker which survives the kill is still running when we look**
+    # (`T072-R1`). At 0.05 s the whole clip took under a second, so a missed worker finished
+    # naturally long before any assertion could notice it was missed — the check would have passed
+    # with no kill at all. Sixteen chunks at 0.5 s leaves seconds of download in flight at kill
+    # time, which is what makes the survivor observable. It costs nothing in the passing case:
+    # `wait_procs` returns as soon as everything is gone.
+    url = media_url(total_bytes=CLIP_BYTES, chunk_delay=0.5)
 
     environment = dict(os.environ, PYTHONPATH=str(REPO_ROOT / "src"), QT_QPA_PLATFORM="offscreen")
     process = subprocess.Popen(
@@ -574,7 +608,12 @@ def test_a_job_killed_mid_download_is_recovered_by_the_next_start(
         doomed = capture_the_doomed_tree(process, application_pid)
         kill_the_application(process, doomed)
 
-        _, survivors = psutil.wait_procs(must_die, timeout=30)
+        # **Deliberately shorter than the download still in flight.** A generous timeout is wrong
+        # here: `wait_procs` returns as soon as everything is gone, so a long one only matters
+        # when something survived — and waiting 30 s would let a missed worker finish the clip
+        # and be reported as correctly reaped. Five seconds is longer than any real kill needs
+        # and shorter than the seconds of paced download remaining.
+        _, survivors = psutil.wait_procs(must_die, timeout=5)
         assert not survivors, (
             f"{len(survivors)} worker process(es) outlived the kill and still own the database "
             f"this test is about to reopen: {sorted(p.pid for p in survivors)}. The kill was "

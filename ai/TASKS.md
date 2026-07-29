@@ -436,6 +436,49 @@ asserts the application has at least one descendant — the worker, which is the
 kill means anything — and returns that exact set. `kill_the_application()` no longer walks; it
 kills what it was handed and asserts nothing survived.
 
+#### `T072-R1`, third round — the oracle was counting the wrong process
+
+**The second correction separated the lists and then conflated the processes.**
+`the_workers_that_must_die()` returned *every* descendant, which under `multiprocessing` means the
+**resource tracker** as well as the worker. The tracker outlives the worker, so the positive
+control failed on the tracker while calling it a worker — and a reviewer's mutation that killed the
+application and the tracker but deliberately spared the real worker **passed in 1.38 s**. The
+control had teeth only for "some long-lived descendant".
+
+Three things were wrong, and the third was the one that mattered:
+
+1. **The tracker was in the set.** Excluded now, by the same `multiprocessing.resource_tracker`
+   marker `tests/integration/test_manager.py` has always used for the same reason.
+2. **`mut_tree_shallow_walk` patched the oracle as well as the capture**, so it shrank the check
+   and the checked thing together. It now touches `capture_the_doomed_tree` only.
+3. **The clip was too short for the assertion to mean anything.** 512 KiB in 32 KiB chunks at
+   0.05 s finished in under a second, so a worker that survived the kill exited *naturally* long
+   before any check noticed — the assertion would have passed with no kill at all. The test now
+   paces at 0.5 s and waits **5 s**, deliberately shorter than the download still in flight. The
+   passing case costs nothing: `wait_procs` returns as soon as everything is gone.
+
+**Measured, on Linux:**
+
+| Plugin | Result | Why |
+|---|---|---|
+| `mut_control_worker_survives` | **KILLED**, 6.4 s | The kill is disabled, the worker is genuinely still downloading, and the failure names **one** pid — the worker, with the tracker excluded |
+| `mut_tree_shallow_walk` | Survives | The capture walks from the application, whose direct children already include the worker. Shallow and recursive differ only if the worker spawned its own child. Unobservable, like `T060-R2`'s reversal |
+| `mut_tree_drop_worker` | Survives | `killpg` reaches the whole group whatever was captured |
+| Reviewer's spare-the-worker | Survives | **And this is the interesting one — see below** |
+
+**Sparing the worker is unkillable on Linux because the product handles it.** `worker.py`'s
+**orphan guard** — `spawn_session()` watches the parent and exits if it disappears — reaps the
+worker when the application dies, whether or not anything killed it directly. The two controls
+prove it as a pair: with the kill disabled the application lives and the worker is still running at
+6 s; with the application killed and the worker deliberately spared, the worker is gone in 1.4 s.
+That is `REQ-015`'s orphan guard working, not a hole in the oracle, and it is recorded as the
+measured outcome the re-review asked for rather than forced into a kill.
+
+**Which makes the Windows run the whole remaining question.** `T-066` measured the opposite there:
+the grandchild **survived** `process.kill()`. Either the orphan guard does not fire on Windows or
+it does not fire in time, and that difference is exactly what `mut_tree_drop_worker` is for on
+`STARBASE`.
+
 #### `T072-R1`, second round — the assertion was still circular
 
 **The first correction moved the fault rather than fixing it.** It asserted `not alive` against
@@ -467,8 +510,6 @@ becomes observable, because Windows kills members one at a time.
 | Check | Result |
 |---|---|
 | Baseline, unmutated | 1 passed |
-| `mut_tree_shallow_walk` on Linux | **FAILED** — "the application (pid …) has no descendants while its job says RUNNING" |
-| `mut_tree_drop_worker` on Linux | 1 passed — the documented, expected survival |
 | `tests/integration/test_end_to_end.py` | 4 passed |
 | `ruff check .` · `ruff format --check .` | Passed · 105 files already formatted |
 | `mypy` · `mypy --platform win32` | Success, 78 source files · Success, 78 source files |

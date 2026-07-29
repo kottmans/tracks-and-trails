@@ -5824,3 +5824,83 @@ answer about the live queue. `T072-R2` and `T073-R1` are non-blocking documentat
 This was T-072's focused correction re-review. With only Medium-or-lower findings remaining, the
 ordinary pass budget is exhausted; another focused pass requires the maintainer to authorize it,
 accept the documented risk, change scope, or carry the work into another named follow-up.
+
+## 2026-07-29 — T-072 second correction focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `dc02084`  **Head:** `825e3cd`
+**Scope:** The five findings from the preceding review, their correction diff, OPS-006, and the
+exact-head normal Windows run
+**Boundary classification:** Integration-test helper and mutation plugins plus
+documentation/coordination; no production source
+**Verdict by task:** T072-R3 and COORD-R6 **Resolved**; T072-R1 **Still open / Changes
+requested**; T072-R2 and T073-R1 **Partially corrected, still open and non-blocking**; OPS-006
+**Accepted as the maintainer's scope decision**; T-072 remains **In Progress / Changes
+requested**
+
+The maintainer supplied this new review boundary after the prior pass-budget warning; this review
+treats that handoff as authorization for the additional focused pass. The boundary contains three
+commits. `HEAD` and `origin/main` both resolved to `825e3cd`, and the tree was clean.
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T072-R1` | **Medium** | **Yes — T066-R1's process-tree half** | Separating `must_die` from `doomed` fixes the list aliasing, but the new positive control does not prove a **worker** can be detected. An instrumented run identified `must_die` as PID 46887 running `multiprocessing.resource_tracker` and PID 46889 running `multiprocessing.spawn`. With `kill_the_application()` disabled, the 30-second wait let the actual worker finish naturally; the assertion failed only on PID 46887, the resource tracker, while reporting it as a worker that still owned the database. A deterministic reviewer mutation then killed the application and tracker, deliberately omitted the actual spawn worker, and the test passed in 1.38 s. Separately, `mut_tree_shallow_walk` patches both `capture_the_doomed_tree` **and the independent oracle** `the_workers_that_must_die`; any deeper process removed from the capture is therefore removed from the check too. The control still has teeth only for “some long-lived descendant,” not for the worker identity T072-R1 requires. | Obtain the actual worker identity independently of the capture, excluding the resource tracker. Keep that worker alive longer than the assertion in the positive control—for example, block its HTTP response until cleanup—and show the failure names that PID. A capture mutation must not patch or shrink the oracle. Then run the drop-worker mutation on Windows; if the worker exits through another legitimate reap path, record that measured outcome rather than requiring a kill for its own sake. | **Still open** |
+| `T072-R2` | **Low** | **No** | The superseded STATUS block is now explicitly historical, resolving the cited block. Two current statements remain stale: `ai/TASKS.md:467-475` still records the old empty-walk plugin as FAILED although the new shallow plugin survives, and `ai/STATUS.md:368-375` still says WIN-R1 is T-072's last carry while T072-R1 is open too. | Replace the old check table with the current control/shallow/drop results and make the later STATUS paragraph historical or current. | **Partially resolved, still open** |
+| `T072-R3` | **Medium** | **No — correction resolved; execution remains owed** | The procedure now uses `Set-NetFirewallRule` on the existing rule, sets `$ErrorActionPreference = "Stop"`, and reads back both profile and remote address before running the repair. The two explicit `throw`s prevent an already-scoped rule from masquerading as the defective setup. | Execute the corrected procedure on Windows and retain its before/after output. | **Resolved; external evidence pending** |
+| `COORD-R6` | **Medium** | **No** | The TASKS preamble now includes T-074, gives T-072/T-073/T-064 their current states, and the In Review section actually holds T-073. STATUS rewrites the hosted-quota claim and preserves its superseded reading explicitly. | None. | **Resolved** |
+| `T073-R1` | **Low** | **No** | T-073's task now records the correct 6 m 29 s wall time and the exact `1412 - 2 + 28 = 1438` JUnit reconciliation. `ai/STATUS.md:388-395`, however, still says the same two tests are unexplained. | Carry the resolved JUnit explanation into STATUS or remove its duplicate count analysis. | **Partially resolved, still open** |
+
+### Task judgments
+
+- **T072-R1:** The structural direction is accepted: `must_die` and `doomed` are now separate
+  list instances, and the final assertion retains the former. The focused evidence above prevents
+  resolution because the independent list still conflates the worker with an unrelated,
+  longer-lived multiprocessing helper, and the positive control is killed by that helper after
+  the worker has already gone.
+- **T072-R3 / WIN-R1:** The previously vacuous setup recipe is corrected. The script and its
+  repair path remain runtime-unverified, as the task accurately says.
+- **COORD-R6:** Resolved. The opening queue, section placement, and criterion narrative now agree
+  on T-074 as the live blocker.
+- **T073-R1:** The canonical task evidence is corrected, so T-073 remains Approved with a
+  non-blocking STATUS cleanup.
+- **OPS-006:** Accepted as the maintainer's explicit platform decision. It names the loss of
+  bare-environment system-library coverage, retains the hosted Linux job, and gives the decision
+  a concrete reopening condition rather than treating the developer desktop as equivalent to a
+  clean image.
+- **Exact-head Windows baseline:** Run `30418180639`, job `90469110274`, is green at `825e3cd`.
+  The end-to-end recovery test and the T-074 crash site both passed; the full suite reported
+  **1388 passed, 20 skipped, 30 deselected**. This is normal-path evidence only, not the owed
+  T072 mutation or firewall execution.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Corrected baseline | **1 passed** |
+| `mut_control_worker_survives` | **Killed**, but after 30 s only the resource tracker survived; the actual worker had exited |
+| Instrumented descendant identity | Resource tracker PID 46887; actual spawn worker PID 46889 |
+| Reviewer mutation omitting the actual worker | **Survived**, 1 passed in 1.38 s after the app and tracker were killed |
+| `mut_tree_shallow_walk` on Linux | **Survived**, 1 passed |
+| `mut_tree_drop_worker` on Linux | **Survived**, 1 passed |
+| Full Linux default suite | **1399 passed, 11 skipped, 2 deselected** in 100.65 s |
+| Exact-head STARBASE run `30418180639` | STARBASE job green; **1388 passed, 20 skipped, 30 deselected** in the full suite |
+| Bare `mypy` | Passed: **78 source files** |
+| Bare `mypy --platform win32` | Passed: **78 source files** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | **106 files already formatted** |
+| `git diff --check dc02084..825e3cd` | Passed |
+| Direct STARBASE mutation/firewall attempt | **Not run** — SSH to `192.168.68.65:22` timed out while its Actions runner remained reachable |
+
+The temporary reviewer probes lived under `/tmp`; they did not modify the repository.
+
+### Final disposition
+
+T072-R3 and COORD-R6 are **Resolved**. OPS-006 is accepted. T-073 remains **Approved with the
+non-blocking T073-R1 STATUS cleanup**.
+
+T-072 remains **In Progress / Changes requested** on T072-R1. The new list separation is
+necessary but the positive control is still killed by the resource tracker after the actual
+worker exits, so it does not demonstrate the worker-specific gate. The Windows drop-worker
+mutation and corrected firewall procedure are also still explicitly owed.

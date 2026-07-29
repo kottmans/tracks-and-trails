@@ -371,8 +371,12 @@ and green while every hosted job still fails at zero steps on the billing annota
 passed, 3 skipped**, the three skips being the POSIX-only half of a platform-split file. That run
 executed the `T-019` process-tree cases under the venv shape **for the first time anywhere** —
 including the grandchild case — and it executed `T066-R1`'s survivor assertions with them. `T-066`
-is accordingly narrowed to frozen-artifact evidence alone. **`WIN-R1` is the last carry left in
-`T-072`.**
+is accordingly narrowed to frozen-artifact evidence alone.
+
+*(This said "`WIN-R1` is the last carry left in `T-072`" — true for a few hours, then not:
+`T072-R1` reopened `T066-R1` on the same day, twice more. `T072-R2` reported the sentence
+outliving its truth. `T-072`'s own **Progress** table is the live answer; this paragraph is
+historical.)*
 
 **`T-056` and `T-068` are no longer phase blockers** (`OPS-005`, maintainer decision 2026-07-29).
 Both stay open and Blocked; neither gates the exit. `STARBASE` is now the platform the *verified on
@@ -390,9 +394,14 @@ Qt baseline and the full suite alongside the desktop slice, reusing the venv it 
 **recording** ffmpeg rather than installing it, because this job must never provision the machine
 it runs on. Run `30415333608`: all fourteen steps green, **1388 passed, 20 skipped, 30 deselected
 in 208 s**, with `ffmpeg 8.1.2` present — so it measured the same with-ffmpeg configuration the
-hosted job does. The count differences against Linux reconcile to the `windows_desktop`
-deselections and the POSIX-only skips, **except for two tests** that the arithmetic does not
-explain; that is flagged in `T-073` for review rather than waved through.
+hosted job does. The count differences against Linux reconcile exactly: Linux carries two
+module-level **"collection skipped"** placeholders, for `tests.ui.test_windows_accessibility` and
+`tests.ui.test_windows_desktop`, which Windows replaces with the 28 real desktop cases —
+`1412 - 2 + 28 = 1438`.
+
+*(This said two tests were unexplained and flagged for review. They were explained, by
+`T073-R1`, from the JUnit output rather than from the counts; the arithmetic alone gives 26
+against 28 and no way to resolve it.)*
 
 **The remaining hole in criterion 7 was Linux, not Windows** — `check (ubuntu-latest)` is hosted
 and has not started either. Windows became the better-covered of the two platforms, which is a

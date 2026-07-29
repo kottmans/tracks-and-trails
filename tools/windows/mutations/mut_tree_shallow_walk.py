@@ -26,8 +26,14 @@ _real_children = psutil.Process.children
 
 def _shallow_inside_the_capture(self, recursive=False):
     for frame in inspect.stack():
-        if frame.function in ("capture_the_doomed_tree", "the_workers_that_must_die"):
+        # **`capture_the_doomed_tree` only.** An earlier version also matched
+        # `the_workers_that_must_die`, which is the oracle — so this shrank the check and the
+        # thing it checks together, and could not have failed however wrong the capture was. A
+        # mutation that reaches the oracle is not testing the oracle, it is disabling it.
+        if frame.function == "capture_the_doomed_tree":
             return _real_children(self, recursive=False)
+        if frame.function == "the_workers_that_must_die":
+            return _real_children(self, recursive=recursive)
     return _real_children(self, recursive=recursive)
 
 
