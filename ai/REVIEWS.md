@@ -6147,3 +6147,55 @@ resource-aware frozen gate. Windows evidence remains externally pending.
 
 Per the maintainer's instruction, this is the last review pass. No further automatic correction
 review will be initiated.
+
+## 2026-07-29 — T-073, T-075, and T-076 review
+
+**Reviewer:** Codex (Reviewer)
+**Boundaries:** T-073 `df2b106..c41e2ef`, with its evidence correction through `9802a6a`;
+T-075 `26c1d4e..7515ca3`; T-076 `7515ca3..77b7165`
+**Concurrent-work exclusion:** Later T-077 coordination and test commits were not part of the
+review boundary. They do not change the T-075 or T-076 production code.
+**Verdict by task:** T-073 **Approved**; T-075 **Changes requested**; T-076 **Changes
+requested**
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T075-R1` | **Critical** | **Yes** | `DownloadManager.retarget` reads the store and invokes `then` immediately when the visible request already equals the requested one (`manager.py:839-848`). `PersistentJobStore.get` deliberately exposes the newest in-flight revision, so this equality does **not** establish durability or successful settlement. A deterministic deferred-write probe submitted `retarget(old -> new, then=start)` twice. The second call saw the first in-flight `new` revision and reserved a start immediately; the first write was then failed; the queued start settled against the durable `old` request and spawned it. The observed final row was `RUNNING` with `old-video`, and the spawn event carried `old-video`. The same fast path also skips the `RETARGETABLE` status check. This directly falsifies the task's promise that a failed request write starts nothing and recreates the Critical defect: silently downloading something other than the user's displayed choice. Existing tests use a synchronous store and do not exercise a failed in-flight retarget or two rapid Add actions. | Put the equality/no-write decision inside the job's per-job chain. When that step reaches the front, re-read the settled candidate, enforce `RETARGETABLE`, and invoke `then` only if the requested value is already durable or its replacement write succeeds. Add a deferred write-through regression reproducing two rapid retarget/Add calls with the first write failed; assert no reservation, session, or spawn and that the durable request remains unchanged. Audit other same-value fast paths for the same chain bypass. | **Open** |
+| `T076-R1` | **Medium** | **Yes** | The requested control was MP3-only, but every gate uses `CONVERTING_AUDIO_CODECS`: `with_audio_quality` accepts every converting codec (`presets.py:205-226`), `selected_preset` applies the selected MP3 bitrate to each of them (`add_dialog.py:634-645`), and the control is enabled for each (`add_dialog.py:1219-1222`). An offscreen probe supplied a valid FLAC preset through `AddUrlDialog(presets=...)`; the control named **MP3 bitrate** was enabled, the selected preset became FLAC at quality `192`, and the display read `192 kbps FLAC`. FLAC, WAV, ALAC, and the other converting codecs do not use an MP3 bitrate in the sense this task exposes. Built-in-only tests miss the defect because MP3 is presently the only built-in converting preset. This violates the task's explicit “enabled only when the selected preset converts to MP3” scope and its refusal criterion. | Gate the helper, selected-preset derivation, display, and widget enablement on `AudioCodec.MP3`, not the general converting-codec set. Add a non-MP3 converting preset (at least FLAC) to the helper and dialog tests, asserting refusal and a disabled control. | **Open** |
+| `T076-R2` | **Low** | **No** | The implementation offers the requested five values in the requested order and defaults to 192, but no test asserts that closed list or its default. More importantly, the persistence test changes bitrate without probing, while T-075 established that the historically failing user path is probe, change the choice, then Add. A regression that preserves the probed request's old `audio_quality` could pass the current T-075 test (which expects default 192) and the current T-076 test (which never probes). | In the T076-R1 correction, assert the exact ordered values and default, then cover probe → choose MP3 → choose 320 → Add and inspect the durable request. | **Open, non-blocking; target T-076 correction** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| T-073 prior finding history | `T073-R1` was independently resolved at `9802a6a`; no new evidence reopens it |
+| T-073 Windows evidence | Run `30415333608`, STARBASE job `90460498381`: all 14 functional steps green, 28 desktop tests, full suite **1388 passed, 20 skipped, 30 deselected**, 6 m 29 s wall |
+| `git diff --check` for T-075 and T-076 boundaries | Passed |
+| Commit authorship / trailers | Sean Kottman; no AI author or co-author trailer |
+| `ruff check .` at `77b7165` | Passed |
+| `ruff format --check .` at `77b7165` | Passed: **106 files** already formatted |
+| `mypy src` at `77b7165` | Passed: **35 source files** |
+| Configured `mypy` / `mypy --platform win32` at `77b7165` | Passed: **78 files** in each scope |
+| Focused preset and Add-dialog tests at `77b7165` | **176 passed** |
+| Full suite at `77b7165` | **1406 passed, 11 skipped, 2 deselected** |
+| T-075 deferred-write probe | Reproduced the stale-request spawn described in `T075-R1` |
+| T-076 non-MP3 codec probe | Reproduced an enabled “MP3 bitrate” control and `192 kbps FLAC` result |
+| Later unchanged-code Windows evidence | STARBASE run `30428815294`, job `90501143125`: desktop **30 passed, 1417 deselected**; full suite **1395 passed, 20 skipped, 32 deselected** |
+
+### Final disposition
+
+T-073 remains **Approved**. Its only review finding was a Low evidence-accounting correction,
+and that correction was independently resolved. No new evidence justifies revisiting settled
+ground.
+
+T-075 is **Changes requested** on `T075-R1`. Its ordinary probe/change/Add path works, but the
+same-value shortcut executes an effect based on an in-flight view rather than a durable revision.
+Under write failure and a repeated Add action, it can still silently start the request selected
+before probing.
+
+T-076 is **Changes requested** on `T076-R1`, and it also depends on the unresolved Critical
+T-075 path used to persist a post-probe bitrate change. Its MP3 control currently accepts every
+converting codec. `T076-R2` is non-blocking test hardening and should be included in the focused
+correction rather than opening a separate review loop.

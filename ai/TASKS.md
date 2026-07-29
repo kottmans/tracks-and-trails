@@ -490,7 +490,10 @@ it in the assertion.
 
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
-**Status:** **Ready — observed and filed 2026-07-29**, not diagnosed
+**Status:** **Ready — measured 2026-07-29, and the rate is not what the anecdote said.** Twelve
+full-suite runs on `STARBASE`: **12 clean, 0 crashes**. Combined with the four CI runs that
+produced the single observation, that is **1 in 16, not 1 in 4**. Cause still unknown; a
+24-iteration batch is running to tighten the bound or catch one with a fresh traceback.
 **Owner:** Implementer
 **Priority:** **High** — it is an access violation in a module under `src/`, and it lands in the
 suite that `OPS-005` and `T-073` just made Phase 1's only Windows gate
@@ -617,8 +620,32 @@ runs the suite N times on `STARBASE` and reports a rate. Three things about it a
 the gate happened to run. This makes the denominator a choice, which is what the acceptance
 criteria ask for.
 
-**Not yet run.** The job is authored and pushed; executing it needs `STARBASE` and is the next
-step on this task.
+#### The instrument ran — 2026-07-29, run `30429327464`
+
+Twelve full-suite iterations on `STARBASE`, every one attempted:
+
+| Iterations | Crashes | Failures |
+|---|---|---|
+| **12** | **0** | 0 — `1395 passed, 20 skipped, 32 deselected` each time, 209-217 s |
+
+**"About one in four" was a denominator of four.** One crash in four runs is entirely consistent
+with a much rarer event, and twelve clean runs at `ea53c71` say it is one. Taking every full-suite
+run on this machine together — the four that produced the observation plus these twelve — the
+observed rate is **1 in 16**, and the true rate could be lower still.
+
+That does not make the crash unreal. It happened, with a traceback naming `[ResultPump]` and
+`multiprocessing`'s `_monitor`, on a documentation-only commit whose code was byte-identical to a
+passing run. What changed is how much a green Windows run is worth: at 1 in 16 rather than 1 in 4,
+a single passing run is much stronger evidence than it looked, and the case for treating this as a
+Phase 1 blocker is correspondingly weaker. **That is a maintainer decision and belongs to the exit
+review**, not to this task.
+
+**Still unknown: the cause.** Nothing here narrows it. A larger batch is running to either bound
+the rate further or catch one with fresh diagnostics; the workflow keeps every iteration's output,
+so a crash caught there arrives with its traceback rather than as a count.
+
+*(Superseded: this section previously read "Not yet run. The job is authored and pushed;
+executing it needs `STARBASE` and is the next step on this task." It has now run.)*
 
 #### Acceptance criteria
 
@@ -639,7 +666,12 @@ step on this task.
 
 ### T-072 — Carry the three unresolved findings the last-pass direction stopped
 
-**Status:** **In Progress — four of the five carries are done, 2026-07-29.** `COORD-R5` is
+**Status:** **In Progress — one of the two owed items is discharged, 2026-07-29.**
+`mut_tree_drop_worker` has now run on Windows: it **survives**, and the reason is the orphan
+guard rather than an inert mutation — established with a positive control and a probe that had to
+be fixed before it could see anything. The `WIN-R1` broad-to-scoped verification is the remaining
+item; it needs a deliberately widened firewall rule and is awaiting maintainer authorisation to
+run. *(Previously: "four of the five carries are done".)* `COORD-R5` is
 discharged and `T-040`/`T-060` are filed Complete on it; `WIN-R3` and `RUNNER-R1` are corrected;
 the `T-019` process-tree cases run on `STARBASE`. `T066-R1` was **Changes requested** at
 `f20a9c8` (`T072-R1`) and is corrected below. **`WIN-R1` is written too**, so all five carries are
@@ -875,28 +907,46 @@ twice. `mut_control_worker_survives` fails with the surviving pid *and* the list
 handed, so the diagnostic names which of the two possibilities occurred. Same reasoning that puts
 `mut_control_chain` first in the focus driver.
 
-**Still owed:** `mut_tree_drop_worker` on Windows. That is where the captured set's completeness
-becomes observable, because Windows kills members one at a time.
+#### `mut_tree_drop_worker` ran on Windows — and survives there too, 2026-07-29
 
-| Check | Result |
-|---|---|
-| Baseline, unmutated | 1 passed |
-| `tests/integration/test_end_to_end.py` | 4 passed |
-| `ruff check .` · `ruff format --check .` | Passed · 105 files already formatted |
-| `mypy` · `mypy --platform win32` | Success, 78 source files · Success, 78 source files |
-| Full suite | 1399 passed, 11 skipped, 2 deselected |
+Run on `STARBASE` at `ea53c71` against
+`test_a_job_killed_mid_download_is_recovered_by_the_next_start`:
 
-**On Windows**, run `30416156751` at `38650dd`:
-`test_a_job_killed_mid_download_is_recovered_by_the_next_start` **PASSED** inside the full suite —
-1388 passed, 20 skipped, 205 s. That exercises the correction end to end on the platform it was
-written for: the handshake parsed, `capture_the_doomed_tree` found the worker as a descendant of
-the *reported* pid under the venv shape (a walk that had not would have failed the new assertion),
-and nothing survived the kill.
+| Run | Handed to the kill | Result |
+|---|---|---|
+| unmutated | 3 pids | passes |
+| **`mut_tree_drop_worker`** | **2 pids — the worker dropped** | **passes** |
+| `mut_control_worker_survives` (kill nothing) | — | **fails**, naming the worker's pid |
 
-**What that run does not establish**, stated because the previous version of this task was
-approved on exactly this kind of gap: a green run is not a demonstrated kill. The two mutations
-have not executed on Windows. `mut_tree_drop_worker` in particular can only be gated there, and
-until it runs, the completeness of the captured set is argued rather than measured.
+**The mutation applies and survives.** Both halves had to be established separately, and the first
+attempt to do so was blind: a probe wrapping `capture_the_doomed_tree` in `pytest_configure`
+printed the *unmutated* list regardless, because the mutation's own `configure` then wrapped the
+probe rather than the other way round. Moving the probe to `pytest_sessionstart` — after every
+`configure` — made it wrap outermost, and the handed list dropped from three pids to two. An
+instrument that cannot see the thing it is pointed at reports a survival and a non-application
+identically, which is `T072-R1`'s shape one level up.
+
+**Why it survives is product behaviour, and correct.** `worker.spawn_session()` starts a
+`parent-watchdog` thread — the orphan guard `ARC-002` documents — which exits the worker when the
+parent disappears. The kill is handed the application either way, so the worker dies whether or
+not its pid was in the captured set. The control confirms the mechanism: with **no** kill at all
+the parent survives, the watchdog never fires, and the worker is still running when the assertion
+looks.
+
+**So the expectation this task recorded is wrong, and that is the finding.** It said the captured
+set's completeness "can only be gated there" — on Windows. It cannot be gated *anywhere* by this
+test, on either platform, because the orphan guard removes the dependency the mutation targets.
+What protects against orphans is the guard, not the completeness of the list the test builds.
+
+Two consequences worth stating rather than leaving implied. The gate that matters for orphans is
+whatever exercises the **orphan guard**, and `mut_control_worker_survives` is the closest thing to
+it here. And `capture_the_doomed_tree`'s completeness is now an unasserted property — its own
+docstring already says "this list is not evidence of its own completeness", which is exactly right
+and now also means nothing tests it.
+
+*(Superseded: this section previously said `mut_tree_drop_worker` was still owed on Windows and
+that the captured set's completeness "can only be gated there". It ran; it survives; and the
+reason it survives is that no platform can gate that property while the orphan guard exists.)*
 
 #### The `WIN-R1` correction — 2026-07-29
 
