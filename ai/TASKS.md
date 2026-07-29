@@ -2218,9 +2218,9 @@ Assert, on `windows-latest`:
 
 ### T-075 — Probing freezes the preset, so the download ignores what the user chose
 
-**Status:** **Complete — Approved**, 2026-07-29. **In Review — `T075-R1` corrected 2026-07-29.** The original defect is fixed; the
-review then found the fix's own shortcut could start a download against a revision that never
-landed, and that is corrected too. See **Evidence** and **`T075-R1`**.
+**Status:** **Complete — Approved**, 2026-07-29. The original defect is fixed, and so is
+`T075-R1` — the review found the fix's own shortcut could start a download against a revision that
+never landed. See **Evidence** and **`T075-R1`**.
 **Owner:** Implementer
 **Priority:** **Critical** — the application downloaded something other than what the user
 selected, silently, while displaying the correct selector
@@ -2342,9 +2342,10 @@ the real store does. **Mutation: restoring the pre-chain shortcut fails the test
 
 ### T-076 — Choose the MP3 bitrate, rather than taking the preset's 192
 
-**Status:** **Complete — Approved with follow-up `T-089`**, 2026-07-29. **In Review — `T076-R1` corrected 2026-07-29.** A bitrate control beside the preset,
-320/256/192/160/128 kbps, defaulting to 192, offered **for MP3 specifically**. The first version
-gated on "converts audio", which is every codec but the original. See **Evidence**.
+**Status:** **Complete — Approved with follow-up `T-089`**, 2026-07-29. A bitrate control beside
+the preset — 320/256/192/160/128 kbps, defaulting to 192, offered **for MP3 specifically**.
+`T076-R1` corrected the first version, which gated on "converts audio": every codec but the
+original. See **Evidence**.
 **Owner:** Implementer
 **Priority:** Medium — `REQ-010` capability, pulled forward from Phase 3 at maintainer request
 **Phase:** Phase 1 (pulled forward; `REQ-010` is a Phase 3 deliverable)
@@ -2438,9 +2439,9 @@ it eight times.
 
 ### T-077 — Four of the five download options have never produced a file
 
-**Status:** **Complete — Approved**, 2026-07-29. **In Review — `T077-R1` corrected 2026-07-29. All five presets now execute.** The
-first version covered three and recorded the other two as structural limits of network-free
-testing. They were limits of the *direct-file* fixture, and an HLS fixture removes both. See
+**Status:** **Complete — Approved**, 2026-07-29. **All five presets execute.** The first version
+covered three and recorded the other two as structural limits of network-free testing; `T077-R1`
+established they were limits of the *direct-file* fixture, and an HLS fixture removes both. See
 **Evidence** and **`T077-R1`**.
 **Owner:** Implementer
 **Priority:** **High** — these are the application's user-visible choices, and the only one ever
