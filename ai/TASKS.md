@@ -155,9 +155,9 @@ two are not closed.
 | `COORD-R5` | **Done.** See below |
 | `WIN-R3` | **Done.** The guide now names `mut_control_chain.py`, says it runs first, and records why the `T-056` control does not belong here |
 | `RUNNER-R1` | **Done.** `ci.yml` and the guide now say `timeout-minutes` bounds *run* time, and an unmatched self-hosted job queues for up to 24 hours |
-| `T066-R1` | **Written**; see the caveat below, now with a runner to answer it |
-| `WIN-R1` | **Not started** |
-| `T-019` cases under the venv | **Wired up.** The `windows desktop` job gained a *Process trees under the venv* step |
+| `T066-R1` | **Executed on Windows and green.** See **Evidence, on the runner** |
+| `WIN-R1` | **Not started** — the one carry left |
+| `T-019` cases under the venv | **Done.** Run `30414186949`, 72 passed, 3 skipped |
 
 **`COORD-R5` is discharged.** Every task now sits in the section its verdict says it belongs in:
 `T-040`, `T-060`, `T-067`, `T-069`, `T-070` and `T-065` to `## Complete`; `T-066` and `T-068` to
@@ -187,6 +187,31 @@ carries a *Process trees under the venv* step running `tests/integration/test_ma
 Pre-flighted on Linux with `ffmpeg` removed from `PATH`, because the desktop job installs none:
 **75 passed**. That is what says the step will not turn the one green job red for a missing
 dependency rather than for a finding.
+
+#### Evidence, on the runner — 2026-07-29
+
+Run **`30414186949`** at `185ea6d`, job `windows desktop` on `STARBASE`. All ten steps green;
+*Process trees under the venv* reports **72 passed, 3 skipped in 79.69s**.
+
+**The caveat above is discharged.** `test_a_job_killed_mid_download_is_recovered_by_the_next_start`
+PASSED, and it is the test that calls `kill_the_application()` — so the `T066-R1` assertions
+executed on Windows, under a virtualenv, and the tree they walk really was deeper than the pid
+`Popen` returned. Had it been one level, the first assertion would have failed rather than the
+step passing.
+
+The `T-019` cases ran under the same shape for the first time anywhere:
+
+| Case | Result |
+|---|---|
+| `test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind` | **PASSED** — the grandchild case, which is the whole subject |
+| `test_cancelling_a_download_kills_what_the_worker_spawned` | **PASSED** |
+| `test_a_real_worker_leads_its_own_process_group` | Skipped — POSIX process groups |
+| `test_a_descendant_is_asked_to_stop_before_it_is_killed` | Skipped — POSIX signalling |
+| `test_the_detector_still_ignores_the_resource_tracker` | Skipped — POSIX only |
+
+The three skips are the POSIX-only half of a file that is deliberately split by platform; nothing
+Windows-relevant was skipped. **No hosted minutes were used**, and all four hosted jobs in the
+same run failed at zero steps on the billing annotation.
 
 | Check | Result |
 |---|---|
@@ -616,13 +641,15 @@ this application or yt-dlp.
 
 ### T-066 — CI installs the project differently from how the documentation says to
 
-**Status:** **Blocked — on Windows process-tree and frozen evidence**, 2026-07-28. Creating a
-virtualenv in every workflow job is accepted as structurally sound, and one real Windows venv job
-is green — but it is the 28-test desktop slice, not the `T-019` process-tree suite, whose cases
-have never executed under the venv shape this task exists to cover. Four hosted jobs, both frozen
-jobs among them, failed before step 1 on exhausted quota. `T066-R1` is **partially resolved** and
-its remainder is carried to `T-072`: `kill_the_application()` still suppresses every `psutil` kill
-error and discards both lists `wait_procs` returns, so it can return with a known survivor.
+**Status:** **Blocked — on frozen-artifact evidence only**, narrowed 2026-07-29. **The
+process-tree half is discharged:** `T-072` added a *Process trees under the venv* step to the
+self-hosted `windows desktop` job, and run `30414186949` executed the `T-019` cases under the venv
+shape for the first time anywhere — 72 passed, 3 skipped, the grandchild case among the passes.
+`T066-R1`'s survivor assertions ran there too. What remains is the frozen-artifact shape: both
+`frozen` jobs are hosted and have not started since the quota ran out.
+
+*(This said "on Windows process-tree and frozen evidence" until the runner supplied the first
+half.)*
 **Owner:** Implementer
 **Priority:** **High** — it decides whether `T-019`'s process-tree evidence describes the
 environment a developer or a user actually has

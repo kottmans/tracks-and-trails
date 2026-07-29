@@ -319,8 +319,17 @@ longer claims an emptiness it did not have, and `T-040`/`T-060` are Complete on 
 **24 hours** — a day-long failure mode that was documented as a fifteen-minute one. `T-064`
 recreated the venv: **45 of 46** launchers had been stale, not the 39 filed, because `T-063` had
 repaired this project's own two artefacts and nothing else. `T066-R1`'s survivor assertions are
-written and type-check under `--platform win32`, but they live in the Windows branch and **have
-not executed anywhere**. `WIN-R1` and the `T-019` process-tree run remain.
+written and type-check under `--platform win32`, but they live in the Windows branch and had not
+executed anywhere.
+
+**Then the runner answered it, and it cost no hosted minutes** (2026-07-29). `STARBASE` is online
+and green while every hosted job still fails at zero steps on the billing annotation, so the
+`windows desktop` job gained a *Process trees under the venv* step. Run `30414186949`: **72
+passed, 3 skipped**, the three skips being the POSIX-only half of a platform-split file. That run
+executed the `T-019` process-tree cases under the venv shape **for the first time anywhere** —
+including the grandchild case — and it executed `T066-R1`'s survivor assertions with them. `T-066`
+is accordingly narrowed to frozen-artifact evidence alone. **`WIN-R1` is the last carry left in
+`T-072`.**
 
 **`T-071` — the icon was undersized, and the master says why.** Reported from a taskbar
 screenshot and fixed the same day: every derived asset drew the logo at ~66% of its canvas with
