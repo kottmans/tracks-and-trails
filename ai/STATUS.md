@@ -540,10 +540,14 @@ on the worker's side of the queue. `ai/TESTING.md` §13 now has the general form
   data files; the probe resolves an extractor *by name* through the lazy machinery and asserts
   the bundled version against the pin (`T033-R1`). **The Linux half is now complete**, produced
   against a real frozen artifact on 2026-07-29 and independently re-verified by the reviewer:
-  194 260 KiB, 1751 extractors, version against pin, frozen smoke green with no orphan. What
-  remains is the **Windows** frozen run, which is external because both `frozen` jobs are
-  GitHub-hosted, and the **collection-removal negative**, which is *not* external — the same
-  local build can produce it.
+  194 260 KiB, 1751 extractors, version against pin, frozen smoke green with no orphan. **The
+  Linux negative is complete too, and it reopened the task** (`T033-R4`): removing
+  `collect_data_files("yt_dlp")` strips all three YouTube solver assets — baseline has three, the
+  mutant has zero — and **the probe still passes**, because it only instantiates `YoutubeIE` and
+  checks a URL predicate. The frozen gate is therefore blind to package-data loss, which is a live
+  regression risk rather than bookkeeping. `collect_submodules` is separately redundant for this
+  pin, since `_extractors.py` has 928 static imports. What remains: extend the probe so the data
+  removal fails, decide the submodule line, and the **Windows** build, which stays external.
 
   *(This said "the local probe is source-mode and proves nothing about the artifact", which was
   true when written and stopped being true when the artifact was built. `T033-R3`. An earlier
@@ -568,10 +572,11 @@ on the worker's side of the queue. `ai/TESTING.md` §13 now has the general form
 
 ## Blockers
 
-- **`T-033` — blocked on CI evidence, not on code.** Its corrections are reviewed and verified,
-  but approval needs the collection-removal negative run, Linux **and** Windows frozen results,
-  and the recorded artifact-size delta. Clears when the frozen jobs run against the pushed
-  boundary — and **both `frozen` jobs are still GitHub-hosted**, which is the actual constraint.
+- **`T-033` — blocked on `T033-R4` and the Windows build.** Its corrections are reviewed and
+  verified, and the Linux frozen positive and negative are both done. The negative is what blocks
+  it: the probe survives the loss of every YouTube solver asset, so it does not gate the data
+  collection it exists to justify. A probe extension and a maintainer decision on
+  `collect_submodules` are owed before the Windows build matters.
 
   *(This said "PyInstaller is in the `build` extra and absent from the working venv, so none of it
   can be produced here." **It is present, at 6.21.0** — `T-064` reinstalled the venv with

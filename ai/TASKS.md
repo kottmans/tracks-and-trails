@@ -1330,7 +1330,11 @@ producible locally.
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
-**Status:** **Blocked on Windows only**, narrowed 2026-07-29 (`T033-R3`). Code corrections were
+**Status:** **Blocked on `T033-R4` and the external Windows build**, 2026-07-29. The Linux
+positive *and* negative builds are complete, and the negative is what reopened this: removing
+`collect_data_files("yt_dlp")` strips all three YouTube solver assets and **the probe still
+passes**, so the frozen gate is blind to package-data loss. That needs a probe extension and a
+maintainer decision on the separate submodule line. Code corrections were
 verified 2026-07-26 (`T033-R2` resolved, the version-against-pin half of `T033-R1` verified).
 **The Linux half is no longer externally blocked and has now been produced** — see **Linux
 evidence** below. `T033-R1` stays **Open** for the Windows frozen result and the
@@ -1369,32 +1373,51 @@ finding assumed.
 | `collect_submodules("yt_dlp")` → `[]` | 192 300 KiB | **OK — 1751 extractors, `youtube` resolved** |
 | `collect_data_files("yt_dlp")` removed | 194 212 KiB | **OK — 1751 extractors, `youtube` resolved** |
 
-The builds genuinely differed in size, so the mutations applied. **Neither of this task's two
-collection lines is necessary for the probe to pass**, which means the probe cannot detect their
-removal and is not evidence that they do anything.
+The builds genuinely differed in size, so both mutations applied.
 
-**The cause is in this task's premise.** Its own comment says "972 of its 1046 modules are
-extractors resolved by name at runtime" and that "static analysis therefore collects the yt-dlp
-core and misses essentially every site". For the pinned yt-dlp that is **not true**:
-`yt_dlp/extractor/_extractors.py` contains **928 static `from .` imports**, so PyInstaller's
-module graph follows them without help. Checked and ruled out as the explanation: there is no
-`yt_dlp` hook in the installed `pyinstaller-hooks-contrib`.
+**The two survivals mean opposite things, and reading them as one was wrong** (`T033-R4`). The
+first version of this section concluded "neither collection line is necessary". That does not
+follow, and the difference matters:
 
-So the artifact is fine — it carries its extractors — but `T-033` currently proves nothing about
-its own change. That is the "gate that cannot fail" shape, arrived at from the other direction:
-not a test that cannot go red, but a fix whose removal cannot be noticed.
+- **`collect_submodules("yt_dlp")` really is redundant for this pin.** `_extractors.py` carries
+  **928 static `from .` imports**, so PyInstaller's module graph follows them unaided. The comment
+  above it — "972 of 1046 modules are extractors resolved by name at runtime", so "static analysis
+  collects the core and misses essentially every site" — does not hold for the pinned version.
+- **`collect_data_files("yt_dlp")` is load-bearing, and its mutant survived for the worst possible
+  reason.** Removing it deletes **all three** YouTube solver assets the baseline ships —
+  `yt.solver.core.js`, `yt.solver.deno.lib.js`, `yt.solver.bun.lib.js`, under
+  `yt_dlp/extractor/youtube/jsc/_builtin/vendor/`. Verified directly: the baseline artifact has
+  three, the data mutant has **zero**, and the probe still reported OK. yt-dlp loads them with
+  `importlib.resources` through `vendor.load_script`; `EJSBaseJCP._builtin_source` uses the core
+  one and the Deno/Bun providers use the others. **The probe never touches them** — it
+  instantiates `YoutubeIE` and checks a URL predicate. So the survival proves the frozen gate is
+  **blind to package-data loss**, not that the line is dead.
 
-**What this does not settle:** whether the lines are harmless insurance against a future yt-dlp
-that returns to lazy resolution, or dead weight to remove. That is a judgment for the maintainer,
-and it wants the Windows build before anything is deleted — `_extractors.py` is version-specific
-and the pin will move.
+**A claim in the first version was also simply false.** It said there is no `yt_dlp` hook, on the
+strength of checking `pyinstaller-hooks-contrib`. yt-dlp ships **its own**:
+`yt_dlp/__pyinstaller/hook-yt_dlp.py`, registered through the `pyinstaller40` entry point
+`hook-dirs -> yt_dlp.__pyinstaller:get_hook_dirs`, and PyInstaller processes it. It does not
+collect those three assets, so it does not rescue the data mutant — but the check that produced
+the claim looked in one place and reported a conclusion about all of them.
+
+**So the shape of the defect is the reverse of what was written.** The gate is not merely unable
+to notice its own removal; it is unable to notice a *real regression* — an artifact shipping
+without the solver assets would pass this probe and fail for users on the sites that need them.
 
 **Still owed. Only one of the two remaining items is external:**
 
-- **A maintainer decision on what the collection lines are for**, now that removing either one
-  changes nothing observable. Keep them as insurance against a yt-dlp that returns to lazy
-  resolution, or drop them — but the acceptance criterion "the negative run fails" **cannot be
-  met as written**, because the negative run passes.
+- **Extend the probe so the data collection is actually gated** (`T033-R4`). It must load at
+  least the built-in core solver through yt-dlp's real `vendor.load_script` path and check what it
+  got — after which removing `collect_data_files("yt_dlp")` **must** fail. Today that removal is
+  invisible, which is a live blind spot rather than a bookkeeping one.
+- **`collect_data_files("yt_dlp")` stays** regardless of that work. It is load-bearing now.
+- **A maintainer decision on `collect_submodules("yt_dlp")`**: keep it as explicit insurance
+  against a pin that returns to lazy resolution, or remove it as redundant for this one. This is
+  the only genuinely open question of the two, and it wants re-asking whenever the pin moves.
+- **Replace the acceptance criterion.** "The negative run fails" cannot be met as one blanket
+  claim, because the two lines behave differently. It becomes two: the data collection has a
+  failing negative once the probe is extended, and the submodule collection has a recorded
+  decision.
 - **The Windows frozen run is external.** Both `frozen` jobs are GitHub-hosted.
 
 *(This paragraph called the collection-removal mutation "genuinely external" in the same breath as
