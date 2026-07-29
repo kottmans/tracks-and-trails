@@ -122,6 +122,13 @@ Prove `ARC-002`.
 - Verified on Linux **and** Windows
 - Reviewed and signed off in `REVIEWS.md`
 
+> **What "Windows" means here is `STARBASE`** (`OPS-005`, 2026-07-29): the maintainer's Windows 10
+> 22H2 machine, which is both an interactive verification target and the self-hosted runner for the
+> `windows desktop` job. A finding that reproduces only on a GitHub-hosted image and not there does
+> not block this exit — `T-056` and `T-068` are open on exactly that basis. The criterion itself is
+> unchanged, and is **not yet met**: the full Windows `check` suite has not run anywhere since the
+> hosted quota ran out.
+
 ---
 
 ## Phase 2 — Queue and concurrency

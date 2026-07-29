@@ -28,10 +28,13 @@ remains is one carry task, evidence only a runner can produce, and the exit revi
   re-review states both close on that carry **without another behavioural review**.
 - **Ready:** **`T-072`**, the named carry the last-pass direction asked for — `T066-R1`'s
   remainder, `COORD-R5`, `WIN-R1`, plus non-blocking `WIN-R3` and `RUNNER-R1`. Also `T-064`.
-- **Blocked, all on evidence rather than code:** `T-066` (the `T-019` process-tree cases have
-  never run under the venv shape, and four hosted/frozen jobs failed before step 1 on quota),
-  `T-068` (why the runners never show the empty font database), `T-056` (wants
-  `windows-latest`'s image specifically), `T-033` and `T-039` (Phase 5).
+- **Blocked, all on evidence rather than code:** `T-066` (narrowed 2026-07-29 to frozen-artifact
+  evidence; its process-tree half is discharged), `T-033` and `T-039` (Phase 5).
+- **Open but no longer phase blockers** (`OPS-005`, maintainer decision 2026-07-29): `T-068` and
+  `T-056`. Both need a GitHub-hosted image, neither is a defect a user would meet, and
+  `STARBASE` — not `windows-latest` — is now the platform the *verified on Windows* criterion is
+  measured against. `T-056` is test-only code whose sole error direction is a false failure;
+  `T-068`'s fix is already validated on the machine that showed the fault.
 - **Decided and Complete:** `T-065`.
 
 **A Windows machine on the maintainer's network — `STARBASE` — supplied what CI could not**
@@ -784,6 +787,12 @@ with no fonts. `QT_QPA_FONTDIR` is set before PySide6 is imported, is Windows-on
 explicit caller value. The task's own acceptance criteria still require the runner difference to
 be explained and a Windows frozen artifact to be checked; both need a hosted runner. See
 **Evidence**.
+
+**No longer a Phase 1 exit dependency** (`OPS-005`, 2026-07-29). Still open, still Blocked. This
+one runs the *other* way from `T-056`: the defect appeared **on** the real machine and the hosted
+runners are the ones that look clean, so the fix is already validated where the fault was. What
+remains is the diagnostic question of why the runners never showed it — worth answering, not worth
+holding a phase for.
 **Owner:** Implementer
 **Priority:** Medium — an assertion about a *clean* run is failing, and the cause is not understood
 **Phase:** Phase 1
@@ -875,6 +884,17 @@ the survival is a real measurement rather than a mutation that never applied.
 
 So the next step narrows rather than clears: this wants **`windows-latest`'s image**, Windows
 Server, not Windows as such. `30323328299` remains the only observation of the defect anywhere.
+
+**No longer a Phase 1 exit dependency** (`OPS-005`, 2026-07-29). Still open, still Blocked, but it
+does not gate the phase: `still_running()` is test-only code that never ships, and its documented
+sole error direction is a false **alive** — it can redden CI, it cannot make broken reaping look
+correct. Windows Server is not a supported platform (`REQUIREMENTS.md`), so a finding seen only
+there is a CI-reliability concern rather than a user-facing one.
+
+**What that decision explicitly does not claim.** The mechanism is Windows-*general*: Windows has
+no zombie state and a terminated process stays visible while any handle to it is open, which is
+identical on Windows 10 and on Server. `STARBASE`'s 20/20 is therefore **absence of a trigger, not
+evidence of correctness**. The risk is accepted on the error direction, not on the clean run.
 **Owner:** Implementer
 **Priority:** Medium — an intermittent failure in the helper every `T-019` assertion rests on
 **Phase:** Phase 1

@@ -1312,3 +1312,82 @@ could be had without the callers changing shape.
 - **This decision reopens** if a write ever needs to be ordered against a read the GUI thread
   just made — a read-modify-write on a job. Nothing does that today: the manager owns job
   updates and runs its own transitions.
+
+---
+
+## OPS-005 — `STARBASE` is the Windows verification platform; hosted-only findings do not gate the phase
+
+**Status:** **Accepted** (2026-07-29) — maintainer decision
+**Date:** 2026-07-29
+**Supersedes:** nothing. **Narrows** `OPS-003`'s "CI is the only Windows environment" premise,
+which `OPS-004` had already amended once
+
+### Context
+
+`T-056` and `T-068` were both blocking Phase 1 on evidence only a GitHub-hosted runner can
+supply, and hosted jobs have not started since the Actions quota ran out. Neither is a defect a
+user would meet, and the reasons differ:
+
+- **`T-056` is test-only code.** `still_running()` lives in `tests/integration/test_manager.py`
+  and never ships. Its documented sole error direction is a false **alive**, which fails an
+  assertion in the open — it can redden CI spuriously, but it cannot make broken reaping look
+  correct. It was observed once, on `windows-latest`, in run `30323328299`, and does not
+  reproduce on `STARBASE`: the pre-correction form passes **20/20** there with a positive control
+  proving the mutation applied. The correction is in and was reviewed as correct.
+- **`T-068` runs the other way.** Its defect appeared **on** the real machine — Qt with zero font
+  families under `offscreen`, so the whole offscreen UI suite ran with no fonts — while the
+  hosted runners are the ones that look clean. The fix landed and is validated on `STARBASE`.
+  What stays open is the diagnostic question of why the runners never showed it.
+
+**One thing this decision does not get to assume.** `still_running`'s mechanism is
+Windows-*general*, not Server-specific: Windows has no zombie state, and a terminated process
+stays visible while any handle to it is open — including the `Popen` handle the killing test
+still holds. Handle semantics are the same on Windows 10 and Windows Server. So `STARBASE`
+passing 20/20 is **absence of a trigger, not evidence of correctness**. What justifies accepting
+the risk is the error direction, not the clean run.
+
+### Decision
+
+`STARBASE` — the maintainer's Windows 10 22H2 machine, an interactive verification target and a
+self-hosted runner — is the platform Phase 1's *verified on Windows* criterion is measured
+against.
+
+A finding that reproduces **only** on a GitHub-hosted image and not on `STARBASE` does not block
+a phase exit. It stays open as a follow-up, with its non-reproduction recorded.
+
+`T-056` and `T-068` are downgraded accordingly: still open, no longer phase blockers.
+
+### Rationale
+
+- **Windows Server is not a supported platform.** `REQUIREMENTS.md` lists Windows 10/11 x86-64 as
+  primary. `windows-latest` is Windows Server, so a finding seen only there is outside the surface
+  the product ships to. It is a CI-reliability concern, not a user-facing one.
+- **Blocking on an environment nobody can reach is not a gate, it is a stall.** The hosted quota
+  is an external billing state. A criterion that cannot be attempted teaches nothing about the
+  software.
+- **The risk is bounded and named.** `T-056` can only produce false failures. `T-068`'s fix is
+  already in and validated on the platform that showed the defect.
+
+### Alternatives considered
+
+- **Keep both as blockers until billing clears.** Rejected: it makes the phase exit depend on a
+  payment, and neither task would change the product when it resolved.
+- **Move all CI to self-hosted and close both as unreproducible.** Rejected: it would delete the
+  only environment where `T-056` has ever been observed and make `T-068`'s question permanently
+  unanswerable, in exchange for a green checkmark.
+- **Close both as Cancelled.** Rejected: `T-056` was really observed once, and an undiagnosed
+  intermittent deserves to stay on the books.
+
+### Consequences
+
+- `T-056` and `T-068` remain **open and Blocked**, but are explicitly **not** Phase 1 exit
+  dependencies. Their blockers are recorded as external.
+- **This does not by itself satisfy exit criterion 7.** The `check (windows-latest)` job — lint,
+  format, types, Qt baseline, and the full suite on Windows — has still not run anywhere since the
+  quota ran out. `STARBASE` currently runs the desktop slice and the process-tree modules only.
+  Meeting the criterion needs that full suite executed somewhere, which `STARBASE` **could** do.
+- Windows verification now rests on **one machine the maintainer owns**. Its availability is the
+  gate's availability, and `RUNNER-R1` records the failure mode: an unmatched self-hosted job
+  queues for up to 24 hours rather than failing fast.
+- **This decision reopens** if hosted CI returns and `T-056` reproduces again, or if a
+  hosted-only finding is ever traced to a defect reachable on Windows 10/11.

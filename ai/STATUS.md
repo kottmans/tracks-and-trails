@@ -331,6 +331,17 @@ including the grandchild case — and it executed `T066-R1`'s survivor assertion
 is accordingly narrowed to frozen-artifact evidence alone. **`WIN-R1` is the last carry left in
 `T-072`.**
 
+**`T-056` and `T-068` are no longer phase blockers** (`OPS-005`, maintainer decision 2026-07-29).
+Both stay open and Blocked; neither gates the exit. `STARBASE` is now the platform the *verified on
+Windows* criterion is measured against, and a finding that reproduces only on a GitHub-hosted image
+does not hold a phase. `T-056` is test-only code whose sole error direction is a false **alive** —
+it can redden CI, not hide a defect — and Windows Server is not a supported platform. `T-068`'s
+fault appeared on the real machine and its fix is validated there; only the diagnostic question
+about the runners is open. **What the decision does not claim:** `still_running`'s mechanism is
+Windows-general, so 20/20 on `STARBASE` is absence of a trigger rather than proof of correctness.
+**It also does not satisfy exit criterion 7** — the full Windows `check` suite has still not run
+anywhere since the quota ran out, and `STARBASE` could run it.
+
 **`T-071` — the icon was undersized, and the master says why.** Reported from a taskbar
 screenshot and fixed the same day: every derived asset drew the logo at ~66% of its canvas with
 the slack as one empty band beneath it, so at 32 px the mark filled ~43% of the cell by area.
