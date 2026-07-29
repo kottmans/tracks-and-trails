@@ -24,6 +24,7 @@ teardown works, which `T-036` already covers; `NFR-003` is about the other case,
 that has only ever been driven by a graceful exit is recovery nobody has tested.
 """
 
+import contextlib
 import os
 import signal
 import subprocess
@@ -68,8 +69,8 @@ if sys.platform == "win32":
         """`Popen` arguments that put the application in its own process group."""
         return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
 
-    def kill_the_application(process: subprocess.Popen[str]) -> None:
-        """Kill the application **and everything it spawned**, without letting any of it unwind.
+    def kill_the_application(process: subprocess.Popen[str], doomed: list[psutil.Process]) -> None:
+        """Kill every captured process, without letting any of it unwind.
 
         `T066-R1`. This was `process.kill()` alone, on the reasoning that `ARC-002`'s worker runs
         a parent watchdog and `T-019`'s Job object reaps the worker's descendants. Measured on
@@ -88,37 +89,20 @@ if sys.platform == "win32":
         — the orphan `T-019` exists to prevent, created by the test that asserts recovery from it.
 
         The POSIX branch has always killed the whole process group. This is that, for a platform
-        with no process groups: enumerate the tree **before** killing anything, because once the
-        parent is gone its children are reparented and the walk finds nothing.
+        with no process groups.
 
         Still a crash, not a shutdown — `Process.kill` is `TerminateProcess`, so nothing unwinds
         and no handler runs, which is what the test needs.
 
-        **`T066-R1`, second half.** The first correction enumerated the tree and killed it, and
-        then discarded everything that said whether the killing had worked: every `psutil` error
-        was suppressed, and both lists `wait_procs` returns were thrown away. So this could return
-        — and let the caller reopen the database — with the worker still writing to it, which is
-        the orphan the whole test exists to rule out. The two assertions below are that gap
-        closed. They are assertions and not a reported probe on purpose: a survivor is not a
-        diagnostic here, it is the failure.
+        **The set is captured by the caller, not derived here** (`T072-R1`). An earlier correction
+        walked the tree from `process.pid` and asserted `len(doomed) > 1`, which reads like a
+        check and is not one: under the venv shape the launcher and the interpreter already make
+        that two, so the *worker* could be missing and the assertion still passed. A deterministic
+        mutation reducing the walk to direct children proved it — `len(doomed) == 2`, the helper
+        returned successfully, and the omitted worker went on downloading. Identity has to come
+        from the application's own reported pid, which is why `capture_the_doomed_tree` does the
+        walking and this function only kills what it was handed.
         """
-        try:
-            parent = psutil.Process(process.pid)
-            doomed = [*parent.children(recursive=True), parent]
-        except psutil.NoSuchProcess:  # pragma: no cover - it died on its own
-            process.kill()
-            return
-
-        # Under a virtualenv the pid `Popen` returns is the launcher, not the interpreter running
-        # the application, so the tree is always deeper than the handle we were given. If it is
-        # not, the walk found nothing and killing it would prove nothing — which is exactly what
-        # made the original one-level `process.kill()` look sufficient for as long as it did.
-        assert len(doomed) > 1, (
-            f"the process tree under pid {process.pid} is only that pid. Expected at least the "
-            f"interpreter beneath the venv launcher. A walk that finds nothing makes the kill "
-            f"below meaningless, which is the T066-R1 failure shape."
-        )
-
         refused: list[str] = []
         for victim in doomed:
             try:
@@ -141,13 +125,58 @@ else:
         """`Popen` arguments that put the application in its own process group."""
         return {"start_new_session": True}
 
-    def kill_the_application(process: subprocess.Popen[str]) -> None:
+    def kill_the_application(process: subprocess.Popen[str], doomed: list[psutil.Process]) -> None:
         """Kill the application **and the worker it spawned**, without letting either unwind.
 
         The whole group at once: killing only the parent would leave the worker downloading into
         a database nobody owns (`T-019`).
+
+        `doomed` is then checked rather than used to kill, because the signal already reached the
+        group. **Our own direct child is deliberately excluded from the wait**: it is a zombie
+        until someone reaps it, and reaping it here would steal the exit status the caller's
+        `process.wait()` is about to collect. That exact mistake is recorded above — the first
+        version of `still_running` hit it from the other direction.
         """
         os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+
+        others = [victim for victim in doomed if victim.pid != process.pid]
+        _, alive = psutil.wait_procs(others, timeout=30)
+        assert not alive, (
+            f"{len(alive)} process(es) survived SIGKILL to the group and still own the database "
+            f"this test is about to reopen: {sorted(survivor.pid for survivor in alive)}."
+        )
+
+
+def capture_the_doomed_tree(
+    process: subprocess.Popen[str], application_pid: int
+) -> list[psutil.Process]:
+    """Every process that must die, captured **by identity** while the tree is still intact.
+
+    `T072-R1`. The set has to be built from the application's own reported pid rather than
+    inferred from a count under the launcher, and it has to be built *now*: once the parent is
+    gone its children are reparented and a walk finds nothing.
+
+    The assertion that carries the weight is that the application has **at least one descendant**.
+    That descendant is the worker (`ARC-002`), and it is the whole reason this test kills anything
+    — an application with no worker is not mid-download, so killing it would prove nothing about
+    orphans. Counting from the launcher could not express this: launcher plus interpreter is
+    already two before any worker exists.
+    """
+    application = psutil.Process(application_pid)
+    workers = application.children(recursive=True)
+    assert workers, (
+        f"the application (pid {application_pid}) has no descendants while its job says RUNNING. "
+        f"The worker is what makes this kill meaningful, and T072-R1 is precisely the failure of "
+        f"asserting a tree shape that a worker-less tree also satisfies."
+    )
+
+    doomed = [*workers, application]
+    if process.pid != application_pid:
+        # The venv launcher, which is our direct child and the application's parent. Absent on
+        # POSIX, where `sys.executable` is the interpreter itself.
+        with contextlib.suppress(psutil.NoSuchProcess):
+            doomed.append(psutil.Process(process.pid))
+    return doomed
 
 
 #: Big enough that the download is still running when the test kills it, small enough that the
@@ -412,6 +441,7 @@ def test_a_progressive_download_completes_with_no_ffmpeg_at_all(
 #: pytest with it, and recovery driven by a clean exit proves the graceful path this task is
 #: explicitly not about.
 DOWNLOAD_AND_WAIT = """
+import os
 import sys
 from PySide6.QtWidgets import QApplication
 
@@ -435,7 +465,10 @@ while not dialog.queued_job_ids:
 job_id = dialog.queued_job_ids[0]
 dialog.close()
 composition.manager.start(job_id)
-print(job_id, flush=True)
+# `os.getpid()` is this interpreter, which under a Windows venv is *not* the pid Popen returned
+# — that one is the launcher. T072-R1: the test needs the application's own identity to walk
+# from, because a count beneath the launcher cannot tell a worker-less tree from a healthy one.
+print(os.getpid(), job_id, flush=True)
 sys.exit(qapp.exec())
 """
 
@@ -481,8 +514,11 @@ def test_a_job_killed_mid_download_is_recovered_by_the_next_start(
     )
     try:
         assert process.stdout is not None
-        job_id = process.stdout.readline().strip()
-        assert job_id, "the application never queued anything"
+        handshake = process.stdout.readline().strip()
+        assert handshake, "the application never queued anything"
+        reported_pid, _, job_id = handshake.partition(" ")
+        assert job_id, f"the startup handshake was not '<pid> <job id>': {handshake!r}"
+        application_pid = int(reported_pid)
 
         # Wait for the row to say a worker holds it. Read from a separate connection, because the
         # application that owns the database is the one about to be killed.
@@ -521,11 +557,19 @@ def test_a_job_killed_mid_download_is_recovered_by_the_next_start(
             reader.close()
         assert stored_before is not None
 
-        kill_the_application(process)
+        # Captured while the row still says RUNNING, so the worker is in the set by identity
+        # rather than by a shape a worker-less tree would also satisfy (`T072-R1`).
+        doomed = capture_the_doomed_tree(process, application_pid)
+        kill_the_application(process, doomed)
         process.wait(timeout=30)
     finally:
         if process.poll() is None:  # pragma: no cover - only on an unexpected path
-            kill_the_application(process)
+            # Best effort, and deliberately not the asserting path: this runs when the test has
+            # already failed, and a second assertion here would replace that failure's cause.
+            with contextlib.suppress(psutil.Error):
+                for victim in [*psutil.Process(process.pid).children(recursive=True)][::-1]:
+                    victim.kill()
+            process.kill()
             process.wait(timeout=30)
         if process.stdout is not None:
             process.stdout.close()

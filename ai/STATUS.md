@@ -311,7 +311,17 @@ firewall-rule repair, plus the non-blocking `WIN-R3` and `RUNNER-R1` documentati
 `T-040` and `T-060` may close as Approved-with-follow-up on this carry **without another
 behavioural review**. See `T-072`.
 
-**Three of `T-072`'s five carries are done, and `T-064` with them** (2026-07-28). `COORD-R5` is
+**`T072-R1` found the `T066-R1` assertion was vacuous, and it was right** (2026-07-29).
+`len(doomed) > 1` looked like a check on the walk but was not one: launcher plus interpreter
+already make two under the venv shape, so the worker could be missing and it passed. The reviewer
+mutated the walk to direct children and watched the omitted worker keep downloading. The
+correction takes identity from a startup handshake — the application prints its own pid — walks
+from there, and asserts it has the worker as a descendant before capturing and killing that exact
+set. One mutation is killed on Linux; the other survives there **by design**, because `killpg`
+kills the group regardless of the captured set, so its gate belongs on Windows and is still owed.
+`T-064` is **Approved**.
+
+**Four of `T-072`'s five carries are done, and `T-064` with them** (2026-07-28). `COORD-R5` is
 discharged — every task is filed in the section its verdict names, the `## In Review` note no
 longer claims an emptiness it did not have, and `T-040`/`T-060` are Complete on that carry.
 `WIN-R3` and `RUNNER-R1` are corrected: the focus driver's control is `mut_control_chain.py`, and

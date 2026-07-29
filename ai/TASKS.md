@@ -173,11 +173,15 @@ question about collection rather than a defect, but it is not something to wave 
 
 ### T-072 — Carry the three unresolved findings the last-pass direction stopped
 
-**Status:** **In Progress — three of the five carries are done, 2026-07-28.** `COORD-R5`'s filing
-and current-truth cleanup is complete, and `T-040`/`T-060` are filed Complete on it. `WIN-R3` and
-`RUNNER-R1` are corrected. `T066-R1`'s survivor assertions are written but **unexecuted** — they
-are in the Windows branch. `WIN-R1` and the `T-019` process-tree run are not started. See
-**Progress**.
+**Status:** **In Progress — four of the five carries are done, 2026-07-29.** `COORD-R5` is
+discharged and `T-040`/`T-060` are filed Complete on it; `WIN-R3` and `RUNNER-R1` are corrected;
+the `T-019` process-tree cases run on `STARBASE`. `T066-R1` was **Changes requested** at
+`f20a9c8` (`T072-R1`) and is corrected below, with one mutation still owed on Windows.
+**`WIN-R1` is the only carry not started.** See **Progress**.
+
+*(This block said "three of the five" and called `T066-R1` unexecuted after its run had already
+happened — `T072-R2`, and the same current-truth drift `COORD-R5` is about, in the task that owns
+`COORD-R5`. Rewritten rather than patched.)*
 **Owner:** Implementer
 **Priority:** Medium — it is the only thing standing between `T-040`/`T-060` and closure
 **Phase:** Phase 1
@@ -250,9 +254,10 @@ two are not closed.
 | `COORD-R5` | **Done.** See below |
 | `WIN-R3` | **Done.** The guide now names `mut_control_chain.py`, says it runs first, and records why the `T-056` control does not belong here |
 | `RUNNER-R1` | **Done.** `ci.yml` and the guide now say `timeout-minutes` bounds *run* time, and an unmatched self-hosted job queues for up to 24 hours |
-| `T066-R1` | **Executed on Windows and green.** See **Evidence, on the runner** |
+| `T066-R1` | **Corrected after `T072-R1`.** One mutation still owed on Windows — see **The `T072-R1` correction** |
 | `WIN-R1` | **Not started** — the one carry left |
 | `T-019` cases under the venv | **Done.** Run `30414186949`, 72 passed, 3 skipped |
+| `T072-R2` | **Resolved.** This status block was the drift it reported |
 
 **`COORD-R5` is discharged.** Every task now sits in the section its verdict says it belongs in:
 `T-040`, `T-060`, `T-067`, `T-069`, `T-070` and `T-065` to `## Complete`; `T-066` and `T-068` to
@@ -316,6 +321,45 @@ same run failed at zero steps on the billing annotation.
 | `mypy --platform win32` | Success: no issues found in 78 source files |
 | `pytest` (full default suite) | **1399 passed, 11 skipped, 2 deselected** |
 | `pytest tests/integration/test_end_to_end.py` | 4 passed |
+
+#### The `T072-R1` correction — 2026-07-29
+
+**The assertion was vacuous, and the review proved it rather than argued it.**
+`len(doomed) > 1` reads like a check on the walk and is not one: under the venv shape the launcher
+and the application interpreter already make that two, so the **worker** could be missing and it
+still passed. Codex reduced `children(recursive=True)` to direct children — `len(doomed) == 2`,
+the helper returned successfully, and the omitted worker went on downloading. The handoff had
+flagged this assertion as the least certain one; the failure mode found is sharper than the one
+guessed at.
+
+**Identity now comes from a handshake, not from a count.** `DOWNLOAD_AND_WAIT` prints
+`os.getpid()` alongside the job id, so the test knows the application interpreter rather than the
+launcher. `capture_the_doomed_tree()` walks from *that* pid while the row still says `RUNNING`,
+asserts the application has at least one descendant — the worker, which is the entire reason the
+kill means anything — and returns that exact set. `kill_the_application()` no longer walks; it
+kills what it was handed and asserts nothing survived.
+
+**Mutations, and an honest split between them:**
+
+| Mutation | Linux | Why |
+|---|---|---|
+| Walk finds no worker | **Killed** | `capture_the_doomed_tree`'s descendants assertion fires. This is the mutation that defeated the old code |
+| Worker dropped from the captured set | **Survives — by design** | `kill_the_application()` on POSIX sends `SIGKILL` to the process *group*, so the worker dies whether or not it was captured. Linux structurally cannot gate this |
+
+Both are checked in as `tools/windows/mutations/mut_tree_shallow_walk.py` and
+`mut_tree_drop_worker.py`, runnable on `STARBASE` through the documented procedure. **The
+second one's Windows execution is still owed** — Windows has no process groups and kills captured
+members individually, which is exactly why the captured set must be complete there and why that
+gate cannot be discharged on Linux.
+
+| Check | Result |
+|---|---|
+| Baseline, unmutated | 1 passed |
+| `mut_tree_shallow_walk` on Linux | **FAILED** — "the application (pid …) has no descendants while its job says RUNNING" |
+| `mut_tree_drop_worker` on Linux | 1 passed — the documented, expected survival |
+| `tests/integration/test_end_to_end.py` | 4 passed |
+| `ruff check .` · `ruff format --check .` | Passed · 105 files already formatted |
+| `mypy` · `mypy --platform win32` | Success, 78 source files · Success, 78 source files |
 
 #### Out of scope
 
