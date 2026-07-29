@@ -41,8 +41,12 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
-from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo
-from tracks_and_trails.core.presets import BUILT_IN_PRESETS, effective_selector
+from tracks_and_trails.core.models import AudioCodec, DownloadRequest, Job, MediaInfo
+from tracks_and_trails.core.presets import (
+    BUILT_IN_PRESETS,
+    MP3_QUALITY,
+    effective_selector,
+)
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import (
     Failed,
@@ -1683,6 +1687,67 @@ def test_the_chosen_preset_reaches_every_queued_job(
 
 
 # --- 10. the two entry points (`ARC-004`) -----------------------------------------------------
+
+
+def test_the_preset_chosen_after_probing_is_the_one_that_downloads(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """`T-075`, reported by the maintainer against a real YouTube URL.
+
+    **The order a user works in is the order that was broken.** You paste a URL, probe it to find
+    out *what* it is, and only then decide *how* to download it — and `probe()` has to persist a
+    job before asking a worker anything (`REQ-012`), so it wrote one built from whichever preset
+    happened to be selected at that moment. Choosing another afterwards updated the displayed
+    selector and nothing else, and `add_to_queue` started the job the probe had written.
+
+    So the dialog showed `Format selector: bestaudio/best` while queueing a 1080p video request.
+    Downloading something other than what the user selected, silently, is `AGENTS.md` §10's
+    Critical row — and the visible-but-wrong selector makes it worse, because `REQ-009` shows that
+    string precisely so it can be trusted.
+
+    Asserted on the **stored request**, not on the label: the label was already right.
+    """
+    dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
+    (job_id,) = dialog.queued_job_ids
+    assert store.jobs[job_id].request.audio_codec is not AudioCodec.MP3, (
+        "this test needs the probe to have stored something other than the preset it will choose"
+    )
+
+    choose_preset(dialog, "Audio only (MP3)")
+    dialog.add_to_queue()
+    assert spin(lambda: store.jobs[job_id].status is JobStatus.RUNNING)
+
+    stored = store.jobs[job_id].request
+    assert stored.format_selector == "bestaudio/best", (
+        f"queued {stored.format_selector!r}, but the user chose the MP3 preset"
+    )
+    assert stored.audio_codec is AudioCodec.MP3
+    assert stored.audio_quality == MP3_QUALITY
+
+
+def test_a_preset_left_alone_is_still_the_one_that_downloads(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """The other half, so the fix cannot be "always overwrite with whatever is selected now".
+
+    A user who probes and adds without touching the dropdown must get exactly what the probe
+    stored — and must not pay for a second revision of the row to find that out, which is what
+    `test_a_probed_job_downloads_from_ready_without_re_entering_probing` asserts one test below.
+    """
+    dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
+    (job_id,) = dialog.queued_job_ids
+    before = store.jobs[job_id].request
+
+    dialog.add_to_queue()
+    assert spin(lambda: store.jobs[job_id].status is JobStatus.RUNNING)
+
+    assert store.jobs[job_id].request == before
 
 
 def test_a_probed_job_downloads_from_ready_without_re_entering_probing(

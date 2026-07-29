@@ -74,7 +74,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 from tracks_and_trails.core import logging as app_logging
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, is_terminal
-from tracks_and_trails.core.models import Job
+from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader import process_tree, worker
 from tracks_and_trails.downloader.environment import APP_SLUG
 from tracks_and_trails.downloader.protocol import (
@@ -809,6 +809,50 @@ class DownloadManager(QObject):
         # Ticked immediately so a cancel with a zero cooperative budget does not wait for the
         # next timer interval to escalate.
         self._tick()
+
+    def retarget(
+        self,
+        job_id: str,
+        request: DownloadRequest,
+        *,
+        then: Callable[[], None] | None = None,
+        otherwise: Callable[[str], None] | None = None,
+    ) -> None:
+        """Replace a not-yet-started job's download request, then run `then` (`T-075`).
+
+        **Why the manager owns this rather than the dialog writing through the store.** `T036-R1`
+        is the precedent and it cost a review round: composition wrote a status change through the
+        store directly, so nothing announced it — `job_changed` is emitted from *this* object's
+        write callback — and a view went on showing a state the row no longer held. A request
+        change has the same shape, so it takes the same route.
+
+        Ordered, not fired-and-forgotten. `then` runs **after** the new request is durable, which
+        is what lets the caller start the job knowing the worker will read what the user chose.
+        A start issued alongside the write would be a race whose loser is a download of the wrong
+        thing.
+
+        A job past `Job.RETARGETABLE` is left alone and `otherwise` is told why, rather than
+        raising: this is reached from a button, and a job that started while the dialog was open
+        is an ordinary outcome rather than a programming error.
+        """
+
+        current = self._repository.get(job_id)
+        if current is not None and current.request == request:
+            # **Already what was asked for, so no write.** `DownloadRequest` is frozen, so this
+            # is a structural comparison rather than an identity one. Writing anyway would add a
+            # second `READY` revision to every probed job's history for no change — and
+            # `test_a_probed_job_downloads_from_ready_without_re_entering_probing` asserts that
+            # history as a sequence, which is the right thing for it to assert (`ARC-004`).
+            if then is not None:
+                then()
+            return
+
+        def revise(candidate: Job) -> Job | None:
+            if candidate.status not in Job.RETARGETABLE:
+                return None
+            return candidate.with_request(request)
+
+        self._persist(job_id, revise, then=then, otherwise=otherwise)
 
     def retry(self, job_id: str) -> None:
         """Re-queue a failed job and start it as soon as the pool can take it (`REQ-018`).

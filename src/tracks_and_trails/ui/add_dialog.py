@@ -87,7 +87,7 @@ from PySide6.QtWidgets import (
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
-from tracks_and_trails.core.models import Job, MediaInfo, Preset
+from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, Preset
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import SessionKind
 
@@ -901,23 +901,69 @@ class AddUrlDialog(QDialog):
 
         probe = self._probe
         if probe is not None and probe.ready and probe.usable:
-            try:
-                self._manager.start(probe.job_id, SessionKind.DOWNLOAD)
-            except (RuntimeError, ValueError) as start_error:
-                # The jobs are stored, so nothing is lost by not starting: whatever runs the
-                # queue picks it up. Saying so beats closing on a silent failure.
-                self._status.setText(
-                    f"Queued, but the download did not start: {start_error} "
-                    "It stays in the queue and can be started from there."
-                )
-                self._refresh_actions()
-                return
+            # **The preset is bound here, not at probe time** (`T-075`). `probe()` had to persist
+            # a job before asking a worker anything (`REQ-012`), and it built that job from
+            # whichever preset happened to be selected at that moment. Choosing a preset
+            # afterwards — the ordinary order, since you probe to find out *what* something is
+            # before deciding *how* to download it — updated the displayed selector and nothing
+            # else, so the dialog showed `bestaudio/best` while queueing a 1080p video request.
+            #
+            # The rule is "the request that runs is the one selected when you pressed Add".
+            # `retarget` writes only when the stored request actually differs, so a user who
+            # never touched the dropdown still gets a clean `QUEUED → PROBING → READY → RUNNING`
+            # history rather than a redundant revision.
+            self._manager.retarget(
+                probe.job_id,
+                self._request_for(probe.url),
+                then=lambda: self._start_probed(probe.job_id),
+                otherwise=self._on_retarget_failed,
+            )
+            return
         self.accept()
+
+    def _start_probed(self, job_id: str) -> None:
+        """Start the probed job, now that the request it will read is durable (`T-075`)."""
+        try:
+            self._manager.start(job_id, SessionKind.DOWNLOAD)
+        except (RuntimeError, ValueError) as start_error:
+            # The jobs are stored, so nothing is lost by not starting: whatever runs the
+            # queue picks it up. Saying so beats closing on a silent failure.
+            self._status.setText(
+                f"Queued, but the download did not start: {start_error} "
+                "It stays in the queue and can be started from there."
+            )
+            self._refresh_actions()
+            return
+        self.accept()
+
+    def _on_retarget_failed(self, reason: str) -> None:
+        """The chosen preset could not be stored, so nothing is started with the old one.
+
+        Refusing to start is the point. A download that ran here would run the request the probe
+        wrote, which is the defect `T-075` is about — and it would do it after telling the user
+        their choice had been saved.
+        """
+        self._status.setText(
+            f"Your format choice could not be saved, so nothing was started: {reason} "
+            "The URLs are still queued; press Add to queue again to retry."
+        )
+        self._refresh_actions()
 
     def _begin_saving(self, message: str) -> None:
         self._saving = True
         self._status.setText(message)
         self._refresh_actions()
+
+    def _request_for(self, url: str) -> DownloadRequest:
+        """The request the **currently selected** preset would download `url` with (`T-075`).
+
+        One place builds a request, so "what the user chose" cannot mean two different things in
+        two code paths — which is the shape the preset defect had: `_new_job` read the preset and
+        the start path read a stored job that no longer agreed with it.
+        """
+        return preset_registry.to_request(
+            self.selected_preset, url=url, output_directory=str(self._output_directory)
+        )
 
     def _new_job(self, url: str) -> Job:
         """A `QUEUED` job for `url`, with **no** queue position.
@@ -926,13 +972,10 @@ class AddUrlDialog(QDialog):
         (`ARC-005`). Reading `MAX(queue_position)` here would be both a GUI-thread database call
         and a guess against every other writer.
         """
-        request = preset_registry.to_request(
-            self.selected_preset, url=url, output_directory=str(self._output_directory)
-        )
         return Job(
             id=str(uuid.uuid4()),
             url=url,
-            request=request,
+            request=self._request_for(url),
             status=JobStatus.QUEUED,
             created_at=datetime.now().astimezone(),
         )

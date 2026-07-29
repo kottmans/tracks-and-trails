@@ -73,13 +73,109 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(Holds `T-073` as of 2026-07-29. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling,
+*(Holds `T-073` and `T-075` as of 2026-07-29. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling,
 and this note went on claiming that after `T-073` was filed In Review under `## Ready` —
 `COORD-R6`, which is `COORD-R5`'s own failure mode recurring one day later. `COORD-R2` is why this
 section carries a note at all rather than sitting blank: an empty section is a claim about
 readiness, and the last time it was left unlabelled it outlived being true by one CI run. The
 lesson this file keeps relearning is that the claim has to be rewritten when the section changes,
 not when someone notices.)*
+
+### T-075 — Probing freezes the preset, so the download ignores what the user chose
+
+**Status:** **In Review — fixed 2026-07-29.** Reported by the maintainer against a real YouTube
+URL: selecting the MP3 or original-audio preset produced a video file. Reproduced, root-caused,
+fixed, and covered by two tests, one of them mutation-verified. See **Evidence**.
+**Owner:** Implementer
+**Priority:** **Critical** — the application downloaded something other than what the user
+selected, silently, while displaying the correct selector
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `REQ-009`, `REQ-012`, `T-016`, `T-051`, `ARC-004`, `ARC-005`, `T036-R1`
+**Affected surfaces:** `ui/add_dialog.py`, `downloader/manager.py`, `core/models.py`,
+`tests/ui/test_add_dialog.py`
+**Risk:** Was High to leave — it is the product's central promise, and nothing failed loudly
+
+#### Scope
+
+**The order a user works in is the order that was broken.** Paste a URL, probe it to find out what
+it is, then decide how to download it. `probe()` must persist a job before asking a worker anything
+(`REQ-012`), and it built that job from whichever preset was selected at that moment. Choosing
+another preset afterwards called `_show_selector`, which updates the displayed string and nothing
+else. `add_to_queue` then deliberately skips creating a job for a URL it has already stored, and
+started the one the probe wrote.
+
+Measured before the fix — probe with the default preset, then select *Audio only (MP3)*:
+
+| | |
+|---|---|
+| Label displayed | `Format selector: bestaudio/best` |
+| Request actually stored | `bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[...]` |
+| `audio_codec` | `best`, not `mp3` |
+
+Without probing first, the same selection stored `bestaudio/best`, `audio_codec=mp3`, 192 kbps —
+correct. **So the presets were never broken; probing froze them.** That is why it read as "none of
+the options do anything": with probing in the loop, every download used the default.
+
+**`REQ-009` makes the visible selector part of the promise** — it is shown so a user can learn the
+syntax and trust it. A dialog that displays one selector and queues another breaks that
+specifically rather than incidentally.
+
+#### Acceptance criteria
+
+- The request that runs is the one selected when **Add to queue** was pressed, whether or not the
+  URL was probed first
+- A user who does not touch the dropdown gets exactly what the probe stored, with no extra
+  revision of the row
+- A job a worker already holds cannot be retargeted
+- If the chosen request cannot be stored, **nothing starts** — the old request must not run behind
+  a message saying the choice was saved
+- The regression fails when the fix is reverted
+
+#### Evidence, 2026-07-29
+
+**The fix binds the preset at Add, not at probe.** `DownloadManager.retarget` writes the new
+request through the same `_persist` path every other state change uses, and starts the job from its
+completion callback — persist, then act. That routing is `T036-R1`'s lesson: when composition wrote
+a status change through the store directly, nothing announced it and a view showed a state the row
+no longer held. A request change has the same shape.
+
+`Job.with_request` guards the one thing that must never happen — retargeting a job a worker already
+holds — via `Job.RETARGETABLE` (`QUEUED`, `READY`). `READY` is included deliberately: a probe
+answers *what this URL is*, which is a different question from *how to download it*, so the
+download request is still open at that point.
+
+**It writes only when the request differs.** The first version rewrote unconditionally, on the
+argument that a rule with no exceptions is easier to trust. That argument was the Implementer's
+rather than the project's, and it cost a real property:
+`test_a_probed_job_downloads_from_ready_without_re_entering_probing` asserts the persisted status
+sequence, and an unconditional write added a second `READY` revision to every probed job.
+`DownloadRequest` is frozen, so the comparison is structural — not the subtle kind the
+unconditional version was defending against.
+
+**Failure is refusal, not a silent fallback.** If the write fails or the job has moved, the dialog
+says so and starts nothing. Starting would run the request the probe wrote — the defect itself —
+after telling the user their choice was saved.
+
+| Check | Result |
+|---|---|
+| `test_the_preset_chosen_after_probing_is_the_one_that_downloads` | passes; **fails when the retarget is removed** |
+| `test_a_preset_left_alone_is_still_the_one_that_downloads` | passes, and pins the no-redundant-write half |
+| Full suite | 1403 passed, 11 skipped, 2 deselected |
+
+**Why no test caught it.** Every dialog test either does not probe, or does not change the preset
+after probing — the defect's existence proves it. `ai/TESTING.md` §13 already records that a task's
+tests can share one blind spot; here the blind spot was an ordering the tests never perform and
+users always do. **The maintainer found it by using the application**, which is the one method no
+suite here replaces.
+
+#### Out of scope
+
+- Per-bitrate selection for MP3 (`REQ-010`) — the control this was found while discussing
+- A probe whose result *failed*: the dialog marks it superseded and leaves the stored row alone, so
+  `add_to_queue` neither retargets nor replaces it. Narrower, pre-existing, and not this
+
+---
 
 ### T-073 — Run the full Windows gate on the machine that can run it
 

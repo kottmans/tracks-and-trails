@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from datetime import datetime
 from enum import Enum, StrEnum
-from typing import Any, Final, Self
+from typing import Any, ClassVar, Final, Self
 from urllib.parse import urlsplit
 
 from tracks_and_trails.core.errors import ErrorKind
@@ -541,6 +541,36 @@ class Job:
         `Job` by hand.
         """
         return replace(self, status=apply(self.status, target))
+
+    #: The statuses in which nothing has yet acted on the request, so replacing it is safe.
+    #:
+    #: `QUEUED` is a job nobody has started. `READY` is one a *probe* has resolved — the probe
+    #: asked what the URL is, which is a different question from how to download it, so the
+    #: download request is still open at that point.
+    RETARGETABLE: ClassVar[frozenset[JobStatus]] = frozenset({JobStatus.QUEUED, JobStatus.READY})
+
+    def with_request(self, request: DownloadRequest) -> Self:
+        """Return a copy carrying `request` — legal only before a worker has acted on it.
+
+        **The defect this exists for** (`T-075`): the add-URL dialog persists a job when the user
+        probes, built from whichever preset was selected at that moment, and then started *that*
+        job when the user pressed Add. Changing the preset in between updated the displayed
+        selector and nothing else, so the dialog showed `bestaudio/best` while queueing a 1080p
+        video request. Downloading something other than what the user selected, silently, is the
+        `Critical` row of `AGENTS.md` §10's table.
+
+        Guarded rather than a bare `replace`, for the same reason `with_status` is: the one thing
+        that must never happen is retargeting a job a worker already holds, which would leave the
+        stored request describing something other than what is running.
+        """
+        if self.status not in self.RETARGETABLE:
+            # Not `IllegalTransitionError`: that one reports a move between two statuses and
+            # carries both. This is a different failure — the status is not changing at all.
+            raise ValueError(
+                f"cannot change the request of a job in {self.status.value}; only "
+                f"{', '.join(sorted(s.value for s in self.RETARGETABLE))} are still open"
+            )
+        return replace(self, request=request)
 
     def with_failure(self, kind: ErrorKind, message: str) -> Self:
         """Return a copy moved to `FAILED`, carrying the classification and the message.
