@@ -741,6 +741,46 @@ so a crash caught there arrives with its traceback rather than as a count.
 *(Superseded: this section previously read "Not yet run. The job is authored and pushed;
 executing it needs `STARBASE` and is the next step on this task." It has now run.)*
 
+#### Diagnostic session, 2026-07-29 — narrowed, not diagnosed
+
+**Both threads named in the crash are ours.** The traceback listed `[ResultPump]` and
+`Thread-50 (_monitor)`, and `_monitor` was read as `multiprocessing`'s. It is not: `multiprocessing`
+declares no such function, and `_monitor` is
+`core/logging.py`'s `_ToWhicheverHandlersWeHaveNow._monitor` — the `T-038` log listener's thread
+body. So the crash happened with the result pump and the **logging listener** both live, which
+points somewhere the earlier notes did not.
+
+**A mechanism worth testing, stated as a hypothesis.** `_monitor()`'s `finally` closes the worker
+log queue — a `multiprocessing.Queue` — and `stop_listening_for_worker_logs()` **waits for
+nothing**, deliberately (`T038-R2`, and it is right to: the GUI thread must not block on a slow
+handler). So the close runs on the listener thread while parent threads may still be logging into
+that queue and a spawned writer may still hold the other end. Closing a multiprocessing queue
+under a concurrent user is the kind of thing that faults natively instead of raising, which is the
+shape this crash took. The crashing test is also the one that **kills** a worker rather than
+asking it to stop, so a writer dying mid-record is in scope there and almost nowhere else.
+
+**Nothing here demonstrates that.** It is a mechanism that fits, and the file it implicates has a
+recorded reason for the behaviour. It is written down so the next attempt starts from a candidate
+rather than from the whole suite.
+
+**What was attempted, and what it cost:**
+
+| Attempt | Result |
+|---|---|
+| Repeat batch, 24 full-suite iterations on `STARBASE` | **0 crashes** (run `30454206697`) |
+| Both batches together, recent heads | **0 in 36** |
+| The crashing test alone, 60 iterations on Windows | **60 passed, 0 failed, 0 crashed** |
+| A direct stress of the logging-teardown race | **unusable — it hung on Linux before its first iteration** |
+
+The last row is the honest one. The harness drives a parent thread logging continuously while a
+spawned writer is killed and the listener is torn down; it never reached a print, so it deadlocked
+in its own setup rather than measuring anything. A failed instrument is not a negative result, and
+it is recorded as neither.
+
+**Classification is unchanged: product versus harness is still unresolved**, and `T-074` remains a
+High Phase 1 blocker. What has changed is where to look — logging teardown alongside the pump,
+rather than the pump alone.
+
 #### Acceptance criteria
 
 - The failure is **reproduced deliberately**, with a rate, rather than waited for
