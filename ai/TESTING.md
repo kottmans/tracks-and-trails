@@ -322,6 +322,23 @@ The `windows-desktop` job is the one place that override is absent, so Qt loads 
 Windows only: the Linux runner has no display server, and Linux launch is verified on the
 maintainer's own desktop — which Windows has never had.
 
+**Since `T-073` this job also carries the whole Windows gate**, not just the desktop slice: lint,
+format, the Qt baseline and the full suite, all offscreen, after the real-plugin tests have run.
+That is not its original purpose. It happened because `check (windows-latest)` is hosted and has
+not started since the Actions quota ran out, leaving Phase 1's *verified on Windows* criterion
+with nowhere to be measured; `OPS-005` made `STARBASE` that place. The job keeps its name because
+the desktop role above is still true and still why it exists.
+
+Two things still differ from the hosted job, and neither is papered over:
+
+- **ffmpeg is recorded, not installed.** `check` runs `choco install ffmpeg`; this job must never
+  provision the machine it runs on, so it reports what is there. The default suite does not need
+  ffmpeg — measured with it removed from `PATH`, the counts are identical — so the run states which
+  configuration it measured rather than gating on it.
+- **The interpreter is the machine's**, not `actions/setup-python`'s, for the reason recorded in
+  the job itself: installing one deadlocked against `msiexec` and left the machine's Python
+  half-removed.
+
 Three rules keep this job from going green while proving nothing, which is its only real
 failure mode:
 

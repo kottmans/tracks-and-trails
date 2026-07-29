@@ -216,7 +216,10 @@ jobs:
   windows-desktop:
     name: windows desktop
     runs-on: [self-hosted, windows, desktop]
-    timeout-minutes: 15
+    # Raised from 15 with T-073: this job now carries the full suite as well as the desktop
+    # slice, and 15 was sized for the slice alone. The number bounds how long the job may run
+    # once started — it does not bound the queue wait, per RUNNER-R1 below.
+    timeout-minutes: 30
 
     env:
       # Deliberately NOT offscreen. Setting it to the real plugin rather than leaving it unset
@@ -307,32 +310,66 @@ jobs:
           pytest -v -m windows_desktop \
             --junitxml="reports/pytest-desktop.xml" 2>&1 | tee "reports/pytest-desktop.txt"
 
-      - name: Process trees under the venv
-        # T066-R1. `T-066` measured that on Windows in a virtualenv the pid `Popen` returns is
-        # the launcher, while a different pid runs the interpreter — so `T-019`'s reaping
-        # evidence describes a tree one level shallower than the one a developer or a user
-        # actually has. Its acceptance criteria therefore require the process-tree cases to run
-        # under that shape, and until now nothing had: the `check (windows-latest)` job that
-        # would have covered them is hosted, and hosted jobs have not started since the quota
-        # ran out.
+      # --- The rest of the Windows gate (T-073) -------------------------------------------
+      #
+      # Everything below duplicates what `check (windows-latest)` does, because that job is
+      # hosted and has not started since the Actions quota ran out — which left Phase 1's
+      # "verified on Linux and Windows" criterion with nowhere to be measured. `OPS-005` made
+      # this machine the platform that criterion is measured against; these steps are what let
+      # it actually answer.
+      #
+      # It reuses the virtualenv built above rather than standing up a second job, because the
+      # runner is one machine: two jobs targeting it would queue serially and pay for a second
+      # checkout and install to prove the same thing.
+
+      - name: Record the environment
+        # The same artifact `check` writes, for the same reason — a Windows failure has to be
+        # diagnosable without sitting at the machine.
         #
-        # This job already builds a venv on a real Windows machine, so it is the only place the
-        # required shape exists. Running the two modules by path rather than by marker is
-        # deliberate — there is no marker for "the process tree matters here", and inventing one
-        # would put the selection in two places that can disagree. pytest exits 5 on an empty
-        # collection, so a renamed module turns this red rather than silently green.
-        #
-        # **Offscreen on purpose, unlike the step above.** The variable under test is the venv's
-        # process depth, not the platform plugin, and offscreen is how these tests are validated
-        # everywhere else. `T-068` is why that is now safe here: this machine had an empty font
-        # database under offscreen until `conftest.py` started pointing Qt at the Windows font
-        # directory.
+        # **ffmpeg is recorded, not installed.** `check` runs `choco install ffmpeg` because a
+        # hosted runner is discarded afterwards. This one is somebody's desktop, and the rule
+        # this job already carries is that it never provisions itself: the first run of it
+        # launched the real Python installer and deadlocked against `msiexec` for the whole
+        # timeout. Recording is affordable because the default suite does not need ffmpeg —
+        # measured on Linux with it removed from PATH, the counts are identical. So this line
+        # is what says *which* configuration the run below measured, rather than a gate.
+        run: |
+          {
+            echo "runner:  self-hosted STARBASE"
+            echo "ref:     ${{ github.ref }} @ ${{ github.sha }}"
+            python -VV
+            echo "--- ffmpeg ---"
+            command -v ffmpeg || echo "ffmpeg: NOT FOUND — this run measured the no-ffmpeg configuration"
+            ffmpeg -version 2>&1 | head -1 || true
+            echo "--- installed ---"
+            python -m pip list
+          } | tee "reports/environment.txt"
+
+      - name: Lint
+        run: ruff check . 2>&1 | tee "reports/lint.txt"
+
+      - name: Format check
+        run: ruff format --check . 2>&1 | tee "reports/format.txt"
+
+      - name: Qt baseline
+        # T-002's Windows half. Offscreen by definition — it asserts PySide6 imports and builds
+        # a QApplication without a display, which is the opposite of the step above it.
         env:
           QT_QPA_PLATFORM: offscreen
-        run: |
-          pytest -v tests/integration/test_manager.py tests/integration/test_end_to_end.py \
-            --junitxml="reports/pytest-process-tree.xml" 2>&1 \
-            | tee "reports/pytest-process-tree.txt"
+        run: python .github/scripts/qt_baseline.py 2>&1 | tee "reports/qt-baseline.txt"
+
+      - name: Full suite
+        # **Offscreen on purpose, unlike the desktop slice above.** `ai/TESTING.md` §2 runs the
+        # UI suite headless; the real-plugin assertions are the `windows_desktop` marker's job
+        # and already ran.
+        #
+        # This subsumes the "Process trees under the venv" step it replaces (T066-R1): the
+        # `T-019` process-tree cases and `test_end_to_end.py` are both in the default run, so a
+        # separate step would execute them twice. Their evidence now lives in this run's junit
+        # XML — the same place `check` has always kept it.
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: pytest -v --junitxml="reports/pytest.xml" 2>&1 | tee "reports/pytest.txt"
 
       - name: Upload evidence
         if: always()

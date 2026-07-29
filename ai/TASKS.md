@@ -79,6 +79,60 @@ names where each of them went.)*
 
 ## Ready
 
+### T-073 — Run the full Windows gate on the machine that can run it
+
+**Status:** **In Review — implemented 2026-07-29**
+**Owner:** Implementer
+**Priority:** **High** — it is what makes Phase 1's seventh exit criterion attemptable again
+**Phase:** Phase 1
+**Depends on:** `OPS-005`; the self-hosted runner established 2026-07-28
+**Relevant context:** `OPS-005`, `T-066`, `T-062`, `ai/TESTING.md` §12, `IMPLEMENTATION_PLAN.md`
+Phase 1 exit criteria
+**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md`
+**Risk:** Medium — it puts the project's whole Windows gate on one machine
+
+#### Scope
+
+`OPS-005` made `STARBASE` the platform *verified on Windows* is measured against, and then had to
+record that the criterion was still unmet: the self-hosted job ran the 28-test desktop slice and
+two integration modules, while `check (windows-latest)` — lint, format, types, the Qt baseline and
+the full suite — had not run anywhere since the hosted quota ran out.
+
+Give the self-hosted job the rest of that gate. It already builds a virtualenv on a real Windows
+machine, so the marginal cost is steps rather than infrastructure.
+
+**No provisioning.** The one hard rule this job already carries is that a self-hosted runner must
+never install software as a side effect of running a test — the first run of it launched the real
+Python installer, opened an interactive dialog, and deadlocked against `msiexec` for the full
+timeout. So where `check` runs `choco install ffmpeg`, this job **records** ffmpeg instead. That is
+affordable because the default suite does not need it: measured on Linux with `ffmpeg` removed from
+`PATH`, **1399 passed, 11 skipped, 2 deselected** — the same numbers as with it.
+
+**The job keeps its name.** `windows desktop` is referenced by `ai/TESTING.md`, `ai/REQUIREMENTS.md`
+and `IMPLEMENTATION_PLAN.md`, all describing a desktop role that is still true and still its
+reason for existing. Renaming would invalidate those and the review record for no gain; the
+expanded role is recorded in `ai/TESTING.md` instead.
+
+#### Acceptance criteria
+
+- The self-hosted job runs lint, format, the Qt baseline and the full suite, in addition to what it
+  already ran
+- The full-suite step runs **offscreen**, and the desktop slice keeps the real `windows` plugin
+- Nothing in the job installs software on the machine
+- ffmpeg's presence or absence is recorded, and the run states which configuration it measured
+- The job's timeout accommodates a full suite, rather than passing by finishing early
+- `ai/TESTING.md` records that this job now carries the Windows gate, and what still differs from
+  the hosted one
+
+#### Out of scope
+
+- Retiring `check (windows-latest)` or the `frozen` jobs. They stay; this makes their absence
+  survivable, not permanent
+- The Linux half of `check`, which is unaffected
+- `T-056` and `T-068`, downgraded by `OPS-005` and not revisited here
+
+---
+
 ### T-072 — Carry the three unresolved findings the last-pass direction stopped
 
 **Status:** **In Progress — three of the five carries are done, 2026-07-28.** `COORD-R5`'s filing

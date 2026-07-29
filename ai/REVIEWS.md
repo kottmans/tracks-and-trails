@@ -5651,3 +5651,88 @@ without adding Pillow to the product or its development gate.
 
 T-071 is **Approved at `3327fd3`**. The known-unverified Windows taskbar/title-bar appearance is
 accurately disclosed and does not block this Linux-reported cosmetic correction.
+
+## 2026-07-29 — T-064 and T-072 carry review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `3327fd3`  **Head:** `f20a9c8`
+**Scope:** T-064's developer-environment repair; T-072's COORD-R5, T066-R1, WIN-R3 and
+RUNNER-R1 work; the Windows-venv process-tree workflow step and its first evidence run
+**Boundary classification:** Developer environment, integration-test helper, workflow, and
+documentation/coordination; no production source
+**Verdict by task:** T-064 **Approved**; COORD-R5, WIN-R3 and RUNNER-R1 **Resolved**;
+T066-R1 **Changes requested**; T-072 remains **In Progress / Changes requested**
+
+The checkout advanced to `df2b106` while this review was running, and `ai/TASKS.md` then acquired
+an uncommitted edit. Both are excluded. The later commit records the maintainer's OPS-005
+decision about T-056/T-068; this review judges the decision question as it stood at `f20a9c8`,
+not that later implementation.
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T072-R1` | **Medium** | **Yes — T066-R1's process-tree half** | `kill_the_application()` treats `len(doomed) > 1` as proof that its recursive walk found the expected tree (`tests/integration/test_end_to_end.py:112-120`). Under the documented Windows venv shape, the launcher plus application interpreter already make that count two; the worker may be absent and the assertion still passes. A deterministic mutation of the exact function reduced `children(recursive=True)` to the direct child: `len(doomed) == 2`, the helper returned successfully, and the omitted worker remained alive. By contrast, a mutation that left a process already present in `doomed` alive was correctly killed by the `assert not alive` check. The new assertion therefore proves termination of whatever the walk happened to return, but does not retain the expected worker set as T-072 requires. | Have `DOWNLOAD_AND_WAIT` report the application interpreter PID in its startup handshake. Start the descendant walk from that PID rather than infer identity from a count beneath the launcher; while the row is RUNNING, assert that the application has the expected worker descendant, capture that exact PID set, kill it, and assert every captured PID ended. Then run two Windows mutations: leave a captured victim alive, and omit the worker from the captured set. | **Open** |
+| `T072-R2` | **Low** | **No** | T-072's status at `ai/TASKS.md:81-85` still says three carries are done, T066-R1 is unexecuted, and the T-019 run is not started. Its table at lines 153-160 and evidence at lines 191-210 say T066-R1 executed and the T-019 cases are done, leaving only WIN-R1. `ai/STATUS.md:314-332` has the same “three done/unexecuted” paragraph immediately before the completed-run paragraph. | Rewrite the live status/progress summary to four of five carries done, with WIN-R1 alone remaining. Keep the earlier unexecuted state only if it is explicitly historical. | **Open, non-blocking** |
+
+### Task judgments
+
+- **T-064:** Approved at `f20a9c8`. The repaired venv's bare `mypy`, `pytest`, application entry
+  point, and import-location probe all resolve through this checkout without `PYTHONPATH`.
+  Recreating the environment with `venv --clear` addresses dependency-owned launchers, which
+  reinstalling only this project cannot. The one-sentence STARBASE correction in
+  `docs/DEVELOPMENT.md` resolves a contradiction inside the file and is acceptable in this
+  documentation repair; reverting it would knowingly restore a false current statement.
+- **COORD-R5, WIN-R3 and RUNNER-R1:** Resolved. Task section placement matches the filed
+  verdicts, the mutation guide names the control the driver actually runs, and both the workflow
+  and guide distinguish a job's run-time limit from the self-hosted queue timeout.
+- **Windows-venv workflow evidence:** Accepted. Run `30414186949` is at exact implementation head
+  `185ea6d`; its `windows desktop` job collected all 75 tests from the two named modules and
+  reported 72 passed and three POSIX-only skips. The named cancellation, killed-worker,
+  grandchild-detector, and end-to-end recovery cases all passed. This proves the step selects and
+  executes the intended tests under the Windows venv; it does not close T072-R1's vacuous
+  expected-set assertion.
+- **T-056/T-068 scope question at the reviewed head:** Recommend non-phase-blocking follow-ups,
+  while keeping both tasks open. T-056 is test-only and its established error direction is a
+  false alive result, so it can fail CI spuriously but cannot hide a broken reap. T-068's
+  offscreen-test fix is validated on the supported machine that exhibited the empty font
+  database; explaining why a hosted image did not exhibit it is diagnostic follow-up. T-056's
+  mechanism is Windows-general rather than Windows-Server-specific: a terminated Windows process
+  object becomes signaled and can remain valid while a handle remains open, and psutil's
+  zero-timeout wait asks that signaled state directly. STARBASE's 20/20 therefore establishes
+  absence of the trigger there, not correctness of the old helper.
+- **T-033's “PyInstaller absent” sentence:** stale, but not a boundary finding. `git blame` places
+  it at `a2966156`, well before this review base. File a separate coordination cleanup rather than
+  folding it into T-064.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Captured-survivor deterministic mutation | **Killed** by `assert not alive`; survivor PID reported |
+| Shallow-walk deterministic mutation | **Survived**; `len(doomed) == 2` while an omitted worker remained alive |
+| Live STARBASE mutation attempt | **Not run** — direct transfer did not connect before timeout |
+| Exact-head Actions run `30414186949` | STARBASE job green; **72 passed, 3 skipped** in the process-tree step; four hosted jobs had zero steps |
+| Focused end-to-end tests | **4 passed** outside the filesystem/network sandbox |
+| `mypy --platform win32` | Passed: **78 source files** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | **103 files already formatted** |
+| Bare repaired-venv launchers | `mypy`, `pytest`, `tracks-and-trails`, and import-location probe all passed without `PYTHONPATH` |
+| `git diff --check 3327fd3..f20a9c8` | Passed |
+
+The first focused end-to-end run failed three tests because the sandbox denied their loopback
+HTTP server with `PermissionError: [Errno 1]`; the identical run with localhost sockets enabled
+passed as recorded. That was an environment denial before project behavior, not a project
+failure.
+
+### Final disposition
+
+T-064 is **Approved at `f20a9c8`**. COORD-R5, WIN-R3, RUNNER-R1, and the Windows-venv workflow
+selection/evidence are accepted.
+
+T066-R1 remains **Changes requested** on `T072-R1`; T-066 must not be narrowed to frozen-artifact
+evidence alone until the test identifies and retains the application/worker set rather than
+inferring it from `len(doomed) > 1`, and the correction is mutation-checked on Windows.
+
+T-072 remains **In Progress / Changes requested**: `T072-R1` needs correction, `T072-R2` needs
+current-truth cleanup, and WIN-R1 was already openly unfinished at the reviewed head.
