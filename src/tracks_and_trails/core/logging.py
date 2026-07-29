@@ -54,6 +54,7 @@ import logging
 import logging.handlers
 import re
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Final, NamedTuple
@@ -506,6 +507,30 @@ class _ToWhicheverHandlersWeHaveNow(logging.handlers.QueueListener):
         with contextlib.suppress(Exception):
             self.enqueue_sentinel()
 
+    def dequeue(self, block: bool) -> Any:
+        """Read one record, and treat a closed queue as the end of the stream (`T074-R3`).
+
+        **The exit wait is bounded and therefore cannot be relied on.** It gives the listener five
+        seconds; a handler slower than that — measured at 5.1 s — leaves the thread still reading
+        when the wait returns and `multiprocessing` finalises the queue underneath it. Then
+        `dequeue` raises into an interpreter that is already tearing down, where the exception has
+        nowhere to go: `threading.excepthook` is gone and only a header reaches stderr.
+
+        A queue that has been closed is a stream that has ended, so this says so rather than
+        raising. That makes the outcome correct whether or not the wait finished in time — the
+        ordering fix is what makes it *prompt*, and this is what makes it *safe*.
+
+        Deliberately narrow. `OSError` is the closed handle (`WinError 6` on Windows, `EBADF`
+        elsewhere), `EOFError` the other end going away, and `ValueError` a queue closed in this
+        process. Anything else is a real fault and still raises.
+        """
+        try:
+            return super().dequeue(block)
+        except OSError, EOFError, ValueError:
+            # `_sentinel` is `QueueListener`'s own end-of-stream marker; typeshed does not
+            # declare it, which is the same gap `_monitor` has one method down.
+            return self._sentinel  # type: ignore[attr-defined]
+
     # `_monitor` is the listener thread's body. It is private, and typeshed does not declare it,
     # so the call up to it is the one place in this module that has to say so out loud.
     def _monitor(self) -> None:
@@ -555,7 +580,10 @@ def worker_log_queue() -> Any:
         # An overlapped `ReadFile` whose handle is closed underneath it. Registering after the
         # queue exists puts this handler later in the list and therefore *before* multiprocessing's
         # own, so the listener is finished before anything closes what it is reading.
-        atexit.register(_wait_at_exit)
+        global _exit_registered
+        if not _exit_registered:
+            atexit.register(_wait_at_exit)
+            _exit_registered = True
     return _worker_queue
 
 
@@ -580,20 +608,36 @@ def stop_listening_for_worker_logs() -> threading.Thread | None:
     this module later: "the listener" is process-wide, and a caller which never started one
     would otherwise find itself waiting on somebody else's.
     """
-    global _listener, _stopping, _worker_queue
+    global _listener, _worker_queue
     stopping = None
     if _listener is not None:
-        stopping = _stopping = _listener.thread
+        stopping = _listener.thread
+        if stopping is not None:
+            # Pruned as we go, so a long-lived process does not accumulate dead threads.
+            _stopping[:] = [thread for thread in _stopping if thread.is_alive()]
+            _stopping.append(stopping)
         _listener.stop()
         _listener = None
     _worker_queue = None
     return stopping
 
 
-#: The thread of the listener that was stopped most recently, kept for the one caller that has to
-#: know it has actually gone: a test, tearing down a process-wide fixture before the next test
-#: installs its own handlers. Production never waits for it.
-_stopping: threading.Thread | None = None
+#: Every listener thread asked to stop and not yet seen to finish (`T074-R2`).
+#:
+#: **A list, because a single slot silently forgot the earlier one.** This held only the most
+#: recently stopped thread, so a second lifecycle overwrote the first — and the exit wait then
+#: joined the newest listener while an older one was still reading a queue that was about to be
+#: finalised. A two-lifecycle probe reproduced exactly that.
+_stopping: list[threading.Thread] = []
+
+#: Whether the exit wait has been registered. **Once, not once per lifecycle.**
+#:
+#: `atexit.register` was called from every `worker_log_queue()`, so a process with two lifecycles
+#: got two handlers and the second pass happened to collect what the first had skipped. That made
+#: the defect `T074-R2` reports invisible to a test — the wait was wrong, and a duplicate
+#: registration covered for it. One registration means the list below is the only thing that
+#: remembers, which is what makes it testable.
+_exit_registered = False
 
 
 def _wait_at_exit() -> None:
@@ -630,11 +674,12 @@ def wait_for_the_log_listener_to_stop(timeout: float = 5.0) -> bool:
     exists without (`T038-R2`). Returns whether the thread finished within `timeout`, and `True`
     when there was nothing to wait for.
     """
-    thread = _stopping
-    if thread is None:
-        return True
-    thread.join(timeout)
-    return not thread.is_alive()
+    deadline = time.monotonic() + timeout
+    for thread in list(_stopping):
+        thread.join(max(0.0, deadline - time.monotonic()))
+    still_running = [thread for thread in _stopping if thread.is_alive()]
+    _stopping[:] = still_running
+    return not still_running
 
 
 def worker_logging_handler(

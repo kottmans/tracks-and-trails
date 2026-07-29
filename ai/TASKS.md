@@ -81,7 +81,7 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(Holds `T-072`, `T-073` and `T-074` as of 2026-07-29. `T-075`, `T-076` and `T-077` were approved and are filed Complete; leaving them here after approval is the placement drift `COORD-R7` reported, so they moved with the verdict rather than later. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling,
+*(Holds `T-072`, `T-073` and `T-090` as of 2026-07-29. `T-074` moved back to Ready when `T074-R4` found its "diagnosed and fixed" unsupported; what was fixed is `T-090`. `T-075`, `T-076` and `T-077` were approved and are filed Complete; leaving them here after approval is the placement drift `COORD-R7` reported, so they moved with the verdict rather than later. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling,
 and this note went on claiming that after `T-073` was filed In Review under `## Ready` —
 `COORD-R6`, which is `COORD-R5`'s own failure mode recurring one day later. `COORD-R2` is why this
 section carries a note at all rather than sitting blank: an empty section is a claim about
@@ -485,16 +485,276 @@ for review findings (`AGENTS.md` §12).
 
 ---
 
+### T-090 — The log listener could be left reading a queue something else had closed
+
+**Status:** **In Review — fixed 2026-07-29**, with `T074-R2` and `T074-R3` corrected on top.
+Split out of `T-074` at `T074-R4`'s direction: it is a real defect found while investigating that
+crash, and it is **not** that crash.
+**Owner:** Implementer
+**Priority:** **High** — an unhandled fault in a daemon thread during interpreter teardown, and
+silently lost log records
+**Phase:** Phase 1
+**Depends on:** nothing
+**Relevant context:** `T-038`, `T038-R2`, `T-074`, `ARC-002`
+**Affected surfaces:** `core/logging.py`, `tests/unit/test_logging.py`
+**Risk:** Medium — it costs log records, and its failure mode is a thread exception with no
+traceback, which reads as unexplainable
+
+#### Scope
+
+`stop_listening_for_worker_logs()` deliberately waits for nothing (`T038-R2`) — the GUI thread must
+not block on a slow handler, and that is right. But nothing waited for the listener **anywhere**,
+so a process could exit with the thread still inside `queue.get()`, which on Windows is an
+overlapped `ReadFile` on the queue's pipe. When `multiprocessing` finalised the queue first, the
+read was left holding a handle that no longer existed.
+
+Three findings, in the order they were found:
+
+- the wait had to be registered **after** the queue exists, not at import (below)
+- `T074-R2` — a single `_stopping` slot forgot every listener but the newest
+- `T074-R3` — the wait is bounded, so it can expire, and the listener has to survive that
+
+#### Acceptance criteria
+
+- A process that exits with a listener still draining does so without a thread exception
+- **Every** stopped listener is waited for, not only the most recent
+- A handler slower than the wait's own timeout does not leave a raising thread
+- Each is mutation-verified, and the mutations are the defects themselves
+
+#### Evidence, 2026-07-29
+
+**`_monitor` is the `T-038` log listener, and it was reading a queue something else had closed.**
+
+Counting stopped working: 0 crashes in 36 full-suite runs, and 60 clean runs of the crashing test
+alone. So the search moved to the thread the traceback named. Repeating the crashing test's shape
+**inside one process** — 250 iterations, rather than 250 interpreter startups — ended with
+
+```
+Exception in thread Thread-250 (_monitor):
+```
+
+and no traceback. That truncation is itself the clue: at interpreter finalisation
+`threading.excepthook` is already gone, so only the header is written. Capturing it properly gave:
+
+```
+File "logging/handlers.py", in dequeue -> self.queue.get(block)
+File "multiprocessing/queues.py", in get -> res = self._recv_bytes()
+File "multiprocessing/connection.py", in _get_more_data
+  ov, err = _winapi.ReadFile(self._handle, left, overlapped=True)
+OSError: [WinError 6] The handle is invalid
+```
+
+The listener sits in an **overlapped `ReadFile`** on the queue's pipe, and the handle is closed
+underneath it.
+
+**The cause is `atexit` ordering, which is why the obvious fix did nothing.** Handlers run
+last-registered-first. `multiprocessing` registers its own the first time it is used — and that
+handler finalises queues. A wait registered at *import* of `core/logging.py` is registered
+**earlier** and therefore runs **later**: after multiprocessing has already closed the queue it was
+meant to protect. The first attempt did exactly that and changed nothing, twice, including with the
+timeout raised from 2 s to 30 s. Registering the wait where the queue is *created* puts it after
+multiprocessing's and so ahead of it.
+
+**Deterministic in both directions, on both platforms.** A probe that floods the queue, stops the
+listener and exits immediately:
+
+| | Linux | Windows |
+|---|---|---|
+| before | **6/6 raced** | **8/8 raced** |
+| after | **0/6** | **0/8** |
+
+The 250-iteration shape then ran clean, with no thread exception at all.
+
+`test_the_log_listener_is_not_left_reading_a_closed_queue` asserts it on the stderr of a real
+process, because that is the only place the failure appears — a daemon thread raising during
+finalisation cannot be caught in-process. Reverting `core/logging.py` fails it.
+
+#### What this does not establish
+
+**The access violation has never been reproduced, and this does not claim to have fixed it.** What
+is fixed is a real, deterministic race on the exact thread and the exact queue the crash traceback
+named — an overlapped read on a closed handle, which is a documented route to a native fault
+rather than an `OSError`, depending on where the close lands. That is a strong candidate and it is
+not proof.
+
+**So the honest reading is:** the only defect anyone has found on this path is gone, and whether
+`T-074`'s crash was that defect cannot be settled by its absence — it was already absent 0 times
+in 36. Whether that is enough to verify Phase 1's Windows criterion is the exit review's call, and
+the maintainer's to record.
+
+#### `T074-R2` — one slot cannot hold every listener, 2026-07-29
+
+`_stopping` held a single thread, so a second lifecycle displaced the first: the exit wait joined
+the newest and returned while an older listener was still draining. It is now a list, pruned as
+threads finish, and the wait joins all of them under one deadline.
+
+**Registration is now once per process, not once per queue.** That is part of the same finding
+rather than tidiness: `atexit.register` ran from every `worker_log_queue()`, so a two-lifecycle
+process got two handlers and the second pass collected what the first had skipped — the wait was
+wrong and a duplicate registration covered for it. With one registration the list is the only
+thing that remembers, which is what makes the defect reachable by a test at all.
+
+#### `T074-R3` — the bounded wait can expire, 2026-07-29
+
+Five seconds is deliberate; an unbounded wait at exit is a hang. So a handler slower than it
+leaves the thread reading, and the answer cannot be "wait longer" — measured, a 5.1 s handler
+reproduced the exception. `dequeue` now treats a closed queue as the end of the stream, because
+that is what it is, and raises only for anything else. The ordering fix makes the stop *prompt*;
+this makes it *safe*.
+
+#### Evidence for the corrections
+
+| Mutation | Result |
+|---|---|
+| register at import instead of at queue creation | **killed**, 6/6 |
+| wait only for the newest listener (`[-1:]`) | **killed** — 1 of 41 records delivered |
+| never record the stopping thread at all | **killed** |
+| `dequeue` catches `RuntimeError` instead of the close errors | **killed** |
+
+**Two of those tests were vacuous first, and how they were vacuous is the lesson.** The listener
+resolves handlers from the *app* logger, not root, so probes that installed a slow handler on root
+drained instantly and passed against the very defects they were written for. And once `T074-R3`'s
+guard was in place, an orphaned listener ends *cleanly* — so `T074-R2` can no longer show up as a
+thread exception at all, and its test had to be rewritten to count delivered records instead.
+A fix can hide the symptom its sibling test was watching for.
+
+| Check | Result |
+|---|---|
+| `tests/unit/test_logging.py` | 39 passed, Linux **and** `STARBASE` |
+| The exit-race probe on Windows | **0/8 raced**, from 8/8 before |
+| Full suite | 1430 passed, 11 skipped, 2 deselected |
+
+#### Out of scope
+
+- `T-074`'s access violation. This is a real race on the same thread and **not** evidence about
+  that crash (`T074-R4`)
+
+---
+
+### T-073 — Run the full Windows gate on the machine that can run it
+
+**Status:** **In Review — approved with a documentation follow-up**, 2026-07-29 at `c41e2ef`.
+The reviewer accepted the job shape: the real `windows` plugin for the 28-test desktop slice,
+`offscreen` for the Qt baseline and the default suite, no provisioning of the self-hosted machine,
+ffmpeg recorded, and 30 minutes allowed. All fourteen functional steps passed. `T073-R1` is the
+open follow-up — two evidence statements in this task were wrong, corrected below.
+**Owner:** Implementer
+**Priority:** **High** — it is what makes Phase 1's seventh exit criterion attemptable again
+**Phase:** Phase 1
+**Depends on:** `OPS-005`; the self-hosted runner established 2026-07-28
+**Relevant context:** `OPS-005`, `T-066`, `T-062`, `ai/TESTING.md` §12, `IMPLEMENTATION_PLAN.md`
+Phase 1 exit criteria
+**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md`
+**Risk:** Medium — it puts the project's whole Windows gate on one machine
+
+#### Scope
+
+`OPS-005` made `STARBASE` the platform *verified on Windows* is measured against, and then had to
+record that the criterion was still unmet: the self-hosted job ran the 28-test desktop slice and
+two integration modules, while `check (windows-latest)` — lint, format, types, the Qt baseline and
+the full suite — had not run anywhere since the hosted quota ran out.
+
+Give the self-hosted job the rest of that gate. It already builds a virtualenv on a real Windows
+machine, so the marginal cost is steps rather than infrastructure.
+
+**No provisioning.** The one hard rule this job already carries is that a self-hosted runner must
+never install software as a side effect of running a test — the first run of it launched the real
+Python installer, opened an interactive dialog, and deadlocked against `msiexec` for the full
+timeout. So where `check` runs `choco install ffmpeg`, this job **records** ffmpeg instead. That is
+affordable because the default suite does not need it: measured on Linux with `ffmpeg` removed from
+`PATH`, **1399 passed, 11 skipped, 2 deselected** — the same numbers as with it.
+
+**The job keeps its name.** `windows desktop` is referenced by `ai/TESTING.md`, `ai/REQUIREMENTS.md`
+and `IMPLEMENTATION_PLAN.md`, all describing a desktop role that is still true and still its
+reason for existing. Renaming would invalidate those and the review record for no gain; the
+expanded role is recorded in `ai/TESTING.md` instead.
+
+#### Acceptance criteria
+
+- The self-hosted job runs lint, format, the Qt baseline and the full suite, in addition to what it
+  already ran
+- The full-suite step runs **offscreen**, and the desktop slice keeps the real `windows` plugin
+- Nothing in the job installs software on the machine
+- ffmpeg's presence or absence is recorded, and the run states which configuration it measured
+- The job's timeout accommodates a full suite, rather than passing by finishing early
+- `ai/TESTING.md` records that this job now carries the Windows gate, and what still differs from
+  the hosted one
+
+#### Evidence, 2026-07-29
+
+Run **`30415333608`** at `c41e2ef`, job `windows desktop` on `STARBASE`. **All fourteen steps
+green**, **6 m 29 s** wall (job `90460498381`).
+
+*(This said 3 m 40 s — `T073-R1`. That was the gap between two log timestamps I happened to grep,
+not the job's wall time, which Actions records directly. Corrected rather than left as a number
+nobody would re-derive.)*
+
+| Step | Result |
+|---|---|
+| Types under the Windows platform | Passed |
+| Windows desktop suite (real `windows` plugin) | 28 passed |
+| Lint | All checks passed |
+| Format check | 103 files already formatted |
+| Qt baseline | OK: Qt baseline verified on this runner |
+| **Full suite** (offscreen) | **1388 passed, 20 skipped, 30 deselected in 208.44 s** |
+
+**The machine has ffmpeg**, which the plan did not assume: `ffmpeg 8.1.2-full_build`, installed by
+winget at `…/Gyan.FFmpeg…/bin/ffmpeg`. So this run measured the **with-ffmpeg** configuration, the
+same one `check (windows-latest)` measures via `choco`. The no-ffmpeg wording in the environment
+step is the branch that did not fire, and the recording is what makes that knowable rather than
+assumed.
+
+**Reconciling the counts against Linux**, which is where a difference would otherwise look like a
+gap:
+
+| | Linux | Windows |
+|---|---|---|
+| Passed | 1399 | 1388 |
+| Skipped | 11 | 20 |
+| Deselected | 2 | 30 |
+
+The deselections explain themselves: Linux deselects the 2 network tests, Windows deselects those
+plus the 28 `windows_desktop` tests — which is correct, because step 8 already ran them under the
+real plugin. The extra 9 Windows skips are the POSIX-only half of platform-split modules.
+
+**The residual is explained, and it is an identity rather than a discrepancy** (`T073-R1`). Total
+collected plus deselected is 1412 on Linux and 1438 on Windows. Linux's JUnit carries two
+module-level **"collection skipped"** placeholders, for `tests.ui.test_windows_accessibility` and
+`tests.ui.test_windows_desktop`; Windows replaces those two placeholders with the 28 real desktop
+cases. `1412 - 2 + 28 = 1438`, exactly the recorded count.
+
+*(This was filed as "two tests unaccounted for … not something to wave through", which was the
+right instinct and the wrong conclusion — the answer was in the JUnit output rather than in the
+counts. Kept because a reader who re-derives the arithmetic will hit the same 26-against-28 and
+deserves the resolution, not the question.)*
+
+#### Out of scope
+
+- Retiring `check (windows-latest)` or the `frozen` jobs. They stay; this makes their absence
+  survivable, not permanent
+- The Linux half of `check`, which is unaffected
+- `T-056` and `T-068`, downgraded by `OPS-005` and not revisited here
+
+---
+
+## Ready
+
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
-**Status:** **In Review — diagnosed and fixed 2026-07-29**, with the honest limit stated: a real
-race on the implicated thread is found, reproduced deterministically on both platforms, and
-closed. **The access violation itself has never been reproduced**, so this is the removal of a
-demonstrated defect on that path rather than proof the crash is gone. See **The diagnosis**.
+**Status:** **Ready — still undiagnosed and still blocking Phase 1** (`T074-R4`, 2026-07-29).
+The faulting object of the access violation is unknown, product-versus-harness is unresolved, and
+the crash has never been reproduced: 0 in 36 full-suite runs, 60 clean runs of the crashing test,
+250 clean in-process iterations.
 
-*(Previously: "one clean batch measured, the crash still unclassified and still blocking".)*
+**A separate defect was found on the way and is `T-090`.** The `T-038` log listener could be left
+reading a queue that something else had closed — a real race on the same thread the crash
+traceback names, now fixed with tests. **That is not this task.** Calling it "diagnosed and fixed"
+claimed a causal link to the historical access violation that no evidence supports, which is what
+`T074-R4` reports. This task's acceptance criteria remain unmet.
 
-**Superseded status:** **Ready — one clean batch measured, the crash still unclassified.**
+*(Superseded, and worth keeping: this block read "diagnosed and fixed" on 2026-07-29. Finding a
+real defect near a crash is not the same as finding the crash's cause, and the wording did not
+keep them apart.)*
 `0/12 at ea53c71` (run `30429327464`). That is evidence against the original 25% anecdote and is
 **not** a rate: the four original observations came from materially different heads, so they are
 not one population, and a single event gives no bound worth quoting (`T074-R1`). The faulting
@@ -698,66 +958,20 @@ it is recorded as neither.
 High Phase 1 blocker. What has changed is where to look — logging teardown alongside the pump,
 rather than the pump alone.
 
-#### The diagnosis — 2026-07-29
+#### What the diagnostic session produced — 2026-07-29
 
-**`_monitor` is the `T-038` log listener, and it was reading a queue something else had closed.**
+It found a **different** defect, now filed as `T-090`: the log listener could be left reading a
+queue something else had closed. The evidence for that moved there with it.
 
-Counting stopped working: 0 crashes in 36 full-suite runs, and 60 clean runs of the crashing test
-alone. So the search moved to the thread the traceback named. Repeating the crashing test's shape
-**inside one process** — 250 iterations, rather than 250 interpreter startups — ended with
+**What it did not produce is anything about this crash.** The access violation has never been
+reproduced — 0 in 36 full-suite runs, 60 clean runs of the crashing test alone, 250 clean
+in-process iterations — so its faulting object is still unknown and it is still unclassified
+between product and harness. `T074-R4`: a real race on the same thread is a candidate, not a
+cause, and the crash's absence cannot distinguish them when it was already absent every time.
 
-```
-Exception in thread Thread-250 (_monitor):
-```
-
-and no traceback. That truncation is itself the clue: at interpreter finalisation
-`threading.excepthook` is already gone, so only the header is written. Capturing it properly gave:
-
-```
-File "logging/handlers.py", in dequeue -> self.queue.get(block)
-File "multiprocessing/queues.py", in get -> res = self._recv_bytes()
-File "multiprocessing/connection.py", in _get_more_data
-  ov, err = _winapi.ReadFile(self._handle, left, overlapped=True)
-OSError: [WinError 6] The handle is invalid
-```
-
-The listener sits in an **overlapped `ReadFile`** on the queue's pipe, and the handle is closed
-underneath it.
-
-**The cause is `atexit` ordering, which is why the obvious fix did nothing.** Handlers run
-last-registered-first. `multiprocessing` registers its own the first time it is used — and that
-handler finalises queues. A wait registered at *import* of `core/logging.py` is registered
-**earlier** and therefore runs **later**: after multiprocessing has already closed the queue it was
-meant to protect. The first attempt did exactly that and changed nothing, twice, including with the
-timeout raised from 2 s to 30 s. Registering the wait where the queue is *created* puts it after
-multiprocessing's and so ahead of it.
-
-**Deterministic in both directions, on both platforms.** A probe that floods the queue, stops the
-listener and exits immediately:
-
-| | Linux | Windows |
-|---|---|---|
-| before | **6/6 raced** | **8/8 raced** |
-| after | **0/6** | **0/8** |
-
-The 250-iteration shape then ran clean, with no thread exception at all.
-
-`test_the_log_listener_is_not_left_reading_a_closed_queue` asserts it on the stderr of a real
-process, because that is the only place the failure appears — a daemon thread raising during
-finalisation cannot be caught in-process. Reverting `core/logging.py` fails it.
-
-#### What this does not establish
-
-**The access violation has never been reproduced, and this does not claim to have fixed it.** What
-is fixed is a real, deterministic race on the exact thread and the exact queue the crash traceback
-named — an overlapped read on a closed handle, which is a documented route to a native fault
-rather than an `OSError`, depending on where the close lands. That is a strong candidate and it is
-not proof.
-
-**So the honest reading is:** the only defect anyone has found on this path is gone, and whether
-`T-074`'s crash was that defect cannot be settled by its absence — it was already absent 0 times
-in 36. Whether that is enough to verify Phase 1's Windows criterion is the exit review's call, and
-the maintainer's to record.
+**What is genuinely narrowed** is that `_monitor` in the traceback is the `T-038` log listener
+rather than anything in `multiprocessing`, so the next attempt has two of our own threads to
+account for rather than one.
 
 #### Acceptance criteria
 
@@ -775,114 +989,6 @@ the maintainer's to record.
 - `T-056`, which is a different intermittent on a different platform and is `OPS-005`-downgraded
 
 ---
-
-### T-073 — Run the full Windows gate on the machine that can run it
-
-**Status:** **In Review — approved with a documentation follow-up**, 2026-07-29 at `c41e2ef`.
-The reviewer accepted the job shape: the real `windows` plugin for the 28-test desktop slice,
-`offscreen` for the Qt baseline and the default suite, no provisioning of the self-hosted machine,
-ffmpeg recorded, and 30 minutes allowed. All fourteen functional steps passed. `T073-R1` is the
-open follow-up — two evidence statements in this task were wrong, corrected below.
-**Owner:** Implementer
-**Priority:** **High** — it is what makes Phase 1's seventh exit criterion attemptable again
-**Phase:** Phase 1
-**Depends on:** `OPS-005`; the self-hosted runner established 2026-07-28
-**Relevant context:** `OPS-005`, `T-066`, `T-062`, `ai/TESTING.md` §12, `IMPLEMENTATION_PLAN.md`
-Phase 1 exit criteria
-**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md`
-**Risk:** Medium — it puts the project's whole Windows gate on one machine
-
-#### Scope
-
-`OPS-005` made `STARBASE` the platform *verified on Windows* is measured against, and then had to
-record that the criterion was still unmet: the self-hosted job ran the 28-test desktop slice and
-two integration modules, while `check (windows-latest)` — lint, format, types, the Qt baseline and
-the full suite — had not run anywhere since the hosted quota ran out.
-
-Give the self-hosted job the rest of that gate. It already builds a virtualenv on a real Windows
-machine, so the marginal cost is steps rather than infrastructure.
-
-**No provisioning.** The one hard rule this job already carries is that a self-hosted runner must
-never install software as a side effect of running a test — the first run of it launched the real
-Python installer, opened an interactive dialog, and deadlocked against `msiexec` for the full
-timeout. So where `check` runs `choco install ffmpeg`, this job **records** ffmpeg instead. That is
-affordable because the default suite does not need it: measured on Linux with `ffmpeg` removed from
-`PATH`, **1399 passed, 11 skipped, 2 deselected** — the same numbers as with it.
-
-**The job keeps its name.** `windows desktop` is referenced by `ai/TESTING.md`, `ai/REQUIREMENTS.md`
-and `IMPLEMENTATION_PLAN.md`, all describing a desktop role that is still true and still its
-reason for existing. Renaming would invalidate those and the review record for no gain; the
-expanded role is recorded in `ai/TESTING.md` instead.
-
-#### Acceptance criteria
-
-- The self-hosted job runs lint, format, the Qt baseline and the full suite, in addition to what it
-  already ran
-- The full-suite step runs **offscreen**, and the desktop slice keeps the real `windows` plugin
-- Nothing in the job installs software on the machine
-- ffmpeg's presence or absence is recorded, and the run states which configuration it measured
-- The job's timeout accommodates a full suite, rather than passing by finishing early
-- `ai/TESTING.md` records that this job now carries the Windows gate, and what still differs from
-  the hosted one
-
-#### Evidence, 2026-07-29
-
-Run **`30415333608`** at `c41e2ef`, job `windows desktop` on `STARBASE`. **All fourteen steps
-green**, **6 m 29 s** wall (job `90460498381`).
-
-*(This said 3 m 40 s — `T073-R1`. That was the gap between two log timestamps I happened to grep,
-not the job's wall time, which Actions records directly. Corrected rather than left as a number
-nobody would re-derive.)*
-
-| Step | Result |
-|---|---|
-| Types under the Windows platform | Passed |
-| Windows desktop suite (real `windows` plugin) | 28 passed |
-| Lint | All checks passed |
-| Format check | 103 files already formatted |
-| Qt baseline | OK: Qt baseline verified on this runner |
-| **Full suite** (offscreen) | **1388 passed, 20 skipped, 30 deselected in 208.44 s** |
-
-**The machine has ffmpeg**, which the plan did not assume: `ffmpeg 8.1.2-full_build`, installed by
-winget at `…/Gyan.FFmpeg…/bin/ffmpeg`. So this run measured the **with-ffmpeg** configuration, the
-same one `check (windows-latest)` measures via `choco`. The no-ffmpeg wording in the environment
-step is the branch that did not fire, and the recording is what makes that knowable rather than
-assumed.
-
-**Reconciling the counts against Linux**, which is where a difference would otherwise look like a
-gap:
-
-| | Linux | Windows |
-|---|---|---|
-| Passed | 1399 | 1388 |
-| Skipped | 11 | 20 |
-| Deselected | 2 | 30 |
-
-The deselections explain themselves: Linux deselects the 2 network tests, Windows deselects those
-plus the 28 `windows_desktop` tests — which is correct, because step 8 already ran them under the
-real plugin. The extra 9 Windows skips are the POSIX-only half of platform-split modules.
-
-**The residual is explained, and it is an identity rather than a discrepancy** (`T073-R1`). Total
-collected plus deselected is 1412 on Linux and 1438 on Windows. Linux's JUnit carries two
-module-level **"collection skipped"** placeholders, for `tests.ui.test_windows_accessibility` and
-`tests.ui.test_windows_desktop`; Windows replaces those two placeholders with the 28 real desktop
-cases. `1412 - 2 + 28 = 1438`, exactly the recorded count.
-
-*(This was filed as "two tests unaccounted for … not something to wave through", which was the
-right instinct and the wrong conclusion — the answer was in the JUnit output rather than in the
-counts. Kept because a reader who re-derives the arithmetic will hit the same 26-against-28 and
-deserves the resolution, not the question.)*
-
-#### Out of scope
-
-- Retiring `check (windows-latest)` or the `frozen` jobs. They stay; this makes their absence
-  survivable, not permanent
-- The Linux half of `check`, which is unaffected
-- `T-056` and `T-068`, downgraded by `OPS-005` and not revisited here
-
----
-
-## Ready
 
 ### T-089 — Gate the MP3 bitrate control's complete UI contract
 

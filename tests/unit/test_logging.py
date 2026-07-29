@@ -691,3 +691,120 @@ def test_the_log_listener_is_not_left_reading_a_closed_queue(tmp_path: Path) -> 
         "the listener thread raised while the interpreter was tearing down, which means it was "
         f"still reading a queue something else had closed:\n{result.stderr}"
     )
+
+
+#: Two listener lifecycles, the first still draining (`T074-R2`).
+#:
+#: **Asserted on records delivered, not on a thread exception.** The single `_stopping` slot let a
+#: second listener displace the first, so the exit wait joined the newest and returned while the
+#: older one was still working. With `T074-R3`'s `dequeue` guard in place that no longer *raises* —
+#: it ends cleanly — so the only remaining evidence is the records that never got written. A test
+#: looking for `Exception in thread` passes against the defect, which is what the first version of
+#: this one did.
+TWO_LIFECYCLES = """
+import logging, sys, time
+from tracks_and_trails.core.logging import (
+    APP_SLUG, stop_listening_for_worker_logs, worker_log_queue,
+)
+
+class SlowFile(logging.Handler):
+    def emit(self, record):
+        time.sleep(0.05)
+        with open(sys.argv[1], "a", encoding="utf-8") as sink:
+            sink.write("record\\n")
+
+# The listener resolves handlers from the *app* logger, not root, so a handler installed anywhere
+# else is never consulted and the backlog drains instantly.
+logging.getLogger(APP_SLUG).addHandler(SlowFile())
+logging.getLogger(APP_SLUG).setLevel(logging.INFO)
+
+record = logging.LogRecord(APP_SLUG, logging.INFO, "backlog.py", 1, "backlog", None, None)
+
+first = worker_log_queue()
+for _ in range(40):
+    first.put(record)
+stop_listening_for_worker_logs()
+
+# A second lifecycle, which used to displace the first in the single stopping slot.
+second = worker_log_queue()
+second.put(record)
+stop_listening_for_worker_logs()
+sys.exit(0)
+"""
+
+#: A handler slower than the exit wait's own timeout (`T074-R3`).
+#:
+#: The wait is bounded at five seconds and cannot be otherwise — an unbounded one would turn a
+#: tidy exit into a hang. So the listener has to survive being closed under, not merely be waited
+#: for.
+SLOW_HANDLER = """
+import logging, sys, time
+from tracks_and_trails.core import logging as tt
+
+class Slow(logging.Handler):
+    def emit(self, record):
+        time.sleep(5.1)
+
+logging.getLogger(tt.APP_SLUG).addHandler(Slow())
+logging.getLogger(tt.APP_SLUG).setLevel(logging.INFO)
+queue = tt.worker_log_queue()
+record = logging.LogRecord(tt.APP_SLUG, logging.INFO, "slow.py", 1, "slow", None, None)
+for _ in range(4):
+    queue.put(record)
+tt.stop_listening_for_worker_logs()
+sys.exit(0)
+"""
+
+
+def run_probe(source: str) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [sys.executable, "-c", source],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+        cwd=Path(__file__).resolve().parents[2],
+    )
+
+
+def test_every_stopped_listener_is_waited_for_not_just_the_newest(tmp_path: Path) -> None:
+    """`T074-R2`: a second lifecycle must not make the first one's records disappear.
+
+    The exit wait kept one thread in one slot, so starting a second listener overwrote the first.
+    The wait then joined the newest, returned, and the process exited with the older listener
+    still draining — the records it had not reached are simply lost.
+
+    **Counted, not inferred from stderr.** `T074-R3`'s guard means an orphaned listener now ends
+    cleanly rather than raising, so "no exception" is true whether or not this defect is present.
+    The records are the only thing that still tells them apart.
+    """
+    written = tmp_path / "records.txt"
+    result = subprocess.run(
+        [sys.executable, "-c", TWO_LIFECYCLES, str(written)],
+        capture_output=True,
+        text=True,
+        timeout=180,
+        check=False,
+        cwd=Path(__file__).resolve().parents[2],
+    )
+
+    assert result.returncode == 0, f"exit {result.returncode}\nstderr: {result.stderr}"
+    delivered = written.read_text(encoding="utf-8").count("record") if written.exists() else 0
+    assert delivered == 41, (
+        f"{delivered} of 41 records reached the handler. A listener that is stopped and then "
+        "forgotten takes whatever it had not written with it"
+    )
+
+
+def test_a_handler_slower_than_the_wait_does_not_leave_a_raising_thread() -> None:
+    """`T074-R3`: the bounded wait can expire, so the listener must survive being closed under.
+
+    Five seconds is a deliberate bound — an unbounded wait at exit is a hang. A handler slower
+    than it therefore *will* leave the thread reading, and the fix cannot be "wait longer": it is
+    that a closed queue means the stream ended, which `dequeue` now says instead of raising.
+    """
+    result = run_probe(SLOW_HANDLER)
+    assert result.returncode == 0, f"exit {result.returncode}\nstderr: {result.stderr}"
+    assert "Exception in thread" not in result.stderr, (
+        f"the listener raised after the wait gave up on it:\n{result.stderr}"
+    )

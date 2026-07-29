@@ -6430,3 +6430,76 @@ Independently, fixing those cases would prove the logging race fixed; it would n
 that race caused the historical Windows access violation. T-074 therefore remains High and the
 Phase 1 Windows criterion remains **not verified** unless the original failure is tied to this
 mechanism or the maintainer explicitly accepts the residual risk.
+
+## 2026-07-29 — Previously excluded work review
+
+**Reviewer:** Codex (Reviewer)
+**Authorization:** The maintainer requested review of every committed boundary that earlier
+reviews explicitly excluded
+**Boundaries:**
+
+- T-033 record correction: commit `26c1d4e`
+- Phase 2 task and decision planning: `71ca6dc..70c96e9`
+- Approved-task filing cleanup: `66e96d5..68eb7b6`
+- T-072 final WIN-R1 evidence and current coordination: `68eb7b6..b0a6e07`
+
+**Concurrent-work exclusion:** Claude's active, uncommitted T-074 correction in
+`core/logging.py` and `test_logging.py` was not read as a finished boundary and is not covered by
+this review.
+
+**Verdict by scope:** T-072 **Approved**; T-033's record correction **Accepted with a
+non-blocking cleanup**, while T-033 remains Blocked on T033-R4 and Windows evidence; approved-task
+filing **correct for T-075 through T-077 but incomplete at the current head**; Phase 2 planning
+**Changes requested before any task becomes Ready**
+
+### T-072 final disposition
+
+WIN-R1 supplies the exact evidence the preceding review required. The maintainer first established
+the defective existing state—both profile and remote address were `Any`—then ran the real
+`ssh-setup.ps1` existing-rule branch. Its own readback reported `Private` and `LocalSubnet`, and
+the independent readback reported the same pair. `key already authorised` also exercises the
+idempotent append path without replacing the administrator key file.
+
+The evidence is not vacuous: the precondition would have stopped the procedure before the repair
+if the broad state had not actually been created. The script path had already been statically
+reviewed; runtime execution was the sole remaining condition. WIN-R1 is therefore **Resolved**,
+all five T-072 carries are discharged, and **T-072 is Approved**.
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `COORD-R8` | **Medium** | **Yes — Phase 1 exit review** | Current TASKS still gives three incompatible live answers after `b0a6e07`. The start-here bullet calls T-072 **In Progress** and says WIN-R1 remains; T-072's own entry says all five carries are discharged and STATUS calls it complete and in review. T-073 is still filed under In Review with “approved with a documentation follow-up,” although `T073-R1` was independently Resolved at `9802a6a` and the later review explicitly approved T-073. After this review, T-072 is Approved too, so the In Review section should contain only active T-074, not three tasks. The opening “crash, a carry, and frozen-artifact evidence” summary likewise retains a carry that is now closed. These are the exact placement/current-truth failures COORD-R5 through R7 were intended to prevent, and they materially misstate what remains before the exit review. | File T-072 and T-073 under Complete, narrow In Review to T-074, and rewrite the start-here blocker list from the final dispositions. Preserve superseded readings only as explicitly historical text. | **Open** |
+| `T033-R5` | **Low** | **No** | Commit `26c1d4e` correctly separates the two collection mutations and records T033-R4 and the Windows build as the blockers. One attached sentence in the status block still says T033-R1 remains open for “the Windows frozen result and the collection-removal negative run,” immediately after saying the Linux negative is complete. The entry also contains the identical `Phase:` field twice. Neither changes T-033's correctly Blocked disposition, but both are current-truth defects in the correction whose purpose was to reconcile that record. | Remove the completed negative run from the remaining T033-R1 evidence and deduplicate the Phase field when T-033 is next edited. | **Open, non-blocking** |
+| `P2PLAN-R1` | **Medium** | **Yes — Phase 2 planning** | The accepted REQ-015 amendment makes pause/resume **queue-level** and lets in-flight work drain. The higher-level IMPLEMENTATION_PLAN still requires a queue view with **per-job pause/resume**, while T-080 remains titled “Pause, resume, retry and remove, per job.” Its current Scope quotes the old requirement as though it still governs and says REQ-015 “needs” the amendment already made in the same commit. The task's later acceptance criteria describe queue-level behavior. A Phase 2 implementer therefore receives mutually exclusive instructions from the plan and from different halves of the task. | Amend the Phase 2 deliverable to queue-level pause/resume; retitle and rewrite T-080 from current truth, with per-job cancel/retry/remove separated from queue pause/resume. Move the old requirement wording to explicit history or the decision rationale. | **Open** |
+| `P2PLAN-R2` | **Medium** | **Yes — T-087 and durable Phase 2 choices** | Commit `70c96e9` says it records three decisions, but no decision was added to `ai/DECISIONS.md`. QLocalServer keyed from the resolved database path is an architectural, cross-platform choice made over lock files, mutexes, sockets, and `flock`; T-087 itself says it wants a DECISIONS entry first and requires an ID. Queue-draining pause and remove-never-deletes are also durable user-visible trade-offs whose rationale currently lives only in a mutable task. This conflicts with AGENTS §12's canonical home for durable choices and leaves the commit's “recorded” claim false. | Add accepted decision entries for the queue action semantics and the single-instance mechanism, including crash recovery, database-path name derivation, and alternatives. Link their IDs from REQ-015, T-080, and T-087 before those tasks become Ready. | **Open** |
+| `P2PLAN-R3` | **Medium** | **Yes — T-078 readiness** | REQ-013 and the Phase 2 deliverable require a **user-configurable** concurrency limit. T-078 calls it the first setting with runtime effect but leaves where it lives as a decision for the implementer, while the full settings dialog is assigned to Phase 4. Its acceptance criteria prove that different N values work but never require a user-accessible, persisted way to select N. The task can therefore pass with only a constructor or test seam and still miss the product requirement at the centre of the phase. | Decide and state the Phase 2 configuration surface and persistence boundary—whether a minimal settings control lands now or a narrower approved mechanism precedes Phase 4—and add an acceptance criterion that changes the limit through that real user-facing path. | **Open** |
+| `P2PLAN-R4` | **Low** | **No** | T-084 simultaneously requires per-job logs to be “verbatim” and requires credential/cookie redaction. REQ-026 makes the redaction mandatory, so the literal word “verbatim” cannot govern sensitive substrings. The task also says T-053 is the concurrency proof it rests on without making the ordering explicit. | Say “verbatim except for mandatory handler-level redaction” and make T-053 an explicit prerequisite or an acceptance test owned by T-084. | **Open, non-blocking** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Working-tree isolation | Only Claude's two active T-074 source/test files were modified; all reviewed material came from committed objects |
+| `git diff --check` on all four reviewed boundaries | Passed |
+| Authorship / trailers | Sean Kottman throughout; no AI author or co-author trailer |
+| WIN-R1 setup gate | Evidence states and checks `Any / Any` before invoking the repair |
+| WIN-R1 repair branch | Real script's existing-rule path reapplies scope and reads rule/address filters separately |
+| WIN-R1 result | Maintainer-recorded `Private / LocalSubnet`, with `WIN-R1 PASS` |
+| T-033 correction | Correctly preserves T033-R4, data-file load bearing, submodule uncertainty, and external Windows evidence |
+| Phase 2 deliverable mapping | T-078 through T-087 map every Phase 2 plan deliverable; T-088 owns all six exit criteria |
+| Tests | Not run: every reviewed commit is documentation, planning, or external evidence only |
+
+### Phase transition disposition
+
+The previously excluded work does not hide another unreviewed production implementation.
+T-072 is approved, T-073 was already approved, and T-033 gates Phase 5 rather than Phase 1.
+
+Phase 1 still cannot exit today. T-074 remains in active correction and the explicit T-066
+frozen-artifact evidence blocker remains. COORD-R8 must then make the current-truth files agree,
+after which the Phase 1 exit review can be called.
+
+Phase 2's task coverage is otherwise complete, but P2PLAN-R1 through R3 should be corrected before
+the first task is promoted from Proposed to Ready. They do not require production work; they
+require one coherent pause contract, durable decision records, and a real user configuration
+surface for the concurrency limit.
