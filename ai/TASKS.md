@@ -101,89 +101,85 @@ last time it was left unlabelled it outlived being true by one CI run.)*
 
 ## Ready
 
-### T-071 — The icon reads as undersized beside other taskbar icons
+### T-072 — Carry the three unresolved findings the last-pass direction stopped
 
-**Status:** **In Review — reported and fixed 2026-07-28**, on the maintainer's observation
+**Status:** Ready — filed 2026-07-28 from the STARBASE correction re-review's closing direction
 **Owner:** Implementer
-**Priority:** Low — cosmetic, but it is the first thing anyone sees of the application
-**Phase:** Phase 0 (asset correction to `T-003`)
-**Depends on:** `T-003`
-**Relevant context:** `T-003`, `T-021`, `tests/unit/test_resources.py`
-**Affected surfaces:** `src/tracks_and_trails/resources/icons/` (every derived asset),
-`tools/icons/render_icons.py` (new)
-**Risk:** Low — no source change; the assets' sizes and frame set are unchanged and still pinned
+**Priority:** Medium — it is the only thing standing between `T-040`/`T-060` and closure
+**Phase:** Phase 1
+**Depends on:** nothing to start. Its `T066-R1` half **needs a Windows runner**; the other two
+halves do not
+**Relevant context:** `ai/REVIEWS.md` — "STARBASE evidence and T-066 through T-070 review" and
+"STARBASE correction focused re-review", both 2026-07-28
+**Affected surfaces:** `tests/integration/test_end_to_end.py`, `tests/integration/test_manager.py`,
+`tools/windows/ssh-setup.ps1`, `docs/WINDOWS_VERIFICATION.md`, `.github/workflows/`,
+`ai/TASKS.md`, `ai/STATUS.md`
+**Risk:** Low per item; Medium as a group, because two of the three are gate-vacuity problems
 
 #### Scope
 
-The maintainer observed the icon looking small in a Linux taskbar beside Steam and Firefox. It
-was: measured against the visible mark rather than the file, every derived asset drew the logo
-at **~66% of its canvas height**, with almost all of the remaining space as one empty band
-below the artwork. At the 32 px a taskbar typically requests, that is a 21 px mark in a 32 px
-cell — 66% linear, ~43% by area against a neighbour that fills its cell — sitting high in the
-cell rather than centred.
+The correction re-review closed under the maintainer's **last-pass direction**: remaining
+Medium-or-lower work is carried into a named task rather than starting another correction loop.
+This is that task. It exists because the reviewer asked for it by name, and until it did not
+exist, `T-040` and `T-060` had nowhere to carry their residue — which is the only reason those
+two are not closed.
 
-**This is not `T-021`.** That task is about the artwork's *detail* at 16 and 24 px, and stands
-unchanged. This is about the *scale and centring* of the same artwork at every size.
+**Three blocking carries:**
 
-The cause is in the master. `icon.png` carries a 194 px band of **alpha-1..8 pixels below the
-visible artwork** — invisible at any size, but content to anything that trims on `alpha > 0`.
-Its bounds are 496×547 at `alpha > 8` and 498×743 at `alpha > 0`. That 196 px difference is
-almost exactly the empty margin every derived asset inherited, so whatever produced them in
-`T-003` trimmed at `alpha > 0`. **Unverified** — `T-003` left no generation script, so this is
-inference from the numbers, not a reading of what was run.
+- **`T066-R1` (Medium).** The whole-tree termination fix is accepted and it resolved `T-069`. What
+  remains is that `kill_the_application()` suppresses every `psutil` kill error and discards both
+  lists returned by `wait_procs`, so it can return and reopen the database with a known survivor.
+  The no-survivors probe is reported but is not a lasting assertion. Separately, `T-066`'s own
+  criterion covering the `T-019` process-tree cases has never run under the Windows venv — the
+  self-hosted job runs `windows_desktop` only.
+- **`COORD-R5` (Medium).** The gate statement is corrected: `REQUIREMENTS`, `IMPLEMENTATION_PLAN`,
+  `TESTING` and `T-026` now agree Windows tab order is gated. The residual is filing. `## In
+  Review` still says it is empty while `T-066`…`T-070` sit In Review under `## Ready`; `T-040` and
+  `T-060` sit In Review under `## Blocked`; the `TASKS` preamble still calls `T-060` Blocked; and
+  `STATUS` says `T-040`/`T-060` are In Review and then, later in the same file, that `T-069` is
+  unfixed and `T-040` is Blocked. These are current-truth files and the stale paragraphs are not
+  marked superseded.
+- **`WIN-R1` (Medium).** `ssh-setup.ps1` now preserves and deduplicates administrator keys, and a
+  newly created firewall rule is correctly Private + LocalSubnet. But its idempotent path looks up
+  `sshd-tt` and does nothing when it already exists, so a machine that ran the earlier broad `Any`
+  rule stays broad on every later run. A tool documented as safe to re-run does not repair the
+  unsafe state it created.
+
+**Two non-blocking carries**, which the re-review asked to travel with this work:
+
+- **`WIN-R3` (Low).** `docs/WINDOWS_VERIFICATION.md` still names `mut_control_always_dead.py` as
+  the focus driver's control; the actual control is `mut_control_chain.py`. The named file belongs
+  to `T-056`, not to the `T-026` focus harness.
+- **`RUNNER-R1` (Low).** The workflow comment and the Windows guide say `timeout-minutes: 15`
+  bounds time spent queued while `STARBASE` is offline. It bounds how long a job may **run**; an
+  unmatched self-hosted job stays queued for up to **24 hours**. The current text understates this
+  single-machine gate's outage window by almost a day.
 
 #### Acceptance criteria
 
-- The mark spans a consistent, near-full fraction of the canvas at every delivered size
-- It is centred, rather than flush to one edge with the slack on the other
-- `icon.png` is untouched: it is the master, and the only asset not reproducible from another
-- The frame sets `T-022` pins are unchanged — 8 PNGs, 7 `.ico` frames, sizes as declared
-- Regeneration is repeatable, so this cannot drift back in silence
-
-#### Evidence, 2026-07-28
-
-`tools/icons/render_icons.py` renders all 8 PNGs and the `.ico` from the master: trim at
-`alpha > 8`, scale to 92% of the canvas on the longer side, centre. The `.ico` is written by
-hand so each frame is the one rendered at that size, not a re-downscale of one source image.
-
-Visible mark as a fraction of canvas height, before and after:
-
-| Size | Before | After |
-|---|---|---|
-| 16 px | 69% | 94% |
-| 32 px | 66% | 91% |
-| 48 px | 67% | 92% |
-| 64 px | 66% | 92% |
-| 256 px | 65% | 92% |
-
-Vertical padding at 32 px went from T1/B9 to T1/B2. The `.ico` frames match their PNGs.
-
-| Check | Result |
-|---|---|
-| `ruff check .` | All checks passed |
-| `ruff format --check .` | 103 files already formatted |
-| `mypy` | Success: no issues found in 78 source files |
-| `pytest tests/unit tests/ui` | **1241 passed, 11 skipped** |
-| `tracks-and-trails` under `QT_QPA_PLATFORM=offscreen` | window up, still running at an 8 s timeout |
-
-**Confirmed on Linux, 2026-07-28.** The maintainer reports the icon reading correctly in the
-Linux taskbar — the observation that opened this task, now answered on the surface it was made
-on. That is the acceptance criterion the measurements could only stand in for.
-
-**Known-unverified:** the **Windows** taskbar and title bar. No Windows observation was made,
-and the `.ico` is what Windows selects from, so the frames that matter there are still judged
-only by measurement — the same gap `T-007` records for the icon generally.
-
-**Judgment call, flagged for review:** `tools/icons/render_icons.py` is new, and adding it goes
-past the minimum fix. Without it the diff is nine regenerated binaries with no way to check what
-produced them, and the drift it corrects had no script to blame. It needs Pillow, which is
-**deliberately not added to `[dev]`** — it is a one-off authoring tool, not part of any gate.
+- A surviving process in either `wait_procs` list **fails the test**; the expected descendant set
+  is a lasting assertion rather than a reported probe
+- `T-019`'s process-tree cases are executed and recorded from the Windows venv, or `T-066`'s
+  criterion is rewritten to say what is actually gated and why
+- Re-running `ssh-setup.ps1` against a machine carrying the broad `Any` rule leaves it scoped, and
+  the script reports the effective profile and remote-address filter it ended with
+- One unambiguous current answer, in authority order, about which tasks are In Review, Blocked and
+  Complete — including the `## In Review` section's own emptiness claim. (`T-071` was the same
+  class of drift and was filed to `## Complete` on 2026-07-28, ahead of this task.)
+- Historical statements are preserved as explicitly historical, not deleted
+- `WIN-R3` and `RUNNER-R1`'s documentation is corrected to what the code and GitHub actually do
 
 #### Out of scope
 
-- The artwork itself, the brand hex values fixed by `T-003`, and the 1024 px master
-- `T-021`'s simplified small-size glyph, which remains Proposed and unaffected
-- Adding icon rendering to CI or to any gate
+- Another behavioural review of `T-040` or `T-060`. The re-review states they may close as
+  Approved-with-follow-up on this carry **without** one
+- `T-066`'s external blockers — the four hosted and frozen jobs — which need quota, not work
+- `T-056`, which wants `windows-latest`'s image and is not part of this carry
+- Any further automatic correction round on the findings above
+
+**Note:** the reviewer's closing instruction is the authority for this task's existence and its
+contents. If a carry here disagrees with a task's own status line, `ai/REVIEWS.md` is canonical
+for review findings (`AGENTS.md` §12).
 
 ---
 
@@ -1649,6 +1645,115 @@ state reached a commit. Nothing here has ever run.
 ---
 
 ## Complete
+
+### T-071 — The icon reads as undersized beside other taskbar icons
+
+**Status:** **Complete — approved**, 2026-07-28 at `3327fd3`, with **no findings**. The
+reviewer reproduced every delivered asset byte-for-byte from the authoring script. See
+**Review outcome**.
+**Owner:** Implementer
+**Priority:** Low — cosmetic, but it is the first thing anyone sees of the application
+**Phase:** Phase 0 (asset correction to `T-003`)
+**Depends on:** `T-003`
+**Relevant context:** `T-003`, `T-021`, `tests/unit/test_resources.py`
+**Affected surfaces:** `src/tracks_and_trails/resources/icons/` (every derived asset),
+`tools/icons/render_icons.py` (new)
+**Risk:** Low — no source change; the assets' sizes and frame set are unchanged and still pinned
+
+#### Scope
+
+The maintainer observed the icon looking small in a Linux taskbar beside Steam and Firefox. It
+was: measured against the visible mark rather than the file, every derived asset drew the logo
+at **~66% of its canvas height**, with almost all of the remaining space as one empty band
+below the artwork. At the 32 px a taskbar typically requests, that is a 21 px mark in a 32 px
+cell — 66% linear, ~43% by area against a neighbour that fills its cell — sitting high in the
+cell rather than centred.
+
+**This is not `T-021`.** That task is about the artwork's *detail* at 16 and 24 px, and stands
+unchanged. This is about the *scale and centring* of the same artwork at every size.
+
+The cause is in the master. `icon.png` carries a 194 px band of **alpha-1..8 pixels below the
+visible artwork** — invisible at any size, but content to anything that trims on `alpha > 0`.
+Its bounds are 496×547 at `alpha > 8` and 498×743 at `alpha > 0`. That 196 px difference is
+almost exactly the empty margin every derived asset inherited, so whatever produced them in
+`T-003` trimmed at `alpha > 0`. **Unverified** — `T-003` left no generation script, so this is
+inference from the numbers, not a reading of what was run.
+
+#### Acceptance criteria
+
+- The mark spans a consistent, near-full fraction of the canvas at every delivered size
+- It is centred, rather than flush to one edge with the slack on the other
+- `icon.png` is untouched: it is the master, and the only asset not reproducible from another
+- The frame sets `T-022` pins are unchanged — 8 PNGs, 7 `.ico` frames, sizes as declared
+- Regeneration is repeatable, so this cannot drift back in silence
+
+#### Evidence, 2026-07-28
+
+`tools/icons/render_icons.py` renders all 8 PNGs and the `.ico` from the master: trim at
+`alpha > 8`, scale to 92% of the canvas on the longer side, centre. The `.ico` is written by
+hand so each frame is the one rendered at that size, not a re-downscale of one source image.
+
+Visible mark as a fraction of canvas height, before and after:
+
+| Size | Before | After |
+|---|---|---|
+| 16 px | 69% | 94% |
+| 32 px | 66% | 91% |
+| 48 px | 67% | 92% |
+| 64 px | 66% | 92% |
+| 256 px | 65% | 92% |
+
+Vertical padding at 32 px went from T1/B9 to T1/B2. The `.ico` frames match their PNGs.
+
+| Check | Result |
+|---|---|
+| `ruff check .` | All checks passed |
+| `ruff format --check .` | 103 files already formatted |
+| `mypy` | Success: no issues found in 78 source files |
+| `pytest tests/unit tests/ui` | **1241 passed, 11 skipped** |
+| `tracks-and-trails` under `QT_QPA_PLATFORM=offscreen` | window up, still running at an 8 s timeout |
+
+**Confirmed on Linux, 2026-07-28.** The maintainer reports the icon reading correctly in the
+Linux taskbar — the observation that opened this task, now answered on the surface it was made
+on. That is the acceptance criterion the measurements could only stand in for.
+
+**Known-unverified:** the **Windows** taskbar and title bar. No Windows observation was made,
+and the `.ico` is what Windows selects from, so the frames that matter there are still judged
+only by measurement — the same gap `T-007` records for the icon generally.
+
+**Judgment call, flagged for review:** `tools/icons/render_icons.py` is new, and adding it goes
+past the minimum fix. Without it the diff is nine regenerated binaries with no way to check what
+produced them, and the drift it corrects had no script to blame. It needs Pillow, which is
+**deliberately not added to `[dev]`** — it is a one-off authoring tool, not part of any gate.
+
+#### Review outcome, 2026-07-28
+
+**Approved at `3327fd3`. No findings.** Reviewer: Codex. Base `fd99229`, head `3327fd3`.
+
+| Reviewer check | Result |
+|---|---|
+| Renderer reproduction with Pillow 12.3.0 | All eight PNGs and `icon.ico` reproduced **byte-for-byte** |
+| `.ico` payload audit | Seven valid PNG-compressed frames; every payload exactly matches its standalone PNG |
+| Visible bounds | Master crop 496×547 at `alpha > 8`; padding centred within one pixel at every size |
+| Master preservation | `icon.png` unchanged across the boundary |
+| Focused resource/UI tests | **23 passed** |
+| `git diff --check fd99229..3327fd3` | Passed |
+
+**The flagged judgment call was accepted.** The reviewer judged `tools/icons/render_icons.py` a
+proportionate part of the correction: it records the threshold and scaling choices that were
+previously lost, without adding Pillow to the product or to any development gate.
+
+The known-unverified Windows appearance was judged accurately disclosed, and does not block a
+Linux-reported cosmetic correction.
+
+
+#### Out of scope
+
+- The artwork itself, the brand hex values fixed by `T-003`, and the 1024 px master
+- `T-021`'s simplified small-size glyph, which remains Proposed and unaffected
+- Adding icon rendering to CI or to any gate
+
+---
 
 ### T-061 — The ffmpeg gate reads the selector, not the format that was chosen
 

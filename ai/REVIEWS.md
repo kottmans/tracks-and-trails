@@ -5611,3 +5611,43 @@ COORD-R5, and WIN-R1. Under the maintainer's last-pass direction, do not begin a
 correction round: Claude should file a named next task carrying those three items, plus the
 non-blocking WIN-R3 and RUNNER-R1 documentation corrections. T-040/T-060 may then close with that
 follow-up; T-066 remains Blocked until its process-tree and hosted/frozen evidence exists.
+
+## 2026-07-28 — T-071 icon scale review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `fd99229`  **Head:** `3327fd3`
+**Scope:** T-071's regenerated PNG/ICO assets, authoring script, and task/status evidence
+**Boundary classification:** Static assets, developer authoring tool, and coordination
+documentation; no production source
+**Verdict:** **Approved**
+
+### Findings
+
+None.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Renderer reproduction with Python/Pillow 12.3.0 | All eight PNGs and `icon.ico` reproduced byte-for-byte |
+| `.ico` payload audit | Seven valid PNG-compressed frames; every payload exactly matches its standalone PNG |
+| Visible bounds | Master crop is 496×547 at alpha > 8; rendered padding is centred within one pixel at every size |
+| Master preservation | `icon.png` is unchanged across the review boundary |
+| Focused resource/UI tests | **23 passed** |
+| `ruff check tools/icons/render_icons.py` | Passed |
+| `ruff format --check tools/icons/render_icons.py` | **1 file already formatted** |
+| `python -m mypy src` | Passed: **35 source files** |
+| `git diff --check fd99229..3327fd3` | Passed |
+| Git boundary | One implementation commit, authored by Sean Kottman |
+
+The renderer's output matches the checked-in assets exactly, including the hand-written ICO
+directory and each embedded frame. The delivered sizes and frame sets remain those pinned by
+T-022, the visible mark occupies the intended near-full canvas, and its opposing padding differs
+by no more than one pixel from integer rounding. The new authoring script is a proportionate
+part of this correction: it records the threshold and scaling choices that were previously lost,
+without adding Pillow to the product or its development gate.
+
+### Final disposition
+
+T-071 is **Approved at `3327fd3`**. The known-unverified Windows taskbar/title-bar appearance is
+accurately disclosed and does not block this Linux-reported cosmetic correction.

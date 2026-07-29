@@ -287,6 +287,15 @@ the whole gate" in its exact form, and it needs the Windows job.
   than strippable in persistence. **`T-038` is this problem again** and should start from that,
   not from a recogniser.
 
+**`T-072` is filed, and it is what `T-040` and `T-060` are waiting for.** The STARBASE correction
+re-review closed under the maintainer's last-pass direction: carry the residue into a named task
+rather than start another correction loop. That task did not exist, so the two behaviourally
+accepted tasks had nowhere to carry to. `T-072` now holds `T066-R1`'s survivor assertion and its
+unrun `T-019` process-tree cases, `COORD-R5`'s filing and current-truth cleanup, and `WIN-R1`'s
+firewall-rule repair, plus the non-blocking `WIN-R3` and `RUNNER-R1` documentation corrections.
+`T-040` and `T-060` may close as Approved-with-follow-up on this carry **without another
+behavioural review**. See `T-072`.
+
 **`T-071` — the icon was undersized, and the master says why.** Reported from a taskbar
 screenshot and fixed the same day: every derived asset drew the logo at ~66% of its canvas with
 the slack as one empty band beneath it, so at 32 px the mark filled ~43% of the cell by area.
@@ -294,7 +303,8 @@ The master carries a 194 px band of alpha-1..8 pixels below the artwork — invi
 to a trim on `alpha > 0`. All eight PNGs and the `.ico` are regenerated at 92% fill and centred,
 now from a script (`tools/icons/render_icons.py`) so it cannot drift back unrecorded. The master
 is untouched and the pinned frame sets are unchanged. **Confirmed by the maintainer in the Linux
-taskbar**; Windows is unobserved — see `T-071`.
+taskbar**; Windows is unobserved. **Approved at `3327fd3` with no findings** — the reviewer
+reproduced every asset byte-for-byte from the script — and filed Complete. See `T-071`.
 
 ## Next
 
