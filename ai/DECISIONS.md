@@ -1634,3 +1634,134 @@ an unbounded hunt into a bounded one: the next occurrence is diagnostic rather t
   named as the disposition of the residual.
 - **This decision reopens** if the access violation recurs anywhere — at which point `T-092`'s dump
   should supply criterion 2 — or if any user-reachable defect is ever traced to `result_pump.py`.
+
+---
+
+## UX-001 — Pause is a queue-level drain; remove never deletes a file
+
+**Status:** **Accepted** (2026-07-29) — maintainer decision, taken from the Implementer's
+recommendation
+**Date:** 2026-07-29
+**Supersedes:** nothing. **Amends** `REQ-015`, which read *"Per job, support cancel, pause, resume,
+retry, and remove"*. The amendment landed in `ai/REQUIREMENTS.md` on 2026-07-29; this entry is its
+rationale, which `P2PLAN-R2` found had no durable home.
+
+### Context
+
+`REQ-015` requires cancel, retry and remove per job, and originally required pause and resume there
+too. `core/job_state.py`'s `_TRANSITIONS` already carries `RUNNING → PAUSED`, `PAUSED → RUNNING` and
+`FAILED → QUEUED`, with comments explaining why resume returns to `RUNNING` rather than `READY`. The
+state machine modelled per-job pause; the machinery to reach it was never built, and `T-080` is
+where it would be.
+
+**The question pause actually raises is what happens to a half-written file.** `REQ-017` — resuming
+a partial download — is **Phase 3**. So in Phase 2 a paused download's partial file has no defined
+meaning: nothing can resume from it and nothing is specified to clean it up.
+
+### Decision
+
+**Pause and resume are queue-level, not per-job.** Pausing lets every in-flight download finish and
+starts nothing new. Resuming takes work again. **No job ever enters `PAUSED`.**
+
+**Remove takes a job out of the queue and never deletes a file from disk.** Removing a running job
+cancels it first, within the same 2-second budget `REQ-015` sets for cancel.
+
+### Rationale
+
+- **Draining means there are no partial files to have a rule about.** Every alternative produces a
+  half-written file and then needs a policy for it — keep it for a resume that does not exist yet,
+  or delete data the user's download produced. Draining buys neither problem.
+- **It matches what a user pausing a queue wants.** The intent is "stop starting things", not
+  "abandon the download that is 90% done".
+- **Remove is not delete, and conflating them is unrecoverable.** `AGENTS.md` §10 puts data loss in
+  the Critical band. A queue action that silently removed a completed file would be exactly that,
+  and no undo exists.
+
+### Consequences
+
+- `REQ-015` is amended and its superseded wording preserved in place.
+- **`_TRANSITIONS`' `PAUSED` edges are now unreachable, and that is a defect to resolve rather than
+  a curiosity.** `T-080` owns either removing them or recording why a state nothing reaches is kept.
+  An unreachable state reads as capability and is not — the same shape as a guard nobody watches
+  fail (`ai/TESTING.md` §13).
+- `T-080` must be retitled and rewritten from this decision; `P2PLAN-R1` reports that its Scope
+  still quotes the pre-amendment requirement while its acceptance criteria describe queue-level
+  behaviour, so an implementer currently receives contradictory instructions.
+- Pausing creates no partial file, which is an assertable property rather than a happy consequence,
+  and `T-080` asserts it.
+
+### Alternatives considered
+
+- **Stop the in-flight session and keep the partial file.** Rejected: it buys a file nothing can
+  resume until Phase 3, and a rule about its lifetime that would then change.
+- **Stop the session and discard the partial.** Rejected: it throws away work the user asked for,
+  to implement "pause".
+- **Per-job pause, as `REQ-015` originally read.** Rejected on the same partial-file grounds, and
+  because a per-job pause whose only effect is "this job will not be picked next" is a queue
+  operation wearing a job's name.
+
+**This decision reopens when `REQ-017` lands in Phase 3.** Once a partial download can be resumed,
+a partial file has a defined meaning and per-job pause becomes coherent — at which point the
+`PAUSED` edges may be wanted back, and this entry is the record of why they were idle.
+
+---
+
+## ARC-006 — The single-instance guard is a `QLocalServer` named from the resolved database path
+
+**Status:** **Accepted** (2026-07-29) — maintainer decision, taken from the Implementer's
+recommendation
+**Date:** 2026-07-29
+**Supersedes:** nothing. **Discharges** `A-004`'s self-recorded *unverified* assumption of no
+concurrent instances against one database, which named enforcement as a Phase 2 task.
+
+### Context
+
+`A-004` assumes a single local user and **no concurrent instances against the same database**.
+`ARC-005` puts every write on one writer thread *within a process* — two processes have two writer
+threads and no shared lock discipline, so the assumption is load-bearing for data integrity rather
+than tidiness. `T-087` is the enforcement task, and it recorded this reasoning in task text;
+`P2PLAN-R2` found that an architectural cross-platform choice was living somewhere mutable.
+
+### Decision
+
+**`QLocalServer` / `QLocalSocket`, with the server name derived from the resolved database path.**
+
+The startup protocol is **connect first; if the connection fails the owner is gone, remove the
+stale name and become the server.**
+
+### Rationale
+
+- **Already Qt.** No new dependency, and one code path compiles to a named pipe on Windows and a
+  Unix domain socket on Linux — two correct platform implementations rather than two guesses.
+- **It is a channel, not a flag.** That is what makes *attach* possible rather than only *refuse*:
+  a second launch can hand its URL to the running instance and raise its window. A lock file can
+  only say no.
+- **Crash behaviour decided it**, because a crash is the case the guard exists for. Windows destroys
+  a named pipe when its owning process dies. On Linux a killed process leaves the socket file
+  behind, which is why the protocol connects before it claims: a refused connection proves the
+  owner is gone, and only then is the stale name removed.
+- **Named from the database path, because `A-004` is about the database, not the application.** Two
+  instances against *different* databases harm nothing and must not be blocked.
+
+### Consequences
+
+- `T-087` implements this and its acceptance criteria bind the hard part: **the stale-socket path is
+  tested by killing an instance, not by deleting a file by hand** — the recovery has to work against
+  the failure it was chosen for. Verified on both platforms, `STARBASE` included.
+- A second launch must say which thing it did, attach or refuse. Silence is indistinguishable from
+  a hang.
+- The derivation from database path to server name must be stable across launches and must not leak
+  a filesystem path into a namespace with different legal characters. `T-087` owns stating it.
+- `A-004` stops being an unverified assumption once `T-087` lands.
+
+### Alternatives considered
+
+- **PID lock file.** Rejected: it needs a liveness check, and it is wrong under PID reuse — a
+  recycled PID makes a dead owner look alive and blocks startup permanently.
+- **`flock`.** Rejected: robust, and the kernel releases it on process death, but it offers no
+  channel, so *attach* is impossible and a second launch can only refuse.
+- **Named mutex (Windows) plus something else (Linux).** Rejected: two mechanisms, two failure
+  modes, and the platform-specific half is the part least exercised by the maintainer's own use.
+- **A TCP socket on a fixed localhost port.** Rejected: it is visible to every other process and
+  every other user on the machine, needs a port allocation policy, and can be firewalled — a
+  networked answer to a local question.
