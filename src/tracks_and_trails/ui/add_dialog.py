@@ -88,7 +88,7 @@ from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import (
-    CONVERTING_AUDIO_CODECS,
+    AudioCodec,
     DownloadRequest,
     Job,
     MediaInfo,
@@ -640,7 +640,7 @@ class AddUrlDialog(QDialog):
         what that costs when they can.
         """
         base = self._presets[max(self._preset_choice.currentIndex(), 0)]
-        if base.audio_codec not in CONVERTING_AUDIO_CODECS:
+        if base.audio_codec is not AudioCodec.MP3:
             return base
         return preset_registry.with_audio_quality(base, self.selected_bitrate)
 
@@ -1173,7 +1173,7 @@ class AddUrlDialog(QDialog):
         preset = self.selected_preset
         selector = preset_registry.effective_selector(preset)
         text = f"Format selector: {selector}"
-        if preset.audio_codec in CONVERTING_AUDIO_CODECS:
+        if preset.audio_codec is AudioCodec.MP3:
             text += f"  ·  {preset.audio_quality} kbps {preset.audio_codec.value.upper()}"
         self._selector_value.setText(text)
 
@@ -1218,5 +1218,8 @@ class AddUrlDialog(QDialog):
         self._add_button.setEnabled(has_urls and not probing and not self._saving and not stuck)
         # `T-076`: a bitrate applies only to a preset that converts audio. Disabled rather than
         # hidden, so the chain a keyboard walks changes without the layout moving under the user.
-        converts = self.selected_preset.audio_codec in CONVERTING_AUDIO_CODECS
-        self._bitrate_choice.setEnabled(converts and not self._saving)
+        # `T076-R1`: MP3 specifically. "Converts audio" is every codec but the original, and
+        # these are MP3's bitrates — offering them for FLAC would be offering a number that
+        # cannot mean anything.
+        is_mp3 = self.selected_preset.audio_codec is AudioCodec.MP3
+        self._bitrate_choice.setEnabled(is_mp3 and not self._saving)

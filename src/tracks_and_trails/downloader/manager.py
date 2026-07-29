@@ -156,6 +156,28 @@ _STAGE_STATUS: Final[dict[Stage, JobStatus]] = {
 }
 
 
+class _Unchanged:
+    """What a revision returns when the job already holds what was asked for (`T075-R1`).
+
+    Three outcomes, not two. A revision can produce a new `Job`, decline entirely (`None`), or
+    find that nothing needs writing — and that third one has to be distinguishable, because it
+    still has a *successor*: the caller wants its `then` to run.
+
+    It exists because the first version of `retarget` decided this **outside** the chain, by
+    reading the store and comparing before enqueuing anything. `PersistentJobStore.get()` answers
+    with the newest revision this process has *queued*, durable or not, so that comparison could
+    match against a write still in flight — and if that write then failed, the download started
+    against the request the database actually held. Deciding it here means deciding it against the
+    job as it stands when its turn comes, which is the same guarantee every other transition gets.
+    """
+
+    __slots__ = ()
+
+
+#: The single instance. Compared with `is`, so a `Job` can never be mistaken for it.
+UNCHANGED: Final = _Unchanged()
+
+
 class JobStore(Protocol):
     """The persistence the manager needs, and nothing more.
 
@@ -836,20 +858,21 @@ class DownloadManager(QObject):
         is an ordinary outcome rather than a programming error.
         """
 
-        current = self._repository.get(job_id)
-        if current is not None and current.request == request:
-            # **Already what was asked for, so no write.** `DownloadRequest` is frozen, so this
-            # is a structural comparison rather than an identity one. Writing anyway would add a
-            # second `READY` revision to every probed job's history for no change — and
-            # `test_a_probed_job_downloads_from_ready_without_re_entering_probing` asserts that
-            # history as a sequence, which is the right thing for it to assert (`ARC-004`).
-            if then is not None:
-                then()
-            return
-
-        def revise(candidate: Job) -> Job | None:
+        def revise(candidate: Job) -> Job | _Unchanged | None:
             if candidate.status not in Job.RETARGETABLE:
                 return None
+            if candidate.request == request:
+                # **Already what was asked for, so no write** — decided here rather than before
+                # enqueuing (`T075-R1`). `DownloadRequest` is frozen, so this is a structural
+                # comparison; what matters is *when* it happens. Outside the chain it could match
+                # a revision still in flight, and a failed write would then leave the download
+                # running against the request the database actually held.
+                #
+                # Skipping the write is still worth doing: it would add a second `READY` revision
+                # to every probed job's history for no change, and
+                # `test_a_probed_job_downloads_from_ready_without_re_entering_probing` asserts
+                # that history as a sequence (`ARC-004`).
+                return UNCHANGED
             return candidate.with_request(request)
 
         self._persist(job_id, revise, then=then, otherwise=otherwise)
@@ -1586,7 +1609,7 @@ class DownloadManager(QObject):
     def _persist(
         self,
         job_id: str,
-        revise: Callable[[Job], Job | None],
+        revise: Callable[[Job], Job | _Unchanged | None],
         *,
         then: Callable[[], None] | None = None,
         otherwise: Callable[[str], None] | None = None,
@@ -1619,12 +1642,20 @@ class DownloadManager(QObject):
         def step() -> None:
             current = self._require(job_id)
             revised = revise(current)
+            if revised is UNCHANGED:
+                # Nothing to write, and a successor to run. The chain is released last, as in
+                # `_settle`, so anything `then` queues for this job runs behind it.
+                if then is not None:
+                    then()
+                self._step_finished(job_id)
+                return
             if revised is None:
                 reason = f"{job_id} is {current.status.value}; the transition no longer applies"
                 if otherwise is not None:
                     otherwise(reason)
                 self._step_finished(job_id)
                 return
+            assert isinstance(revised, Job)  # narrowed by the two checks above, for mypy
             self._repository.update(
                 revised, lambda error: self._settle(revised, error, then, otherwise)
             )

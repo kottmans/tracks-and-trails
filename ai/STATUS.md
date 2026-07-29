@@ -342,7 +342,8 @@ the earlier 40 single-test iterations and 5 module runs, that is three shapes of
 reproduction. Not proof of a Windows-only fault; the absence of a Linux one after looking where it
 was worth looking. `.github/workflows/t074-repeat.yml` now runs the suite N times on `STARBASE` and
 reports a rate, separating crashes from ordinary test failures by exit code — manual dispatch, in
-its own workflow, because `ci.yml` is a gate and this is an instrument. **Authored, not yet run.**
+its own workflow, because `ci.yml` is a gate and this is an instrument. **It has run: `0/12 at
+ea53c71`, run `30429327464`.** *(This said "Authored, not yet run" after it had.)*
 
 **`T-074` narrowed on 2026-07-29, without being solved.** It does not reproduce on Linux — 40
 iterations of the crashing test and 5 whole-module runs, all clean — which does not clear Linux
@@ -359,9 +360,11 @@ died with an **access violation**, exit 139, in
 `test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget` — with the `ResultPump`
 thread in the traceback and the crash at the wait for the *first progress message*, three lines
 before the cancellation the test is named for. The failing commit was **documentation-only** and
-byte-identical in code to one that had passed minutes earlier, so this is intermittent on the
-order of **one run in four**. Cause unknown; whether it is `result_pump.py` or the test harness is
-an open question and is written as one. It is High priority because it is an access violation in a
+byte-identical in code to one that had passed minutes earlier, so it is intermittent. **How
+intermittent is not established** (`T074-R1`): a deliberate batch ran `0/12` at a later head, which
+argues against the original "one run in four" without replacing it — those four runs and these
+twelve are not one population, and one event supports no bound. Cause unknown; whether it is
+`result_pump.py` or the test harness is an open question and is written as one. It is High priority because it is an access violation in a
 module under `src/`, and because an intermittent crash devalues every green run of the gate
 `OPS-005` just made load-bearing.
 
@@ -370,9 +373,11 @@ existing-rule branch of `ssh-setup.ps1` did nothing and printed `rule present`, 
 carrying the earlier broad `Any` rule kept port 22 open on every profile forever while the script
 reported success. It now reapplies the scope, reads the rule back, and reports the profile and
 remote-address filter separately — they live on different objects, so a rule can look right and
-still allow the world. **Two things are owed before `T-072` closes**, both needing a Windows
-machine rather than more code: the `mut_tree_drop_worker` mutation, and a run of the script
-against a deliberately broadened rule. Neither is verifiable from the Linux box, and neither
+still allow the world. **One thing is owed before `T-072` closes.** `mut_tree_drop_worker` has run on
+Windows: it **survives**, because `worker.spawn_session()`'s `parent-watchdog` exits the worker
+when the application dies whether or not its pid was captured — so capture-list completeness is
+not the product invariant, and `T072-R1` is Resolved on that basis. What remains is the `WIN-R1`
+run of the script against a deliberately broadened rule. Neither is verifiable from the Linux box, and neither
 belongs in CI — reconfiguring a machine's firewall from a workflow is the provisioning hazard the
 runner exists to avoid.
 
@@ -446,8 +451,10 @@ system-library dependency would pass here and fail on a bare install. `T-062` is
 one platform over. A container-based runner is the fix if it ever bites, and the decision reopens
 rather than being re-argued.
 
-**Both halves of criterion 7 now have a platform, and it is still not met.** `T-074` is why: a
-gate that crashes one run in four does not verify anything reliably.
+**Both halves of criterion 7 now have a platform, and it is still not met.** `T-074` is why: the
+gate has crashed once, in ordinary `ResultPump` delivery, and the fault is unclassified between
+product and harness. A `0/12` batch argues against the original one-in-four reading and does not
+clear it — a gate that has crashed once and cannot be explained does not verify a criterion.
 
 **`T-071` — the icon was undersized, and the master says why.** Reported from a taskbar
 screenshot and fixed the same day: every derived asset drew the logo at ~66% of its canvas with

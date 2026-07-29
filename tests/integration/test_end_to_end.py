@@ -25,6 +25,7 @@ that has only ever been driven by a graceful exit is recovery nobody has tested.
 """
 
 import contextlib
+import functools
 import json
 import os
 import signal
@@ -34,7 +35,7 @@ import threading
 import time
 from collections.abc import Callable, Iterator
 from datetime import UTC, datetime
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from http.server import BaseHTTPRequestHandler, SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any, Final
 
@@ -46,6 +47,7 @@ from tracks_and_trails import app as application
 from tracks_and_trails.core.errors import ErrorKind, is_retryable
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
+from tracks_and_trails.core.presets import BUILT_IN_PRESETS
 from tracks_and_trails.downloader.protocol import Progress, Stage
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
@@ -393,6 +395,89 @@ def build_media(ffmpeg_path: str, destination: Path) -> bytes:
     return destination.read_bytes()
 
 
+def build_hls(ffmpeg_path: str, source: Path, directory: Path) -> None:
+    """Render `source` into a local HLS presentation, with a subtitle track (`T077-R1`).
+
+    **This is what makes every preset reachable without a network.** A direct `video/mp4` URL
+    gives yt-dlp's generic extractor one format with no `height` and no `ext` to filter on, and no
+    subtitles — so the 1080p preset's selector legitimately matches nothing and
+    `FFmpegEmbedSubtitle` has nothing to embed. The first version of this file recorded both as
+    structural limits of network-free testing. They are limits of *that fixture*: a master
+    playlist declares `RESOLUTION` and `CODECS`, and an `EXT-X-MEDIA` group declares subtitles,
+    so the same extractor reports a format with `height=240, ext=mp4` and `subtitles={'en': …}`.
+    """
+    subprocess.run(
+        [
+            ffmpeg_path,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-y",
+            "-i",
+            str(source),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-c:a",
+            "aac",
+            "-f",
+            "hls",
+            "-hls_time",
+            "1",
+            "-hls_playlist_type",
+            "vod",
+            "-hls_segment_filename",
+            str(directory / "v0_%d.ts"),
+            str(directory / "v0.m3u8"),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    (directory / "subs.vtt").write_text(
+        "WEBVTT\n\n00:00:00.000 --> 00:00:02.000\nhello subtitles\n", encoding="utf-8"
+    )
+    (directory / "subs.m3u8").write_text(
+        "#EXTM3U\n#EXT-X-VERSION:3\n#EXT-X-TARGETDURATION:2\n#EXT-X-PLAYLIST-TYPE:VOD\n"
+        "#EXTINF:2.0,\nsubs.vtt\n#EXT-X-ENDLIST\n",
+        encoding="utf-8",
+    )
+    (directory / "master.m3u8").write_text(
+        "#EXTM3U\n#EXT-X-VERSION:3\n"
+        '#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID="subs",NAME="English",LANGUAGE="en",'
+        'DEFAULT=YES,AUTOSELECT=YES,URI="subs.m3u8"\n'
+        "#EXT-X-STREAM-INF:BANDWIDTH=400000,RESOLUTION=320x240,"
+        'CODECS="avc1.42c01e,mp4a.40.2",SUBTITLES="subs"\n'
+        "v0.m3u8\n",
+        encoding="utf-8",
+    )
+
+
+@pytest.fixture
+def hls_media_url(ffmpeg: tuple[str, str], tmp_path: Path) -> Iterator[Callable[[], str]]:
+    """A localhost HLS presentation with video, audio and subtitles. Nothing leaves the machine."""
+    servers: list[ThreadingHTTPServer] = []
+    root = tmp_path / "hls"
+    root.mkdir()
+    source = tmp_path / "source.mp4"
+    build_media(ffmpeg[0], source)
+    build_hls(ffmpeg[0], source, root)
+
+    def serve() -> str:
+        handler = functools.partial(SimpleHTTPRequestHandler, directory=str(root))
+        server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        servers.append(server)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        return f"http://127.0.0.1:{server.server_address[1]}/master.m3u8"
+
+    yield serve
+
+    for server in servers:
+        server.shutdown()
+        server.server_close()
+
+
 def serve_bytes(payload: bytes, content_type: str) -> type[BaseHTTPRequestHandler]:
     """Serve exactly `payload`, so the file that arrives is the file that was built."""
 
@@ -463,42 +548,47 @@ def streams_in(ffprobe_path: str, path: Path) -> list[dict[str, str]]:
     return streams
 
 
-#: One row per built-in preset that produces a file this test can inspect (`T-077`).
+#: Every built-in preset, and what its output must contain (`T-077`, `T077-R1`).
 #:
 #: `(preset, bitrate to choose, expected stream kinds, expected audio codec)`.
 #:
-#: Two presets are absent and cannot be present; `UNCOVERABLE_BY_THIS_FIXTURE` below says which
-#: and why.
-CONVERTING_PRESETS = (
+#: **All five, against the HLS fixture.** The first version covered three and recorded the other
+#: two as structural limits of network-free testing. They were limits of the *direct-file* fixture
+#: — `T077-R1` — and a master playlist removes both: it declares `RESOLUTION` so the 1080p
+#: selector has a `height` and an `ext` to match, and an `EXT-X-MEDIA` subtitle group so
+#: `FFmpegEmbedSubtitle` has something to embed.
+ALL_PRESETS = (
     ("Best video available", None, {"video", "audio"}, None),
+    ("Best video up to 1080p (MP4)", None, {"video", "audio"}, None),
     ("Audio only (MP3)", "320", {"audio"}, "mp3"),
     ("Audio only (original)", None, {"audio"}, "aac"),
+    ("Video with embedded subtitles", None, {"video", "audio", "subtitle"}, None),
 )
 
-#: The two presets this fixture structurally cannot exercise, and why. Named here rather than
-#: quietly absent, because "not in the table" and "cannot be in the table" are different claims
-#: and only one of them is a gap somebody should try to close.
-#:
-#: **"Best video up to 1080p (MP4)"** — its selector filters on `height` and `ext`, and yt-dlp's
-#: generic extractor does not parse the container, so a direct media URL yields one format with
-#: neither. `Requested format is not available` is the *correct* answer, which `END_TO_END_PRESET`
-#: above already records. Covering it needs a fixture whose extractor reports real formats — an
-#: HLS or DASH manifest — which is `REQ-003`'s ground in Phase 3, not this.
-#:
-#: **"Video with embedded subtitles"** — `FFmpegEmbedSubtitle` embeds subtitles yt-dlp
-#: *downloaded*, and the generic extractor offers none for a direct file. The postprocessor would
-#: have nothing to do and the case would pass while proving nothing, which is the shape
-#: `ai/TESTING.md` §13 exists to catch.
-UNCOVERABLE_BY_THIS_FIXTURE = ("Best video up to 1080p (MP4)", "Video with embedded subtitles")
+
+def test_the_preset_table_covers_every_built_in_preset() -> None:
+    """`T077-R1`: a hand-maintained list has to be pinned to the thing it claims to cover.
+
+    Two lists were maintained by hand and neither asserted its relationship to
+    `BUILT_IN_PRESETS`, so a preset added tomorrow would be covered by nothing and reported by
+    nothing. This is the assertion that makes "each built-in preset" a fact rather than an
+    intention.
+    """
+    covered = {name for name, *_ in ALL_PRESETS}
+    built_in = {preset.name for preset in BUILT_IN_PRESETS}
+    assert covered == built_in, (
+        f"the table covers {sorted(covered)} and the registry offers {sorted(built_in)}; "
+        "a preset in one and not the other is a download option nothing executes"
+    )
 
 
-@pytest.mark.parametrize(("preset", "bitrate", "kinds", "audio_codec"), CONVERTING_PRESETS)
+@pytest.mark.parametrize(("preset", "bitrate", "kinds", "audio_codec"), ALL_PRESETS)
 def test_each_preset_produces_the_file_it_promises(
     qapp: QApplication,
     tmp_path: Path,
     spin: Callable[..., bool],
     ffmpeg: tuple[str, str],
-    real_media_url: Callable[[], str],
+    hls_media_url: Callable[[], str],
     preset: str,
     bitrate: str | None,
     kinds: set[str],
@@ -521,7 +611,7 @@ def test_each_preset_produces_the_file_it_promises(
         geometry_file=tmp_path / "window.toml",
     )
     try:
-        job_id = queue_one(composition, real_media_url(), preset=preset, bitrate=bitrate)
+        job_id = queue_one(composition, hls_media_url(), preset=preset, bitrate=bitrate)
         composition.manager.start(job_id)
         assert spin(
             lambda: (

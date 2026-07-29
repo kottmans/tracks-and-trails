@@ -14,8 +14,8 @@ already been burned by their absence:
   boundary, rather than on the request this module builds.
 """
 
-from dataclasses import fields
-from typing import Any
+from dataclasses import fields, replace
+from typing import Any, Final
 
 import pytest
 
@@ -513,3 +513,38 @@ def test_the_selector_reaches_yt_dlp_unedited(preset: Preset) -> None:
     options = adapter.build_options(request_for(preset), "%(title)s.%(ext)s", probe_only=False)
 
     assert options["format"] == shown
+
+
+# --- the MP3 bitrate scale belongs to MP3 (`T-076`, `T076-R1`) --------------------------------
+
+
+@pytest.mark.parametrize("bitrate", presets.MP3_BITRATES)
+def test_every_offered_bitrate_reaches_the_preset(bitrate: str) -> None:
+    """Each value the UI offers must be one `with_audio_quality` accepts, and carry through."""
+    assert presets.with_audio_quality(presets.AUDIO_MP3, bitrate).audio_quality == bitrate
+
+
+OTHER_CODECS: Final = tuple(sorted(set(AudioCodec) - {AudioCodec.MP3}, key=lambda c: c.value))
+
+
+@pytest.mark.parametrize("codec", OTHER_CODECS, ids=lambda c: c.value)
+def test_no_other_codec_accepts_mp3s_bitrates(codec: AudioCodec) -> None:
+    """`T076-R1`: "converts audio" is not the same question as "is MP3".
+
+    The first version gated on `CONVERTING_AUDIO_CODECS` — every codec but `ORIGINAL`. That set
+    contains `FLAC`, `WAV` and `ALAC`, where a constant kbps bitrate is not a worse choice but a
+    meaningless one, and `OPUS`, whose useful range is nothing like MP3's.
+
+    Only MP3 is offered today, so a gate on "converting" behaved identically and would have gone
+    on doing so until the day a second converting preset appeared — which is exactly when nobody
+    would be looking at this.
+    """
+    candidate = replace(presets.AUDIO_MP3, audio_codec=codec)
+    with pytest.raises(ValueError, match="MP3"):
+        presets.with_audio_quality(candidate, "320")
+
+
+def test_a_bitrate_outside_the_offered_set_is_refused() -> None:
+    """A number the UI cannot produce is still a number a caller can pass."""
+    with pytest.raises(ValueError, match="offered bitrates"):
+        presets.with_audio_quality(presets.AUDIO_MP3, "999")

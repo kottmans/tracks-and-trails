@@ -48,7 +48,6 @@ from dataclasses import fields, replace
 from typing import Any, Final
 
 from tracks_and_trails.core.models import (
-    CONVERTING_AUDIO_CODECS,
     AudioCodec,
     DownloadRequest,
     MediaKind,
@@ -216,10 +215,15 @@ def with_audio_quality(preset: Preset, quality: str) -> Preset:
     saying so — the caller is the UI, and a control that appears to do nothing is the defect
     `T-075` was.
     """
-    if preset.audio_codec not in CONVERTING_AUDIO_CODECS:
+    if preset.audio_codec is not AudioCodec.MP3:
+        # **MP3 specifically, not "any codec that converts"** (`T076-R1`). The first version
+        # gated on `CONVERTING_AUDIO_CODECS`, which is every codec but `ORIGINAL` — including
+        # `FLAC`, `WAV` and `ALAC`, where a constant kbps bitrate is not a worse choice but a
+        # meaningless one. `MP3_BITRATES` are MP3's scale; another codec wanting a quality
+        # control needs its own, and should say so rather than inherit these.
         raise ValueError(
-            f"{preset.name!r} does not convert audio, so a bitrate has nothing to apply to; "
-            f"converting codecs are {sorted(c.value for c in CONVERTING_AUDIO_CODECS)}"
+            f"{preset.name!r} converts to {preset.audio_codec.value}, and these bitrates are "
+            f"MP3's. A quality scale for another codec is that codec's to define."
         )
     if quality not in MP3_BITRATES:
         raise ValueError(f"{quality!r} is not one of the offered bitrates {list(MP3_BITRATES)}")

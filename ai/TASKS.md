@@ -83,9 +83,9 @@ not when someone notices.)*
 
 ### T-076 — Choose the MP3 bitrate, rather than taking the preset's 192
 
-**Status:** **In Review — implemented 2026-07-29.** A bitrate control beside the preset, offering
-320/256/192/160/128 kbps and defaulting to 192, enabled only where it applies. Maintainer request
-during `T-075`'s diagnosis. See **Evidence**.
+**Status:** **In Review — `T076-R1` corrected 2026-07-29.** A bitrate control beside the preset,
+320/256/192/160/128 kbps, defaulting to 192, offered **for MP3 specifically**. The first version
+gated on "converts audio", which is every codec but the original. See **Evidence**.
 **Owner:** Implementer
 **Priority:** Medium — `REQ-010` capability, pulled forward from Phase 3 at maintainer request
 **Phase:** Phase 1 (pulled forward; `REQ-010` is a Phase 3 deliverable)
@@ -154,18 +154,34 @@ Pre-flighted offscreen, 10/10.
 **Still owed:** the real-plugin run on `STARBASE`. The self-hosted `windows desktop` job covers it
 on push.
 
+#### `T076-R1` — the gate was "converts audio", not "is MP3", 2026-07-29
+
+`CONVERTING_AUDIO_CODECS` is every codec but `ORIGINAL` — which includes `FLAC`, `WAV` and `ALAC`,
+where a constant kbps bitrate is not a worse choice but a meaningless one, and `OPUS`, whose
+useful range is nothing like MP3's. `MP3_BITRATES` are MP3's scale.
+
+Only MP3 is offered today, so the wrong gate behaved identically and would have gone on doing so
+until a second converting preset appeared — which is exactly when nobody would be looking at this.
+`with_audio_quality`, the control's enablement and the displayed line all now test
+`audio_codec is AudioCodec.MP3`.
+
+`test_no_other_codec_accepts_mp3s_bitrates` is parametrised over **every** other codec, so the
+next one added is covered without anyone remembering. Widening the gate back to "converting" fails
+it eight times.
+
 #### Out of scope
 
-- Bitrate for codecs other than MP3, and VBR levels — `REQ-010`'s wider surface is Phase 3
+- A quality scale for another codec, which is that codec's to define — `REQ-010`'s wider surface
+  is Phase 3
 - Remembering the choice between sessions; that is Phase 4 settings
 
 ---
 
 ### T-075 — Probing freezes the preset, so the download ignores what the user chose
 
-**Status:** **In Review — fixed 2026-07-29.** Reported by the maintainer against a real YouTube
-URL: selecting the MP3 or original-audio preset produced a video file. Reproduced, root-caused,
-fixed, and covered by two tests, one of them mutation-verified. See **Evidence**.
+**Status:** **In Review — `T075-R1` corrected 2026-07-29.** The original defect is fixed; the
+review then found the fix's own shortcut could start a download against a revision that never
+landed, and that is corrected too. See **Evidence** and **`T075-R1`**.
 **Owner:** Implementer
 **Priority:** **Critical** — the application downloaded something other than what the user
 selected, silently, while displaying the correct selector
@@ -248,6 +264,34 @@ after probing — the defect's existence proves it. `ai/TESTING.md` §13 already
 tests can share one blind spot; here the blind spot was an ordering the tests never perform and
 users always do. **The maintainer found it by using the application**, which is the one method no
 suite here replaces.
+
+#### `T075-R1` — Critical: the shortcut decided outside the chain, 2026-07-29
+
+`retarget` skips the write when the job already carries the request asked for. The first version
+decided that **before enqueuing anything**, by reading the store and comparing.
+
+`PersistentJobStore.get()` answers with *"the newest revision this process has queued, or what the
+database holds"* — durable or not. So the comparison could match a write still in flight, and if
+that write then failed, `then` had already run: the download started against the request the
+database actually held, after the dialog had reported the user's choice as saved. The same defect
+`T-075` is about, reintroduced by its own fix.
+
+**The decision now happens inside the per-job chain**, where every other transition is decided —
+against the job as it stands when its turn comes. That needed a third outcome from a revision:
+`_persist` already distinguished "here is a new job" from "this no longer applies", and now also
+recognises `UNCHANGED`, which writes nothing and runs the successor. Skipping the write is still
+worth doing: `test_a_probed_job_downloads_from_ready_without_re_entering_probing` asserts the
+persisted status sequence, and writing anyway adds a second `READY` revision to every probed job.
+
+**Asserted as the invariant, not the mechanism.**
+`test_a_retarget_never_starts_against_a_revision_that_did_not_land` records the durable
+`format_selector` at the moment each successor runs and requires every one of them to be the
+request that was asked for. A test that checked "no shortcut was taken" would pass against any
+number of other wrong implementations.
+
+It needed a fake that could express the failure. `HeldStore.get()` answers only from what has
+landed, which cannot produce the defect at all; `OverlayingHeldStore` overlays the queue the way
+the real store does. **Mutation: restoring the pre-chain shortcut fails the test.**
 
 #### Out of scope
 
@@ -367,9 +411,10 @@ deserves the resolution, not the question.)*
 
 ### T-077 — Four of the five download options have never produced a file
 
-**Status:** **In Review — implemented 2026-07-29.** Three of the five presets now produce a file
-that is inspected. **Two cannot be covered by this fixture at all**, for stated structural
-reasons — which is a narrower and more useful answer than the task assumed. See **Evidence**.
+**Status:** **In Review — `T077-R1` corrected 2026-07-29. All five presets now execute.** The
+first version covered three and recorded the other two as structural limits of network-free
+testing. They were limits of the *direct-file* fixture, and an HLS fixture removes both. See
+**Evidence** and **`T077-R1`**.
 **Owner:** Implementer
 **Priority:** **High** — these are the application's user-visible choices, and the only one ever
 executed end to end is the one the tests happen to pin
@@ -477,6 +522,40 @@ one would fail at the assertion rather than at the skip. CI installs them (`T-06
 **Cost: 2.86 s for all three.** A first run took 183 s, which was entirely the 1080p case waiting
 out its 180 s timeout before being removed.
 
+#### `T077-R1` — the limit was the fixture, not the approach, 2026-07-29
+
+The criterion says **each built-in preset**, and naming two exclusions does not meet it.
+
+A direct `video/mp4` URL gives yt-dlp's generic extractor one format with no `height` and no `ext`
+to filter on, and no subtitles — so the 1080p selector matched nothing and `FFmpegEmbedSubtitle`
+had nothing to embed. Both are properties of that fixture. Measured against a local HLS master
+playlist, the same extractor reports:
+
+```
+FORMATS:   [('400', 'mp4', 240)]
+SUBTITLES: {'en': ['vtt']}
+```
+
+A `RESOLUTION` attribute gives the selector a height and an ext; an `EXT-X-MEDIA` subtitle group
+gives the postprocessor something to embed. Both playlists and the segments are rendered by ffmpeg
+at test time from the same 47 kB source — still no network, still no binary in the repository.
+
+| Preset | Result |
+|---|---|
+| Best video available | passes |
+| **Best video up to 1080p (MP4)** | **passes** — the selector matches a real format |
+| Audio only (MP3) at 320 | passes |
+| Audio only (original) | passes |
+| **Video with embedded subtitles** | **passes** — a subtitle stream in the output |
+
+Five cases in 5.47 s. Removing `FFmpegEmbedSubtitle` fails the subtitle case with
+`produced ['video', 'audio'], expected ['audio', 'subtitle', 'video']`.
+
+**The list is now pinned to the registry.** `test_the_preset_table_covers_every_built_in_preset`
+asserts the covered set equals `BUILT_IN_PRESETS` exactly, so a preset added tomorrow is covered
+by something or reported by something. Two hand-maintained lists with no such assertion were the
+third half of this finding.
+
 #### A difficulty worth naming before starting
 
 **Embedded subtitles may have nothing to embed.** The local server serves `video/mp4` and yt-dlp's
@@ -490,10 +569,13 @@ it in the assertion.
 
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
-**Status:** **Ready — measured 2026-07-29, and the rate is not what the anecdote said.** Twelve
-full-suite runs on `STARBASE`: **12 clean, 0 crashes**. Combined with the four CI runs that
-produced the single observation, that is **1 in 16, not 1 in 4**. Cause still unknown; a
-24-iteration batch is running to tighten the bound or catch one with a fresh traceback.
+**Status:** **Ready — one clean batch measured, the crash still unclassified and still blocking.**
+`0/12 at ea53c71` (run `30429327464`). That is evidence against the original 25% anecdote and is
+**not** a rate: the four original observations came from materially different heads, so they are
+not one population, and a single event gives no bound worth quoting (`T074-R1`). The faulting
+object is unknown, product-pump versus harness is unresolved, and there is no correction mutation.
+**Phase 1's Windows criterion stays unverified.** *(This block claimed "1 in 16, not 1 in 4"; that
+promoted samples from changed heads into a stable rate.)*
 **Owner:** Implementer
 **Priority:** **High** — it is an access violation in a module under `src/`, and it lands in the
 suite that `OPS-005` and `T-073` just made Phase 1's only Windows gate
@@ -628,17 +710,21 @@ Twelve full-suite iterations on `STARBASE`, every one attempted:
 |---|---|---|
 | **12** | **0** | 0 — `1395 passed, 20 skipped, 32 deselected` each time, 209-217 s |
 
-**"About one in four" was a denominator of four.** One crash in four runs is entirely consistent
-with a much rarer event, and twelve clean runs at `ea53c71` say it is one. Taking every full-suite
-run on this machine together — the four that produced the observation plus these twelve — the
-observed rate is **1 in 16**, and the true rate could be lower still.
+**"About one in four" was a denominator of four**, and this batch is not a replacement for it.
+`0/12 at ea53c71` says the crash is not reliably reproducible at that head. It does **not**
+establish a rate (`T074-R1`): the four earlier runs and these twelve are not one controlled
+population — the manager and the full-suite composition changed materially between them, including
+new integration tests — and after a single event an aggregate point estimate is not a bound. A
+clean run is unremarkable under a 25% failure probability and under a 6% one alike.
 
-That does not make the crash unreal. It happened, with a traceback naming `[ResultPump]` and
-`multiprocessing`'s `_monitor`, on a documentation-only commit whose code was byte-identical to a
-passing run. What changed is how much a green Windows run is worth: at 1 in 16 rather than 1 in 4,
-a single passing run is much stronger evidence than it looked, and the case for treating this as a
-Phase 1 blocker is correspondingly weaker. **That is a maintainer decision and belongs to the exit
-review**, not to this task.
+The crash is real. It happened with a traceback naming `[ResultPump]` and `multiprocessing`'s
+`_monitor`, on a documentation-only commit whose code was byte-identical to a passing run.
+
+**It stays a Phase 1 blocker, and the reason is where it landed.** The only observed native crash
+is in ordinary `ResultPump` delivery — the exact `ARC-002` path Phase 1 exists to prove — so the
+uncertainty cannot be resolved in favour of product safety by counting clean runs. Downgrading it
+or accepting the risk is the maintainer's explicit decision to record, not an inference this task
+may draw.
 
 **Still unknown: the cause.** Nothing here narrows it. A larger batch is running to either bound
 the rate further or catch one with fresh diagnostics; the workflow keeps every iteration's output,
@@ -666,12 +752,16 @@ executing it needs `STARBASE` and is the next step on this task." It has now run
 
 ### T-072 — Carry the three unresolved findings the last-pass direction stopped
 
-**Status:** **In Progress — one of the two owed items is discharged, 2026-07-29.**
-`mut_tree_drop_worker` has now run on Windows: it **survives**, and the reason is the orphan
-guard rather than an inert mutation — established with a positive control and a probe that had to
-be fixed before it could see anything. The `WIN-R1` broad-to-scoped verification is the remaining
-item; it needs a deliberately widened firewall rule and is awaiting maintainer authorisation to
-run. *(Previously: "four of the five carries are done".)* `COORD-R5` is
+**Status:** **In Progress — `T072-R1` Resolved; `WIN-R1` is the only remaining item, 2026-07-29.**
+`mut_tree_drop_worker` ran on Windows and **survives**, through the orphan guard rather than
+because the mutation was inert — established with a positive control and a probe that had to be
+fixed before it could see anything. The reviewer accepted that result and marked `T072-R1`
+**Resolved**: the omitted worker was independently observed exiting through a legitimate
+containment path, and capture-list completeness is not itself the product invariant.
+
+**`WIN-R1` is the only remaining item.** It needs a deliberately widened firewall rule and is
+awaiting maintainer authorisation to run. *(This block said "four of the five carries are done",
+then "one of the two owed items"; both counts are superseded by the single remaining item.)* `COORD-R5` is
 discharged and `T-040`/`T-060` are filed Complete on it; `WIN-R3` and `RUNNER-R1` are corrected;
 the `T-019` process-tree cases run on `STARBASE`. `T066-R1` was **Changes requested** at
 `f20a9c8` (`T072-R1`) and is corrected below. **`WIN-R1` is written too**, so all five carries are

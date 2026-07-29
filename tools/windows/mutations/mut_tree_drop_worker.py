@@ -8,11 +8,19 @@ this plugin does not touch. That separation is the whole point of the second rou
 the first correction asserted against the same list the kill was given, so dropping the worker
 from that list also dropped it from the assertion and nothing could ever fail.
 
-**Windows-only in the meaningful sense.** On POSIX `kill_the_application()` signals the whole
-process group, so the worker dies whether or not it was captured and this mutation survives
-legitimately — measured, not assumed. Windows has no process groups and kills the captured members
-one at a time, which is why the captured set has to be complete there and why this gate belongs on
-that machine.
+**It survives on both platforms, and that is the result rather than a gap** (`T-072`, measured
+2026-07-29). On POSIX `kill_the_application()` signals the whole process group, so the worker dies
+whether or not it was captured. On Windows the members are killed one at a time — and the worker
+*still* dies, because `worker.spawn_session()` runs the `parent-watchdog` thread `ARC-002`
+documents, which exits the worker when the application disappears.
+
+So the captured set's completeness is **not** the product invariant, and no platform can gate it
+through this test. What prevents orphans is the watchdog; `mut_control_worker_survives` is the
+control that shows the assertion can fail at all, by leaving the parent alive so the watchdog
+never fires.
+
+*(This file previously said the captured set "has to be complete" on Windows and that the gate
+belonged there. The run contradicted it.)*
 """
 
 

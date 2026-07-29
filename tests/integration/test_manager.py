@@ -2959,6 +2959,81 @@ class HeldStore:
         return [status for stored_id, status in self.written if stored_id == job_id]
 
 
+class OverlayingHeldStore(HeldStore):
+    """`HeldStore`, but `get()` answers with the newest **queued** revision, as the real one does.
+
+    `PersistentJobStore.get()` returns "the newest revision this process has queued, or what the
+    database holds" — durable or not. `HeldStore` answers only from what has landed, which is
+    simpler and cannot express `T075-R1`: that defect exists precisely because a reader can see a
+    revision that has not landed and may never land.
+
+    A fake that cannot represent the failure is a fake the test passes against for the wrong
+    reason, so this one overlays the queue the way the store under test does.
+    """
+
+    def get(self, job_id: str) -> Job | None:
+        for job, _ in reversed(self.pending):
+            if job.id == job_id:
+                return job
+        return self.jobs.get(job_id)
+
+
+def test_a_retarget_never_starts_against_a_revision_that_did_not_land(
+    tmp_path: Path, app: QCoreApplication
+) -> None:
+    """`T075-R1`, Critical: the successor must not run on a request the database does not hold.
+
+    `retarget` skips the write when the job already carries the request asked for — worth doing,
+    since writing anyway adds a revision for no change. The first version decided that **before
+    enqueuing anything**, by reading the store and comparing. But the store answers with the
+    newest *queued* revision, so the comparison could match a write still in flight; and if that
+    write then failed, `then` had already run and the download started against the request the
+    database actually held. The dialog would have reported the user's choice as saved.
+
+    Asserted as the invariant rather than as the mechanism: **whenever the successor runs, the
+    durable request is the one that was asked for.** A test that checked "no shortcut was taken"
+    would pass against any number of other wrong implementations.
+    """
+    store = OverlayingHeldStore()
+    job = make_job("job-1", "https://example.invalid/x", tmp_path)
+    store.jobs["job-1"] = job.with_status(JobStatus.PROBING).with_status(JobStatus.READY)
+    manager = DownloadManager(store)
+
+    wanted = replace(job.request, format_selector="bestaudio/best")
+    seen_when_started: list[str] = []
+
+    def record() -> None:
+        stored = store.jobs["job-1"]
+        seen_when_started.append(stored.request.format_selector)
+
+    try:
+        manager.retarget("job-1", wanted, then=record)
+        # A second ask while the first is still on the writer thread. `get()` now answers with the
+        # queued revision, which is what the old pre-check compared against.
+        manager.retarget("job-1", wanted, then=record)
+        assert seen_when_started == [], "a successor ran while nothing had been written at all"
+
+        # The in-flight write fails, so the durable row still carries the original request.
+        store.failing = True
+        store.release()
+        assert seen_when_started == [], (
+            f"a successor ran after a failed write, with the database still holding "
+            f"{store.jobs['job-1'].request.format_selector!r}"
+        )
+
+        store.failing = False
+        for _ in range(4):
+            store.release()
+
+        assert seen_when_started, "the retarget never completed at all"
+        assert set(seen_when_started) == {"bestaudio/best"}, (
+            f"a successor ran while the database held {seen_when_started}; the request that runs "
+            "must be the one that was stored"
+        )
+    finally:
+        manager.shutdown()
+
+
 def test_cancelling_a_reserved_start_stops_the_worker_from_ever_being_built(
     tmp_path: Path, app: QCoreApplication
 ) -> None:

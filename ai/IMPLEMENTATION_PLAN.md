@@ -158,9 +158,18 @@ them, which is the argument for having built it.)*
 > named in the decision: a change that adds a **system-library** dependency would pass on a
 > desktop and fail on a bare Linux install.
 >
-> **The criterion is still not met, and `T-074` is why.** The Windows suite exits with an access
-> violation roughly one run in four; a gate that crashes intermittently does not verify anything
-> reliably. That reading is the Implementer's, and the exit review is where it is settled.
+> **The criterion is still not met, and `T-074` is why.** The Windows suite has exited once with
+> an access violation, in ordinary `ResultPump` delivery — the `ARC-002` path this phase exists to
+> prove. A deliberate batch then ran **0 crashes in 12** at `ea53c71` (run `30429327464`), which
+> is evidence against the original "roughly one in four" and **not** a rate: the earlier
+> observations came from materially different heads, and one event supports no bound (`T074-R1`).
+> The faulting object is unknown and product-versus-harness is unresolved, so a gate that has
+> crashed once and cannot be explained does not verify this criterion. Downgrading it is the
+> maintainer's decision, recorded here or in `ai/DECISIONS.md`, and the exit review is where it
+> is settled.
+>
+> *(This previously read "roughly one run in four", which was the anecdote's denominator rather
+> than a measurement.)*
 
 ---
 
