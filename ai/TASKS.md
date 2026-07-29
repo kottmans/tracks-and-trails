@@ -12,30 +12,35 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** **Phase 1's critical path is built and approved.** `T-036` composed the object
-graph (approved at `306840b`) and `T-037` proved a download completes and survives a `SIGKILL`
-(approved with follow-ups at `894d794`), which closes the two exit criteria that had no owner.
-**Nothing remains on the path.**
+**Start here:** **Phase 1's critical path is built and approved**, and the queue is no longer
+only paperwork. `T-036` composed the object graph and `T-037` proved a download completes and
+survives a `SIGKILL`. **What stands between the phase and its exit review is a crash, a carry, and
+frozen-artifact evidence.**
 
-**Three review passes on 2026-07-28 settled most of the open queue** (`ai/REVIEWS.md`). What
-remains is one carry task, evidence only a runner can produce, and the exit review.
+- **`T-074` — the live problem.** The Windows suite exits with an **access violation**, roughly
+  one run in four, in the result pump's ordinary message delivery. **High**, filed 2026-07-29, not
+  diagnosed. It matters out of proportion to its age because `OPS-005` and `T-073` just made that
+  suite Phase 1's only Windows gate, so an intermittent crash devalues every green run of it.
+- **`T-072` — In Progress, Changes requested.** `COORD-R5`, `WIN-R3` and `RUNNER-R1` are resolved;
+  `T066-R1` and `WIN-R1` are written and **both still open on their evidence** (`T072-R1`,
+  `T072-R3`). Also carrying `T072-R2` and this preamble's own `COORD-R6`.
+- **`T-073` — In Review**, approved with the `T073-R1` documentation follow-up. The self-hosted
+  job now runs the whole Windows gate: 1388 passed, 20 skipped.
+- **Blocked on evidence:** `T-066`, narrowed to frozen-artifact evidence alone once its
+  process-tree half was discharged. `T-033` and `T-039` are Phase 5.
+- **Open, not phase blockers** (`OPS-005`): `T-056` and `T-068`. Both need a GitHub-hosted image,
+  neither is a defect a user would meet.
+- **Complete:** `T-040`, `T-060`, `T-064`, `T-065`, `T-067`, `T-069`, `T-070`, `T-071`.
 
-- **Approved, no findings:** `T-067` and `T-070` at `1e9694c`; `T-069` at `8938478`; `T-071`
-  at `3327fd3`.
-- **Approved with follow-up:** `T-040` and `T-060`. Their behaviour and manual Windows mutation
-  evidence are accepted, and the self-hosted desktop job (`90432207805`, 28 passed) is a
-  repeatable normal-run gate. `COORD-R5`'s remaining filing is carried to `T-072`, and the
-  re-review states both close on that carry **without another behavioural review**.
-- **Ready:** **`T-072`**, the named carry the last-pass direction asked for — `T066-R1`'s
-  remainder, `COORD-R5`, `WIN-R1`, plus non-blocking `WIN-R3` and `RUNNER-R1`. Also `T-064`.
-- **Blocked, all on evidence rather than code:** `T-066` (narrowed 2026-07-29 to frozen-artifact
-  evidence; its process-tree half is discharged), `T-033` and `T-039` (Phase 5).
-- **Open but no longer phase blockers** (`OPS-005`, maintainer decision 2026-07-29): `T-068` and
-  `T-056`. Both need a GitHub-hosted image, neither is a defect a user would meet, and
-  `STARBASE` — not `windows-latest` — is now the platform the *verified on Windows* criterion is
-  measured against. `T-056` is test-only code whose sole error direction is a false failure;
-  `T-068`'s fix is already validated on the machine that showed the fault.
-- **Decided and Complete:** `T-065`.
+**Both halves of exit criterion 7 now have a platform, and it is still unmet.** `OPS-005` made
+`STARBASE` the Windows platform; `OPS-006` made the maintainer's own machine the Linux one, rather
+than building a runner that would share the development box's environment. `T-074` is why the
+criterion cannot yet be called met: a gate that crashes intermittently does not verify reliably.
+
+*(This block said "nothing remains on the path" and listed only a carry, runner evidence and the
+exit review, while omitting `T-074` entirely and calling `T-072` and the completed `T-064` Ready.
+`COORD-R6` reported it — the same filing class `COORD-R5` was meant to close, recurring in the
+task that carries it. Rewritten from current task state rather than patched.)*
 
 **A Windows machine on the maintainer's network — `STARBASE` — supplied what CI could not**
 (2026-07-28), and is now a self-hosted runner. Windows 10 22H2, Python 3.14.6 and PySide6 6.11.1
@@ -68,14 +73,119 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(Genuinely empty as of 2026-07-28, after `T-072`'s `COORD-R5` carry refiled everything. The
-tasks that used to sit here are Complete — `T-040`, `T-060`, `T-067`, `T-069`, `T-070`, `T-071` —
-or Blocked on evidence: `T-066` and `T-068`. `COORD-R2` is why this says so rather than sitting
-blank: an empty section is a claim about readiness, and the last time it was left unlabelled it
-outlived being true by one CI run. `COORD-R5` then caught this note itself claiming emptiness
-while seven tasks carried an In Review status from other sections — the reason that claim now
-names where each of them went.)*
+*(Holds `T-073` as of 2026-07-29. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling,
+and this note went on claiming that after `T-073` was filed In Review under `## Ready` —
+`COORD-R6`, which is `COORD-R5`'s own failure mode recurring one day later. `COORD-R2` is why this
+section carries a note at all rather than sitting blank: an empty section is a claim about
+readiness, and the last time it was left unlabelled it outlived being true by one CI run. The
+lesson this file keeps relearning is that the claim has to be rewritten when the section changes,
+not when someone notices.)*
 
+### T-073 — Run the full Windows gate on the machine that can run it
+
+**Status:** **In Review — approved with a documentation follow-up**, 2026-07-29 at `c41e2ef`.
+The reviewer accepted the job shape: the real `windows` plugin for the 28-test desktop slice,
+`offscreen` for the Qt baseline and the default suite, no provisioning of the self-hosted machine,
+ffmpeg recorded, and 30 minutes allowed. All fourteen functional steps passed. `T073-R1` is the
+open follow-up — two evidence statements in this task were wrong, corrected below.
+**Owner:** Implementer
+**Priority:** **High** — it is what makes Phase 1's seventh exit criterion attemptable again
+**Phase:** Phase 1
+**Depends on:** `OPS-005`; the self-hosted runner established 2026-07-28
+**Relevant context:** `OPS-005`, `T-066`, `T-062`, `ai/TESTING.md` §12, `IMPLEMENTATION_PLAN.md`
+Phase 1 exit criteria
+**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md`
+**Risk:** Medium — it puts the project's whole Windows gate on one machine
+
+#### Scope
+
+`OPS-005` made `STARBASE` the platform *verified on Windows* is measured against, and then had to
+record that the criterion was still unmet: the self-hosted job ran the 28-test desktop slice and
+two integration modules, while `check (windows-latest)` — lint, format, types, the Qt baseline and
+the full suite — had not run anywhere since the hosted quota ran out.
+
+Give the self-hosted job the rest of that gate. It already builds a virtualenv on a real Windows
+machine, so the marginal cost is steps rather than infrastructure.
+
+**No provisioning.** The one hard rule this job already carries is that a self-hosted runner must
+never install software as a side effect of running a test — the first run of it launched the real
+Python installer, opened an interactive dialog, and deadlocked against `msiexec` for the full
+timeout. So where `check` runs `choco install ffmpeg`, this job **records** ffmpeg instead. That is
+affordable because the default suite does not need it: measured on Linux with `ffmpeg` removed from
+`PATH`, **1399 passed, 11 skipped, 2 deselected** — the same numbers as with it.
+
+**The job keeps its name.** `windows desktop` is referenced by `ai/TESTING.md`, `ai/REQUIREMENTS.md`
+and `IMPLEMENTATION_PLAN.md`, all describing a desktop role that is still true and still its
+reason for existing. Renaming would invalidate those and the review record for no gain; the
+expanded role is recorded in `ai/TESTING.md` instead.
+
+#### Acceptance criteria
+
+- The self-hosted job runs lint, format, the Qt baseline and the full suite, in addition to what it
+  already ran
+- The full-suite step runs **offscreen**, and the desktop slice keeps the real `windows` plugin
+- Nothing in the job installs software on the machine
+- ffmpeg's presence or absence is recorded, and the run states which configuration it measured
+- The job's timeout accommodates a full suite, rather than passing by finishing early
+- `ai/TESTING.md` records that this job now carries the Windows gate, and what still differs from
+  the hosted one
+
+#### Evidence, 2026-07-29
+
+Run **`30415333608`** at `c41e2ef`, job `windows desktop` on `STARBASE`. **All fourteen steps
+green**, **6 m 29 s** wall (job `90460498381`).
+
+*(This said 3 m 40 s — `T073-R1`. That was the gap between two log timestamps I happened to grep,
+not the job's wall time, which Actions records directly. Corrected rather than left as a number
+nobody would re-derive.)*
+
+| Step | Result |
+|---|---|
+| Types under the Windows platform | Passed |
+| Windows desktop suite (real `windows` plugin) | 28 passed |
+| Lint | All checks passed |
+| Format check | 103 files already formatted |
+| Qt baseline | OK: Qt baseline verified on this runner |
+| **Full suite** (offscreen) | **1388 passed, 20 skipped, 30 deselected in 208.44 s** |
+
+**The machine has ffmpeg**, which the plan did not assume: `ffmpeg 8.1.2-full_build`, installed by
+winget at `…/Gyan.FFmpeg…/bin/ffmpeg`. So this run measured the **with-ffmpeg** configuration, the
+same one `check (windows-latest)` measures via `choco`. The no-ffmpeg wording in the environment
+step is the branch that did not fire, and the recording is what makes that knowable rather than
+assumed.
+
+**Reconciling the counts against Linux**, which is where a difference would otherwise look like a
+gap:
+
+| | Linux | Windows |
+|---|---|---|
+| Passed | 1399 | 1388 |
+| Skipped | 11 | 20 |
+| Deselected | 2 | 30 |
+
+The deselections explain themselves: Linux deselects the 2 network tests, Windows deselects those
+plus the 28 `windows_desktop` tests — which is correct, because step 8 already ran them under the
+real plugin. The extra 9 Windows skips are the POSIX-only half of platform-split modules.
+
+**The residual is explained, and it is an identity rather than a discrepancy** (`T073-R1`). Total
+collected plus deselected is 1412 on Linux and 1438 on Windows. Linux's JUnit carries two
+module-level **"collection skipped"** placeholders, for `tests.ui.test_windows_accessibility` and
+`tests.ui.test_windows_desktop`; Windows replaces those two placeholders with the 28 real desktop
+cases. `1412 - 2 + 28 = 1438`, exactly the recorded count.
+
+*(This was filed as "two tests unaccounted for … not something to wave through", which was the
+right instinct and the wrong conclusion — the answer was in the JUnit output rather than in the
+counts. Kept because a reader who re-derives the arithmetic will hit the same 26-against-28 and
+deserves the resolution, not the question.)*
+
+#### Out of scope
+
+- Retiring `check (windows-latest)` or the `frozen` jobs. They stay; this makes their absence
+  survivable, not permanent
+- The Linux half of `check`, which is unaffected
+- `T-056` and `T-068`, downgraded by `OPS-005` and not revisited here
+
+---
 
 ## Ready
 
@@ -153,98 +263,6 @@ Everything about the cause. Recorded as a question rather than a hypothesis dres
   its trigger found, not its symptom hidden. The one time this project reached for a retry the
   reviewer's instruction was explicit — *do not retry or xfail*
 - `T-056`, which is a different intermittent on a different platform and is `OPS-005`-downgraded
-
----
-
-### T-073 — Run the full Windows gate on the machine that can run it
-
-**Status:** **In Review — implemented 2026-07-29**
-**Owner:** Implementer
-**Priority:** **High** — it is what makes Phase 1's seventh exit criterion attemptable again
-**Phase:** Phase 1
-**Depends on:** `OPS-005`; the self-hosted runner established 2026-07-28
-**Relevant context:** `OPS-005`, `T-066`, `T-062`, `ai/TESTING.md` §12, `IMPLEMENTATION_PLAN.md`
-Phase 1 exit criteria
-**Affected surfaces:** `.github/workflows/ci.yml`, `ai/TESTING.md`
-**Risk:** Medium — it puts the project's whole Windows gate on one machine
-
-#### Scope
-
-`OPS-005` made `STARBASE` the platform *verified on Windows* is measured against, and then had to
-record that the criterion was still unmet: the self-hosted job ran the 28-test desktop slice and
-two integration modules, while `check (windows-latest)` — lint, format, types, the Qt baseline and
-the full suite — had not run anywhere since the hosted quota ran out.
-
-Give the self-hosted job the rest of that gate. It already builds a virtualenv on a real Windows
-machine, so the marginal cost is steps rather than infrastructure.
-
-**No provisioning.** The one hard rule this job already carries is that a self-hosted runner must
-never install software as a side effect of running a test — the first run of it launched the real
-Python installer, opened an interactive dialog, and deadlocked against `msiexec` for the full
-timeout. So where `check` runs `choco install ffmpeg`, this job **records** ffmpeg instead. That is
-affordable because the default suite does not need it: measured on Linux with `ffmpeg` removed from
-`PATH`, **1399 passed, 11 skipped, 2 deselected** — the same numbers as with it.
-
-**The job keeps its name.** `windows desktop` is referenced by `ai/TESTING.md`, `ai/REQUIREMENTS.md`
-and `IMPLEMENTATION_PLAN.md`, all describing a desktop role that is still true and still its
-reason for existing. Renaming would invalidate those and the review record for no gain; the
-expanded role is recorded in `ai/TESTING.md` instead.
-
-#### Acceptance criteria
-
-- The self-hosted job runs lint, format, the Qt baseline and the full suite, in addition to what it
-  already ran
-- The full-suite step runs **offscreen**, and the desktop slice keeps the real `windows` plugin
-- Nothing in the job installs software on the machine
-- ffmpeg's presence or absence is recorded, and the run states which configuration it measured
-- The job's timeout accommodates a full suite, rather than passing by finishing early
-- `ai/TESTING.md` records that this job now carries the Windows gate, and what still differs from
-  the hosted one
-
-#### Evidence, 2026-07-29
-
-Run **`30415333608`** at `c41e2ef`, job `windows desktop` on `STARBASE`. **All fourteen steps
-green**, 3 m 40 s wall.
-
-| Step | Result |
-|---|---|
-| Types under the Windows platform | Passed |
-| Windows desktop suite (real `windows` plugin) | 28 passed |
-| Lint | All checks passed |
-| Format check | 103 files already formatted |
-| Qt baseline | OK: Qt baseline verified on this runner |
-| **Full suite** (offscreen) | **1388 passed, 20 skipped, 30 deselected in 208.44 s** |
-
-**The machine has ffmpeg**, which the plan did not assume: `ffmpeg 8.1.2-full_build`, installed by
-winget at `…/Gyan.FFmpeg…/bin/ffmpeg`. So this run measured the **with-ffmpeg** configuration, the
-same one `check (windows-latest)` measures via `choco`. The no-ffmpeg wording in the environment
-step is the branch that did not fire, and the recording is what makes that knowable rather than
-assumed.
-
-**Reconciling the counts against Linux**, which is where a difference would otherwise look like a
-gap:
-
-| | Linux | Windows |
-|---|---|---|
-| Passed | 1399 | 1388 |
-| Skipped | 11 | 20 |
-| Deselected | 2 | 30 |
-
-The deselections explain themselves: Linux deselects the 2 network tests, Windows deselects those
-plus the 28 `windows_desktop` tests — which is correct, because step 8 already ran them under the
-real plugin. The extra 9 Windows skips are the POSIX-only half of platform-split modules.
-
-**One residual not explained, and left for review rather than guessed at.** Total collected plus
-deselected is 1412 on Linux and 1438 on Windows — a difference of 26, where the `windows_desktop`
-module is 28 tests. Two tests are unaccounted for in that arithmetic. Nothing failed, so this is a
-question about collection rather than a defect, but it is not something to wave through.
-
-#### Out of scope
-
-- Retiring `check (windows-latest)` or the `frozen` jobs. They stay; this makes their absence
-  survivable, not permanent
-- The Linux half of `check`, which is unaffected
-- `T-056` and `T-068`, downgraded by `OPS-005` and not revisited here
 
 ---
 
@@ -418,18 +436,33 @@ asserts the application has at least one descendant — the worker, which is the
 kill means anything — and returns that exact set. `kill_the_application()` no longer walks; it
 kills what it was handed and asserts nothing survived.
 
-**Mutations, and an honest split between them:**
+#### `T072-R1`, second round — the assertion was still circular
 
-| Mutation | Linux | Why |
+**The first correction moved the fault rather than fixing it.** It asserted `not alive` against
+`doomed` — *the same list the kill was handed* — so a fault that dropped the worker from that list
+also dropped it from the assertion, and nothing could fail on any platform. Both checked-in
+mutations were built on that misunderstanding: one returned `[]` and proved only that an entirely
+empty walk trips a guard nobody doubted, and the other could not be caught even on Windows.
+
+**The check and the thing it checks now come from different sources.**
+`the_workers_that_must_die()` is the test's own record of the worker set, taken while the row says
+`RUNNING`. `capture_the_doomed_tree()` is what the kill is handed. Nothing downstream can shrink
+the first, so a `doomed` missing the worker fails against it.
+
+| Plugin | Linux | Why |
 |---|---|---|
-| Walk finds no worker | **Killed** | `capture_the_doomed_tree`'s descendants assertion fires. This is the mutation that defeated the old code |
-| Worker dropped from the captured set | **Survives — by design** | `kill_the_application()` on POSIX sends `SIGKILL` to the process *group*, so the worker dies whether or not it was captured. Linux structurally cannot gate this |
+| `mut_control_worker_survives` | **KILLED** | The positive control. `kill_the_application` does nothing, the worker outlives it, and the independent set catches it by pid |
+| `mut_tree_shallow_walk` | Survives | The capture walks from the *application*, whose direct children already include the worker. Shallow and recursive differ only if the worker has spawned its own child — ffmpeg, on a merge — which a progressive download does not. **Unobservable, like `T060-R2`'s reversal**, not a gap |
+| `mut_tree_drop_worker` | Survives | `killpg` reaches the whole group whatever was captured. Structurally ungateable on POSIX |
 
-Both are checked in as `tools/windows/mutations/mut_tree_shallow_walk.py` and
-`mut_tree_drop_worker.py`, runnable on `STARBASE` through the documented procedure. **The
-second one's Windows execution is still owed** — Windows has no process groups and kills captured
-members individually, which is exactly why the captured set must be complete there and why that
-gate cannot be discharged on Linux.
+**The control is why the two survivals are readable.** Two surviving mutations and no kills is
+indistinguishable from an assertion that cannot fail — which is the exact shape `T072-R1` found
+twice. `mut_control_worker_survives` fails with the surviving pid *and* the list the kill was
+handed, so the diagnostic names which of the two possibilities occurred. Same reasoning that puts
+`mut_control_chain` first in the focus driver.
+
+**Still owed:** `mut_tree_drop_worker` on Windows. That is where the captured set's completeness
+becomes observable, because Windows kills members one at a time.
 
 | Check | Result |
 |---|---|
@@ -480,14 +513,31 @@ workflow is the *provisioning* hazard `T-073` and the job's own comments exist t
 **How to verify on `STARBASE`**, in an elevated session:
 
 ```powershell
-New-NetFirewallRule -Name sshd-tt -DisplayName "OpenSSH Server (Tracks and Trails)" `
-    -Enabled True -Direction Inbound -Protocol TCP -Action Allow -LocalPort 22 | Out-Null
+$ErrorActionPreference = "Stop"
+
+# Broaden the EXISTING rule. Do not try to create it.
+Set-NetFirewallRule -Name sshd-tt -Profile Any -RemoteAddress Any
+
+# Assert the defective state really exists, or the run below proves nothing.
+$before = Get-NetFirewallRule -Name sshd-tt
+$beforeRemote = (Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $before).RemoteAddress
+if ($before.Profile.ToString() -ne "Any") { throw "setup failed: profile is not Any" }
+if ($beforeRemote -ne "Any") { throw "setup failed: remote address is not Any" }
+
 .\tools\windows\ssh-setup.ps1
 ```
 
-The first command recreates the defective broad rule — `-Profile` omitted, so `Any`. The script
-must then report `rule profile : Private` and `rule remote : LocalSubnet`. Before this correction
-it would have reported `rule present` and changed nothing.
+The script must then report `rule profile : Private` and `rule remote : LocalSubnet`. Before this
+correction it would have reported `rule present` and changed nothing.
+
+**`T072-R3` corrected this procedure, and the way it was wrong is the point.** It previously used
+`New-NetFirewallRule -Name sshd-tt` to "recreate" the broad rule. On the machine this repair
+targets that name **already exists**, so the command fails — and the script then reapplies and
+reports an already-scoped rule, producing a green-looking report *without ever exercising
+broad-to-scoped repair*. A verification procedure that passes when the thing it verifies never
+ran is the same class of fault as the assertion `T072-R1` found. Hence `$ErrorActionPreference`
+and the two explicit `throw`s: the setup has to fail loudly rather than quietly leave the machine
+in the state that makes the test vacuous.
 
 #### Out of scope
 
@@ -502,81 +552,6 @@ contents. If a carry here disagrees with a task's own status line, `ai/REVIEWS.m
 for review findings (`AGENTS.md` §12).
 
 ---
-
-### T-064 — Repair stale developer-tool launchers
-
-**Status:** **In Review — fixed 2026-07-28.** The venv is recreated from this checkout and the
-documented repair now prescribes `python3 -m venv --clear`, because reinstalling this project
-alone repairs only its own two artefacts while every dependency-owned launcher stays stale. See
-**Evidence**.
-**Owner:** Implementer
-**Priority:** Low — the application runs, but the documented bare developer commands do not
-**Phase:** Phase 1
-**Depends on:** `T-063`
-**Relevant context:** `T063-R1`; `docs/DEVELOPMENT.md` setup, Everyday commands, and editable
-install repair sections
-**Affected surfaces:** `docs/DEVELOPMENT.md`; the local, git-ignored `.venv/`
-**Risk:** Low — developer-environment repair only
-
-#### Scope
-
-`T-063` repaired the application console script and editable source path by reinstalling this
-project from the current checkout. It did not repair console scripts installed by the development
-dependencies: at review time 39 launchers under `.venv/bin/`, including `mypy` and `pytest`, still
-named the nonexistent parent-checkout interpreter. Consequently the documented bare `mypy` and
-`pytest` commands fail with `bad interpreter`, while `.venv/bin/python -m mypy` and
-`.venv/bin/python -m pytest` work.
-
-Make the documented recovery procedure repair the whole development environment, not only this
-project's own entry point. Recreating the venv from the current checkout is the simplest known
-route; a narrower procedure is acceptable only if it demonstrably rewrites dependency-owned
-launchers too.
-
-#### Acceptance criteria
-
-- Following the documented repair from the stale moved-venv state makes both application entry
-  points and the documented bare `mypy` and `pytest` commands runnable without `PYTHONPATH`
-- The import-location check still resolves `tracks_and_trails` from this checkout
-- The same instructions work after `.venv/` is deleted and recreated
-- The procedure does not choose between repository paths; it makes the environment agree with the
-  checkout in which it is run
-
-#### Evidence, 2026-07-28
-
-**The count was worse than filed.** `T063-R1` measured 39 stale launchers; at repair time it was
-**45 of 46**, with `tracks-and-trails` the only healthy one — because `T-063`'s reinstall had
-repaired exactly that one and nothing else. That is the trap the documentation now names: the
-application starts, so the environment looks fixed, while `mypy` and `pytest` stay broken.
-
-`python3 -m venv --clear .venv` followed by `pip install -e ".[dev,build]"`. The `build` extra was
-included because this venv already had PyInstaller 6.21.0 installed and dropping it would have
-been a silent regression.
-
-| Check | Result |
-|---|---|
-| Launchers naming this checkout's interpreter | **46 of 46** (was 1 of 46) |
-| `mypy --version` (bare, activated) | 2.3.0 |
-| `pytest --version` (bare) | 9.1.1 |
-| `ruff --version` (bare) | 0.16.0 |
-| `tracks-and-trails --version` (bare) | 0.1.0.dev0 |
-| Import location, no `PYTHONPATH` | resolves to this checkout's `src/tracks_and_trails/` |
-| `ruff check .` · `ruff format --check .` | Passed · 103 files already formatted |
-| `mypy` · `mypy --platform win32` | Success, 78 source files · Success, 78 source files |
-| `pytest` (full default suite) | **1399 passed, 11 skipped, 2 deselected** |
-
-Every command in that table was run **bare**, through the activated venv, with no `PYTHONPATH` —
-which is the acceptance criterion rather than a convenience.
-
-**Adjacent correction, made inline rather than filed.** `docs/DEVELOPMENT.md`'s Windows section
-still said "there is currently no Windows machine available, so Windows is verified through CI
-only", while the *same file's* "Verifying on Windows" section described running the suite on
-`STARBASE`. One file, two answers; corrected to name `STARBASE` and the self-hosted runner.
-
-#### Out of scope
-
-- Product, packaging, or CI behavior
-- Choosing the canonical repository path
-- The `build` extra's contents; it was preserved as found, not chosen here
 
 ## Proposed — Phase 0
 
@@ -1378,6 +1353,83 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-064 — Repair stale developer-tool launchers
+
+**Status:** **Complete — approved**, 2026-07-29 at `f20a9c8`. The reviewer confirmed the repaired
+venv's bare `mypy`, `pytest`, application entry point and import-location probe all resolve
+through this checkout without `PYTHONPATH`, and that recreating with `venv --clear` addresses the
+dependency-owned launchers reinstalling this project alone cannot. The one-sentence `STARBASE`
+correction in `docs/DEVELOPMENT.md` was judged acceptable in this repair — reverting it would
+knowingly restore a false current statement.
+**Owner:** Implementer
+**Priority:** Low — the application runs, but the documented bare developer commands do not
+**Phase:** Phase 1
+**Depends on:** `T-063`
+**Relevant context:** `T063-R1`; `docs/DEVELOPMENT.md` setup, Everyday commands, and editable
+install repair sections
+**Affected surfaces:** `docs/DEVELOPMENT.md`; the local, git-ignored `.venv/`
+**Risk:** Low — developer-environment repair only
+
+#### Scope
+
+`T-063` repaired the application console script and editable source path by reinstalling this
+project from the current checkout. It did not repair console scripts installed by the development
+dependencies: at review time 39 launchers under `.venv/bin/`, including `mypy` and `pytest`, still
+named the nonexistent parent-checkout interpreter. Consequently the documented bare `mypy` and
+`pytest` commands fail with `bad interpreter`, while `.venv/bin/python -m mypy` and
+`.venv/bin/python -m pytest` work.
+
+Make the documented recovery procedure repair the whole development environment, not only this
+project's own entry point. Recreating the venv from the current checkout is the simplest known
+route; a narrower procedure is acceptable only if it demonstrably rewrites dependency-owned
+launchers too.
+
+#### Acceptance criteria
+
+- Following the documented repair from the stale moved-venv state makes both application entry
+  points and the documented bare `mypy` and `pytest` commands runnable without `PYTHONPATH`
+- The import-location check still resolves `tracks_and_trails` from this checkout
+- The same instructions work after `.venv/` is deleted and recreated
+- The procedure does not choose between repository paths; it makes the environment agree with the
+  checkout in which it is run
+
+#### Evidence, 2026-07-28
+
+**The count was worse than filed.** `T063-R1` measured 39 stale launchers; at repair time it was
+**45 of 46**, with `tracks-and-trails` the only healthy one — because `T-063`'s reinstall had
+repaired exactly that one and nothing else. That is the trap the documentation now names: the
+application starts, so the environment looks fixed, while `mypy` and `pytest` stay broken.
+
+`python3 -m venv --clear .venv` followed by `pip install -e ".[dev,build]"`. The `build` extra was
+included because this venv already had PyInstaller 6.21.0 installed and dropping it would have
+been a silent regression.
+
+| Check | Result |
+|---|---|
+| Launchers naming this checkout's interpreter | **46 of 46** (was 1 of 46) |
+| `mypy --version` (bare, activated) | 2.3.0 |
+| `pytest --version` (bare) | 9.1.1 |
+| `ruff --version` (bare) | 0.16.0 |
+| `tracks-and-trails --version` (bare) | 0.1.0.dev0 |
+| Import location, no `PYTHONPATH` | resolves to this checkout's `src/tracks_and_trails/` |
+| `ruff check .` · `ruff format --check .` | Passed · 103 files already formatted |
+| `mypy` · `mypy --platform win32` | Success, 78 source files · Success, 78 source files |
+| `pytest` (full default suite) | **1399 passed, 11 skipped, 2 deselected** |
+
+Every command in that table was run **bare**, through the activated venv, with no `PYTHONPATH` —
+which is the acceptance criterion rather than a convenience.
+
+**Adjacent correction, made inline rather than filed.** `docs/DEVELOPMENT.md`'s Windows section
+still said "there is currently no Windows machine available, so Windows is verified through CI
+only", while the *same file's* "Verifying on Windows" section described running the suite on
+`STARBASE`. One file, two answers; corrected to name `STARBASE` and the self-hosted runner.
+
+#### Out of scope
+
+- Product, packaging, or CI behavior
+- Choosing the canonical repository path
+- The `build` extra's contents; it was preserved as found, not chosen here
 
 ### T-040 — Extend the Windows desktop gate to widget focus order
 

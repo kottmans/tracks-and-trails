@@ -147,30 +147,39 @@ else:
         )
 
 
-def capture_the_doomed_tree(
-    process: subprocess.Popen[str], application_pid: int
-) -> list[psutil.Process]:
-    """Every process that must die, captured **by identity** while the tree is still intact.
+def the_workers_that_must_die(application_pid: int) -> list[psutil.Process]:
+    """The worker set, obtained by the test **independently of what will do the killing**.
 
-    `T072-R1`. The set has to be built from the application's own reported pid rather than
-    inferred from a count under the launcher, and it has to be built *now*: once the parent is
-    gone its children are reparented and a walk finds nothing.
-
-    The assertion that carries the weight is that the application has **at least one descendant**.
-    That descendant is the worker (`ARC-002`), and it is the whole reason this test kills anything
-    — an application with no worker is not mid-download, so killing it would prove nothing about
-    orphans. Counting from the launcher could not express this: launcher plus interpreter is
-    already two before any worker exists.
+    `T072-R1`, second round. The first correction asserted `not alive` against `doomed` — the same
+    list the kill was given — so a fault that dropped the worker from that list also dropped it
+    from the assertion, on every platform. The check and the thing it checks cannot come from one
+    source. This function is that second source: nothing downstream can shrink it, so a `doomed`
+    that is missing the worker fails against the set recorded here.
     """
     application = psutil.Process(application_pid)
-    workers = application.children(recursive=True)
+    workers: list[psutil.Process] = application.children(recursive=True)
     assert workers, (
         f"the application (pid {application_pid}) has no descendants while its job says RUNNING. "
         f"The worker is what makes this kill meaningful, and T072-R1 is precisely the failure of "
         f"asserting a tree shape that a worker-less tree also satisfies."
     )
+    return workers
 
-    doomed = [*workers, application]
+
+def capture_the_doomed_tree(
+    process: subprocess.Popen[str], application_pid: int
+) -> list[psutil.Process]:
+    """Every process the kill is asked to reach, captured while the tree is still intact.
+
+    Built from the application's own reported pid rather than inferred from a count under the
+    launcher, and built *now*: once the parent is gone its children are reparented and a walk
+    finds nothing.
+
+    **This list is not evidence of its own completeness.** `the_workers_that_must_die()` is what
+    holds the project to killing the worker; this is only what the kill is handed.
+    """
+    application = psutil.Process(application_pid)
+    doomed = [*application.children(recursive=True), application]
     if process.pid != application_pid:
         # The venv launcher, which is our direct child and the application's parent. Absent on
         # POSIX, where `sys.executable` is the interpreter itself.
@@ -557,10 +566,21 @@ def test_a_job_killed_mid_download_is_recovered_by_the_next_start(
             reader.close()
         assert stored_before is not None
 
-        # Captured while the row still says RUNNING, so the worker is in the set by identity
-        # rather than by a shape a worker-less tree would also satisfy (`T072-R1`).
+        # Two sources, on purpose (`T072-R1`). `must_die` is the test's own record of the worker
+        # set, taken while the row still says RUNNING. `doomed` is what the kill is handed. If the
+        # capture ever drops the worker, the kill misses it and the assertion below still catches
+        # it — which is exactly what a single shared list could not do.
+        must_die = the_workers_that_must_die(application_pid)
         doomed = capture_the_doomed_tree(process, application_pid)
         kill_the_application(process, doomed)
+
+        _, survivors = psutil.wait_procs(must_die, timeout=30)
+        assert not survivors, (
+            f"{len(survivors)} worker process(es) outlived the kill and still own the database "
+            f"this test is about to reopen: {sorted(p.pid for p in survivors)}. The kill was "
+            f"handed {sorted(p.pid for p in doomed)}, so a worker missing from that list is the "
+            f"T072-R1 failure and not a flake."
+        )
         process.wait(timeout=30)
     finally:
         if process.poll() is None:  # pragma: no cover - only on an unexpected path

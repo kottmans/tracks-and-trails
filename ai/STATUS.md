@@ -168,12 +168,17 @@ killed them, and the self-hosted `windows desktop` job is now a repeatable norma
 `90432207805`, 28 passed under the real Windows plugin. The mutation executions remain **manual**.
 `T-056` is the one that still needs the hosted image: its defect does not reproduce on STARBASE at
 all. **GitHub Actions hosted usage is exhausted as of 2026-07-28** — workflow `30392139504` failed
-before executing a single step, on GitHub's billing annotation — so the *verified on Linux and
-Windows* criterion cannot move until it resets. Then the exit review.
+before executing a single step, on GitHub's billing annotation.
+
+**That no longer stops the criterion**, which is the part this paragraph got wrong for a day.
+`OPS-005` and `OPS-006` gave both halves a platform that does not depend on the quota, and `T-073`
+made the Windows half actually run. What holds criterion 7 now is `T-074`, not billing. The hosted
+jobs still gate `T-066`'s frozen artifacts.
 
 *(This paragraph said `T-069` was "reproduced and narrowed but not fixed" and that `T-040` still
-needed the `windows desktop` job, after both had moved. `COORD-R5` reported the drift; it is
-rewritten rather than patched, and the superseded readings are named here rather than deleted.)*
+needed the `windows desktop` job, after both had moved — `COORD-R5`. It then said the criterion
+"cannot move until it resets" after two decisions had moved it — `COORD-R6`. Both superseded
+readings are named here rather than deleted.)*
 
 **The lesson is about method, not ffmpeg.** `T-037` was written, reviewed and approved on a machine
 that had what the runners did not, and had never passed on either. Four CI failures in one batch
@@ -343,16 +348,22 @@ against a deliberately broadened rule. Neither is verifiable from the Linux box,
 belongs in CI — reconfiguring a machine's firewall from a workflow is the provisioning hazard the
 runner exists to avoid.
 
-**Four of `T-072`'s five carries are done, and `T-064` with them** (2026-07-28). `COORD-R5` is
-discharged — every task is filed in the section its verdict names, the `## In Review` note no
-longer claims an emptiness it did not have, and `T-040`/`T-060` are Complete on that carry.
-`WIN-R3` and `RUNNER-R1` are corrected: the focus driver's control is `mut_control_chain.py`, and
-`timeout-minutes` bounds a job's *run* time while an unmatched self-hosted job queues for up to
-**24 hours** — a day-long failure mode that was documented as a fifteen-minute one. `T-064`
-recreated the venv: **45 of 46** launchers had been stale, not the 39 filed, because `T-063` had
-repaired this project's own two artefacts and nothing else. `T066-R1`'s survivor assertions are
-written and type-check under `--platform win32`, but they live in the Windows branch and had not
-executed anywhere.
+*(**Historical, 2026-07-28** — superseded by the two paragraphs above it, which record `WIN-R1`
+landing and `T072-R1` reopening `T066-R1`. Kept because the sequence is the point: this said four
+of five and an unexecuted assertion, and both had moved by the time anyone read it. `T072-R2`
+reported it staying here as ordinary prose after the newer state was written above it, which is
+the same mistake one layer down.)*
+
+> **Four of `T-072`'s five carries are done, and `T-064` with them** (2026-07-28). `COORD-R5` is
+> discharged — every task is filed in the section its verdict names, the `## In Review` note no
+> longer claims an emptiness it did not have, and `T-040`/`T-060` are Complete on that carry.
+> `WIN-R3` and `RUNNER-R1` are corrected: the focus driver's control is `mut_control_chain.py`, and
+> `timeout-minutes` bounds a job's *run* time while an unmatched self-hosted job queues for up to
+> **24 hours** — a day-long failure mode that was documented as a fifteen-minute one. `T-064`
+> recreated the venv: **45 of 46** launchers had been stale, not the 39 filed, because `T-063` had
+> repaired this project's own two artefacts and nothing else. `T066-R1`'s survivor assertions are
+> written and type-check under `--platform win32`, but they live in the Windows branch and had not
+> executed anywhere.
 
 **Then the runner answered it, and it cost no hosted minutes** (2026-07-29). `STARBASE` is online
 and green while every hosted job still fails at zero steps on the billing annotation, so the

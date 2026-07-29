@@ -1,16 +1,18 @@
-"""`T072-R1`'s second mutation: the worker is captured, then dropped before the kill.
+"""`T072-R1`'s second mutation: the worker is dropped from the set the kill is handed.
 
-The walk succeeds — so `capture_the_doomed_tree`'s descendants assertion is satisfied — and the
-worker is then removed from the set that gets killed. What must catch it is the *other* half of
-the correction, `assert not alive`, because the dropped worker is still running when
-`wait_procs` reports.
+`capture_the_doomed_tree()` returns everything except the worker. The application and the launcher
+still die; the worker is never asked to.
 
-**This mutation is Windows-only in the meaningful sense.** On POSIX it survives by design and its
-survival is not a finding: `kill_the_application()` there sends `SIGKILL` to the whole process
-group, so the worker dies whether or not it was in the captured set. Measured on Linux, this
-mutation passes. Windows has no process groups and kills the captured members individually, which
-is exactly why the captured set has to be complete there and why this gate belongs on this
-machine.
+**What must catch it is `the_workers_that_must_die()`**, which the test obtains separately and
+this plugin does not touch. That separation is the whole point of the second round of `T072-R1`:
+the first correction asserted against the same list the kill was given, so dropping the worker
+from that list also dropped it from the assertion and nothing could ever fail.
+
+**Windows-only in the meaningful sense.** On POSIX `kill_the_application()` signals the whole
+process group, so the worker dies whether or not it was captured and this mutation survives
+legitimately — measured, not assumed. Windows has no process groups and kills the captured members
+one at a time, which is why the captured set has to be complete there and why this gate belongs on
+that machine.
 """
 
 
