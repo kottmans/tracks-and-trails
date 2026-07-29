@@ -19,7 +19,12 @@ from tracks_and_trails.core.errors import ErrorKind, is_auto_retryable, is_retry
 from tracks_and_trails.core.job_state import IllegalTransitionError, JobStatus
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, Job, MediaKind
 from tracks_and_trails.persistence import db, repositories
-from tracks_and_trails.persistence.repositories import INTERRUPTED_ON_STARTUP, JobRepository
+from tracks_and_trails.persistence.repositories import (
+    INTERRUPTED_ON_STARTUP,
+    HistoryEntry,
+    HistoryRepository,
+    JobRepository,
+)
 
 
 def a_request(**overrides: Any) -> DownloadRequest:
@@ -757,3 +762,108 @@ def test_the_database_lives_under_platformdirs_and_is_not_doubled() -> None:
     assert path.parent.name == "tracksandtrails"
     assert path.parent.parent.name != "tracksandtrails"
     assert Path(__file__).parent not in path.parents
+
+
+# --- history (T-050, REQ-020) --------------------------------------------------------------
+
+
+@pytest.fixture
+def history(tmp_path: Path) -> HistoryRepository:
+    return HistoryRepository(db.connect(tmp_path / "library.sqlite3"))
+
+
+def _entry(entry_id: str = "job-1", **overrides: Any) -> HistoryEntry:
+    fields: dict[str, Any] = {
+        "id": entry_id,
+        "url": "https://example.com/watch?v=abc",
+        "title": "A Clip",
+        "output_path": "/downloads/A Clip.mp4",
+        "format_used": "137+140",
+        "bytes_total": 4096,
+        "completed_at": datetime(2026, 7, 29, 12, 0, tzinfo=UTC),
+    }
+    return HistoryEntry(**{**fields, **overrides})
+
+
+def test_a_history_entry_round_trips_every_field(history: HistoryRepository) -> None:
+    """Whole-object comparison, so a column dropped on the way to disk fails rather than defaults.
+
+    The same reasoning as the job round-trip above: asserting field by field is how a forgotten
+    column survives, because the assertion is written from the same list that forgot it.
+    """
+    entry = _entry()
+    history.record(entry)
+    assert history.get("job-1") == entry
+
+
+def test_the_nullable_columns_survive_being_null(history: HistoryRepository) -> None:
+    """`REQ-020` names six facts; only the URL and the completion time are always knowable."""
+    entry = _entry(title=None, output_path=None, format_used=None, bytes_total=None)
+    history.record(entry)
+    assert history.get("job-1") == entry
+
+
+def test_recording_the_same_job_twice_updates_rather_than_duplicating(
+    history: HistoryRepository,
+) -> None:
+    """`T-050`: exactly one row per completed job, and a retry does not silently duplicate it.
+
+    **Stated limit:** this is tested here rather than end to end because the state machine makes it
+    unreachable through `DownloadManager` — `core/job_state.py` gives `COMPLETED` no outgoing
+    transitions, so one job id cannot legally complete twice today. What is being gated is that the
+    table's primary key cannot turn a second arrival into an `IntegrityError` against a download
+    that succeeded, and that the newer row wins when it does. Phase 2's retry paths (`T-082`,
+    `T-083`) are where that could start mattering.
+    """
+    history.record(_entry())
+    history.record(
+        _entry(
+            output_path="/downloads/A Clip (1).mp4",
+            format_used="18",
+            bytes_total=8192,
+            completed_at=datetime(2026, 7, 29, 13, 0, tzinfo=UTC),
+        )
+    )
+
+    stored = history.all_entries()
+    assert len(stored) == 1, "the retry duplicated the row"
+    assert stored[0].output_path == "/downloads/A Clip (1).mp4", "the stale completion won"
+    assert stored[0].format_used == "18"
+    assert stored[0].bytes_total == 8192
+
+
+def test_the_newest_completion_wins_even_when_it_is_smaller(history: HistoryRepository) -> None:
+    """The tie-break is recency, not magnitude — `INSERT OR IGNORE` would keep the stale row.
+
+    Written because the mutation that matters here is not "does it overwrite" but "does it
+    overwrite with the *new* values": a policy that kept the first completion would pass the count
+    assertion above and still lose the retry's result.
+    """
+    history.record(_entry(bytes_total=99999, format_used="401"))
+    history.record(_entry(bytes_total=1, format_used="18"))
+    stored = history.get("job-1")
+    assert stored is not None
+    assert (stored.bytes_total, stored.format_used) == (1, "18")
+
+
+def test_entries_come_back_newest_first(history: HistoryRepository) -> None:
+    history.record(_entry("old", completed_at=datetime(2026, 7, 1, tzinfo=UTC)))
+    history.record(_entry("new", completed_at=datetime(2026, 7, 28, tzinfo=UTC)))
+    history.record(_entry("middle", completed_at=datetime(2026, 7, 14, tzinfo=UTC)))
+    assert [entry.id for entry in history.all_entries()] == ["new", "middle", "old"]
+
+
+def test_an_unknown_id_is_none_rather_than_an_error(history: HistoryRepository) -> None:
+    assert history.get("never-stored") is None
+
+
+def test_a_history_entry_requires_its_url() -> None:
+    """`REQ-020` names the source URL and a retry cannot reconstruct it."""
+    with pytest.raises(ValueError, match="requires the source URL"):
+        _entry(url="")
+
+
+def test_a_history_entry_refuses_negative_bytes() -> None:
+    """The table's CHECK says the same; saying it at construction names the field."""
+    with pytest.raises(ValueError, match="cannot be negative"):
+        _entry(bytes_total=-1)

@@ -23,7 +23,7 @@ and belongs to `T-038`.
 import json
 import sqlite3
 from collections.abc import Sequence
-from dataclasses import fields, replace
+from dataclasses import dataclass, fields, replace
 from datetime import datetime
 from typing import Any, Final
 
@@ -293,3 +293,145 @@ class JobRepository:
             self.update(failed)
             recovered.append(job.id)
         return recovered
+
+
+#: `history`'s columns, in the order the insert names them. Same reasoning as `_JOB_COLUMNS`:
+#: derived once, so a column cannot be silently dropped between the insert and the update.
+_HISTORY_COLUMNS: Final = (
+    "id",
+    "url",
+    "title",
+    "output_path",
+    "format_used",
+    "bytes_total",
+    "completed_at",
+)
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class HistoryEntry:
+    """A completed download's durable record (`REQ-020`, `ARCHITECTURE.md` §5).
+
+    **It lives here rather than in `core/models.py`, and that module says why**: this is a durable
+    record, not live domain state, so it belongs with the schema that stores it. Nothing in `core`
+    or `downloader` needs the type — the manager hands a `Job` to a sink and this layer does the
+    projecting, which is what keeps `downloader.manager` free of a `persistence` import
+    (`ARCHITECTURE.md` §3).
+
+    **`id` is the job's id, not a new one.** One completed job is one history row, which is what
+    makes a retry an update rather than a duplicate. See `HistoryRepository.record`.
+
+    **`format_used` is nullable and means "not reported".** `REQ-020` asks for the format used, and
+    `Succeeded.format_used` supplies the resolved `format_id`. When yt-dlp reports none there is no
+    honest value: the request's selector describes an intention rather than an outcome, and writing
+    it here would be the defect `T-050` names explicitly.
+    """
+
+    id: str
+    url: str
+    completed_at: datetime
+    title: str | None = None
+    output_path: str | None = None
+    format_used: str | None = None
+    bytes_total: int | None = None
+
+    def __post_init__(self) -> None:
+        if not self.url:
+            raise ValueError(
+                "HistoryEntry requires the source URL; `REQ-020` names it and a retry cannot "
+                "reconstruct it"
+            )
+        if self.bytes_total is not None and self.bytes_total < 0:
+            # The table's own CHECK says the same thing. Saying it here too means a bad value
+            # fails where it was constructed rather than as an opaque IntegrityError one layer on.
+            raise ValueError("HistoryEntry.bytes_total cannot be negative")
+
+
+def _history_to_values(entry: HistoryEntry) -> dict[str, Any]:
+    return {
+        "id": entry.id,
+        "url": entry.url,
+        "title": entry.title,
+        "output_path": entry.output_path,
+        "format_used": entry.format_used,
+        "bytes_total": entry.bytes_total,
+        "completed_at": entry.completed_at.isoformat(),
+    }
+
+
+def _row_to_history(row: sqlite3.Row) -> HistoryEntry:
+    return HistoryEntry(
+        id=row["id"],
+        url=row["url"],
+        title=row["title"],
+        output_path=row["output_path"],
+        format_used=row["format_used"],
+        bytes_total=row["bytes_total"],
+        completed_at=datetime.fromisoformat(row["completed_at"]),
+    )
+
+
+class HistoryRepository:
+    """The completed-download record (`REQ-020`, `T-050`).
+
+    Append-mostly and read-only to the rest of the application: nothing here deletes, because
+    pruning and retention are out of `T-050`'s scope and `REQ-020` is a record of what was
+    obtained.
+    """
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    def record(self, entry: HistoryEntry) -> None:
+        """Store `entry`, replacing any row already held for that job.
+
+        **Upsert rather than insert — and the reason is not that a retry can complete twice today.**
+        `core/job_state.py` gives `COMPLETED` no outgoing transitions, so the state machine forbids
+        a second completion of one job id: `FAILED → QUEUED` is the only retry edge and a completed
+        job cannot reach it. This branch is therefore **not reachable through `DownloadManager` as
+        it stands**, which is why `T-050` proves it here rather than end to end.
+
+        It is an upsert because the alternative fails badly if it is ever reached. A plain insert
+        would raise `IntegrityError` on the writer thread for a download that genuinely succeeded,
+        reporting a persistence failure the user did not cause and cannot act on. A duplicated
+        `Succeeded`, a replayed completion callback, or a Phase 2 retry path (`T-082`, `T-083`) that
+        reaches `COMPLETED` again would each land here.
+
+        And when it is reached, *which* row survives matters. `INSERT OR IGNORE` would keep the
+        **stale** completion and silently discard the newer one — the right count with the wrong
+        data. The latest completion is the true one, so it wins. That is the "not silently
+        duplicate" half of `T-050`'s criterion: one row, deliberately overwritten, rather than a
+        second insert swallowed.
+
+        One statement, one commit, matching `JobRepository`'s guarantee: there is no state in which
+        half an entry is visible or survives a kill (`NFR-003`).
+        """
+        columns = ", ".join(_HISTORY_COLUMNS)
+        placeholders = ", ".join(f":{name}" for name in _HISTORY_COLUMNS)
+        assignments = ", ".join(
+            f"{name} = excluded.{name}" for name in _HISTORY_COLUMNS if name != "id"
+        )
+        with self._connection:
+            # S608: see `JobRepository.add` — the interpolated text is `_HISTORY_COLUMNS`, a
+            # module-level tuple of literal identifiers, and every value goes through a named
+            # placeholder.
+            self._connection.execute(
+                f"INSERT INTO history ({columns}) VALUES ({placeholders}) "  # noqa: S608
+                f"ON CONFLICT(id) DO UPDATE SET {assignments}",
+                _history_to_values(entry),
+            )
+
+    def get(self, entry_id: str) -> HistoryEntry | None:
+        row = self._connection.execute("SELECT * FROM history WHERE id = ?", (entry_id,)).fetchone()
+        return _row_to_history(row) if row is not None else None
+
+    def all_entries(self) -> list[HistoryEntry]:
+        """Every entry, most recently completed first.
+
+        `id` breaks ties rather than leaving them to insertion order, which SQLite does not
+        promise and which a test comparing whole lists would depend on by accident.
+        """
+        rows = self._connection.execute(
+            "SELECT * FROM history ORDER BY completed_at DESC, id"
+        ).fetchall()
+        return [_row_to_history(row) for row in rows]

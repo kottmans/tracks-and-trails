@@ -201,6 +201,27 @@ class JobStore(Protocol):
     def update(self, job: Job, done: Callable[[str | None], None]) -> None: ...
 
 
+class HistorySink(Protocol):
+    """Where a completed download's durable record goes (`T-050`, `REQ-020`).
+
+    **A protocol taking a `Job`, not a `HistoryEntry`, and that is deliberate.** `T-050` requires
+    that this module import no `persistence` module; `HistoryEntry` lives there, because it is a
+    durable record rather than live domain state (`core/models.py` says so). So the manager hands
+    over the `Job` it already holds plus the one fact the job does not carry, and the implementation
+    projects. `persistence.PersistentJobStore` satisfies this; so does a list-backed fake.
+
+    `format_used` is `Succeeded.format_used` — the format yt-dlp *resolved*, never the request's
+    selector. Passing the selector here would defeat the point at the last call site.
+
+    Asynchronous for `ARC-005`'s reason: this is called from a completion callback on the GUI
+    thread, so `done` reports later, on the GUI thread, exactly once.
+    """
+
+    def record_completion(
+        self, job: Job, format_used: str | None, done: Callable[[str | None], None]
+    ) -> None: ...
+
+
 class ProcessLike(Protocol):
     """The `multiprocessing.Process` surface used here.
 
@@ -397,6 +418,7 @@ class DownloadManager(QObject):
         self,
         repository: JobStore,
         *,
+        history: HistorySink | None = None,
         parent: QObject | None = None,
         poll_interval_ms: int = DEFAULT_POLL_INTERVAL_MS,
         cooperative_seconds: float = DEFAULT_COOPERATIVE_SECONDS,
@@ -408,6 +430,12 @@ class DownloadManager(QObject):
     ) -> None:
         super().__init__(parent)
         self._repository = repository
+        #: Where completed downloads are recorded (`T-050`). Optional because most of this class's
+        #: behaviour has nothing to do with history and the tests that exercise cancellation,
+        #: crashes and process trees should not have to supply one. `None` means no history is
+        #: written — which is why the criterion that a completed download *does* write a row is
+        #: asserted against the real composition rather than against a fake sink alone.
+        self._history = history
         self._entry_point = entry_point
         self._cooperative_seconds = cooperative_seconds
         self._terminate_seconds = terminate_seconds
@@ -1415,7 +1443,7 @@ class DownloadManager(QObject):
                         finished_at=_now(),
                     ),
                 ),
-                then=lambda: self.job_succeeded.emit(job_id, outcome.output_path),
+                then=lambda: self._on_completed(job_id, outcome),
             )
         elif isinstance(outcome, Probed):
             self._persist(
@@ -1458,6 +1486,31 @@ class DownloadManager(QObject):
         if is_terminal(job.status):
             return None
         return build(job, *arguments)
+
+    def _on_completed(self, job_id: str, outcome: Succeeded) -> None:
+        """Record the completed download, then announce it (`T-050`, `REQ-020`).
+
+        Runs from `_persist`'s success side, so `COMPLETED` is already on disk — which is why the
+        history entry can be built from the stored job rather than from what this method hoped was
+        stored. A row is written **only here**, on the `Succeeded` branch: a cancelled or failed job
+        writes none, because `REQ-020` is a record of what was obtained.
+
+        **A history failure is not a job failure.** The file exists and the job row says
+        `COMPLETED`; what failed is the supplementary record. So it reaches `persistence_failed`,
+        the channel for exactly that, and `job_succeeded` still fires — telling the user their
+        download failed because a history insert did would be false.
+        """
+        if self._history is not None:
+            job = self._repository.get(job_id)
+            if job is not None:
+                self._history.record_completion(
+                    job,
+                    outcome.format_used,
+                    lambda error: (
+                        None if error is None else self.persistence_failed.emit(job_id, error)
+                    ),
+                )
+        self.job_succeeded.emit(job_id, outcome.output_path)
 
     def _fail_loudly(self, job_id: str, session: _Session) -> None:
         """Record a session that cannot be believed as `WORKER_CRASH` (`REQ-028`, `REQ-018`).

@@ -953,7 +953,10 @@ def _run_download(
     worker_module.run_session(
         SessionKind.DOWNLOAD,
         "job-1",
-        request_for(tmp_path, format_selector="best", **overrides),
+        # `format_selector` is a *default* here, not a fixture: spelling it as a keyword ahead of
+        # `**overrides` made passing one a `TypeError` rather than an override, so the helper's
+        # advertised contract did not hold for the one field a `T-050` test needs to vary.
+        request_for(tmp_path, **{"format_selector": "best", **overrides}),
         queue,
     )
     return drain(queue)
@@ -1264,3 +1267,64 @@ def test_an_unresolved_extraction_still_falls_back_to_the_selector(
 
     failed = next(m for m in drain(queue) if isinstance(m, Failed))
     assert failed.kind is ErrorKind.FFMPEG_MISSING
+
+
+# --- the resolved format reaches the parent (T-050, REQ-020) --------------------------------
+
+
+def test_a_successful_download_reports_the_resolved_format_not_the_selector(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T-050`: `format_used` is what yt-dlp settled on, never what the request asked for.
+
+    The two are deliberately different strings here, because that is the only shape of this test
+    that can fail for the right reason. Asserting `format_used == "137+140"` while the selector
+    also happened to be `"137+140"` would pass against an implementation that stored the request's
+    selector — which is the exact defect the task names: *the selector wearing that name*.
+    """
+    info = {
+        "title": "Clip",
+        "webpage_url": "https://e.com/x",
+        "ext": "mp4",
+        # What yt-dlp resolved the selector to.
+        "format_id": "137+140",
+    }
+    messages = _run_download(
+        tmp_path, monkeypatch, info, format_selector="bestvideo+bestaudio/best"
+    )
+
+    succeeded = next(m for m in messages if isinstance(m, Succeeded))
+    assert succeeded.format_used == "137+140"
+    assert succeeded.format_used != "bestvideo+bestaudio/best", (
+        "the request's selector reached the field reserved for what was actually used"
+    )
+
+
+def test_a_download_that_resolves_no_format_reports_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No `format_id` means no honest answer, and `None` is how that is said.
+
+    The alternative implementations both lie: `str(None)` stores the literal `"None"`, and falling
+    back to the selector stores an intention as an outcome.
+    """
+    info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4"}
+    messages = _run_download(tmp_path, monkeypatch, info, format_selector="best")
+
+    succeeded = next(m for m in messages if isinstance(m, Succeeded))
+    assert succeeded.format_used is None
+
+
+def test_a_blank_resolved_format_is_reported_as_none(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An empty `format_id` is absence, not knowledge — and `Succeeded` would reject `""`.
+
+    Without the normalising helper this raises out of the worker instead of reporting a success,
+    turning a completed download into a protocol error.
+    """
+    info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4", "format_id": ""}
+    messages = _run_download(tmp_path, monkeypatch, info, format_selector="best")
+
+    succeeded = next(m for m in messages if isinstance(m, Succeeded))
+    assert succeeded.format_used is None

@@ -213,6 +213,11 @@ def compose(
     ffmpeg = find_ffmpeg(ffmpeg_override)
     manager = DownloadManager(
         store,
+        # The same object serves both roles, as it already does for `JobStore` and `JobSink`
+        # (`T-050`): one queue, one writer thread, one ordering authority. Passing a second
+        # persistence owner here would put history writes on a different thread from the job
+        # transitions they describe.
+        history=store,
         ffmpeg_override=ffmpeg.path,
         entry_point=entry_point if entry_point is not None else worker.spawn_session,
     )

@@ -44,7 +44,11 @@ from typing import Any, Protocol
 from PySide6.QtCore import QObject, QThread, Signal, Slot
 
 from tracks_and_trails.core.models import Job
-from tracks_and_trails.persistence.repositories import JobRepository
+from tracks_and_trails.persistence.repositories import (
+    HistoryEntry,
+    HistoryRepository,
+    JobRepository,
+)
 
 
 class ConnectionFactory(Protocol):
@@ -75,7 +79,7 @@ class _Worker(QObject):
         arrive. So every failure becomes a message, including the one that matters most: not
         being able to open the database at all.
         """
-        self._perform(token, lambda repository: repository.append(jobs))
+        self._perform(token, lambda connection: JobRepository(connection).append(jobs))
 
     @Slot(int, object)
     def revise(self, token: int, job: Job) -> None:
@@ -87,13 +91,33 @@ class _Worker(QObject):
         blocked the GUI thread — measured at 5.017 s under a held writer lock, ending in an
         uncaught `OperationalError`. One writer means *every* queue write, not the new ones.
         """
-        self._perform(token, lambda repository: repository.update(job))
+        self._perform(token, lambda connection: JobRepository(connection).update(job))
 
-    def _perform(self, token: int, work: Callable[[JobRepository], object]) -> None:
+    @Slot(int, object)
+    def record_history(self, token: int, entry: HistoryEntry) -> None:
+        """Store one completed-download record, then report (`T-050`, `REQ-020`).
+
+        Here rather than on the GUI thread for the same reason every other write is: `ARC-005` is
+        unqualified, and history is written from `DownloadManager`'s completion callback, which runs
+        on the GUI thread. A synchronous insert there would be `T016-R3` again in a new column.
+
+        Ordering with `revise` matters and is free: both are queued to this one receiver, so the
+        `COMPLETED` row is written before the history entry that describes it.
+        """
+        self._perform(token, lambda connection: HistoryRepository(connection).record(entry))
+
+    def _perform(self, token: int, work: Callable[[sqlite3.Connection], object]) -> None:
+        """Run `work` against this thread's connection, reporting through `done` either way.
+
+        Takes the **connection** rather than a `JobRepository`, because more than one repository
+        writes here now. Building the repository inside `work` keeps that choice at the call site
+        and keeps this method's contract — open once, never raise into the event loop — in one
+        place.
+        """
         try:
             if self._connection is None:
                 self._connection = self._open_connection()
-            work(JobRepository(self._connection))
+            work(self._connection)
         except Exception as error:  # see `write`: nothing may escape into the event loop
             self.done.emit(token, f"{type(error).__name__}: {error}")
             return
@@ -136,6 +160,9 @@ class QueueWriter(QObject):
     #: Internal: carries a single-job revision to the worker.
     _revise = Signal(int, object)
 
+    #: Internal: carries a completed-download record to the worker (`T-050`).
+    _record_history = Signal(int, object)
+
     #: The writer thread has finished and its connection is closed. **Shutdown is a lifecycle,
     #: not a call** — the same rule `T013-R2` established for the manager, and for the same
     #: reason: `close()` used to `QThread.wait(5000)` on the GUI thread, which a contended write
@@ -151,6 +178,7 @@ class QueueWriter(QObject):
         self._worker.done.connect(self._on_done)
         self._submit.connect(self._worker.write)
         self._revise.connect(self._worker.revise)
+        self._record_history.connect(self._worker.record_history)
         self._shutdown.connect(self._worker.close)
         self._thread.finished.connect(self.closed)
         self._pending: dict[int, Callable[[str | None], None]] = {}
@@ -184,6 +212,21 @@ class QueueWriter(QObject):
             return
         token = self._track(done)
         self._revise.emit(token, job)
+
+    def record_history(self, entry: HistoryEntry, done: Callable[[str | None], None]) -> None:
+        """Persist one completed-download record. **Returns immediately** (`T-050`, `ARC-005`).
+
+        Refused through the callback after `close()`, like every other submission: a caller waiting
+        to hear whether the record landed must not wait forever because shutdown got there first.
+
+        **A failure here does not undo the download.** The file exists and the job row says
+        `COMPLETED`; a missing history entry is a lost record, not a lost download, so the caller
+        reports it rather than treating it as the completion failing.
+        """
+        if self._closed:
+            done("the queue writer is shutting down; nothing was saved")
+            return
+        self._record_history.emit(self._track(done), entry)
 
     def _track(self, done: Callable[[str | None], None]) -> int:
         token = self._next_token

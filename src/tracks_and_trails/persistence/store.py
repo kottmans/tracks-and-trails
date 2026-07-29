@@ -29,12 +29,18 @@ one the acceptance criterion asked for; only the waiting is gone.
 
 import sqlite3
 from collections.abc import Callable, Sequence
+from datetime import datetime
 
 from PySide6.QtCore import QObject
 
 from tracks_and_trails.core.models import Job
-from tracks_and_trails.persistence.repositories import JobRepository
+from tracks_and_trails.persistence.repositories import HistoryEntry, JobRepository
 from tracks_and_trails.persistence.writer import QueueWriter
+
+
+def _now() -> datetime:
+    """Timezone-aware, matching what the manager stamps onto `finished_at`."""
+    return datetime.now().astimezone()
 
 
 class PersistentJobStore(QObject):
@@ -129,6 +135,39 @@ class PersistentJobStore(QObject):
             done(error)
 
         self._writer.revise(job, settle)
+
+    def record_completion(
+        self, job: Job, format_used: str | None, done: Callable[[str | None], None]
+    ) -> None:
+        """Write `job`'s completed-download record. **Returns immediately** (`T-050`, `REQ-020`).
+
+        **The projection happens here, not in the manager, and that is the point.** `T-050`'s fourth
+        acceptance criterion is that `downloader.manager` imports no `persistence` module. So the
+        manager hands over a `Job` — a `core` type it already owns — plus the one fact the job does
+        not carry, and this layer builds the `HistoryEntry`. Had the manager constructed the entry
+        it would have needed to import it, and the criterion would have been lost to convenience.
+
+        **`format_used` is not on `Job` on purpose.** It is a completion fact rather than live queue
+        state, so putting it on the model would mean a `jobs` column that only ever matters once,
+        after the row stops changing. It arrives from `Succeeded.format_used` instead.
+
+        `completed_at` prefers the job's own `finished_at`, which the manager set in the same
+        transition that made the job `COMPLETED`. Falling back to now would silently record the
+        moment the *write* happened; the fallback exists only because `finished_at` is nullable in
+        the schema, and a history row with no completion time is unusable to `REQ-020`.
+        """
+        self._writer.record_history(
+            HistoryEntry(
+                id=job.id,
+                url=job.url,
+                title=job.title,
+                output_path=job.output_path,
+                format_used=format_used,
+                bytes_total=job.bytes_total,
+                completed_at=job.finished_at if job.finished_at is not None else _now(),
+            ),
+            done,
+        )
 
     def submit(self, jobs: Sequence[Job], done: Callable[[str | None], None]) -> None:
         """Append `jobs` in one transaction. **Returns immediately** (`ARC-005`).

@@ -3269,3 +3269,126 @@ def test_a_startup_failure_that_cannot_be_stored_announces_nothing_but_still_cle
             store.release()
             app.processEvents()
             time.sleep(0.005)
+
+
+# --- history (T-050, REQ-020) --------------------------------------------------------------
+
+
+def _history_rows(path: Path) -> list[Any]:
+    """Read history through a *fresh* repository, so the assertion sees disk and not a view.
+
+    Same reasoning as the completion test above: `PersistentJobStore` answers reads from a
+    write-through view of what is still in flight, so asking it would prove the manager intended a
+    row rather than that one landed.
+    """
+    from tracks_and_trails.persistence import db
+    from tracks_and_trails.persistence.repositories import HistoryRepository
+
+    with db.open_database(path) as connection:
+        return HistoryRepository(connection).all_entries()
+
+
+def test_a_completed_download_writes_exactly_one_history_row(
+    tmp_path: Path, media_url: Callable[..., str], spin: Callable[..., bool]
+) -> None:
+    """`T-050`, `REQ-020`: the real composition writes the record, not a fake sink.
+
+    Driven through `DownloadManager` and `PersistentJobStore` with the history sink wired the way
+    `app.py` wires it, because the sink is optional on the constructor: a test that supplied its own
+    fake would pass even if composition never connected one, which is the shape `T-036` exists to
+    catch.
+    """
+    from tracks_and_trails.persistence import db
+    from tracks_and_trails.persistence.repositories import JobRepository
+    from tracks_and_trails.persistence.store import PersistentJobStore
+    from tracks_and_trails.persistence.writer import QueueWriter
+
+    path = tmp_path / "library.sqlite3"
+    url = media_url(total_bytes=32 * 1024)
+    with db.open_database(path) as connection:
+        real = JobRepository(connection)
+        real.add(make_job("job-history", url, tmp_path))
+        writer = QueueWriter(lambda: db.connect(path))
+        store = PersistentJobStore(connection, writer)
+        download = DownloadManager(store, history=store)
+        try:
+            download.start("job-history")
+            assert spin(lambda: download.is_idle, timeout=120)
+            assert spin(lambda: len(_history_rows(path)) == 1, timeout=30)
+        finally:
+            download.shutdown()
+            writer.close()
+            assert spin(lambda: not writer.is_running, timeout=30), "the writer thread never quit"
+
+    rows = _history_rows(path)
+    assert len(rows) == 1
+    entry = rows[0]
+    assert entry.id == "job-history"
+    assert entry.url == url, "`REQ-020` names the source URL"
+    assert entry.output_path is not None and Path(entry.output_path).exists(), (
+        "history recorded a path that is not on disk"
+    )
+    assert entry.completed_at is not None
+
+    stored = None
+    with db.open_database(path) as connection:
+        stored = JobRepository(connection).get("job-history")
+    assert stored is not None
+    assert entry.completed_at == stored.finished_at, (
+        "history stamped its own time instead of the job's completion"
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "drive"),
+    [
+        ("cancelled", "cancel"),
+        ("failed", "fail"),
+    ],
+)
+def test_a_job_that_did_not_complete_writes_no_history_row(
+    name: str,
+    drive: str,
+    tmp_path: Path,
+    media_url: Callable[..., str],
+    spin: Callable[..., bool],
+) -> None:
+    """`REQ-020` is a record of what was **obtained** (`T-050`).
+
+    Both non-completions are driven for real rather than asserted about: a cancel through the
+    manager's own path, and a failure from a URL nothing can extract. An implementation that wrote
+    history from the terminal transition rather than from `Succeeded` would pass a cancel-only test
+    if it happened to skip `CANCELLED`, so both are here.
+    """
+    from tracks_and_trails.persistence import db
+    from tracks_and_trails.persistence.repositories import JobRepository
+    from tracks_and_trails.persistence.store import PersistentJobStore
+    from tracks_and_trails.persistence.writer import QueueWriter
+
+    path = tmp_path / "library.sqlite3"
+    url = (
+        media_url(total_bytes=8 * 1024 * 1024, chunk_delay=0.05)
+        if drive == "cancel"
+        else ("https://127.0.0.1:1/nothing-here.mp4")
+    )
+    with db.open_database(path) as connection:
+        JobRepository(connection).add(make_job(f"job-{name}", url, tmp_path))
+        writer = QueueWriter(lambda: db.connect(path))
+        store = PersistentJobStore(connection, writer)
+        download = DownloadManager(store, history=store)
+        try:
+            download.start(f"job-{name}")
+            if drive == "cancel":
+                assert spin(lambda: download.active_job_ids() != [], timeout=30)
+                download.cancel(f"job-{name}")
+            assert spin(lambda: download.is_idle, timeout=120)
+        finally:
+            download.shutdown()
+            writer.close()
+            assert spin(lambda: not writer.is_running, timeout=30), "the writer thread never quit"
+
+    with db.open_database(path) as connection:
+        stored = JobRepository(connection).get(f"job-{name}")
+    assert stored is not None
+    assert stored.status is not JobStatus.COMPLETED, "the job completed; this test proves nothing"
+    assert _history_rows(path) == [], f"a {name} job was recorded as an obtained download"
