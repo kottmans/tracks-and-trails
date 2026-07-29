@@ -1391,3 +1391,83 @@ a phase exit. It stays open as a follow-up, with its non-reproduction recorded.
   queues for up to 24 hours rather than failing fast.
 - **This decision reopens** if hosted CI returns and `T-056` reproduces again, or if a
   hosted-only finding is ever traced to a defect reachable on Windows 10/11.
+
+---
+
+## OPS-006 — Linux verification is the maintainer's own machine
+
+**Status:** **Accepted** (2026-07-29) — maintainer decision
+**Date:** 2026-07-29
+**Supersedes:** nothing. **Completes** `OPS-005`, which named the Windows platform and left the
+Linux half of the same criterion undefined
+
+### Context
+
+`OPS-005` made `STARBASE` the platform Phase 1's *verified on Windows* criterion is measured
+against, because the hosted Windows jobs could not start. The Linux jobs cannot start either — the
+billing block is per account, not per platform — so `check (ubuntu-latest)` has been dead for
+exactly as long, and the criterion's other half had no defined home.
+
+The obvious symmetry, a self-hosted Linux runner, does not hold up. **Every development platform
+on this project is Linux.** The argument that justified `STARBASE` — that nobody exercises Windows
+day to day, so it can rot unnoticed — has no Linux equivalent: the suite runs on Linux constantly,
+before every commit, by the person who wrote the change.
+
+Worse, a self-hosted runner **on the development machine would not be an independent environment**.
+It would share the OS install, the system packages, the Qt libraries and the ffmpeg the developer
+already has. It would add a clean checkout and a recorded result, and nothing else. That is
+ceremony priced as infrastructure.
+
+### Decision
+
+Linux verification for Phase 1 is the **maintainer's own machine**: a full run of the documented
+gate — `ruff check`, `ruff format --check`, `mypy`, `mypy --platform win32`, and `pytest` — from
+the checkout under review.
+
+The hosted `check (ubuntu-latest)` job stays in `ci.yml`. It is not retired, and it resumes being
+the Linux gate whenever it can start.
+
+### Rationale
+
+- **Linux is the platform with the least verification risk here**, not the most. It is exercised
+  by every development session.
+- **A runner on the dev box buys the wrong property.** The valuable thing a second environment
+  provides is independence, and same-machine self-hosting provides none of it.
+- **A criterion that waits on a payment is not a gate.** This is `OPS-005`'s reasoning applied to
+  the other platform, and it would be inconsistent to accept it there and not here.
+
+### What this gives up, precisely
+
+**Bare-environment dependency regressions.** `check (ubuntu-latest)` installs `libegl1`, `libgl1`,
+`libxkbcommon0`, `libdbus-1-3` and `libfontconfig1` before it runs, because the offscreen platform
+plugin still links EGL/GL and xkbcommon. A developer desktop has all of them already. So a change
+that introduces a dependency on a system library would **pass here and fail for anyone starting
+from a bare Linux install**, and nothing in this arrangement would notice.
+
+That is not hypothetical for this project. `T-062` is the same shape one platform over: *"`T-037`
+was written, reviewed and approved on a machine that had what the runners did not, and had never
+passed on either."* The risk is accepted with its name written down, not waved away.
+
+### Alternatives considered
+
+- **A self-hosted Linux runner on the development machine.** Rejected: same OS install, same
+  packages, same libraries. It would record results without verifying anything the developer's own
+  run does not already cover.
+- **A container-based runner on the same machine.** Rejected *for now*, not on principle — a bare
+  image is a genuinely independent environment and would close the gap above. It is the right fix
+  if the gap ever bites, and this decision reopens rather than being argued again.
+- **Wait for hosted CI.** Rejected for `OPS-005`'s reason: an external billing state is not a
+  measurement.
+
+### Consequences
+
+- Phase 1's seventh criterion now has a defined platform on both halves: `STARBASE` for Windows,
+  the maintainer's machine for Linux.
+- **It is still not met, and `T-074` is why.** The Windows suite exits with an access violation
+  roughly one run in four. A gate that crashes intermittently does not verify anything reliably,
+  so the criterion should not be called met while that is open. This is the Implementer's reading;
+  the exit review is where it is settled.
+- Linux results are developer runs. They must be **recorded in the task** that claims them, with
+  their real numbers, because nothing else will hold them.
+- **This decision reopens** if a system-library regression ever reaches a user, or when hosted CI
+  returns — at which point `check (ubuntu-latest)` simply resumes and this becomes moot.

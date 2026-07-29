@@ -383,10 +383,23 @@ hosted job does. The count differences against Linux reconcile to the `windows_d
 deselections and the POSIX-only skips, **except for two tests** that the arithmetic does not
 explain; that is flagged in `T-073` for review rather than waved through.
 
-**The remaining hole in criterion 7 is Linux, not Windows.** `check (ubuntu-latest)` is hosted and
-has not started either, so Linux is verified only on the maintainer's own machine — a developer
-run, not a gate. Windows is now the better-covered of the two platforms, which is a sentence this
-file has never been able to write before.
+**The remaining hole in criterion 7 was Linux, not Windows** — `check (ubuntu-latest)` is hosted
+and has not started either. Windows became the better-covered of the two platforms, which is a
+sentence this file had never been able to write before.
+
+**`OPS-006` closed that hole by deciding it rather than building for it** (2026-07-29). Linux
+verification is the maintainer's own machine. A self-hosted runner on the development box would
+share its OS install, packages and Qt libraries, so it would add a clean checkout and a recorded
+result and nothing else — ceremony priced as infrastructure. Every development platform here is
+Linux, so the rot-unnoticed risk that justified `STARBASE` has no Linux equivalent. **What it
+gives up is written down:** the hosted job installs `libegl1`, `libgl1`, `libxkbcommon0`,
+`libdbus-1-3` and `libfontconfig1`, and a desktop already has them, so a change that adds a
+system-library dependency would pass here and fail on a bare install. `T-062` is that same shape
+one platform over. A container-based runner is the fix if it ever bites, and the decision reopens
+rather than being re-argued.
+
+**Both halves of criterion 7 now have a platform, and it is still not met.** `T-074` is why: a
+gate that crashes one run in four does not verify anything reliably.
 
 **`T-071` — the icon was undersized, and the master says why.** Reported from a taskbar
 screenshot and fixed the same day: every derived asset drew the logo at ~66% of its canvas with

@@ -127,12 +127,19 @@ Prove `ARC-002`.
 > `windows desktop` job. A finding that reproduces only on a GitHub-hosted image and not there does
 > not block this exit — `T-056` and `T-068` are open on exactly that basis.
 >
-> **The Windows half is now measured** (`T-073`, 2026-07-29): run `30415333608` ran lint, format,
+> **The Windows half is measured** (`T-073`, 2026-07-29): run `30415333608` ran lint, format,
 > Windows-platform types, the Qt baseline, the real-plugin desktop slice and the full suite on
-> `STARBASE` — 1388 passed, 20 skipped, with ffmpeg present. **The Linux half is not.**
-> `check (ubuntu-latest)` is hosted and has not started since the quota ran out, so Linux is
-> currently verified only on the maintainer's own machine, which is a developer run rather than a
-> gate. This criterion stays **unmet** on that basis, not on the Windows one.
+> `STARBASE` — 1388 passed, 20 skipped, with ffmpeg present.
+>
+> **The Linux half is the maintainer's own machine** (`OPS-006`, 2026-07-29). A self-hosted runner
+> on the development box would share its OS, packages and libraries, so it would record results
+> without verifying anything the developer's own run does not already cover. What that gives up is
+> named in the decision: a change that adds a **system-library** dependency would pass on a
+> desktop and fail on a bare Linux install.
+>
+> **The criterion is still not met, and `T-074` is why.** The Windows suite exits with an access
+> violation roughly one run in four; a gate that crashes intermittently does not verify anything
+> reliably. That reading is the Implementer's, and the exit review is where it is settled.
 
 ---
 
