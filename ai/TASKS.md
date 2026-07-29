@@ -17,13 +17,21 @@ only paperwork. `T-036` composed the object graph and `T-037` proved a download 
 survives a `SIGKILL`. **What stands between the phase and its exit review is a crash, a carry, and
 frozen-artifact evidence.**
 
-- **`T-074` — the live problem.** The Windows suite exits with an **access violation**, roughly
-  one run in four, in the result pump's ordinary message delivery. **High**, filed 2026-07-29, not
-  diagnosed. It matters out of proportion to its age because `OPS-005` and `T-073` just made that
-  suite Phase 1's only Windows gate, so an intermittent crash devalues every green run of it.
-- **`T-072` — In Progress, Changes requested.** `COORD-R5`, `WIN-R3` and `RUNNER-R1` are resolved;
-  `T066-R1` and `WIN-R1` are written and **both still open on their evidence** (`T072-R1`,
-  `T072-R3`). Also carrying `T072-R2` and this preamble's own `COORD-R6`.
+- **`T-074` — the live problem.** The Windows suite exited once with an **access violation**, in
+  the result pump's ordinary message delivery. **High**, filed 2026-07-29, **not diagnosed**: the
+  faulting object is unknown and product-versus-harness is unresolved. A deliberate batch ran
+  `0/12` at `ea53c71`, which argues against the original "roughly one in four" without replacing
+  it — those runs came from materially different heads and one event supports no bound
+  (`T074-R1`). It matters out of proportion to its age because `OPS-005` and `T-073` made that
+  suite Phase 1's only Windows gate, and a gate that has crashed once and cannot be explained does
+  not verify the criterion. *(This bullet said "roughly one run in four", which was the anecdote's
+  denominator rather than a measurement.)*
+- **`T-072` — In Progress.** `COORD-R5`, `WIN-R3`, `RUNNER-R1` and **`T072-R1`** are resolved:
+  `mut_tree_drop_worker` ran on Windows, survives through the orphan guard, and the reviewer
+  accepted that capture-list completeness is not the product invariant. **`WIN-R1` is the only
+  remaining item** — a run of `ssh-setup.ps1` against a deliberately broadened rule. Also carrying
+  `T072-R2` and this preamble's own `COORD-R6`. *(This bullet said `T066-R1` and `WIN-R1` were
+  "both still open on their evidence" after the first had run.)*
 - **`T-073` — In Review**, approved with the `T073-R1` documentation follow-up. The self-hosted
   job now runs the whole Windows gate: 1388 passed, 20 skipped.
 - **Blocked on evidence:** `T-066`, narrowed to frozen-artifact evidence alone once its
@@ -760,14 +768,17 @@ fixed before it could see anything. The reviewer accepted that result and marked
 containment path, and capture-list completeness is not itself the product invariant.
 
 **`WIN-R1` is the only remaining item.** It needs a deliberately widened firewall rule and is
-awaiting maintainer authorisation to run. *(This block said "four of the five carries are done",
-then "one of the two owed items"; both counts are superseded by the single remaining item.)* `COORD-R5` is
-discharged and `T-040`/`T-060` are filed Complete on it; `WIN-R3` and `RUNNER-R1` are corrected;
-the `T-019` process-tree cases run on `STARBASE`. `T066-R1` was **Changes requested** at
-`f20a9c8` (`T072-R1`) and is corrected below. **`WIN-R1` is written too**, so all five carries are
-addressed — but two things are owed before this can close: the `mut_tree_drop_worker` mutation on
-Windows, and a run of `ssh-setup.ps1` against a machine carrying the broad rule. Both are
-described with their exact commands below. See **Progress**.
+awaiting maintainer authorisation to run; its exact commands are below. Everything else is done:
+`COORD-R5` is discharged and `T-040`/`T-060` are filed Complete on it, `WIN-R3` and `RUNNER-R1`
+are corrected, the `T-019` process-tree cases run on `STARBASE`, and `T066-R1` — **Changes
+requested** at `f20a9c8` — is corrected and its mutation has been executed there. See
+**Progress**.
+
+*(This block said "four of the five carries are done", then "one of the two owed items", and a
+correction to it left the older tail attached — so it read "`WIN-R1` is the only remaining item"
+and, three lines later, that two were owed including a mutation that had run. `COORD-R7`.
+Replacing a segment and leaving what followed it is how a document contradicts itself in the same
+paragraph.)*
 
 *(This block said "three of the five" and called `T066-R1` unexecuted after its run had already
 happened — `T072-R2`, and the same current-truth drift `COORD-R5` is about, in the task that owns
