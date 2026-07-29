@@ -373,7 +373,11 @@ existing-rule branch of `ssh-setup.ps1` did nothing and printed `rule present`, 
 carrying the earlier broad `Any` rule kept port 22 open on every profile forever while the script
 reported success. It now reapplies the scope, reads the rule back, and reports the profile and
 remote-address filter separately — they live on different objects, so a rule can look right and
-still allow the world. **One thing is owed before `T-072` closes.** `mut_tree_drop_worker` has run on
+still allow the world. **`T-072` is complete and in review** (2026-07-29): `WIN-R1` was verified on `STARBASE` against
+a deliberately broadened rule — `defective state confirmed: profile=Any remote=Any`, then the
+repair, then `WIN-R1 PASS`. *(This previously read "One thing is owed before `T-072` closes.")*
+
+**Superseded reading.** `mut_tree_drop_worker` has run on
 Windows: it **survives**, because `worker.spawn_session()`'s `parent-watchdog` exits the worker
 when the application dies whether or not its pid was captured — so capture-list completeness is
 not the product invariant, and `T072-R1` is Resolved on that basis. What remains is the `WIN-R1`

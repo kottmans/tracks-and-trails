@@ -6367,3 +6367,66 @@ COORD-R7 is **Resolved**. The range review is no longer blocked by coordination-
 contradictions. T-075 and T-077 remain Approved; T-076 remains Approved with non-blocking T-089;
 T072-R1 remains resolved with WIN-R1 outstanding; and T-074 remains the deliberately recorded
 High blocker on Phase 1 verification.
+
+## 2026-07-29 — T-074 implementation review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `7c78c7e`  **Head:** `66e96d5`
+**Scope:** T-074's diagnostic narrowing, logging-listener correction, regression, evidence, and
+Phase 1 disposition
+**Concurrent-work exclusion:** `main` advanced after the pinned implementation head with
+`b4b67de` and `68eb7b6`, both TASKS-only coordination commits. They were inspected only to check
+the current T-074 placement; neither changes the source or regression under review.
+**Verdict:** **Changes requested — T-074 and the Phase 1 Windows criterion remain blocked**
+
+The correction proves one important fact: for the most recently stopped listener, when it can
+drain within five seconds, registering the wait after multiprocessing creates the queue prevents
+multiprocessing from closing the pipe first. Moving that registration back to import time failed
+the new regression in **6/6** independent mutation runs with the expected queue-read exception.
+
+It does not yet establish the lifecycle invariant it claims, and the evidence does not identify
+the historical access violation as this race.
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T074-R2` | **High** | **Yes — T-074** | `worker_log_queue()` registers one `_wait_at_exit` callback per queue, but the callback captures neither that queue nor its listener thread. Every callback later reads the single mutable `_stopping` slot, and `stop_listening_for_worker_logs()` overwrites that slot on the next lifecycle. A deterministic two-lifecycle probe held the first listener in a handler, stopped it, created and stopped a second listener, and confirmed the second was gone. At interpreter exit every T-074 callback waited for that same second thread; multiprocessing closed the first queue while its untracked listener remained live, producing `Exception in thread Thread-1 (_monitor)` and `OSError: handle is closed`. Successive process-wide listener lifecycles are supported explicitly by this module and occur in the integration process, so the callback cannot protect only the newest one. | Give each registered exit action ownership of the listener/queue lifecycle it was created for, or maintain a collection of every listener still alive. Add a subprocess regression with two stopped lifecycles that fails if either listener reads after its queue is finalized. | **Open** |
+| `T074-R3` | **High** | **Yes — T-074** | Even for one lifecycle, `_wait_at_exit()` ignores the `False` returned by `wait_for_the_log_listener_to_stop(timeout=5.0)`. A listener held in a 5.1-second handler call reproduced the committed failure at exit: the wait expired, multiprocessing finalized the pipe, and stderr ended with `Exception in thread Thread-1 (_monitor)`. This is a supported state, not an invented dependency: the existing manager and logging documentation deliberately allow a slow or wedged handler and bound the GUI shutdown wait. The comment that registration makes the listener “finished before anything closes what it is reading” is therefore false whenever that deadline is crossed. | Preserve bounded application shutdown, but make the timeout branch a real closure protocol rather than proceeding to queue finalization with a live reader. Gate it with a deterministic blocked-handler subprocess test and verify both release-before-deadline and deadline-expired paths. | **Open** |
+| `T074-R4` | **High** | **Yes — Phase 1 verification** | T-074's four acceptance criteria concern the Windows **access violation**: reproduce that failure with a rate, identify its faulting thread and object, make a mutation restore that crash, and classify product versus harness. This range reproduces and mutation-checks a different failure—an `OSError` from a logging listener during interpreter finalization. The historical fatal dump listed both `ResultPump` and `_monitor`; listing a live thread does not establish that it faulted, and no captured frame ties the access violation to the log queue. The task itself correctly says the access violation was never reproduced and product versus harness remains unresolved, but labels the task “diagnosed and fixed”; the TASKS preamble, STATUS, and IMPLEMENTATION_PLAN still say it is unclassified and blocking. On the evidence presented, the logging race is real but the original High finding is not closed. | Correct the logging race under the scope its evidence supports, then either keep T-074 open until its original acceptance criteria are met, or split the demonstrated logging defect from the unexplained access violation. Closing or downgrading the latter requires an explicit maintainer risk decision; it cannot be inferred from the candidate defect's removal. Reconcile the current-truth documents to that disposition. | **Open** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary identity | Reviewed `7c78c7e..66e96d5`; implementation head remained the pinned source/test state |
+| `git diff --check 7c78c7e..66e96d5` | Passed |
+| Authorship / trailers | Sean Kottman for both commits; no AI author or co-author trailer |
+| Committed T-074 regression | Passed **3/3**, then passed again after restoring the source |
+| Import-time registration mutation | **Killed 6/6** with `OSError: [Errno 9] Bad file descriptor` in `_monitor` |
+| Two-listener lifecycle probe | **Failed the invariant**: the first listener was untracked and read its finalized queue |
+| Single slow-listener probe | **Failed the invariant** after the five-second exit wait expired |
+| Logging unit/integration tests plus the historical manager test | **45 passed** in 3.99 s |
+| `ruff check` / `ruff format --check` on changed source and test | Passed; **2 files** already formatted |
+| `python -m mypy` on changed source / all `src` / changed source under `--platform win32` | Passed: **1 / 35 / 1** source files |
+| Maintainer-reported full suite at `66e96d5` | **1428 passed, 11 skipped, 2 deselected** |
+| Maintainer-reported platform mutation | Before **6/6 Linux, 8/8 Windows** raced; after **0/6, 0/8** for the one fast-listener shape |
+
+The direct `.venv/bin/mypy` console script could not execute because its shebang still names the
+old parent-checkout interpreter. The equivalent venv interpreter invocation
+`.venv/bin/python -m mypy` is what produced the passing results above; this environment defect is
+outside T-074.
+
+Both temporary probes and the source mutation were removed. No production or test change remains
+from this review.
+
+### Final disposition
+
+The post-queue-creation registration is correct for the case the new regression samples, and its
+mutation evidence is strong. Approval still blocks on two unsynchronized cases in that same
+lifecycle—an earlier stopped listener and a listener that outlives the five-second wait.
+
+Independently, fixing those cases would prove the logging race fixed; it would not by itself prove
+that race caused the historical Windows access violation. T-074 therefore remains High and the
+Phase 1 Windows criterion remains **not verified** unless the original failure is tied to this
+mechanism or the maintainer explicitly accepts the residual risk.

@@ -81,13 +81,409 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(Holds `T-073` and `T-074` as of 2026-07-29. `T-075`, `T-076` and `T-077` were approved and are filed Complete; leaving them here after approval is the placement drift `COORD-R7` reported, so they moved with the verdict rather than later. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling,
+*(Holds `T-072`, `T-073` and `T-074` as of 2026-07-29. `T-075`, `T-076` and `T-077` were approved and are filed Complete; leaving them here after approval is the placement drift `COORD-R7` reported, so they moved with the verdict rather than later. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling,
 and this note went on claiming that after `T-073` was filed In Review under `## Ready` —
 `COORD-R6`, which is `COORD-R5`'s own failure mode recurring one day later. `COORD-R2` is why this
 section carries a note at all rather than sitting blank: an empty section is a claim about
 readiness, and the last time it was left unlabelled it outlived being true by one CI run. The
 lesson this file keeps relearning is that the claim has to be rewritten when the section changes,
 not when someone notices.)*
+
+### T-072 — Carry the three unresolved findings the last-pass direction stopped
+
+**Status:** **In Review — all five carries discharged, 2026-07-29.** `WIN-R1` was verified on
+`STARBASE` against a deliberately broadened rule; see **`WIN-R1` verified** below.
+
+*(Superseded: "In Progress — `T072-R1` Resolved; `WIN-R1` is the only remaining item".)*
+`mut_tree_drop_worker` ran on Windows and **survives**, through the orphan guard rather than
+because the mutation was inert — established with a positive control and a probe that had to be
+fixed before it could see anything. The reviewer accepted that result and marked `T072-R1`
+**Resolved**: the omitted worker was independently observed exiting through a legitimate
+containment path, and capture-list completeness is not itself the product invariant.
+
+**`WIN-R1` is verified.** It needed a deliberately widened firewall rule, which the implementer's
+tooling was not permitted to create; the maintainer ran the recorded procedure on `STARBASE` on
+2026-07-29. Everything else is done:
+`COORD-R5` is discharged and `T-040`/`T-060` are filed Complete on it, `WIN-R3` and `RUNNER-R1`
+are corrected, the `T-019` process-tree cases run on `STARBASE`, and `T066-R1` — **Changes
+requested** at `f20a9c8` — is corrected and its mutation has been executed there. See
+**Progress**.
+
+*(This block said "four of the five carries are done", then "one of the two owed items", and a
+correction to it left the older tail attached — so it read "`WIN-R1` is the only remaining item"
+and, three lines later, that two were owed including a mutation that had run. `COORD-R7`.
+Replacing a segment and leaving what followed it is how a document contradicts itself in the same
+paragraph.)*
+
+*(This block said "three of the five" and called `T066-R1` unexecuted after its run had already
+happened — `T072-R2`, and the same current-truth drift `COORD-R5` is about, in the task that owns
+`COORD-R5`. Rewritten rather than patched.)*
+**Owner:** Implementer
+**Priority:** Medium — it is the only thing standing between `T-040`/`T-060` and closure
+**Phase:** Phase 1
+**Depends on:** nothing to start. Its `T066-R1` half **needs a Windows runner**; the other two
+halves do not
+**Relevant context:** `ai/REVIEWS.md` — "STARBASE evidence and T-066 through T-070 review" and
+"STARBASE correction focused re-review", both 2026-07-28
+**Affected surfaces:** `tests/integration/test_end_to_end.py`, `tests/integration/test_manager.py`,
+`tools/windows/ssh-setup.ps1`, `docs/WINDOWS_VERIFICATION.md`, `.github/workflows/`,
+`ai/TASKS.md`, `ai/STATUS.md`
+**Risk:** Low per item; Medium as a group, because two of the three are gate-vacuity problems
+
+#### Scope
+
+The correction re-review closed under the maintainer's **last-pass direction**: remaining
+Medium-or-lower work is carried into a named task rather than starting another correction loop.
+This is that task. It exists because the reviewer asked for it by name, and until it did not
+exist, `T-040` and `T-060` had nowhere to carry their residue — which is the only reason those
+two are not closed.
+
+**Three blocking carries:**
+
+- **`T066-R1` (Medium).** The whole-tree termination fix is accepted and it resolved `T-069`. What
+  remains is that `kill_the_application()` suppresses every `psutil` kill error and discards both
+  lists returned by `wait_procs`, so it can return and reopen the database with a known survivor.
+  The no-survivors probe is reported but is not a lasting assertion. Separately, `T-066`'s own
+  criterion covering the `T-019` process-tree cases has never run under the Windows venv — the
+  self-hosted job runs `windows_desktop` only.
+- **`COORD-R5` (Medium).** The gate statement is corrected: `REQUIREMENTS`, `IMPLEMENTATION_PLAN`,
+  `TESTING` and `T-026` now agree Windows tab order is gated. The residual is filing. `## In
+  Review` still says it is empty while `T-066`…`T-070` sit In Review under `## Ready`; `T-040` and
+  `T-060` sit In Review under `## Blocked`; the `TASKS` preamble still calls `T-060` Blocked; and
+  `STATUS` says `T-040`/`T-060` are In Review and then, later in the same file, that `T-069` is
+  unfixed and `T-040` is Blocked. These are current-truth files and the stale paragraphs are not
+  marked superseded.
+- **`WIN-R1` (Medium).** `ssh-setup.ps1` now preserves and deduplicates administrator keys, and a
+  newly created firewall rule is correctly Private + LocalSubnet. But its idempotent path looks up
+  `sshd-tt` and does nothing when it already exists, so a machine that ran the earlier broad `Any`
+  rule stays broad on every later run. A tool documented as safe to re-run does not repair the
+  unsafe state it created.
+
+**Two non-blocking carries**, which the re-review asked to travel with this work:
+
+- **`WIN-R3` (Low).** `docs/WINDOWS_VERIFICATION.md` still names `mut_control_always_dead.py` as
+  the focus driver's control; the actual control is `mut_control_chain.py`. The named file belongs
+  to `T-056`, not to the `T-026` focus harness.
+- **`RUNNER-R1` (Low).** The workflow comment and the Windows guide say `timeout-minutes: 15`
+  bounds time spent queued while `STARBASE` is offline. It bounds how long a job may **run**; an
+  unmatched self-hosted job stays queued for up to **24 hours**. The current text understates this
+  single-machine gate's outage window by almost a day.
+
+#### Acceptance criteria
+
+- A surviving process in either `wait_procs` list **fails the test**; the expected descendant set
+  is a lasting assertion rather than a reported probe
+- `T-019`'s process-tree cases are executed and recorded from the Windows venv, or `T-066`'s
+  criterion is rewritten to say what is actually gated and why
+- Re-running `ssh-setup.ps1` against a machine carrying the broad `Any` rule leaves it scoped, and
+  the script reports the effective profile and remote-address filter it ended with
+- One unambiguous current answer, in authority order, about which tasks are In Review, Blocked and
+  Complete — including the `## In Review` section's own emptiness claim. (`T-071` was the same
+  class of drift and was filed to `## Complete` on 2026-07-28, ahead of this task.)
+- Historical statements are preserved as explicitly historical, not deleted
+- `WIN-R3` and `RUNNER-R1`'s documentation is corrected to what the code and GitHub actually do
+
+#### Progress, 2026-07-28
+
+| Carry | State |
+|---|---|
+| `COORD-R5` | **Done.** See below |
+| `WIN-R3` | **Done.** The guide now names `mut_control_chain.py`, says it runs first, and records why the `T-056` control does not belong here |
+| `RUNNER-R1` | **Done.** `ci.yml` and the guide now say `timeout-minutes` bounds *run* time, and an unmatched self-hosted job queues for up to 24 hours |
+| `T066-R1` | **Corrected after `T072-R1`.** One mutation still owed on Windows — see **The `T072-R1` correction** |
+| `WIN-R1` | **Written, unverified.** See **The `WIN-R1` correction** |
+| `T-019` cases under the venv | **Done.** Run `30414186949`, 72 passed, 3 skipped |
+| `T072-R2` | **Resolved.** This status block was the drift it reported |
+
+**`COORD-R5` is discharged.** Every task now sits in the section its verdict says it belongs in:
+`T-040`, `T-060`, `T-067`, `T-069`, `T-070` and `T-065` to `## Complete`; `T-066` and `T-068` to
+`## Blocked`. The `## In Review` note no longer claims an emptiness it did not have, and names
+where each former occupant went. The `TASKS` preamble and `ai/STATUS.md`'s Windows and `T-040`
+paragraphs are rewritten from the current head, with every superseded reading kept as an
+explicitly historical parenthetical rather than deleted.
+
+**`T066-R1` is written but has not run, and that matters.** `kill_the_application()` now asserts
+that the walked tree is deeper than the pid `Popen` returned, and that `wait_procs` reports **no**
+survivors before the caller reopens the database; refused kills are collected and reported in the
+failure rather than suppressed. `NoSuchProcess` during the kill loop is still tolerated, because
+racing with a tree that is already dying is a kill and not a miss.
+
+That code is inside `if sys.platform == "win32"`, so **the Linux suite did not execute one line of
+it.** What it has: `mypy --platform win32` passes on it, which is `AGENTS.md` §8's check and is
+what caught the previous POSIX-only mistake in this same file. What it does not have: any runtime
+evidence at all. It needs the Windows job before it can be called resolved.
+
+**The runner is the answer to that, and it did not need the quota.** `STARBASE` is online and
+green — run `30413774102`, job `windows desktop`, **28 passed, 1410 deselected in 12.83s**, while
+all four hosted jobs failed at zero steps on the billing annotation. Since that job already builds
+a venv on a real Windows machine, it is the only place the required process shape exists. It now
+carries a *Process trees under the venv* step running `tests/integration/test_manager.py` and
+`tests/integration/test_end_to_end.py` by path.
+
+Pre-flighted on Linux with `ffmpeg` removed from `PATH`, because the desktop job installs none:
+**75 passed**. That is what says the step will not turn the one green job red for a missing
+dependency rather than for a finding.
+
+#### Evidence, on the runner — 2026-07-29
+
+Run **`30414186949`** at `185ea6d`, job `windows desktop` on `STARBASE`. All ten steps green;
+*Process trees under the venv* reports **72 passed, 3 skipped in 79.69s**.
+
+**The caveat above is discharged.** `test_a_job_killed_mid_download_is_recovered_by_the_next_start`
+PASSED, and it is the test that calls `kill_the_application()` — so the `T066-R1` assertions
+executed on Windows, under a virtualenv, and the tree they walk really was deeper than the pid
+`Popen` returned. Had it been one level, the first assertion would have failed rather than the
+step passing.
+
+The `T-019` cases ran under the same shape for the first time anywhere:
+
+| Case | Result |
+|---|---|
+| `test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind` | **PASSED** — the grandchild case, which is the whole subject |
+| `test_cancelling_a_download_kills_what_the_worker_spawned` | **PASSED** |
+| `test_a_real_worker_leads_its_own_process_group` | Skipped — POSIX process groups |
+| `test_a_descendant_is_asked_to_stop_before_it_is_killed` | Skipped — POSIX signalling |
+| `test_the_detector_still_ignores_the_resource_tracker` | Skipped — POSIX only |
+
+The three skips are the POSIX-only half of a file that is deliberately split by platform; nothing
+Windows-relevant was skipped. **No hosted minutes were used**, and all four hosted jobs in the
+same run failed at zero steps on the billing annotation.
+
+| Check | Result |
+|---|---|
+| `ruff check .` | All checks passed |
+| `ruff format --check .` | 103 files already formatted |
+| `mypy` | Success: no issues found in 78 source files |
+| `mypy --platform win32` | Success: no issues found in 78 source files |
+| `pytest` (full default suite) | **1399 passed, 11 skipped, 2 deselected** |
+| `pytest tests/integration/test_end_to_end.py` | 4 passed |
+
+#### The `T072-R1` correction — 2026-07-29
+
+**The assertion was vacuous, and the review proved it rather than argued it.**
+`len(doomed) > 1` reads like a check on the walk and is not one: under the venv shape the launcher
+and the application interpreter already make that two, so the **worker** could be missing and it
+still passed. Codex reduced `children(recursive=True)` to direct children — `len(doomed) == 2`,
+the helper returned successfully, and the omitted worker went on downloading. The handoff had
+flagged this assertion as the least certain one; the failure mode found is sharper than the one
+guessed at.
+
+**Identity now comes from a handshake, not from a count.** `DOWNLOAD_AND_WAIT` prints
+`os.getpid()` alongside the job id, so the test knows the application interpreter rather than the
+launcher. `capture_the_doomed_tree()` walks from *that* pid while the row still says `RUNNING`,
+asserts the application has at least one descendant — the worker, which is the entire reason the
+kill means anything — and returns that exact set. `kill_the_application()` no longer walks; it
+kills what it was handed and asserts nothing survived.
+
+#### `T072-R1`, third round — the oracle was counting the wrong process
+
+**The second correction separated the lists and then conflated the processes.**
+`the_workers_that_must_die()` returned *every* descendant, which under `multiprocessing` means the
+**resource tracker** as well as the worker. The tracker outlives the worker, so the positive
+control failed on the tracker while calling it a worker — and a reviewer's mutation that killed the
+application and the tracker but deliberately spared the real worker **passed in 1.38 s**. The
+control had teeth only for "some long-lived descendant".
+
+Three things were wrong, and the third was the one that mattered:
+
+1. **The tracker was in the set.** Excluded now, by the same `multiprocessing.resource_tracker`
+   marker `tests/integration/test_manager.py` has always used for the same reason.
+2. **`mut_tree_shallow_walk` patched the oracle as well as the capture**, so it shrank the check
+   and the checked thing together. It now touches `capture_the_doomed_tree` only.
+3. **The clip was too short for the assertion to mean anything.** 512 KiB in 32 KiB chunks at
+   0.05 s finished in under a second, so a worker that survived the kill exited *naturally* long
+   before any check noticed — the assertion would have passed with no kill at all. The test now
+   paces at 0.5 s and waits **5 s**, deliberately shorter than the download still in flight. The
+   passing case costs nothing: `wait_procs` returns as soon as everything is gone.
+
+**Measured, on Linux:**
+
+| Plugin | Result | Why |
+|---|---|---|
+| `mut_control_worker_survives` | **KILLED**, 6.4 s | The kill is disabled, the worker is genuinely still downloading, and the failure names **one** pid — the worker, with the tracker excluded |
+| `mut_tree_shallow_walk` | Survives | The capture walks from the application, whose direct children already include the worker. Shallow and recursive differ only if the worker spawned its own child. Unobservable, like `T060-R2`'s reversal |
+| `mut_tree_drop_worker` | Survives | `killpg` reaches the whole group whatever was captured |
+| Reviewer's spare-the-worker | Survives | **And this is the interesting one — see below** |
+
+**Sparing the worker is unkillable on Linux because the product handles it.** `worker.py`'s
+**orphan guard** — `spawn_session()` watches the parent and exits if it disappears — reaps the
+worker when the application dies, whether or not anything killed it directly. The two controls
+prove it as a pair: with the kill disabled the application lives and the worker is still running at
+6 s; with the application killed and the worker deliberately spared, the worker is gone in 1.4 s.
+That is `REQ-015`'s orphan guard working, not a hole in the oracle, and it is recorded as the
+measured outcome the re-review asked for rather than forced into a kill.
+
+**Which makes the Windows run the whole remaining question.** `T-066` measured the opposite there:
+the grandchild **survived** `process.kill()`. Either the orphan guard does not fire on Windows or
+it does not fire in time, and that difference is exactly what `mut_tree_drop_worker` is for on
+`STARBASE`.
+
+#### `T072-R1`, second round — the assertion was still circular
+
+**The first correction moved the fault rather than fixing it.** It asserted `not alive` against
+`doomed` — *the same list the kill was handed* — so a fault that dropped the worker from that list
+also dropped it from the assertion, and nothing could fail on any platform. Both checked-in
+mutations were built on that misunderstanding: one returned `[]` and proved only that an entirely
+empty walk trips a guard nobody doubted, and the other could not be caught even on Windows.
+
+**The check and the thing it checks now come from different sources.**
+`the_workers_that_must_die()` is the test's own record of the worker set, taken while the row says
+`RUNNING`. `capture_the_doomed_tree()` is what the kill is handed. Nothing downstream can shrink
+the first, so a `doomed` missing the worker fails against it.
+
+| Plugin | Linux | Why |
+|---|---|---|
+| `mut_control_worker_survives` | **KILLED** | The positive control. `kill_the_application` does nothing, the worker outlives it, and the independent set catches it by pid |
+| `mut_tree_shallow_walk` | Survives | The capture walks from the *application*, whose direct children already include the worker. Shallow and recursive differ only if the worker has spawned its own child — ffmpeg, on a merge — which a progressive download does not. **Unobservable, like `T060-R2`'s reversal**, not a gap |
+| `mut_tree_drop_worker` | Survives | `killpg` reaches the whole group whatever was captured. Structurally ungateable on POSIX |
+
+**The control is why the two survivals are readable.** Two surviving mutations and no kills is
+indistinguishable from an assertion that cannot fail — which is the exact shape `T072-R1` found
+twice. `mut_control_worker_survives` fails with the surviving pid *and* the list the kill was
+handed, so the diagnostic names which of the two possibilities occurred. Same reasoning that puts
+`mut_control_chain` first in the focus driver.
+
+#### `mut_tree_drop_worker` ran on Windows — and survives there too, 2026-07-29
+
+Run on `STARBASE` at `ea53c71` against
+`test_a_job_killed_mid_download_is_recovered_by_the_next_start`:
+
+| Run | Handed to the kill | Result |
+|---|---|---|
+| unmutated | 3 pids | passes |
+| **`mut_tree_drop_worker`** | **2 pids — the worker dropped** | **passes** |
+| `mut_control_worker_survives` (kill nothing) | — | **fails**, naming the worker's pid |
+
+**The mutation applies and survives.** Both halves had to be established separately, and the first
+attempt to do so was blind: a probe wrapping `capture_the_doomed_tree` in `pytest_configure`
+printed the *unmutated* list regardless, because the mutation's own `configure` then wrapped the
+probe rather than the other way round. Moving the probe to `pytest_sessionstart` — after every
+`configure` — made it wrap outermost, and the handed list dropped from three pids to two. An
+instrument that cannot see the thing it is pointed at reports a survival and a non-application
+identically, which is `T072-R1`'s shape one level up.
+
+**Why it survives is product behaviour, and correct.** `worker.spawn_session()` starts a
+`parent-watchdog` thread — the orphan guard `ARC-002` documents — which exits the worker when the
+parent disappears. The kill is handed the application either way, so the worker dies whether or
+not its pid was in the captured set. The control confirms the mechanism: with **no** kill at all
+the parent survives, the watchdog never fires, and the worker is still running when the assertion
+looks.
+
+**So the expectation this task recorded is wrong, and that is the finding.** It said the captured
+set's completeness "can only be gated there" — on Windows. It cannot be gated *anywhere* by this
+test, on either platform, because the orphan guard removes the dependency the mutation targets.
+What protects against orphans is the guard, not the completeness of the list the test builds.
+
+Two consequences worth stating rather than leaving implied. The gate that matters for orphans is
+whatever exercises the **orphan guard**, and `mut_control_worker_survives` is the closest thing to
+it here. And `capture_the_doomed_tree`'s completeness is now an unasserted property — its own
+docstring already says "this list is not evidence of its own completeness", which is exactly right
+and now also means nothing tests it.
+
+*(Superseded: this section previously said `mut_tree_drop_worker` was still owed on Windows and
+that the captured set's completeness "can only be gated there". It ran; it survives; and the
+reason it survives is that no platform can gate that property while the orphan guard exists.)*
+
+#### The `WIN-R1` correction — 2026-07-29
+
+The existing-rule branch did nothing and then printed `rule present`, so a machine that had run
+the earlier broad `Any` version kept port 22 open on every network profile, on every subsequent
+run, while the script reported success. **A tool documented as safe to re-run has to repair the
+state it created, not merely decline to make it worse.**
+
+- The branch now reapplies the intended scope with `Set-NetFirewallRule` — `Private` profile,
+  `LocalSubnet` remote — instead of skipping.
+- The rule is then **read back and reported**: enabled, action, profile, remote address, port.
+  The scope lives on two different objects — the profile on the rule, the remote address on an
+  associated filter — so a rule that looks correct in `Get-NetFirewallRule` alone can still allow
+  the world. Both are printed.
+- A mismatch warns and names the rollback: `Remove-NetFirewallRule -Name sshd-tt`, then re-run.
+
+**Unverified, and not verifiable from here.** There is no PowerShell on the Linux development
+machine, and the repair path specifically needs a Windows box **already carrying the broad rule** —
+a state that has to be created deliberately to test against. What was checked is static: balanced
+braces and parentheses, no statements inside string interpolation (the Windows PowerShell 5.1
+hazard this file documents), and the CRLF policy `.gitattributes` sets.
+
+The CI runner cannot answer this either, and should not: reconfiguring a machine's firewall from a
+workflow is the *provisioning* hazard `T-073` and the job's own comments exist to prevent.
+
+**How to verify on `STARBASE`**, in an elevated session:
+
+```powershell
+$ErrorActionPreference = "Stop"
+
+# Broaden the EXISTING rule. Do not try to create it.
+Set-NetFirewallRule -Name sshd-tt -Profile Any -RemoteAddress Any
+
+# Assert the defective state really exists, or the run below proves nothing.
+$before = Get-NetFirewallRule -Name sshd-tt
+$beforeRemote = (Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $before).RemoteAddress
+if ($before.Profile.ToString() -ne "Any") { throw "setup failed: profile is not Any" }
+if ($beforeRemote -ne "Any") { throw "setup failed: remote address is not Any" }
+
+.\tools\windows\ssh-setup.ps1
+```
+
+The script must then report `rule profile : Private` and `rule remote : LocalSubnet`. Before this
+correction it would have reported `rule present` and changed nothing.
+
+**`T072-R3` corrected this procedure, and the way it was wrong is the point.** It previously used
+`New-NetFirewallRule -Name sshd-tt` to "recreate" the broad rule. On the machine this repair
+targets that name **already exists**, so the command fails — and the script then reapplies and
+reports an already-scoped rule, producing a green-looking report *without ever exercising
+broad-to-scoped repair*. A verification procedure that passes when the thing it verifies never
+ran is the same class of fault as the assertion `T072-R1` found. Hence `$ErrorActionPreference`
+and the two explicit `throw`s: the setup has to fail loudly rather than quietly leave the machine
+in the state that makes the test vacuous.
+
+#### `WIN-R1` verified — 2026-07-29, `STARBASE`
+
+Run by the maintainer in an elevated session, from the procedure recorded above.
+
+```
+== 1. broaden the EXISTING rule ==
+defective state confirmed: profile=Any remote=Any
+== 2. run the repair ==
+== 3. authorised key ==
+key already authorised
+== 4. firewall ==
+rule existed - reapplied the intended scope
+rule profile : Private
+rule remote  : LocalSubnet
+== 3. read the rule back ==
+profile : Private       (want Private)
+remote  : LocalSubnet   (want LocalSubnet)
+WIN-R1 PASS
+```
+
+**The first line is what makes the rest evidence.** `defective state confirmed: profile=Any
+remote=Any` is the assertion `T072-R3` added: without it a run against an already-scoped rule
+would reapply the scope, print a correct-looking report, and never exercise broad-to-scoped repair
+at all. The rule was genuinely `Any/Any` when the repair ran.
+
+**`rule existed - reapplied the intended scope`** is the branch that previously did nothing and
+printed `rule present`. It now reads the rule back and reports the profile and the remote-address
+filter separately, because they live on different objects — a rule can look right in
+`Get-NetFirewallRule` alone and still allow the world.
+
+**`key already authorised`** verifies the other half of `WIN-R1` in passing: the script appends to
+`administrators_authorized_keys` and recognises a key it has already written, rather than
+replacing the file and silently revoking every other administrator's access.
+
+#### Out of scope
+
+- Another behavioural review of `T-040` or `T-060`. The re-review states they may close as
+  Approved-with-follow-up on this carry **without** one
+- `T-066`'s external blockers — the four hosted and frozen jobs — which need quota, not work
+- `T-056`, which wants `windows-latest`'s image and is not part of this carry
+- Any further automatic correction round on the findings above
+
+**Note:** the reviewer's closing instruction is the authority for this task's existence and its
+contents. If a carry here disagrees with a task's own status line, `ai/REVIEWS.md` is canonical
+for review findings (`AGENTS.md` §12).
+
+---
 
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
@@ -487,364 +883,6 @@ deserves the resolution, not the question.)*
 ---
 
 ## Ready
-
-### T-072 — Carry the three unresolved findings the last-pass direction stopped
-
-**Status:** **In Progress — `T072-R1` Resolved; `WIN-R1` is the only remaining item, 2026-07-29.**
-`mut_tree_drop_worker` ran on Windows and **survives**, through the orphan guard rather than
-because the mutation was inert — established with a positive control and a probe that had to be
-fixed before it could see anything. The reviewer accepted that result and marked `T072-R1`
-**Resolved**: the omitted worker was independently observed exiting through a legitimate
-containment path, and capture-list completeness is not itself the product invariant.
-
-**`WIN-R1` is the only remaining item.** It needs a deliberately widened firewall rule and is
-awaiting maintainer authorisation to run; its exact commands are below. Everything else is done:
-`COORD-R5` is discharged and `T-040`/`T-060` are filed Complete on it, `WIN-R3` and `RUNNER-R1`
-are corrected, the `T-019` process-tree cases run on `STARBASE`, and `T066-R1` — **Changes
-requested** at `f20a9c8` — is corrected and its mutation has been executed there. See
-**Progress**.
-
-*(This block said "four of the five carries are done", then "one of the two owed items", and a
-correction to it left the older tail attached — so it read "`WIN-R1` is the only remaining item"
-and, three lines later, that two were owed including a mutation that had run. `COORD-R7`.
-Replacing a segment and leaving what followed it is how a document contradicts itself in the same
-paragraph.)*
-
-*(This block said "three of the five" and called `T066-R1` unexecuted after its run had already
-happened — `T072-R2`, and the same current-truth drift `COORD-R5` is about, in the task that owns
-`COORD-R5`. Rewritten rather than patched.)*
-**Owner:** Implementer
-**Priority:** Medium — it is the only thing standing between `T-040`/`T-060` and closure
-**Phase:** Phase 1
-**Depends on:** nothing to start. Its `T066-R1` half **needs a Windows runner**; the other two
-halves do not
-**Relevant context:** `ai/REVIEWS.md` — "STARBASE evidence and T-066 through T-070 review" and
-"STARBASE correction focused re-review", both 2026-07-28
-**Affected surfaces:** `tests/integration/test_end_to_end.py`, `tests/integration/test_manager.py`,
-`tools/windows/ssh-setup.ps1`, `docs/WINDOWS_VERIFICATION.md`, `.github/workflows/`,
-`ai/TASKS.md`, `ai/STATUS.md`
-**Risk:** Low per item; Medium as a group, because two of the three are gate-vacuity problems
-
-#### Scope
-
-The correction re-review closed under the maintainer's **last-pass direction**: remaining
-Medium-or-lower work is carried into a named task rather than starting another correction loop.
-This is that task. It exists because the reviewer asked for it by name, and until it did not
-exist, `T-040` and `T-060` had nowhere to carry their residue — which is the only reason those
-two are not closed.
-
-**Three blocking carries:**
-
-- **`T066-R1` (Medium).** The whole-tree termination fix is accepted and it resolved `T-069`. What
-  remains is that `kill_the_application()` suppresses every `psutil` kill error and discards both
-  lists returned by `wait_procs`, so it can return and reopen the database with a known survivor.
-  The no-survivors probe is reported but is not a lasting assertion. Separately, `T-066`'s own
-  criterion covering the `T-019` process-tree cases has never run under the Windows venv — the
-  self-hosted job runs `windows_desktop` only.
-- **`COORD-R5` (Medium).** The gate statement is corrected: `REQUIREMENTS`, `IMPLEMENTATION_PLAN`,
-  `TESTING` and `T-026` now agree Windows tab order is gated. The residual is filing. `## In
-  Review` still says it is empty while `T-066`…`T-070` sit In Review under `## Ready`; `T-040` and
-  `T-060` sit In Review under `## Blocked`; the `TASKS` preamble still calls `T-060` Blocked; and
-  `STATUS` says `T-040`/`T-060` are In Review and then, later in the same file, that `T-069` is
-  unfixed and `T-040` is Blocked. These are current-truth files and the stale paragraphs are not
-  marked superseded.
-- **`WIN-R1` (Medium).** `ssh-setup.ps1` now preserves and deduplicates administrator keys, and a
-  newly created firewall rule is correctly Private + LocalSubnet. But its idempotent path looks up
-  `sshd-tt` and does nothing when it already exists, so a machine that ran the earlier broad `Any`
-  rule stays broad on every later run. A tool documented as safe to re-run does not repair the
-  unsafe state it created.
-
-**Two non-blocking carries**, which the re-review asked to travel with this work:
-
-- **`WIN-R3` (Low).** `docs/WINDOWS_VERIFICATION.md` still names `mut_control_always_dead.py` as
-  the focus driver's control; the actual control is `mut_control_chain.py`. The named file belongs
-  to `T-056`, not to the `T-026` focus harness.
-- **`RUNNER-R1` (Low).** The workflow comment and the Windows guide say `timeout-minutes: 15`
-  bounds time spent queued while `STARBASE` is offline. It bounds how long a job may **run**; an
-  unmatched self-hosted job stays queued for up to **24 hours**. The current text understates this
-  single-machine gate's outage window by almost a day.
-
-#### Acceptance criteria
-
-- A surviving process in either `wait_procs` list **fails the test**; the expected descendant set
-  is a lasting assertion rather than a reported probe
-- `T-019`'s process-tree cases are executed and recorded from the Windows venv, or `T-066`'s
-  criterion is rewritten to say what is actually gated and why
-- Re-running `ssh-setup.ps1` against a machine carrying the broad `Any` rule leaves it scoped, and
-  the script reports the effective profile and remote-address filter it ended with
-- One unambiguous current answer, in authority order, about which tasks are In Review, Blocked and
-  Complete — including the `## In Review` section's own emptiness claim. (`T-071` was the same
-  class of drift and was filed to `## Complete` on 2026-07-28, ahead of this task.)
-- Historical statements are preserved as explicitly historical, not deleted
-- `WIN-R3` and `RUNNER-R1`'s documentation is corrected to what the code and GitHub actually do
-
-#### Progress, 2026-07-28
-
-| Carry | State |
-|---|---|
-| `COORD-R5` | **Done.** See below |
-| `WIN-R3` | **Done.** The guide now names `mut_control_chain.py`, says it runs first, and records why the `T-056` control does not belong here |
-| `RUNNER-R1` | **Done.** `ci.yml` and the guide now say `timeout-minutes` bounds *run* time, and an unmatched self-hosted job queues for up to 24 hours |
-| `T066-R1` | **Corrected after `T072-R1`.** One mutation still owed on Windows — see **The `T072-R1` correction** |
-| `WIN-R1` | **Written, unverified.** See **The `WIN-R1` correction** |
-| `T-019` cases under the venv | **Done.** Run `30414186949`, 72 passed, 3 skipped |
-| `T072-R2` | **Resolved.** This status block was the drift it reported |
-
-**`COORD-R5` is discharged.** Every task now sits in the section its verdict says it belongs in:
-`T-040`, `T-060`, `T-067`, `T-069`, `T-070` and `T-065` to `## Complete`; `T-066` and `T-068` to
-`## Blocked`. The `## In Review` note no longer claims an emptiness it did not have, and names
-where each former occupant went. The `TASKS` preamble and `ai/STATUS.md`'s Windows and `T-040`
-paragraphs are rewritten from the current head, with every superseded reading kept as an
-explicitly historical parenthetical rather than deleted.
-
-**`T066-R1` is written but has not run, and that matters.** `kill_the_application()` now asserts
-that the walked tree is deeper than the pid `Popen` returned, and that `wait_procs` reports **no**
-survivors before the caller reopens the database; refused kills are collected and reported in the
-failure rather than suppressed. `NoSuchProcess` during the kill loop is still tolerated, because
-racing with a tree that is already dying is a kill and not a miss.
-
-That code is inside `if sys.platform == "win32"`, so **the Linux suite did not execute one line of
-it.** What it has: `mypy --platform win32` passes on it, which is `AGENTS.md` §8's check and is
-what caught the previous POSIX-only mistake in this same file. What it does not have: any runtime
-evidence at all. It needs the Windows job before it can be called resolved.
-
-**The runner is the answer to that, and it did not need the quota.** `STARBASE` is online and
-green — run `30413774102`, job `windows desktop`, **28 passed, 1410 deselected in 12.83s**, while
-all four hosted jobs failed at zero steps on the billing annotation. Since that job already builds
-a venv on a real Windows machine, it is the only place the required process shape exists. It now
-carries a *Process trees under the venv* step running `tests/integration/test_manager.py` and
-`tests/integration/test_end_to_end.py` by path.
-
-Pre-flighted on Linux with `ffmpeg` removed from `PATH`, because the desktop job installs none:
-**75 passed**. That is what says the step will not turn the one green job red for a missing
-dependency rather than for a finding.
-
-#### Evidence, on the runner — 2026-07-29
-
-Run **`30414186949`** at `185ea6d`, job `windows desktop` on `STARBASE`. All ten steps green;
-*Process trees under the venv* reports **72 passed, 3 skipped in 79.69s**.
-
-**The caveat above is discharged.** `test_a_job_killed_mid_download_is_recovered_by_the_next_start`
-PASSED, and it is the test that calls `kill_the_application()` — so the `T066-R1` assertions
-executed on Windows, under a virtualenv, and the tree they walk really was deeper than the pid
-`Popen` returned. Had it been one level, the first assertion would have failed rather than the
-step passing.
-
-The `T-019` cases ran under the same shape for the first time anywhere:
-
-| Case | Result |
-|---|---|
-| `test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind` | **PASSED** — the grandchild case, which is the whole subject |
-| `test_cancelling_a_download_kills_what_the_worker_spawned` | **PASSED** |
-| `test_a_real_worker_leads_its_own_process_group` | Skipped — POSIX process groups |
-| `test_a_descendant_is_asked_to_stop_before_it_is_killed` | Skipped — POSIX signalling |
-| `test_the_detector_still_ignores_the_resource_tracker` | Skipped — POSIX only |
-
-The three skips are the POSIX-only half of a file that is deliberately split by platform; nothing
-Windows-relevant was skipped. **No hosted minutes were used**, and all four hosted jobs in the
-same run failed at zero steps on the billing annotation.
-
-| Check | Result |
-|---|---|
-| `ruff check .` | All checks passed |
-| `ruff format --check .` | 103 files already formatted |
-| `mypy` | Success: no issues found in 78 source files |
-| `mypy --platform win32` | Success: no issues found in 78 source files |
-| `pytest` (full default suite) | **1399 passed, 11 skipped, 2 deselected** |
-| `pytest tests/integration/test_end_to_end.py` | 4 passed |
-
-#### The `T072-R1` correction — 2026-07-29
-
-**The assertion was vacuous, and the review proved it rather than argued it.**
-`len(doomed) > 1` reads like a check on the walk and is not one: under the venv shape the launcher
-and the application interpreter already make that two, so the **worker** could be missing and it
-still passed. Codex reduced `children(recursive=True)` to direct children — `len(doomed) == 2`,
-the helper returned successfully, and the omitted worker went on downloading. The handoff had
-flagged this assertion as the least certain one; the failure mode found is sharper than the one
-guessed at.
-
-**Identity now comes from a handshake, not from a count.** `DOWNLOAD_AND_WAIT` prints
-`os.getpid()` alongside the job id, so the test knows the application interpreter rather than the
-launcher. `capture_the_doomed_tree()` walks from *that* pid while the row still says `RUNNING`,
-asserts the application has at least one descendant — the worker, which is the entire reason the
-kill means anything — and returns that exact set. `kill_the_application()` no longer walks; it
-kills what it was handed and asserts nothing survived.
-
-#### `T072-R1`, third round — the oracle was counting the wrong process
-
-**The second correction separated the lists and then conflated the processes.**
-`the_workers_that_must_die()` returned *every* descendant, which under `multiprocessing` means the
-**resource tracker** as well as the worker. The tracker outlives the worker, so the positive
-control failed on the tracker while calling it a worker — and a reviewer's mutation that killed the
-application and the tracker but deliberately spared the real worker **passed in 1.38 s**. The
-control had teeth only for "some long-lived descendant".
-
-Three things were wrong, and the third was the one that mattered:
-
-1. **The tracker was in the set.** Excluded now, by the same `multiprocessing.resource_tracker`
-   marker `tests/integration/test_manager.py` has always used for the same reason.
-2. **`mut_tree_shallow_walk` patched the oracle as well as the capture**, so it shrank the check
-   and the checked thing together. It now touches `capture_the_doomed_tree` only.
-3. **The clip was too short for the assertion to mean anything.** 512 KiB in 32 KiB chunks at
-   0.05 s finished in under a second, so a worker that survived the kill exited *naturally* long
-   before any check noticed — the assertion would have passed with no kill at all. The test now
-   paces at 0.5 s and waits **5 s**, deliberately shorter than the download still in flight. The
-   passing case costs nothing: `wait_procs` returns as soon as everything is gone.
-
-**Measured, on Linux:**
-
-| Plugin | Result | Why |
-|---|---|---|
-| `mut_control_worker_survives` | **KILLED**, 6.4 s | The kill is disabled, the worker is genuinely still downloading, and the failure names **one** pid — the worker, with the tracker excluded |
-| `mut_tree_shallow_walk` | Survives | The capture walks from the application, whose direct children already include the worker. Shallow and recursive differ only if the worker spawned its own child. Unobservable, like `T060-R2`'s reversal |
-| `mut_tree_drop_worker` | Survives | `killpg` reaches the whole group whatever was captured |
-| Reviewer's spare-the-worker | Survives | **And this is the interesting one — see below** |
-
-**Sparing the worker is unkillable on Linux because the product handles it.** `worker.py`'s
-**orphan guard** — `spawn_session()` watches the parent and exits if it disappears — reaps the
-worker when the application dies, whether or not anything killed it directly. The two controls
-prove it as a pair: with the kill disabled the application lives and the worker is still running at
-6 s; with the application killed and the worker deliberately spared, the worker is gone in 1.4 s.
-That is `REQ-015`'s orphan guard working, not a hole in the oracle, and it is recorded as the
-measured outcome the re-review asked for rather than forced into a kill.
-
-**Which makes the Windows run the whole remaining question.** `T-066` measured the opposite there:
-the grandchild **survived** `process.kill()`. Either the orphan guard does not fire on Windows or
-it does not fire in time, and that difference is exactly what `mut_tree_drop_worker` is for on
-`STARBASE`.
-
-#### `T072-R1`, second round — the assertion was still circular
-
-**The first correction moved the fault rather than fixing it.** It asserted `not alive` against
-`doomed` — *the same list the kill was handed* — so a fault that dropped the worker from that list
-also dropped it from the assertion, and nothing could fail on any platform. Both checked-in
-mutations were built on that misunderstanding: one returned `[]` and proved only that an entirely
-empty walk trips a guard nobody doubted, and the other could not be caught even on Windows.
-
-**The check and the thing it checks now come from different sources.**
-`the_workers_that_must_die()` is the test's own record of the worker set, taken while the row says
-`RUNNING`. `capture_the_doomed_tree()` is what the kill is handed. Nothing downstream can shrink
-the first, so a `doomed` missing the worker fails against it.
-
-| Plugin | Linux | Why |
-|---|---|---|
-| `mut_control_worker_survives` | **KILLED** | The positive control. `kill_the_application` does nothing, the worker outlives it, and the independent set catches it by pid |
-| `mut_tree_shallow_walk` | Survives | The capture walks from the *application*, whose direct children already include the worker. Shallow and recursive differ only if the worker has spawned its own child — ffmpeg, on a merge — which a progressive download does not. **Unobservable, like `T060-R2`'s reversal**, not a gap |
-| `mut_tree_drop_worker` | Survives | `killpg` reaches the whole group whatever was captured. Structurally ungateable on POSIX |
-
-**The control is why the two survivals are readable.** Two surviving mutations and no kills is
-indistinguishable from an assertion that cannot fail — which is the exact shape `T072-R1` found
-twice. `mut_control_worker_survives` fails with the surviving pid *and* the list the kill was
-handed, so the diagnostic names which of the two possibilities occurred. Same reasoning that puts
-`mut_control_chain` first in the focus driver.
-
-#### `mut_tree_drop_worker` ran on Windows — and survives there too, 2026-07-29
-
-Run on `STARBASE` at `ea53c71` against
-`test_a_job_killed_mid_download_is_recovered_by_the_next_start`:
-
-| Run | Handed to the kill | Result |
-|---|---|---|
-| unmutated | 3 pids | passes |
-| **`mut_tree_drop_worker`** | **2 pids — the worker dropped** | **passes** |
-| `mut_control_worker_survives` (kill nothing) | — | **fails**, naming the worker's pid |
-
-**The mutation applies and survives.** Both halves had to be established separately, and the first
-attempt to do so was blind: a probe wrapping `capture_the_doomed_tree` in `pytest_configure`
-printed the *unmutated* list regardless, because the mutation's own `configure` then wrapped the
-probe rather than the other way round. Moving the probe to `pytest_sessionstart` — after every
-`configure` — made it wrap outermost, and the handed list dropped from three pids to two. An
-instrument that cannot see the thing it is pointed at reports a survival and a non-application
-identically, which is `T072-R1`'s shape one level up.
-
-**Why it survives is product behaviour, and correct.** `worker.spawn_session()` starts a
-`parent-watchdog` thread — the orphan guard `ARC-002` documents — which exits the worker when the
-parent disappears. The kill is handed the application either way, so the worker dies whether or
-not its pid was in the captured set. The control confirms the mechanism: with **no** kill at all
-the parent survives, the watchdog never fires, and the worker is still running when the assertion
-looks.
-
-**So the expectation this task recorded is wrong, and that is the finding.** It said the captured
-set's completeness "can only be gated there" — on Windows. It cannot be gated *anywhere* by this
-test, on either platform, because the orphan guard removes the dependency the mutation targets.
-What protects against orphans is the guard, not the completeness of the list the test builds.
-
-Two consequences worth stating rather than leaving implied. The gate that matters for orphans is
-whatever exercises the **orphan guard**, and `mut_control_worker_survives` is the closest thing to
-it here. And `capture_the_doomed_tree`'s completeness is now an unasserted property — its own
-docstring already says "this list is not evidence of its own completeness", which is exactly right
-and now also means nothing tests it.
-
-*(Superseded: this section previously said `mut_tree_drop_worker` was still owed on Windows and
-that the captured set's completeness "can only be gated there". It ran; it survives; and the
-reason it survives is that no platform can gate that property while the orphan guard exists.)*
-
-#### The `WIN-R1` correction — 2026-07-29
-
-The existing-rule branch did nothing and then printed `rule present`, so a machine that had run
-the earlier broad `Any` version kept port 22 open on every network profile, on every subsequent
-run, while the script reported success. **A tool documented as safe to re-run has to repair the
-state it created, not merely decline to make it worse.**
-
-- The branch now reapplies the intended scope with `Set-NetFirewallRule` — `Private` profile,
-  `LocalSubnet` remote — instead of skipping.
-- The rule is then **read back and reported**: enabled, action, profile, remote address, port.
-  The scope lives on two different objects — the profile on the rule, the remote address on an
-  associated filter — so a rule that looks correct in `Get-NetFirewallRule` alone can still allow
-  the world. Both are printed.
-- A mismatch warns and names the rollback: `Remove-NetFirewallRule -Name sshd-tt`, then re-run.
-
-**Unverified, and not verifiable from here.** There is no PowerShell on the Linux development
-machine, and the repair path specifically needs a Windows box **already carrying the broad rule** —
-a state that has to be created deliberately to test against. What was checked is static: balanced
-braces and parentheses, no statements inside string interpolation (the Windows PowerShell 5.1
-hazard this file documents), and the CRLF policy `.gitattributes` sets.
-
-The CI runner cannot answer this either, and should not: reconfiguring a machine's firewall from a
-workflow is the *provisioning* hazard `T-073` and the job's own comments exist to prevent.
-
-**How to verify on `STARBASE`**, in an elevated session:
-
-```powershell
-$ErrorActionPreference = "Stop"
-
-# Broaden the EXISTING rule. Do not try to create it.
-Set-NetFirewallRule -Name sshd-tt -Profile Any -RemoteAddress Any
-
-# Assert the defective state really exists, or the run below proves nothing.
-$before = Get-NetFirewallRule -Name sshd-tt
-$beforeRemote = (Get-NetFirewallAddressFilter -AssociatedNetFirewallRule $before).RemoteAddress
-if ($before.Profile.ToString() -ne "Any") { throw "setup failed: profile is not Any" }
-if ($beforeRemote -ne "Any") { throw "setup failed: remote address is not Any" }
-
-.\tools\windows\ssh-setup.ps1
-```
-
-The script must then report `rule profile : Private` and `rule remote : LocalSubnet`. Before this
-correction it would have reported `rule present` and changed nothing.
-
-**`T072-R3` corrected this procedure, and the way it was wrong is the point.** It previously used
-`New-NetFirewallRule -Name sshd-tt` to "recreate" the broad rule. On the machine this repair
-targets that name **already exists**, so the command fails — and the script then reapplies and
-reports an already-scoped rule, producing a green-looking report *without ever exercising
-broad-to-scoped repair*. A verification procedure that passes when the thing it verifies never
-ran is the same class of fault as the assertion `T072-R1` found. Hence `$ErrorActionPreference`
-and the two explicit `throw`s: the setup has to fail loudly rather than quietly leave the machine
-in the state that makes the test vacuous.
-
-#### Out of scope
-
-- Another behavioural review of `T-040` or `T-060`. The re-review states they may close as
-  Approved-with-follow-up on this carry **without** one
-- `T-066`'s external blockers — the four hosted and frozen jobs — which need quota, not work
-- `T-056`, which wants `windows-latest`'s image and is not part of this carry
-- Any further automatic correction round on the findings above
-
-**Note:** the reviewer's closing instruction is the authority for this task's existence and its
-contents. If a carry here disagrees with a task's own status line, `ai/REVIEWS.md` is canonical
-for review findings (`AGENTS.md` §12).
-
----
 
 ### T-089 — Gate the MP3 bitrate control's complete UI contract
 
