@@ -342,6 +342,20 @@ Windows-general, so 20/20 on `STARBASE` is absence of a trigger rather than proo
 **It also does not satisfy exit criterion 7** — the full Windows `check` suite has still not run
 anywhere since the quota ran out, and `STARBASE` could run it.
 
+**`T-073` made `STARBASE` run it** (2026-07-29). The self-hosted job now carries lint, format, the
+Qt baseline and the full suite alongside the desktop slice, reusing the venv it already builds and
+**recording** ffmpeg rather than installing it, because this job must never provision the machine
+it runs on. Run `30415333608`: all fourteen steps green, **1388 passed, 20 skipped, 30 deselected
+in 208 s**, with `ffmpeg 8.1.2` present — so it measured the same with-ffmpeg configuration the
+hosted job does. The count differences against Linux reconcile to the `windows_desktop`
+deselections and the POSIX-only skips, **except for two tests** that the arithmetic does not
+explain; that is flagged in `T-073` for review rather than waved through.
+
+**The remaining hole in criterion 7 is Linux, not Windows.** `check (ubuntu-latest)` is hosted and
+has not started either, so Linux is verified only on the maintainer's own machine — a developer
+run, not a gate. Windows is now the better-covered of the two platforms, which is a sentence this
+file has never been able to write before.
+
 **`T-071` — the icon was undersized, and the master says why.** Reported from a taskbar
 screenshot and fixed the same day: every derived asset drew the logo at ~66% of its canvas with
 the slack as one empty band beneath it, so at 32 px the mark filled ~43% of the cell by area.

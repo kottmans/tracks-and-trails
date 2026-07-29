@@ -125,9 +125,14 @@ Prove `ARC-002`.
 > **What "Windows" means here is `STARBASE`** (`OPS-005`, 2026-07-29): the maintainer's Windows 10
 > 22H2 machine, which is both an interactive verification target and the self-hosted runner for the
 > `windows desktop` job. A finding that reproduces only on a GitHub-hosted image and not there does
-> not block this exit — `T-056` and `T-068` are open on exactly that basis. The criterion itself is
-> unchanged, and is **not yet met**: the full Windows `check` suite has not run anywhere since the
-> hosted quota ran out.
+> not block this exit — `T-056` and `T-068` are open on exactly that basis.
+>
+> **The Windows half is now measured** (`T-073`, 2026-07-29): run `30415333608` ran lint, format,
+> Windows-platform types, the Qt baseline, the real-plugin desktop slice and the full suite on
+> `STARBASE` — 1388 passed, 20 skipped, with ffmpeg present. **The Linux half is not.**
+> `check (ubuntu-latest)` is hosted and has not started since the quota ran out, so Linux is
+> currently verified only on the maintainer's own machine, which is a developer run rather than a
+> gate. This criterion stays **unmet** on that basis, not on the Windows one.
 
 ---
 

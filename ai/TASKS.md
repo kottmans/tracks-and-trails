@@ -124,6 +124,44 @@ expanded role is recorded in `ai/TESTING.md` instead.
 - `ai/TESTING.md` records that this job now carries the Windows gate, and what still differs from
   the hosted one
 
+#### Evidence, 2026-07-29
+
+Run **`30415333608`** at `c41e2ef`, job `windows desktop` on `STARBASE`. **All fourteen steps
+green**, 3 m 40 s wall.
+
+| Step | Result |
+|---|---|
+| Types under the Windows platform | Passed |
+| Windows desktop suite (real `windows` plugin) | 28 passed |
+| Lint | All checks passed |
+| Format check | 103 files already formatted |
+| Qt baseline | OK: Qt baseline verified on this runner |
+| **Full suite** (offscreen) | **1388 passed, 20 skipped, 30 deselected in 208.44 s** |
+
+**The machine has ffmpeg**, which the plan did not assume: `ffmpeg 8.1.2-full_build`, installed by
+winget at `…/Gyan.FFmpeg…/bin/ffmpeg`. So this run measured the **with-ffmpeg** configuration, the
+same one `check (windows-latest)` measures via `choco`. The no-ffmpeg wording in the environment
+step is the branch that did not fire, and the recording is what makes that knowable rather than
+assumed.
+
+**Reconciling the counts against Linux**, which is where a difference would otherwise look like a
+gap:
+
+| | Linux | Windows |
+|---|---|---|
+| Passed | 1399 | 1388 |
+| Skipped | 11 | 20 |
+| Deselected | 2 | 30 |
+
+The deselections explain themselves: Linux deselects the 2 network tests, Windows deselects those
+plus the 28 `windows_desktop` tests — which is correct, because step 8 already ran them under the
+real plugin. The extra 9 Windows skips are the POSIX-only half of platform-split modules.
+
+**One residual not explained, and left for review rather than guessed at.** Total collected plus
+deselected is 1412 on Linux and 1438 on Windows — a difference of 26, where the `windows_desktop`
+module is 28 tests. Two tests are unaccounted for in that arithmetic. Nothing failed, so this is a
+question about collection rather than a defect, but it is not something to wave through.
+
 #### Out of scope
 
 - Retiring `check (windows-latest)` or the `frozen` jobs. They stay; this makes their absence
