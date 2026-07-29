@@ -6199,3 +6199,74 @@ T-076 is **Changes requested** on `T076-R1`, and it also depends on the unresolv
 T-075 path used to persist a post-probe bitrate change. Its MP3 control currently accepts every
 converting codec. `T076-R2` is non-blocking test hardening and should be included in the focused
 correction rather than opening a separate review loop.
+
+## 2026-07-29 — T-075 through T-077 and T-072/T-074 range review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `26c1d4e`  **Head:** `71ca6dc`
+**Scope:** T-075, T-076, T-077, and the T-072/T-074 evidence in the five-commit range
+**Concurrent-work exclusion:** `main` advanced after the pinned head with Phase 2 task
+coordination only; that later work was excluded.
+**Verdict by task:** T-075 **Changes requested**; T-076 **Changes requested**; T-077
+**Changes requested**; T-074 **remains Ready and blocks Phase 1 verification**; T072-R1
+**Resolved**, with T-072 still In Progress on WIN-R1
+**Overall verdict:** **Changes requested**
+
+The T-075 and T-076 implementation heads and findings are identical to the immediately preceding
+independent review, which this range commits unchanged. They are not duplicated below:
+`T075-R1` remains Critical and blocking; `T076-R1` remains Medium and blocking; `T076-R2`
+remains Low and non-blocking.
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T077-R1` | **High** | **Yes — T-077** | T-077's acceptance criterion still says **each built-in preset** completes against the local server and has its resulting file inspected. The implementation executes only three of five. `Best video up to 1080p (MP4)` and `Video with embedded subtitles` are merely named in `UNCOVERABLE_BY_THIS_FIXTURE`; naming an untested case is honest accounting, not evidence that it works. The stated impossibility belongs only to the current direct-file fixture: the local server can instead expose real format metadata and a real subtitle resource without using the public network. The gate is also not mechanically exhaustive: `CONVERTING_PRESETS` and `UNCOVERABLE_BY_THIS_FIXTURE` are two hand-maintained lists, and no assertion derives the built-in set and proves their exact union, so deleting a row or adding a preset would remain green. An independent enumeration confirmed that only **3/5** built-ins execute today. This is the core acceptance criterion of a High task, not a non-blocking coverage note. | Exercise the remaining two presets with network-free fixtures that provide the facts they need, and derive an exact coverage assertion from `BUILT_IN_PRESETS`. Alternatively, obtain an explicit maintainer scope change and file named blocking follow-ups for the two missing user-visible options; the task cannot narrow its own acceptance criterion by recording the gap. | **Open** |
+| `T074-R1` | **High** | **Yes — Phase 1 verification** | The 12 clean STARBASE iterations are useful evidence against the original 25% anecdote, but they do not diagnose or clear the access violation. The four original observations and the repeat batch are not one controlled population: between them the manager and the full-suite composition changed materially, including new integration tests. Even if pooled, `1/16` is only the observed aggregate point estimate after one event, not evidence that the true rate can only be lower; a single green run is common under both a 25% and a 6.25% failure probability. The task's substantive acceptance criteria remain unmet: the crash was not deliberately reproduced, the faulting object is unknown, product pump versus harness is unresolved, and there is no correction mutation. Because the only observed native crash is in ordinary `ResultPump` delivery on the exact Windows architecture path Phase 1 exists to prove, the uncertainty cannot be resolved in favor of product safety. | Keep T-074 High and keep the Windows/Phase 1 criterion unverified until the trigger and faulting object are identified or the failure is affirmatively classified as harness-only. Report the clean batch as `0/12 at ea53c71`; do not promote samples from changed heads into a stable “1 in 16” rate. A downgrade or risk acceptance requires the maintainer's explicit decision. | **Open** |
+| `COORD-R7` | **Medium** | **Yes — Phase 1 exit review** | Current-truth documents disagree with the evidence at this head. `ai/IMPLEMENTATION_PLAN.md:161-163` and `ai/STATUS.md:357-366,449-450` still say T-074 is roughly one in four; `ai/STATUS.md:338-345` says its repeat workflow has not run. `ai/STATUS.md:368-377` still says the Windows drop-worker mutation is owed. Inside T-072 itself, the opening first says WIN-R1 is the sole remaining item, then says both WIN-R1 and `mut_tree_drop_worker` remain (`ai/TASKS.md:669-680`). The checked-in mutation's module docstring also still says the captured set “has to be complete” on Windows (`tools/windows/mutations/mut_tree_drop_worker.py:11-15`), contradicted by the result the same commit records. These are not harmless historical statements: they are current assertions about the evidence and blocker set for the pending exit review. | Rewrite current truth around one state: T072-R1 resolved through a legitimate independent reap path; WIN-R1 remains; T-074 has one historical crash and a separate 0/12 batch but remains unclassified and blocking. Preserve superseded readings explicitly where their history matters. Correct the mutation documentation to describe the observed watchdog/containment outcome. | **Open** |
+
+### T072-R1 disposition
+
+The Windows execution supplies exactly the evidence the prior review requested. The mutation
+applied—the handed list fell from three processes to two and omitted the worker. The independent
+worker oracle remained intact. The test passed because the application died and the product's
+parent-watchdog/containment path removed the worker; the positive control that killed nothing
+failed and named that same worker.
+
+That is a legitimate reap path, not a vacuous assertion, and the prior review explicitly allowed
+this measured outcome. `T072-R1` is therefore **Resolved**. The completeness of the helper's
+captured list is not independently guaranteed, but it is not the product invariant: the invariant
+is that no work-producing descendant survives, and the independent oracle observes that result.
+T-072 remains In Progress only for the separate WIN-R1 firewall verification.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary identity | Reviewed `26c1d4e..71ca6dc`; later Phase 2 coordination excluded |
+| `git diff --check 26c1d4e..71ca6dc` | Passed |
+| Authorship / trailers | Sean Kottman throughout; no AI author or co-author trailer |
+| T-077 generated-media cases | **3 passed, 4 deselected** in 2.83 s |
+| Built-in coverage enumeration | **3 executed, 2 named-only; 3/5 actual file coverage** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed: **106 files** already formatted |
+| `mypy src` | Passed: **35 source files** |
+| Configured `mypy` / `mypy --platform win32` | Passed: **78 files** in each scope |
+| Full local suite at the reviewed code state | **1409 passed, 11 skipped, 2 deselected** in 86.75 s |
+| Maintainer-reported STARBASE T-074 batch | **12/12 clean** at `ea53c71`; no reproduction |
+| Maintainer-reported T072-R1 Windows mutation | Drop-worker survivor applied and passed; kill-nothing control failed naming the worker |
+
+### Final disposition
+
+T-075 and T-076 retain the findings already filed immediately above this review. Nothing in the
+larger range corrects them.
+
+T-077 establishes valuable end-to-end evidence for best video, MP3 at 320 kbps, and original
+audio, but it does not meet its five-preset acceptance criterion and cannot be approved at 3/5.
+
+T-074's clean batch narrows the anecdote but does not settle the cause or the release consequence.
+The Phase 1 Windows criterion remains **not verified** while a possible product-side native crash
+on its defining message-pump path is unexplained.
+
+T072-R1 is **Resolved**. T-072 remains open only on WIN-R1, plus the current-truth cleanup in
+`COORD-R7`.

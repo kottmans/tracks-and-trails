@@ -1166,22 +1166,41 @@ same question.
 `FAILED → QUEUED` are all in `_TRANSITIONS`, with comments explaining why resume returns to
 `RUNNING` rather than `READY` and why retry re-enters the queue. What is missing is the machinery.
 
-**Pause needs a decision this task must make, not assume.** yt-dlp has no pause; stopping means
-ending the session. Whether `PAUSED` keeps the partial file for `REQ-017`'s resume — Phase 3 — or
-discards it changes what a user gets back, and the honest answer may be that Phase 2's pause is
-"stop and remember", with resume restarting. Say which, in `DECISIONS.md`.
+#### Both decisions are made — maintainer, 2026-07-29
 
-**Remove needs one too.** Removing a queued job is obvious; removing a running one is a cancel
-plus a delete, and removing a completed one raises whether the *file* goes with it. `REQ-015` says
-remove, not delete — the distinction should be explicit in the UI, not implied.
+**Pause drains the queue; it does not stop a download.** A download already in flight finishes;
+nothing new starts. Resume starts taking jobs again.
+
+The reasoning is the strongest argument available: **there are no partial files to deal with.**
+Every alternative — stop the session and keep the partial, or stop it and discard — buys a
+half-written file and a rule about what happens to it, in a phase that has no resume
+(`REQ-017` is Phase 3). Draining buys neither.
+
+**This makes pause a property of the queue, not of a job, and `REQ-015` says otherwise.** Its
+text is *"Per job, support cancel, pause, resume, retry, and remove"*, and `_TRANSITIONS` carries
+`RUNNING → PAUSED → RUNNING` with a comment explaining why resume returns to `RUNNING` rather than
+`READY`. Under this decision **no job ever enters `PAUSED`** and those edges go unused.
+
+That is a requirements amendment, and it is flagged rather than absorbed: `REQ-015` needs pause
+and resume moved from the per-job list to a queue-level control, and `_TRANSITIONS` needs either
+its `PAUSED` edges removed or a recorded reason for keeping a state nothing reaches. A state
+machine with an unreachable state is the same shape as a guard nobody watches fail
+(`ai/TESTING.md` §13) — it reads as capability and is not.
+
+**Remove takes the job out of the queue and never touches a file.** Removing a running job cancels
+it first. Nothing this application deletes from disk, in this phase, by this route.
 
 #### Acceptance criteria
 
 - Each action goes through the manager, not through the store — `T036-R1` is what it costs when a
   caller writes a status change directly and nothing announces it
 - Cancel still meets its 2-second budget under a saturated pool, not just an idle one
-- Pause frees its slot for a waiting job; resume waits for one like any other start
-- Remove states plainly whether the file is affected, and does not remove one it did not write
+- Pause stops the pool taking new work and lets in-flight sessions finish; resume takes work again
+- **No partial file exists as a result of pausing** — asserted, since that is the whole reason for
+  this shape rather than a happy consequence of it
+- Remove takes the job out of the queue and leaves every file on disk untouched, asserted by
+  looking at the directory rather than by trusting the code path
+- Removing a running job cancels it first, within the same 2-second budget
 
 #### Out of scope
 
@@ -1407,18 +1426,32 @@ records itself as *unverified*, with enforcement named as a Phase 2 task. This i
 The database is the reason. `ARC-005` puts every write on one writer thread *within a process*;
 two processes have two writer threads and no shared lock discipline.
 
-**The mechanism is a decision, not a detail.** A lock file, a named mutex, an abstract socket and
-Qt's own `QLocalServer` fail differently — a lock file survives a `SIGKILL` and lies about the
-owner; a named mutex is Windows-shaped; an abstract socket is Linux-shaped. Whichever is chosen
-must answer what happens after a crash, since a guard that requires a clean exit strands the user
-on the failure it exists for.
+#### The mechanism — decided 2026-07-29, maintainer took the Implementer's recommendation
+
+**`QLocalServer` / `QLocalSocket`, named from the resolved database path.**
+
+- **Already Qt**, so no new dependency, and one code path compiles to a named pipe on Windows and
+  a Unix domain socket on Linux — two correct platform implementations rather than two guesses.
+- **It is a channel, not a flag.** That is what makes *attach* possible rather than only *refuse*:
+  a second launch can hand its URL to the first instance and raise its window. A lock file can
+  only say no.
+- **Crash behaviour decided it**, because that is the case the guard exists for. Windows destroys
+  a named pipe when its owning process dies. On Linux a killed process leaves the socket file, so
+  the protocol is *connect first; if the connection fails the owner is gone, remove the stale name
+  and become the server*. A PID lock file needs a liveness check and is wrong under PID reuse;
+  `flock` is robust but offers no channel.
+- **Named from the database path**, because `A-004` is about the database rather than the
+  application. Two instances against different databases harm nothing and must not be blocked.
 
 #### Acceptance criteria
 
 - A second launch either attaches to the running instance or refuses in its favour, and says which
 - A stale lock left by a killed process does not permanently block startup
 - Verified on both platforms, `STARBASE` included
-- The chosen mechanism and its crash behaviour are recorded in `ai/DECISIONS.md`
+- The mechanism and its crash behaviour are recorded in `ai/DECISIONS.md` with an ID
+- **The stale-socket path is tested by killing an instance**, not by deleting a file by hand: the
+  recovery has to work against the failure it was chosen for
+- Two instances against *different* databases both start
 
 #### Out of scope
 
