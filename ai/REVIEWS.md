@@ -6079,3 +6079,71 @@ misclassifies its local negative proof as external and retains contradictory sou
 Under `AGENTS.md` §10, the ordinary review budget is now exhausted with a blocking Medium finding.
 Another focused correction pass requires the maintainer to authorize it, accept the documented
 risk, change scope, or carry it into a named follow-up.
+
+## 2026-07-29 — Final authorized Phase 1 evidence-table correction review
+
+**Reviewer:** Codex (Reviewer)
+**Authorization:** The maintainer explicitly authorized one final pass
+**Base:** `f852bed`  **Head:** `6e23d43`
+**Scope:** Final corrections for `P1EXIT-R1`, `P1EXIT-R2`, and `T033-R3`, including the newly
+measured T-033 collection-removal survivors
+**Boundary classification:** Integration-test correction and documentation/evidence; no production
+source or final build-configuration change
+**Verdict by finding:** `P1EXIT-R1` **Resolved**; `P1EXIT-R2` **Resolved**; `T033-R3` **Local
+evidence resolved, current-truth correction still incomplete**
+**Overall verdict:** The Phase 1 evidence-table corrections are **Approved**. T-033 is **Blocked**
+on `T033-R4`, a maintainer decision about its invalidated acceptance criterion, and the already
+known external Windows build.
+
+The boundary contains two commits: `c49ef96` records the preceding review, and `6e23d43` contains
+the corrections and new T-033 evidence. `HEAD` and `origin/main` both resolved to `6e23d43`, and
+the tree was clean before this review record was appended.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Final evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `P1EXIT-R1` | **Medium** | **Yes — resolved** | The display condition and worker workload are now one observation. The parent removes `DISPLAY` and `WAYLAND_DISPLAY` before `spawn`; `_spawn_target` checks their absence inside that child; the same child executes `run_session`; and the parent validates the real protocol sequence and `Probed` outcome. Independently removing the scrub failed with the child's inherited-display assertion and both values. Independently adding a post-guard `os.environ["DISPLAY"]` dependency failed with `KeyError: 'DISPLAY'` from the work process. | None. | **Resolved** |
+| `P1EXIT-R2` | **Low** | **No** | `test_an_unsupported_url_fails_the_job_with_the_extractors_own_message` now raises the correct `UnsupportedError` through `run_session`, validates the sequence, and asserts both `UNSUPPORTED_URL` and the exact generated message. An independent mutation removing the `UnsupportedError` mapping failed with the observed kind `EXTRACTOR_ERROR`, while preserving the message, exactly isolating the subclass-ordering gate. The table accurately retains the limitation that yt-dlp URL recognition itself is injected rather than live. | None. | **Resolved** |
+| `T033-R3` | **Low** | **No — superseded by the substantive T033-R4 blocker** | The requested local evidence was produced: baseline and both collection-removal builds completed, their distinct sizes prove the mutations applied, and both negative probes survived. The task now records that result and marks the acceptance criterion unachievable as written. Current-truth cleanup is incomplete: the T-033 status still says “Blocked on Windows only” while a maintainer acceptance decision is also owed; its Scope still states the now-disproved static-analysis premise; and `ai/STATUS.md:530-537,562-572` still says the collection negative remains to run and that hosted jobs are the only constraint. | Rewrite TASKS and STATUS around the finding below: Linux positive and negative builds complete; submodule collection redundant for this pin; package data remains load-bearing but ungated; Windows external; acceptance-criterion decision required. | **Evidence resolved; documentation follow-up remains** |
+| `T033-R4` | **High** | **Yes — T-033** | The conclusion “neither collection line is necessary” does not follow from the surviving probes. The independent `collect_submodules -> []` build also passed, and the pinned `_extractors.py` really does contain 928 static relative imports, so the explicit submodule collection is redundant for this pin. The data mutation is different: removing `collect_data_files("yt_dlp")` produced a passing probe **while deleting all three yt-dlp YouTube solver assets present in the baseline artifact**: `yt.solver.core.js`, `yt.solver.deno.lib.js`, and `yt.solver.bun.lib.js`. yt-dlp loads these with `importlib.resources` through `vendor.load_script`; `EJSBaseJCP._builtin_source` uses `yt.solver.core.js`, and the Deno/Bun providers use the other two. The current probe only instantiates `YoutubeIE` and checks its URL predicate, so it never touches this runtime data. The mutation survival therefore proves the frozen gate is blind to package-data loss, not that the data line is dead. The causal record is also incomplete: PyInstaller processed a package-supplied `yt_dlp/__pyinstaller/hook-yt_dlp.py` through the `pyinstaller40` entry point, contrary to the claim that no yt-dlp hook exists. That hook does not collect these three assets, so it does not rescue the data mutant. | Keep `collect_data_files("yt_dlp")`. Extend the frozen probe to load at least the shipped built-in core solver through yt-dlp's real `vendor.load_script` path and verify its expected hash; then removing the data collection must fail. Decide separately whether `collect_submodules` stays as explicit future-pin insurance or is removed as redundant for the current pin. Replace the impossible blanket negative criterion with those two distinct decisions, and re-evaluate them whenever the yt-dlp pin changes. | **Open — T-033 Blocked pending maintainer decision and correction** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary identity | `HEAD == origin/main == 6e23d43`; clean tree before the review append |
+| `git diff --check f852bed..6e23d43` | Passed |
+| Corrected Phase 1 tests | **2 passed** |
+| Full `tests/integration/test_worker.py` | **56 passed** in 4.47 s |
+| Headless scrub mutation | **Killed**: child exited 1 and named inherited `DISPLAY=:0`, `WAYLAND_DISPLAY=wayland-0` |
+| Headless workload mutation | **Killed**: child exited 1 with `KeyError: 'DISPLAY'` after the headless guard |
+| Unsupported mapping mutation | **Killed**: expected `UNSUPPORTED_URL`, observed `EXTRACTOR_ERROR` |
+| `ruff check` / `ruff format --check` on changed test | Passed; one file already formatted |
+| Bare `mypy` | Passed: **78 source files** |
+| Bare `mypy --platform win32` | Passed: **78 source files** |
+| Maintainer-reported full suite | **1401 passed** |
+| Baseline retained artifact | **194260 KiB**; yt-dlp probe and frozen spawn/reap smoke passed |
+| Independent submodule-removal build | **192164 KiB**; probe still passed with 1,751 extractors and concrete `YoutubeIE` |
+| Independent data-removal build | **194076 KiB**; probe still passed, but all three baseline `yt.solver*.js` assets were absent |
+| Pinned extractor graph | `_extractors.py` contains **928** static `from .` imports |
+| PyInstaller hook discovery | Processed `yt_dlp/__pyinstaller/hook-yt_dlp.py`; package entry point is `pyinstaller40: hook-dirs = yt_dlp.__pyinstaller:get_hook_dirs` |
+
+Both temporary spec mutations were reverted. The independent artifacts and the unsupported-error
+pytest plugin remain under `/tmp`; no build or production file in the repository was changed.
+
+### Final disposition
+
+`P1EXIT-R1` and `P1EXIT-R2` are **Resolved**. The Phase 1 evidence table now maps both criteria to
+tests that exercise the claimed condition, and this final authorized pass introduces no new Phase
+1 blocker.
+
+T-033 is **Blocked**, not Approved and not “Windows only.” Its Linux artifact contains a usable
+extractor and its collection-removal results are now known, but those results split the two spec
+lines: submodule collection is redundant for the pin; data collection ships runtime YouTube
+solver assets the probe cannot see. The maintainer must revise the impossible acceptance criterion
+and decide the submodule line's defense-in-depth policy; the data line should remain and gain a
+resource-aware frozen gate. Windows evidence remains externally pending.
+
+Per the maintainer's instruction, this is the last review pass. No further automatic correction
+review will be initiated.
