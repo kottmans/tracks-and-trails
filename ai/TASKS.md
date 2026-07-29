@@ -79,6 +79,83 @@ names where each of them went.)*
 
 ## Ready
 
+### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
+
+**Status:** **Ready — observed and filed 2026-07-29**, not diagnosed
+**Owner:** Implementer
+**Priority:** **High** — it is an access violation in a module under `src/`, and it lands in the
+suite that `OPS-005` and `T-073` just made Phase 1's only Windows gate
+**Phase:** Phase 1
+**Depends on:** nothing. It needs the Windows runner, which exists
+**Relevant context:** `T-073`, `OPS-005`, `ARC-002`, `src/tracks_and_trails/downloader/result_pump.py`
+**Affected surfaces:** unknown — `downloader/result_pump.py` and/or
+`tests/integration/test_manager.py`
+**Risk:** **High to leave.** An intermittent crash makes every green Windows run mean less than it
+appears to
+
+#### Scope
+
+The full suite on `STARBASE` died with exit **139**:
+
+```
+tests/integration/test_manager.py::test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget
+Windows fatal exception: access violation
+Thread 0x00000c88 [ResultPump] (most recent call first):
+Thread 0x000024dc [Thread-50 (_monitor)] (most recent call first):
+  File "...\tests\integration\test_manager.py", line 1028 in
+    test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget
+Segmentation fault
+```
+
+**It is intermittent, and the evidence for that is unusually clean.** The failing run was
+`30416495270` at `454b80e` — a **documentation-only** commit whose code is byte-identical to
+`38650dd`, which had passed the same suite minutes earlier.
+
+| Run | Head | Full suite |
+|---|---|---|
+| `30415333608` | `c41e2ef` | pass |
+| `30416156751` | `38650dd` | pass |
+| `30416495270` | `454b80e` | **access violation** |
+| `30416723791` | `32f9bd2` | pass |
+
+**One in four**, with no code difference between a pass and the failure.
+
+**Line 1028 is before the cancellation**, which narrows this usefully. It is
+`assert spin(lambda: bool(recorder.progress), timeout=60)` — the wait for the *first progress
+message*, three lines above `download.cancel()`. So the crash is not in the escalation path the
+test is named for. It is in ordinary message delivery: `ResultPump` is a `QThread` emitting Qt
+signals carrying Python objects from its `run()`, while the main thread sits in `spin()` calling
+`app.processEvents()`.
+
+#### What is not known
+
+Everything about the cause. Recorded as a question rather than a hypothesis dressed as one:
+
+- Whether the fault is in **product code** (`result_pump.py`, in `src/`, so `ARC-002`'s pump is a
+  candidate) or in the **test harness** (fixture teardown ordering, a receiver outliving or
+  predeceasing a queued emission).
+- Whether it is specific to `child_ignoring_cancellation`, which is the one worker in the suite
+  that deliberately refuses to stop, or reachable by any job.
+- Whether it reproduces at all outside `STARBASE`. It has never been seen on Linux across many
+  full-suite runs, but Linux has never been where this project's process faults show up.
+
+#### Acceptance criteria
+
+- The failure is **reproduced deliberately**, with a rate, rather than waited for
+- The faulting thread and the object it touched are identified — a stack is not a cause
+- The fix is proven by a mutation that restores the crash, not only by runs that stop crashing
+- If it turns out to be the harness rather than the pump, that is recorded explicitly, because
+  the opposite conclusion is the one a reader would assume from the file it crashed in
+
+#### Out of scope
+
+- Retrying, `xfail`, or a rerun plugin. `T-069` established the rule: an intermittent failure gets
+  its trigger found, not its symptom hidden. The one time this project reached for a retry the
+  reviewer's instruction was explicit — *do not retry or xfail*
+- `T-056`, which is a different intermittent on a different platform and is `OPS-005`-downgraded
+
+---
+
 ### T-073 — Run the full Windows gate on the machine that can run it
 
 **Status:** **In Review — implemented 2026-07-29**

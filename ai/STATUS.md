@@ -321,6 +321,17 @@ set. One mutation is killed on Linux; the other survives there **by design**, be
 kills the group regardless of the captured set, so its gate belongs on Windows and is still owed.
 `T-064` is **Approved**.
 
+**The new Windows gate found something on its fourth run** (`T-074`, 2026-07-29). The full suite
+died with an **access violation**, exit 139, in
+`test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget` — with the `ResultPump`
+thread in the traceback and the crash at the wait for the *first progress message*, three lines
+before the cancellation the test is named for. The failing commit was **documentation-only** and
+byte-identical in code to one that had passed minutes earlier, so this is intermittent on the
+order of **one run in four**. Cause unknown; whether it is `result_pump.py` or the test harness is
+an open question and is written as one. It is High priority because it is an access violation in a
+module under `src/`, and because an intermittent crash devalues every green run of the gate
+`OPS-005` just made load-bearing.
+
 **All five of `T-072`'s carries are now written** (2026-07-29). `WIN-R1` was the last: the
 existing-rule branch of `ssh-setup.ps1` did nothing and printed `rule present`, so a machine
 carrying the earlier broad `Any` rule kept port 22 open on every profile forever while the script
