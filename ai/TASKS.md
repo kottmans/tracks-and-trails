@@ -1061,6 +1061,415 @@ agreement on the reduced form before implementation.
 
 ## Proposed — Phase 2
 
+*(`T-078`…`T-088` are the phase's own deliverables, written 2026-07-29 from
+`ai/IMPLEMENTATION_PLAN.md` §Phase 2. The entries after them — `T-050`, `T-053`, `T-046`,
+`T-047`, `T-048`, `T-049` — are follow-ups carried out of Phase 1 that land in this phase, and
+they were here first. Nothing below is scheduled: Phase 2's prerequisite is Phase 1 approved.)*
+
+### T-078 — A real worker pool, bounded and configurable
+
+**Status:** Proposed — the phase's centre; most of the rest depends on it
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 2
+**Depends on:** Phase 1 approved
+**Relevant context:** `REQ-013`, `ARC-002`, `ARC-005`, `T-013`, `T-019`, `T036-R1`
+**Affected surfaces:** `downloader/manager.py`, `persistence/`, settings
+**Risk:** High — it is the object every other Phase 2 task acts through
+
+#### Scope
+
+`DownloadManager` runs a pool of exactly one, and says so in seven places. Phase 1 deliberately
+did not generalise it: *"Building a pool for N now would mean designing scheduling policy with
+one job to test it against."* Now there is something to test it against.
+
+What already exists and should not be rebuilt: `_sessions` and `_reserved` model in-flight and
+being-written starts, `_PendingStart` makes a reservation withdrawable, and `_Chain` serialises
+per-job effects. The pool-of-one refusal in `start()` and the single `_pending_retry` slot are the
+two pieces that are explicitly scaffolding.
+
+**Default 3, minimum 1** (`REQ-013`). Configurable, which makes it the first setting with a
+runtime effect — where that setting lives is a decision this task must make rather than assume.
+
+#### Acceptance criteria
+
+- N sessions run concurrently, N is configurable, and the limit is respected **exactly** — not
+  "about N", asserted by counting live sessions at the moment the pool is saturated
+- **Lowering the limit while running drains rather than kills.** A running download is work a user
+  asked for; the new limit governs what starts next
+- Raising it starts waiting jobs without waiting for a tick that happens to fire
+- `is_idle`, `active_job_ids()` and `shutdown()` account for every slot, every reservation and
+  every waiting job — `T016-R1` is what a missed reservation costs
+- Scheduling order is stated and asserted: `queue_position` already exists and is allocated inside
+  the insert transaction
+
+#### Out of scope
+
+- Per-job priority beyond queue order, and pausing to free a slot (`T-080`)
+- Rate limiting or bandwidth sharing between sessions
+
+---
+
+### T-079 — The queue view: many jobs, each with its own progress
+
+**Status:** Proposed
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 2
+**Depends on:** `T-078`
+**Relevant context:** `REQ-015`, `NFR-001`, `T-017`, `T-059`, `T040-R1`
+**Affected surfaces:** `ui/`, `main_window.py`
+**Risk:** Medium — the repaint discipline that made one job cheap is what N jobs will test
+
+#### Scope
+
+Phase 1 shows **one** job: `MainWindow.progress_view`, a single `JobProgressView`. Phase 2 needs a
+table — every job, its status, its progress, whatever it is doing.
+
+**`T-017`'s lessons transfer directly and are worth reading before starting.** Progress messages
+arrive faster than a human can read, so the view coalesces on a `REPAINT_INTERVAL_MS` timer rather
+than repainting per message; with N jobs that stops being an optimisation and becomes the thing
+that keeps `NFR-001` true. `describe_bar` is a pure function precisely so the same rendering rule
+cannot drift between paths — a table has more paths, not fewer. And `T-059` found a view rendering
+a finished job from the wrong source: a row for a job that finished before the view existed is the
+same question.
+
+#### Acceptance criteria
+
+- Three concurrent downloads show independent, accurate progress with the UI interactive
+  throughout — the phase's first exit criterion, asserted rather than observed
+- A row opened onto a job that is already finished renders its ending, not an empty bar (`T-059`)
+- The table's keyboard order is declared and asserted per state, as `T-060` established
+- Repaint cost is bounded and measured with N rows, not argued from the single-job case
+
+#### Out of scope
+
+- Sorting and filtering, which are `REQ-016`'s neighbours but not its text
+- The log view (`T-084`) and history (`T-085`), which are their own surfaces
+
+---
+
+### T-080 — Pause, resume, retry and remove, per job
+
+**Status:** Proposed
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 2
+**Depends on:** `T-078`, `T-079`
+**Relevant context:** `REQ-015`, `T-051`, `core/job_state.py`, `T036-R1`
+**Affected surfaces:** `downloader/manager.py`, `ui/`
+**Risk:** Medium — every one of these is a state transition plus an effect, which is `T036-R1`
+
+#### Scope
+
+**The state machine already models this.** `RUNNING → PAUSED`, `PAUSED → RUNNING`, and
+`FAILED → QUEUED` are all in `_TRANSITIONS`, with comments explaining why resume returns to
+`RUNNING` rather than `READY` and why retry re-enters the queue. What is missing is the machinery.
+
+**Pause needs a decision this task must make, not assume.** yt-dlp has no pause; stopping means
+ending the session. Whether `PAUSED` keeps the partial file for `REQ-017`'s resume — Phase 3 — or
+discards it changes what a user gets back, and the honest answer may be that Phase 2's pause is
+"stop and remember", with resume restarting. Say which, in `DECISIONS.md`.
+
+**Remove needs one too.** Removing a queued job is obvious; removing a running one is a cancel
+plus a delete, and removing a completed one raises whether the *file* goes with it. `REQ-015` says
+remove, not delete — the distinction should be explicit in the UI, not implied.
+
+#### Acceptance criteria
+
+- Each action goes through the manager, not through the store — `T036-R1` is what it costs when a
+  caller writes a status change directly and nothing announces it
+- Cancel still meets its 2-second budget under a saturated pool, not just an idle one
+- Pause frees its slot for a waiting job; resume waits for one like any other start
+- Remove states plainly whether the file is affected, and does not remove one it did not write
+
+#### Out of scope
+
+- Resuming a *partial download* from disk (`REQ-017`, Phase 3). Phase 2's resume restarts
+
+---
+
+### T-081 — Reorder pending jobs, and clear completed ones
+
+**Status:** Proposed
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`, `T-079`
+**Relevant context:** `REQ-016`, `ARC-005`, `persistence/repositories.py`
+**Affected surfaces:** `persistence/`, `ui/`
+**Risk:** Low to medium — reordering is a write pattern the writer thread has not seen
+
+#### Scope
+
+`queue_position` already exists and is allocated by the writer inside the insert transaction,
+specifically so two callers cannot read the same `MAX()`. Reordering is the first thing that
+*rewrites* it, for several rows at once.
+
+#### Acceptance criteria
+
+- Reordering is one transaction: a queue half-reordered by a crash is a queue in an order nobody
+  chose
+- Only pending jobs reorder; a running job's position is not a promise the pool can keep
+- Clear-completed removes records, states whether history keeps them (`T-085`), and never touches
+  a file
+- The order the pool starts jobs in is the order the table shows — asserted, since a view that
+  disagrees with the scheduler is the `T-075` shape
+
+#### Out of scope
+
+- Drag-and-drop specifically; the requirement is reordering, not a gesture
+
+---
+
+### T-082 — Interrupted jobs are offered for retry at startup
+
+**Status:** Proposed
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`
+**Relevant context:** `REQ-012`, `T-037`, `T-014`
+**Affected surfaces:** `app.py`, `persistence/`, `ui/`
+**Risk:** Low — the recovery exists; the offer does not
+
+#### Scope
+
+Phase 1 already recovers: `compose()` moves jobs left `RUNNING` to `FAILED`/`INTERRUPTED` before
+anything reads the queue, and `test_recovery_is_the_applications_own_and_not_the_tests` proves the
+application does it rather than the test. What Phase 2 adds is the **offer** — and the plural.
+One interrupted job is Phase 1's case; a queue of them is this one.
+
+#### Acceptance criteria
+
+- Every interrupted job is recovered before the queue is readable, not as the user scrolls to it
+- The offer is explicit and refusable; nothing restarts a download the user did not ask to restart
+- Recovering N jobs does not mean N unbatched writes on the writer thread
+
+#### Out of scope
+
+- Automatic resumption without asking
+
+---
+
+### T-083 — Bounded retry with backoff, for network failures only
+
+**Status:** Proposed
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`
+**Relevant context:** `REQ-018`, `core/errors.py`, `is_retryable`, `T-017`
+**Affected surfaces:** `downloader/manager.py`, `core/`
+**Risk:** Medium — an automatic retry that fires on the wrong class is a loop nobody asked for
+
+#### Scope
+
+The taxonomy already distinguishes retryable failures, and `is_retryable` already governs whether
+the progress view offers a Retry control — `DRM_PROTECTED` never reaches it (`SEC-001`,
+`REQ-EXCL-001`). This adds *automatic* retry, and the requirement is narrow: `NETWORK` only.
+
+**The narrowness is the point.** An `UNSUPPORTED_URL` retried on a timer is a request the site
+will refuse identically, forever. The bound and the backoff both need stating in
+`DECISIONS.md`, not choosing in code.
+
+#### Acceptance criteria
+
+- Only `NETWORK` retries automatically, asserted by driving each other kind and observing none
+- The attempt count is bounded, persisted, and visible — a job silently on attempt four is a job
+  whose history the user cannot see
+- Backoff is real and asserted, and a retry never jumps the queue ahead of jobs that have not run
+- Exhausting the bound leaves the job `FAILED` with the *last* error, still manually retryable
+
+#### Out of scope
+
+- Retrying a partially downloaded file from where it stopped (`REQ-017`, Phase 3)
+
+---
+
+### T-084 — Per-job log capture and a log view
+
+**Status:** Proposed
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`; proved concurrent by `T-053`
+**Relevant context:** `REQ-019`, `T-038`, `NFR-006`, `T-053`
+**Affected surfaces:** `downloader/worker.py`, `logging`, `ui/`
+**Risk:** Medium — redaction has to hold per job, under concurrency
+
+#### Scope
+
+`T-038` established logging with handler-level redaction. `REQ-019` wants the *yt-dlp diagnostic
+output for that job*, copyable for a bug report — so the worker's output has to be attributable to
+a job and kept, not merged into one stream.
+
+`T-053` already exists to prove isolation once the pool permits two live sessions, and is the
+gate this task's correctness rests on.
+
+#### Acceptance criteria
+
+- A job's log contains that job's output and no other's, under a saturated pool
+- Redaction holds per job — a cookie or proxy credential must not survive because two sessions
+  interleaved
+- The text is copyable and verbatim (`NFR-006`); a summarised log is not a bug report
+- Log growth is bounded, and the bound is stated
+
+#### Out of scope
+
+- Shipping logs anywhere, or a crash reporter
+
+---
+
+### T-085 — History of completed downloads
+
+**Status:** Proposed — `T-050` writes the table this reads
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-050`
+**Relevant context:** `REQ-020`, `T-014`, `T-050`, `DAT-001`
+**Affected surfaces:** `persistence/`, `ui/`
+**Risk:** Low to medium — it is the first table whose rows outlive the queue
+
+#### Scope
+
+`REQ-020` names the fields: source URL, title, resolved output path, format used, size, completion
+time. `T-050` is already filed to write the table and notes `T-013` produces the event that fills
+it; this is the record and the view over it.
+
+**The first data that is not transient.** A queue row is about work; a history row is about
+something that happened, and deleting it is a different act. That distinction should be visible in
+the schema and in the UI, and it interacts with `T-081`'s clear-completed.
+
+#### Acceptance criteria
+
+- Every field `REQ-020` names is recorded, and a completed download without one fails a test
+- History survives clearing the queue, and the relationship is stated rather than implied
+- A migration exists if the table lands after any release (`T-048` owns the first real one)
+
+#### Out of scope
+
+- Search, statistics, export
+
+---
+
+### T-086 — Open a completed file, or reveal it in the file manager
+
+**Status:** Proposed
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 2
+**Depends on:** `T-085` for the history half; the queue half needs only `T-079`
+**Relevant context:** `REQ-021`, `T-034`, `SEC-001`, `OPS-004`
+**Affected surfaces:** `ui/`, a small platform seam
+**Risk:** Medium despite being small — it hands a path to the operating system
+
+#### Scope
+
+Small in code, and the one place in Phase 2 where this application asks the OS to act on a path.
+`T-034` already governs where files may be written; this is the reverse direction.
+
+**A path is not a command.** Reveal is `explorer /select,` on Windows and a file-manager call on
+Linux, and both must receive the path as an argument rather than through a shell. A title
+containing a quote is an ordinary title (`T-034` has the fixtures), and it must not become an
+argument boundary.
+
+#### Acceptance criteria
+
+- Open and reveal both work on Linux and on Windows, verified on `STARBASE`
+- A path with quotes, spaces, or a leading dash is passed intact and executes nothing
+- A file that has been moved or deleted says so rather than failing silently
+- Nothing outside the output directory can be opened through this route
+
+#### Out of scope
+
+- Choosing which application opens a file
+
+---
+
+### T-087 — Single-instance guard
+
+**Status:** Proposed
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** nothing technical; wants a `DECISIONS.md` entry first
+**Relevant context:** `A-004`, `DAT-001`, `ARC-005`, `OPS-004`
+**Affected surfaces:** `app.py`, a platform seam, `ai/DECISIONS.md`
+**Risk:** Medium — the failure it prevents is two writers on one database
+
+#### Scope
+
+`A-004` assumes a single local user and **no concurrent instances against the same database**, and
+records itself as *unverified*, with enforcement named as a Phase 2 task. This is that task.
+
+The database is the reason. `ARC-005` puts every write on one writer thread *within a process*;
+two processes have two writer threads and no shared lock discipline.
+
+**The mechanism is a decision, not a detail.** A lock file, a named mutex, an abstract socket and
+Qt's own `QLocalServer` fail differently — a lock file survives a `SIGKILL` and lies about the
+owner; a named mutex is Windows-shaped; an abstract socket is Linux-shaped. Whichever is chosen
+must answer what happens after a crash, since a guard that requires a clean exit strands the user
+on the failure it exists for.
+
+#### Acceptance criteria
+
+- A second launch either attaches to the running instance or refuses in its favour, and says which
+- A stale lock left by a killed process does not permanently block startup
+- Verified on both platforms, `STARBASE` included
+- The chosen mechanism and its crash behaviour are recorded in `ai/DECISIONS.md`
+
+#### Out of scope
+
+- Multi-user or networked access (`A-004` scopes it out)
+
+---
+
+### T-088 — Prove the phase: three at once, killed mid-queue, nothing left behind
+
+**Status:** Proposed — the Phase 2 analogue of `T-037`
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 2
+**Depends on:** `T-078`…`T-087`
+**Relevant context:** `T-037`, `T-019`, `T-073`, `NFR-001`, `ai/TESTING.md` §13
+**Affected surfaces:** `tests/integration/`
+**Risk:** High to omit — it is the phase's exit criteria in executable form
+
+#### Scope
+
+Phase 1's exit criteria were met by tests that existed for other reasons plus `T-037`, which was
+written to close the two that had no owner. Phase 2's criteria name things no feature task would
+assert on its own:
+
+- three concurrent downloads with independent accurate progress and an interactive UI (`NFR-001`)
+- hard-killing the app mid-queue and restarting restores the queue with correct states
+- the concurrency limit respected exactly, and lowering it while running drains cleanly
+- a second launch attaches or refuses
+- **no worker process outlives application exit, on both platforms**
+
+**The last one is where this project's scar tissue is.** `T-019` reaps the tree, `T-066` found
+that a virtualenv adds a process level nobody was testing, and `T-072` established that the
+worker's own `parent-watchdog` — not the captured set — is what actually prevents orphans. With N
+workers the question is whether that holds N times, including for the ones that had not started.
+
+#### Acceptance criteria
+
+- One test per exit criterion, each mutation-verified, each stating what it does not cover
+- Orphan checks count actual processes, and exclude `multiprocessing`'s resource tracker by being
+  the tracker rather than by everything else being excluded (`T-019`)
+- Runs on `STARBASE` as well as Linux; a criterion that says "both platforms" is not met by one
+- The evidence table in `ai/IMPLEMENTATION_PLAN.md` §Phase 2 is filled from real runs, and states
+  its limits — building Phase 1's table is what exposed two wrong rows (`P1EXIT-R1`, `P1EXIT-R2`)
+
+#### Out of scope
+
+- Performance targets beyond `NFR-001`'s responsiveness
+
+---
+
+
 ### T-050 — Write the history table
 
 **Status:** Proposed — Ready now; `T-013` produces the event that fills it
