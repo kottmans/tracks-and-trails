@@ -326,6 +326,15 @@ set. One mutation is killed on Linux; the other survives there **by design**, be
 kills the group regardless of the captured set, so its gate belongs on Windows and is still owed.
 `T-064` is **Approved**.
 
+**The Phase 1 evidence table paid for itself twice, and is not finished** (2026-07-29). Building it
+exposed that the *headless* criterion rested on a static import guard and an environment variable
+that does not remove a display. The correction made a genuinely display-free child — and the
+re-review then found the correction **still incomplete**: that child only calls `_import_ytdlp()`,
+while the test that runs a real `run_session` inherits the desktop environment and calls its child
+headless anyway. **`P1EXIT-R1` remains open and blocking**; the criterion is not ready for
+sign-off. `P1EXIT-R2` is open too — the replacement row cites a `GeoRestrictedError` test for an
+*unsupported URL* criterion, repeating the original mapping defect with a different error class.
+
 **`T-074` narrowed on 2026-07-29, without being solved.** It does not reproduce on Linux — 40
 iterations of the crashing test and 5 whole-module runs, all clean — which does not clear Linux
 (`T-069` was ordering-dependent) but does say the fault is not reachable by repetition here. More
@@ -520,10 +529,17 @@ on the worker's side of the queue. `ai/TESTING.md` §13 now has the general form
 
 - **`T-033` — implemented, not closed** (`P1-R2`). The spec collects yt-dlp's submodules and
   data files; the probe resolves an extractor *by name* through the lazy machinery and asserts
-  the bundled version against the pin (`T033-R1`). It stays **In Review** until the frozen jobs
-  run on both platforms: the local probe is source-mode and proves nothing about the artifact,
-  which is the entire subject of the task. An earlier version of this file called it "closed"
-  here while listing it as pending above — the contradiction `P1-R2` reported.
+  the bundled version against the pin (`T033-R1`). **The Linux half is now complete**, produced
+  against a real frozen artifact on 2026-07-29 and independently re-verified by the reviewer:
+  194 260 KiB, 1751 extractors, version against pin, frozen smoke green with no orphan. What
+  remains is the **Windows** frozen run, which is external because both `frozen` jobs are
+  GitHub-hosted, and the **collection-removal negative**, which is *not* external — the same
+  local build can produce it.
+
+  *(This said "the local probe is source-mode and proves nothing about the artifact", which was
+  true when written and stopped being true when the artifact was built. `T033-R3`. An earlier
+  version called the task "closed" here while listing it as pending above — the contradiction
+  `P1-R2` reported.)*
 
 ## Open questions for the maintainer
 

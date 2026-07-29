@@ -6025,3 +6025,57 @@ required condition to gates that never create that condition. The unsupported-UR
 already covered, but its row names the wrong test and fixture class. T-033 remains Blocked for its
 external Windows and exact-CI evidence; its local-evidence wording gets a non-blocking
 current-truth follow-up.
+
+## 2026-07-29 — Phase 1 evidence-table focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `13138e3`  **Head:** `f852bed`
+**Scope:** Corrections for `P1EXIT-R1`, `P1EXIT-R2`, and `T033-R3`
+**Boundary classification:** Integration-test addition and documentation/evidence; no production
+source, workflow, dependency, or build-configuration change
+**Verdict by finding:** `P1EXIT-R1` **Partially corrected, still open**; `P1EXIT-R2` **Still
+open, non-blocking**; `T033-R3` **Partially corrected, still open and non-blocking**
+**Overall verdict:** **Changes requested** on `P1EXIT-R1`. The ordinary initial-plus-focused
+review budget is exhausted with a blocking Medium remaining.
+
+The correction is the single commit `f852bed`. `HEAD` and `origin/main` both resolved to it, and
+the tree was clean before this review record was appended.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Focused evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `P1EXIT-R1` | **Medium** | **Yes — Phase 1's headless exit criterion** | The environment half is genuinely corrected. `test_the_worker_really_runs_with_no_display_attached` launches a fresh interpreter with `DISPLAY` and `WAYLAND_DISPLAY` absent and asserts their absence inside that child. Removing `env=environment` failed independently and named both inherited values. The workload half remains split away from that condition: the scrubbed child calls only the private `_import_ytdlp()` helper and checks that it returned. It never calls `run_session`, emits or validates a protocol sequence, or completes worker work. The separate `test_the_worker_runs_in_a_real_spawned_process_with_no_display` does those things, but still starts an ordinary `multiprocessing.Process` under the inherited desktop environment and still calls that child “headless.” A display dependency introduced after yt-dlp resolution can therefore leave the claimed headless gate green. | Put the scrub and the worker session in the same observation. For example, remove the display variables before starting the existing real spawned-process test, assert their absence inside `_spawn_target`, then run and validate its real `run_session`/queue path. Mutation-check both halves: restoring the inherited environment and introducing a worker-path display dependency must each fail. Rename or correct the old test/docstring so it no longer independently claims an inherited-display child is headless. | **Still open** |
+| `P1EXIT-R2` | **Low** | **No** | The row no longer mislabels an inline exception as a fixture, and `test_a_failure_reaches_the_parent_classified_and_verbatim` does exercise `run_session`, queue carriage, protocol validation, and exact message equality. It raises `GeoRestrictedError`, however, and asserts `GEO_RESTRICTED`. It never constructs `UnsupportedError` or observes `UNSUPPORTED_URL`, so it is still not evidence for the row “An unsupported URL produces a failed job.” `test_yt_dlps_bug_report_boilerplate_does_not_reach_the_user` likewise uses generic `ExtractorError`. The replacement therefore repeats the original mapping defect with a different unrelated error class. | Either inject `UnsupportedError("Unsupported URL: ...")` through the same `run_session` path and assert `UNSUPPORTED_URL` plus exact text, or cite the existing `UnsupportedError -> UNSUPPORTED_URL` classification and unsupported-URL UI/storage tests together. Retain the honest statement that no live unsupported URL is sent through yt-dlp. | **Still open, non-blocking** |
+| `T033-R3` | **Low** | **No** | The local Linux positive evidence is real. The retained artifact occupies **194260 KiB** by the workflow's `du -sk` measure; an independent `--ytdlp-probe` reported version `2026.07.04` against pin `2026.7.4`, 1,751 extractors, and `youtube` from `yt_dlp.extractor.youtube`; `frozen_smoke.py` completed in about three seconds with one top-level start and no orphan. Two current-truth problems remain. First, `ai/TASKS.md:1325-1328` calls the collection-removal mutation “genuinely external,” although the same local PyInstaller build can remove line 37 of the spec and run the negative probe; T-033 is not “Blocked on Windows only” while that local acceptance proof remains undone. Second, lines 1345-1348 still say the local run is source-mode and both frozen platforms are pending, and `ai/STATUS.md:521-525` repeats the same superseded state. | Run and revert the collection-removal mutation locally, or accurately leave that local evidence pending. Then make TASKS and STATUS agree on one state: Linux frozen positive complete, Linux collection negative complete or pending, Windows frozen external. Only the Windows half is an external blocker. | **Partially resolved, still open and non-blocking** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary identity | `HEAD == origin/main == f852bed`; clean tree before the review append |
+| `git diff --check 13138e3..f852bed` | Passed |
+| New and related evidence tests | **7 passed** |
+| `tests/integration/test_worker.py` | **55 passed** in 4.29 s |
+| Headless positive control | Removing `env=environment` **failed** as intended, naming `DISPLAY=:0` and `WAYLAND_DISPLAY=wayland-0`; mutation restored |
+| `ruff check tests/integration/test_worker.py` | Passed |
+| `ruff format --check tests/integration/test_worker.py` | Passed; one file already formatted |
+| Bare `mypy` | Passed: **78 source files** |
+| Bare `mypy --platform win32` | Passed: **78 source files** |
+| Retained Linux artifact size | **194260 KiB** via `du -sk dist/tracks-and-trails` |
+| Retained artifact `--ytdlp-probe` | Passed: bundled baseline `2026.07.04`, pin `2026.7.4`, 1,751 extractors, `youtube` resolved |
+| Retained artifact `frozen_smoke.py` | Passed in about 3 s: child spawned, message exchanged, child reaped, one top-level start, no orphan |
+
+### Final disposition
+
+The correction establishes a real display-free child and a non-vacuous environment guard, but it
+does not yet establish a **worker session** under that condition. `P1EXIT-R1` therefore remains a
+blocking Medium finding and the Phase 1 headless criterion is not ready for sign-off.
+
+`P1EXIT-R2` and `T033-R3` remain non-blocking corrections: the former still cites a geo-restriction
+test for unsupported-URL behavior; the latter has real Linux positive frozen evidence but still
+misclassifies its local negative proof as external and retains contradictory source-only text.
+
+Under `AGENTS.md` §10, the ordinary review budget is now exhausted with a blocking Medium finding.
+Another focused correction pass requires the maintainer to authorize it, accept the documented
+risk, change scope, or carry it into a named follow-up.

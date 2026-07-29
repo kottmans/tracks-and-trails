@@ -1322,10 +1322,18 @@ Windows, and the two `frozen` jobs being GitHub-hosted.)*
 That is the version-against-pin assertion, the extractor resolution through the lazy machinery,
 the size record, and `T-020`'s spawn proof, all on Linux and none of it waiting on anything.
 
-**Still owed, and genuinely external:** the same run on Windows, and the collection-removal
-negative — the mutation that strips `collect_submodules("yt_dlp")` from the spec and shows the
-probe *fails*. Without that negative, a passing probe cannot distinguish "the collection works"
-from "the probe cannot fail", which is this project's recurring failure shape.
+**Still owed. Only one of the two is external** (`T033-R3`, corrected):
+
+- **The collection-removal negative is *not* external.** The same local build can strip
+  `collect_submodules("yt_dlp")` from line 37 of the spec and run the negative probe. Until that
+  is done a passing probe cannot distinguish "the collection works" from "the probe cannot fail",
+  which is this project's recurring failure shape — and **`T-033` is not "Blocked on Windows
+  only" while a local acceptance proof remains undone.** Pending, not blocked.
+- **The Windows frozen run is external.** Both `frozen` jobs are GitHub-hosted.
+
+*(This paragraph called the collection-removal mutation "genuinely external" in the same breath as
+proving the local build works. It is the second time in two days this task has claimed something
+was unproducible locally on the strength of a belief about the environment rather than a check.)*
 **What landed.** `collect_submodules("yt_dlp")` + `collect_data_files("yt_dlp")` in
 `packaging/tracks-and-trails.spec`; `run_ytdlp_probe()` in `_freeze_probe.py` behind a
 `--ytdlp-probe` flag; a CI step in the `frozen` job on both platforms.
@@ -1344,8 +1352,13 @@ but under `OPS-003` a Windows failure is diagnosed from this log and nothing els
 
 **Verified locally:** 1751 extractors, `youtube` resolved, exit 0. Both probe mutations
 (threshold above reality; unresolvable name) exit non-zero, so the gate is wired to the exit
-code and not vacuous. Frozen-artifact evidence on both platforms is pending CI — the local run
-is source-mode and deliberately claims nothing about the frozen build.
+code and not vacuous.
+
+*(This paragraph ended "Frozen-artifact evidence on both platforms is pending CI — the local run
+is source-mode and deliberately claims nothing about the frozen build." That was true when
+written and is not now: **the Linux frozen evidence is complete**, produced against a real
+artifact on 2026-07-29 and independently re-verified by the reviewer. See **Linux evidence**
+above. Windows remains pending. `T033-R3`.)*
 
 **Owner:** Implementer
 **Priority:** High — blocks any usable release, and fails in a way that looks like a site bug
