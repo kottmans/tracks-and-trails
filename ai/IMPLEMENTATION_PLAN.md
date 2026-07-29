@@ -127,7 +127,7 @@ Prove `ARC-002`.
 > `windows desktop` job. A finding that reproduces only on a GitHub-hosted image and not there does
 > not block this exit — `T-056` and `T-068` are open on exactly that basis.
 >
-**Not exited. Standing as of 2026-07-29.**
+**Exited 2026-07-29.** The Phase 1 exit review is recorded in `ai/REVIEWS.md`.
 
 *(The first version of this table cited the layering test and `QT_QPA_PLATFORM=offscreen` as
 evidence for the headless criterion. Neither establishes it — a static import guard is a different
@@ -143,10 +143,10 @@ them, which is the argument for having built it.)*
 | Cancel stops the download within 2 seconds with no orphaned process | `T-013` and `T-019`. `CANCEL_BUDGET_SECONDS = 2.0` is asserted by `test_cancel_stops_a_real_in_flight_download_within_the_budget`, and the escalation path — a worker that ignores both the event and `SIGTERM` — by `test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget`. Orphans are covered separately by `test_cancelling_a_download_kills_what_the_worker_spawned` and `test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind` |
 | `kill -9` of the worker is reported as `WORKER_CRASH` and the app stays responsive | `test_a_killed_worker_becomes_worker_crash_with_its_exit_code` and `test_the_application_survives_a_worker_crash_and_can_start_another`. `test_a_worker_that_exits_zero_without_an_outcome_is_a_crash_not_a_success` covers the case `REQ-028` cares about most |
 | Job state survives an application restart mid-download | `T-037`, `test_a_job_killed_mid_download_is_recovered_by_the_next_start` — a real `SIGKILL` to a separate interpreter with the row confirmed `RUNNING` first. `test_recovery_is_the_applications_own_and_not_the_tests` plants the row directly, so the claim is about startup rather than about what the previous test left behind |
-| An unsupported URL produces a failed job showing the extractor's own message | `test_an_unsupported_url_fails_the_job_with_the_extractors_own_message` — raises `UnsupportedError` through a real `run_session`, and asserts `UNSUPPORTED_URL` **and** the message by equality. Mutation-verified: removing the `UnsupportedError` row from the adapter's table makes it answer `EXTRACTOR_ERROR`, which the parent class would silently supply. **Limit, stated:** the error is injected at the `_extract` seam, so yt-dlp's own recognition of such a URL is not exercised |
+| An unsupported URL produces a failed job showing the extractor's own message | `test_an_unsupported_url_fails_the_job_with_the_extractors_own_message` raises `UnsupportedError` through a real `run_session`, and asserts `UNSUPPORTED_URL` **and** the message by equality. `test_an_unsupported_url_shows_the_extractors_message_character_for_character` proves the UI shows that kind and message without paraphrase; `test_a_failed_probe_leaves_the_job_failed_and_recorded` proves the corresponding job is stored as `FAILED` with both values intact. Mutation-verified: removing the `UnsupportedError` row from the adapter's table makes it answer `EXTRACTOR_ERROR`, which the parent class would silently supply. **Limit, stated:** the error is injected at the `_extract` seam, so yt-dlp's own recognition of such a URL is not exercised |
 | Worker code runs with no display attached | `test_the_worker_runs_in_a_real_spawned_process_with_no_display` — the scrub and the workload are now **one observation**: `monkeypatch.delenv` removes `DISPLAY` and `WAYLAND_DISPLAY` before `spawn` copies the environment, `_spawn_target` asserts their absence in the child, and that same child runs a real `run_session` whose message sequence is protocol-validated. Both halves mutation-verified: restoring the inherited environment fails, and injecting `os.environ["DISPLAY"]` into `run_session` fails. `test_the_worker_really_runs_with_no_display_attached` covers resolution separately |
-| **Verified on Linux and Windows** | **Not met.** See below |
-| **Reviewed and signed off in `REVIEWS.md`** | **Not met.** The exit review has not been called |
+| **Verified on Linux and Windows** | **Met with accepted residual risk.** Linux: the documented gate passed on the maintainer machine during the exit review — ruff and format clean, native and Windows-platform mypy clean, **1430 passed, 11 skipped, 2 deselected**. Windows: `T-073` run `30415333608` passed the full `STARBASE` gate — **1388 passed, 20 skipped** — with the unexplained one-time access violation retained as open Medium `T-074` and explicitly accepted by `OPS-007` |
+| **Reviewed and signed off in `REVIEWS.md`** | **Met 2026-07-29.** The Phase 1 exit review approved all eight criteria, independently reran the Linux gate and criterion mutations, and recorded the `OPS-005` and `OPS-007` residuals rather than treating them as fixes |
 
 > **The Windows half is measured** (`T-073`, 2026-07-29): run `30415333608` ran lint, format,
 > Windows-platform types, the Qt baseline, the real-plugin desktop slice and the full suite on
@@ -158,15 +158,16 @@ them, which is the argument for having built it.)*
 > named in the decision: a change that adds a **system-library** dependency would pass on a
 > desktop and fail on a bare Linux install.
 >
-> **The criterion is still not met, and `T-074` is why.** The Windows suite has exited once with
-> an access violation, in ordinary `ResultPump` delivery — the `ARC-002` path this phase exists to
-> prove. A deliberate batch then ran **0 crashes in 12** at `ea53c71` (run `30429327464`), which
-> is evidence against the original "roughly one in four" and **not** a rate: the earlier
-> observations came from materially different heads, and one event supports no bound (`T074-R1`).
-> The faulting object is unknown and product-versus-harness is unresolved, so a gate that has
-> crashed once and cannot be explained does not verify this criterion. Downgrading it is the
-> maintainer's decision, recorded here or in `ai/DECISIONS.md`, and the exit review is where it
-> is settled.
+> **The exit review calls the criterion met with `OPS-007`'s residual accepted, not resolved.**
+> The Windows suite exited once with an access violation in ordinary `ResultPump` delivery — the
+> `ARC-002` path this phase exists to prove. The faulting object and product-versus-harness
+> classification remain unknown. Three deliberate full-suite batches then produced **0 crashes in
+> 51 runs**: 12 at `ea53c71` (run `30429327464`), 24 pre-`T-090` (run `30454206697`), and 15
+> post-`T-090` at `35fc7ec` (run `30478557533`). Along with 60 isolated-test runs and 250
+> in-process iterations, that is **361 attempts with no reproduction**. The pre-fix sample was
+> already clean, so this does **not** establish `T-090` as the cause. `T-074` remains open at
+> Medium with its acceptance criteria unmet; `T-092` owns the crash-dump trap, and recurrence
+> reopens the decision.
 >
 > *(This previously read "roughly one run in four", which was the anecdote's denominator rather
 > than a measurement.)*

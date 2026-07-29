@@ -6577,3 +6577,124 @@ acceptance criteria.
 No blocking finding remains. T-090 is **Approved with follow-up T-091** and its implementation
 head is ready to file Complete. This approval does not approve T-074, resolve COORD-R8, or make
 Phase 1 ready for its exit review.
+
+## 2026-07-29 — Phase 1 exit review
+
+**Reviewer:** Codex (Reviewer)
+**Subject:** The eight Phase 1 exit criteria and their evidence table in
+`ai/IMPLEMENTATION_PLAN.md`
+**Phase span inspected for context:** `7b7860d..e2e60e9`; previously approved implementation
+boundaries were not re-reviewed
+**Verdict:** **Approved — Phase 1 exits with the `OPS-005` and `OPS-007` residuals explicit**
+
+This review challenged the two decisions that removed the last blockers rather than treating
+them as fixes. Neither decision closes its underlying task. `T-066` remains Blocked on
+frozen-artifact evidence deferred to Phase 5, and `T-074` remains open at Medium with an
+unexplained access violation and all four diagnostic criteria unmet.
+
+### Finding
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `P1EXIT-R3` | **Low** | **No — corrected in the reviewed table** | `IMPLEMENTATION_PLAN.md:146` cited only `test_an_unsupported_url_fails_the_job_with_the_extractors_own_message`. That worker-level test proves the typed `Failed` protocol outcome and exact text, but it neither creates a durable `Job` nor shows text in the UI, so by itself it did not prove the criterion's “failed job showing” claim. `tests/ui/test_add_dialog.py:1448` proves character-for-character display and `:1469` proves the queued job is stored `FAILED` with the same kind and message. Both passed in the full gate. | Cite all three observations and keep the existing `_extract`-seam limit explicit. | **Resolved in this review** |
+
+No blocking finding remains.
+
+### Decision challenge: `OPS-007`
+
+The access violation is a real, unresolved event in a production-path module, and accepting it
+weakens the confidence conveyed by “verified on Windows.” It is nevertheless an acceptable
+phase residual on the record available:
+
+- The event was loud—an interpreter crash and red gate—not a silent wrong download or path-safety
+  failure. Product-versus-harness remains unknown and is stated that way.
+- The evidence does not imply that `T-090` fixed it. The pre-`T-090` population was already clean,
+  and both the decision and the updated table say so.
+- The attempt arithmetic is internally consistent: `12 + 24 + 15 = 51` deliberate full-suite
+  runs, and `51 + 60 + 250 = 361` total attempts. The earlier 373 count would double-count the
+  12-run batch already included in the 36-run pre-fix population.
+- The High-to-Medium downgrade satisfies `AGENTS.md` §10. `OPS-007` is an explicit maintainer
+  approval; it states the reasons—reproduction routes exhausted, further repetition costly, loud
+  failure mode—and records the downgrade against `T-074`. This exit review records that
+  disposition with the finding rather than inferring it from a clean run.
+- `T-092` makes recurrence diagnostic by capturing a dump, and `OPS-007` reopens on any recurrence
+  or on a user-reachable defect traced to `result_pump.py`.
+
+This is risk acceptance, not proof that the event cannot recur.
+
+### Decision challenge: amended `OPS-005`
+
+Deferring `T-066`'s remaining frozen evidence to Phase 5 is sound for this phase:
+
+- Phase 1's deliverables and eight exit criteria contain no frozen-build, installer, virtualenv,
+  or packaging condition.
+- Phase 0 owns and has exited on the frozen `spawn` smoke through `T-020`. The plan's additional
+  frozen-build risk-register row also assigns that mitigation to Phase 0.
+- Phase 5 owns the actual Windows PyInstaller distribution, and `T-033` owns inclusion and
+  validation of the yt-dlp baseline there.
+
+The concession is material: a different frozen process-tree shape could mean `T-019`'s source or
+virtualenv reaping evidence does not describe the shipped application. The decision names that
+assumption and places its measurement beside the artifact that creates the shape. Holding the
+vertical-slice exit for a Phase 5 artifact would invert the plan's sequencing.
+
+The earlier review sentence saying the frozen blocker remained predates this explicit amendment.
+It is superseded history, not an unresolved contradiction.
+
+### Exit-criterion verification
+
+| Criterion | Reviewer result |
+|---|---|
+| Real download, progress, final bytes | Met. Real yt-dlp downloaded from a loopback HTTP server; the evidence test asserts file, reported, stored, and served byte counts agree |
+| Cancel under 2 seconds, no orphan | Met. Real-byte cancellation, stubborn-worker escalation, and both descendant-reaping cases passed |
+| Killed worker becomes `WORKER_CRASH`; app survives | Met. Exit-code mapping, zero-without-outcome, and restart-after-crash tests passed |
+| State survives restart mid-download | Met. Separate-interpreter hard kill leaves a confirmed `RUNNING` row which the next application start recovers |
+| Unsupported URL becomes a failed job with exact message | Met after `P1EXIT-R3`'s citation correction; the `_extract` injection limit remains explicit |
+| Worker runs with no display | Met. One spawned-child observation asserts the variables absent and runs real `run_session`; both display mutations were independently killed |
+| Linux and Windows verified | Met with residual. Linux passed below; approved `T-073` evidence records the full `STARBASE` gate, with `T-074` dispositioned by `OPS-007` |
+| Reviewed and signed off | Met by this review |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Working-tree isolation | Clean at `e2e60e9` before reviewer-owned documentation edits; no concurrent work observed |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **106 files** already formatted |
+| `mypy src` | Passed; **35 source files** |
+| Configured `mypy` | Passed; **78 files** |
+| Configured `mypy --platform win32` | Passed; **78 files** |
+| Thirteen named criterion tests | **13 passed, 125 deselected** in 10.36 s |
+| Full default suite | **1430 passed, 11 skipped, 2 deselected** in 124.41 s |
+| Headless inherited-display mutation | Killed: the spawned child observed `DISPLAY` and `WAYLAND_DISPLAY` and failed |
+| Headless workload-display mutation | Killed: adding a display lookup to `run_session` prevented the required protocol sequence |
+| Unsupported-error mapping mutation | Killed: removing the `UnsupportedError` mapping produced `EXTRACTOR_ERROR` instead of `UNSUPPORTED_URL` |
+| Windows run arithmetic and workflow | Run IDs, populations, totals, and `windows desktop` gate shape agree across `T-073`, `T-074`, `OPS-007`, and the workflows |
+
+The first concurrent mypy attempt shared one incremental cache across native and Windows-platform
+processes and produced two spurious `ctypes.windll` errors. After moving that cache aside, the
+documented commands passed sequentially; a no-incremental Windows-platform run passed as a control.
+This was a review-harness collision, not a project finding.
+
+The private GitHub run contents were not independently downloadable with the credentials available
+in this environment. This review therefore relies on the already-approved committed `T-073`
+external evidence for the Windows execution, while independently checking its workflow shape and
+the arithmetic carried into `OPS-007`.
+
+### Residuals carried out of the phase
+
+- `T-074`: one unexplained Windows access violation in or adjacent to `ARC-002` result delivery;
+  accepted by `OPS-007`, open at Medium, with `T-092` as the recurrence trap.
+- `T-066`: frozen-artifact process-tree evidence remains unobtainable while hosted quota is
+  exhausted; accepted by amended `OPS-005` and measured with `T-033` in Phase 5.
+- Linux verification is a maintainer-machine run under `OPS-006`; it does not detect a dependency
+  newly introduced on a system library already present on that desktop.
+- yt-dlp's own unsupported-URL recognition is not exercised by the criterion test; the typed error
+  is injected at the adapter `_extract` seam.
+
+### Final disposition
+
+All eight Phase 1 criteria are met at the level the accepted decisions define. The two unresolved
+items are documented residuals with owners and reopening conditions, not hidden green claims.
+
+**Phase 1 exits on 2026-07-29.**

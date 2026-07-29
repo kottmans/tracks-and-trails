@@ -12,20 +12,30 @@
 
 ---
 
-**Current phase:** **Phase 1 — Vertical slice.** Phase 0 **formally exited 2026-07-26**.
+**Current phase:** **Phase 2 — Queue and concurrency.** **Phase 1 formally exited 2026-07-29**;
+Phase 0 exited 2026-07-26. **No Phase 2 task is Ready yet** — `P2PLAN-R1`, `R2` and `R3` gate the
+first promotion out of Proposed, and none of them needs production work.
 **Overall state:** Phase 0's five exit criteria were each verified rather than asserted, and the
 evidence is recorded in `IMPLEMENTATION_PLAN.md` §Phase 0 — including a fresh mutation run
 proving the layering test still fails on a deliberate `PySide6` import in `core/`.
 
 `T-010`, `T-011` and `T-026` are complete. `ARC-003` settled the IPC versioning question.
 
-**Where Phase 1 stands, 2026-07-29. The exit review is the next step, and no task blocks it.**
-Six of the eight exit criteria have evidence in `IMPLEMENTATION_PLAN.md`'s table, and
-`P1EXIT-R1`/`P1EXIT-R2` are Resolved. Criterion 8 (*the exit review*) has not been called;
-`COORD-R8` was its stated precondition and is discharged. Criterion 7 (*verified on Linux and
-Windows*) rests on `T-073`'s measured `STARBASE` run — 1388 passed, 20 skipped — with `T-074`'s
-residual dispositioned by **`OPS-007`** rather than resolved. **Nothing is In Review:** `T-072`,
-`T-073` and `T-090` are Approved and filed Complete.
+**Phase 1 exited 2026-07-29, with two residuals explicit rather than resolved.** All eight criteria
+are met and the exit review is recorded in `ai/REVIEWS.md`. It challenged the two decisions that
+removed the last blockers instead of treating them as fixes, and upheld both: `OPS-007` is genuine
+risk acceptance and **not** evidence that `T-090` fixed the access violation, the 51/361 arithmetic
+checks out, and the High → Medium downgrade satisfies §10. `P1EXIT-R3` was found and resolved in the
+same pass — the unsupported-URL row cited only the worker-level test, which proves the typed
+outcome but neither creates a durable job nor shows text in the UI; it now cites all three
+observations and keeps the `_extract`-seam limit explicit. Criterion 7 is **met with accepted
+residual risk**: Linux 1430 passed / 11 skipped / 2 deselected, Windows `T-073` run `30415333608`
+1388 passed / 20 skipped.
+
+**Neither underlying task is closed.** `T-074` stays open at Medium with all four diagnostic
+criteria unmet; `T-066` stays Blocked with its frozen-process assumption explicit and deferred to
+Phase 5 alongside `T-033`. `T-092` owns the crash-dump trap, and a recurrence returns `T-074` to
+High.
 
 **Two blockers were dispositioned by decision, not by being fixed, and the difference matters.**
 `T-066` by the `OPS-005` amendment; `T-074` by `OPS-007`, which accepts its unreproduced access

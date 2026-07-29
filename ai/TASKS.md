@@ -12,16 +12,17 @@
 Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete · Cancelled.
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
-**Start here:** **Phase 1's critical path is built and approved**, and the queue is no longer
-only paperwork. `T-036` composed the object graph and `T-037` proved a download completes and
-survives a `SIGKILL`. **No task now blocks the exit review — it is the next step.** The carry is
-closed: `T-072`, `T-073` and `T-090` are Approved and filed Complete, and `## In Review` is empty.
-Two blockers were dispositioned by maintainer decision on 2026-07-29 rather than completed, and
-that distinction is the point: **`T-066`** by the `OPS-005` amendment (its frozen evidence is
-unobtainable while the hosted quota is out, and every frozen criterion in the plan is Phase 0's),
-and **`T-074`** by **`OPS-007`** (accepted as residual risk after 361 attempts produced no
-reproduction). Both stay open. Neither is fixed. The exit review is where criterion 7 is recorded
-against `T-073`'s measured Windows run, with `OPS-007` named as the disposition of the residual.
+**Start here: Phase 1 exited 2026-07-29.** All eight criteria are met and the exit review is in
+`ai/REVIEWS.md`. **The current phase is Phase 2, and nothing in it is Ready yet** —
+`P2PLAN-R1`, `R2` and `R3` gate the first promotion out of Proposed, and none of them needs
+production work. That is the next work.
+
+**Two Phase 1 blockers were dispositioned by maintainer decision rather than completed, and the
+exit review upheld both while keeping them open.** `T-066` by the `OPS-005` amendment (its frozen
+evidence is unobtainable while the hosted quota is out; the assumption is explicit and moves to
+Phase 5 with `T-033`), and `T-074` by `OPS-007` (residual risk accepted after 361 attempts produced
+no reproduction; **not** a claim that `T-090` fixed it). Neither task is closed. `T-092` owns the
+crash-dump trap and a recurrence returns `T-074` to High.
 
 - **`T-074` — open, Medium, accepted as residual risk** (`OPS-007`). The Windows suite exited once
   with an **access violation** in the result pump's ordinary message delivery, and it has never
