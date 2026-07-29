@@ -396,6 +396,55 @@ def test_a_failure_reaches_the_parent_classified_and_verbatim(
     assert failed.message == "This video is not available in your country"
 
 
+def test_an_unsupported_url_fails_the_job_with_the_extractors_own_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Phase 1's fifth exit criterion, with the error class the criterion is about (`P1EXIT-R2`).
+
+    The criterion is *an unsupported URL produces a failed job showing the extractor's own
+    message*. The evidence offered for it was
+    `test_a_failure_reaches_the_parent_classified_and_verbatim`, which raises `GeoRestrictedError`
+    and asserts `GEO_RESTRICTED` — a real session and a real assertion about a **different**
+    failure. Citing it repeated the mapping defect it was meant to correct, one error class over.
+
+    `UnsupportedError` is what yt-dlp raises for a URL no extractor claims, and
+    `ytdlp_adapter`'s table maps it to `UNSUPPORTED_URL` *before* the `ExtractorError` entry it
+    subclasses — order that is load-bearing and worth exercising from the session end.
+
+    **Still honest about its limit:** the error is injected at the `_extract` seam rather than
+    produced by sending a genuinely unsupported URL through yt-dlp. What this proves is that such
+    an error is classified correctly and carried verbatim to the parent; what it does not prove is
+    yt-dlp's own recognition of the URL.
+    """
+    from yt_dlp.utils import UnsupportedError
+
+    # `UnsupportedError` takes the **URL**, not a message, and writes the sentence itself.
+    # Constructing it with a ready-made message produces "Unsupported URL: Unsupported URL: ..."
+    # — which this test caught on its first run, and which is a small demonstration that the
+    # message really is carried through untouched rather than rebuilt on our side.
+    url = "https://example.invalid/nothing-here"
+    text = f"Unsupported URL: {url}"
+
+    def unsupported(*_args: Any, **_kwargs: Any) -> Any:
+        raise UnsupportedError(url)
+
+    monkeypatch.setattr(worker_module, "_extract", unsupported)
+    queue: Queue[Any] = Queue()
+
+    code = worker_module.run_session(SessionKind.DOWNLOAD, "job-1", request_for(tmp_path), queue)
+
+    messages = drain(queue)
+    assert code == 1
+    validate_sequence(SessionKind.DOWNLOAD, messages)
+    failed = next(m for m in messages if isinstance(m, Failed))
+    assert failed.kind is ErrorKind.UNSUPPORTED_URL, (
+        f"an unsupported URL was classified {failed.kind}. `UnsupportedError` subclasses "
+        f"`ExtractorError`, so a table that checks the parent first silently answers "
+        f"EXTRACTOR_ERROR here."
+    )
+    assert failed.message == text, "the extractor's own message did not survive verbatim"
+
+
 def test_every_session_ends_with_the_sentinel_even_when_everything_fails(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1042,7 +1091,26 @@ def _report_target(queue: Any, directory: str, user_ytdlp: str) -> None:
 
 
 def _spawn_target(queue: mp.Queue[Any], directory: str) -> None:
-    """Runs in the child. Module-level so it is picklable under `spawn`."""
+    """Runs in the child. Module-level so it is picklable under `spawn`.
+
+    **The display check happens here, in the process that does the work** (`P1EXIT-R1`). Asserting
+    it in the parent would prove only what the parent arranged; under `spawn` the child gets a
+    fresh interpreter that inherits the environment, and this is the only place that inheritance
+    can be observed. A failure here surfaces as a non-zero exit code, which the parent asserts.
+    """
+    import os as child_os
+
+    still_visible = {
+        name: child_os.environ[name]
+        for name in ("DISPLAY", "WAYLAND_DISPLAY")
+        if name in child_os.environ
+    }
+    if still_visible:
+        raise AssertionError(
+            f"the spawned worker inherited a display: {still_visible}. Everything this test "
+            f"asserts below would then say nothing about running headless."
+        )
+
     from tracks_and_trails.core.models import DownloadRequest
     from tracks_and_trails.downloader import worker as w
     from tracks_and_trails.downloader.protocol import SessionKind
@@ -1065,19 +1133,44 @@ def _spawn_target(queue: mp.Queue[Any], directory: str) -> None:
     )
 
 
-def test_the_worker_runs_in_a_real_spawned_process_with_no_display(tmp_path: Path) -> None:
-    """`ARC-002` end to end: `spawn`, a real `mp.Queue`, and a headless child.
+def test_the_worker_runs_in_a_real_spawned_process_with_no_display(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`ARC-002` end to end, and Phase 1's sixth exit criterion: a **real session, headless**.
 
     Not mocked (`ai/TESTING.md` §6) — a mocked subprocess cannot fail the way a real one does,
     and `spawn` re-importing the module is exactly the behaviour under test.
+
+    **This test called its child headless for a long time while inheriting the desktop**
+    (`P1EXIT-R1`). `mp.Process` passes `os.environ` down, so `DISPLAY` was set in the child every
+    time it ran. The name was the only headless thing about it.
+
+    The correction that preceded this one split the problem in half and fixed the wrong half: it
+    added a scrubbed interpreter that only resolved yt-dlp, so the *condition* was real and the
+    *workload* was somewhere else. A display dependency introduced anywhere after resolution —
+    in `run_session`, in the queue, in the protocol — would have left both green.
+
+    So the scrub happens here, around the process that runs the real session. `monkeypatch.delenv`
+    removes the variables from this process before `spawn` copies the environment, and
+    `_spawn_target` asserts their absence in the child that actually does the work.
     """
+
+    for variable in DISPLAY_VARIABLES:
+        monkeypatch.delenv(variable, raising=False)
+
     context = mp.get_context("spawn")
     queue: Any = context.Queue()
     process = context.Process(target=_spawn_target, args=(queue, str(tmp_path)))
     process.start()
     process.join(timeout=60)
 
-    assert process.exitcode == 0, "the spawned worker did not exit cleanly"
+    assert process.exitcode == 0, (
+        f"the spawned worker exited {process.exitcode}. Two mutations produce this and the "
+        f"child's traceback in captured stderr tells them apart: the display guard in "
+        f"`_spawn_target` firing means this process failed to scrub `DISPLAY`, while a "
+        f"`KeyError: 'DISPLAY'` from inside `run_session` means the worker path itself grew a "
+        f"display dependency. Both are P1EXIT-R1 failures; only the second is a product defect."
+    )
 
     messages = []
     while not queue.empty():

@@ -1322,13 +1322,43 @@ Windows, and the two `frozen` jobs being GitHub-hosted.)*
 That is the version-against-pin assertion, the extractor resolution through the lazy machinery,
 the size record, and `T-020`'s spawn proof, all on Linux and none of it waiting on anything.
 
-**Still owed. Only one of the two is external** (`T033-R3`, corrected):
+#### The collection-removal negative was run, and **both mutations survived** — 2026-07-29
 
-- **The collection-removal negative is *not* external.** The same local build can strip
-  `collect_submodules("yt_dlp")` from line 37 of the spec and run the negative probe. Until that
-  is done a passing probe cannot distinguish "the collection works" from "the probe cannot fail",
-  which is this project's recurring failure shape — and **`T-033` is not "Blocked on Windows
-  only" while a local acceptance proof remains undone.** Pending, not blocked.
+`T033-R3` was right that this was producible locally. Running it says something worse than the
+finding assumed.
+
+| Build | Artifact | `--ytdlp-probe` |
+|---|---|---|
+| Baseline | 194 260 KiB | OK — 1751 extractors, `youtube` resolved |
+| `collect_submodules("yt_dlp")` → `[]` | 192 300 KiB | **OK — 1751 extractors, `youtube` resolved** |
+| `collect_data_files("yt_dlp")` removed | 194 212 KiB | **OK — 1751 extractors, `youtube` resolved** |
+
+The builds genuinely differed in size, so the mutations applied. **Neither of this task's two
+collection lines is necessary for the probe to pass**, which means the probe cannot detect their
+removal and is not evidence that they do anything.
+
+**The cause is in this task's premise.** Its own comment says "972 of its 1046 modules are
+extractors resolved by name at runtime" and that "static analysis therefore collects the yt-dlp
+core and misses essentially every site". For the pinned yt-dlp that is **not true**:
+`yt_dlp/extractor/_extractors.py` contains **928 static `from .` imports**, so PyInstaller's
+module graph follows them without help. Checked and ruled out as the explanation: there is no
+`yt_dlp` hook in the installed `pyinstaller-hooks-contrib`.
+
+So the artifact is fine — it carries its extractors — but `T-033` currently proves nothing about
+its own change. That is the "gate that cannot fail" shape, arrived at from the other direction:
+not a test that cannot go red, but a fix whose removal cannot be noticed.
+
+**What this does not settle:** whether the lines are harmless insurance against a future yt-dlp
+that returns to lazy resolution, or dead weight to remove. That is a judgment for the maintainer,
+and it wants the Windows build before anything is deleted — `_extractors.py` is version-specific
+and the pin will move.
+
+**Still owed. Only one of the two remaining items is external:**
+
+- **A maintainer decision on what the collection lines are for**, now that removing either one
+  changes nothing observable. Keep them as insurance against a yt-dlp that returns to lazy
+  resolution, or drop them — but the acceptance criterion "the negative run fails" **cannot be
+  met as written**, because the negative run passes.
 - **The Windows frozen run is external.** Both `frozen` jobs are GitHub-hosted.
 
 *(This paragraph called the collection-removal mutation "genuinely external" in the same breath as
