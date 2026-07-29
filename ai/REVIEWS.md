@@ -5959,3 +5959,69 @@ untouched by the shallow-capture mutation. T072-R2 and T073-R1 are Resolved.
 T-072 remains **In Progress / evidence pending** for the two already-disclosed Windows actions:
 run `mut_tree_drop_worker` on STARBASE and execute the corrected WIN-R1 procedure against a
 deliberately broadened rule. Those are evidence gaps, not additional code findings.
+
+## 2026-07-29 — T-074 diagnostic and Phase 1 evidence-table review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `9802a6a`  **Head:** `13138e3`
+**Scope:** The T-074 Linux diagnostic and QThread-lifetime rule-out, the new Phase 1 exit-criteria
+evidence table, and the T-033 blocker correction
+**Boundary classification:** Documentation and review record only; no production source, tests,
+workflow, or build configuration
+**Verdict by work item:** T-074 diagnostic **Accepted as narrowing, not diagnosis**; Phase 1
+evidence table **Changes requested**; T-033 blocker correction **Accepted with a non-blocking
+current-truth follow-up**
+**Overall verdict:** **Changes requested** on `P1EXIT-R1`. Phase 1 remains not exited, as the table
+already says.
+
+The boundary contains two commits. `c76ec43` records the preceding no-new-findings review;
+`13138e3` adds the diagnostic, evidence table, and T-033 correction. `HEAD` and `origin/main` both
+resolved to `13138e3`, and the tree was clean before this review record was appended.
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `P1EXIT-R1` | **Medium** | **Yes — Phase 1's headless exit criterion** | The new table treats “Worker code runs with no display attached” as met by the static layering test and by running Qt with `QT_QPA_PLATFORM=offscreen`. Neither detaches a display from the worker. The purpose-built `test_the_worker_runs_in_a_real_spawned_process_with_no_display` does not do so either: `_spawn_target` is started with an ordinary `multiprocessing.Process` and inherits the parent environment unchanged. On this review host that test passed while `DISPLAY=:0` and `WAYLAND_DISPLAY=wayland-0` were both present. A separate reviewer run with both variables removed also passed, showing the behavior works, but the lasting gate does not create or assert the condition named by the phase criterion. | Make the spawned child run with the platform's display variables deliberately absent and assert that absence from inside the child before exercising the real worker session. On Linux, remove at least `DISPLAY` and `WAYLAND_DISPLAY`; preserve a cross-platform formulation for Windows. Mutation-check the gate with a worker-side display dependency, then cite that integration test in the table. Until then mark this criterion not met rather than substituting Qt's offscreen plugin. | **Open** |
+| `P1EXIT-R2` | **Low** | **No** | The unsupported-URL row cites `test_the_extractor_message_survives_verbatim` and calls it evidence from recorded `info_dict` fixtures. That test constructs a generic `ExtractorError` for a private-video message and uses no fixture; it proves neither `UnsupportedError` classification nor the unsupported-URL UI/storage path. The relevant evidence already exists and passed: `test_subclass_ordering_is_not_swallowed_by_the_base_class` proves `UnsupportedError -> UNSUPPORTED_URL`, while `test_an_unsupported_url_shows_the_extractors_message_character_for_character` and `test_a_failed_probe_leaves_the_job_failed_and_recorded` drive a real manager/process boundary with `errors/unsupported_url.json`. The row's conclusion that this is thinner than a live yt-dlp failure remains correct. | Point the row at those classification and UI/storage tests, call the fixture a recorded **error** fixture rather than an `info_dict`, and retain the honest limitation: the child replays the recorded failure instead of obtaining it from live yt-dlp. | **Open, non-blocking — evidence-table correction** |
+| `T033-R3` | **Low** | **No** | Correcting “PyInstaller is absent” to version 6.21.0 is right, and the required Windows frozen-job result remains externally blocked. The current T-033 task still says the repository cannot locally produce the collection-removal negative run, Linux frozen result, or size delta. That no longer follows: PyInstaller 6.21.0 is installed, the workflow publishes the exact local build/probe/size commands, and this review history already records a successful local PyInstaller 6.21 Linux artifact build for `T014-R3`. What cannot be produced on this host is the Windows result; what the acceptance criterion additionally demands is both named CI jobs green. | Keep T-033 Blocked, but distinguish the external Windows/exact-CI requirement from the Linux build, collection-removal mutation, and Linux size comparison that can now be gathered locally. Correct the stale “cannot produce locally” sentence in `ai/TASKS.md`. | **Open, non-blocking — T-033/current-truth follow-up** |
+
+### T-074 judgment
+
+The Linux result is accepted at its stated weight. The reviewer repeated the crash-site test in
+forty separate pytest invocations with forty passes and ran the whole manager module once with
+all 71 tests passing. This corroborates simple-repetition failure on Linux without clearing
+suite-wide ordering or Windows.
+
+The ownership rule-out is also useful. The manager fixture retains every `DownloadManager`,
+drives `shutdown()` to `is_idle`, and `_release()` refuses to remove the `_Session` while its
+`ResultPump` is running. The start-failure path briefly pops the session but `_unwind()` restores
+any started pump to `_sessions` until it finishes. That rules out the straightforward
+`session_ended -> _release -> last pump reference dropped inside run()` chain. It does not identify
+the faulting object or make the intermittent access violation less open, and the task correctly
+continues to say so.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary identity | `HEAD == origin/main == 13138e3`; clean tree before the review append |
+| `git diff --check 9802a6a..13138e3` | Passed |
+| Focused evidence tests | **6 passed**: the cited generic-message test, the actual unsupported classification/UI/storage tests, the spawned-worker test, and the T-074 crash-site test |
+| T-074 crash-site repetition | **40 separate invocations passed**, no non-zero exit |
+| `tests/integration/test_manager.py` | **71 passed** in 35.70 s with localhost sockets enabled |
+| First sandboxed manager-module attempt | **61 passed, 10 failed** solely at `ThreadingHTTPServer` construction with sandbox `PermissionError`; rerun above with localhost access |
+| Spawned worker with `DISPLAY` and `WAYLAND_DISPLAY` removed | **1 passed** |
+| Normal spawned-worker environment | Test passed while `DISPLAY=:0` and `WAYLAND_DISPLAY=wayland-0` were present, proving the current test does not enforce its name |
+| Local PyInstaller | **6.21.0** |
+
+### Final disposition
+
+T-074 remains **Ready / undiagnosed**. Its new negative evidence and narrow lifecycle rule-out are
+accepted; no source correction is implied by this review.
+
+The Phase 1 evidence table is not ready for sign-off because the headless row currently maps a
+required condition to gates that never create that condition. The unsupported-URL behavior is
+already covered, but its row names the wrong test and fixture class. T-033 remains Blocked for its
+external Windows and exact-CI evidence; its local-evidence wording gets a non-blocking
+current-truth follow-up.

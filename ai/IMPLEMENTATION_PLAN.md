@@ -127,7 +127,15 @@ Prove `ARC-002`.
 > `windows desktop` job. A finding that reproduces only on a GitHub-hosted image and not there does
 > not block this exit — `T-056` and `T-068` are open on exactly that basis.
 >
-**Not exited. Standing as of 2026-07-29:**
+**Not exited. Standing as of 2026-07-29.**
+
+*(The first version of this table cited the layering test and `QT_QPA_PLATFORM=offscreen` as
+evidence for the headless criterion. Neither establishes it — a static import guard is a different
+claim, and offscreen selects a plugin rather than removing a display, so every worker test was
+inheriting `DISPLAY` including the one whose docstring said otherwise. `P1EXIT-R1`. It also cited
+the wrong test for the unsupported-URL row and called an inline `ExtractorError` a recorded
+`info_dict` fixture — `P1EXIT-R2`. Both rows are rebuilt below; building the table is what exposed
+them, which is the argument for having built it.)*
 
 | Criterion | Evidence |
 |---|---|
@@ -135,8 +143,8 @@ Prove `ARC-002`.
 | Cancel stops the download within 2 seconds with no orphaned process | `T-013` and `T-019`. `CANCEL_BUDGET_SECONDS = 2.0` is asserted by `test_cancel_stops_a_real_in_flight_download_within_the_budget`, and the escalation path — a worker that ignores both the event and `SIGTERM` — by `test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget`. Orphans are covered separately by `test_cancelling_a_download_kills_what_the_worker_spawned` and `test_a_worker_killed_from_outside_does_not_leave_its_grandchild_behind` |
 | `kill -9` of the worker is reported as `WORKER_CRASH` and the app stays responsive | `test_a_killed_worker_becomes_worker_crash_with_its_exit_code` and `test_the_application_survives_a_worker_crash_and_can_start_another`. `test_a_worker_that_exits_zero_without_an_outcome_is_a_crash_not_a_success` covers the case `REQ-028` cares about most |
 | Job state survives an application restart mid-download | `T-037`, `test_a_job_killed_mid_download_is_recovered_by_the_next_start` — a real `SIGKILL` to a separate interpreter with the row confirmed `RUNNING` first. `test_recovery_is_the_applications_own_and_not_the_tests` plants the row directly, so the claim is about startup rather than about what the previous test left behind |
-| An unsupported URL produces a failed job showing the extractor's own message | `test_the_extractor_message_survives_verbatim` (`T-057`, `T-018`'s recorded fixtures). **Thinner than the rest**: the projection is proved against recorded `info_dict` fixtures, not by putting an unsupported URL through a live session |
-| Worker code runs with no display attached | `tests/unit/test_layering.py` — `core/**` and `downloader/worker.py` may not import `PySide6` or `shiboken6`, mutation-verified. The whole suite runs under `QT_QPA_PLATFORM=offscreen` |
+| An unsupported URL produces a failed job showing the extractor's own message | `test_a_failure_reaches_the_parent_classified_and_verbatim` — a real `run_session` with a real queue and real protocol validation, asserting the `Failed` message equals the extractor's text by **equality, not substring**. `test_yt_dlps_bug_report_boilerplate_does_not_reach_the_user` guards the specific decoration. **Still narrower than the criterion**: the extractor error is *injected* into the session rather than produced by a genuinely unsupported URL, so the classification and carriage are proved and the extractor's own recognition of such a URL is not |
+| Worker code runs with no display attached | `test_the_worker_really_runs_with_no_display_attached` — spawns a fresh interpreter with `DISPLAY` and `WAYLAND_DISPLAY` **removed**, asserts inside the child that they are gone, then resolves yt-dlp. Mutation-verified: with the scrubbing removed it fails, naming the inherited `DISPLAY=:0`. `tests/unit/test_layering.py` separately forbids `core/**` and `worker.py` from importing Qt |
 | **Verified on Linux and Windows** | **Not met.** See below |
 | **Reviewed and signed off in `REVIEWS.md`** | **Not met.** The exit review has not been called |
 

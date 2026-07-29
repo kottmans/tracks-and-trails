@@ -1294,11 +1294,38 @@ producible locally.
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
-**Status:** **Blocked** — code corrections verified 2026-07-26 (`T033-R2` resolved, the
-version-against-pin half of `T033-R1` verified). Approval requires evidence this repository
-cannot produce locally: the collection-removal negative run, Linux **and** Windows frozen
-results, and the recorded artifact-size delta. `T033-R1` stays **Open — externally blocked**;
-it is deliberately *not* closed by the commit that lands this work.
+**Status:** **Blocked on Windows only**, narrowed 2026-07-29 (`T033-R3`). Code corrections were
+verified 2026-07-26 (`T033-R2` resolved, the version-against-pin half of `T033-R1` verified).
+**The Linux half is no longer externally blocked and has now been produced** — see **Linux
+evidence** below. `T033-R1` stays **Open** for the Windows frozen result and the
+collection-removal negative run; it is deliberately *not* closed by the commit that lands this
+work.
+
+*(This said the evidence was something "this repository cannot produce locally", on the belief
+that PyInstaller was absent from the working venv. It is present at 6.21.0 and has been; the
+reviewer flagged the claim as stale and the local build proves it. What is genuinely external is
+Windows, and the two `frozen` jobs being GitHub-hosted.)*
+
+#### Linux evidence, 2026-07-29 — produced locally
+
+`python -m PyInstaller packaging/tracks-and-trails.spec` on Fedora, Python 3.14.6, PyInstaller
+6.21.0. Build exit 0.
+
+| Measure | Result |
+|---|---|
+| Artifact size | **194 260 KiB** |
+| Files matching `*yt_dlp*` | 3 |
+| `yt_dlp` bytes on disk | 24 KiB — the package is inside the archive, not loose, which is why the count is small |
+| `--ytdlp-probe` | **OK.** version `2026.07.04`, source *bundled baseline*, pin `2026.7.4`, **1751 extractors**, resolved `youtube` from `yt_dlp.extractor.youtube` |
+| `packaging/frozen_smoke.py` | **OK** in 3 s — spawned a child, exchanged one message, reaped it, **one** top-level application start (`pid=66180 frozen=True argv=['--spawn-probe']`), no orphan |
+
+That is the version-against-pin assertion, the extractor resolution through the lazy machinery,
+the size record, and `T-020`'s spawn proof, all on Linux and none of it waiting on anything.
+
+**Still owed, and genuinely external:** the same run on Windows, and the collection-removal
+negative — the mutation that strips `collect_submodules("yt_dlp")` from the spec and shows the
+probe *fails*. Without that negative, a passing probe cannot distinguish "the collection works"
+from "the probe cannot fail", which is this project's recurring failure shape.
 **What landed.** `collect_submodules("yt_dlp")` + `collect_data_files("yt_dlp")` in
 `packaging/tracks-and-trails.spec`; `run_ytdlp_probe()` in `_freeze_probe.py` behind a
 `--ytdlp-probe` flag; a CI step in the `frozen` job on both platforms.

@@ -11,6 +11,7 @@ interpreter, and report structured results back.
 
 import json
 import multiprocessing as mp
+import os
 import subprocess
 import sys
 import textwrap
@@ -86,8 +87,76 @@ def test_importing_the_worker_performs_no_work() -> None:
     assert not facts["imported_qt"], "the worker must inherit no Qt (ARC-002)"
 
 
+#: The variables that make a display reachable on Linux. Removed rather than blanked: an empty
+#: `DISPLAY` is a *different* condition from an absent one, and libraries branch on both.
+DISPLAY_VARIABLES = ("DISPLAY", "WAYLAND_DISPLAY")
+
+
+def test_the_worker_really_runs_with_no_display_attached() -> None:
+    """Phase 1's sixth exit criterion, enforced rather than assumed (`P1EXIT-R1`).
+
+    **What this replaces was not a headless test.** The exit criterion is *worker code runs with
+    no display attached*, and the evidence offered for it was the layering test plus
+    `QT_QPA_PLATFORM=offscreen`. Neither establishes it. The layering test is a static import
+    guard — it proves `worker.py` does not *import* Qt, which is a different claim. And offscreen
+    selects a platform plugin; it does not remove the display. Every worker test in this file
+    inherits `os.environ`, so `DISPLAY` has been present in all of them, including the one whose
+    docstring says "the worker runs with no display".
+
+    So this scrubs the variables and checks inside the child that they are actually gone, because
+    a headless test that silently kept its display would be the vacuous gate `T-026` exists to
+    prevent — and this one would have looked identical to the real thing.
+
+    It does real work rather than importing: resolving yt-dlp is the first thing a spawned session
+    does, and a display dependency in that path is exactly what would break a worker on a headless
+    machine.
+    """
+    probe = textwrap.dedent(
+        """
+        import json, os, pathlib, sys
+
+        seen = {name: os.environ.get(name) for name in ("DISPLAY", "WAYLAND_DISPLAY")}
+
+        from tracks_and_trails.downloader.environment import ytdlp_candidates
+        from tracks_and_trails.downloader.worker import _import_ytdlp
+
+        resolved = _import_ytdlp(ytdlp_candidates(None))
+
+        print(json.dumps({
+            "display": seen,
+            "resolved": bool(resolved),
+            "imported_qt": any(m.startswith("PySide6") for m in sys.modules),
+        }))
+        """
+    )
+    environment = {k: v for k, v in os.environ.items() if k not in DISPLAY_VARIABLES}
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+        cwd=REPO_ROOT,
+        check=True,
+        env=environment,
+    )
+    facts = json.loads(result.stdout.strip().splitlines()[-1])
+
+    # The guard against a vacuous pass: if the child could still see a display, everything below
+    # it proves nothing about running without one.
+    assert facts["display"] == {"DISPLAY": None, "WAYLAND_DISPLAY": None}, (
+        f"the child still had a display: {facts['display']}. This test cannot say anything "
+        f"about headless operation until that is empty."
+    )
+    assert facts["resolved"], "the worker could not resolve yt-dlp with no display attached"
+    assert not facts["imported_qt"], "the worker inherited Qt (ARC-002)"
+
+
 def test_the_worker_imports_no_qt_even_transitively() -> None:
-    """`ARC-002`: the worker runs with no display and must not pull Qt in through a helper."""
+    """`ARC-002`: the worker must not pull Qt in through a helper.
+
+    A static import guard, and only that. *Running* with no display is
+    `test_the_worker_really_runs_with_no_display_attached` — this one inherits the environment,
+    display included, which is why it cannot stand in for that criterion (`P1EXIT-R1`).
+    """
     probe = (
         "import tracks_and_trails.downloader.worker, sys; "
         "print(any(m.startswith('PySide6') for m in sys.modules))"
