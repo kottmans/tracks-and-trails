@@ -73,13 +73,93 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(Holds `T-073` and `T-075` as of 2026-07-29. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling,
+*(Holds `T-073`, `T-075` and `T-076` as of 2026-07-29. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling,
 and this note went on claiming that after `T-073` was filed In Review under `## Ready` —
 `COORD-R6`, which is `COORD-R5`'s own failure mode recurring one day later. `COORD-R2` is why this
 section carries a note at all rather than sitting blank: an empty section is a claim about
 readiness, and the last time it was left unlabelled it outlived being true by one CI run. The
 lesson this file keeps relearning is that the claim has to be rewritten when the section changes,
 not when someone notices.)*
+
+### T-076 — Choose the MP3 bitrate, rather than taking the preset's 192
+
+**Status:** **In Review — implemented 2026-07-29.** A bitrate control beside the preset, offering
+320/256/192/160/128 kbps and defaulting to 192, enabled only where it applies. Maintainer request
+during `T-075`'s diagnosis. See **Evidence**.
+**Owner:** Implementer
+**Priority:** Medium — `REQ-010` capability, pulled forward from Phase 3 at maintainer request
+**Phase:** Phase 1 (pulled forward; `REQ-010` is a Phase 3 deliverable)
+**Depends on:** `T-075`, which had to land first — a control added while the preset was frozen at
+probe time would have inherited the freeze and read as doing nothing
+**Relevant context:** `REQ-009`, `REQ-010`, `T015-R1`, `T-060`, `NFR-005`
+**Affected surfaces:** `core/presets.py`, `ui/add_dialog.py`, `tests/ui/test_add_dialog.py`,
+`tests/ui/test_windows_desktop.py`
+**Risk:** Low — the model already carried `audio_quality`; this is a control, not new plumbing
+
+#### Scope
+
+`MP3_QUALITY = "192"` was already documented as a default rather than a policy — *"Overridable per
+request; the preset states a default, it does not decide policy for anyone."* `DownloadRequest`
+already carried `audio_quality` through to yt-dlp's `preferredquality`. What was missing was a way
+to say so.
+
+**Shape chosen: a control beside the preset, not five MP3 presets.** Bitrate is a property of the
+conversion, which is how the model already represents it; five presets would encode one parameter
+as five products and take the dropdown from five entries to nine.
+
+#### Acceptance criteria
+
+- 320, 256, 192, 160 and 128 kbps are offered, defaulting to 192
+- The chosen value reaches the stored request, and a control wired to nothing fails a test
+- It is offered only where it applies, and refuses rather than silently drops otherwise
+- What the dialog displays includes the bitrate that will run (`REQ-009`)
+- The keyboard chain is asserted in the state where the control is reachable
+
+#### Evidence, 2026-07-29
+
+**A derived preset, not a request override** (`T015-R1`). `audio_quality` is declared by both
+`Preset` and `DownloadRequest`, so it is preset-owned and `to_request` refuses to override it —
+because a request that disagrees with the preset the user was shown defeats `REQ-009`.
+`presets.with_audio_quality` returns a preset carrying the chosen bitrate, so the displayed string
+and the stored request stay in step by construction rather than by remembering.
+
+`AddUrlDialog.selected_preset` applies it, so `_request_for` and `_show_selector` both read one
+answer. That is the same structural point `T-075` was about: when two paths each derive "what the
+user chose", they can disagree, and one of them will be the one that runs.
+
+**`with_audio_quality` refuses a preset that does not convert audio.** "Download the video at
+320 kbps" is not expressible, and quietly dropping the number is exactly the failure `T-075` was.
+The control is disabled in that case — disabled rather than hidden, so the layout does not move
+under someone reading it.
+
+**The display carries it.** `Format selector: bestaudio/best · 320 kbps MP3`. `REQ-009` promises
+that what is shown is what runs, and after `T-075` a bitrate that changed the download without
+changing the display would be the same defect one field over.
+
+| Check | Result |
+|---|---|
+| `test_the_chosen_bitrate_is_what_gets_stored` | passes; **fails when the choice is ignored** |
+| `test_what_is_displayed_includes_the_bitrate_that_will_run` | passes; **fails on the same mutation** |
+| `test_the_bitrate_is_offered_only_where_it_applies` | passes — video and original-audio disabled, MP3 enabled |
+| `tests/ui/test_add_dialog.py` | 75 passed |
+| Full suite | 1406 passed, 11 skipped, 2 deselected |
+
+**A fourth Windows focus state, because the control is state-dependent.** `EXPECTED_DIALOG_ORDER`
+gains `audioBitrateChoice` between `presetChoice` and `selectorValue` — with the preset it
+qualifies, so a user who has just chosen MP3 is one Tab from the bitrate. It is disabled in the
+three existing states, so `DIALOG_STATES` gains *an audio preset chosen*: without it the control
+would be declared and unreachable in every state the suite walks, which is `T060-R1` exactly.
+Pre-flighted offscreen, 10/10.
+
+**Still owed:** the real-plugin run on `STARBASE`. The self-hosted `windows desktop` job covers it
+on push.
+
+#### Out of scope
+
+- Bitrate for codecs other than MP3, and VBR levels — `REQ-010`'s wider surface is Phase 3
+- Remembering the choice between sessions; that is Phase 4 settings
+
+---
 
 ### T-075 — Probing freezes the preset, so the download ignores what the user chose
 

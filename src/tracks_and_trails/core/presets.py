@@ -47,7 +47,13 @@ selector would trade a clear error for a silent substitution.
 from dataclasses import fields, replace
 from typing import Any, Final
 
-from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind, Preset
+from tracks_and_trails.core.models import (
+    CONVERTING_AUDIO_CODECS,
+    AudioCodec,
+    DownloadRequest,
+    MediaKind,
+    Preset,
+)
 
 #: `ARCHITECTURE.md` §8 puts every output path through `core/paths.py`; this is the template
 #: that gets rendered before it goes there. One constant rather than five copies, so the
@@ -60,6 +66,16 @@ DEFAULT_OUTPUT_TEMPLATE: Final = "%(title)s.%(ext)s"
 #: size, and over 128 because the difference is audible on music. Overridable per request; the
 #: preset states a default, it does not decide policy for anyone.
 MP3_QUALITY: Final = "192"
+
+#: The bitrates offered for MP3, highest first (`REQ-010`, `T-076`).
+#:
+#: Constant-bitrate values rather than yt-dlp's VBR levels `0`-`9`, for the same reason
+#: `MP3_QUALITY` is: a user choosing "320" means 320 kbps, and a scale where a *lower* number is
+#: better would have to be explained in the UI before it could be used.
+#:
+#: Stops at 128 deliberately. Below that MP3 is audibly poor for music, and a control that offers
+#: a choice nobody should make is a control that has to be explained rather than read.
+MP3_BITRATES: Final[tuple[str, ...]] = ("320", "256", "192", "160", "128")
 
 #: The subtitle languages the embedded-subtitles preset asks for.
 #:
@@ -184,6 +200,30 @@ def effective_selector(preset: Preset) -> str:
     returns the same value `to_request()` copies; there is nothing else for it to return.
     """
     return preset.format_selector
+
+
+def with_audio_quality(preset: Preset, quality: str) -> Preset:
+    """`preset`, converting at `quality` instead of its default (`REQ-010`, `T-076`).
+
+    **A derived preset rather than a request override**, and the difference is `T015-R1`'s rule.
+    `audio_quality` is a field both `Preset` and `DownloadRequest` declare, so it is preset-owned
+    and `to_request` refuses to override it — because a request that disagrees with the preset the
+    user was shown defeats `REQ-009`. Deriving a preset keeps the two in step by construction:
+    what runs is what `effective_selector` and the dialog's own display describe.
+
+    Refuses a preset that does not convert audio. "Download the video at 320 kbps" is not a
+    request this application can express, and silently ignoring the number would be worse than
+    saying so — the caller is the UI, and a control that appears to do nothing is the defect
+    `T-075` was.
+    """
+    if preset.audio_codec not in CONVERTING_AUDIO_CODECS:
+        raise ValueError(
+            f"{preset.name!r} does not convert audio, so a bitrate has nothing to apply to; "
+            f"converting codecs are {sorted(c.value for c in CONVERTING_AUDIO_CODECS)}"
+        )
+    if quality not in MP3_BITRATES:
+        raise ValueError(f"{quality!r} is not one of the offered bitrates {list(MP3_BITRATES)}")
+    return replace(preset, audio_quality=quality)
 
 
 def by_name(name: str) -> Preset:

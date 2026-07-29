@@ -485,6 +485,7 @@ EXPECTED_DIALOG_ORDER = (
     "kindValue",
     "statusMessage",
     "presetChoice",
+    "audioBitrateChoice",
     "selectorValue",
     "addButton",
     "closeButton",
@@ -506,24 +507,39 @@ DIALOG_STATES = (
         "nothing typed",
         "",
         False,
+        None,
         # Probe, Cancel and Add are all unavailable: there is no URL to act on.
-        frozenset(EXPECTED_DIALOG_ORDER) - {"probeButton", "cancelProbeButton", "addButton"},
+        frozenset(EXPECTED_DIALOG_ORDER)
+        - {"probeButton", "cancelProbeButton", "addButton", "audioBitrateChoice"},
     ),
     (
         "a URL typed",
         "https://focus.invalid/clip",
         False,
+        None,
         # Probe and Add become available; Cancel stays out until a probe is running.
-        frozenset(EXPECTED_DIALOG_ORDER) - {"cancelProbeButton"},
+        frozenset(EXPECTED_DIALOG_ORDER) - {"cancelProbeButton", "audioBitrateChoice"},
     ),
     (
         "a probe in flight",
         "https://focus.invalid/clip",
         True,
+        None,
         # The exchange: Cancel becomes the live control, and Probe and Add step out — a second
         # probe would have nowhere to run in a pool of one, and `Add` is disabled while a probe is
         # outstanding because that is what keeps one job per entered line (`T016-R1`).
-        frozenset(EXPECTED_DIALOG_ORDER) - {"probeButton", "addButton"},
+        frozenset(EXPECTED_DIALOG_ORDER) - {"probeButton", "addButton", "audioBitrateChoice"},
+    ),
+    (
+        "an audio preset chosen",
+        "https://focus.invalid/clip",
+        False,
+        "Audio only (MP3)",
+        # `T-076`: the bitrate applies only to a preset that converts audio, so this is the one
+        # state that offers it. Without this row the control would be declared and unreachable in
+        # every state the suite walks — a chain asserted over a control no test can ever visit,
+        # which is the shape `T060-R1` was.
+        frozenset(EXPECTED_DIALOG_ORDER) - {"cancelProbeButton"},
     ),
 )
 
@@ -631,7 +647,7 @@ def dialog_factory(shown_window: MainWindow, tmp_path: Path) -> Callable[..., Ad
     "gate that reports clean while covering nothing" this file exists to avoid.
     """
 
-    def build(text: str, *, probing: bool = False) -> AddUrlDialog:
+    def build(text: str, *, probing: bool = False, preset: str | None = None) -> AddUrlDialog:
         dialog = AddUrlDialog(
             manager=_ProbeThatNeverAnswers(_EmptyStore()),
             jobs=_EmptyStore(),
@@ -639,6 +655,11 @@ def dialog_factory(shown_window: MainWindow, tmp_path: Path) -> Callable[..., Ad
             parent=shown_window,
         )
         dialog._urls.setPlainText(text)
+        if preset is not None:
+            names = [
+                dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())
+            ]
+            dialog._preset_choice.setCurrentIndex(names.index(preset))
         dialog.show()
         dialog.raise_()
         dialog.activateWindow()
@@ -656,12 +677,13 @@ def dialog_factory(shown_window: MainWindow, tmp_path: Path) -> Callable[..., Ad
     return build
 
 
-@pytest.mark.parametrize(("case", "text", "probing", "available"), DIALOG_STATES)
+@pytest.mark.parametrize(("case", "text", "probing", "preset", "available"), DIALOG_STATES)
 def test_the_dialog_chain_offers_exactly_what_its_state_allows(
     dialog_factory: Callable[..., AddUrlDialog],
     case: str,
     text: str,
     probing: bool,
+    preset: str | None,
     available: frozenset[str],
 ) -> None:
     """`T040-R1`: a focus chain is a property of *state*, not of the widget tree.
@@ -673,7 +695,7 @@ def test_the_dialog_chain_offers_exactly_what_its_state_allows(
     **That was never a Windows behaviour.** The identical walk reproduces offscreen; the offscreen
     suite simply never pressed Tab, so nothing had observed it anywhere.
     """
-    dialog = dialog_factory(text, probing=probing)
+    dialog = dialog_factory(text, probing=probing, preset=preset)
     expected = _reachable(dialog, EXPECTED_DIALOG_ORDER, available)
 
     assert sorted(_focusable(dialog)) == sorted(expected), (
@@ -687,12 +709,13 @@ def test_the_dialog_chain_offers_exactly_what_its_state_allows(
     )
 
 
-@pytest.mark.parametrize(("case", "text", "probing", "available"), DIALOG_STATES)
+@pytest.mark.parametrize(("case", "text", "probing", "preset", "available"), DIALOG_STATES)
 def test_the_dialog_chain_wraps_in_both_directions(
     dialog_factory: Callable[..., AddUrlDialog],
     case: str,
     text: str,
     probing: bool,
+    preset: str | None,
     available: frozenset[str],
 ) -> None:
     """`T-040`'s second criterion: forwards and backwards, all the way round.
@@ -705,7 +728,7 @@ def test_the_dialog_chain_wraps_in_both_directions(
     that visits everything in the wrong sequence. Backtab through a reversed chain is exactly the
     defect a keyboard user meets and a set cannot express.
     """
-    dialog = dialog_factory(text, probing=probing)
+    dialog = dialog_factory(text, probing=probing, preset=preset)
     expected = _reachable(dialog, EXPECTED_DIALOG_ORDER, available)
     reversed_expected = list(reversed(expected))
 

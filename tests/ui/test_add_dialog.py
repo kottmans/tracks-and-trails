@@ -39,6 +39,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, Job, MediaInfo
@@ -113,6 +114,9 @@ EXPECTED_TAB_ORDER: Final = (
     "kindValue",
     "statusMessage",
     "presetChoice",
+    # `T-076`. Placed with the preset it qualifies rather than at the end: a user who has just
+    # chosen "Audio only (MP3)" is one Tab away from the bitrate that preset will convert at.
+    "audioBitrateChoice",
     "selectorValue",
     "addButton",
     "closeButton",
@@ -403,6 +407,14 @@ def choose_preset(dialog: AddUrlDialog, name: str) -> None:
     box = dialog.findChild(QComboBox, "presetChoice")
     assert box is not None
     box.setCurrentText(name)
+
+
+def choose_bitrate(dialog: AddUrlDialog, kbps: str) -> None:
+    box = dialog.findChild(QComboBox, "audioBitrateChoice")
+    assert box is not None
+    index = box.findData(kbps)
+    assert index >= 0, f"no {kbps} kbps entry; offered {preset_registry.MP3_BITRATES}"
+    box.setCurrentIndex(index)
 
 
 def focusable_widgets(dialog: AddUrlDialog) -> list[QWidget]:
@@ -1687,6 +1699,77 @@ def test_the_chosen_preset_reaches_every_queued_job(
 
 
 # --- 10. the two entry points (`ARC-004`) -----------------------------------------------------
+
+
+def test_the_chosen_bitrate_is_what_gets_stored(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """`T-076`, `REQ-010`: the MP3 bitrate is the user's to choose, not the preset's to fix.
+
+    Asserted at 320 rather than at the default, so a control that is wired to nothing cannot pass
+    by accident — which is what "it stores 192" would have proved about a dialog that ignored the
+    box entirely.
+    """
+    dialog = dialogs(managers())
+    type_urls(dialog, "https://example.invalid/clip")
+    choose_preset(dialog, "Audio only (MP3)")
+    choose_bitrate(dialog, "320")
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(dialog.queued_job_ids))
+
+    (job_id,) = dialog.queued_job_ids
+    stored = store.jobs[job_id].request
+    assert stored.audio_quality == "320"
+    assert stored.audio_codec is AudioCodec.MP3
+
+
+def test_the_bitrate_is_offered_only_where_it_applies(
+    dialogs: Callable[..., AddUrlDialog], managers: Callable[..., DownloadManager]
+) -> None:
+    """A control that cannot change the outcome must not invite a choice (`NFR-005`).
+
+    The video presets do not convert audio, so a bitrate has nothing to apply to — and
+    `with_audio_quality` refuses one rather than accepting a number it would drop. Disabled rather
+    than hidden, so the layout does not move under a user who is reading it.
+    """
+    dialog = dialogs(managers())
+    box = dialog.findChild(QComboBox, "audioBitrateChoice")
+    assert box is not None
+
+    choose_preset(dialog, "Best video available")
+    assert not box.isEnabled()
+
+    choose_preset(dialog, "Audio only (MP3)")
+    assert box.isEnabled()
+
+    # The original-audio preset keeps the source codec, so there is nothing to convert *to*.
+    choose_preset(dialog, "Audio only (original)")
+    assert not box.isEnabled()
+
+
+def test_what_is_displayed_includes_the_bitrate_that_will_run(
+    dialogs: Callable[..., AddUrlDialog], managers: Callable[..., DownloadManager]
+) -> None:
+    """`REQ-009` is about what will run, not about the selector string specifically (`T-076`).
+
+    `T-075` is the standing lesson here: a dialog that displays one thing and queues another is
+    the defect that motivated all of this, so a bitrate that changes the download and not the
+    display would be the same shape one field over.
+    """
+    dialog = dialogs(managers())
+    choose_preset(dialog, "Audio only (MP3)")
+    choose_bitrate(dialog, "320")
+
+    shown = label(dialog, "selectorValue").text()
+    assert "320 kbps" in shown, shown
+    assert dialog.selected_preset.audio_quality == "320"
+
+    choose_preset(dialog, "Best video available")
+    assert "kbps" not in label(dialog, "selectorValue").text()
 
 
 def test_the_preset_chosen_after_probing_is_the_one_that_downloads(

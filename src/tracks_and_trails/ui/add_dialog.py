@@ -87,7 +87,13 @@ from PySide6.QtWidgets import (
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
-from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo, Preset
+from tracks_and_trails.core.models import (
+    CONVERTING_AUDIO_CODECS,
+    DownloadRequest,
+    Job,
+    MediaInfo,
+    Preset,
+)
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import SessionKind
 
@@ -504,8 +510,26 @@ class AddUrlDialog(QDialog):
         self._preset_choice.setAccessibleName("Download preset")
         for preset in self._presets:
             self._preset_choice.addItem(preset.name)
-        self._preset_choice.currentIndexChanged.connect(self._show_selector)
+        self._preset_choice.currentIndexChanged.connect(self._on_preset_changed)
         layout.addWidget(self._preset_choice)
+
+        # `T-076`, `REQ-010`. A property of the conversion, not a different preset — five MP3
+        # presets would encode one parameter as five products, and the model already carries it
+        # as `audio_quality`.
+        self._bitrate_choice = QComboBox(box)
+        self._bitrate_choice.setObjectName("audioBitrateChoice")
+        self._bitrate_choice.setAccessibleName("MP3 bitrate")
+        self._bitrate_choice.setAccessibleDescription(
+            "The constant bitrate to convert to, in kilobits per second. Higher is larger and "
+            "closer to the source."
+        )
+        for bitrate in preset_registry.MP3_BITRATES:
+            self._bitrate_choice.addItem(f"{bitrate} kbps", bitrate)
+        self._bitrate_choice.setCurrentIndex(
+            preset_registry.MP3_BITRATES.index(preset_registry.MP3_QUALITY)
+        )
+        self._bitrate_choice.currentIndexChanged.connect(self._show_selector)
+        layout.addWidget(self._bitrate_choice)
 
         self._selector_value = QLabel(box)
         self._selector_value.setObjectName("selectorValue")
@@ -549,6 +573,7 @@ class AddUrlDialog(QDialog):
             self._kind_value,
             self._status,
             self._preset_choice,
+            self._bitrate_choice,
             self._selector_value,
             self._add_button,
             self._close_button,
@@ -607,7 +632,23 @@ class AddUrlDialog(QDialog):
 
     @property
     def selected_preset(self) -> Preset:
-        return self._presets[max(self._preset_choice.currentIndex(), 0)]
+        """The preset that will actually run, bitrate included (`T-076`).
+
+        Applying the bitrate **here** rather than at each call site is what keeps `REQ-009`'s
+        promise mechanical: `_request_for` and `_show_selector` both read this, so the string the
+        user is shown and the request that is stored cannot describe different things. `T-075` is
+        what that costs when they can.
+        """
+        base = self._presets[max(self._preset_choice.currentIndex(), 0)]
+        if base.audio_codec not in CONVERTING_AUDIO_CODECS:
+            return base
+        return preset_registry.with_audio_quality(base, self.selected_bitrate)
+
+    @property
+    def selected_bitrate(self) -> str:
+        """The chosen MP3 bitrate, whether or not the current preset can use one."""
+        chosen = self._bitrate_choice.currentData()
+        return str(chosen) if chosen is not None else preset_registry.MP3_QUALITY
 
     def status_text(self) -> str:
         """Whatever the status line currently says."""
@@ -1116,10 +1157,25 @@ class AddUrlDialog(QDialog):
         self._thumbnail_label.setText(NOT_PROBED_TEXT)
         self._thumbnail_label.setAccessibleDescription("")
 
+    def _on_preset_changed(self) -> None:
+        """A different preset may or may not convert audio, so the bitrate control follows it."""
+        self._refresh_actions()
+        self._show_selector()
+
     def _show_selector(self) -> None:
-        """Display the selector the chosen preset actually downloads with (`REQ-009`)."""
-        selector = preset_registry.effective_selector(self.selected_preset)
-        self._selector_value.setText(f"Format selector: {selector}")
+        """Display what the chosen preset actually downloads with (`REQ-009`).
+
+        The bitrate is shown alongside the selector when the preset converts audio, because it is
+        equally part of what will run and `REQ-009`'s promise is about that, not about the
+        selector string specifically. It is omitted otherwise rather than shown as "n/a", which
+        would put a number on screen for a download that ignores it.
+        """
+        preset = self.selected_preset
+        selector = preset_registry.effective_selector(preset)
+        text = f"Format selector: {selector}"
+        if preset.audio_codec in CONVERTING_AUDIO_CODECS:
+            text += f"  ·  {preset.audio_quality} kbps {preset.audio_codec.value.upper()}"
+        self._selector_value.setText(text)
 
     def _on_urls_changed(self) -> None:
         """A changed first line invalidates the probe bound to the old one (`T016-R1`).
@@ -1160,3 +1216,7 @@ class AddUrlDialog(QDialog):
         self._probe_button.setEnabled(has_urls and not probing and not self._saving and not stuck)
         self._cancel_button.setEnabled(probing and not self._saving)
         self._add_button.setEnabled(has_urls and not probing and not self._saving and not stuck)
+        # `T-076`: a bitrate applies only to a preset that converts audio. Disabled rather than
+        # hidden, so the chain a keyboard walks changes without the layout moving under the user.
+        converts = self.selected_preset.audio_codec in CONVERTING_AUDIO_CODECS
+        self._bitrate_choice.setEnabled(converts and not self._saving)
