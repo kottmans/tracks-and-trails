@@ -101,6 +101,92 @@ last time it was left unlabelled it outlived being true by one CI run.)*
 
 ## Ready
 
+### T-071 — The icon reads as undersized beside other taskbar icons
+
+**Status:** **In Review — reported and fixed 2026-07-28**, on the maintainer's observation
+**Owner:** Implementer
+**Priority:** Low — cosmetic, but it is the first thing anyone sees of the application
+**Phase:** Phase 0 (asset correction to `T-003`)
+**Depends on:** `T-003`
+**Relevant context:** `T-003`, `T-021`, `tests/unit/test_resources.py`
+**Affected surfaces:** `src/tracks_and_trails/resources/icons/` (every derived asset),
+`tools/icons/render_icons.py` (new)
+**Risk:** Low — no source change; the assets' sizes and frame set are unchanged and still pinned
+
+#### Scope
+
+The maintainer observed the icon looking small in a Linux taskbar beside Steam and Firefox. It
+was: measured against the visible mark rather than the file, every derived asset drew the logo
+at **~66% of its canvas height**, with almost all of the remaining space as one empty band
+below the artwork. At the 32 px a taskbar typically requests, that is a 21 px mark in a 32 px
+cell — 66% linear, ~43% by area against a neighbour that fills its cell — sitting high in the
+cell rather than centred.
+
+**This is not `T-021`.** That task is about the artwork's *detail* at 16 and 24 px, and stands
+unchanged. This is about the *scale and centring* of the same artwork at every size.
+
+The cause is in the master. `icon.png` carries a 194 px band of **alpha-1..8 pixels below the
+visible artwork** — invisible at any size, but content to anything that trims on `alpha > 0`.
+Its bounds are 496×547 at `alpha > 8` and 498×743 at `alpha > 0`. That 196 px difference is
+almost exactly the empty margin every derived asset inherited, so whatever produced them in
+`T-003` trimmed at `alpha > 0`. **Unverified** — `T-003` left no generation script, so this is
+inference from the numbers, not a reading of what was run.
+
+#### Acceptance criteria
+
+- The mark spans a consistent, near-full fraction of the canvas at every delivered size
+- It is centred, rather than flush to one edge with the slack on the other
+- `icon.png` is untouched: it is the master, and the only asset not reproducible from another
+- The frame sets `T-022` pins are unchanged — 8 PNGs, 7 `.ico` frames, sizes as declared
+- Regeneration is repeatable, so this cannot drift back in silence
+
+#### Evidence, 2026-07-28
+
+`tools/icons/render_icons.py` renders all 8 PNGs and the `.ico` from the master: trim at
+`alpha > 8`, scale to 92% of the canvas on the longer side, centre. The `.ico` is written by
+hand so each frame is the one rendered at that size, not a re-downscale of one source image.
+
+Visible mark as a fraction of canvas height, before and after:
+
+| Size | Before | After |
+|---|---|---|
+| 16 px | 69% | 94% |
+| 32 px | 66% | 91% |
+| 48 px | 67% | 92% |
+| 64 px | 66% | 92% |
+| 256 px | 65% | 92% |
+
+Vertical padding at 32 px went from T1/B9 to T1/B2. The `.ico` frames match their PNGs.
+
+| Check | Result |
+|---|---|
+| `ruff check .` | All checks passed |
+| `ruff format --check .` | 103 files already formatted |
+| `mypy` | Success: no issues found in 78 source files |
+| `pytest tests/unit tests/ui` | **1241 passed, 11 skipped** |
+| `tracks-and-trails` under `QT_QPA_PLATFORM=offscreen` | window up, still running at an 8 s timeout |
+
+**Confirmed on Linux, 2026-07-28.** The maintainer reports the icon reading correctly in the
+Linux taskbar — the observation that opened this task, now answered on the surface it was made
+on. That is the acceptance criterion the measurements could only stand in for.
+
+**Known-unverified:** the **Windows** taskbar and title bar. No Windows observation was made,
+and the `.ico` is what Windows selects from, so the frames that matter there are still judged
+only by measurement — the same gap `T-007` records for the icon generally.
+
+**Judgment call, flagged for review:** `tools/icons/render_icons.py` is new, and adding it goes
+past the minimum fix. Without it the diff is nine regenerated binaries with no way to check what
+produced them, and the drift it corrects had no script to blame. It needs Pillow, which is
+**deliberately not added to `[dev]`** — it is a one-off authoring tool, not part of any gate.
+
+#### Out of scope
+
+- The artwork itself, the brand hex values fixed by `T-003`, and the 1024 px master
+- `T-021`'s simplified small-size glyph, which remains Proposed and unaffected
+- Adding icon rendering to CI or to any gate
+
+---
+
 ### T-070 — The suite silently requires Windows privileges it never states
 
 **Status:** **In Review — filed and fixed 2026-07-28**, in the same batch that found it

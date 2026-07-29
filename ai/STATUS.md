@@ -287,6 +287,15 @@ the whole gate" in its exact form, and it needs the Windows job.
   than strippable in persistence. **`T-038` is this problem again** and should start from that,
   not from a recogniser.
 
+**`T-071` — the icon was undersized, and the master says why.** Reported from a taskbar
+screenshot and fixed the same day: every derived asset drew the logo at ~66% of its canvas with
+the slack as one empty band beneath it, so at 32 px the mark filled ~43% of the cell by area.
+The master carries a 194 px band of alpha-1..8 pixels below the artwork — invisible, but content
+to a trim on `alpha > 0`. All eight PNGs and the `.ico` are regenerated at 92% fill and centred,
+now from a script (`tools/icons/render_icons.py`) so it cannot drift back unrecorded. The master
+is untouched and the pinned frame sets are unchanged. **Confirmed by the maintainer in the Linux
+taskbar**; Windows is unobserved — see `T-071`.
+
 ## Next
 
 `ARC-002`'s ordinary end-to-end path is proven: a spawned child imports yt-dlp, extracts and
