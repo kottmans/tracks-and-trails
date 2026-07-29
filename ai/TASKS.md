@@ -155,9 +155,9 @@ two are not closed.
 | `COORD-R5` | **Done.** See below |
 | `WIN-R3` | **Done.** The guide now names `mut_control_chain.py`, says it runs first, and records why the `T-056` control does not belong here |
 | `RUNNER-R1` | **Done.** `ci.yml` and the guide now say `timeout-minutes` bounds *run* time, and an unmatched self-hosted job queues for up to 24 hours |
-| `T066-R1` | **Written, unexecuted.** See the caveat below |
+| `T066-R1` | **Written**; see the caveat below, now with a runner to answer it |
 | `WIN-R1` | **Not started** |
-| `T-019` cases under the venv | **Not started**; needs a runner |
+| `T-019` cases under the venv | **Wired up.** The `windows desktop` job gained a *Process trees under the venv* step |
 
 **`COORD-R5` is discharged.** Every task now sits in the section its verdict says it belongs in:
 `T-040`, `T-060`, `T-067`, `T-069`, `T-070` and `T-065` to `## Complete`; `T-066` and `T-068` to
@@ -176,6 +176,17 @@ That code is inside `if sys.platform == "win32"`, so **the Linux suite did not e
 it.** What it has: `mypy --platform win32` passes on it, which is `AGENTS.md` §8's check and is
 what caught the previous POSIX-only mistake in this same file. What it does not have: any runtime
 evidence at all. It needs the Windows job before it can be called resolved.
+
+**The runner is the answer to that, and it did not need the quota.** `STARBASE` is online and
+green — run `30413774102`, job `windows desktop`, **28 passed, 1410 deselected in 12.83s**, while
+all four hosted jobs failed at zero steps on the billing annotation. Since that job already builds
+a venv on a real Windows machine, it is the only place the required process shape exists. It now
+carries a *Process trees under the venv* step running `tests/integration/test_manager.py` and
+`tests/integration/test_end_to_end.py` by path.
+
+Pre-flighted on Linux with `ffmpeg` removed from `PATH`, because the desktop job installs none:
+**75 passed**. That is what says the step will not turn the one green job red for a missing
+dependency rather than for a finding.
 
 | Check | Result |
 |---|---|

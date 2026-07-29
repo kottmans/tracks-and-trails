@@ -307,6 +307,33 @@ jobs:
           pytest -v -m windows_desktop \
             --junitxml="reports/pytest-desktop.xml" 2>&1 | tee "reports/pytest-desktop.txt"
 
+      - name: Process trees under the venv
+        # T066-R1. `T-066` measured that on Windows in a virtualenv the pid `Popen` returns is
+        # the launcher, while a different pid runs the interpreter — so `T-019`'s reaping
+        # evidence describes a tree one level shallower than the one a developer or a user
+        # actually has. Its acceptance criteria therefore require the process-tree cases to run
+        # under that shape, and until now nothing had: the `check (windows-latest)` job that
+        # would have covered them is hosted, and hosted jobs have not started since the quota
+        # ran out.
+        #
+        # This job already builds a venv on a real Windows machine, so it is the only place the
+        # required shape exists. Running the two modules by path rather than by marker is
+        # deliberate — there is no marker for "the process tree matters here", and inventing one
+        # would put the selection in two places that can disagree. pytest exits 5 on an empty
+        # collection, so a renamed module turns this red rather than silently green.
+        #
+        # **Offscreen on purpose, unlike the step above.** The variable under test is the venv's
+        # process depth, not the platform plugin, and offscreen is how these tests are validated
+        # everywhere else. `T-068` is why that is now safe here: this machine had an empty font
+        # database under offscreen until `conftest.py` started pointing Qt at the Windows font
+        # directory.
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          pytest -v tests/integration/test_manager.py tests/integration/test_end_to_end.py \
+            --junitxml="reports/pytest-process-tree.xml" 2>&1 \
+            | tee "reports/pytest-process-tree.txt"
+
       - name: Upload evidence
         if: always()
         uses: actions/upload-artifact@v7
