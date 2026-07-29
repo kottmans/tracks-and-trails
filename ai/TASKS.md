@@ -577,7 +577,14 @@ it in the assertion.
 
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
-**Status:** **Ready — one clean batch measured, the crash still unclassified and still blocking.**
+**Status:** **In Review — diagnosed and fixed 2026-07-29**, with the honest limit stated: a real
+race on the implicated thread is found, reproduced deterministically on both platforms, and
+closed. **The access violation itself has never been reproduced**, so this is the removal of a
+demonstrated defect on that path rather than proof the crash is gone. See **The diagnosis**.
+
+*(Previously: "one clean batch measured, the crash still unclassified and still blocking".)*
+
+**Superseded status:** **Ready — one clean batch measured, the crash still unclassified.**
 `0/12 at ea53c71` (run `30429327464`). That is evidence against the original 25% anecdote and is
 **not** a rate: the four original observations came from materially different heads, so they are
 not one population, and a single event gives no bound worth quoting (`T074-R1`). The faulting
@@ -780,6 +787,67 @@ it is recorded as neither.
 **Classification is unchanged: product versus harness is still unresolved**, and `T-074` remains a
 High Phase 1 blocker. What has changed is where to look — logging teardown alongside the pump,
 rather than the pump alone.
+
+#### The diagnosis — 2026-07-29
+
+**`_monitor` is the `T-038` log listener, and it was reading a queue something else had closed.**
+
+Counting stopped working: 0 crashes in 36 full-suite runs, and 60 clean runs of the crashing test
+alone. So the search moved to the thread the traceback named. Repeating the crashing test's shape
+**inside one process** — 250 iterations, rather than 250 interpreter startups — ended with
+
+```
+Exception in thread Thread-250 (_monitor):
+```
+
+and no traceback. That truncation is itself the clue: at interpreter finalisation
+`threading.excepthook` is already gone, so only the header is written. Capturing it properly gave:
+
+```
+File "logging/handlers.py", in dequeue -> self.queue.get(block)
+File "multiprocessing/queues.py", in get -> res = self._recv_bytes()
+File "multiprocessing/connection.py", in _get_more_data
+  ov, err = _winapi.ReadFile(self._handle, left, overlapped=True)
+OSError: [WinError 6] The handle is invalid
+```
+
+The listener sits in an **overlapped `ReadFile`** on the queue's pipe, and the handle is closed
+underneath it.
+
+**The cause is `atexit` ordering, which is why the obvious fix did nothing.** Handlers run
+last-registered-first. `multiprocessing` registers its own the first time it is used — and that
+handler finalises queues. A wait registered at *import* of `core/logging.py` is registered
+**earlier** and therefore runs **later**: after multiprocessing has already closed the queue it was
+meant to protect. The first attempt did exactly that and changed nothing, twice, including with the
+timeout raised from 2 s to 30 s. Registering the wait where the queue is *created* puts it after
+multiprocessing's and so ahead of it.
+
+**Deterministic in both directions, on both platforms.** A probe that floods the queue, stops the
+listener and exits immediately:
+
+| | Linux | Windows |
+|---|---|---|
+| before | **6/6 raced** | **8/8 raced** |
+| after | **0/6** | **0/8** |
+
+The 250-iteration shape then ran clean, with no thread exception at all.
+
+`test_the_log_listener_is_not_left_reading_a_closed_queue` asserts it on the stderr of a real
+process, because that is the only place the failure appears — a daemon thread raising during
+finalisation cannot be caught in-process. Reverting `core/logging.py` fails it.
+
+#### What this does not establish
+
+**The access violation has never been reproduced, and this does not claim to have fixed it.** What
+is fixed is a real, deterministic race on the exact thread and the exact queue the crash traceback
+named — an overlapped read on a closed handle, which is a documented route to a native fault
+rather than an `OSError`, depending on where the close lands. That is a strong candidate and it is
+not proof.
+
+**So the honest reading is:** the only defect anyone has found on this path is gone, and whether
+`T-074`'s crash was that defect cannot be settled by its absence — it was already absent 0 times
+in 36. Whether that is enough to verify Phase 1's Windows criterion is the exit review's call, and
+the maintainer's to record.
 
 #### Acceptance criteria
 

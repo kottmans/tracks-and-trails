@@ -630,3 +630,64 @@ def test_the_logging_module_needs_no_qt() -> None:
     )
 
     assert result.stdout.strip() == "[]", f"importing the logging module pulled in {result.stdout}"
+
+
+# --- the listener must outlive nothing it is still reading (`T-074`) --------------------------
+
+#: A process that asks the listener to stop while a backlog is still in the pipe, then exits.
+#:
+#: The shape `T-074` implicates, made deterministic. `stop_listening_for_worker_logs()` does not
+#: wait — correctly, since the GUI thread must not block on a slow handler (`T038-R2`) — so at
+#: exit the listener can still be inside `queue.get()`, which on Windows is an overlapped
+#: `ReadFile` on the queue's pipe. If `multiprocessing`'s own exit handler closes that pipe first,
+#: the read is left holding a handle that no longer exists.
+EXIT_WITH_A_BACKLOG = """
+import logging, sys
+from tracks_and_trails.core.logging import stop_listening_for_worker_logs, worker_log_queue
+
+queue = worker_log_queue()
+record = logging.LogRecord("t", logging.INFO, "backlog.py", 1, "backlog", None, None)
+for _ in range(20000):
+    queue.put(record)
+stop_listening_for_worker_logs()
+sys.exit(0)
+"""
+
+
+def test_the_log_listener_is_not_left_reading_a_closed_queue(tmp_path: Path) -> None:
+    """`T-074`: exiting must not pull the queue out from under the listener thread.
+
+    **Measured, both platforms, before the fix:** 6/6 on Linux and 8/8 on Windows ended with
+
+    ```
+    File "logging/handlers.py", in dequeue -> self.queue.get(block)
+    File "multiprocessing/connection.py", in _get_more_data
+      ov, err = _winapi.ReadFile(self._handle, left, overlapped=True)
+    OSError: [WinError 6] The handle is invalid
+    ```
+
+    The cause is `atexit` ordering, which is why an obvious fix did not work. Handlers run
+    last-registered-first; `multiprocessing` registers its own the first time it is used, and that
+    one finalises queues. A handler registered at *import* of `core.logging` is registered earlier
+    and therefore runs **later** — after the queue it was meant to protect has been closed.
+    Registering it where the queue is created puts it after multiprocessing's and so ahead of it.
+
+    Asserted on **stderr of a real process**, because that is the only place the failure appears:
+    a daemon thread raising during interpreter finalisation cannot be caught in-process, and by
+    then `threading.excepthook` is gone — which is why the first observation of this had a header
+    and no traceback.
+    """
+    result = subprocess.run(
+        [sys.executable, "-c", EXIT_WITH_A_BACKLOG],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        check=False,
+        cwd=Path(__file__).resolve().parents[2],
+    )
+
+    assert result.returncode == 0, f"exit {result.returncode}\nstderr: {result.stderr}"
+    assert "Exception in thread" not in result.stderr, (
+        "the listener thread raised while the interpreter was tearing down, which means it was "
+        f"still reading a queue something else had closed:\n{result.stderr}"
+    )

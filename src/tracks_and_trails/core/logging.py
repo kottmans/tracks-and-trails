@@ -47,6 +47,7 @@ where the file went has broken the thing logs exist for.
 
 from __future__ import annotations
 
+import atexit
 import contextlib
 import itertools
 import logging
@@ -536,6 +537,25 @@ def worker_log_queue() -> Any:
         _worker_queue = multiprocessing.get_context("spawn").Queue()
         _listener = _ToWhicheverHandlersWeHaveNow(_worker_queue)
         _listener.start()
+        # **Registered here, not at import, and the ordering is the whole point** (`T-074`).
+        #
+        # `atexit` runs handlers last-registered-first. `multiprocessing` registers its own
+        # `_exit_function` the first time it is used — which is the line above — and that handler
+        # finalises queues and closes their pipes. A handler registered at *import* of this module
+        # is therefore registered **earlier** and runs **later**: after multiprocessing has already
+        # closed the queue this listener is still reading.
+        #
+        # Measured on Windows, with the listener asked to stop while a backlog remained:
+        #
+        #     File "logging/handlers.py", in dequeue -> self.queue.get(block)
+        #     File "multiprocessing/connection.py", in _get_more_data
+        #       ov, err = _winapi.ReadFile(self._handle, left, overlapped=True)
+        #     OSError: [WinError 6] The handle is invalid
+        #
+        # An overlapped `ReadFile` whose handle is closed underneath it. Registering after the
+        # queue exists puts this handler later in the list and therefore *before* multiprocessing's
+        # own, so the listener is finished before anything closes what it is reading.
+        atexit.register(_wait_at_exit)
     return _worker_queue
 
 
@@ -574,6 +594,33 @@ def stop_listening_for_worker_logs() -> threading.Thread | None:
 #: know it has actually gone: a test, tearing down a process-wide fixture before the next test
 #: installs its own handlers. Production never waits for it.
 _stopping: threading.Thread | None = None
+
+
+def _wait_at_exit() -> None:
+    """Let a stopped listener finish before the interpreter finalises (`T-074`).
+
+    **The thread is a daemon and nothing waited for it.** `logging.handlers.QueueListener` makes
+    its `_monitor` thread a daemon, and `stop_listening_for_worker_logs()` deliberately does not
+    join it (`T038-R2`) — the GUI thread must not block on a slow handler. Both of those are
+    right. What was missing is anywhere that the wait *is* safe.
+
+    Without this, a process could exit with the listener still inside its exit path, closing a
+    `multiprocessing.Queue`. Measured on Windows: 250 iterations of the `T-074` shape ended with
+    `Exception in thread Thread-250 (_monitor):` and **no traceback** — at finalisation
+    `threading.excepthook` is already gone, so only the header is written. Adding an explicit wait
+    made it disappear and the listener report a clean finish.
+
+    `atexit` is where that wait belongs: the main thread, after Qt has quit, at a moment when
+    blocking costs nobody anything. Bounded, because a hang here would turn a tidy exit into one
+    the user has to kill.
+
+    **What this does not claim.** `T-074` is an access violation naming this same thread, and it
+    has never been reproduced. This removes a demonstrated race on the path that crash implicates;
+    absence of a fault that was already absent 0 times in 36 is not evidence that it is fixed.
+    """
+    with contextlib.suppress(Exception):
+        stop_listening_for_worker_logs()
+        wait_for_the_log_listener_to_stop(timeout=5.0)
 
 
 def wait_for_the_log_listener_to_stop(timeout: float = 5.0) -> bool:
