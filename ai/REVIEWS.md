@@ -6698,3 +6698,110 @@ All eight Phase 1 criteria are met at the level the accepted decisions define. T
 items are documented residuals with owners and reopening conditions, not hidden green claims.
 
 **Phase 1 exits on 2026-07-29.**
+
+## 2026-07-29 — T-050 initial review and P2PLAN-R2 correction review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `e2e60e9`  **Head:** `f4384b0`
+**Boundary treatment:** `da6a761`'s reviewer-owned `REVIEWS.md` and
+`IMPLEMENTATION_PLAN.md` writes were not re-reviewed. Its implementer-owned STATUS/TASKS
+reconciliation was checked against the Phase 1 exit verdict. `6dbe175` and `f4384b0` received
+full review.
+**Verdict:** **Changes requested — T-050 and the P2PLAN-R2 correction are not merge-ready**
+
+`Succeeded.format_used`, the repository mapping, schema reuse, writer-thread connection ownership,
+and the real composition all work on the ordinary path. The blocking failures are at the
+boundaries this change exists to protect: crash atomicity, visible persistence failure, the
+required test type gate, and Windows single-instance exclusivity.
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T050-R1` | **Critical** | **Yes — T-050** | `downloader/manager.py:1443-1446` first persists `COMPLETED`; only its GUI-thread success callback enters `_on_completed`, which queues the history insert at `:1503-1512`. These are two SQLite transactions with an event-loop turn between them. A deterministic child process withheld GUI event delivery, waited until the writer committed the completed job, then hard-exited. On restart the exact result was `{'child_exit': 0, 'job_status': 'completed', 'history': None}`. No startup recovery backfills history, and `format_used` exists nowhere else, so `REQ-012`'s unexpected-termination promise and `REQ-020`'s durable record are both violated by silent, irreversible record loss. | Make completion one injected persistence operation that updates the job and records history in one transaction on the writer connection. Gate the old between-write boundary with a hard-exit subprocess mutation. Do not announce success until that transaction commits. | **Open — T-093** |
+| `P2PLAN-R5` | **High** | **Yes — P2PLAN-R2 / T-087 readiness** | `DECISIONS.md:1727-1742` chooses `QLocalServer` itself as the single-instance guard and says connect failure proves the owner is gone. [Official Qt 6 documentation](https://doc.qt.io/qt-6/qlocalserver.html#listen) says the opposite property matters on Windows: **two local servers can listen on the same pipe simultaneously**, and connections may go to either. Two concurrent launches can both fail their initial connect and both successfully listen, creating the exact two-writer state `ARC-006:1719-1722` calls a data-integrity threat. The header also says the decision “Discharges” A-004 before T-087 exists, contradicting its own consequence at `:1755`. | Reopen ARC-006. Use an atomic cross-platform ownership primitive, optionally retaining QLocalServer as the attach channel. Test simultaneous starts—not only stale-owner recovery—on Linux and STARBASE, and leave A-004 unverified until implementation lands. | **Open — T-094** |
+| `T050-R2` | **Medium** | **Yes — T-050** | `_on_completed` sends a history write error only through `persistence_failed` (`manager.py:1506-1511`). The composed application installs no stable receiver. `AddUrlDialog` is the only production listener (`add_dialog.py:586`), is temporary, and `_on_persistence_failed` ignores every job not in its private withdrawal set (`:843-849`). A failed history insert during an ordinary completion therefore leaves a `COMPLETED` job, no required history row, a success UI, and no visible or logged report. The optional `history=None` constructor path at `manager.py:421,433-438` provides a second silent-disable route, though the real `app.compose()` currently supplies the sink and its integration test catches omission there. | Give completion persistence one required injected path, and route a failed atomic completion transaction to a stable application-level consumer or log. Test the real composition with no Add-URL dialog alive and force the history half to fail. | **Open — T-093** |
+| `T050-R3` | **Medium** | **Yes — required gate** | Both bare `mypy` and `mypy --platform win32` fail at `tests/integration/test_manager.py:3382`: `active_job_ids()` returns `tuple[str, ...]`, but the new test compares it with `[]`. `ai/TESTING.md` §3 requires both whole-project gates for every test-file edit. `mypy src` passes, which explains how a “35 source files” run missed this. | Use a type-correct truth test and rerun both required whole-project gates. | **Open — T-093** |
+| `COORD-R9` | **Low** | **No** | The Phase 1 reconciliation is substantively accurate, but `STATUS.md:48` still says calling criterion 7 met is for the exit review to decide after `:31-33` says that review already decided it. `STATUS.md:54` repeats “all four frozen references,” while the exit review explicitly noted the additional Phase 0 risk-register row. Separately, TASKS declares `## In Review` empty at `TASKS.md:97-112`, while T-050 says In Review at `:1018` under Proposed. | Reconcile the post-exit tense/count and file T-050 under the section its status names when recording this verdict. | **Open, non-blocking — T-095** |
+
+### What passed review
+
+**IPC contract.** `ARC-003` supports the change: parent and child ship from the same artifact, so
+version skew is unreachable and no handshake is required. `format_used` is keyword-only,
+optional and defaulted, preserving existing constructors while carrying the resolved
+post-download `format_id`. The selector-substitution mutation failed all three focused tests.
+The recorded fixtures are adapter inputs rather than serialized `Succeeded` objects; nevertheless,
+the full fixture and adapter suites loaded every committed JSON/error fixture successfully.
+
+**Persistence shape.** The history table and all seven columns already exist in
+`0001_initial.sql` and the frozen v1 schema fixture; the schema snapshot test passed, so no
+migration is required. Dropping `format_used` from `_HISTORY_COLUMNS` failed the whole-object
+round-trip and upsert tests. Replacing `job.finished_at` with a fresh `_now()` failed the real
+completion test.
+
+**Writer-thread ownership.** The `_perform` widening keeps the connection factory invocation in
+the writer slot and constructs both repository types there. `db.connect()` retains SQLite's
+default `check_same_thread=True`. Existing submit/revise tests and the focused suite passed. A
+review probe queued `record_history()` and immediately called `close()`; the callback returned
+success and a fresh connection found the row, proving the already-submitted write remains ahead of
+shutdown.
+
+**Other challenged points.**
+
+- The false “a retry can complete twice” justification has no surviving positive claim. The task,
+  repository and tests all state that `COMPLETED` is terminal and that the repository-level upsert
+  is presently unreachable through the manager.
+- The `_run_download` merge of a default mapping with overrides is correct; existing and new
+  worker tests pass.
+- `UX-001` is an appropriate first `UX-` decision. Its queue-level semantics, unreachable PAUSED
+  edges, T-080 ownership and REQ-017 reopening condition agree with current code and requirements.
+- `P2PLAN-R2`'s missing-durable-home defect is resolved in form: UX-001 and ARC-006 exist and the
+  requirements/tasks cite them. ARC-006's chosen mechanism remains unapproved because of
+  P2PLAN-R5.
+- The optional history sink is not a separate finding beyond T050-R2 because `app.compose()`
+  supplies it and the real-composition test detects omission today. T-093 should still remove the
+  silent production-capable path while making completion atomic.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and working tree | `e2e60e9..f4384b0`, three commits as handed off; clean before reviewer record edits; `HEAD == origin/main == f4384b0` |
+| `git diff --check e2e60e9..f4384b0` | Passed |
+| Authorship / trailers | Sean Kottman for all three commits; no AI author or co-author trailer |
+| Focused persistence/protocol/fixture/worker/manager/composition/boundary set | **442 passed, 8 skipped** in 73.02 s |
+| Recorded fixtures plus adapter | **183 passed, 5 skipped** in 2.22 s |
+| Full default suite | **1448 passed, 11 skipped, 2 deselected** in 187.89 s |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **106 files** already formatted |
+| `mypy src` | Passed; **35 source files** |
+| Bare `mypy` | **Failed:** one new comparison-overlap error at `test_manager.py:3382` |
+| Bare `mypy --platform win32` | **Failed:** the same error; **78 files** checked |
+| Selector-for-resolved-format mutation | **Killed 3/3** |
+| Dropped `_HISTORY_COLUMNS` entry mutation | **Killed:** two focused history tests failed |
+| Fresh-write-time mutation | **Killed:** real completion timestamp differed from the stored job |
+| Non-success history mutation | Failed-job branch killed by the real no-history assertion; the unmodified real cancellation branch passed its no-history case |
+| QueueWriter history-then-close probe | Passed; callback success and row present after immediate close |
+| Crash-between-completion-and-history probe | **Reproduced T050-R1:** child exit 0, durable job `COMPLETED`, history absent |
+| Schema/migration snapshot | Passed inside `test_persistence.py`; no migration file changed |
+| Windows runtime | **Not run.** No T-050 code or threading test has executed on Windows |
+
+All mutations and probes ran from `/tmp` or standalone temporary files. No production or committed
+test file was changed by verification.
+
+### Final disposition
+
+T-050 is **Changes requested**. Its ordinary success path is well structured, but history is not
+crash-atomic with the job state and a write failure is not actually surfaced by the composed
+application. Both required whole-project mypy gates also fail.
+
+The UX-001 half of P2PLAN-R2 is accepted. The ARC-006 half is **Changes requested** because
+QLocalServer is not an exclusive Windows ownership primitive; T-087 must not become Ready on that
+decision.
+
+The Phase 1 STATUS/TASKS reconciliation says what the exit review found in substance, with the
+non-blocking current-truth drift carried to T-095.
+
+**Do not merge `e2e60e9..f4384b0` as an approved boundary.** T-093 and T-094 require correction
+and focused re-review. The missing Windows execution remains required for T-093's writer-thread
+correction.
