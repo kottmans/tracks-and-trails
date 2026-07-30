@@ -185,7 +185,10 @@ them, which is the argument for having built it.)*
 - Bounded concurrent worker pool, configurable limit (`REQ-013`). **The configuration surface
   is `ARC-007`**: `settings.toml` via `core/settings.py`, plus one control in the existing main
   window. The full `REQ-023` settings dialog stays Phase 4
-- Queue view: multi-job table, per-job status/progress, pause/resume/retry/remove (`REQ-015`)
+- Queue view: multi-job table, per-job status/progress. **Pause and resume are queue-level**
+  (`UX-001`); cancel, retry and remove are per job (`REQ-015` as amended 2026-07-29).
+  *(This read "per-job status/progress, pause/resume/retry/remove", which contradicted the
+  amendment — `P2PLAN-R1`.)*
 - Reordering and clear-completed (`REQ-016`)
 - Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`)
 - Bounded retry with backoff for `NETWORK` failures only (`REQ-018`)
@@ -199,7 +202,8 @@ them, which is the argument for having built it.)*
 - Three concurrent downloads show independent accurate progress with the UI interactive
   throughout (`NFR-001`)
 - Hard-killing the app mid-queue and restarting restores the queue with correct states
-- Concurrency limit is respected exactly; lowering it while running drains cleanly
+- Concurrency limit is respected exactly; lowering it while running drains cleanly, and so does
+  pausing the queue (`UX-001` — the same reasoning: no partial file to have a rule about)
 - A second launch attaches to or refuses in favor of the running instance
 - No worker process outlives application exit, on both platforms
 - Reviewed and signed off

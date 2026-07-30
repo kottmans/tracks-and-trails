@@ -24,15 +24,19 @@ findings gate the first promotion — but `T-085`, `T-049` and `T-047` can start
   carried: **`T-096`**, a documentation-invariant test so status and section agree mechanically.
 - **Unblocked and startable now:** **`T-085`** — `T-050` writes the table it reads — plus `T-049`
   and `T-047`. None of the three waits on `T-078`.
-- **`P2PLAN-R3` corrected 2026-07-30** — `ARC-007` decides the surface (`settings.toml` plus one
-  main-window control, live and draining) and `T-078` now gates the real user path. Awaiting review.
-- **Still gating Phase 2:** `P2PLAN-R1` (the pause contract, `T-080`). No Phase 2 task promotes out
-  of Proposed until it and `R3` are both cleared — the re-review made that the condition for the
-  *first* promotion, not a per-task one.
+- **All three Phase 2 planning gates are corrected as of 2026-07-30, and awaiting one review.**
+  `P2PLAN-R2` was approved at `f858da9`. `P2PLAN-R3`: `ARC-007` decides the settings surface —
+  `settings.toml` plus one main-window control, applied live with lowering draining — and `T-078`
+  gates that real user path instead of a constructor argument. `P2PLAN-R1`: the Phase 2 deliverable
+  now says pause and resume are queue-level, and `T-080` is retitled and rewritten from `UX-001`
+  with the two granularities separated.
+- **No Phase 2 task is promoted yet.** The condition was that `R1` through `R3` all *clear* before
+  the first promotion out of Proposed, and two of the three are corrected rather than reviewed.
+  `T-078` promotes when that review lands.
 - **Ready, blocking nothing:** `T-074` (Medium, `OPS-007` residual), `T-089`, `T-091`, `T-092`
   (needs maintainer consent before writing to `STARBASE`), `T-096`.
 
-`P2PLAN-R3` is done; `P2PLAN-R1`, then `T-078` is the rest of the critical path.
+One review clears all three gates; then `T-078`, which eight tasks descend from.
 
 **Two Phase 1 blockers were dispositioned by maintainer decision rather than completed, and the
 exit review upheld both while keeping them open.** `T-066` by the `OPS-005` amendment (its frozen
@@ -619,8 +623,9 @@ they were here first. Nothing below is scheduled: Phase 2's prerequisite is Phas
 **Status:** **Proposed — `P2PLAN-R3` corrected 2026-07-30, not yet promotable.** The surface is
 decided (`ARC-007`) and the criteria now gate the real user path, so this task's own blocker is
 cleared pending review. **It stays Proposed** because the re-review's condition was that
-`P2PLAN-R1` through `R3` all clear before the *first* promotion out of Proposed, and `P2PLAN-R1`
-(the pause contract, `T-080`) is still open. The phase's centre; most of the rest depends on it.
+`P2PLAN-R1` through `R3` all *clear* before the first promotion out of Proposed. All three are now
+corrected — `R1` on 2026-07-30 with the rest — but `R1` and `R3` are corrected rather than reviewed,
+so this promotes when that review lands. The phase's centre; most of the rest depends on it.
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 2
@@ -727,68 +732,73 @@ same question.
 
 ---
 
-### T-080 — Pause, resume, retry and remove, per job
+### T-080 — Queue-level pause and resume; per-job cancel, retry and remove
 
-**Status:** Proposed
+**Status:** Proposed — rewritten from `UX-001` on 2026-07-30 (`P2PLAN-R1`)
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 2
 **Depends on:** `T-078`, `T-079`
-**Relevant context:** **`UX-001`** (the pause and remove semantics, with rationale and reopening
-condition), `REQ-015`, `T-051`, `core/job_state.py`, `T036-R1`
-**Affected surfaces:** `downloader/manager.py`, `ui/`
+**Relevant context:** **`UX-001`** (the canonical pause and remove semantics, with rationale and
+reopening condition), `REQ-015` **as amended**, `T-051`, `core/job_state.py`, `T036-R1`
+**Affected surfaces:** `downloader/manager.py`, `ui/`, possibly `core/job_state.py` (the `PAUSED`
+edges — see below)
 **Risk:** Medium — every one of these is a state transition plus an effect, which is `T036-R1`
 
 #### Scope
 
-**The state machine already models this.** `RUNNING → PAUSED`, `PAUSED → RUNNING`, and
-`FAILED → QUEUED` are all in `_TRANSITIONS`, with comments explaining why resume returns to
-`RUNNING` rather than `READY` and why retry re-enters the queue. What is missing is the machinery.
+**Two different things, and conflating them is what `P2PLAN-R1` reported.** This task delivers:
 
-#### Both decisions are made — `UX-001`, maintainer, 2026-07-29
+| Surface | Actions | Granularity |
+|---|---|---|
+| The queue | pause, resume | **Queue-level** (`UX-001`) |
+| A job | cancel, retry, remove | **Per job** (`REQ-015` as amended) |
 
-**`UX-001` is now the canonical record** (`P2PLAN-R2`), including the rejected alternatives and the
-condition under which per-job pause returns: when `REQ-017` lands resume in Phase 3, a partial file
-gains a defined meaning. What follows is a summary.
+The previous version of this entry was titled *"…per job"*, quoted the pre-amendment `REQ-015` as
+though it still governed, and then described queue-level behaviour in its acceptance criteria. An
+implementer reading it received mutually exclusive instructions from the two halves.
 
-**This task still needs rewriting from that decision** — `P2PLAN-R1` reports that the Scope below
-quotes the pre-amendment `REQ-015` as though it still governs while the acceptance criteria describe
-queue-level behaviour, so an implementer receives contradictory instructions. That correction is not
-this edit.
+**Pause drains the queue; it does not stop a download.** In-flight work finishes, nothing new
+starts, resume takes work again. `UX-001` holds the reasoning and the rejected alternatives; the
+short version is that every alternative buys a half-written file and a rule about its lifetime, in a
+phase where `REQ-017`'s resume does not exist yet.
 
-**Pause drains the queue; it does not stop a download.** A download already in flight finishes;
-nothing new starts. Resume starts taking jobs again.
-
-The reasoning is the strongest argument available: **there are no partial files to deal with.**
-Every alternative — stop the session and keep the partial, or stop it and discard — buys a
-half-written file and a rule about what happens to it, in a phase that has no resume
-(`REQ-017` is Phase 3). Draining buys neither.
-
-**This makes pause a property of the queue, not of a job, and `REQ-015` says otherwise.** Its
-text is *"Per job, support cancel, pause, resume, retry, and remove"*, and `_TRANSITIONS` carries
-`RUNNING → PAUSED → RUNNING` with a comment explaining why resume returns to `RUNNING` rather than
-`READY`. Under this decision **no job ever enters `PAUSED`** and those edges go unused.
-
-That is a requirements amendment, and it is flagged rather than absorbed: `REQ-015` needs pause
-and resume moved from the per-job list to a queue-level control, and `_TRANSITIONS` needs either
-its `PAUSED` edges removed or a recorded reason for keeping a state nothing reaches. A state
-machine with an unreachable state is the same shape as a guard nobody watches fail
-(`ai/TESTING.md` §13) — it reads as capability and is not.
-
-**Remove takes the job out of the queue and never touches a file.** Removing a running job cancels
+**Remove takes the job out of the queue and never deletes a file.** Removing a running job cancels
 it first. Nothing this application deletes from disk, in this phase, by this route.
+
+#### The `PAUSED` edges are this task's to settle
+
+`core/job_state.py`'s `_TRANSITIONS` carries `RUNNING → PAUSED` and `PAUSED → RUNNING`, with a
+comment explaining why resume returns to `RUNNING` rather than `READY`. **Under `UX-001` no job ever
+enters `PAUSED`, so both edges are unreachable.**
+
+`UX-001` assigns the choice here: remove them, or record why a state nothing reaches is kept. Either
+is defensible — `REQ-017` in Phase 3 is a named reopening condition, so keeping them has an argument
+— but leaving it undecided is not. An unreachable state reads as capability without being it, which
+is `ai/TESTING.md` §13's shape one layer up from a test.
+
+*(Superseded, kept because the amendment is the point: this section used to argue that `REQ-015`
+"says otherwise" and that an amendment was needed. That amendment landed on 2026-07-29 — `REQ-015`
+now reads queue-level and cites `UX-001` — so the conflict this described no longer exists. The
+pre-amendment wording is preserved in `REQ-015`'s own parenthetical and in `UX-001`.)*
 
 #### Acceptance criteria
 
 - Each action goes through the manager, not through the store — `T036-R1` is what it costs when a
   caller writes a status change directly and nothing announces it
 - Cancel still meets its 2-second budget under a saturated pool, not just an idle one
-- Pause stops the pool taking new work and lets in-flight sessions finish; resume takes work again
-- **No partial file exists as a result of pausing** — asserted, since that is the whole reason for
-  this shape rather than a happy consequence of it
-- Remove takes the job out of the queue and leaves every file on disk untouched, asserted by
-  looking at the directory rather than by trusting the code path
+- **Pause and resume act on the queue, and the assertion says so:** with the pool saturated, pausing
+  lets every in-flight session finish and starts none of the waiting jobs; resuming starts them. A
+  test that pauses a single job proves the wrong contract
+- **No job reaches `PAUSED`** — asserted against the stored status, not inferred from the UI. This is
+  the observable half of the decision above
+- **No partial file exists as a result of pausing** — asserted by looking at the output directory,
+  since that is the whole reason for this shape rather than a happy consequence of it
+- Remove takes the job out of the queue and leaves every file on disk untouched, asserted by looking
+  at the directory rather than by trusting the code path
 - Removing a running job cancels it first, within the same 2-second budget
+- Retry re-enters the queue at the back and does not jump jobs that have not run (`REQ-018` owns the
+  automatic case; this is the manual one)
 
 #### Out of scope
 
