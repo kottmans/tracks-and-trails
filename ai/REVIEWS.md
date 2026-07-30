@@ -6992,3 +6992,77 @@ T-093 are **Approved at `6d14e78`**. T-085's dependency on T-050 is clear.
 COORD-R10 is **Resolved**, so T-095 is **Approved at `6d14e78`**. T-096 is a non-blocking
 coordination-invariant follow-up and does not keep T-095 in review. No production blocker remains
 from this boundary.
+
+## 2026-07-29 — P2PLAN-R1 / P2PLAN-R3 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `6768f06`  **Head:** `8306378`
+**Boundary treatment:** two documentation-only planning commits. P2PLAN-R2 and ARC-006 were
+already approved and were not re-reviewed. This pass verifies the P2PLAN-R1 reconciliation against
+accepted UX-001 and the P2PLAN-R3 correction against REQ-013, DAT-001 and the existing settings
+ownership.
+**Verdict:** **Approved with non-blocking follow-ups — all three Phase 2 planning gates are clear**
+
+P2PLAN-R1 and P2PLAN-R3 are Resolved. Together with the prior P2PLAN-R2 approval, the condition
+recorded by the initial Phase 2 planning review is now met. T-078 may be promoted from Proposed to
+Ready; downstream Phase 2 tasks remain governed by their stated dependencies.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `P2PLAN-R1` | **Medium** | **No — resolved** | IMPLEMENTATION_PLAN now separates queue-level pause/resume from per-job cancel/retry/remove and adds queue draining to the exit criterion. T-080 is retitled, its two granularities are explicit, and its test criterion rejects a single-job pause as proof of the queue contract. The stale pre-amendment reading is marked historical. | None. | **Resolved** |
+| `P2PLAN-R3` | **Medium** | **No — resolved** | Accepted ARC-007 gives the setting a durable owner (`core/settings.py` / `settings.toml`), a reachable Phase 2 control in the existing main window, live raise/drain semantics, and an injected manager boundary. T-078 must drive the real control, prove restart persistence, and handle missing, malformed and below-minimum file values at the settings layer. A constructor-only seam cannot pass those criteria. | None. | **Resolved** |
+| `P2PLAN-R6` | **Low** | **No — T-078 is not implemented** | ARC-007 says `downloader/manager.py` receives a value and never reads `core/settings.py`, but neither static boundary analyzer enforces that dependency. A synthetic `from tracks_and_trails.core import settings` produced no layering violation and no manager-boundary offender; all 130 existing boundary tests remained green. | Extend the manager-boundary analyzer with an independently mutation-checked prohibition on direct `core.settings` imports in `downloader/manager.py`. | **Open, non-blocking — T-097; required by T-078 approval, not readiness** |
+| `P2PLAN-R7` | **Low** | **No — T-080 remains Proposed** | The P2PLAN-R1 correction also adds “manual retry re-enters at the back and does not jump waiting jobs.” UX-001 does not decide retry order, REQ-018 only requires retry, and T-083's existing no-jump criterion is explicitly about automatic retries. The policy is coherent with queue fairness, but it is new task scope rather than reconciliation from UX-001. | Before T-080 starts, either confirm this as the manual-retry consequence of the scheduler T-078 records or remove it; do not describe it as part of P2PLAN-R1's already-made pause decision. | **Open, non-blocking — T-080** |
+
+### Focused challenges
+
+**The PAUSED-edge deferral is accepted.** UX-001 itself assigns T-080 the choice to remove the
+unreachable transitions or record why they remain. REQ-017 supplies a concrete Phase 3 reopening
+condition, so choosing with the implementation in view is not missing product semantics. T-080
+cannot silently ignore the issue: its Scope names the choice and its acceptance criteria require
+that no Phase 2 job reaches `PAUSED`.
+
+**ARC-007 closes the user-path hole.** A TOML file alone would have invited the same argument as a
+constructor seam. The existing-main-window control is reachable in T-078's own sequence, persists
+through the already-assigned settings owner, and applies live. The decision also avoids pulling
+Phase 4's eight-setting dialog forward. Missing and malformed files fall back to the REQ-013
+default, while invalid values are constrained below the widget, so direct file editing cannot
+create a zero-slot pool.
+
+**“Clear” means independently resolved here.** The initial planning review said R1 through R3 must
+be corrected before the first promotion, and AGENTS §10 says only the Reviewer marks findings
+Resolved. Holding T-078 at Proposed until this verdict was therefore the sound reading. This review
+clears that condition; it does not promote every dependent task at once.
+
+**The Phase 2 exit wording remains binding.** IMPLEMENTATION_PLAN now requires both lowering the
+limit and pausing the queue to drain. T-080 owns the queue-pause behavior, and T-088's acceptance
+criterion still requires one test for every current plan exit criterion. Its explanatory inventory
+abbreviates the concurrency bullet to lowering the limit, but cannot narrow the higher-authority
+plan; mirror the full wording when T-088 is prepared rather than treating the shorthand as an
+exclusion.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary / working tree | `6768f06..8306378`, two commits; clean before reviewer record edits; `HEAD == origin/main == 8306378` |
+| Changed surfaces | DECISIONS, IMPLEMENTATION_PLAN, STATUS and TASKS only; no production or committed test file changed |
+| `git diff --check 6768f06..8306378` | Passed |
+| Authorship / trailers | Sean Kottman for both commits; no AI author or co-author trailer |
+| UX-001 / REQ-015 / plan / T-080 mapping | Queue pause/resume and per-job cancel/retry/remove agree; stale wording is explicitly historical |
+| REQ-013 / DAT-001 / architecture / ARC-007 / T-078 mapping | Owner, location, UI surface, live propagation, restart persistence, default and minimum agree |
+| Current static-boundary suites | **130 passed in 0.20 s** |
+| Direct manager → settings synthetic import | **Not detected**, confirming P2PLAN-R6 and T-097 |
+| Full suite, lint and type gates | Not rerun for this documentation-only boundary; implementer reports **1450 passed**, Ruff clean, format clean, and both mypy gates clean at 78 files |
+
+### Final disposition
+
+P2PLAN-R1 and P2PLAN-R3 are **Resolved at `8306378`**. The correction is planning-complete and
+T-078 may become Ready. The PAUSED-state choice remains deliberately owned by T-080 rather than
+being mistaken for an unresolved planning decision.
+
+P2PLAN-R6 is carried to T-097 as non-blocking pre-implementation test infrastructure.
+P2PLAN-R7 is carried to T-080 for explicit confirmation before that dependent task starts. Neither
+finding reopens the corrected planning gates or delays T-078 readiness.
