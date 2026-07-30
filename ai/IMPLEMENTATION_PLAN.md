@@ -182,7 +182,9 @@ them, which is the argument for having built it.)*
 
 ### Deliverables
 
-- Bounded concurrent worker pool, configurable limit (`REQ-013`)
+- Bounded concurrent worker pool, configurable limit (`REQ-013`). **The configuration surface
+  is `ARC-007`**: `settings.toml` via `core/settings.py`, plus one control in the existing main
+  window. The full `REQ-023` settings dialog stays Phase 4
 - Queue view: multi-job table, per-job status/progress, pause/resume/retry/remove (`REQ-015`)
 - Reordering and clear-completed (`REQ-016`)
 - Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`)

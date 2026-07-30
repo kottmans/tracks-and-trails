@@ -24,13 +24,15 @@ findings gate the first promotion — but `T-085`, `T-049` and `T-047` can start
   carried: **`T-096`**, a documentation-invariant test so status and section agree mechanically.
 - **Unblocked and startable now:** **`T-085`** — `T-050` writes the table it reads — plus `T-049`
   and `T-047`. None of the three waits on `T-078`.
-- **Still gating Phase 2:** `P2PLAN-R1` (pause contract) and `P2PLAN-R3` (concurrency configuration
-  surface). Neither needs production work. `P2PLAN-R3` matters most: `T-078` is the choke point
-  eight tasks descend from.
+- **`P2PLAN-R3` corrected 2026-07-30** — `ARC-007` decides the surface (`settings.toml` plus one
+  main-window control, live and draining) and `T-078` now gates the real user path. Awaiting review.
+- **Still gating Phase 2:** `P2PLAN-R1` (the pause contract, `T-080`). No Phase 2 task promotes out
+  of Proposed until it and `R3` are both cleared — the re-review made that the condition for the
+  *first* promotion, not a per-task one.
 - **Ready, blocking nothing:** `T-074` (Medium, `OPS-007` residual), `T-089`, `T-091`, `T-092`
   (needs maintainer consent before writing to `STARBASE`), `T-096`.
 
-`P2PLAN-R3`, then `P2PLAN-R1`, then `T-078` is the critical path.
+`P2PLAN-R3` is done; `P2PLAN-R1`, then `T-078` is the rest of the critical path.
 
 **Two Phase 1 blockers were dispositioned by maintainer decision rather than completed, and the
 exit review upheld both while keeping them open.** `T-066` by the `OPS-005` amendment (its frozen
@@ -614,13 +616,19 @@ they were here first. Nothing below is scheduled: Phase 2's prerequisite is Phas
 
 ### T-078 — A real worker pool, bounded and configurable
 
-**Status:** Proposed — the phase's centre; most of the rest depends on it
+**Status:** **Proposed — `P2PLAN-R3` corrected 2026-07-30, not yet promotable.** The surface is
+decided (`ARC-007`) and the criteria now gate the real user path, so this task's own blocker is
+cleared pending review. **It stays Proposed** because the re-review's condition was that
+`P2PLAN-R1` through `R3` all clear before the *first* promotion out of Proposed, and `P2PLAN-R1`
+(the pause contract, `T-080`) is still open. The phase's centre; most of the rest depends on it.
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 2
 **Depends on:** Phase 1 approved
-**Relevant context:** `REQ-013`, `ARC-002`, `ARC-005`, `T-013`, `T-019`, `T036-R1`
-**Affected surfaces:** `downloader/manager.py`, `persistence/`, settings
+**Relevant context:** **`ARC-007`** (the settings surface and the persistence boundary, decided
+2026-07-30), `REQ-013`, `UX-001`, `ARC-002`, `ARC-005`, `T-013`, `T-019`, `T036-R1`
+**Affected surfaces:** `downloader/manager.py`, **`core/settings.py`** (currently a stub),
+`ui/main_window.py`, `app.py`
 **Risk:** High — it is the object every other Phase 2 task acts through
 
 #### Scope
@@ -634,8 +642,17 @@ being-written starts, `_PendingStart` makes a reservation withdrawable, and `_Ch
 per-job effects. The pool-of-one refusal in `start()` and the single `_pending_retry` slot are the
 two pieces that are explicitly scaffolding.
 
-**Default 3, minimum 1** (`REQ-013`). Configurable, which makes it the first setting with a
-runtime effect — where that setting lives is a decision this task must make rather than assume.
+**Default 3, minimum 1** (`REQ-013`). **Where the setting lives is no longer this task's to
+decide** — `ARC-007` settled it after `P2PLAN-R3` found that leaving it open let the criteria be
+satisfied by a constructor argument:
+
+- `core/settings.py` stops being a stub and owns `settings.toml` at `ARCHITECTURE.md` §5's location.
+- The limit is exposed as a control in the **existing main window**, not a settings dialog. Phase 4
+  owns the full `REQ-023` dialog and would replace a one-control dialog's layout.
+- **The manager never reads the file.** It receives an integer and a way to be told it changed —
+  `JobStore`'s shape, so the pool stays testable without TOML on disk.
+- Changes take effect **live**, and lowering **drains** rather than kills. That was already Phase 2's
+  exit criterion; what was missing was a user-facing path connected to it.
 
 #### Acceptance criteria
 
@@ -648,11 +665,26 @@ runtime effect — where that setting lives is a decision this task must make ra
   every waiting job — `T016-R1` is what a missed reservation costs
 - Scheduling order is stated and asserted: `queue_position` already exists and is allocated inside
   the insert transaction
+- **The limit changes through the real user-facing path** (`ARC-007`, `P2PLAN-R3`): driving the
+  main-window control changes the running pool's limit, and the change survives a restart by way of
+  `settings.toml`. **Asserted through that path, not through the constructor** — a test that
+  constructs the manager with a different N proves nothing about `REQ-013`
+- **Lowering through that path drains**, asserted the same way: in-flight downloads finish and no new
+  one starts. The existing drain criterion above is about the pool; this one is about the control
+  reaching it
+- **`minimum 1` is enforced by the settings layer, not the widget** — a hand-edited `settings.toml`
+  holding `0`, a negative, or a non-integer must not produce a pool that starts nothing. State what
+  each does; a spinbox that clamps its own input is not a bound on the file
+- **An unparseable or absent `settings.toml` is stated rather than discovered** — defaults apply and
+  the application starts. `REQ-013`'s default 3 is the value a missing file yields
 
 #### Out of scope
 
 - Per-job priority beyond queue order, and pausing to free a slot (`T-080`)
 - Rate limiting or bandwidth sharing between sessions
+- **Any other `REQ-023` setting.** `ARC-007` puts the layer in place; only the concurrency key lands
+  here. The settings *screen* is Phase 4
+- Migrating `window.toml`, which deliberately stays outside this layer (`ARCHITECTURE.md` §5)
 
 ---
 

@@ -1824,3 +1824,100 @@ Whoever wins the lock starts the channel. Whoever loses it connects to the chann
 **This amendment reopens** if a Qt release documents `listen()` as exclusive on Windows, or if the
 exclusive-open approach proves unable to distinguish a live holder from a stale file — in which case
 the answer is a better ownership primitive, not a return to using the channel as one.
+
+---
+
+## ARC-007 — Phase 2's settings surface is `settings.toml` plus one main-window control, not a dialog
+
+**Status:** **Accepted** (2026-07-30) — maintainer decision
+**Date:** 2026-07-30
+**Supersedes:** nothing. **Implements** `DAT-001`'s "TOML for settings" and `ARCHITECTURE.md` §5's
+assignment of `settings.toml` to `core/settings.py`, both of which predate any settings code.
+**Raised by:** `P2PLAN-R3`
+
+### Context
+
+`REQ-013` requires a **user-configurable** concurrent download limit, default 3, minimum 1. Phase 2's
+deliverable is "bounded concurrent worker pool, configurable limit"; Phase 4 owns the **full**
+`REQ-023` settings dialog, which covers eight settings including this one. So Phase 2 needs a real
+way for a person to change the limit, without building the thing Phase 4 is going to build.
+
+**`P2PLAN-R3` found the gap that silence left.** `T-078` called the limit "the first setting with
+runtime effect" and left where it lives to the implementer. Its acceptance criteria proved that
+different values of N work — which a constructor argument or a test seam satisfies completely, while
+missing the requirement at the centre of the phase.
+
+**Two things were already settled and are not re-decided here.** `DAT-001` chose TOML for settings;
+`ARCHITECTURE.md` §5 places them at `user_config_dir/tracksandtrails/settings.toml` and assigns them
+to `core/settings.py`, which exists as a stub from `T-001`'s skeleton and has never been written.
+Window geometry deliberately does **not** use this layer (`ui/main_window.py`, `window.toml`), and
+that stays true.
+
+**And one thing was already required.** Phase 2's own exit criteria say *"Concurrency limit is
+respected exactly; lowering it while running drains cleanly."* Live effect was never optional; it
+had simply never been connected to a user-facing path.
+
+### Decision
+
+**1. `core/settings.py` lands in Phase 2**, owning `settings.toml` at §5's location. It is the
+foundation of the whole settings layer rather than a special case for one key: Phase 4 adds keys and
+a dialog on top of it, and migrates nothing.
+
+**2. The limit is exposed as a control in the existing main window** (`T-007`'s window), **not a
+settings dialog.** A one-control dialog built now is a layout Phase 4 replaces; a TOML layer plus a
+control is purely additive.
+
+**3. Changes take effect live, and lowering drains.** Lowering the limit while downloads run lets
+in-flight work finish and governs what starts next — the same semantics `UX-001` chose for pause, for
+the same reason: there is no partial file to have a rule about. Raising it starts waiting jobs
+without waiting for a tick to fire.
+
+**4. The persistence boundary: `downloader/manager.py` receives the value and never reads the
+file.** Composition and the UI read and write `core/settings.py`; the manager takes an integer and a
+way to be told it changed. This is `JobStore`'s shape again — the manager depends on a value, not on
+a config format — and it is what keeps the pool testable without a TOML file on disk.
+
+### Rationale
+
+- **Phase 4 rewrites a dialog; it does not rewrite a file format.** The expensive, throwaway part of
+  option "dialog now" is the layout and its keyboard-order gate, both of which change when seven more
+  settings arrive.
+- **A file-only surface leans on a reading of "user-configurable" that this project should not lean
+  on.** A TOML file is technically configurable by a user, and `P2PLAN-R3`'s whole point is that a
+  criterion satisfiable without a reachable path is not a criterion. One control removes the argument.
+- **The live requirement already existed**, so connecting the surface to it costs nothing extra and
+  omitting it would have contradicted a phase exit criterion.
+- **Keeping the manager ignorant of TOML** means `T-078`'s tests stay unit-shaped, and a settings
+  format change in Phase 4 cannot reach the pool.
+
+### What this gives up, precisely
+
+**There is no settings *screen* until Phase 4.** A user who wants to change several things at once
+edits `settings.toml` by hand or waits. **Discoverability is lower** than a Settings menu item would
+be: one control in a window is easy to miss, and nothing advertises that the file exists or what else
+it will eventually hold. That is accepted for one phase, on the grounds that the alternative is
+building a dialog twice.
+
+### Alternatives considered
+
+- **A minimal settings dialog now, grown in Phase 4.** Rejected on rework: its layout, its tests and
+  its `T-060`-style keyboard-order gate all change when `REQ-023`'s other seven settings land.
+- **`settings.toml` with no in-app control until Phase 4.** Rejected as the smallest thing that still
+  invites `P2PLAN-R3`'s objection — a criterion met by editing a file and restarting is close enough
+  to a seam to be argued about, and the argument is not worth having.
+- **A constructor argument only, with configuration deferred entirely to Phase 4.** Rejected: this is
+  the finding, not an option.
+- **Putting the control in the queue view (`T-079`).** Rejected on sequencing: `T-078` lands before
+  `T-079`, so the limit would be unreachable in the phase's own centre task. The main window exists
+  already.
+
+### Consequences
+
+- `T-078` gains acceptance criteria for the user-facing path and for live application; see the task.
+- `core/settings.py` stops being a stub, and its read/write contract is Phase 2's to establish —
+  including what happens to an unparseable or hand-corrupted `settings.toml`, which `T-078` must
+  state rather than discover.
+- Phase 4's dialog is additive over this layer. **This decision reopens** when it lands: the
+  main-window control may move into the dialog, and this entry is the record of why it was there.
+- `REQ-013`'s "minimum 1" is a constraint the settings layer enforces, not the spinbox — a
+  hand-edited `0` must not produce a pool that never starts anything.
