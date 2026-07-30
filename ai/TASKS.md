@@ -13,37 +13,31 @@ Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete �
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
 **Start here: Phase 1 exited 2026-07-29.** All eight criteria are met and the exit review is in
-`ai/REVIEWS.md`. **The current phase is Phase 2.** No Phase 2 *deliverable* is Ready — two planning
-findings gate the first promotion — but `T-085`, `T-049` and `T-047` can start now.
+`ai/REVIEWS.md`. **The current phase is Phase 2, all three of its planning gates are clear, and
+`T-078` — the choke point eight tasks descend from — is Ready and underway.**
 
-**The live queue, in full:**
+**The live queue, in full** — rebuilt 2026-07-30 from the sections rather than edited, because it
+had accumulated four bullets that each described a different day:
 
-- **In Review:** nothing.
-- **Approved 2026-07-30 at `6d14e78`:** `T-050`, `T-093`, `T-095`. `T-094` and `P2PLAN-R2` were
-  approved earlier at `f858da9` — `UX-001` and the amended `ARC-006` both stand. One follow-up
-  carried: **`T-096`**, a documentation-invariant test so status and section agree mechanically.
-- **Unblocked and startable now:** **`T-085`** — `T-050` writes the table it reads — plus `T-049`
-  and `T-047`. None of the three waits on `T-078`.
-- **All three Phase 2 planning gates are clear.** `P2PLAN-R2` approved at `f858da9`; `P2PLAN-R1`
-  and `P2PLAN-R3` approved at `8306378`. `ARC-007` decides the settings surface, `UX-001` the pause
-  semantics, and `T-080` is rewritten with the two granularities separated.
-- **`T-078` is Ready** — the first Phase 2 task out of Proposed, and the choke point eight tasks
-  descend from. Nothing else blocks it.
-- **In Review, delivered 2026-07-30, four separate boundaries:** `T-085` (the record `REQ-020`
-  names), `T-049` (`DAT-003` restated as provenance), `T-047` (**decided: no**, with the measurement
-  it rests on), `T-097` (`ARC-007`'s settings boundary, which also closed a pre-existing hole in the
-  same analyser).
-- **Three things those turned up, each filed rather than absorbed:** **`T-098`** guards the premise
-  `T-047`'s decision rests on; **`REQ-020`'s view is unowned** across the plan and `T-050` (see
-  `T-085`); and **`P2PLAN-R7`** still sits inside `T-080` — a manual-retry ordering criterion added
-  with the `P2PLAN-R1` correction that is new scope rather than reconciliation, and must be confirmed
-  or removed before that task starts.
-- **Proposed review follow-up:** `T-097` mechanically gates ARC-007's manager/settings boundary.
-  It blocks T-078 approval, not promotion to Ready.
-- **Ready, blocking nothing:** `T-074` (Medium, `OPS-007` residual), `T-089`, `T-091`, `T-092`
-  (needs maintainer consent before writing to `STARBASE`), `T-096`.
+- **In Review:** `T-047` and `T-097`, corrected after `T047-R1`/`T097-R1` and awaiting re-review at
+  `34addcb`.
+- **`T-078` is Ready and in progress.** The first Phase 2 task out of Proposed and the choke point
+  eight tasks descend from. `ARC-007`'s settings layer landed at `256b411`; the pool itself, the
+  main-window control and the real-path criteria remain.
+- **Approved and filed Complete on 2026-07-30:** `T-050`, `T-093`, `T-094`, `T-095` (Phase 1's
+  history and its corrections), `T-085`, `T-049`, `T-091`, `T-096`, `T-098`.
+- **Ready, blocking nothing:** `T-089` (next), `T-074` (Medium, `OPS-007` residual), `T-092` (needs
+  maintainer consent before writing to `STARBASE`).
+- **All three Phase 2 planning gates are clear.** `P2PLAN-R2` at `f858da9`; `P2PLAN-R1` and
+  `P2PLAN-R3` at `8306378`. `ARC-007` decides the settings surface and `UX-001` the pause semantics.
+- **Three open questions, none mine to answer:** `P2PLAN-R8` — who owns the history view, which
+  blocks `T-086` readiness; whether `REQ-013` wants a concurrency **maximum**, which it does not
+  name and which a hand-edited `10000` would otherwise honour; and whether a corrupt `settings.toml`
+  should report rather than fall back silently.
+- **`T-080` needs two calls before it starts:** the unreachable `PAUSED` edges, and `P2PLAN-R7`'s
+  manual-retry ordering — new scope that arrived dressed as reconciliation.
 
-`T-078` is the critical path. `T-080` needs two calls made before it starts.
+`T-078` is the critical path; `T-089` runs beside it.
 
 **Two Phase 1 blockers were dispositioned by maintainer decision rather than completed, and the
 exit review upheld both while keeping them open.** `T-066` by the `OPS-005` amendment (its frozen
@@ -131,492 +125,6 @@ verdict.
 readiness. `COORD-R5` through `COORD-R10` are six rounds of this file's status and section
 disagreeing — which is why **`T-096`** exists. A documentation-invariant test means the seventh
 recurrence fails a gate instead of waiting for a reviewer to read carefully.)*
-
-### T-091 — Distinguish a closed log queue from a broken one
-
-**Status:** **In Review — corrected 2026-07-30** after `T091-R1` and `T091-R2`. The first pass
-narrowed the `OSError` arm and left the other two wide, which was the same defect one type over;
-and it delivered two of four acceptance criteria while reading as complete. Both are addressed —
-see **Corrections, 2026-07-30**.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 1 follow-up; does not block T-090 approval
-**Depends on:** `T-090`
-**Relevant context:** `T090-R1`, `T090-R2`, `T074-R3`, `T038-R2`
-**Affected surfaces:** `core/logging.py`, `tests/unit/test_logging.py`
-**Risk:** Medium — a rare queue transport fault can stop logging silently; one named regression
-also no longer proves the ordering it describes
-
-#### Scope
-
-T-090 correctly treats a queue closed during bounded exit as end-of-stream. Its `dequeue()` catch
-is wider than that contract: every `OSError` becomes the sentinel, including a non-closure
-transport error. The listener then exits normally and closes its pending drains, so the remaining
-records disappear without the thread exception that would identify the fault.
-
-The new guard also conceals the symptom used by
-`test_the_log_listener_is_not_left_reading_a_closed_queue`. Moving `_wait_at_exit` back to import
-time now passes that named test: multiprocessing closes the queue first, and `dequeue()` ends the
-listener cleanly. The full logging file still kills the mutation because the later two-lifecycle
-test counts only 1 of 41 records delivered, so this is hardening rather than a reopened T-090
-blocker.
-
-#### Acceptance criteria
-
-- Suppress only the queue-closure forms verified on the supported platforms; a non-closure
-  `OSError` from a real `multiprocessing.Queue.get()` path still raises
-- Give the post-queue-registration rule its own one-lifecycle record-delivery assertion, using a
-  handler on the application logger rather than root
-- With the `T074-R3` closure guard still present, moving registration back to import fails that
-  assertion by losing records
-- Keep the direct mutations for “newest listener only,” “record no stopped listener,” and the
-  slow-handler timeout killed
-
-#### Evidence, 2026-07-30
-
-**The docstring was already right; the code was wider than it.** It claimed `OSError` meant *"the
-closed handle (`WinError 6` on Windows, `EBADF` elsewhere)"* while `except OSError` caught every
-one. `T090-R1`'s consequence follows directly: an `EIO` out of the receive path became a normal end
-of stream, the listener exited cleanly, swept its pending drains, and every later record vanished
-with no thread exception to say why.
-
-**Narrowing it to the two documented codes broke `T074-R3`'s regression immediately**, and that
-failure is the useful part of this task. The slow-handler path does not raise either code. Measured
-by instrumenting `dequeue` in a real run:
-
-```
-errno=None  winerror=None  message='handle is closed'
-```
-
-That is `multiprocessing.connection.Connection._check_closed`, which is three lines long and reads
-`if self._handle is None: raise OSError("handle is closed")`. **A sentinel, not a system error**, so
-it carries no number to match on — and a predicate built only from error codes let it through. Had
-`T074-R3`'s test not existed, this correction would have shipped a regression while looking more
-precise than what it replaced.
-
-**Three closure forms, each justified:**
-
-| Form | Where it comes from |
-|---|---|
-| `winerror == 6` | Windows `ERROR_INVALID_HANDLE`, from the overlapped `ReadFile` in `T-090`'s captured traceback |
-| `errno == EBADF` | the POSIX equivalent, from the raw descriptor |
-| `OSError("handle is closed")`, `errno is None` | `multiprocessing`'s own guard, which fires before either code can |
-
-The sentinel is matched by **equality, not containment**. A substring test would reopen the hole in
-a smaller doorway — `OSError("the handle is closed now")` is prose, and a test asserts it still
-raises.
-
-| Check | Result |
-|---|---|
-| `tests/unit/test_logging.py` | **47 passed** (from 39) |
-| Reverting to `except OSError:` | **fails** `test_a_non_closure_oserror_propagates_out_of_dequeue` |
-| `EIO`, `ENOSPC`, `EPIPE`, bare `OSError`, sentinel-as-substring | each **not** treated as closure |
-| `T074-R3`'s slow-handler regression | still passes |
-
-**Both halves are asserted through the real `dequeue`, not the predicate alone.** `T090-R1` did not
-report a wrong predicate; it reported a `dequeue` that suppressed everything, so testing the helper
-by itself would leave the reported defect untested.
-
-#### Corrections, 2026-07-30
-
-**`T091-R1` — I put the wrong thing out of scope.** The first pass declared `EOFError` and
-`ValueError` unambiguous and excluded them, on the grounds that `T090-R1` named the `OSError` arm.
-That was wrong on the facts: `Queue.get()` reads **and deserializes** in one call, so a corrupt
-payload raises exactly the types a closed queue does. Measured:
-
-| Situation | Raises | Queue state |
-|---|---|---|
-| Queue closed | `ValueError('Queue … is closed')` | `_closed = True` |
-| Truncated payload | `UnpicklingError` / `EOFError('Ran out of input')` | **open** |
-
-**So closure is decided by the queue's state, not by the exception's shape.** `dequeue` now asks
-`_queue_is_closed()` for the `EOFError`/`ValueError` arm and re-raises otherwise. The `OSError` arm
-keeps its three-form predicate, because the interpreter-teardown case closes the *connection* handle
-without `Queue._closed` being set — the two arms genuinely need different questions.
-
-`_closed` is private and there is no public equivalent, which the helper says out loud. `getattr`
-with a default means a queue type lacking it reads as **not closed**, so an unexplained failure
-raises rather than being swallowed — the safe direction for a defect that was suppressing too much.
-
-**`T091-R2` — two of four criteria were unmet and the record did not say so.** That is the more
-useful finding: the evidence table listed what had been done and never checked it against the list
-it was supposed to satisfy.
-
-| Criterion | First pass | Now |
-|---|---|---|
-| Non-closure `OSError` from a **real** `multiprocessing.Queue.get()` path still raises | a stand-in object with a `get` method | a real `mp.Queue` with `_recv_bytes` injected, so the lock/read/deserialize machinery actually runs |
-| A **one-lifecycle** record-delivery assertion for the post-queue-registration rule, handler on the app logger | absent | `ONE_LIFECYCLE`, 40 records through a slow handler on `APP_SLUG` |
-| Moving registration back to import fails that assertion by losing records | absent | **killed** |
-| The three earlier mutations stay killed | — | verified |
-
-**Why one lifecycle rather than reusing the two-lifecycle probe.** That test proves `_stopping`
-remembers more than the newest listener; it cannot isolate *when* the wait was registered, because a
-second `worker_log_queue()` used to register a second `atexit` handler and the second pass collected
-what the first skipped. `T074-R2` said exactly that — a duplicate registration covered for a wrong
-wait. One lifecycle removes the cover.
-
-| Mutation | Result |
-|---|---|
-| Swallow `EOFError`/`ValueError` unconditionally | **killed** — `test_a_deserialization_fault_on_an_open_queue_still_raises` |
-| Register the exit wait at import | **killed** — `test_one_lifecycle_delivers_every_record_it_was_given` |
-| Revert to `except OSError:` | **killed** (unchanged) |
-
-`tests/unit/test_logging.py`: **51 passed**, from 47.
-
-#### Out of scope
-
-- `T-074`'s unreproduced Windows access violation
-- Changing the five-second exit bound
-
-*(This list previously excluded narrowing `EOFError` and `ValueError`, calling both unambiguous.
-`T091-R1` disproved that — see the corrections above. The exclusion is withdrawn rather than
-deleted, because putting the wrong thing out of scope is the mistake worth keeping visible.)*
-
----
-
-### T-098 — Guard the premise T-047's decision rests on
-
-**Status:** **In Review — delivered 2026-07-30.** `tests/unit/test_environment_shape.py` parses
-`downloader/environment.py` for the three constructs the blind spots require, plus a positive check
-on module scope's overall shape. Four mutations killed.
-**Owner:** Implementer
-**Priority:** Low — it protects a decision rather than a behaviour
-**Phase:** unassigned, like `T-047`. Blocks nothing
-**Depends on:** none
-**Relevant context:** `T-047` (the decision and its measurement), `T044-R1` and its six rounds,
-`ai/TESTING.md` ("What the environment ownership gate actually promises")
-**Affected surfaces:** `tests/unit/test_environment.py` only
-**Risk:** Low — no production code is involved
-
-#### Scope
-
-`T-047` decided not to close the environment gate's three blind spots, and the load-bearing reason
-was a measurement: `downloader/environment.py` contains **no** module-scope `if`, **no**
-`try`/`except ImportError`, and **no** call to `globals`, `locals`, `setattr`, `vars`, `exec` or
-`eval`. Each blind spot needs one of those constructs to become reachable, so all three are vacuous
-in the module the gate protects.
-
-**Nothing enforces that.** Adding a platform branch to a module that resolves paths across two
-operating systems is an ordinary thing to do. It would make gap 1 live, nothing would fail, and
-`T-047`'s decision would be silently obsolete.
-
-**This is not a fourth attempt at the gaps.** All five previous attempts parsed for *bindings* and
-were defeated by binding syntax the author had not enumerated (`T044-R1`, six rounds). This parses
-for the three *constructs the blind spots require* — a closed, small set that is a property of the
-gaps' own definitions rather than of Python's grammar. If the set is ever wrong, it is wrong in the
-direction of failing loudly: an unrecognised construct does not appear, so the assertion still holds
-and the gate is unchanged.
-
-#### Acceptance criteria
-
-- A test asserts the module contains none of the three constructs, naming `T-047` as the decision it
-  protects and stating that its own failure means *revisit the decision*, not *fix the module*
-- Adding a module-scope `if`, a module-scope `try`, or a `globals()` call to
-  `downloader/environment.py` each fails it — mutation-verified, one at a time
-- The message says which gap the construct makes live, so whoever hits it knows what to reconsider
-- `ai/TESTING.md`'s promise statement gains the reopening conditions, so the durable record and the
-  test agree
-
-#### Evidence, 2026-07-30
-
-**Three named constructs, plus one check that the enumeration itself is not the weak point.**
-
-| Added to the real `environment.py` | Result |
-|---|---|
-| `if sys.platform == "win32": …` at module scope | **killed** (gap 1) |
-| `try: from json import loads / except ImportError:` | **killed** (gap 2) |
-| `globals()["Path"] = None` | **killed** (gap 3) |
-| `for _x in (): pass` at module scope — **a shape `OPS-008` never considered** | **killed** |
-
-The fourth is the one worth having. The first three parse for constructs the gaps *require*, which
-is a closed set derived from the gaps' own definitions — but a closed set is still an enumeration,
-and this project has been wrong about enumerations five times in this exact module.
-`test_the_module_scope_is_still_the_shape_ops_008_measured` inverts it: rather than listing what is
-forbidden, it states what module scope **is** — imports, constants, functions, classes — so a
-`with`, `match`, `for` or `while` fails even though it belongs to no named gap. Its message says the
-decision should be re-read rather than the test relaxed.
-
-**Each construct is also detected in isolation.** The three module tests read a clean file, so on
-their own none has ever fired — `ai/TESTING.md` §13's shape. `test_each_construct_is_actually_
-detected` puts each through the same detection and proves it is seen.
-
-**A failure here means revisit `OPS-008`, not fix the module.** Adding a platform branch is allowed;
-what is not allowed is adding one while a decision that assumed its absence stays on the books. Every
-assertion message says so.
-
-#### Out of scope
-
-- Closing gaps 1, 2 or 3. `T-047` decided against that and this does not reopen it
-- Any production change to `downloader/environment.py`
-- Extending the construct set speculatively. Three gaps, three constructs
-
----
-
-### T-096 — Make task status and section placement mechanically agree
-
-**Status:** **In Review — corrected 2026-07-30** after `T096-R1`. The first pass had the same hole
-it was written to close: a task with **no** status line was invisible to all twelve tests, because
-every one of them walked entries that *had* a status. Deleting one left the suite green. Now
-`status_line_counts()` walks the **headings** instead, and three tests cross-check the two parses.
-Six mutations killed.
-**Owner:** Implementer
-**Priority:** Low — current truth is reconciled; this prevents the seventh recurrence
-**Phase:** Documentation infrastructure; blocks no product task or phase
-**Depends on:** none
-**Relevant context:** `COORD-R5` through `COORD-R10`; `AGENTS.md` §6; `ai/TASKS.md` status
-vocabulary
-**Affected surfaces:** a documentation-invariant test and, only as needed to make the invariant
-explicit, `ai/TASKS.md`
-**Risk:** Low to product behavior, persistent to coordination: six review rounds have found a task
-whose status and containing section disagree
-
-#### Scope
-
-`COORD-R10` is correct now, but it is another manual reconciliation in the same class rather than
-a structural change. `T-093`, `T-094` and `T-095` were each edited to say In Review without moving
-out of `## Ready`; earlier corrections did the same with different tasks. A current-truth file
-whose navigation repeatedly contradicts its own fields needs one mechanically enforced answer.
-
-Give every live task one machine-readable normalized status drawn from this file's declared
-vocabulary, and test that its containing section agrees. Descriptive qualifiers and historical
-notes may remain prose; they must not make the operative status ambiguous.
-
-#### Acceptance criteria
-
-- Every live `### T-NNN` entry exposes exactly one normalized operative status from the declared
-  vocabulary
-- A test parses the live task entries and fails when an entry is moved under the wrong status
-  section or its operative status changes without a matching move
-- Mutations for both directions—wrong section and wrong status—fail the unmodified test
-- Exceptions, if any are genuinely needed, are explicit, finite, and individually justified;
-  the test does not skip an unparseable entry
-- The current file passes after being reconciled from actual task dispositions, not by weakening
-  the mapping to match every historical placement
-
-#### Evidence, 2026-07-30
-
-**The parser takes a prefix, not a field, and that is what let the existing prose survive.** The
-file's convention is already `**Status:** **<Term> — <prose>**`, so the operative status is the
-vocabulary term the line opens with. `Blocked on T033-R4 and the external Windows build` and
-`Blocked — until Phase 5 produces an installer` both read as `Blocked` and both stay legible. No
-entry was reformatted to satisfy the test.
-
-**Two entries were reconciled, from their real dispositions rather than by weakening the mapping:**
-
-| Task | Was | Now | Why |
-|---|---|---|---|
-| `T-094` | `Approved at f858da9 — Complete` | `Complete — Approved at f858da9` | Opened with a word outside the declared vocabulary, so no reader — human or otherwise — could take the status from a fixed place |
-| `T-039` | `Proposed — blocked until Phase 5 produces an installer` under `## Blocked` | `Blocked — until Phase 5 produces an installer` | The section was right and the field was wrong. It **is** blocked; nothing can verify an installer that does not exist |
-
-**No exception list.** The acceptance criteria allow one if genuinely needed; none was. 96 live
-entries, all parsed, none skipped.
-
-| Mutation | Result |
-|---|---|
-| Status changed without moving the entry (`T-078` Ready → Blocked) | **killed** |
-| Entry moved without changing its status (`T-096` Ready → Complete) | **killed** |
-| A status outside the vocabulary (`T-094` reverted to its old spelling) | **killed** |
-| **A section heading deleted** | **killed** |
-| **A task's sole status line deleted** (`T096-R1`) | **killed** — was passing |
-| Two status lines in one entry | **killed** |
-
-**`T096-R1` is this file's own failure mode, one level in.** Every original test walked
-`live_entries()`, which pairs a heading with the status line beneath it — so an entry with no status
-contributed nothing and every assertion passed over it. The check ran, found nothing, and reported
-success, which is exactly what the deleted section heading did. `status_line_counts()` now walks
-headings rather than status lines, and `test_every_heading_is_paired_with_an_entry` asserts the two
-parses see the same set of tasks, so neither can quietly become the smaller one.
-
-The last one is why this task exists. On 2026-07-30 a scripted edit of mine replaced everything
-between `## In Review` and `### T-074` to empty a section, and took `## Ready` with it. Five tasks
-each saying `Ready` sat under `## In Review` for two commits and nothing failed. That mutation now
-fails, and it is the seventh instance of the class `COORD-R5` through `COORD-R10` reported by hand.
-
-**An unmapped section fails rather than being skipped.** `test_every_section_is_mapped` exists
-because a new `## ` heading would otherwise silently exempt every task under it — the same shape as
-the deleted heading, one level up.
-
-#### Out of scope
-
-- Generating `TASKS.md` or replacing its narrative task format
-- Validating task priority, dependencies, evidence, or prose freshness
-- Blocking T-050, T-085, Phase 2 planning, or any release gate
-
----
-
-### T-085 — History of completed downloads
-
-**Status:** **In Review — the record is delivered 2026-07-30.** All three acceptance criteria are
-met. **One thing is deliberately not delivered and is not this task's to decide:** the Scope below
-says "the record *and the view over it*", and the view has no owner anywhere — see
-**`REQ-020`'s view is unowned** below.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** `T-050`
-**Relevant context:** `REQ-020`, `T-014`, `T-050`, `DAT-001`
-**Affected surfaces:** `persistence/`, `ui/`
-**Risk:** Low to medium — it is the first table whose rows outlive the queue
-
-#### Scope
-
-`REQ-020` names the fields: source URL, title, resolved output path, format used, size, completion
-time. `T-050` is already filed to write the table and notes `T-013` produces the event that fills
-it; this is the record and the view over it.
-
-**The first data that is not transient.** A queue row is about work; a history row is about
-something that happened, and deleting it is a different act. That distinction should be visible in
-the schema and in the UI, and it interacts with `T-081`'s clear-completed.
-
-#### Acceptance criteria
-
-- Every field `REQ-020` names is recorded, and a completed download without one fails a test
-- History survives clearing the queue, and the relationship is stated rather than implied
-- A migration exists if the table lands after any release (`T-048` owns the first real one)
-
-#### Evidence, 2026-07-30
-
-**`T-050` had already written the row; what was missing was proof it holds what `REQ-020` names.**
-Three tests, all in `tests/integration/test_manager.py`:
-
-- `test_a_completion_records_every_field_req_020_names` compares the projected `HistoryEntry`
-  against a **fully specified expectation as one object**, rather than asserting field by field. A
-  per-field list is written from the same understanding that would forget a field, so it passes while
-  a column goes unwritten — `T-014`'s round-trip test exists for that reason.
-- `test_history_outlives_the_job_row_it_describes` deletes the job row and reads the history back.
-- `test_the_history_table_declares_no_dependency_on_jobs` reads the relationship from
-  `sqlite_master` rather than from behaviour, because a plain foreign key would pass the test above
-  while still coupling the two lifetimes the moment anyone enabled enforcement.
-
-| Mutation | Result |
-|---|---|
-| Drop `format_used` from the projection | **killed** |
-| Drop `title` from the projection | **killed** |
-| Drop `bytes_total` from the projection | **killed** |
-
-**Why the field set is gated at the projection, not on a live download.** A real completion through
-the local `http.server` fixture records `title=None` — measured — because the fixture serves a bare
-file with no metadata. That is a fixture limit, not a product gap, but it means an end-to-end test
-cannot require six non-null fields without either lying or depending on a real site. So
-`test_a_completed_download_writes_exactly_one_history_row` owns the live path and this owns the field
-set. Stated rather than left as a gap in the reasoning.
-
-**The migration criterion is met by there being nothing to migrate.** `T-014` created the `history`
-table in `0001_initial.sql` and this task changed no schema, so no migration exists or is needed.
-`T-048` still owns the first real data migration.
-
-#### `REQ-020`'s view is unowned — flagged, not decided
-
-The Scope above says this task is "the record **and the view over it**". Three documents disagree
-about where that view lives, and none of them owns it:
-
-- **`IMPLEMENTATION_PLAN.md` §Phase 2** lists *"History persistence and completed-download
-  records"* — no view.
-- **§Phase 3** mentions history and `REQ-020` **not at all**.
-- **`T-050`** says *"Any history UI — Phase 3 (`REQ-020`'s view)"*, which points at a deliverable
-  that does not exist.
-
-**And Phase 2 needs one anyway.** `REQ-021` — *"Open a completed file, or reveal it in the system
-file manager, from the history **and** queue views"* — is a Phase 2 deliverable, and `T-086` depends
-on *this* task "for the history half". So a history view is presupposed by a Phase 2 requirement
-while being assigned to no phase.
-
-This is the `P2PLAN-R1` class again: task text and plan disagreeing, with the plan internally
-inconsistent as well. `AGENTS.md` §5 puts the plan above `TASKS.md`, and the plan's Phase 2
-deliverable is the record — which is what this task delivered. **Whether the view lands in Phase 2
-(for `REQ-021`), in `T-086`, or in a later phase is a planning decision and is not made here.**
-
-#### Out of scope
-
-- Search, statistics, export
-- **The history view**, pending the decision above. All three acceptance criteria concern the record,
-  so this task is complete against what it is gated on
-
----
-
-### T-049 — Tighten DAT-003 before cookie-file support
-
-**Status:** **In Review — delivered 2026-07-30.** `DAT-003` carries an amendment restating its
-boundary as **provenance** and withdrawing three overstatements, two of which were measured false
-rather than merely unprovable. See **Evidence, 2026-07-30**.
-**Owner:** Planner
-**Priority:** Medium before cookie-file support or first release
-**Phase:** Phase 4. *(It is filed under `## Proposed — Phase 2` with the other Phase 1 carry-overs,
-which the section note explains — the grouping is by where they were filed, not by phase.)*
-**Depends on:** none
-**Relevant context:** `DAT-003`, `REQ-026`, `T014-R1`, `T-038`
-**Affected surfaces:** `ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, `ai/TASKS.md`
-
-#### Scope
-
-The maintainer accepted DAT-003's controlling trade-off: third-party diagnostic prose is stored
-verbatim in the local, user-owned database, even when it names a cookie path. That closes
-T014-R1. Its explanatory table is narrower than the decision it records, however:
-
-- a user-supplied source URL may itself contain userinfo and is stored verbatim under the earlier
-  URL decision;
-- `cookies_from_browser` is passed to yt-dlp as a browser name, but the model currently accepts
-  any non-empty string, including a path-shaped one; and
-- arbitrary third-party prose cannot support an exhaustive claim that a cookie path is the
-  "only residue." The accepted boundary is provenance, not enumeration of what yt-dlp may say.
-
-Rewrite DAT-003's table and linked notes around that actual boundary. Add the missing reopening
-condition: REQ-026 already promises cookie-file support, so the decision must be revisited before
-the application adds a cookie-file path or any other secret-bearing field to a persisted job.
-Keep T-038 origin-agnostic: every emitted log is redacted regardless of whether its text began in
-this application or yt-dlp.
-
-#### Acceptance criteria
-
-- DAT-003 makes no exhaustive claim about the contents of arbitrary third-party diagnostics
-- User-entered source URLs, model fields supplied by the application, and yt-dlp-emitted prose
-  are distinguished explicitly
-- Adding cookie-file support or another secret-bearing persisted field is a named reopening
-  condition alongside sync, export, cloud backup, and database attachment
-- T-038 still requires redaction of the final emitted log regardless of message provenance
-- `REQ-026` and T-014's historical criterion link to the same scoped decision without acquiring
-  a second competing definition
-
-#### Evidence, 2026-07-30
-
-**Amended, not rewritten.** The task asked for `DAT-003`'s table to be rewritten; `AGENTS.md` §6
-makes `ai/DECISIONS.md` append-only. The superseded rows stay above the amendment, which is what
-makes the overstatement visible — deleting them would hide the finding.
-
-**Two of the three overstatements are measured false, not just unprovable:**
-
-| Claim in the original table | Measured 2026-07-30 |
-|---|---|
-| "Credentials — never in the database. **Structural:** unrepresentable in the model" | **False.** `DownloadRequest` rejects userinfo in `proxy` and **not** in `url`. `DownloadRequest(url="https://alice:s3cret@example.com/v", …)` is accepted, and `repositories.py` stores the job URL verbatim *on purpose* |
-| "`cookies_from_browser`, a browser **name**, not a path" | **True by intent only.** The model requires non-empty text; `cookies_from_browser="/home/u/.mozilla/cookies.sqlite"` is accepted. No caller supplies a path, so none reaches the database — but "none exist" described callers, not an invariant |
-| "the only residue" | **Unprovable.** An exhaustive claim about arbitrary third-party prose. The `T-044`/`T-045`/`T-014` enumeration failure, `ai/TESTING.md` §13 |
-
-**The user-typed URL is the sharp one.** A credential *can* be in the database — the user's own, in
-a URL they typed, in their own local file. The decision still holds, because `REQ-026` binds on
-values *this application supplies*; what was wrong was claiming a structural guarantee the model
-does not provide. The amendment's table is organised by **provenance** for exactly that reason, and
-says nothing about what a third-party diagnostic may contain.
-
-**Criteria, each addressed:**
-
-- No exhaustive claim survives — the third row of the new table is explicitly silent
-- Provenance distinguishes the three sources: application-supplied, user-typed, third-party-emitted
-- Cookie-file support is a named reopening condition, alongside sync, export, cloud backup and
-  database attachment — and *before* it lands, not after
-- `T-038` is restated as origin-agnostic, with storage and emission named as different sinks under
-  different rules
-- `REQ-026` already carried the scoped note pointing at `DAT-003` and gains no second definition
-
-**Nothing in `src/` or `tests/` changed**, which the out-of-scope list below requires.
-
-#### Out of scope
-
-- Reopening T-014 or changing its approved persistence code
-- Implementing cookie-file settings or log redaction
-- **Adding a validator to `url` or `cookies_from_browser`.** The amendment names it as a reopening
-  condition rather than doing it: it would change approved model code, which the first bullet bars
-
----
 
 ### T-047 — Decide whether the environment ownership gate's blind spots are worth closing
 
@@ -2443,6 +1951,495 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-085 — History of completed downloads
+
+**Status:** **Complete — Approved at `36bfba6`**, 2026-07-30. The projection/live split was
+accepted; `P2PLAN-R8` was carried and blocks `T-086` readiness rather than this. All three
+acceptance criteria are met. **One thing is deliberately not delivered and is not this task's to decide:** the Scope below
+says "the record *and the view over it*", and the view has no owner anywhere — see
+**`REQ-020`'s view is unowned** below.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-050`
+**Relevant context:** `REQ-020`, `T-014`, `T-050`, `DAT-001`
+**Affected surfaces:** `persistence/`, `ui/`
+**Risk:** Low to medium — it is the first table whose rows outlive the queue
+
+#### Scope
+
+`REQ-020` names the fields: source URL, title, resolved output path, format used, size, completion
+time. `T-050` is already filed to write the table and notes `T-013` produces the event that fills
+it; this is the record and the view over it.
+
+**The first data that is not transient.** A queue row is about work; a history row is about
+something that happened, and deleting it is a different act. That distinction should be visible in
+the schema and in the UI, and it interacts with `T-081`'s clear-completed.
+
+#### Acceptance criteria
+
+- Every field `REQ-020` names is recorded, and a completed download without one fails a test
+- History survives clearing the queue, and the relationship is stated rather than implied
+- A migration exists if the table lands after any release (`T-048` owns the first real one)
+
+#### Evidence, 2026-07-30
+
+**`T-050` had already written the row; what was missing was proof it holds what `REQ-020` names.**
+Three tests, all in `tests/integration/test_manager.py`:
+
+- `test_a_completion_records_every_field_req_020_names` compares the projected `HistoryEntry`
+  against a **fully specified expectation as one object**, rather than asserting field by field. A
+  per-field list is written from the same understanding that would forget a field, so it passes while
+  a column goes unwritten — `T-014`'s round-trip test exists for that reason.
+- `test_history_outlives_the_job_row_it_describes` deletes the job row and reads the history back.
+- `test_the_history_table_declares_no_dependency_on_jobs` reads the relationship from
+  `sqlite_master` rather than from behaviour, because a plain foreign key would pass the test above
+  while still coupling the two lifetimes the moment anyone enabled enforcement.
+
+| Mutation | Result |
+|---|---|
+| Drop `format_used` from the projection | **killed** |
+| Drop `title` from the projection | **killed** |
+| Drop `bytes_total` from the projection | **killed** |
+
+**Why the field set is gated at the projection, not on a live download.** A real completion through
+the local `http.server` fixture records `title=None` — measured — because the fixture serves a bare
+file with no metadata. That is a fixture limit, not a product gap, but it means an end-to-end test
+cannot require six non-null fields without either lying or depending on a real site. So
+`test_a_completed_download_writes_exactly_one_history_row` owns the live path and this owns the field
+set. Stated rather than left as a gap in the reasoning.
+
+**The migration criterion is met by there being nothing to migrate.** `T-014` created the `history`
+table in `0001_initial.sql` and this task changed no schema, so no migration exists or is needed.
+`T-048` still owns the first real data migration.
+
+#### `REQ-020`'s view is unowned — flagged, not decided
+
+The Scope above says this task is "the record **and the view over it**". Three documents disagree
+about where that view lives, and none of them owns it:
+
+- **`IMPLEMENTATION_PLAN.md` §Phase 2** lists *"History persistence and completed-download
+  records"* — no view.
+- **§Phase 3** mentions history and `REQ-020` **not at all**.
+- **`T-050`** says *"Any history UI — Phase 3 (`REQ-020`'s view)"*, which points at a deliverable
+  that does not exist.
+
+**And Phase 2 needs one anyway.** `REQ-021` — *"Open a completed file, or reveal it in the system
+file manager, from the history **and** queue views"* — is a Phase 2 deliverable, and `T-086` depends
+on *this* task "for the history half". So a history view is presupposed by a Phase 2 requirement
+while being assigned to no phase.
+
+This is the `P2PLAN-R1` class again: task text and plan disagreeing, with the plan internally
+inconsistent as well. `AGENTS.md` §5 puts the plan above `TASKS.md`, and the plan's Phase 2
+deliverable is the record — which is what this task delivered. **Whether the view lands in Phase 2
+(for `REQ-021`), in `T-086`, or in a later phase is a planning decision and is not made here.**
+
+#### Out of scope
+
+- Search, statistics, export
+- **The history view**, pending the decision above. All three acceptance criteria concern the record,
+  so this task is complete against what it is gated on
+
+---
+
+### T-049 — Tighten DAT-003 before cookie-file support
+
+**Status:** **Complete — Approved at `0027299`**, 2026-07-30. Appending an explicit amendment was
+confirmed correct under §6. `DAT-003` now states its boundary as **provenance** and withdraws three
+overstatements, two of which were measured false rather than merely unprovable. See
+**Evidence, 2026-07-30**.
+**Owner:** Planner
+**Priority:** Medium before cookie-file support or first release
+**Phase:** Phase 4. *(It is filed under `## Proposed — Phase 2` with the other Phase 1 carry-overs,
+which the section note explains — the grouping is by where they were filed, not by phase.)*
+**Depends on:** none
+**Relevant context:** `DAT-003`, `REQ-026`, `T014-R1`, `T-038`
+**Affected surfaces:** `ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, `ai/TASKS.md`
+
+#### Scope
+
+The maintainer accepted DAT-003's controlling trade-off: third-party diagnostic prose is stored
+verbatim in the local, user-owned database, even when it names a cookie path. That closes
+T014-R1. Its explanatory table is narrower than the decision it records, however:
+
+- a user-supplied source URL may itself contain userinfo and is stored verbatim under the earlier
+  URL decision;
+- `cookies_from_browser` is passed to yt-dlp as a browser name, but the model currently accepts
+  any non-empty string, including a path-shaped one; and
+- arbitrary third-party prose cannot support an exhaustive claim that a cookie path is the
+  "only residue." The accepted boundary is provenance, not enumeration of what yt-dlp may say.
+
+Rewrite DAT-003's table and linked notes around that actual boundary. Add the missing reopening
+condition: REQ-026 already promises cookie-file support, so the decision must be revisited before
+the application adds a cookie-file path or any other secret-bearing field to a persisted job.
+Keep T-038 origin-agnostic: every emitted log is redacted regardless of whether its text began in
+this application or yt-dlp.
+
+#### Acceptance criteria
+
+- DAT-003 makes no exhaustive claim about the contents of arbitrary third-party diagnostics
+- User-entered source URLs, model fields supplied by the application, and yt-dlp-emitted prose
+  are distinguished explicitly
+- Adding cookie-file support or another secret-bearing persisted field is a named reopening
+  condition alongside sync, export, cloud backup, and database attachment
+- T-038 still requires redaction of the final emitted log regardless of message provenance
+- `REQ-026` and T-014's historical criterion link to the same scoped decision without acquiring
+  a second competing definition
+
+#### Evidence, 2026-07-30
+
+**Amended, not rewritten.** The task asked for `DAT-003`'s table to be rewritten; `AGENTS.md` §6
+makes `ai/DECISIONS.md` append-only. The superseded rows stay above the amendment, which is what
+makes the overstatement visible — deleting them would hide the finding.
+
+**Two of the three overstatements are measured false, not just unprovable:**
+
+| Claim in the original table | Measured 2026-07-30 |
+|---|---|
+| "Credentials — never in the database. **Structural:** unrepresentable in the model" | **False.** `DownloadRequest` rejects userinfo in `proxy` and **not** in `url`. `DownloadRequest(url="https://alice:s3cret@example.com/v", …)` is accepted, and `repositories.py` stores the job URL verbatim *on purpose* |
+| "`cookies_from_browser`, a browser **name**, not a path" | **True by intent only.** The model requires non-empty text; `cookies_from_browser="/home/u/.mozilla/cookies.sqlite"` is accepted. No caller supplies a path, so none reaches the database — but "none exist" described callers, not an invariant |
+| "the only residue" | **Unprovable.** An exhaustive claim about arbitrary third-party prose. The `T-044`/`T-045`/`T-014` enumeration failure, `ai/TESTING.md` §13 |
+
+**The user-typed URL is the sharp one.** A credential *can* be in the database — the user's own, in
+a URL they typed, in their own local file. The decision still holds, because `REQ-026` binds on
+values *this application supplies*; what was wrong was claiming a structural guarantee the model
+does not provide. The amendment's table is organised by **provenance** for exactly that reason, and
+says nothing about what a third-party diagnostic may contain.
+
+**Criteria, each addressed:**
+
+- No exhaustive claim survives — the third row of the new table is explicitly silent
+- Provenance distinguishes the three sources: application-supplied, user-typed, third-party-emitted
+- Cookie-file support is a named reopening condition, alongside sync, export, cloud backup and
+  database attachment — and *before* it lands, not after
+- `T-038` is restated as origin-agnostic, with storage and emission named as different sinks under
+  different rules
+- `REQ-026` already carried the scoped note pointing at `DAT-003` and gains no second definition
+
+**Nothing in `src/` or `tests/` changed**, which the out-of-scope list below requires.
+
+#### Out of scope
+
+- Reopening T-014 or changing its approved persistence code
+- Implementing cookie-file settings or log redaction
+- **Adding a validator to `url` or `cookies_from_browser`.** The amendment names it as a reopening
+  condition rather than doing it: it would change approved model code, which the first bullet bars
+
+---
+
+### T-091 — Distinguish a closed log queue from a broken one
+
+**Status:** **Complete — Approved at `25f7879`**, 2026-07-30, no follow-up. Two rounds. The first
+narrowed the `OSError` arm and left the other two wide — the same defect one type over — and
+delivered two of four acceptance criteria while reading as complete. `T091-R1` and `T091-R2` are
+Resolved. See **Corrections, 2026-07-30**.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 1 follow-up; does not block T-090 approval
+**Depends on:** `T-090`
+**Relevant context:** `T090-R1`, `T090-R2`, `T074-R3`, `T038-R2`
+**Affected surfaces:** `core/logging.py`, `tests/unit/test_logging.py`
+**Risk:** Medium — a rare queue transport fault can stop logging silently; one named regression
+also no longer proves the ordering it describes
+
+#### Scope
+
+T-090 correctly treats a queue closed during bounded exit as end-of-stream. Its `dequeue()` catch
+is wider than that contract: every `OSError` becomes the sentinel, including a non-closure
+transport error. The listener then exits normally and closes its pending drains, so the remaining
+records disappear without the thread exception that would identify the fault.
+
+The new guard also conceals the symptom used by
+`test_the_log_listener_is_not_left_reading_a_closed_queue`. Moving `_wait_at_exit` back to import
+time now passes that named test: multiprocessing closes the queue first, and `dequeue()` ends the
+listener cleanly. The full logging file still kills the mutation because the later two-lifecycle
+test counts only 1 of 41 records delivered, so this is hardening rather than a reopened T-090
+blocker.
+
+#### Acceptance criteria
+
+- Suppress only the queue-closure forms verified on the supported platforms; a non-closure
+  `OSError` from a real `multiprocessing.Queue.get()` path still raises
+- Give the post-queue-registration rule its own one-lifecycle record-delivery assertion, using a
+  handler on the application logger rather than root
+- With the `T074-R3` closure guard still present, moving registration back to import fails that
+  assertion by losing records
+- Keep the direct mutations for “newest listener only,” “record no stopped listener,” and the
+  slow-handler timeout killed
+
+#### Evidence, 2026-07-30
+
+**The docstring was already right; the code was wider than it.** It claimed `OSError` meant *"the
+closed handle (`WinError 6` on Windows, `EBADF` elsewhere)"* while `except OSError` caught every
+one. `T090-R1`'s consequence follows directly: an `EIO` out of the receive path became a normal end
+of stream, the listener exited cleanly, swept its pending drains, and every later record vanished
+with no thread exception to say why.
+
+**Narrowing it to the two documented codes broke `T074-R3`'s regression immediately**, and that
+failure is the useful part of this task. The slow-handler path does not raise either code. Measured
+by instrumenting `dequeue` in a real run:
+
+```
+errno=None  winerror=None  message='handle is closed'
+```
+
+That is `multiprocessing.connection.Connection._check_closed`, which is three lines long and reads
+`if self._handle is None: raise OSError("handle is closed")`. **A sentinel, not a system error**, so
+it carries no number to match on — and a predicate built only from error codes let it through. Had
+`T074-R3`'s test not existed, this correction would have shipped a regression while looking more
+precise than what it replaced.
+
+**Three closure forms, each justified:**
+
+| Form | Where it comes from |
+|---|---|
+| `winerror == 6` | Windows `ERROR_INVALID_HANDLE`, from the overlapped `ReadFile` in `T-090`'s captured traceback |
+| `errno == EBADF` | the POSIX equivalent, from the raw descriptor |
+| `OSError("handle is closed")`, `errno is None` | `multiprocessing`'s own guard, which fires before either code can |
+
+The sentinel is matched by **equality, not containment**. A substring test would reopen the hole in
+a smaller doorway — `OSError("the handle is closed now")` is prose, and a test asserts it still
+raises.
+
+| Check | Result |
+|---|---|
+| `tests/unit/test_logging.py` | **47 passed** (from 39) |
+| Reverting to `except OSError:` | **fails** `test_a_non_closure_oserror_propagates_out_of_dequeue` |
+| `EIO`, `ENOSPC`, `EPIPE`, bare `OSError`, sentinel-as-substring | each **not** treated as closure |
+| `T074-R3`'s slow-handler regression | still passes |
+
+**Both halves are asserted through the real `dequeue`, not the predicate alone.** `T090-R1` did not
+report a wrong predicate; it reported a `dequeue` that suppressed everything, so testing the helper
+by itself would leave the reported defect untested.
+
+#### Corrections, 2026-07-30
+
+**`T091-R1` — I put the wrong thing out of scope.** The first pass declared `EOFError` and
+`ValueError` unambiguous and excluded them, on the grounds that `T090-R1` named the `OSError` arm.
+That was wrong on the facts: `Queue.get()` reads **and deserializes** in one call, so a corrupt
+payload raises exactly the types a closed queue does. Measured:
+
+| Situation | Raises | Queue state |
+|---|---|---|
+| Queue closed | `ValueError('Queue … is closed')` | `_closed = True` |
+| Truncated payload | `UnpicklingError` / `EOFError('Ran out of input')` | **open** |
+
+**So closure is decided by the queue's state, not by the exception's shape.** `dequeue` now asks
+`_queue_is_closed()` for the `EOFError`/`ValueError` arm and re-raises otherwise. The `OSError` arm
+keeps its three-form predicate, because the interpreter-teardown case closes the *connection* handle
+without `Queue._closed` being set — the two arms genuinely need different questions.
+
+`_closed` is private and there is no public equivalent, which the helper says out loud. `getattr`
+with a default means a queue type lacking it reads as **not closed**, so an unexplained failure
+raises rather than being swallowed — the safe direction for a defect that was suppressing too much.
+
+**`T091-R2` — two of four criteria were unmet and the record did not say so.** That is the more
+useful finding: the evidence table listed what had been done and never checked it against the list
+it was supposed to satisfy.
+
+| Criterion | First pass | Now |
+|---|---|---|
+| Non-closure `OSError` from a **real** `multiprocessing.Queue.get()` path still raises | a stand-in object with a `get` method | a real `mp.Queue` with `_recv_bytes` injected, so the lock/read/deserialize machinery actually runs |
+| A **one-lifecycle** record-delivery assertion for the post-queue-registration rule, handler on the app logger | absent | `ONE_LIFECYCLE`, 40 records through a slow handler on `APP_SLUG` |
+| Moving registration back to import fails that assertion by losing records | absent | **killed** |
+| The three earlier mutations stay killed | — | verified |
+
+**Why one lifecycle rather than reusing the two-lifecycle probe.** That test proves `_stopping`
+remembers more than the newest listener; it cannot isolate *when* the wait was registered, because a
+second `worker_log_queue()` used to register a second `atexit` handler and the second pass collected
+what the first skipped. `T074-R2` said exactly that — a duplicate registration covered for a wrong
+wait. One lifecycle removes the cover.
+
+| Mutation | Result |
+|---|---|
+| Swallow `EOFError`/`ValueError` unconditionally | **killed** — `test_a_deserialization_fault_on_an_open_queue_still_raises` |
+| Register the exit wait at import | **killed** — `test_one_lifecycle_delivers_every_record_it_was_given` |
+| Revert to `except OSError:` | **killed** (unchanged) |
+
+`tests/unit/test_logging.py`: **51 passed**, from 47.
+
+#### Out of scope
+
+- `T-074`'s unreproduced Windows access violation
+- Changing the five-second exit bound
+
+*(This list previously excluded narrowing `EOFError` and `ValueError`, calling both unambiguous.
+`T091-R1` disproved that — see the corrections above. The exclusion is withdrawn rather than
+deleted, because putting the wrong thing out of scope is the mistake worth keeping visible.)*
+
+---
+
+### T-096 — Make task status and section placement mechanically agree
+
+**Status:** **Complete — Approved at `25f7879`**, 2026-07-30, no follow-up. `T096-R1` is Resolved.
+The first pass had the same hole it was written to close: a task with **no** status line was
+invisible to all twelve tests, because every one walked entries that *had* a status, so deleting one
+left the suite green. `status_line_counts()` walks the **headings** now, and a third test asserts
+both parses see the same set. Six mutations killed.
+**Owner:** Implementer
+**Priority:** Low — current truth is reconciled; this prevents the seventh recurrence
+**Phase:** Documentation infrastructure; blocks no product task or phase
+**Depends on:** none
+**Relevant context:** `COORD-R5` through `COORD-R10`; `AGENTS.md` §6; `ai/TASKS.md` status
+vocabulary
+**Affected surfaces:** a documentation-invariant test and, only as needed to make the invariant
+explicit, `ai/TASKS.md`
+**Risk:** Low to product behavior, persistent to coordination: six review rounds have found a task
+whose status and containing section disagree
+
+#### Scope
+
+`COORD-R10` is correct now, but it is another manual reconciliation in the same class rather than
+a structural change. `T-093`, `T-094` and `T-095` were each edited to say In Review without moving
+out of `## Ready`; earlier corrections did the same with different tasks. A current-truth file
+whose navigation repeatedly contradicts its own fields needs one mechanically enforced answer.
+
+Give every live task one machine-readable normalized status drawn from this file's declared
+vocabulary, and test that its containing section agrees. Descriptive qualifiers and historical
+notes may remain prose; they must not make the operative status ambiguous.
+
+#### Acceptance criteria
+
+- Every live `### T-NNN` entry exposes exactly one normalized operative status from the declared
+  vocabulary
+- A test parses the live task entries and fails when an entry is moved under the wrong status
+  section or its operative status changes without a matching move
+- Mutations for both directions—wrong section and wrong status—fail the unmodified test
+- Exceptions, if any are genuinely needed, are explicit, finite, and individually justified;
+  the test does not skip an unparseable entry
+- The current file passes after being reconciled from actual task dispositions, not by weakening
+  the mapping to match every historical placement
+
+#### Evidence, 2026-07-30
+
+**The parser takes a prefix, not a field, and that is what let the existing prose survive.** The
+file's convention is already `**Status:** **<Term> — <prose>**`, so the operative status is the
+vocabulary term the line opens with. `Blocked on T033-R4 and the external Windows build` and
+`Blocked — until Phase 5 produces an installer` both read as `Blocked` and both stay legible. No
+entry was reformatted to satisfy the test.
+
+**Two entries were reconciled, from their real dispositions rather than by weakening the mapping:**
+
+| Task | Was | Now | Why |
+|---|---|---|---|
+| `T-094` | `Approved at f858da9 — Complete` | `Complete — Approved at f858da9` | Opened with a word outside the declared vocabulary, so no reader — human or otherwise — could take the status from a fixed place |
+| `T-039` | `Proposed — blocked until Phase 5 produces an installer` under `## Blocked` | `Blocked — until Phase 5 produces an installer` | The section was right and the field was wrong. It **is** blocked; nothing can verify an installer that does not exist |
+
+**No exception list.** The acceptance criteria allow one if genuinely needed; none was. 96 live
+entries, all parsed, none skipped.
+
+| Mutation | Result |
+|---|---|
+| Status changed without moving the entry (`T-078` Ready → Blocked) | **killed** |
+| Entry moved without changing its status (`T-096` Ready → Complete) | **killed** |
+| A status outside the vocabulary (`T-094` reverted to its old spelling) | **killed** |
+| **A section heading deleted** | **killed** |
+| **A task's sole status line deleted** (`T096-R1`) | **killed** — was passing |
+| Two status lines in one entry | **killed** |
+
+**`T096-R1` is this file's own failure mode, one level in.** Every original test walked
+`live_entries()`, which pairs a heading with the status line beneath it — so an entry with no status
+contributed nothing and every assertion passed over it. The check ran, found nothing, and reported
+success, which is exactly what the deleted section heading did. `status_line_counts()` now walks
+headings rather than status lines, and `test_every_heading_is_paired_with_an_entry` asserts the two
+parses see the same set of tasks, so neither can quietly become the smaller one.
+
+The last one is why this task exists. On 2026-07-30 a scripted edit of mine replaced everything
+between `## In Review` and `### T-074` to empty a section, and took `## Ready` with it. Five tasks
+each saying `Ready` sat under `## In Review` for two commits and nothing failed. That mutation now
+fails, and it is the seventh instance of the class `COORD-R5` through `COORD-R10` reported by hand.
+
+**An unmapped section fails rather than being skipped.** `test_every_section_is_mapped` exists
+because a new `## ` heading would otherwise silently exempt every task under it — the same shape as
+the deleted heading, one level up.
+
+#### Out of scope
+
+- Generating `TASKS.md` or replacing its narrative task format
+- Validating task priority, dependencies, evidence, or prose freshness
+- Blocking T-050, T-085, Phase 2 planning, or any release gate
+
+---
+
+### T-098 — Guard the premise T-047's decision rests on
+
+**Status:** **Complete — Approved at `5ab8f49`**, 2026-07-30, no follow-up. The reviewer accepted
+the inverted module-scope check as load-bearing rather than a restatement of the three named
+constructs. `tests/unit/test_environment_shape.py` parses `downloader/environment.py` for the
+constructs the blind spots require, plus that positive check. Four mutations killed.
+**Owner:** Implementer
+**Priority:** Low — it protects a decision rather than a behaviour
+**Phase:** unassigned, like `T-047`. Blocks nothing
+**Depends on:** none
+**Relevant context:** `T-047` (the decision and its measurement), `T044-R1` and its six rounds,
+`ai/TESTING.md` ("What the environment ownership gate actually promises")
+**Affected surfaces:** `tests/unit/test_environment.py` only
+**Risk:** Low — no production code is involved
+
+#### Scope
+
+`T-047` decided not to close the environment gate's three blind spots, and the load-bearing reason
+was a measurement: `downloader/environment.py` contains **no** module-scope `if`, **no**
+`try`/`except ImportError`, and **no** call to `globals`, `locals`, `setattr`, `vars`, `exec` or
+`eval`. Each blind spot needs one of those constructs to become reachable, so all three are vacuous
+in the module the gate protects.
+
+**Nothing enforces that.** Adding a platform branch to a module that resolves paths across two
+operating systems is an ordinary thing to do. It would make gap 1 live, nothing would fail, and
+`T-047`'s decision would be silently obsolete.
+
+**This is not a fourth attempt at the gaps.** All five previous attempts parsed for *bindings* and
+were defeated by binding syntax the author had not enumerated (`T044-R1`, six rounds). This parses
+for the three *constructs the blind spots require* — a closed, small set that is a property of the
+gaps' own definitions rather than of Python's grammar. If the set is ever wrong, it is wrong in the
+direction of failing loudly: an unrecognised construct does not appear, so the assertion still holds
+and the gate is unchanged.
+
+#### Acceptance criteria
+
+- A test asserts the module contains none of the three constructs, naming `T-047` as the decision it
+  protects and stating that its own failure means *revisit the decision*, not *fix the module*
+- Adding a module-scope `if`, a module-scope `try`, or a `globals()` call to
+  `downloader/environment.py` each fails it — mutation-verified, one at a time
+- The message says which gap the construct makes live, so whoever hits it knows what to reconsider
+- `ai/TESTING.md`'s promise statement gains the reopening conditions, so the durable record and the
+  test agree
+
+#### Evidence, 2026-07-30
+
+**Three named constructs, plus one check that the enumeration itself is not the weak point.**
+
+| Added to the real `environment.py` | Result |
+|---|---|
+| `if sys.platform == "win32": …` at module scope | **killed** (gap 1) |
+| `try: from json import loads / except ImportError:` | **killed** (gap 2) |
+| `globals()["Path"] = None` | **killed** (gap 3) |
+| `for _x in (): pass` at module scope — **a shape `OPS-008` never considered** | **killed** |
+
+The fourth is the one worth having. The first three parse for constructs the gaps *require*, which
+is a closed set derived from the gaps' own definitions — but a closed set is still an enumeration,
+and this project has been wrong about enumerations five times in this exact module.
+`test_the_module_scope_is_still_the_shape_ops_008_measured` inverts it: rather than listing what is
+forbidden, it states what module scope **is** — imports, constants, functions, classes — so a
+`with`, `match`, `for` or `while` fails even though it belongs to no named gap. Its message says the
+decision should be re-read rather than the test relaxed.
+
+**Each construct is also detected in isolation.** The three module tests read a clean file, so on
+their own none has ever fired — `ai/TESTING.md` §13's shape. `test_each_construct_is_actually_
+detected` puts each through the same detection and proves it is seen.
+
+**A failure here means revisit `OPS-008`, not fix the module.** Adding a platform branch is allowed;
+what is not allowed is adding one while a decision that assumed its absence stays on the books. Every
+assertion message says so.
+
+#### Out of scope
+
+- Closing gaps 1, 2 or 3. `T-047` decided against that and this does not reopen it
+- Any production change to `downloader/environment.py`
+- Extending the construct set speculatively. Three gaps, three constructs
+
+---
 
 ### T-050 — Write the history table
 

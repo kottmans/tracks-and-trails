@@ -7252,3 +7252,64 @@ guard OPS-008 without claiming to close the three accepted blind spots.
 T-091 is **Changes requested at `9860c2f`** for T091-R1 and T091-R2. T-096 is **Changes requested
 at `7d1fd04`** for T096-R1. These are initial reviews of the new task IDs, so each has its ordinary
 focused correction pass available under AGENTS §10.
+
+## 2026-07-30 — T-091 / T-096 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction boundary:** `92903f3..25f7879`
+**Inherited implementation heads:** T-091 `9860c2f`; T-096 `7d1fd04`
+**Boundary treatment:** `92903f3` records the initial review and changes no implementation.
+`25f7879` is the one correction commit. Every check used a `25f7879` archive under `/tmp`, excluding
+any later T-089/T-078 work in the primary checkout.
+**Verdict:** **Approved — T091-R1, T091-R2 and T096-R1 Resolved**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Independent evidence | Status |
+|---|---|---:|---|---|
+| `T091-R1` | **Medium** | **No — resolved** | `dequeue()` now consults the Queue's `_closed` state before suppressing EOFError/ValueError. Through an actual Queue pipe, `b""` raised EOFError and `b"\x80\xff"` raised ValueError while `_closed` remained false; both propagated through the corrected listener. A closed Queue returned the listener sentinel. Restoring unconditional suppression failed `test_a_deserialization_fault_on_an_open_queue_still_raises`. Keeping the OSError predicate separate is correct: connection-handle teardown can occur without Queue closure state. | **Resolved** |
+| `T091-R2` | **Medium** | **No — resolved** | The OSError regression now uses a real `multiprocessing.Queue`, injecting EIO at its `_recv_bytes` seam so `Queue.get()` remains the caller. The new single-lifecycle subprocess installs its slow handler on `APP_SLUG` and counts 40 delivered records. Moving registration back to import time with the closure guard retained produced **0/40** and failed the unmodified test. | **Resolved** |
+| `T096-R1` | **Medium** | **No — resolved** | `status_line_counts()` starts from task headings and therefore retains zero-status entries; the separate parse-set comparison guards drift between heading and status views. Removing T-091's sole status line failed both checks, naming T-091 directly (**2 failed, 12 passed**), rather than silently reducing the parsed entry count. | **Resolved** |
+
+### Review judgments
+
+**Queue state is the right discriminator for the sibling exception arm.** `Queue.get()` owns both
+the receive and deserialize operations, so EOFError/ValueError alone cannot say whether the stream
+ended or a record was malformed. Queue closure state can. The private `_closed` dependency is
+contained in a named helper and defaults to false for an unknown queue type, which fails loudly
+rather than recreating the original silent-loss behavior.
+
+**The one-lifecycle gate isolates registration order.** Unlike the existing two-lifecycle probe,
+it cannot acquire a second exit handler that masks the first handler's wrong ordering. Its
+application-logger handler is actually consulted by the production listener, and the 40-record
+count—not absence of a teardown exception—is the observable.
+
+**T-096 now has an independent source of task identity.** Counting from headings closes the exact
+vacuity in the initial parser. The set comparison is useful defense in depth, while the zero-count
+assertion is the load-bearing check for the reported mutation.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Correction identity | `92903f3..25f7879`, one implementation correction commit touching TASKS, logging source, and the two relevant unit-test files |
+| `git diff --check 92903f3..25f7879` | Passed |
+| Authorship / trailers | Sean Kottman; no AI author or co-author trailer |
+| Focused logging / placement / environment files | **73 passed in 10.34 s** |
+| Real malformed Queue payloads | Open queue propagated EOFError / ValueError; closed queue returned the sentinel |
+| Unconditional EOFError/ValueError suppression mutation | Killed |
+| Import-time registration mutation | Killed — **0 of 40** records delivered |
+| Missing-status mutation | Killed — T-091 named by two placement failures |
+| Full pinned suite | **1561 passed, 11 skipped, 2 deselected in 131.85 s** |
+| Bare `mypy` | Passed; **81 files** |
+| Bare `mypy --platform win32` | Passed; **81 files** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **109 files** already formatted |
+| Windows runtime | Not rerun; both Win32 type gates pass and this correction does not change the accepted OSError/WinError predicate |
+
+### Final disposition
+
+T091-R1 and T091-R2 are **Resolved**. T-091 is **Approved at `25f7879`**.
+
+T096-R1 is **Resolved**. T-096 is **Approved at `25f7879`**. No open follow-up was created from
+this correction pass.
