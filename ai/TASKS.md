@@ -134,9 +134,10 @@ recurrence fails a gate instead of waiting for a reviewer to read carefully.)*
 
 ### T-091 — Distinguish a closed log queue from a broken one
 
-**Status:** **In Review — delivered 2026-07-30.** `dequeue()` suppresses three named closure
-forms and re-raises everything else. Finding the third is what the work turned on — see
-**Evidence, 2026-07-30**.
+**Status:** **In Review — corrected 2026-07-30** after `T091-R1` and `T091-R2`. The first pass
+narrowed the `OSError` arm and left the other two wide, which was the same defect one type over;
+and it delivered two of four acceptance criteria while reading as complete. Both are addressed —
+see **Corrections, 2026-07-30**.
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 1 follow-up; does not block T-090 approval
@@ -216,13 +217,60 @@ raises.
 report a wrong predicate; it reported a `dequeue` that suppressed everything, so testing the helper
 by itself would leave the reported defect untested.
 
+#### Corrections, 2026-07-30
+
+**`T091-R1` — I put the wrong thing out of scope.** The first pass declared `EOFError` and
+`ValueError` unambiguous and excluded them, on the grounds that `T090-R1` named the `OSError` arm.
+That was wrong on the facts: `Queue.get()` reads **and deserializes** in one call, so a corrupt
+payload raises exactly the types a closed queue does. Measured:
+
+| Situation | Raises | Queue state |
+|---|---|---|
+| Queue closed | `ValueError('Queue … is closed')` | `_closed = True` |
+| Truncated payload | `UnpicklingError` / `EOFError('Ran out of input')` | **open** |
+
+**So closure is decided by the queue's state, not by the exception's shape.** `dequeue` now asks
+`_queue_is_closed()` for the `EOFError`/`ValueError` arm and re-raises otherwise. The `OSError` arm
+keeps its three-form predicate, because the interpreter-teardown case closes the *connection* handle
+without `Queue._closed` being set — the two arms genuinely need different questions.
+
+`_closed` is private and there is no public equivalent, which the helper says out loud. `getattr`
+with a default means a queue type lacking it reads as **not closed**, so an unexplained failure
+raises rather than being swallowed — the safe direction for a defect that was suppressing too much.
+
+**`T091-R2` — two of four criteria were unmet and the record did not say so.** That is the more
+useful finding: the evidence table listed what had been done and never checked it against the list
+it was supposed to satisfy.
+
+| Criterion | First pass | Now |
+|---|---|---|
+| Non-closure `OSError` from a **real** `multiprocessing.Queue.get()` path still raises | a stand-in object with a `get` method | a real `mp.Queue` with `_recv_bytes` injected, so the lock/read/deserialize machinery actually runs |
+| A **one-lifecycle** record-delivery assertion for the post-queue-registration rule, handler on the app logger | absent | `ONE_LIFECYCLE`, 40 records through a slow handler on `APP_SLUG` |
+| Moving registration back to import fails that assertion by losing records | absent | **killed** |
+| The three earlier mutations stay killed | — | verified |
+
+**Why one lifecycle rather than reusing the two-lifecycle probe.** That test proves `_stopping`
+remembers more than the newest listener; it cannot isolate *when* the wait was registered, because a
+second `worker_log_queue()` used to register a second `atexit` handler and the second pass collected
+what the first skipped. `T074-R2` said exactly that — a duplicate registration covered for a wrong
+wait. One lifecycle removes the cover.
+
+| Mutation | Result |
+|---|---|
+| Swallow `EOFError`/`ValueError` unconditionally | **killed** — `test_a_deserialization_fault_on_an_open_queue_still_raises` |
+| Register the exit wait at import | **killed** — `test_one_lifecycle_delivers_every_record_it_was_given` |
+| Revert to `except OSError:` | **killed** (unchanged) |
+
+`tests/unit/test_logging.py`: **51 passed**, from 47.
+
 #### Out of scope
 
 - `T-074`'s unreproduced Windows access violation
 - Changing the five-second exit bound
-- **Narrowing `EOFError` or `ValueError`.** Both are unambiguous on this path — `ValueError` is
-  measured as what `multiprocessing.Queue.get()` raises on a queue closed in this process — and
-  `T090-R1` reported the `OSError` arm only
+
+*(This list previously excluded narrowing `EOFError` and `ValueError`, calling both unambiguous.
+`T091-R1` disproved that — see the corrections above. The exclusion is withdrawn rather than
+deleted, because putting the wrong thing out of scope is the mistake worth keeping visible.)*
 
 ---
 
@@ -306,9 +354,11 @@ assertion message says so.
 
 ### T-096 — Make task status and section placement mechanically agree
 
-**Status:** **In Review — delivered 2026-07-30.** `tests/unit/test_task_placement.py` parses every
-live entry and fails when a status and its section disagree. Four mutations killed, including the
-one that actually happened: deleting a section heading.
+**Status:** **In Review — corrected 2026-07-30** after `T096-R1`. The first pass had the same hole
+it was written to close: a task with **no** status line was invisible to all twelve tests, because
+every one of them walked entries that *had* a status. Deleting one left the suite green. Now
+`status_line_counts()` walks the **headings** instead, and three tests cross-check the two parses.
+Six mutations killed.
 **Owner:** Implementer
 **Priority:** Low — current truth is reconciled; this prevents the seventh recurrence
 **Phase:** Documentation infrastructure; blocks no product task or phase
@@ -367,6 +417,15 @@ entries, all parsed, none skipped.
 | Entry moved without changing its status (`T-096` Ready → Complete) | **killed** |
 | A status outside the vocabulary (`T-094` reverted to its old spelling) | **killed** |
 | **A section heading deleted** | **killed** |
+| **A task's sole status line deleted** (`T096-R1`) | **killed** — was passing |
+| Two status lines in one entry | **killed** |
+
+**`T096-R1` is this file's own failure mode, one level in.** Every original test walked
+`live_entries()`, which pairs a heading with the status line beneath it — so an entry with no status
+contributed nothing and every assertion passed over it. The check ran, found nothing, and reported
+success, which is exactly what the deleted section heading did. `status_line_counts()` now walks
+headings rather than status lines, and `test_every_heading_is_paired_with_an_entry` asserts the two
+parses see the same set of tasks, so neither can quietly become the smaller one.
 
 The last one is why this task exists. On 2026-07-30 a scripted edit of mine replaced everything
 between `## In Review` and `### T-074` to empty a section, and took `## Ready` with it. Five tasks

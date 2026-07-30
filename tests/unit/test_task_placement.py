@@ -151,14 +151,18 @@ def test_every_entry_sits_under_the_section_its_status_names() -> None:
     )
 
 
-def test_each_entry_states_its_status_once() -> None:
-    """Two status lines in one entry means two answers, and `T033-R5` found exactly that."""
-    section_pattern = re.compile(r"^## ")
+def status_line_counts() -> dict[str, int]:
+    """How many `**Status:**` lines each `### T-NNN` heading owns.
+
+    Counted from the **headings**, not from the status lines, which is the difference `T096-R1`
+    turned on: `live_entries()` can only report entries that have a status, so an entry with none
+    is invisible to it. This sees every heading whether or not it states anything.
+    """
     heading = re.compile(r"^### (T-\d+) — ")
     counts: dict[str, int] = {}
     task: str | None = None
     for line in TASKS.read_text(encoding="utf-8").split("\n"):
-        if section_pattern.match(line):
+        if line.startswith("## "):
             task = None
         found = heading.match(line)
         if found:
@@ -166,8 +170,43 @@ def test_each_entry_states_its_status_once() -> None:
             counts[task] = 0
         elif task is not None and line.startswith("**Status:**"):
             counts[task] += 1
-    repeated = {task: n for task, n in counts.items() if n > 1}
+    return counts
+
+
+def test_every_entry_states_a_status_at_all() -> None:
+    """**A missing status is invisible to every other test in this file** (`T096-R1`).
+
+    They all walk `live_entries()`, which pairs a heading with the status line under it — so an
+    entry with no status line contributes nothing and every assertion passes over it. Deleting one
+    left all twelve tests green, which is the same shape as the deleted section heading `T-096` was
+    written for: the check ran, found nothing, and reported success.
+    """
+    missing = sorted(task for task, count in status_line_counts().items() if count == 0)
+    assert not missing, (
+        f"{missing} have no **Status:** line. Every other test here pairs a heading with its "
+        "status, so an entry without one is skipped rather than reported."
+    )
+
+
+def test_each_entry_states_its_status_once() -> None:
+    """Two status lines in one entry means two answers, and `T033-R5` found exactly that."""
+    repeated = {task: n for task, n in status_line_counts().items() if n > 1}
     assert not repeated, f"more than one Status line: {repeated}"
+
+
+def test_every_heading_is_paired_with_an_entry() -> None:
+    """The two parses agree, so neither can drift into seeing a different set of tasks.
+
+    `live_entries()` walks status lines and `status_line_counts()` walks headings. If they ever
+    disagree about which tasks exist, one of them is wrong and every assertion built on it is
+    unreliable — this is what says so rather than letting the smaller set quietly win.
+    """
+    from_status = {task for task, _, _ in live_entries()}
+    from_headings = set(status_line_counts())
+    assert from_status == from_headings, (
+        f"headings without a parsed entry: {sorted(from_headings - from_status)}; "
+        f"entries without a heading: {sorted(from_status - from_headings)}"
+    )
 
 
 @pytest.mark.parametrize("term", VOCABULARY)

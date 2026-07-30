@@ -552,6 +552,18 @@ class _ToWhicheverHandlersWeHaveNow(logging.handlers.QueueListener):
         with contextlib.suppress(Exception):
             self.enqueue_sentinel()
 
+    def _queue_is_closed(self) -> bool:
+        """Whether the queue this listener reads has been shut.
+
+        **`_closed` is private and there is no public equivalent**, which is worth stating rather
+        than hiding: `multiprocessing.queues.Queue` exposes `close()` but nothing that reports
+        whether it happened. `getattr` with a default means a queue type that lacks the attribute —
+        a `queue.Queue` in a unit test, say — reads as *not closed*, so an unexplained failure
+        raises instead of being swallowed. That is the safe direction for `T091-R1`: the defect was
+        suppressing too much.
+        """
+        return bool(getattr(self.queue, "_closed", False))
+
     def dequeue(self, block: bool) -> Any:
         """Read one record, and treat a closed queue as the end of the stream (`T074-R3`).
 
@@ -581,12 +593,19 @@ class _ToWhicheverHandlersWeHaveNow(logging.handlers.QueueListener):
         """
         try:
             return super().dequeue(block)
-        except EOFError, ValueError:
+        except OSError as error:
+            if not _is_closed_handle(error):
+                raise
             # `_sentinel` is `QueueListener`'s own end-of-stream marker; typeshed does not
             # declare it, which is the same gap `_monitor` has one method down.
             return self._sentinel  # type: ignore[attr-defined]
-        except OSError as error:
-            if not _is_closed_handle(error):
+        except EOFError, ValueError:
+            # **Closure is decided by the queue's state, not by the exception** (`T091-R1`).
+            # `Queue.get()` deserializes inside the same call that reads, so both of these mean
+            # either "the queue is shut" or "the bytes were not a record" — and only the first is
+            # an end of stream. Measured: a closed queue raises `ValueError(... is closed)` with
+            # `_closed` already `True`, while a truncated payload raises from an **open** queue.
+            if not self._queue_is_closed():
                 raise
             return self._sentinel  # type: ignore[attr-defined]
 

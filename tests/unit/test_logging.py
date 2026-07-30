@@ -13,6 +13,8 @@ import logging.handlers
 import multiprocessing as mp
 import subprocess
 import sys
+import tempfile
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -21,6 +23,7 @@ import pytest
 
 from tracks_and_trails.core import logging as app_logging
 from tracks_and_trails.core.models import DownloadRequest
+from tracks_and_trails.downloader.environment import APP_SLUG
 
 #: One recognisable string per leak shape. Each appears in exactly one test input, so a failure
 #: names which route let it out. Not credentials — invented markers, shaped like the real thing
@@ -733,6 +736,38 @@ stop_listening_for_worker_logs()
 sys.exit(0)
 """
 
+#: One lifecycle, enough backlog that ordering decides whether it survives (`T091-R2`).
+#:
+#: `TWO_LIFECYCLES` proves the *list* remembers more than one stopped listener. It cannot prove the
+#: **registration ordering** on its own: with two lifecycles a second `atexit` handler used to
+#: collect what the first had skipped, which is precisely why `T074-R2` said a duplicate
+#: registration covered for a wrong wait. One lifecycle removes that cover.
+ONE_LIFECYCLE = """
+import logging, sys, time
+from tracks_and_trails.core.logging import (
+    APP_SLUG, stop_listening_for_worker_logs, worker_log_queue,
+)
+
+class SlowFile(logging.Handler):
+    def emit(self, record):
+        time.sleep(0.05)
+        with open(sys.argv[1], "a", encoding="utf-8") as sink:
+            sink.write("record\\n")
+
+# The listener resolves handlers from the *app* logger, not root. A handler on root is never
+# consulted, the backlog drains instantly, and the test passes whatever the ordering is.
+logging.getLogger(APP_SLUG).addHandler(SlowFile())
+logging.getLogger(APP_SLUG).setLevel(logging.INFO)
+
+record = logging.LogRecord(APP_SLUG, logging.INFO, "backlog.py", 1, "backlog", None, None)
+
+only = worker_log_queue()
+for _ in range(40):
+    only.put(record)
+stop_listening_for_worker_logs()
+sys.exit(0)
+"""
+
 #: A handler slower than the exit wait's own timeout (`T074-R3`).
 #:
 #: The wait is bounded at five seconds and cannot be otherwise — an unbounded one would turn a
@@ -890,4 +925,102 @@ def test_a_closure_oserror_ends_the_stream_rather_than_raising() -> None:
             raise OSError("handle is closed")
 
     listener = _ToWhicheverHandlersWeHaveNow(_Closed())  # type: ignore[arg-type]
+    assert listener.dequeue(True) is listener._sentinel  # type: ignore[attr-defined]
+
+
+def test_one_lifecycle_delivers_every_record_it_was_given() -> None:
+    """`T091-R2`: the post-queue registration rule, gated on its own without a second lifecycle.
+
+    **Why this is not covered by the two-lifecycle test.** That one proves `_stopping` remembers
+    more than the newest listener. It cannot isolate *when* the exit wait was registered, because a
+    second `worker_log_queue()` used to register a second `atexit` handler, and the second pass
+    collected what the first had skipped — `T074-R2`'s own finding was that a duplicate
+    registration covered for a wrong wait. With one lifecycle there is no second pass to cover.
+
+    The handler is on the **application** logger, not root. The listener resolves handlers from
+    `APP_SLUG`, so a slow handler installed on root is never consulted, the backlog drains
+    instantly, and the assertion holds no matter what the ordering is. Two of this file's probes
+    were vacuous for exactly that reason before `T-090` corrected them.
+    """
+    with tempfile.TemporaryDirectory() as directory:
+        written = Path(directory) / "records.txt"
+        result = subprocess.run(
+            [sys.executable, "-c", ONE_LIFECYCLE, str(written)],
+            capture_output=True,
+            text=True,
+            timeout=180,
+            check=False,
+            cwd=Path(__file__).resolve().parents[2],
+        )
+        assert result.returncode == 0, f"exit {result.returncode}\nstderr: {result.stderr}"
+        delivered = written.read_text(encoding="utf-8").count("record") if written.exists() else 0
+
+    assert delivered == 40, (
+        f"{delivered} of 40 records reached the handler. The exit wait was registered before "
+        "multiprocessing's own, so it ran after the queue had already been finalised and the "
+        "listener was cut off mid-backlog."
+    )
+
+
+def test_a_non_closure_oserror_from_a_real_queue_still_raises() -> None:
+    """`T091-R2`: through a real `multiprocessing.Queue`, not a stand-in with a `get` method.
+
+    The fake-queue test beside this one proves `dequeue` re-raises. It cannot prove the same of the
+    **real** read path, which is where `T090-R1`'s `EIO` would arrive: `Queue.get()` acquires a
+    lock, reads bytes off a connection and deserializes them, and only the middle step can fail
+    this way. Injecting at `_recv_bytes` puts the fault where the real one would be.
+    """
+    queue: Any = mp.Queue()
+    try:
+        queue.put(logging.LogRecord(APP_SLUG, logging.INFO, __file__, 1, "x", None, None))
+        time.sleep(0.1)  # let the feeder thread hand the bytes to the pipe
+
+        def failing_recv(*_args: object, **_kwargs: object) -> bytes:
+            raise OSError(errno.EIO, "Input/output error")
+
+        queue._recv_bytes = failing_recv
+        listener = app_logging._ToWhicheverHandlersWeHaveNow(queue)
+        with pytest.raises(OSError, match="Input/output error"):
+            listener.dequeue(True)
+    finally:
+        queue.close()
+        queue.join_thread()
+
+
+def test_a_deserialization_fault_on_an_open_queue_still_raises() -> None:
+    """`T091-R1`: `EOFError` and `ValueError` are only end-of-stream when the queue is **shut**.
+
+    `Queue.get()` reads and deserializes in one call, so a truncated payload surfaces as the same
+    exception types a closed queue does. Suppressing both meant a corrupt record silently ended the
+    listener and every later record went with it — the defect one type over from the `OSError` arm.
+    """
+    for fault in (EOFError("Ran out of input"), ValueError("could not unpickle")):
+        queue: Any = mp.Queue()
+        try:
+
+            def failing_recv(
+                *_args: object, _fault: BaseException = fault, **_kwargs: object
+            ) -> bytes:
+                raise _fault
+
+            queue._recv_bytes = failing_recv
+            listener = app_logging._ToWhicheverHandlersWeHaveNow(queue)
+            with pytest.raises(type(fault)):
+                listener.dequeue(True)
+        finally:
+            queue.close()
+            queue.join_thread()
+
+
+def test_the_same_faults_end_the_stream_once_the_queue_is_closed() -> None:
+    """The other half, so the test above cannot pass by `dequeue` never suppressing at all."""
+    queue: Any = mp.Queue()
+    queue.close()
+    queue.join_thread()
+    listener = app_logging._ToWhicheverHandlersWeHaveNow(queue)
+
+    def closed_recv(*_args: object, **_kwargs: object) -> bytes:
+        raise ValueError("queue is closed")
+
+    queue._recv_bytes = closed_recv
     assert listener.dequeue(True) is listener._sentinel  # type: ignore[attr-defined]
