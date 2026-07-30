@@ -21,6 +21,7 @@ the instant it is signalled, and a process inside yt-dlp's download loop does no
 import contextlib
 import multiprocessing as mp
 import os
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -3615,3 +3616,158 @@ def test_a_hard_exit_after_a_completion_settles_keeps_both_rows(tmp_path: Path) 
     assert stored.status is JobStatus.COMPLETED
     assert entry is not None, "a settled completion lost its history row to the exit"
     assert entry.format_used == "137+140"
+
+
+# --- T-085: the record REQ-020 names ------------------------------------------------------
+
+
+class _CapturingWriter:
+    """A `QueueWriter` stand-in that records the `HistoryEntry` a completion projected.
+
+    The projection is what `REQ-020` is about, and it happens in `PersistentJobStore.complete`.
+    Driving it through the real writer would prove the same thing while also proving SQLite works,
+    which `test_a_completed_download_writes_exactly_one_history_row` already does end to end.
+    """
+
+    def __init__(self) -> None:
+        self.completions: list[tuple[Job, Any]] = []
+
+    def complete(self, job: Job, entry: Any, done: Callable[[str | None], None]) -> None:
+        self.completions.append((job, entry))
+        done(None)
+
+    def revise(self, job: Job, done: Callable[[str | None], None]) -> None:
+        done(None)
+
+    def submit(self, jobs: Any, done: Callable[[str | None], None]) -> None:
+        done(None)
+
+
+def _job_with_every_field(tmp_path: Path) -> Job:
+    """A completed job carrying every fact `REQ-020` names, so none is absent by accident."""
+    job = make_job("job-full", "https://example.com/watch?v=abc", tmp_path)
+    for status in (
+        JobStatus.PROBING,
+        JobStatus.READY,
+        JobStatus.RUNNING,
+        JobStatus.POST_PROCESSING,
+        JobStatus.COMPLETED,
+    ):
+        job = job.with_status(status)
+    return replace(
+        job,
+        title="A Clip With A Title",
+        output_path=str(tmp_path / "A Clip With A Title.mp4"),
+        bytes_total=4096,
+        finished_at=datetime(2026, 7, 30, 9, 0, tzinfo=UTC),
+    )
+
+
+def test_a_completion_records_every_field_req_020_names(tmp_path: Path) -> None:
+    """`T-085`, `REQ-020`: source URL, title, output path, format used, size, completion time.
+
+    **Asserted as a whole object, not field by field.** A per-field assertion list is written from
+    the same understanding that would forget a field, so it passes while a column goes unwritten —
+    `T-014`'s round-trip test exists for the same reason. Comparing the projection against a fully
+    specified expectation makes an omission a failure.
+
+    **Why the projection and not a live download:** the local `http.server` fixture serves a bare
+    file and supplies no title, so a real completion legitimately records `title=None`. That proves
+    the pipeline, not the field set. Both tests exist; this one owns the field set.
+    """
+    from tracks_and_trails.persistence.repositories import HistoryEntry
+    from tracks_and_trails.persistence.store import PersistentJobStore
+
+    writer = _CapturingWriter()
+    store = PersistentJobStore(sqlite3.connect(":memory:"), writer)  # type: ignore[arg-type]
+    job = _job_with_every_field(tmp_path)
+
+    settled: list[str | None] = []
+    store.complete(job, "137+140", settled.append)
+
+    assert settled == [None]
+    assert len(writer.completions) == 1
+    _, entry = writer.completions[0]
+    assert entry == HistoryEntry(
+        id="job-full",
+        url="https://example.com/watch?v=abc",
+        title="A Clip With A Title",
+        output_path=str(tmp_path / "A Clip With A Title.mp4"),
+        format_used="137+140",
+        bytes_total=4096,
+        completed_at=datetime(2026, 7, 30, 9, 0, tzinfo=UTC),
+    ), "the projection dropped or altered a field REQ-020 names"
+
+
+def test_history_outlives_the_job_row_it_describes(tmp_path: Path) -> None:
+    """`T-085`: history survives the queue being cleared, and the relationship is stated.
+
+    **The relationship is "none", deliberately.** `history` carries no foreign key to `jobs`, so
+    deleting a job cannot cascade into the record of what it obtained. That is the whole distinction
+    the task draws: a queue row is about work, a history row is about something that happened, and
+    removing the first must not remove the second.
+
+    Asserted by deleting the job row directly rather than by waiting for `T-081`'s clear-completed,
+    which does not exist yet. What `T-081` must not do is add a cascade; this test is what would
+    fail if it did.
+    """
+    from tracks_and_trails.persistence import db
+    from tracks_and_trails.persistence.repositories import (
+        HistoryEntry,
+        HistoryRepository,
+        JobRepository,
+        complete_job,
+    )
+
+    path = tmp_path / "library.sqlite3"
+    with db.open_database(path) as connection:
+        jobs = JobRepository(connection)
+        job = _job_with_every_field(tmp_path)
+        jobs.add(replace(job, status=JobStatus.QUEUED, queue_position=0))
+        complete_job(
+            connection,
+            job,
+            HistoryEntry(
+                id=job.id,
+                url=job.url,
+                title=job.title,
+                output_path=job.output_path,
+                format_used="137+140",
+                bytes_total=job.bytes_total,
+                completed_at=job.finished_at or datetime.now(UTC),
+            ),
+        )
+        assert HistoryRepository(connection).get("job-full") is not None
+
+        connection.execute("DELETE FROM jobs WHERE id = ?", ("job-full",))
+        connection.commit()
+
+        assert jobs.get("job-full") is None, "the job row was not actually removed"
+        entry = HistoryRepository(connection).get("job-full")
+
+    assert entry is not None, (
+        "deleting the job took its history with it — REQ-020's record must outlive the queue row"
+    )
+    assert entry.output_path == job.output_path, "the surviving record lost what it recorded"
+
+
+def test_the_history_table_declares_no_dependency_on_jobs(tmp_path: Path) -> None:
+    """The independent lifetime is structural, not just currently true.
+
+    Read from the schema rather than from behaviour: a `FOREIGN KEY ... ON DELETE CASCADE` added
+    later would make the test above fail, but a plain foreign key would pass it while still
+    coupling the two tables' lifetimes the moment anyone enabled enforcement.
+    """
+    from tracks_and_trails.persistence import db
+
+    path = tmp_path / "library.sqlite3"
+    with db.open_database(path) as connection:
+        row = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'history'"
+        ).fetchone()
+    assert row is not None
+    definition = row[0].upper()
+    assert "FOREIGN KEY" not in definition and "REFERENCES" not in definition, (
+        "history declares a dependency on another table; REQ-020's record is supposed to outlive "
+        "the queue row that produced it"
+    )

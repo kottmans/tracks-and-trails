@@ -1004,7 +1004,10 @@ gate this task's correctness rests on.
 
 ### T-085 — History of completed downloads
 
-**Status:** Proposed — `T-050` writes the table this reads
+**Status:** **In Review — the record is delivered 2026-07-30.** All three acceptance criteria are
+met. **One thing is deliberately not delivered and is not this task's to decide:** the Scope below
+says "the record *and the view over it*", and the view has no owner anywhere — see
+**`REQ-020`'s view is unowned** below.
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 2
@@ -1029,9 +1032,63 @@ the schema and in the UI, and it interacts with `T-081`'s clear-completed.
 - History survives clearing the queue, and the relationship is stated rather than implied
 - A migration exists if the table lands after any release (`T-048` owns the first real one)
 
+#### Evidence, 2026-07-30
+
+**`T-050` had already written the row; what was missing was proof it holds what `REQ-020` names.**
+Three tests, all in `tests/integration/test_manager.py`:
+
+- `test_a_completion_records_every_field_req_020_names` compares the projected `HistoryEntry`
+  against a **fully specified expectation as one object**, rather than asserting field by field. A
+  per-field list is written from the same understanding that would forget a field, so it passes while
+  a column goes unwritten — `T-014`'s round-trip test exists for that reason.
+- `test_history_outlives_the_job_row_it_describes` deletes the job row and reads the history back.
+- `test_the_history_table_declares_no_dependency_on_jobs` reads the relationship from
+  `sqlite_master` rather than from behaviour, because a plain foreign key would pass the test above
+  while still coupling the two lifetimes the moment anyone enabled enforcement.
+
+| Mutation | Result |
+|---|---|
+| Drop `format_used` from the projection | **killed** |
+| Drop `title` from the projection | **killed** |
+| Drop `bytes_total` from the projection | **killed** |
+
+**Why the field set is gated at the projection, not on a live download.** A real completion through
+the local `http.server` fixture records `title=None` — measured — because the fixture serves a bare
+file with no metadata. That is a fixture limit, not a product gap, but it means an end-to-end test
+cannot require six non-null fields without either lying or depending on a real site. So
+`test_a_completed_download_writes_exactly_one_history_row` owns the live path and this owns the field
+set. Stated rather than left as a gap in the reasoning.
+
+**The migration criterion is met by there being nothing to migrate.** `T-014` created the `history`
+table in `0001_initial.sql` and this task changed no schema, so no migration exists or is needed.
+`T-048` still owns the first real data migration.
+
+#### `REQ-020`'s view is unowned — flagged, not decided
+
+The Scope above says this task is "the record **and the view over it**". Three documents disagree
+about where that view lives, and none of them owns it:
+
+- **`IMPLEMENTATION_PLAN.md` §Phase 2** lists *"History persistence and completed-download
+  records"* — no view.
+- **§Phase 3** mentions history and `REQ-020` **not at all**.
+- **`T-050`** says *"Any history UI — Phase 3 (`REQ-020`'s view)"*, which points at a deliverable
+  that does not exist.
+
+**And Phase 2 needs one anyway.** `REQ-021` — *"Open a completed file, or reveal it in the system
+file manager, from the history **and** queue views"* — is a Phase 2 deliverable, and `T-086` depends
+on *this* task "for the history half". So a history view is presupposed by a Phase 2 requirement
+while being assigned to no phase.
+
+This is the `P2PLAN-R1` class again: task text and plan disagreeing, with the plan internally
+inconsistent as well. `AGENTS.md` §5 puts the plan above `TASKS.md`, and the plan's Phase 2
+deliverable is the record — which is what this task delivered. **Whether the view lands in Phase 2
+(for `REQ-021`), in `T-086`, or in a later phase is a planning decision and is not made here.**
+
 #### Out of scope
 
 - Search, statistics, export
+- **The history view**, pending the decision above. All three acceptance criteria concern the record,
+  so this task is complete against what it is gated on
 
 ---
 
@@ -1366,10 +1423,13 @@ beats designing it against an imagined one.
 
 ### T-049 — Tighten DAT-003 before cookie-file support
 
-**Status:** Proposed
+**Status:** **In Review — delivered 2026-07-30.** `DAT-003` carries an amendment restating its
+boundary as **provenance** and withdrawing three overstatements, two of which were measured false
+rather than merely unprovable. See **Evidence, 2026-07-30**.
 **Owner:** Planner
 **Priority:** Medium before cookie-file support or first release
-**Phase:** Phase 4
+**Phase:** Phase 4. *(It is filed under `## Proposed — Phase 2` with the other Phase 1 carry-overs,
+which the section note explains — the grouping is by where they were filed, not by phase.)*
 **Depends on:** none
 **Relevant context:** `DAT-003`, `REQ-026`, `T014-R1`, `T-038`
 **Affected surfaces:** `ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, `ai/TASKS.md`
@@ -1404,10 +1464,44 @@ this application or yt-dlp.
 - `REQ-026` and T-014's historical criterion link to the same scoped decision without acquiring
   a second competing definition
 
+#### Evidence, 2026-07-30
+
+**Amended, not rewritten.** The task asked for `DAT-003`'s table to be rewritten; `AGENTS.md` §6
+makes `ai/DECISIONS.md` append-only. The superseded rows stay above the amendment, which is what
+makes the overstatement visible — deleting them would hide the finding.
+
+**Two of the three overstatements are measured false, not just unprovable:**
+
+| Claim in the original table | Measured 2026-07-30 |
+|---|---|
+| "Credentials — never in the database. **Structural:** unrepresentable in the model" | **False.** `DownloadRequest` rejects userinfo in `proxy` and **not** in `url`. `DownloadRequest(url="https://alice:s3cret@example.com/v", …)` is accepted, and `repositories.py` stores the job URL verbatim *on purpose* |
+| "`cookies_from_browser`, a browser **name**, not a path" | **True by intent only.** The model requires non-empty text; `cookies_from_browser="/home/u/.mozilla/cookies.sqlite"` is accepted. No caller supplies a path, so none reaches the database — but "none exist" described callers, not an invariant |
+| "the only residue" | **Unprovable.** An exhaustive claim about arbitrary third-party prose. The `T-044`/`T-045`/`T-014` enumeration failure, `ai/TESTING.md` §13 |
+
+**The user-typed URL is the sharp one.** A credential *can* be in the database — the user's own, in
+a URL they typed, in their own local file. The decision still holds, because `REQ-026` binds on
+values *this application supplies*; what was wrong was claiming a structural guarantee the model
+does not provide. The amendment's table is organised by **provenance** for exactly that reason, and
+says nothing about what a third-party diagnostic may contain.
+
+**Criteria, each addressed:**
+
+- No exhaustive claim survives — the third row of the new table is explicitly silent
+- Provenance distinguishes the three sources: application-supplied, user-typed, third-party-emitted
+- Cookie-file support is a named reopening condition, alongside sync, export, cloud backup and
+  database attachment — and *before* it lands, not after
+- `T-038` is restated as origin-agnostic, with storage and emission named as different sinks under
+  different rules
+- `REQ-026` already carried the scoped note pointing at `DAT-003` and gains no second definition
+
+**Nothing in `src/` or `tests/` changed**, which the out-of-scope list below requires.
+
 #### Out of scope
 
 - Reopening T-014 or changing its approved persistence code
 - Implementing cookie-file settings or log redaction
+- **Adding a validator to `url` or `cookies_from_browser`.** The amendment names it as a reopening
+  condition rather than doing it: it would change approved model code, which the first bullet bars
 
 ---
 
