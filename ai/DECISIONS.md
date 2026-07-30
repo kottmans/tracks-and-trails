@@ -1989,3 +1989,95 @@ building a dialog twice.
   main-window control may move into the dialog, and this entry is the record of why it was there.
 - `REQ-013`'s "minimum 1" is a constraint the settings layer enforces, not the spinbox — a
   hand-edited `0` must not produce a pool that never starts anything.
+
+---
+
+## OPS-008 — The environment ownership gate's three blind spots stay open
+
+**Status:** **Accepted** (2026-07-30) — maintainer decision
+**Date:** 2026-07-30
+**Supersedes:** nothing. **Closes** `T044-R1`'s residue, carried by `T-047` through six review
+rounds without a disposition.
+
+### Context
+
+`T-044`'s gate reports any public attribute of `downloader/environment.py` that no `import`
+statement accounts for. It reads the interpreter's namespace via `vars()` rather than parsing for
+bindings, which is what makes it hold for *any* binding syntax — including syntax that does not
+exist yet. That property was reached only after five parsing attempts failed, each defeated by
+syntax its author had not enumerated.
+
+Three gaps survive, pinned by test rather than left to memory:
+
+1. **An export behind a guard that is false at run time** — OS, architecture, dependency presence,
+   feature probe, environment state.
+2. **A name imported and then rebound** — `try: from x import Y / except ImportError: Y = ...`, the
+   ordinary shape of an optional dependency, where the import parse subtracts a name the fallback
+   genuinely bound.
+3. **Dynamic rebinding of an imported name** — `globals()["Path"] = ...`.
+
+`T-047` existed to decide whether any is worth closing. Its first deliverable was deliberately a
+decision rather than a patch, because the history says the next clever fix will also be wrong.
+
+### Decision
+
+**None of the three is closed. The gate stands as it is, and `ai/TESTING.md`'s statement of its
+promise remains the durable description of what it does not cover.**
+
+### Rationale
+
+**All three are structurally unreachable in the module the gate protects.** Measured 2026-07-30 by
+parsing `downloader/environment.py`, not by reading it:
+
+| Gap | Construct it requires to become reachable | Present in the module |
+|---|---|---|
+| 1 | a module-scope `if` | **0** |
+| 2 | a module-scope `try`/`except` | **0** |
+| 3 | a call to `globals`, `locals`, `setattr`, `vars`, `exec` or `eval` anywhere | **0** |
+
+Module scope is one docstring, seven plain imports, three annotated assignments, five functions and
+two classes. There is no construct any of the three gaps needs.
+
+That is a stronger argument than the one `T-047` was filed with, which was that gaps 1 and 3 "need a
+determined author to trigger". True, but weaker: today they need a determined author **and** a change
+to the module's structure, and the second is the part a reviewer can check.
+
+- **Five attempts died to enumeration.** `T044-R1` was found six times. Every fix that recognised
+  more syntax was beaten by syntax the author had not named, and three attempts to state the
+  coverage overclaimed and were disproved. This is the `T-044`/`T-045`/`T-014` failure class, and
+  `ai/TESTING.md` §13 records it.
+- **The gate catches what it exists to catch.** An accidental `get_ytdlp_version()` appears in
+  `vars()` under any binding syntax. That is the defect `ARCHITECTURE.md` §6 cares about.
+- **§6's boundary has two other guards.** The layering test and review both bind it independently, so
+  this gate is not the only thing standing between the module and a violation.
+
+### What this gives up, precisely
+
+**A determined author can defeat the gate**, three ways, and the project has written down how. That
+is accepted: the gate is a check against accident, not an adversary, and treating it as the latter is
+what produced five failed fixes.
+
+**More usefully: the measurement above is a premise, and nothing enforces it.** Adding a platform
+branch to a module that resolves paths across two operating systems is an ordinary thing to do. It
+would make gap 1 live, nothing would fail, and this decision would be silently obsolete. **`T-098`
+guards that premise** — and does so by parsing for the three constructs the gaps *require*, a closed
+set that follows from the gaps' own definitions, rather than for bindings.
+
+### Alternatives considered
+
+- **Close gap 2** (the plausible one — an optional-dependency fallback is ordinary code). Rejected:
+  the module has no optional dependency and no `try`/`except`, so there is nothing to close, and the
+  fix would be a sixth parse of binding syntax.
+- **Close gaps 1 and 3.** Rejected on the same grounds, with less motive: both need deliberate
+  authorship.
+- **Replace the gate.** Rejected: `vars()` is the property five rounds failed to achieve, and no
+  proposal on the table improves on reading the interpreter's own namespace.
+- **Record nothing and leave `T-047` open.** Rejected — that is what six rounds already did.
+
+### Consequences
+
+- `T-047` closes. Nothing in `src/` or `tests/` changed for it.
+- **`T-098`** owns the premise guard and `ai/TESTING.md`'s reopening conditions.
+- **This decision reopens** if `downloader/environment.py` gains a module-scope guard, an
+  import-with-fallback, or any dynamic namespace manipulation — each of which makes one specific gap
+  reachable — or if the gate is ever proposed to bind a second module with a different shape.

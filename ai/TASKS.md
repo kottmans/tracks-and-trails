@@ -308,10 +308,14 @@ says nothing about what a third-party diagnostic may contain.
 
 ### T-047 — Decide whether the environment ownership gate's blind spots are worth closing
 
-**Status:** **In Review — decided 2026-07-30: no, none of the three is worth closing.** The
-decision is recorded below with the measurement it rests on, and **nothing in the tree changed**, as
-the second acceptance criterion requires. `ai/TESTING.md`'s statement of the promise stands as the
-durable record. One thing the measurement exposed is filed separately as `T-098`.
+**Status:** **In Review — decided: no, and the decision is now `OPS-008`.** `T047-R1` was right
+that a durable "no" belongs in `ai/DECISIONS.md` rather than only in this task and `ai/TESTING.md`:
+a decision recorded in a mutable task is exactly what `AGENTS.md` §12 puts in `DECISIONS.md`, and
+`P2PLAN-R2` made the same finding about Phase 2's three decisions a day earlier. **`OPS-008`** now
+holds the decision, the measurement it rests on, its alternatives and its reopening conditions.
+Nothing in `src/` or `tests/` changed, as the second acceptance criterion requires. `T-098` owns what
+the measurement exposed.
+*(This read "the decision is recorded below" — below being this task — until `T047-R1`.)*
 **Owner:** Planner, then Implementer if the answer is yes
 **Priority:** **Low, and deliberately so.** The question is whether to spend anything here at
 all; the honest default answer is no
@@ -355,7 +359,10 @@ independently guarded by the layering test and by review.
   enumeration failure — specifically, a demonstration against binding syntax the fix does not
   name, since that is how all five previous fixes died
 
-#### Decision, 2026-07-30 — no, and the reason is stronger than "probably not"
+#### Decision, 2026-07-30 — no. **Canonical record: `OPS-008`**
+
+*(What follows is the summary. `OPS-008` is the decision; this is the task that produced it, and
+`T047-R1` is why the two are not the same place.)*
 
 **All three gaps are structurally unreachable in the module the gate protects.** Measured by parsing
 `downloader/environment.py` rather than by reading it:
@@ -402,9 +409,18 @@ is what all five failures had in common.
 
 ### T-097 — Gate ARC-007's settings-injection boundary
 
-**Status:** **In Review — delivered 2026-07-30**, ahead of the `T-078` implementation it protects.
-The prohibition is in place and every spelling is mutation-verified against the real
-`downloader/manager.py`. **It also closed a pre-existing hole in the analyser** — see below.
+**Status:** **In Review — corrected 2026-07-30** after `T097-R1`. Two defects, both real:
+
+- **Relative imports were unchecked entirely.** The analyser skipped every `ImportFrom` with a
+  non-zero level, so `from ..core import settings` survived all 23 cases — and so did
+  `from .. import persistence`, meaning `T-013`'s prohibition had *two* unreachable spellings rather
+  than one. Relative names are now resolved against the analysed module's package.
+- **The rule reached beyond its decision.** `core.settings` was forbidden in `result_pump.py` as well
+  as `manager.py`, on my reasoning that neither should read a settings file. `ARC-007` does not say
+  that, and extending an accepted decision is a decision — not an implementation choice made in a
+  test file. The rules are split per module now.
+
+52 cases, up from 23. See **Corrections, 2026-07-30**.
 **Owner:** Implementer
 **Priority:** Low — the boundary is stated correctly; this stops a future implementation from
 making it decorative
@@ -479,10 +495,45 @@ dot boundary would sweep up. `ARC-007` forbids the settings module, not `core/`;
 caught the manager's real imports would be deleted by whoever it blocked, taking the settings gate
 with it.
 
-**Applied to both modules in `MODULES`, not to `manager.py` alone.** Neither `manager.py` nor
-`result_pump.py` is a place a settings file should be read, and one shared list is harder to weaken
-by accident than a per-module table with a single entry. Stated because the task named only the
-manager.
+*(**Superseded — `T097-R1`.** This read: "Applied to both modules in `MODULES`, not to `manager.py`
+alone. Neither is a place a settings file should be read, and one shared list is harder to weaken by
+accident than a per-module table with a single entry." The reviewer's objection is the right one:
+`ARC-007` names the manager, and whether the pump should also be covered is a question for
+`ARC-007`, not a convenience decided inside a test file. The rules are split per module now.)*
+
+#### Corrections, 2026-07-30 — `T097-R1`
+
+**Relative imports were never checked, and that predates this task.** The analyser carried
+`node.level == 0` on its `ImportFrom` branch, so every relative form was skipped. Measured against
+the committed 23-case file, all four of these **survived**:
+
+| Form | Before | After |
+|---|---|---|
+| `from ..core import settings` | **survives** | caught |
+| `from ..core.settings import concurrency_limit` | **survives** | caught |
+| `from .. import persistence` | **survives** | caught |
+| `from ..persistence import db` | **survives** | caught |
+
+So `T-013`'s prohibition had **two** unreachable spellings, not the one this task first reported:
+`from tracks_and_trails import persistence` *and* every relative form. `_absolute()` now resolves a
+relative name against the analysed module's package — one dot is the containing package, each extra
+dot climbs one level, and a level that walks past the distribution root yields `""`, which matches
+nothing. That is the honest answer for an import that would not resolve at run time either.
+
+**The rules are per module now.** `FORBIDDEN_EVERYWHERE` holds `persistence` and `sqlite3`;
+`FORBIDDEN_BY_MODULE` holds `core.settings` against `downloader/manager.py` alone, because that is
+the module `ARC-007` names. Two parametrised tests assert both halves — the prohibition binds the
+manager, and it does **not** bind the pump — and the second one says in its docstring that if the
+pump should be covered, `ARC-007` should say so first and *this test* is what changes.
+
+| Check | Result |
+|---|---|
+| Cases in this file | **52**, from 23 |
+| Relative settings forms added to the real `manager.py` | **fail**, all |
+| `from .. import persistence` added to the real `manager.py` | **fails** |
+| Legitimate relative imports (`from . import protocol`, `from ..core.models import Job`, …) | permitted |
+| `core.settings` forms against `result_pump.py` | permitted — `ARC-007`'s scope |
+| `persistence` forms against `result_pump.py` | still caught — `T-013` binds both |
 
 #### Out of scope
 
