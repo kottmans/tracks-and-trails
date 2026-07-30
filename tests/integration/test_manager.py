@@ -2250,7 +2250,7 @@ def test_a_second_session_is_refused_while_the_first_is_still_being_stored(
         assert download.active_job_ids() == ("job-1",), "the reservation is what refuses the next"
         assert not download.is_idle
 
-        with pytest.raises(RuntimeError, match="already running"):
+        with pytest.raises(RuntimeError, match="the pool is full"):
             download.start("job-2")
     finally:
         download.shutdown()
@@ -2411,13 +2411,23 @@ def test_a_second_session_is_refused_while_one_is_running(
     repository: FakeRepository,
     manager: Callable[..., DownloadManager],
 ) -> None:
-    """Phase 1 is a pool of exactly one, and says so rather than quietly queueing."""
+    """A full pool refuses rather than quietly queueing.
+
+    **The default limit is 1, so this is the same contract Phase 1 had** (`T-078`). What changed is
+    why: the refusal is now "the pool is full at 1" rather than "concurrency is Phase 2", because
+    the bound is a configured limit rather than a fixed assumption. A manager built with a larger
+    limit accepts more — `test_the_limit_is_respected_exactly` is where that is asserted.
+
+    Refusing rather than queueing is the point here. `start()` is a direct request and its caller
+    gets an answer; the waiting list is for work this manager has already accepted, which is
+    `retry()`'s path and `_fill_free_slots`'.
+    """
     repository.add(make_job("job-1", "https://example.invalid/x", tmp_path))
     repository.add(make_job("job-2", "https://example.invalid/y", tmp_path))
     download = manager(entry_point=child_downloading_forever)
     download.start("job-1")
 
-    with pytest.raises(RuntimeError, match="already running"):
+    with pytest.raises(RuntimeError, match="the pool is full"):
         download.start("job-2")
 
 
@@ -3771,3 +3781,232 @@ def test_the_history_table_declares_no_dependency_on_jobs(tmp_path: Path) -> Non
         "history declares a dependency on another table; REQ-020's record is supposed to outlive "
         "the queue row that produced it"
     )
+
+
+# --- T-078: the pool is N, and N is respected exactly ---------------------------------------
+
+
+def queued(repository: FakeRepository, *job_ids: str, directory: Path) -> None:
+    """Put `job_ids` in the store in queue order, so the pool has something to schedule."""
+    for position, job_id in enumerate(job_ids):
+        job = make_job(job_id, "https://example.invalid/clip", directory)
+        repository.add(replace(job, queue_position=position))
+
+
+def test_the_limit_is_respected_exactly_at_saturation(
+    tmp_path: Path, media_url: Callable[..., str], spin: Callable[..., bool]
+) -> None:
+    """`T-078`: **not "about N"** — counted at the moment the pool is full.
+
+    Three real sessions against a slow local server, with a fourth `start()` attempted while all
+    three are live. The assertion is on `active_job_ids()` at saturation rather than on how many
+    ever ran, because a pool that admitted a fourth and then tidied up would pass a total count.
+    """
+    repository = FakeRepository()
+    url = media_url(total_bytes=4 * 1024 * 1024, chunk_delay=0.02)
+    for position, job_id in enumerate(("job-1", "job-2", "job-3", "job-4")):
+        repository.add(replace(make_job(job_id, url, tmp_path), queue_position=position))
+
+    download = DownloadManager(repository, concurrency=3)
+    try:
+        for job_id in ("job-1", "job-2", "job-3"):
+            download.start(job_id)
+        assert spin(lambda: len(download.active_job_ids()) == 3, timeout=60)
+
+        with pytest.raises(RuntimeError, match="the pool is full at 3"):
+            download.start("job-4")
+
+        assert len(download.active_job_ids()) == 3, (
+            "a fourth session was admitted past the limit, or the refusal left state behind"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_lowering_the_limit_drains_rather_than_killing(
+    tmp_path: Path, media_url: Callable[..., str], spin: Callable[..., bool]
+) -> None:
+    """`T-078`, `UX-001`'s reasoning applied to the limit: in-flight work was asked for.
+
+    Lowering to 1 with three running must leave **three running** and start nothing new. Asserted
+    on the live session ids rather than on a status, because a killed session would also stop being
+    active — the distinction is whether the processes are still there a moment later.
+    """
+    repository = FakeRepository()
+    url = media_url(total_bytes=8 * 1024 * 1024, chunk_delay=0.05)
+    for position, job_id in enumerate(("job-1", "job-2", "job-3")):
+        repository.add(replace(make_job(job_id, url, tmp_path), queue_position=position))
+
+    download = DownloadManager(repository, concurrency=3)
+    try:
+        for job_id in ("job-1", "job-2", "job-3"):
+            download.start(job_id)
+        assert spin(lambda: len(download.active_job_ids()) == 3, timeout=60)
+
+        download.set_concurrency(1)
+
+        # Still three, and still three after the event loop has had a chance to act on it.
+        assert len(download.active_job_ids()) == 3
+        spin(lambda: False, timeout=0.5)
+        assert len(download.active_job_ids()) == 3, (
+            "lowering the limit stopped work already in flight; UX-001 chose draining precisely "
+            "because a stopped download leaves a partial file nothing can resume in this phase"
+        )
+        assert download.concurrency == 1
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_raising_the_limit_starts_waiting_jobs_without_waiting_for_a_tick(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-078`: *"without waiting for a tick that happens to fire"* — asserted literally.
+
+    The manager's timer is what would eventually notice a free slot, and it fires every
+    `poll_interval_ms`. This test **never spins the event loop**: it starts a job, queues two more
+    behind the limit, raises the limit, and asserts they are active immediately. A `set_concurrency`
+    that only marked the limit and left the filling to the tick would fail here and pass anything
+    written with a `spin()` in it.
+
+    A child that never finishes, so a started slot stays occupied — otherwise a process that exits
+    immediately would free the slot it was meant to hold and the assertion would measure timing.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", "job-3", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.start("job-1")
+        download._start_when_free("job-2")
+        download._start_when_free("job-3")
+
+        assert len(download.active_job_ids()) == 1, "the limit of 1 did not hold"
+        assert download._waiting == ["job-2", "job-3"]
+
+        download.set_concurrency(3)
+
+        assert len(download.active_job_ids()) == 3, (
+            "raising the limit did not start the waiting jobs immediately; nothing here spins the "
+            "event loop, so a tick-driven fill cannot have run"
+        )
+        assert download._waiting == []
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_waiting_jobs_start_in_queue_order_not_arrival_order(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-078`: the scheduling order is stated, and it is `queue_position`.
+
+    Queued deliberately out of order — `job-3` asks to wait first — so arrival order and queue order
+    disagree. `queue_position` is allocated inside the insert transaction (`JobRepository.append`),
+    which makes it the only ordering that survives a restart and the only one two callers cannot
+    disagree about.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", "job-3", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.start("job-1")
+        download._start_when_free("job-3")
+        download._start_when_free("job-2")
+        assert download._waiting == ["job-3", "job-2"], "arrival order, before scheduling"
+
+        # One more slot, so exactly one of the two waiting jobs starts. Which one is the contract.
+        download.set_concurrency(2)
+
+        assert "job-2" in download.active_job_ids(), (
+            f"active {download.active_job_ids()}; job-3 arrived first but job-2 has the lower "
+            "queue_position, and queue_position is the order this pool promises"
+        )
+        assert download._waiting == ["job-3"]
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_waiting_job_holds_idle_open_and_shutdown_drops_it(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-078`: `is_idle` accounts for every slot, reservation **and** waiting job (`T036-R1`).
+
+    Composition treats `idle` as permission to quit, so a job this manager has accepted and not yet
+    started must hold the door — and `shutdown()` must then drop it, or the door never closes.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.start("job-1")
+        download._start_when_free("job-2")
+
+        assert download._waiting == ["job-2"]
+        assert not download.is_idle
+    finally:
+        download.shutdown()
+        assert download._waiting == [], "shutdown left work that will never start"
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_job_waiting_with_nothing_running_still_holds_idle_open(tmp_path: Path) -> None:
+    """The state the test above **cannot** reach, and the one `is_idle` is actually about.
+
+    With a session running, `is_idle` is false whether or not it counts waiting jobs — so that test
+    passes against a manager that ignores the waiting list entirely. Measured: removing
+    `and not self._waiting` from `is_idle` left it green.
+
+    The state that discriminates is *waiting with nothing running*, which occurs for an instant
+    every time the last session is released before a slot is filled. It is reached here by putting a
+    job on the list directly, because arranging that instant deterministically would make this a
+    test about timing rather than about accounting.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+
+    assert download.is_idle, "nothing has been asked for yet"
+    download._waiting.append("job-1")
+
+    assert not download.is_idle, (
+        "a job this manager has accepted but not started must hold idle open. Composition treats "
+        "idle as permission to quit (T-036), so quitting here would abandon accepted work"
+    )
+
+
+def test_a_reservation_occupies_a_slot_at_a_limit_above_one(
+    tmp_path: Path, qapp: QCoreApplication
+) -> None:
+    """`T016-R3` generalised: a start whose write has not landed still costs a slot.
+
+    A reservation has no process yet, so a pool counting only running sessions would admit more
+    starts in the window between a write and its callback. At a limit of 1 the existing
+    `test_a_second_session_is_refused_while_the_first_is_still_being_stored` covers this; nothing
+    covered it at N, and removing `len(self._reserved)` from the capacity check left every other
+    pool test green.
+    """
+    store = HeldStore()
+    for position, job_id in enumerate(("job-1", "job-2", "job-3")):
+        job = make_job(job_id, "https://example.invalid/clip", tmp_path)
+        store.jobs[job_id] = replace(job, queue_position=position)
+
+    download = DownloadManager(store, concurrency=2, entry_point=child_downloading_forever)
+    try:
+        download.start("job-1")
+        download.start("job-2")
+
+        # Neither write has landed, so neither job has a process — but both hold a slot.
+        assert download.active_job_ids() == ("job-1", "job-2")
+        assert not download.is_idle
+
+        with pytest.raises(RuntimeError, match="the pool is full at 2"):
+            download.start("job-3")
+    finally:
+        download.shutdown()
+        store.release()
+        qapp.processEvents()

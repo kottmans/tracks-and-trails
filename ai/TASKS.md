@@ -55,7 +55,8 @@ Removed rather than annotated one by one, because the problem was the block exis
 current-truth file does not need two summaries, and the second one is always the stale one. Nothing
 is lost: `T-074`'s residual disposition is `OPS-007`, `T-066`'s is the `OPS-005` amendment, and
 Phase 1's exit and its criteria are in `IMPLEMENTATION_PLAN.md` §Phase 1 and the exit review,
-while `STATUS.md` carries the narrative. Each of those is the canonical home; this was a copy that outlived them.
+while `STATUS.md` carries the narrative. Each of those is the canonical home; this was a copy
+that outlived them.
 
 **`T-096` passed throughout**, because every status matched its section. It gates placement, not
 prose, and `COORD-R11` is the half it cannot reach.)*
@@ -85,7 +86,11 @@ being necessary.)*
 
 ### T-078 — A real worker pool, bounded and configurable
 
-**Status:** **Ready**, promoted 2026-07-30 — the first Phase 2 task out of Proposed. All three
+**Status:** **In Progress — the pool is generalised and gated, 2026-07-30.** Two of the task's
+three parts are done: `ARC-007`'s settings layer (`256b411`, `faf374f`, approved) and the pool
+itself. **What remains is the main-window control and the two criteria that must go through it** —
+until that lands, `set_concurrency` has no user-facing caller. See **Progress, 2026-07-30**.
+*(This read "Ready, promoted 2026-07-30 — the first Phase 2 task out of Proposed".)* All three
 planning gates are clear: `P2PLAN-R2` approved at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` approved at
 `8306378`. The configuration surface is decided (`ARC-007`) and the criteria gate the real user path
 rather than a constructor argument. **`T-097` is required by this task's approval, not by its
@@ -123,6 +128,51 @@ satisfied by a constructor argument:
   `JobStore`'s shape, so the pool stays testable without TOML on disk.
 - Changes take effect **live**, and lowering **drains** rather than kills. That was already Phase 2's
   exit criterion; what was missing was a user-facing path connected to it.
+
+#### Progress, 2026-07-30 — the pool
+
+**Six places expressed the pool of one, and they were one assumption written six times.**
+`_pending_retry` held a single job because `_sessions` held a single session; `is_idle`, `start()`,
+`_start_when_free`, `shutdown()` and the tick each restated it. Changing any one alone would have
+left the accounting inconsistent, so they moved together.
+
+| Was | Now |
+|---|---|
+| `_pending_retry: str \| None` | `_waiting: list[str]`, drained in `queue_position` order |
+| `start()` refuses on *any* activity | refuses only at capacity, reservations counted |
+| `is_idle` checks the single slot | checks the whole waiting list |
+| the tick starts the one retry | `_fill_free_slots()` fills every free slot |
+| — | `concurrency` and `set_concurrency()` — live; lowering drains, raising fills at once |
+
+**Two design points, stated rather than assumed.** The draining order is `queue_position`, allocated
+inside the insert transaction, because it is the only ordering that survives a restart and the only
+one two callers cannot disagree about. And `set_concurrency` fills slots **immediately** rather than
+on the next tick: a tick is up to `poll_interval_ms` away, which is invisible to a test that spins
+the event loop and perfectly visible to someone who has just moved a control.
+
+**Four mutations, and two survived the first attempt.** That is the part worth recording:
+
+| Mutation | First pass | Now |
+|---|---|---|
+| Raising the limit waits for a tick | killed | killed |
+| Waiting drains in arrival order | killed | killed |
+| **Reservations stop counting against the limit** | **survived** | killed |
+| **`is_idle` ignores waiting jobs** | **survived** | killed |
+
+Both survivors were tests passing for the wrong reason. The `is_idle` assertion ran with a session
+live, so it was false whether or not the waiting list counted — the discriminating state is *waiting
+with nothing running*, and nothing reached it. And no test held a reservation at a limit above one;
+`T016-R3`'s coverage is at a limit of exactly one, so removing `len(self._reserved)` left every pool
+test green. Both now have a test that fails for the reason it exists.
+
+**Two existing tests changed, for wording only.** They matched `"already running"`; the refusal is
+now `"the pool is full at N"`. The default limit is 1, so their behaviour is unchanged, and one
+docstring now says so and why the phrasing moved.
+
+**Composition passes an integer.** `app.py` reads `settings.toml` and hands over
+`settings.concurrency`; `T-097`'s boundary test confirms `downloader/` still cannot reach
+`core.settings`.
+
 
 #### Acceptance criteria
 

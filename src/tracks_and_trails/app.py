@@ -187,6 +187,7 @@ def compose(
     *assembled* application is exactly what `T-036` has to prove, and proving it against a real
     extractor would make the proof depend on a site staying up.
     """
+    from tracks_and_trails.core import settings as app_settings
     from tracks_and_trails.core.job_state import JobStatus
     from tracks_and_trails.downloader import worker
     from tracks_and_trails.downloader.environment import find_ffmpeg
@@ -211,11 +212,16 @@ def compose(
     store = PersistentJobStore(connection, writer)
 
     ffmpeg = find_ffmpeg(ffmpeg_override)
+    # `ARC-007`: composition owns `settings.toml`; the manager receives a value. The read happens
+    # here so a settings-format change cannot reach `downloader/`, which `T-097` enforces
+    # statically.
+    settings = app_settings.load()
     manager = DownloadManager(
         store,
         # History is no longer a second injected sink (`T050-R1`, `T050-R2`): completion is one
         # `JobStore.complete` operation writing both rows in one transaction, so there is no
         # optional collaborator to forget to wire and no partial state to report quietly.
+        concurrency=settings.concurrency,
         ffmpeg_override=ffmpeg.path,
         entry_point=entry_point if entry_point is not None else worker.spawn_session,
     )

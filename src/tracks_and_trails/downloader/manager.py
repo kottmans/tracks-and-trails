@@ -89,6 +89,11 @@ from tracks_and_trails.downloader.protocol import (
 )
 from tracks_and_trails.downloader.result_pump import ResultPump
 
+#: Sort key for a waiting job with no `queue_position` — it goes last (`T-078`).
+#:
+#: A literal rather than `math.inf` so the key stays `tuple[int, str]` and mypy can check it.
+_UNPLACED: Final = 1 << 62
+
 #: How often process liveness and cancellation deadlines are checked. Fifty milliseconds is
 #: below `NFR-001`'s ~100 ms interaction budget, so an escalation never *adds* a perceptible
 #: delay, and it costs one `is_alive()` per tick per running job.
@@ -401,6 +406,7 @@ class DownloadManager(QObject):
         self,
         repository: JobStore,
         *,
+        concurrency: int = 1,
         parent: QObject | None = None,
         poll_interval_ms: int = DEFAULT_POLL_INTERVAL_MS,
         cooperative_seconds: float = DEFAULT_COOPERATIVE_SECONDS,
@@ -423,8 +429,22 @@ class DownloadManager(QObject):
         self._reserved: dict[str, _PendingStart] = {}
         #: Per job, the writes and effects still to happen, in order. See `_Chain`.
         self._chains: dict[str, _Chain] = {}
-        #: A job re-queued by `retry()` and waiting for the pool of one to free up (`T036-R1`).
-        self._pending_retry: str | None = None
+        #: How many sessions may run at once (`REQ-013`, `T-078`). Injected as a value, never read
+        #: from `core/settings.py` — `ARC-007` puts the file behind composition and the UI, and
+        #: `tests/unit/test_manager_boundaries.py` enforces that this module cannot reach it.
+        #:
+        #: Already in range when it arrives: the settings layer clamps to `[1, 16]`, so there is no
+        #: second bound here. A caller constructing this object directly is trusted the same way
+        #: every other constructor argument is.
+        self._limit = max(concurrency, 1)
+
+        #: Jobs accepted and waiting for a slot, in the order they will be started (`T-078`).
+        #:
+        #: **A list, where Phase 1 had one slot.** `_pending_retry` held exactly one job because the
+        #: pool held exactly one session, and the two were the same assumption written twice. With N
+        #: slots a retry can be waiting behind another retry, and a lowered limit can leave several
+        #: jobs waiting at once.
+        self._waiting: list[str] = []
         self._shutting_down = False
         self._shutdown_deadline: float | None = None
         # The log listener's ending, which `idle` now waits on (`T038-R2`). Three states rather
@@ -445,6 +465,33 @@ class DownloadManager(QObject):
     # --- queries ------------------------------------------------------------------------
 
     @property
+    def concurrency(self) -> int:
+        """How many sessions may run at once (`REQ-013`)."""
+        return self._limit
+
+    def set_concurrency(self, limit: int) -> None:
+        """Change the limit while running. **Lowering drains; raising starts waiting jobs now.**
+
+        `UX-001` chose draining for pause and the same reasoning applies here: a running download is
+        work the user asked for, and stopping it buys a half-written file plus a rule about what
+        happens to it, in a phase where `REQ-017`'s resume does not exist. So the new limit governs
+        **what starts next**, never what is already running — lowering to 1 with three in flight
+        leaves three in flight and starts nothing until two have finished.
+
+        Raising fills the free slots **immediately** rather than on the next tick. `T-078`'s
+        criterion says "without waiting for a tick that happens to fire", and a tick is up to
+        `poll_interval_ms` away — which is invisible in a test that spins the event loop and
+        perfectly visible to someone who just moved a spinbox.
+
+        The value arrives already bounded; `core/settings.py` clamps to `[1, 16]` and this module
+        never reads that file (`ARC-007`). `max(..., 1)` here is a floor against a direct caller,
+        not a second opinion about the requirement.
+        """
+        self._limit = max(limit, 1)
+        if not self._shutting_down:
+            self._fill_free_slots()
+
+    @property
     def is_idle(self) -> bool:
         """Nothing is running **and nothing is about to be** (`T016-R3`).
 
@@ -452,10 +499,11 @@ class DownloadManager(QObject):
         still on the writer thread — and composition (`T-036`) treats that signal as permission
         to quit, which would have quit into a callback that then spawned a worker.
 
-        So does a retry waiting for the pool (`T036-R1`): it is work this manager has accepted and
-        will begin. `shutdown()` drops it, which is what stops that from holding the door.
+        So does a job waiting for a slot (`T036-R1`, generalised by `T-078`): it is work this
+        manager has accepted and will begin. `shutdown()` drops the whole waiting list, which is
+        what stops it from holding the door.
         """
-        return not self._sessions and not self._reserved and self._pending_retry is None
+        return not self._sessions and not self._reserved and not self._waiting
 
     @property
     def gave_up_on_the_log(self) -> bool:
@@ -507,14 +555,16 @@ class DownloadManager(QObject):
         """
         if self._shutting_down:
             raise RuntimeError("the manager is shutting down; no new session can be started")
-        if self._sessions or self._reserved:
-            # `_reserved` holds the starts whose transition is still being written. Without it
-            # the pool of one would be a pool of however many `start()` calls fit between a write
-            # and its completion — the gap `ARC-005` created and `T016-R3` is about.
+        if not self._has_capacity():
+            # **Reservations count against the limit, not just running sessions** (`T016-R3`).
+            # `_reserved` holds starts whose transition is still on the writer thread; without
+            # counting them the limit would be "N plus however many `start()` calls fit between a
+            # write and its completion" — the gap `ARC-005` created, and the reason `T016-R1`
+            # measured a missed reservation as a real defect rather than a tidiness one.
             busy = self.active_job_ids()
             raise RuntimeError(
-                f"a session is already running for {busy}; Phase 1 runs a pool "
-                "of exactly one (T-013 scope, concurrency is Phase 2)"
+                f"the pool is full at {self._limit}: {busy}. Raise the concurrency limit, or "
+                "wait for a slot"
             )
         job = self._require(job_id)
         target = _ENTRY_STATUS.get(job.status)
@@ -916,22 +966,81 @@ class DownloadManager(QObject):
             then=lambda: self._start_when_free(job_id),
         )
 
-    def _start_when_free(self, job_id: str) -> None:
-        """Start `job_id` now, or on the first tick that finds the pool of one free."""
+    def _has_capacity(self) -> bool:
+        """Whether another session may start right now.
+
+        Running sessions **and** reservations both occupy a slot. A reservation is a start whose
+        transition has not landed yet, so it has no process — but it will, and counting only
+        processes is what let the pool of one become a pool of several between a write and its
+        callback (`T016-R3`).
+        """
+        return len(self._sessions) + len(self._reserved) < self._limit
+
+    def _discard_waiting(self, job_id: str) -> None:
+        """Forget `job_id` is waiting, wherever in the list it sits.
+
+        By value rather than by position: a job can be started directly while another is queued
+        ahead of it, and `list.remove` on a missing id would raise rather than say "it was not
+        waiting", which is an ordinary state here.
+        """
+        if job_id in self._waiting:
+            self._waiting.remove(job_id)
+
+    def _fill_free_slots(self) -> None:
+        """Start waiting jobs while there is room, in the order the queue defines (`T-078`).
+
+        **The order is `queue_position`, not arrival.** `queue_position` is allocated inside the
+        insert transaction (`JobRepository.append`), so it is the only ordering that survives a
+        restart and the only one two callers cannot disagree about. A job whose row has gone, or
+        which has no position, sorts last on its id — deterministic rather than incidental, so a
+        test comparing whole lists is comparing something real.
+
+        Called from the tick **and** from `set_concurrency`, which is what makes a raised limit take
+        effect at once rather than on whichever tick happens next. `T-078`'s criterion says
+        "without waiting for a tick that happens to fire", and sharing this is how both paths keep
+        the same promise.
+        """
         if self._shutting_down:
             return
-        if self._sessions or self._reserved:
-            self._pending_retry = job_id
+        while self._waiting and self._has_capacity():
+            job_id = self._next_waiting()
+            self._waiting.remove(job_id)
+            self._start_or_report(job_id)
+
+    def _next_waiting(self) -> str:
+        """The waiting job with the lowest `queue_position`; ties and absences break on id."""
+
+        def order(job_id: str) -> tuple[int, str]:
+            job = self._repository.get(job_id)
+            position = job.queue_position if job is not None else None
+            # `None` sorts last explicitly rather than relying on a comparison that would raise.
+            return (position if position is not None else _UNPLACED, job_id)
+
+        return min(self._waiting, key=order)
+
+    def _start_when_free(self, job_id: str) -> None:
+        """Start `job_id` now, or queue it for the first moment a slot opens."""
+        if self._shutting_down:
+            return
+        if not self._has_capacity():
+            if job_id not in self._waiting:
+                self._waiting.append(job_id)
             # The tick is what will notice; without this the timer may not be running at all.
             self._timer.start()
             return
-        self._pending_retry = None
+        self._discard_waiting(job_id)
+        self._start_or_report(job_id)
+
+    def _start_or_report(self, job_id: str) -> None:
+        """Start `job_id`, reporting a refusal rather than swallowing it.
+
+        Reported, not swallowed. `start_rejected` is the asynchronous half of `start()`'s answer and
+        the dialog already listens to it; a job that cannot start has exactly the same shape as a
+        probe that cannot.
+        """
         try:
             self.start(job_id)
         except (RuntimeError, ValueError) as refusal:
-            # Reported, not swallowed. `start_rejected` is the asynchronous half of `start()`'s
-            # answer and the dialog already listens to it; a retry that cannot start has exactly
-            # the same shape as a probe that cannot.
             self.start_rejected.emit(job_id, str(refusal))
 
     def shutdown(self, timeout: float = DEFAULT_SHUTDOWN_SECONDS) -> None:
@@ -959,9 +1068,9 @@ class DownloadManager(QObject):
             return
         self._shutting_down = True
         self._shutdown_deadline = time.monotonic() + timeout
-        # A retry that has not started yet never will. Dropped rather than carried, so `idle`
-        # is not held open by work this manager has just decided not to do (`T036-R1`).
-        self._pending_retry = None
+        # Work accepted but not started never will be. Dropped rather than carried, so `idle` is
+        # not held open by work this manager has just decided not to do (`T036-R1`).
+        self._waiting.clear()
         # Reserved starts as well as running sessions (`T016-R3`). A start whose transition is
         # still on the writer thread has no process to cancel yet, and skipping it here is how
         # shutdown used to announce `idle` and then spawn a worker from the callback that
@@ -1006,17 +1115,13 @@ class DownloadManager(QObject):
                 if now >= session.reap_at:
                     self._force_stop(session)
 
-        waiting = self._pending_retry
-        if waiting is not None and not self._sessions and not self._reserved:
-            # The pool freed up. This is the whole of the retry's "scheduling" (`T036-R1`).
-            self._pending_retry = None
-            self._start_when_free(waiting)
+        self._fill_free_slots()
 
-        if self._sessions or self._reserved or self._pending_retry is not None:
+        if self._sessions or self._reserved or self._waiting:
             # A reservation counts as work in flight (`T016-R3`). Its transition is still on the
             # writer thread, and the callback that settles it is what decides whether a worker
-            # appears — so `idle` here would be a promise this manager cannot keep. A retry
-            # waiting for the pool is the same claim.
+            # appears — so `idle` here would be a promise this manager cannot keep. A job waiting
+            # for a slot is the same claim.
             return
         if self._shutting_down and not self._the_log_has_finished(now):
             # Not idle yet, and the timer stays running. `idle` is what tells composition it may
