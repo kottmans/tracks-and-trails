@@ -1895,6 +1895,59 @@ the answer is a better ownership primitive, not a return to using the channel as
 
 ---
 
+### `ARC-007` amended 2026-07-30 — the concurrency limit gets a ceiling `REQ-013` does not name
+
+**Status:** **Accepted** (2026-07-30) — maintainer decision
+**Raised by:** the `T-078` settings layer, which flagged the gap rather than filling it
+
+**`REQ-013` says *bounded, minimum 1* and names no maximum.** The first implementation was therefore
+literally compliant and deliberately unbounded: any positive integer in `settings.toml` was honoured
+verbatim, and the module said so rather than inventing a limit. That was the right call while nothing
+consumed the value. It stops being the right call the moment the pool is real, because the integer
+becomes that many spawned worker processes — `ARC-002` makes each one a full interpreter with yt-dlp
+imported.
+
+### Decision
+
+**`CONCURRENCY_MAXIMUM = 16`.** A file asking for more is **clamped** to it; a caller passing more
+**raises**, the same asymmetry the minimum already has and for the same reason — code is written once
+and reviewed, a config file is typed by hand.
+
+### Rationale, and what it is *not*
+
+**It exists to catch a typo, not to model the hardware.** The realistic failure is `30` where `3` was
+meant, or an extra zero. 16 is comfortably above any deliberate choice for a desktop downloader whose
+default is 3, and low enough that a slipped digit does not survive.
+
+**`os.cpu_count()` was considered and rejected.** It is the defensible-sounding answer and it is
+wrong here: downloads are I/O-bound, so cores are not the constraint, and a two-core laptop can
+usefully run more than two. Deriving the ceiling from cores would under-bound exactly the machines
+least able to absorb the mistake.
+
+**Memory was measured and is not the binding constraint either.** A worker's baseline is **~34 MiB**
+(measured 2026-07-30: interpreter 12 MiB, 34 MiB after importing yt-dlp), so 16 is roughly 0.5 GiB
+and even 64 would be about 2 GiB. The ceiling is not a memory bound and should not be justified as
+one — saying so here prevents the number being "corrected" later against the wrong metric.
+
+**So 16 is a judgement, not a measurement**, and it is recorded as such. What makes it defensible is
+the class of error it stops and the cost of being wrong in either direction: too high and a typo
+still bites, too low and a legitimate power user is obstructed.
+
+### Consequences
+
+- `_concurrency_from` clamps both ends; `with_concurrency` does the same, because the bound belongs
+  wherever the value changes rather than only where it is read.
+- `Settings.__post_init__` raises above the ceiling, so a programming error is loud.
+- `settings.toml`'s comment header states the maximum **and** that each download is a separate worker
+  process — the only place a hand-editor is told what the number costs.
+- `T-078`'s pool inherits a value that is already in range, so it needs no bound of its own.
+
+**This reopens** if the pool ever stops being process-per-job — `ARC-002` is what makes the number
+expensive — or if a user reports 16 obstructing real work, which is the direction this is most likely
+to be wrong in.
+
+---
+
 ## ARC-007 — Phase 2's settings surface is `settings.toml` plus one main-window control, not a dialog
 
 **Status:** **Accepted** (2026-07-30) — maintainer decision

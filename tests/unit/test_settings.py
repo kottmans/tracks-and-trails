@@ -13,6 +13,7 @@ import pytest
 
 from tracks_and_trails.core.settings import (
     CONCURRENCY_DEFAULT,
+    CONCURRENCY_MAXIMUM,
     CONCURRENCY_MINIMUM,
     Settings,
     load,
@@ -32,8 +33,13 @@ def write(path: Path, body: str) -> Path:
 
 
 def test_the_defaults_are_the_ones_req_013_names() -> None:
-    """Read from the module rather than restated, so a changed default fails here first."""
+    """Read from the module rather than restated, so a changed default fails here first.
+
+    The maximum is asserted alongside them even though `REQ-013` does not name it: `ARC-007` chose
+    16 deliberately, and a number changed by accident should fail somewhere.
+    """
     assert (CONCURRENCY_DEFAULT, CONCURRENCY_MINIMUM) == (3, 1)
+    assert CONCURRENCY_MAXIMUM == 16
     assert Settings().concurrency == 3
 
 
@@ -43,6 +49,24 @@ def test_settings_refuses_a_limit_below_the_minimum_in_code() -> None:
         Settings(concurrency=0)
     with pytest.raises(ValueError, match="minimum is 1"):
         Settings(concurrency=-4)
+
+
+def test_settings_refuses_a_limit_above_the_ceiling_in_code() -> None:
+    """A caller asking for 40 has a bug; a *file* asking for it is clamped (see below).
+
+    The asymmetry is the same one the minimum has, and for the same reason: code is written once
+    and reviewed, a config file is typed by hand at midnight.
+    """
+    with pytest.raises(ValueError, match="ceiling is 16"):
+        Settings(concurrency=CONCURRENCY_MAXIMUM + 1)
+    with pytest.raises(ValueError, match="ceiling is 16"):
+        Settings(concurrency=10_000)
+
+
+def test_settings_accepts_the_boundaries_themselves() -> None:
+    """Off-by-one in either direction would make one legitimate value unreachable."""
+    assert Settings(concurrency=CONCURRENCY_MINIMUM).concurrency == 1
+    assert Settings(concurrency=CONCURRENCY_MAXIMUM).concurrency == 16
 
 
 def test_settings_refuses_a_non_integer_limit_in_code() -> None:
@@ -120,6 +144,30 @@ def test_a_file_below_the_minimum_is_raised_to_it_not_replaced_by_the_default(
     )
 
 
+@pytest.mark.parametrize("written", [17, 30, 300, 10_000, 10**9])
+def test_a_file_above_the_ceiling_is_lowered_to_it_not_replaced_by_the_default(
+    written: int, tmp_path: Path
+) -> None:
+    """`ARC-007`: the ceiling exists to catch a typo, so it must survive the typo it catches.
+
+    **Lowered, not replaced by the default**, by the same reasoning as the floor read the other way:
+    `30` says "a lot", and the most of "a lot" this application will do is 16. Falling back to 3
+    would discard a legible intent.
+
+    The values here are the realistic typo class — an extra zero, or a digit doubled — rather than
+    abstract extremes. `10**9` is there because nothing should special-case magnitude.
+    """
+    limit = load(write(tmp_path, f"[queue]\nconcurrency = {written}\n")).concurrency
+    assert limit == CONCURRENCY_MAXIMUM
+    assert limit != CONCURRENCY_DEFAULT, "a value above the ceiling fell back to the default"
+
+
+def test_the_boundaries_themselves_survive_a_round_trip(tmp_path: Path) -> None:
+    """Neither bound may be off by one; each is a value a user can legitimately choose."""
+    assert load(write(tmp_path, "[queue]\nconcurrency = 1\n")).concurrency == 1
+    assert load(write(tmp_path, "[queue]\nconcurrency = 16\n")).concurrency == 16
+
+
 @pytest.mark.parametrize(
     ("name", "literal"),
     [
@@ -169,7 +217,13 @@ def test_the_written_file_is_legible_to_the_person_who_opens_it(tmp_path: Path) 
     body = target.read_text(encoding="utf-8")
     assert body.startswith("#"), "no comment header for whoever opens this"
     assert "Safe to delete" in body
-    assert f"Minimum {CONCURRENCY_MINIMUM}" in body and f"default {CONCURRENCY_DEFAULT}" in body
+    assert f"Minimum {CONCURRENCY_MINIMUM}" in body
+    assert f"maximum {CONCURRENCY_MAXIMUM}" in body
+    assert f"default {CONCURRENCY_DEFAULT}" in body
+    assert "separate worker process" in body, (
+        "the header should say why a bigger number is not simply faster; it is the only place a "
+        "hand-editor is told what the number costs"
+    )
 
 
 def test_saving_over_an_unwritable_path_does_not_raise(tmp_path: Path) -> None:
@@ -186,13 +240,15 @@ def test_saving_over_an_unwritable_path_does_not_raise(tmp_path: Path) -> None:
 # --- with_concurrency ----------------------------------------------------------------------
 
 
-def test_with_concurrency_applies_the_same_bound_the_file_gets(tmp_path: Path) -> None:
-    """A control handing over 0 gets the minimum — the answer `load` gives a file that says 0.
+def test_with_concurrency_applies_the_same_bounds_the_file_gets(tmp_path: Path) -> None:
+    """A control handing over 0 gets the minimum and 40 gets the maximum — `load`'s answers.
 
-    The bound belongs wherever the value changes, not only where it is read (`ARC-007`).
+    The bounds belong wherever the value changes, not only where it is read (`ARC-007`). A spinbox
+    that clamps its own range bounds the widget; this bounds the value.
     """
     assert with_concurrency(Settings(), 0).concurrency == CONCURRENCY_MINIMUM
     assert with_concurrency(Settings(), -9).concurrency == CONCURRENCY_MINIMUM
+    assert with_concurrency(Settings(), 40).concurrency == CONCURRENCY_MAXIMUM
     assert with_concurrency(Settings(), 6).concurrency == 6
 
 

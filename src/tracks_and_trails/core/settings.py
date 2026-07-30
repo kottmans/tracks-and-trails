@@ -52,6 +52,21 @@ APP_SLUG: Final = "tracksandtrails"
 CONCURRENCY_DEFAULT: Final = 3
 CONCURRENCY_MINIMUM: Final = 1
 
+#: The ceiling `REQ-013` does not name (`ARC-007`, amended 2026-07-30).
+#:
+#: **It exists to catch a typo, not to model the hardware.** `REQ-013` says *bounded, minimum 1* and
+#: names no maximum, so any positive integer was honoured verbatim — a `settings.toml` holding `30`
+#: where `3` was meant asked for thirty spawned worker processes, and `ARC-002` makes each of
+#: those a full interpreter with yt-dlp imported.
+#:
+#: **16 rather than a measurement.** Memory is not the binding constraint: a worker's baseline is
+#: ~34 MiB measured, so even 64 of them is about 2 GiB. `os.cpu_count()` was rejected for the
+#: opposite reason — downloads are I/O-bound, so cores are the wrong metric, and a two-core laptop
+#: can usefully run more than two. What is left is a number generous enough never to obstruct a
+#: deliberate choice on a desktop downloader whose default is 3, and low enough that an extra zero
+#: does not survive.
+CONCURRENCY_MAXIMUM: Final = 16
+
 #: The TOML table every setting in this module lives under. One table now, because Phase 4 adds
 #: siblings rather than nesting deeper.
 _TABLE: Final = "queue"
@@ -90,6 +105,13 @@ class Settings:
                 f"Settings.concurrency is {self.concurrency}; REQ-013's minimum is "
                 f"{CONCURRENCY_MINIMUM}. A pool of zero starts nothing, which looks like a hang."
             )
+        if self.concurrency > CONCURRENCY_MAXIMUM:
+            raise ValueError(
+                f"Settings.concurrency is {self.concurrency}; the ceiling is "
+                f"{CONCURRENCY_MAXIMUM} (`ARC-007`). Each concurrent download is a spawned "
+                "worker process, so a caller asking for more than this has a bug rather than a "
+                "preference — a file asking for it is clamped instead."
+            )
 
 
 def _concurrency_from(raw: Any) -> int:
@@ -102,6 +124,10 @@ def _concurrency_from(raw: Any) -> int:
       than replaced by the default. The user wrote a number whose evident intent is "as few as
       possible"; honouring that up to the bound respects the edit, where falling back to 3 discards
       it.
+    - **An integer above the maximum** is lowered to `CONCURRENCY_MAXIMUM`, by the same reasoning
+      read the other way: `30` says "a lot", and the most of "a lot" this application will do is 16.
+      Clamped rather than rejected, because a file is not a caller — `Settings` still raises for a
+      value out of range, since a caller passing 40 has a bug.
     - **Anything that is not an integer** — a string, a float, a boolean, a table — becomes
       `CONCURRENCY_DEFAULT`. There is no intent to honour: `"three"` and `2.5` do not say how many
       processes to run.
@@ -109,14 +135,15 @@ def _concurrency_from(raw: Any) -> int:
     `bool` is excluded explicitly because it is an `int` subclass, so `concurrency = true` would
     otherwise pass as `1`. Same trap `downloader/worker.py._int_or_none` avoids.
 
-    **No maximum is applied, and that is a hole `REQ-013` leaves.** It says *bounded* and
-    *minimum 1* and names no ceiling, so this module does not invent one — but a hand-edited
-    `concurrency = 10000` asks the pool for ten thousand worker processes. Flagged rather than
-    silently bounded: inventing a requirement is worse than naming the gap.
+    **The maximum is this project's, not `REQ-013`'s** (`ARC-007`, amended 2026-07-30). The
+    requirement says *bounded, minimum 1* and names no ceiling. Leaving it unbounded was compliant
+    and was flagged rather than fixed, because inventing a requirement is worse than naming a gap —
+    until the pool became real, at which point the gap stopped being theoretical and the maintainer
+    ruled. `CONCURRENCY_MAXIMUM` documents the reasoning.
     """
     if isinstance(raw, bool) or not isinstance(raw, int):
         return CONCURRENCY_DEFAULT
-    return max(raw, CONCURRENCY_MINIMUM)
+    return min(max(raw, CONCURRENCY_MINIMUM), CONCURRENCY_MAXIMUM)
 
 
 def load(path: Path | None = None) -> Settings:
@@ -158,7 +185,8 @@ def save(settings: Settings, path: Path | None = None) -> None:
             "# Safe to delete: every value falls back to its default.\n"
             f"[{_TABLE}]\n"
             f"# How many downloads run at once. Minimum {CONCURRENCY_MINIMUM}, "
-            f"default {CONCURRENCY_DEFAULT}.\n"
+            f"maximum {CONCURRENCY_MAXIMUM}, default {CONCURRENCY_DEFAULT}.\n"
+            "# Each one is a separate worker process, so a higher number is not always faster.\n"
             f"{_CONCURRENCY_KEY} = {settings.concurrency}\n",
             encoding="utf-8",
         )
@@ -167,10 +195,10 @@ def save(settings: Settings, path: Path | None = None) -> None:
 
 
 def with_concurrency(settings: Settings, limit: int) -> Settings:
-    """`settings` with `concurrency` set to `limit`, bounded by `REQ-013`'s minimum.
+    """`settings` with `concurrency` set to `limit`, bounded at both ends.
 
-    A named function rather than `replace()` at each call site, so the bound applies wherever the
-    value changes and not only where it is read. A control handing over `0` gets the minimum — the
-    same answer `load()` gives a file that says `0`.
+    A named function rather than `replace()` at each call site, so the bounds apply wherever the
+    value changes and not only where it is read. A control handing over `0` gets the minimum and one
+    handing over `40` gets the maximum — the same answers `load()` gives a file saying either.
     """
-    return replace(settings, concurrency=max(limit, CONCURRENCY_MINIMUM))
+    return replace(settings, concurrency=min(max(limit, CONCURRENCY_MINIMUM), CONCURRENCY_MAXIMUM))

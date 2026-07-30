@@ -30,10 +30,10 @@ had accumulated four bullets that each described a different day:
   maintainer consent before writing to `STARBASE`).
 - **All three Phase 2 planning gates are clear.** `P2PLAN-R2` at `f858da9`; `P2PLAN-R1` and
   `P2PLAN-R3` at `8306378`. `ARC-007` decides the settings surface and `UX-001` the pause semantics.
-- **Three open questions, none mine to answer:** `P2PLAN-R8` — who owns the history view, which
-  blocks `T-086` readiness; whether `REQ-013` wants a concurrency **maximum**, which it does not
-  name and which a hand-edited `10000` would otherwise honour; and whether a corrupt `settings.toml`
-  should report rather than fall back silently.
+- **Two open questions, neither mine to answer:** `P2PLAN-R8` — who owns the history view, which
+  blocks `T-086` readiness; and whether a corrupt `settings.toml` should report rather than fall back
+  silently. *(The third — a concurrency **maximum** — was decided 2026-07-30: `ARC-007` amended,
+  `CONCURRENCY_MAXIMUM = 16`, chosen to catch a typo rather than to model the hardware.)*
 - **`T-080` needs two calls before it starts:** the unreachable `PAUSED` edges, and `P2PLAN-R7`'s
   manual-retry ordering — new scope that arrived dressed as reconciliation.
 
