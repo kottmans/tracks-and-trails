@@ -18,56 +18,106 @@ SRC = Path(__file__).resolve().parents[2] / "src" / "tracks_and_trails"
 #: The GUI-side modules `T-013` owns.
 MODULES = ("downloader/manager.py", "downloader/result_pump.py")
 
-#: What `ARCHITECTURE.md` §3 says the manager is *given* rather than builds. `sqlite3` is listed
-#: alongside the package because importing the engine directly is the same dependency wearing a
-#: disguise.
-#:
-#: **`core.settings` is here for `ARC-007`** (`T-097`, from `P2PLAN-R6`). The manager receives the
-#: concurrency value and a way to be told it changed; composition and the UI own the TOML file. That
-#: rule has no other gate: the layering test permits `downloader/` → `core/`, so a direct settings
-#: import was measured passing both analysers. Only the `settings` module is forbidden — the manager
-#: goes on importing models, errors, job state and logging from `core/`.
-#:
-#: Applied to both modules in `MODULES` rather than to `manager.py` alone. Neither is a place a
-#: settings file should be read, and one shared list is harder to weaken by accident than a
-#: per-module table with a single entry.
-FORBIDDEN = (
+#: The distribution these modules live in. Needed to resolve a relative import into the absolute
+#: name a prohibition is written against.
+PACKAGE = "tracks_and_trails"
+
+#: What `ARCHITECTURE.md` §3 says the manager is *given* rather than builds, for **every** module in
+#: `MODULES`. `sqlite3` is listed alongside the package because importing the engine directly is the
+#: same dependency wearing a disguise.
+FORBIDDEN_EVERYWHERE = (
     "tracks_and_trails.persistence",
-    "tracks_and_trails.core.settings",
     "sqlite3",
 )
 
+#: Prohibitions that belong to **one** module, because the decision behind them does.
+#:
+#: **`core.settings` is `ARC-007`, and `ARC-007` is about the manager** (`T-097`, `P2PLAN-R8`). The
+#: manager receives the concurrency value and a way to be told it changed; composition and the UI
+#: own the TOML file. That rule has no other gate — the layering test permits `downloader/` →
+#: `core/`, so a direct settings import was measured passing both analysers.
+#:
+#: **It applies to `manager.py` alone.** An earlier version of this file forbade it in
+#: `result_pump.py` too, on the reasoning that neither is a place a settings file should be read.
+#: That may well be true, but `ARC-007` does not say it: extending an accepted decision to a module
+#: it does not name is a decision, not an implementation choice, and this file is not where one gets
+#: made. If the pump should be covered, `ARC-007` should say so first.
+FORBIDDEN_BY_MODULE = {
+    "downloader/manager.py": ("tracks_and_trails.core.settings",),
+}
 
-def imported_modules(source: str, filename: str = "<test>") -> set[str]:
+
+def forbidden_for(module: str) -> tuple[str, ...]:
+    """Every prohibition that binds `module` — the shared ones plus its own."""
+    return FORBIDDEN_EVERYWHERE + FORBIDDEN_BY_MODULE.get(module, ())
+
+
+def _absolute(module: str, node: ast.ImportFrom) -> str:
+    """The absolute module name `node` imports *from*, resolving `.` and `..` against `module`.
+
+    **Relative imports were unchecked entirely until `T-097`'s correction**, and that is the hole
+    this function exists to close. The analyser skipped any `ImportFrom` with `node.level != 0`, so
+    `from ..core import settings` — and `from .. import persistence`, the original prohibition —
+    both passed every case in this file. Measured surviving all 23 before the fix.
+
+    `module` is a repository-relative path like `downloader/manager.py`. Its package is
+    `tracks_and_trails.downloader`; one leading dot means that package, two means its parent, and so
+    on outward. A level that walks past the distribution root yields `""`, which cannot prefix-match
+    any prohibition — the honest answer for an import that would not resolve at run time either.
+    """
+    if node.level == 0:
+        return node.module or ""
+    parts = [PACKAGE, *Path(module).parent.parts]
+    # One dot is the containing package; each extra dot climbs one level.
+    climbed = parts[: len(parts) - (node.level - 1)] if node.level > 1 else parts
+    base = ".".join(climbed)
+    if not base:
+        return ""
+    return f"{base}.{node.module}" if node.module else base
+
+
+def imported_modules(source: str, module: str = "downloader/manager.py") -> set[str]:
     """Every module named by an `import` anywhere in `source`, including inside functions.
 
     A lazy import is still an import: deferring `from ... import JobRepository` into a method
     would make the dependency invisible at the top of the file and no less real.
+
+    `module` is the repository-relative path `source` stands in for, and it is **not** cosmetic:
+    relative imports can only be resolved against it. It defaults to `downloader/manager.py` because
+    that is what every synthetic case in this file is pretending to be.
     """
     names: set[str] = set()
-    for node in ast.walk(ast.parse(source, filename=filename)):
+    for node in ast.walk(ast.parse(source, filename=module)):
         if isinstance(node, ast.Import):
             names.update(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.level == 0 and node.module:
-            names.add(node.module)
-            # **`from package import submodule` names a module too** (`T-097`). Recording only
-            # `node.module` missed it: `from tracks_and_trails.core import settings` looked like an
-            # import of `tracks_and_trails.core`, which is permitted, while binding the settings
-            # module itself. The same hole let `from tracks_and_trails import persistence` through —
+        elif isinstance(node, ast.ImportFrom):
+            base = _absolute(module, node)
+            if not base:
+                continue
+            names.add(base)
+            # **`from package import submodule` names a module too** (`T-097`). Recording only the
+            # base missed it: `from tracks_and_trails.core import settings` looked like an import of
+            # `tracks_and_trails.core`, which is permitted, while binding the settings module
+            # itself. The same hole let `from tracks_and_trails import persistence` through —
             # the original prohibition, unreachable by its own most natural spelling.
             #
             # `alias.name`, never `alias.asname`: the module path is what was imported, not what it
             # was called locally. `from x import y as z` is still an import of `x.y`.
-            names.update(f"{node.module}.{alias.name}" for alias in node.names)
+            names.update(f"{base}.{alias.name}" for alias in node.names)
     return names
 
 
-def offenders(source: str, filename: str = "<test>") -> set[str]:
-    """The forbidden dependencies `source` takes on, submodules included."""
+def offenders(source: str, module: str = "downloader/manager.py") -> set[str]:
+    """The forbidden dependencies `source` takes on, submodules included.
+
+    Which prohibitions apply depends on `module`: `core.settings` binds the manager only, because
+    `ARC-007` is about the manager only.
+    """
+    rules = forbidden_for(module)
     return {
         name
-        for name in imported_modules(source, filename)
-        if any(name == forbidden or name.startswith(f"{forbidden}.") for forbidden in FORBIDDEN)
+        for name in imported_modules(source, module)
+        if any(name == forbidden or name.startswith(f"{forbidden}.") for forbidden in rules)
     }
 
 
@@ -105,6 +155,16 @@ def test_the_manager_never_imports_persistence(module: str) -> None:
         # The hole `T-097` found while adding the above: the persistence prohibition's own most
         # natural spelling was unreachable.
         "from tracks_and_trails import persistence",
+        # **Relative imports, unchecked until `T097-R1`.** The analyser skipped every `ImportFrom`
+        # with a non-zero level, so each of these survived all 23 cases in this file — including the
+        # persistence prohibition's own relative spellings, which predate `T-097` entirely.
+        "from ..core import settings",
+        "from ..core.settings import concurrency_limit",
+        "from ..core import settings as s",
+        "from .. import persistence",
+        "from ..persistence import db",
+        "from ..persistence.repositories import JobRepository",
+        "def read():\n    from ..core import settings\n",
     ],
 )
 def test_the_check_above_can_actually_fail(source: str) -> None:
@@ -133,6 +193,13 @@ def test_the_check_above_can_actually_fail(source: str) -> None:
         # Adjacent names that merely start the same way must not be swept up.
         "from tracks_and_trails.core.settings_helpers import thing",
         "import tracks_and_trails.core.settingsish",
+        # Relative imports the manager legitimately makes. Resolving them (`T097-R1`) must not turn
+        # every sibling import into a violation.
+        "from . import protocol",
+        "from .protocol import Succeeded",
+        "from ..core.models import Job",
+        "from ..core import logging as app_logging",
+        "from ..core.job_state import JobStatus",
     ],
 )
 def test_a_legitimate_import_is_not_reported(source: str) -> None:
@@ -144,3 +211,56 @@ def test_the_modules_under_test_exist() -> None:
     """Guards against every check above passing because a path was renamed."""
     for module in MODULES:
         assert (SRC / module).is_file(), f"{module} does not exist; the checks above are vacuous"
+
+
+# --- ARC-007's scope is the manager, and only the manager (`T097-R1`) ----------------------
+
+
+SETTINGS_FORMS = (
+    "from tracks_and_trails.core import settings",
+    "from tracks_and_trails.core.settings import concurrency_limit",
+    "import tracks_and_trails.core.settings",
+    "from ..core import settings",
+)
+
+
+@pytest.mark.parametrize("source", SETTINGS_FORMS)
+def test_the_settings_prohibition_binds_the_manager(source: str) -> None:
+    """`ARC-007` names `downloader/manager.py`: it receives the value, it does not read the file."""
+    assert offenders(source, "downloader/manager.py"), f"{source!r} escaped the manager's rule"
+
+
+@pytest.mark.parametrize("source", SETTINGS_FORMS)
+def test_the_settings_prohibition_does_not_bind_the_result_pump(source: str) -> None:
+    """`P2PLAN-R8`/`T097-R1`: extending an accepted decision is a decision, not a lint choice.
+
+    An earlier version forbade `core.settings` in `result_pump.py` too, reasoning that neither
+    module should read a settings file. That may be right, but `ARC-007` does not say it, and this
+    file is not where it gets decided. **If the pump should be covered, `ARC-007` should say so
+    first** — and then this test is what changes, deliberately.
+    """
+    assert not offenders(source, "downloader/result_pump.py"), (
+        f"{source!r} was reported for result_pump.py, which ARC-007 does not name"
+    )
+
+
+@pytest.mark.parametrize("module", MODULES)
+@pytest.mark.parametrize(
+    "source",
+    [
+        "from tracks_and_trails.persistence import db",
+        "from tracks_and_trails import persistence",
+        "from .. import persistence",
+        "import sqlite3",
+    ],
+)
+def test_the_persistence_prohibition_binds_every_module(source: str, module: str) -> None:
+    """`T-013`'s rule is not module-specific and must not have become so when the rules split."""
+    assert offenders(source, module), f"{source!r} escaped {module}"
+
+
+def test_every_module_the_rules_name_is_a_module_under_test() -> None:
+    """A per-module table can name a file that no longer exists, and then it gates nothing."""
+    for module in FORBIDDEN_BY_MODULE:
+        assert module in MODULES, f"{module} has rules but is not checked"
+        assert (SRC / module).is_file(), f"{module} has rules but does not exist"

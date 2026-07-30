@@ -7066,3 +7066,111 @@ being mistaken for an unresolved planning decision.
 P2PLAN-R6 is carried to T-097 as non-blocking pre-implementation test infrastructure.
 P2PLAN-R7 is carried to T-080 for explicit confirmation before that dependent task starts. Neither
 finding reopens the corrected planning gates or delays T-078 readiness.
+
+## 2026-07-30 — T-085 / T-049 / T-047 / T-097 four-task review
+
+**Reviewer:** Codex (Reviewer)
+**Pinned span:** `1beb6f8..2457313`
+**Per-task boundaries:** T-085 `1beb6f8..36bfba6`; T-049 `36bfba6..0027299`; T-047
+`0027299..e8af655`; T-097 `e8af655..2457313`
+**Concurrent-work exclusion:** T-078 began after the pinned head in the same checkout. Every review
+check used a `2457313` archive under `/tmp`; commit `256b411` and any later T-078 work are not part
+of these dispositions.
+
+**Verdicts:**
+
+- **T-085 — Approved with a planning follow-up.** The record meets its three criteria.
+- **T-049 — Approved.** DAT-003's append-only amendment is the correct historical-record shape.
+- **T-047 — Changes requested.** The “no” answer is reasoned, but its durable rationale is in the
+  wrong canonical document.
+- **T-097 — Changes requested.** The new absolute-import cases pass, but an ordinary relative
+  spelling bypasses the gate and the shared rule exceeds ARC-007's named module.
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `P2PLAN-R8` | **Medium** | **No — T-085 record approval; yes — T-086 readiness** | T-085's original Scope says it delivers the record **and the view**, while the higher-authority Phase 2 plan names only history persistence and records. T-050 points the UI to a nonexistent Phase 3 deliverable, and T-086 presupposes a history view for its history half. The correction correctly refuses to invent the owner, but adding the view to Out of scope does not resolve which task delivers a Phase 2 surface REQ-021 already requires. | Before T-086 becomes Ready, assign the history view explicitly—either amend T-085, make it part of T-086, or create a separate task—and reconcile T-050's stale Phase 3 pointer. The completed record work need not wait on that planning decision. | **Open, non-blocking for T-085** |
+| `T047-R1` | **Medium** | **Yes — T-047** | T-047's only deliverable is a recorded choice not to close three known test blind spots. The measurement, trade-off, rejected direction and premise that reopens it live only in mutable TASKS prose. TESTING states what the gate does, but not why these gaps are deliberately accepted. AGENTS §12 assigns “why a durable choice was made” to DECISIONS, and the task's own title and first criterion call this a decision. | Add a durable decision entry with the measured current structure, the five failed enumeration attempts, the limited purpose of the gate, and the structural changes that reopen the choice. Link TESTING and T-098 to it. | **Open** |
+| `T097-R1` | **Medium** | **Yes — T-097** | `imported_modules()` ignores every relative `ImportFrom` (`node.level != 0`). In an isolated `2457313` archive, adding `from ..core import settings` to the real `downloader/manager.py` left **all 23 boundary tests passing**; `from .. import persistence` is likewise invisible. Separately, adding an absolute settings import to `result_pump.py` fails even though ARC-007 and T-097 name only `manager.py`. The failure message then talks about repository injection for a settings violation. The gate is both bypassable and broader than its authority. | Resolve relative imports against the module under analysis; mutation-check relative settings and persistence spellings against the real manager. Represent prohibitions per module so persistence remains where ARCHITECTURE §3 puts it while ARC-007's settings rule applies only to manager.py. Add an allowed result-pump/settings synthetic case unless ARC-007 is deliberately amended, and give each rule its own diagnostic. | **Open** |
+| `COORD-R11` | **Low** | **No — this review supersedes the pending summary** | At `2457313`, TASKS first says “In Review: nothing,” later lists all four tasks In Review, retains “Proposed review follow-up: T-097,” and labels the In Review section empty immediately before the four entries. The commit did restore the missing Ready heading and physical placement, but its live summary still gives incompatible answers. | Rebuild the top summary and In Review note once these four dispositions are filed. T-096 remains the structural owner of this recurring class. | **Open, non-blocking coordination** |
+
+### T-085 — record evidence
+
+**The projection/live split is accepted.** The existing real-completion test drives
+`DownloadManager`, `PersistentJobStore`, `QueueWriter` and a fresh database read, proving the path
+is composed and durable. The new projection test supplies deliberately non-null values for every
+REQ-020 fact and compares one complete `HistoryEntry`, proving that the persistence projection
+does not discard one merely because the local HTTP fixture lacks metadata. Neither test is asked to
+claim what its fixture cannot establish.
+
+The lifetime evidence is also proportionate. Directly deleting the job proves the present schema
+does not couple the rows, while reading the `history` definition independently rejects a declared
+foreign-key relationship. T-081 must still avoid adding an explicit second history deletion when
+its clear-completed operation exists; T-085 cannot drive an operation that has not been built.
+
+### T-049 — decision amendment
+
+**Amend, not rewrite, is the correct §6 reading.** DAT-003 is historical record. Its appended
+amendment explicitly supersedes the false scope rows, preserves why they were once believed, and
+restates the controlling rule by provenance without silently changing the accepted verbatim-storage
+trade-off.
+
+The challenged facts reproduce: a source URL containing userinfo is accepted, and
+`cookies_from_browser` accepts path-shaped text. REQ-026 already binds only application-supplied
+values and links DAT-003; the amendment adds cookie-file support and new secret-bearing persisted
+fields as pre-implementation reopening conditions. T-038 remains origin-agnostic at emission.
+
+### T-047 — decision substance
+
+**The substantive “no” is defensible.** Parsing the pinned environment module finds exactly the
+reported top-level shape: no module-scope `if`, no module-scope `try`, and no call to `globals`,
+`locals`, `setattr`, `vars`, `exec` or `eval`. The gate is not a security boundary, five syntax
+enumerations already failed, and the interpreter-namespace check still catches the accidental
+public export it exists to catch. T-098 is a reasonable separate guard on the measured premise.
+
+What is not accepted is treating TASKS plus TESTING as the durable decision record. TESTING owns
+the executable/testing promise; it does not preserve the rationale for knowingly leaving the three
+blind spots open.
+
+### T-097 — what remains valid
+
+Recording `node.module + alias.name` fixes two real absolute-import holes:
+`from tracks_and_trails.core import settings` and the pre-existing
+`from tracks_and_trails import persistence`. The dot-boundary matching and legitimate-import cases
+are useful, and no implementation change to ARC-007 is needed. The correction should retain those
+parts while making the rule module-specific and relative-import aware.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Isolation | All reviewed files came from a `git archive` of `2457313`; concurrent T-078 work was excluded |
+| Span identity | Four commits in `1beb6f8..2457313`, matching the four handed-off sections |
+| `git diff --check 1beb6f8..2457313` | Passed |
+| Authorship / trailers | Sean Kottman on all four commits; no AI author or co-author trailer |
+| T-085 new record tests | **3 passed** |
+| Existing real-completion history path | **1 passed** with loopback sockets permitted |
+| T-085 `format_used → None` production-only mutation | **Killed** by the unmodified whole-entry projection test |
+| T-097 baseline boundary file | **23 passed** |
+| T-097 relative manager/settings mutation | **Survived: 23 passed** |
+| T-097 result-pump/settings mutation | Failed, confirming the surplus prohibition |
+| DAT-003 fact probes | Userinfo URL accepted; path-shaped `cookies_from_browser` accepted |
+| T-047 AST measurement | No top-level `if`/`try`; no named dynamic-rebinding calls |
+| Full pinned default suite | **1467 passed, 11 skipped, 2 deselected in 128.60 s** |
+| Bare `mypy` | Passed; **78 files** |
+| Bare `mypy --platform win32` | Passed; **78 files** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **106 files** already formatted |
+| Windows runtime | Not run; no production file changed in the pinned four-task span |
+
+### Final disposition
+
+T-085's record implementation is **Approved at `36bfba6`**, with P2PLAN-R8 blocking T-086
+readiness rather than reopening the completed persistence evidence. T-049 is **Approved at
+`0027299`**.
+
+T-047 is **Changes requested at `e8af655`** until its accepted “no” has a DECISIONS entry. T-097
+is **Changes requested at `2457313`** until relative imports cannot bypass it and the settings
+prohibition is narrowed to ARC-007's manager boundary. Those corrections are independent and may
+return as separate focused passes.
