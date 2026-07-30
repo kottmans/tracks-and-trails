@@ -7174,3 +7174,81 @@ T-047 is **Changes requested at `e8af655`** until its accepted “no” has a DE
 is **Changes requested at `2457313`** until relative imports cannot bypass it and the settings
 prohibition is narrowed to ARC-007's manager boundary. Those corrections are independent and may
 return as separate focused passes.
+
+## 2026-07-30 — T-091 / T-096 / T-098 three-task review
+
+**Reviewer:** Codex (Reviewer)
+**Pinned span:** `34addcb..9860c2f`
+**Per-task boundaries:** T-096 `34addcb..7d1fd04`; T-098 `7d1fd04..5ab8f49`; T-091
+`5ab8f49..9860c2f`
+**Boundary treatment:** three commits and three initial task reviews. All inspection and runtime
+checks used a `9860c2f` archive under `/tmp`, so later T-089/T-078 work in the primary checkout is
+excluded.
+
+**Verdicts:**
+
+- **T-091 — Changes requested.** The OSError predicate is appropriately narrow, but the adjacent
+  broad catches still turn malformed queue payloads into orderly end-of-stream, and two explicit
+  acceptance tests were not delivered.
+- **T-096 — Changes requested.** Status/section mismatches are detected only for entries that
+  already have a status; an entry with no status is silently omitted.
+- **T-098 — Approved.** The OPS-008 premise guard is proportionate, and the inverted shape check
+  is independently load-bearing.
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T091-R1` | **Medium** | **Yes — T-091** | `core/logging.py:576-587` says `EOFError` and `ValueError` are unambiguous closure signals and converts every instance to the listener sentinel. They are also deserialization failures on the real queue path. Writing `b""` and `b"\x80\xff"` through a real `multiprocessing.Queue` pipe made `Queue.get()` raise `EOFError("Ran out of input")` and `ValueError("unsupported pickle protocol: 255")`; the committed `dequeue()` returned its sentinel for both. The listener would then exit normally and sweep pending drains, reproducing T090-R1's silent log-loss consequence one exception type over. | Suppress only the verified same-process-close form of `ValueError`, and distinguish an expected lifecycle EOF from malformed/truncated serialization before suppressing it. Add real-queue regressions for both malformed payloads and mutation-check the classification. | **Open** |
+| `T091-R2` | **Medium** | **Yes — T-091** | Two acceptance criteria remain unevidenced. `test_a_non_closure_oserror_propagates_out_of_dequeue` at `test_logging.py:867-881` supplies a fake object whose `get()` raises directly, not the required real `multiprocessing.Queue.get()` path. The required dedicated one-lifecycle post-registration delivery assertion is absent: `test_the_log_listener_is_not_left_reading_a_closed_queue` checks only stderr, while the only delivery count at lines 771-797 is the pre-existing **two-lifecycle** T074-R2 test. The task's own evidence says that named one-lifecycle test passes when the registration defect is restored. | Inject a non-closure OSError through an actual queue reader so `Queue.get()` is in the call path. Add the specified one-lifecycle application-logger delivery count and show the unmodified test fails when `_wait_at_exit` is moved back to import time with the closure guard retained. | **Open** |
+| `T096-R1` | **Medium** | **Yes — T-096** | `live_entries()` at `test_task_placement.py:81-102` adds a task only after it finds a `**Status:**` line. `test_each_entry_states_its_status_once` counts headings but reports only counts greater than one, never zero. Removing T-091's only status line left 95 entries, above the anti-vacuity threshold, and all **12 placement tests passed**. The gate therefore does not enforce the first criterion that every live entry exposes exactly one status and can skip an entry entirely. | Parse headings independently, retain every live task in the result, and assert each has exactly one status—including reporting zero. Mutation-check removal of one existing status line with the committed tests unchanged. | **Open** |
+
+### Review judgments
+
+**The literal OSError match is accepted.** Equality with CPython's exact
+`OSError("handle is closed")` sentinel is narrower than either substring matching or accepting
+every errno-less OSError. The committed negative case proves prose merely containing the phrase
+still raises. If the supported runtime changes its private sentinel, failing loudly is safer than
+silently widening the transport-fault catch.
+
+**The `setattr` test setup is accepted.** `OSError.winerror` is platform-dependent, and the local
+assignment is test construction rather than production namespace manipulation. The targeted
+`B010` suppression is explicit; both host and Win32 whole-project mypy gates pass with the same
+source spelling.
+
+**T-098's inverted check is load-bearing.** Adding a module-scope `for` to the real environment
+module left all three named construct checks green (**7 tests passed** when the inverted test was
+deselected) and failed only `test_the_module_scope_is_still_the_shape_ops_008_measured`, naming
+`For` and directing the reader to revisit OPS-008. That is the claimed distinction between an
+enumeration of the three known gaps and a closed description of the measured module shape. The
+failure asks for decision review rather than forbidding the production construct, so the broader
+tripwire does not silently expand OPS-008.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Isolation | All reviewed files came from a `git archive` of `9860c2f`; later primary-checkout work was excluded |
+| Span identity | Exactly three commits in `34addcb..9860c2f`, one for each handed-off task |
+| `git diff --check 34addcb..9860c2f` | Passed |
+| Authorship / trailers | Sean Kottman on all three commits; no AI author or co-author trailer |
+| Focused changed tests | **67 passed in 8.00 s** |
+| Real Queue malformed-payload probes | Direct `Queue.get()` raised EOFError / ValueError; committed `dequeue()` returned its sentinel for both |
+| T-096 missing-status mutation | **Survived: 12 passed** |
+| T-098 unlisted module-scope `for` mutation | Named checks **7 passed**; inverted shape test failed on `For` |
+| Full pinned suite | **1555 passed, 11 skipped, 2 deselected in 131.04 s**, with loopback allowed and an isolated writable cache |
+| Bare `mypy` | Passed; **81 files** |
+| Bare `mypy --platform win32` | Passed; **81 files** |
+| `mypy src` / `mypy --platform win32 src` | Passed; **35 source files** in each mode |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **109 files** already formatted |
+| Windows runtime | Not rerun for this span; WinError 6 is exercised synthetically and both Win32 type gates pass |
+
+### Final disposition
+
+T-098 is **Approved at `5ab8f49`**. Its named premise checks and inverted shape assertion jointly
+guard OPS-008 without claiming to close the three accepted blind spots.
+
+T-091 is **Changes requested at `9860c2f`** for T091-R1 and T091-R2. T-096 is **Changes requested
+at `7d1fd04`** for T096-R1. These are initial reviews of the new task IDs, so each has its ordinary
+focused correction pass available under AGENTS §10.
