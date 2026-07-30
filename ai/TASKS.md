@@ -170,6 +170,17 @@ that exists for it.
 | Two-transaction mutation, hard exit in the window | **killed** — `COMPLETED` with `history=None` |
 | Selector-instead-of-resolved-format mutation | **killed, 3/3** (unchanged) |
 | ruff, ruff format | clean |
+| Full suite, Linux | **1449 passed, 11 skipped, 2 deselected** |
+| **Full suite on `STARBASE`**, run `30506962680` | **1438 passed, 20 skipped, 32 deselected** — job `windows desktop` green |
+
+**Windows has now executed all of it**, which the previous round could not claim. Run
+`30506962680`'s self-hosted job ran every new test and passed each: the hard-exit atomicity gate,
+the three format tests, the history round-trips and the composition test. That gate mattering on
+Windows is not incidental — `os._exit` against SQLite's WAL and a live `QueueWriter` thread is
+platform behaviour, and the transaction change is the part of `T-050` most likely to differ there.
+
+*The four GitHub-hosted jobs in that run failed at **zero steps in four seconds**, on the billing
+annotation — the exhausted quota `OPS-005` and `OPS-006` already cover, not a result.*
 **Owner:** Implementer
 **Priority:** Medium — `REQ-020` has no owner without it, and the table already exists empty
 **Phase:** **Phase 2** — `IMPLEMENTATION_PLAN.md` lists "History persistence and
