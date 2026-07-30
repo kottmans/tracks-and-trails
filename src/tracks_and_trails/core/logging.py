@@ -49,6 +49,7 @@ from __future__ import annotations
 
 import atexit
 import contextlib
+import errno
 import itertools
 import logging
 import logging.handlers
@@ -458,6 +459,50 @@ _worker_queue: Any = None
 _listener: _ToWhicheverHandlersWeHaveNow | None = None
 
 
+#: The handle-is-gone codes a queue read can legitimately end on (`T090-R1`).
+#:
+#: `EBADF` is the POSIX answer; `ERROR_INVALID_HANDLE` is Windows', and the captured traceback that
+#: started `T-090` shows it as `[WinError 6] The handle is invalid` out of an overlapped `ReadFile`.
+#: Nothing else is a closure: an `EIO` from the same read is a transport fault, and treating it as
+#: end-of-stream is what `T090-R1` reported.
+_CLOSED_HANDLE_ERRNOS: Final = frozenset({errno.EBADF})
+_INVALID_HANDLE_WINERROR: Final = 6
+
+#: **`multiprocessing`'s own guard raises an `OSError` with no `errno` at all** — measured while
+#: narrowing this predicate, and the reason a code-only check was not enough.
+#: `multiprocessing.connection.Connection._check_closed` is three lines long and reads
+#: `if self._handle is None: raise OSError("handle is closed")`. That is a sentinel, not a system
+#: error, so it carries no number to match on.
+#:
+#: Matching its literal is narrower than the alternatives, which is why it wins: accepting *any*
+#: `errno is None` would readmit most of what `T090-R1` asked to be excluded, and this string is
+#: CPython's own and has been stable across the versions this project supports.
+_CLOSED_SENTINEL_MESSAGE: Final = "handle is closed"
+
+
+def _is_closed_handle(error: OSError) -> bool:
+    """Whether `error` says the queue's handle is gone, rather than that the read failed.
+
+    Three forms, because the read path can end in three ways and only the codes were obvious:
+
+    - `winerror == 6` — Windows' `ERROR_INVALID_HANDLE`, from the overlapped `ReadFile`.
+    - `errno == EBADF` — the POSIX equivalent, from the raw descriptor.
+    - **`OSError("handle is closed")` with no `errno`** — `multiprocessing`'s own check, which
+      fires before either of the above can. This is the form the slow-handler path actually
+      produces, measured; a predicate built only from error codes let it through and broke
+      `T074-R3`'s regression on the first run.
+
+    `winerror` and `errno` are consulted independently rather than one per platform. Windows raises
+    `OSError` carrying `winerror` and CPython also maps it onto an `errno`, so checking both means
+    the predicate does not depend on which a given call site populates.
+    """
+    if getattr(error, "winerror", None) == _INVALID_HANDLE_WINERROR:
+        return True
+    if error.errno in _CLOSED_HANDLE_ERRNOS:
+        return True
+    return error.errno is None and str(error) == _CLOSED_SENTINEL_MESSAGE
+
+
 class _ToWhicheverHandlersWeHaveNow(logging.handlers.QueueListener):
     """A listener that resolves the application's handlers per record, not once at construction.
 
@@ -520,15 +565,29 @@ class _ToWhicheverHandlersWeHaveNow(logging.handlers.QueueListener):
         raising. That makes the outcome correct whether or not the wait finished in time — the
         ordering fix is what makes it *prompt*, and this is what makes it *safe*.
 
-        Deliberately narrow. `OSError` is the closed handle (`WinError 6` on Windows, `EBADF`
-        elsewhere), `EOFError` the other end going away, and `ValueError` a queue closed in this
-        process. Anything else is a real fault and still raises.
+        **Narrow to the closure forms, and `T090-R1` is why it had to become narrower.** This
+        docstring already claimed `OSError` meant "the closed handle (`WinError 6` on Windows,
+        `EBADF` elsewhere)" while the code caught *every* `OSError`. A real transport fault — an
+        `EIO` out of the receive path — was therefore converted into a normal end of stream: the
+        listener exited cleanly, swept its pending drains, and every later record vanished with no
+        thread exception to say why. The contract was right and the implementation was wider than
+        it.
+
+        `EOFError` is the other end going away, and `ValueError` is a queue closed in *this*
+        process — measured: `multiprocessing.Queue.get()` on a closed queue raises
+        `ValueError: … is closed`, with no `errno` at all. Both are unambiguous and stay.
+
+        Anything else is a real fault and still raises.
         """
         try:
             return super().dequeue(block)
-        except OSError, EOFError, ValueError:
+        except EOFError, ValueError:
             # `_sentinel` is `QueueListener`'s own end-of-stream marker; typeshed does not
             # declare it, which is the same gap `_monitor` has one method down.
+            return self._sentinel  # type: ignore[attr-defined]
+        except OSError as error:
+            if not _is_closed_handle(error):
+                raise
             return self._sentinel  # type: ignore[attr-defined]
 
     # `_monitor` is the listener thread's body. It is private, and typeshed does not declare it,

@@ -7,6 +7,7 @@ call site cannot leak by forgetting to use it (`ai/TESTING.md` §13, `ARCHITECTU
 
 from __future__ import annotations
 
+import errno
 import logging
 import logging.handlers
 import multiprocessing as mp
@@ -808,3 +809,85 @@ def test_a_handler_slower_than_the_wait_does_not_leave_a_raising_thread() -> Non
     assert "Exception in thread" not in result.stderr, (
         f"the listener raised after the wait gave up on it:\n{result.stderr}"
     )
+
+
+# --- T-091: only closure ends the stream --------------------------------------------------
+
+
+def test_the_three_closure_forms_are_recognised() -> None:
+    """`T090-R1`: each is a way the queue's handle can be gone, and only these three are.
+
+    Read directly rather than through a live queue, because two of the three cannot be produced on
+    this platform: `winerror` is Windows-only, and `EBADF` comes from the raw descriptor path.
+    """
+    from tracks_and_trails.core.logging import _is_closed_handle
+
+    posix = OSError(errno.EBADF, "Bad file descriptor")
+    windows = OSError(22, "The handle is invalid")
+    # `setattr` rather than a direct assignment with an ignore comment: `OSError.winerror` exists
+    # only on Windows, so mypy needs the ignore on Linux and rejects it as unused under
+    # `--platform win32`. There is no single spelling of the assignment that satisfies both gates,
+    # and `ai/TESTING.md` §3 requires both. This one needs neither.
+    setattr(windows, "winerror", 6)  # noqa: B010
+    sentinel = OSError("handle is closed")
+
+    assert _is_closed_handle(posix), "EBADF is the POSIX closure"
+    assert _is_closed_handle(windows), "WinError 6 is the Windows closure"
+    assert _is_closed_handle(sentinel), (
+        "multiprocessing's own guard raises OSError('handle is closed') with no errno; this is the "
+        "form the slow-handler path actually produces"
+    )
+
+
+@pytest.mark.parametrize(
+    ("name", "error"),
+    [
+        ("EIO — a real transport fault", OSError(errno.EIO, "Input/output error")),
+        ("ENOSPC", OSError(errno.ENOSPC, "No space left on device")),
+        ("EPIPE", OSError(errno.EPIPE, "Broken pipe")),
+        ("a bare OSError with a different message", OSError("something else went wrong")),
+        (
+            "an errno-less OSError whose text merely contains the sentinel",
+            OSError("the handle is closed now"),
+        ),
+    ],
+)
+def test_a_non_closure_oserror_is_not_a_closure(name: str, error: OSError) -> None:
+    """`T090-R1`'s finding: every `OSError` became end-of-stream, so a real fault lost records.
+
+    The last case is the interesting one. The sentinel is matched by **equality**, not containment,
+    so prose that happens to mention it is still a fault. A substring check would have reopened the
+    hole in a smaller doorway.
+    """
+    from tracks_and_trails.core.logging import _is_closed_handle
+
+    assert not _is_closed_handle(error), f"{name} was treated as a closed queue"
+
+
+def test_a_non_closure_oserror_propagates_out_of_dequeue() -> None:
+    """The predicate is only useful if `dequeue` acts on it — asserted through the real method.
+
+    `T090-R1` did not report a wrong predicate; it reported a `dequeue` that suppressed everything.
+    Testing the helper alone would leave that untested.
+    """
+    from tracks_and_trails.core.logging import _ToWhicheverHandlersWeHaveNow
+
+    class _Failing:
+        def get(self, block: bool = True) -> object:
+            raise OSError(errno.EIO, "Input/output error")
+
+    listener = _ToWhicheverHandlersWeHaveNow(_Failing())  # type: ignore[arg-type]
+    with pytest.raises(OSError, match="Input/output error"):
+        listener.dequeue(True)
+
+
+def test_a_closure_oserror_ends_the_stream_rather_than_raising() -> None:
+    """The other half, so the test above cannot pass by `dequeue` simply never suppressing."""
+    from tracks_and_trails.core.logging import _ToWhicheverHandlersWeHaveNow
+
+    class _Closed:
+        def get(self, block: bool = True) -> object:
+            raise OSError("handle is closed")
+
+    listener = _ToWhicheverHandlersWeHaveNow(_Closed())  # type: ignore[arg-type]
+    assert listener.dequeue(True) is listener._sentinel  # type: ignore[attr-defined]

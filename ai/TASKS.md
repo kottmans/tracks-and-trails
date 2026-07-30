@@ -132,6 +132,100 @@ readiness. `COORD-R5` through `COORD-R10` are six rounds of this file's status a
 disagreeing — which is why **`T-096`** exists. A documentation-invariant test means the seventh
 recurrence fails a gate instead of waiting for a reviewer to read carefully.)*
 
+### T-091 — Distinguish a closed log queue from a broken one
+
+**Status:** **In Review — delivered 2026-07-30.** `dequeue()` suppresses three named closure
+forms and re-raises everything else. Finding the third is what the work turned on — see
+**Evidence, 2026-07-30**.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 1 follow-up; does not block T-090 approval
+**Depends on:** `T-090`
+**Relevant context:** `T090-R1`, `T090-R2`, `T074-R3`, `T038-R2`
+**Affected surfaces:** `core/logging.py`, `tests/unit/test_logging.py`
+**Risk:** Medium — a rare queue transport fault can stop logging silently; one named regression
+also no longer proves the ordering it describes
+
+#### Scope
+
+T-090 correctly treats a queue closed during bounded exit as end-of-stream. Its `dequeue()` catch
+is wider than that contract: every `OSError` becomes the sentinel, including a non-closure
+transport error. The listener then exits normally and closes its pending drains, so the remaining
+records disappear without the thread exception that would identify the fault.
+
+The new guard also conceals the symptom used by
+`test_the_log_listener_is_not_left_reading_a_closed_queue`. Moving `_wait_at_exit` back to import
+time now passes that named test: multiprocessing closes the queue first, and `dequeue()` ends the
+listener cleanly. The full logging file still kills the mutation because the later two-lifecycle
+test counts only 1 of 41 records delivered, so this is hardening rather than a reopened T-090
+blocker.
+
+#### Acceptance criteria
+
+- Suppress only the queue-closure forms verified on the supported platforms; a non-closure
+  `OSError` from a real `multiprocessing.Queue.get()` path still raises
+- Give the post-queue-registration rule its own one-lifecycle record-delivery assertion, using a
+  handler on the application logger rather than root
+- With the `T074-R3` closure guard still present, moving registration back to import fails that
+  assertion by losing records
+- Keep the direct mutations for “newest listener only,” “record no stopped listener,” and the
+  slow-handler timeout killed
+
+#### Evidence, 2026-07-30
+
+**The docstring was already right; the code was wider than it.** It claimed `OSError` meant *"the
+closed handle (`WinError 6` on Windows, `EBADF` elsewhere)"* while `except OSError` caught every
+one. `T090-R1`'s consequence follows directly: an `EIO` out of the receive path became a normal end
+of stream, the listener exited cleanly, swept its pending drains, and every later record vanished
+with no thread exception to say why.
+
+**Narrowing it to the two documented codes broke `T074-R3`'s regression immediately**, and that
+failure is the useful part of this task. The slow-handler path does not raise either code. Measured
+by instrumenting `dequeue` in a real run:
+
+```
+errno=None  winerror=None  message='handle is closed'
+```
+
+That is `multiprocessing.connection.Connection._check_closed`, which is three lines long and reads
+`if self._handle is None: raise OSError("handle is closed")`. **A sentinel, not a system error**, so
+it carries no number to match on — and a predicate built only from error codes let it through. Had
+`T074-R3`'s test not existed, this correction would have shipped a regression while looking more
+precise than what it replaced.
+
+**Three closure forms, each justified:**
+
+| Form | Where it comes from |
+|---|---|
+| `winerror == 6` | Windows `ERROR_INVALID_HANDLE`, from the overlapped `ReadFile` in `T-090`'s captured traceback |
+| `errno == EBADF` | the POSIX equivalent, from the raw descriptor |
+| `OSError("handle is closed")`, `errno is None` | `multiprocessing`'s own guard, which fires before either code can |
+
+The sentinel is matched by **equality, not containment**. A substring test would reopen the hole in
+a smaller doorway — `OSError("the handle is closed now")` is prose, and a test asserts it still
+raises.
+
+| Check | Result |
+|---|---|
+| `tests/unit/test_logging.py` | **47 passed** (from 39) |
+| Reverting to `except OSError:` | **fails** `test_a_non_closure_oserror_propagates_out_of_dequeue` |
+| `EIO`, `ENOSPC`, `EPIPE`, bare `OSError`, sentinel-as-substring | each **not** treated as closure |
+| `T074-R3`'s slow-handler regression | still passes |
+
+**Both halves are asserted through the real `dequeue`, not the predicate alone.** `T090-R1` did not
+report a wrong predicate; it reported a `dequeue` that suppressed everything, so testing the helper
+by itself would leave the reported defect untested.
+
+#### Out of scope
+
+- `T-074`'s unreproduced Windows access violation
+- Changing the five-second exit bound
+- **Narrowing `EOFError` or `ValueError`.** Both are unambiguous on this path — `ValueError` is
+  measured as what `multiprocessing.Queue.get()` raises on a queue closed in this process — and
+  `T090-R1` reported the `OSError` arm only
+
+---
+
 ### T-098 — Guard the premise T-047's decision rests on
 
 **Status:** **In Review — delivered 2026-07-30.** `tests/unit/test_environment_shape.py` parses
@@ -1084,50 +1178,6 @@ three parts of that UI contract still inferred from production rather than indep
 - Inject at least one non-MP3 converting preset into the dialog and assert the control is disabled,
   no bitrate is displayed, and `selected_preset` preserves the base preset
 - Mutation-check the post-probe quality persistence and at least one dialog-side MP3-only gate
-
----
-
-### T-091 — Distinguish a closed log queue from a broken one
-
-**Status:** Ready — non-blocking follow-up carried from `T090-R1` and `T090-R2`
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 1 follow-up; does not block T-090 approval
-**Depends on:** `T-090`
-**Relevant context:** `T090-R1`, `T090-R2`, `T074-R3`, `T038-R2`
-**Affected surfaces:** `core/logging.py`, `tests/unit/test_logging.py`
-**Risk:** Medium — a rare queue transport fault can stop logging silently; one named regression
-also no longer proves the ordering it describes
-
-#### Scope
-
-T-090 correctly treats a queue closed during bounded exit as end-of-stream. Its `dequeue()` catch
-is wider than that contract: every `OSError` becomes the sentinel, including a non-closure
-transport error. The listener then exits normally and closes its pending drains, so the remaining
-records disappear without the thread exception that would identify the fault.
-
-The new guard also conceals the symptom used by
-`test_the_log_listener_is_not_left_reading_a_closed_queue`. Moving `_wait_at_exit` back to import
-time now passes that named test: multiprocessing closes the queue first, and `dequeue()` ends the
-listener cleanly. The full logging file still kills the mutation because the later two-lifecycle
-test counts only 1 of 41 records delivered, so this is hardening rather than a reopened T-090
-blocker.
-
-#### Acceptance criteria
-
-- Suppress only the queue-closure forms verified on the supported platforms; a non-closure
-  `OSError` from a real `multiprocessing.Queue.get()` path still raises
-- Give the post-queue-registration rule its own one-lifecycle record-delivery assertion, using a
-  handler on the application logger rather than root
-- With the `T074-R3` closure guard still present, moving registration back to import fails that
-  assertion by losing records
-- Keep the direct mutations for “newest listener only,” “record no stopped listener,” and the
-  slow-handler timeout killed
-
-#### Out of scope
-
-- `T-074`'s unreproduced Windows access violation
-- Changing the five-second exit bound
 
 ---
 
