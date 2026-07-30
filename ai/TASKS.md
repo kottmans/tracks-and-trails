@@ -28,18 +28,22 @@ findings gate the first promotion — but `T-085`, `T-049` and `T-047` can start
   and `P2PLAN-R3` approved at `8306378`. `ARC-007` decides the settings surface, `UX-001` the pause
   semantics, and `T-080` is rewritten with the two granularities separated.
 - **`T-078` is Ready** — the first Phase 2 task out of Proposed, and the choke point eight tasks
-  descend from. `T-085`, `T-049` and `T-047` are startable alongside it.
-- **Two follow-ups carried, neither blocking:** `T-097` mechanically forbids
-  `downloader/manager.py` importing `core.settings` — a violation both current analysers were
-  *measured* to miss, so `ARC-007`'s boundary is currently stated and ungated. And `P2PLAN-R7` sits
-  inside `T-080`: a manual-retry ordering criterion I added with the `P2PLAN-R1` correction is new
-  scope rather than reconciliation, and `T-080` must confirm or remove it before starting.
+  descend from. Nothing else blocks it.
+- **In Review, delivered 2026-07-30, four separate boundaries:** `T-085` (the record `REQ-020`
+  names), `T-049` (`DAT-003` restated as provenance), `T-047` (**decided: no**, with the measurement
+  it rests on), `T-097` (`ARC-007`'s settings boundary, which also closed a pre-existing hole in the
+  same analyser).
+- **Three things those turned up, each filed rather than absorbed:** **`T-098`** guards the premise
+  `T-047`'s decision rests on; **`REQ-020`'s view is unowned** across the plan and `T-050` (see
+  `T-085`); and **`P2PLAN-R7`** still sits inside `T-080` — a manual-retry ordering criterion added
+  with the `P2PLAN-R1` correction that is new scope rather than reconciliation, and must be confirmed
+  or removed before that task starts.
 - **Proposed review follow-up:** `T-097` mechanically gates ARC-007's manager/settings boundary.
   It blocks T-078 approval, not promotion to Ready.
 - **Ready, blocking nothing:** `T-074` (Medium, `OPS-007` residual), `T-089`, `T-091`, `T-092`
   (needs maintainer consent before writing to `STARBASE`), `T-096`.
 
-`T-078` is the critical path; `T-085` can run beside it.
+`T-078` is the critical path. `T-080` needs two calls made before it starts.
 
 **Two Phase 1 blockers were dispositioned by maintainer decision rather than completed, and the
 exit review upheld both while keeping them open.** `T-066` by the `OPS-005` amendment (its frozen
@@ -127,6 +131,366 @@ verdict.
 readiness. `COORD-R5` through `COORD-R10` are six rounds of this file's status and section
 disagreeing — which is why **`T-096`** exists. A documentation-invariant test means the seventh
 recurrence fails a gate instead of waiting for a reviewer to read carefully.)*
+
+### T-085 — History of completed downloads
+
+**Status:** **In Review — the record is delivered 2026-07-30.** All three acceptance criteria are
+met. **One thing is deliberately not delivered and is not this task's to decide:** the Scope below
+says "the record *and the view over it*", and the view has no owner anywhere — see
+**`REQ-020`'s view is unowned** below.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-050`
+**Relevant context:** `REQ-020`, `T-014`, `T-050`, `DAT-001`
+**Affected surfaces:** `persistence/`, `ui/`
+**Risk:** Low to medium — it is the first table whose rows outlive the queue
+
+#### Scope
+
+`REQ-020` names the fields: source URL, title, resolved output path, format used, size, completion
+time. `T-050` is already filed to write the table and notes `T-013` produces the event that fills
+it; this is the record and the view over it.
+
+**The first data that is not transient.** A queue row is about work; a history row is about
+something that happened, and deleting it is a different act. That distinction should be visible in
+the schema and in the UI, and it interacts with `T-081`'s clear-completed.
+
+#### Acceptance criteria
+
+- Every field `REQ-020` names is recorded, and a completed download without one fails a test
+- History survives clearing the queue, and the relationship is stated rather than implied
+- A migration exists if the table lands after any release (`T-048` owns the first real one)
+
+#### Evidence, 2026-07-30
+
+**`T-050` had already written the row; what was missing was proof it holds what `REQ-020` names.**
+Three tests, all in `tests/integration/test_manager.py`:
+
+- `test_a_completion_records_every_field_req_020_names` compares the projected `HistoryEntry`
+  against a **fully specified expectation as one object**, rather than asserting field by field. A
+  per-field list is written from the same understanding that would forget a field, so it passes while
+  a column goes unwritten — `T-014`'s round-trip test exists for that reason.
+- `test_history_outlives_the_job_row_it_describes` deletes the job row and reads the history back.
+- `test_the_history_table_declares_no_dependency_on_jobs` reads the relationship from
+  `sqlite_master` rather than from behaviour, because a plain foreign key would pass the test above
+  while still coupling the two lifetimes the moment anyone enabled enforcement.
+
+| Mutation | Result |
+|---|---|
+| Drop `format_used` from the projection | **killed** |
+| Drop `title` from the projection | **killed** |
+| Drop `bytes_total` from the projection | **killed** |
+
+**Why the field set is gated at the projection, not on a live download.** A real completion through
+the local `http.server` fixture records `title=None` — measured — because the fixture serves a bare
+file with no metadata. That is a fixture limit, not a product gap, but it means an end-to-end test
+cannot require six non-null fields without either lying or depending on a real site. So
+`test_a_completed_download_writes_exactly_one_history_row` owns the live path and this owns the field
+set. Stated rather than left as a gap in the reasoning.
+
+**The migration criterion is met by there being nothing to migrate.** `T-014` created the `history`
+table in `0001_initial.sql` and this task changed no schema, so no migration exists or is needed.
+`T-048` still owns the first real data migration.
+
+#### `REQ-020`'s view is unowned — flagged, not decided
+
+The Scope above says this task is "the record **and the view over it**". Three documents disagree
+about where that view lives, and none of them owns it:
+
+- **`IMPLEMENTATION_PLAN.md` §Phase 2** lists *"History persistence and completed-download
+  records"* — no view.
+- **§Phase 3** mentions history and `REQ-020` **not at all**.
+- **`T-050`** says *"Any history UI — Phase 3 (`REQ-020`'s view)"*, which points at a deliverable
+  that does not exist.
+
+**And Phase 2 needs one anyway.** `REQ-021` — *"Open a completed file, or reveal it in the system
+file manager, from the history **and** queue views"* — is a Phase 2 deliverable, and `T-086` depends
+on *this* task "for the history half". So a history view is presupposed by a Phase 2 requirement
+while being assigned to no phase.
+
+This is the `P2PLAN-R1` class again: task text and plan disagreeing, with the plan internally
+inconsistent as well. `AGENTS.md` §5 puts the plan above `TASKS.md`, and the plan's Phase 2
+deliverable is the record — which is what this task delivered. **Whether the view lands in Phase 2
+(for `REQ-021`), in `T-086`, or in a later phase is a planning decision and is not made here.**
+
+#### Out of scope
+
+- Search, statistics, export
+- **The history view**, pending the decision above. All three acceptance criteria concern the record,
+  so this task is complete against what it is gated on
+
+---
+
+### T-049 — Tighten DAT-003 before cookie-file support
+
+**Status:** **In Review — delivered 2026-07-30.** `DAT-003` carries an amendment restating its
+boundary as **provenance** and withdrawing three overstatements, two of which were measured false
+rather than merely unprovable. See **Evidence, 2026-07-30**.
+**Owner:** Planner
+**Priority:** Medium before cookie-file support or first release
+**Phase:** Phase 4. *(It is filed under `## Proposed — Phase 2` with the other Phase 1 carry-overs,
+which the section note explains — the grouping is by where they were filed, not by phase.)*
+**Depends on:** none
+**Relevant context:** `DAT-003`, `REQ-026`, `T014-R1`, `T-038`
+**Affected surfaces:** `ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, `ai/TASKS.md`
+
+#### Scope
+
+The maintainer accepted DAT-003's controlling trade-off: third-party diagnostic prose is stored
+verbatim in the local, user-owned database, even when it names a cookie path. That closes
+T014-R1. Its explanatory table is narrower than the decision it records, however:
+
+- a user-supplied source URL may itself contain userinfo and is stored verbatim under the earlier
+  URL decision;
+- `cookies_from_browser` is passed to yt-dlp as a browser name, but the model currently accepts
+  any non-empty string, including a path-shaped one; and
+- arbitrary third-party prose cannot support an exhaustive claim that a cookie path is the
+  "only residue." The accepted boundary is provenance, not enumeration of what yt-dlp may say.
+
+Rewrite DAT-003's table and linked notes around that actual boundary. Add the missing reopening
+condition: REQ-026 already promises cookie-file support, so the decision must be revisited before
+the application adds a cookie-file path or any other secret-bearing field to a persisted job.
+Keep T-038 origin-agnostic: every emitted log is redacted regardless of whether its text began in
+this application or yt-dlp.
+
+#### Acceptance criteria
+
+- DAT-003 makes no exhaustive claim about the contents of arbitrary third-party diagnostics
+- User-entered source URLs, model fields supplied by the application, and yt-dlp-emitted prose
+  are distinguished explicitly
+- Adding cookie-file support or another secret-bearing persisted field is a named reopening
+  condition alongside sync, export, cloud backup, and database attachment
+- T-038 still requires redaction of the final emitted log regardless of message provenance
+- `REQ-026` and T-014's historical criterion link to the same scoped decision without acquiring
+  a second competing definition
+
+#### Evidence, 2026-07-30
+
+**Amended, not rewritten.** The task asked for `DAT-003`'s table to be rewritten; `AGENTS.md` §6
+makes `ai/DECISIONS.md` append-only. The superseded rows stay above the amendment, which is what
+makes the overstatement visible — deleting them would hide the finding.
+
+**Two of the three overstatements are measured false, not just unprovable:**
+
+| Claim in the original table | Measured 2026-07-30 |
+|---|---|
+| "Credentials — never in the database. **Structural:** unrepresentable in the model" | **False.** `DownloadRequest` rejects userinfo in `proxy` and **not** in `url`. `DownloadRequest(url="https://alice:s3cret@example.com/v", …)` is accepted, and `repositories.py` stores the job URL verbatim *on purpose* |
+| "`cookies_from_browser`, a browser **name**, not a path" | **True by intent only.** The model requires non-empty text; `cookies_from_browser="/home/u/.mozilla/cookies.sqlite"` is accepted. No caller supplies a path, so none reaches the database — but "none exist" described callers, not an invariant |
+| "the only residue" | **Unprovable.** An exhaustive claim about arbitrary third-party prose. The `T-044`/`T-045`/`T-014` enumeration failure, `ai/TESTING.md` §13 |
+
+**The user-typed URL is the sharp one.** A credential *can* be in the database — the user's own, in
+a URL they typed, in their own local file. The decision still holds, because `REQ-026` binds on
+values *this application supplies*; what was wrong was claiming a structural guarantee the model
+does not provide. The amendment's table is organised by **provenance** for exactly that reason, and
+says nothing about what a third-party diagnostic may contain.
+
+**Criteria, each addressed:**
+
+- No exhaustive claim survives — the third row of the new table is explicitly silent
+- Provenance distinguishes the three sources: application-supplied, user-typed, third-party-emitted
+- Cookie-file support is a named reopening condition, alongside sync, export, cloud backup and
+  database attachment — and *before* it lands, not after
+- `T-038` is restated as origin-agnostic, with storage and emission named as different sinks under
+  different rules
+- `REQ-026` already carried the scoped note pointing at `DAT-003` and gains no second definition
+
+**Nothing in `src/` or `tests/` changed**, which the out-of-scope list below requires.
+
+#### Out of scope
+
+- Reopening T-014 or changing its approved persistence code
+- Implementing cookie-file settings or log redaction
+- **Adding a validator to `url` or `cookies_from_browser`.** The amendment names it as a reopening
+  condition rather than doing it: it would change approved model code, which the first bullet bars
+
+---
+
+### T-047 — Decide whether the environment ownership gate's blind spots are worth closing
+
+**Status:** **In Review — decided 2026-07-30: no, none of the three is worth closing.** The
+decision is recorded below with the measurement it rests on, and **nothing in the tree changed**, as
+the second acceptance criterion requires. `ai/TESTING.md`'s statement of the promise stands as the
+durable record. One thing the measurement exposed is filed separately as `T-098`.
+**Owner:** Planner, then Implementer if the answer is yes
+**Priority:** **Low, and deliberately so.** The question is whether to spend anything here at
+all; the honest default answer is no
+**Phase:** unassigned
+**Depends on:** `T-044`
+**Relevant context:** `T044-R1` and its six review rounds in `ai/REVIEWS.md`; `ai/TESTING.md`
+("What the environment ownership gate actually promises"); `ARCHITECTURE.md` §6
+**Affected surfaces:** `tests/unit/test_environment.py` only
+**Risk:** Low — no production code is involved, and none ever was
+
+#### Scope
+
+`T-044`'s gate reports any public attribute of `downloader/environment.py` not bound by an
+`import` statement, under the configuration the suite runs in. Three gaps are pinned by test and
+carried here:
+
+1. **Anything behind a guard false at run time** — OS, architecture, dependency presence,
+   feature probe, environment state.
+2. **A name imported and then rebound** — `try: from x import Y / except ImportError: Y = ...`,
+   the ordinary shape of an optional dependency, where the parse subtracts a name the fallback
+   genuinely bound.
+3. **Dynamic rebinding of an imported name** — `globals()["Path"] = ...`.
+
+**Read the history before proposing a fix.** `T044-R1` was found six times. Every attempt to
+close it by recognising more syntax was defeated by syntax the author had not enumerated, and
+three attempts to state its coverage overclaimed and were disproved. That is the strongest
+available evidence that the next clever fix will also be wrong, and it is why this task's first
+deliverable is a *decision*, not a patch.
+
+The likely correct answer is **no**. Gaps 1 and 3 need a determined author to trigger; gap 2 is
+plausible but would announce itself the moment anyone read the module. The gate catches what it
+exists to catch — an accidental `get_ytdlp_version()` — and `ARCHITECTURE.md` §6's boundary is
+independently guarded by the layering test and by review.
+
+#### Acceptance criteria
+
+- A recorded decision, with reasoning, on whether any gap is worth closing
+- If **no**: this task closes, and `ai/TESTING.md`'s statement of the promise stands as the
+  durable record. Nothing in the tree changes
+- If **yes** for a given gap: the fix must come with evidence it does not reintroduce the
+  enumeration failure — specifically, a demonstration against binding syntax the fix does not
+  name, since that is how all five previous fixes died
+
+#### Decision, 2026-07-30 — no, and the reason is stronger than "probably not"
+
+**All three gaps are structurally unreachable in the module the gate protects.** Measured by parsing
+`downloader/environment.py` rather than by reading it:
+
+| Gap | What would make it live | Present in the module |
+|---|---|---|
+| 1. An export behind a guard false at run time | a module-scope `if` | **0** |
+| 2. A name imported and then rebound by a fallback | a module-scope `try`/`except ImportError` | **0** |
+| 3. Dynamic rebinding of an imported name | a call to `globals`, `locals`, `setattr`, `vars`, `exec` or `eval` anywhere in the module | **0** |
+
+Module-scope nodes are one docstring, seven plain imports, three annotated assignments, five
+functions and two classes. There is no construct any of the three gaps needs.
+
+**So the gaps are real properties of the gate and vacuous properties of its subject.** The task
+guessed the answer was no on the grounds that gaps 1 and 3 "need a determined author to trigger".
+That is true but weaker than what is measurable: today they need a determined author *and* a change
+to the module's structure, and the second is the part a reviewer can check.
+
+**The other three reasons stand and are not repeated here:** five prior attempts died to
+enumeration; the gate catches what it exists to catch — an accidental public export, which `vars()`
+finds under any binding syntax including syntax that does not exist yet; and `ARCHITECTURE.md` §6's
+boundary is independently guarded by the layering test and by review.
+
+#### What the measurement exposed — filed as `T-098`
+
+**The decision rests on a premise nothing enforces.** "No module-scope guard, no import fallback, no
+dynamic rebinding" is true as measured on 2026-07-30 and would stop being true the moment someone
+adds a platform branch — which is a perfectly ordinary thing to add to a module that resolves paths
+across two operating systems. Nothing would fail, and the pinned blind spot would quietly become
+live.
+
+That is not this task's to fix: its second criterion says that on a "no" answer nothing in the tree
+changes, and adding a test is a tree change. So it is `T-098`, and it is deliberately **not** a
+fourth attempt at closing the gaps — it guards the premise rather than parsing for bindings, which
+is what all five failures had in common.
+
+#### Out of scope
+
+- Any production change to `downloader/environment.py`. The gate is a test; the module's
+  behavior has never been in question
+- Strengthening the layering test, which uses `ast.walk` and is unaffected
+
+---
+
+### T-097 — Gate ARC-007's settings-injection boundary
+
+**Status:** **In Review — delivered 2026-07-30**, ahead of the `T-078` implementation it protects.
+The prohibition is in place and every spelling is mutation-verified against the real
+`downloader/manager.py`. **It also closed a pre-existing hole in the analyser** — see below.
+**Owner:** Implementer
+**Priority:** Low — the boundary is stated correctly; this stops a future implementation from
+making it decorative
+**Phase:** Phase 2 test infrastructure
+**Depends on:** none
+**Relevant context:** `ARC-007`, `T-078`, `tests/unit/test_manager_boundaries.py`,
+`ai/TESTING.md` §13
+**Affected surfaces:** `tests/unit/test_manager_boundaries.py`
+**Risk:** Low before implementation, architectural once T-078 lands: a manager coupled to
+`core/settings.py` remains behaviorally correct but makes the accepted persistence seam false
+
+#### Scope
+
+`ARC-007` says `downloader/manager.py` receives the concurrency value and a way to be told it
+changed; composition and the UI own `core/settings.py`. That rule is not covered by the general
+layering test—`downloader/` may import `core/`—and the manager-boundary test currently forbids only
+`persistence` and `sqlite3`. Both analyzers accept a direct settings import today.
+
+Extend the existing manager-boundary analyzer with this exact prohibition. Keep it narrow:
+`downloader/manager.py` may continue importing domain models and errors from `core/`; the forbidden
+dependency is `tracks_and_trails.core.settings` itself, including package and submodule import
+forms.
+
+#### Acceptance criteria
+
+- The real `downloader/manager.py` passes without importing `core.settings`
+- Adding `from tracks_and_trails.core import settings`,
+  `from tracks_and_trails.core.settings import ...`, or the equivalent absolute import makes the
+  unmodified test fail
+- The analyzer's synthetic negative cases prove all supported import forms are detected
+- A legitimate manager import from another `core` module remains permitted
+- The gate lands no later than the T-078 implementation it protects; it does not delay promoting
+  T-078 to Ready
+
+#### Evidence, 2026-07-30
+
+**The list was the easy half; the analyser was the problem.** `imported_modules()` recorded only
+`node.module` for an `ImportFrom`, so `from tracks_and_trails.core import settings` looked like an
+import of `tracks_and_trails.core` — permitted — while binding the settings module itself. Adding
+`core.settings` to `FORBIDDEN` alone would have produced a gate that missed the most natural way to
+write the violation.
+
+It now also records `f"{node.module}.{alias.name}"`, using `alias.name` rather than `alias.asname`
+because the module path is what was imported, not what it was called locally.
+
+**That fixed a hole in the prohibition this file already had.** Measured against the pre-`T-097`
+analyser:
+
+| Spelling | Before | After |
+|---|---|---|
+| `from tracks_and_trails import persistence` | **MISSED** | caught |
+| `from tracks_and_trails.core import settings` | **MISSED** | caught |
+| `from tracks_and_trails.persistence import db` | caught | caught |
+
+So `T-013`'s original prohibition — the one this module exists for — was unreachable by its own most
+natural spelling for as long as it has existed. It has a synthetic case now.
+
+**Every forbidden spelling fails against the real module**, one at a time, added to
+`downloader/manager.py` itself rather than to a string:
+
+| Added to the real `manager.py` | Result |
+|---|---|
+| `from tracks_and_trails.core import settings` | **fails** |
+| `from tracks_and_trails.core.settings import concurrency_limit` | **fails** |
+| `import tracks_and_trails.core.settings` | **fails** |
+| `from tracks_and_trails.core import settings as s` | **fails** |
+
+**And nine legitimate imports stay permitted**, each parametrised: the four `core/` modules the
+manager actually uses today (`logging`, `errors`, `job_state`, `models`), both package and submodule
+forms, plus `settings_helpers` and `settingsish` — adjacent names that a prefix match without the
+dot boundary would sweep up. `ARC-007` forbids the settings module, not `core/`; a prohibition that
+caught the manager's real imports would be deleted by whoever it blocked, taking the settings gate
+with it.
+
+**Applied to both modules in `MODULES`, not to `manager.py` alone.** Neither `manager.py` nor
+`result_pump.py` is a place a settings file should be read, and one shared list is harder to weaken
+by accident than a per-module table with a single entry. Stated because the task named only the
+manager.
+
+#### Out of scope
+
+- Implementing the concurrency setting or changing `core/settings.py`
+- Forbidding all `downloader/` → `core/` imports
+- Dynamic import calls already outside the static analyzer's documented contract
+
+---
 
 ## Ready
 *(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
@@ -755,52 +1119,6 @@ deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are fo
 of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
 prerequisite is Phase 1 approved.)*
 
-### T-097 — Gate ARC-007's settings-injection boundary
-
-**Status:** Proposed — non-blocking follow-up from `P2PLAN-R6`; required by T-078 approval, not
-readiness
-**Owner:** Implementer
-**Priority:** Low — the boundary is stated correctly; this stops a future implementation from
-making it decorative
-**Phase:** Phase 2 test infrastructure
-**Depends on:** none
-**Relevant context:** `ARC-007`, `T-078`, `tests/unit/test_manager_boundaries.py`,
-`ai/TESTING.md` §13
-**Affected surfaces:** `tests/unit/test_manager_boundaries.py`
-**Risk:** Low before implementation, architectural once T-078 lands: a manager coupled to
-`core/settings.py` remains behaviorally correct but makes the accepted persistence seam false
-
-#### Scope
-
-`ARC-007` says `downloader/manager.py` receives the concurrency value and a way to be told it
-changed; composition and the UI own `core/settings.py`. That rule is not covered by the general
-layering test—`downloader/` may import `core/`—and the manager-boundary test currently forbids only
-`persistence` and `sqlite3`. Both analyzers accept a direct settings import today.
-
-Extend the existing manager-boundary analyzer with this exact prohibition. Keep it narrow:
-`downloader/manager.py` may continue importing domain models and errors from `core/`; the forbidden
-dependency is `tracks_and_trails.core.settings` itself, including package and submodule import
-forms.
-
-#### Acceptance criteria
-
-- The real `downloader/manager.py` passes without importing `core.settings`
-- Adding `from tracks_and_trails.core import settings`,
-  `from tracks_and_trails.core.settings import ...`, or the equivalent absolute import makes the
-  unmodified test fail
-- The analyzer's synthetic negative cases prove all supported import forms are detected
-- A legitimate manager import from another `core` module remains permitted
-- The gate lands no later than the T-078 implementation it protects; it does not delay promoting
-  T-078 to Ready
-
-#### Out of scope
-
-- Implementing the concurrency setting or changing `core/settings.py`
-- Forbidding all `downloader/` → `core/` imports
-- Dynamic import calls already outside the static analyzer's documented contract
-
----
-
 ### T-079 — The queue view: many jobs, each with its own progress
 
 **Status:** Proposed
@@ -1051,96 +1369,6 @@ gate this task's correctness rests on.
 
 ---
 
-### T-085 — History of completed downloads
-
-**Status:** **In Review — the record is delivered 2026-07-30.** All three acceptance criteria are
-met. **One thing is deliberately not delivered and is not this task's to decide:** the Scope below
-says "the record *and the view over it*", and the view has no owner anywhere — see
-**`REQ-020`'s view is unowned** below.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** `T-050`
-**Relevant context:** `REQ-020`, `T-014`, `T-050`, `DAT-001`
-**Affected surfaces:** `persistence/`, `ui/`
-**Risk:** Low to medium — it is the first table whose rows outlive the queue
-
-#### Scope
-
-`REQ-020` names the fields: source URL, title, resolved output path, format used, size, completion
-time. `T-050` is already filed to write the table and notes `T-013` produces the event that fills
-it; this is the record and the view over it.
-
-**The first data that is not transient.** A queue row is about work; a history row is about
-something that happened, and deleting it is a different act. That distinction should be visible in
-the schema and in the UI, and it interacts with `T-081`'s clear-completed.
-
-#### Acceptance criteria
-
-- Every field `REQ-020` names is recorded, and a completed download without one fails a test
-- History survives clearing the queue, and the relationship is stated rather than implied
-- A migration exists if the table lands after any release (`T-048` owns the first real one)
-
-#### Evidence, 2026-07-30
-
-**`T-050` had already written the row; what was missing was proof it holds what `REQ-020` names.**
-Three tests, all in `tests/integration/test_manager.py`:
-
-- `test_a_completion_records_every_field_req_020_names` compares the projected `HistoryEntry`
-  against a **fully specified expectation as one object**, rather than asserting field by field. A
-  per-field list is written from the same understanding that would forget a field, so it passes while
-  a column goes unwritten — `T-014`'s round-trip test exists for that reason.
-- `test_history_outlives_the_job_row_it_describes` deletes the job row and reads the history back.
-- `test_the_history_table_declares_no_dependency_on_jobs` reads the relationship from
-  `sqlite_master` rather than from behaviour, because a plain foreign key would pass the test above
-  while still coupling the two lifetimes the moment anyone enabled enforcement.
-
-| Mutation | Result |
-|---|---|
-| Drop `format_used` from the projection | **killed** |
-| Drop `title` from the projection | **killed** |
-| Drop `bytes_total` from the projection | **killed** |
-
-**Why the field set is gated at the projection, not on a live download.** A real completion through
-the local `http.server` fixture records `title=None` — measured — because the fixture serves a bare
-file with no metadata. That is a fixture limit, not a product gap, but it means an end-to-end test
-cannot require six non-null fields without either lying or depending on a real site. So
-`test_a_completed_download_writes_exactly_one_history_row` owns the live path and this owns the field
-set. Stated rather than left as a gap in the reasoning.
-
-**The migration criterion is met by there being nothing to migrate.** `T-014` created the `history`
-table in `0001_initial.sql` and this task changed no schema, so no migration exists or is needed.
-`T-048` still owns the first real data migration.
-
-#### `REQ-020`'s view is unowned — flagged, not decided
-
-The Scope above says this task is "the record **and the view over it**". Three documents disagree
-about where that view lives, and none of them owns it:
-
-- **`IMPLEMENTATION_PLAN.md` §Phase 2** lists *"History persistence and completed-download
-  records"* — no view.
-- **§Phase 3** mentions history and `REQ-020` **not at all**.
-- **`T-050`** says *"Any history UI — Phase 3 (`REQ-020`'s view)"*, which points at a deliverable
-  that does not exist.
-
-**And Phase 2 needs one anyway.** `REQ-021` — *"Open a completed file, or reveal it in the system
-file manager, from the history **and** queue views"* — is a Phase 2 deliverable, and `T-086` depends
-on *this* task "for the history half". So a history view is presupposed by a Phase 2 requirement
-while being assigned to no phase.
-
-This is the `P2PLAN-R1` class again: task text and plan disagreeing, with the plan internally
-inconsistent as well. `AGENTS.md` §5 puts the plan above `TASKS.md`, and the plan's Phase 2
-deliverable is the record — which is what this task delivered. **Whether the view lands in Phase 2
-(for `REQ-021`), in `T-086`, or in a later phase is a planning decision and is not made here.**
-
-#### Out of scope
-
-- Search, statistics, export
-- **The history view**, pending the decision above. All three acceptance criteria concern the record,
-  so this task is complete against what it is gated on
-
----
-
 ### T-086 — Open a completed file, or reveal it in the file manager
 
 **Status:** Proposed
@@ -1382,100 +1610,6 @@ pushing it into the sanitizer would make it stateful and re-open `DAT-002`.
 
 ---
 
-### T-047 — Decide whether the environment ownership gate's blind spots are worth closing
-
-**Status:** **In Review — decided 2026-07-30: no, none of the three is worth closing.** The
-decision is recorded below with the measurement it rests on, and **nothing in the tree changed**, as
-the second acceptance criterion requires. `ai/TESTING.md`'s statement of the promise stands as the
-durable record. One thing the measurement exposed is filed separately as `T-098`.
-**Owner:** Planner, then Implementer if the answer is yes
-**Priority:** **Low, and deliberately so.** The question is whether to spend anything here at
-all; the honest default answer is no
-**Phase:** unassigned
-**Depends on:** `T-044`
-**Relevant context:** `T044-R1` and its six review rounds in `ai/REVIEWS.md`; `ai/TESTING.md`
-("What the environment ownership gate actually promises"); `ARCHITECTURE.md` §6
-**Affected surfaces:** `tests/unit/test_environment.py` only
-**Risk:** Low — no production code is involved, and none ever was
-
-#### Scope
-
-`T-044`'s gate reports any public attribute of `downloader/environment.py` not bound by an
-`import` statement, under the configuration the suite runs in. Three gaps are pinned by test and
-carried here:
-
-1. **Anything behind a guard false at run time** — OS, architecture, dependency presence,
-   feature probe, environment state.
-2. **A name imported and then rebound** — `try: from x import Y / except ImportError: Y = ...`,
-   the ordinary shape of an optional dependency, where the parse subtracts a name the fallback
-   genuinely bound.
-3. **Dynamic rebinding of an imported name** — `globals()["Path"] = ...`.
-
-**Read the history before proposing a fix.** `T044-R1` was found six times. Every attempt to
-close it by recognising more syntax was defeated by syntax the author had not enumerated, and
-three attempts to state its coverage overclaimed and were disproved. That is the strongest
-available evidence that the next clever fix will also be wrong, and it is why this task's first
-deliverable is a *decision*, not a patch.
-
-The likely correct answer is **no**. Gaps 1 and 3 need a determined author to trigger; gap 2 is
-plausible but would announce itself the moment anyone read the module. The gate catches what it
-exists to catch — an accidental `get_ytdlp_version()` — and `ARCHITECTURE.md` §6's boundary is
-independently guarded by the layering test and by review.
-
-#### Acceptance criteria
-
-- A recorded decision, with reasoning, on whether any gap is worth closing
-- If **no**: this task closes, and `ai/TESTING.md`'s statement of the promise stands as the
-  durable record. Nothing in the tree changes
-- If **yes** for a given gap: the fix must come with evidence it does not reintroduce the
-  enumeration failure — specifically, a demonstration against binding syntax the fix does not
-  name, since that is how all five previous fixes died
-
-#### Decision, 2026-07-30 — no, and the reason is stronger than "probably not"
-
-**All three gaps are structurally unreachable in the module the gate protects.** Measured by parsing
-`downloader/environment.py` rather than by reading it:
-
-| Gap | What would make it live | Present in the module |
-|---|---|---|
-| 1. An export behind a guard false at run time | a module-scope `if` | **0** |
-| 2. A name imported and then rebound by a fallback | a module-scope `try`/`except ImportError` | **0** |
-| 3. Dynamic rebinding of an imported name | a call to `globals`, `locals`, `setattr`, `vars`, `exec` or `eval` anywhere in the module | **0** |
-
-Module-scope nodes are one docstring, seven plain imports, three annotated assignments, five
-functions and two classes. There is no construct any of the three gaps needs.
-
-**So the gaps are real properties of the gate and vacuous properties of its subject.** The task
-guessed the answer was no on the grounds that gaps 1 and 3 "need a determined author to trigger".
-That is true but weaker than what is measurable: today they need a determined author *and* a change
-to the module's structure, and the second is the part a reviewer can check.
-
-**The other three reasons stand and are not repeated here:** five prior attempts died to
-enumeration; the gate catches what it exists to catch — an accidental public export, which `vars()`
-finds under any binding syntax including syntax that does not exist yet; and `ARCHITECTURE.md` §6's
-boundary is independently guarded by the layering test and by review.
-
-#### What the measurement exposed — filed as `T-098`
-
-**The decision rests on a premise nothing enforces.** "No module-scope guard, no import fallback, no
-dynamic rebinding" is true as measured on 2026-07-30 and would stop being true the moment someone
-adds a platform branch — which is a perfectly ordinary thing to add to a module that resolves paths
-across two operating systems. Nothing would fail, and the pinned blind spot would quietly become
-live.
-
-That is not this task's to fix: its second criterion says that on a "no" answer nothing in the tree
-changes, and adding a test is a tree change. So it is `T-098`, and it is deliberately **not** a
-fourth attempt at closing the gaps — it guards the premise rather than parsing for bindings, which
-is what all five failures had in common.
-
-#### Out of scope
-
-- Any production change to `downloader/environment.py`. The gate is a test; the module's
-  behavior has never been in question
-- Strengthening the layering test, which uses `ast.walk` and is unaffected
-
----
-
 ### T-048 — Verify the first real data migration when one is written
 
 **Status:** Proposed — **not schedulable yet.** No migration transforms data
@@ -1507,90 +1641,6 @@ beats designing it against an imagined one.
 #### Out of scope
 
 - Any change to `T-014`'s current strict comparison, which is right until then
-
----
-
-### T-049 — Tighten DAT-003 before cookie-file support
-
-**Status:** **In Review — delivered 2026-07-30.** `DAT-003` carries an amendment restating its
-boundary as **provenance** and withdrawing three overstatements, two of which were measured false
-rather than merely unprovable. See **Evidence, 2026-07-30**.
-**Owner:** Planner
-**Priority:** Medium before cookie-file support or first release
-**Phase:** Phase 4. *(It is filed under `## Proposed — Phase 2` with the other Phase 1 carry-overs,
-which the section note explains — the grouping is by where they were filed, not by phase.)*
-**Depends on:** none
-**Relevant context:** `DAT-003`, `REQ-026`, `T014-R1`, `T-038`
-**Affected surfaces:** `ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, `ai/TASKS.md`
-
-#### Scope
-
-The maintainer accepted DAT-003's controlling trade-off: third-party diagnostic prose is stored
-verbatim in the local, user-owned database, even when it names a cookie path. That closes
-T014-R1. Its explanatory table is narrower than the decision it records, however:
-
-- a user-supplied source URL may itself contain userinfo and is stored verbatim under the earlier
-  URL decision;
-- `cookies_from_browser` is passed to yt-dlp as a browser name, but the model currently accepts
-  any non-empty string, including a path-shaped one; and
-- arbitrary third-party prose cannot support an exhaustive claim that a cookie path is the
-  "only residue." The accepted boundary is provenance, not enumeration of what yt-dlp may say.
-
-Rewrite DAT-003's table and linked notes around that actual boundary. Add the missing reopening
-condition: REQ-026 already promises cookie-file support, so the decision must be revisited before
-the application adds a cookie-file path or any other secret-bearing field to a persisted job.
-Keep T-038 origin-agnostic: every emitted log is redacted regardless of whether its text began in
-this application or yt-dlp.
-
-#### Acceptance criteria
-
-- DAT-003 makes no exhaustive claim about the contents of arbitrary third-party diagnostics
-- User-entered source URLs, model fields supplied by the application, and yt-dlp-emitted prose
-  are distinguished explicitly
-- Adding cookie-file support or another secret-bearing persisted field is a named reopening
-  condition alongside sync, export, cloud backup, and database attachment
-- T-038 still requires redaction of the final emitted log regardless of message provenance
-- `REQ-026` and T-014's historical criterion link to the same scoped decision without acquiring
-  a second competing definition
-
-#### Evidence, 2026-07-30
-
-**Amended, not rewritten.** The task asked for `DAT-003`'s table to be rewritten; `AGENTS.md` §6
-makes `ai/DECISIONS.md` append-only. The superseded rows stay above the amendment, which is what
-makes the overstatement visible — deleting them would hide the finding.
-
-**Two of the three overstatements are measured false, not just unprovable:**
-
-| Claim in the original table | Measured 2026-07-30 |
-|---|---|
-| "Credentials — never in the database. **Structural:** unrepresentable in the model" | **False.** `DownloadRequest` rejects userinfo in `proxy` and **not** in `url`. `DownloadRequest(url="https://alice:s3cret@example.com/v", …)` is accepted, and `repositories.py` stores the job URL verbatim *on purpose* |
-| "`cookies_from_browser`, a browser **name**, not a path" | **True by intent only.** The model requires non-empty text; `cookies_from_browser="/home/u/.mozilla/cookies.sqlite"` is accepted. No caller supplies a path, so none reaches the database — but "none exist" described callers, not an invariant |
-| "the only residue" | **Unprovable.** An exhaustive claim about arbitrary third-party prose. The `T-044`/`T-045`/`T-014` enumeration failure, `ai/TESTING.md` §13 |
-
-**The user-typed URL is the sharp one.** A credential *can* be in the database — the user's own, in
-a URL they typed, in their own local file. The decision still holds, because `REQ-026` binds on
-values *this application supplies*; what was wrong was claiming a structural guarantee the model
-does not provide. The amendment's table is organised by **provenance** for exactly that reason, and
-says nothing about what a third-party diagnostic may contain.
-
-**Criteria, each addressed:**
-
-- No exhaustive claim survives — the third row of the new table is explicitly silent
-- Provenance distinguishes the three sources: application-supplied, user-typed, third-party-emitted
-- Cookie-file support is a named reopening condition, alongside sync, export, cloud backup and
-  database attachment — and *before* it lands, not after
-- `T-038` is restated as origin-agnostic, with storage and emission named as different sinks under
-  different rules
-- `REQ-026` already carried the scoped note pointing at `DAT-003` and gains no second definition
-
-**Nothing in `src/` or `tests/` changed**, which the out-of-scope list below requires.
-
-#### Out of scope
-
-- Reopening T-014 or changing its approved persistence code
-- Implementing cookie-file settings or log redaction
-- **Adding a validator to `url` or `cookies_from_browser`.** The amendment names it as a reopening
-  condition rather than doing it: it would change approved model code, which the first bullet bars
 
 ---
 

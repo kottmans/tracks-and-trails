@@ -19,12 +19,20 @@ earlier at `f858da9`. **`T-085` is unblocked** — `T-050` writes the table it r
 `T-047` need nothing either, so three tasks can start today. No Phase 2 *deliverable* is Ready:
 **All three Phase 2 planning gates are clear** (2026-07-30). `P2PLAN-R2` was approved at
 `f858da9`; `P2PLAN-R1` and `P2PLAN-R3` at `8306378`. **`T-078` is Ready** — the first Phase 2 task
-out of Proposed, and the choke point eight tasks descend from. `T-085`, `T-049` and `T-047` are
-startable alongside it. Two non-blocking follow-ups came out of that review: **`T-097`**, because
-`ARC-007`'s rule that `downloader/manager.py` must not import `core.settings` was *measured* to
-escape both existing analysers, so the boundary is stated and ungated; and **`P2PLAN-R7`** inside
-`T-080`, a manual-retry ordering criterion that is new scope rather than `UX-001` reconciliation and
-must be confirmed or removed before that task starts.
+out of Proposed, and the choke point eight tasks descend from.
+
+**Four tasks were delivered on 2026-07-30 and are in review**, as four separate boundaries: `T-085`
+gates the six facts `REQ-020` names; `T-049` restates `DAT-003`'s boundary as provenance after two of
+its three scope claims proved *measurably* false; `T-047` is **decided — no**, on a measurement
+showing all three of its blind spots are structurally unreachable in the module the gate protects;
+and `T-097` closes `ARC-007`'s settings boundary, which also fixed a hole that had made `T-013`'s own
+prohibition unreachable by its most natural spelling.
+
+**Three things they turned up, filed rather than absorbed.** `T-098` guards the premise `T-047`'s
+decision rests on — true as measured, enforced by nothing. **`REQ-020`'s view has no owner:** the
+plan puts records in Phase 2, lists nothing in Phase 3, and `T-050` points at a Phase 3 deliverable
+that does not exist, while `REQ-021` presupposes a view. And `P2PLAN-R7` still sits inside `T-080`,
+which needs two calls made before it starts — that, and the unreachable `PAUSED` edges.
 
 **Overall state:** Phase 0's five exit criteria were each verified rather than asserted, and the
 evidence is recorded in `IMPLEMENTATION_PLAN.md` §Phase 0 — including a fresh mutation run
