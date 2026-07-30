@@ -16,423 +16,63 @@ IDs are never reused. Completed tasks move to `ai/archive/` once they bury the l
 `ai/REVIEWS.md`. **The current phase is Phase 2, all three of its planning gates are clear, and
 `T-078` — the choke point eight tasks descend from — is Ready and underway.**
 
-**The live queue, in full** — rebuilt 2026-07-30 from the sections rather than edited, because it
-had accumulated four bullets that each described a different day:
+**The live queue** — generated from the sections below on 2026-07-30, not written alongside them.
+`COORD-R5` through `COORD-R11` are seven rounds of a hand-written summary drifting from the file it
+summarises; this one is transcribed from the actual `## ` sections so it starts correct.
 
-- **In Review:** `T-047` and `T-097`, corrected after `T047-R1`/`T097-R1` and awaiting re-review at
-  `34addcb`.
-- **`T-078` is Ready and in progress.** The first Phase 2 task out of Proposed and the choke point
-  eight tasks descend from. `ARC-007`'s settings layer landed at `256b411`; the pool itself, the
-  main-window control and the real-path criteria remain.
-- **Approved and filed Complete on 2026-07-30:** `T-050`, `T-093`, `T-094`, `T-095` (Phase 1's
-  history and its corrections), `T-085`, `T-049`, `T-091`, `T-096`, `T-098`.
-- **Ready, blocking nothing:** `T-089` (next), `T-074` (Medium, `OPS-007` residual), `T-092` (needs
-  maintainer consent before writing to `STARBASE`).
+- **In Review:** nothing.
+- **Ready:** `T-078` — the phase's centre, in progress. `ARC-007`'s settings layer and its ceiling
+  landed at `256b411` and `faf374f`; the pool itself, the main-window control and the real-path
+  criteria remain. Also `T-074` and `T-092` — neither blocks anything, and `T-092` needs
+  maintainer consent before writing to `STARBASE`.
+- **Approved 2026-07-30:** `T-047`, `T-049`, `T-050`, `T-085`, `T-089`, `T-091`, `T-093`, `T-094`,
+  `T-095`, `T-096`, `T-097`, `T-098`, and `T-078`'s settings foundation.
 - **All three Phase 2 planning gates are clear.** `P2PLAN-R2` at `f858da9`; `P2PLAN-R1` and
-  `P2PLAN-R3` at `8306378`. `ARC-007` decides the settings surface and `UX-001` the pause semantics.
+  `P2PLAN-R3` at `8306378`. `ARC-007` decides the settings surface, `UX-001` the pause semantics.
 - **Two open questions, neither mine to answer:** `P2PLAN-R8` — who owns the history view, which
-  blocks `T-086` readiness; and whether a corrupt `settings.toml` should report rather than fall back
-  silently. *(The third — a concurrency **maximum** — was decided 2026-07-30: `ARC-007` amended,
-  `CONCURRENCY_MAXIMUM = 16`, chosen to catch a typo rather than to model the hardware.)*
+  blocks `T-086` readiness; and whether a corrupt `settings.toml` should report rather than fall
+  back silently. *(A third, the concurrency **maximum**, was decided 2026-07-30 — `ARC-007` amended,
+  `CONCURRENCY_MAXIMUM = 16`.)*
 - **`T-080` needs two calls before it starts:** the unreachable `PAUSED` edges, and `P2PLAN-R7`'s
   manual-retry ordering — new scope that arrived dressed as reconciliation.
+- **Carried, blocking nothing:** `T-099` (`T097-R2` — the boundary analyser reports a settings
+  offender under the persistence rule's explanation).
 
-`T-078` is the critical path; `T-089` runs beside it.
+`T-078` is the critical path, and nothing else is startable that does not wait on it.
 
-**Two Phase 1 blockers were dispositioned by maintainer decision rather than completed, and the
-exit review upheld both while keeping them open.** `T-066` by the `OPS-005` amendment (its frozen
-evidence is unobtainable while the hosted quota is out; the assumption is explicit and moves to
-Phase 5 with `T-033`), and `T-074` by `OPS-007` (residual risk accepted after 361 attempts produced
-no reproduction; **not** a claim that `T-090` fixed it). Neither task is closed. `T-092` owns the
-crash-dump trap and a recurrence returns `T-074` to High.
+**Two Phase 1 blockers were dispositioned by decision rather than completed**, and the exit review
+upheld both while keeping them open: `T-066` by the `OPS-005` amendment, `T-074` by `OPS-007`.
+Neither task is closed and neither blocks Phase 2. The reasoning lives in those decisions rather
+than here — restating it is how the block below came to exist.
 
-- **`T-074` — open, Medium, accepted as residual risk** (`OPS-007`). The Windows suite exited once
-  with an **access violation** in the result pump's ordinary message delivery, and it has never
-  been reproduced: **361 attempts, zero events**, across 51 deliberate full-suite runs, 60 runs of
-  the crashing test and 250 in-process iterations, on two heads. **Still not diagnosed** — the
-  faulting object is unknown and product-versus-harness is unresolved, and its four acceptance
-  criteria are recorded unmet rather than rewritten. `T-090` fixed a real race on the same thread
-  but is **not** established as the cause: the pre-fix sample was equally clean. `T-092` arms
-  `STARBASE` to capture a dump so a recurrence supplies criterion 2. *(This bullet said "roughly one
-  run in four", the anecdote's denominator rather than a measurement — `T074-R1`. It then called the
-  task a Phase 1 blocker until `OPS-007`.)*
-- **Blocked on evidence, and not phase blockers** (`OPS-005` as amended): `T-066`, narrowed to
-  frozen-artifact evidence alone once its process-tree half was discharged. Both `frozen` jobs are
-  GitHub-hosted and the quota is out, so the frozen shape stays reasoned rather than measured and
-  the evidence lands with `T-033` in Phase 5. `T-033` and `T-039` are Phase 5.
-- **Ready, blocking nothing:** `T-089` (Low, MP3 bitrate UI contract), `T-091` (Medium, carried
-  from `T090-R1`/`T090-R2` — `dequeue()` treats every `OSError` as end-of-stream, wider than its own
-  contract), `T-092` (Medium, the `OPS-007` dump trap; needs the maintainer's consent before
-  anything is written to `STARBASE`), and `T-096` (Low, make task status/section agreement
-  mechanically checkable after six recurrences).
-- **Open, not phase blockers** (`OPS-005`): `T-056` and `T-068`. Both need a GitHub-hosted image,
-  neither is a defect a user would meet.
-- **Complete:** `T-040`, `T-060`, `T-064`, `T-065`, `T-067`, `T-069`, `T-070`, `T-071`, and now
-  `T-072`, `T-073` and `T-090`.
+*(**Everything that stood here was Phase 1's live state, and Phase 1 exited on 2026-07-29.**
+`COORD-R11` found four blocks of it still asserting the present tense underneath the Phase 2 summary
+above: that `T-091`, `T-096` and `T-089` were Ready after two were approved and one was in review;
+that exit criterion 7 was "still unmet"; and that "Phase 1 is not ready". All four were true when
+written and none was true when read.
 
-*(This list carried three wrong live answers at once until `COORD-R8`: `T-072` was called
-**In Progress** with `WIN-R1` outstanding after both the run and the approval had landed;
-`T-073` was called **In Review** after `T073-R1` was Resolved at `9802a6a` and the task
-approved; and the opening summary still counted a carry that was closed. Rewritten from the
-final dispositions rather than patched, which is what `COORD-R5` through `R7` each asked for and
-did not get.)*
+Removed rather than annotated one by one, because the problem was the block existing at all — a
+current-truth file does not need two summaries, and the second one is always the stale one. Nothing
+is lost: `T-074`'s residual disposition is `OPS-007`, `T-066`'s is the `OPS-005` amendment, and
+Phase 1's exit and its criteria are in `IMPLEMENTATION_PLAN.md` §Phase 1 and the exit review,
+while `STATUS.md` carries the narrative. Each of those is the canonical home; this was a copy that outlived them.
 
-**Both halves of exit criterion 7 now have a platform, and it is still unmet.** `OPS-005` made
-`STARBASE` the Windows platform; `OPS-006` made the maintainer's own machine the Linux one, rather
-than building a runner that would share the development box's environment. `T-074` is why the
-criterion cannot yet be called met: a gate that crashes intermittently does not verify reliably.
-
-*(This block said "nothing remains on the path" and listed only a carry, runner evidence and the
-exit review, while omitting `T-074` entirely and calling `T-072` and the completed `T-064` Ready.
-`COORD-R6` reported it — the same filing class `COORD-R5` was meant to close, recurring in the
-task that carries it. Rewritten from current task state rather than patched.)*
-
-**A Windows machine on the maintainer's network — `STARBASE` — supplied what CI could not**
-(2026-07-28), and is now a self-hosted runner. Windows 10 22H2, Python 3.14.6 and PySide6 6.11.1
-matching the runners. GitHub Actions hosted usage is exhausted (workflow `30392139504` failed
-before executing a step, on the billing annotation). STARBASE answered most of what was owed, but
-it is **not** a substitute for `windows-latest`: `T-056`'s defect does not reproduce there at all,
-20/20, with a positive control proving the mutation applied.
-
-**Every Phase 1 deliverable filed *before* 2026-07-28's CI run is approved** — and that is a
-narrower claim than the one this block used to make. Running the tests where they had never run
-added tasks, one of which is a defect a user would meet. **Phase 1 is not ready.**
-
-*(This block previously said `T-068` and `T-069` were "not fully closed", listed `T-060` as
-Blocked and `T-066`…`T-070` as In Review, and described `T-062`, `T-061` and `T-063` as the
-current front. All of that outlived being true: `T-069` is approved, `T-060` is complete, and the
-three named tasks are long filed. `COORD-R5` reported the drift; rewritten rather than patched.)*
-
-*(This block read "until `T-060` lands, the `windows desktop` job fails on
-`test_the_progress_view_focus_chain_is_walked_on_a_real_desktop`". It landed: run `30388380440`
-is green on all five jobs. Kept as a note rather than deleted, because the reasoning stands — a
-skip would have left the one job that runs those tests green while proving nothing.)*
-
-*(This block described `T-016` as In Review at `33ebd11`, `T-017` as "the only substantive task
-startable right now", and `T-040` as Ready — all true on 2026-07-27 and none of them true a day
-later. `COORD-R1` reported it. Rewritten rather than patched, which is the same discipline the
-mandatory-area count needed twice.)*
+**`T-096` passed throughout**, because every status matched its section. It gates placement, not
+prose, and `COORD-R11` is the half it cannot reach.)*
 
 Phase 0 is formally exited (2026-07-26).
 
 ---
 
 ## In Review
-*(**Empty as of 2026-07-30.** `T-050`, `T-093` and `T-095` were approved at `6d14e78` with `T-096`
-carried as a non-blocking follow-up; `T-094` was approved earlier at `f858da9`. Nothing awaits a
-verdict.
+*(**Empty as of 2026-07-30, and this note is rebuilt from the sections rather than edited.**
+`T-047`, `T-089` and `T-097` were approved at `321c672`, `128be39` and `34addcb` and are filed
+Complete; `T-091`, `T-096` and `T-098` before them. Nothing awaits a verdict.
 `COORD-R2` is why this says so rather than sitting blank: an empty section is a claim about
-readiness. `COORD-R5` through `COORD-R10` are six rounds of this file's status and section
-disagreeing — which is why **`T-096`** exists. A documentation-invariant test means the seventh
-recurrence fails a gate instead of waiting for a reviewer to read carefully.)*
-
-### T-089 — Gate the MP3 bitrate control's complete UI contract
-
-**Status:** **In Review — delivered 2026-07-30.** All four criteria met. The FLAC preset had to be
-injected, because no built-in is a *converting non-MP3* one — which is why the gap existed.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 1 follow-up; does not block T-076 approval
-**Depends on:** `T-076`
-**Relevant context:** `T076-R1`, `T076-R2`, `REQ-009`, `REQ-010`
-**Affected surfaces:** `tests/ui/test_add_dialog.py`
-**Risk:** Low — the behavior is correct; the missing evidence would let adjacent UI paths drift
-
-#### Scope
-
-T-076 offers the requested values and its correction gates the control on MP3. The review found
-three parts of that UI contract still inferred from production rather than independently gated:
-
-- the exact ordered values `320, 256, 192, 160, 128` and the default `192`;
-- the historically load-bearing flow **Probe → choose MP3 → choose 320 → Add**, asserted against
-  the durable request rather than the label; and
-- the dialog behavior for a non-MP3 converting preset. The core helper is parametrised over every
-  other codec, but no dialog test would fail if its enablement, display, or derived-preset gate
-  widened independently.
-
-#### Acceptance criteria
-
-- Transcribe and assert the exact combo-box values, order, and default without deriving the
-  expectation from `MP3_BITRATES`
-- Probe, choose MP3 and 320, add, then assert the durable request carries MP3 at 320
-- Inject at least one non-MP3 converting preset into the dialog and assert the control is disabled,
-  no bitrate is displayed, and `selected_preset` preserves the base preset
-- Mutation-check the post-probe quality persistence and at least one dialog-side MP3-only gate
-
-#### Evidence, 2026-07-30
-
-**The values are transcribed, and that is the point.** `["320", "256", "192", "160", "128"]` and the
-`"320 kbps"` labels are written out rather than read from `MP3_BITRATES`. Deriving the expectation
-from the constant the dialog reads makes the assertion a tautology — reorder the constant and both
-sides move together. The default `192` is asserted the same way.
-
-**The FLAC preset is injected because no built-in could serve.** Every built-in is MP3 or
-`ORIGINAL`, so every existing dialog assertion about "not MP3" is really about "does not convert" —
-and those are different rules. `CONVERTING_AUDIO_CODECS` is every codec but `ORIGINAL`, so a gate
-that widened from one to the other would pass the whole suite. That is exactly what `T076-R1` found
-in the *helper*, and `T076-R2` said the dialog side was still inferred from production.
-
-**Measured, and it is the finding:** widening `_refresh_actions`'s enablement from
-`is AudioCodec.MP3` to `is not AudioCodec.ORIGINAL` fails **one** test in the file — the new one.
-Before this task nothing would have failed.
-
-| Mutation | Result |
-|---|---|
-| `selected_preset` never applies the bitrate | **killed**, 3 tests |
-| `selected_preset`'s MP3 gate widened to `CONVERTING_AUDIO_CODECS` | **killed**, 61 tests — `with_audio_quality` raises for FLAC, so the dialog cannot even build |
-| **Enablement widened to "converts audio"** | **killed — by exactly one test, the new one** |
-| The display drops the bitrate | **killed**, 2 tests |
-
-**The post-probe flow is asserted on the durable request, never the label.** `probe()` persists a
-job before asking a worker anything (`REQ-012`), so it stores a request built from whatever preset
-was selected at that moment; `T-075` was that choosing afterwards updated the label and nothing
-else. This asserts the same for the *bitrate* — the field `T-076` added after that defect was
-fixed, and the same shape one field over.
-
-**Three things in one test, deliberately.** The non-MP3 case asserts the control is disabled, the
-display carries no bitrate, **and** `selected_preset` returns the base preset unmodified. The third
-is the one nothing else covers: `with_audio_quality` raises for a non-MP3 codec, so a dialog that
-applied it unconditionally would crash rather than mislead — but one that applied it *conditionally
-on converting* would quietly attach 192 kbps to a FLAC download.
-
----
-
-### T-047 — Decide whether the environment ownership gate's blind spots are worth closing
-
-**Status:** **In Review — decided: no, and the decision is now `OPS-008`.** `T047-R1` was right
-that a durable "no" belongs in `ai/DECISIONS.md` rather than only in this task and `ai/TESTING.md`:
-a decision recorded in a mutable task is exactly what `AGENTS.md` §12 puts in `DECISIONS.md`, and
-`P2PLAN-R2` made the same finding about Phase 2's three decisions a day earlier. **`OPS-008`** now
-holds the decision, the measurement it rests on, its alternatives and its reopening conditions.
-Nothing in `src/` or `tests/` changed, as the second acceptance criterion requires. `T-098` owns what
-the measurement exposed.
-*(This read "the decision is recorded below" — below being this task — until `T047-R1`.)*
-**Owner:** Planner, then Implementer if the answer is yes
-**Priority:** **Low, and deliberately so.** The question is whether to spend anything here at
-all; the honest default answer is no
-**Phase:** unassigned
-**Depends on:** `T-044`
-**Relevant context:** `T044-R1` and its six review rounds in `ai/REVIEWS.md`; `ai/TESTING.md`
-("What the environment ownership gate actually promises"); `ARCHITECTURE.md` §6
-**Affected surfaces:** `tests/unit/test_environment.py` only
-**Risk:** Low — no production code is involved, and none ever was
-
-#### Scope
-
-`T-044`'s gate reports any public attribute of `downloader/environment.py` not bound by an
-`import` statement, under the configuration the suite runs in. Three gaps are pinned by test and
-carried here:
-
-1. **Anything behind a guard false at run time** — OS, architecture, dependency presence,
-   feature probe, environment state.
-2. **A name imported and then rebound** — `try: from x import Y / except ImportError: Y = ...`,
-   the ordinary shape of an optional dependency, where the parse subtracts a name the fallback
-   genuinely bound.
-3. **Dynamic rebinding of an imported name** — `globals()["Path"] = ...`.
-
-**Read the history before proposing a fix.** `T044-R1` was found six times. Every attempt to
-close it by recognising more syntax was defeated by syntax the author had not enumerated, and
-three attempts to state its coverage overclaimed and were disproved. That is the strongest
-available evidence that the next clever fix will also be wrong, and it is why this task's first
-deliverable is a *decision*, not a patch.
-
-The likely correct answer is **no**. Gaps 1 and 3 need a determined author to trigger; gap 2 is
-plausible but would announce itself the moment anyone read the module. The gate catches what it
-exists to catch — an accidental `get_ytdlp_version()` — and `ARCHITECTURE.md` §6's boundary is
-independently guarded by the layering test and by review.
-
-#### Acceptance criteria
-
-- A recorded decision, with reasoning, on whether any gap is worth closing
-- If **no**: this task closes, and `ai/TESTING.md`'s statement of the promise stands as the
-  durable record. Nothing in the tree changes
-- If **yes** for a given gap: the fix must come with evidence it does not reintroduce the
-  enumeration failure — specifically, a demonstration against binding syntax the fix does not
-  name, since that is how all five previous fixes died
-
-#### Decision, 2026-07-30 — no. **Canonical record: `OPS-008`**
-
-*(What follows is the summary. `OPS-008` is the decision; this is the task that produced it, and
-`T047-R1` is why the two are not the same place.)*
-
-**All three gaps are structurally unreachable in the module the gate protects.** Measured by parsing
-`downloader/environment.py` rather than by reading it:
-
-| Gap | What would make it live | Present in the module |
-|---|---|---|
-| 1. An export behind a guard false at run time | a module-scope `if` | **0** |
-| 2. A name imported and then rebound by a fallback | a module-scope `try`/`except ImportError` | **0** |
-| 3. Dynamic rebinding of an imported name | a call to `globals`, `locals`, `setattr`, `vars`, `exec` or `eval` anywhere in the module | **0** |
-
-Module-scope nodes are one docstring, seven plain imports, three annotated assignments, five
-functions and two classes. There is no construct any of the three gaps needs.
-
-**So the gaps are real properties of the gate and vacuous properties of its subject.** The task
-guessed the answer was no on the grounds that gaps 1 and 3 "need a determined author to trigger".
-That is true but weaker than what is measurable: today they need a determined author *and* a change
-to the module's structure, and the second is the part a reviewer can check.
-
-**The other three reasons stand and are not repeated here:** five prior attempts died to
-enumeration; the gate catches what it exists to catch — an accidental public export, which `vars()`
-finds under any binding syntax including syntax that does not exist yet; and `ARCHITECTURE.md` §6's
-boundary is independently guarded by the layering test and by review.
-
-#### What the measurement exposed — filed as `T-098`
-
-**The decision rests on a premise nothing enforces.** "No module-scope guard, no import fallback, no
-dynamic rebinding" is true as measured on 2026-07-30 and would stop being true the moment someone
-adds a platform branch — which is a perfectly ordinary thing to add to a module that resolves paths
-across two operating systems. Nothing would fail, and the pinned blind spot would quietly become
-live.
-
-That is not this task's to fix: its second criterion says that on a "no" answer nothing in the tree
-changes, and adding a test is a tree change. So it is `T-098`, and it is deliberately **not** a
-fourth attempt at closing the gaps — it guards the premise rather than parsing for bindings, which
-is what all five failures had in common.
-
-#### Out of scope
-
-- Any production change to `downloader/environment.py`. The gate is a test; the module's
-  behavior has never been in question
-- Strengthening the layering test, which uses `ast.walk` and is unaffected
-
----
-
-### T-097 — Gate ARC-007's settings-injection boundary
-
-**Status:** **In Review — corrected 2026-07-30** after `T097-R1`. Two defects, both real:
-
-- **Relative imports were unchecked entirely.** The analyser skipped every `ImportFrom` with a
-  non-zero level, so `from ..core import settings` survived all 23 cases — and so did
-  `from .. import persistence`, meaning `T-013`'s prohibition had *two* unreachable spellings rather
-  than one. Relative names are now resolved against the analysed module's package.
-- **The rule reached beyond its decision.** `core.settings` was forbidden in `result_pump.py` as well
-  as `manager.py`, on my reasoning that neither should read a settings file. `ARC-007` does not say
-  that, and extending an accepted decision is a decision — not an implementation choice made in a
-  test file. The rules are split per module now.
-
-52 cases, up from 23. See **Corrections, 2026-07-30**.
-**Owner:** Implementer
-**Priority:** Low — the boundary is stated correctly; this stops a future implementation from
-making it decorative
-**Phase:** Phase 2 test infrastructure
-**Depends on:** none
-**Relevant context:** `ARC-007`, `T-078`, `tests/unit/test_manager_boundaries.py`,
-`ai/TESTING.md` §13
-**Affected surfaces:** `tests/unit/test_manager_boundaries.py`
-**Risk:** Low before implementation, architectural once T-078 lands: a manager coupled to
-`core/settings.py` remains behaviorally correct but makes the accepted persistence seam false
-
-#### Scope
-
-`ARC-007` says `downloader/manager.py` receives the concurrency value and a way to be told it
-changed; composition and the UI own `core/settings.py`. That rule is not covered by the general
-layering test—`downloader/` may import `core/`—and the manager-boundary test currently forbids only
-`persistence` and `sqlite3`. Both analyzers accept a direct settings import today.
-
-Extend the existing manager-boundary analyzer with this exact prohibition. Keep it narrow:
-`downloader/manager.py` may continue importing domain models and errors from `core/`; the forbidden
-dependency is `tracks_and_trails.core.settings` itself, including package and submodule import
-forms.
-
-#### Acceptance criteria
-
-- The real `downloader/manager.py` passes without importing `core.settings`
-- Adding `from tracks_and_trails.core import settings`,
-  `from tracks_and_trails.core.settings import ...`, or the equivalent absolute import makes the
-  unmodified test fail
-- The analyzer's synthetic negative cases prove all supported import forms are detected
-- A legitimate manager import from another `core` module remains permitted
-- The gate lands no later than the T-078 implementation it protects; it does not delay promoting
-  T-078 to Ready
-
-#### Evidence, 2026-07-30
-
-**The list was the easy half; the analyser was the problem.** `imported_modules()` recorded only
-`node.module` for an `ImportFrom`, so `from tracks_and_trails.core import settings` looked like an
-import of `tracks_and_trails.core` — permitted — while binding the settings module itself. Adding
-`core.settings` to `FORBIDDEN` alone would have produced a gate that missed the most natural way to
-write the violation.
-
-It now also records `f"{node.module}.{alias.name}"`, using `alias.name` rather than `alias.asname`
-because the module path is what was imported, not what it was called locally.
-
-**That fixed a hole in the prohibition this file already had.** Measured against the pre-`T-097`
-analyser:
-
-| Spelling | Before | After |
-|---|---|---|
-| `from tracks_and_trails import persistence` | **MISSED** | caught |
-| `from tracks_and_trails.core import settings` | **MISSED** | caught |
-| `from tracks_and_trails.persistence import db` | caught | caught |
-
-So `T-013`'s original prohibition — the one this module exists for — was unreachable by its own most
-natural spelling for as long as it has existed. It has a synthetic case now.
-
-**Every forbidden spelling fails against the real module**, one at a time, added to
-`downloader/manager.py` itself rather than to a string:
-
-| Added to the real `manager.py` | Result |
-|---|---|
-| `from tracks_and_trails.core import settings` | **fails** |
-| `from tracks_and_trails.core.settings import concurrency_limit` | **fails** |
-| `import tracks_and_trails.core.settings` | **fails** |
-| `from tracks_and_trails.core import settings as s` | **fails** |
-
-**And nine legitimate imports stay permitted**, each parametrised: the four `core/` modules the
-manager actually uses today (`logging`, `errors`, `job_state`, `models`), both package and submodule
-forms, plus `settings_helpers` and `settingsish` — adjacent names that a prefix match without the
-dot boundary would sweep up. `ARC-007` forbids the settings module, not `core/`; a prohibition that
-caught the manager's real imports would be deleted by whoever it blocked, taking the settings gate
-with it.
-
-*(**Superseded — `T097-R1`.** This read: "Applied to both modules in `MODULES`, not to `manager.py`
-alone. Neither is a place a settings file should be read, and one shared list is harder to weaken by
-accident than a per-module table with a single entry." The reviewer's objection is the right one:
-`ARC-007` names the manager, and whether the pump should also be covered is a question for
-`ARC-007`, not a convenience decided inside a test file. The rules are split per module now.)*
-
-#### Corrections, 2026-07-30 — `T097-R1`
-
-**Relative imports were never checked, and that predates this task.** The analyser carried
-`node.level == 0` on its `ImportFrom` branch, so every relative form was skipped. Measured against
-the committed 23-case file, all four of these **survived**:
-
-| Form | Before | After |
-|---|---|---|
-| `from ..core import settings` | **survives** | caught |
-| `from ..core.settings import concurrency_limit` | **survives** | caught |
-| `from .. import persistence` | **survives** | caught |
-| `from ..persistence import db` | **survives** | caught |
-
-So `T-013`'s prohibition had **two** unreachable spellings, not the one this task first reported:
-`from tracks_and_trails import persistence` *and* every relative form. `_absolute()` now resolves a
-relative name against the analysed module's package — one dot is the containing package, each extra
-dot climbs one level, and a level that walks past the distribution root yields `""`, which matches
-nothing. That is the honest answer for an import that would not resolve at run time either.
-
-**The rules are per module now.** `FORBIDDEN_EVERYWHERE` holds `persistence` and `sqlite3`;
-`FORBIDDEN_BY_MODULE` holds `core.settings` against `downloader/manager.py` alone, because that is
-the module `ARC-007` names. Two parametrised tests assert both halves — the prohibition binds the
-manager, and it does **not** bind the pump — and the second one says in its docstring that if the
-pump should be covered, `ARC-007` should say so first and *this test* is what changes.
-
-| Check | Result |
-|---|---|
-| Cases in this file | **52**, from 23 |
-| Relative settings forms added to the real `manager.py` | **fail**, all |
-| `from .. import persistence` added to the real `manager.py` | **fails** |
-| Legitimate relative imports (`from . import protocol`, `from ..core.models import Job`, …) | permitted |
-| `core.settings` forms against `result_pump.py` | permitted — `ARC-007`'s scope |
-| `persistence` forms against `result_pump.py` | still caught — `T-013` binds both |
-
-#### Out of scope
-
-- Implementing the concurrency setting or changing `core/settings.py`
-- Forbidding all `downloader/` → `core/` imports
-- Dynamic import calls already outside the static analyzer's documented contract
-
----
+readiness. `COORD-R5` through `COORD-R11` are seven rounds of this file contradicting itself, which
+is why **`T-096`** exists — but `T-096` gates *status against section*, and `COORD-R11` was prose
+that contradicted both while every status and section agreed. The invariant test cannot see that,
+and this note is written by hand for exactly that reason.)*
 
 ## Ready
 *(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
@@ -888,6 +528,37 @@ agreement on the reduced form before implementation.
 deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are follow-ups carried out
 of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
 prerequisite is Phase 1 approved.)*
+
+### T-099 — Make the manager-boundary gate say which boundary failed
+
+**Status:** Proposed
+**Owner:** Implementer
+**Priority:** Low — enforcement is correct; the failure points at the wrong rule
+**Phase:** Phase 2 test infrastructure; blocks nothing
+**Depends on:** none
+**Relevant context:** `T097-R2`, `T-097`, `ARC-007`, `T-013`
+**Affected surfaces:** `tests/unit/test_manager_boundaries.py`
+**Risk:** Low — a future settings violation is caught, but its diagnostic sends the maintainer to
+the repository-injection rule instead of ARC-007
+
+#### Scope
+
+`T097-R1` split the manager-only settings prohibition from the persistence/sqlite rules shared by
+manager and result pump. The real-source assertion still combines their offenders under
+`test_the_manager_never_imports_persistence` and always explains repository injection. A real
+`core.settings` import therefore fails the correct gate with the wrong reason.
+
+Keep one read of each real module and the current per-module rule table, but report which rule was
+violated. Do not broaden ARC-007 back to `result_pump.py`.
+
+#### Acceptance criteria
+
+- A real manager settings import fails with an ARC-007/settings-injection diagnostic
+- A real manager or result-pump persistence/sqlite import fails with the T-013 repository diagnostic
+- Existing relative and absolute forbidden forms remain caught, and result-pump settings imports
+  remain permitted
+
+---
 
 ### T-079 — The queue view: many jobs, each with its own progress
 
@@ -1988,6 +1659,318 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-089 — Gate the MP3 bitrate control's complete UI contract
+
+**Status:** **Complete — Approved at `128be39`**, 2026-07-30. The mutation fails exactly the
+intended FLAC test. All four criteria met; the FLAC preset had to be injected, because no built-in is
+a *converting non-MP3* one — which is why the gap existed.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 1 follow-up; does not block T-076 approval
+**Depends on:** `T-076`
+**Relevant context:** `T076-R1`, `T076-R2`, `REQ-009`, `REQ-010`
+**Affected surfaces:** `tests/ui/test_add_dialog.py`
+**Risk:** Low — the behavior is correct; the missing evidence would let adjacent UI paths drift
+
+#### Scope
+
+T-076 offers the requested values and its correction gates the control on MP3. The review found
+three parts of that UI contract still inferred from production rather than independently gated:
+
+- the exact ordered values `320, 256, 192, 160, 128` and the default `192`;
+- the historically load-bearing flow **Probe → choose MP3 → choose 320 → Add**, asserted against
+  the durable request rather than the label; and
+- the dialog behavior for a non-MP3 converting preset. The core helper is parametrised over every
+  other codec, but no dialog test would fail if its enablement, display, or derived-preset gate
+  widened independently.
+
+#### Acceptance criteria
+
+- Transcribe and assert the exact combo-box values, order, and default without deriving the
+  expectation from `MP3_BITRATES`
+- Probe, choose MP3 and 320, add, then assert the durable request carries MP3 at 320
+- Inject at least one non-MP3 converting preset into the dialog and assert the control is disabled,
+  no bitrate is displayed, and `selected_preset` preserves the base preset
+- Mutation-check the post-probe quality persistence and at least one dialog-side MP3-only gate
+
+#### Evidence, 2026-07-30
+
+**The values are transcribed, and that is the point.** `["320", "256", "192", "160", "128"]` and the
+`"320 kbps"` labels are written out rather than read from `MP3_BITRATES`. Deriving the expectation
+from the constant the dialog reads makes the assertion a tautology — reorder the constant and both
+sides move together. The default `192` is asserted the same way.
+
+**The FLAC preset is injected because no built-in could serve.** Every built-in is MP3 or
+`ORIGINAL`, so every existing dialog assertion about "not MP3" is really about "does not convert" —
+and those are different rules. `CONVERTING_AUDIO_CODECS` is every codec but `ORIGINAL`, so a gate
+that widened from one to the other would pass the whole suite. That is exactly what `T076-R1` found
+in the *helper*, and `T076-R2` said the dialog side was still inferred from production.
+
+**Measured, and it is the finding:** widening `_refresh_actions`'s enablement from
+`is AudioCodec.MP3` to `is not AudioCodec.ORIGINAL` fails **one** test in the file — the new one.
+Before this task nothing would have failed.
+
+| Mutation | Result |
+|---|---|
+| `selected_preset` never applies the bitrate | **killed**, 3 tests |
+| `selected_preset`'s MP3 gate widened to `CONVERTING_AUDIO_CODECS` | **killed**, 61 tests — `with_audio_quality` raises for FLAC, so the dialog cannot even build |
+| **Enablement widened to "converts audio"** | **killed — by exactly one test, the new one** |
+| The display drops the bitrate | **killed**, 2 tests |
+
+**The post-probe flow is asserted on the durable request, never the label.** `probe()` persists a
+job before asking a worker anything (`REQ-012`), so it stores a request built from whatever preset
+was selected at that moment; `T-075` was that choosing afterwards updated the label and nothing
+else. This asserts the same for the *bitrate* — the field `T-076` added after that defect was
+fixed, and the same shape one field over.
+
+**Three things in one test, deliberately.** The non-MP3 case asserts the control is disabled, the
+display carries no bitrate, **and** `selected_preset` returns the base preset unmodified. The third
+is the one nothing else covers: `with_audio_quality` raises for a non-MP3 codec, so a dialog that
+applied it unconditionally would crash rather than mislead — but one that applied it *conditionally
+on converting* would quietly attach 192 kbps to a FLAC download.
+
+---
+
+### T-047 — Decide whether the environment ownership gate's blind spots are worth closing
+
+**Status:** **Complete — Approved at `321c672`**, 2026-07-30; `T047-R1` Resolved. The decision is
+`OPS-008`. `T047-R1` was right
+that a durable "no" belongs in `ai/DECISIONS.md` rather than only in this task and `ai/TESTING.md`:
+a decision recorded in a mutable task is exactly what `AGENTS.md` §12 puts in `DECISIONS.md`, and
+`P2PLAN-R2` made the same finding about Phase 2's three decisions a day earlier. **`OPS-008`** now
+holds the decision, the measurement it rests on, its alternatives and its reopening conditions.
+Nothing in `src/` or `tests/` changed, as the second acceptance criterion requires. `T-098` owns what
+the measurement exposed.
+*(This read "the decision is recorded below" — below being this task — until `T047-R1`.)*
+**Owner:** Planner, then Implementer if the answer is yes
+**Priority:** **Low, and deliberately so.** The question is whether to spend anything here at
+all; the honest default answer is no
+**Phase:** unassigned
+**Depends on:** `T-044`
+**Relevant context:** `T044-R1` and its six review rounds in `ai/REVIEWS.md`; `ai/TESTING.md`
+("What the environment ownership gate actually promises"); `ARCHITECTURE.md` §6
+**Affected surfaces:** `tests/unit/test_environment.py` only
+**Risk:** Low — no production code is involved, and none ever was
+
+#### Scope
+
+`T-044`'s gate reports any public attribute of `downloader/environment.py` not bound by an
+`import` statement, under the configuration the suite runs in. Three gaps are pinned by test and
+carried here:
+
+1. **Anything behind a guard false at run time** — OS, architecture, dependency presence,
+   feature probe, environment state.
+2. **A name imported and then rebound** — `try: from x import Y / except ImportError: Y = ...`,
+   the ordinary shape of an optional dependency, where the parse subtracts a name the fallback
+   genuinely bound.
+3. **Dynamic rebinding of an imported name** — `globals()["Path"] = ...`.
+
+**Read the history before proposing a fix.** `T044-R1` was found six times. Every attempt to
+close it by recognising more syntax was defeated by syntax the author had not enumerated, and
+three attempts to state its coverage overclaimed and were disproved. That is the strongest
+available evidence that the next clever fix will also be wrong, and it is why this task's first
+deliverable is a *decision*, not a patch.
+
+The likely correct answer is **no**. Gaps 1 and 3 need a determined author to trigger; gap 2 is
+plausible but would announce itself the moment anyone read the module. The gate catches what it
+exists to catch — an accidental `get_ytdlp_version()` — and `ARCHITECTURE.md` §6's boundary is
+independently guarded by the layering test and by review.
+
+#### Acceptance criteria
+
+- A recorded decision, with reasoning, on whether any gap is worth closing
+- If **no**: this task closes, and `ai/TESTING.md`'s statement of the promise stands as the
+  durable record. Nothing in the tree changes
+- If **yes** for a given gap: the fix must come with evidence it does not reintroduce the
+  enumeration failure — specifically, a demonstration against binding syntax the fix does not
+  name, since that is how all five previous fixes died
+
+#### Decision, 2026-07-30 — no. **Canonical record: `OPS-008`**
+
+*(What follows is the summary. `OPS-008` is the decision; this is the task that produced it, and
+`T047-R1` is why the two are not the same place.)*
+
+**All three gaps are structurally unreachable in the module the gate protects.** Measured by parsing
+`downloader/environment.py` rather than by reading it:
+
+| Gap | What would make it live | Present in the module |
+|---|---|---|
+| 1. An export behind a guard false at run time | a module-scope `if` | **0** |
+| 2. A name imported and then rebound by a fallback | a module-scope `try`/`except ImportError` | **0** |
+| 3. Dynamic rebinding of an imported name | a call to `globals`, `locals`, `setattr`, `vars`, `exec` or `eval` anywhere in the module | **0** |
+
+Module-scope nodes are one docstring, seven plain imports, three annotated assignments, five
+functions and two classes. There is no construct any of the three gaps needs.
+
+**So the gaps are real properties of the gate and vacuous properties of its subject.** The task
+guessed the answer was no on the grounds that gaps 1 and 3 "need a determined author to trigger".
+That is true but weaker than what is measurable: today they need a determined author *and* a change
+to the module's structure, and the second is the part a reviewer can check.
+
+**The other three reasons stand and are not repeated here:** five prior attempts died to
+enumeration; the gate catches what it exists to catch — an accidental public export, which `vars()`
+finds under any binding syntax including syntax that does not exist yet; and `ARCHITECTURE.md` §6's
+boundary is independently guarded by the layering test and by review.
+
+#### What the measurement exposed — filed as `T-098`
+
+**The decision rests on a premise nothing enforces.** "No module-scope guard, no import fallback, no
+dynamic rebinding" is true as measured on 2026-07-30 and would stop being true the moment someone
+adds a platform branch — which is a perfectly ordinary thing to add to a module that resolves paths
+across two operating systems. Nothing would fail, and the pinned blind spot would quietly become
+live.
+
+That is not this task's to fix: its second criterion says that on a "no" answer nothing in the tree
+changes, and adding a test is a tree change. So it is `T-098`, and it is deliberately **not** a
+fourth attempt at closing the gaps — it guards the premise rather than parsing for bindings, which
+is what all five failures had in common.
+
+#### Out of scope
+
+- Any production change to `downloader/environment.py`. The gate is a test; the module's
+  behavior has never been in question
+- Strengthening the layering test, which uses `ast.walk` and is unaffected
+
+---
+
+### T-097 — Gate ARC-007's settings-injection boundary
+
+**Status:** **Complete — Approved at `34addcb`**, 2026-07-30; `T097-R1` Resolved. `T097-R2` — the
+combined boundary diagnostic still names the persistence rule when it reports a settings offender —
+is carried to **`T-099`** and blocks nothing. Two defects were corrected, both real:
+
+- **Relative imports were unchecked entirely.** The analyser skipped every `ImportFrom` with a
+  non-zero level, so `from ..core import settings` survived all 23 cases — and so did
+  `from .. import persistence`, meaning `T-013`'s prohibition had *two* unreachable spellings rather
+  than one. Relative names are now resolved against the analysed module's package.
+- **The rule reached beyond its decision.** `core.settings` was forbidden in `result_pump.py` as well
+  as `manager.py`, on my reasoning that neither should read a settings file. `ARC-007` does not say
+  that, and extending an accepted decision is a decision — not an implementation choice made in a
+  test file. The rules are split per module now.
+
+52 cases, up from 23. See **Corrections, 2026-07-30**.
+**Owner:** Implementer
+**Priority:** Low — the boundary is stated correctly; this stops a future implementation from
+making it decorative
+**Phase:** Phase 2 test infrastructure
+**Depends on:** none
+**Relevant context:** `ARC-007`, `T-078`, `tests/unit/test_manager_boundaries.py`,
+`ai/TESTING.md` §13
+**Affected surfaces:** `tests/unit/test_manager_boundaries.py`
+**Risk:** Low before implementation, architectural once T-078 lands: a manager coupled to
+`core/settings.py` remains behaviorally correct but makes the accepted persistence seam false
+
+#### Scope
+
+`ARC-007` says `downloader/manager.py` receives the concurrency value and a way to be told it
+changed; composition and the UI own `core/settings.py`. That rule is not covered by the general
+layering test—`downloader/` may import `core/`—and the manager-boundary test currently forbids only
+`persistence` and `sqlite3`. Both analyzers accept a direct settings import today.
+
+Extend the existing manager-boundary analyzer with this exact prohibition. Keep it narrow:
+`downloader/manager.py` may continue importing domain models and errors from `core/`; the forbidden
+dependency is `tracks_and_trails.core.settings` itself, including package and submodule import
+forms.
+
+#### Acceptance criteria
+
+- The real `downloader/manager.py` passes without importing `core.settings`
+- Adding `from tracks_and_trails.core import settings`,
+  `from tracks_and_trails.core.settings import ...`, or the equivalent absolute import makes the
+  unmodified test fail
+- The analyzer's synthetic negative cases prove all supported import forms are detected
+- A legitimate manager import from another `core` module remains permitted
+- The gate lands no later than the T-078 implementation it protects; it does not delay promoting
+  T-078 to Ready
+
+#### Evidence, 2026-07-30
+
+**The list was the easy half; the analyser was the problem.** `imported_modules()` recorded only
+`node.module` for an `ImportFrom`, so `from tracks_and_trails.core import settings` looked like an
+import of `tracks_and_trails.core` — permitted — while binding the settings module itself. Adding
+`core.settings` to `FORBIDDEN` alone would have produced a gate that missed the most natural way to
+write the violation.
+
+It now also records `f"{node.module}.{alias.name}"`, using `alias.name` rather than `alias.asname`
+because the module path is what was imported, not what it was called locally.
+
+**That fixed a hole in the prohibition this file already had.** Measured against the pre-`T-097`
+analyser:
+
+| Spelling | Before | After |
+|---|---|---|
+| `from tracks_and_trails import persistence` | **MISSED** | caught |
+| `from tracks_and_trails.core import settings` | **MISSED** | caught |
+| `from tracks_and_trails.persistence import db` | caught | caught |
+
+So `T-013`'s original prohibition — the one this module exists for — was unreachable by its own most
+natural spelling for as long as it has existed. It has a synthetic case now.
+
+**Every forbidden spelling fails against the real module**, one at a time, added to
+`downloader/manager.py` itself rather than to a string:
+
+| Added to the real `manager.py` | Result |
+|---|---|
+| `from tracks_and_trails.core import settings` | **fails** |
+| `from tracks_and_trails.core.settings import concurrency_limit` | **fails** |
+| `import tracks_and_trails.core.settings` | **fails** |
+| `from tracks_and_trails.core import settings as s` | **fails** |
+
+**And nine legitimate imports stay permitted**, each parametrised: the four `core/` modules the
+manager actually uses today (`logging`, `errors`, `job_state`, `models`), both package and submodule
+forms, plus `settings_helpers` and `settingsish` — adjacent names that a prefix match without the
+dot boundary would sweep up. `ARC-007` forbids the settings module, not `core/`; a prohibition that
+caught the manager's real imports would be deleted by whoever it blocked, taking the settings gate
+with it.
+
+*(**Superseded — `T097-R1`.** This read: "Applied to both modules in `MODULES`, not to `manager.py`
+alone. Neither is a place a settings file should be read, and one shared list is harder to weaken by
+accident than a per-module table with a single entry." The reviewer's objection is the right one:
+`ARC-007` names the manager, and whether the pump should also be covered is a question for
+`ARC-007`, not a convenience decided inside a test file. The rules are split per module now.)*
+
+#### Corrections, 2026-07-30 — `T097-R1`
+
+**Relative imports were never checked, and that predates this task.** The analyser carried
+`node.level == 0` on its `ImportFrom` branch, so every relative form was skipped. Measured against
+the committed 23-case file, all four of these **survived**:
+
+| Form | Before | After |
+|---|---|---|
+| `from ..core import settings` | **survives** | caught |
+| `from ..core.settings import concurrency_limit` | **survives** | caught |
+| `from .. import persistence` | **survives** | caught |
+| `from ..persistence import db` | **survives** | caught |
+
+So `T-013`'s prohibition had **two** unreachable spellings, not the one this task first reported:
+`from tracks_and_trails import persistence` *and* every relative form. `_absolute()` now resolves a
+relative name against the analysed module's package — one dot is the containing package, each extra
+dot climbs one level, and a level that walks past the distribution root yields `""`, which matches
+nothing. That is the honest answer for an import that would not resolve at run time either.
+
+**The rules are per module now.** `FORBIDDEN_EVERYWHERE` holds `persistence` and `sqlite3`;
+`FORBIDDEN_BY_MODULE` holds `core.settings` against `downloader/manager.py` alone, because that is
+the module `ARC-007` names. Two parametrised tests assert both halves — the prohibition binds the
+manager, and it does **not** bind the pump — and the second one says in its docstring that if the
+pump should be covered, `ARC-007` should say so first and *this test* is what changes.
+
+| Check | Result |
+|---|---|
+| Cases in this file | **52**, from 23 |
+| Relative settings forms added to the real `manager.py` | **fail**, all |
+| `from .. import persistence` added to the real `manager.py` | **fails** |
+| Legitimate relative imports (`from . import protocol`, `from ..core.models import Job`, …) | permitted |
+| `core.settings` forms against `result_pump.py` | permitted — `ARC-007`'s scope |
+| `persistence` forms against `result_pump.py` | still caught — `T-013` binds both |
+
+#### Out of scope
+
+- Implementing the concurrency setting or changing `core/settings.py`
+- Forbidding all `downloader/` → `core/` imports
+- Dynamic import calls already outside the static analyzer's documented contract
+
+---
 
 ### T-085 — History of completed downloads
 
