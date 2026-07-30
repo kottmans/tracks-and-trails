@@ -654,6 +654,55 @@ notes may remain prose; they must not make the operative status ambiguous.
 
 ---
 
+### T-098 — Guard the premise T-047's decision rests on
+
+**Status:** Ready — non-blocking follow-up from `T-047`
+**Owner:** Implementer
+**Priority:** Low — it protects a decision rather than a behaviour
+**Phase:** unassigned, like `T-047`. Blocks nothing
+**Depends on:** none
+**Relevant context:** `T-047` (the decision and its measurement), `T044-R1` and its six rounds,
+`ai/TESTING.md` ("What the environment ownership gate actually promises")
+**Affected surfaces:** `tests/unit/test_environment.py` only
+**Risk:** Low — no production code is involved
+
+#### Scope
+
+`T-047` decided not to close the environment gate's three blind spots, and the load-bearing reason
+was a measurement: `downloader/environment.py` contains **no** module-scope `if`, **no**
+`try`/`except ImportError`, and **no** call to `globals`, `locals`, `setattr`, `vars`, `exec` or
+`eval`. Each blind spot needs one of those constructs to become reachable, so all three are vacuous
+in the module the gate protects.
+
+**Nothing enforces that.** Adding a platform branch to a module that resolves paths across two
+operating systems is an ordinary thing to do. It would make gap 1 live, nothing would fail, and
+`T-047`'s decision would be silently obsolete.
+
+**This is not a fourth attempt at the gaps.** All five previous attempts parsed for *bindings* and
+were defeated by binding syntax the author had not enumerated (`T044-R1`, six rounds). This parses
+for the three *constructs the blind spots require* — a closed, small set that is a property of the
+gaps' own definitions rather than of Python's grammar. If the set is ever wrong, it is wrong in the
+direction of failing loudly: an unrecognised construct does not appear, so the assertion still holds
+and the gate is unchanged.
+
+#### Acceptance criteria
+
+- A test asserts the module contains none of the three constructs, naming `T-047` as the decision it
+  protects and stating that its own failure means *revisit the decision*, not *fix the module*
+- Adding a module-scope `if`, a module-scope `try`, or a `globals()` call to
+  `downloader/environment.py` each fails it — mutation-verified, one at a time
+- The message says which gap the construct makes live, so whoever hits it knows what to reconsider
+- `ai/TESTING.md`'s promise statement gains the reopening conditions, so the durable record and the
+  test agree
+
+#### Out of scope
+
+- Closing gaps 1, 2 or 3. `T-047` decided against that and this does not reopen it
+- Any production change to `downloader/environment.py`
+- Extending the construct set speculatively. Three gaps, three constructs
+
+---
+
 ## Proposed — Phase 0
 
 ### T-021 — Simplified small-size icon glyph
@@ -1335,7 +1384,10 @@ pushing it into the sanitizer would make it stateful and re-open `DAT-002`.
 
 ### T-047 — Decide whether the environment ownership gate's blind spots are worth closing
 
-**Status:** Proposed — **not scheduled.** Carries `T044-R1`'s residue
+**Status:** **In Review — decided 2026-07-30: no, none of the three is worth closing.** The
+decision is recorded below with the measurement it rests on, and **nothing in the tree changed**, as
+the second acceptance criterion requires. `ai/TESTING.md`'s statement of the promise stands as the
+durable record. One thing the measurement exposed is filed separately as `T-098`.
 **Owner:** Planner, then Implementer if the answer is yes
 **Priority:** **Low, and deliberately so.** The question is whether to spend anything here at
 all; the honest default answer is no
@@ -1378,6 +1430,43 @@ independently guarded by the layering test and by review.
 - If **yes** for a given gap: the fix must come with evidence it does not reintroduce the
   enumeration failure — specifically, a demonstration against binding syntax the fix does not
   name, since that is how all five previous fixes died
+
+#### Decision, 2026-07-30 — no, and the reason is stronger than "probably not"
+
+**All three gaps are structurally unreachable in the module the gate protects.** Measured by parsing
+`downloader/environment.py` rather than by reading it:
+
+| Gap | What would make it live | Present in the module |
+|---|---|---|
+| 1. An export behind a guard false at run time | a module-scope `if` | **0** |
+| 2. A name imported and then rebound by a fallback | a module-scope `try`/`except ImportError` | **0** |
+| 3. Dynamic rebinding of an imported name | a call to `globals`, `locals`, `setattr`, `vars`, `exec` or `eval` anywhere in the module | **0** |
+
+Module-scope nodes are one docstring, seven plain imports, three annotated assignments, five
+functions and two classes. There is no construct any of the three gaps needs.
+
+**So the gaps are real properties of the gate and vacuous properties of its subject.** The task
+guessed the answer was no on the grounds that gaps 1 and 3 "need a determined author to trigger".
+That is true but weaker than what is measurable: today they need a determined author *and* a change
+to the module's structure, and the second is the part a reviewer can check.
+
+**The other three reasons stand and are not repeated here:** five prior attempts died to
+enumeration; the gate catches what it exists to catch — an accidental public export, which `vars()`
+finds under any binding syntax including syntax that does not exist yet; and `ARCHITECTURE.md` §6's
+boundary is independently guarded by the layering test and by review.
+
+#### What the measurement exposed — filed as `T-098`
+
+**The decision rests on a premise nothing enforces.** "No module-scope guard, no import fallback, no
+dynamic rebinding" is true as measured on 2026-07-30 and would stop being true the moment someone
+adds a platform branch — which is a perfectly ordinary thing to add to a module that resolves paths
+across two operating systems. Nothing would fail, and the pinned blind spot would quietly become
+live.
+
+That is not this task's to fix: its second criterion says that on a "no" answer nothing in the tree
+changes, and adding a test is a tree change. So it is `T-098`, and it is deliberately **not** a
+fourth attempt at closing the gaps — it guards the premise rather than parsing for bindings, which
+is what all five failures had in common.
 
 #### Out of scope
 
