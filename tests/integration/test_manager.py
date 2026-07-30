@@ -94,6 +94,7 @@ class FakeRepository:
     def __init__(self) -> None:
         self.jobs: dict[str, Job] = {}
         self.writes: list[tuple[str, JobStatus]] = []
+        self.completions: list[tuple[str, str | None]] = []
 
     def add(self, job: Job) -> None:
         self.jobs[job.id] = job
@@ -115,6 +116,18 @@ class FakeRepository:
         self.writes.append((job.id, job.status))
         if done is not None:
             done(None)
+
+    def complete(
+        self, job: Job, format_used: str | None, done: Callable[[str | None], None]
+    ) -> None:
+        """`JobStore.complete` — the job row and its history record, atomically (`T050-R1`).
+
+        A fake, so "atomically" is trivial: one dict assignment cannot half-happen. What it
+        preserves is the *shape* — one call, one settlement — so the manager cannot be
+        written against two separate writes and still pass here.
+        """
+        self.completions.append((job.id, format_used))
+        self.update(job, done)
 
     def statuses(self, job_id: str) -> list[JobStatus]:
         return [status for stored_id, status in self.writes if stored_id == job_id]
@@ -2115,12 +2128,25 @@ def test_no_companion_signal_arrives_before_its_transition_is_durable(
         def __init__(self) -> None:
             self.jobs: dict[str, Job] = {}
             self.pending: list[tuple[Job, Callable[[str | None], None]]] = []
+            self.completions: list[tuple[str, str | None]] = []
 
         def get(self, job_id: str) -> Job | None:
             return self.jobs.get(job_id)
 
         def update(self, job: Job, done: Callable[[str | None], None]) -> None:
             self.pending.append((job, done))
+
+        def complete(
+            self, job: Job, format_used: str | None, done: Callable[[str | None], None]
+        ) -> None:
+            """`JobStore.complete` — the job row and its history record, atomically (`T050-R1`).
+
+            A fake, so "atomically" is trivial: one dict assignment cannot
+            half-happen. What it preserves is the *shape* — one call, one settlement —
+            so the manager cannot be written against two separate writes.
+            """
+            self.completions.append((job.id, format_used))
+            self.update(job, done)
 
         def release(self) -> None:
             pending, self.pending = self.pending, []
@@ -2187,12 +2213,25 @@ def test_a_second_session_is_refused_while_the_first_is_still_being_stored(
         def __init__(self) -> None:
             self.jobs: dict[str, Job] = {}
             self.pending: list[tuple[Job, Callable[[str | None], None]]] = []
+            self.completions: list[tuple[str, str | None]] = []
 
         def get(self, job_id: str) -> Job | None:
             return self.jobs.get(job_id)
 
         def update(self, job: Job, done: Callable[[str | None], None]) -> None:
             self.pending.append((job, done))
+
+        def complete(
+            self, job: Job, format_used: str | None, done: Callable[[str | None], None]
+        ) -> None:
+            """`JobStore.complete` — the job row and its history record, atomically (`T050-R1`).
+
+            A fake, so "atomically" is trivial: one dict assignment cannot
+            half-happen. What it preserves is the *shape* — one call, one settlement —
+            so the manager cannot be written against two separate writes.
+            """
+            self.completions.append((job.id, format_used))
+            self.update(job, done)
 
         def release(self) -> None:
             pending, self.pending = self.pending, []
@@ -2239,6 +2278,7 @@ def test_a_transition_that_cannot_be_stored_is_reported_and_not_announced(
 
         def __init__(self) -> None:
             self.jobs: dict[str, Job] = {}
+            self.completions: list[tuple[str, str | None]] = []
 
         def get(self, job_id: str) -> Job | None:
             return self.jobs.get(job_id)
@@ -2246,6 +2286,18 @@ def test_a_transition_that_cannot_be_stored_is_reported_and_not_announced(
         def update(self, job: Job, done: Callable[[str | None], None]) -> None:
             self.jobs[job.id] = job  # read-your-writes still holds
             done("OperationalError: database is locked")
+
+        def complete(
+            self, job: Job, format_used: str | None, done: Callable[[str | None], None]
+        ) -> None:
+            """`JobStore.complete` — the job row and its history record, atomically (`T050-R1`).
+
+            A fake, so "atomically" is trivial: one dict assignment cannot
+            half-happen. What it preserves is the *shape* — one call, one settlement —
+            so the manager cannot be written against two separate writes.
+            """
+            self.completions.append((job.id, format_used))
+            self.update(job, done)
 
     store = RefusingStore()
     store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
@@ -2936,6 +2988,7 @@ class HeldStore:
         self.jobs: dict[str, Job] = {}
         self.pending: list[tuple[Job, Callable[[str | None], None]]] = []
         self.written: list[tuple[str, JobStatus]] = []
+        self.completions: list[tuple[str, str | None]] = []
         self.failing = False
 
     def get(self, job_id: str) -> Job | None:
@@ -2943,6 +2996,18 @@ class HeldStore:
 
     def update(self, job: Job, done: Callable[[str | None], None]) -> None:
         self.pending.append((job, done))
+
+    def complete(
+        self, job: Job, format_used: str | None, done: Callable[[str | None], None]
+    ) -> None:
+        """`JobStore.complete` — the job row and its history record, atomically (`T050-R1`).
+
+        A fake, so "atomically" is trivial: one dict assignment cannot half-happen. What it
+        preserves is the *shape* — one call, one settlement — so the manager cannot be
+        written against two separate writes and still pass here.
+        """
+        self.completions.append((job.id, format_used))
+        self.update(job, done)
 
     def release(self) -> None:
         """Complete every queued write, oldest first, as the writer thread would."""
@@ -3271,6 +3336,12 @@ def test_a_startup_failure_that_cannot_be_stored_announces_nothing_but_still_cle
             time.sleep(0.005)
 
 
+from tracks_and_trails.persistence import db  # noqa: E402
+from tracks_and_trails.persistence.repositories import (  # noqa: E402
+    HistoryRepository,
+    JobRepository,
+)
+
 # --- history (T-050, REQ-020) --------------------------------------------------------------
 
 
@@ -3310,7 +3381,7 @@ def test_a_completed_download_writes_exactly_one_history_row(
         real.add(make_job("job-history", url, tmp_path))
         writer = QueueWriter(lambda: db.connect(path))
         store = PersistentJobStore(connection, writer)
-        download = DownloadManager(store, history=store)
+        download = DownloadManager(store)
         try:
             download.start("job-history")
             assert spin(lambda: download.is_idle, timeout=120)
@@ -3375,11 +3446,11 @@ def test_a_job_that_did_not_complete_writes_no_history_row(
         JobRepository(connection).add(make_job(f"job-{name}", url, tmp_path))
         writer = QueueWriter(lambda: db.connect(path))
         store = PersistentJobStore(connection, writer)
-        download = DownloadManager(store, history=store)
+        download = DownloadManager(store)
         try:
             download.start(f"job-{name}")
             if drive == "cancel":
-                assert spin(lambda: download.active_job_ids() != [], timeout=30)
+                assert spin(lambda: bool(download.active_job_ids()), timeout=30)
                 download.cancel(f"job-{name}")
             assert spin(lambda: download.is_idle, timeout=120)
         finally:
@@ -3392,3 +3463,88 @@ def test_a_job_that_did_not_complete_writes_no_history_row(
     assert stored is not None
     assert stored.status is not JobStatus.COMPLETED, "the job completed; this test proves nothing"
     assert _history_rows(path) == [], f"a {name} job was recorded as an obtained download"
+
+
+def test_a_hard_exit_cannot_separate_a_completion_from_its_history(tmp_path: Path) -> None:
+    """`T050-R1`: the job row and its history row commit together or not at all.
+
+    **This is the defect's own reproduction, kept as the gate.** The first version of `T-050`
+    persisted `COMPLETED`, returned to the GUI thread, and only then queued the history insert. A
+    probe that hard-exited between the two commits observed
+    `{'job_status': 'completed', 'history': None}` on restart. Nothing backfills history at startup
+    and `format_used` exists nowhere else, so that record was lost irreversibly.
+
+    A **subprocess** because the failure needs a process that stops existing: `os._exit` skips
+    `atexit`, flushes nothing and runs no Qt teardown, which is as close to a power cut as a test
+    can arrange. Asserting in-process would prove only that two writes happen.
+
+    The child writes through the real `QueueWriter`, and exits the instant the completion callback
+    fires — before any further event-loop turn could carry a second write.
+    """
+    probe = tmp_path / "probe.py"
+    probe.write_text(
+        "\n".join(
+            [
+                "import os, sys",
+                "from dataclasses import replace",
+                "from datetime import UTC, datetime",
+                "from PySide6.QtCore import QCoreApplication",
+                "from tracks_and_trails.core.job_state import JobStatus",
+                "from tracks_and_trails.core.models import DownloadRequest, Job",
+                "from tracks_and_trails.persistence import db",
+                "from tracks_and_trails.persistence.repositories import JobRepository",
+                "from tracks_and_trails.persistence.store import PersistentJobStore",
+                "from tracks_and_trails.persistence.writer import QueueWriter",
+                "",
+                "path = sys.argv[1]",
+                "application = QCoreApplication([])",
+                "connection = db.connect(path)",
+                "request = DownloadRequest(",
+                "    url='https://example.com/x',",
+                "    output_directory=os.path.dirname(path),",
+                "    format_selector='best',",
+                "    output_template='%(title)s.%(ext)s',",
+                ")",
+                "queued = Job(id='j', url=request.url, request=request,",
+                "             created_at=datetime.now(UTC))",
+                "JobRepository(connection).add(queued)",
+                "finished = queued",
+                "for status in (JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING,",
+                "               JobStatus.POST_PROCESSING, JobStatus.COMPLETED):",
+                "    finished = finished.with_status(status)",
+                "finished = replace(finished, finished_at=datetime.now(UTC))",
+                "",
+                "writer = QueueWriter(lambda: db.connect(path))",
+                "store = PersistentJobStore(connection, writer)",
+                "",
+                "def settled(error):",
+                "    # The completion transaction has committed. Die now, the way a power cut",
+                "    # would: no atexit, no flush, no Qt teardown, no further event-loop turn.",
+                "    os._exit(0 if error is None else 3)",
+                "",
+                "store.complete(finished, '137+140', settled)",
+                "application.exec()",
+            ]
+        )
+    )
+    database = tmp_path / "library.sqlite3"
+    result = subprocess.run(
+        [sys.executable, str(probe), str(database)],
+        capture_output=True,
+        text=True,
+        timeout=120,
+        env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+    )
+    assert result.returncode == 0, f"the probe did not reach a clean exit: {result.stderr}"
+
+    with db.open_database(database) as connection:
+        stored = JobRepository(connection).get("j")
+        entry = HistoryRepository(connection).get("j")
+
+    assert stored is not None
+    assert stored.status is JobStatus.COMPLETED, "the completion never became durable"
+    assert entry is not None, (
+        "the job is durably COMPLETED with no history row — a hard exit separated the two "
+        "writes, which is T050-R1"
+    )
+    assert entry.format_used == "137+140", "the record survived without what it recorded"

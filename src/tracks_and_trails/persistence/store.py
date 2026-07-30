@@ -136,10 +136,21 @@ class PersistentJobStore(QObject):
 
         self._writer.revise(job, settle)
 
-    def record_completion(
+    def complete(
         self, job: Job, format_used: str | None, done: Callable[[str | None], None]
     ) -> None:
-        """Write `job`'s completed-download record. **Returns immediately** (`T-050`, `REQ-020`).
+        """Persist `job` as complete **and** its history record, in one transaction (`T050-R1`).
+
+        This replaces a `record_completion` that wrote only history and relied on the job row having
+        been written by an earlier, separate transaction. A hard exit between the two left a durably
+        completed job with `history=None` and nothing able to reconstruct it.
+
+        Because the two rows now settle together, `done` reporting an error means **the completion
+        did not happen** — so the caller can treat it as an ordinary failed transition rather than
+        as a success with a missing record. That is what removed the silent-failure path
+        (`T050-R2`): there is no longer a state to report quietly.
+
+        **Returns immediately** (`ARC-005`).
 
         **The projection happens here, not in the manager, and that is the point.** `T-050`'s fourth
         acceptance criterion is that `downloader.manager` imports no `persistence` module. So the
@@ -156,7 +167,25 @@ class PersistentJobStore(QObject):
         moment the *write* happened; the fallback exists only because `finished_at` is nullable in
         the schema, and a history row with no completion time is unusable to `REQ-020`.
         """
-        self._writer.record_history(
+        queued = self._pending.setdefault(job.id, [])
+        queued.append(job)
+
+        def settle(error: str | None) -> None:
+            # Identical bookkeeping to `update`: the revision is forgotten the moment it settles,
+            # whichever way it settled (`T016-R1`). A completion that failed never happened, and
+            # `get()` must fall through to whatever is still queued behind it.
+            remaining = self._pending.get(job.id)
+            if remaining is not None:
+                for index, candidate in enumerate(remaining):
+                    if candidate is job:
+                        del remaining[index]
+                        break
+                if not remaining:
+                    del self._pending[job.id]
+            done(error)
+
+        self._writer.complete(
+            job,
             HistoryEntry(
                 id=job.id,
                 url=job.url,
@@ -166,7 +195,7 @@ class PersistentJobStore(QObject):
                 bytes_total=job.bytes_total,
                 completed_at=job.finished_at if job.finished_at is not None else _now(),
             ),
-            done,
+            settle,
         )
 
     def submit(self, jobs: Sequence[Job], done: Callable[[str | None], None]) -> None:

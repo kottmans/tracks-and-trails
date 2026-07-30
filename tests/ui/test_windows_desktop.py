@@ -101,6 +101,15 @@ class _EmptyStore:
         if callable(done):
             done(None)
 
+    def complete(self, job: Job, format_used: object = None, done: object = None) -> None:
+        """Present only to satisfy `JobStore` (`T050-R1`). No session is started in this file.
+
+        Found by `mypy --platform win32` rather than by the host gate, because this module is
+        Windows-only — the case `AGENTS.md` §8's "a host-only check is not the whole gate" names.
+        """
+        if callable(done):
+            done(None)
+
     def submit(self, jobs: object, done: object = None) -> None:
         if callable(done):
             done(None)

@@ -46,8 +46,8 @@ from PySide6.QtCore import QObject, QThread, Signal, Slot
 from tracks_and_trails.core.models import Job
 from tracks_and_trails.persistence.repositories import (
     HistoryEntry,
-    HistoryRepository,
     JobRepository,
+    complete_job,
 )
 
 
@@ -94,17 +94,19 @@ class _Worker(QObject):
         self._perform(token, lambda connection: JobRepository(connection).update(job))
 
     @Slot(int, object)
-    def record_history(self, token: int, entry: HistoryEntry) -> None:
-        """Store one completed-download record, then report (`T-050`, `REQ-020`).
+    def complete(self, token: int, payload: tuple[Job, HistoryEntry]) -> None:
+        """Store a completed job **and** its history record in one transaction (`T050-R1`).
 
         Here rather than on the GUI thread for the same reason every other write is: `ARC-005` is
-        unqualified, and history is written from `DownloadManager`'s completion callback, which runs
-        on the GUI thread. A synchronous insert there would be `T016-R3` again in a new column.
+        unqualified, and completion is persisted from `DownloadManager`, on the GUI thread.
 
-        Ordering with `revise` matters and is free: both are queued to this one receiver, so the
-        `COMPLETED` row is written before the history entry that describes it.
+        **One slot carrying both, rather than two slots queued in order.** Queuing them separately
+        was the defect: ordering guarantees the history write is *attempted* second, and guarantees
+        nothing about the process still existing when it is. A hard exit between the two commits
+        left a durably completed job with no record of what it obtained.
         """
-        self._perform(token, lambda connection: HistoryRepository(connection).record(entry))
+        job, entry = payload
+        self._perform(token, lambda connection: complete_job(connection, job, entry))
 
     def _perform(self, token: int, work: Callable[[sqlite3.Connection], object]) -> None:
         """Run `work` against this thread's connection, reporting through `done` either way.
@@ -160,8 +162,9 @@ class QueueWriter(QObject):
     #: Internal: carries a single-job revision to the worker.
     _revise = Signal(int, object)
 
-    #: Internal: carries a completed-download record to the worker (`T-050`).
-    _record_history = Signal(int, object)
+    #: Internal: carries a completed job and its history record to the worker, **together**,
+    #: so they land in one transaction (`T050-R1`).
+    _complete = Signal(int, object)
 
     #: The writer thread has finished and its connection is closed. **Shutdown is a lifecycle,
     #: not a call** — the same rule `T013-R2` established for the manager, and for the same
@@ -178,7 +181,7 @@ class QueueWriter(QObject):
         self._worker.done.connect(self._on_done)
         self._submit.connect(self._worker.write)
         self._revise.connect(self._worker.revise)
-        self._record_history.connect(self._worker.record_history)
+        self._complete.connect(self._worker.complete)
         self._shutdown.connect(self._worker.close)
         self._thread.finished.connect(self.closed)
         self._pending: dict[int, Callable[[str | None], None]] = {}
@@ -213,20 +216,23 @@ class QueueWriter(QObject):
         token = self._track(done)
         self._revise.emit(token, job)
 
-    def record_history(self, entry: HistoryEntry, done: Callable[[str | None], None]) -> None:
-        """Persist one completed-download record. **Returns immediately** (`T-050`, `ARC-005`).
+    def complete(self, job: Job, entry: HistoryEntry, done: Callable[[str | None], None]) -> None:
+        """Persist a completion — job row and history row, one transaction. **Returns immediately.**
 
         Refused through the callback after `close()`, like every other submission: a caller waiting
-        to hear whether the record landed must not wait forever because shutdown got there first.
+        to hear whether the completion landed must not wait forever because shutdown got there
+        first.
 
-        **A failure here does not undo the download.** The file exists and the job row says
-        `COMPLETED`; a missing history entry is a lost record, not a lost download, so the caller
-        reports it rather than treating it as the completion failing.
+        **A failure here means the job did not complete**, which is the point of pairing them. The
+        previous shape reported a history failure while the job row already said `COMPLETED`, so the
+        caller had a success it could not withdraw and a record it could not write. Now either both
+        rows are there or neither is, and a failure is an ordinary failed transition that
+        `DownloadManager._settle` logs, surfaces, and withholds the success announcement for.
         """
         if self._closed:
             done("the queue writer is shutting down; nothing was saved")
             return
-        self._record_history.emit(self._track(done), entry)
+        self._complete.emit(self._track(done), (job, entry))
 
     def _track(self, done: Callable[[str | None], None]) -> int:
         token = self._next_token

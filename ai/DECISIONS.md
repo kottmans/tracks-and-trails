@@ -1415,7 +1415,8 @@ external billing state is not a measurement."*
 ### Why the frozen shape is not Phase 1's to answer
 
 - **Every frozen criterion in the plan belongs to Phase 0, and is met.** `IMPLEMENTATION_PLAN.md`
-  mentions a frozen artifact four times and all four are in §Phase 0, including its exit row:
+  mentions a frozen artifact **five** times and every one belongs to Phase 0 — including the
+  Phase-level risk-register row, which attributes itself to Phase 0 — among them its exit row:
   *"Frozen artifact spawns a child without relaunching itself, both platforms — `T-020`; `frozen
   ubuntu-latest` and `frozen windows-latest` green."* Phase 0 formally exited 2026-07-26.
 - **Phase 1's section names no frozen, install, virtualenv or packaging concern at all.** Its eight
@@ -1711,8 +1712,15 @@ a partial file has a defined meaning and per-job pause becomes coherent — at w
 **Status:** **Accepted** (2026-07-29) — maintainer decision, taken from the Implementer's
 recommendation
 **Date:** 2026-07-29
-**Supersedes:** nothing. **Discharges** `A-004`'s self-recorded *unverified* assumption of no
-concurrent instances against one database, which named enforcement as a Phase 2 task.
+**Supersedes:** nothing. **Addresses** `A-004`'s self-recorded *unverified* assumption of no
+concurrent instances against one database, which named enforcement as a Phase 2 task. It does **not
+discharge** it: `A-004` stays unverified until `T-087` lands and is tested. *(The header said
+"Discharges" while this entry's own Consequences said `A-004` stops being unverified only once
+`T-087` lands — `P2PLAN-R5` reported the contradiction.)*
+
+> **Amended 2026-07-29 — `QLocalServer` is not an exclusive lock, and the mechanism below is
+> withdrawn** (`P2PLAN-R5`). See the amendment at the end of this entry before implementing
+> anything from it. The **attach channel** reasoning survives; the **ownership** reasoning does not.
 
 ### Context
 
@@ -1765,3 +1773,54 @@ stale name and become the server.**
 - **A TCP socket on a fixed localhost port.** Rejected: it is visible to every other process and
   every other user on the machine, needs a port allocation policy, and can be firewalled — a
   networked answer to a local question.
+
+### Amended 2026-07-29 — the ownership primitive is withdrawn; `QLocalServer` stays only as the channel
+
+**Status:** **Accepted** (2026-07-29) — maintainer decision
+**Raised by:** `P2PLAN-R5`, on the Qt documentation rather than on a measurement
+
+**The decision above is wrong about the property it depends on.** It reasons that a failed connect
+proves the owner is gone, and therefore that becoming the server is safe. Qt 6's own
+`QLocalServer::listen` documentation states the opposite for the platform that matters most here:
+on Windows **two local servers can listen on the same pipe name simultaneously**, and an incoming
+connection may go to either of them.
+
+So the protocol *connect first, then claim* is not mutually exclusive. Two launches racing at
+startup can both fail their initial connect — neither is listening yet — and both then succeed at
+`listen()`. The result is two live instances against one database, which is precisely the
+two-writer state this entry opens by calling a data-integrity threat. `ARC-005` puts every write on
+one writer thread **within a process**; two processes have two writer threads and no shared lock.
+
+**What was actually established and what was assumed.** The crash-recovery reasoning is sound and
+survives: Windows destroys a named pipe when its owning process dies, and a killed process on Linux
+leaves the socket file behind, which is why any implementation must handle a stale name. What was
+assumed without checking is that *creating* the server is an atomic claim. It is not, and no amount
+of connect-first ordering makes it one.
+
+### Decision, revised
+
+**Ownership and messaging are two mechanisms, not one.**
+
+- **Ownership** is an atomic, kernel-backed exclusive lock on a file derived from the resolved
+  database path — `fcntl.flock` with `LOCK_EX | LOCK_NB` on POSIX, an exclusive-access open on
+  Windows. Both are released by the kernel when the holder dies, which is the property a PID file
+  cannot offer and the reason the original entry rejected PID files.
+- **`QLocalServer` / `QLocalSocket` remains the attach channel**, and only that. Everything the
+  original entry says about it being a channel rather than a flag still holds: it is what lets a
+  second launch hand over its URL and raise the first window instead of merely refusing. It is
+  started *after* ownership is won, and it is never the thing that decides who owns the database.
+
+Whoever wins the lock starts the channel. Whoever loses it connects to the channel and hands over.
+
+### What this changes for `T-087`
+
+- Its acceptance criteria must add **simultaneous** starts, not only stale-owner recovery. The
+  defect this amendment fixes is invisible to a sequential test: launch A, then launch B, and B's
+  connect succeeds, so the broken mechanism looks correct. Two launches racing is the case.
+- Tested on Linux **and** `STARBASE`, because the two halves are different system calls and the
+  Windows half is the one the withdrawn design got wrong.
+- `A-004` stays **unverified** until that lands.
+
+**This amendment reopens** if a Qt release documents `listen()` as exclusive on Windows, or if the
+exclusive-open approach proves unable to distinguish a live holder from a stale file — in which case
+the answer is a better ownership primitive, not a return to using the channel as one.

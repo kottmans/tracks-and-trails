@@ -200,24 +200,7 @@ class JobStore(Protocol):
 
     def update(self, job: Job, done: Callable[[str | None], None]) -> None: ...
 
-
-class HistorySink(Protocol):
-    """Where a completed download's durable record goes (`T-050`, `REQ-020`).
-
-    **A protocol taking a `Job`, not a `HistoryEntry`, and that is deliberate.** `T-050` requires
-    that this module import no `persistence` module; `HistoryEntry` lives there, because it is a
-    durable record rather than live domain state (`core/models.py` says so). So the manager hands
-    over the `Job` it already holds plus the one fact the job does not carry, and the implementation
-    projects. `persistence.PersistentJobStore` satisfies this; so does a list-backed fake.
-
-    `format_used` is `Succeeded.format_used` — the format yt-dlp *resolved*, never the request's
-    selector. Passing the selector here would defeat the point at the last call site.
-
-    Asynchronous for `ARC-005`'s reason: this is called from a completion callback on the GUI
-    thread, so `done` reports later, on the GUI thread, exactly once.
-    """
-
-    def record_completion(
+    def complete(
         self, job: Job, format_used: str | None, done: Callable[[str | None], None]
     ) -> None: ...
 
@@ -418,7 +401,6 @@ class DownloadManager(QObject):
         self,
         repository: JobStore,
         *,
-        history: HistorySink | None = None,
         parent: QObject | None = None,
         poll_interval_ms: int = DEFAULT_POLL_INTERVAL_MS,
         cooperative_seconds: float = DEFAULT_COOPERATIVE_SECONDS,
@@ -430,12 +412,6 @@ class DownloadManager(QObject):
     ) -> None:
         super().__init__(parent)
         self._repository = repository
-        #: Where completed downloads are recorded (`T-050`). Optional because most of this class's
-        #: behaviour has nothing to do with history and the tests that exercise cancellation,
-        #: crashes and process trees should not have to supply one. `None` means no history is
-        #: written — which is why the criterion that a completed download *does* write a row is
-        #: asserted against the real composition rather than against a fake sink alone.
-        self._history = history
         self._entry_point = entry_point
         self._cooperative_seconds = cooperative_seconds
         self._terminate_seconds = terminate_seconds
@@ -1443,7 +1419,11 @@ class DownloadManager(QObject):
                         finished_at=_now(),
                     ),
                 ),
-                then=lambda: self._on_completed(job_id, outcome),
+                # One transaction for the job row and its history row (`T050-R1`). The
+                # announcement stays in `then`, so it fires only after that transaction commits —
+                # there is no instant where the user is told it succeeded and the record is missing.
+                write=lambda job, done: self._repository.complete(job, outcome.format_used, done),
+                then=lambda: self.job_succeeded.emit(job_id, outcome.output_path),
             )
         elif isinstance(outcome, Probed):
             self._persist(
@@ -1486,31 +1466,6 @@ class DownloadManager(QObject):
         if is_terminal(job.status):
             return None
         return build(job, *arguments)
-
-    def _on_completed(self, job_id: str, outcome: Succeeded) -> None:
-        """Record the completed download, then announce it (`T-050`, `REQ-020`).
-
-        Runs from `_persist`'s success side, so `COMPLETED` is already on disk — which is why the
-        history entry can be built from the stored job rather than from what this method hoped was
-        stored. A row is written **only here**, on the `Succeeded` branch: a cancelled or failed job
-        writes none, because `REQ-020` is a record of what was obtained.
-
-        **A history failure is not a job failure.** The file exists and the job row says
-        `COMPLETED`; what failed is the supplementary record. So it reaches `persistence_failed`,
-        the channel for exactly that, and `job_succeeded` still fires — telling the user their
-        download failed because a history insert did would be false.
-        """
-        if self._history is not None:
-            job = self._repository.get(job_id)
-            if job is not None:
-                self._history.record_completion(
-                    job,
-                    outcome.format_used,
-                    lambda error: (
-                        None if error is None else self.persistence_failed.emit(job_id, error)
-                    ),
-                )
-        self.job_succeeded.emit(job_id, outcome.output_path)
 
     def _fail_loudly(self, job_id: str, session: _Session) -> None:
         """Record a session that cannot be believed as `WORKER_CRASH` (`REQ-028`, `REQ-018`).
@@ -1666,6 +1621,7 @@ class DownloadManager(QObject):
         *,
         then: Callable[[], None] | None = None,
         otherwise: Callable[[str], None] | None = None,
+        write: Callable[[Job, Callable[[str | None], None]], None] | None = None,
     ) -> None:
         """Persist, **then** signal (`T-013` acceptance criterion). **Waits for neither.**
 
@@ -1685,6 +1641,13 @@ class DownloadManager(QObject):
         as it stands then, and returning `None` says the transition no longer applies — a
         cancelled job whose progress message is still queued behind it, say. That is a normal
         outcome rather than an error, and it runs `otherwise` with its reason.
+
+        **`write` overrides which persistence operation is used** (`T050-R1`). It defaults to
+        `JobStore.update`; the completion branch passes `JobStore.complete`, which writes the job
+        row and its history row in one transaction. It is a parameter rather than a second method
+        here because everything else about the step — computing the revision when its turn comes,
+        settling, chain release, failure handling — is identical, and duplicating that is how the
+        two writes drifted into two transactions in the first place.
 
         A failed write is surfaced rather than swallowed, and **the success-side effect does not
         run**. It is deliberately not turned into a job failure: the download itself may be
@@ -1709,9 +1672,8 @@ class DownloadManager(QObject):
                 self._step_finished(job_id)
                 return
             assert isinstance(revised, Job)  # narrowed by the two checks above, for mypy
-            self._repository.update(
-                revised, lambda error: self._settle(revised, error, then, otherwise)
-            )
+            persist = write if write is not None else self._repository.update
+            persist(revised, lambda error: self._settle(revised, error, then, otherwise))
 
         self._enqueue(job_id, step)
 

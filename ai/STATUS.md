@@ -45,17 +45,22 @@ across two heads, 60 runs of the crashing test, 250 in-process iterations. Both 
 explicitly **not** established as the crash's cause: the pre-fix sample was equally clean, so a
 clean post-fix run carries no causal weight. `T-092` arms `STARBASE` to capture a crash dump so a
 recurrence answers criterion 2 — *a stack is not a cause* — instead of adding another anecdote.
-Calling criterion 7 met is the exit review's to record, not this file's.
+The exit review has since recorded criterion 7 as **met with accepted residual risk**; this file
+reports that verdict rather than deferring to it. *(This read "calling criterion 7 met is the exit
+review's to record, not this file's" after that review had recorded it — `COORD-R9`.)*
 
 **`T-066` no longer blocks the exit** (`OPS-005` amended 2026-07-29, maintainer decision). Its
 remaining frozen-artifact evidence can only be gathered on GitHub-hosted runners and the quota is
 out — the unreachable-environment condition `OPS-005` covers, which `OPS-006` states generally as
 *a criterion that waits on a payment is not a gate*. The amendment also records why the frozen
-shape was never Phase 1's question: all four frozen references in `IMPLEMENTATION_PLAN.md` are
-Phase 0's and met by `T-020`, Phase 1's section names none, and `T-033` owns the Windows frozen
-build in Phase 5. What that gives up is named there — the frozen process-tree shape stays reasoned
-rather than measured, and if the assumption is wrong `T-019`'s reaping evidence may not describe
-the shipped application. *(A reviewer disposition of 2026-07-29 called `T-066` a standing Phase 1
+shape was never Phase 1's question: **all five** frozen references in `IMPLEMENTATION_PLAN.md`
+belong to Phase 0 — its deliverable, its exit criterion, its evidence row, its rationale, and the
+Phase-level risk-register row at `:330`, which attributes itself to Phase 0 — while Phase 1's
+section names none, and `T-033` owns the Windows frozen build in Phase 5. *(This said "all four",
+counted case-sensitively and missing the risk-register row; the conclusion is unchanged, the count
+was wrong — `COORD-R9`.)* What that gives up is named there — the frozen process-tree shape stays
+reasoned rather than measured, and if the assumption is wrong `T-019`'s reaping evidence may not
+describe the shipped application. *(A reviewer disposition of 2026-07-29 called `T-066` a standing Phase 1
 blocker; it predates the amendment and stands in `ai/REVIEWS.md` as history.)*
 
 **Two things the phase exits with, named rather than hidden:**

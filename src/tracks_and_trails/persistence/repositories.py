@@ -161,6 +161,24 @@ def _job_to_values(job: JobModel) -> dict[str, Any]:
     }
 
 
+def _write_job(connection: sqlite3.Connection, job: JobModel) -> None:
+    """The `UPDATE jobs` statement, **without owning a transaction** (`T050-R1`).
+
+    Separated from `JobRepository.update` so that `complete_job` can put this statement and the
+    history insert inside **one** commit. A helper that opened its own transaction could not be
+    composed, and composing them is the whole point: a completed job whose history row is in a
+    second transaction can lose that row to a hard exit in between.
+    """
+    assignments = ", ".join(f"{name} = :{name}" for name in _JOB_COLUMNS if name != "id")
+    # S608: see `JobRepository.add` — literal identifiers interpolated, values parameterised.
+    cursor = connection.execute(
+        f"UPDATE jobs SET {assignments} WHERE id = :id",  # noqa: S608
+        _job_to_values(job),
+    )
+    if cursor.rowcount == 0:
+        raise KeyError(f"no job with id {job.id!r} to update")
+
+
 class JobRepository:
     """Durable storage for jobs and their queue order (`REQ-012`).
 
@@ -230,15 +248,8 @@ class JobRepository:
         Raising rather than inserting: an update to a row that vanished means the caller's model
         of the queue is wrong, and silently recreating it would hide that.
         """
-        assignments = ", ".join(f"{name} = :{name}" for name in _JOB_COLUMNS if name != "id")
         with self._connection:
-            # S608: see `add` — literal identifiers interpolated, every value parameterised.
-            cursor = self._connection.execute(
-                f"UPDATE jobs SET {assignments} WHERE id = :id",  # noqa: S608
-                _job_to_values(job),
-            )
-        if cursor.rowcount == 0:
-            raise KeyError(f"no job with id {job.id!r} to update")
+            _write_job(self._connection, job)
 
     def get(self, job_id: str) -> JobModel | None:
         row = self._connection.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
@@ -371,6 +382,45 @@ def _row_to_history(row: sqlite3.Row) -> HistoryEntry:
     )
 
 
+def _write_history(connection: sqlite3.Connection, entry: HistoryEntry) -> None:
+    """The history upsert, **without owning a transaction** (`T050-R1`). See `_write_job`."""
+    columns = ", ".join(_HISTORY_COLUMNS)
+    placeholders = ", ".join(f":{name}" for name in _HISTORY_COLUMNS)
+    assignments = ", ".join(
+        f"{name} = excluded.{name}" for name in _HISTORY_COLUMNS if name != "id"
+    )
+    # S608: see `JobRepository.add` — the interpolated text is `_HISTORY_COLUMNS`, a module-level
+    # tuple of literal identifiers, and every value goes through a named placeholder.
+    connection.execute(
+        f"INSERT INTO history ({columns}) VALUES ({placeholders}) "  # noqa: S608
+        f"ON CONFLICT(id) DO UPDATE SET {assignments}",
+        _history_to_values(entry),
+    )
+
+
+def complete_job(connection: sqlite3.Connection, job: JobModel, entry: HistoryEntry) -> None:
+    """Store the completed job **and** its history record in one transaction (`T050-R1`).
+
+    **This exists because two transactions are not atomic and a crash found the gap.** The first
+    version persisted `COMPLETED`, returned to the GUI thread, and only then queued the history
+    insert. A deterministic probe held GUI event delivery, waited for the completion to commit, and
+    hard-exited the process: the restart observed `job_status='completed', history=None`. Nothing
+    backfills history at startup and `format_used` exists nowhere else, so the record was gone for
+    good — `REQ-012`'s unexpected-termination promise and `REQ-020`'s durable record both broken by
+    a silent, irreversible loss.
+
+    One `with connection:` block means SQLite commits both statements or neither. There is no
+    instant at which a job is durably complete without the record of what it obtained.
+
+    Ordered job-first only because `_write_job` raises `KeyError` for a row that is not there, and
+    failing before writing history keeps the error about the thing that is actually wrong. Both
+    statements are inside the transaction either way, so the order is not what makes it safe.
+    """
+    with connection:
+        _write_job(connection, job)
+        _write_history(connection, entry)
+
+
 class HistoryRepository:
     """The completed-download record (`REQ-020`, `T-050`).
 
@@ -405,21 +455,13 @@ class HistoryRepository:
 
         One statement, one commit, matching `JobRepository`'s guarantee: there is no state in which
         half an entry is visible or survives a kill (`NFR-003`).
+
+        **This is not the path a completing download takes** — see `complete_job`, which writes the
+        job row and this row in one transaction because two transactions can be separated by a hard
+        exit (`T050-R1`).
         """
-        columns = ", ".join(_HISTORY_COLUMNS)
-        placeholders = ", ".join(f":{name}" for name in _HISTORY_COLUMNS)
-        assignments = ", ".join(
-            f"{name} = excluded.{name}" for name in _HISTORY_COLUMNS if name != "id"
-        )
         with self._connection:
-            # S608: see `JobRepository.add` — the interpolated text is `_HISTORY_COLUMNS`, a
-            # module-level tuple of literal identifiers, and every value goes through a named
-            # placeholder.
-            self._connection.execute(
-                f"INSERT INTO history ({columns}) VALUES ({placeholders}) "  # noqa: S608
-                f"ON CONFLICT(id) DO UPDATE SET {assignments}",
-                _history_to_values(entry),
-            )
+            _write_history(self._connection, entry)
 
     def get(self, entry_id: str) -> HistoryEntry | None:
         row = self._connection.execute("SELECT * FROM history WHERE id = ?", (entry_id,)).fetchone()
