@@ -6805,3 +6805,96 @@ non-blocking current-truth drift carried to T-095.
 **Do not merge `e2e60e9..f4384b0` as an approved boundary.** T-093 and T-094 require correction
 and focused re-review. The missing Windows execution remains required for T-093's writer-thread
 correction.
+
+## 2026-07-29 — T-050 / P2PLAN-R2 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `90be487`  **Head:** `67535b7`
+**Boundary treatment:** `90be487` is the prior review record and is not re-reviewed.
+`f858da9` is the correction implementation; `67535b7` adds only the STARBASE evidence.
+**Verdict:** **Changes requested — the production correction is atomic, but its required
+regression gate does not reject a split transaction**
+
+T050-R2 and T050-R3 are Resolved. P2PLAN-R5 is Resolved, so the ARC-006 half of P2PLAN-R2 is
+approved alongside the UX-001 half accepted in the initial review. COORD-R9's three named
+contradictions are corrected. T050-R1 remains open because the correction's production behavior
+passes independent fault injection but the acceptance criterion requiring a transaction-split
+mutation to fail is not met.
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T093-R1` | **Medium** | **Yes — T-093 / T-050** | `test_manager.py:3468-3550` hard-exits only from `settled`, after `_Worker._perform` has returned and therefore after every statement in `complete_job` has finished. In an isolated archive I changed `complete_job` from one `with connection:` block to two consecutive blocks, leaving every other line alone. The committed hard-exit test still passed. A separate child that replaced `_write_history` with `os._exit(0)` distinguished the shapes exactly: current code restarted as `{'status': 'queued', 'history': None}`, while the split mutation restarted as `{'status': 'completed', 'history': None}`. The production fix is correct; the committed gate does not gate its defining invariant or satisfy T-093:737-738. | In the subprocess, inject the hard exit immediately before the history statement—not after the success callback—and accept either both rows or neither. The unmodified code must produce neither at that injection; splitting the transaction must produce `COMPLETED` without history and fail. Keep the current after-callback case separately if desired as a positive durability check. | **Open — T-093** |
+| `COORD-R10` | **Medium** | **Yes — T-095** | T-095:834-835 requires the start-here/readiness summaries to account for T-093 and T-094. `TASKS.md:15-18` and `STATUS.md:15-17` still name only P2PLAN-R1/R2/R3, while T-093, T-094 and T-095 all say In Review at `TASKS.md:696`, `:759` and `:805` but remain physically under `## Ready` (`:295-838`). The correction therefore repeats the status/section contradiction COORD-R9 existed to remove and materially misstates the review queue. | Reconcile both start-here summaries with this disposition; put T-093 and T-095 under In Review, file approved T-094 Complete, and keep P2PLAN-R1/R3 open. T-085 remains blocked on T-050 until T093-R1 clears. | **Open — T-095** |
+
+### Original-finding disposition
+
+| Finding | Result |
+|---|---|
+| `T050-R1` | **Open pending T093-R1.** `complete_job()` itself is one real SQLite transaction and fault injection proved rollback, but its required regression mutation survives the committed gate. |
+| `T050-R2` | **Resolved.** The optional `HistorySink` path is gone. Completion failure now takes `_persist`'s ordinary error path, logs on the stable `tracksandtrails.manager` logger, emits `persistence_failed`, and returns before `job_succeeded`. |
+| `T050-R3` | **Resolved.** The tuple/list comparison is gone and both configured whole-project type gates pass on 78 files. |
+| `P2PLAN-R5` | **Resolved.** ARC-006 withdraws QLocalServer as ownership, keeps it only as the attach channel, specifies kernel-backed exclusive ownership on both platforms, adds simultaneous-start evidence to T-087, and leaves A-004 unverified. |
+| `COORD-R9` | **Resolved as written.** Criterion 7 tense, the five-reference count, and T-050's filing are corrected. COORD-R10 is the correction batch's new readiness/placement contradiction. |
+
+### What passed re-review
+
+**Atomic production path.** `DownloadManager` sends the completed `Job` and resolved format
+through required `JobStore.complete`; `PersistentJobStore` projects the `HistoryEntry`; one
+QueueWriter signal carries both objects to the existing writer-thread connection; and
+`complete_job()` executes both SQL statements inside one `with connection:` transaction.
+Forcing the history insert to abort left the stored job `QUEUED` and history absent, proving
+rollback rather than a partial commit. SQLite's default `check_same_thread=True` remains in
+force, and submit/revise still construct their repository operations inside the writer slot.
+
+**Failure and layering.** A completion error runs `_settle`'s stable error log and
+`persistence_failed` branch and returns before `job_changed` or `job_succeeded`. The manager
+imports no persistence module. `app.compose()` has no optional history argument left to omit;
+the concrete store supplies the required `complete` operation.
+
+**ARC-006.** The amendment engages Qt's documented Windows non-exclusivity directly and separates
+ownership from messaging. A POSIX nonblocking exclusive `flock` is atomic. On Windows, an
+exclusive-access file open with sharing mode zero prevents a second open until the owning handle
+closes, which is the required kernel-released property
+([Microsoft CreateFile documentation](https://learn.microsoft.com/en-us/windows/win32/fileio/creating-and-opening-files)).
+T-087 now owns simultaneous-start and killed-owner tests on Linux and STARBASE; implementation
+remains future work, and A-004 remains unverified.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary / working tree | `90be487..67535b7`; clean before reviewer documentation edits; `HEAD == origin/main == 67535b7` |
+| `git diff --check 90be487..67535b7` | Passed |
+| Authorship / trailers | Sean Kottman for both commits; no AI author or co-author trailer |
+| Focused correction set | **503 passed, 3 skipped in 122.51 s** with loopback sockets allowed |
+| Initial sandboxed focused attempt | **12 failed, 491 passed, 3 skipped**; every failure was `PermissionError: [Errno 1]` at local socket creation. The permitted rerun above passed. |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **106 files** already formatted |
+| Bare `mypy` | Passed; **78 files** |
+| Bare `mypy --platform win32` | Passed; **78 files** |
+| Forced history-insert failure | Passed: exception raised, stored job remained `QUEUED`, history absent |
+| Between-statement hard exit, current code | Passed atomicity: restart found `QUEUED`, history absent |
+| Literal one-transaction → two-transaction mutation | **Survived the committed gate:** the named hard-exit test passed |
+| Between-statement hard exit, split mutation | Reproduced the forbidden state: restart found `COMPLETED`, history absent |
+| STARBASE run `30506962680` | Independently queried: head `f858da9`; `windows desktop` successful; Windows mypy **78 files**; named hard-exit test passed; full suite **1438 passed, 20 skipped, 32 deselected** |
+| Hosted jobs in that run | Four failures, each with zero steps; consistent with the recorded billing/quota condition, not test evidence |
+| Full default suite | **1449 passed, 11 skipped, 2 deselected in 183.66 s** |
+
+All mutation archives and probes lived under `/tmp`; no reviewed source or test file was changed.
+The STARBASE evidence is at
+[GitHub run 30506962680](https://github.com/kottmans/tracks-and-trails/actions/runs/30506962680).
+
+### Final disposition
+
+The T-050 production implementation is corrected, including the silent-failure and type-gate
+findings, and its Windows execution is real. It is nevertheless **not approved** because the one
+regression test T-093 explicitly requires passes when the transaction is split. T050-R1 therefore
+stays open through T093-R1, and T-085 remains blocked on T-050.
+
+P2PLAN-R2 is **Approved**: UX-001 was already accepted and amended ARC-006 now has an exclusive
+ownership primitive rather than treating QLocalServer as one. T-094 may be filed Complete.
+
+T-095 is **Changes requested** because its correction left all three correction tasks under
+`## Ready` while their own statuses say In Review and omitted them from both readiness summaries.
