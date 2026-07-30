@@ -966,6 +966,74 @@ Scope, precisely:
   cloud backup, or a bug report attaching it — because the disclosure calculus above depends on
   it. Whoever proposes such a feature revisits this entry.
 
+### Amended 2026-07-30 — the boundary is provenance, and the table above overstated it (`T-049`)
+
+**Status:** **Accepted** (2026-07-30) — maintainer decision
+**Amends:** the *Decision* section's scope table and its "only residue" claim. The decision itself —
+verbatim storage, with `REQ-026` read as binding on values this application supplies — is unchanged
+and is what everything below rests on.
+
+**Amended rather than rewritten in place.** `T-049` asked for the table to be rewritten; `AGENTS.md`
+§6 makes `ai/DECISIONS.md` a historical record that is appended to and never silently rewritten. The
+superseded rows stay above so the overstatement is visible, which is the point of finding it.
+
+#### Three things the table got wrong
+
+**1. "Credentials — never in the database. Structural: unrepresentable in the model" is false.**
+`DownloadRequest` rejects userinfo in `proxy` and **not** in `url`. Measured 2026-07-30:
+`DownloadRequest(url="https://alice:s3cret@example.com/v", …)` is accepted, and
+`persistence/repositories.py` stores the job URL **verbatim on purpose** — *"because it **is** the
+job; `REQ-012`'s queue and `REQ-020`'s history are both unusable without it, and a retry cannot
+reconstruct it."* So a credential the **user typed into a URL** can be in the database. It is not
+one this application supplies, which is why the decision still holds — but the guarantee was stated
+one level too strongly.
+
+**2. `cookies_from_browser` is a browser *name* by intent, not by construction.** The table says
+"a browser *name*, not a path". The model requires only non-empty text: measured,
+`cookies_from_browser="/home/u/.mozilla/cookies.sqlite"` is accepted. Nothing supplies a path today,
+so no path reaches the database — but "none exist" describes current callers, not an invariant.
+
+**3. "the only residue" cannot be established.** It is an exhaustive claim about the contents of
+arbitrary third-party prose. yt-dlp can name anything in a diagnostic, and no reading of its source
+at one version bounds what a later one says. This is the enumeration failure `T-044`, `T-045` and
+`T-014` each produced and `ai/TESTING.md` §13 records — an enumerated set treated as complete.
+
+#### The boundary, stated as provenance
+
+`REQ-026`'s exclusion binds on **who put the value there**, not on what the value looks like:
+
+| Provenance | In the database? | How that is guaranteed |
+|---|---|---|
+| **Values this application supplies** — a proxy's credentials, a cookie path it holds or passes, cookie contents | **Never** | Structural for proxy userinfo (unrepresentable). By construction for cookies: nothing reads a jar, and nothing supplies a path |
+| **Values the user typed** — a source URL, which may carry userinfo | **Yes, verbatim** | Deliberate. The URL *is* the job; a retry cannot reconstruct it. Not this application's secret to withhold from the user's own local database |
+| **Prose a third party emitted** — any yt-dlp diagnostic | **Yes, verbatim** | `NFR-006` requires it intact. **No claim is made about what it may contain** |
+
+**What replaced the exhaustive claim:** nothing enumerates. The guarantee is about the first row and
+is silent about the third by design, which is the only form of it that two failed recognisers did not
+already disprove.
+
+#### `T-038` is unchanged and origin-agnostic
+
+Every log this application **emits** is redacted, whatever the provenance of the text inside it.
+That is not in tension with the table: storage and emission are different sinks with different
+rules, and the supplied-value rule binds emission in full. A yt-dlp diagnostic stored verbatim in
+the database is still redacted on its way into a log file.
+
+#### Reopening conditions, extended
+
+The original condition stands — sync, export, cloud backup, or a bug report attaching the database.
+Added:
+
+- **Cookie-file support.** `REQ-026` already promises it. The moment the application holds a cookie
+  *file path*, row one of the table above acquires a member it does not have today, and this decision
+  must be revisited **before** that lands, not after.
+- **Any other secret-bearing persisted field**, by the same reasoning.
+- **Constraining `url` or `cookies_from_browser` at construction.** If either gains a validator, the
+  "by intent, not by construction" caveats above become real invariants and this entry should say so.
+  That is a `T-049`-adjacent change, not part of it — `T-049` is explicitly barred from touching
+  `T-014`'s approved persistence code or the model.
+
+
 ---
 
 ## SEC-002 — A fixture commits values only for the fields the projection reads
