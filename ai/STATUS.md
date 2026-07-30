@@ -5,20 +5,23 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-29
-**Last verified against repository:** 2026-07-29
+**Last updated:** 2026-07-30
+**Last verified against repository:** 2026-07-30
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
 ---
 
 **Current phase:** **Phase 2 — Queue and concurrency.** **Phase 1 formally exited 2026-07-29**;
-Phase 0 exited 2026-07-26. **No Phase 2 task is Ready yet.** `P2PLAN-R1` (pause contract) and
-`P2PLAN-R3` (concurrency configuration surface) still gate the first promotion out of Proposed;
-neither needs production work. `P2PLAN-R2` is **approved** — `UX-001` and the amended `ARC-006`
-both stand. **In review:** `T-050`, `T-093` and `T-095`; `T-094` is approved and filed Complete.
-`T-085` stays blocked on `T-050` until `T093-R1` clears. *(This block named only the three
-`P2PLAN` findings while three correction tasks were in review — `COORD-R10`.)*
+Phase 0 exited 2026-07-26. **Nothing is in review.** `T-050`, `T-093` and `T-095` were approved at
+`6d14e78` on 2026-07-30, carrying non-blocking `T-096`; `T-094` and `P2PLAN-R2` were approved
+earlier at `f858da9`. **`T-085` is unblocked** — `T-050` writes the table it reads — and `T-049` and
+`T-047` need nothing either, so three tasks can start today. No Phase 2 *deliverable* is Ready:
+`P2PLAN-R1` (pause contract) and `P2PLAN-R3` (concurrency configuration surface) still gate the
+first promotion out of Proposed, and neither needs production work. `P2PLAN-R3` is the one that
+matters — `T-078` is the choke point eight tasks descend from. *(This block named only the three
+`P2PLAN` findings while three correction tasks were in review — `COORD-R10`; it then reported them
+as in review after they were approved.)*
 **Overall state:** Phase 0's five exit criteria were each verified rather than asserted, and the
 evidence is recorded in `IMPLEMENTATION_PLAN.md` §Phase 0 — including a fresh mutation run
 proving the layering test still fails on a deliberate `PySide6` import in `core/`.

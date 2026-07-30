@@ -5,7 +5,7 @@
 **Owner:** Planner (creates/prioritizes) · Implementer and Reviewer (update status)
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-29
+**Last updated:** 2026-07-30
 **Update when:** A task starts, blocks, changes scope, completes, or is cancelled.
 **Does not contain:** Phase planning (`IMPLEMENTATION_PLAN.md`), progress narrative (`STATUS.md`).
 
@@ -13,22 +13,24 @@ Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete �
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
 **Start here: Phase 1 exited 2026-07-29.** All eight criteria are met and the exit review is in
-`ai/REVIEWS.md`. **The current phase is Phase 2, and nothing in it is Ready yet.**
+`ai/REVIEWS.md`. **The current phase is Phase 2.** No Phase 2 *deliverable* is Ready — two planning
+findings gate the first promotion — but `T-085`, `T-049` and `T-047` can start now.
 
-**The live queue, in full** (`COORD-R10` — this list omitted the correction tasks while all three
-claimed In Review):
+**The live queue, in full:**
 
-- **In Review:** `T-050` (the history table), `T-093` (`T093-R1` corrected — the atomicity gate now
-  rejects a split transaction), `T-095` (`COORD-R10` corrected — this list is the correction).
-- **Approved and filed Complete:** `T-094`. `P2PLAN-R2` is approved with it: `UX-001` and the
-  amended `ARC-006` both stand, and the revised ownership mechanism agrees with Qt's documented
-  limitation. `T-087` is unblocked *on the decision*; its implementation is still Proposed.
-- **Still gating Phase 2:** `P2PLAN-R1` (the pause contract) and `P2PLAN-R3` (the concurrency
-  configuration surface). Neither needs production work, and `P2PLAN-R3` is the one that matters
-  most — `T-078` is the choke point eight tasks descend from.
-- **`T-085` stays blocked on `T-050`** until `T093-R1` clears.
+- **In Review:** nothing.
+- **Approved 2026-07-30 at `6d14e78`:** `T-050`, `T-093`, `T-095`. `T-094` and `P2PLAN-R2` were
+  approved earlier at `f858da9` — `UX-001` and the amended `ARC-006` both stand. One follow-up
+  carried: **`T-096`**, a documentation-invariant test so status and section agree mechanically.
+- **Unblocked and startable now:** **`T-085`** — `T-050` writes the table it reads — plus `T-049`
+  and `T-047`. None of the three waits on `T-078`.
+- **Still gating Phase 2:** `P2PLAN-R1` (pause contract) and `P2PLAN-R3` (concurrency configuration
+  surface). Neither needs production work. `P2PLAN-R3` matters most: `T-078` is the choke point
+  eight tasks descend from.
+- **Ready, blocking nothing:** `T-074` (Medium, `OPS-007` residual), `T-089`, `T-091`, `T-092`
+  (needs maintainer consent before writing to `STARBASE`), `T-096`.
 
-That, plus `P2PLAN-R1` and `R3`, is the next work.
+`P2PLAN-R3`, then `P2PLAN-R1`, then `T-078` is the critical path.
 
 **Two Phase 1 blockers were dispositioned by maintainer decision rather than completed, and the
 exit review upheld both while keeping them open.** `T-066` by the `OPS-005` amendment (its frozen
@@ -53,8 +55,9 @@ crash-dump trap and a recurrence returns `T-074` to High.
   the evidence lands with `T-033` in Phase 5. `T-033` and `T-039` are Phase 5.
 - **Ready, blocking nothing:** `T-089` (Low, MP3 bitrate UI contract), `T-091` (Medium, carried
   from `T090-R1`/`T090-R2` — `dequeue()` treats every `OSError` as end-of-stream, wider than its own
-  contract), and `T-092` (Medium, the `OPS-007` dump trap; needs the maintainer's consent before
-  anything is written to `STARBASE`).
+  contract), `T-092` (Medium, the `OPS-007` dump trap; needs the maintainer's consent before
+  anything is written to `STARBASE`), and `T-096` (Low, make task status/section agreement
+  mechanically checkable after six recurrences).
 - **Open, not phase blockers** (`OPS-005`): `T-056` and `T-068`. Both need a GitHub-hosted image,
   neither is a defect a user would meet.
 - **Complete:** `T-040`, `T-060`, `T-064`, `T-065`, `T-067`, `T-069`, `T-070`, `T-071`, and now
@@ -108,333 +111,13 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**Holds `T-050` as of 2026-07-29** — corrected after `T050-R1`, `T050-R2` and `T050-R3`, awaiting
-the focused re-review of those corrections. `T-090`, `T-072` and `T-073` were approved and are filed
-Complete; `T-074` is Ready, not here, because `T074-R4` found its "diagnosed and fixed" unsupported
-and what was fixed is `T-090`.
-`COORD-R9` is why `T-050` is here rather than under `## Proposed — Phase 2`, where it sat while its
-own status line said In Review — the same placement drift `COORD-R5` through `R8` each reported, and
-this section's note claimed emptiness while it was true of nothing.
-`COORD-R8` is why the three approved tasks moved at once. Its wording says "narrow In Review to
-`T-074`", which was current when written and is not now: the `T-074`/`T-090` split happened
-afterwards, so the section emptied rather than narrowed. Filed from the dispositions rather than
-from the finding's letter.
-`COORD-R2` is why this section carries a note at all rather than sitting blank: an empty section
-is a claim about readiness, and the last time it was left unlabelled it outlived being true by one
-CI run. It was briefly empty on 2026-07-28 after `COORD-R5`'s refiling, and this note went on
-claiming that after `T-073` was filed In Review under `## Ready` — `COORD-R6`, which is
-`COORD-R5`'s own failure mode recurring one day later. `T-075`, `T-076` and `T-077` were left here
-after approval, which is the placement drift `COORD-R7` reported. The lesson this file keeps
-relearning is that the claim has to be rewritten when the section changes, not when someone
-notices.)*
-
-### T-093 — Make completion and history one crash-atomic write
-
-**Status:** **In Review — `T093-R1` corrected 2026-07-29.** The production fix was already right;
-the *gate* was not, and that is what this correction replaces. The hard-exit test exited from the
-settlement callback — after every statement in `complete_job` had run — so a split transaction
-passed it and the mutation criterion was unmet. **The gate now injects the exit between the two
-statements** (`repositories._write_history` becomes `os._exit`), and a bare split fails it with no
-help from the mutation: `COMPLETED` with `history=None`, the state `T050-R1` reported. The
-after-callback case is kept beside it, relabelled as the positive durability check it always was.
-`T050-R2` and `T050-R3` remain Resolved. See **`T093-R1` — the gate that could not fail** below.
-**Owner:** Implementer
-**Priority:** **Critical** — a hard exit can leave a completed job with its required history row
-silently and irrecoverably absent
-**Phase:** Phase 2; blocks T-050 approval
-**Depends on:** T-050 implementation head `f4384b0`
-**Relevant context:** `REQ-012`, `REQ-020`, `ARC-005`, `T050-R1`, `T050-R2`, `T050-R3`
-**Affected surfaces:** `downloader/manager.py`, `persistence/store.py`,
-`persistence/repositories.py`, `persistence/writer.py`, composition and tests
-**Risk:** Critical — this is durable-record loss in the exact unexpected-termination case the
-SQLite design exists to survive
-
-#### Scope
-
-T-050 writes `COMPLETED` first, waits for the writer's callback on the GUI thread, and only then
-queues the history insert. A deterministic child probe exited after the first commit and before
-processing that callback; restart found `job_status=completed` and `history=None`. No recovery path
-backfills it, and `format_used` exists nowhere else.
-
-Make the job's completed state and its `HistoryEntry` one transaction on the writer thread. Keep
-the manager free of persistence imports by expressing completion through an injected protocol,
-but do not leave a production composition in which the required history behavior can be silently
-disabled with `history=None`.
-
-The failure path also needs an owner. At `f4384b0`, a history write error emits
-`persistence_failed`, but the composed application has no stable receiver for that signal; only a
-temporary Add-URL dialog listens, and it ignores jobs it is not withdrawing. A lost history record
-is therefore silent during an ordinary completed download.
-
-Finally, correct the new cancellation assertion whose tuple-versus-list comparison fails both
-required whole-project mypy gates.
-
-#### Acceptance criteria
-
-- The completed job update and history insert commit or roll back **together** on the existing
-  writer-thread connection; there is no committed `COMPLETED` row without its history row
-- A subprocess test hard-exits at the former between-write boundary and proves restart sees either
-  both durable records or neither. Splitting the transaction makes that test fail
-- Existing `submit` and `revise` paths still construct and use their repositories on the writer
-  thread with SQLite's default `check_same_thread=True`
-- A completion-persistence failure reaches a stable application-level consumer or log even when no
-  Add-URL dialog exists, and success is not announced for a transaction that rolled back
-- The manager still imports no persistence module, and the real `app.compose()` graph supplies the
-  required completion dependency
-- Bare `mypy` and `mypy --platform win32` pass, in addition to the source, lint, format, focused,
-  full-unit, full-integration and full-default gates
-- The writer-thread and completion tests pass on `STARBASE`; the T-050 Windows half has not run yet
-
-#### Out of scope
-
-- History UI, retention, export or backfill of records lost by old builds
-- Changing the six facts `REQ-020` names
-- Phase 2 queue concurrency
-
----
-
-### T-095 — Reconcile the post-exit and T-050 review queue
-
-**Status:** **In Review — `COORD-R10` corrected 2026-07-29.** `COORD-R9`'s three named
-contradictions are Resolved. `COORD-R10` then found the same class inside this task's own
-correction, which is the part worth keeping: `T-093`, `T-094` and `T-095` each said In Review while
-sitting physically under `## Ready`, and neither readiness summary named them. Now filed where their
-statuses say — `T-093` and `T-095` In Review, approved `T-094` Complete — and both `TASKS.md`'s
-start-here list and `STATUS.md`'s current-phase block account for all three.
-**Owner:** Planner / Coordinator
-**Priority:** Low
-**Phase:** Phase 2 coordination
-**Depends on:** the T-050 / P2PLAN-R2 review disposition
-**Relevant context:** `COORD-R9`, the 2026-07-29 Phase 1 exit review
-**Affected surfaces:** `ai/STATUS.md`, `ai/TASKS.md`
-**Risk:** Low — current-truth navigation is contradictory, but product behavior is unaffected
-
-#### Scope
-
-`STATUS.md` first says criterion 7 is met, then retains the pre-review sentence saying the exit
-review is still the place to decide whether it is met. It also repeats the “all four frozen
-references” count without the fifth Phase 0 risk-register mention the exit review explicitly
-identified.
-
-`TASKS.md` declares `## In Review` empty while T-050's entry says In Review under
-`## Proposed — Phase 2`. Reconcile those statements with this review's Changes-requested verdict
-and the correction tasks above.
-
-#### Acceptance criteria
-
-- STATUS describes criterion 7 as already decided, with the accepted residual still explicit
-- The frozen-reference summary matches the exit review's actual wording
-- T-050 appears under the section its review state names, and the `## In Review` prose agrees
-- The start-here and Phase 2 readiness summaries account for T-093 and T-094 without implying
-  P2PLAN-R1 or P2PLAN-R3 is resolved
-
----
-
-### T-050 — Write the history table
-
-**Status:** **Changes requested — T093-R1**, 2026-07-29. The production correction is one
-transaction and T050-R2/R3 are Resolved, but the required hard-exit regression gate still passes a
-literal split into two transactions. T050-R1 remains open until that gate rejects the split. See
-**Focused correction re-review, 2026-07-29**.
-*(This read "In Review — implemented" and claimed the row "is written from the manager through an
-injected sink" — which was the defect. `T050-R1` found that the sink wrote in a **second**
-transaction. Before that this read "Proposed — Ready now".)*
-
-#### Corrections, 2026-07-29
-
-**`T050-R1` (Critical) — completion is now one transaction.** `complete_job()` writes the job row
-and the history row inside one `with connection:` block, so SQLite commits both or neither. The path
-changed shape rather than gaining a guard: `HistorySink` is **gone**, merged into
-`JobStore.complete`, and `_persist` takes the write operation, so the completion branch differs from
-every other
-transition in exactly one argument. The old two-step arrangement is not reachable — there is no
-longer a method that writes history alone on the completion path.
-
-**The gate is the defect's own reproduction.**
-`test_a_hard_exit_cannot_separate_a_completion_from_its_history` runs a subprocess that `os._exit`s
-from inside the completion callback — no `atexit`, no flush, no Qt teardown — then reads the
-database back. **Mutation: restoring the two-transaction shape and dying in the window fails it
-with the reviewer's exact observation**, a durably `COMPLETED` job and `history=None`.
-
-#### `T093-R1` — the gate that could not fail, 2026-07-29
-
-**The stated limit above was the finding.** That paragraph admitted the mutation supplied its own
-`os._exit` between the statements, and treated it as a caveat. It is not a caveat: if the mutation
-does the discriminating, the test does none. Splitting `complete_job` into two consecutive
-`with connection:` blocks — changing nothing else — left the committed hard-exit test **passing**.
-It exited from the settlement callback, after `_Worker._perform` had returned and therefore after
-every statement had already run. `ai/TESTING.md` §13's shape: a guard nobody watches fail.
-
-**The gate now injects the exit inside the transaction.** The child replaces
-`repositories._write_history` with `os._exit(17)`, so the job statement has executed and the history
-statement never will, and the process stops existing before either commits. Nothing about the
-mutation participates.
-
-| Shape | Restart state | Verdict |
-|---|---|---|
-| Atomic (current) | `status='queued'`, `history=None` — **neither** | passes |
-| Split into two transactions | `status='completed'`, `history=None` | **fails**, exactly `T050-R1` |
-
-`test_a_hard_exit_after_a_completion_settles_keeps_both_rows` is kept beside it and **relabelled as
-what it always was** — a positive durability check that WAL holds a settled completion. It still
-passes under the split, and its docstring says so, so nothing reads it as the atomicity gate again.
-
-**`T050-R2` (Medium) — the silent path is gone rather than routed.** Because both rows now settle
-together, a failed history write **is** a failed completion, so it travels the ordinary
-`_persist`/`_settle` path: logged at `error` on the `<slug>.manager` logger, delivered to
-`otherwise`, emitted on `persistence_failed`, and — the part that matters — `then` does not run, so
-`job_succeeded` is never announced for a completion that did not land. There is no longer a state in
-which the user is told it worked and the record is missing. The optional `history=None` constructor
-route is also gone: `complete` is on the required `JobStore` protocol.
-
-**`T050-R3` (Medium) — the required gate now actually runs.** `active_job_ids()` returns
-`tuple[str, ...]` and a new test compared it with `[]`. **My error was running `mypy src` (35 files)
-and reporting it as the gate**; `ai/TESTING.md` §3 requires whole-project `mypy` and
-`mypy --platform win32`, which are 78 files and were both red. Both pass now. Adding `complete` to
-the protocol then failed 19 more type errors across four test files — every fake `JobStore` — and
-one of those, `_EmptyStore` in `tests/ui/test_windows_desktop.py`, was visible **only** under
-`--platform win32`. `AGENTS.md` §8's "a host-only check is not the whole gate", found by the gate
-that exists for it.
-
-| Check | Result |
-|---|---|
-| Whole-project `mypy` | **78 files, clean** (was 1 error) |
-| Whole-project `mypy --platform win32` | **78 files, clean** (was 3 errors) |
-| Two-transaction mutation, hard exit in the window | **killed** — `COMPLETED` with `history=None` |
-| Selector-instead-of-resolved-format mutation | **killed, 3/3** (unchanged) |
-| ruff, ruff format | clean |
-| Full suite, Linux | **1450 passed, 11 skipped, 2 deselected** |
-| **Full suite on `STARBASE`**, run `30506962680` | **1438 passed, 20 skipped, 32 deselected** — job `windows desktop` green |
-
-**Windows has now executed all of it**, which the previous round could not claim. Run
-`30506962680`'s self-hosted job ran every new test and passed each: the hard-exit atomicity gate,
-the three format tests, the history round-trips and the composition test. That gate mattering on
-Windows is not incidental — `os._exit` against SQLite's WAL and a live `QueueWriter` thread is
-platform behaviour, and the transaction change is the part of `T-050` most likely to differ there.
-
-*The four GitHub-hosted jobs in that run failed at **zero steps in four seconds**, on the billing
-annotation — the exhausted quota `OPS-005` and `OPS-006` already cover, not a result.*
-
-#### Focused correction re-review, 2026-07-29
-
-T050-R2 and T050-R3 are **Resolved**. T050-R1's production defect is corrected: forced failure of
-the history statement rolls the job update back, and a hard exit immediately before that statement
-restarts with neither record. **T093-R1 remains blocking**, however: the committed test exits only
-after the completion callback, so splitting `complete_job()` into two consecutive transactions
-still passes it. The test must inject the exit between the two statements; current code must yield
-neither row and the split mutation must yield the forbidden `COMPLETED`-without-history state.
-**Owner:** Implementer
-**Priority:** Medium — `REQ-020` has no owner without it, and the table already exists empty
-**Phase:** **Phase 2** — `IMPLEMENTATION_PLAN.md` lists "History persistence and
-completed-download records (`REQ-020`)" among Phase 2's deliverables, and the plan outranks
-this file (`AGENTS.md` §5). It was filed under Phase 1 first, because `T-014` had already
-created the table and `STATUS.md` said `T-013` would fill it; that was this file drifting
-ahead of the plan, not the plan being wrong.
-**Depends on:** `T-013`
-**Relevant context:** `REQ-020`; `ARCHITECTURE.md` §5 (`HistoryEntry`);
-`persistence/schema.sql` (the `history` table `T-014` created)
-**Affected surfaces:** `core/models.py` or `persistence/` (wherever `HistoryEntry` lands),
-`persistence/repositories.py`, `downloader/manager.py`, `tests/unit/`
-**Risk:** Low — an append-only record; nothing depends on it yet
-**Review base:** the `T-013` merge commit
-
-#### Scope
-
-**Filed after implementation: nothing owned this.** `STATUS.md` said `T-013` "owns writing the
-`history` table `T-014` created but left empty", but `T-013`'s scope, acceptance criteria and
-affected surfaces never mentioned it, and `TASKS.md` outranks `STATUS.md` (`AGENTS.md` §5). It
-was left undone deliberately rather than guessed at, because two pieces are genuinely missing:
-
-- **There is no `HistoryEntry`.** `core/models.py` says so explicitly and gives the reason — it
-  is a durable record rather than live domain state, so it belongs with the schema that stores
-  it. No repository exposes the table either.
-- **`history.format_used` has no source.** Nothing reports the format yt-dlp actually selected;
-  `Succeeded` carries the path and the byte count. Filling the column from the request's
-  *format selector* would store a different fact under a truthful-looking name — `bestvideo+
-  bestaudio` is not a format that was used. Either the worker projects the chosen format into
-  the outcome, or the column is left null and the schema says why.
-
-Decide the first of those, then write a row when a job completes, from the manager, in the same
-place the terminal transition is persisted.
-
-#### Acceptance criteria
-
-- A completed download writes exactly one `history` row, and a retry of the same job does not
-  silently duplicate it
-- `format_used` either carries the format yt-dlp actually used, reported from the worker, or is
-  null with the reason recorded — never the selector wearing that name
-- A cancelled or failed job writes no history row (`REQ-020` is a record of what was obtained)
-- The manager still imports no `persistence` module: history goes through an injected protocol,
-  as the job repository does (`T-013`, `ARCHITECTURE.md` §3)
-
-#### Evidence, 2026-07-29
-
-**`format_used` is reported, not nulled.** The Scope offered two answers and the first was
-available: `run_session` already holds yt-dlp's post-download `result` when it builds `Succeeded` —
-it reads `filesize_approx` from it — so it reads `format_id` from the same dict.
-`Succeeded.format_used` carries it; `HistoryEntry.format_used` stores it. `None` still means *not
-reported*, and an empty `format_id` normalises to `None` rather than raising out of a completed
-download.
-
-**The mutation that matters is the one the task named.** Replacing the resolved format with
-`request.format_selector` — the selector wearing the field's name — fails **3 of 3** format tests.
-The test asserts against two deliberately different strings (`"137+140"` resolved,
-`"bestvideo+bestaudio/best"` requested), because a test where they coincide passes against the
-defect.
-
-**`HistoryEntry` lives in `persistence/`, not `core/models.py`**, which is what that module already
-said should happen. The manager therefore never names the type: `HistorySink` takes a `Job` plus the
-one fact a job does not carry, and `PersistentJobStore.record_completion` does the projecting.
-
-**The write goes through the writer thread.** `ARC-005` is unqualified and `_on_completed` runs on
-the GUI thread, so a synchronous insert there would be `T016-R3` in a new column. `QueueWriter`
-gained `record_history`, and `_Worker._perform` now takes the connection rather than a
-`JobRepository` so both repositories can be built on that thread.
-
-| Check | Result |
-|---|---|
-| `tests/unit/test_persistence.py` | 58 passed |
-| `tests/unit/test_protocol.py` | 133 passed, 3 skipped |
-| `tests/integration/test_worker.py` | 59 passed |
-| Selector-instead-of-resolved-format mutation | **killed, 3/3** |
-| Full suite | **1448 passed, 11 skipped, 2 deselected** (from 1430) |
-| ruff, ruff format, mypy, `mypy --platform win32` | clean; 35 source files both platforms |
-
-#### Limits, stated
-
-- **The retry-duplicate criterion is gated at the repository, not end to end, because the state
-  machine makes it unreachable.** `core/job_state.py` gives `COMPLETED` no outgoing transitions, so
-  one job id cannot legally complete twice today. `HistoryRepository.record` upserts anyway — a
-  plain insert would raise `IntegrityError` for a download that genuinely succeeded — and the test
-  proves the *newer* row wins, which `INSERT OR IGNORE` would get wrong while keeping the count
-  right. Phase 2's `T-082`/`T-083` are where it could start mattering.
-- **The fourth criterion is gated by a test that already existed**:
-  `tests/unit/test_manager_boundaries.py::test_the_manager_never_imports_persistence`, which reads
-  the module statically and covers lazy imports too. No new test was written for it; it still
-  passes, which is the claim.
-- **`format_used` stores `format_id`**, so a merged download reads `"137+140"` rather than prose.
-  Rendering that for a person is the Phase 3 history view's job, not this task's.
-- **The history sink is optional on `DownloadManager`.** Twenty-four existing construction sites do
-  not supply one, and a `None` sink writes nothing. That is why the "a completed download writes a
-  row" criterion is asserted against the real composition — `DownloadManager` plus
-  `PersistentJobStore`, wired as `app.py` wires it — rather than against a fake sink, which would
-  pass even if composition never connected one.
-- **One test-helper defect was fixed on the way.** `_run_download` in
-  `tests/integration/test_worker.py` spelled `format_selector="best"` as a keyword *ahead* of its
-  own
-  `**overrides`, so passing that field was a `TypeError` rather than an override. Its advertised
-  contract did not hold for the one field these tests need to vary.
-
-#### Out of scope
-
-- Any history UI — Phase 3 (`REQ-020`'s view)
-- Pruning, retention, or export
-- Backfilling history for downloads completed before this landed. The rows were never written and
-  nothing can reconstruct them
-
----
-
-## Ready
+*(**Empty as of 2026-07-30.** `T-050`, `T-093` and `T-095` were approved at `6d14e78` with `T-096`
+carried as a non-blocking follow-up; `T-094` was approved earlier at `f858da9`. Nothing awaits a
+verdict.
+`COORD-R2` is why this says so rather than sitting blank: an empty section is a claim about
+readiness. `COORD-R5` through `COORD-R10` are six rounds of this file's status and section
+disagreeing — which is why **`T-096`** exists. A documentation-invariant test means the seventh
+recurrence fails a gate instead of waiting for a reviewer to read carefully.)*
 
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
@@ -830,6 +513,51 @@ workflow.
 - Any change to `src/`
 - Dump capture on Linux, or on hosted runners, which are discarded anyway
 - Making `T-074`'s recurrence more likely; this is passive capture, not a stress test
+
+---
+
+### T-096 — Make task status and section placement mechanically agree
+
+**Status:** Ready — non-blocking follow-up from `COORD-R10`
+**Owner:** Implementer
+**Priority:** Low — current truth is reconciled; this prevents the seventh recurrence
+**Phase:** Documentation infrastructure; blocks no product task or phase
+**Depends on:** none
+**Relevant context:** `COORD-R5` through `COORD-R10`; `AGENTS.md` §6; `ai/TASKS.md` status
+vocabulary
+**Affected surfaces:** a documentation-invariant test and, only as needed to make the invariant
+explicit, `ai/TASKS.md`
+**Risk:** Low to product behavior, persistent to coordination: six review rounds have found a task
+whose status and containing section disagree
+
+#### Scope
+
+`COORD-R10` is correct now, but it is another manual reconciliation in the same class rather than
+a structural change. `T-093`, `T-094` and `T-095` were each edited to say In Review without moving
+out of `## Ready`; earlier corrections did the same with different tasks. A current-truth file
+whose navigation repeatedly contradicts its own fields needs one mechanically enforced answer.
+
+Give every live task one machine-readable normalized status drawn from this file's declared
+vocabulary, and test that its containing section agrees. Descriptive qualifiers and historical
+notes may remain prose; they must not make the operative status ambiguous.
+
+#### Acceptance criteria
+
+- Every live `### T-NNN` entry exposes exactly one normalized operative status from the declared
+  vocabulary
+- A test parses the live task entries and fails when an entry is moved under the wrong status
+  section or its operative status changes without a matching move
+- Mutations for both directions—wrong section and wrong status—fail the unmodified test
+- Exceptions, if any are genuinely needed, are explicit, finite, and individually justified;
+  the test does not skip an unparseable entry
+- The current file passes after being reconciled from actual task dispositions, not by weakening
+  the mapping to match every historical placement
+
+#### Out of scope
+
+- Generating `TASKS.md` or replacing its narrative task format
+- Validating task priority, dependencies, evidence, or prose freshness
+- Blocking T-050, T-085, Phase 2 planning, or any release gate
 
 ---
 
@@ -2150,6 +1878,320 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-050 — Write the history table
+
+**Status:** **Complete — Approved at `6d14e78`**, 2026-07-30, with non-blocking follow-up
+`T-096`. All four findings are Resolved. It took two correction rounds and the production code was
+only wrong in the first: `f858da9` made completion one transaction and survived independent fault
+injection, then `T093-R1` rejected the **gate** for being unable to fail. The literal
+production-only split mutation now fails the unchanged atomicity test, which is the criterion.
+*(This read "Changes requested — T093-R1" until that gate was rewritten.)*
+*(This read "In Review — implemented" and claimed the row "is written from the manager through an
+injected sink" — which was the defect. `T050-R1` found that the sink wrote in a **second**
+transaction. Before that this read "Proposed — Ready now".)*
+
+#### Corrections, 2026-07-29
+
+**`T050-R1` (Critical) — completion is now one transaction.** `complete_job()` writes the job row
+and the history row inside one `with connection:` block, so SQLite commits both or neither. The path
+changed shape rather than gaining a guard: `HistorySink` is **gone**, merged into
+`JobStore.complete`, and `_persist` takes the write operation, so the completion branch differs from
+every other
+transition in exactly one argument. The old two-step arrangement is not reachable — there is no
+longer a method that writes history alone on the completion path.
+
+*(**Superseded, kept because it is the finding.** This paragraph claimed
+`test_a_hard_exit_cannot_separate_a_completion_from_its_history` — a test that no longer exists —
+was "the defect's own reproduction", and that restoring the two-transaction shape "and dying in the
+window" killed it. The second clause is the defect: the mutation supplied the dying. See
+**`T093-R1`** below.)*
+
+#### `T093-R1` — the gate that could not fail, 2026-07-29
+
+**The stated limit above was the finding.** That paragraph admitted the mutation supplied its own
+`os._exit` between the statements, and treated it as a caveat. It is not a caveat: if the mutation
+does the discriminating, the test does none. Splitting `complete_job` into two consecutive
+`with connection:` blocks — changing nothing else — left the committed hard-exit test **passing**.
+It exited from the settlement callback, after `_Worker._perform` had returned and therefore after
+every statement had already run. `ai/TESTING.md` §13's shape: a guard nobody watches fail.
+
+**The gate now injects the exit inside the transaction.** The child replaces
+`repositories._write_history` with `os._exit(17)`, so the job statement has executed and the history
+statement never will, and the process stops existing before either commits. Nothing about the
+mutation participates.
+
+| Shape | Restart state | Verdict |
+|---|---|---|
+| Atomic (current) | `status='queued'`, `history=None` — **neither** | passes |
+| Split into two transactions | `status='completed'`, `history=None` | **fails**, exactly `T050-R1` |
+
+`test_a_hard_exit_after_a_completion_settles_keeps_both_rows` is kept beside it and **relabelled as
+what it always was** — a positive durability check that WAL holds a settled completion. It still
+passes under the split, and its docstring says so, so nothing reads it as the atomicity gate again.
+
+**`T050-R2` (Medium) — the silent path is gone rather than routed.** Because both rows now settle
+together, a failed history write **is** a failed completion, so it travels the ordinary
+`_persist`/`_settle` path: logged at `error` on the `<slug>.manager` logger, delivered to
+`otherwise`, emitted on `persistence_failed`, and — the part that matters — `then` does not run, so
+`job_succeeded` is never announced for a completion that did not land. There is no longer a state in
+which the user is told it worked and the record is missing. The optional `history=None` constructor
+route is also gone: `complete` is on the required `JobStore` protocol.
+
+**`T050-R3` (Medium) — the required gate now actually runs.** `active_job_ids()` returns
+`tuple[str, ...]` and a new test compared it with `[]`. **My error was running `mypy src` (35 files)
+and reporting it as the gate**; `ai/TESTING.md` §3 requires whole-project `mypy` and
+`mypy --platform win32`, which are 78 files and were both red. Both pass now. Adding `complete` to
+the protocol then failed 19 more type errors across four test files — every fake `JobStore` — and
+one of those, `_EmptyStore` in `tests/ui/test_windows_desktop.py`, was visible **only** under
+`--platform win32`. `AGENTS.md` §8's "a host-only check is not the whole gate", found by the gate
+that exists for it.
+
+| Check | Result |
+|---|---|
+| Whole-project `mypy` | **78 files, clean** (was 1 error) |
+| Whole-project `mypy --platform win32` | **78 files, clean** (was 3 errors) |
+| Two-transaction mutation, hard exit in the window | **killed** — `COMPLETED` with `history=None` |
+| Selector-instead-of-resolved-format mutation | **killed, 3/3** (unchanged) |
+| ruff, ruff format | clean |
+| Full suite, Linux | **1450 passed, 11 skipped, 2 deselected** |
+| **Full suite on `STARBASE`**, run `30509335111` | **1439 passed, 20 skipped, 32 deselected** — job `windows desktop` green |
+
+**Windows has now executed all of it**, which the previous round could not claim. Run
+`30509335111` at correction head `6d14e78` ran every new test and passed each: the hard-exit
+atomicity gate, the three format tests, the history round-trips and the composition test. That gate
+mattering on Windows is not incidental — `os._exit` against SQLite's WAL and a live `QueueWriter`
+thread is platform behaviour, and the transaction change is the part of `T-050` most likely to
+differ there.
+
+*The four GitHub-hosted jobs in that run failed at **zero steps in four seconds**, on the billing
+annotation — the exhausted quota `OPS-005` and `OPS-006` already cover, not a result.*
+
+#### Focused correction re-review, 2026-07-29
+
+T050-R2 and T050-R3 are **Resolved**. T050-R1's production defect is corrected: forced failure of
+the history statement rolls the job update back, and a hard exit immediately before that statement
+restarts with neither record. **T093-R1 remains blocking**, however: the committed test exits only
+after the completion callback, so splitting `complete_job()` into two consecutive transactions
+still passes it. The test must inject the exit between the two statements; current code must yield
+neither row and the split mutation must yield the forbidden `COMPLETED`-without-history state.
+**Owner:** Implementer
+**Priority:** Medium — `REQ-020` has no owner without it, and the table already exists empty
+**Phase:** **Phase 2** — `IMPLEMENTATION_PLAN.md` lists "History persistence and
+completed-download records (`REQ-020`)" among Phase 2's deliverables, and the plan outranks
+this file (`AGENTS.md` §5). It was filed under Phase 1 first, because `T-014` had already
+created the table and `STATUS.md` said `T-013` would fill it; that was this file drifting
+ahead of the plan, not the plan being wrong.
+**Depends on:** `T-013`
+**Relevant context:** `REQ-020`; `ARCHITECTURE.md` §5 (`HistoryEntry`);
+`persistence/schema.sql` (the `history` table `T-014` created)
+**Affected surfaces:** `core/models.py` or `persistence/` (wherever `HistoryEntry` lands),
+`persistence/repositories.py`, `downloader/manager.py`, `tests/unit/`
+**Risk:** Low — an append-only record; nothing depends on it yet
+**Review base:** the `T-013` merge commit
+
+#### Scope
+
+**Filed after implementation: nothing owned this.** `STATUS.md` said `T-013` "owns writing the
+`history` table `T-014` created but left empty", but `T-013`'s scope, acceptance criteria and
+affected surfaces never mentioned it, and `TASKS.md` outranks `STATUS.md` (`AGENTS.md` §5). It
+was left undone deliberately rather than guessed at, because two pieces are genuinely missing:
+
+- **There is no `HistoryEntry`.** `core/models.py` says so explicitly and gives the reason — it
+  is a durable record rather than live domain state, so it belongs with the schema that stores
+  it. No repository exposes the table either.
+- **`history.format_used` has no source.** Nothing reports the format yt-dlp actually selected;
+  `Succeeded` carries the path and the byte count. Filling the column from the request's
+  *format selector* would store a different fact under a truthful-looking name — `bestvideo+
+  bestaudio` is not a format that was used. Either the worker projects the chosen format into
+  the outcome, or the column is left null and the schema says why.
+
+Decide the first of those, then write a row when a job completes, from the manager, in the same
+place the terminal transition is persisted.
+
+#### Acceptance criteria
+
+- A completed download writes exactly one `history` row, and a retry of the same job does not
+  silently duplicate it
+- `format_used` either carries the format yt-dlp actually used, reported from the worker, or is
+  null with the reason recorded — never the selector wearing that name
+- A cancelled or failed job writes no history row (`REQ-020` is a record of what was obtained)
+- The manager still imports no `persistence` module: history goes through an injected protocol,
+  as the job repository does (`T-013`, `ARCHITECTURE.md` §3)
+
+#### Evidence, 2026-07-29
+
+**`format_used` is reported, not nulled.** The Scope offered two answers and the first was
+available: `run_session` already holds yt-dlp's post-download `result` when it builds `Succeeded` —
+it reads `filesize_approx` from it — so it reads `format_id` from the same dict.
+`Succeeded.format_used` carries it; `HistoryEntry.format_used` stores it. `None` still means *not
+reported*, and an empty `format_id` normalises to `None` rather than raising out of a completed
+download.
+
+**The mutation that matters is the one the task named.** Replacing the resolved format with
+`request.format_selector` — the selector wearing the field's name — fails **3 of 3** format tests.
+The test asserts against two deliberately different strings (`"137+140"` resolved,
+`"bestvideo+bestaudio/best"` requested), because a test where they coincide passes against the
+defect.
+
+**`HistoryEntry` lives in `persistence/`, not `core/models.py`**, which is what that module already
+said should happen. The manager therefore never names the type: `HistorySink` takes a `Job` plus the
+one fact a job does not carry, and `PersistentJobStore.record_completion` does the projecting.
+
+**The write goes through the writer thread.** `ARC-005` is unqualified and `_on_completed` runs on
+the GUI thread, so a synchronous insert there would be `T016-R3` in a new column. `QueueWriter`
+gained `record_history`, and `_Worker._perform` now takes the connection rather than a
+`JobRepository` so both repositories can be built on that thread.
+
+| Check | Result |
+|---|---|
+| `tests/unit/test_persistence.py` | 58 passed |
+| `tests/unit/test_protocol.py` | 133 passed, 3 skipped |
+| `tests/integration/test_worker.py` | 59 passed |
+| Selector-instead-of-resolved-format mutation | **killed, 3/3** |
+| Full suite | **1448 passed, 11 skipped, 2 deselected** (from 1430) |
+| ruff, ruff format, mypy, `mypy --platform win32` | clean; 35 source files both platforms |
+
+#### Limits, stated
+
+- **The retry-duplicate criterion is gated at the repository, not end to end, because the state
+  machine makes it unreachable.** `core/job_state.py` gives `COMPLETED` no outgoing transitions, so
+  one job id cannot legally complete twice today. `HistoryRepository.record` upserts anyway — a
+  plain insert would raise `IntegrityError` for a download that genuinely succeeded — and the test
+  proves the *newer* row wins, which `INSERT OR IGNORE` would get wrong while keeping the count
+  right. Phase 2's `T-082`/`T-083` are where it could start mattering.
+- **The fourth criterion is gated by a test that already existed**:
+  `tests/unit/test_manager_boundaries.py::test_the_manager_never_imports_persistence`, which reads
+  the module statically and covers lazy imports too. No new test was written for it; it still
+  passes, which is the claim.
+- **`format_used` stores `format_id`**, so a merged download reads `"137+140"` rather than prose.
+  Rendering that for a person is the Phase 3 history view's job, not this task's.
+- **The history sink is optional on `DownloadManager`.** Twenty-four existing construction sites do
+  not supply one, and a `None` sink writes nothing. That is why the "a completed download writes a
+  row" criterion is asserted against the real composition — `DownloadManager` plus
+  `PersistentJobStore`, wired as `app.py` wires it — rather than against a fake sink, which would
+  pass even if composition never connected one.
+- **One test-helper defect was fixed on the way.** `_run_download` in
+  `tests/integration/test_worker.py` spelled `format_selector="best"` as a keyword *ahead* of its
+  own
+  `**overrides`, so passing that field was a `TypeError` rather than an override. Its advertised
+  contract did not hold for the one field these tests need to vary.
+
+#### Out of scope
+
+- Any history UI — Phase 3 (`REQ-020`'s view)
+- Pruning, retention, or export
+- Backfilling history for downloads completed before this landed. The rows were never written and
+  nothing can reconstruct them
+
+---
+
+### T-093 — Make completion and history one crash-atomic write
+
+**Status:** **Complete — Approved at `6d14e78`**, 2026-07-30. `T093-R1` is Resolved: the literal
+production-only split mutation fails the unchanged atomicity test. `T-096` carries the structural
+follow-up — a documentation-invariant test, so the class stops depending on someone noticing.
+The production fix was already right;
+the *gate* was not, and that is what this correction replaces. The hard-exit test exited from the
+settlement callback — after every statement in `complete_job` had run — so a split transaction
+passed it and the mutation criterion was unmet. **The gate now injects the exit between the two
+statements** (`repositories._write_history` becomes `os._exit`), and a bare split fails it with no
+help from the mutation: `COMPLETED` with `history=None`, the state `T050-R1` reported. The
+after-callback case is kept beside it, relabelled as the positive durability check it always was.
+`T050-R2` and `T050-R3` remain Resolved. See **`T093-R1` — the gate that could not fail** below.
+**Owner:** Implementer
+**Priority:** **Critical** — a hard exit can leave a completed job with its required history row
+silently and irrecoverably absent
+**Phase:** Phase 2; blocks T-050 approval
+**Depends on:** T-050 implementation head `f4384b0`
+**Relevant context:** `REQ-012`, `REQ-020`, `ARC-005`, `T050-R1`, `T050-R2`, `T050-R3`
+**Affected surfaces:** `downloader/manager.py`, `persistence/store.py`,
+`persistence/repositories.py`, `persistence/writer.py`, composition and tests
+**Risk:** Critical — this is durable-record loss in the exact unexpected-termination case the
+SQLite design exists to survive
+
+#### Scope
+
+T-050 writes `COMPLETED` first, waits for the writer's callback on the GUI thread, and only then
+queues the history insert. A deterministic child probe exited after the first commit and before
+processing that callback; restart found `job_status=completed` and `history=None`. No recovery path
+backfills it, and `format_used` exists nowhere else.
+
+Make the job's completed state and its `HistoryEntry` one transaction on the writer thread. Keep
+the manager free of persistence imports by expressing completion through an injected protocol,
+but do not leave a production composition in which the required history behavior can be silently
+disabled with `history=None`.
+
+The failure path also needs an owner. At `f4384b0`, a history write error emits
+`persistence_failed`, but the composed application has no stable receiver for that signal; only a
+temporary Add-URL dialog listens, and it ignores jobs it is not withdrawing. A lost history record
+is therefore silent during an ordinary completed download.
+
+Finally, correct the new cancellation assertion whose tuple-versus-list comparison fails both
+required whole-project mypy gates.
+
+#### Acceptance criteria
+
+- The completed job update and history insert commit or roll back **together** on the existing
+  writer-thread connection; there is no committed `COMPLETED` row without its history row
+- A subprocess test hard-exits at the former between-write boundary and proves restart sees either
+  both durable records or neither. Splitting the transaction makes that test fail
+- Existing `submit` and `revise` paths still construct and use their repositories on the writer
+  thread with SQLite's default `check_same_thread=True`
+- A completion-persistence failure reaches a stable application-level consumer or log even when no
+  Add-URL dialog exists, and success is not announced for a transaction that rolled back
+- The manager still imports no persistence module, and the real `app.compose()` graph supplies the
+  required completion dependency
+- Bare `mypy` and `mypy --platform win32` pass, in addition to the source, lint, format, focused,
+  full-unit, full-integration and full-default gates
+- The writer-thread and completion tests pass on `STARBASE`; the T-050 Windows half has not run yet
+
+#### Out of scope
+
+- History UI, retention, export or backfill of records lost by old builds
+- Changing the six facts `REQ-020` names
+- Phase 2 queue concurrency
+
+---
+
+### T-095 — Reconcile the post-exit and T-050 review queue
+
+**Status:** **Complete — Approved at `6d14e78`**, 2026-07-30. `COORD-R10` is Resolved, and
+`T-096` now owns making status and section agree mechanically rather than by inspection.
+`COORD-R9`'s three named
+contradictions are Resolved. `COORD-R10` then found the same class inside this task's own
+correction, which is the part worth keeping: `T-093`, `T-094` and `T-095` each said In Review while
+sitting physically under `## Ready`, and neither readiness summary named them. Now filed where their
+statuses say — `T-093` and `T-095` In Review, approved `T-094` Complete — and both `TASKS.md`'s
+start-here list and `STATUS.md`'s current-phase block account for all three.
+**Owner:** Planner / Coordinator
+**Priority:** Low
+**Phase:** Phase 2 coordination
+**Depends on:** the T-050 / P2PLAN-R2 review disposition
+**Relevant context:** `COORD-R9`, the 2026-07-29 Phase 1 exit review
+**Affected surfaces:** `ai/STATUS.md`, `ai/TASKS.md`
+**Risk:** Low — current-truth navigation is contradictory, but product behavior is unaffected
+
+#### Scope
+
+`STATUS.md` first says criterion 7 is met, then retains the pre-review sentence saying the exit
+review is still the place to decide whether it is met. It also repeats the “all four frozen
+references” count without the fifth Phase 0 risk-register mention the exit review explicitly
+identified.
+
+`TASKS.md` declares `## In Review` empty while T-050's entry says In Review under
+`## Proposed — Phase 2`. Reconcile those statements with this review's Changes-requested verdict
+and the correction tasks above.
+
+#### Acceptance criteria
+
+- STATUS describes criterion 7 as already decided, with the accepted residual still explicit
+- The frozen-reference summary matches the exit review's actual wording
+- T-050 appears under the section its review state names, and the `## In Review` prose agrees
+- The start-here and Phase 2 readiness summaries account for T-093 and T-094 without implying
+  P2PLAN-R1 or P2PLAN-R3 is resolved
+
+---
 
 ### T-094 — Give ARC-006 an atomic Windows ownership primitive
 
