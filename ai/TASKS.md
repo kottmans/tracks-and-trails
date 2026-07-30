@@ -126,6 +126,77 @@ readiness. `COORD-R5` through `COORD-R10` are six rounds of this file's status a
 disagreeing — which is why **`T-096`** exists. A documentation-invariant test means the seventh
 recurrence fails a gate instead of waiting for a reviewer to read carefully.)*
 
+### T-089 — Gate the MP3 bitrate control's complete UI contract
+
+**Status:** **In Review — delivered 2026-07-30.** All four criteria met. The FLAC preset had to be
+injected, because no built-in is a *converting non-MP3* one — which is why the gap existed.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 1 follow-up; does not block T-076 approval
+**Depends on:** `T-076`
+**Relevant context:** `T076-R1`, `T076-R2`, `REQ-009`, `REQ-010`
+**Affected surfaces:** `tests/ui/test_add_dialog.py`
+**Risk:** Low — the behavior is correct; the missing evidence would let adjacent UI paths drift
+
+#### Scope
+
+T-076 offers the requested values and its correction gates the control on MP3. The review found
+three parts of that UI contract still inferred from production rather than independently gated:
+
+- the exact ordered values `320, 256, 192, 160, 128` and the default `192`;
+- the historically load-bearing flow **Probe → choose MP3 → choose 320 → Add**, asserted against
+  the durable request rather than the label; and
+- the dialog behavior for a non-MP3 converting preset. The core helper is parametrised over every
+  other codec, but no dialog test would fail if its enablement, display, or derived-preset gate
+  widened independently.
+
+#### Acceptance criteria
+
+- Transcribe and assert the exact combo-box values, order, and default without deriving the
+  expectation from `MP3_BITRATES`
+- Probe, choose MP3 and 320, add, then assert the durable request carries MP3 at 320
+- Inject at least one non-MP3 converting preset into the dialog and assert the control is disabled,
+  no bitrate is displayed, and `selected_preset` preserves the base preset
+- Mutation-check the post-probe quality persistence and at least one dialog-side MP3-only gate
+
+#### Evidence, 2026-07-30
+
+**The values are transcribed, and that is the point.** `["320", "256", "192", "160", "128"]` and the
+`"320 kbps"` labels are written out rather than read from `MP3_BITRATES`. Deriving the expectation
+from the constant the dialog reads makes the assertion a tautology — reorder the constant and both
+sides move together. The default `192` is asserted the same way.
+
+**The FLAC preset is injected because no built-in could serve.** Every built-in is MP3 or
+`ORIGINAL`, so every existing dialog assertion about "not MP3" is really about "does not convert" —
+and those are different rules. `CONVERTING_AUDIO_CODECS` is every codec but `ORIGINAL`, so a gate
+that widened from one to the other would pass the whole suite. That is exactly what `T076-R1` found
+in the *helper*, and `T076-R2` said the dialog side was still inferred from production.
+
+**Measured, and it is the finding:** widening `_refresh_actions`'s enablement from
+`is AudioCodec.MP3` to `is not AudioCodec.ORIGINAL` fails **one** test in the file — the new one.
+Before this task nothing would have failed.
+
+| Mutation | Result |
+|---|---|
+| `selected_preset` never applies the bitrate | **killed**, 3 tests |
+| `selected_preset`'s MP3 gate widened to `CONVERTING_AUDIO_CODECS` | **killed**, 61 tests — `with_audio_quality` raises for FLAC, so the dialog cannot even build |
+| **Enablement widened to "converts audio"** | **killed — by exactly one test, the new one** |
+| The display drops the bitrate | **killed**, 2 tests |
+
+**The post-probe flow is asserted on the durable request, never the label.** `probe()` persists a
+job before asking a worker anything (`REQ-012`), so it stores a request built from whatever preset
+was selected at that moment; `T-075` was that choosing afterwards updated the label and nothing
+else. This asserts the same for the *bitrate* — the field `T-076` added after that defect was
+fixed, and the same shape one field over.
+
+**Three things in one test, deliberately.** The non-MP3 case asserts the control is disabled, the
+display carries no bitrate, **and** `selected_preset` returns the base preset unmodified. The third
+is the one nothing else covers: `with_audio_quality` raises for a non-MP3 codec, so a dialog that
+applied it unconditionally would crash rather than mislead — but one that applied it *conditionally
+on converting* would quietly attach 192 kbps to a FLAC download.
+
+---
+
 ### T-047 — Decide whether the environment ownership gate's blind spots are worth closing
 
 **Status:** **In Review — decided: no, and the decision is now `OPS-008`.** `T047-R1` was right
@@ -711,40 +782,6 @@ account for rather than one.
   its trigger found, not its symptom hidden. The one time this project reached for a retry the
   reviewer's instruction was explicit — *do not retry or xfail*
 - `T-056`, which is a different intermittent on a different platform and is `OPS-005`-downgraded
-
----
-
-### T-089 — Gate the MP3 bitrate control's complete UI contract
-
-**Status:** Ready — non-blocking follow-up carried from `T076-R2`
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 1 follow-up; does not block T-076 approval
-**Depends on:** `T-076`
-**Relevant context:** `T076-R1`, `T076-R2`, `REQ-009`, `REQ-010`
-**Affected surfaces:** `tests/ui/test_add_dialog.py`
-**Risk:** Low — the behavior is correct; the missing evidence would let adjacent UI paths drift
-
-#### Scope
-
-T-076 offers the requested values and its correction gates the control on MP3. The review found
-three parts of that UI contract still inferred from production rather than independently gated:
-
-- the exact ordered values `320, 256, 192, 160, 128` and the default `192`;
-- the historically load-bearing flow **Probe → choose MP3 → choose 320 → Add**, asserted against
-  the durable request rather than the label; and
-- the dialog behavior for a non-MP3 converting preset. The core helper is parametrised over every
-  other codec, but no dialog test would fail if its enablement, display, or derived-preset gate
-  widened independently.
-
-#### Acceptance criteria
-
-- Transcribe and assert the exact combo-box values, order, and default without deriving the
-  expectation from `MP3_BITRATES`
-- Probe, choose MP3 and 320, add, then assert the durable request carries MP3 at 320
-- Inject at least one non-MP3 converting preset into the dialog and assert the control is disabled,
-  no bitrate is displayed, and `selected_preset` preserves the base preset
-- Mutation-check the post-probe quality persistence and at least one dialog-side MP3-only gate
 
 ---
 

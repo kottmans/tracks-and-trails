@@ -42,7 +42,14 @@ from PySide6.QtWidgets import (
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
-from tracks_and_trails.core.models import AudioCodec, DownloadRequest, Job, MediaInfo
+from tracks_and_trails.core.models import (
+    AudioCodec,
+    DownloadRequest,
+    Job,
+    MediaInfo,
+    MediaKind,
+    Preset,
+)
 from tracks_and_trails.core.presets import (
     BUILT_IN_PRESETS,
     MP3_QUALITY,
@@ -2227,3 +2234,139 @@ def test_a_probe_whose_start_is_rejected_stops_claiming_to_be_probing(
         f"the rejection was never reported; the dialog says {dialog.status_text()!r}"
     )
     assert manager.is_idle, "the manager kept a reservation for a start it abandoned"
+
+
+# --- T-089: the MP3 bitrate control's whole UI contract -------------------------------------
+
+
+def test_the_offered_bitrates_are_exactly_these_in_this_order(
+    dialogs: Callable[..., AddUrlDialog], managers: Callable[..., DownloadManager]
+) -> None:
+    """`T-089`: transcribed, **not** derived from `MP3_BITRATES`.
+
+    Deriving the expectation from the same constant the dialog reads makes the assertion a tautology
+    — reorder the constant, or drop a value from it, and both sides move together. Writing the list
+    out is the only version of this that can fail for the reason it exists.
+
+    The order is part of the contract, not an accident: highest first, so the most common deliberate
+    choice is the shortest reach from the top of the list.
+    """
+    dialog = dialogs(managers())
+    box = dialog.findChild(QComboBox, "audioBitrateChoice")
+    assert box is not None
+
+    offered = [box.itemData(index) for index in range(box.count())]
+    assert offered == ["320", "256", "192", "160", "128"]
+
+    labels = [box.itemText(index) for index in range(box.count())]
+    assert labels == [
+        "320 kbps",
+        "256 kbps",
+        "192 kbps",
+        "160 kbps",
+        "128 kbps",
+    ], "the label is what the user reads; a bare number would not say what the unit is"
+
+    assert box.currentData() == "192", "the default is 192, and it is the middle of the scale"
+
+
+def test_probing_then_choosing_mp3_at_320_stores_both(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """`T-089`: the historically load-bearing order — probe, **then** decide how (`T-075`).
+
+    `probe()` persists a job before asking a worker anything (`REQ-012`), so it writes a request
+    built from whatever preset was selected at that moment. `T-075` was that choosing afterwards
+    updated the label and nothing else. This asserts the same for the *bitrate*, which is the field
+    `T-076` added after that defect was fixed — the same shape one field over, and the reason
+    `T076-R2` wanted it gated rather than inferred.
+
+    Asserted on the **durable request**, never the label.
+    """
+    dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
+    (job_id,) = dialog.queued_job_ids
+    assert store.jobs[job_id].request.audio_codec is not AudioCodec.MP3, (
+        "this test needs the probe to have stored something the later choice will change"
+    )
+
+    choose_preset(dialog, "Audio only (MP3)")
+    choose_bitrate(dialog, "320")
+    dialog.add_to_queue()
+    assert spin(lambda: store.jobs[job_id].status is JobStatus.RUNNING)
+
+    stored = store.jobs[job_id].request
+    assert stored.audio_codec is AudioCodec.MP3
+    assert stored.audio_quality == "320", (
+        f"stored {stored.audio_quality!r}. The bitrate chosen after the probe must reach the "
+        "durable request, not just the label — T-075 one field over"
+    )
+
+
+def flac_preset() -> Preset:
+    """A converting preset that is **not** MP3, which no built-in currently is.
+
+    `T076-R1` is the reason this has to be injected rather than picked: the built-ins are MP3 or
+    `ORIGINAL`, so every dialog assertion about "not MP3" is really an assertion about "does not
+    convert". Those are different rules — `CONVERTING_AUDIO_CODECS` is every codec but `ORIGINAL` —
+    and a gate that widened from one to the other would pass every existing test.
+    """
+    return Preset(
+        name="Audio only (FLAC)",
+        media_kind=MediaKind.AUDIO,
+        format_selector="bestaudio/best",
+        output_template="%(title)s.%(ext)s",
+        audio_codec=AudioCodec.FLAC,
+        built_in=False,
+    )
+
+
+def test_a_converting_preset_that_is_not_mp3_offers_no_bitrate(
+    dialogs: Callable[..., AddUrlDialog], managers: Callable[..., DownloadManager]
+) -> None:
+    """`T-089`, `T076-R1`: FLAC converts, and these bitrates are MP3's.
+
+    Three things at once, because the contract is all three and a partial version of it is what
+    `T076-R2` reported: the control is **disabled**, the display shows **no** bitrate, and
+    `selected_preset` returns the base preset **unmodified** rather than one carrying a number that
+    could not mean anything.
+
+    The third is the one nothing else covers. `with_audio_quality` raises for a non-MP3 codec, so a
+    dialog that applied it unconditionally would crash rather than mislead — but a dialog that
+    applied it *conditionally on converting* would silently attach 192 kbps to a FLAC download.
+    """
+    dialog = dialogs(
+        managers(), presets=[flac_preset(), preset_registry.by_name("Audio only (MP3)")]
+    )
+    box = dialog.findChild(QComboBox, "audioBitrateChoice")
+    assert box is not None
+
+    choose_preset(dialog, "Audio only (FLAC)")
+
+    assert not box.isEnabled(), "a bitrate that cannot apply must not invite a choice"
+    shown = label(dialog, "selectorValue").text()
+    assert "kbps" not in shown, f"a bitrate was displayed for a FLAC download: {shown!r}"
+
+    chosen = dialog.selected_preset
+    assert chosen.audio_codec is AudioCodec.FLAC
+    assert chosen == flac_preset(), (
+        "selected_preset altered a non-MP3 preset. The base preset is what runs; attaching an MP3 "
+        "bitrate to FLAC would store a number the download ignores"
+    )
+
+
+def test_the_bitrate_is_offered_for_mp3_even_beside_a_converting_neighbour(
+    dialogs: Callable[..., AddUrlDialog], managers: Callable[..., DownloadManager]
+) -> None:
+    """The other half, so the test above cannot pass by the control never being enabled at all."""
+    dialog = dialogs(
+        managers(), presets=[flac_preset(), preset_registry.by_name("Audio only (MP3)")]
+    )
+    box = dialog.findChild(QComboBox, "audioBitrateChoice")
+    assert box is not None
+
+    choose_preset(dialog, "Audio only (MP3)")
+    assert box.isEnabled()
+    assert "kbps" in label(dialog, "selectorValue").text()
