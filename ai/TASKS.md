@@ -132,6 +132,165 @@ readiness. `COORD-R5` through `COORD-R10` are six rounds of this file's status a
 disagreeing — which is why **`T-096`** exists. A documentation-invariant test means the seventh
 recurrence fails a gate instead of waiting for a reviewer to read carefully.)*
 
+### T-098 — Guard the premise T-047's decision rests on
+
+**Status:** **In Review — delivered 2026-07-30.** `tests/unit/test_environment_shape.py` parses
+`downloader/environment.py` for the three constructs the blind spots require, plus a positive check
+on module scope's overall shape. Four mutations killed.
+**Owner:** Implementer
+**Priority:** Low — it protects a decision rather than a behaviour
+**Phase:** unassigned, like `T-047`. Blocks nothing
+**Depends on:** none
+**Relevant context:** `T-047` (the decision and its measurement), `T044-R1` and its six rounds,
+`ai/TESTING.md` ("What the environment ownership gate actually promises")
+**Affected surfaces:** `tests/unit/test_environment.py` only
+**Risk:** Low — no production code is involved
+
+#### Scope
+
+`T-047` decided not to close the environment gate's three blind spots, and the load-bearing reason
+was a measurement: `downloader/environment.py` contains **no** module-scope `if`, **no**
+`try`/`except ImportError`, and **no** call to `globals`, `locals`, `setattr`, `vars`, `exec` or
+`eval`. Each blind spot needs one of those constructs to become reachable, so all three are vacuous
+in the module the gate protects.
+
+**Nothing enforces that.** Adding a platform branch to a module that resolves paths across two
+operating systems is an ordinary thing to do. It would make gap 1 live, nothing would fail, and
+`T-047`'s decision would be silently obsolete.
+
+**This is not a fourth attempt at the gaps.** All five previous attempts parsed for *bindings* and
+were defeated by binding syntax the author had not enumerated (`T044-R1`, six rounds). This parses
+for the three *constructs the blind spots require* — a closed, small set that is a property of the
+gaps' own definitions rather than of Python's grammar. If the set is ever wrong, it is wrong in the
+direction of failing loudly: an unrecognised construct does not appear, so the assertion still holds
+and the gate is unchanged.
+
+#### Acceptance criteria
+
+- A test asserts the module contains none of the three constructs, naming `T-047` as the decision it
+  protects and stating that its own failure means *revisit the decision*, not *fix the module*
+- Adding a module-scope `if`, a module-scope `try`, or a `globals()` call to
+  `downloader/environment.py` each fails it — mutation-verified, one at a time
+- The message says which gap the construct makes live, so whoever hits it knows what to reconsider
+- `ai/TESTING.md`'s promise statement gains the reopening conditions, so the durable record and the
+  test agree
+
+#### Evidence, 2026-07-30
+
+**Three named constructs, plus one check that the enumeration itself is not the weak point.**
+
+| Added to the real `environment.py` | Result |
+|---|---|
+| `if sys.platform == "win32": …` at module scope | **killed** (gap 1) |
+| `try: from json import loads / except ImportError:` | **killed** (gap 2) |
+| `globals()["Path"] = None` | **killed** (gap 3) |
+| `for _x in (): pass` at module scope — **a shape `OPS-008` never considered** | **killed** |
+
+The fourth is the one worth having. The first three parse for constructs the gaps *require*, which
+is a closed set derived from the gaps' own definitions — but a closed set is still an enumeration,
+and this project has been wrong about enumerations five times in this exact module.
+`test_the_module_scope_is_still_the_shape_ops_008_measured` inverts it: rather than listing what is
+forbidden, it states what module scope **is** — imports, constants, functions, classes — so a
+`with`, `match`, `for` or `while` fails even though it belongs to no named gap. Its message says the
+decision should be re-read rather than the test relaxed.
+
+**Each construct is also detected in isolation.** The three module tests read a clean file, so on
+their own none has ever fired — `ai/TESTING.md` §13's shape. `test_each_construct_is_actually_
+detected` puts each through the same detection and proves it is seen.
+
+**A failure here means revisit `OPS-008`, not fix the module.** Adding a platform branch is allowed;
+what is not allowed is adding one while a decision that assumed its absence stays on the books. Every
+assertion message says so.
+
+#### Out of scope
+
+- Closing gaps 1, 2 or 3. `T-047` decided against that and this does not reopen it
+- Any production change to `downloader/environment.py`
+- Extending the construct set speculatively. Three gaps, three constructs
+
+---
+
+### T-096 — Make task status and section placement mechanically agree
+
+**Status:** **In Review — delivered 2026-07-30.** `tests/unit/test_task_placement.py` parses every
+live entry and fails when a status and its section disagree. Four mutations killed, including the
+one that actually happened: deleting a section heading.
+**Owner:** Implementer
+**Priority:** Low — current truth is reconciled; this prevents the seventh recurrence
+**Phase:** Documentation infrastructure; blocks no product task or phase
+**Depends on:** none
+**Relevant context:** `COORD-R5` through `COORD-R10`; `AGENTS.md` §6; `ai/TASKS.md` status
+vocabulary
+**Affected surfaces:** a documentation-invariant test and, only as needed to make the invariant
+explicit, `ai/TASKS.md`
+**Risk:** Low to product behavior, persistent to coordination: six review rounds have found a task
+whose status and containing section disagree
+
+#### Scope
+
+`COORD-R10` is correct now, but it is another manual reconciliation in the same class rather than
+a structural change. `T-093`, `T-094` and `T-095` were each edited to say In Review without moving
+out of `## Ready`; earlier corrections did the same with different tasks. A current-truth file
+whose navigation repeatedly contradicts its own fields needs one mechanically enforced answer.
+
+Give every live task one machine-readable normalized status drawn from this file's declared
+vocabulary, and test that its containing section agrees. Descriptive qualifiers and historical
+notes may remain prose; they must not make the operative status ambiguous.
+
+#### Acceptance criteria
+
+- Every live `### T-NNN` entry exposes exactly one normalized operative status from the declared
+  vocabulary
+- A test parses the live task entries and fails when an entry is moved under the wrong status
+  section or its operative status changes without a matching move
+- Mutations for both directions—wrong section and wrong status—fail the unmodified test
+- Exceptions, if any are genuinely needed, are explicit, finite, and individually justified;
+  the test does not skip an unparseable entry
+- The current file passes after being reconciled from actual task dispositions, not by weakening
+  the mapping to match every historical placement
+
+#### Evidence, 2026-07-30
+
+**The parser takes a prefix, not a field, and that is what let the existing prose survive.** The
+file's convention is already `**Status:** **<Term> — <prose>**`, so the operative status is the
+vocabulary term the line opens with. `Blocked on T033-R4 and the external Windows build` and
+`Blocked — until Phase 5 produces an installer` both read as `Blocked` and both stay legible. No
+entry was reformatted to satisfy the test.
+
+**Two entries were reconciled, from their real dispositions rather than by weakening the mapping:**
+
+| Task | Was | Now | Why |
+|---|---|---|---|
+| `T-094` | `Approved at f858da9 — Complete` | `Complete — Approved at f858da9` | Opened with a word outside the declared vocabulary, so no reader — human or otherwise — could take the status from a fixed place |
+| `T-039` | `Proposed — blocked until Phase 5 produces an installer` under `## Blocked` | `Blocked — until Phase 5 produces an installer` | The section was right and the field was wrong. It **is** blocked; nothing can verify an installer that does not exist |
+
+**No exception list.** The acceptance criteria allow one if genuinely needed; none was. 96 live
+entries, all parsed, none skipped.
+
+| Mutation | Result |
+|---|---|
+| Status changed without moving the entry (`T-078` Ready → Blocked) | **killed** |
+| Entry moved without changing its status (`T-096` Ready → Complete) | **killed** |
+| A status outside the vocabulary (`T-094` reverted to its old spelling) | **killed** |
+| **A section heading deleted** | **killed** |
+
+The last one is why this task exists. On 2026-07-30 a scripted edit of mine replaced everything
+between `## In Review` and `### T-074` to empty a section, and took `## Ready` with it. Five tasks
+each saying `Ready` sat under `## In Review` for two commits and nothing failed. That mutation now
+fails, and it is the seventh instance of the class `COORD-R5` through `COORD-R10` reported by hand.
+
+**An unmapped section fails rather than being skipped.** `test_every_section_is_mapped` exists
+because a new `## ` heading would otherwise silently exempt every task under it — the same shape as
+the deleted heading, one level up.
+
+#### Out of scope
+
+- Generating `TASKS.md` or replacing its narrative task format
+- Validating task priority, dependencies, evidence, or prose freshness
+- Blocking T-050, T-085, Phase 2 planning, or any release gate
+
+---
+
 ### T-085 — History of completed downloads
 
 **Status:** **In Review — the record is delivered 2026-07-30.** All three acceptance criteria are
@@ -1021,100 +1180,6 @@ workflow.
 - Any change to `src/`
 - Dump capture on Linux, or on hosted runners, which are discarded anyway
 - Making `T-074`'s recurrence more likely; this is passive capture, not a stress test
-
----
-
-### T-096 — Make task status and section placement mechanically agree
-
-**Status:** Ready — non-blocking follow-up from `COORD-R10`
-**Owner:** Implementer
-**Priority:** Low — current truth is reconciled; this prevents the seventh recurrence
-**Phase:** Documentation infrastructure; blocks no product task or phase
-**Depends on:** none
-**Relevant context:** `COORD-R5` through `COORD-R10`; `AGENTS.md` §6; `ai/TASKS.md` status
-vocabulary
-**Affected surfaces:** a documentation-invariant test and, only as needed to make the invariant
-explicit, `ai/TASKS.md`
-**Risk:** Low to product behavior, persistent to coordination: six review rounds have found a task
-whose status and containing section disagree
-
-#### Scope
-
-`COORD-R10` is correct now, but it is another manual reconciliation in the same class rather than
-a structural change. `T-093`, `T-094` and `T-095` were each edited to say In Review without moving
-out of `## Ready`; earlier corrections did the same with different tasks. A current-truth file
-whose navigation repeatedly contradicts its own fields needs one mechanically enforced answer.
-
-Give every live task one machine-readable normalized status drawn from this file's declared
-vocabulary, and test that its containing section agrees. Descriptive qualifiers and historical
-notes may remain prose; they must not make the operative status ambiguous.
-
-#### Acceptance criteria
-
-- Every live `### T-NNN` entry exposes exactly one normalized operative status from the declared
-  vocabulary
-- A test parses the live task entries and fails when an entry is moved under the wrong status
-  section or its operative status changes without a matching move
-- Mutations for both directions—wrong section and wrong status—fail the unmodified test
-- Exceptions, if any are genuinely needed, are explicit, finite, and individually justified;
-  the test does not skip an unparseable entry
-- The current file passes after being reconciled from actual task dispositions, not by weakening
-  the mapping to match every historical placement
-
-#### Out of scope
-
-- Generating `TASKS.md` or replacing its narrative task format
-- Validating task priority, dependencies, evidence, or prose freshness
-- Blocking T-050, T-085, Phase 2 planning, or any release gate
-
----
-
-### T-098 — Guard the premise T-047's decision rests on
-
-**Status:** Ready — non-blocking follow-up from `T-047`
-**Owner:** Implementer
-**Priority:** Low — it protects a decision rather than a behaviour
-**Phase:** unassigned, like `T-047`. Blocks nothing
-**Depends on:** none
-**Relevant context:** `T-047` (the decision and its measurement), `T044-R1` and its six rounds,
-`ai/TESTING.md` ("What the environment ownership gate actually promises")
-**Affected surfaces:** `tests/unit/test_environment.py` only
-**Risk:** Low — no production code is involved
-
-#### Scope
-
-`T-047` decided not to close the environment gate's three blind spots, and the load-bearing reason
-was a measurement: `downloader/environment.py` contains **no** module-scope `if`, **no**
-`try`/`except ImportError`, and **no** call to `globals`, `locals`, `setattr`, `vars`, `exec` or
-`eval`. Each blind spot needs one of those constructs to become reachable, so all three are vacuous
-in the module the gate protects.
-
-**Nothing enforces that.** Adding a platform branch to a module that resolves paths across two
-operating systems is an ordinary thing to do. It would make gap 1 live, nothing would fail, and
-`T-047`'s decision would be silently obsolete.
-
-**This is not a fourth attempt at the gaps.** All five previous attempts parsed for *bindings* and
-were defeated by binding syntax the author had not enumerated (`T044-R1`, six rounds). This parses
-for the three *constructs the blind spots require* — a closed, small set that is a property of the
-gaps' own definitions rather than of Python's grammar. If the set is ever wrong, it is wrong in the
-direction of failing loudly: an unrecognised construct does not appear, so the assertion still holds
-and the gate is unchanged.
-
-#### Acceptance criteria
-
-- A test asserts the module contains none of the three constructs, naming `T-047` as the decision it
-  protects and stating that its own failure means *revisit the decision*, not *fix the module*
-- Adding a module-scope `if`, a module-scope `try`, or a `globals()` call to
-  `downloader/environment.py` each fails it — mutation-verified, one at a time
-- The message says which gap the construct makes live, so whoever hits it knows what to reconsider
-- `ai/TESTING.md`'s promise statement gains the reopening conditions, so the durable record and the
-  test agree
-
-#### Out of scope
-
-- Closing gaps 1, 2 or 3. `T-047` decided against that and this does not reopen it
-- Any production change to `downloader/environment.py`
-- Extending the construct set speculatively. Three gaps, three constructs
 
 ---
 
@@ -2214,7 +2279,8 @@ inclusion still yields an application that cannot download anything.
 
 ### T-039 — Verify Windows installer behavior on the runner
 
-**Status:** Proposed — blocked until Phase 5 produces an installer
+**Status:** **Blocked — until Phase 5 produces an installer.** Proposed work with nothing to do
+until then; the installer it would verify does not exist yet
 **Owner:** Implementer
 **Priority:** Medium now, High once Phase 5 starts — it must land before the first public release
 **Phase:** Phase 5
@@ -2585,7 +2651,7 @@ and the correction tasks above.
 
 ### T-094 — Give ARC-006 an atomic Windows ownership primitive
 
-**Status:** **Approved at `f858da9` — Complete**, 2026-07-29. `P2PLAN-R5` is Resolved.
+**Status:** **Complete — Approved at `f858da9`**, 2026-07-29. `P2PLAN-R5` is Resolved.
 `ARC-006` carries an amendment withdrawing `QLocalServer` as the ownership primitive and replacing
 it with an atomic kernel lock — `flock(LOCK_EX | LOCK_NB)` on POSIX, exclusive-access open on
 Windows — keeping `QLocalServer` only as the attach channel. The header's "Discharges `A-004`" is
