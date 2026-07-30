@@ -441,7 +441,7 @@ Tracked honestly; each should become a task or be accepted deliberately.
 ## 13. Test validity: does the test actually test anything?
 
 A passing test proves nothing until you know it can fail. This section exists because the
-project has now produced **five** tests that passed while the thing they protected was removed
+project has now produced **six** tests that passed while the thing they protected was removed
 — each written deliberately, each believed to be the strong version, each wrong in a different
 way.
 
@@ -451,7 +451,7 @@ way.
 like Microsoft's file-naming rules — transcribe from those by hand. The moment a test asks
 production what to expect, it stops being a test and becomes a mirror.
 
-### The five, and what each one teaches
+### The six, and what each one teaches
 
 | # | Test | What it did | Why it passed anyway |
 |---|---|---|---|
@@ -460,6 +460,7 @@ production what to expect, it stops being a test and becomes a mirror.
 | `T041-R6` | Hostile-payload sweep including `None` | Asserted `not isinstance(stored, dict \| list)` | `None` is neither, so the case passed unconditionally. The sweep grew a column that could never fail. |
 | `T034-R4` | Reserved device names | Asserted the sanitized stem was not in production's `_RESERVED_NAMES` | Shrinking the production set shrank the expectation with it. |
 | `T035-R3` | Reviewed public API | Filtered runtime attributes by `value.__module__` | A constant has no `__module__`, so it was dropped before comparison. Inspected values where it needed definitions. |
+| `T093-R1` | Completion/history crash atomicity | Exited after the completion callback, then claimed a split mutation was killed by adding a second exit inside the mutation | The mutation supplied the event that distinguished the two shapes; splitting the transaction alone left the committed test passing. |
 
 ### What to do instead
 
@@ -481,8 +482,14 @@ production what to expect, it stops being a test and becomes a mirror.
 Before claiming a guard is covered, remove the guard and watch the suite fail. Record the count
 in the task. `AGENTS.md` §9 requires this of every correction batch.
 
-Three things that have bitten here:
+Four things that have bitten here:
 
+- **The mutation changes production; the test and its fault scenario stay fixed.** A mutation that
+  also edits the test, adds a crash point, changes an input, or supplies another distinguishing
+  event is not evidence that the committed test gates the guard. Apply the smallest production
+  weakening named by the acceptance criterion, change nothing else, and run the unmodified test.
+  `T093-R1` split one transaction into two, but the claimed mutation also inserted its own
+  `os._exit` between them; that exit—not the test—did the discriminating.
 - **A size-preserving mutation may not run at all** (`T-013`). Python validates a cached `.pyc`
   against the source's *size* and its mtime **in whole seconds**. Swapping two adjacent lines —
   the natural mutation for "is this written before that?" — changes neither, so a batch that

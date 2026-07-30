@@ -6898,3 +6898,97 @@ ownership primitive rather than treating QLocalServer as one. T-094 may be filed
 
 T-095 is **Changes requested** because its correction left all three correction tasks under
 `## Ready` while their own statuses say In Review and omitted them from both readiness summaries.
+
+## 2026-07-29 — T-050 / T-093 / T-095 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `d202417`  **Head:** `6d14e78`
+**Boundary treatment:** exactly one correction commit. No production code changed;
+`complete_job()` is byte-identical to the implementation already fault-injected in the preceding
+review. This pass reviewed the corrected gate, its evidence, and `COORD-R10`, not settled production
+ground.
+**Verdict:** **Approved with follow-up — T093-R1 and COORD-R10 are Resolved**
+
+T-050 and T-093 are approved at `6d14e78`. T-095 is approved at the same head. T-094 was already
+approved at `f858da9`; this boundary only files it consistently. T-085 is therefore no longer
+blocked by T-050, although the Phase 2 planning findings still govern when Phase 2 tasks may move
+out of Proposed.
+
+### Finding disposition
+
+| Finding | Result |
+|---|---|
+| `T093-R1` | **Resolved.** With the committed test and injection unchanged, splitting only `complete_job()` into two consecutive transaction blocks fails on the forbidden durable state: job `COMPLETED`, history absent. |
+| `COORD-R10` | **Resolved.** T-093 and T-095 are under In Review, approved T-094 is under Complete, and the TASKS and STATUS opening summaries account for all three without claiming P2PLAN-R1 or P2PLAN-R3 is resolved. |
+
+### Focused challenges
+
+**The gate can fail for the defect's own reason.** The child replaces `_write_history` with
+`os._exit(17)` before calling the unchanged production operation. On current code, restart finds
+the pre-completion `QUEUED` row and no history. In an isolated archive, the reviewer changed only
+`complete_job()` from one `with connection:` block to two consecutive blocks. The unmodified test
+then failed: the first block had durably committed `COMPLETED`, while the injected exit prevented
+history. The adjacent after-callback test still passed under the split, confirming that it is a
+separate positive durability check rather than a second atomicity gate.
+
+The two exact-state assertions are useful diagnostics, not accidental over-constraint. The probe
+creates a known `QUEUED` preimage and submits only one completion; at this injection point a real
+rollback must preserve that preimage exactly. The invariant assertion catches the split, while
+`entry is None` and `status is QUEUED` distinguish an injection move, an unexpected history write,
+or a partial commit.
+
+**The transaction wrapper is real.** A direct probe of the project connection reported legacy
+transaction control with `isolation_level == ""`: DML changed `in_transaction` from false to true,
+and rollback removed the probe row. The context manager therefore encloses one deferred SQLite
+transaction rather than two autocommits.
+
+**The Windows claim is true, but the committed citation was stale.** TASKS named run
+`30506962680`, whose head was `f858da9` and therefore could not contain this correction. The
+reviewer independently found the current-head execution in
+[run 30509335111](https://github.com/kottmans/tracks-and-trails/actions/runs/30509335111):
+the `windows desktop` job at `6d14e78` passed both named hard-exit tests, both whole-project mypy
+gates checked 78 files, and the full Windows suite reported **1439 passed, 20 skipped,
+32 deselected**. The four hosted jobs had zero executed steps; they are the already-recorded quota
+condition, not contrary test evidence. The TASKS citation and count were corrected to this run as
+review evidence.
+
+**The recurring coordination defect needs a mechanism.** COORD-R10's present repair is accurate,
+but it is still a sixth manual late reconciliation in the COORD-R5 through COORD-R10 class. That
+does not reopen T-095. Non-blocking T-096 now owns a parser-backed invariant that task status and
+containing section agree, including mutations in both directions.
+
+**Mutation evidence now has an explicit rule.** TESTING §13 records the lesson from two consecutive
+gate corrections: a claimed mutation changes production only. The committed test, its input, and
+its fault scenario stay fixed; adding the distinguishing crash to the mutation is not evidence
+that the test can detect the production weakening.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary / working tree | `d202417..6d14e78`, one commit; clean before reviewer documentation edits; `HEAD == origin/main == 6d14e78` |
+| Production boundary | No production file changed; `complete_job()` unchanged from the previously validated implementation |
+| `git diff --check d202417..6d14e78` | Passed |
+| Authorship / trailers | Sean Kottman; no AI author or co-author trailer |
+| Both committed hard-exit tests | **2 passed in 0.39 s** |
+| Literal one-block → two-block production-only mutation | **Killed:** the atomicity test failed on durable `COMPLETED` with no history; the positive durability test still passed |
+| SQLite transaction-mode probe | Deferred transaction observed; rollback removed the inserted row |
+| Full default suite | **1450 passed, 11 skipped, 2 deselected in 126.39 s** |
+| Bare `mypy` | Passed; **78 files** |
+| Bare `mypy --platform win32` | Passed; **78 files** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **106 files** already formatted |
+| STARBASE at correction head | Run `30509335111`, `windows desktop` successful; both hard-exit tests passed; **1439 passed, 20 skipped, 32 deselected** |
+
+The mutation archive and SQLite probe lived under `/tmp`; verification changed no reviewed source
+or test file.
+
+### Final disposition
+
+T093-R1 is **Resolved**. The test now rejects exactly the transaction split its acceptance
+criterion names without help from the mutation. T050-R1 is consequently Resolved, and T-050 /
+T-093 are **Approved at `6d14e78`**. T-085's dependency on T-050 is clear.
+
+COORD-R10 is **Resolved**, so T-095 is **Approved at `6d14e78`**. T-096 is a non-blocking
+coordination-invariant follow-up and does not keep T-095 in review. No production blocker remains
+from this boundary.
