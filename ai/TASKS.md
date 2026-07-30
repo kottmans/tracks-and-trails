@@ -24,19 +24,22 @@ findings gate the first promotion — but `T-085`, `T-049` and `T-047` can start
   carried: **`T-096`**, a documentation-invariant test so status and section agree mechanically.
 - **Unblocked and startable now:** **`T-085`** — `T-050` writes the table it reads — plus `T-049`
   and `T-047`. None of the three waits on `T-078`.
-- **All three Phase 2 planning gates are corrected as of 2026-07-30, and awaiting one review.**
-  `P2PLAN-R2` was approved at `f858da9`. `P2PLAN-R3`: `ARC-007` decides the settings surface —
-  `settings.toml` plus one main-window control, applied live with lowering draining — and `T-078`
-  gates that real user path instead of a constructor argument. `P2PLAN-R1`: the Phase 2 deliverable
-  now says pause and resume are queue-level, and `T-080` is retitled and rewritten from `UX-001`
-  with the two granularities separated.
-- **No Phase 2 task is promoted yet.** The condition was that `R1` through `R3` all *clear* before
-  the first promotion out of Proposed, and two of the three are corrected rather than reviewed.
-  `T-078` promotes when that review lands.
+- **All three Phase 2 planning gates are clear.** `P2PLAN-R2` approved at `f858da9`; `P2PLAN-R1`
+  and `P2PLAN-R3` approved at `8306378`. `ARC-007` decides the settings surface, `UX-001` the pause
+  semantics, and `T-080` is rewritten with the two granularities separated.
+- **`T-078` is Ready** — the first Phase 2 task out of Proposed, and the choke point eight tasks
+  descend from. `T-085`, `T-049` and `T-047` are startable alongside it.
+- **Two follow-ups carried, neither blocking:** `T-097` mechanically forbids
+  `downloader/manager.py` importing `core.settings` — a violation both current analysers were
+  *measured* to miss, so `ARC-007`'s boundary is currently stated and ungated. And `P2PLAN-R7` sits
+  inside `T-080`: a manual-retry ordering criterion I added with the `P2PLAN-R1` correction is new
+  scope rather than reconciliation, and `T-080` must confirm or remove it before starting.
+- **Proposed review follow-up:** `T-097` mechanically gates ARC-007's manager/settings boundary.
+  It blocks T-078 approval, not promotion to Ready.
 - **Ready, blocking nothing:** `T-074` (Medium, `OPS-007` residual), `T-089`, `T-091`, `T-092`
   (needs maintainer consent before writing to `STARBASE`), `T-096`.
 
-One review clears all three gates; then `T-078`, which eight tasks descend from.
+`T-078` is the critical path; `T-085` can run beside it.
 
 **Two Phase 1 blockers were dispositioned by maintainer decision rather than completed, and the
 exit review upheld both while keeping them open.** `T-066` by the `OPS-005` amendment (its frozen
@@ -125,9 +128,93 @@ readiness. `COORD-R5` through `COORD-R10` are six rounds of this file's status a
 disagreeing — which is why **`T-096`** exists. A documentation-invariant test means the seventh
 recurrence fails a gate instead of waiting for a reviewer to read carefully.)*
 
+## Ready
+*(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
+which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
+For two commits `T-074`, `T-089`, `T-091`, `T-092` and `T-096` therefore sat under `## In Review`
+while each said Ready: the exact status-versus-section class `COORD-R5` through `COORD-R10`
+reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
+and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
+being necessary.)*
+
+### T-078 — A real worker pool, bounded and configurable
+
+**Status:** **Ready**, promoted 2026-07-30 — the first Phase 2 task out of Proposed. All three
+planning gates are clear: `P2PLAN-R2` approved at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` approved at
+`8306378`. The configuration surface is decided (`ARC-007`) and the criteria gate the real user path
+rather than a constructor argument. **`T-097` is required by this task's approval, not by its
+readiness** — it mechanically forbids `downloader/manager.py` importing `core.settings`, a violation
+both current analysers were measured to miss. The phase's centre; most of the rest depends on it.
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 2
+**Depends on:** Phase 1 approved
+**Relevant context:** **`ARC-007`** (the settings surface and the persistence boundary, decided
+2026-07-30), `REQ-013`, `UX-001`, `ARC-002`, `ARC-005`, `T-013`, `T-019`, `T036-R1`
+**Affected surfaces:** `downloader/manager.py`, **`core/settings.py`** (currently a stub),
+`ui/main_window.py`, `app.py`
+**Risk:** High — it is the object every other Phase 2 task acts through
+
+#### Scope
+
+`DownloadManager` runs a pool of exactly one, and says so in seven places. Phase 1 deliberately
+did not generalise it: *"Building a pool for N now would mean designing scheduling policy with
+one job to test it against."* Now there is something to test it against.
+
+What already exists and should not be rebuilt: `_sessions` and `_reserved` model in-flight and
+being-written starts, `_PendingStart` makes a reservation withdrawable, and `_Chain` serialises
+per-job effects. The pool-of-one refusal in `start()` and the single `_pending_retry` slot are the
+two pieces that are explicitly scaffolding.
+
+**Default 3, minimum 1** (`REQ-013`). **Where the setting lives is no longer this task's to
+decide** — `ARC-007` settled it after `P2PLAN-R3` found that leaving it open let the criteria be
+satisfied by a constructor argument:
+
+- `core/settings.py` stops being a stub and owns `settings.toml` at `ARCHITECTURE.md` §5's location.
+- The limit is exposed as a control in the **existing main window**, not a settings dialog. Phase 4
+  owns the full `REQ-023` dialog and would replace a one-control dialog's layout.
+- **The manager never reads the file.** It receives an integer and a way to be told it changed —
+  `JobStore`'s shape, so the pool stays testable without TOML on disk.
+- Changes take effect **live**, and lowering **drains** rather than kills. That was already Phase 2's
+  exit criterion; what was missing was a user-facing path connected to it.
+
+#### Acceptance criteria
+
+- N sessions run concurrently, N is configurable, and the limit is respected **exactly** — not
+  "about N", asserted by counting live sessions at the moment the pool is saturated
+- **Lowering the limit while running drains rather than kills.** A running download is work a user
+  asked for; the new limit governs what starts next
+- Raising it starts waiting jobs without waiting for a tick that happens to fire
+- `is_idle`, `active_job_ids()` and `shutdown()` account for every slot, every reservation and
+  every waiting job — `T016-R1` is what a missed reservation costs
+- Scheduling order is stated and asserted: `queue_position` already exists and is allocated inside
+  the insert transaction
+- **The limit changes through the real user-facing path** (`ARC-007`, `P2PLAN-R3`): driving the
+  main-window control changes the running pool's limit, and the change survives a restart by way of
+  `settings.toml`. **Asserted through that path, not through the constructor** — a test that
+  constructs the manager with a different N proves nothing about `REQ-013`
+- **Lowering through that path drains**, asserted the same way: in-flight downloads finish and no new
+  one starts. The existing drain criterion above is about the pool; this one is about the control
+  reaching it
+- **`minimum 1` is enforced by the settings layer, not the widget** — a hand-edited `settings.toml`
+  holding `0`, a negative, or a non-integer must not produce a pool that starts nothing. State what
+  each does; a spinbox that clamps its own input is not a bound on the file
+- **An unparseable or absent `settings.toml` is stated rather than discovered** — defaults apply and
+  the application starts. `REQ-013`'s default 3 is the value a missing file yields
+
+#### Out of scope
+
+- Per-job priority beyond queue order, and pausing to free a slot (`T-080`)
+- Rate limiting or bandwidth sharing between sessions
+- **Any other `REQ-023` setting.** `ARC-007` puts the layer in place; only the concurrency key lands
+  here. The settings *screen* is Phase 4
+- Migrating `window.toml`, which deliberately stays outside this layer (`ARCHITECTURE.md` §5)
+
+---
+
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
-**Status:** **Open — still undiagnosed, no longer blocking Phase 1** (`OPS-007`, maintainer risk
+**Status:** **Ready — still undiagnosed, no longer blocking Phase 1** (`OPS-007`, maintainer risk
 decision 2026-07-29). Downgraded **High → Medium**. The faulting object of the access violation is
 unknown, product-versus-harness is unresolved, and the crash has never been reproduced: the
 recorded **0 in 36** deliberate full-suite runs, plus **0/15 at `35fc7ec`** (run `30478557533`,
@@ -614,82 +701,54 @@ agreement on the reduced form before implementation.
 ## Proposed — Phase 2
 
 *(`T-078`…`T-088` are the phase's own deliverables, written 2026-07-29 from
-`ai/IMPLEMENTATION_PLAN.md` §Phase 2. The entries after them — `T-050`, `T-053`, `T-046`,
-`T-047`, `T-048`, `T-049` — are follow-ups carried out of Phase 1 that land in this phase, and
-they were here first. Nothing below is scheduled: Phase 2's prerequisite is Phase 1 approved.)*
+`ai/IMPLEMENTATION_PLAN.md` §Phase 2. `T-097` is a planning-review follow-up; the entries after the
+deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are follow-ups carried out
+of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
+prerequisite is Phase 1 approved.)*
 
-### T-078 — A real worker pool, bounded and configurable
+### T-097 — Gate ARC-007's settings-injection boundary
 
-**Status:** **Proposed — `P2PLAN-R3` corrected 2026-07-30, not yet promotable.** The surface is
-decided (`ARC-007`) and the criteria now gate the real user path, so this task's own blocker is
-cleared pending review. **It stays Proposed** because the re-review's condition was that
-`P2PLAN-R1` through `R3` all *clear* before the first promotion out of Proposed. All three are now
-corrected — `R1` on 2026-07-30 with the rest — but `R1` and `R3` are corrected rather than reviewed,
-so this promotes when that review lands. The phase's centre; most of the rest depends on it.
+**Status:** Proposed — non-blocking follow-up from `P2PLAN-R6`; required by T-078 approval, not
+readiness
 **Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 2
-**Depends on:** Phase 1 approved
-**Relevant context:** **`ARC-007`** (the settings surface and the persistence boundary, decided
-2026-07-30), `REQ-013`, `UX-001`, `ARC-002`, `ARC-005`, `T-013`, `T-019`, `T036-R1`
-**Affected surfaces:** `downloader/manager.py`, **`core/settings.py`** (currently a stub),
-`ui/main_window.py`, `app.py`
-**Risk:** High — it is the object every other Phase 2 task acts through
+**Priority:** Low — the boundary is stated correctly; this stops a future implementation from
+making it decorative
+**Phase:** Phase 2 test infrastructure
+**Depends on:** none
+**Relevant context:** `ARC-007`, `T-078`, `tests/unit/test_manager_boundaries.py`,
+`ai/TESTING.md` §13
+**Affected surfaces:** `tests/unit/test_manager_boundaries.py`
+**Risk:** Low before implementation, architectural once T-078 lands: a manager coupled to
+`core/settings.py` remains behaviorally correct but makes the accepted persistence seam false
 
 #### Scope
 
-`DownloadManager` runs a pool of exactly one, and says so in seven places. Phase 1 deliberately
-did not generalise it: *"Building a pool for N now would mean designing scheduling policy with
-one job to test it against."* Now there is something to test it against.
+`ARC-007` says `downloader/manager.py` receives the concurrency value and a way to be told it
+changed; composition and the UI own `core/settings.py`. That rule is not covered by the general
+layering test—`downloader/` may import `core/`—and the manager-boundary test currently forbids only
+`persistence` and `sqlite3`. Both analyzers accept a direct settings import today.
 
-What already exists and should not be rebuilt: `_sessions` and `_reserved` model in-flight and
-being-written starts, `_PendingStart` makes a reservation withdrawable, and `_Chain` serialises
-per-job effects. The pool-of-one refusal in `start()` and the single `_pending_retry` slot are the
-two pieces that are explicitly scaffolding.
-
-**Default 3, minimum 1** (`REQ-013`). **Where the setting lives is no longer this task's to
-decide** — `ARC-007` settled it after `P2PLAN-R3` found that leaving it open let the criteria be
-satisfied by a constructor argument:
-
-- `core/settings.py` stops being a stub and owns `settings.toml` at `ARCHITECTURE.md` §5's location.
-- The limit is exposed as a control in the **existing main window**, not a settings dialog. Phase 4
-  owns the full `REQ-023` dialog and would replace a one-control dialog's layout.
-- **The manager never reads the file.** It receives an integer and a way to be told it changed —
-  `JobStore`'s shape, so the pool stays testable without TOML on disk.
-- Changes take effect **live**, and lowering **drains** rather than kills. That was already Phase 2's
-  exit criterion; what was missing was a user-facing path connected to it.
+Extend the existing manager-boundary analyzer with this exact prohibition. Keep it narrow:
+`downloader/manager.py` may continue importing domain models and errors from `core/`; the forbidden
+dependency is `tracks_and_trails.core.settings` itself, including package and submodule import
+forms.
 
 #### Acceptance criteria
 
-- N sessions run concurrently, N is configurable, and the limit is respected **exactly** — not
-  "about N", asserted by counting live sessions at the moment the pool is saturated
-- **Lowering the limit while running drains rather than kills.** A running download is work a user
-  asked for; the new limit governs what starts next
-- Raising it starts waiting jobs without waiting for a tick that happens to fire
-- `is_idle`, `active_job_ids()` and `shutdown()` account for every slot, every reservation and
-  every waiting job — `T016-R1` is what a missed reservation costs
-- Scheduling order is stated and asserted: `queue_position` already exists and is allocated inside
-  the insert transaction
-- **The limit changes through the real user-facing path** (`ARC-007`, `P2PLAN-R3`): driving the
-  main-window control changes the running pool's limit, and the change survives a restart by way of
-  `settings.toml`. **Asserted through that path, not through the constructor** — a test that
-  constructs the manager with a different N proves nothing about `REQ-013`
-- **Lowering through that path drains**, asserted the same way: in-flight downloads finish and no new
-  one starts. The existing drain criterion above is about the pool; this one is about the control
-  reaching it
-- **`minimum 1` is enforced by the settings layer, not the widget** — a hand-edited `settings.toml`
-  holding `0`, a negative, or a non-integer must not produce a pool that starts nothing. State what
-  each does; a spinbox that clamps its own input is not a bound on the file
-- **An unparseable or absent `settings.toml` is stated rather than discovered** — defaults apply and
-  the application starts. `REQ-013`'s default 3 is the value a missing file yields
+- The real `downloader/manager.py` passes without importing `core.settings`
+- Adding `from tracks_and_trails.core import settings`,
+  `from tracks_and_trails.core.settings import ...`, or the equivalent absolute import makes the
+  unmodified test fail
+- The analyzer's synthetic negative cases prove all supported import forms are detected
+- A legitimate manager import from another `core` module remains permitted
+- The gate lands no later than the T-078 implementation it protects; it does not delay promoting
+  T-078 to Ready
 
 #### Out of scope
 
-- Per-job priority beyond queue order, and pausing to free a slot (`T-080`)
-- Rate limiting or bandwidth sharing between sessions
-- **Any other `REQ-023` setting.** `ARC-007` puts the layer in place; only the concurrency key lands
-  here. The settings *screen* is Phase 4
-- Migrating `window.toml`, which deliberately stays outside this layer (`ARCHITECTURE.md` §5)
+- Implementing the concurrency setting or changing `core/settings.py`
+- Forbidding all `downloader/` → `core/` imports
+- Dynamic import calls already outside the static analyzer's documented contract
 
 ---
 
@@ -797,8 +856,13 @@ pre-amendment wording is preserved in `REQ-015`'s own parenthetical and in `UX-0
 - Remove takes the job out of the queue and leaves every file on disk untouched, asserted by looking
   at the directory rather than by trusting the code path
 - Removing a running job cancels it first, within the same 2-second budget
-- Retry re-enters the queue at the back and does not jump jobs that have not run (`REQ-018` owns the
-  automatic case; this is the manual one)
+- **`P2PLAN-R7` — unconfirmed, decide before starting:** *"manual retry re-enters the queue at the
+  back and does not jump jobs that have not run."* This was added with the `P2PLAN-R1` correction and
+  **is not part of it.** `UX-001` decides pause and remove, not retry order; `REQ-018` requires retry
+  without ordering it; and `T-083`'s no-jump criterion is explicitly about *automatic* retries. The
+  policy is coherent with queue fairness, but it is new scope wearing reconciliation's clothes.
+  Either confirm it as the manual-retry consequence of the scheduling order `T-078` records, or
+  remove it — and do not describe it as settled by `P2PLAN-R1`
 
 #### Out of scope
 

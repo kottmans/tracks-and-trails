@@ -17,17 +17,15 @@ Phase 0 exited 2026-07-26. **Nothing is in review.** `T-050`, `T-093` and `T-095
 `6d14e78` on 2026-07-30, carrying non-blocking `T-096`; `T-094` and `P2PLAN-R2` were approved
 earlier at `f858da9`. **`T-085` is unblocked** — `T-050` writes the table it reads — and `T-049` and
 `T-047` need nothing either, so three tasks can start today. No Phase 2 *deliverable* is Ready:
-**All three Phase 2 planning gates are corrected** (2026-07-30) **and awaiting one review.**
-`P2PLAN-R2` was approved at `f858da9`. `P2PLAN-R3` is settled by **`ARC-007`**: Phase 2's settings
-surface is `settings.toml` through `core/settings.py` plus one control in the existing main window,
-applied live with lowering draining rather than killing, and `T-078` now gates that real user path
-instead of accepting a constructor argument. `P2PLAN-R1` is settled by rewriting `T-080` from
-`UX-001` — retitled, with queue-level pause and resume separated from per-job cancel, retry and
-remove — and by amending the Phase 2 deliverable, which had still required per-job pause. **No task
-is promoted yet:** two of the three are corrected rather than reviewed, and `T-078` promotes when
-that review lands. *(This block named only the three
-`P2PLAN` findings while three correction tasks were in review — `COORD-R10`; it then reported them
-as in review after they were approved.)*
+**All three Phase 2 planning gates are clear** (2026-07-30). `P2PLAN-R2` was approved at
+`f858da9`; `P2PLAN-R1` and `P2PLAN-R3` at `8306378`. **`T-078` is Ready** — the first Phase 2 task
+out of Proposed, and the choke point eight tasks descend from. `T-085`, `T-049` and `T-047` are
+startable alongside it. Two non-blocking follow-ups came out of that review: **`T-097`**, because
+`ARC-007`'s rule that `downloader/manager.py` must not import `core.settings` was *measured* to
+escape both existing analysers, so the boundary is stated and ungated; and **`P2PLAN-R7`** inside
+`T-080`, a manual-retry ordering criterion that is new scope rather than `UX-001` reconciliation and
+must be confirmed or removed before that task starts.
+
 **Overall state:** Phase 0's five exit criteria were each verified rather than asserted, and the
 evidence is recorded in `IMPLEMENTATION_PLAN.md` §Phase 0 — including a fresh mutation run
 proving the layering test still fails on a deliberate `PySide6` import in `core/`.
