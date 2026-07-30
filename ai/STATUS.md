@@ -13,8 +13,12 @@
 ---
 
 **Current phase:** **Phase 2 — Queue and concurrency.** **Phase 1 formally exited 2026-07-29**;
-Phase 0 exited 2026-07-26. **No Phase 2 task is Ready yet** — `P2PLAN-R1`, `R2` and `R3` gate the
-first promotion out of Proposed, and none of them needs production work.
+Phase 0 exited 2026-07-26. **No Phase 2 task is Ready yet.** `P2PLAN-R1` (pause contract) and
+`P2PLAN-R3` (concurrency configuration surface) still gate the first promotion out of Proposed;
+neither needs production work. `P2PLAN-R2` is **approved** — `UX-001` and the amended `ARC-006`
+both stand. **In review:** `T-050`, `T-093` and `T-095`; `T-094` is approved and filed Complete.
+`T-085` stays blocked on `T-050` until `T093-R1` clears. *(This block named only the three
+`P2PLAN` findings while three correction tasks were in review — `COORD-R10`.)*
 **Overall state:** Phase 0's five exit criteria were each verified rather than asserted, and the
 evidence is recorded in `IMPLEMENTATION_PLAN.md` §Phase 0 — including a fresh mutation run
 proving the layering test still fails on a deliberate `PySide6` import in `core/`.

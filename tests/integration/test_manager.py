@@ -3465,86 +3465,153 @@ def test_a_job_that_did_not_complete_writes_no_history_row(
     assert _history_rows(path) == [], f"a {name} job was recorded as an obtained download"
 
 
-def test_a_hard_exit_cannot_separate_a_completion_from_its_history(tmp_path: Path) -> None:
-    """`T050-R1`: the job row and its history row commit together or not at all.
+def _completion_probe(tmp_path: Path, *, die_before_history: bool) -> Path:
+    """Write a child that drives one real completion and hard-exits at a chosen point.
 
-    **This is the defect's own reproduction, kept as the gate.** The first version of `T-050`
-    persisted `COMPLETED`, returned to the GUI thread, and only then queued the history insert. A
-    probe that hard-exited between the two commits observed
-    `{'job_status': 'completed', 'history': None}` on restart. Nothing backfills history at startup
-    and `format_used` exists nowhere else, so that record was lost irreversibly.
-
-    A **subprocess** because the failure needs a process that stops existing: `os._exit` skips
-    `atexit`, flushes nothing and runs no Qt teardown, which is as close to a power cut as a test
-    can arrange. Asserting in-process would prove only that two writes happen.
-
-    The child writes through the real `QueueWriter`, and exits the instant the completion callback
-    fires — before any further event-loop turn could carry a second write.
+    `die_before_history=True` replaces `repositories._write_history` with `os._exit`, so the
+    process dies **inside** the completion transaction, between its two statements. That is the
+    only injection point that can tell an atomic completion from a split one — see
+    `test_a_completion_that_dies_before_its_history_write_leaves_neither_row`.
     """
-    probe = tmp_path / "probe.py"
-    probe.write_text(
-        "\n".join(
-            [
-                "import os, sys",
-                "from dataclasses import replace",
-                "from datetime import UTC, datetime",
-                "from PySide6.QtCore import QCoreApplication",
-                "from tracks_and_trails.core.job_state import JobStatus",
-                "from tracks_and_trails.core.models import DownloadRequest, Job",
-                "from tracks_and_trails.persistence import db",
-                "from tracks_and_trails.persistence.repositories import JobRepository",
-                "from tracks_and_trails.persistence.store import PersistentJobStore",
-                "from tracks_and_trails.persistence.writer import QueueWriter",
-                "",
-                "path = sys.argv[1]",
-                "application = QCoreApplication([])",
-                "connection = db.connect(path)",
-                "request = DownloadRequest(",
-                "    url='https://example.com/x',",
-                "    output_directory=os.path.dirname(path),",
-                "    format_selector='best',",
-                "    output_template='%(title)s.%(ext)s',",
-                ")",
-                "queued = Job(id='j', url=request.url, request=request,",
-                "             created_at=datetime.now(UTC))",
-                "JobRepository(connection).add(queued)",
-                "finished = queued",
-                "for status in (JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING,",
-                "               JobStatus.POST_PROCESSING, JobStatus.COMPLETED):",
-                "    finished = finished.with_status(status)",
-                "finished = replace(finished, finished_at=datetime.now(UTC))",
-                "",
-                "writer = QueueWriter(lambda: db.connect(path))",
-                "store = PersistentJobStore(connection, writer)",
-                "",
-                "def settled(error):",
-                "    # The completion transaction has committed. Die now, the way a power cut",
-                "    # would: no atexit, no flush, no Qt teardown, no further event-loop turn.",
-                "    os._exit(0 if error is None else 3)",
-                "",
-                "store.complete(finished, '137+140', settled)",
-                "application.exec()",
-            ]
-        )
-    )
-    database = tmp_path / "library.sqlite3"
-    result = subprocess.run(
+    probe = tmp_path / f"probe_{'mid' if die_before_history else 'after'}.py"
+    body = [
+        "import os, sys",
+        "from dataclasses import replace",
+        "from datetime import UTC, datetime",
+        "from PySide6.QtCore import QCoreApplication",
+        "from tracks_and_trails.core.job_state import JobStatus",
+        "from tracks_and_trails.core.models import DownloadRequest, Job",
+        "from tracks_and_trails.persistence import db, repositories",
+        "from tracks_and_trails.persistence.repositories import JobRepository",
+        "from tracks_and_trails.persistence.store import PersistentJobStore",
+        "from tracks_and_trails.persistence.writer import QueueWriter",
+        "",
+        "path = sys.argv[1]",
+        "application = QCoreApplication([])",
+        "connection = db.connect(path)",
+        "request = DownloadRequest(",
+        "    url='https://example.com/x',",
+        "    output_directory=os.path.dirname(path),",
+        "    format_selector='best',",
+        "    output_template='%(title)s.%(ext)s',",
+        ")",
+        "queued = Job(id='j', url=request.url, request=request,",
+        "             created_at=datetime.now(UTC))",
+        "JobRepository(connection).add(queued)",
+        "finished = queued",
+        "for status in (JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING,",
+        "               JobStatus.POST_PROCESSING, JobStatus.COMPLETED):",
+        "    finished = finished.with_status(status)",
+        "finished = replace(finished, finished_at=datetime.now(UTC))",
+        "",
+        "writer = QueueWriter(lambda: db.connect(path))",
+        "store = PersistentJobStore(connection, writer)",
+        "",
+    ]
+    if die_before_history:
+        body += [
+            "def die_before_history(connection, entry):",
+            "    # Inside the transaction: the job statement has run, this one never will.",
+            "    os._exit(17)",
+            "",
+            "repositories._write_history = die_before_history",
+            "",
+            "def settled(error):",
+            "    os._exit(1)  # unreachable: the injection kills us first",
+            "",
+        ]
+    else:
+        body += [
+            "def settled(error):",
+            "    # Both statements have committed. Die the way a power cut would.",
+            "    os._exit(0 if error is None else 3)",
+            "",
+        ]
+    body += [
+        "store.complete(finished, '137+140', settled)",
+        "application.exec()",
+    ]
+    probe.write_text("\n".join(body))
+    return probe
+
+
+def _run_probe(probe: Path, database: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
         [sys.executable, str(probe), str(database)],
         capture_output=True,
         text=True,
         timeout=120,
         env={**os.environ, "QT_QPA_PLATFORM": "offscreen"},
+        check=False,
     )
-    assert result.returncode == 0, f"the probe did not reach a clean exit: {result.stderr}"
+
+
+def test_a_completion_that_dies_before_its_history_write_leaves_neither_row(
+    tmp_path: Path,
+) -> None:
+    """`T050-R1`, `T093-R1`: both rows commit or neither, proven by killing it between them.
+
+    **This replaces a test that could not fail** (`T093-R1`). The first version hard-exited
+    from the settlement callback — after `_Worker._perform` had returned, and therefore after
+    *every* statement in `complete_job` had run. Splitting the transaction into two consecutive
+    `with connection:` blocks left it passing, so it gated nothing. The mutation that appeared to
+    kill it supplied its own `os._exit` between the statements, which means the mutation was doing
+    the discriminating rather than the test. `ai/TESTING.md` §13's shape exactly: a guard nobody
+    watches fail.
+
+    The injection here is inside the transaction. `repositories._write_history` becomes `os._exit`,
+    so the job statement has executed and the history statement never will, and the process stops
+    existing before either can commit.
+
+    - **Atomic (current):** the transaction never commits, so SQLite discards it. The row is still
+      `QUEUED` and there is no history — **neither**.
+    - **Split:** the first block commits `COMPLETED`, then the process dies. `COMPLETED` with no
+      history — the exact irrecoverable state `T050-R1` reported, and this test fails.
+    """
+    database = tmp_path / "library.sqlite3"
+    probe = _completion_probe(tmp_path, die_before_history=True)
+    result = _run_probe(probe, database)
+    assert result.returncode == 17, (
+        f"the probe did not die at the history statement (exit {result.returncode}); "
+        f"the injection point moved: {result.stderr}"
+    )
+
+    with db.open_database(database) as connection:
+        stored = JobRepository(connection).get("j")
+        entry = HistoryRepository(connection).get("j")
+
+    assert stored is not None, "the job row vanished entirely"
+    # The invariant, stated as the invariant: the two rows agree about whether it completed.
+    assert not (stored.status is JobStatus.COMPLETED and entry is None), (
+        "a durably COMPLETED job with no history row — the completion was split across two "
+        "transactions and a death between them lost the record (T050-R1)"
+    )
+    # And what the atomic shape actually produces at this injection point.
+    assert entry is None, "history committed even though its statement never ran"
+    assert stored.status is JobStatus.QUEUED, (
+        f"the job advanced to {stored.status.value} from an uncommitted transaction"
+    )
+
+
+def test_a_hard_exit_after_a_completion_settles_keeps_both_rows(tmp_path: Path) -> None:
+    """A committed completion survives a process that stops existing (`NFR-003`).
+
+    **Stated limit: this is a positive durability check, not the atomicity gate.** It exits from
+    the settlement callback, so every statement has already run and a split transaction passes it
+    too — which is why `T093-R1` rejected it as the gate for `T050-R1`. What it does establish is
+    that once a completion has settled, WAL has it: no `atexit`, no flush and no Qt teardown are
+    needed for both rows to be there on restart.
+    """
+    database = tmp_path / "library.sqlite3"
+    probe = _completion_probe(tmp_path, die_before_history=False)
+    result = _run_probe(probe, database)
+    assert result.returncode == 0, f"the completion did not settle cleanly: {result.stderr}"
 
     with db.open_database(database) as connection:
         stored = JobRepository(connection).get("j")
         entry = HistoryRepository(connection).get("j")
 
     assert stored is not None
-    assert stored.status is JobStatus.COMPLETED, "the completion never became durable"
-    assert entry is not None, (
-        "the job is durably COMPLETED with no history row — a hard exit separated the two "
-        "writes, which is T050-R1"
-    )
-    assert entry.format_used == "137+140", "the record survived without what it recorded"
+    assert stored.status is JobStatus.COMPLETED
+    assert entry is not None, "a settled completion lost its history row to the exit"
+    assert entry.format_used == "137+140"

@@ -13,9 +13,22 @@ Statuses: Proposed · Ready · In Progress · Blocked · In Review · Complete �
 IDs are never reused. Completed tasks move to `ai/archive/` once they bury the live queue.
 
 **Start here: Phase 1 exited 2026-07-29.** All eight criteria are met and the exit review is in
-`ai/REVIEWS.md`. **The current phase is Phase 2, and nothing in it is Ready yet** —
-`P2PLAN-R1`, `R2` and `R3` gate the first promotion out of Proposed, and none of them needs
-production work. That is the next work.
+`ai/REVIEWS.md`. **The current phase is Phase 2, and nothing in it is Ready yet.**
+
+**The live queue, in full** (`COORD-R10` — this list omitted the correction tasks while all three
+claimed In Review):
+
+- **In Review:** `T-050` (the history table), `T-093` (`T093-R1` corrected — the atomicity gate now
+  rejects a split transaction), `T-095` (`COORD-R10` corrected — this list is the correction).
+- **Approved and filed Complete:** `T-094`. `P2PLAN-R2` is approved with it: `UX-001` and the
+  amended `ARC-006` both stand, and the revised ownership mechanism agrees with Qt's documented
+  limitation. `T-087` is unblocked *on the decision*; its implementation is still Proposed.
+- **Still gating Phase 2:** `P2PLAN-R1` (the pause contract) and `P2PLAN-R3` (the concurrency
+  configuration surface). Neither needs production work, and `P2PLAN-R3` is the one that matters
+  most — `T-078` is the choke point eight tasks descend from.
+- **`T-085` stays blocked on `T-050`** until `T093-R1` clears.
+
+That, plus `P2PLAN-R1` and `R3`, is the next work.
 
 **Two Phase 1 blockers were dispositioned by maintainer decision rather than completed, and the
 exit review upheld both while keeping them open.** `T-066` by the `OPS-005` amendment (its frozen
@@ -115,12 +128,114 @@ after approval, which is the placement drift `COORD-R7` reported. The lesson thi
 relearning is that the claim has to be rewritten when the section changes, not when someone
 notices.)*
 
+### T-093 — Make completion and history one crash-atomic write
+
+**Status:** **In Review — `T093-R1` corrected 2026-07-29.** The production fix was already right;
+the *gate* was not, and that is what this correction replaces. The hard-exit test exited from the
+settlement callback — after every statement in `complete_job` had run — so a split transaction
+passed it and the mutation criterion was unmet. **The gate now injects the exit between the two
+statements** (`repositories._write_history` becomes `os._exit`), and a bare split fails it with no
+help from the mutation: `COMPLETED` with `history=None`, the state `T050-R1` reported. The
+after-callback case is kept beside it, relabelled as the positive durability check it always was.
+`T050-R2` and `T050-R3` remain Resolved. See **`T093-R1` — the gate that could not fail** below.
+**Owner:** Implementer
+**Priority:** **Critical** — a hard exit can leave a completed job with its required history row
+silently and irrecoverably absent
+**Phase:** Phase 2; blocks T-050 approval
+**Depends on:** T-050 implementation head `f4384b0`
+**Relevant context:** `REQ-012`, `REQ-020`, `ARC-005`, `T050-R1`, `T050-R2`, `T050-R3`
+**Affected surfaces:** `downloader/manager.py`, `persistence/store.py`,
+`persistence/repositories.py`, `persistence/writer.py`, composition and tests
+**Risk:** Critical — this is durable-record loss in the exact unexpected-termination case the
+SQLite design exists to survive
+
+#### Scope
+
+T-050 writes `COMPLETED` first, waits for the writer's callback on the GUI thread, and only then
+queues the history insert. A deterministic child probe exited after the first commit and before
+processing that callback; restart found `job_status=completed` and `history=None`. No recovery path
+backfills it, and `format_used` exists nowhere else.
+
+Make the job's completed state and its `HistoryEntry` one transaction on the writer thread. Keep
+the manager free of persistence imports by expressing completion through an injected protocol,
+but do not leave a production composition in which the required history behavior can be silently
+disabled with `history=None`.
+
+The failure path also needs an owner. At `f4384b0`, a history write error emits
+`persistence_failed`, but the composed application has no stable receiver for that signal; only a
+temporary Add-URL dialog listens, and it ignores jobs it is not withdrawing. A lost history record
+is therefore silent during an ordinary completed download.
+
+Finally, correct the new cancellation assertion whose tuple-versus-list comparison fails both
+required whole-project mypy gates.
+
+#### Acceptance criteria
+
+- The completed job update and history insert commit or roll back **together** on the existing
+  writer-thread connection; there is no committed `COMPLETED` row without its history row
+- A subprocess test hard-exits at the former between-write boundary and proves restart sees either
+  both durable records or neither. Splitting the transaction makes that test fail
+- Existing `submit` and `revise` paths still construct and use their repositories on the writer
+  thread with SQLite's default `check_same_thread=True`
+- A completion-persistence failure reaches a stable application-level consumer or log even when no
+  Add-URL dialog exists, and success is not announced for a transaction that rolled back
+- The manager still imports no persistence module, and the real `app.compose()` graph supplies the
+  required completion dependency
+- Bare `mypy` and `mypy --platform win32` pass, in addition to the source, lint, format, focused,
+  full-unit, full-integration and full-default gates
+- The writer-thread and completion tests pass on `STARBASE`; the T-050 Windows half has not run yet
+
+#### Out of scope
+
+- History UI, retention, export or backfill of records lost by old builds
+- Changing the six facts `REQ-020` names
+- Phase 2 queue concurrency
+
+---
+
+### T-095 — Reconcile the post-exit and T-050 review queue
+
+**Status:** **In Review — `COORD-R10` corrected 2026-07-29.** `COORD-R9`'s three named
+contradictions are Resolved. `COORD-R10` then found the same class inside this task's own
+correction, which is the part worth keeping: `T-093`, `T-094` and `T-095` each said In Review while
+sitting physically under `## Ready`, and neither readiness summary named them. Now filed where their
+statuses say — `T-093` and `T-095` In Review, approved `T-094` Complete — and both `TASKS.md`'s
+start-here list and `STATUS.md`'s current-phase block account for all three.
+**Owner:** Planner / Coordinator
+**Priority:** Low
+**Phase:** Phase 2 coordination
+**Depends on:** the T-050 / P2PLAN-R2 review disposition
+**Relevant context:** `COORD-R9`, the 2026-07-29 Phase 1 exit review
+**Affected surfaces:** `ai/STATUS.md`, `ai/TASKS.md`
+**Risk:** Low — current-truth navigation is contradictory, but product behavior is unaffected
+
+#### Scope
+
+`STATUS.md` first says criterion 7 is met, then retains the pre-review sentence saying the exit
+review is still the place to decide whether it is met. It also repeats the “all four frozen
+references” count without the fifth Phase 0 risk-register mention the exit review explicitly
+identified.
+
+`TASKS.md` declares `## In Review` empty while T-050's entry says In Review under
+`## Proposed — Phase 2`. Reconcile those statements with this review's Changes-requested verdict
+and the correction tasks above.
+
+#### Acceptance criteria
+
+- STATUS describes criterion 7 as already decided, with the accepted residual still explicit
+- The frozen-reference summary matches the exit review's actual wording
+- T-050 appears under the section its review state names, and the `## In Review` prose agrees
+- The start-here and Phase 2 readiness summaries account for T-093 and T-094 without implying
+  P2PLAN-R1 or P2PLAN-R3 is resolved
+
+---
+
 ### T-050 — Write the history table
 
-**Status:** **In Review — corrected 2026-07-29**, awaiting the focused re-review of `T050-R1`,
-`T050-R2` and `T050-R3`. All three are addressed by **one** change rather than three patches: making
-completion a single transaction removed the crash window, the silent-failure path and the optional
-collaborator together. See **Corrections, 2026-07-29**.
+**Status:** **Changes requested — T093-R1**, 2026-07-29. The production correction is one
+transaction and T050-R2/R3 are Resolved, but the required hard-exit regression gate still passes a
+literal split into two transactions. T050-R1 remains open until that gate rejects the split. See
+**Focused correction re-review, 2026-07-29**.
 *(This read "In Review — implemented" and claimed the row "is written from the manager through an
 injected sink" — which was the defect. `T050-R1` found that the sink wrote in a **second**
 transaction. Before that this read "Proposed — Ready now".)*
@@ -141,10 +256,28 @@ from inside the completion callback — no `atexit`, no flush, no Qt teardown �
 database back. **Mutation: restoring the two-transaction shape and dying in the window fails it
 with the reviewer's exact observation**, a durably `COMPLETED` job and `history=None`.
 
-*Stated limit on that mutation:* the crash point has to be injected at the window, because the gap
-between two commits is sub-millisecond and cannot be hit reliably by racing. Without the injection
-the two-transaction shape passes — which is precisely why the defect survived being written, and is
-worth keeping in mind when reading the gate as evidence.
+#### `T093-R1` — the gate that could not fail, 2026-07-29
+
+**The stated limit above was the finding.** That paragraph admitted the mutation supplied its own
+`os._exit` between the statements, and treated it as a caveat. It is not a caveat: if the mutation
+does the discriminating, the test does none. Splitting `complete_job` into two consecutive
+`with connection:` blocks — changing nothing else — left the committed hard-exit test **passing**.
+It exited from the settlement callback, after `_Worker._perform` had returned and therefore after
+every statement had already run. `ai/TESTING.md` §13's shape: a guard nobody watches fail.
+
+**The gate now injects the exit inside the transaction.** The child replaces
+`repositories._write_history` with `os._exit(17)`, so the job statement has executed and the history
+statement never will, and the process stops existing before either commits. Nothing about the
+mutation participates.
+
+| Shape | Restart state | Verdict |
+|---|---|---|
+| Atomic (current) | `status='queued'`, `history=None` — **neither** | passes |
+| Split into two transactions | `status='completed'`, `history=None` | **fails**, exactly `T050-R1` |
+
+`test_a_hard_exit_after_a_completion_settles_keeps_both_rows` is kept beside it and **relabelled as
+what it always was** — a positive durability check that WAL holds a settled completion. It still
+passes under the split, and its docstring says so, so nothing reads it as the atomicity gate again.
 
 **`T050-R2` (Medium) — the silent path is gone rather than routed.** Because both rows now settle
 together, a failed history write **is** a failed completion, so it travels the ordinary
@@ -170,7 +303,7 @@ that exists for it.
 | Two-transaction mutation, hard exit in the window | **killed** — `COMPLETED` with `history=None` |
 | Selector-instead-of-resolved-format mutation | **killed, 3/3** (unchanged) |
 | ruff, ruff format | clean |
-| Full suite, Linux | **1449 passed, 11 skipped, 2 deselected** |
+| Full suite, Linux | **1450 passed, 11 skipped, 2 deselected** |
 | **Full suite on `STARBASE`**, run `30506962680` | **1438 passed, 20 skipped, 32 deselected** — job `windows desktop` green |
 
 **Windows has now executed all of it**, which the previous round could not claim. Run
@@ -181,6 +314,15 @@ platform behaviour, and the transaction change is the part of `T-050` most likel
 
 *The four GitHub-hosted jobs in that run failed at **zero steps in four seconds**, on the billing
 annotation — the exhausted quota `OPS-005` and `OPS-006` already cover, not a result.*
+
+#### Focused correction re-review, 2026-07-29
+
+T050-R2 and T050-R3 are **Resolved**. T050-R1's production defect is corrected: forced failure of
+the history statement rolls the job update back, and a hard exit immediately before that statement
+restarts with neither record. **T093-R1 remains blocking**, however: the committed test exits only
+after the completion callback, so splitting `complete_job()` into two consecutive transactions
+still passes it. The test must inject the exit between the two statements; current code must yield
+neither row and the split mutation must yield the forbidden `COMPLETED`-without-history state.
 **Owner:** Implementer
 **Priority:** Medium — `REQ-020` has no owner without it, and the table already exists empty
 **Phase:** **Phase 2** — `IMPLEMENTATION_PLAN.md` lists "History persistence and
@@ -688,151 +830,6 @@ workflow.
 - Any change to `src/`
 - Dump capture on Linux, or on hosted runners, which are discarded anyway
 - Making `T-074`'s recurrence more likely; this is passive capture, not a stress test
-
----
-
-### T-093 — Make completion and history one crash-atomic write
-
-**Status:** **In Review — corrected 2026-07-29**, awaiting the focused re-review.
-All three findings are addressed by one change: `complete_job()` writes the job row and the
-history row in one transaction, `HistorySink` is merged into the required `JobStore.complete`,
-and both whole-project mypy gates are green. `T050-R2` is discharged by construction rather
-than by routing — a failed history write is now a failed completion, so `job_succeeded` is
-never announced for one that did not land. See `T-050` **Corrections, 2026-07-29**.
-**Owner:** Implementer
-**Priority:** **Critical** — a hard exit can leave a completed job with its required history row
-silently and irrecoverably absent
-**Phase:** Phase 2; blocks T-050 approval
-**Depends on:** T-050 implementation head `f4384b0`
-**Relevant context:** `REQ-012`, `REQ-020`, `ARC-005`, `T050-R1`, `T050-R2`, `T050-R3`
-**Affected surfaces:** `downloader/manager.py`, `persistence/store.py`,
-`persistence/repositories.py`, `persistence/writer.py`, composition and tests
-**Risk:** Critical — this is durable-record loss in the exact unexpected-termination case the
-SQLite design exists to survive
-
-#### Scope
-
-T-050 writes `COMPLETED` first, waits for the writer's callback on the GUI thread, and only then
-queues the history insert. A deterministic child probe exited after the first commit and before
-processing that callback; restart found `job_status=completed` and `history=None`. No recovery path
-backfills it, and `format_used` exists nowhere else.
-
-Make the job's completed state and its `HistoryEntry` one transaction on the writer thread. Keep
-the manager free of persistence imports by expressing completion through an injected protocol,
-but do not leave a production composition in which the required history behavior can be silently
-disabled with `history=None`.
-
-The failure path also needs an owner. At `f4384b0`, a history write error emits
-`persistence_failed`, but the composed application has no stable receiver for that signal; only a
-temporary Add-URL dialog listens, and it ignores jobs it is not withdrawing. A lost history record
-is therefore silent during an ordinary completed download.
-
-Finally, correct the new cancellation assertion whose tuple-versus-list comparison fails both
-required whole-project mypy gates.
-
-#### Acceptance criteria
-
-- The completed job update and history insert commit or roll back **together** on the existing
-  writer-thread connection; there is no committed `COMPLETED` row without its history row
-- A subprocess test hard-exits at the former between-write boundary and proves restart sees either
-  both durable records or neither. Splitting the transaction makes that test fail
-- Existing `submit` and `revise` paths still construct and use their repositories on the writer
-  thread with SQLite's default `check_same_thread=True`
-- A completion-persistence failure reaches a stable application-level consumer or log even when no
-  Add-URL dialog exists, and success is not announced for a transaction that rolled back
-- The manager still imports no persistence module, and the real `app.compose()` graph supplies the
-  required completion dependency
-- Bare `mypy` and `mypy --platform win32` pass, in addition to the source, lint, format, focused,
-  full-unit, full-integration and full-default gates
-- The writer-thread and completion tests pass on `STARBASE`; the T-050 Windows half has not run yet
-
-#### Out of scope
-
-- History UI, retention, export or backfill of records lost by old builds
-- Changing the six facts `REQ-020` names
-- Phase 2 queue concurrency
-
----
-
-### T-094 — Give ARC-006 an atomic Windows ownership primitive
-
-**Status:** **In Review — corrected 2026-07-29**, awaiting the focused re-review.
-`ARC-006` carries an amendment withdrawing `QLocalServer` as the ownership primitive and
-replacing it with an atomic kernel lock — `flock(LOCK_EX | LOCK_NB)` on POSIX, exclusive-access
-open on Windows — keeping `QLocalServer` only as the attach channel. The header's
-"Discharges `A-004`" is corrected to "Addresses"; `A-004` stays unverified until `T-087`
-lands. `T-087` gained a **simultaneous-start** acceptance criterion, which is the case the
-withdrawn design passes sequentially and fails.
-**Owner:** Planner
-**Priority:** **High** — the chosen guard permits the two-writer state it exists to prevent
-**Phase:** Phase 2 planning; blocks `P2PLAN-R2` approval and T-087 readiness
-**Depends on:** none
-**Relevant context:** `ARC-006`, `A-004`, `ARC-005`, `T-087`, `P2PLAN-R5`
-**Affected surfaces:** `ai/DECISIONS.md`, `ai/TASKS.md`
-**Risk:** High — two processes can concurrently write the same queue database
-
-#### Scope
-
-Qt documents that on Windows two `QLocalServer` objects may listen on the same named pipe
-simultaneously, with incoming connections delivered to either. Therefore “connect; on failure,
-listen” is not an exclusive claim: two simultaneous starts can both fail to connect and both
-successfully become servers.
-
-Reopen the mechanism choice. Keep `QLocalServer` as the attach channel if useful, but pair it with
-an atomic ownership primitive—or choose another cross-platform mechanism—that cannot admit two
-owners of one resolved database path. The decision header must not say it discharges `A-004`
-before T-087 implements and verifies the guard.
-
-#### Acceptance criteria
-
-- The accepted mechanism has an **atomic exclusivity** operation on Windows and Linux; simultaneous
-  starts cannot both become owners
-- The attach/refuse channel remains available or its removal is decided explicitly
-- Crash recovery is specified without deleting or stealing a live owner's guard
-- `ARC-006` is amended or superseded with the official Qt Windows behavior engaged, not assumed
-- T-087 tests simultaneous starts and killed-owner recovery on Linux and `STARBASE`
-- `A-004` remains unverified until the implementation and both-platform evidence land
-
-#### Out of scope
-
-- Implementing T-087 in this planning correction
-- Multi-user or networked database access
-
----
-
-### T-095 — Reconcile the post-exit and T-050 review queue
-
-**Status:** **In Review — corrected 2026-07-29**, awaiting the focused re-review.
-`STATUS.md`'s post-exit tense now reports the verdict rather than deferring to it; the frozen
-reference count is corrected from four to **five** (the original was a case-sensitive grep that
-missed the Phase-level risk-register row at `IMPLEMENTATION_PLAN.md:330` — conclusion unchanged,
-count wrong); and `T-050` is filed under `## In Review`, whose emptiness claim is rewritten.
-**Owner:** Planner / Coordinator
-**Priority:** Low
-**Phase:** Phase 2 coordination
-**Depends on:** the T-050 / P2PLAN-R2 review disposition
-**Relevant context:** `COORD-R9`, the 2026-07-29 Phase 1 exit review
-**Affected surfaces:** `ai/STATUS.md`, `ai/TASKS.md`
-**Risk:** Low — current-truth navigation is contradictory, but product behavior is unaffected
-
-#### Scope
-
-`STATUS.md` first says criterion 7 is met, then retains the pre-review sentence saying the exit
-review is still the place to decide whether it is met. It also repeats the “all four frozen
-references” count without the fifth Phase 0 risk-register mention the exit review explicitly
-identified.
-
-`TASKS.md` declares `## In Review` empty while T-050's entry says In Review under
-`## Proposed — Phase 2`. Reconcile those statements with this review's Changes-requested verdict
-and the correction tasks above.
-
-#### Acceptance criteria
-
-- STATUS describes criterion 7 as already decided, with the accepted residual still explicit
-- The frozen-reference summary matches the exit review's actual wording
-- T-050 appears under the section its review state names, and the `## In Review` prose agrees
-- The start-here and Phase 2 readiness summaries account for T-093 and T-094 without implying
-  P2PLAN-R1 or P2PLAN-R3 is resolved
 
 ---
 
@@ -2153,6 +2150,53 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-094 — Give ARC-006 an atomic Windows ownership primitive
+
+**Status:** **Approved at `f858da9` — Complete**, 2026-07-29. `P2PLAN-R5` is Resolved.
+`ARC-006` carries an amendment withdrawing `QLocalServer` as the ownership primitive and replacing
+it with an atomic kernel lock — `flock(LOCK_EX | LOCK_NB)` on POSIX, exclusive-access open on
+Windows — keeping `QLocalServer` only as the attach channel. The header's "Discharges `A-004`" is
+corrected to "Addresses"; `A-004` stays unverified until `T-087` lands. `T-087` gained a
+**simultaneous-start** acceptance criterion, which is the case the withdrawn design passes
+sequentially and fails. COORD-R10 owns moving this entry out of `## Ready` with the rest of the
+correction queue.
+**Owner:** Planner
+**Priority:** **High** — the chosen guard permits the two-writer state it exists to prevent
+**Phase:** Phase 2 planning; blocks `P2PLAN-R2` approval and T-087 readiness
+**Depends on:** none
+**Relevant context:** `ARC-006`, `A-004`, `ARC-005`, `T-087`, `P2PLAN-R5`
+**Affected surfaces:** `ai/DECISIONS.md`, `ai/TASKS.md`
+**Risk:** High — two processes can concurrently write the same queue database
+
+#### Scope
+
+Qt documents that on Windows two `QLocalServer` objects may listen on the same named pipe
+simultaneously, with incoming connections delivered to either. Therefore “connect; on failure,
+listen” is not an exclusive claim: two simultaneous starts can both fail to connect and both
+successfully become servers.
+
+Reopen the mechanism choice. Keep `QLocalServer` as the attach channel if useful, but pair it with
+an atomic ownership primitive—or choose another cross-platform mechanism—that cannot admit two
+owners of one resolved database path. The decision header must not say it discharges `A-004`
+before T-087 implements and verifies the guard.
+
+#### Acceptance criteria
+
+- The accepted mechanism has an **atomic exclusivity** operation on Windows and Linux; simultaneous
+  starts cannot both become owners
+- The attach/refuse channel remains available or its removal is decided explicitly
+- Crash recovery is specified without deleting or stealing a live owner's guard
+- `ARC-006` is amended or superseded with the official Qt Windows behavior engaged, not assumed
+- T-087 tests simultaneous starts and killed-owner recovery on Linux and `STARBASE`
+- `A-004` remains unverified until the implementation and both-platform evidence land
+
+#### Out of scope
+
+- Implementing T-087 in this planning correction
+- Multi-user or networked database access
+
+---
 
 ### T-090 — The log listener could be left reading a queue something else had closed
 
