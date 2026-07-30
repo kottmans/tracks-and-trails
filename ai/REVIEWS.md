@@ -7313,3 +7313,96 @@ T091-R1 and T091-R2 are **Resolved**. T-091 is **Approved at `25f7879`**.
 
 T096-R1 is **Resolved**. T-096 is **Approved at `25f7879`**. No open follow-up was created from
 this correction pass.
+
+## 2026-07-30 — Settings / T-047 / T-097 / T-089 backlog review
+
+**Reviewer:** Codex (Reviewer)
+**Pinned span:** `2457313..faf374f`
+**Unreviewed commits:** settings foundation `256b411`; T-047 correction `321c672`; T-097 correction
+`34addcb`; coordination reconciliation `8ea4fc9`; T-089 `128be39`; settings ceiling `faf374f`
+**Boundary treatment:** the span contains eleven commits, but `7d1fd04..25f7879` was independently
+reviewed in the intervening T-096/T-098/T-091 passes and is not reviewed again here. All checks used
+a `faf374f` archive under `/tmp`, excluding later T-078 pool work.
+**Verdict:** **Approved with non-blocking follow-ups**
+
+Per subject:
+
+- **ARC-007 settings foundation and ceiling — Approved for T-078 to build on at `faf374f`.** This
+  approves `256b411` plus `faf374f`; it is not approval of T-078's still-unimplemented pool,
+  main-window control, live propagation, or real-path criteria.
+- **T-047 — Approved at `321c672`; T047-R1 Resolved.**
+- **T-097 — Approved at `34addcb` with non-blocking diagnostic follow-up T-099; T097-R1 Resolved.**
+- **T-089 — Approved at `128be39`.**
+- **Coordination reconciliation — COORD-R11 remains Open, non-blocking.** `8ea4fc9` corrected the
+  leading summary and filed approved tasks, but did not reconcile the other live-state prose.
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T047-R1` | **Medium** | **No — resolved** | `OPS-008` now owns the durable “do not close the three blind spots” decision, including the measured module shape, five failed enumeration attempts, intended gate purpose, alternatives, accepted limits, and explicit reopening conditions. The task links to it and T-098 independently guards its structural premise. | None. | **Resolved** |
+| `T097-R1` | **Medium** | **No — resolved** | Relative imports are resolved against the analysed module: a real `from ..core import settings` added to `downloader/manager.py` failed the unmodified boundary file, as did the persistence relatives. Settings prohibitions apply only to manager.py; the result pump remains permitted while the shared T-013 persistence/sqlite rules still bind both modules. | None. | **Resolved** |
+| `T097-R2` | **Low** | **No — T-099** | The enforcement is correct but the real-module assertion at `test_manager_boundaries.py:124-138` is still named `test_the_manager_never_imports_persistence` and always explains repository injection. A real relative settings import was correctly reported as `tracks_and_trails.core.settings`, followed by the false explanation “The repository is injected as a protocol.” This leaves T097-R1's requested rule-specific diagnostic unfinished and points the first person who trips ARC-007 at the wrong architecture rule. | Report persistence/sqlite and manager/settings offenders through rule-specific assertions or diagnostics while retaining one real-source read and the current per-module rules. | **Open, non-blocking — T-099** |
+| `COORD-R11` | **Low** | **No — coordination only** | The new leading queue summary is materially better, but current TASKS still says `## In Review` is empty immediately above T-089, T-047 and T-097; lines 63-67 call approved T-091/T-096 Ready and now-In-Review T-089 Ready; lines 80-83 say Phase 1 exit criterion 7 is unmet; and lines 97-99 say Phase 1 “is not ready,” contradicting the current header that Phase 1 exited with all eight criteria met. T-096 passes because these are prose contradictions rather than status/section mismatches. | Remove or explicitly mark the obsolete live-state blocks as historical, and make the In Review note name the actual entries. Rebuild from the current sections as COORD-R11 originally required rather than retaining several prior snapshots beneath the new one. | **Open — correction incomplete** |
+
+### Settings-layer judgments
+
+**The ceiling is accepted.** REQ-013 names default 3 and minimum 1 but also calls the concurrent
+pool “bounded.” ARC-007's maintainer amendment fills the unspecified upper bound without
+contradicting the requirement. Six independent failures after removing the upper clamp confirm the
+file path and live-update helper both enforce the decision. Sixteen is candidly a typo guard rather
+than a hardware measurement, and the decision records the process-per-job reopening condition and
+the risk of obstructing a legitimate power user.
+
+**Hand-formatted TOML is proportionate.** The only emitted value is an already-validated integer,
+so there is no quoting or escaping surface. Adding a runtime writer dependency for one scalar would
+require its own architectural decision and would not make this output safer. The whole-object
+round-trip test will expose a future field that `save()` forgets, at which point Phase 4 can
+reconsider the implementation.
+
+**The duplicated `APP_SLUG` is accepted.** Importing it from downloader or UI would create a
+wrong-direction dependency from core. Centralising the slug would require moving the existing
+owners into a new neutral module; that is a separate refactor with no behavioral gain in this
+foundation commit.
+
+**Never-raising load/save is accepted for this phase.** Missing, unreadable and malformed settings
+falling back to defaults is an explicit T-078 criterion whose first obligation is that the
+application starts. A read-only configuration directory must likewise not turn shutdown into a
+crash. The trade-off is real—corruption and failed persistence are not surfaced—but no Phase 2
+diagnostic surface is specified. Revisit it when Phase 4 introduces the settings dialog rather
+than inventing a hidden exception policy now.
+
+**P2PLAN-R8 remains unresolved.** The history-view owner still blocks T-086 readiness exactly as
+the prior review recorded. Nothing in these six subjects assigns it, and it does not block the
+settings foundation, T-047, T-097, T-089, or T-078 implementation.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Isolation | All reviewed content came from a `faf374f` archive; later pool work was excluded |
+| Span accounting | Eleven commits in `2457313..faf374f`; six unreviewed commits separated from five already-reviewed commits |
+| `git diff --check 2457313..faf374f` | Passed |
+| Authorship / trailers | Sean Kottman on all six unreviewed commits; no AI author or co-author trailer |
+| Settings file | **39 passed** |
+| Boundary / environment-shape / task-placement files | **74 passed** |
+| T-089 focused cases | **4 passed** |
+| Settings upper-clamp removal | Killed — **6 failed, 33 passed** |
+| Real relative manager/settings import | Killed — **1 failed, 51 passed** |
+| T-089 MP3 → converting-codec enablement mutation | Killed by exactly the FLAC test — **1 failed, 1 passed, 77 deselected** |
+| Full pinned suite | **1573 passed, 11 skipped, 2 deselected in 135.38 s** |
+| Bare `mypy` | Passed; **81 files** |
+| Bare `mypy --platform win32` | Passed; **81 files** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **109 files** already formatted |
+| Windows runtime | Not run; T-089/settings changes are test or platform-neutral core code, and the Win32 type gate passes |
+
+### Final disposition
+
+The previously skipped settings foundation is approved for the pool to consume. The accepted
+ceiling stands; corrupt-file fallback, hand-written TOML, the local slug and never-raising file API
+are accepted at this phase boundary.
+
+T047-R1 and T097-R1 are **Resolved**. T-047, T-097 and T-089 may be filed Complete at their approved
+heads. T097-R2 is a non-blocking diagnostic follow-up owned by T-099. COORD-R11 remains open as a
+coordination correction and does not reopen any production or task approval above.
