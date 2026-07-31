@@ -542,6 +542,21 @@ class Job:
         """
         return replace(self, status=apply(self.status, target))
 
+    def with_another_attempt(self) -> Self:
+        """Return a copy whose attempt counter has advanced (`REQ-018`, `T-083`).
+
+        **Nothing incremented this before `T-083`.** `attempts` was a schema column with a
+        default that no code wrote, so every job's attempt number was `0` for life — which is
+        also why `T079-R1` could not key an attempt boundary to it. Automatic retry is the first
+        thing that makes it mean something, and `REQ-018`'s "the attempt count is visible" is a
+        promise about this field.
+
+        Separate from `with_status` because the two are independent: a manual retry is a status
+        change the user asked for and does not spend an automatic attempt, while an automatic one
+        is both.
+        """
+        return replace(self, attempts=self.attempts + 1)
+
     #: The statuses in which nothing has yet acted on the request, so replacing it is safe.
     #:
     #: `QUEUED` is a job nobody has started. `READY` is one a *probe* has resolved — the probe

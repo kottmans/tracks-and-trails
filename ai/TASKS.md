@@ -73,7 +73,7 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**Three tasks await a verdict as of 2026-07-31** — `T-079`, `T-046` and `T-053`, and this note is rebuilt from the
+*(**Four tasks await a verdict as of 2026-07-31** — `T-079`, `T-046`, `T-053` and `T-083`, and this note is rebuilt from the
 section rather than edited beside it. Before them, `T-078` was approved at `0f9986f`;
 `T-047`, `T-089` and `T-097` at `321c672`, `128be39` and `34addcb`; `T-091`, `T-096` and `T-098`
 before them.
@@ -339,6 +339,48 @@ follow-up becomes relevant.
 
 ---
 
+### T-083 — Bounded retry with backoff, for network failures only
+
+**Status:** **In Review — complete 2026-07-31, with one decision outstanding.** The mechanism is
+built and gated; eight mutations run, all eight killed. **The bound and the backoff are
+provisional.** This task's own scope says they "need stating in `DECISIONS.md`, not choosing in
+code", and `AGENTS.md` §4 makes that file the Architect's — so `manager.py` carries them marked as
+awaiting ratification and a draft entry accompanies the review handoff. Only
+`RETRY_BACKOFF_SECONDS` needs changing if the maintainer picks different numbers: the bound is
+derived from its length, so the two cannot disagree.
+*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`".)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`
+**Relevant context:** `REQ-018`, `core/errors.py`, `is_retryable`, `T-017`
+**Affected surfaces:** `downloader/manager.py`, `core/`
+**Risk:** Medium — an automatic retry that fires on the wrong class is a loop nobody asked for
+
+#### Scope
+
+The taxonomy already distinguishes retryable failures, and `is_retryable` already governs whether
+the progress view offers a Retry control — `DRM_PROTECTED` never reaches it (`SEC-001`,
+`REQ-EXCL-001`). This adds *automatic* retry, and the requirement is narrow: `NETWORK` only.
+
+**The narrowness is the point.** An `UNSUPPORTED_URL` retried on a timer is a request the site
+will refuse identically, forever. The bound and the backoff both need stating in
+`DECISIONS.md`, not choosing in code.
+
+#### Acceptance criteria
+
+- Only `NETWORK` retries automatically, asserted by driving each other kind and observing none
+- The attempt count is bounded, persisted, and visible — a job silently on attempt four is a job
+  whose history the user cannot see
+- Backoff is real and asserted, and a retry never jumps the queue ahead of jobs that have not run
+- Exhausting the bound leaves the job `FAILED` with the *last* error, still manually retryable
+
+#### Out of scope
+
+- Retrying a partially downloaded file from where it stopped (`REQ-017`, Phase 3)
+
+---
+
 ## Ready
 *(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
 which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
@@ -376,42 +418,6 @@ One interrupted job is Phase 1's case; a queue of them is this one.
 #### Out of scope
 
 - Automatic resumption without asking
-
----
-
-### T-083 — Bounded retry with backoff, for network failures only
-
-**Status:** **Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`.** Depends on the
-pool alone, so it can run beside `T-079`.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** `T-078`
-**Relevant context:** `REQ-018`, `core/errors.py`, `is_retryable`, `T-017`
-**Affected surfaces:** `downloader/manager.py`, `core/`
-**Risk:** Medium — an automatic retry that fires on the wrong class is a loop nobody asked for
-
-#### Scope
-
-The taxonomy already distinguishes retryable failures, and `is_retryable` already governs whether
-the progress view offers a Retry control — `DRM_PROTECTED` never reaches it (`SEC-001`,
-`REQ-EXCL-001`). This adds *automatic* retry, and the requirement is narrow: `NETWORK` only.
-
-**The narrowness is the point.** An `UNSUPPORTED_URL` retried on a timer is a request the site
-will refuse identically, forever. The bound and the backoff both need stating in
-`DECISIONS.md`, not choosing in code.
-
-#### Acceptance criteria
-
-- Only `NETWORK` retries automatically, asserted by driving each other kind and observing none
-- The attempt count is bounded, persisted, and visible — a job silently on attempt four is a job
-  whose history the user cannot see
-- Backoff is real and asserted, and a retry never jumps the queue ahead of jobs that have not run
-- Exhausting the bound leaves the job `FAILED` with the *last* error, still manually retryable
-
-#### Out of scope
-
-- Retrying a partially downloaded file from where it stopped (`REQ-017`, Phase 3)
 
 ---
 

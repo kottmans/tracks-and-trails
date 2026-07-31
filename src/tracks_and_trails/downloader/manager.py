@@ -66,6 +66,7 @@ from collections import deque
 from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from datetime import datetime
+from functools import partial
 from pathlib import Path
 from typing import Any, Final, Protocol
 
@@ -93,6 +94,22 @@ from tracks_and_trails.downloader.result_pump import ResultPump
 #:
 #: A literal rather than `math.inf` so the key stays `tuple[int, str]` and mypy can check it.
 _UNPLACED: Final = 1 << 62
+
+#: **Provisional, and awaiting a `DECISIONS.md` entry.** `T-083`'s scope says the bound and the
+#: backoff "need stating in `DECISIONS.md`, not choosing in code", and writing that file is not
+#: the Implementer's to do (`AGENTS.md` §4). These are the values the mechanism runs on until the
+#: maintainer ratifies or replaces them; a draft entry accompanies the review handoff.
+#:
+#: Seconds to wait before each automatic attempt, indexed by how many have already been spent.
+#: Doubling, so a site that is briefly unreachable is retried quickly and one that is down is not
+#: hammered.
+RETRY_BACKOFF_SECONDS: Final = (2.0, 4.0, 8.0)
+
+#: How many automatic attempts follow the first. **Derived, not declared**: a bound and a table of
+#: delays written separately are two constants that can disagree, and the one that would notice is
+#: an `IndexError` inside a Qt slot. Three, because the failure this exists for is a transient
+#: network one and a fourth try is evidence the problem is not transient.
+AUTOMATIC_RETRY_LIMIT: Final = len(RETRY_BACKOFF_SECONDS)
 
 #: How often process liveness and cancellation deadlines are checked. Fifty milliseconds is
 #: below `NFR-001`'s ~100 ms interaction budget, so an escalation never *adds* a perceptible
@@ -445,6 +462,10 @@ class DownloadManager(QObject):
         #: slots a retry can be waiting behind another retry, and a lowered limit can leave several
         #: jobs waiting at once.
         self._waiting: list[str] = []
+        #: Jobs whose automatic retry is waiting for its backoff to expire, and when it does
+        #: (`T-083`). Held on the tick rather than on a timer per job, for the reason every other
+        #: deadline in this class is: one place where the lifetime rules are applied.
+        self._retry_at: dict[str, float] = {}
         self._shutting_down = False
         self._shutdown_deadline: float | None = None
         # The log listener's ending, which `idle` now waits on (`T038-R2`). Three states rather
@@ -503,7 +524,9 @@ class DownloadManager(QObject):
         manager has accepted and will begin. `shutdown()` drops the whole waiting list, which is
         what stops it from holding the door.
         """
-        return not self._sessions and not self._reserved and not self._waiting
+        return (
+            not self._sessions and not self._reserved and not self._waiting and not self._retry_at
+        )
 
     @property
     def gave_up_on_the_log(self) -> bool:
@@ -1034,11 +1057,18 @@ class DownloadManager(QObject):
     def _next_waiting(self) -> str:
         """The waiting job with the lowest `queue_position`; ties and absences break on id."""
 
-        def order(job_id: str) -> tuple[int, str]:
+        def order(job_id: str) -> tuple[int, int, str]:
             job = self._repository.get(job_id)
+            # **A retry never jumps the queue ahead of jobs that have not run** (`T-083`). A
+            # re-queued job keeps its original `queue_position`, which is *earlier* than
+            # everything added since — so ordering on position alone would let one job's third
+            # attempt run before another job's first. Sorted on "has this run" first, which is
+            # data already on the row rather than a renumbering that would have to enumerate the
+            # queue to find its tail (`T079-R2`).
+            attempted = 1 if job is not None and job.attempts > 0 else 0
             position = job.queue_position if job is not None else None
             # `None` sorts last explicitly rather than relying on a comparison that would raise.
-            return (position if position is not None else _UNPLACED, job_id)
+            return (attempted, position if position is not None else _UNPLACED, job_id)
 
         return min(self._waiting, key=order)
 
@@ -1095,6 +1125,9 @@ class DownloadManager(QObject):
         # Work accepted but not started never will be. Dropped rather than carried, so `idle` is
         # not held open by work this manager has just decided not to do (`T036-R1`).
         self._waiting.clear()
+        # A retry this manager decided on but has not started never will be (`T-083`), and
+        # holding `idle` open for one would stop the application quitting.
+        self._retry_at.clear()
         # Reserved starts as well as running sessions (`T016-R3`). A start whose transition is
         # still on the writer thread has no process to cancel yet, and skipping it here is how
         # shutdown used to announce `idle` and then spawn a worker from the callback that
@@ -1143,13 +1176,21 @@ class DownloadManager(QObject):
                 if now >= session.reap_at:
                     self._force_stop(session)
 
+        self._perform_due_retries(now)
         self._fill_free_slots()
 
-        if self._sessions or self._reserved or self._waiting:
+        if self._sessions or self._reserved or self._waiting or self._retry_at:
             # A reservation counts as work in flight (`T016-R3`). Its transition is still on the
             # writer thread, and the callback that settles it is what decides whether a worker
             # appears — so `idle` here would be a promise this manager cannot keep. A job waiting
             # for a slot is the same claim.
+            #
+            # **So is a retry whose backoff has not expired** (`T-083`), and this is the line that
+            # makes the backoff work at all rather than merely be recorded. The tick is the only
+            # thing that will notice the deadline, so stopping the timer here strands it: measured
+            # with a one-second backoff, where the timer stopped on the tick after the failure and
+            # the retry never fired. A 50 ms backoff hid it completely, because the deadline had
+            # already passed by the time this line was reached.
             return
         if self._shutting_down and not self._the_log_has_finished(now):
             # Not idle yet, and the timer stays running. `idle` is what tells composition it may
@@ -1584,7 +1625,55 @@ class DownloadManager(QObject):
                         job.with_failure(outcome.kind, outcome.message), finished_at=_now()
                     ),
                 ),
-                then=lambda: self.job_failed.emit(job_id, outcome.kind, outcome.message),
+                then=lambda: self._failed_and_maybe_retry(job_id, outcome.kind, outcome.message),
+            )
+
+    def _failed_and_maybe_retry(self, job_id: str, kind: ErrorKind, message: str) -> None:
+        """Announce the failure, then decide whether this queue will try again (`T-083`).
+
+        **The announcement comes first and is unconditional.** A job that will be retried has
+        still failed, and `REQ-018` records failures rather than hiding the ones that turn out to
+        be temporary — a view that showed nothing until the last attempt would leave a user
+        watching a job do nothing for fourteen seconds.
+        """
+        self.job_failed.emit(job_id, kind, message)
+        self._schedule_automatic_retry(job_id, kind)
+
+    def _schedule_automatic_retry(self, job_id: str, kind: ErrorKind) -> None:
+        """Queue an automatic attempt if this failure is one worth repeating (`REQ-018`).
+
+        **`NETWORK` only, and the narrowness is the point.** An `UNSUPPORTED_URL` retried on a
+        timer is a request the site will refuse identically, forever; `DRM_PROTECTED` is a
+        workaround this product exists to refuse (`SEC-001`, `REQ-EXCL-001`). `is_retryable`
+        governs whether a *person* may retry, which is a wider question — it says a failure is
+        not final, not that repeating it unattended is useful. Deriving one from the other would
+        put `WORKER_CRASH` into a loop on its own.
+        """
+        if kind is not ErrorKind.NETWORK or self._shutting_down:
+            return
+        job = self._repository.get(job_id)
+        if job is None or job.attempts >= AUTOMATIC_RETRY_LIMIT:
+            return
+        self._retry_at[job_id] = time.monotonic() + RETRY_BACKOFF_SECONDS[job.attempts]
+        # The tick is what will notice; without this the timer may not be running at all.
+        self._timer.start()
+
+    def _perform_due_retries(self, now: float) -> None:
+        """Re-queue every job whose backoff has expired. Called from the tick."""
+        if self._shutting_down:
+            return
+        for job_id in [job_id for job_id, due in self._retry_at.items() if now >= due]:
+            del self._retry_at[job_id]
+            self._persist(
+                job_id,
+                lambda current: (
+                    current.with_status(JobStatus.QUEUED).with_another_attempt()
+                    if current.status is JobStatus.FAILED
+                    else None
+                ),
+                # `partial` rather than a lambda with a default argument: the latter is a
+                # late-binding workaround mypy cannot type, and this loop rebinds `job_id`.
+                then=partial(self._start_when_free, job_id),
             )
 
     def _settled(self, job: Job, build: Callable[..., Job], *arguments: Any) -> Job | None:

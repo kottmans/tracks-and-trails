@@ -41,6 +41,7 @@ from PySide6.QtCore import QCoreApplication
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, can_transition
 from tracks_and_trails.core.models import DownloadRequest, Job
+from tracks_and_trails.downloader import manager as manager_module
 from tracks_and_trails.downloader import process_tree
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import (
@@ -3434,6 +3435,7 @@ def test_a_job_that_did_not_complete_writes_no_history_row(
     tmp_path: Path,
     media_url: Callable[..., str],
     spin: Callable[..., bool],
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """`REQ-020` is a record of what was **obtained** (`T-050`).
 
@@ -3446,6 +3448,12 @@ def test_a_job_that_did_not_complete_writes_no_history_row(
     from tracks_and_trails.persistence.repositories import JobRepository
     from tracks_and_trails.persistence.store import PersistentJobStore
     from tracks_and_trails.persistence.writer import QueueWriter
+
+    # **No automatic retry here** (`T-083`). The `fail` case drives a real connection refusal,
+    # which is a `NETWORK` failure and now retries itself three times — four real worker processes
+    # and fourteen seconds of backoff, for a test whose subject is whether history records a job
+    # that did not complete. Retry policy has its own tests; this one keeps its single session.
+    monkeypatch.setattr(manager_module, "AUTOMATIC_RETRY_LIMIT", 0)
 
     path = tmp_path / "library.sqlite3"
     url = (
@@ -4121,3 +4129,247 @@ def test_lowering_the_limit_holds_a_waiting_job_until_the_pool_drains(
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)
+
+
+# --- T-083: bounded automatic retry, for network failures only -------------------------------
+
+
+def job_row(repository: FakeRepository, job_id: str) -> Job:
+    """`repository.get`, but typed as present.
+
+    The retry tests read the row constantly and every one of them would otherwise carry an
+    `is not None` that says nothing: a job vanishing from the store is a different failure, and
+    it should be reported as itself rather than as an attribute error.
+    """
+    job = repository.get(job_id)
+    assert job is not None, f"{job_id} is no longer in the store"
+    return job
+
+
+def child_failing_with_the_kind_its_job_id_names(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """Fail with the `ErrorKind` named in the job id, e.g. `job-NETWORK`.
+
+    The kind travels in the id because a spawned entry point takes no test-supplied arguments:
+    `spawn` pickles the function and the manager chooses what it is called with. One child that
+    reads its own id keeps every kind on the same code path, which is what makes "only `NETWORK`
+    retries" a comparison rather than two different children.
+    """
+    from tracks_and_trails.core.errors import ErrorKind
+    from tracks_and_trails.downloader.protocol import Failed
+
+    named = ErrorKind[job_id.rsplit("-", 1)[1]]
+    queue.put(Failed(job_id=job_id, kind=named, message=f"failed as {named.value}"))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+
+
+def quick_backoff(monkeypatch: pytest.MonkeyPatch, seconds: float = 0.05) -> None:
+    """Shorten every backoff so a test measures the *rule* rather than the wall clock.
+
+    Patched on the module rather than passed in, because the values are read at scheduling time
+    and `T-083` deliberately does not make them a constructor argument — they are policy awaiting
+    a `DECISIONS.md` entry, not per-manager configuration.
+    """
+    monkeypatch.setattr(
+        manager_module, "RETRY_BACKOFF_SECONDS", (seconds,) * manager_module.AUTOMATIC_RETRY_LIMIT
+    )
+
+
+@pytest.mark.parametrize(
+    "kind_name",
+    ["UNSUPPORTED_URL", "EXTRACTOR_ERROR", "AUTH_REQUIRED", "DRM_PROTECTED", "DISK"],
+)
+def test_only_a_network_failure_retries_itself(
+    tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch, kind_name: str
+) -> None:
+    """`T-083`'s first criterion, **by driving each other kind and observing none**.
+
+    The narrowness is the whole requirement. An `UNSUPPORTED_URL` retried on a timer is a request
+    the site refuses identically forever, and `DRM_PROTECTED` is a workaround this product exists
+    to refuse (`SEC-001`, `REQ-EXCL-001`). `is_retryable` is a wider question — whether a *person*
+    may retry — so deriving automatic retry from it would put `WORKER_CRASH` into a loop.
+    """
+    quick_backoff(monkeypatch)
+    repository = FakeRepository()
+    job_id = f"job-{kind_name}"
+    repository.add(make_job(job_id, "https://example.invalid/clip", tmp_path))
+    download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
+    try:
+        download.start(job_id)
+        assert spin(lambda: job_row(repository, job_id).status is JobStatus.FAILED, timeout=60)
+
+        # Long enough that a scheduled retry would have fired several times over.
+        spin(lambda: False, timeout=1.0)
+
+        job = job_row(repository, job_id)
+        assert job.status is JobStatus.FAILED, (
+            f"{kind_name} retried itself; only NETWORK may, and this one will fail identically"
+        )
+        assert job.attempts == 0, f"{kind_name} spent an automatic attempt"
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_network_failure_retries_itself_and_counts_the_attempt(
+    tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The other side of the comparison, and `REQ-018`'s "the attempt count is visible".
+
+    `attempts` was a schema column nothing ever incremented — the dead counter `T079-R1` could
+    not key an attempt boundary to. This is what brings it to life, so the assertion is on the
+    **persisted** number rather than on a signal.
+    """
+    quick_backoff(monkeypatch)
+    repository = FakeRepository()
+    repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
+    download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
+    try:
+        download.start("job-NETWORK")
+        assert spin(lambda: job_row(repository, "job-NETWORK").attempts >= 1, timeout=60), (
+            "a network failure never retried itself"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_the_attempt_count_is_bounded_and_the_last_error_survives(
+    tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Second and fourth criteria: the bound holds, and exhausting it is not a silent give-up.
+
+    A job that retried for ever would be a loop nobody asked for; one that forgot why it failed
+    would leave the user with a `FAILED` row and no reason. Both are asserted, and the job must
+    still be *manually* retryable afterwards — `is_retryable(NETWORK)` is true, and the bound is
+    about what this queue does unattended, not about what a person may ask for.
+    """
+    quick_backoff(monkeypatch)
+    repository = FakeRepository()
+    repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
+    download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
+    try:
+        download.start("job-NETWORK")
+        assert spin(
+            lambda: (
+                job_row(repository, "job-NETWORK").attempts >= manager_module.AUTOMATIC_RETRY_LIMIT
+            ),
+            timeout=120,
+        ), "the automatic attempts never reached the bound"
+
+        # Well past another backoff: if the bound did not hold, this is where it would show.
+        spin(lambda: False, timeout=1.0)
+        job = job_row(repository, "job-NETWORK")
+
+        assert job.attempts == manager_module.AUTOMATIC_RETRY_LIMIT, (
+            f"the bound of {manager_module.AUTOMATIC_RETRY_LIMIT} did not hold: {job.attempts}"
+        )
+        assert job.status is JobStatus.FAILED
+        assert job.error_kind is ErrorKind.NETWORK
+        assert job.error_message == "failed as network", (
+            f"the last error was lost on the way through the retries: {job.error_message!r}"
+        )
+
+        download.retry("job-NETWORK")
+        assert spin(
+            lambda: job_row(repository, "job-NETWORK").status is not JobStatus.FAILED, 60
+        ), "a job that exhausted its automatic attempts can no longer be retried by hand"
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_the_backoff_is_waited_rather_than_declared(
+    tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Third criterion: the delay is **real**, measured, not asserted from the constant.
+
+    A retry that fires immediately would satisfy every count-based assertion in this file while
+    hammering a site that is briefly unreachable — which is the whole reason the delay exists.
+    """
+    quick_backoff(monkeypatch, seconds=1.0)
+    repository = FakeRepository()
+    repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
+    download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
+    try:
+        download.start("job-NETWORK")
+        assert spin(
+            lambda: job_row(repository, "job-NETWORK").status is JobStatus.FAILED, timeout=60
+        )
+        failed_at = time.monotonic()
+
+        assert spin(lambda: job_row(repository, "job-NETWORK").attempts >= 1, timeout=60)
+        waited = time.monotonic() - failed_at
+
+        assert waited >= 0.9, (
+            f"the retry fired {waited:.2f}s after the failure, inside its one-second backoff"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_retry_does_not_jump_ahead_of_a_job_that_has_never_run(tmp_path: Path) -> None:
+    """Third criterion's other half, and it is not what `queue_position` alone would do.
+
+    A re-queued job keeps its original position, which is *earlier* than everything added since —
+    so ordering on position alone runs one job's second attempt before another job's first. The
+    job that has never run goes first, on data already on the row.
+    """
+    repository = FakeRepository()
+    repository.add(
+        replace(
+            make_job("job-retried", "https://example.invalid/clip", tmp_path),
+            queue_position=0,
+            attempts=1,
+        )
+    )
+    repository.add(
+        replace(
+            make_job("job-fresh", "https://example.invalid/clip", tmp_path),
+            queue_position=5,
+            attempts=0,
+        )
+    )
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download._waiting.extend(["job-retried", "job-fresh"])
+
+        assert download._next_waiting() == "job-fresh", (
+            "a job on its second attempt was scheduled ahead of one that has never run, even "
+            "though it holds the earlier queue position"
+        )
+    finally:
+        download._waiting.clear()
+        download.shutdown()
+
+
+def test_idle_is_not_announced_while_a_retry_is_waiting(
+    tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T036-R1`'s rule, one more kind of accepted work.
+
+    Composition treats `idle` as permission to quit, so announcing it with a retry pending would
+    quit into work this manager has already decided to do.
+    """
+    quick_backoff(monkeypatch, seconds=30.0)
+    repository = FakeRepository()
+    repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
+    download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
+    try:
+        download.start("job-NETWORK")
+        assert spin(
+            lambda: job_row(repository, "job-NETWORK").status is JobStatus.FAILED, timeout=60
+        )
+        spin(lambda: False, timeout=0.5)
+
+        assert not download.is_idle, (
+            "idle went out with an automatic retry still waiting; composition would have quit "
+            "into work this manager had accepted"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60), (
+            "shutdown did not drop the pending retry, so the application could not quit"
+        )
