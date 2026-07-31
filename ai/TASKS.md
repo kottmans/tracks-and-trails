@@ -202,13 +202,15 @@ will refuse identically, forever. The bound and the backoff both need stating in
 
 ### T-084 — Per-job log capture and a log view
 
-**Status:** **Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`.** `T-053` proves
-the isolation concurrently; it is evidence for this, not a prerequisite of it.
+**Status:** **Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`.** Reconciled against
+`DAT-003` on 2026-07-31; see *The verbatim boundary* below.
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 2
-**Depends on:** `T-078`; proved concurrent by `T-053`
-**Relevant context:** `REQ-019`, `T-038`, `NFR-006`, `T-053`
+**Depends on:** `T-078`. **`T-053` is not a prerequisite — it is required for approval**, which is
+the ordering `P2PLAN-R4` asked to be made explicit; the criteria below say so
+**Relevant context:** `REQ-019`, `REQ-026`, **`DAT-003`** (the verbatim boundary, amended
+2026-07-30 by `T-049`), `T-038`, `NFR-006`, `T-053`
 **Affected surfaces:** `downloader/worker.py`, `logging`, `ui/`
 **Risk:** Medium — redaction has to hold per job, under concurrency
 
@@ -221,13 +223,42 @@ a job and kept, not merged into one stream.
 `T-053` already exists to prove isolation once the pool permits two live sessions, and is the
 gate this task's correctness rests on.
 
+#### The verbatim boundary is provenance, and it is already decided
+
+This task used to say the text is "verbatim" and, one line above, that redaction must hold —
+which `P2PLAN-R4` read as a contradiction with `REQ-026`. **It is not one, and neither word is
+this task's to choose.** `DAT-003` decided it on 2026-07-26 and `T-049`'s amendment sharpened it
+on 2026-07-30:
+
+- **Values this application supplies** — credentials, cookie paths it holds, passes or logs
+  deliberately — are redacted. `DAT-003` states this binds logs *in full*, because logs are
+  written by this application, and says `T-038`'s scope is unchanged by the amendment.
+- **Text a third party emits** is preserved intact. `NFR-006` exists because a paraphrased error
+  destroys the only thing a user can act on, and a cookie path yt-dlp itself names inside a
+  diagnostic is accepted rather than scrubbed.
+
+Scrubbing third-party prose was tried twice before `DAT-003` and failed both times — three
+credential escapes, and one Critical regression that turned a user's output directory into a
+relative path. **Re-deriving the rule here rather than reading it is how that gets repeated**, so
+the criterion below names the decision instead of restating its conclusion.
+
 #### Acceptance criteria
 
 - A job's log contains that job's output and no other's, under a saturated pool
 - Redaction holds per job — a cookie or proxy credential must not survive because two sessions
   interleaved
-- The text is copyable and verbatim (`NFR-006`); a summarised log is not a bug report
+- **The provenance boundary is asserted in both directions** (`DAT-003`, `REQ-026`): a value this
+  application supplied does not reach the log, and a cookie path yt-dlp emitted inside a
+  diagnostic is still there, character for character. One test each. A gate that only proves the
+  first would pass an implementation that scrubs everything, which is the failure `DAT-003`
+  records twice
+- The text is copyable, and verbatim within that boundary (`NFR-006`); a summarised log is not a
+  bug report
 - Log growth is bounded, and the bound is stated
+- **`T-053`'s concurrent isolation evidence exists before this is approved.** Not before it
+  starts — both are Ready and idling one for the other buys nothing — but "redaction holds per
+  job under a saturated pool" cannot honestly be claimed without the concurrent proof, so the
+  coupling sits at approval (`P2PLAN-R4`)
 
 #### Out of scope
 
@@ -238,11 +269,14 @@ gate this task's correctness rests on.
 ### T-053 — Prove concurrent per-job log isolation
 
 **Status:** **Ready — the pool now permits two live sessions** (`T-078`, approved 2026-07-30 at
-`0f9986f`). That was the whole of the block; `T-038` was already Complete.
+`0f9986f`). That was the whole of the block; `T-038` was already Complete. **`T-084` cannot be
+approved without this**, recorded there as a criterion on 2026-07-31 (`P2PLAN-R4`).
 **Owner:** Implementer
-**Priority:** Low — Phase 1's structural routing is correct; concurrency is the missing proof
+**Priority:** Low — Phase 1's structural routing is correct; concurrency is the missing proof.
+*Low is about this task's own risk, not its urgency:* it now gates another task's approval
 **Phase:** Phase 2
-**Depends on:** `T-038` and the Phase 2 task that implements `REQ-013`
+**Depends on:** `T-038` and **`T-078`**, which is the task that implemented `REQ-013` — named now
+that it exists, rather than described
 **Relevant context:** `T038-R2`; `ARCHITECTURE.md` §8; `REQ-013`, `REQ-019`;
 `ai/REVIEWS.md` (2026-07-27 T-019/T-038 focused correction re-review)
 **Affected surfaces:** `tests/integration/test_worker_logging.py`
