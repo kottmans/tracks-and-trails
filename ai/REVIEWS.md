@@ -7406,3 +7406,72 @@ are accepted at this phase boundary.
 T047-R1 and T097-R1 are **Resolved**. T-047, T-097 and T-089 may be filed Complete at their approved
 heads. T097-R2 is a non-blocking diagnostic follow-up owned by T-099. COORD-R11 remains open as a
 coordination correction and does not reopen any production or task approval above.
+
+## 2026-07-30 — T-078 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-078`
+**Pinned span:** `faf374f..1ef59f1`
+**Implementation commits:** pool `a642482`; user-facing control `1ef59f1`
+**Boundary treatment:** the span also contains review-only `90b8b66` and coordination-only
+`b0cec64`; neither is implementation under review here. All source inspection, tests and mutations
+used an isolated `1ef59f1` archive. The live checkout advanced to documentation-only `dc50e62`
+during the pass and did not enter the evidence.
+**Verdict:** **Changes requested**
+
+### Findings
+
+| ID | Severity | Blocks approval | Evidence | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T078-R1` | **Medium** | **Yes — T-078** | `DownloadManager.active_job_ids()` at `manager.py:519-526` returns only `_sessions ∪ _reserved`, although `_start_when_free()` at `:1021-1032` has accepted jobs into `_waiting`. This contradicts both the method's “Every job this manager is holding” contract and T-078's criterion that `active_job_ids()` account for every waiting job. In the committed waiting-job scenario, `_waiting == ["job-2"]` while `active_job_ids() == ("job-1",)`. Adding the exact expected pair to the unmodified test failed. `is_idle` and shutdown do account for the list, so this is a narrow accounting defect rather than abandoned work. | Include waiting ids in the public accounting result, with duplicate-safe deterministic ordering, and retain a test whose expected set distinguishes the waiting job from the running/reserved reason the method is already non-empty. Recheck the busy diagnostic and shutdown caller against the expanded result. | **Open** |
+| `T078-R2` | **Medium** | **Yes — T-078** | The two lowering criteria are not gated. `test_lowering_the_limit_drains_rather_than_killing` lowers three running jobs with **nothing waiting**, so it proves only “does not kill.” All seven committed pool tests still passed after `_fill_free_slots()` was changed to start waiting work specifically while the live count was above the lowered limit. Separately, the only real-control test changes 3 → 5; changing composition to apply increases but merely save decreases left the entire **14-test composition file green**. T-078 explicitly requires lowering through the user-facing path, with in-flight work finishing and no new job starting. | Through the real spinbox/composed graph, lower a saturated pool while another accepted job waits. Assert the original sessions remain, the waiting job does not start while the live count is at or above the new limit, and it becomes eligible only after the pool drains below that limit. Demonstrate that the unmodified test kills both the decrease-not-applied mutation and the over-limit fill mutation. | **Open** |
+
+### Review judgments
+
+**`valueChanged` is accepted.** Entering `12` may transiently apply `1`, but lowering is defined to
+drain rather than stop work, and the final increase must start eligible waiting work immediately.
+The intermediate value can produce an extra settings write; it cannot kill or retarget a running
+job. Nothing in REQ-013 or ARC-007 requires focus loss as the commit point.
+
+**A pool of N does not reopen T-019 on the evidence available here.** Process and containment state
+is held per `_Session`, and shutdown/tick iterate every session rather than one shared group. A
+reviewer-only probe started three workers, each with a signal-resistant grandchild, then shut down
+the manager; all six processes were reaped and the manager reached idle on Linux. That validates
+the new iteration shape without rewriting T-019's settled one-tree tests.
+
+**Windows runtime remains unverified.** The Win32 whole-project type gate passes, but it cannot
+execute spawn, Job-object containment or simultaneous process teardown. Project policy does not
+make a Windows runtime run a completion gate for this source change, so this is an explicit
+platform risk rather than a third finding. It should be exercised when hosted Windows capacity is
+available, especially because T-078 is the first task to run several worker trees at once.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Isolation | Source and tests loaded from an exact `1ef59f1` archive |
+| Span accounting | Two implementation commits separated from two intervening documentation commits |
+| `git diff --check faf374f..1ef59f1` | Passed |
+| Authorship / trailers | Sean Kottman on both implementation commits; no AI author or co-author trailer |
+| Nine new T-078 pool/control cases | **9 passed** after the loopback-only cases were rerun with socket permission |
+| `is_idle` ignores `_waiting` mutation | Killed by the dedicated waiting-with-nothing-running case |
+| Reservations omitted above N=1 mutation | Killed by the dedicated limit-2 reservation case |
+| Waiting id added to `active_job_ids()` expectation | **Failed as expected:** got only `("job-1",)` |
+| Decreases saved but not applied mutation | Survived the complete composition file — **14 passed** |
+| Waiting work starts while above the lowered limit mutation | Survived all committed T-078 pool cases — **7 passed** |
+| Three-worker / three-grandchild shutdown probe | **1 passed** on Linux |
+| Full pinned suite, corrected external XDG paths | **1582 passed, 11 skipped, 2 deselected in 196.86 s** |
+| First full-run harness error | XDG cache was incorrectly placed inside the archive; the repository-destination guard correctly failed. Moving it outside made the isolated guard and full rerun pass |
+| Bare `mypy` | Passed; **81 files** |
+| Bare `mypy --platform win32` | Passed; **81 files** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **109 files** already formatted |
+| Windows runtime | Not run |
+
+### Final disposition
+
+T-078 is **Changes requested at `1ef59f1`**. T078-R1 and T078-R2 are both blocking Medium findings
+owned by the existing T-078 correction, so no separate follow-up task is created. The pool's
+capacity, reservation, ordering, immediate-raise, settings persistence and Linux multi-tree
+shutdown behavior otherwise passed. Approval of the phase's centre—and therefore the dependency
+release for its eight descendants—waits on the two focused corrections and their mutation evidence.
