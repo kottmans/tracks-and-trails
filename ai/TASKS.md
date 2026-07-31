@@ -37,7 +37,8 @@ summarises; this one is transcribed from the actual `## ` sections so it starts 
   `ARC-007` amended, `CONCURRENCY_MAXIMUM = 16` — and **`P2PLAN-R8`**, the history view's owner,
   which is now **`T-100`**. `T-086` depends on it and is unblocked once it lands.)*
 - **Carried, blocking nothing:** `T-099` (`T097-R2` — the boundary analyser reports a settings
-  offender under the persistence rule's explanation).
+  offender under the persistence rule's explanation) and `T-101` (`T079-R3` — the corrected
+  detail view resets retry ETA correctly, but the ETA-only mutation survives).
 
 **`T-079` is built and awaiting a verdict**, and six other Ready tasks can run beside it. `T-078`
 was the last point at which that was not true.
@@ -72,8 +73,8 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**One task awaits a verdict as of 2026-07-31**, and this note is rebuilt from the section rather
-than edited beside it. `T-079` is the queue view. Before it, `T-078` was approved at `0f9986f`;
+*(**Three tasks await a verdict as of 2026-07-31** — `T-079`, `T-046` and `T-053`, and this note is rebuilt from the
+section rather than edited beside it. Before them, `T-078` was approved at `0f9986f`;
 `T-047`, `T-089` and `T-097` at `321c672`, `128be39` and `34addcb`; `T-091`, `T-096` and `T-098`
 before them.
 `COORD-R2` is why this note exists rather than the section sitting bare: a section's contents are
@@ -236,6 +237,108 @@ pane is now claimed once and then belongs to the user; the table is what shows a
 
 ---
 
+### T-046 — Output path collision policy against the filesystem
+
+**Status:** **In Review — complete 2026-07-31.** Reservation is atomic (`O_CREAT | O_EXCL`),
+because `ARC-002` makes the racing writers separate processes and a check-then-create between
+them is the hole itself. Nine mutations run; all nine killed.
+*(This read "Ready 2026-07-30. `T-034`, `T-045` and `T-013` are all Complete, and `T-078` makes
+collisions reachable concurrently rather than one job at a time".)*
+**Owner:** Implementer
+**Priority:** Medium — **raise to High before first release.** Until this lands, two downloads
+whose titles sanitize to the same component contend for one path
+**Phase:** Phase 2
+**Depends on:** `T-034`, `T-045`, and the download manager (`T-013`)
+**Relevant context:** `DAT-002`; `ARCHITECTURE.md` §8; `REQ-011`
+**Affected surfaces:** the download manager's path selection; `core/paths.py` remains pure
+**Risk:** Medium — the failure mode is one download overwriting another's output
+
+#### Scope
+
+**Filed by `DAT-002`, which is where the reasoning lives.** `T-045` established that
+`sanitize_component` cannot promise a unique path: it is a pure function of one string, and
+"does this collide with something?" is a question about the filesystem. The maintainer kept
+idempotence and narrowed the sanitizer's promise to the plausible neighbour class, moving real
+uniqueness here.
+
+This task owns the guarantee at the layer that can keep it — the one that knows what is already
+on disk and what other jobs are queued. That covers the ordinary case, not only the reserved-name
+residue: two different videos whose titles sanitize identically collide today by the same
+mechanism, and always have.
+
+**`core/paths.py` stays pure.** The resolution belongs to the caller that has filesystem context;
+pushing it into the sanitizer would make it stateful and re-open `DAT-002`.
+
+#### Acceptance criteria
+
+- Two jobs whose sanitized components are equal resolve to distinct output paths
+- The resolution is visible in the `REQ-011` preview before the write, not applied silently
+  afterwards — a preview that disagrees with the write is the failure `DAT-002` protects against
+- An existing file at the target is never silently overwritten
+- Concurrent writers cannot both win the same path — asserted against real concurrent jobs
+  rather than by inspection, since Phase 2 is where the second worker arrives
+- The residual collision `T-045` pins is covered by this policy, so `DAT-002`'s assumption that
+  `T-046` lands before first release is discharged
+
+#### Out of scope
+
+- Which names are legal or reserved — settled by `T-034` and `T-045`
+- Resume semantics for a partially downloaded file, beyond not colliding with one
+
+---
+
+### T-053 — Prove concurrent per-job log isolation
+
+**Status:** **In Review — complete 2026-07-31.** Two real spawned workers, both live before
+either emits, interleaved through the production log queue. Four mutations run; all four killed.
+**`T-084` cannot be approved without this**, recorded there as a criterion on 2026-07-31
+(`P2PLAN-R4`).
+*(This read "Ready — the pool now permits two live sessions (`T-078`, approved 2026-07-30 at
+`0f9986f`)".)*
+**Owner:** Implementer
+**Priority:** Low — Phase 1's structural routing is correct; concurrency is the missing proof.
+*Low is about this task's own risk, not its urgency:* it now gates another task's approval
+**Phase:** Phase 2
+**Depends on:** `T-038` and **`T-078`**, which is the task that implemented `REQ-013` — named now
+that it exists, rather than described
+**Relevant context:** `T038-R2`; `ARCHITECTURE.md` §8; `REQ-013`, `REQ-019`;
+`ai/REVIEWS.md` (2026-07-27 T-019/T-038 focused correction re-review)
+**Affected surfaces:** `tests/integration/test_worker_logging.py`
+**Risk:** Low until concurrency exists; High if the pool ships without the proof
+**Review base:** the Phase 2 concurrency implementation head
+
+#### Scope
+
+Phase 1 runs one session at a time. `T-038` proves that worker records carry a job-id stamp and
+that a per-job handler rejects every other stamp, using two sequential jobs. That establishes
+per-job routing, but it cannot establish the concurrent cross-write property while the manager
+refuses to keep two sessions open.
+
+When Phase 2 first permits two live sessions, coordinate two real spawned workers so both
+per-job handlers are open at the same time. Have both workers emit interleaved, unique markers
+through the production log queue and prove that each file contains its own complete stream and
+none of the other job's.
+
+This is not the current `T038-R2` ordered-drain correction. `T-038` must already retain a
+worker's final emitted records and stop its listener without blocking the GUI thread before this
+follow-up becomes relevant.
+
+#### Acceptance criteria
+
+- Two real worker sessions are simultaneously active before either emits its test records
+- Their records are deliberately interleaved through the production worker-log queue
+- Each per-job log contains every marker its worker emitted and no marker from the other worker
+- The application log still contains both streams
+- Removing the job-id filter or stamp makes the test fail
+
+#### Out of scope
+
+- Implementing Phase 2 concurrency or its scheduling policy
+- Repairing the current single-session ordered-drain and non-blocking-shutdown defect in
+  `T038-R2`
+
+---
+
 ## Ready
 *(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
 which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
@@ -375,102 +478,6 @@ the criterion below names the decision instead of restating its conclusion.
 #### Out of scope
 
 - Shipping logs anywhere, or a crash reporter
-
----
-
-### T-053 — Prove concurrent per-job log isolation
-
-**Status:** **Ready — the pool now permits two live sessions** (`T-078`, approved 2026-07-30 at
-`0f9986f`). That was the whole of the block; `T-038` was already Complete. **`T-084` cannot be
-approved without this**, recorded there as a criterion on 2026-07-31 (`P2PLAN-R4`).
-**Owner:** Implementer
-**Priority:** Low — Phase 1's structural routing is correct; concurrency is the missing proof.
-*Low is about this task's own risk, not its urgency:* it now gates another task's approval
-**Phase:** Phase 2
-**Depends on:** `T-038` and **`T-078`**, which is the task that implemented `REQ-013` — named now
-that it exists, rather than described
-**Relevant context:** `T038-R2`; `ARCHITECTURE.md` §8; `REQ-013`, `REQ-019`;
-`ai/REVIEWS.md` (2026-07-27 T-019/T-038 focused correction re-review)
-**Affected surfaces:** `tests/integration/test_worker_logging.py`
-**Risk:** Low until concurrency exists; High if the pool ships without the proof
-**Review base:** the Phase 2 concurrency implementation head
-
-#### Scope
-
-Phase 1 runs one session at a time. `T-038` proves that worker records carry a job-id stamp and
-that a per-job handler rejects every other stamp, using two sequential jobs. That establishes
-per-job routing, but it cannot establish the concurrent cross-write property while the manager
-refuses to keep two sessions open.
-
-When Phase 2 first permits two live sessions, coordinate two real spawned workers so both
-per-job handlers are open at the same time. Have both workers emit interleaved, unique markers
-through the production log queue and prove that each file contains its own complete stream and
-none of the other job's.
-
-This is not the current `T038-R2` ordered-drain correction. `T-038` must already retain a
-worker's final emitted records and stop its listener without blocking the GUI thread before this
-follow-up becomes relevant.
-
-#### Acceptance criteria
-
-- Two real worker sessions are simultaneously active before either emits its test records
-- Their records are deliberately interleaved through the production worker-log queue
-- Each per-job log contains every marker its worker emitted and no marker from the other worker
-- The application log still contains both streams
-- Removing the job-id filter or stamp makes the test fail
-
-#### Out of scope
-
-- Implementing Phase 2 concurrency or its scheduling policy
-- Repairing the current single-session ordered-drain and non-blocking-shutdown defect in
-  `T038-R2`
-
----
-
-### T-046 — Output path collision policy against the filesystem
-
-**Status:** **Ready 2026-07-30.** `T-034`, `T-045` and `T-013` are all Complete, and `T-078`
-makes collisions reachable concurrently rather than one job at a time.
-**Owner:** Implementer
-**Priority:** Medium — **raise to High before first release.** Until this lands, two downloads
-whose titles sanitize to the same component contend for one path
-**Phase:** Phase 2
-**Depends on:** `T-034`, `T-045`, and the download manager (`T-013`)
-**Relevant context:** `DAT-002`; `ARCHITECTURE.md` §8; `REQ-011`
-**Affected surfaces:** the download manager's path selection; `core/paths.py` remains pure
-**Risk:** Medium — the failure mode is one download overwriting another's output
-
-#### Scope
-
-**Filed by `DAT-002`, which is where the reasoning lives.** `T-045` established that
-`sanitize_component` cannot promise a unique path: it is a pure function of one string, and
-"does this collide with something?" is a question about the filesystem. The maintainer kept
-idempotence and narrowed the sanitizer's promise to the plausible neighbour class, moving real
-uniqueness here.
-
-This task owns the guarantee at the layer that can keep it — the one that knows what is already
-on disk and what other jobs are queued. That covers the ordinary case, not only the reserved-name
-residue: two different videos whose titles sanitize identically collide today by the same
-mechanism, and always have.
-
-**`core/paths.py` stays pure.** The resolution belongs to the caller that has filesystem context;
-pushing it into the sanitizer would make it stateful and re-open `DAT-002`.
-
-#### Acceptance criteria
-
-- Two jobs whose sanitized components are equal resolve to distinct output paths
-- The resolution is visible in the `REQ-011` preview before the write, not applied silently
-  afterwards — a preview that disagrees with the write is the failure `DAT-002` protects against
-- An existing file at the target is never silently overwritten
-- Concurrent writers cannot both win the same path — asserted against real concurrent jobs
-  rather than by inspection, since Phase 2 is where the second worker arrives
-- The residual collision `T-045` pins is covered by this policy, so `DAT-002`'s assumption that
-  `T-046` lands before first release is discharged
-
-#### Out of scope
-
-- Which names are legal or reserved — settled by `T-034` and `T-045`
-- Resume semantics for a partially downloaded file, beyond not colliding with one
 
 ---
 
@@ -1052,6 +1059,40 @@ violated. Do not broaden ARC-007 back to `result_pump.py`.
 - A real manager or result-pump persistence/sqlite import fails with the T-013 repository diagnostic
 - Existing relative and absolute forbidden forms remain caught, and result-pump settings imports
   remain permitted
+
+---
+
+### T-101 — Gate the detail view's retry ETA reset independently
+
+**Status:** Proposed
+**Owner:** Implementer
+**Priority:** Low — the production reset is correct; one sibling label is not independently gated
+**Phase:** Phase 2 test infrastructure; blocks nothing
+**Depends on:** none
+**Relevant context:** `T079-R3`, `T079-R1`, `T-079`, `ai/TESTING.md` §13
+**Affected surfaces:** `tests/ui/test_job_detail.py`
+**Risk:** Low — a future one-line regression can leave an obsolete ETA on a re-queued detail view
+
+#### Scope
+
+`T079-R1`'s correction resets both the speed and ETA labels when `FAILED → QUEUED`. The committed
+detail-view regression creates non-default values for both, but asserts only `speedValue`.
+Deleting only `_eta.setText(UNKNOWN_TEXT)` from production therefore left the entire 82-test
+detail-view file green even though the re-queued job still showed the failed attempt's ETA.
+
+Add the independent ETA assertion to the existing scenario. Do not change the already-correct
+production behavior or reopen T-079.
+
+#### Acceptance criteria
+
+- The scenario first proves a non-default ETA was drawn, so the reset assertion cannot pass from
+  the label's initial value
+- After `FAILED → QUEUED`, `etaValue` is asserted as `UNKNOWN_TEXT` independently of `speedValue`
+- Removing only `_eta.setText(UNKNOWN_TEXT)` makes the unmodified test fail
+
+#### Out of scope
+
+- Changing retry behavior or the production reset
 
 ---
 

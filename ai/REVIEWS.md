@@ -7613,3 +7613,84 @@ re-review should verify the old-attempt reset with an unmodified discriminating 
 known-row status changes use an indexed read rather than full enumeration, and rerun the affected
 queue/composition evidence. The task cannot be filed Complete or release T-080/T-081 until both
 findings are independently resolved.
+
+## 2026-07-31 — T-079 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-079`
+**Correction boundary:** `cb008da..da49a51`
+**Correction commit:** `da49a51`
+**Boundary treatment:** the span also contains review-only `2fd9208`; the focused implementation
+re-review covers `da49a51`'s two UI modules, their tests and the finding response in TASKS. All
+source inspection, tests and mutations used an exact isolated `da49a51` archive. Unrelated live
+work entered three downloader/core files and two associated tests while the review ran; none
+entered the evidence or the review edits.
+**Platforms verified:** Linux; Win32 static analysis only
+**Verdict:** **Approved with non-blocking follow-up — T079-R1 and T079-R2 Resolved**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Verification | Status |
+|---|---|---:|---|---|
+| `T079-R1` | **Medium** | **No — resolved** | A queued row now drops pending progress and calls `_Row.retire_live_state()`, while `JobProgressView` clears its pending/drawn message, failure, speed and ETA and re-adopts durable totals. The committed regressions distinguish 50% live state from a 10% durable row and retain 50% across an ordinary same-attempt refresh. Independently removing the table retirement failed with `Downloading video` instead of `Queued`; retaining the detail view's drawn message, failure or speed each failed its unmodified test; deleting preservation on every refresh failed with 10% instead of 50%. | **Resolved** |
+| `T079-R2` | **Medium** | **No — resolved** | `QueueReader` now exposes `get(job_id)` and known-row status changes use exactly that lookup; `all_jobs()` remains on construction/explicit refresh. Restoring a scan made the structural gate report one enumeration and zero indexed lookups, and made the independent budget gate spend **250.3 ms** in the Qt slot. | **Resolved** |
+| `T079-R3` | **Low** | **No — T-101** | The correction resets both detail-view labels, but `test_retrying_a_job_retires_the_failed_attempts_live_state` asserts only `speedValue`. Deleting only `_eta.setText(UNKNOWN_TEXT)` left the complete **82-test** detail-view file green, so the response's combined “speed and ETA labels” mutation does not independently gate its ETA half. The shipped behavior is correct and the original blocker is resolved; this is test granularity, not an observable defect at `da49a51`. | **Open, non-blocking — T-101** |
+
+### Review judgments
+
+**Status is the usable attempt boundary.** `Job.attempts` is persisted and validated but no
+production path increments it; comparing it would leave every retry at zero and never retire old
+state. `FAILED → QUEUED` is the explicit REQ-018 retry edge and gives both views the boundary they
+need without inventing an attempt identity this model does not maintain.
+
+**The correction is not over-applied.** A normal `refresh()` still transfers `displayed` and
+`totals` into the rebuilt row. Removing that transfer failed the committed lagging-row scenario,
+so fixing retry does not reopen T017-R4/T-059 by discarding closer live totals whenever a neighbour
+is added.
+
+**The two T079-R2 gates answer different questions.** The enumeration/lookup counters enforce the
+indexed-read architecture even when a small in-memory queue is fast; the delayed enumeration
+measures NFR-001's consequence. Restoring the scan failed both for their own reasons.
+
+**T079-R3 does not consume another T-079 pass.** The ETA reset exists and works in the reviewed
+source. Under AGENTS.md §10, a new Low test-strength gap found during the focused re-review becomes
+a named non-blocking follow-up rather than reopening an otherwise-correct task. T-101 owns the
+single-label assertion and its ETA-only mutation.
+
+**Windows runtime remains unverified.** The correction changes platform-neutral Qt state and a
+repository protocol already implemented by the composed store; the Win32 whole-project type gate
+passes. The previously recorded Windows multi-process residual risk remains and is not enlarged by
+this correction.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Isolation | Source and tests loaded from an exact `da49a51` archive |
+| Boundary accounting | Review-only `2fd9208` separated from implementation `da49a51` |
+| `git diff --check cb008da..da49a51` | Passed |
+| Authorship / trailers | Sean Kottman on both commits; no AI author or co-author trailer |
+| Six focused correction cases | **6 passed, 107 deselected** |
+| Complete affected UI files | **113 passed** |
+| Table keeps old drawn state | Killed — queued row still said `Downloading video` |
+| Every refresh clears live state | Killed — same-attempt row fell from 50% to its durable 10% |
+| Detail view keeps drawn state | Killed — re-queued detail remained at the prior ending |
+| Detail view keeps failure | Killed — public `failure` retained the prior network error |
+| Detail view keeps speed | Killed — label retained `2.1 MB/s` |
+| Detail view keeps ETA only | **Survived:** complete detail-view file remained **82 passed** — `T079-R3` / T-101 |
+| Status lookup restored to full enumeration | Killed by both gates — one enumeration observed and **250.3 ms** elapsed |
+| Full pinned suite | **1621 passed, 11 skipped, 2 deselected in 144.87 s** |
+| `mypy src` | Passed; **35 files** |
+| Bare `mypy` | Passed; **82 files** |
+| Bare `mypy --platform win32` | Passed; **82 files** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **110 files** already formatted |
+| Task-placement invariant after filing T-101 | **14 passed** |
+| Windows runtime | Not run |
+
+### Final disposition
+
+T079-R1 and T079-R2 are **Resolved**. T-079 is **Approved at `da49a51`** and may be filed
+Complete, releasing T-080 and T-081 subject to their remaining gates and maintainer decisions.
+T079-R3 is a non-blocking Low test-strength follow-up owned by T-101; it does not reopen T-079 or
+require another focused pass.

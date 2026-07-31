@@ -8,12 +8,13 @@ log file with the credential gone — against a real process, a real queue and a
 
 from __future__ import annotations
 
+import itertools
 import logging
 import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from PySide6.QtCore import QCoreApplication
@@ -437,3 +438,214 @@ def test_a_job_id_never_chooses_its_own_path(tmp_path: Path) -> None:
     # does, so the name cannot be more than one component and cannot climb out.
     assert "/" not in escaping.name and "\\" not in escaping.name, escaping.name
     assert escaping.resolve().is_relative_to((tmp_path / "jobs").resolve())
+
+
+# --- T-053: the concurrent property `T-038` could not reach ------------------------------------
+
+#: How many markers each worker emits. Enough that interleaving is unmistakable rather than a
+#: coincidence of two lines arriving in some order.
+MARKERS_PER_WORKER: Final = 10
+
+#: Deliberately **not** containing the job id. The per-job log format carries the stamp, so a
+#: marker built from the id would let "job-beta is absent from alpha's log" pass on the stamp
+#: alone and prove nothing about the record's own text.
+MARKER_A: Final = "MARKER-ALPHA"
+MARKER_B: Final = "MARKER-BETA"
+
+#: A record with **no job stamp**, emitted by the parent while both per-job logs are open.
+UNSTAMPED_MARKER: Final = "MARKER-NOBODY"
+
+
+def _rendezvous(directory: Path, job_id: str, partners: int, timeout: float = 60.0) -> None:
+    """Block until `partners` workers have reached this point.
+
+    A file rendezvous rather than a `multiprocessing.Barrier`, because these children are spawned
+    by the production `DownloadManager` and the only channel this test controls into them is the
+    request's output directory. A barrier would need the manager to forward an extra argument,
+    which is production plumbing added for a test.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    (directory / f"ready-{job_id}").write_text("ready", encoding="utf-8")
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if len(list(directory.glob("ready-*"))) >= partners:
+            return
+        time.sleep(0.01)
+    raise AssertionError(f"{job_id} waited for {partners} workers and they never arrived")
+
+
+def a_worker_interleaving_with_its_neighbour(
+    kind: Any, job_id: str, request: Any, queue: Any, **kwargs: Any
+) -> None:
+    """Wait for the other worker, then emit markers paced so the two streams interleave.
+
+    The offset is what makes the interleaving deliberate: one worker emits on the beat and the
+    other half a beat later, so the records reach the production log queue alternately rather
+    than as two separated runs that happen to be concurrent.
+    """
+    from tracks_and_trails.downloader import worker
+
+    # **Both arguments.** The second is the job-id stamp, and without it every record is
+    # unstamped — which the per-job filter refuses by design, since a per-job file whose
+    # contents depend on which jobs were open is worse than none. Omitting it produced an
+    # application log holding both full streams and two empty per-job files.
+    worker.prepare_this_worker(kwargs.get("log_queue"), kwargs.get("log_job_id"))
+    directory = Path(request.output_directory)
+    marker = MARKER_A if job_id == "job-alpha" else MARKER_B
+
+    _rendezvous(directory, job_id, partners=2)
+    if marker == MARKER_B:
+        time.sleep(0.01)
+    logger = logging.getLogger("tracksandtrails.worker")
+    # Wall clock, not `monotonic`: these are two processes, and only a shared clock lets the
+    # parent compare their emission windows. See the overlap assertion in the test.
+    first = time.time()
+    for index in range(MARKERS_PER_WORKER):
+        logger.warning("%s-%02d", marker, index)
+        time.sleep(0.02)
+    (directory / f"window-{job_id}").write_text(f"{first} {time.time()}", encoding="utf-8")
+
+    queue.put(Succeeded(job_id=job_id, output_path="/written/clip.mp4", total_bytes=1))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+
+
+def test_two_live_workers_cannot_write_into_each_others_logs(
+    tmp_path: Path, qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T-053`: the property `T-038` **structurally could not** establish.
+
+    `test_two_jobs_cannot_write_into_each_others_logs` runs its jobs in sequence, because Phase 1
+    kept one session open at a time. That proves the routing is per job; it cannot prove the
+    cross-write property, because at no point are two per-job handlers open at once — the state
+    where a leak is possible never exists.
+
+    `T-078` made the pool N, so it exists now. Two real spawned workers, both live before either
+    emits, both emitting into the production log queue at an offset so the records interleave.
+    Each per-job log must hold its own ten markers and none of the other's, and the application
+    log must hold both streams.
+    """
+    monkeypatch.setattr(
+        app_logging,
+        "job_log_path",
+        lambda job_id, directory=None: tmp_path / "jobs" / f"{job_id}.log",
+    )
+    app_logging.configure_logging(directory=tmp_path, level=logging.DEBUG)
+    repository = FakeRepository()
+    meeting_point = tmp_path / "rendezvous"
+
+    try:
+        for job_id in ("job-alpha", "job-beta"):
+            job = make_job(job_id, "https://example.invalid/clip", meeting_point)
+            repository.add(job)
+        download = DownloadManager(
+            repository, concurrency=2, entry_point=a_worker_interleaving_with_its_neighbour
+        )
+        download.start("job-alpha")
+        download.start("job-beta")
+
+        # Both sessions live at once is the precondition, not an outcome: the rendezvous inside
+        # the workers cannot complete unless it holds, so a pool that refused the second start
+        # would hang here rather than quietly proving something weaker.
+        assert len(download.active_job_ids()) == 2, (
+            f"only {download.active_job_ids()} is live; this test needs two open sessions"
+        )
+
+        # An **unstamped** record, emitted on the parent while both per-job handlers are open.
+        # `_OnlyThisJob` refuses records with no stamp rather than sharing them, and nothing else
+        # in this file asserts that: a filter that admitted them would still route every stamped
+        # worker record correctly and pass every other assertion here.
+        logging.getLogger("tracksandtrails.manager").warning(UNSTAMPED_MARKER)
+
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline and not download.is_idle:
+            qapp.processEvents()
+            time.sleep(0.02)
+        # **Wait for the records before shutting anything down.** `shutdown()` stops the
+        # worker-log listener without joining it (`T038-R2`), so records still queued when it
+        # stops are never dispatched. Measured: shutting down first left one marker in the
+        # application log and both per-job files empty — the test failed for the ordering rather
+        # than for the property.
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline:
+            alpha_path = tmp_path / "jobs" / "job-alpha.log"
+            beta_path = tmp_path / "jobs" / "job-beta.log"
+            if (
+                alpha_path.exists()
+                and beta_path.exists()
+                and alpha_path.read_text("utf-8").count(MARKER_A) >= MARKERS_PER_WORKER
+                and beta_path.read_text("utf-8").count(MARKER_B) >= MARKERS_PER_WORKER
+            ):
+                break
+            qapp.processEvents()
+            time.sleep(0.02)
+
+        download.shutdown()
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline and not download.is_idle:
+            qapp.processEvents()
+            time.sleep(0.02)
+
+        alpha = (tmp_path / "jobs" / "job-alpha.log").read_text("utf-8")
+        beta = (tmp_path / "jobs" / "job-beta.log").read_text("utf-8")
+        application = (tmp_path / app_logging.LOG_FILENAME).read_text("utf-8")
+    finally:
+        quiet_the_logging()
+
+    for index in range(MARKERS_PER_WORKER):
+        assert f"{MARKER_A}-{index:02d}" in alpha, (
+            f"alpha's own marker {index} is missing from its log"
+        )
+        assert f"{MARKER_B}-{index:02d}" in beta, (
+            f"beta's own marker {index} is missing from its log"
+        )
+
+    assert MARKER_B not in alpha, (
+        f"beta's output was written into alpha's log while both were live. A per-job log whose "
+        f"contents depend on which other jobs were open is worse than none: {alpha!r}"
+    )
+    assert MARKER_A not in beta, f"alpha's output leaked into beta's log: {beta!r}"
+
+    assert application.count(MARKER_A) >= MARKERS_PER_WORKER, (
+        "the application log lost alpha's stream; per-job routing must not cost the whole record"
+    )
+    assert application.count(MARKER_B) >= MARKERS_PER_WORKER, (
+        "the application log lost beta's stream"
+    )
+
+    # **The interleaving is asserted, not assumed.** Two workers that happened to run one after
+    # the other would satisfy every assertion above while never producing the concurrent state
+    # this task exists to exercise.
+    order = [
+        MARKER_A if line.find(MARKER_A) >= 0 else MARKER_B
+        for line in application.splitlines()
+        if MARKER_A in line or MARKER_B in line
+    ]
+    alternations = sum(1 for before, after in itertools.pairwise(order) if before != after)
+    assert alternations >= 4, (
+        f"the two streams did not interleave in the application log ({alternations} changes of "
+        f"speaker in {len(order)} records); the workers ran in sequence rather than at once"
+    )
+
+    # **Both live before either emitted**, asserted on the windows the workers recorded rather
+    # than inferred from interleaving. Measured: alternation alone survives removing the
+    # rendezvous, because two workers started together overlap by luck — which is precisely the
+    # thing this task exists to stop relying on.
+    windows = {}
+    for job_id in ("job-alpha", "job-beta"):
+        first, last = (meeting_point / f"window-{job_id}").read_text("utf-8").split()
+        windows[job_id] = (float(first), float(last))
+    alpha_window, beta_window = windows["job-alpha"], windows["job-beta"]
+    assert alpha_window[0] < beta_window[1] and beta_window[0] < alpha_window[1], (
+        f"the two workers' emission windows do not overlap ({windows}); they were not "
+        "simultaneously active, so no cross-write was ever possible"
+    )
+
+    # The unstamped parent record reached the shared log and neither per-job file.
+    assert UNSTAMPED_MARKER in application, (
+        "the unstamped control record never reached the application log, so its absence from "
+        "the per-job logs proves nothing"
+    )
+    assert UNSTAMPED_MARKER not in alpha and UNSTAMPED_MARKER not in beta, (
+        "an unstamped record was written into a per-job log. A per-job file that also collects "
+        "whatever the parent happened to log is not a per-job file"
+    )
