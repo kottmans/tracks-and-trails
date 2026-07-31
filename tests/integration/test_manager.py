@@ -3882,12 +3882,13 @@ def test_raising_the_limit_starts_waiting_jobs_without_waiting_for_a_tick(
         download._start_when_free("job-2")
         download._start_when_free("job-3")
 
-        assert len(download.active_job_ids()) == 1, "the limit of 1 did not hold"
+        # Occupancy is what the limit governs; the waiting pair is held but holds no slot.
+        assert download._occupant_ids() == ("job-1",), "the limit of 1 did not hold"
         assert download._waiting == ["job-2", "job-3"]
 
         download.set_concurrency(3)
 
-        assert len(download.active_job_ids()) == 3, (
+        assert len(download._occupant_ids()) == 3, (
             "raising the limit did not start the waiting jobs immediately; nothing here spins the "
             "event loop, so a tick-driven fill cannot have run"
         )
@@ -4010,3 +4011,113 @@ def test_a_reservation_occupies_a_slot_at_a_limit_above_one(
         download.shutdown()
         store.release()
         qapp.processEvents()
+
+
+def test_a_waiting_job_is_part_of_what_the_manager_reports_it_is_holding(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T078-R1`: the method said "every job this manager is holding" and omitted one.
+
+    The expected value is the **pair**, so this cannot pass on the running job alone — which is
+    exactly how the omission survived. An assertion of the shape `active_job_ids() != ()`, or one
+    counting occupancy, is true whether or not the waiting list is included; only naming both ids
+    distinguishes them.
+
+    `_occupant_ids()` is asserted beside it to show the two answer different questions. One job
+    holds the only slot; two jobs are held. Collapsing that distinction is what would make the
+    refusal in `start()` name jobs that are themselves waiting for the slot being asked for.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.start("job-1")
+        download._start_when_free("job-2")
+
+        assert download.active_job_ids() == ("job-1", "job-2"), (
+            "a job accepted into the waiting list is work this manager is holding: nothing else "
+            "will ever start it, and `is_idle` already refuses to go out while it is there"
+        )
+        assert download._occupant_ids() == ("job-1",), (
+            "the waiting job holds no slot — the limit of 1 is the reason it is waiting at all"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_the_holding_report_names_a_job_once_when_two_collections_hold_it(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """Three collections now feed one answer, so the answer has to be a set (`T078-R1`).
+
+    The overlap is not reachable through the ordinary path — `_start_when_free` discards the
+    waiting entry before starting — so it is arranged directly here. That is the point: the
+    ordering guarantee callers rely on should not depend on an invariant enforced somewhere else.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.start("job-1")
+        download._waiting.append("job-1")
+
+        assert download.active_job_ids() == ("job-1",), (
+            "one job held in two collections is still one job; a caller diffing this report "
+            "would otherwise see a phantom arrive"
+        )
+    finally:
+        download._waiting.clear()
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_lowering_the_limit_holds_a_waiting_job_until_the_pool_drains(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """The half of lowering that `..._drains_rather_than_killing` structurally cannot see.
+
+    That test has **nothing waiting**, so it proves only "does not kill". A scheduler that started
+    waiting work while the live count was above the lowered limit passed it and all six other pool
+    tests (`T078-R2`) — the limit was being written down and not enforced on the way down.
+
+    So: three jobs saturate a limit of 3, a fourth is accepted behind them, and the limit drops to
+    1. The three must survive *and* the fourth must stay put — three running is not below one. It
+    becomes eligible only when the pool actually drains, which the cancels then make happen.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", "job-3", "job-4", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=3, entry_point=child_downloading_forever)
+    try:
+        for job_id in ("job-1", "job-2", "job-3"):
+            download.start(job_id)
+        download._start_when_free("job-4")
+        assert download._waiting == ["job-4"], "the fourth job was never accepted behind the limit"
+
+        download.set_concurrency(1)
+
+        # The tick is the other caller of `_fill_free_slots`, so let several fire before judging.
+        spin(lambda: False, timeout=0.5)
+        assert download._occupant_ids() == ("job-1", "job-2", "job-3"), (
+            "lowering the limit stopped work already in flight; UX-001 chose draining because a "
+            "stopped download leaves a partial file nothing can resume in this phase"
+        )
+        assert download._waiting == ["job-4"], (
+            f"a waiting job was started while {len(download._occupant_ids())} were live and the "
+            "limit was 1. The new limit governs what starts next, and filling a slot that does "
+            "not exist is how a pool of N becomes a pool of N plus whatever was queued"
+        )
+
+        for job_id in ("job-1", "job-2", "job-3"):
+            download.cancel(job_id)
+
+        assert spin(lambda: download._occupant_ids() == ("job-4",), timeout=60), (
+            "the waiting job never started once the pool drained below the new limit; occupants "
+            f"{download._occupant_ids()}, waiting {download._waiting}"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)

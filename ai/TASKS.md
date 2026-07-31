@@ -77,11 +77,14 @@ and this note is written by hand for exactly that reason.)*
 
 ### T-078 — A real worker pool, bounded and configurable
 
-**Status:** **In Review — complete 2026-07-30.** All three parts are in: `ARC-007`'s settings
-layer (`256b411`, `faf374f`, approved), the pool itself (`a642482`), and the main-window control
-with the two criteria that go through it. `set_concurrency` now has a user-facing caller, which it
-did not when the pool landed.
-*(This read "Ready, promoted 2026-07-30", then "In Progress — the pool is generalised and gated".)*
+**Status:** **In Review — corrected 2026-07-30, awaiting re-review.** Changes were requested at
+`1ef59f1` on two blocking Medium findings; both are addressed below and each carries the mutation
+that shows its gate fails. All three parts are in: `ARC-007`'s settings layer (`256b411`,
+`faf374f`, approved), the pool itself (`a642482`), and the main-window control with the two
+criteria that go through it. `set_concurrency` now has a user-facing caller, which it did not when
+the pool landed.
+*(This read "Ready, promoted 2026-07-30", then "In Progress — the pool is generalised and gated",
+then "In Review — complete 2026-07-30" before the review.)*
 planning gates are clear: `P2PLAN-R2` approved at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` approved at
 `8306378`. The configuration surface is decided (`ARC-007`) and the criteria gate the real user path
 rather than a constructor argument. **`T-097` is required by this task's approval, not by its
@@ -232,6 +235,49 @@ that changes what is stored and not what runs, or the reverse. Each is independe
 - **Any other `REQ-023` setting.** `ARC-007` puts the layer in place; only the concurrency key lands
   here. The settings *screen* is Phase 4
 - Migrating `window.toml`, which deliberately stays outside this layer (`ARCHITECTURE.md` §5)
+
+#### Corrections, 2026-07-30 — `T078-R1` and `T078-R2`
+
+**`T078-R1` — the accounting method omitted the collection it was extended for.** `active_job_ids()`
+opened "Every job this manager is holding" and returned `_sessions ∪ _reserved`. `is_idle` and
+`shutdown()` were generalised for the waiting list; this was not, so the one method a caller would
+*ask* was the one that lied. The criterion names all three.
+
+Waiting jobs are now included. The awkwardness that hid this is real and is now explicit in the
+code: two different questions had been sharing one answer.
+
+| Question | Method | Waiting jobs |
+|---|---|---|
+| What is this manager holding? | `active_job_ids()` | **counted** — accepted work nothing else will start |
+| What is filling the pool? | `_occupant_ids()` (new) | **not counted** — they hold no slot |
+
+`start()`'s refusal and `shutdown()`'s cancel loop both take `_occupant_ids()`. Without the split,
+`"the pool is full at 3: (...)"` would have listed jobs that are themselves waiting for the slot
+being asked for, and the cancel loop would have depended on `_waiting.clear()` happening two
+statements earlier to stay correct.
+
+**`T078-R2` — lowering was written down and not enforced.** Two mutations survived the committed
+suite from opposite ends, and neither existing test could have seen either:
+
+| Mutation | Was | Now killed by |
+|---|---|---|
+| Composition applies increases, only *saves* decreases | **survived all 14** composition tests | the new control test — the only one that lowers |
+| Scheduler fills slots while live count is *above* the limit | **survived all 7** pool tests | the new pool test — the only one with a job waiting while lowering |
+
+The reason both survived is the same reason twice: `..._drains_rather_than_killing` lowers with
+**nothing waiting**, so it can only prove "does not kill", and the real-control test only moves
+3 → 5, so nothing ever exercised the downward direction. An enforced limit and a recorded one are
+identical under both.
+
+Each new test lowers a **saturated** pool with a fourth job accepted behind it and asserts three
+separable things: the running work survives, the waiting work stays waiting while the pool is over
+the new limit, and it starts once the pool drains under it. The narrow over-limit mutation — normal
+at or below the limit, wrong only above it — kills both new tests and leaves all nine other pool
+tests green, which is the measurement that no prior test covered this.
+
+**Also corrected:** `..._starts_waiting_jobs_without_waiting_for_a_tick` asserted
+`len(active_job_ids()) == 1` with two jobs waiting. That assertion encoded `T078-R1`'s defect, so
+it now reads on `_occupant_ids()` — the limit governs occupancy, and the waiting pair is held.
 
 ---
 

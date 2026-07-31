@@ -517,11 +517,32 @@ class DownloadManager(QObject):
         return self._gave_up_on_logging
 
     def active_job_ids(self) -> tuple[str, ...]:
-        """Every job this manager is holding, including starts that have no worker yet.
+        """Every job this manager is holding: running, reserved, **or waiting for a slot**.
 
-        Sorted so the answer does not depend on which of the two collections an id happens to be
+        Sorted so the answer does not depend on which of the three collections an id happens to be
         in — a caller that saw a job appear, vanish, and reappear as its start became a session
-        would be watching bookkeeping rather than the job (`T016-R3`).
+        would be watching bookkeeping rather than the job (`T016-R3`). A set first, so an id that
+        is briefly in two collections is reported once.
+
+        Waiting jobs count because this manager has **accepted** them (`T078-R1`). They are the
+        same commitment a reservation is, one step earlier: nobody else will start them, they are
+        why `is_idle` is false, and a caller asking what this manager is holding is asking a
+        question the waiting list is part of the answer to. Leaving them out made the method
+        contradict its own first sentence.
+
+        **This is not the occupancy count.** A waiting job holds no slot, so capacity and the
+        diagnostics about capacity use `_occupant_ids()` instead.
+        """
+        return tuple(sorted(set(self._sessions) | set(self._reserved) | set(self._waiting)))
+
+    def _occupant_ids(self) -> tuple[str, ...]:
+        """The jobs holding a slot — running sessions and reservations, never waiting jobs.
+
+        Split from `active_job_ids()` by `T078-R1`. The public accounting answers "what is this
+        manager holding"; this answers "what is filling the pool", and the two stopped being the
+        same question when the waiting list arrived. Using the wrong one would make `start()`'s
+        refusal name jobs that are not occupying anything and are, in fact, waiting for exactly
+        the slot the caller wanted.
         """
         return tuple(sorted(set(self._sessions) | set(self._reserved)))
 
@@ -561,7 +582,10 @@ class DownloadManager(QObject):
             # counting them the limit would be "N plus however many `start()` calls fit between a
             # write and its completion" — the gap `ARC-005` created, and the reason `T016-R1`
             # measured a missed reservation as a real defect rather than a tidiness one.
-            busy = self.active_job_ids()
+            # Occupants, not everything held (`T078-R1`). A caller told "the pool is full at 3"
+            # and then handed a list including jobs that are themselves waiting for a slot would
+            # be reading a contradiction.
+            busy = self._occupant_ids()
             raise RuntimeError(
                 f"the pool is full at {self._limit}: {busy}. Raise the concurrency limit, or "
                 "wait for a slot"
@@ -1075,7 +1099,11 @@ class DownloadManager(QObject):
         # still on the writer thread has no process to cancel yet, and skipping it here is how
         # shutdown used to announce `idle` and then spawn a worker from the callback that
         # arrived afterwards.
-        for job_id in self.active_job_ids():
+        # Occupants (`T078-R1`). Cancelling is for work that has a process or is about to get
+        # one; the waiting list was just dropped above and has nothing to stop. Naming that
+        # directly rather than relying on the `clear()` above having already emptied it — the
+        # cancel loop should not depend on the order of two statements to stay correct.
+        for job_id in self._occupant_ids():
             self.cancel(job_id)
         # Keep the timer running: it is the only thing left that can finish this, and that now
         # includes the log listener's own ending. Even with no sessions to cancel, `idle` is the

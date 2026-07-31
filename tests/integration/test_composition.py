@@ -680,3 +680,98 @@ def test_the_control_offers_exactly_the_range_the_settings_layer_allows(
     assert box is not None
     assert box.minimum() == app_settings.CONCURRENCY_MINIMUM
     assert box.maximum() == app_settings.CONCURRENCY_MAXIMUM
+
+
+def test_lowering_the_limit_through_the_control_holds_new_work_without_stopping_old(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """`T078-R2`: lowering was **written down and not enforced**, and nothing could see it.
+
+    Two mutations survived the committed suite, and they are the same gap from either end:
+
+    - Composition applying increases but only *saving* decreases passed the entire 14-test file,
+      because the one real-control test moves 3 → 5 and never down.
+    - The scheduler starting waiting work while the live count was above the lowered limit passed
+      every pool test, because the drain test has nothing waiting for it to wrongly start.
+
+    So this lowers a **saturated** pool through the real `QSpinBox` with a fourth job accepted
+    behind it, and asserts the three things that distinguish an enforced limit from a recorded
+    one: the running work survives, the waiting work stays waiting while the pool is over the new
+    limit, and it starts once the pool is under it.
+
+    Jobs are submitted to the real store and started through the real manager rather than typed
+    into the add dialog four times — the path under test is control → pool, and
+    `test_the_limit_changes_through_the_control_and_survives_a_restart` already drives the
+    control end-to-end. `_start_when_free` is reached directly because it is the only admission
+    path into the waiting list: `start()` at saturation raises instead of queueing.
+    """
+    from datetime import UTC, datetime
+
+    from tracks_and_trails.core import settings as app_settings
+    from tracks_and_trails.core.models import Job
+
+    settings_file = tmp_path / "settings.toml"
+    composition = composed(settings_file=settings_file, entry_point=child_probing_then_waiting)
+    manager = composition.manager
+    assert manager.concurrency == 3, "this test needs the default limit to be the saturated one"
+
+    saved: list[str | None] = []
+    composition.store.submit(
+        [
+            Job(
+                id=job_id,
+                url=f"https://composed.invalid/{job_id}",
+                request=DownloadRequest(
+                    url=f"https://composed.invalid/{job_id}",
+                    output_directory=str(tmp_path / "downloads"),
+                    format_selector="best",
+                    output_template="%(title)s.%(ext)s",
+                ),
+                created_at=datetime.now(UTC),
+            )
+            for job_id in ("job-1", "job-2", "job-3", "job-4")
+        ],
+        saved.append,
+    )
+    assert spin(lambda: bool(saved), timeout=60), "the queue rows were never written"
+    assert saved == [None], f"submitting the queue failed: {saved}"
+
+    for job_id in ("job-1", "job-2", "job-3"):
+        manager.start(job_id)
+    manager._start_when_free("job-4")
+    assert spin(lambda: len(manager._occupant_ids()) == 3, timeout=60), (
+        f"the pool never saturated: occupants {manager._occupant_ids()}"
+    )
+    assert manager._waiting == ["job-4"]
+
+    box = composition.window.concurrency_control
+    assert box is not None
+    box.setValue(1)
+
+    assert manager.concurrency == 1, (
+        "the running pool kept the old limit. A handler that applies increases and merely stores "
+        "decreases leaves the file saying 1 and the pool running 3 — T-075's shape, one setting "
+        "over, and invisible to any test that only ever raises the limit"
+    )
+    assert app_settings.load(settings_file).concurrency == 1, "the decrease never reached disk"
+
+    # The tick fills free slots too, so give it several before deciding nothing started.
+    spin(lambda: False, timeout=0.5)
+    assert manager._occupant_ids() == ("job-1", "job-2", "job-3"), (
+        "lowering the limit through the control stopped work already in flight; UX-001 chose "
+        "draining, and REQ-017's resume does not exist to make a partial file recoverable"
+    )
+    assert manager._waiting == ["job-4"], (
+        "the waiting job started while three were live and the limit was 1. Lowering governs "
+        "what starts next; a pool that fills slots it does not have has no limit at all"
+    )
+
+    for job_id in ("job-1", "job-2", "job-3"):
+        manager.cancel(job_id)
+
+    assert spin(lambda: manager._occupant_ids() == ("job-4",), timeout=60), (
+        "the waiting job never became eligible once the pool drained below the new limit: "
+        f"occupants {manager._occupant_ids()}, waiting {manager._waiting}"
+    )
