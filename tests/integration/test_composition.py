@@ -157,6 +157,9 @@ def composed(
         overrides.setdefault("database", tmp_path / "queue.db")
         overrides.setdefault("output_directory", tmp_path / "downloads")
         overrides.setdefault("geometry_file", tmp_path / "window.toml")
+        # Same reason as `geometry_file`: without it these tests read and write the real
+        # `user_config_dir`, which `ai/TESTING.md` §5 forbids (`T-078`).
+        overrides.setdefault("settings_file", tmp_path / "settings.toml")
         composition = application.compose(qapp, **overrides)
         built.append(composition)
         return composition
@@ -612,3 +615,68 @@ def test_retrying_a_failed_job_re_queues_it_and_starts_it_again(
     assert spin(lambda: view.status is not JobStatus.FAILED, timeout=60), (
         "the progress view still shows the failure this retry replaced"
     )
+
+
+# --- T-078: the limit changes through the control a person can reach ------------------------
+
+
+def test_the_limit_changes_through_the_control_and_survives_a_restart(
+    composed: Callable[..., application.Composition], tmp_path: Path
+) -> None:
+    """`T-078`, `ARC-007`: **driven through the widget, never the constructor.**
+
+    The criterion exists because a pool whose limit is only a constructor argument satisfies every
+    behavioural test and misses `REQ-013` entirely — that is what `P2PLAN-R3` reported. So this
+    reaches the real `QSpinBox` by object name and sets a value, exactly as a person would, and
+    asserts two separate things: the **running pool** changed, and the change is on **disk**.
+
+    "Survives a restart" is asserted by composing a second application against the same settings
+    file rather than by trusting `save()`. A second graph reading the value back is the only form
+    of that claim which cannot pass against a write that never happened.
+    """
+    from tracks_and_trails.core import settings as app_settings
+
+    settings_file = tmp_path / "settings.toml"
+    first = composed(settings_file=settings_file)
+
+    box = first.window.concurrency_control
+    assert box is not None, "composition did not give the window a concurrency control"
+    assert box.value() == app_settings.CONCURRENCY_DEFAULT
+    assert first.manager.concurrency == app_settings.CONCURRENCY_DEFAULT
+
+    box.setValue(5)
+
+    assert first.manager.concurrency == 5, (
+        "the running pool did not change. A control that edits a file and not the pool is T-075's "
+        "shape one setting over: the stored value and the running behaviour disagree"
+    )
+    assert app_settings.load(settings_file).concurrency == 5, "the choice never reached disk"
+
+    second = composed(
+        database=tmp_path / "second.db",
+        geometry_file=tmp_path / "second-window.toml",
+        settings_file=settings_file,
+    )
+    assert second.manager.concurrency == 5, "a restart did not pick the chosen limit back up"
+    assert second.window.concurrency_control is not None
+    assert second.window.concurrency_control.value() == 5, (
+        "the control came back showing a different number from the pool it governs"
+    )
+
+
+def test_the_control_offers_exactly_the_range_the_settings_layer_allows(
+    composed: Callable[..., application.Composition], tmp_path: Path
+) -> None:
+    """The widget's range is read from `core/settings.py`, not restated beside it.
+
+    A spinbox with its own numbers would be a second opinion about `REQ-013`'s minimum and
+    `ARC-007`'s ceiling. It bounds the *widget*; the bound that matters is on the value, which is
+    why `settings.toml` is clamped independently and a hand-edited `0` still becomes 1.
+    """
+    from tracks_and_trails.core import settings as app_settings
+
+    composition = composed(settings_file=tmp_path / "settings.toml")
+    box = composition.window.concurrency_control
+    assert box is not None
+    assert box.minimum() == app_settings.CONCURRENCY_MINIMUM
+    assert box.maximum() == app_settings.CONCURRENCY_MAXIMUM

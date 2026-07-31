@@ -75,22 +75,13 @@ is why **`T-096`** exists — but `T-096` gates *status against section*, and `C
 that contradicted both while every status and section agreed. The invariant test cannot see that,
 and this note is written by hand for exactly that reason.)*
 
-## Ready
-*(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
-which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
-For two commits `T-074`, `T-089`, `T-091`, `T-092` and `T-096` therefore sat under `## In Review`
-while each said Ready: the exact status-versus-section class `COORD-R5` through `COORD-R10`
-reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
-and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
-being necessary.)*
-
 ### T-078 — A real worker pool, bounded and configurable
 
-**Status:** **In Progress — the pool is generalised and gated, 2026-07-30.** Two of the task's
-three parts are done: `ARC-007`'s settings layer (`256b411`, `faf374f`, approved) and the pool
-itself. **What remains is the main-window control and the two criteria that must go through it** —
-until that lands, `set_concurrency` has no user-facing caller. See **Progress, 2026-07-30**.
-*(This read "Ready, promoted 2026-07-30 — the first Phase 2 task out of Proposed".)* All three
+**Status:** **In Review — complete 2026-07-30.** All three parts are in: `ARC-007`'s settings
+layer (`256b411`, `faf374f`, approved), the pool itself (`a642482`), and the main-window control
+with the two criteria that go through it. `set_concurrency` now has a user-facing caller, which it
+did not when the pool landed.
+*(This read "Ready, promoted 2026-07-30", then "In Progress — the pool is generalised and gated".)*
 planning gates are clear: `P2PLAN-R2` approved at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` approved at
 `8306378`. The configuration surface is decided (`ARC-007`) and the criteria gate the real user path
 rather than a constructor argument. **`T-097` is required by this task's approval, not by its
@@ -174,6 +165,42 @@ docstring now says so and why the phrasing moved.
 `core.settings`.
 
 
+#### Progress, 2026-07-30 — the control
+
+**One control in the existing window, per `ARC-007`, not a settings dialog.** A toolbar spinbox with
+its label, `objectName` `concurrencyChoice`, an accessible name and description (`NFR-005` — a bare
+number announced as "spin box" says nothing about what it governs), and `valueChanged` rather than
+`editingFinished` so raising the limit starts waiting work when the user asks rather than when focus
+moves.
+
+**The window knows neither the manager nor the file for this.** `on_concurrency_changed` is injected
+exactly as `retry` is, so the widget can be driven in a test with no pool and no TOML behind it
+(`ARCHITECTURE.md` §3). Composition supplies the handler, which **applies then saves** — both, in
+that order.
+
+**The widget's range is read from `core/settings.py`, not restated.** A spinbox with its own numbers
+would be a second opinion about `REQ-013`'s minimum and `ARC-007`'s ceiling. It bounds the *widget*;
+the bound that matters is on the value, which is why a hand-edited `0` still becomes 1.
+
+**`compose()` gained `settings_file`**, for the reason `geometry_file` already existed: without it
+these tests read and write the real `user_config_dir`, which `ai/TESTING.md` §5 forbids. Found while
+writing them, not after.
+
+**"Survives a restart" is asserted by composing a second application** against the same settings
+file rather than by trusting `save()`. A second graph reading the value back is the only form of
+that claim that cannot pass against a write which never happened.
+
+| Mutation | Result |
+|---|---|
+| The handler saves but never applies | **killed** — the pool keeps the old limit |
+| The handler applies but never saves | **killed** — the restart forgets |
+| The widget invents its own range | **killed** |
+| The control is wired to nothing | **killed** |
+
+The first two matter most: they are the two halves of `T-075`'s shape one setting over — a control
+that changes what is stored and not what runs, or the reverse. Each is independently necessary.
+
+
 #### Acceptance criteria
 
 - N sessions run concurrently, N is configurable, and the limit is respected **exactly** — not
@@ -207,6 +234,15 @@ docstring now says so and why the phrasing moved.
 - Migrating `window.toml`, which deliberately stays outside this layer (`ARCHITECTURE.md` §5)
 
 ---
+
+## Ready
+*(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
+which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
+For two commits `T-074`, `T-089`, `T-091`, `T-092` and `T-096` therefore sat under `## In Review`
+while each said Ready: the exact status-versus-section class `COORD-R5` through `COORD-R10`
+reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
+and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
+being necessary.)*
 
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 

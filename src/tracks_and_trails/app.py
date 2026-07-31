@@ -165,6 +165,7 @@ class Composition:
     ffmpeg: FfmpegReport
     output_directory: Path
     database_path: Path
+    settings_path: Path
     shutdown: OrderlyShutdown
 
 
@@ -175,6 +176,7 @@ def compose(
     output_directory: Path | None = None,
     ffmpeg_override: Path | None = None,
     geometry_file: Path | None = None,
+    settings_file: Path | None = None,
     entry_point: Callable[..., None] | None = None,
 ) -> Composition:
     """Build the object graph and wire it up. **Constructs everything; starts nothing.**
@@ -215,7 +217,7 @@ def compose(
     # `ARC-007`: composition owns `settings.toml`; the manager receives a value. The read happens
     # here so a settings-format change cannot reach `downloader/`, which `T-097` enforces
     # statically.
-    settings = app_settings.load()
+    settings = app_settings.load(settings_file)
     manager = DownloadManager(
         store,
         # History is no longer a second injected sink (`T050-R1`, `T050-R2`): completion is one
@@ -240,6 +242,22 @@ def compose(
         """
         manager.retry(job_id)
 
+    def choose_concurrency(limit: int) -> None:
+        """Apply the user's chosen limit and remember it (`REQ-013`, `ARC-007`).
+
+        **Both halves, in this order, and neither is optional.** Applying without saving makes the
+        control forget itself at the next launch; saving without applying makes it appear to do
+        nothing until a restart, which is the shape `T-075` was — a control that changes what is
+        stored and not what runs.
+
+        Bounded on the way in by `with_concurrency`, so a caller that reached here with a value
+        outside `REQ-013`'s range stores a usable one. The spinbox's own range already prevents it;
+        this is the bound on the *value*, which is where `ARC-007` puts it.
+        """
+        chosen = app_settings.with_concurrency(settings, limit)
+        manager.set_concurrency(chosen.concurrency)
+        app_settings.save(chosen, settings_file)
+
     window = MainWindow(
         geometry_file,
         manager=manager,
@@ -247,6 +265,8 @@ def compose(
         output_directory=downloads,
         job_reader=store,
         retry=retry,
+        concurrency=settings.concurrency,
+        on_concurrency_changed=choose_concurrency,
     )
     window.report_environment(ffmpeg.summary())
     logging.getLogger("tracksandtrails.app").info("environment: %s", ffmpeg.summary())
@@ -284,6 +304,7 @@ def compose(
         ffmpeg=ffmpeg,
         output_directory=downloads,
         database_path=database_path,
+        settings_path=settings_file if settings_file is not None else app_settings.settings_path(),
         shutdown=shutdown,
     )
 

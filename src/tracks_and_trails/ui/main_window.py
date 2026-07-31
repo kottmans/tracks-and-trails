@@ -25,9 +25,17 @@ from typing import Final
 from platformdirs import user_config_dir
 from PySide6.QtCore import QRect, QSize, Qt, Signal
 from PySide6.QtGui import QAction, QCloseEvent, QGuiApplication, QIcon, QKeySequence
-from PySide6.QtWidgets import QLabel, QMainWindow, QMessageBox, QWidget
+from PySide6.QtWidgets import (
+    QLabel,
+    QMainWindow,
+    QMessageBox,
+    QSpinBox,
+    QToolBar,
+    QWidget,
+)
 
 from tracks_and_trails import __version__
+from tracks_and_trails.core import settings
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
 from tracks_and_trails.ui.job_detail import JobProgressView, JobReader, build_progress_view
@@ -213,6 +221,8 @@ class MainWindow(QMainWindow):
         output_directory: Path | None = None,
         job_reader: JobReader | None = None,
         retry: Callable[[str], None] | None = None,
+        concurrency: int | None = None,
+        on_concurrency_changed: Callable[[int], None] | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
@@ -227,7 +237,11 @@ class MainWindow(QMainWindow):
         self.setObjectName("mainWindow")
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon())
+        self._on_concurrency_changed = on_concurrency_changed
         self._build_menus()
+        self._concurrency: QSpinBox | None = None
+        if concurrency is not None:
+            self._build_concurrency_control(concurrency)
         self._environment = QLabel(self)
         self._environment.setObjectName("environmentSummary")
         self._environment.setAccessibleName("Environment")
@@ -313,6 +327,66 @@ class MainWindow(QMainWindow):
         )
         dialog.open()
         return dialog
+
+    def _build_concurrency_control(self, initial: int) -> None:
+        """One control for `REQ-013`'s limit, in this window rather than a dialog (`ARC-007`).
+
+        **Why here and not in a settings dialog.** Phase 4 owns the full `REQ-023` dialog covering
+        eight settings; a one-control dialog built now is a layout Phase 4 would replace, while a
+        control plus the TOML layer beneath it is purely additive. `ARC-007` records that trade and
+        what it concedes — one control in a toolbar is easier to miss than a Settings menu item.
+
+        **The range is the settings layer's, read from it rather than restated.** `REQ-013`'s
+        minimum and `ARC-007`'s ceiling both live in `core/settings.py`; a spinbox with its own
+        numbers would be a second opinion about a bound, and the bound that matters is the one
+        applied to the *file* — `settings.toml` is hand-editable, so this range constrains the
+        widget and never the value.
+        """
+        bar = QToolBar("Queue", self)
+        bar.setObjectName("queueToolBar")
+        bar.setMovable(False)
+        # Not closable: a control the user can hide and then not find is worse than a control
+        # they ignore, and this is the only way to change the limit until Phase 4's dialog.
+        bar.toggleViewAction().setVisible(False)
+
+        label = QLabel("Concurrent downloads:", bar)
+        label.setObjectName("concurrencyLabel")
+        bar.addWidget(label)
+
+        box = QSpinBox(bar)
+        box.setObjectName("concurrencyChoice")
+        box.setRange(settings.CONCURRENCY_MINIMUM, settings.CONCURRENCY_MAXIMUM)
+        box.setValue(initial)
+        # `NFR-005`: the visible label is beside it, but a screen reader reads the control, and a
+        # bare number announced as "spin box" says nothing about what it governs.
+        box.setAccessibleName("Concurrent downloads")
+        box.setAccessibleDescription(
+            "How many downloads run at once. Lowering this lets downloads already running finish; "
+            "it never stops one."
+        )
+        box.setStatusTip("How many downloads run at once")
+        # `valueChanged` rather than `editingFinished`: raising the limit should start waiting work
+        # as soon as the user asks, and `editingFinished` would hold that until focus moved.
+        box.valueChanged.connect(self._concurrency_chosen)
+        bar.addWidget(box)
+
+        self.addToolBar(bar)
+        self._concurrency = box
+
+    def _concurrency_chosen(self, value: int) -> None:
+        """Hand the new limit to whoever composition said owns it.
+
+        This window knows neither the manager nor `settings.toml` for this purpose — the handler is
+        injected exactly as `retry` is, so the widget can be driven in a test without a pool or a
+        file behind it (`ARCHITECTURE.md` §3).
+        """
+        if self._on_concurrency_changed is not None:
+            self._on_concurrency_changed(value)
+
+    @property
+    def concurrency_control(self) -> QSpinBox | None:
+        """The limit control, if this window was given one."""
+        return self._concurrency
 
     def _build_menus(self) -> None:
         """File → Add URLs…, File → Quit, and Help → About.
