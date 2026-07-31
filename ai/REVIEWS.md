@@ -7475,3 +7475,70 @@ owned by the existing T-078 correction, so no separate follow-up task is created
 capacity, reservation, ordering, immediate-raise, settings persistence and Linux multi-tree
 shutdown behavior otherwise passed. Approval of the phase's centre—and therefore the dependency
 release for its eight descendants—waits on the two focused corrections and their mutation evidence.
+
+## 2026-07-30 — T-078 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-078`
+**Correction boundary:** `1ef59f1..0f9986f`
+**Correction commit:** `0f9986f`
+**Boundary treatment:** the history span also contains the prior review record (`4df0d21`) and the
+documentation-only history-view ownership decision (`dc50e62`). The focused implementation
+re-review covers only `0f9986f`'s manager and test changes. All checks used an exact isolated
+`0f9986f` archive.
+**Verdict:** **Approved — T078-R1 and T078-R2 Resolved**
+
+### Finding disposition
+
+| ID | Severity | Blocks approval | Verification | Status |
+|---|---|---:|---|---|
+| `T078-R1` | **Medium** | **No — resolved** | `active_job_ids()` now returns the duplicate-safe sorted union of sessions, reservations and waiting ids. Restoring the original omission failed the committed pair assertion with `("job-1",)` instead of `("job-1", "job-2")`. The two production callers that need occupancy rather than ownership use `_occupant_ids()`. | **Resolved** |
+| `T078-R2` | **Medium** | **No — resolved** | The pool-level and composed-path tests now lower a saturated pool with a fourth accepted job waiting, preserve the three occupants, hold the fourth while the count is above the new limit, and start it only after the pool drains. Applying increases while merely saving decreases failed the composed test at `manager.concurrency == 1`. Allowing `_fill_free_slots()` to start waiting work above the lowered limit failed both pool and composition tests because the waiting list emptied early. | **Resolved** |
+
+### Review judgments
+
+**`_occupant_ids()` is the right split.** The class has three storage collections but only two
+semantic questions: every job the manager has accepted, and the subset consuming a pool slot.
+`active_job_ids()` answers the first; capacity diagnostics and shutdown cancellation need the
+second. Inlining `sessions ∪ reservations` twice would hide that distinction at exactly the two
+callers whose behavior changed when waiting ids joined the public answer. The helper introduces a
+name for an existing concept, not a fourth state collection.
+
+**The synthetic overlap test earns its place.** Ordinary transitions remove a waiting id before
+reserving it, so the overlap is deliberately unreachable today. The assertion protects a public
+reporting contract—one logical job appears once—rather than asserting that the internal overlap
+must occur. T078-R1 explicitly required duplicate-safe ordering, and the direct arrangement is a
+small discriminating test of that property. It is not being offered as lifecycle evidence.
+
+**Submitting to the real store satisfies “through the composed graph.”** The acceptance criterion
+is about the concurrency control reaching the live pool. The test uses the real composition,
+writer-backed store, manager, settings file and `QSpinBox`; only the worker entry point is the
+existing process-boundary stand-in. Typing four URLs into the add dialog would add unrelated
+probing/dialog behavior and still could not create the state under test: public `start()` refuses
+at saturation, while `_start_when_free()` is the manager's sole waiting-list admission path.
+Driving that path directly is therefore the narrow setup for the control → pool assertion, not a
+substitute for it.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Isolation | Source and tests loaded from an exact `0f9986f` archive |
+| `git diff --check 1ef59f1..0f9986f` | Passed |
+| Authorship / trailers | Sean Kottman; no AI author or co-author trailer |
+| Four focused correction cases | **4 passed** |
+| Original waiting-id omission | Killed — exact pair assertion failed |
+| Original decrease-not-applied mutation | Killed — composed control test failed |
+| Original fill-above-lowered-limit mutation | Killed by both pool and composed control tests |
+| Full pinned suite | **1586 passed, 11 skipped, 2 deselected in 205.73 s** |
+| Bare `mypy` | Passed; **81 files** |
+| Bare `mypy --platform win32` | Passed; **81 files** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **109 files** already formatted |
+| Windows runtime | Not run; the explicit platform risk from the initial review remains |
+
+### Final disposition
+
+T078-R1 and T078-R2 are **Resolved**. T-078 is **Approved at `0f9986f`**. No new finding or
+follow-up task was created. The phase's central dependency may be filed Complete and its downstream
+tasks may use this approved pool/settings/control foundation, subject to their own readiness gates.
