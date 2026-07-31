@@ -333,6 +333,7 @@ def build_options(
     progress_hooks: Sequence[Any] = (),
     postprocessor_hooks: Sequence[Any] = (),
     ffmpeg_location: Path | None = None,
+    overwrites: bool | None = None,
 ) -> dict[str, Any]:
     """Build the yt-dlp options dict for one session.
 
@@ -369,6 +370,13 @@ def build_options(
         options["ratelimit"] = request.rate_limit_bytes
     if request.cookies_from_browser:
         options["cookiesfrombrowser"] = (request.cookies_from_browser,)
+    if overwrites is not None:
+        # `T-046`. Only ever `True`, and only from the download session, which has just claimed
+        # this exact path with `O_CREAT | O_EXCL`. yt-dlp treats a file at the target as an
+        # already-completed download and writes nothing; the zero-byte reservation is that file.
+        # Nothing else can be there, because anything pre-existing failed the exclusive create
+        # and moved the reservation to the next candidate.
+        options["overwrites"] = overwrites
     if ffmpeg_location is not None:
         # `OPS-001`: the worker resolves ffmpeg and gates on it, but yt-dlp does its own lookup
         # and would silently use a different binary — or none — without being told.

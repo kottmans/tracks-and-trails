@@ -355,6 +355,55 @@ def safe_output_path(directory: Path, candidate: str) -> Path:
     return result
 
 
+def numbered_variant(path: Path, index: int) -> Path:
+    """`clip.mp4` at index 2 becomes `clip (2).mp4` — the next candidate when a path is taken.
+
+    **Pure, and it stays pure** (`DAT-002`). This says what the *n*th alternative to a path is
+    called; it does not know or ask whether any of them exists. "Does this collide?" is a
+    question about the filesystem, and `DAT-002` moved that to `T-046` at the layer holding
+    filesystem context precisely so this module would not become stateful.
+
+    ` (2)` rather than a digest or a timestamp: it is the convention every desktop file manager
+    uses for the same situation, so a second copy of a video is recognisable as one. `T-045`'s
+    digest exists to keep *distinct* inputs apart, which is a different problem — here the
+    inputs really are the same name and the user needs to see which is which.
+
+    The extension survives, and the **marker survives too**: the stem is what gets shortened
+    when the budgets bite. Trimming the marker instead would produce two candidates with the
+    same name, which is the one thing this function exists to prevent. `_shorten_to`'s
+    reasoning applies to the extension for the same reason it does there.
+    """
+    if index < 2:
+        raise ValueError(f"a numbered variant starts at 2, not {index}")
+
+    marker = f" ({index})"
+    suffix = path.suffix if path.suffix and len(path.suffix) <= 21 else ""
+    stem = path.name[: len(path.name) - len(suffix)] or _FALLBACK_STEM
+
+    byte_room = MAX_COMPONENT_BYTES - len((marker + suffix).encode("utf-8"))
+    if byte_room < 1:
+        raise UnsafePathError(
+            f"no room for {path.name!r} plus {marker!r} within {MAX_COMPONENT_BYTES} bytes"
+        )
+    stem = _truncate_to_bytes(stem, byte_room).rstrip(". ")
+
+    result = path.with_name(f"{stem or _FALLBACK_STEM}{marker}{suffix}")
+    if len(str(result)) <= MAX_PATH_CHARACTERS:
+        return result
+
+    # The whole path is too long, which the directory can cause on its own. Shorten the stem
+    # again, against characters this time — the two budgets are different units and a name can
+    # satisfy one while breaking the other.
+    character_room = MAX_PATH_CHARACTERS - len(str(path.parent)) - 1 - len(marker) - len(suffix)
+    if character_room < 1:
+        raise UnsafePathError(
+            f"output directory {str(path.parent)!r} leaves no room for {path.name!r} plus "
+            f"{marker!r} within {MAX_PATH_CHARACTERS} characters"
+        )
+    stem = stem[:character_room].rstrip(". ")
+    return path.with_name(f"{stem or _FALLBACK_STEM}{marker}{suffix}")
+
+
 def _shorten_to(name: str, limit: int) -> str:
     """Shorten `name` to `limit` characters, keeping its extension.
 

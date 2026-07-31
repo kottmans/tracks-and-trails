@@ -1328,3 +1328,185 @@ def test_a_blank_resolved_format_is_reported_as_none(
 
     succeeded = next(m for m in messages if isinstance(m, Succeeded))
     assert succeeded.format_used is None
+
+
+# --- T-046: output path collision policy -------------------------------------------------------
+
+
+def reserve_in_child(target: str, results: Any) -> None:
+    """Claim `target` from a separate process and report what was won.
+
+    Module-level and takes only picklable arguments, because `spawn` re-imports this module in a
+    fresh interpreter — the same constraint every worker entry point in this project has.
+    """
+    from tracks_and_trails.downloader.worker import reserve_output_path
+
+    results.put(str(reserve_output_path(Path(target))))
+
+
+def test_two_downloads_whose_names_sanitize_alike_get_distinct_paths(tmp_path: Path) -> None:
+    """`T-046`'s first criterion, and the reason `DAT-002` filed this task.
+
+    `sanitize_component` is a pure function of one string and cannot answer "does this collide?".
+    Two different videos whose titles sanitize identically have always resolved to one path; with
+    `T-078`'s pool of N they now do it concurrently rather than one job at a time.
+    """
+    target = safe_output_path(tmp_path, "Clip.mp4")
+
+    first = worker_module.reserve_output_path(target)
+    second = worker_module.reserve_output_path(target)
+
+    assert first != second, "two jobs were handed the same path, so one would overwrite the other"
+    assert first.name == "Clip.mp4"
+    assert second.name == "Clip (2).mp4"
+    assert first.exists() and second.exists(), "a reservation must actually hold the name"
+
+
+def test_the_residual_collision_t045_pins_is_resolved_here(tmp_path: Path) -> None:
+    """`DAT-002`'s closing promise: absolute uniqueness lands in `T-046`.
+
+    `T-045` kept `sanitize_component` idempotent, which makes a defused reserved name a fixed
+    point — so a video titled `CON` and one already titled the defused form sanitize to the same
+    component, and `DAT-002` says so plainly rather than claiming otherwise. Both still have to
+    reach distinct files, and this is the layer that can promise it.
+    """
+    defused = safe_output_path(tmp_path, "CON.mp4")
+    again = safe_output_path(tmp_path, f"{defused.stem}.mp4")
+    assert defused == again, "this test is vacuous unless the two really do sanitize alike"
+
+    first = worker_module.reserve_output_path(defused)
+    second = worker_module.reserve_output_path(again)
+
+    assert first != second, (
+        "the residual collision DAT-002 pins still puts two downloads on one path"
+    )
+
+
+def test_an_existing_file_is_never_taken(tmp_path: Path) -> None:
+    """Third criterion. The file already there may be the user's only copy of something."""
+    target = tmp_path / "Clip.mp4"
+    target.write_bytes(b"the user's existing download")
+
+    reserved = worker_module.reserve_output_path(target)
+
+    assert reserved != target
+    assert target.read_bytes() == b"the user's existing download", (
+        "an existing file was overwritten by a reservation"
+    )
+
+
+def test_the_preview_shows_the_resolved_name_before_anything_is_written(
+    tmp_path: Path,
+) -> None:
+    """Second criterion (`REQ-011`): resolution is *visible*, not applied silently afterwards.
+
+    A preview that disagrees with the write is the failure `DAT-002` kept `sanitize_component`
+    idempotent to prevent — the user is shown one filename and gets another.
+    """
+    info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4"}
+    resolved = worker_module._import_ytdlp(ytdlp_candidates(None))
+    request = request_for(tmp_path, format_selector="best")
+
+    first = worker_module.preview_path(request, dict(info), resolved)
+    assert first.name == "Clip.mp4"
+    assert not first.exists(), "the preview created a file; it is supposed to change nothing"
+
+    (tmp_path / "Clip.mp4").write_bytes(b"already here")
+    second = worker_module.preview_path(request, dict(info), resolved)
+
+    assert second.name == "Clip (2).mp4", (
+        f"the preview still promises {second.name!r} over a file that already exists"
+    )
+
+
+def test_concurrent_processes_cannot_both_win_one_path(tmp_path: Path) -> None:
+    """Fourth criterion, **asserted against real concurrency** rather than by inspection.
+
+    `ARC-002` gives every job its own process, so the racing writers share no memory: a
+    check-then-create would let all of them see nothing and all of them proceed. Eight spawned
+    processes claim the same target at once; each must come away with a different name.
+
+    `spawn` explicitly, not the platform default, because that is what the application uses and
+    `fork` would inherit state this test is not about.
+    """
+    target = tmp_path / "Clip.mp4"
+    context = mp.get_context("spawn")
+    results: Any = context.Queue()
+
+    children = [
+        context.Process(target=reserve_in_child, args=(str(target), results)) for _ in range(8)
+    ]
+    for child in children:
+        child.start()
+    for child in children:
+        child.join(timeout=60)
+
+    won = sorted(results.get_nowait() for _ in range(8))
+    assert len(set(won)) == 8, (
+        f"{8 - len(set(won))} of eight processes were handed a name another had already won: {won}"
+    )
+    assert all(Path(name).exists() for name in won)
+
+
+def test_a_reservation_the_download_never_filled_is_given_back(tmp_path: Path) -> None:
+    """A failed attempt must not consume the name its retry wants.
+
+    Without this, retrying a failed download three times walks it to `Clip (4).mp4` while
+    `Clip.mp4` through `Clip (3).mp4` sit in the user's folder as empty files.
+    """
+    target = tmp_path / "Clip.mp4"
+    reserved = worker_module.reserve_output_path(target)
+    assert reserved.exists()
+
+    worker_module.release_output_path(reserved)
+
+    assert not reserved.exists(), "the reservation outlived the download that never filled it"
+    assert worker_module.reserve_output_path(target) == target, (
+        "the released name was not available again, so a retry would walk to the next number"
+    )
+
+
+def test_a_reservation_with_bytes_in_it_is_never_deleted(tmp_path: Path) -> None:
+    """Release is for reservations, and a file with content is not one any more.
+
+    Deleting it would be exactly the data loss this policy exists to prevent, so size is the
+    test — not a flag the process that reserved it might have died holding.
+    """
+    reserved = worker_module.reserve_output_path(tmp_path / "Clip.mp4")
+    reserved.write_bytes(b"a real download")
+
+    worker_module.release_output_path(reserved)
+
+    assert reserved.exists() and reserved.read_bytes() == b"a real download", (
+        "release deleted a file that had a download in it"
+    )
+
+
+def test_a_download_that_fails_releases_its_reservation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The release is wired into the session, not merely available to it.
+
+    Driven through `run_session` rather than by calling the helper, because "the download path
+    releases on failure" is a claim about that path (`ai/TESTING.md` §13).
+    """
+    target = tmp_path / "Clip.mp4"
+    monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: target)
+
+    def extract_that_fails(*_a: Any, **kwargs: Any) -> dict[str, Any]:
+        if kwargs.get("probe_only"):
+            return {"title": "Clip", "ext": "mp4", "webpage_url": "https://e.com/x"}
+        raise RuntimeError("the download failed after the path was reserved")
+
+    monkeypatch.setattr(worker_module, "_extract", extract_that_fails)
+    monkeypatch.setattr(worker_module, "_ffmpeg_gap", lambda *a, **k: None)
+
+    queue: Queue[Any] = Queue()
+    worker_module.run_session(
+        SessionKind.DOWNLOAD, "job-1", request_for(tmp_path), queue, cancel=None
+    )
+
+    assert not target.exists(), (
+        "a failed download left its zero-byte reservation in the user's download folder, so a "
+        "retry would be handed Clip (2).mp4"
+    )

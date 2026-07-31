@@ -46,7 +46,7 @@ import os
 import sys
 import threading
 import traceback
-from collections.abc import Mapping
+from collections.abc import Iterator, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Protocol
@@ -56,6 +56,7 @@ from tracks_and_trails.core.models import DownloadRequest
 from tracks_and_trails.core.paths import (
     UnsafePathError,
     escapes_directory,
+    numbered_variant,
     safe_output_path,
 )
 from tracks_and_trails.downloader import process_tree
@@ -446,19 +447,37 @@ def _run(
                 context=tuple(sorted(context.items())),
             )
 
-        target = _validated_target(directory, request, adapter, resolved, info)
-        result = _extract(
-            adapter,
-            request,
-            resolved,
-            reporter,
-            probe_only=False,
-            # Literal, not a second template — see `as_literal_template`.
-            output_template=as_literal_template(target),
-            # `OPS-001`: yt-dlp must use the binary the worker gated on, not its own lookup.
-            ffmpeg_location=ffmpeg.path,
-        )
-        written = _written_path(result, target)
+        # **Reserved, not merely computed** (`T-046`). The sanitized target is where this job
+        # *wants* to write; the reservation is where it may. Two jobs whose titles sanitize to
+        # one component are two processes racing for one name, and this is the only point that
+        # can decide between them — see `reserve_output_path`.
+        target = reserve_output_path(_validated_target(directory, request, adapter, resolved, info))
+        try:
+            result = _extract(
+                adapter,
+                request,
+                resolved,
+                reporter,
+                probe_only=False,
+                # Literal, not a second template — see `as_literal_template`.
+                output_template=as_literal_template(target),
+                # `OPS-001`: yt-dlp must use the binary the worker gated on, not its own lookup.
+                ffmpeg_location=ffmpeg.path,
+                # Safe only because the path was reserved: the file at `target` is the zero-byte
+                # reservation this process just made, and yt-dlp would otherwise report it as
+                # already downloaded and write nothing.
+                overwrites=True,
+            )
+            written = _written_path(result, target)
+        except BaseException:
+            release_output_path(target)
+            raise
+        if written != target:
+            # A postprocessor changed the extension — `%(ext)s` said `webm`, the audio extractor
+            # produced `mp3`. The reservation is not the file that was written and nothing will
+            # ever fill it, so it goes back rather than sitting in the user's folder as a
+            # zero-byte twin of their download.
+            release_output_path(target)
         return with_hook_failures(
             Succeeded(
                 job_id=job_id,
@@ -818,6 +837,91 @@ def _validated_target(
     return safe_output_path(directory, rendered)
 
 
+#: How many alternatives are tried before a collision is called a loop (`T-046`). A directory
+#: already holding a thousand files whose names all sanitize to one component is not a collision
+#: any more; failing loudly beats spinning while the user waits.
+MAX_COLLISION_ATTEMPTS: Final = 999
+
+
+def _candidates(target: Path) -> Iterator[Path]:
+    """`target`, then `target (2)`, `target (3)`, … — the order collisions are resolved in."""
+    yield target
+    for index in range(2, MAX_COLLISION_ATTEMPTS + 1):
+        yield numbered_variant(target, index)
+
+
+def free_output_path(target: Path) -> Path:
+    """The first candidate nothing occupies. **Reads the filesystem and changes nothing.**
+
+    This is the preview's half of `T-046` (`REQ-011`): the resolution has to be visible *before*
+    the write, not applied silently afterwards, or the user is shown one filename and gets
+    another — which is exactly what `DAT-002` kept `sanitize_component` idempotent to prevent.
+
+    It is deliberately **not** a promise. Between previewing and writing, another job may take
+    the name; `reserve_output_path` is what actually decides, and it can land one number further
+    on. What this guarantees is that the *policy* is the same one — same candidates, same order,
+    one generator — so the preview never shows a name the write would not have considered.
+    """
+    for candidate in _candidates(target):
+        if not candidate.exists():
+            return candidate
+    raise UnsafePathError(
+        f"{str(target)!r} and {MAX_COLLISION_ATTEMPTS} numbered alternatives are all taken"
+    )
+
+
+def reserve_output_path(target: Path) -> Path:
+    """Claim the first free candidate **atomically**, and return what was claimed (`T-046`).
+
+    **`O_CREAT | O_EXCL`, because the writers are separate processes.** `ARC-002` gives every job
+    its own child process, so two downloads whose titles sanitize identically are two processes
+    racing for one name with no shared memory between them. Checking `exists()` and then creating
+    is the classic hole: both see nothing, both proceed, and the second silently overwrites the
+    first. The kernel deciding is the only check that cannot interleave.
+
+    The reservation is a **zero-byte file**, which is why the download that follows is given
+    `overwrites=True`: yt-dlp otherwise sees a file at the target and reports it as already
+    downloaded. That flag is safe precisely because of this function — the only thing that can be
+    at the reserved path is the reservation this process just made, since any pre-existing file
+    fails `O_EXCL` and moves the candidate on.
+
+    Released by `release_output_path` when the download does not fill it, so a failed attempt
+    does not consume the name its retry wants.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    for candidate in _candidates(target):
+        try:
+            handle = os.open(candidate, os.O_CREAT | os.O_EXCL | os.O_WRONLY, 0o644)
+        except FileExistsError:
+            continue
+        except OSError as error:
+            raise UnsafePathError(f"cannot write to {str(candidate)!r}: {error}") from error
+        os.close(handle)
+        return candidate
+    raise UnsafePathError(
+        f"{str(target)!r} and {MAX_COLLISION_ATTEMPTS} numbered alternatives are all taken"
+    )
+
+
+def release_output_path(reserved: Path) -> None:
+    """Give back a reservation the download never filled.
+
+    **Only when it is still empty.** A reservation that has bytes in it is no longer a
+    reservation — it is somebody's file, and deleting it would be the data loss this whole
+    policy exists to prevent. Size is the test rather than a flag, because the process that
+    reserved it may have died between the two.
+
+    Failure to clean up is not worth propagating: the download has already succeeded or failed
+    on its own terms, and a stray zero-byte file is a much smaller problem than an exception
+    raised from the path that reports the real outcome.
+    """
+    try:
+        if reserved.stat().st_size == 0:
+            reserved.unlink()
+    except OSError:
+        return
+
+
 def as_literal_template(path: Path) -> str:
     """Escape `path` so yt-dlp writes it **verbatim** instead of rendering it again.
 
@@ -841,7 +945,9 @@ def preview_path(request: DownloadRequest, info: dict[str, Any], resolved: Resol
     """
     from tracks_and_trails.downloader import ytdlp_adapter as adapter
 
-    return _validated_target(Path(request.output_directory), request, adapter, resolved, info)
+    return free_output_path(
+        _validated_target(Path(request.output_directory), request, adapter, resolved, info)
+    )
 
 
 def _extract(
@@ -853,6 +959,7 @@ def _extract(
     probe_only: bool,
     output_template: str | None = None,
     ffmpeg_location: Path | None = None,
+    overwrites: bool | None = None,
 ) -> dict[str, Any]:
     options = adapter.build_options(
         request,
@@ -861,6 +968,7 @@ def _extract(
         progress_hooks=[reporter.progress_hook],
         postprocessor_hooks=[reporter.postprocessor_hook],
         ffmpeg_location=ffmpeg_location,
+        overwrites=overwrites,
     )
     with resolved.module.YoutubeDL(options) as ydl:
         info = ydl.extract_info(request.url, download=not probe_only)

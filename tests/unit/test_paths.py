@@ -22,6 +22,7 @@ from tracks_and_trails.core.paths import (
     MAX_PATH_CHARACTERS,
     UnsafePathError,
     is_contained,
+    numbered_variant,
     safe_output_path,
     sanitize_component,
     sanitize_filename,
@@ -666,3 +667,109 @@ def test_paths_module_imports_no_qt_and_no_ytdlp() -> None:
     source = (Path(__file__).parents[2] / "src/tracks_and_trails/core/paths.py").read_text()
     assert "PySide6" not in source
     assert "yt_dlp" not in source
+
+
+# --- T-046's naming half, which stays pure -----------------------------------------------------
+
+
+def test_a_numbered_variant_reads_the_way_a_file_manager_writes_one() -> None:
+    """` (2)` rather than a digest: a second copy of a video should be recognisable as one.
+
+    `T-045`'s digest keeps *distinct* inputs apart, which is the opposite problem — here the two
+    inputs really are the same name and the user needs to tell the files apart by eye.
+    """
+    assert numbered_variant(Path("/out/Clip.mp4"), 2) == Path("/out/Clip (2).mp4")
+    assert numbered_variant(Path("/out/Clip.mp4"), 17) == Path("/out/Clip (17).mp4")
+
+
+def test_a_numbered_variant_keeps_the_extension() -> None:
+    """The extension is what every tool reading the file uses to decide what it is."""
+    assert numbered_variant(Path("/out/A.Long.Name.mkv"), 3).name == "A.Long.Name (3).mkv"
+    assert numbered_variant(Path("/out/no-extension"), 2).name == "no-extension (2)"
+
+
+def test_numbering_is_pure_and_asks_nothing_of_the_filesystem(tmp_path: Path) -> None:
+    """`DAT-002` moved "does this collide?" out of this module deliberately.
+
+    A pure function of one string cannot answer a question about the filesystem, and pretending
+    otherwise is what produced an unreachable criterion in the first place. So this must produce
+    a name for a path that does not exist, and must not create one.
+    """
+    result = numbered_variant(tmp_path / "nothing-here.mp4", 2)
+
+    assert result.name == "nothing-here (2).mp4"
+    assert not result.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_a_variant_below_two_is_a_programming_error() -> None:
+    """`(1)` is not a thing a file manager writes, and `(0)` would collide with the original."""
+    for index in (1, 0, -1):
+        with pytest.raises(ValueError, match="starts at 2"):
+            numbered_variant(Path("/out/Clip.mp4"), index)
+
+
+def test_a_long_name_loses_stem_rather_than_its_number(tmp_path: Path) -> None:
+    """**The marker survives; the stem is what gives way.**
+
+    Trimming the marker to fit would produce two candidates with the same name, which is the one
+    thing this function exists to prevent. The extension survives for `_shorten_to`'s reason.
+    """
+    long_name = tmp_path / (("x" * 400) + ".mp4")
+
+    result = numbered_variant(long_name, 2)
+
+    assert result.name.endswith(" (2).mp4"), f"the number was trimmed away: {result.name!r}"
+    assert len(result.name.encode("utf-8")) <= MAX_COMPONENT_BYTES
+    assert len(str(result)) <= MAX_PATH_CHARACTERS
+
+
+def test_two_long_names_sharing_a_prefix_still_get_different_numbers(tmp_path: Path) -> None:
+    """Shortening must not merge the candidates back together.
+
+    `T034-R2` is the same failure one layer down: prefix truncation alone collides, so the
+    truncation carries a digest of what it dropped. Numbering on top of that has to keep the
+    numbers distinguishable even when both stems are cut to the same budget.
+    """
+    long_name = tmp_path / (("x" * 400) + ".mp4")
+
+    assert numbered_variant(long_name, 2) != numbered_variant(long_name, 3)
+
+
+def test_a_directory_with_no_room_left_is_refused_rather_than_silently_shortened(
+    tmp_path: Path,
+) -> None:
+    """`_shorten_to`'s rule, and the same reasoning: failing is the honest outcome.
+
+    Silently returning something that is not the requested extension writes a file every tool
+    misidentifies, while the user was told the download succeeded.
+    """
+    deep = Path("/" + "d" * (MAX_PATH_CHARACTERS - 4)) / "Clip.mp4"
+
+    with pytest.raises(UnsafePathError, match="no room"):
+        numbered_variant(deep, 2)
+
+
+def test_a_multibyte_name_is_cut_to_the_byte_budget_not_the_character_one() -> None:
+    """The two budgets are **different units**, and a name can satisfy one while breaking the
+    other.
+
+    Measured: with the byte truncation removed, `test_a_long_name_loses_stem_rather_than_its_number`
+    still passed. Its stem is ASCII in a deep `tmp_path`, so the *character* budget fired first
+    and cut the name to something that happened to fit the byte budget too — the byte branch was
+    never the thing under test.
+
+    A hundred three-byte characters is 300 bytes in 100 characters: far over
+    `MAX_COMPONENT_BYTES`, comfortably inside `MAX_PATH_CHARACTERS` under a short directory. Only
+    the byte branch can save it.
+    """
+    path = Path("/o") / ("あ" * 100 + ".mp4")
+
+    result = numbered_variant(path, 2)
+
+    assert len(str(result)) <= MAX_PATH_CHARACTERS, "this case is meant to fit the path budget"
+    assert len(result.name.encode("utf-8")) <= MAX_COMPONENT_BYTES, (
+        f"{len(result.name.encode('utf-8'))} bytes, over the {MAX_COMPONENT_BYTES}-byte "
+        "component budget: the character budget cannot stand in for it"
+    )
+    assert result.name.endswith(" (2).mp4")
