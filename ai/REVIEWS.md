@@ -7542,3 +7542,74 @@ substitute for it.
 T078-R1 and T078-R2 are **Resolved**. T-078 is **Approved at `0f9986f`**. No new finding or
 follow-up task was created. The phase's central dependency may be filed Complete and its downstream
 tasks may use this approved pool/settings/control foundation, subject to their own readiness gates.
+
+## 2026-07-31 — T-079 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Task:** `T-079`
+**Pinned span:** `df6c7b8..cb008da`
+**Implementation commit:** `cb008da`
+**Boundary treatment:** the span also contains documentation-only `1be3449`, which routes T-084
+to its accepted redaction decision and does not implement T-079. All source inspection, tests,
+mutations and probes used an exact isolated `cb008da` archive. The live checkout remained at that
+head and clean until this review record was written.
+**Platforms verified:** Linux; Win32 static analysis only
+**Verdict:** **Changes requested**
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T079-R1` | **Medium** | **Yes — T-079 accuracy criterion** | Attempt lifecycle / row rendering | `_on_job_changed()` replaces only `_Row.job` at `queue_view.py:395-399`; it never retires `displayed` or `totals` when a failed attempt becomes queued again. `refresh()` deliberately preserves the same fields at `:348-356` without distinguishing an attempt boundary. A reviewer-only test drew a running job at 50% with speed and ETA, changed it through `FAILED → QUEUED`, and expected the durable queued state. It failed: the status cell still said **“Downloading video”** instead of **“Queued”**; the old percentage, size, speed and ETA likewise remain eligible until the new attempt emits progress. A saturated pool can leave that lie visible while the retry waits. | On the terminal-to-new-attempt transition, clear pending and displayed live state (or key it to the attempt it belongs to) before rendering the durable row. Add an unmodified regression that first draws non-default stage/totals/speed/ETA, retries the job, and distinguishes every reset field from the old attempt; mutation-check the reset. Audit the detail view's analogous cached-message lifecycle rather than assuming one widget's correction covers both. | **Open** |
+| `T079-R2` | **Medium** | **Yes — NFR-001 / interactivity criterion** | GUI-thread persistence read | Every known-row `job_changed` signal calls `_durable()` at `queue_view.py:402-405`, which implements a point lookup by calling `QueueReader.all_jobs()` and scanning the result. In the real graph that reaches `PersistentJobStore.all_jobs()` at `store.py:85-92`, then `SELECT * ... fetchall()` plus deserialization of every stored job at `repositories.py:258-267`, synchronously in the Qt slot. This contradicts `ARCHITECTURE.md:114-115`, whose allowed synchronous GUI reads are **indexed single-row lookups**, and makes each transition scale with queue history. A delayed local-reader probe made one status change spend **150.7 ms** in the slot, beyond NFR-001's ~100 ms interaction budget; the committed responsiveness test has only three rows, so the full enumeration is too cheap there to expose the path. | Give `QueueReader` an indexed `get(job_id)` shape (already supplied by `PersistentJobStore`) and use it for known-row state changes, retaining `all_jobs()` for initial/explicit refresh only. Add a gate proving a known-row signal does not enumerate the queue and a budget probe whose single-row lookup remains fast when full enumeration is slow or large. | **Open** |
+
+### Review judgments
+
+**The one-timer/table design is sound.** Redirecting every live message into row zero made both
+the widget-level live-row test and the real composed-application test fail. Four hundred messages
+across eight rows are absorbed without a draw and rendered on one timer tick. T079-R2 is therefore
+not a rejection of the coalescing design; it is a separate blocking read performed by each durable
+status update.
+
+**Preserving drawn totals across a refresh remains necessary within one attempt.** The committed
+refresh test correctly protects T017-R4/T-059's ending rule. T079-R1 requires an attempt boundary,
+not unconditional deletion on every rebuild: a newly added neighbour must not erase the closer
+live total of a still-running job, while `FAILED → QUEUED` must not carry the failed attempt's live
+message into the retry.
+
+**Windows runtime remains unverified.** The queue table and coalescing logic are platform-neutral
+Qt code, and the required Win32 whole-project type gate passes. The composed evidence nevertheless
+spawns three workers, so the T-078 Windows multi-process risk remains relevant. Project policy does
+not make a Windows runtime run a completion gate for this task; this is an explicit residual risk,
+not a third finding.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Isolation | Source and tests loaded from an exact `cb008da` archive |
+| Span accounting | T-079 implementation `cb008da` separated from documentation-only `1be3449` |
+| `git diff --check df6c7b8..cb008da` | Passed |
+| Authorship / trailers | Sean Kottman on both commits; no AI author or co-author trailer |
+| Queue-view file | **26 passed** |
+| Three T-079 composed cases | **3 passed, 15 deselected** |
+| Previous-attempt live-state probe | **Failed as expected:** re-queued row said `Downloading video`, not `Queued` |
+| GUI-thread full-enumeration budget probe | **Failed as expected:** one status slot took **150.7 ms** |
+| Live progress routed into row zero mutation | Killed by both independent-progress gates — **2 failed, 42 deselected** |
+| First full pinned run in restricted sandbox | **1593 passed, 11 skipped, 2 deselected; 22 failed solely because loopback socket creation was denied** |
+| Full pinned suite with loopback permission | **1615 passed, 11 skipped, 2 deselected in 204.63 s** |
+| `mypy src` | Passed; **35 files** |
+| Bare `mypy` | Passed; **82 files** |
+| Bare `mypy --platform win32` | Passed; **82 files** |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **110 files** already formatted |
+| Windows runtime | Not run |
+
+### Final disposition
+
+T-079 is **Changes requested at `cb008da`**. T079-R1 and T079-R2 are blocking Medium findings
+owned by the existing T-079 correction, so no separate follow-up task is created. The focused
+re-review should verify the old-attempt reset with an unmodified discriminating test, verify that
+known-row status changes use an indexed read rather than full enumeration, and rerun the affected
+queue/composition evidence. The task cannot be filed Complete or release T-080/T-081 until both
+findings are independently resolved.
