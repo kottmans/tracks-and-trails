@@ -86,11 +86,13 @@ here, which is the drift it is written to make visible.)*
 
 ### T-079 — The queue view: many jobs, each with its own progress
 
-**Status:** **In Review — complete 2026-07-31.** `ui/queue_view.py` stops being a stub: a
-`QAbstractTableModel` over every job, a `QTableView` above the detail pane in a splitter, and one
-coalescing timer for the whole table. Twelve mutations run; all twelve killed. `T-080` and `T-081`
-are unblocked by its approval.
-*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`".)*
+**Status:** **In Review — corrected 2026-07-31, awaiting re-review.** Changes were requested at
+`cb008da` on two blocking Medium findings; both are addressed below. `ui/queue_view.py` stops
+being a stub: a `QAbstractTableModel` over every job, a `QTableView` above the detail pane in a
+splitter, and one coalescing timer for the whole table. **Twenty mutations across two rounds; all
+twenty killed.** `T-080` and `T-081` are unblocked by its approval.
+*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`", then "In Review —
+complete 2026-07-31" before the review.)*
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 2
@@ -124,6 +126,63 @@ same question.
 
 - Sorting and filtering, which are `REQ-016`'s neighbours but not its text
 - The log view (`T-084`) and history (`T-085`), which are their own surfaces
+
+#### Corrections, 2026-07-31 — `T079-R1` and `T079-R2`
+
+**`T079-R1` — a drawn message outlived the attempt that produced it.** `REQ-018`'s retry edge is
+`FAILED → QUEUED`, and a job in `QUEUED` has no worker; the row kept the failed attempt's message,
+so a re-queued job went on saying "Downloading video" at the old percentage, speed and ETA. A
+saturated pool leaves that on screen for as long as the retry waits for a slot.
+
+**The boundary is the status, and it could not have been `Job.attempts`.** The reviewer offered
+"key it to the attempt it belongs to" as an alternative, and that reading is worth recording as
+closed: **nothing in this project ever increments `attempts`.** It is a schema column with a
+default that no code writes — `with_status` does not touch it, `retry()` does not touch it — so
+every job's attempt number is `0` for life and a comparison against it is always equal. Keying to
+it would have produced a guard that can never fire, which is exactly what `ai/TESTING.md` §13
+exists to prevent.
+
+**The detail view had it too**, which the reviewer asked be audited rather than assumed. It did
+not fall out of the table's fix: `JobProgressView._refresh` rewrites the stage line only when the
+job is terminal *or* nothing has been drawn, and after a failed attempt something had been drawn.
+Three fields there, not one — the drawn message, the recorded failure (`failure` is public, and a
+queued job reporting the previous attempt's error is the same lie one field over), and the speed
+and ETA **labels**, which `_refresh` never writes at all. That last one was found by the test for
+this correction rather than by inspection: dropping the state behind a label does not clear the
+label.
+
+**Not "clear on every rebuild".** `refresh()` still keeps drawn state *within* an attempt, or a
+newly added neighbour would erase a running job's live total and `T017-R4`'s ending rule would
+fall back to the durable row's lagging counter. Both halves have a test, and the over-application
+is one of the mutations below.
+
+**`T079-R2` — every status change read the whole queue on the GUI thread.** `_durable()` was a
+point lookup implemented as a scan of `all_jobs()`, which in the real graph is `SELECT *` plus
+deserialisation of every stored job, synchronously inside a Qt slot. `ARCHITECTURE.md` §3 permits
+a synchronous GUI read only when it is an *indexed single-row lookup*. A reviewer probe measured
+one transition at **150.7 ms** against `NFR-001`'s ~100 ms budget, and the cost grew with queue
+history — the queue got slower the longer it was used.
+
+`QueueReader` now requires `get` as well as `all_jobs`; `PersistentJobStore` already had both.
+Enumeration is for building the table and for an explicit refresh. **This is my own criterion
+failing:** the task says repaint cost is bounded and measured, and I bounded the repaint path
+while leaving the status path unbounded — the committed responsiveness test had three rows, where
+a full enumeration is too cheap to show up however wrongly the read is chosen.
+
+| Mutation | Killed by |
+|---|---|
+| The queue row keeps the failed attempt's drawn message | the retry regression |
+| The queue row keeps the failed attempt's *pending* message | the pending half of the boundary |
+| Every rebuild wipes drawn state, not just an attempt boundary | the within-attempt regression |
+| The detail view keeps the failed attempt's stage and totals | the detail-view retry regression |
+| The detail view keeps the failed attempt's speed and ETA labels | the same |
+| The detail view keeps the previous attempt's failure | the same |
+| A status change enumerates the queue to find one job | the read-count gate |
+| The same, against the budget rather than the count | the slow-enumeration probe |
+
+Both `T079-R2` gates are independent on purpose: the count says *which* read happened, because a
+fast enumeration is still an enumeration, and the probe says what it costs when the enumeration is
+expensive. The committed suite had neither.
 
 #### What was built, 2026-07-31
 

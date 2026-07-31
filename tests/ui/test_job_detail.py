@@ -1292,3 +1292,72 @@ def test_the_view_ignores_another_jobs_messages(
     assert view.pending_progress is None
     assert view.failure is None
     assert view.status is JobStatus.RUNNING
+
+
+def test_retrying_a_job_retires_the_failed_attempts_live_state(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T079-R1`, found in the queue table and audited back to here — **this widget had it too.**
+
+    The reviewer asked for the analogous cached-message lifecycle to be audited rather than
+    assumed covered by the table's correction. It was not covered: `_refresh` rewrites the stage
+    line only when the job is terminal *or* nothing has been drawn, and after a failed attempt
+    something had been drawn — so pressing Retry left "Downloading video" over a queued job.
+
+    The durable row is deliberately behind the drawn message (10% stored, 50% drawn), because
+    that is the only way to tell "retired it" from "kept it". `manager.py` does not persist
+    progress per message, so the row lags by design while a job runs.
+    """
+    store.add(
+        make_job("job-1", tmp_path, status=JobStatus.RUNNING, bytes_done=100, bytes_total=1000)
+    )
+    manager = managers()
+    view = views(manager=manager, jobs=store, job_id="job-1", repaint_interval_ms=10)
+
+    view._on_progress(
+        Progress(
+            job_id="job-1",
+            stage=Stage.DOWNLOADING_VIDEO,
+            downloaded_bytes=500,
+            total_bytes=1000,
+            speed_bytes_per_second=2_200_000,
+            eta_seconds=42,
+        )
+    )
+    deadline = time.monotonic() + 5
+    while time.monotonic() < deadline and view.displayed_progress is None:
+        qapp.processEvents()
+        time.sleep(0.005)
+    assert view.stage_text() == STAGE_TEXT[Stage.DOWNLOADING_VIDEO]
+
+    view._on_job_failed("job-1", ErrorKind.NETWORK, "ERROR: timed out")
+    store.update(replace(store.jobs["job-1"], status=JobStatus.FAILED))
+    view._on_job_changed("job-1", JobStatus.FAILED.value)
+    # Read into a local: mypy narrows a property across asserts, so asserting on `view.failure`
+    # twice would type the second one as unreachable and stop it being a gate.
+    recorded = view.failure
+    assert recorded is not None, "the failure was never recorded, so retiring it proves nothing"
+
+    store.update(replace(store.jobs["job-1"], status=JobStatus.QUEUED))
+    view._on_job_changed("job-1", JobStatus.QUEUED.value)
+
+    assert view.stage_text() == "Queued", (
+        f"a re-queued job still says {view.stage_text()!r}, which is the failed attempt's stage"
+    )
+    assert view.displayed_progress is None, "the failed attempt's message is still displayed"
+    retired = view.failure
+    assert retired is None, "a queued job is still reporting the error from the attempt that ended"
+    bytes_label = view.findChild(QLabel, "bytesValue")
+    assert bytes_label is not None
+    assert bytes_label.text() == f"{format_bytes(100)} of {format_bytes(1000)}", (
+        f"the re-queued view reports {bytes_label.text()!r}, which is the failed attempt's "
+        "drawn byte count rather than the durable row's"
+    )
+    speed_label = view.findChild(QLabel, "speedValue")
+    assert speed_label is not None and speed_label.text() == UNKNOWN_TEXT, (
+        "a queued job has no worker and cannot have a speed"
+    )

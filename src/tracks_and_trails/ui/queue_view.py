@@ -111,12 +111,20 @@ _UNPLACED: Final = 1 << 62
 
 
 class QueueReader(Protocol):
-    """The one read this table needs, named as a protocol (`ARCHITECTURE.md` §3).
+    """The two reads this table needs, named as a protocol (`ARCHITECTURE.md` §3).
 
     `ui/` depends on the shape of a repository rather than on `persistence`, exactly as
-    `JobReader` does for the single-job view. `PersistentJobStore` satisfies it; so does a list
-    in a test.
+    `JobReader` does for the single-job view. `PersistentJobStore` satisfies both; so does a
+    dictionary in a test.
+
+    **The pair is the point** (`T079-R2`). `ARCHITECTURE.md` §3 permits a synchronous GUI read
+    only when it is an *indexed single-row lookup*, and this protocol used to offer only
+    `all_jobs()` — so the one place that wanted a single job scanned the whole queue for it,
+    which is `SELECT *` plus deserialisation of every row inside a Qt slot. `get` is what a
+    status change uses; `all_jobs` is for building the table and for an explicit refresh.
     """
+
+    def get(self, job_id: str) -> Job | None: ...
 
     def all_jobs(self) -> list[Job]: ...
 
@@ -143,6 +151,27 @@ class _Row:
     @property
     def is_terminal(self) -> bool:
         return self.job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)
+
+    def retire_live_state(self) -> None:
+        """Forget what a worker said, because it was a **different attempt** (`T079-R1`).
+
+        A drawn message describes the attempt that produced it. `REQ-018`'s retry edge is
+        `FAILED → QUEUED`, and a job in `QUEUED` has no worker: whatever is held here came from
+        the attempt that failed. Left in place, a re-queued row went on saying "Downloading
+        video" at the old percentage, with the old speed and ETA — and a saturated pool can leave
+        that on screen for as long as the retry waits for a slot.
+
+        **The boundary is the status, not `Job.attempts`.** Keying to the attempt counter is the
+        obvious answer and it would be a guard that can never fire: nothing in this project ever
+        increments `attempts`. It is a schema column with a default that no code writes, so every
+        job's attempt number is `0` for life and a comparison against it is always equal.
+
+        Not done on every rebuild: `refresh()` must keep drawn state *within* an attempt, or a
+        newly added neighbour would erase the live total of a still-running job and `T017-R4`'s
+        ending rule would fall back to the durable row's lagging counter.
+        """
+        self.displayed = None
+        self.totals = (None, None)
 
     def ending_totals(self) -> tuple[int | None, int | None]:
         """This row's size, through the shared rule rather than a second opinion (`T-059`)."""
@@ -384,6 +413,9 @@ class QueueModel(QAbstractTableModel):
         At an ending the pending message is **dropped** rather than deferred. Nothing a worker
         said before the end can still be true afterwards, and drawing it a tick later would
         overwrite the ending with the download that is no longer happening.
+
+        **`QUEUED` retires the drawn message too** (`T079-R1`): it is `REQ-018`'s retry edge, and
+        what was drawn belongs to the attempt that failed. See `_Row.retire_live_state`.
         """
         index = self._index_of.get(job_id)
         if index is None:
@@ -392,18 +424,21 @@ class QueueModel(QAbstractTableModel):
             # unrelated change.
             self.refresh()
             return
-        job = self._durable(job_id)
+        # **One indexed lookup, never an enumeration** (`T079-R2`). This used to scan
+        # `all_jobs()`, which in the real graph is `SELECT *` plus deserialisation of every stored
+        # job, run synchronously inside this slot — `ARCHITECTURE.md` §3 allows a synchronous GUI
+        # read only when it is an indexed single-row lookup, and a probe measured one transition
+        # spending 150.7 ms here against `NFR-001`'s ~100 ms budget. The cost also grew with queue
+        # history, so the queue got slower the longer it was used.
+        job = self._jobs.get(job_id)
+        row = self._rows[index]
         if job is not None:
-            self._rows[index].job = job
-        if self._rows[index].is_terminal:
+            row.job = job
+        if row.is_terminal or row.job.status is JobStatus.QUEUED:
             self._pending.pop(job_id, None)
+        if row.job.status is JobStatus.QUEUED:
+            row.retire_live_state()
         self._emit_row_changed(index)
-
-    def _durable(self, job_id: str) -> Job | None:
-        for job in self._jobs.all_jobs():
-            if job.id == job_id:
-                return job
-        return None
 
     def _draw_pending(self) -> None:
         """One tick: draw every job holding something undrawn, then stop if nothing is left."""

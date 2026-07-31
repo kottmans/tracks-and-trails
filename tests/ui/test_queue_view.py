@@ -58,14 +58,26 @@ class FakeQueue:
 
     def __init__(self) -> None:
         self.jobs: dict[str, Job] = {}
+        #: Counted because `T079-R2` is about *which* read happens, not about what it returns.
+        #: `ARCHITECTURE.md` §3 permits a synchronous GUI read only when it is an indexed
+        #: single-row lookup, and a count is the only way to assert that from outside.
+        self.enumerations = 0
+        self.lookups = 0
+        #: Seconds `all_jobs` sleeps. The real cost is `SELECT *` plus deserialising every stored
+        #: job, which grows with queue history; a sleep is that cost made deterministic.
+        self.enumeration_delay = 0.0
 
     def add(self, job: Job) -> None:
         self.jobs[job.id] = job
 
     def get(self, job_id: str) -> Job | None:
+        self.lookups += 1
         return self.jobs.get(job_id)
 
     def all_jobs(self) -> list[Job]:
+        self.enumerations += 1
+        if self.enumeration_delay:
+            time.sleep(self.enumeration_delay)
         return list(self.jobs.values())
 
     def update(self, job: Job, done: Callable[[str | None], None] | None = None) -> None:
@@ -899,3 +911,207 @@ def test_selecting_a_row_reports_which_job_it_is(
     assert seen == ["job-b"], f"selection reported {seen}"
     assert view.selected_job_id() == "job-b"
     assert not view.select("job-missing")
+
+
+# --- 8. the attempt boundary (`T079-R1`) -------------------------------------------------------
+
+
+def test_retrying_a_job_retires_the_failed_attempts_live_state(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T079-R1`: a drawn message describes **the attempt that produced it**.
+
+    `REQ-018`'s retry edge is `FAILED → QUEUED`, and a job in `QUEUED` has no worker — so what was
+    drawn belongs to the attempt that failed. Left in place, the re-queued row went on saying
+    "Downloading video" at the old percentage, speed and ETA, and a saturated pool can leave that
+    on screen for as long as the retry waits for a slot.
+
+    **The durable row is deliberately behind the drawn message** here — 10% stored against 50%
+    drawn — because that is the only way to tell "retired the message" from "kept it". A test
+    where the two agree passes whether or not the boundary exists. That lag is not contrived:
+    `manager.py` does not persist progress per message, so the row lags by design while a job
+    runs.
+    """
+    queue.add(
+        make_job("job-1", tmp_path, status=JobStatus.RUNNING, bytes_done=100, bytes_total=1000)
+    )
+    manager = managers()
+    view = views(jobs=queue, manager=manager, repaint_interval_ms=10)
+
+    view.model._on_progress(
+        Progress(
+            job_id="job-1",
+            stage=Stage.DOWNLOADING_VIDEO,
+            downloaded_bytes=500,
+            total_bytes=1000,
+            speed_bytes_per_second=2_200_000,
+            eta_seconds=42,
+        )
+    )
+    assert spin_until(qapp, lambda: view.model.displayed_progress("job-1") is not None)
+    assert view.model.text_at("job-1", STATUS_COLUMN) == "Downloading video"
+    assert view.model.text_at("job-1", PROGRESS_COLUMN) == "50%"
+
+    queue.update(replace(queue.jobs["job-1"], status=JobStatus.FAILED))
+    view.model._on_job_changed("job-1", JobStatus.FAILED.value)
+    queue.update(replace(queue.jobs["job-1"], status=JobStatus.QUEUED))
+    view.model._on_job_changed("job-1", JobStatus.QUEUED.value)
+
+    assert view.model.text_at("job-1", STATUS_COLUMN) == "Queued", (
+        "a re-queued job is still describing the stage of the attempt that failed"
+    )
+    assert view.model.displayed_progress("job-1") is None, (
+        "the failed attempt's message is still the row's live message"
+    )
+    assert view.model.text_at("job-1", PROGRESS_COLUMN) == "10%", (
+        "the re-queued row reports the failed attempt's 50% rather than the durable row's 10%"
+    )
+    assert view.model.text_at("job-1", SIZE_COLUMN) == "100 B of 1000 B", (
+        "the re-queued row reports the bytes the failed attempt drew"
+    )
+    assert view.model.text_at("job-1", SPEED_COLUMN) == UNKNOWN_TEXT, (
+        "a queued job has no worker and cannot have a speed"
+    )
+    assert view.model.text_at("job-1", ETA_COLUMN) == UNKNOWN_TEXT, (
+        "a queued job has no worker and cannot have an estimated time remaining"
+    )
+
+
+def test_a_retry_also_drops_a_message_that_was_never_drawn(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """The other half of the boundary: *pending* is previous-attempt state too.
+
+    A message still waiting for its tick when the job failed would otherwise be drawn onto the
+    retry, which is the same lie arriving one interval later.
+    """
+    queue.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING))
+    manager = managers()
+    view = views(jobs=queue, manager=manager, repaint_interval_ms=10_000)
+
+    view.model._on_progress(
+        Progress(
+            job_id="job-1", stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=500, total_bytes=1000
+        )
+    )
+    # Locals for the same reason as elsewhere in this file: mypy narrows the property across
+    # asserts, and the second comparison would be typed as non-overlapping rather than run.
+    before = view.model.pending_job_ids
+    assert before == ("job-1",)
+
+    queue.update(replace(queue.jobs["job-1"], status=JobStatus.QUEUED))
+    view.model._on_job_changed("job-1", JobStatus.QUEUED.value)
+
+    after = view.model.pending_job_ids
+    assert after == (), (
+        "a message from the failed attempt is still queued to be drawn onto the retry"
+    )
+
+
+def test_a_rebuild_still_keeps_drawn_state_inside_one_attempt(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """The boundary is an *attempt* boundary, not "delete on every rebuild" (`T079-R1`).
+
+    Unconditional deletion would pass the retry test above and break `T017-R4`: a newly added
+    neighbour would erase the live total of a still-running job, and its ending would then be
+    taken from the durable row's lagging counter. Both halves are needed, so both are asserted.
+    """
+    queue.add(
+        make_job("job-1", tmp_path, status=JobStatus.RUNNING, bytes_done=100, bytes_total=1000)
+    )
+    manager = managers()
+    view = views(jobs=queue, manager=manager, repaint_interval_ms=10)
+
+    view.model._on_progress(
+        Progress(
+            job_id="job-1", stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=500, total_bytes=1000
+        )
+    )
+    assert spin_until(qapp, lambda: view.model.displayed_progress("job-1") is not None)
+
+    queue.add(make_job("job-2", tmp_path, queue_position=1))
+    view.refresh()
+
+    assert view.model.text_at("job-1", PROGRESS_COLUMN) == "50%", (
+        "adding a neighbour erased a running job's drawn progress; the attempt did not end"
+    )
+
+
+# --- 9. what a status change is allowed to read (`T079-R2`) ------------------------------------
+
+
+def test_a_status_change_does_not_enumerate_the_queue(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`T079-R2`, `ARCHITECTURE.md` §3: a synchronous GUI read must be an indexed single-row one.
+
+    This slot used to find one job by scanning `all_jobs()`, which in the real graph is
+    `SELECT *` plus deserialisation of every stored job — so the cost of *every* transition grew
+    with queue history, inside the Qt slot.
+
+    Counted rather than timed, because a count is the claim: "does not enumerate" is a statement
+    about which read happens, and a fast enumeration is still an enumeration.
+    """
+    for position, job_id in enumerate(("job-1", "job-2", "job-3")):
+        queue.add(make_job(job_id, tmp_path, status=JobStatus.RUNNING, queue_position=position))
+    manager = managers()
+    view = views(jobs=queue, manager=manager)
+
+    queue.enumerations = 0
+    queue.lookups = 0
+    queue.update(replace(queue.jobs["job-2"], status=JobStatus.POST_PROCESSING))
+    view.model._on_job_changed("job-2", JobStatus.POST_PROCESSING.value)
+
+    assert queue.enumerations == 0, (
+        f"a status change enumerated the whole queue {queue.enumerations} time(s); every "
+        "transition would then cost one full table read on the GUI thread"
+    )
+    assert queue.lookups == 1, f"expected exactly one indexed lookup, got {queue.lookups}"
+    assert view.model.text_at("job-2", STATUS_COLUMN) == "Post-processing", (
+        "the transition was not actually applied, so the counts above prove nothing"
+    )
+
+
+def test_a_status_change_stays_inside_the_budget_when_enumeration_is_slow(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """The same claim as a number (`NFR-001`), with the enumeration made expensive.
+
+    A reviewer's probe measured one transition spending **150.7 ms** in this slot against
+    `NFR-001`'s ~100 ms interaction budget, using a reader whose full read was slow. The
+    committed tests could not see it because three rows are cheap to enumerate however wrongly
+    the read is chosen — which is why this makes the enumeration slow rather than the queue long.
+    """
+    queue.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING))
+    manager = managers()
+    view = views(jobs=queue, manager=manager)
+
+    queue.update(replace(queue.jobs["job-1"], status=JobStatus.POST_PROCESSING))
+    queue.enumeration_delay = 0.25
+
+    started = time.perf_counter()
+    view.model._on_job_changed("job-1", JobStatus.POST_PROCESSING.value)
+    elapsed = time.perf_counter() - started
+
+    assert elapsed < 0.1, (
+        f"one status change spent {elapsed * 1000:.1f} ms on the GUI thread against NFR-001's "
+        "~100 ms budget, because it read the whole queue to find one job"
+    )

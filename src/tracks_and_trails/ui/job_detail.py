@@ -537,6 +537,17 @@ class JobProgressView(QWidget):
         At a terminal state the pending message is **dropped** rather than deferred. Nothing a
         worker said before the end can still be true afterwards, and drawing it a tick later
         would overwrite the ending with the download that is no longer happening.
+
+        **`QUEUED` retires the last attempt's message** (`T079-R1`, found in the queue table and
+        audited back to here — this widget had it too). `REQ-018`'s retry edge is
+        `FAILED → QUEUED`, and a job in `QUEUED` has no worker, so a drawn message belongs to the
+        attempt that failed. Without this, pressing Retry left the stage line saying "Downloading
+        video" at the failed attempt's percentage, speed and ETA, because `_refresh` only rewrites
+        the stage line when the job is terminal *or* nothing has been drawn — and after a failure
+        something had been drawn.
+
+        The boundary is the status rather than `Job.attempts`: nothing in this project increments
+        that column, so keying to it would be comparing `0` with `0` for ever.
         """
         if job_id != self._job_id:
             return
@@ -544,6 +555,20 @@ class JobProgressView(QWidget):
         if self._is_terminal:
             self._pending = None
             self._repaint.stop()
+            self._adopt_totals()
+        elif self._status is JobStatus.QUEUED:
+            self._pending = None
+            self._displayed = None
+            self._totals = (None, None)
+            # The failure belonged to the attempt that ended, and `failure` is public: a queued
+            # job reporting the previous attempt's error is the same lie one field over.
+            self._failure = None
+            # **The labels too, not only the state behind them.** Dropping `_displayed` is not
+            # enough: `_refresh` never writes speed or ETA — only `_show_progress` does — so a
+            # re-queued job went on showing `2.1 MB/s` and a 42-second estimate for a download
+            # that had stopped. Found by the test for this correction, not by inspection.
+            self._speed.setText(UNKNOWN_TEXT)
+            self._eta.setText(UNKNOWN_TEXT)
             self._adopt_totals()
         self._refresh()
 
