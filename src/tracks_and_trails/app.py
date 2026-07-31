@@ -267,6 +267,10 @@ def compose(
         retry=retry,
         concurrency=settings.concurrency,
         on_concurrency_changed=choose_concurrency,
+        # The same store, through a second protocol: `JobReader` is one job, `QueueReader` is all
+        # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
+        # a single row cannot accidentally enumerate the queue.
+        queue=store,
     )
     window.report_environment(ffmpeg.summary())
     logging.getLogger("tracksandtrails.app").info("environment: %s", ffmpeg.summary())
@@ -278,7 +282,18 @@ def compose(
     watchable = (JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING, JobStatus.POST_PROCESSING)
 
     def on_job_changed(job_id: str, status: str) -> None:
-        if JobStatus(status) in watchable:
+        """Show a starting job **only when the detail pane is empty** (`T-079`).
+
+        With a pool of one, following every watchable transition was right: there was one job, and
+        the pane was the only place to see it. With a pool of N it means three running downloads
+        take turns evicting each other from the pane several times a second, and a user who
+        selected a row in the queue table loses it to whichever worker last changed state.
+
+        So the pane is claimed once and then belongs to the user: the table shows all N (that is
+        what it is for), and selecting a row is what changes the detail. `watched_job_id` is the
+        question "is anything shown", asked of the window rather than tracked here.
+        """
+        if JobStatus(status) in watchable and window.watched_job_id is None:
             window.watch(job_id)
 
     manager.job_changed.connect(on_job_changed)

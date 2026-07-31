@@ -20,11 +20,11 @@ IDs are never reused. Completed tasks move to `ai/archive/` once they bury the l
 `COORD-R5` through `COORD-R11` are seven rounds of a hand-written summary drifting from the file it
 summarises; this one is transcribed from the actual `## ` sections so it starts correct.
 
-- **In Review:** nothing.
-- **Ready, and nothing among them waits on anything:** `T-079` (the queue view — now the critical
-  path), `T-082`, `T-083`, `T-084`, `T-053`, `T-046`, `T-100` (the history view, independent of the
-  queue), plus `T-074` and `T-092`, which block nothing. `T-092` needs maintainer consent before
-  writing to `STARBASE`.
+- **In Review:** `T-079`, the queue view — complete 2026-07-31, twelve mutations killed. Its
+  approval is what unblocks `T-080` and `T-081`.
+- **Ready, and nothing among them waits on anything:** `T-082`, `T-083`, `T-084`, `T-053`,
+  `T-046`, `T-100` (the history view, independent of the queue), plus `T-074` and `T-092`, which
+  block nothing. `T-092` needs maintainer consent before writing to `STARBASE`.
 - **Approved 2026-07-30:** `T-047`, `T-049`, `T-050`, `T-078`, `T-085`, `T-089`, `T-091`, `T-093`,
   `T-094`, `T-095`, `T-096`, `T-097`, `T-098`.
 - **Still Proposed, and why** — `T-080` and `T-081` descend from `T-078` but wait on **`T-079`**,
@@ -39,8 +39,8 @@ summarises; this one is transcribed from the actual `## ` sections so it starts 
 - **Carried, blocking nothing:** `T-099` (`T097-R2` — the boundary analyser reports a settings
   offender under the persistence rule's explanation).
 
-**The critical path is now `T-079`**, and six other Ready tasks can run beside it. `T-078` was the
-last point at which that was not true.
+**`T-079` is built and awaiting a verdict**, and six other Ready tasks can run beside it. `T-078`
+was the last point at which that was not true.
 
 **Windows runtime has still never run against the pool.** It is not a completion gate for source
 changes here, but `T-078` is the first task to run several worker trees at once, so the risk is
@@ -72,31 +72,25 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**Empty as of 2026-07-30, and this note is rebuilt from the sections rather than edited.**
-`T-078` was approved at `0f9986f` and is filed Complete; `T-047`, `T-089` and `T-097` before it at
-`321c672`, `128be39` and `34addcb`, and `T-091`, `T-096` and `T-098` before them. Nothing awaits a
-verdict.
-`COORD-R2` is why this says so rather than sitting blank: an empty section is a claim about
-readiness. `COORD-R5` through `COORD-R11` are seven rounds of this file contradicting itself, which
-is why **`T-096`** exists — but `T-096` gates *status against section*, and `COORD-R11` was prose
-that contradicted both while every status and section agreed. The invariant test cannot see that,
-and this note is written by hand for exactly that reason.)*
-
----
-
-## Ready
-*(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
-which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
-For two commits `T-074`, `T-089`, `T-091`, `T-092` and `T-096` therefore sat under `## In Review`
-while each said Ready: the exact status-versus-section class `COORD-R5` through `COORD-R10`
-reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
-and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
-being necessary.)*
+*(**One task awaits a verdict as of 2026-07-31**, and this note is rebuilt from the section rather
+than edited beside it. `T-079` is the queue view. Before it, `T-078` was approved at `0f9986f`;
+`T-047`, `T-089` and `T-097` at `321c672`, `128be39` and `34addcb`; `T-091`, `T-096` and `T-098`
+before them.
+`COORD-R2` is why this note exists rather than the section sitting bare: a section's contents are
+a claim about readiness, and the claim should be legible without counting entries. `COORD-R5`
+through `COORD-R11` are seven rounds of this file contradicting itself, which is why **`T-096`**
+exists — but `T-096` gates *status against section*, and `COORD-R11` was prose that contradicted
+both while every status and section agreed. The invariant test cannot see that, and this note is
+written by hand for exactly that reason. It said "Empty as of 2026-07-30" until `T-079` landed
+here, which is the drift it is written to make visible.)*
 
 ### T-079 — The queue view: many jobs, each with its own progress
 
-**Status:** **Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`.** The critical
-path: `T-080` and `T-081` both wait on this one, not on the pool.
+**Status:** **In Review — complete 2026-07-31.** `ui/queue_view.py` stops being a stub: a
+`QAbstractTableModel` over every job, a `QTableView` above the detail pane in a splitter, and one
+coalescing timer for the whole table. Twelve mutations run; all twelve killed. `T-080` and `T-081`
+are unblocked by its approval.
+*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`".)*
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 2
@@ -131,7 +125,66 @@ same question.
 - Sorting and filtering, which are `REQ-016`'s neighbours but not its text
 - The log view (`T-084`) and history (`T-085`), which are their own surfaces
 
+#### What was built, 2026-07-31
+
+**`totals_for_ending` moved out of `JobProgressView` and became a free function.** `T-059` was one
+widget answering "how big was this" two ways depending on whether anyone had been watching. A
+table is the *third* caller of that question and, unlike the detail view, most of its rows were
+never watched by anything — every restart is full of them. Reimplementing the rule here would have
+been `T-059` with more surfaces, so both viewers now call one function. Mutating it kills tests in
+both files.
+
+**One coalescing timer for the table, not one per row.** With N running jobs the message rates
+add, so the repaint budget is the thing that has to stay bounded — and a per-row timer would
+satisfy "ten a second per row" while redrawing the screen eighty times a second. `renders` counts
+ticks that drew, which is `T017-R1`'s counting rule one surface over.
+
+**Progress is text; `REQ-011`'s bar stays in the detail view.** `REQ-014` names percent, size,
+speed, ETA and stage — all text. A `QProgressBar` per row is N live widgets inside a scroll area
+to render six characters, against a criterion that says repaint cost is bounded with N rows. The
+accessible description is still `describe_bar`'s output, so the words a screen reader hears are
+produced by the same function that produces them beside the real bar.
+
+**Composition stopped following every watchable transition.** With a pool of one, claiming the
+detail pane on each `job_changed` was right — one job, one place to see it. With three running it
+means they evict each other several times a second, and a user who selected a row loses it. The
+pane is now claimed once and then belongs to the user; the table is what shows all N.
+
+| Mutation | Killed by |
+|---|---|
+| Progress written into one shared row | the widget test **and** the composed-application test |
+| A terminal row reads its raw counter, not the shared rule | the completed-total test |
+| Every message repaints, no coalescing | the burst-at-eight-rows test |
+| Rows keep the repository's order | the `queue_position` ordering test |
+| A job with no position sorts first | the unplaced-job test |
+| The keyboard order names the table while it is hidden | the empty-queue test |
+| A status change flushes pending progress | `T017-R1`'s rule, one surface over |
+| A stopped job keeps its speed and ETA | the stale-speed test |
+| The progress column describes itself by percentage | the `describe_bar` identity test |
+| A rebuild forgets what each row drew | the refresh test |
+| The shared ending rule prefers the row over what was shown | a test in `test_job_detail.py` |
+| A starting job takes the detail pane | the composed-application test |
+
+**Two of these were caught only by running them, and both were tests passing incidentally:**
+
+- **The composed-application test did not catch the routing defect at first.** It asserted on
+  durable rows after completion, and durable rows really are per job — so a model writing every
+  live message into row 0 passed it. It now asserts on what each row has *drawn*, while the three
+  are still running, which is the only place the routing is visible.
+- **The detail-pane test waited a fixed second** and could assert before the signal that would
+  steal the pane arrived. It waits on the signal itself now. Under the old version the mutation
+  survived; under the new one it died three times out of three.
+
 ---
+
+## Ready
+*(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
+which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
+For two commits `T-074`, `T-089`, `T-091`, `T-092` and `T-096` therefore sat under `## In Review`
+while each said Ready: the exact status-versus-section class `COORD-R5` through `COORD-R10`
+reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
+and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
+being necessary.)*
 
 ### T-082 — Interrupted jobs are offered for retry at startup
 

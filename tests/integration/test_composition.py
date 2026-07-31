@@ -50,6 +50,7 @@ from tracks_and_trails.downloader.protocol import (
 )
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
+from tracks_and_trails.ui.queue_view import PROGRESS_COLUMN, SIZE_COLUMN
 
 # --- children the composed application spawns -------------------------------------------------
 
@@ -312,9 +313,19 @@ def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
     composition = composed()
     manager = composition.manager
 
-    assert connection_count(manager, "job_changed") == 1, (
-        "job_changed is connected more than once; composition connects it, and each widget that "
-        "wants it connects its own"
+    # **Two, and each is named.** Composition connects `on_job_changed` to claim the detail pane;
+    # the queue table's model connects its own to keep rows current (`T-079`). The number went
+    # from one to two when the table arrived, and it is written here rather than counted so that
+    # a *third* — the shape this test exists for — is still a failure.
+    assert connection_count(manager, "job_changed") == 2, (
+        "job_changed should have exactly composition's listener and the queue model's; a third "
+        "is how one queued job becomes two of everything downstream"
+    )
+    # The queue model is the only thing listening to progress until a detail view is built. It
+    # was zero before `T-079`, which is why this line is new: a table that draws progress is a
+    # second consumer of the stream that `T-017`'s repaint budget is about.
+    assert connection_count(manager, "progress") == 1, (
+        "the queue model should be the only progress listener before any detail view exists"
     )
 
     dialog = composition.window.open_add_dialog()
@@ -325,7 +336,7 @@ def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
         ("job_failed", 1),
         ("persistence_failed", 1),
         ("start_rejected", 1),
-        ("job_changed", 2),
+        ("job_changed", 3),
     ):
         assert connection_count(manager, name) == expected, (
             f"{name} has {connection_count(manager, name)} connections, expected {expected}"
@@ -774,4 +785,221 @@ def test_lowering_the_limit_through_the_control_holds_new_work_without_stopping_
     assert spin(lambda: manager._occupant_ids() == ("job-4",), timeout=60), (
         "the waiting job never became eligible once the pool drained below the new limit: "
         f"occupants {manager._occupant_ids()}, waiting {manager._waiting}"
+    )
+
+
+# --- T-079: the queue table in the assembled application --------------------------------------
+
+
+def child_streaming_its_own_size(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """A download that reports a size derived from its job id, then finishes.
+
+    Per-job sizes because three identical rows are what the defect looks like: a table routing
+    every message into one row passes any check that merely counts rows or waits for progress.
+    The manager writes the worker's total at the terminal transition, so the *worker* has to be
+    the thing that differs — seeding the rows would be overwritten.
+    """
+    if kind is SessionKind.PROBE:
+        from tracks_and_trails.core.models import MediaInfo
+
+        queue.put(Probed(job_id=job_id, media=MediaInfo(url=request.url, title=f"Video {job_id}")))
+        queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+        return
+
+    total = 1024 * int(job_id.rsplit("-", 1)[1])
+    output = Path(request.output_directory) / f"{job_id}.mp4"
+    output.write_bytes(b"x" * total)
+    for fraction in (0.5, 1.0):
+        queue.put(
+            Progress(
+                job_id=job_id,
+                stage=Stage.DOWNLOADING_VIDEO,
+                downloaded_bytes=int(total * fraction),
+                total_bytes=total,
+            )
+        )
+        # Longer than one `REPAINT_INTERVAL_MS`, so each job is drawn at least once before it
+        # ends. Faster than that and the terminal state drops the pending message undrawn, which
+        # would make the live assertion below a measurement of the timer rather than the routing.
+        time.sleep(0.15)
+    queue.put(Succeeded(job_id=job_id, output_path=str(output), total_bytes=total))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+
+
+def queue_three(
+    composition: application.Composition, spin: Callable[..., bool], where: Path
+) -> None:
+    """Put three real rows in the composed application's own database."""
+    from datetime import UTC, datetime
+
+    from tracks_and_trails.core.models import Job
+
+    saved: list[str | None] = []
+    composition.store.submit(
+        [
+            Job(
+                id=job_id,
+                url=f"https://composed.invalid/{job_id}",
+                request=DownloadRequest(
+                    url=f"https://composed.invalid/{job_id}",
+                    output_directory=str(where),
+                    format_selector="best",
+                    output_template="%(title)s.%(ext)s",
+                ),
+                created_at=datetime.now(UTC),
+            )
+            for job_id in ("job-1", "job-2", "job-3")
+        ],
+        saved.append,
+    )
+    assert spin(lambda: bool(saved), timeout=60), "the queue rows were never written"
+    assert saved == [None], f"submitting the queue failed: {saved}"
+
+
+def test_three_concurrent_downloads_each_keep_their_own_row(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """**Phase 2's first exit criterion, through the assembled application** (`T-079`).
+
+    Three real worker processes against the real pool of three, a real database, and the real
+    window — the criterion is about what a user sees, and a widget test with a fake store cannot
+    make that claim about the application.
+
+    The assertion is that each row ends up describing *its own* job. Three identical rows is what
+    a table with one shared progress field looks like, and it passes any check that counts rows.
+    """
+    composition = composed(entry_point=child_streaming_its_own_size)
+    queue_three(composition, spin, tmp_path / "downloads")
+    table = composition.window.queue_view
+    assert table is not None, "composition did not give the window a queue table"
+
+    for job_id in ("job-1", "job-2", "job-3"):
+        composition.manager.start(job_id)
+
+    # **Asserted while they are live.** Measured: a model routing every message into row 0 passes
+    # every completion assertion below, because those read the durable row and the durable rows
+    # really are per job. What each row has *drawn* is the only place the routing can be seen.
+    assert spin(
+        lambda: all(
+            table.model.displayed_progress(job_id) is not None
+            for job_id in ("job-1", "job-2", "job-3")
+        ),
+        timeout=60,
+    ), "a row never drew progress of its own, so messages are not being routed per row"
+    for job_id in ("job-1", "job-2", "job-3"):
+        drawn = table.model.displayed_progress(job_id)
+        assert drawn is not None and drawn.job_id == job_id, (
+            f"{job_id}'s row is showing {drawn.job_id if drawn else None}'s message"
+        )
+
+    assert spin(
+        lambda: all(
+            (job := composition.store.get(job_id)) is not None and job.status is JobStatus.COMPLETED
+            for job_id in ("job-1", "job-2", "job-3")
+        ),
+        timeout=60,
+    ), "the three downloads did not all finish"
+    table.refresh()
+
+    assert table.model.job_ids() == ("job-1", "job-2", "job-3"), (
+        f"the table holds {table.model.job_ids()}, not one row per queued job"
+    )
+    sizes = {
+        job_id: table.model.text_at(job_id, SIZE_COLUMN) for job_id in ("job-1", "job-2", "job-3")
+    }
+    assert len(set(sizes.values())) == 3, (
+        f"the three rows report the same size, so they are not independent: {sizes}"
+    )
+    for job_id in ("job-1", "job-2", "job-3"):
+        assert table.model.text_at(job_id, PROGRESS_COLUMN) == "100%"
+
+
+def test_the_interface_stays_inside_its_budget_while_three_downloads_run(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """The other half of the criterion: **interactive throughout**, measured (`NFR-001`).
+
+    "The UI stays responsive" is not testable; "no pass of the event loop takes longer than
+    `NFR-001`'s ~100 ms budget while three workers stream progress into a six-column table" is.
+
+    This is the measurement `T-017`'s single-job budget test cannot make, because the cost that
+    matters here is three streams arriving at once rather than one.
+    """
+    composition = composed(entry_point=child_streaming_its_own_size)
+    queue_three(composition, spin, tmp_path / "downloads")
+    for job_id in ("job-1", "job-2", "job-3"):
+        composition.manager.start(job_id)
+
+    worst = 0.0
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline:
+        started = time.perf_counter()
+        qapp.processEvents()
+        worst = max(worst, time.perf_counter() - started)
+        if all(
+            (job := composition.store.get(job_id)) is not None and job.status is JobStatus.COMPLETED
+            for job_id in ("job-1", "job-2", "job-3")
+        ):
+            break
+        time.sleep(0.001)
+
+    assert worst < 0.1, (
+        f"one pass of the event loop took {worst * 1000:.1f} ms while three downloads were "
+        "running, against NFR-001's ~100 ms interaction budget"
+    )
+
+
+def test_a_second_job_starting_does_not_take_the_detail_pane_from_the_first(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """`T-079` changed what composition does with `job_changed`, and this is why.
+
+    With a pool of one, following every watchable transition was right: there was one job and the
+    pane was the only place to see it. With three running it means they take turns evicting each
+    other several times a second, and a user who selected a row loses it to whichever worker last
+    changed state.
+
+    So the pane is claimed once and then belongs to the user. The table is what shows all three.
+    """
+    composition = composed(entry_point=child_probing_then_waiting)
+    queue_three(composition, spin, tmp_path / "downloads")
+
+    composition.manager.start("job-1")
+    assert spin(lambda: composition.window.watched_job_id == "job-1", timeout=60), (
+        "the first job never claimed the empty detail pane"
+    )
+
+    # **Wait for the signal that would steal the pane, rather than for a fixed interval.**
+    # Measured: with a one-second sleep here, the mutation that removes the guard *survived* —
+    # the assertion could run before job-2's transition was delivered, so the test passed by
+    # being early rather than by the guard working.
+    #
+    # This recorder is connected after composition's own handler, so by the time it sees a
+    # watchable status for job-2, the handler that would have called `watch` has already run.
+    seen: list[tuple[str, str]] = []
+    composition.manager.job_changed.connect(lambda job_id, status: seen.append((job_id, status)))
+    watchable = ("probing", "ready", "running", "post_processing")
+    composition.manager.start("job-2")
+    assert spin(
+        lambda: any(job_id == "job-2" and status in watchable for job_id, status in seen),
+        timeout=60,
+    ), f"job-2 never reached a status that would claim the pane: {seen}"
+
+    assert composition.window.watched_job_id == "job-1", (
+        "a second job starting took the detail pane from the job already shown there; with a "
+        "pool of N that is three workers evicting each other several times a second"
+    )
+    table = composition.window.queue_view
+    assert table is not None
+    assert table.select("job-2") and composition.window.watched_job_id == "job-2", (
+        "selecting a row is what changes the detail pane, and it did not"
     )

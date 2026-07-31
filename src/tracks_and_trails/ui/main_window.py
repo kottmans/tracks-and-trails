@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMessageBox,
     QSpinBox,
+    QSplitter,
     QToolBar,
     QWidget,
 )
@@ -39,6 +40,7 @@ from tracks_and_trails.core import settings
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
 from tracks_and_trails.ui.job_detail import JobProgressView, JobReader, build_progress_view
+from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
 
 APP_NAME: Final = "Tracks & Trails"
 
@@ -223,12 +225,14 @@ class MainWindow(QMainWindow):
         retry: Callable[[str], None] | None = None,
         concurrency: int | None = None,
         on_concurrency_changed: Callable[[int], None] | None = None,
+        queue: QueueReader | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
         self._job_reader = job_reader
         self._retry = retry
         self._view: JobProgressView | None = None
+        self._queue: QueueView | None = None
         #: Supplied together or not at all: the add-URL dialog needs all three, and a window
         #: holding two of them could only offer an action that fails. `T-036` passes them.
         self._manager = manager
@@ -247,7 +251,36 @@ class MainWindow(QMainWindow):
         self._environment.setAccessibleName("Environment")
         self._environment.setTextFormat(Qt.TextFormat.PlainText)
         self.statusBar().addPermanentWidget(self._environment)
+        self._build_body(queue)
         self._restore_geometry()
+
+    def _build_body(self, queue: QueueReader | None) -> None:
+        """The queue above, the selected job's detail below (`T-079`).
+
+        **A splitter rather than one or the other**, because the two answer different questions:
+        the table says what the queue is doing — all of it, which is the whole point of a pool of
+        N — and the detail panel says everything about one job. Phase 1 could put the detail view
+        straight into the central widget because there was only ever one job to show.
+
+        The table is built only when composition supplies something to read jobs from, exactly as
+        the add action is enabled only when it has all three of its collaborators. A window
+        without one still works and still shows detail: `T-007`'s tests construct this window with
+        no arguments at all, and a shell that required a repository to open would have made that
+        impossible.
+        """
+        self._body = QSplitter(Qt.Orientation.Vertical, self)
+        self._body.setObjectName("shellSplitter")
+        self._body.setChildrenCollapsible(False)
+        self.setCentralWidget(self._body)
+        if queue is None or self._manager is None:
+            return
+        # Selecting a row shows that job — the table reports, the shell decides. `watch` needs a
+        # job reader, so a window given a queue and no reader simply shows no detail rather than
+        # raising out of a selection handler.
+        self._queue = build_queue_view(
+            queue, self._manager, self._watch_if_possible if self._job_reader is not None else None
+        )
+        self._body.addWidget(self._queue)
 
     @property
     def watched_job_id(self) -> str | None:
@@ -279,8 +312,30 @@ class MainWindow(QMainWindow):
             self._view.deleteLater()
         assert self._manager is not None
         self._view = build_progress_view(self._manager, self._job_reader, job_id, self._retry)
-        self.setCentralWidget(self._view)
+        # Into the splitter's lower pane rather than over the whole window (`T-079`): replacing
+        # the central widget here would take the queue table off screen every time a job changed.
+        self._body.addWidget(self._view)
         return self._view
+
+    def _watch_if_possible(self, job_id: str) -> None:
+        """Selection handler. Separate from `watch` because a signal must not raise.
+
+        `watch` refuses without a job reader, and that refusal is right for a caller that asked
+        for a view; a selection is the user clicking a row, and an exception out of a Qt slot is
+        printed and swallowed rather than handled.
+        """
+        if self._job_reader is not None:
+            self.watch(job_id)
+
+    @property
+    def queue_view(self) -> QueueView | None:
+        """The queue table, if this window was given something to read jobs from."""
+        return self._queue
+
+    def refresh_queue(self) -> None:
+        """Re-read the queue. Called when jobs are added, which no manager signal announces."""
+        if self._queue is not None:
+            self._queue.refresh()
 
     def report_environment(self, summary: str) -> None:
         """State what this installation can and cannot do, on screen (`REQ-024`).
@@ -325,6 +380,12 @@ class MainWindow(QMainWindow):
             output_directory=self._output_directory,
             parent=self,
         )
+        # **Adding a job is the one queue change nothing announces.** The manager emits
+        # `job_changed` when a worker takes a job, so a job that starts appears by itself — but a
+        # job added while the pool is saturated is `QUEUED` with no worker and no signal, and
+        # `REQ-012`'s promise is that it is visible *because* it is queued. The dialog closing is
+        # the moment the additions are done.
+        dialog.finished.connect(self.refresh_queue)
         dialog.open()
         return dialog
 

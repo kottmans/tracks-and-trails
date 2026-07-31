@@ -201,6 +201,49 @@ def describe_bar(done: int | None, total: int | None, *, finished: bool) -> str:
     return "Total size unknown; progress cannot be measured"
 
 
+def totals_for_ending(
+    status: JobStatus,
+    job: Job | None,
+    *,
+    last_shown: tuple[int | None, int | None] | None,
+) -> tuple[int | None, int | None]:
+    """Where a stopped job's size comes from. **The rule, and now the only copy of it.**
+
+    See this module's docstring for the table this implements and why the two sources disagree.
+
+    `T017-R2` established that a *completed* download takes its size from the row, because the
+    final bytes arrive with the outcome rather than as progress. `T017-R4` is what came of
+    applying that to all three endings without saying so: a job cancelled at 50% was redrawn at
+    the row's stale 10%, since the row lags on purpose while a job runs.
+
+    **A free function because `T-079` added a second viewer of the same fact** (`REQ-016`'s queue
+    table). `T-059` was one widget reaching this rule from one of the two places that needed it,
+    so the same row gave two answers depending on whether anyone had been watching. A table of N
+    rows is the third place that has to answer it, and a rule re-derived per surface is the same
+    defect with more surfaces.
+
+    `last_shown` is the totals that were last rendered, or `None` when nothing ever was — which
+    is the distinction the whole rule turns on. A viewer opened onto a job that had already
+    stopped watched none of it, so it has no earlier display to prefer and the row is all there
+    is.
+    """
+    if status is not JobStatus.COMPLETED:
+        # Stopped partway. The row does not know how far — progress is not persisted per
+        # message — so what was last shown is the closest thing to what actually transferred.
+        if last_shown is not None:
+            return last_shown
+        return (job.bytes_done, job.bytes_total) if job is not None else (None, None)
+    total = job.bytes_total if job is not None else None
+    if not total:
+        # Nothing durable says how big it was, and the progress counter is not a measurement of
+        # a finished file. `describe_bar` says "Complete" without inventing a size.
+        return (None, None)
+    # A completed download **is** its total. `bytes_done` is left wherever progress stopped — the
+    # manager writes `bytes_total` at the terminal transition and does not touch the counter — so
+    # a real completed row routinely holds `bytes_done < bytes_total`.
+    return (total, total)
+
+
 def percent_of(done: int | None, total: int | None) -> int:
     """How full the bar is, clamped. `0` when there is no total to be a fraction of."""
     if not total:
@@ -525,42 +568,21 @@ class JobProgressView(QWidget):
             self._show_totals(job.bytes_done, job.bytes_total)
 
     def _totals_for_ending(self) -> tuple[int | None, int | None]:
-        """Where a stopped job's size comes from. **The rule, written down in one place.**
+        """This view's ending totals, from the shared rule (`totals_for_ending`).
 
-        See the module docstring for the table this implements and why the two sources disagree.
-
-        `T017-R2` established that a *completed* download must take its size from the row, because
-        the final bytes arrive with the outcome rather than as progress. `T017-R4` is what came of
-        applying that to all three endings without saying so: a job cancelled at 50% was redrawn at
-        the row's stale 10%, since the row lags on purpose while a job runs. Two of the three
-        endings want the opposite source from the third, which is exactly the kind of thing that
-        has to be written down rather than remembered at each call site.
+        The rule moved out of this class when `T-079` gave it a second caller; what stays here is
+        the translation of *this* widget's state into the rule's arguments. `last_shown` is the
+        pair the bar was last drawn from, and `None` when nothing has been drawn at all — the
+        distinction `T017-R4`'s second half turns on.
 
         Reading the row here is a `T-016` guarantee rather than an assumption: `job_changed` is
         emitted from the write's own completion callback, so the row really does hold this state.
         """
-        job = self._jobs.get(self._job_id)
-        if self._status is not JobStatus.COMPLETED:
-            # Stopped partway. The row does not know how far — progress is not persisted per
-            # message — so what was last shown is the closest thing to what actually transferred.
-            if self._displayed is not None:
-                return self._totals
-            # **Unless nothing was ever shown** (`T017-R4`, second half). A view opened onto a job
-            # that had already stopped watched none of it, so there is no earlier display to
-            # prefer and the row is all there is. Stated rather than inherited: the previous
-            # version returned `self._totals` unconditionally, which in that case is the pair of
-            # `None`s the view was constructed with, and a cancelled download would have reported
-            # nothing at all about how far it got.
-            return (job.bytes_done, job.bytes_total) if job is not None else (None, None)
-        total = job.bytes_total if job is not None else None
-        if not total:
-            # Nothing durable says how big it was, and the progress counter is not a measurement
-            # of a finished file. `describe_bar` says "Complete" without inventing a size.
-            return (None, None)
-        # A completed download **is** its total. `bytes_done` is left wherever progress stopped —
-        # the manager writes `bytes_total` at the terminal transition and does not touch the
-        # counter — so a real completed row routinely holds `bytes_done < bytes_total`.
-        return (total, total)
+        return totals_for_ending(
+            self._status,
+            self._jobs.get(self._job_id),
+            last_shown=self._totals if self._displayed is not None else None,
+        )
 
     def _on_job_failed(self, job_id: str, kind: object, message: str) -> None:
         """Show the extractor's message **verbatim** (`REQ-005`, `NFR-006`).
