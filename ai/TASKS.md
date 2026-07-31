@@ -14,31 +14,37 @@ IDs are never reused. Completed tasks move to `ai/archive/` once they bury the l
 
 **Start here: Phase 1 exited 2026-07-29.** All eight criteria are met and the exit review is in
 `ai/REVIEWS.md`. **The current phase is Phase 2, all three of its planning gates are clear, and
-`T-078` — the choke point eight tasks descend from — is Ready and underway.**
+`T-078` — the choke point the phase descends from — was approved at `0f9986f` on 2026-07-30.**
 
 **The live queue** — generated from the sections below on 2026-07-30, not written alongside them.
 `COORD-R5` through `COORD-R11` are seven rounds of a hand-written summary drifting from the file it
 summarises; this one is transcribed from the actual `## ` sections so it starts correct.
 
 - **In Review:** nothing.
-- **Ready:** `T-078` — the phase's centre, in progress. `ARC-007`'s settings layer and its ceiling
-  landed at `256b411` and `faf374f`; the pool itself, the main-window control and the real-path
-  criteria remain. Also `T-074` and `T-092` — neither blocks anything, and `T-092` needs
-  maintainer consent before writing to `STARBASE`.
-- **Approved 2026-07-30:** `T-047`, `T-049`, `T-050`, `T-085`, `T-089`, `T-091`, `T-093`, `T-094`,
-  `T-095`, `T-096`, `T-097`, `T-098`, and `T-078`'s settings foundation.
+- **Ready, and nothing among them waits on anything:** `T-079` (the queue view — now the critical
+  path), `T-082`, `T-083`, `T-084`, `T-053`, `T-046`, `T-100` (the history view, independent of the
+  queue), plus `T-074` and `T-092`, which block nothing. `T-092` needs maintainer consent before
+  writing to `STARBASE`.
+- **Approved 2026-07-30:** `T-047`, `T-049`, `T-050`, `T-078`, `T-085`, `T-089`, `T-091`, `T-093`,
+  `T-094`, `T-095`, `T-096`, `T-097`, `T-098`.
+- **Still Proposed, and why** — `T-080` and `T-081` descend from `T-078` but wait on **`T-079`**,
+  not on the pool. `T-080` also needs two maintainer calls first: the unreachable `PAUSED` edges,
+  and whether `P2PLAN-R7`'s manual-retry ordering is kept.
 - **All three Phase 2 planning gates are clear.** `P2PLAN-R2` at `f858da9`; `P2PLAN-R1` and
   `P2PLAN-R3` at `8306378`. `ARC-007` decides the settings surface, `UX-001` the pause semantics.
 - **One open question, not mine to answer:** whether a corrupt `settings.toml` should report rather
   than fall back silently. *(Two others were decided 2026-07-30: the concurrency **maximum** —
   `ARC-007` amended, `CONCURRENCY_MAXIMUM = 16` — and **`P2PLAN-R8`**, the history view's owner,
-  which is now **`T-100`** in Phase 2. `T-086` depends on it and is unblocked once it lands.)*
-- **`T-080` needs two calls before it starts:** the unreachable `PAUSED` edges, and `P2PLAN-R7`'s
-  manual-retry ordering — new scope that arrived dressed as reconciliation.
+  which is now **`T-100`**. `T-086` depends on it and is unblocked once it lands.)*
 - **Carried, blocking nothing:** `T-099` (`T097-R2` — the boundary analyser reports a settings
   offender under the persistence rule's explanation).
 
-`T-078` is the critical path, and nothing else is startable that does not wait on it.
+**The critical path is now `T-079`**, and six other Ready tasks can run beside it. `T-078` was the
+last point at which that was not true.
+
+**Windows runtime has still never run against the pool.** It is not a completion gate for source
+changes here, but `T-078` is the first task to run several worker trees at once, so the risk is
+larger than it was — see `T-078`'s entry and `T-092`.
 
 **Two Phase 1 blockers were dispositioned by decision rather than completed**, and the exit review
 upheld both while keeping them open: `T-066` by the `OPS-005` amendment, `T-074` by `OPS-007`.
@@ -67,217 +73,14 @@ Phase 0 is formally exited (2026-07-26).
 
 ## In Review
 *(**Empty as of 2026-07-30, and this note is rebuilt from the sections rather than edited.**
-`T-047`, `T-089` and `T-097` were approved at `321c672`, `128be39` and `34addcb` and are filed
-Complete; `T-091`, `T-096` and `T-098` before them. Nothing awaits a verdict.
+`T-078` was approved at `0f9986f` and is filed Complete; `T-047`, `T-089` and `T-097` before it at
+`321c672`, `128be39` and `34addcb`, and `T-091`, `T-096` and `T-098` before them. Nothing awaits a
+verdict.
 `COORD-R2` is why this says so rather than sitting blank: an empty section is a claim about
 readiness. `COORD-R5` through `COORD-R11` are seven rounds of this file contradicting itself, which
 is why **`T-096`** exists — but `T-096` gates *status against section*, and `COORD-R11` was prose
 that contradicted both while every status and section agreed. The invariant test cannot see that,
 and this note is written by hand for exactly that reason.)*
-
-### T-078 — A real worker pool, bounded and configurable
-
-**Status:** **In Review — corrected 2026-07-30, awaiting re-review.** Changes were requested at
-`1ef59f1` on two blocking Medium findings; both are addressed below and each carries the mutation
-that shows its gate fails. All three parts are in: `ARC-007`'s settings layer (`256b411`,
-`faf374f`, approved), the pool itself (`a642482`), and the main-window control with the two
-criteria that go through it. `set_concurrency` now has a user-facing caller, which it did not when
-the pool landed.
-*(This read "Ready, promoted 2026-07-30", then "In Progress — the pool is generalised and gated",
-then "In Review — complete 2026-07-30" before the review.)*
-planning gates are clear: `P2PLAN-R2` approved at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` approved at
-`8306378`. The configuration surface is decided (`ARC-007`) and the criteria gate the real user path
-rather than a constructor argument. **`T-097` is required by this task's approval, not by its
-readiness** — it mechanically forbids `downloader/manager.py` importing `core.settings`, a violation
-both current analysers were measured to miss. The phase's centre; most of the rest depends on it.
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 2
-**Depends on:** Phase 1 approved
-**Relevant context:** **`ARC-007`** (the settings surface and the persistence boundary, decided
-2026-07-30), `REQ-013`, `UX-001`, `ARC-002`, `ARC-005`, `T-013`, `T-019`, `T036-R1`
-**Affected surfaces:** `downloader/manager.py`, **`core/settings.py`** (currently a stub),
-`ui/main_window.py`, `app.py`
-**Risk:** High — it is the object every other Phase 2 task acts through
-
-#### Scope
-
-`DownloadManager` runs a pool of exactly one, and says so in seven places. Phase 1 deliberately
-did not generalise it: *"Building a pool for N now would mean designing scheduling policy with
-one job to test it against."* Now there is something to test it against.
-
-What already exists and should not be rebuilt: `_sessions` and `_reserved` model in-flight and
-being-written starts, `_PendingStart` makes a reservation withdrawable, and `_Chain` serialises
-per-job effects. The pool-of-one refusal in `start()` and the single `_pending_retry` slot are the
-two pieces that are explicitly scaffolding.
-
-**Default 3, minimum 1** (`REQ-013`). **Where the setting lives is no longer this task's to
-decide** — `ARC-007` settled it after `P2PLAN-R3` found that leaving it open let the criteria be
-satisfied by a constructor argument:
-
-- `core/settings.py` stops being a stub and owns `settings.toml` at `ARCHITECTURE.md` §5's location.
-- The limit is exposed as a control in the **existing main window**, not a settings dialog. Phase 4
-  owns the full `REQ-023` dialog and would replace a one-control dialog's layout.
-- **The manager never reads the file.** It receives an integer and a way to be told it changed —
-  `JobStore`'s shape, so the pool stays testable without TOML on disk.
-- Changes take effect **live**, and lowering **drains** rather than kills. That was already Phase 2's
-  exit criterion; what was missing was a user-facing path connected to it.
-
-#### Progress, 2026-07-30 — the pool
-
-**Six places expressed the pool of one, and they were one assumption written six times.**
-`_pending_retry` held a single job because `_sessions` held a single session; `is_idle`, `start()`,
-`_start_when_free`, `shutdown()` and the tick each restated it. Changing any one alone would have
-left the accounting inconsistent, so they moved together.
-
-| Was | Now |
-|---|---|
-| `_pending_retry: str \| None` | `_waiting: list[str]`, drained in `queue_position` order |
-| `start()` refuses on *any* activity | refuses only at capacity, reservations counted |
-| `is_idle` checks the single slot | checks the whole waiting list |
-| the tick starts the one retry | `_fill_free_slots()` fills every free slot |
-| — | `concurrency` and `set_concurrency()` — live; lowering drains, raising fills at once |
-
-**Two design points, stated rather than assumed.** The draining order is `queue_position`, allocated
-inside the insert transaction, because it is the only ordering that survives a restart and the only
-one two callers cannot disagree about. And `set_concurrency` fills slots **immediately** rather than
-on the next tick: a tick is up to `poll_interval_ms` away, which is invisible to a test that spins
-the event loop and perfectly visible to someone who has just moved a control.
-
-**Four mutations, and two survived the first attempt.** That is the part worth recording:
-
-| Mutation | First pass | Now |
-|---|---|---|
-| Raising the limit waits for a tick | killed | killed |
-| Waiting drains in arrival order | killed | killed |
-| **Reservations stop counting against the limit** | **survived** | killed |
-| **`is_idle` ignores waiting jobs** | **survived** | killed |
-
-Both survivors were tests passing for the wrong reason. The `is_idle` assertion ran with a session
-live, so it was false whether or not the waiting list counted — the discriminating state is *waiting
-with nothing running*, and nothing reached it. And no test held a reservation at a limit above one;
-`T016-R3`'s coverage is at a limit of exactly one, so removing `len(self._reserved)` left every pool
-test green. Both now have a test that fails for the reason it exists.
-
-**Two existing tests changed, for wording only.** They matched `"already running"`; the refusal is
-now `"the pool is full at N"`. The default limit is 1, so their behaviour is unchanged, and one
-docstring now says so and why the phrasing moved.
-
-**Composition passes an integer.** `app.py` reads `settings.toml` and hands over
-`settings.concurrency`; `T-097`'s boundary test confirms `downloader/` still cannot reach
-`core.settings`.
-
-
-#### Progress, 2026-07-30 — the control
-
-**One control in the existing window, per `ARC-007`, not a settings dialog.** A toolbar spinbox with
-its label, `objectName` `concurrencyChoice`, an accessible name and description (`NFR-005` — a bare
-number announced as "spin box" says nothing about what it governs), and `valueChanged` rather than
-`editingFinished` so raising the limit starts waiting work when the user asks rather than when focus
-moves.
-
-**The window knows neither the manager nor the file for this.** `on_concurrency_changed` is injected
-exactly as `retry` is, so the widget can be driven in a test with no pool and no TOML behind it
-(`ARCHITECTURE.md` §3). Composition supplies the handler, which **applies then saves** — both, in
-that order.
-
-**The widget's range is read from `core/settings.py`, not restated.** A spinbox with its own numbers
-would be a second opinion about `REQ-013`'s minimum and `ARC-007`'s ceiling. It bounds the *widget*;
-the bound that matters is on the value, which is why a hand-edited `0` still becomes 1.
-
-**`compose()` gained `settings_file`**, for the reason `geometry_file` already existed: without it
-these tests read and write the real `user_config_dir`, which `ai/TESTING.md` §5 forbids. Found while
-writing them, not after.
-
-**"Survives a restart" is asserted by composing a second application** against the same settings
-file rather than by trusting `save()`. A second graph reading the value back is the only form of
-that claim that cannot pass against a write which never happened.
-
-| Mutation | Result |
-|---|---|
-| The handler saves but never applies | **killed** — the pool keeps the old limit |
-| The handler applies but never saves | **killed** — the restart forgets |
-| The widget invents its own range | **killed** |
-| The control is wired to nothing | **killed** |
-
-The first two matter most: they are the two halves of `T-075`'s shape one setting over — a control
-that changes what is stored and not what runs, or the reverse. Each is independently necessary.
-
-
-#### Acceptance criteria
-
-- N sessions run concurrently, N is configurable, and the limit is respected **exactly** — not
-  "about N", asserted by counting live sessions at the moment the pool is saturated
-- **Lowering the limit while running drains rather than kills.** A running download is work a user
-  asked for; the new limit governs what starts next
-- Raising it starts waiting jobs without waiting for a tick that happens to fire
-- `is_idle`, `active_job_ids()` and `shutdown()` account for every slot, every reservation and
-  every waiting job — `T016-R1` is what a missed reservation costs
-- Scheduling order is stated and asserted: `queue_position` already exists and is allocated inside
-  the insert transaction
-- **The limit changes through the real user-facing path** (`ARC-007`, `P2PLAN-R3`): driving the
-  main-window control changes the running pool's limit, and the change survives a restart by way of
-  `settings.toml`. **Asserted through that path, not through the constructor** — a test that
-  constructs the manager with a different N proves nothing about `REQ-013`
-- **Lowering through that path drains**, asserted the same way: in-flight downloads finish and no new
-  one starts. The existing drain criterion above is about the pool; this one is about the control
-  reaching it
-- **`minimum 1` is enforced by the settings layer, not the widget** — a hand-edited `settings.toml`
-  holding `0`, a negative, or a non-integer must not produce a pool that starts nothing. State what
-  each does; a spinbox that clamps its own input is not a bound on the file
-- **An unparseable or absent `settings.toml` is stated rather than discovered** — defaults apply and
-  the application starts. `REQ-013`'s default 3 is the value a missing file yields
-
-#### Out of scope
-
-- Per-job priority beyond queue order, and pausing to free a slot (`T-080`)
-- Rate limiting or bandwidth sharing between sessions
-- **Any other `REQ-023` setting.** `ARC-007` puts the layer in place; only the concurrency key lands
-  here. The settings *screen* is Phase 4
-- Migrating `window.toml`, which deliberately stays outside this layer (`ARCHITECTURE.md` §5)
-
-#### Corrections, 2026-07-30 — `T078-R1` and `T078-R2`
-
-**`T078-R1` — the accounting method omitted the collection it was extended for.** `active_job_ids()`
-opened "Every job this manager is holding" and returned `_sessions ∪ _reserved`. `is_idle` and
-`shutdown()` were generalised for the waiting list; this was not, so the one method a caller would
-*ask* was the one that lied. The criterion names all three.
-
-Waiting jobs are now included. The awkwardness that hid this is real and is now explicit in the
-code: two different questions had been sharing one answer.
-
-| Question | Method | Waiting jobs |
-|---|---|---|
-| What is this manager holding? | `active_job_ids()` | **counted** — accepted work nothing else will start |
-| What is filling the pool? | `_occupant_ids()` (new) | **not counted** — they hold no slot |
-
-`start()`'s refusal and `shutdown()`'s cancel loop both take `_occupant_ids()`. Without the split,
-`"the pool is full at 3: (...)"` would have listed jobs that are themselves waiting for the slot
-being asked for, and the cancel loop would have depended on `_waiting.clear()` happening two
-statements earlier to stay correct.
-
-**`T078-R2` — lowering was written down and not enforced.** Two mutations survived the committed
-suite from opposite ends, and neither existing test could have seen either:
-
-| Mutation | Was | Now killed by |
-|---|---|---|
-| Composition applies increases, only *saves* decreases | **survived all 14** composition tests | the new control test — the only one that lowers |
-| Scheduler fills slots while live count is *above* the limit | **survived all 7** pool tests | the new pool test — the only one with a job waiting while lowering |
-
-The reason both survived is the same reason twice: `..._drains_rather_than_killing` lowers with
-**nothing waiting**, so it can only prove "does not kill", and the real-control test only moves
-3 → 5, so nothing ever exercised the downward direction. An enforced limit and a recorded one are
-identical under both.
-
-Each new test lowers a **saturated** pool with a fourth job accepted behind it and asserts three
-separable things: the running work survives, the waiting work stays waiting while the pool is over
-the new limit, and it starts once the pool drains under it. The narrow over-limit mutation — normal
-at or below the limit, wrong only above it — kills both new tests and leaves all nine other pool
-tests green, which is the measurement that no prior test covered this.
-
-**Also corrected:** `..._starts_waiting_jobs_without_waiting_for_a_tick` asserted
-`len(active_job_ids()) == 1` with two jobs waiting. That assertion encoded `T078-R1`'s defect, so
-it now reads on `_occupant_ids()` — the limit governs occupancy, and the waiting pair is held.
 
 ---
 
@@ -289,6 +92,241 @@ while each said Ready: the exact status-versus-section class `COORD-R5` through 
 reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
 and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
 being necessary.)*
+
+### T-079 — The queue view: many jobs, each with its own progress
+
+**Status:** **Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`.** The critical
+path: `T-080` and `T-081` both wait on this one, not on the pool.
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 2
+**Depends on:** `T-078`
+**Relevant context:** `REQ-015`, `NFR-001`, `T-017`, `T-059`, `T040-R1`
+**Affected surfaces:** `ui/`, `main_window.py`
+**Risk:** Medium — the repaint discipline that made one job cheap is what N jobs will test
+
+#### Scope
+
+Phase 1 shows **one** job: `MainWindow.progress_view`, a single `JobProgressView`. Phase 2 needs a
+table — every job, its status, its progress, whatever it is doing.
+
+**`T-017`'s lessons transfer directly and are worth reading before starting.** Progress messages
+arrive faster than a human can read, so the view coalesces on a `REPAINT_INTERVAL_MS` timer rather
+than repainting per message; with N jobs that stops being an optimisation and becomes the thing
+that keeps `NFR-001` true. `describe_bar` is a pure function precisely so the same rendering rule
+cannot drift between paths — a table has more paths, not fewer. And `T-059` found a view rendering
+a finished job from the wrong source: a row for a job that finished before the view existed is the
+same question.
+
+#### Acceptance criteria
+
+- Three concurrent downloads show independent, accurate progress with the UI interactive
+  throughout — the phase's first exit criterion, asserted rather than observed
+- A row opened onto a job that is already finished renders its ending, not an empty bar (`T-059`)
+- The table's keyboard order is declared and asserted per state, as `T-060` established
+- Repaint cost is bounded and measured with N rows, not argued from the single-job case
+
+#### Out of scope
+
+- Sorting and filtering, which are `REQ-016`'s neighbours but not its text
+- The log view (`T-084`) and history (`T-085`), which are their own surfaces
+
+---
+
+### T-082 — Interrupted jobs are offered for retry at startup
+
+**Status:** **Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`.** Depends on the
+pool alone, so it can run beside `T-079`.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`
+**Relevant context:** `REQ-012`, `T-037`, `T-014`
+**Affected surfaces:** `app.py`, `persistence/`, `ui/`
+**Risk:** Low — the recovery exists; the offer does not
+
+#### Scope
+
+Phase 1 already recovers: `compose()` moves jobs left `RUNNING` to `FAILED`/`INTERRUPTED` before
+anything reads the queue, and `test_recovery_is_the_applications_own_and_not_the_tests` proves the
+application does it rather than the test. What Phase 2 adds is the **offer** — and the plural.
+One interrupted job is Phase 1's case; a queue of them is this one.
+
+#### Acceptance criteria
+
+- Every interrupted job is recovered before the queue is readable, not as the user scrolls to it
+- The offer is explicit and refusable; nothing restarts a download the user did not ask to restart
+- Recovering N jobs does not mean N unbatched writes on the writer thread
+
+#### Out of scope
+
+- Automatic resumption without asking
+
+---
+
+### T-083 — Bounded retry with backoff, for network failures only
+
+**Status:** **Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`.** Depends on the
+pool alone, so it can run beside `T-079`.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`
+**Relevant context:** `REQ-018`, `core/errors.py`, `is_retryable`, `T-017`
+**Affected surfaces:** `downloader/manager.py`, `core/`
+**Risk:** Medium — an automatic retry that fires on the wrong class is a loop nobody asked for
+
+#### Scope
+
+The taxonomy already distinguishes retryable failures, and `is_retryable` already governs whether
+the progress view offers a Retry control — `DRM_PROTECTED` never reaches it (`SEC-001`,
+`REQ-EXCL-001`). This adds *automatic* retry, and the requirement is narrow: `NETWORK` only.
+
+**The narrowness is the point.** An `UNSUPPORTED_URL` retried on a timer is a request the site
+will refuse identically, forever. The bound and the backoff both need stating in
+`DECISIONS.md`, not choosing in code.
+
+#### Acceptance criteria
+
+- Only `NETWORK` retries automatically, asserted by driving each other kind and observing none
+- The attempt count is bounded, persisted, and visible — a job silently on attempt four is a job
+  whose history the user cannot see
+- Backoff is real and asserted, and a retry never jumps the queue ahead of jobs that have not run
+- Exhausting the bound leaves the job `FAILED` with the *last* error, still manually retryable
+
+#### Out of scope
+
+- Retrying a partially downloaded file from where it stopped (`REQ-017`, Phase 3)
+
+---
+
+### T-084 — Per-job log capture and a log view
+
+**Status:** **Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`.** `T-053` proves
+the isolation concurrently; it is evidence for this, not a prerequisite of it.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`; proved concurrent by `T-053`
+**Relevant context:** `REQ-019`, `T-038`, `NFR-006`, `T-053`
+**Affected surfaces:** `downloader/worker.py`, `logging`, `ui/`
+**Risk:** Medium — redaction has to hold per job, under concurrency
+
+#### Scope
+
+`T-038` established logging with handler-level redaction. `REQ-019` wants the *yt-dlp diagnostic
+output for that job*, copyable for a bug report — so the worker's output has to be attributable to
+a job and kept, not merged into one stream.
+
+`T-053` already exists to prove isolation once the pool permits two live sessions, and is the
+gate this task's correctness rests on.
+
+#### Acceptance criteria
+
+- A job's log contains that job's output and no other's, under a saturated pool
+- Redaction holds per job — a cookie or proxy credential must not survive because two sessions
+  interleaved
+- The text is copyable and verbatim (`NFR-006`); a summarised log is not a bug report
+- Log growth is bounded, and the bound is stated
+
+#### Out of scope
+
+- Shipping logs anywhere, or a crash reporter
+
+---
+
+### T-053 — Prove concurrent per-job log isolation
+
+**Status:** **Ready — the pool now permits two live sessions** (`T-078`, approved 2026-07-30 at
+`0f9986f`). That was the whole of the block; `T-038` was already Complete.
+**Owner:** Implementer
+**Priority:** Low — Phase 1's structural routing is correct; concurrency is the missing proof
+**Phase:** Phase 2
+**Depends on:** `T-038` and the Phase 2 task that implements `REQ-013`
+**Relevant context:** `T038-R2`; `ARCHITECTURE.md` §8; `REQ-013`, `REQ-019`;
+`ai/REVIEWS.md` (2026-07-27 T-019/T-038 focused correction re-review)
+**Affected surfaces:** `tests/integration/test_worker_logging.py`
+**Risk:** Low until concurrency exists; High if the pool ships without the proof
+**Review base:** the Phase 2 concurrency implementation head
+
+#### Scope
+
+Phase 1 runs one session at a time. `T-038` proves that worker records carry a job-id stamp and
+that a per-job handler rejects every other stamp, using two sequential jobs. That establishes
+per-job routing, but it cannot establish the concurrent cross-write property while the manager
+refuses to keep two sessions open.
+
+When Phase 2 first permits two live sessions, coordinate two real spawned workers so both
+per-job handlers are open at the same time. Have both workers emit interleaved, unique markers
+through the production log queue and prove that each file contains its own complete stream and
+none of the other job's.
+
+This is not the current `T038-R2` ordered-drain correction. `T-038` must already retain a
+worker's final emitted records and stop its listener without blocking the GUI thread before this
+follow-up becomes relevant.
+
+#### Acceptance criteria
+
+- Two real worker sessions are simultaneously active before either emits its test records
+- Their records are deliberately interleaved through the production worker-log queue
+- Each per-job log contains every marker its worker emitted and no marker from the other worker
+- The application log still contains both streams
+- Removing the job-id filter or stamp makes the test fail
+
+#### Out of scope
+
+- Implementing Phase 2 concurrency or its scheduling policy
+- Repairing the current single-session ordered-drain and non-blocking-shutdown defect in
+  `T038-R2`
+
+---
+
+### T-046 — Output path collision policy against the filesystem
+
+**Status:** **Ready 2026-07-30.** `T-034`, `T-045` and `T-013` are all Complete, and `T-078`
+makes collisions reachable concurrently rather than one job at a time.
+**Owner:** Implementer
+**Priority:** Medium — **raise to High before first release.** Until this lands, two downloads
+whose titles sanitize to the same component contend for one path
+**Phase:** Phase 2
+**Depends on:** `T-034`, `T-045`, and the download manager (`T-013`)
+**Relevant context:** `DAT-002`; `ARCHITECTURE.md` §8; `REQ-011`
+**Affected surfaces:** the download manager's path selection; `core/paths.py` remains pure
+**Risk:** Medium — the failure mode is one download overwriting another's output
+
+#### Scope
+
+**Filed by `DAT-002`, which is where the reasoning lives.** `T-045` established that
+`sanitize_component` cannot promise a unique path: it is a pure function of one string, and
+"does this collide with something?" is a question about the filesystem. The maintainer kept
+idempotence and narrowed the sanitizer's promise to the plausible neighbour class, moving real
+uniqueness here.
+
+This task owns the guarantee at the layer that can keep it — the one that knows what is already
+on disk and what other jobs are queued. That covers the ordinary case, not only the reserved-name
+residue: two different videos whose titles sanitize identically collide today by the same
+mechanism, and always have.
+
+**`core/paths.py` stays pure.** The resolution belongs to the caller that has filesystem context;
+pushing it into the sanitizer would make it stateful and re-open `DAT-002`.
+
+#### Acceptance criteria
+
+- Two jobs whose sanitized components are equal resolve to distinct output paths
+- The resolution is visible in the `REQ-011` preview before the write, not applied silently
+  afterwards — a preview that disagrees with the write is the failure `DAT-002` protects against
+- An existing file at the target is never silently overwritten
+- Concurrent writers cannot both win the same path — asserted against real concurrent jobs
+  rather than by inspection, since Phase 2 is where the second worker arrives
+- The residual collision `T-045` pins is covered by this policy, so `DAT-002`'s assumption that
+  `T-046` lands before first release is discharged
+
+#### Out of scope
+
+- Which names are legal or reserved — settled by `T-034` and `T-045`
+- Resume semantics for a partially downloaded file, beyond not colliding with one
+
+---
 
 ### T-100 — The history view: what was obtained, after the queue has forgotten it
 
@@ -725,79 +763,11 @@ deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are fo
 of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
 prerequisite is Phase 1 approved.)*
 
-### T-099 — Make the manager-boundary gate say which boundary failed
-
-**Status:** Proposed
-**Owner:** Implementer
-**Priority:** Low — enforcement is correct; the failure points at the wrong rule
-**Phase:** Phase 2 test infrastructure; blocks nothing
-**Depends on:** none
-**Relevant context:** `T097-R2`, `T-097`, `ARC-007`, `T-013`
-**Affected surfaces:** `tests/unit/test_manager_boundaries.py`
-**Risk:** Low — a future settings violation is caught, but its diagnostic sends the maintainer to
-the repository-injection rule instead of ARC-007
-
-#### Scope
-
-`T097-R1` split the manager-only settings prohibition from the persistence/sqlite rules shared by
-manager and result pump. The real-source assertion still combines their offenders under
-`test_the_manager_never_imports_persistence` and always explains repository injection. A real
-`core.settings` import therefore fails the correct gate with the wrong reason.
-
-Keep one read of each real module and the current per-module rule table, but report which rule was
-violated. Do not broaden ARC-007 back to `result_pump.py`.
-
-#### Acceptance criteria
-
-- A real manager settings import fails with an ARC-007/settings-injection diagnostic
-- A real manager or result-pump persistence/sqlite import fails with the T-013 repository diagnostic
-- Existing relative and absolute forbidden forms remain caught, and result-pump settings imports
-  remain permitted
-
----
-
-### T-079 — The queue view: many jobs, each with its own progress
-
-**Status:** Proposed
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 2
-**Depends on:** `T-078`
-**Relevant context:** `REQ-015`, `NFR-001`, `T-017`, `T-059`, `T040-R1`
-**Affected surfaces:** `ui/`, `main_window.py`
-**Risk:** Medium — the repaint discipline that made one job cheap is what N jobs will test
-
-#### Scope
-
-Phase 1 shows **one** job: `MainWindow.progress_view`, a single `JobProgressView`. Phase 2 needs a
-table — every job, its status, its progress, whatever it is doing.
-
-**`T-017`'s lessons transfer directly and are worth reading before starting.** Progress messages
-arrive faster than a human can read, so the view coalesces on a `REPAINT_INTERVAL_MS` timer rather
-than repainting per message; with N jobs that stops being an optimisation and becomes the thing
-that keeps `NFR-001` true. `describe_bar` is a pure function precisely so the same rendering rule
-cannot drift between paths — a table has more paths, not fewer. And `T-059` found a view rendering
-a finished job from the wrong source: a row for a job that finished before the view existed is the
-same question.
-
-#### Acceptance criteria
-
-- Three concurrent downloads show independent, accurate progress with the UI interactive
-  throughout — the phase's first exit criterion, asserted rather than observed
-- A row opened onto a job that is already finished renders its ending, not an empty bar (`T-059`)
-- The table's keyboard order is declared and asserted per state, as `T-060` established
-- Repaint cost is bounded and measured with N rows, not argued from the single-job case
-
-#### Out of scope
-
-- Sorting and filtering, which are `REQ-016`'s neighbours but not its text
-- The log view (`T-084`) and history (`T-085`), which are their own surfaces
-
----
-
 ### T-080 — Queue-level pause and resume; per-job cancel, retry and remove
 
-**Status:** Proposed — rewritten from `UX-001` on 2026-07-30 (`P2PLAN-R1`)
+**Status:** Proposed — rewritten from `UX-001` on 2026-07-30 (`P2PLAN-R1`). **Not released by
+`T-078`:** it waits on `T-079` as well, and on two maintainer calls — the unreachable `PAUSED`
+edges, and whether `P2PLAN-R7`'s manual-retry ordering is kept.
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 2
@@ -876,7 +846,8 @@ pre-amendment wording is preserved in `REQ-015`'s own parenthetical and in `UX-0
 
 ### T-081 — Reorder pending jobs, and clear completed ones
 
-**Status:** Proposed
+**Status:** Proposed — **not released by `T-078`:** it waits on `T-079`, which owns the view the
+reordering acts on.
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 2
@@ -907,102 +878,34 @@ specifically so two callers cannot read the same `MAX()`. Reordering is the firs
 
 ---
 
-### T-082 — Interrupted jobs are offered for retry at startup
+### T-099 — Make the manager-boundary gate say which boundary failed
 
 **Status:** Proposed
 **Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** `T-078`
-**Relevant context:** `REQ-012`, `T-037`, `T-014`
-**Affected surfaces:** `app.py`, `persistence/`, `ui/`
-**Risk:** Low — the recovery exists; the offer does not
+**Priority:** Low — enforcement is correct; the failure points at the wrong rule
+**Phase:** Phase 2 test infrastructure; blocks nothing
+**Depends on:** none
+**Relevant context:** `T097-R2`, `T-097`, `ARC-007`, `T-013`
+**Affected surfaces:** `tests/unit/test_manager_boundaries.py`
+**Risk:** Low — a future settings violation is caught, but its diagnostic sends the maintainer to
+the repository-injection rule instead of ARC-007
 
 #### Scope
 
-Phase 1 already recovers: `compose()` moves jobs left `RUNNING` to `FAILED`/`INTERRUPTED` before
-anything reads the queue, and `test_recovery_is_the_applications_own_and_not_the_tests` proves the
-application does it rather than the test. What Phase 2 adds is the **offer** — and the plural.
-One interrupted job is Phase 1's case; a queue of them is this one.
+`T097-R1` split the manager-only settings prohibition from the persistence/sqlite rules shared by
+manager and result pump. The real-source assertion still combines their offenders under
+`test_the_manager_never_imports_persistence` and always explains repository injection. A real
+`core.settings` import therefore fails the correct gate with the wrong reason.
+
+Keep one read of each real module and the current per-module rule table, but report which rule was
+violated. Do not broaden ARC-007 back to `result_pump.py`.
 
 #### Acceptance criteria
 
-- Every interrupted job is recovered before the queue is readable, not as the user scrolls to it
-- The offer is explicit and refusable; nothing restarts a download the user did not ask to restart
-- Recovering N jobs does not mean N unbatched writes on the writer thread
-
-#### Out of scope
-
-- Automatic resumption without asking
-
----
-
-### T-083 — Bounded retry with backoff, for network failures only
-
-**Status:** Proposed
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** `T-078`
-**Relevant context:** `REQ-018`, `core/errors.py`, `is_retryable`, `T-017`
-**Affected surfaces:** `downloader/manager.py`, `core/`
-**Risk:** Medium — an automatic retry that fires on the wrong class is a loop nobody asked for
-
-#### Scope
-
-The taxonomy already distinguishes retryable failures, and `is_retryable` already governs whether
-the progress view offers a Retry control — `DRM_PROTECTED` never reaches it (`SEC-001`,
-`REQ-EXCL-001`). This adds *automatic* retry, and the requirement is narrow: `NETWORK` only.
-
-**The narrowness is the point.** An `UNSUPPORTED_URL` retried on a timer is a request the site
-will refuse identically, forever. The bound and the backoff both need stating in
-`DECISIONS.md`, not choosing in code.
-
-#### Acceptance criteria
-
-- Only `NETWORK` retries automatically, asserted by driving each other kind and observing none
-- The attempt count is bounded, persisted, and visible — a job silently on attempt four is a job
-  whose history the user cannot see
-- Backoff is real and asserted, and a retry never jumps the queue ahead of jobs that have not run
-- Exhausting the bound leaves the job `FAILED` with the *last* error, still manually retryable
-
-#### Out of scope
-
-- Retrying a partially downloaded file from where it stopped (`REQ-017`, Phase 3)
-
----
-
-### T-084 — Per-job log capture and a log view
-
-**Status:** Proposed
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** `T-078`; proved concurrent by `T-053`
-**Relevant context:** `REQ-019`, `T-038`, `NFR-006`, `T-053`
-**Affected surfaces:** `downloader/worker.py`, `logging`, `ui/`
-**Risk:** Medium — redaction has to hold per job, under concurrency
-
-#### Scope
-
-`T-038` established logging with handler-level redaction. `REQ-019` wants the *yt-dlp diagnostic
-output for that job*, copyable for a bug report — so the worker's output has to be attributable to
-a job and kept, not merged into one stream.
-
-`T-053` already exists to prove isolation once the pool permits two live sessions, and is the
-gate this task's correctness rests on.
-
-#### Acceptance criteria
-
-- A job's log contains that job's output and no other's, under a saturated pool
-- Redaction holds per job — a cookie or proxy credential must not survive because two sessions
-  interleaved
-- The text is copyable and verbatim (`NFR-006`); a summarised log is not a bug report
-- Log growth is bounded, and the bound is stated
-
-#### Out of scope
-
-- Shipping logs anywhere, or a crash reporter
+- A real manager settings import fails with an ARC-007/settings-injection diagnostic
+- A real manager or result-pump persistence/sqlite import fails with the T-013 repository diagnostic
+- Existing relative and absolute forbidden forms remain caught, and result-pump settings imports
+  remain permitted
 
 ---
 
@@ -1156,97 +1059,6 @@ workers the question is whether that holds N times, including for the ones that 
 
 ---
 
-
-### T-053 — Prove concurrent per-job log isolation
-
-**Status:** Proposed — blocked until the Phase 2 pool permits two live sessions
-**Owner:** Implementer
-**Priority:** Low — Phase 1's structural routing is correct; concurrency is the missing proof
-**Phase:** Phase 2
-**Depends on:** `T-038` and the Phase 2 task that implements `REQ-013`
-**Relevant context:** `T038-R2`; `ARCHITECTURE.md` §8; `REQ-013`, `REQ-019`;
-`ai/REVIEWS.md` (2026-07-27 T-019/T-038 focused correction re-review)
-**Affected surfaces:** `tests/integration/test_worker_logging.py`
-**Risk:** Low until concurrency exists; High if the pool ships without the proof
-**Review base:** the Phase 2 concurrency implementation head
-
-#### Scope
-
-Phase 1 runs one session at a time. `T-038` proves that worker records carry a job-id stamp and
-that a per-job handler rejects every other stamp, using two sequential jobs. That establishes
-per-job routing, but it cannot establish the concurrent cross-write property while the manager
-refuses to keep two sessions open.
-
-When Phase 2 first permits two live sessions, coordinate two real spawned workers so both
-per-job handlers are open at the same time. Have both workers emit interleaved, unique markers
-through the production log queue and prove that each file contains its own complete stream and
-none of the other job's.
-
-This is not the current `T038-R2` ordered-drain correction. `T-038` must already retain a
-worker's final emitted records and stop its listener without blocking the GUI thread before this
-follow-up becomes relevant.
-
-#### Acceptance criteria
-
-- Two real worker sessions are simultaneously active before either emits its test records
-- Their records are deliberately interleaved through the production worker-log queue
-- Each per-job log contains every marker its worker emitted and no marker from the other worker
-- The application log still contains both streams
-- Removing the job-id filter or stamp makes the test fail
-
-#### Out of scope
-
-- Implementing Phase 2 concurrency or its scheduling policy
-- Repairing the current single-session ordered-drain and non-blocking-shutdown defect in
-  `T038-R2`
-
----
-
-### T-046 — Output path collision policy against the filesystem
-
-**Status:** Proposed — Phase 2, alongside resume
-**Owner:** Implementer
-**Priority:** Medium — **raise to High before first release.** Until this lands, two downloads
-whose titles sanitize to the same component contend for one path
-**Phase:** Phase 2
-**Depends on:** `T-034`, `T-045`, and the download manager (`T-013`)
-**Relevant context:** `DAT-002`; `ARCHITECTURE.md` §8; `REQ-011`
-**Affected surfaces:** the download manager's path selection; `core/paths.py` remains pure
-**Risk:** Medium — the failure mode is one download overwriting another's output
-
-#### Scope
-
-**Filed by `DAT-002`, which is where the reasoning lives.** `T-045` established that
-`sanitize_component` cannot promise a unique path: it is a pure function of one string, and
-"does this collide with something?" is a question about the filesystem. The maintainer kept
-idempotence and narrowed the sanitizer's promise to the plausible neighbour class, moving real
-uniqueness here.
-
-This task owns the guarantee at the layer that can keep it — the one that knows what is already
-on disk and what other jobs are queued. That covers the ordinary case, not only the reserved-name
-residue: two different videos whose titles sanitize identically collide today by the same
-mechanism, and always have.
-
-**`core/paths.py` stays pure.** The resolution belongs to the caller that has filesystem context;
-pushing it into the sanitizer would make it stateful and re-open `DAT-002`.
-
-#### Acceptance criteria
-
-- Two jobs whose sanitized components are equal resolve to distinct output paths
-- The resolution is visible in the `REQ-011` preview before the write, not applied silently
-  afterwards — a preview that disagrees with the write is the failure `DAT-002` protects against
-- An existing file at the target is never silently overwritten
-- Concurrent writers cannot both win the same path — asserted against real concurrent jobs
-  rather than by inspection, since Phase 2 is where the second worker arrives
-- The residual collision `T-045` pins is covered by this policy, so `DAT-002`'s assumption that
-  `T-046` lands before first release is discharged
-
-#### Out of scope
-
-- Which names are legal or reserved — settled by `T-034` and `T-045`
-- Resume semantics for a partially downloaded file, beyond not colliding with one
-
----
 
 ### T-048 — Verify the first real data migration when one is written
 
@@ -1856,6 +1668,217 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-078 — A real worker pool, bounded and configurable
+
+**Status:** **Complete — Approved at `0f9986f`**, 2026-07-30. `T078-R1` and `T078-R2` are
+**Resolved**, and every original mutation is now killed. Three parts across four commits:
+`ARC-007`'s settings layer (`256b411`, `faf374f`), the pool (`a642482`), the main-window control
+(`1ef59f1`), and the correction (`0f9986f`). **This releases the subtree** — `T-079`, `T-082`,
+`T-083`, `T-084`, `T-053` and `T-046` are Ready; `T-080` and `T-081` descend from it but wait on
+`T-079` as well.
+*(This read "Ready, promoted 2026-07-30", then "In Progress — the pool is generalised and gated",
+then "In Review — complete 2026-07-30", then "In Review — corrected, awaiting re-review".)*
+
+**Windows runtime never ran against this task**, and the reviewer recorded that as a platform risk
+rather than a finding: the Win32 type gate passes but cannot execute spawn, Job-object containment
+or simultaneous teardown. This is the first task to run several worker trees at once, so it is the
+one to exercise when hosted Windows capacity exists (`OPS-006`, `T-092`).
+planning gates are clear: `P2PLAN-R2` approved at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` approved at
+`8306378`. The configuration surface is decided (`ARC-007`) and the criteria gate the real user path
+rather than a constructor argument. **`T-097` is required by this task's approval, not by its
+readiness** — it mechanically forbids `downloader/manager.py` importing `core.settings`, a violation
+both current analysers were measured to miss. The phase's centre; most of the rest depends on it.
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 2
+**Depends on:** Phase 1 approved
+**Relevant context:** **`ARC-007`** (the settings surface and the persistence boundary, decided
+2026-07-30), `REQ-013`, `UX-001`, `ARC-002`, `ARC-005`, `T-013`, `T-019`, `T036-R1`
+**Affected surfaces:** `downloader/manager.py`, **`core/settings.py`** (currently a stub),
+`ui/main_window.py`, `app.py`
+**Risk:** High — it is the object every other Phase 2 task acts through
+
+#### Scope
+
+`DownloadManager` runs a pool of exactly one, and says so in seven places. Phase 1 deliberately
+did not generalise it: *"Building a pool for N now would mean designing scheduling policy with
+one job to test it against."* Now there is something to test it against.
+
+What already exists and should not be rebuilt: `_sessions` and `_reserved` model in-flight and
+being-written starts, `_PendingStart` makes a reservation withdrawable, and `_Chain` serialises
+per-job effects. The pool-of-one refusal in `start()` and the single `_pending_retry` slot are the
+two pieces that are explicitly scaffolding.
+
+**Default 3, minimum 1** (`REQ-013`). **Where the setting lives is no longer this task's to
+decide** — `ARC-007` settled it after `P2PLAN-R3` found that leaving it open let the criteria be
+satisfied by a constructor argument:
+
+- `core/settings.py` stops being a stub and owns `settings.toml` at `ARCHITECTURE.md` §5's location.
+- The limit is exposed as a control in the **existing main window**, not a settings dialog. Phase 4
+  owns the full `REQ-023` dialog and would replace a one-control dialog's layout.
+- **The manager never reads the file.** It receives an integer and a way to be told it changed —
+  `JobStore`'s shape, so the pool stays testable without TOML on disk.
+- Changes take effect **live**, and lowering **drains** rather than kills. That was already Phase 2's
+  exit criterion; what was missing was a user-facing path connected to it.
+
+#### Progress, 2026-07-30 — the pool
+
+**Six places expressed the pool of one, and they were one assumption written six times.**
+`_pending_retry` held a single job because `_sessions` held a single session; `is_idle`, `start()`,
+`_start_when_free`, `shutdown()` and the tick each restated it. Changing any one alone would have
+left the accounting inconsistent, so they moved together.
+
+| Was | Now |
+|---|---|
+| `_pending_retry: str \| None` | `_waiting: list[str]`, drained in `queue_position` order |
+| `start()` refuses on *any* activity | refuses only at capacity, reservations counted |
+| `is_idle` checks the single slot | checks the whole waiting list |
+| the tick starts the one retry | `_fill_free_slots()` fills every free slot |
+| — | `concurrency` and `set_concurrency()` — live; lowering drains, raising fills at once |
+
+**Two design points, stated rather than assumed.** The draining order is `queue_position`, allocated
+inside the insert transaction, because it is the only ordering that survives a restart and the only
+one two callers cannot disagree about. And `set_concurrency` fills slots **immediately** rather than
+on the next tick: a tick is up to `poll_interval_ms` away, which is invisible to a test that spins
+the event loop and perfectly visible to someone who has just moved a control.
+
+**Four mutations, and two survived the first attempt.** That is the part worth recording:
+
+| Mutation | First pass | Now |
+|---|---|---|
+| Raising the limit waits for a tick | killed | killed |
+| Waiting drains in arrival order | killed | killed |
+| **Reservations stop counting against the limit** | **survived** | killed |
+| **`is_idle` ignores waiting jobs** | **survived** | killed |
+
+Both survivors were tests passing for the wrong reason. The `is_idle` assertion ran with a session
+live, so it was false whether or not the waiting list counted — the discriminating state is *waiting
+with nothing running*, and nothing reached it. And no test held a reservation at a limit above one;
+`T016-R3`'s coverage is at a limit of exactly one, so removing `len(self._reserved)` left every pool
+test green. Both now have a test that fails for the reason it exists.
+
+**Two existing tests changed, for wording only.** They matched `"already running"`; the refusal is
+now `"the pool is full at N"`. The default limit is 1, so their behaviour is unchanged, and one
+docstring now says so and why the phrasing moved.
+
+**Composition passes an integer.** `app.py` reads `settings.toml` and hands over
+`settings.concurrency`; `T-097`'s boundary test confirms `downloader/` still cannot reach
+`core.settings`.
+
+
+#### Progress, 2026-07-30 — the control
+
+**One control in the existing window, per `ARC-007`, not a settings dialog.** A toolbar spinbox with
+its label, `objectName` `concurrencyChoice`, an accessible name and description (`NFR-005` — a bare
+number announced as "spin box" says nothing about what it governs), and `valueChanged` rather than
+`editingFinished` so raising the limit starts waiting work when the user asks rather than when focus
+moves.
+
+**The window knows neither the manager nor the file for this.** `on_concurrency_changed` is injected
+exactly as `retry` is, so the widget can be driven in a test with no pool and no TOML behind it
+(`ARCHITECTURE.md` §3). Composition supplies the handler, which **applies then saves** — both, in
+that order.
+
+**The widget's range is read from `core/settings.py`, not restated.** A spinbox with its own numbers
+would be a second opinion about `REQ-013`'s minimum and `ARC-007`'s ceiling. It bounds the *widget*;
+the bound that matters is on the value, which is why a hand-edited `0` still becomes 1.
+
+**`compose()` gained `settings_file`**, for the reason `geometry_file` already existed: without it
+these tests read and write the real `user_config_dir`, which `ai/TESTING.md` §5 forbids. Found while
+writing them, not after.
+
+**"Survives a restart" is asserted by composing a second application** against the same settings
+file rather than by trusting `save()`. A second graph reading the value back is the only form of
+that claim that cannot pass against a write which never happened.
+
+| Mutation | Result |
+|---|---|
+| The handler saves but never applies | **killed** — the pool keeps the old limit |
+| The handler applies but never saves | **killed** — the restart forgets |
+| The widget invents its own range | **killed** |
+| The control is wired to nothing | **killed** |
+
+The first two matter most: they are the two halves of `T-075`'s shape one setting over — a control
+that changes what is stored and not what runs, or the reverse. Each is independently necessary.
+
+
+#### Acceptance criteria
+
+- N sessions run concurrently, N is configurable, and the limit is respected **exactly** — not
+  "about N", asserted by counting live sessions at the moment the pool is saturated
+- **Lowering the limit while running drains rather than kills.** A running download is work a user
+  asked for; the new limit governs what starts next
+- Raising it starts waiting jobs without waiting for a tick that happens to fire
+- `is_idle`, `active_job_ids()` and `shutdown()` account for every slot, every reservation and
+  every waiting job — `T016-R1` is what a missed reservation costs
+- Scheduling order is stated and asserted: `queue_position` already exists and is allocated inside
+  the insert transaction
+- **The limit changes through the real user-facing path** (`ARC-007`, `P2PLAN-R3`): driving the
+  main-window control changes the running pool's limit, and the change survives a restart by way of
+  `settings.toml`. **Asserted through that path, not through the constructor** — a test that
+  constructs the manager with a different N proves nothing about `REQ-013`
+- **Lowering through that path drains**, asserted the same way: in-flight downloads finish and no new
+  one starts. The existing drain criterion above is about the pool; this one is about the control
+  reaching it
+- **`minimum 1` is enforced by the settings layer, not the widget** — a hand-edited `settings.toml`
+  holding `0`, a negative, or a non-integer must not produce a pool that starts nothing. State what
+  each does; a spinbox that clamps its own input is not a bound on the file
+- **An unparseable or absent `settings.toml` is stated rather than discovered** — defaults apply and
+  the application starts. `REQ-013`'s default 3 is the value a missing file yields
+
+#### Out of scope
+
+- Per-job priority beyond queue order, and pausing to free a slot (`T-080`)
+- Rate limiting or bandwidth sharing between sessions
+- **Any other `REQ-023` setting.** `ARC-007` puts the layer in place; only the concurrency key lands
+  here. The settings *screen* is Phase 4
+- Migrating `window.toml`, which deliberately stays outside this layer (`ARCHITECTURE.md` §5)
+
+#### Corrections, 2026-07-30 — `T078-R1` and `T078-R2`
+
+**`T078-R1` — the accounting method omitted the collection it was extended for.** `active_job_ids()`
+opened "Every job this manager is holding" and returned `_sessions ∪ _reserved`. `is_idle` and
+`shutdown()` were generalised for the waiting list; this was not, so the one method a caller would
+*ask* was the one that lied. The criterion names all three.
+
+Waiting jobs are now included. The awkwardness that hid this is real and is now explicit in the
+code: two different questions had been sharing one answer.
+
+| Question | Method | Waiting jobs |
+|---|---|---|
+| What is this manager holding? | `active_job_ids()` | **counted** — accepted work nothing else will start |
+| What is filling the pool? | `_occupant_ids()` (new) | **not counted** — they hold no slot |
+
+`start()`'s refusal and `shutdown()`'s cancel loop both take `_occupant_ids()`. Without the split,
+`"the pool is full at 3: (...)"` would have listed jobs that are themselves waiting for the slot
+being asked for, and the cancel loop would have depended on `_waiting.clear()` happening two
+statements earlier to stay correct.
+
+**`T078-R2` — lowering was written down and not enforced.** Two mutations survived the committed
+suite from opposite ends, and neither existing test could have seen either:
+
+| Mutation | Was | Now killed by |
+|---|---|---|
+| Composition applies increases, only *saves* decreases | **survived all 14** composition tests | the new control test — the only one that lowers |
+| Scheduler fills slots while live count is *above* the limit | **survived all 7** pool tests | the new pool test — the only one with a job waiting while lowering |
+
+The reason both survived is the same reason twice: `..._drains_rather_than_killing` lowers with
+**nothing waiting**, so it can only prove "does not kill", and the real-control test only moves
+3 → 5, so nothing ever exercised the downward direction. An enforced limit and a recorded one are
+identical under both.
+
+Each new test lowers a **saturated** pool with a fourth job accepted behind it and asserts three
+separable things: the running work survives, the waiting work stays waiting while the pool is over
+the new limit, and it starts once the pool drains under it. The narrow over-limit mutation — normal
+at or below the limit, wrong only above it — kills both new tests and leaves all nine other pool
+tests green, which is the measurement that no prior test covered this.
+
+**Also corrected:** `..._starts_waiting_jobs_without_waiting_for_a_tick` asserted
+`len(active_job_ids()) == 1` with two jobs waiting. That assertion encoded `T078-R1`'s defect, so
+it now reads on `_occupant_ids()` — the limit governs occupancy, and the waiting pair is held.
+
+---
 
 ### T-089 — Gate the MP3 bitrate control's complete UI contract
 
