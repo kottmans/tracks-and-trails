@@ -29,10 +29,10 @@ summarises; this one is transcribed from the actual `## ` sections so it starts 
   `T-095`, `T-096`, `T-097`, `T-098`, and `T-078`'s settings foundation.
 - **All three Phase 2 planning gates are clear.** `P2PLAN-R2` at `f858da9`; `P2PLAN-R1` and
   `P2PLAN-R3` at `8306378`. `ARC-007` decides the settings surface, `UX-001` the pause semantics.
-- **Two open questions, neither mine to answer:** `P2PLAN-R8` — who owns the history view, which
-  blocks `T-086` readiness; and whether a corrupt `settings.toml` should report rather than fall
-  back silently. *(A third, the concurrency **maximum**, was decided 2026-07-30 — `ARC-007` amended,
-  `CONCURRENCY_MAXIMUM = 16`.)*
+- **One open question, not mine to answer:** whether a corrupt `settings.toml` should report rather
+  than fall back silently. *(Two others were decided 2026-07-30: the concurrency **maximum** —
+  `ARC-007` amended, `CONCURRENCY_MAXIMUM = 16` — and **`P2PLAN-R8`**, the history view's owner,
+  which is now **`T-100`** in Phase 2. `T-086` depends on it and is unblocked once it lands.)*
 - **`T-080` needs two calls before it starts:** the unreachable `PAUSED` edges, and `P2PLAN-R7`'s
   manual-retry ordering — new scope that arrived dressed as reconciliation.
 - **Carried, blocking nothing:** `T-099` (`T097-R2` — the boundary analyser reports a settings
@@ -243,6 +243,70 @@ while each said Ready: the exact status-versus-section class `COORD-R5` through 
 reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
 and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
 being necessary.)*
+
+### T-100 — The history view: what was obtained, after the queue has forgotten it
+
+**Status:** Ready — nothing blocks it; `T-085` wrote the table it reads
+**Owner:** Implementer
+**Priority:** Medium — `REQ-021` is a Phase 2 deliverable and cannot be met without it
+**Phase:** Phase 2
+**Depends on:** `T-085` (approved). Independent of `T-078` and the queue view
+**Relevant context:** `P2PLAN-R8` (why this exists), `REQ-020`, `REQ-021`, `UX-001`, `T-050`,
+`T-085`, `T-086`, `persistence/repositories.py` (`HistoryRepository`)
+**Affected surfaces:** `ui/`, `app.py`, `ai/IMPLEMENTATION_PLAN.md`
+**Risk:** Low — read-only over a table that already exists and is already gated
+
+#### Scope
+
+**`P2PLAN-R8`: the history view had no owner in any phase.** Phase 2's deliverables named
+persistence and records; Phase 3 is format and content depth; Phase 4 is settings and polish. None
+of them mentioned it, and `T-050` pointed at a "Phase 3" deliverable that has never existed.
+
+**The reframe that settles where it belongs.** `REQ-020` — *"Maintain a history of completed
+downloads with source URL, title, resolved output path, format used, size, and completion time"* —
+is a **data** requirement, and `T-050` and `T-085` satisfied it. The view is presupposed by
+**`REQ-021`**: *"Open a completed file, or reveal it in the system file manager, from the **history
+and queue views**."* `REQ-021` is a Phase 2 deliverable, so the view it names is Phase 2 work.
+
+**And Phase 2's own features combine into a hole without it.** `UX-001` says remove never deletes a
+file. `T-081` delivers clear-completed. Together, in a Phase 2 with no history view: the user clears
+completed jobs, every file is still on disk, and **the application can no longer say where any of it
+went.** That is not a polish gap; it is this phase's own combination of features losing information
+the user needs.
+
+So: a read-only table over `HistoryRepository.all_entries()`. `T-086` then adds open and reveal to
+it, which is what makes its "history half" dependency real rather than dangling.
+
+#### Acceptance criteria
+
+- **Every field `REQ-020` names is on screen**: source URL, title, resolved output path, format
+  used, size, completion time. Asserted against a row whose fields are all populated, so a column
+  that is never rendered fails rather than being invisible behind a `None`
+- **A completed download appears after its job row is gone.** That is the whole point of the view —
+  drive `T-081`'s clear-completed if it exists by then, or delete the job row directly if it does
+  not, and assert the entry is still listed. `history` carries no foreign key to `jobs`
+  (`T-085` gates that structurally); this asserts the user-visible consequence
+- **Newest first, asserted** — `all_entries()` already orders by `completed_at DESC, id`, and a view
+  that re-sorted or relied on insertion order would disagree with it silently
+- **An empty history says so** rather than presenting a blank table. A user who has downloaded
+  nothing and a view that failed to load look identical otherwise
+- **A null field renders as absence, not as `"None"`.** `title`, `output_path`, `format_used` and
+  `bytes_total` are all nullable by design (`T-085`), and `str(None)` reaching a cell is the defect
+  class `_str_or_none` exists to prevent one layer down
+- Object names and accessible names on the table and its columns (`NFR-005`), following
+  `ui/job_detail.py`'s existing pattern
+- Mutation-checked: removing a column from the view, and reversing the order, each fail
+
+#### Out of scope
+
+- **Open and reveal** — `REQ-021`, and `T-086`'s job. This view is what it acts on
+- Search, sorting by column, filtering, export — `T-085` put these out of scope and nothing has
+  asked for them since
+- Pruning, retention, or any deletion. Nothing in this view removes a record; `REQ-020` is a record
+  of what was obtained
+- Re-downloading from history, and duplicate detection (`REQ-022`, Phase 3)
+
+---
 
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
@@ -902,7 +966,8 @@ gate this task's correctness rests on.
 **Owner:** Implementer
 **Priority:** Low
 **Phase:** Phase 2
-**Depends on:** `T-085` for the history half; the queue half needs only `T-079`
+**Depends on:** **`T-100`** for the history half — the view this acts on, which `P2PLAN-R8`
+found had no owner; `T-085` for the records beneath it. The queue half needs only `T-079`
 **Relevant context:** `REQ-021`, `T-034`, `SEC-001`, `OPS-004`
 **Affected surfaces:** `ui/`, a small platform seam
 **Risk:** Medium despite being small — it hands a path to the operating system
@@ -2747,7 +2812,8 @@ gained `record_history`, and `_Worker._perform` now takes the connection rather 
 
 #### Out of scope
 
-- Any history UI — Phase 3 (`REQ-020`'s view)
+- Any history UI — **`T-100`**, Phase 2. *(This read "Phase 3 (`REQ-020`'s view)", which
+  named a deliverable that has never existed in any phase — `P2PLAN-R8`.)*
 - Pruning, retention, or export
 - Backfilling history for downloads completed before this landed. The rows were never written and
   nothing can reconstruct them

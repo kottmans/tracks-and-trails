@@ -193,7 +193,11 @@ them, which is the argument for having built it.)*
 - Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`)
 - Bounded retry with backoff for `NETWORK` failures only (`REQ-018`)
 - History persistence and completed-download records (`REQ-020`)
-- Open file / reveal in file manager (`REQ-021`)
+- History view over those records (`T-100`). *(Added 2026-07-30 after `P2PLAN-R8`: this list
+  named the records and not the view, Phase 3 and 4 named neither, and `REQ-021` below
+  presupposes one. Phase 2's own clear-completed plus `UX-001`'s remove-never-deletes leave
+  the user unable to find their files without it.)*
+- Open file / reveal in file manager (`REQ-021`), from both views
 - Per-job log capture and log view (`REQ-019`)
 - Single-instance guard (`A-004`)
 
