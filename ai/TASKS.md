@@ -726,6 +726,173 @@ double-clicks a second time today gets a message box naming the running instance
 
 ---
 
+### T-103 — Cancelling a waiting job leaves its id on the pool's waiting list
+
+**Status:** **In Review — complete 2026-08-01.** Found by `T-081` on 2026-07-31 and filed rather
+than fixed inline (`AGENTS.md` §7); taken now on the maintainer's explicit instruction, knowing it
+edits `cancel()` inside a diff already with the reviewer. **`T-081`'s sweep is removed**, per this
+task's own fourth criterion. Three mutations run; all three killed.
+*(This read "Proposed — found by `T-081` on 2026-07-31 …".)*
+**Owner:** Implementer
+**Priority:** Low — no observed user-visible failure. It is filed because the *reason* it is
+harmless changed, not because it started misbehaving
+**Phase:** Phase 2
+**Depends on:** nothing. `T-078` created the waiting list; `T-080` and `T-081` both walk past this
+**Relevant context:** `downloader/manager.py` — `cancel`, `_discard_waiting`, `_fill_free_slots`,
+`_start_or_report`; `T-078`; `T036-R1`
+**Affected surfaces:** `downloader/manager.py`
+**Risk:** Low
+
+#### Scope
+
+`cancel(job_id)` on a job that is **waiting for a slot** — not running, not reserved — writes
+`CANCELLED` and returns. It never calls `_discard_waiting`, so the id stays on `_waiting`. When a
+slot opens, `_fill_free_slots` picks it, `_start_or_report` calls `start()`, and `start()` refuses
+it because a `CANCELLED` job is not startable. The refusal is reported through `start_rejected` and
+nothing breaks.
+
+**What changed is why that is safe.** It was safe because the row still existed, so the refusal was
+an ordinary "this job is cancelled". `T-081`'s clear-completed deletes cancelled rows, and the same
+path then reaches `_require` with an id that no longer resolves. `T-081` sweeps ids whose rows have
+gone, immediately after clearing, which closes the case it opened. It does not close the general
+one: a cancelled job still occupies a place in the waiting list until something happens to notice.
+
+**The general fix is one line in `cancel`,** and it is not taken here because `cancel` is covered by
+`REQ-015`'s budget tests and `T-080` is in review against its current shape. Changing it now would
+put an unreviewed edit under a task already handed to a reviewer.
+
+#### Acceptance criteria
+
+- Cancelling a waiting job drops it from `_waiting` **at the cancel**, asserted on the list rather
+  than inferred from nothing starting
+- `start_rejected` is no longer emitted for a job the user cancelled while it waited — asserted,
+  since the current behaviour emits it and a fix that merely stopped the start would leave the
+  signal
+- `is_idle` becomes true without waiting for a slot to open, for a queue whose only waiting job was
+  cancelled. This is the observable cost today: shutdown and the idle signal both count a job that
+  will never start
+- `T-081`'s sweep is re-examined once this lands — if `cancel` drops the id, the sweep may be
+  redundant, and a guard kept after its reason has gone is what `ai/TESTING.md` §13 is about
+
+#### Out of scope
+
+- The reservation path, which `T016-R1` already handles by withdrawal
+
+#### What was built, 2026-08-01
+
+**One line in `cancel()`, and one deletion in `clear_completed()`.** `cancel` now calls
+`_discard_waiting(job_id)`; `_settle_clear`'s sweep is gone.
+
+**The sweep had to go, and this task said so in advance.** Its fourth criterion: *"if `cancel`
+drops the id, the sweep may be redundant, and a guard kept after its reason has gone is what
+`ai/TESTING.md` §13 is about."* It is redundant — `remove()` and `clear_completed()` are the only
+paths that delete a waiting job's row, and both now drop the id from the list first, so nothing
+could reach the sweep.
+
+**`T-081`'s inverted test did its job.** It asserted the stale premise deliberately, with a message
+saying so, and failed the moment this landed:
+
+> `cancel now drops a waiting job, so this test's premise is stale — T-103 landed, and the sweep
+> below may be redundant (T-103's fourth criterion)`
+
+It is replaced by three tests of the new single mechanism rather than deleted quietly.
+
+**A mutation found a second gap and then disproved my fix for it.** Removing `_retry_at.pop` from
+`cancel()` survived the first battery, so I wrote a test for cancelling a job awaiting an automatic
+retry — and it raised `IllegalTransitionError`. **A job awaiting a retry is `FAILED`, and `FAILED`
+allows only `QUEUED`** (`T010-R3`: cancelling stops in-flight work, and a failed job has none). So
+that pop could never have run: the mutation survived because the line was unreachable, not because
+the test was weak. It is removed, with the reasoning in place, and the reachable path — `remove()`
+on a job awaiting a retry — is what the test now drives.
+
+| Mutation | Killed by |
+|---|---|
+| `cancel` stops dropping a waiting job | all three of the new tests |
+| `remove` stops dropping a pending automatic retry | the awaiting-retry test |
+| `remove` stops dropping a waiting job | `T-080`'s removed-waiting-job test |
+
+#### Not covered, stated rather than implied
+
+- **Windows.** Platform-neutral; no CI job has executed a step since 2026-07-30.
+- **Whether `FAILED → CANCELLED` should be legal.** `T010-R3` decided it should not and this task
+  did not reopen it, but "cancel a job that is waiting out its retry backoff" is a thing a user may
+  reasonably expect to work, and today the answer is Remove. Worth a decision if it comes up.
+
+---
+
+### T-099 — Make the manager-boundary gate say which boundary failed
+
+**Status:** **In Review — complete 2026-08-01.** Each prohibition is now keyed to the decision
+behind it, and a failure reports one line per rule actually broken. A fourth test asserts every
+live prohibition has an explanation, so a rule added without one reads as unexplained rather than
+silently inheriting the first one listed.
+*(This read "Proposed".)*
+**Owner:** Implementer
+**Priority:** Low — enforcement is correct; the failure points at the wrong rule
+**Phase:** Phase 2 test infrastructure; blocks nothing
+**Depends on:** none
+**Relevant context:** `T097-R2`, `T-097`, `ARC-007`, `T-013`
+**Affected surfaces:** `tests/unit/test_manager_boundaries.py`
+**Risk:** Low — a future settings violation is caught, but its diagnostic sends the maintainer to
+the repository-injection rule instead of ARC-007
+
+#### Scope
+
+`T097-R1` split the manager-only settings prohibition from the persistence/sqlite rules shared by
+manager and result pump. The real-source assertion still combines their offenders under
+`test_the_manager_never_imports_persistence` and always explains repository injection. A real
+`core.settings` import therefore fails the correct gate with the wrong reason.
+
+Keep one read of each real module and the current per-module rule table, but report which rule was
+violated. Do not broaden ARC-007 back to `result_pump.py`.
+
+#### Acceptance criteria
+
+- A real manager settings import fails with an ARC-007/settings-injection diagnostic
+- A real manager or result-pump persistence/sqlite import fails with the T-013 repository diagnostic
+- Existing relative and absolute forbidden forms remain caught, and result-pump settings imports
+  remain permitted
+
+---
+
+### T-101 — Gate the detail view's retry ETA reset independently
+
+**Status:** **In Review — complete 2026-08-01.** The scenario now proves a non-default ETA was
+drawn before asserting the reset — without which the assertion passes on a label that was never
+written — and asserts `etaValue` separately from `speedValue`. Its own criterion is met: deleting
+only `_eta.setText(UNKNOWN_TEXT)` makes the unmodified test fail, verified.
+*(This read "Proposed".)*
+**Owner:** Implementer
+**Priority:** Low — the production reset is correct; one sibling label is not independently gated
+**Phase:** Phase 2 test infrastructure; blocks nothing
+**Depends on:** none
+**Relevant context:** `T079-R3`, `T079-R1`, `T-079`, `ai/TESTING.md` §13
+**Affected surfaces:** `tests/ui/test_job_detail.py`
+**Risk:** Low — a future one-line regression can leave an obsolete ETA on a re-queued detail view
+
+#### Scope
+
+`T079-R1`'s correction resets both the speed and ETA labels when `FAILED → QUEUED`. The committed
+detail-view regression creates non-default values for both, but asserts only `speedValue`.
+Deleting only `_eta.setText(UNKNOWN_TEXT)` from production therefore left the entire 82-test
+detail-view file green even though the re-queued job still showed the failed attempt's ETA.
+
+Add the independent ETA assertion to the existing scenario. Do not change the already-correct
+production behavior or reopen T-079.
+
+#### Acceptance criteria
+
+- The scenario first proves a non-default ETA was drawn, so the reset assertion cannot pass from
+  the label's initial value
+- After `FAILED → QUEUED`, `etaValue` is asserted as `UNKNOWN_TEXT` independently of `speedValue`
+- Removing only `_eta.setText(UNKNOWN_TEXT)` makes the unmodified test fail
+
+#### Out of scope
+
+- Changing retry behavior or the production reset
+
+---
+
 ### T-046 — Output path collision policy against the filesystem
 
 **Status:** **In Review — complete 2026-07-31.** Reservation is atomic (`O_CREAT | O_EXCL`),
@@ -1575,123 +1742,6 @@ channel and hands over; it does not attempt to become a server.
 
 - Anything that makes the channel decide ownership (`ARC-006` amendment)
 - Multi-user or networked access (`A-004`)
-
----
-
-### T-103 — Cancelling a waiting job leaves its id on the pool's waiting list
-
-**Status:** Proposed — **found by `T-081` on 2026-07-31**, filed rather than fixed inline
-(`AGENTS.md` §7). `T-081` carries a narrow sweep that covers the case it made reachable; this owns
-the general one.
-**Owner:** Implementer
-**Priority:** Low — no observed user-visible failure. It is filed because the *reason* it is
-harmless changed, not because it started misbehaving
-**Phase:** Phase 2
-**Depends on:** nothing. `T-078` created the waiting list; `T-080` and `T-081` both walk past this
-**Relevant context:** `downloader/manager.py` — `cancel`, `_discard_waiting`, `_fill_free_slots`,
-`_start_or_report`; `T-078`; `T036-R1`
-**Affected surfaces:** `downloader/manager.py`
-**Risk:** Low
-
-#### Scope
-
-`cancel(job_id)` on a job that is **waiting for a slot** — not running, not reserved — writes
-`CANCELLED` and returns. It never calls `_discard_waiting`, so the id stays on `_waiting`. When a
-slot opens, `_fill_free_slots` picks it, `_start_or_report` calls `start()`, and `start()` refuses
-it because a `CANCELLED` job is not startable. The refusal is reported through `start_rejected` and
-nothing breaks.
-
-**What changed is why that is safe.** It was safe because the row still existed, so the refusal was
-an ordinary "this job is cancelled". `T-081`'s clear-completed deletes cancelled rows, and the same
-path then reaches `_require` with an id that no longer resolves. `T-081` sweeps ids whose rows have
-gone, immediately after clearing, which closes the case it opened. It does not close the general
-one: a cancelled job still occupies a place in the waiting list until something happens to notice.
-
-**The general fix is one line in `cancel`,** and it is not taken here because `cancel` is covered by
-`REQ-015`'s budget tests and `T-080` is in review against its current shape. Changing it now would
-put an unreviewed edit under a task already handed to a reviewer.
-
-#### Acceptance criteria
-
-- Cancelling a waiting job drops it from `_waiting` **at the cancel**, asserted on the list rather
-  than inferred from nothing starting
-- `start_rejected` is no longer emitted for a job the user cancelled while it waited — asserted,
-  since the current behaviour emits it and a fix that merely stopped the start would leave the
-  signal
-- `is_idle` becomes true without waiting for a slot to open, for a queue whose only waiting job was
-  cancelled. This is the observable cost today: shutdown and the idle signal both count a job that
-  will never start
-- `T-081`'s sweep is re-examined once this lands — if `cancel` drops the id, the sweep may be
-  redundant, and a guard kept after its reason has gone is what `ai/TESTING.md` §13 is about
-
-#### Out of scope
-
-- The reservation path, which `T016-R1` already handles by withdrawal
-
----
-
-### T-099 — Make the manager-boundary gate say which boundary failed
-
-**Status:** Proposed
-**Owner:** Implementer
-**Priority:** Low — enforcement is correct; the failure points at the wrong rule
-**Phase:** Phase 2 test infrastructure; blocks nothing
-**Depends on:** none
-**Relevant context:** `T097-R2`, `T-097`, `ARC-007`, `T-013`
-**Affected surfaces:** `tests/unit/test_manager_boundaries.py`
-**Risk:** Low — a future settings violation is caught, but its diagnostic sends the maintainer to
-the repository-injection rule instead of ARC-007
-
-#### Scope
-
-`T097-R1` split the manager-only settings prohibition from the persistence/sqlite rules shared by
-manager and result pump. The real-source assertion still combines their offenders under
-`test_the_manager_never_imports_persistence` and always explains repository injection. A real
-`core.settings` import therefore fails the correct gate with the wrong reason.
-
-Keep one read of each real module and the current per-module rule table, but report which rule was
-violated. Do not broaden ARC-007 back to `result_pump.py`.
-
-#### Acceptance criteria
-
-- A real manager settings import fails with an ARC-007/settings-injection diagnostic
-- A real manager or result-pump persistence/sqlite import fails with the T-013 repository diagnostic
-- Existing relative and absolute forbidden forms remain caught, and result-pump settings imports
-  remain permitted
-
----
-
-### T-101 — Gate the detail view's retry ETA reset independently
-
-**Status:** Proposed
-**Owner:** Implementer
-**Priority:** Low — the production reset is correct; one sibling label is not independently gated
-**Phase:** Phase 2 test infrastructure; blocks nothing
-**Depends on:** none
-**Relevant context:** `T079-R3`, `T079-R1`, `T-079`, `ai/TESTING.md` §13
-**Affected surfaces:** `tests/ui/test_job_detail.py`
-**Risk:** Low — a future one-line regression can leave an obsolete ETA on a re-queued detail view
-
-#### Scope
-
-`T079-R1`'s correction resets both the speed and ETA labels when `FAILED → QUEUED`. The committed
-detail-view regression creates non-default values for both, but asserts only `speedValue`.
-Deleting only `_eta.setText(UNKNOWN_TEXT)` from production therefore left the entire 82-test
-detail-view file green even though the re-queued job still showed the failed attempt's ETA.
-
-Add the independent ETA assertion to the existing scenario. Do not change the already-correct
-production behavior or reopen T-079.
-
-#### Acceptance criteria
-
-- The scenario first proves a non-default ETA was drawn, so the reset assertion cannot pass from
-  the label's initial value
-- After `FAILED → QUEUED`, `etaValue` is asserted as `UNKNOWN_TEXT` independently of `speedValue`
-- Removing only `_eta.setText(UNKNOWN_TEXT)` makes the unmodified test fail
-
-#### Out of scope
-
-- Changing retry behavior or the production reset
 
 ---
 

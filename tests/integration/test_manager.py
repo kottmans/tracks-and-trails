@@ -5045,15 +5045,88 @@ def test_clearing_finished_jobs_announces_and_keeps_the_unfinished(
         assert spin(lambda: download.is_idle, timeout=60)
 
 
-def test_clearing_sweeps_a_cancelled_job_off_the_waiting_list(
+def test_cancelling_a_waiting_job_drops_it_from_the_waiting_list(
     tmp_path: Path, spin: Callable[..., bool]
 ) -> None:
-    """`T-081` closes the case it opens; `T-103` owns the general one.
+    """`T-103`: cancelling a job that is only *waiting* stops it waiting, at the cancel.
 
-    **The setup is the current behaviour of `cancel`, asserted rather than assumed.** Cancelling a
-    job that is merely waiting for a slot writes `CANCELLED` and leaves its id on `_waiting` —
-    nothing removes it. That was harmless while the row existed, because the pool's later `start()`
-    simply refused. Once clearing deletes the row, the same path reaches a job that is not there.
+    This used to be left behind. The id stayed on `_waiting`, the next free slot picked it, and
+    `start()` refused it because a `CANCELLED` job is not startable — one swallowed refusal, and
+    harmless while the row existed. `T-081`'s clear-finished deletes that row, at which point the
+    same path reaches `_require` with an id that resolves to nothing.
+
+    *(`T-081` carried a sweep in `_settle_clear` for the narrow case it made reachable, and a test
+    here asserting the stale premise so it would fail loudly when this landed. It did. The sweep is
+    removed with this change: every path that can delete a waiting job's row now drops it from the
+    list first, so the sweep could not fire and a guard nothing can reach is `ai/TESTING.md` §13's
+    shape.)*
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    rejections: list[tuple[str, str]] = []
+    download.start_rejected.connect(lambda job_id, reason: rejections.append((job_id, reason)))
+    try:
+        download.start("job-1")
+        download._start_when_free("job-2")
+        assert download._waiting == ["job-2"]
+
+        download.cancel("job-2")
+
+        assert download._waiting == [], (
+            "a cancelled job is still queued for a slot it can never use"
+        )
+
+        # And the pool does not later try to start it, which is what produced the swallowed
+        # refusal — asserted on the signal rather than on the absence of a session, because a
+        # refused start leaves no session either way.
+        download.set_concurrency(2)
+        spin(lambda: False, timeout=0.5)
+        assert not [job_id for job_id, _ in rejections if job_id == "job-2"], (
+            f"the pool tried to start a cancelled job: {rejections}"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_queue_whose_only_waiting_job_was_cancelled_goes_idle(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-103`'s observable cost: `is_idle` counts waiting jobs (`T036-R1`, `T-078`).
+
+    A cancelled job left on the list held the shutdown door open until a slot happened to free —
+    the manager reported work it would never do. Nothing here is running, so idle must be immediate
+    rather than eventual.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.pause()
+        download._start_when_free("job-1")
+        assert not download.is_idle, "a job waiting for a slot is work this manager has accepted"
+
+        download.cancel("job-1")
+
+        assert download.is_idle, (
+            "the manager still reports work in hand after its only waiting job was cancelled"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_clearing_after_a_cancel_leaves_nothing_looking_up_a_missing_row(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """The end-to-end property `T-081`'s sweep used to hold, now held by `cancel` alone.
+
+    Kept as a test of the *property* rather than of the removed mechanism: clearing finished jobs
+    after cancelling a waiting one must leave nothing queued to start, and must not have the pool
+    reach for a row that has been deleted.
     """
     repository = FakeRepository()
     queued(repository, "job-1", "job-2", directory=tmp_path)
@@ -5062,26 +5135,17 @@ def test_clearing_sweeps_a_cancelled_job_off_the_waiting_list(
     try:
         download.start("job-1")
         download._start_when_free("job-2")
-        assert download._waiting == ["job-2"]
-
         download.cancel("job-2")
-        assert download._waiting == ["job-2"], (
-            "cancel now drops a waiting job, so this test's premise is stale — T-103 landed, and "
-            "the sweep below may be redundant (T-103's fourth criterion)"
-        )
-
         download.clear_completed()
 
-        assert download._waiting == [], (
-            "a cancelled job whose row has been cleared is still queued to start; the next free "
-            "slot would look up a job that no longer exists"
-        )
+        assert repository.get("job-2") is None, "the cancelled job's row was not cleared"
+        assert download._waiting == []
+        download.set_concurrency(2)
+        spin(lambda: False, timeout=0.5)
+        assert "job-2" not in download.active_job_ids()
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)
-
-
-# --- T081-R1: an in-flight reorder is an admission barrier ---------------------------------
 
 
 class ReorderHoldingRepository(FakeRepository):
@@ -5220,6 +5284,45 @@ def test_two_reorders_in_flight_hold_the_barrier_until_both_settle(
 
         repository.release_reorders()
         assert download._occupant_ids(), "the barrier never lifted once both reorders settled"
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_removing_a_job_awaiting_an_automatic_retry_drops_the_retry(
+    tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T-103`, the half the waiting list does not cover: `_retry_at` is a second list of intent.
+
+    A `NETWORK` failure schedules an automatic retry (`UX-002`) and the job sits in `_retry_at`
+    until its backoff expires. `is_idle` counts that list exactly as it counts `_waiting`, so a job
+    the user has taken out of the queue must not go on holding the shutdown door open for work the
+    manager will never do.
+
+    **Remove, not cancel.** A job awaiting a retry is `FAILED`, and `FAILED` allows only `QUEUED`
+    (`T010-R3`: cancelling stops in-flight work, and a failed job has none). Cancelling one raises
+    out of the state machine, which is why `cancel()` carries no `_retry_at` pop — the first
+    version of `T-103` added one and a mutation showed nothing could reach it.
+    """
+    quick_backoff(monkeypatch)
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+    stored = repository.get("job-1")
+    assert stored is not None
+    repository.jobs["job-1"] = stored.with_failure(ErrorKind.NETWORK, "the transfer stalled")
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download._schedule_automatic_retry("job-1", ErrorKind.NETWORK)
+        assert not download.is_idle, "a job waiting out its backoff is work this manager will do"
+
+        download.remove("job-1")
+
+        assert download.is_idle, (
+            "the manager still reports work in hand for a removed job's automatic retry"
+        )
+        spin(lambda: False, timeout=0.5)
+        assert repository.get("job-1") is None, "the removed job came back when its retry fired"
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)

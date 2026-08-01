@@ -726,12 +726,16 @@ class DownloadManager(QObject):
         Completed and cancelled rows go; a failed job stays, because it is still offering a retry.
         `JobRepository.clear_completed` owns that line and this does not restate it.
 
-        **The waiting list is swept afterwards, and the reason is not hypothetical.** `cancel()` on
-        a job that is merely waiting for a slot writes `CANCELLED` and leaves the id on
-        `_waiting` — nothing removes it, because the pool's later refusal was harmless while the
-        row still existed. Once clearing deletes that row, the same path reaches `_require` with
-        nothing to find. Sweeping ids that are no longer stored is the narrow fix; the broader one
-        is `T-103`.
+        **This used to sweep the waiting list afterwards, and no longer does** (`T-103`). The sweep
+        existed because `cancel()` left a cancelled job's id on `_waiting`: harmless while the row
+        was there — the pool's later `start()` simply refused — and not harmless once clearing
+        deleted it, at which point the same path reached `_require` with nothing to find.
+
+        `T-103` fixed that at the cause: `cancel()` now discards the id when the job is cancelled.
+        Every path that can delete a waiting job's row — `remove()` and this one — drops it from
+        the list first, so a sweep here could no longer fire. Keeping it would be a guard whose
+        reason has gone and which no test can distinguish from working, which is
+        `ai/TESTING.md` §13's shape.
         """
         self._repository.clear_completed(self._settle_clear)
 
@@ -742,12 +746,6 @@ class DownloadManager(QObject):
             )
             self.persistence_failed.emit("", error)
             return
-        # Read back rather than trusting a list built before the write: what was terminal when the
-        # user pressed the button is not necessarily what was terminal when the transaction ran.
-        gone = [job_id for job_id in self._waiting if self._repository.get(job_id) is None]
-        for job_id in gone:
-            self._discard_waiting(job_id)
-            self._retry_at.pop(job_id, None)
         self.queue_cleared.emit()
 
     def _delete_row(self, job_id: str) -> None:
@@ -1198,6 +1196,23 @@ class DownloadManager(QObject):
         if reservation is not None and not reservation.withdrawn:
             reservation.withdrawn = True
             reservation.reason = "the job was cancelled before its worker could be started"
+
+        # **A cancelled job stops waiting for a slot** (`T-103`). This used to be left behind: the
+        # id stayed on `_waiting`, the next free slot picked it, and `start()` refused it because a
+        # `CANCELLED` job is not startable. Harmless while the row existed — one swallowed refusal
+        # — and no longer harmless once `T-081`'s clear-finished deletes that row, at which point
+        # the same path reaches `_require` with an id that resolves to nothing.
+        #
+        # It also costs correctness in its own right: `is_idle` counts waiting jobs, so a queue
+        # whose only waiting job had been cancelled held the shutdown door open until a slot
+        # happened to free.
+        self._discard_waiting(job_id)
+        # **No `_retry_at` pop here, and that is deliberate.** A job awaiting an automatic retry is
+        # `FAILED`, and `FAILED` allows only `QUEUED` — so cancelling one raises out of the state
+        # machine and this line could never run. `T010-R3` settled that on purpose: cancelling stops
+        # in-flight work and a failed job has none; **removing** it is the action that applies, and
+        # `remove()` does drop the pending retry. A pop here was in the first version of `T-103` and
+        # came out when a mutation showed nothing could reach it (`ai/TESTING.md` §13).
 
         session = self._sessions.get(job_id)
         if session is None:
