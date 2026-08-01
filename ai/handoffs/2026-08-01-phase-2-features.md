@@ -3,7 +3,7 @@
 You are the Reviewer (`AGENTS.md` §3). This is my own work; none of it is signed off.
 
 **Repository:** `/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails`, branch `main`
-**Review boundary:** `eb6f690..57518ce`
+**Review boundary:** `eb6f690..ff16034`
 **Awaiting a verdict:** `T-100`, `T-086`, `T-084`, `T-082`, `T-088`. Nothing else is in review.
 
 | Commit | Task |
@@ -13,8 +13,8 @@ You are the Reviewer (`AGENTS.md` §3). This is my own work; none of it is signe
 | `d86240c` | `T-084` — capture yt-dlp's diagnostics, and show them |
 | `b1b7cd6` | `T-082` — offer to restart what a crash interrupted |
 | `de7d13b` | `T-088` — prove the phase |
-| `5ea6656` | the Windows test corrections (§ *CI caught 38 Windows failures*) |
-| `2e3d926`, `57518ce` | coordination only |
+| `5ea6656`, `ff16034` | the Windows test corrections (§ *CI caught 38 Windows failures*) |
+| `2e3d926`, `57518ce`, `7ffca9b` | coordination only |
 
 With these, **every Phase 2 deliverable is written.** `T-088` — the phase's proof — is included, and
 **it found a High defect that no feature task would have surfaced.** Read §0 first.
@@ -26,10 +26,14 @@ With these, **every Phase 2 deliverable is written.** `T-088` — the phase's pr
 ## Evidence
 
 `ruff`, `ruff format`, and **all four** `mypy` gates (`src` and full tree, both platforms) clean.
-**`ubuntu-latest` is green at `57518ce`** — the first full-suite CI pass that includes `T-088`.
-`windows-latest` was still running when this was written; **check it before signing anything off**,
-because the section below is about exactly that gate being the one I failed to consult. **Forty-seven mutations across the four new tasks;
-all forty-seven killed**, every source file verified byte-identical afterwards.
+**CI history, because it took three runs to get a clean read.** `ubuntu-latest` has been green
+since `57518ce` — the first full-suite pass including `T-088`. `windows-latest` took longer: two
+runs were **cancelled by my own pushes** (see the section immediately below), and the first one that
+completed, `30713509567`, failed on **a single test** — down from 38. That last one is corrected at
+`ff16034`. **Read the newest run rather than any of the cancelled ones.**
+
+**Forty-seven mutations across the four new tasks; all forty-seven killed**, every source file
+verified byte-identical afterwards.
 
 Windows carries no new surface here — none of these touch the platform seam except `T-086`, whose
 Windows argv is asserted **from Linux** by design (§3).
@@ -106,12 +110,11 @@ So redaction now asks **who wrote the line**: exact registered secrets are remov
 and the pattern rules apply only to lines this application wrote. Both directions hold **on the same
 string**, in one file, which no shape-based rule could produce.
 
-**The part I did not decide.** `DAT-003` says it reopens for *"a bug report attaching it"* — and this
-task ships a Copy-diagnostics button whose entire purpose is that. I implemented `DAT-003` as
-written and made the copied text the file verbatim. I did **not** invent a second, more-scrubbed
-rendering for the clipboard, because that would be writing a specification rather than implementing
-one, and `NFR-006` argues against it. The trigger condition is met in fact. **A maintainer ruling is
-owed**; the seam is one call — `redact(text, third_party=...)` — and the view is its only caller.
+**This is superseded — read `T084-R1` in the correction record.** The reading above was wrong: the
+amendment's provenance table governs the *database*, and the section beneath it says log emission is
+origin-agnostic. Implementing it my way was a **Critical** regression, because the exact-value tier
+it relied on is empty in production. `DAT-004` is withdrawn, redaction is origin-agnostic again, and
+the maintainer has ruled that `DAT-003` wins with `T-084`'s contradictory criterion amended.
 
 ### 3. `T-086`: the platform is a parameter, so Windows is asserted from Linux
 

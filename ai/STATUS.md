@@ -21,10 +21,62 @@ Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLA
 
 - **Approved:** `T-078`, `T-079`, `T-080`, `T-081`, `T-046`, `T-083`, `T-085`, `T-087`, `T-102`,
   plus the supporting `T-053`, `T-099`, `T-101`, `T-103`.
-- **In review, all four delivered 2026-08-01:** `T-100` (history view), `T-086` (open and reveal),
-  `T-084` (per-job diagnostics and the log view), `T-082` (interrupted jobs offered for retry).
+- **Approved 2026-08-01 by review:** `T-100` (history view) and `T-082` (interrupted jobs offered
+  for retry), without follow-up.
+- **Changes requested, corrected the same day, awaiting re-review:** `T-084`, `T-086`, `T-088`.
 - **`T-088` is written**, and it found the defect below.
 - **Blocked on `STARBASE`, which is offline:** `T-092` and `T-074`. Neither gates the phase.
+
+## **The review found a Critical in `T-084`, and it was a decision I misread**
+
+`T084-R1`. I made log redaction provenance-aware on the reading that `DAT-003`'s `T-049` amendment
+moved the boundary to *who put the value there*. **It does — about the database.** The section
+directly beneath that table is headed *"`T-038` is unchanged and origin-agnostic"* and says every
+log this application emits is redacted whatever the provenance of the text inside it, because
+storage and emission are different sinks. I read the table and not the section under it, then wrote
+`DAT-004` arguing for the change — a `Proposed` entry cannot supersede an `Accepted` one, and
+proposing it from inside a task was not a route I should have taken. `DAT-004` is **withdrawn**.
+
+**Why it was Critical rather than merely wrong:** the scheme had two tiers, and the first —
+exact `remember_a_secret()` values — is **empty in the running application**, because no production
+caller registers anything. So "provenance-aware" collapsed to *no redaction at all* for every line
+yt-dlp emits, and a diagnostic echoing the source URL wrote its userinfo password and signed query
+to the job log verbatim — onto the surface `T-084` had just given a Copy button.
+
+**Ruled 2026-08-01: `DAT-003` wins.** `T-084`'s criterion asking that a yt-dlp-emitted cookie path
+survive character for character could not hold alongside the accepted decision, so **the criterion
+was amended** — a criterion that contradicts an accepted decision is the thing that is wrong. The
+cost is recorded: a user will not see a cookie path yt-dlp named in a job log. `NFR-006`'s promise
+is kept at the other sink, where `DAT-003` puts it — the database stores the extractor's message
+verbatim — and the amended criterion asserts the two sinks against each other on one value.
+
+**Four other findings, all corrected:** `T084-R2` (Copy took the capped rendering, not the file),
+`T086-R1` (Windows Open ran `explorer`, which is the file manager, not the associated-application
+route Windows documents — an argv test can never catch that), and `T088-R1`/`R2`/`R3` (the `T-115`
+case was an unconditional xfail that could never detect its own repair; two tests claimed to observe
+progress and a restart that they did not). Eleven mutations across the corrections, all killed.
+
+## **The correction for `T088-R3` did not compile, and chasing that found worse**
+
+The reviewer caught it: the restart helper's embedded settings string had unescaped newlines, so the
+child died with a `SyntaxError` before `compose()` ran. **I had not re-run the phase tests after
+writing it** — the last run predated the change.
+
+Checking the sibling launcher for the same mistake found the more serious one. It wrote a literal
+backslash-n into `settings.toml`, which is invalid TOML, so `compose()` fell back to defaults —
+and the default concurrency is **3**, the very number the test thought it had configured. **The
+"concurrency limit respected exactly" test had never tested a configured limit.** It now configures
+`2`, which the default cannot produce.
+
+Both are the same class as the 38 Windows failures: a test that passes for a reason other than the
+one it names. `ai/TESTING.md` §13 exists for this and I keep re-finding it from the inside.
+
+## **A fifth boundary lapse: `git add -A tests/` swept in the reviewer's regressions**
+
+`ff16034` committed the two intentionally-failing reviewer regressions along with my own fix. They
+were meant to fail until the implementation caught up, and committing them made the tree red for a
+reason the commit message did not mention. **Five times this session** a commit has carried
+something outside its own boundary, and the cause has been the same each time.
 
 ## **CI caught 38 Windows failures I pushed unrun — all in my own new tests**
 
@@ -104,12 +156,11 @@ existed and held this application's own lines only. Two measured findings came o
 either), and **`verbose` must stay off** because it dumps `params:` and `Proxy map:` — values this
 application supplies, which `DAT-003`'s provenance table says must never reach a log.
 
-**`DAT-004` is proposed and needs a maintainer ruling.** Log redaction is now provenance-aware, as
-`DAT-003`'s `T-049` amendment requires. Separately, `DAT-003` says it **reopens** for *"a bug report
-attaching it"* — and `T-084` ships a Copy-diagnostics button whose whole purpose is that. The
-implementation follows `DAT-003` as written and the copied text is the file verbatim; **whether the
-clipboard path should differ from the file is not mine to decide** and is flagged rather than
-quietly settled.
+**`DAT-004` is withdrawn** (`T084-R1`). It argued that log redaction should follow the provenance
+table in `DAT-003`'s `T-049` amendment; that table governs the **database**, and the section beneath
+it says emission is origin-agnostic. `DAT-003`'s reopening clause named *"a bug report attaching
+it"* as a trigger, and `T-084` ships exactly that button — **the 2026-08-01 ruling settles it**:
+emission stays origin-agnostic, so the Copy surface carries nothing the log did not already redact.
 
 **`A-004` is verified and Phase 2 exit criterion 4 is met.** `T-087`'s three required Windows cases
 — first acquisition and refusal, **two launches racing**, killed-holder recovery — passed on

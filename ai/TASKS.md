@@ -205,7 +205,9 @@ asserts the user-visible consequence.
 
 ### T-086 — Open a completed file, or reveal it in the file manager
 
-**Status:** **In Review — complete 2026-08-01.** Sixteen mutations run; all sixteen killed. Two
+**Status:** **In Review — corrected 2026-08-01 after `T086-R1` (High).** Windows Open no longer
+runs the file manager; it takes the associated-application route the platform documents.
+*(This read "In Review — complete 2026-08-01. Sixteen mutations run; all sixteen killed.")* Two
 survived the first pass: one was a defective mutation, and one was a **real gap** — nothing asserted
 that Show-in-folder built the *reveal* argv rather than the open one, so both actions wired to
 `open_file` passed every test in the file. `test_reveal_asks_the_file_manager_to_show_the_file_...`
@@ -250,6 +252,27 @@ argument boundary.
 
 ---
 
+#### `T086-R1` (High) — Open ran the file manager and a comment claimed otherwise
+
+`open_command(path, "win32")` returned `explorer <path>`, with a comment asserting that this opens
+the file with its associated application. **`explorer` is the file-manager process.** Windows'
+documented associated-application operations are `ShellExecuteW`'s `open` verb and `os.startfile`,
+which wraps it — so the likely real behaviour was navigating Explorer rather than launching a media
+player.
+
+**An argv assertion could never have caught this.** It proves a list was built, not what the
+operating system does with it, and the list was built correctly for the wrong command. That is the
+shape of the finding worth remembering: the Windows job was green.
+
+Open and Reveal now have separate seams — `os.startfile` on Windows and `xdg-open` on Linux for
+Open; `explorer /select,` stays on Reveal, where it belongs. `FileActions` carries a `platform`
+parameter so the Windows route is exercised from Linux, and it injects the starter as well as the
+spawner: without that, the Windows CI job would call the real `os.startfile` and launch a media
+player on a build agent.
+
+**Still not established:** that a real Explorer session launches the *right* application. That is
+desktop behaviour and stays with the `STARBASE` slice alongside `T-026` and `T-040`.
+
 #### Delivered
 
 `ui/reveal.py` — Qt-free, so its argv assertions need no `QApplication` — and `ui/file_actions.py`,
@@ -268,7 +291,11 @@ Two decisions worth a reviewer's disagreement:
 
 ### T-084 — Per-job log capture and a log view
 
-**Status:** **In Review — complete 2026-08-01.** Nineteen mutations run; all nineteen killed.
+**Status:** **In Review — corrected 2026-08-01 after `T084-R1` (Critical) and `T084-R2` (High).**
+Fourteen further mutations across the corrections; all fourteen killed. **The contradictory
+acceptance criterion was amended by maintainer ruling on 2026-08-01 — `DAT-003` wins — and every
+criterion is now met.**
+*(This read "In Review — complete 2026-08-01. Nineteen mutations run; all nineteen killed.")*
 Three survived the first pass and **two of the three were my tests' fault, not defective mutations**
 — see *What the mutation battery found* below. `T-053`'s concurrent evidence, which this task's
 last criterion requires before approval, was approved at `05e5312` earlier today.
@@ -293,35 +320,44 @@ a job and kept, not merged into one stream.
 `T-053` already exists to prove isolation once the pool permits two live sessions, and is the
 gate this task's correctness rests on.
 
-#### The verbatim boundary is provenance, and it is already decided
+#### The boundary is two sinks, and it is already decided
 
-This task used to say the text is "verbatim" and, one line above, that redaction must hold —
-which `P2PLAN-R4` read as a contradiction with `REQ-026`. **It is not one, and neither word is
-this task's to choose.** `DAT-003` decided it on 2026-07-26 and `T-049`'s amendment sharpened it
-on 2026-07-30:
+*(Rewritten 2026-08-01 after `T084-R1`. This section previously said "**Text a third party emits**
+is preserved intact … a cookie path yt-dlp itself names inside a diagnostic is accepted rather than
+scrubbed" — describing the **database** rule as though it governed logs. Implementing what it said
+was the Critical. The paragraph that warned against re-deriving the rule instead of reading it was,
+itself, a re-derivation.)*
 
-- **Values this application supplies** — credentials, cookie paths it holds, passes or logs
-  deliberately — are redacted. `DAT-003` states this binds logs *in full*, because logs are
-  written by this application, and says `T-038`'s scope is unchanged by the amendment.
-- **Text a third party emits** is preserved intact. `NFR-006` exists because a paraphrased error
-  destroys the only thing a user can act on, and a cookie path yt-dlp itself names inside a
-  diagnostic is accepted rather than scrubbed.
+`DAT-003` decided this on 2026-07-26 and `T-049`'s amendment sharpened it on 2026-07-30. **The
+amendment has two parts and they govern different sinks:**
 
-Scrubbing third-party prose was tried twice before `DAT-003` and failed both times — three
+- **The database stores verbatim.** A cookie path yt-dlp named inside a diagnostic is accepted
+  there, because `NFR-006` exists — a paraphrased error destroys the only thing a user can act on.
+- **Every log this application *emits* is redacted, origin-agnostically.** That is the amendment's
+  own next section, headed "`T-038` is unchanged and origin-agnostic": storage and emission are
+  different sinks with different rules, and the supplied-value rule binds emission in full.
+
+Scrubbing third-party prose *before storing it* was tried twice and failed both times — three
 credential escapes, and one Critical regression that turned a user's output directory into a
-relative path. **Re-deriving the rule here rather than reading it is how that gets repeated**, so
-the criterion below names the decision instead of restating its conclusion.
+relative path. That is why the **database** keeps it. It is not an argument about the log.
 
 #### Acceptance criteria
 
 - A job's log contains that job's output and no other's, under a saturated pool
 - Redaction holds per job — a cookie or proxy credential must not survive because two sessions
   interleaved
-- **The provenance boundary is asserted in both directions** (`DAT-003`, `REQ-026`): a value this
-  application supplied does not reach the log, and a cookie path yt-dlp emitted inside a
-  diagnostic is still there, character for character. One test each. A gate that only proves the
-  first would pass an implementation that scrubs everything, which is the failure `DAT-003`
-  records twice
+- **The two sinks are asserted separately, and against each other** (`DAT-003`, `REQ-026`).
+  *Amended 2026-08-01 by maintainer ruling on `T084-R1`;* this previously read *"a cookie path
+  yt-dlp emitted inside a diagnostic is still there, character for character"*, which contradicted
+  accepted `DAT-003` — the amendment's own next section says log **emission** is origin-agnostic,
+  whatever the provenance of the text. The ruling is that `DAT-003` wins and the criterion changes:
+  - **Log emission is origin-agnostic:** a value this application supplied and a value yt-dlp
+    emitted are both redacted, and the *same string* down both routes gets the same treatment.
+    An implementation that redacted by provenance produces two different answers there
+  - **Database storage stays verbatim**, which is where `DAT-003` keeps `NFR-006`'s promise and
+    where a retry or a bug report can still find the extractor's exact words (`T-014`)
+  - **One test asserts the difference between the sinks on one value**, so neither rule can drift
+    into the other. Scrubbing everything everywhere fails it, and so does redacting nothing
 - The text is copyable, and verbatim within that boundary (`NFR-006`); a summarised log is not a
   bug report
 - Log growth is bounded, and the bound is stated
@@ -360,24 +396,57 @@ prefixes verbose lines `[debug]`, `YtdlpLog` sends those to `DEBUG`, and the wor
 at `INFO`, so they are dropped for a second unrelated reason. It is asserted on the options dict
 instead — `ai/TESTING.md` §13.)*
 
-#### How the provenance boundary is implemented
+#### `T084-R1` (Critical) — the provenance scheme was wrong and is gone
 
-A record attribute, `THIRD_PARTY_FIELD`, set by a filter on the logger yt-dlp's bridge writes to.
-`RedactingFormatter` reads it: **exact registered secrets are removed from every record**, and the
-*pattern* rules — the ones that guess from shape — are applied only to lines this application wrote.
+`DAT-003`'s `T-049` amendment has a section headed **"`T-038` is unchanged and origin-agnostic"**
+saying every log this application emits is redacted whatever the provenance of the text inside it.
+I read the amendment's provenance *table* — which governs the **database** — and applied it to logs
+without reading the section directly beneath it. `DAT-004` argued for the change and is **withdrawn**:
+a `Proposed` entry cannot supersede an `Accepted` one, and that was not a route I should have taken.
 
-That is what lets both directions of the criterion hold **on the same string**: a cookie path is kept
-in yt-dlp's line and removed from ours, in one file, which no shape-based rule could produce.
+**Why Critical rather than merely wrong:** the scheme kept exact `remember_a_secret()` values for
+third-party records and dropped the pattern rules. **No production caller registers anything**, so
+that tier is empty in the running application and "provenance-aware" collapsed to *no redaction at
+all* for every line yt-dlp emits — a diagnostic echoing the source URL wrote its userinfo password
+and signed query to the job log verbatim, onto the surface this task had just given a Copy button.
 
-#### For the maintainer to rule on — `DAT-003`'s reopening clause
+Redaction is origin-agnostic again and `redact()` has no provenance parameter, so there is nothing
+for a caller to pass.
 
-`DAT-003` says the decision reopens if the diagnostics stop being local and user-owned, and names
-**"a bug report attaching it"** as a trigger. **This task builds the button that does exactly that.**
+#### **The criterion that contradicted the decision — amended, not left unmet**
 
-The boundary is implemented as `DAT-003` specifies and the copied text is the file verbatim. I did
-*not* quietly add a second, more-scrubbed rendering for the clipboard: inventing a specification is
-not mine to do, and NFR-006 argues against it. But the trigger condition is now met in fact, so this
-is flagged rather than left for someone to notice later.
+> *a cookie path yt-dlp emitted inside a diagnostic is still there, character for character*
+
+Accepted `DAT-003` forbids that at this sink, so the criterion and the decision could not both hold.
+**Ruled 2026-08-01: `DAT-003` wins, and the criterion is amended** — a criterion that contradicts an
+accepted decision is the thing that is wrong.
+
+What it cost is recorded rather than absorbed: a user reading a job log will not see which cookie
+database yt-dlp could not open. `NFR-006`'s promise is kept at the **other** sink, where `DAT-003`
+puts it — the database stores the extractor's message verbatim (`T-014`) — and the amended criterion
+asserts the two sinks **against each other on one value**, so neither rule can drift into the other.
+Scrubbing everywhere fails it; redacting nothing fails it too.
+
+#### `T084-R2` (High) — Copy took the rendered tail
+
+`read_job_log` caps the view at 512 KiB so the GUI thread never blocks; `copy_to_clipboard` then
+copied `self.text()`. For a log past the cap the clipboard lost its beginning — the session header
+and the first extractor decisions — and a single very long line could copy nothing but the
+truncation notice, against `REQ-019`'s explicit *"what is copied is the file exactly"*.
+
+Copy now re-reads the artifact through `read_whole_job_log`, and **refuses rather than
+approximating** when that read fails: falling back to the rendered view would put a truncated log
+into a bug report while the label said it had been copied.
+
+#### How redaction is implemented
+
+`RedactingFormatter` applies the same rules to every record: registered literals, then cookie
+material by shape, then every URL rebuilt without its userinfo, query or fragment. **There is no
+provenance flag and no parameter to ask for a laxer rendering.**
+
+`DAT-003`'s reopening clause named *"a bug report attaching it"* as a trigger, and this task ships
+the button that does exactly that. **That is what the 2026-08-01 ruling settled:** emission stays
+origin-agnostic, so the Copy surface carries nothing the log did not already redact.
 
 #### What the mutation battery found
 
@@ -507,6 +576,46 @@ workers the question is whether that holds N times, including for the ones that 
 - Runs on `STARBASE` as well as Linux; a criterion that says "both platforms" is not met by one
 - The evidence table in `ai/IMPLEMENTATION_PLAN.md` §Phase 2 is filled from real runs, and states
   its limits — building Phase 1's table is what exposed two wrong rows (`P1EXIT-R1`, `P1EXIT-R2`)
+
+#### The three findings, and what changed
+
+**`T088-R1` (High) — the `T-115` case could not detect its own repair.** It called `pytest.xfail()`
+unconditionally, with no setup and no assertion, and carried no `strict` marker despite this record
+and the plan both saying it was strict. It would have reported `XFAIL` for ever, so the promised
+gate — *fixing it fails the build until the test is inverted* — could never fire. It is now the
+measured five-job reproduction asserting the **wanted** outcome under `@pytest.mark.xfail(strict=True)`,
+so closing `T-115` turns it into an `XPASS` and reddens the build. The assertion deliberately does
+not name which layer admits durable queued intent; that is the design call.
+
+**`T088-R2` — the progress test observed no progress.** It claimed distinct progress and an
+interactive UI while sampling only status dictionaries and terminal file sizes; a mutation dropping
+every live progress update passed it. Renamed to what it does prove — three **real spawned worker
+processes** each writing their own complete file — and the evidence table now cites
+`test_three_concurrent_downloads_show_independent_progress`,
+`test_three_concurrent_downloads_each_keep_their_own_row` and
+`test_the_interface_stays_inside_its_budget_while_three_downloads_run` for the claims it cannot make.
+
+**A second defect, found by chasing `T088-R3`'s fix.** The correction's embedded restart script
+had unescaped newlines inside its settings string, so the child died with a `SyntaxError` before
+`compose()` ran — caught by the reviewer, not by me, because I did not re-run the phase tests after
+writing it.
+
+Checking the sibling launcher for the same mistake turned up **the worse one**: it wrote
+`"[queue]\\nconcurrency = N\\n"`, which lands a *literal backslash-n* in `settings.toml`. That is
+invalid TOML, so `compose()` reported a settings problem and carried on with defaults (`ARC-008`,
+working exactly as designed) — and `settings.py`'s default concurrency is **3**, which is the number
+the test believed it had configured. **`test_the_pool_never_exceeds_the_configured_limit` has never
+tested a configured limit.** It measured the default and passed because the two matched.
+
+Both scripts now receive a settings path the **parent** writes and parses, and the pool test
+configures `POOL_LIMIT = 2` — a value the default cannot produce, so the assertion fails if settings
+are ignored again.
+
+**`T088-R3` — there was no next start.** The test called `JobRepository(...).recover_interrupted()`
+itself while its name, its comment and the evidence table all said the application did. It now
+launches a **real composed application** against the killed database in its own interpreter and
+reads what that start found — including that the interrupted jobs were *offered*, which is the one
+place those rows come from a real kill rather than a seeded database.
 
 #### What it found
 
