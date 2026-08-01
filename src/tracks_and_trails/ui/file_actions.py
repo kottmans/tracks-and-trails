@@ -32,6 +32,7 @@ user to dismiss dialogs without reading them.
 
 from __future__ import annotations
 
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -39,7 +40,7 @@ from PySide6.QtCore import QObject, QPoint, Qt
 from PySide6.QtGui import QAction
 from PySide6.QtWidgets import QMenu, QTableView
 
-from tracks_and_trails.ui.reveal import Refusal, Spawner, open_file, reveal_file
+from tracks_and_trails.ui.reveal import Refusal, Spawner, Starter, open_file, reveal_file
 
 #: What the two actions are called. "Show in folder" rather than "Reveal": *reveal* is macOS's word
 #: for it, and this application does not run there (`REQUIREMENTS.md` §7).
@@ -68,6 +69,8 @@ class FileActions(QObject):
         output_directory: Callable[[], Path],
         report: Callable[[str], None],
         run: Spawner | None = None,
+        start: Starter | None = None,
+        platform: str = sys.platform,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -79,6 +82,15 @@ class FileActions(QObject):
         #: not only one layer down: without it a test that triggers the action opens a real file
         #: manager on the machine running the suite, which is both slow and a test of that machine.
         self._run = run
+        #: The **Windows Open** seam, which is a different route entirely (`T086-R1`). Without it
+        #: the Windows CI job would call the real `os.startfile` and launch a media player on a
+        #: build agent — the same hazard `run` exists to prevent, on the branch that has no argv.
+        self._start = start
+        #: Pinned by tests so the **Windows** route is exercised from Linux, for the reason
+        #: `ui/reveal.py`'s module docstring gives. Without it, dropping the `start` seam below is
+        #: invisible on any POSIX machine — a mutation doing exactly that survived until this
+        #: parameter existed.
+        self._platform = platform
 
         self._open = QAction(OPEN_TEXT, self)
         self._open.setObjectName("openFileAction")
@@ -112,19 +124,33 @@ class FileActions(QObject):
         Returned *and* reported: the return value is what a test reads, and a test that only
         scraped the status bar would pass against a handler that reported the wrong sentence.
         """
-        return self._act(open_file)
+        return self._act(
+            lambda path, within: open_file(
+                path,
+                within=within,
+                run=self._run,
+                start=self._start,
+                platform=self._platform,
+            )
+        )
 
     def reveal_selected(self, *_: object) -> Refusal | None:
-        """Show the selected row's file in the file manager."""
-        return self._act(reveal_file)
+        """Show the selected row's file in the file manager.
 
-    def _act(self, action: Callable[..., Refusal | None]) -> Refusal | None:
+        **Takes no `start`**, and that asymmetry is the point of `T086-R1`: Reveal is `explorer
+        /select,` on Windows and a D-Bus call on Linux, both of which are commands. Open is an
+        associated-application API on Windows. One seam each rather than one seam pretending to
+        cover both.
+        """
+        return self._act(lambda path, within: reveal_file(path, within=within, run=self._run))
+
+    def _act(self, launch: Callable[[Path, Path], Refusal | None]) -> Refusal | None:
         path = self._selected_path()
         if not path:
             # No selection, or a row with no path recorded — the actions are disabled in both
             # cases, and this is the keyboard-shortcut route that the enabled state does not cover.
             return None
-        refusal = action(Path(path), within=self._output_directory(), run=self._run)
+        refusal = launch(Path(path), self._output_directory())
         if refusal is not None:
             self._report(refusal.reason)
         return refusal

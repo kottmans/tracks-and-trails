@@ -7,6 +7,7 @@ user selected, and that a refusal reaches the user rather than the console.
 
 from __future__ import annotations
 
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -55,9 +56,14 @@ def downloads(tmp_path: Path) -> Path:
 class Attached:
     """A history view with `FileActions` on it, plus everything a test needs to inspect."""
 
-    def __init__(self, *, entries: list[HistoryEntry], downloads: Path) -> None:
+    def __init__(
+        self, *, entries: list[HistoryEntry], downloads: Path, platform: str = sys.platform
+    ) -> None:
         self.view = build_history_view(FakeHistory(entries))
         self.spawner = RecordingSpawner()
+        #: Windows Open takes no argv (`T086-R1`), so the route has its own recorder. Without it
+        #: the Windows CI job would launch a real media player on a build agent.
+        self.started: list[Path] = []
         self.reported: list[str] = []
         self.actions = FileActions(
             table=self.view.table,
@@ -65,7 +71,24 @@ class Attached:
             output_directory=lambda: downloads,
             report=self.reported.append,
             run=self.spawner,
+            start=self.started.append,
+            platform=platform,
         )
+        self.platform = platform
+
+    def assert_opened(self, path: Path) -> None:
+        """That `path` was opened, **by whichever route this platform actually uses**.
+
+        Not one assertion with a platform branch inside it: the two routes are different enough
+        that asserting the wrong one is how `T086-R1` stayed hidden. On Windows an argv would mean
+        the associated-application API was bypassed; on Linux a start call would mean the reverse.
+        """
+        if self.platform == "win32":
+            assert self.started == [path]
+            assert self.spawner.calls == [], "Windows Open built an argv"
+        else:
+            assert self.spawner.argv == open_command(path)
+            assert self.started == [], "the Windows start route ran on a POSIX platform"
 
     def select_row(self, row: int) -> None:
         self.view.table.selectRow(row)
@@ -112,12 +135,9 @@ def test_triggering_open_acts_on_the_selected_row(qapp: QApplication, downloads:
     attached.actions.open_action.trigger()
 
     assert attached.reported == []
-    # **Against this platform's own builder**, not a hardcoded `xdg-open`. What is asserted is
-    # the wiring — that the action opened *the selected row's file* through the open route — and
-    # hardcoding Linux's argv made every one of these fail on the Windows job.
-    assert attached.spawner.argv == open_command(second), (
-        f"opened {attached.spawner.argv}, which is not the row the user selected"
-    )
+    # Through the platform-aware helper: on Windows this route uses the starter and builds no argv,
+    # so a bare spawner assertion fails there for a reason that has nothing to do with selection.
+    attached.assert_opened(second)
 
 
 def test_reveal_asks_the_file_manager_to_show_the_file_rather_than_opening_it(
@@ -223,6 +243,9 @@ def test_the_output_directory_is_read_at_the_moment_of_use(
         output_directory=lambda: current,
         report=reported.append,
         run=spawner,
+        # Pinned: this test is about the boundary being re-read, and it asserts a POSIX argv. Left
+        # unpinned it takes the Windows start route on the Windows job and launches for real.
+        platform="linux",
     )
     view.table.selectRow(0)
 
@@ -266,7 +289,7 @@ def test_a_double_click_opens(qapp: QApplication, downloads: Path) -> None:
     attached.view.table.doubleClicked.emit(attached.view.model.index(0, 0))
 
     assert attached.reported == []
-    assert attached.spawner.argv == open_command(written)
+    attached.assert_opened(written)
 
 
 def test_the_queue_view_offers_the_actions_for_a_finished_job_and_not_a_running_one(
@@ -300,6 +323,7 @@ def test_the_queue_view_offers_the_actions_for_a_finished_job_and_not_a_running_
             output_directory=lambda: downloads,
             report=lambda message: None,
             run=spawner,
+            platform="linux",
         )
 
         assert view.select("running")
@@ -327,3 +351,25 @@ def test_the_history_view_reports_a_missing_path_as_absent_not_as_the_placeholde
 
     assert view.selected_path() is None
     assert view.model.path_for("a") is None
+
+
+def test_the_windows_open_route_is_reached_through_the_actions(
+    qapp: QApplication, downloads: Path
+) -> None:
+    """**The seam, pinned to Windows and asserted from Linux** (`T086-R1`).
+
+    `FileActions` has to hand `open_file` a starter as well as a spawner, and on any POSIX machine
+    forgetting the starter changes nothing observable — the Windows branch is never taken. A
+    mutation dropping it survived every test in this file until the platform could be pinned here.
+    """
+    written = downloads / "clip.mp4"
+    written.write_bytes(b"")
+    attached = Attached(
+        entries=[an_entry("a", str(written))], downloads=downloads, platform="win32"
+    )
+    attached.select_row(0)
+
+    attached.actions.open_action.trigger()
+
+    assert attached.started == [written], "the Windows Open route was not reached"
+    assert attached.spawner.calls == [], "Windows Open built an argv"

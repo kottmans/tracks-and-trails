@@ -28,6 +28,7 @@ from tracks_and_trails.ui.reveal import (
     open_file,
     reveal_command,
     reveal_file,
+    start_associated,
 )
 
 
@@ -132,7 +133,7 @@ def test_no_shell_is_ever_used(downloads: Path) -> None:
     path.write_bytes(b"")
     spawner = RecordingSpawner()
 
-    assert open_file(path, within=downloads, run=spawner) is None
+    assert open_file(path, within=downloads, run=spawner, platform="linux") is None
 
     _, kwargs = spawner.calls[0]
     assert kwargs["shell"] is False
@@ -171,7 +172,7 @@ def test_a_path_outside_the_download_folder_is_refused(tmp_path: Path, downloads
     spawner = RecordingSpawner()
 
     for act in (open_file, reveal_file):
-        refusal = act(elsewhere, within=downloads, run=spawner)
+        refusal = act(elsewhere, within=downloads, run=spawner, platform="linux")
         assert refusal is not None
         assert "outside the download folder" in refusal.reason
 
@@ -183,7 +184,7 @@ def test_a_traversal_out_of_the_download_folder_is_refused(downloads: Path) -> N
     spawner = RecordingSpawner()
     escape = downloads / ".." / "escaped.mp4"
 
-    refusal = open_file(escape, within=downloads, run=spawner)
+    refusal = open_file(escape, within=downloads, run=spawner, platform="linux")
 
     assert refusal is not None
     assert spawner.calls == []
@@ -201,7 +202,9 @@ def test_containment_is_checked_before_existence(tmp_path: Path, downloads: Path
     present_outside.write_bytes(b"")
 
     reasons = {
-        open_file(candidate, within=downloads, run=RecordingSpawner()).reason  # type: ignore[union-attr]
+        open_file(  # type: ignore[union-attr]
+            candidate, within=downloads, run=RecordingSpawner(), platform="linux"
+        ).reason
         for candidate in (missing_outside, present_outside)
     }
 
@@ -229,21 +232,21 @@ def test_a_file_that_has_been_moved_says_so(downloads: Path) -> None:
 
 
 def test_a_missing_launcher_says_which_one(downloads: Path) -> None:
-    """A machine with no launcher is a real configuration, not a broken one.
+    """A machine with no `xdg-open` is a real configuration, not a broken one.
 
-    **The launcher is named from this platform's own builder**, not written out. Hardcoding
-    `xdg-open` is what made this the last of the 38 Windows failures to fall: `explorer` is what
-    `command[0]` is there, so the assertion described a message the code never produces.
+    **The platform is pinned rather than derived.** This is the POSIX route specifically — Windows
+    Open does not run a launcher at all (`T086-R1`) — so naming `xdg-open` is now correct instead
+    of being the Linux-only assumption that made this the last of the 38 Windows failures to fall.
     """
     path = downloads / "clip.mp4"
     path.write_bytes(b"")
 
-    refusal = open_file(path, within=downloads, run=RaisingSpawner(FileNotFoundError()))
+    refusal = open_file(
+        path, within=downloads, run=RaisingSpawner(FileNotFoundError()), platform="linux"
+    )
 
     assert refusal is not None
-    assert open_command(path)[0] in refusal.reason, (
-        f"the refusal does not name the launcher that is missing: {refusal.reason}"
-    )
+    assert "xdg-open" in refusal.reason
     assert "not installed" in refusal.reason
 
 
@@ -253,7 +256,10 @@ def test_a_launcher_that_fails_reports_its_exit_code_and_message(downloads: Path
     path.write_bytes(b"")
 
     refusal = open_file(
-        path, within=downloads, run=RecordingSpawner(returncode=3, stderr="no application")
+        path,
+        within=downloads,
+        run=RecordingSpawner(returncode=3, stderr="no application"),
+        platform="linux",
     )
 
     assert refusal is not None
@@ -271,6 +277,7 @@ def test_a_launcher_that_hangs_is_reported_rather_than_raising(downloads: Path) 
         path,
         within=downloads,
         run=RaisingSpawner(subprocess.TimeoutExpired(cmd=["xdg-open"], timeout=1.0)),
+        platform="linux",
     )
 
     assert refusal is not None
@@ -282,7 +289,9 @@ def test_an_os_error_is_reported_rather_than_raising(downloads: Path) -> None:
     path = downloads / "clip.mp4"
     path.write_bytes(b"")
 
-    refusal = open_file(path, within=downloads, run=RaisingSpawner(PermissionError("denied")))
+    refusal = open_file(
+        path, within=downloads, run=RaisingSpawner(PermissionError("denied")), platform="linux"
+    )
 
     assert refusal is not None
     assert "denied" in refusal.reason
@@ -301,7 +310,9 @@ def test_windows_reveal_keeps_select_and_the_path_in_one_argument(downloads: Pat
     path = downloads / "A clip.mp4"
 
     assert reveal_command(path, "win32") == ["explorer", f"/select,{path}"]
-    assert open_command(path, "win32") == ["explorer", str(path)]
+    # The line that used to sit here — `open_command(path, "win32") == ["explorer", str(path)]` —
+    # asserted the `T086-R1` defect. Windows Open takes no argv now; see
+    # `test_windows_open_uses_the_associated_application_api_and_builds_no_argv`.
 
 
 def test_linux_reveal_asks_the_file_manager_to_select_the_file(
@@ -352,3 +363,127 @@ def test_a_refusal_is_a_value_not_an_exception() -> None:
     """The contract callers in Qt slots depend on: raising out of a slot is swallowed."""
     assert issubclass(Refusal, object)
     assert not issubclass(Refusal, BaseException)
+
+
+# --- T086-R1: Windows Open takes the associated-application route ------------------------------
+
+
+def test_windows_open_uses_the_associated_application_api_and_builds_no_argv(
+    downloads: Path,
+) -> None:
+    """**`T086-R1`.** `explorer <path>` navigates the file manager; it does not open the file.
+
+    Windows' documented associated-application operations are `ShellExecuteW`'s `open` verb and
+    `os.startfile`, which wraps it. The previous implementation ran `explorer` and *asserted in a
+    comment* that this opened the associated application — a claim an argv test cannot reach, which
+    is why it survived a green Windows job.
+
+    Asserted from Linux through the injected starter: the file goes to the start route, and **no
+    argv is built at all**, which is what distinguishes this from the defect.
+    """
+    path = downloads / "clip.mp4"
+    path.write_bytes(b"")
+    started: list[Path] = []
+    spawner = RecordingSpawner()
+
+    assert (
+        open_file(
+            path,
+            within=downloads,
+            run=spawner,
+            start=started.append,
+            platform="win32",
+        )
+        is None
+    )
+
+    assert started == [path]
+    assert spawner.calls == [], (
+        "Windows Open built an argv; the associated-application API takes none"
+    )
+
+
+def test_windows_open_still_refuses_a_path_outside_the_download_folder(
+    downloads: Path, tmp_path: Path
+) -> None:
+    """Containment is checked before either route, so the new branch cannot bypass `SEC-001`."""
+    outside = tmp_path / "elsewhere.mp4"
+    outside.write_bytes(b"")
+    started: list[Path] = []
+
+    refusal = open_file(outside, within=downloads, start=started.append, platform="win32")
+
+    assert refusal is not None
+    assert "outside the download folder" in refusal.reason
+    assert started == []
+
+
+def test_a_file_type_with_no_associated_application_is_reported(downloads: Path) -> None:
+    """`os.startfile` raises `OSError` when nothing is registered for the extension.
+
+    An ordinary configuration rather than a fault — and a refusal a user can act on, rather than an
+    exception out of a Qt slot.
+    """
+    path = downloads / "clip.unknownext"
+    path.write_bytes(b"")
+
+    def refuse(_: Path) -> None:
+        raise OSError("no application is associated with this file")
+
+    refusal = open_file(path, within=downloads, start=refuse, platform="win32")
+
+    assert refusal is not None
+    assert "could not open" in refusal.reason
+    assert "clip.unknownext" in refusal.reason
+
+
+def test_the_default_windows_starter_calls_os_startfile(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The seam is wired to the real API**, asserted by *calling* it.
+
+    The first version scraped `inspect.getsource` for the string `os.startfile` — which appears in
+    this function's own docstring, so deleting the call left the test passing. Vacuous, and exactly
+    the class `ai/TESTING.md` §13 records.
+
+    `os.startfile` is replaced and the dispatch observed — on any platform, because the launcher is
+    looked up at call time rather than bound behind a module-level platform split.
+    """
+    import os
+
+    target = tmp_path / "whatever.mp4"
+    launched: list[object] = []
+    # `raising=False` so this works on Linux too, where the attribute does not exist. That is the
+    # point of the seam being one definition rather than a platform split: a mutation deleting the
+    # call is killed on every platform, not only on the Windows job.
+    monkeypatch.setattr(os, "startfile", launched.append, raising=False)
+
+    start_associated(target)
+
+    assert launched == [target], "the Windows starter did not reach os.startfile"
+
+
+def test_open_never_runs_explorer_on_any_platform(downloads: Path) -> None:
+    """`explorer` belongs to Reveal alone now. Stated as an exclusion so it cannot drift back."""
+    path = downloads / "clip.mp4"
+
+    assert "explorer" not in open_command(path, "win32")
+    assert "explorer" not in open_command(path, "linux")
+    assert reveal_command(path, "win32")[0] == "explorer"
+
+
+def test_the_windows_starter_refuses_where_os_startfile_does_not_exist(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Absence is the ordinary case off Windows, and it **raises** rather than passing quietly.
+
+    `open_file` routes here only for `win32`, so reaching it elsewhere means something is wrong —
+    and a launcher that returns cleanly without launching is the exact failure this module exists
+    to prevent.
+    """
+    import os
+
+    monkeypatch.delattr(os, "startfile", raising=False)
+
+    with pytest.raises(OSError, match="Windows-only"):
+        start_associated(tmp_path / "whatever.mp4")

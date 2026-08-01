@@ -4,6 +4,17 @@
 `T-034` governs where files may be *written*; this is the reverse direction, and it is small in code
 and disproportionate in risk.
 
+## Open and Reveal are different operations and take different routes
+
+They were one route and that was `T086-R1`. On Windows, Open ran `explorer <path>` and a comment
+claimed it launched the file's associated application. **`explorer` is the file-manager process**;
+Windows' documented associated-application operations are `ShellExecuteW`'s `open` verb and
+`os.startfile`, which wraps it. An argv assertion could never have caught that — it proves a list
+was built, not what the operating system does with it.
+
+So Open has a launcher seam of its own: `os.startfile` on Windows, `xdg-open` on Linux. `explorer`
+stays where it belongs, on the `/select,` Reveal route.
+
 ## A path is an argument, never a command
 
 Reveal is `explorer /select,<path>` on Windows and a file-manager call on Linux. Both take the path
@@ -38,6 +49,7 @@ as to an extractor's message.
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -53,6 +65,16 @@ LAUNCH_TIMEOUT_SECONDS: Final = 10.0
 
 #: The one D-Bus call that selects a file in a Linux file manager, and the tool that makes it.
 DBUS_TOOL: Final = "dbus-send"
+
+
+class Starter(Protocol):
+    """How Windows is asked to open a file with its associated application.
+
+    `os.startfile` satisfies it. A protocol rather than the function itself so the route can be
+    asserted from Linux, where `os.startfile` does not exist.
+    """
+
+    def __call__(self, path: Path, /) -> None: ...
 
 
 class Spawner(Protocol):
@@ -101,13 +123,46 @@ def open_file(
     *,
     within: Path,
     run: Spawner | None = None,
+    start: Starter | None = None,
     platform: str = sys.platform,
 ) -> Refusal | None:
-    """Open `path` in whatever the desktop uses for it. `None` means it was launched."""
+    """Open `path` with the application the desktop associates with it.
+
+    `None` means it was launched. **Two routes, because the platforms genuinely differ** — Windows
+    has an associated-application API and Linux has a launcher binary — and pretending otherwise is
+    what `T086-R1` found: `explorer <path>` navigates the file manager, it does not open the file
+    with its player.
+    """
     refusal = _refuse_unless_usable(path, within)
     if refusal is not None:
         return refusal
+    if platform == "win32":
+        return _start_associated(path, start)
     return _spawn(open_command(path, platform), run)
+
+
+def _start_associated(path: Path, start: Starter | None) -> Refusal | None:
+    """The Windows Open route: `os.startfile`, which is `ShellExecuteW`'s `open` verb.
+
+    **Injected, so the route is asserted on every platform** — that a Windows Open goes through the
+    associated-application API and never builds an argv is a property this project can check from
+    Linux, and `T086-R1` exists because the previous design could only be checked by opening a file
+    on a desktop nobody automates.
+
+    What this still does **not** establish is that a real Explorer session launches the right
+    application; that is desktop behaviour and stays with the `STARBASE` slice.
+    """
+    launcher = start if start is not None else start_associated
+    try:
+        launcher(path)
+    except OSError as error:
+        # `os.startfile` raises `OSError` when no application is associated with the extension,
+        # which is an ordinary configuration rather than a fault.
+        return Refusal(
+            f"Windows could not open {path.name} — there may be no application associated with "
+            f"this kind of file. ({error})"
+        )
+    return None
 
 
 def reveal_file(
@@ -125,14 +180,15 @@ def reveal_file(
 
 
 def open_command(path: Path, platform: str = sys.platform) -> list[str]:
-    """The argv for opening. **A list, always** — see the module docstring."""
-    if platform == "win32":
-        # `explorer <path>` opens the file with its associated application. `start` is a `cmd`
-        # builtin and is deliberately not used: reaching it means going through a shell, which is
-        # exactly the boundary this module refuses to cross.
-        return ["explorer", str(path)]
-    # No macOS branch: `REQUIREMENTS.md` §7 defers macOS beyond Phase 5, and a branch for a platform
-    # nothing supports would look like support without being it.
+    """The argv for opening **on the platforms that open by running something**.
+
+    That is not Windows (`T086-R1`): Windows Open goes through `os.startfile` and builds no argv at
+    all. This is the Linux route, and it is still a list for the module docstring's reason.
+
+    The `platform` parameter is kept so a caller can pin it, but every value that is not `win32`
+    answers the same way — there is no macOS branch, because `REQUIREMENTS.md` §7 defers macOS
+    beyond Phase 5 and a branch for a platform nothing supports would look like support.
+    """
     return ["xdg-open", str(path)]
 
 
@@ -169,6 +225,30 @@ def reveal_command(path: Path, platform: str = sys.platform) -> list[str]:
 def dbus_available() -> bool:
     """Whether `dbus-send` is on `PATH`. A named seam so a test can pin either answer."""
     return shutil.which(DBUS_TOOL) is not None
+
+
+def start_associated(path: Path) -> None:
+    """Open `path` with its associated application: `ShellExecuteW`'s `open` verb (`T086-R1`).
+
+    **One definition, not a module-level platform split**, and that is a deliberate trade. The split
+    is this project's usual idiom (`core/instance_lock.py`) and buys per-platform type checking —
+    but it also makes the Windows body *invisible to Linux*, so a mutation deleting the call
+    survives every run except the Windows job. Looking the launcher up at call time means the seam
+    can be verified wherever the suite runs, which is the whole lesson of this finding: the previous
+    implementation was wrong precisely because nothing off Windows could see it.
+
+    `os.startfile` exists only on Windows, so absence is the ordinary case elsewhere and **raises**
+    rather than passing quietly. `open_file` routes here only when the platform is `win32`; a
+    launcher that silently succeeded without launching is the failure this module is written
+    against.
+    """
+    launcher = getattr(os, "startfile", None)
+    if launcher is None:
+        raise OSError(f"os.startfile is Windows-only; {path} cannot be opened by this route")
+    # `ruff`'s `S606` — *starting a process without a shell* — is the property being asked for
+    # rather than a risk being taken. `path` has already passed containment, and no shell is what
+    # keeps a quoted or dash-leading filename an argument.
+    launcher(path)
 
 
 def _run(args: list[str], /, **kwargs: Any) -> Any:
