@@ -21,8 +21,9 @@ IDs are never reused. Completed tasks move to `ai/archive/` once they bury the l
 summarises; this one is transcribed from the actual `## ` sections so it starts correct.
 
 - **In Review:** `T-046` only — corrected a third time 2026-08-01 (`T046-R4`, `T046-R5`).
-- **Blocked:** `T-087` (`T087-R3` corrected; the Windows branch has still never executed) and
-  `T-092` (three criteria need `STARBASE`). Both are blocked on the machine, not on a decision.
+- **Blocked on `STARBASE`, which is offline:** `T-092` (arming crash dumps is configuration of that
+  machine) and `T-074` (its segfault has only ever been seen there). **`T-087` is no longer among
+  them** — `OPS-005` was amended 2026-08-01 and its Windows cases passed on the hosted runner.
 - **Approved 2026-08-01** at `eb1bd70`: `T-081`.
 - **Approved 2026-08-01** at `97f96c0`: `T-083` and `T-102`. At `05e5312`: `T-080`, `T-053`,
   `T-099`, `T-101`, `T-103`. `T-092` is *prepared*, not complete: three of
@@ -91,6 +92,164 @@ exists — but `T-096` gates *status against section*, and `COORD-R11` was prose
 both while every status and section agreed. The invariant test cannot see that, and this note is
 written by hand for exactly that reason. It said "Empty as of 2026-07-30" until `T-079` landed
 here, which is the drift it is written to make visible.)*
+
+### T-087 — Single-instance guard
+
+**Status:** **In Review — corrected 2026-08-01, and its Windows evidence now exists.** `T087-R1`
+(the architecture mismatch) and `T087-R3` (the untyped `CloseHandle` and inheritable descriptor) are
+both corrected. **The Windows branch has executed**, on `check (windows-latest)` at `7516f61`:
+first acquisition and refusal, **two launches racing**, and killed-holder recovery all passed —
+`T-087`'s three required cases, and the exact ones `P2PLAN-R5` withdrew the previous design over.
+
+**`OPS-005` was amended 2026-08-01** (maintainer): hosted Windows carries the Windows gate while
+`STARBASE` is unreachable. So this is no longer blocked on a machine nobody can reach — it needs a
+review. **It owns Phase 2 exit criterion 4.** **The attach half is deliberately not built**
+(`T-104`).
+*(This read "Proposed", "Ready — promoted 2026-07-31", "In Review — complete 2026-08-01", then
+"Blocked … the Windows branch has never executed". That last one was true when written and stopped
+being true the moment the hosted runners came back.)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** nothing technical. Its `DECISIONS.md` entry exists: **`ARC-006`**, whose mechanism
+was **amended 2026-07-29** after `P2PLAN-R5` — implement the amendment, not the original
+**Relevant context:** **`ARC-006`** (the mechanism and its rationale), `A-004`, `DAT-001`,
+`ARC-005`, `OPS-004`
+**Affected surfaces:** `app.py`, a platform seam, `ai/DECISIONS.md`
+**Risk:** Medium — the failure it prevents is two writers on one database
+
+#### Scope
+
+`A-004` assumes a single local user and **no concurrent instances against the same database**, and
+records itself as *unverified*, with enforcement named as a Phase 2 task. This is that task.
+
+The database is the reason. `ARC-005` puts every write on one writer thread *within a process*;
+two processes have two writer threads and no shared lock discipline.
+
+#### The mechanism — `ARC-006` **as amended 2026-07-29**; read the amendment first
+
+**`ARC-006` is the canonical record** (`P2PLAN-R2`). **Its original mechanism is withdrawn**
+(`P2PLAN-R5`): Qt documents that on Windows **two local servers can listen on the same pipe name at
+once**, so *connect-first-then-claim* is not exclusive and two simultaneous launches can both become
+servers — the two-writer state this task exists to prevent.
+
+**Ownership is now an atomic kernel lock** on a file derived from the resolved database path
+(`flock(LOCK_EX | LOCK_NB)` on POSIX, exclusive-access open on Windows), released by the kernel when
+the holder dies. **`QLocalServer` remains only the attach channel**, started after ownership is won.
+
+**This task's acceptance criteria must gate simultaneous starts, not just stale-owner recovery** —
+the withdrawn design passes a sequential test, which is how it survived being written down. See the
+amendment for what it changes.
+
+*(Superseded, kept because the sequence is the point — this read as the decided mechanism:)*
+
+**`QLocalServer` / `QLocalSocket`, named from the resolved database path.**
+
+- **Already Qt**, so no new dependency, and one code path compiles to a named pipe on Windows and
+  a Unix domain socket on Linux — two correct platform implementations rather than two guesses.
+- **It is a channel, not a flag.** That is what makes *attach* possible rather than only *refuse*:
+  a second launch can hand its URL to the first instance and raise its window. A lock file can
+  only say no.
+- **Crash behaviour decided it**, because that is the case the guard exists for. Windows destroys
+  a named pipe when its owning process dies. On Linux a killed process leaves the socket file, so
+  the protocol is *connect first; if the connection fails the owner is gone, remove the stale name
+  and become the server*. A PID lock file needs a liveness check and is wrong under PID reuse;
+  `flock` is robust but offers no channel.
+- **Named from the database path**, because `A-004` is about the database rather than the
+  application. Two instances against different databases harm nothing and must not be blocked.
+
+#### Acceptance criteria
+
+- A second launch either attaches to the running instance or refuses in its favour, and says which
+- **Two launches started simultaneously do not both win** (`P2PLAN-R5`). Racing starts, not a
+  sequential pair: the withdrawn `QLocalServer`-as-lock design passes the sequential test and fails
+  this one, because two servers may listen on one Windows pipe name at the same time
+- A stale lock left by a killed process does not permanently block startup
+- Verified on both platforms, `STARBASE` included
+- The mechanism and its crash behaviour are recorded in `ai/DECISIONS.md` with an ID
+- **The stale-socket path is tested by killing an instance**, not by deleting a file by hand: the
+  recovery has to work against the failure it was chosen for
+- Two instances against *different* databases both start
+
+#### Out of scope
+
+- Multi-user or networked access (`A-004` scopes it out)
+
+#### What was built, 2026-08-01
+
+**Evidence.** `ruff`, `ruff format`, `mypy src` and `mypy --platform win32 src` clean. New module
+`core/instance_lock.py`; 9 tests in `tests/integration/test_single_instance.py` and 2 in
+`test_composition.py`. Removing the lock call kills **3** of the 9 — the cross-process claim is
+genuinely exercised rather than asserted in-process.
+
+**An atomic kernel lock, per `ARC-006`'s amendment.** `fcntl.flock(LOCK_EX | LOCK_NB)` on POSIX,
+`msvcrt.locking(LK_NBLCK)` on Windows. Both are released **by the kernel when the holder dies**,
+which is the property a PID file cannot offer and the reason `ARC-006` rejected PID files.
+
+**`flock` rather than `lockf`.** POSIX record locks are released when *any* descriptor for the file
+closes in the process, so a program that opens the same path elsewhere silently drops its own lock.
+`flock` is tied to the open file description.
+
+**The lock file is never unlinked**, and that is a decision rather than an omission. Removing it
+races: another launch may have opened that same path and be about to lock it, and unlinking
+underneath them hands a lock on an orphaned inode to a process that thinks it owns the database. An
+abandoned file is inert because the *lock* is gone, which is the same reason a killed process leaves
+nothing to clean up. A test asserts the file still exists after a kill, so a future change that
+starts unlinking is caught rather than silently making the stale-path test vacuous.
+
+**Taken before `db.connect`.** Recovery runs on the next line and rewrites rows left `RUNNING`; a
+guard taken afterwards would let a second launch rewrite a live instance's in-flight jobs before
+refusing. **Released after the connection closes**, for the mirror reason.
+
+**Named from the resolved database path.** `A-004` is about the database, not the application, so
+two instances against different databases both start. `resolve()` matters: without it `./queue.db`
+and `/home/me/queue.db` would take two locks on one database.
+
+| Mutation | Killed by |
+|---|---|
+| No lock is taken at all | the refusal, racing and killed-holder tests (3 of 9) |
+
+#### Scope: the attach channel is not built
+
+`ARC-006` keeps `QLocalServer`/`QLocalSocket` as an **attach channel** — what lets a second launch
+hand its URL to the running instance and raise its window instead of merely refusing. **This task
+refuses.** The acceptance criterion is *"attaches to the running instance **or** refuses in its
+favour, and says which"*, and refusing-and-saying-which satisfies it; exit criterion 4 reads the
+same way.
+
+Stated as a choice rather than left as a gap: **`T-104`** owns the attach channel. A user who
+double-clicks a second time today gets a message box naming the running instance, not a hand-over.
+
+#### Not covered, stated rather than implied
+
+- **Windows.** The `msvcrt` branch is `# pragma: no cover` on Linux and has **never executed** —
+  `mypy --platform win32` type-checks it and nothing has run it. This is the half `ARC-006`'s
+  withdrawn design got wrong, so it is the half most worth running on `STARBASE`, and no CI job has
+  executed a step since 2026-07-30.
+- **`A-004` therefore stays unverified**, exactly as `ARC-006` says it must until this is tested on
+  both platforms. Linux is done; Windows is not.
+- **A read-only or full filesystem** where the lock file cannot be created. `acquire` would raise
+  `OSError` rather than `AlreadyRunningError`, and `run()` does not catch that.
+
+
+#### Correction, 2026-08-01 — `T087-R1`, and why this stays blocked
+
+**The Windows primitive was mine, not `ARC-006`'s.** The amendment names an **exclusive-access
+open**; I wrote `msvcrt.locking(LK_NBLCK)`, a one-byte range lock. It may well be defensible, but
+substituting a different mechanism — in the one branch nothing here can execute — is not an
+implementation choice, and doing it silently is how a decision gets rewritten by its implementer.
+
+It is now `CreateFileW` with `dwShareMode = 0`: while the handle is open no other process may open
+the file at all, and a second launch fails with `ERROR_SHARING_VIOLATION`. Both platforms are one
+`_open_exclusive` seam; POSIX still needs two steps because it has no exclusive-*open* — `O_EXCL`
+is about creation, not access.
+
+**This does not unblock the task, and should not.** The branch has still never executed. `T-087`'s
+own criterion is both platforms, `ARC-006` says `A-004` stays unverified until then, and no CI job
+has executed a step since 2026-07-30. What changes is that the code now matches the decision, so
+the outstanding item is **evidence** rather than evidence *plus* an unauthorised design change.
+
+---
 
 ### T-046 — Output path collision policy against the filesystem
 
@@ -1326,160 +1485,6 @@ because the file was deleted, is an ordinary thing to want.
 ---
 
 ## Blocked
-
-### T-087 — Single-instance guard
-
-**Status:** **Blocked — reviewed 2026-08-01, changes required before Windows verification.** The
-Linux implementation is coherent and its primitive now matches `ARC-006` (`T087-R1`, corrected
-below), **but the Windows branch has never executed.** This task's own criterion is both platforms,
-`ARC-006` says `A-004` stays unverified until then, and no CI job has executed a step since
-2026-07-30. **It owns Phase 2 exit criterion 4**, so that criterion is blocked with it.
-**Blocked on evidence, not on a decision** — `STARBASE` has to run simultaneous starts and
-killed-holder recovery. **The attach half is deliberately not built** (`T-104`).
-*(This read "Proposed", then "Ready — promoted 2026-07-31", then "In Review — complete
-2026-08-01".)*
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** nothing technical. Its `DECISIONS.md` entry exists: **`ARC-006`**, whose mechanism
-was **amended 2026-07-29** after `P2PLAN-R5` — implement the amendment, not the original
-**Relevant context:** **`ARC-006`** (the mechanism and its rationale), `A-004`, `DAT-001`,
-`ARC-005`, `OPS-004`
-**Affected surfaces:** `app.py`, a platform seam, `ai/DECISIONS.md`
-**Risk:** Medium — the failure it prevents is two writers on one database
-
-#### Scope
-
-`A-004` assumes a single local user and **no concurrent instances against the same database**, and
-records itself as *unverified*, with enforcement named as a Phase 2 task. This is that task.
-
-The database is the reason. `ARC-005` puts every write on one writer thread *within a process*;
-two processes have two writer threads and no shared lock discipline.
-
-#### The mechanism — `ARC-006` **as amended 2026-07-29**; read the amendment first
-
-**`ARC-006` is the canonical record** (`P2PLAN-R2`). **Its original mechanism is withdrawn**
-(`P2PLAN-R5`): Qt documents that on Windows **two local servers can listen on the same pipe name at
-once**, so *connect-first-then-claim* is not exclusive and two simultaneous launches can both become
-servers — the two-writer state this task exists to prevent.
-
-**Ownership is now an atomic kernel lock** on a file derived from the resolved database path
-(`flock(LOCK_EX | LOCK_NB)` on POSIX, exclusive-access open on Windows), released by the kernel when
-the holder dies. **`QLocalServer` remains only the attach channel**, started after ownership is won.
-
-**This task's acceptance criteria must gate simultaneous starts, not just stale-owner recovery** —
-the withdrawn design passes a sequential test, which is how it survived being written down. See the
-amendment for what it changes.
-
-*(Superseded, kept because the sequence is the point — this read as the decided mechanism:)*
-
-**`QLocalServer` / `QLocalSocket`, named from the resolved database path.**
-
-- **Already Qt**, so no new dependency, and one code path compiles to a named pipe on Windows and
-  a Unix domain socket on Linux — two correct platform implementations rather than two guesses.
-- **It is a channel, not a flag.** That is what makes *attach* possible rather than only *refuse*:
-  a second launch can hand its URL to the first instance and raise its window. A lock file can
-  only say no.
-- **Crash behaviour decided it**, because that is the case the guard exists for. Windows destroys
-  a named pipe when its owning process dies. On Linux a killed process leaves the socket file, so
-  the protocol is *connect first; if the connection fails the owner is gone, remove the stale name
-  and become the server*. A PID lock file needs a liveness check and is wrong under PID reuse;
-  `flock` is robust but offers no channel.
-- **Named from the database path**, because `A-004` is about the database rather than the
-  application. Two instances against different databases harm nothing and must not be blocked.
-
-#### Acceptance criteria
-
-- A second launch either attaches to the running instance or refuses in its favour, and says which
-- **Two launches started simultaneously do not both win** (`P2PLAN-R5`). Racing starts, not a
-  sequential pair: the withdrawn `QLocalServer`-as-lock design passes the sequential test and fails
-  this one, because two servers may listen on one Windows pipe name at the same time
-- A stale lock left by a killed process does not permanently block startup
-- Verified on both platforms, `STARBASE` included
-- The mechanism and its crash behaviour are recorded in `ai/DECISIONS.md` with an ID
-- **The stale-socket path is tested by killing an instance**, not by deleting a file by hand: the
-  recovery has to work against the failure it was chosen for
-- Two instances against *different* databases both start
-
-#### Out of scope
-
-- Multi-user or networked access (`A-004` scopes it out)
-
-#### What was built, 2026-08-01
-
-**Evidence.** `ruff`, `ruff format`, `mypy src` and `mypy --platform win32 src` clean. New module
-`core/instance_lock.py`; 9 tests in `tests/integration/test_single_instance.py` and 2 in
-`test_composition.py`. Removing the lock call kills **3** of the 9 — the cross-process claim is
-genuinely exercised rather than asserted in-process.
-
-**An atomic kernel lock, per `ARC-006`'s amendment.** `fcntl.flock(LOCK_EX | LOCK_NB)` on POSIX,
-`msvcrt.locking(LK_NBLCK)` on Windows. Both are released **by the kernel when the holder dies**,
-which is the property a PID file cannot offer and the reason `ARC-006` rejected PID files.
-
-**`flock` rather than `lockf`.** POSIX record locks are released when *any* descriptor for the file
-closes in the process, so a program that opens the same path elsewhere silently drops its own lock.
-`flock` is tied to the open file description.
-
-**The lock file is never unlinked**, and that is a decision rather than an omission. Removing it
-races: another launch may have opened that same path and be about to lock it, and unlinking
-underneath them hands a lock on an orphaned inode to a process that thinks it owns the database. An
-abandoned file is inert because the *lock* is gone, which is the same reason a killed process leaves
-nothing to clean up. A test asserts the file still exists after a kill, so a future change that
-starts unlinking is caught rather than silently making the stale-path test vacuous.
-
-**Taken before `db.connect`.** Recovery runs on the next line and rewrites rows left `RUNNING`; a
-guard taken afterwards would let a second launch rewrite a live instance's in-flight jobs before
-refusing. **Released after the connection closes**, for the mirror reason.
-
-**Named from the resolved database path.** `A-004` is about the database, not the application, so
-two instances against different databases both start. `resolve()` matters: without it `./queue.db`
-and `/home/me/queue.db` would take two locks on one database.
-
-| Mutation | Killed by |
-|---|---|
-| No lock is taken at all | the refusal, racing and killed-holder tests (3 of 9) |
-
-#### Scope: the attach channel is not built
-
-`ARC-006` keeps `QLocalServer`/`QLocalSocket` as an **attach channel** — what lets a second launch
-hand its URL to the running instance and raise its window instead of merely refusing. **This task
-refuses.** The acceptance criterion is *"attaches to the running instance **or** refuses in its
-favour, and says which"*, and refusing-and-saying-which satisfies it; exit criterion 4 reads the
-same way.
-
-Stated as a choice rather than left as a gap: **`T-104`** owns the attach channel. A user who
-double-clicks a second time today gets a message box naming the running instance, not a hand-over.
-
-#### Not covered, stated rather than implied
-
-- **Windows.** The `msvcrt` branch is `# pragma: no cover` on Linux and has **never executed** —
-  `mypy --platform win32` type-checks it and nothing has run it. This is the half `ARC-006`'s
-  withdrawn design got wrong, so it is the half most worth running on `STARBASE`, and no CI job has
-  executed a step since 2026-07-30.
-- **`A-004` therefore stays unverified**, exactly as `ARC-006` says it must until this is tested on
-  both platforms. Linux is done; Windows is not.
-- **A read-only or full filesystem** where the lock file cannot be created. `acquire` would raise
-  `OSError` rather than `AlreadyRunningError`, and `run()` does not catch that.
-
-
-#### Correction, 2026-08-01 — `T087-R1`, and why this stays blocked
-
-**The Windows primitive was mine, not `ARC-006`'s.** The amendment names an **exclusive-access
-open**; I wrote `msvcrt.locking(LK_NBLCK)`, a one-byte range lock. It may well be defensible, but
-substituting a different mechanism — in the one branch nothing here can execute — is not an
-implementation choice, and doing it silently is how a decision gets rewritten by its implementer.
-
-It is now `CreateFileW` with `dwShareMode = 0`: while the handle is open no other process may open
-the file at all, and a second launch fails with `ERROR_SHARING_VIOLATION`. Both platforms are one
-`_open_exclusive` seam; POSIX still needs two steps because it has no exclusive-*open* — `O_EXCL`
-is about creation, not access.
-
-**This does not unblock the task, and should not.** The branch has still never executed. `T-087`'s
-own criterion is both platforms, `ARC-006` says `A-004` stays unverified until then, and no CI job
-has executed a step since 2026-07-30. What changes is that the code now matches the decision, so
-the outstanding item is **evidence** rather than evidence *plus* an unauthorised design change.
-
----
 
 ### T-092 — Arm `STARBASE` so the next access violation leaves a cause, not a stack
 

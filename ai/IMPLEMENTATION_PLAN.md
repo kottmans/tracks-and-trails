@@ -276,7 +276,7 @@ Recorded here because each one changed what a deliverable *is*, not merely how i
 | 10 | Per-job log capture and log view (`REQ-019`) | `T-084` | **Ready.** `T-053`, which gated its approval, is **Approved** |
 | 11 | History view over those records | `T-100` | **Ready** |
 | 12 | Open file / reveal in file manager (`REQ-021`), from both views | `T-086` | **Proposed** — released once `T-100` lands |
-| 13 | Single-instance guard (`A-004`, `ARC-006`) | `T-087` | **Blocked.** Linux is done; the Windows branch has **never executed**, so `A-004` stays unverified |
+| 13 | Single-instance guard (`A-004`, `ARC-006`) | `T-087` | **In review.** Linux and hosted Windows both green, including racing starts |
 
 *(Deliverable 5 was **added 2026-07-31**. `DAT-002` filed `T-046` as a Phase 2 task and this list
 never named it — the same class as `P2PLAN-R8`, where the history records were listed and the view
@@ -297,27 +297,25 @@ Phase 2 work. None is a deliverable and none gates the exit; they are listed in 
 | 1 | Three concurrent downloads show independent accurate progress, UI interactive throughout (`NFR-001`) | **Evidenced.** `T-079`'s first acceptance criterion asserts it and is approved; `T-088` re-proves it against the whole phase |
 | 2 | Hard-killing the app mid-queue and restarting restores the queue with correct states | **Not met** — `T-082` (Ready) and `T-088` (Proposed) |
 | 3 | Concurrency limit respected exactly; lowering it drains cleanly, and so does pausing | **Met.** Both halves are approved: the limit by `T-078`, the pause drain by `T-080` |
-| 4 | A second launch attaches to or refuses in favor of the running instance | **Blocked.** `T-087`'s Windows branch has never executed; `A-004` stays unverified |
-| 5 | No worker process outlives application exit, on both platforms | **Not met, and currently unreachable.** Windows has never run against the pool |
+| 4 | A second launch attaches to or refuses in favor of the running instance | **Evidenced, awaiting review.** `T-087`'s three Windows cases — first acquire, racing starts, killed-holder recovery — passed on `check (windows-latest)` at `7516f61` |
+| 5 | No worker process outlives application exit, on both platforms | **Not met.** Reachable again: the hosted Windows job runs the full suite against the pool. `T-088` owns proving it |
 | 6 | Reviewed and signed off | **Not met** — two deliverables await a third review pass |
 
-> **What stands between here and the exit is a runner, not a feature.**
+> **What stood between here and the exit was a runner, and that changed on 2026-08-01.**
 >
-> Criterion 5 says *on both platforms*, and Phase 1's own note fixes what "Windows" means: it is
-> `STARBASE` (`OPS-005`). **No CI job has executed a single step since 2026-07-30 04:08 UTC** —
-> GitHub-hosted jobs fail in three to four seconds having run nothing, and the self-hosted
-> `windows desktop` job is starved and then cancelled by the next push. The last fully green CI
-> push run was 2026-07-28 (`11e1203`).
+> The GitHub-hosted runners returned after executing zero steps since 2026-07-30, and the first
+> working run was **red on both platforms** with four failures that had reached `main` unrun.
+> Those are corrected; `7516f61` is green on `ubuntu-latest`, `windows-latest` and both frozen jobs.
 >
-> Every Phase 2 task approved or delivered since then rests on the maintainer's Linux machine
-> alone (`OPS-006`). That is sufficient for a *task* under `AGENTS.md` §8; it is **not** sufficient
-> for criterion 5, which is a claim about Windows.
+> **`STARBASE` is offline** — registered, not connected, and the maintainer is away from it.
+> `OPS-005` was **amended 2026-08-01**: hosted Windows carries the Windows gate while that holds,
+> because this entry's own reasoning — *blocking on an environment nobody can reach is not a gate,
+> it is a stall* — now points the other way. The `windows desktop` job is skipped unless
+> `STARBASE_AVAILABLE` is set, so an offline runner stops holding every run open at `queued`.
 >
-> `OPS-005` covers a criterion that waits on an unreachable environment and `OPS-006` states the
-> general rule — *a criterion that waits on a payment is not a gate*. **Neither is invoked here**,
-> and this note is not an application for a waiver: the phase is not ready to exit on other
-> grounds, so nothing needs deciding yet. It is recorded now so the decision is made deliberately
-> when criteria 2, 4 and 6 are met, rather than discovered at the exit review.
+> **Two things still wait for that machine**, and neither gates this phase: the desktop slice
+> (`T-026`, `T-040` — a hosted image has no interactive desktop session) and the subjective residue
+> `OPS-004` names, plus `T-074`'s segfault environment and `T-092`'s crash-dump capture.
 
 ---
 

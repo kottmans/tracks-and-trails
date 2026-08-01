@@ -224,6 +224,14 @@ jobs:
   windows-desktop:
     name: windows desktop
     runs-on: [self-hosted, windows, desktop]
+    # **Skipped unless STARBASE is actually online** (`OPS-005` amendment, 2026-08-01). A
+    # self-hosted job whose runner is offline does not fail — it queues, and holds the whole run
+    # in `queued` until something cancels it, so no run can ever reach a conclusion. That is worse
+    # than not having the job: it turns every push into a run that never finishes.
+    #
+    # An unset variable evaluates false, so the safe default is *skip*. Set the repository variable
+    # `STARBASE_AVAILABLE` to `true` when the machine is back and this job returns with it.
+    if: ${{ vars.STARBASE_AVAILABLE == 'true' }}
     # Raised from 15 with T-073: this job now carries the full suite as well as the desktop
     # slice, and 15 was sized for the slice alone. The number bounds how long the job may run
     # once started — it does not bound the queue wait, per RUNNER-R1 below.

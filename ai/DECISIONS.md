@@ -1522,6 +1522,51 @@ rather than erasing it.)*
 
 ---
 
+### Amended 2026-08-01 — hosted Windows carries the Windows gate while `STARBASE` is unreachable
+
+**Status:** **Accepted** (2026-08-01) — maintainer decision
+**Raised by:** `STARBASE` going offline while the maintainer is away from it
+
+**This entry's own reasoning now points the other way.** It was written when the hosted Actions
+quota had run out and `STARBASE` was the only Windows available, and it argued: *"Blocking on an
+environment nobody can reach is not a gate, it is a stall."* On 2026-08-01 the positions reversed.
+The hosted runners returned and began executing full 15–18 step jobs; `STARBASE` is registered and
+**offline**, and the maintainer cannot reach it.
+
+### Decision, revised while this holds
+
+**`check (windows-latest)` is the Windows verification platform for everything it can run.** That
+is the whole suite, lint, format, both `mypy` platforms and the Qt baseline — measured, not
+asserted: the corrected single-instance lock passed **first acquisition, simultaneous refusal and
+killed-holder recovery** there on 2026-08-01, which are `T-087`'s three required Windows cases and
+the exact ones `P2PLAN-R5` withdrew the previous design over.
+
+**Two things stay with `STARBASE`, because a hosted image genuinely cannot supply them:**
+
+- **The desktop slice** (`-m windows_desktop`, `T-026`, `T-040`). It asserts a native `HWND`, the
+  UI Automation tree and per-state tab order under the **real** `windows` platform plugin. A hosted
+  runner has no interactive desktop session.
+- **The subjective residue** `OPS-004` already names — whether rendering *looks* right, whether
+  Narrator *sounds* coherent, whether the installer *feels* normal — plus `T-074`'s segfault
+  environment and `T-092`'s crash-dump capture, which are configuration of that machine.
+
+**The `windows desktop` job is skipped unless `STARBASE_AVAILABLE` is set.** An offline self-hosted
+runner does not fail its job, it queues — holding the entire run in `queued` so nothing ever reaches
+a conclusion. Skipping is what lets a run finish; setting the variable brings it back.
+
+### What this gives up, stated
+
+A defect that appears only on a real Windows desktop — a platform-plugin difference, a focus or
+window-manager behaviour — is not caught while this holds. That is the same class of gap
+`OPS-004` already tracks, and it is narrower than the alternative, which is no Windows evidence at
+all.
+
+**This amendment reopens** the moment `STARBASE` is reachable again: it is *while unreachable*, not
+instead of. The desktop slice and the pre-release verification session are unchanged and still
+required before first release.
+
+---
+
 ## OPS-006 — Linux verification is the maintainer's own machine
 
 **Status:** **Accepted** (2026-07-29) — maintainer decision
