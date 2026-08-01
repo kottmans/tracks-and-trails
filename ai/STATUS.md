@@ -61,34 +61,34 @@ changes what a *job* is, and `T-113` reopens `UX-001` and `T-080`'s `PAUSED` rem
 deliberately did not build), `T-105` (`docs/UX_SPEC.md`, a Phase 3 trigger), `T-106` (the Linux
 packaging `REL-` decision Phase 5 requires and which does not exist), and `T-103` itself.
 
-**CI is not running at all, and no document said so until now.** This is measured, not inferred
-from a red badge:
+**CI came back on 2026-08-01, and immediately earned its keep.** The picture has changed twice in
+two days and both halves matter:
 
-- **The last fully green CI push run was 2026-07-28**, at head `11e1203`. **97 commits** have landed
-  since.
-- **The last CI job to execute a single step was 2026-07-30 04:08 UTC**, run `30513067158` — and
-  only one job in it ran: the **self-hosted `windows desktop`** job, 16 steps, **passed**. All four
-  GitHub-hosted jobs in that same run *failed in three to four seconds having executed zero steps*.
-- **Across the 17 CI push runs since, not one job has executed a step.** The hosted jobs
-  (`ubuntu-latest`, `windows-latest`, and both frozen variants) fail instantly with `steps=0`; the
-  self-hosted `windows desktop` job is cancelled without starting; the run for `733209d` has been
-  **queued 18.6 hours** and has never begun.
+- **The GitHub-hosted runners work again.** After executing zero steps since 2026-07-30 04:08 UTC,
+  `ubuntu-latest`, `windows-latest` and both frozen jobs ran a full 15–18 steps.
+- **`STARBASE` is offline.** The runner is registered — `self-hosted, Windows, X64, desktop` — and
+  its status is `offline`, so the `windows desktop` job sits queued and is cancelled by the next
+  push. Earlier notes here called it "starved"; that was wrong. It is not connected.
 
-**A zero-step three-second job failure is not a test failure**, so the 47 "failure" conclusions in
-that window say nothing about the code. The signature — hosted jobs dying before step one while the
-self-hosted job is merely starved — points at **GitHub-hosted runner unavailability**, consistent
-with the quota exhaustion `OPS-005` was amended over. *That last clause is inference from the run
-metadata; nobody has read a billing page, and it is recorded as unverified.* The cancellations are
-separately explained by `ci.yml:30-32` (`cancel-in-progress: true`) plus pushes arriving faster than
-a queue this deep can drain.
+**The first working run was red, and everything it caught was mine.** Four failures on both
+platforms: the original-audio preview (`T046-R4`), `mergeall` (`T046-R5`) and two Windows handle
+details (`T087-R3`). All are corrected at `6171812`.
 
-**What it costs, stated rather than absorbed.** The gate the trunk-based workflow leans on — *CI
-runs on every push to `main`, and a red run still blocks* — has not run on `T-078` or `T-079`, and
-cannot run on any of the ten now in review. Their Linux evidence is the maintainer's own machine
-(`OPS-006`): **1726 passed / 11 skipped / 2 deselected**, 2026-08-01, plus `mypy --platform win32`.
-**Windows has never run against the pool, and `T-087`'s `msvcrt` branch has never executed at
-all** — that is the half `ARC-006`'s withdrawn design got wrong, so it is the half most worth
-running. **No task should be reported as gated by CI until a run executes a step.**
+**How they reached `main` is the part worth keeping.** `049b595` was a `git add -A` that swept in
+four reviewer regressions written during the review, and I pushed **without re-running the suite** —
+which `AGENTS.md` §8 forbids in as many words. The commit's subject and trailers named Phase 2
+coordination; its contents included four deliberately failing tests.
+
+**A gate had also been red for the whole session without anything noticing.** `pyproject.toml`
+declares `files = ["src", "tests"]`, so plain `mypy` — what a developer types — covers the test
+tree. CI ran `mypy src` only. Plain `mypy` was **green before this session and red by the end of
+it**: six `JobStore` fakes had fallen behind a protocol `T-080` and `T-081` extended, and a property
+narrowed across asserts had made three tests unreachable. Both are fixed, and CI now runs plain
+`mypy` as well — a gate nobody runs is not a gate.
+
+**What CI still cannot tell us.** `A-004` and Phase 2 exit criterion 4 remain blocked: `T-087`'s
+Windows *locking* branch runs only on `STARBASE`, and `STARBASE` is offline. `T-092`'s three
+machine-dependent criteria need the same machine.
 
 **Overall state:** Phase 0's five exit criteria were each verified rather than asserted, and the
 evidence is recorded in `IMPLEMENTATION_PLAN.md` §Phase 0 — including a fresh mutation run
