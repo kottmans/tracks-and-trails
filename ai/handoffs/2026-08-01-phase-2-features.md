@@ -149,6 +149,23 @@ same injected `retry` the per-job button uses. That is N writes. I hold that cri
 the manager would be a second definition of "retry" that can drift from the first. If that trade is
 wrong it is one call site.
 
+## Before reading the CI history: `cancelled` is not `failed`
+
+`.github/workflows/ci.yml` sets **`cancel-in-progress: true`**, so every push supersedes the run
+before it. Chasing this verdict I pushed three coordination commits in quick succession and
+**cancelled the Windows job twice** — runs `30713061006` and `30713168373` both read `cancelled`,
+and in the second `ubuntu-latest` had already reported **success** while `windows-latest` was killed
+mid-run.
+
+That matters here for one specific reason: `STATUS.md` already records this project mistaking a
+non-failure for a failure once (*"a zero-step failure must never be read as a test failure"*).
+**A cancelled Windows job is not evidence of anything** — neither that the corrections work nor
+that they do not. The run to read is the last one, and nothing should be signed off on a cancelled
+one.
+
+*(The fix on my side is procedural and I got it wrong before getting it right: stop pushing while
+a run you need is in flight.)*
+
 ## CI caught 38 Windows failures I pushed unrun
 
 `T-086` and `T-084` reached `main` green on Linux and **red on `windows-latest`** — 38 failures

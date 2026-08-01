@@ -71,6 +71,22 @@ def test_copying_yields_the_whole_log(qapp: QApplication, tmp_path: Path) -> Non
     assert "line 199" in copied
 
 
+def test_copying_a_large_log_copies_the_file_not_only_the_rendered_tail(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """REQ-019's current scope says the copied diagnostic is the file exactly.
+
+    Capping the GUI rendering is sound, but that cap must not silently become the clipboard cap:
+    the omitted beginning is precisely where session versions and initial extractor decisions live.
+    """
+    body = "session header that the bug report needs\n" + "x" * (MAX_DISPLAY_BYTES + 1024)
+    write_log(tmp_path, "job-1", body)
+    view = LogView("job-1", directory=tmp_path)
+
+    assert view.text() != body, "the fixture did not cross the display cap"
+    assert view.copy_to_clipboard() == body
+
+
 def test_a_job_with_no_log_says_so_and_offers_nothing_to_copy(
     qapp: QApplication, tmp_path: Path
 ) -> None:

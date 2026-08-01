@@ -229,14 +229,21 @@ def test_a_file_that_has_been_moved_says_so(downloads: Path) -> None:
 
 
 def test_a_missing_launcher_says_which_one(downloads: Path) -> None:
-    """A machine with no `xdg-open` is a real configuration, not a broken one."""
+    """A machine with no launcher is a real configuration, not a broken one.
+
+    **The launcher is named from this platform's own builder**, not written out. Hardcoding
+    `xdg-open` is what made this the last of the 38 Windows failures to fall: `explorer` is what
+    `command[0]` is there, so the assertion described a message the code never produces.
+    """
     path = downloads / "clip.mp4"
     path.write_bytes(b"")
 
     refusal = open_file(path, within=downloads, run=RaisingSpawner(FileNotFoundError()))
 
     assert refusal is not None
-    assert "xdg-open" in refusal.reason
+    assert open_command(path)[0] in refusal.reason, (
+        f"the refusal does not name the launcher that is missing: {refusal.reason}"
+    )
     assert "not installed" in refusal.reason
 
 

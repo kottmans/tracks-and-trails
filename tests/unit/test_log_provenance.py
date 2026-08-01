@@ -89,6 +89,28 @@ def test_a_value_this_application_supplied_does_not_reach_the_log(
     assert text.count("<redacted>") == 2, "one of the two routes kept the supplied value"
 
 
+def test_a_credential_in_the_requested_url_does_not_reach_a_yt_dlp_log(
+    tmp_path: Path, job_log: logging.Handler
+) -> None:
+    """The production route cannot depend on a caller registering the request first.
+
+    `DAT-003`'s accepted T-049 amendment says log emission remains origin-agnostically redacted.
+    The source URL is handed to yt-dlp and yt-dlp routinely echoes it through its logger, so both
+    userinfo and a signed query are credentials at this sink even though the diagnostic is marked
+    third-party prose.
+    """
+    password = "password-that-must-not-be-logged"  # noqa: S105 - reviewer marker
+    token = "signed-query-token-that-must-not-be-logged"  # noqa: S105 - reviewer marker
+    requested = f"https://alice:{password}@example.invalid/video?token={token}"
+
+    YtdlpLog(third_party_logger("ytdlp")).debug(f"[generic] Extracting URL: {requested}")
+
+    text = written(tmp_path, job_log)
+    assert password not in text
+    assert token not in text
+    assert "https://example.invalid/video" in text
+
+
 def test_a_cookie_path_yt_dlp_emitted_is_still_there_character_for_character(
     tmp_path: Path, job_log: logging.Handler
 ) -> None:

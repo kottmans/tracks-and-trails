@@ -28,6 +28,8 @@ Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLA
 
 ## **CI caught 38 Windows failures I pushed unrun — all in my own new tests**
 
+*(Corrected in two passes: 37 at `5ea6656`, and the last one — `test_a_missing_launcher_says_which_one`, which hardcoded `xdg-open` where Windows produces `explorer` — after run `30713509567` isolated it. `ubuntu-latest` was green in that run; `windows-latest` failed on that single test.)*
+
 `T-086` and `T-084` went to `main` green on Linux and **red on `windows-latest`**, with 38 failures
 across `test_reveal.py`, `test_file_actions.py` and `test_log_view.py`. Every one was a Linux-only
 assumption in a *test*, not a defect in the code:
@@ -56,6 +58,14 @@ green local suite is not the gate — `AGENTS.md` §8 says so and I read it as s
 designed. So exit criteria 2 and 5 — hard-kill recovery and no worker outliving exit — are
 evidenced on both platforms by measurement rather than by assertion. Only the three UI test files
 failed there, and those are the Linux-only assumptions above.
+
+**A hazard worth knowing about, which I walked into twice.** `.github/workflows/ci.yml` sets
+`cancel-in-progress: true`, so every push supersedes the run before it. Chasing this verdict I
+pushed coordination commits while the run I needed was in flight and **cancelled the Windows job
+twice** — runs `30713061006` and `30713168373` both read `cancelled`, and in the second
+`ubuntu-latest` had already reported success while `windows-latest` was killed mid-run. **A
+cancelled job is not evidence either way**, which matters because this project has already
+mistaken a non-failure for a failure once.
 
 **Two flakes found while chasing that, both recorded rather than chased:**
 
