@@ -8153,3 +8153,67 @@ contract or evidence. T046-R6 and T087-R4 require a coordination-only correction
 recheck; T046-R7 and T087-R5 are non-blocking documentation/evidence follow-ups. Reviewer production
 source was not edited. A separate T-100 working tree appeared after the frozen-head verification and
 was preserved untouched and excluded from every result above; only this review record was added.
+
+## 2026-08-01 — Phase 2 feature batch: T-100, T-086, T-084, T-082 and T-088
+
+**Reviewer:** Codex (Reviewer)
+**Review boundary:** `eb6f690..57518ce`
+**Implementation commits:** `c242dd3` (`T-100`), `46c1709` (`T-086`), `d86240c`
+(`T-084`), `b1b7cd6` (`T-082`) and `de7d13b` (`T-088`)
+**Handoff head:** `7ffca9b`
+**Coordination/test correction during review:** `ff16034`; no reviewed production source changed
+**Overall verdict:** **Changes requested.** T-100 and T-082 are approved. T-084, T-086 and T-088
+are not approved, and Phase 2 cannot exit while T-115 remains open.
+
+### Task verdicts
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-100` | **Approved at `c242dd3`** | The history projection is read-only, newest-first, covers every REQ-020 field including null output paths, refreshes only after the committed success signal, and remains separate from clear-completed persistence. |
+| `T-082` | **Approved at `b1b7cd6`** | Interrupted rows recover in one transaction; the composed application offers exactly those ids before ordinary interaction; Not now is safe/default; Retry all reuses the per-job retry path and its existing waiting-list admission. |
+| `T-086` | **Changes requested at `46c1709`** | T086-R1 leaves Windows Open-file behavior unimplemented by the documented associated-application route. The Windows-hosted argv test proves only list construction, not that Explorer opens the file. |
+| `T-084` | **Changes requested at `d86240c`** | T084-R1 permits credentials in yt-dlp-originated job logs despite the accepted DAT-003 emission rule; T084-R2 copies only the capped rendering rather than the file. |
+| `T-088` | **Changes requested at `de7d13b`** | T088-R1 is an unconditional xfail that cannot detect T-115 being fixed. T088-R2 and T088-R3 overstate what the phase-level progress and restart tests observe. |
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T084-R1` | **Critical** | **Yes** | Credential redaction / accepted decision | `core/logging.py:181-209` returns third-party records after replacing only values registered through `remember_a_secret()`. No production caller registers any value. An ordinary yt-dlp bridge line that echoes a source URL therefore writes its userinfo password and signed query to the per-job log verbatim; the reviewer regression proves both survive. This contradicts accepted DAT-003 at `DECISIONS.md:1015-1020`, which explicitly keeps T-038 log emission origin-agnostically redacted even when database storage is verbatim. DAT-004 remains **Proposed** and cannot silently supersede that accepted rule. The new Copy-diagnostics surface makes the exposure easy to carry into a bug report, which is also DAT-003's named reopening condition. | Keep database storage and log emission as the two distinct sinks DAT-003 defines. Apply the established emission redaction to yt-dlp records too, and have the maintainer resolve the now-live copy/export reopening condition before loosening it. Do not rely on exact registration unless every production path registers every secret before yt-dlp can emit it. | **Open** |
+| `T084-R2` | **High** | **Yes** | Log copy contract | `read_job_log()` deliberately renders at most the newest 512 KiB (`ui/log_view.py:66-91`), but `copy_to_clipboard()` copies `self.text()` (`:189-202`). For a larger log, the clipboard loses the beginning—session versions and initial extractor decisions—and can contain only the truncation notice for a long line. That violates REQ-019's current explicit promise at `REQUIREMENTS.md:99-104`: “What is copied is the file exactly.” The reviewer regression fails on this route. | Keep the bounded GUI rendering, but read the bounded log artifact independently when Copy is invoked. Report a read refusal rather than copying the placeholder or a truncated view. | **Open** |
+| `T086-R1` | **High** | **Yes** | Windows Open file | `open_command(path, "win32")` returns `explorer <path>` and asserts in a comment that this opens the file with its associated application (`ui/reveal.py:127-136`). The implementation never executes that route in a desktop session, and an injected-spawner argv assertion cannot establish the semantic claim. Windows' documented associated-application operations are `ShellExecuteW`'s `open` verb or Python's `os.startfile`; Explorer is the file-manager process and is separately appropriate for the `/select,` reveal route. Consequently REQ-021's Windows Open half is not established and is very likely to open/navigate Explorer rather than launch the associated media application. | Give Open a platform launcher seam distinct from Reveal: use `os.startfile`/`ShellExecuteW` on Windows and retain `xdg-open` on Linux; keep `explorer /select,` only for Reveal. Test the API seam on hosted Windows and retain the real-desktop residue honestly. Official contracts: <https://docs.python.org/3/library/os.html#os.startfile> and <https://learn.microsoft.com/en-us/windows/win32/api/shellapi/nf-shellapi-shellexecutew>. | **Open** |
+| `T088-R1` | **High** | **Yes** | T-115 executable evidence | `test_a_job_beyond_the_limit_never_starts_even_once_the_pool_empties` has no setup or behavioral assertion; it immediately calls `pytest.xfail()` (`test_phase_2_exit.py:575-610`). It is not decorated `@pytest.mark.xfail(strict=True)` despite TASKS and the implementation plan saying it is strict. It will remain XFAIL after the queue is fixed, so the promised “fixing it fails the build until inverted” gate cannot fire. | Build the measured five-job reproduction, assert the desired queue-draining outcome, and mark that real test `xfail(strict=True)` until T-115 closes. The expected behavior need not choose which layer owns durable admission. | **Open** |
+| `T088-R2` | **Medium** | **Yes** | Exit criterion 1 evidence | `test_three_downloads_progress_independently_while_the_ui_keeps_answering` claims distinct progress and UI event-loop service (`test_phase_2_exit.py:507-522`), but it samples only durable status dictionaries, terminal file sizes and final states (`:535-569`). It never observes a progress byte, progress signal, table cell, UI event, or response latency. A mutation that drops every live progress update still passes this test. Existing T-079 composition coverage does observe three rendered rows; the Phase-2 evidence should cite it rather than assigning claims this test cannot prove. | Either observe three distinct live progress values through the composed UI and an explicit event-loop heartbeat here, or narrow/rename this test and make the evidence row cite the existing composed progress test for the missing claim. | **Open** |
+| `T088-R3` | **Medium** | **Yes** | Exit criterion 2 evidence | After hard-killing the child, `test_a_hard_kill_mid_queue_restores_every_job_state_at_the_next_start` directly constructs `JobRepository` and calls `recover_interrupted()` (`test_phase_2_exit.py:253-327`). There is no next application start, despite the test name, comment and evidence table saying there is. T-082 separately proves startup recovery for seeded rows, but this phase test does not join that seam to the rows produced by the hard kill. | Start the composed application against the killed database and observe its recovered/untouched rows (and offer), or state explicitly that the criterion is covered by the hard-kill persistence test together with T-082's startup composition test rather than claiming this one crosses both boundaries. | **Open** |
+
+### T-115 judgment
+
+T-115 is confirmed as a **High Phase-2 blocker**. The manager drains only its in-memory waiting
+list, public `start()` refuses at saturation, durable QUEUED rows are not admitted after restart, and
+the Add dialog starts at most the explicitly probed job. Of the three placements in the handoff,
+durable admission must ultimately be manager-owned or supplied to it by composition: a dialog-only
+loop cannot cover restart, and a periodic full-table sweep is unnecessary. A public enqueue/admit
+operation plus one startup admission of durable QUEUED intent is the smallest direction that covers
+both newly-added and recovered queues without resurrecting T081-R4's “reorder means start” rule.
+This is a design recommendation, not an implementation approval.
+
+### CI and independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `eb6f690..57518ce` inspected; `git diff --check` passed. |
+| Exact evidence-head CI | Run `30713168373` at `57518ce` was **cancelled** by the later push. Ubuntu and both frozen jobs had passed; Windows tests were killed mid-step, so that run supplies no full Windows verdict. |
+| Handoff-head CI | Run `30713509567` at `7ffca9b` completed **failure**: Ubuntu and both frozen jobs passed; Windows had **1 failed / 1852 passed / 21 skipped / 32 deselected / 1 xfailed**. The sole failure was T-086's Linux-only `xdg-open` expectation. All five substantive Phase-2 exit tests passed on Windows and the unconditional T-115 case reported XFAIL. |
+| During-review correction | `ff16034` corrected the platform-name assertion without changing production source. It also committed the two intentionally failing reviewer regressions before their implementation fixes; those remain failures, not approval evidence. |
+| Replacement CI | Run `30713931554` at `ff16034` was still **in progress** when this review closed: both frozen jobs, lint, formatting, both mypy gates and both Qt baselines had passed; the Ubuntu and Windows full-test steps had no conclusion after 15 minutes. It is not cited as a pass or failure. |
+| Local full gates before reviewer regressions | `ruff check .`, `ruff format --check .`, `mypy src`, bare `mypy`, `mypy --platform win32 src`, and bare `mypy --platform win32` passed. |
+| Local T-088 | **5 passed / 1 xfailed** when rerun with localhost access. The xfail result is vacuous for T088-R1. |
+| Reviewer regressions | **2 failed as expected:** credentialed requested URL survives the yt-dlp log route; copying a log beyond `MAX_DISPLAY_BYTES` does not equal the file. |
+
+### Final disposition
+
+T-100 and T-082 are approved without follow-up. T-084, T-086 and T-088 require correction and
+re-review on the findings above. T-115 remains an independent High product defect and means Phase 2
+exit criterion 7 is not met. The hosted Windows run corrected a real test portability lapse, but it
+does not turn argv construction into desktop Open-file evidence. No reviewed production source was
+edited by the Reviewer.
