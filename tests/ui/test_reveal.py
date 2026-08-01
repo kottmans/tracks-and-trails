@@ -104,14 +104,22 @@ def test_a_hostile_name_is_one_whole_argv_element(
     has its own test, and it names the parent folder rather than the file.
     """
     monkeypatch.setattr("tracks_and_trails.ui.reveal.dbus_available", lambda: True)
+    # **Not written to disk.** The command builders are pure functions of the path, and Windows
+    # refuses `"`, `|` and a newline in a filename outright — so creating the fixture would make
+    # this test fail on the platform whose argv it exists to check. The names still have to be
+    # tested there: `explorer /select,` is the argument most likely to be split.
     path = downloads / name
-    path.write_bytes(b"")
 
     opened = open_command(path, platform)
     revealed = reveal_command(path, platform)
 
+    # Separators normalised before comparing. `as_uri()` renders a Windows path with forward
+    # slashes while `str(path)` uses backslashes, so the raw comparison found nothing on the
+    # Windows job — and the assertion below would have reported "spread across 0 arguments",
+    # which describes a defect that is not there.
+    wanted = str(path).replace("\\", "/")
     for argv in (opened, revealed):
-        holding = [element for element in argv if str(path) in unquote(element)]
+        holding = [element for element in argv if wanted in unquote(element).replace("\\", "/")]
         assert len(holding) == 1, f"{argv} spread the path across {len(holding)} arguments"
         # And nothing was quoted *into* the element by us: a caller adding quotes to survive a
         # shell is the tell that a shell is expected somewhere.

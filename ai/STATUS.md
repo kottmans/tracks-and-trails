@@ -26,6 +26,41 @@ Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLA
 - **`T-088` is written**, and it found the defect below.
 - **Blocked on `STARBASE`, which is offline:** `T-092` and `T-074`. Neither gates the phase.
 
+## **CI caught 38 Windows failures I pushed unrun — all in my own new tests**
+
+`T-086` and `T-084` went to `main` green on Linux and **red on `windows-latest`**, with 38 failures
+across `test_reveal.py`, `test_file_actions.py` and `test_log_view.py`. Every one was a Linux-only
+assumption in a *test*, not a defect in the code:
+
+- **Hostile filenames were written to disk.** Windows forbids `"`, `|` and a newline in a filename
+  outright, so creating the fixture failed on the platform whose argv the test exists to check. The
+  command builders are pure functions of the path; nothing needed to be written.
+- **`str(path)` compared against `as_uri()`.** A Windows path renders with forward slashes in a
+  URI and backslashes otherwise, so the containment check found nothing — and would have reported
+  "spread across 0 arguments", describing a defect that was not there.
+- **`["xdg-open", …]` hardcoded** in the wiring tests, which now assert against the platform's own
+  builder.
+- **`chmod(0o000)` was the unreadable-file fixture.** It does not remove read access on Windows and
+  does not stop root on Linux — and the assertion was `in ("", "text")`, which passes whether or not
+  the guard exists. The error is now injected at the real call site.
+- **`write_text` translates `\n` to `\r\n` on Windows**, so a character-for-character assertion
+  compared against a file the test did not think it wrote.
+
+**This is the second time this session that something reached `main` without the platform gate
+seeing it.** The first was four failing tests pushed unrun; this one was run, on one platform. A
+green local suite is not the gate — `AGENTS.md` §8 says so and I read it as satisfied by `ruff`,
+`mypy` and `pytest` on the machine in front of me.
+
+**Two flakes found while chasing that, both recorded rather than chased:**
+
+- `test_a_killed_holder_leaves_a_lock_the_next_launch_can_take` failed on `windows-latest` in one
+  run and passed in the next with nothing changed between them. The `T-074` class of Windows
+  intermittency.
+- `test_the_composed_remove_control_updates_the_store_and_the_table` failed once in a full
+  `tests/integration` run and **passes alone and in its own file** — so it is cross-file state
+  leakage, not a defect in the control. It predates this session's work: `test_composition.py`
+  passes complete, including the `T-082` test added to it.
+
 ## **`T-088` found that nothing drains the queue — `T-115`, High, and it blocks the exit**
 
 Measured against a real composed application, concurrency 3, five URLs added through the real
@@ -65,7 +100,16 @@ quietly settled.
 `check (windows-latest)` at `ea9d752`. Under `OPS-005`'s 2026-08-01 amendment that is the Windows
 gate while `STARBASE` is unreachable.
 
-**Full Linux suite: 1860 passed / 11 skipped / 2 deselected**, with all four `mypy` gates clean
+**Local evidence, stated as what was actually run.** The Windows corrections above were verified by
+three separate invocations covering every changed file — `tests/unit` + `tests/ui` (**1584 passed /
+11 skipped**), `tests/integration/test_phase_2_exit.py` (**5 passed / 1 xfailed**), and
+`tests/integration` without that file (**275 passed**, plus the cross-file flake noted above). **A
+single combined run did not complete**: repeated attempts were killed and restarted by the
+environment at ~25 s with no CPU used, which is a machine problem rather than a test one — the last
+clean combined run, before these corrections, was **1865 passed / 11 skipped / 1 xfailed**. CI is
+the gate that matters here and it runs both platforms.
+
+All four `mypy` gates clean
 (`ruff`, `ruff format`, `mypy src`, `mypy`, and both under `--platform win32`).
 
 *(This block previously said ten tasks were in review and that the Windows branch had never

@@ -138,6 +138,29 @@ same injected `retry` the per-job button uses. That is N writes. I hold that cri
 the manager would be a second definition of "retry" that can drift from the first. If that trade is
 wrong it is one call site.
 
+## CI caught 38 Windows failures I pushed unrun
+
+`T-086` and `T-084` reached `main` green on Linux and **red on `windows-latest`** — 38 failures
+across `test_reveal.py`, `test_file_actions.py` and `test_log_view.py`, every one a Linux-only
+assumption in a *test* rather than a defect in the code. Fixed in a follow-up commit; the causes:
+
+| What | Why it only failed there |
+|---|---|
+| Hostile filenames written to disk | Windows forbids `"`, `\|` and a newline in a filename — so the fixture for the argv test failed on the platform the argv is *for*. Nothing needed writing; the builders are pure |
+| `str(path)` compared against `as_uri()` | A Windows path is forward-slashed in a URI and backslashed otherwise, so containment found nothing — and would have reported "spread across 0 arguments", a defect that is not there |
+| `["xdg-open", …]` hardcoded in the wiring tests | They now assert against the platform's own builder |
+| `chmod(0o000)` as the unreadable-file fixture | Does not remove read access on Windows, does not stop root on Linux — and the assertion `in ("", "text")` passed whether or not the guard existed. The error is now injected at the real call site |
+| `write_text` translating `\n` → `\r\n` | A character-for-character assertion compared against a file the test did not think it wrote |
+
+**Worth weighing against me:** this is the second time this session something reached `main` without
+the platform gate seeing it. The first was four failing tests pushed unrun. This one *was* run — on
+one platform — which is the more dangerous version, because it felt like compliance with
+`AGENTS.md` §8.
+
+*(Also: `test_a_killed_holder_leaves_a_lock_the_next_launch_can_take` failed on `windows-latest` in
+one run and passed in the next with nothing changed between them. **Flaky, not a regression** —
+recorded rather than chased. It is the `T-074` class.)*
+
 ## Three things my own tests got wrong, found by mutation
 
 Not offered as contrition — they are the places a reviewer should look hardest, because a test I had

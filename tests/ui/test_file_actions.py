@@ -22,6 +22,7 @@ from tracks_and_trails.persistence.repositories import HistoryEntry
 from tracks_and_trails.ui.file_actions import OPEN_TEXT, REVEAL_TEXT, FileActions
 from tracks_and_trails.ui.history_view import build_history_view
 from tracks_and_trails.ui.queue_view import QueueView
+from tracks_and_trails.ui.reveal import open_command, reveal_command
 
 
 class FakeHistory:
@@ -111,7 +112,10 @@ def test_triggering_open_acts_on_the_selected_row(qapp: QApplication, downloads:
     attached.actions.open_action.trigger()
 
     assert attached.reported == []
-    assert attached.spawner.argv == ["xdg-open", str(second)], (
+    # **Against this platform's own builder**, not a hardcoded `xdg-open`. What is asserted is
+    # the wiring — that the action opened *the selected row's file* through the open route — and
+    # hardcoding Linux's argv made every one of these fail on the Windows job.
+    assert attached.spawner.argv == open_command(second), (
         f"opened {attached.spawner.argv}, which is not the row the user selected"
     )
 
@@ -137,9 +141,12 @@ def test_reveal_asks_the_file_manager_to_show_the_file_rather_than_opening_it(
 
     attached.actions.reveal_action.trigger()
 
-    assert attached.spawner.argv == ["xdg-open", str(downloads)], (
+    assert attached.spawner.argv == reveal_command(written), (
         "Show in folder did not reveal — this is the argv Open would build if both actions were "
         "wired to the same call"
+    )
+    assert attached.spawner.argv != open_command(written), (
+        "reveal and open built the same argv, so one of them is wired to the other"
     )
 
 
@@ -157,9 +164,9 @@ def test_reveal_and_open_do_different_things(
     attached.actions.reveal_selected()
 
     opened, revealed = (call[0] for call in attached.spawner.calls)
-    assert opened != revealed
-    assert opened[-1] == str(written)
-    assert revealed[-1] == str(downloads)
+    assert opened == open_command(written)
+    assert revealed == reveal_command(written)
+    assert opened != revealed, "the two actions build the same command"
 
 
 def test_a_refusal_reaches_the_user_rather_than_the_console(
@@ -226,7 +233,7 @@ def test_the_output_directory_is_read_at_the_moment_of_use(
     current = new
 
     assert actions.open_selected() is None, "the boundary was captured rather than re-read"
-    assert spawner.argv == ["xdg-open", str(written)]
+    assert spawner.argv == open_command(written)
 
 
 def test_the_context_menu_carries_both_actions(qapp: QApplication, downloads: Path) -> None:
@@ -259,7 +266,7 @@ def test_a_double_click_opens(qapp: QApplication, downloads: Path) -> None:
     attached.view.table.doubleClicked.emit(attached.view.model.index(0, 0))
 
     assert attached.reported == []
-    assert attached.spawner.argv == ["xdg-open", str(written)]
+    assert attached.spawner.argv == open_command(written)
 
 
 def test_the_queue_view_offers_the_actions_for_a_finished_job_and_not_a_running_one(
@@ -301,7 +308,7 @@ def test_the_queue_view_offers_the_actions_for_a_finished_job_and_not_a_running_
         assert view.select("done")
         assert actions.open_action.isEnabled()
         actions.open_action.trigger()
-        assert spawner.argv == ["xdg-open", str(written)]
+        assert spawner.argv == open_command(written)
     finally:
         view.detach()
         manager.shutdown()

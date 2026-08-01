@@ -446,8 +446,11 @@ def test_a_second_launch_refuses_in_favour_of_the_running_instance(
     pool**, which is when a guard implemented by polling or by a timeout would be most likely to
     let it through.
 
-    *Does not cover:* attaching. `ARC-006` allows attach *or* refuse and this application refuses;
-    a future attach channel would need its own test rather than this one relaxed.
+    *Does not cover:* attaching — `ARC-006` allows attach *or* refuse and this application refuses,
+    so a future attach channel needs its own test rather than this one relaxed. **Nor the message
+    the user sees:** this drives `compose()`, where the error is raised; the dialog and exit code 3
+    live in `run()`, and `T-087`'s own tests cover that. What is asserted here is that the *lock*
+    refuses under a full pool, which is the phase-level question.
     """
     database = tmp_path / "queue.db"
     urls = [media_url(total_bytes=CLIP_BYTES, chunk_delay=0.5) for _ in range(CONCURRENT)]
@@ -488,11 +491,11 @@ def test_a_second_launch_refuses_in_favour_of_the_running_instance(
             "a second launch started against a database another instance is writing; that is the "
             "corruption ARC-006 exists to prevent, and it happened while the first pool was full"
         )
-        message = (second.stderr + second.stdout).lower()
-        assert "already" in message or "running" in message or "instance" in message, (
-            f"the second launch refused without saying why, which a user cannot act on: "
-            f"{second.stderr[-600:]}"
+        output = second.stderr + second.stdout
+        assert "AlreadyRunningError" in output, (
+            f"the second launch failed for some other reason than the lock: {second.stderr[-800:]}"
         )
+        assert str(database) in output, "the refusal does not name the database it refused"
     finally:
         process.kill()
         process.wait(timeout=30)

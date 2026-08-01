@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from PySide6.QtWidgets import QApplication
 
 from tracks_and_trails.core.logging import JOB_LOG_DIRECTORY
@@ -23,9 +24,16 @@ COOKIE_PATH = "/home/sean/.mozilla/firefox/ab12.default-release/cookies.sqlite"
 
 
 def write_log(directory: Path, job_id: str, body: str) -> Path:
+    """Write a log fixture **as bytes**, so the file is identical on every platform.
+
+    `write_text` translates `\n` to `\r\n` on Windows, and `read_job_log` reads bytes — so a
+    character-for-character assertion would compare against a file the test did not think it
+    wrote. The real handler writes through `logging`, which does its own newline handling; what
+    these tests are about is what the *reader* does with the bytes it finds.
+    """
     path = directory / JOB_LOG_DIRECTORY / f"{job_id}.log"
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(body, encoding="utf-8")
+    path.write_bytes(body.encode("utf-8"))
     return path
 
 
@@ -141,16 +149,25 @@ def test_undecodable_bytes_do_not_lose_the_lines_around_them(
 
 
 def test_an_unreadable_log_is_absent_rather_than_an_exception(
-    qapp: QApplication, tmp_path: Path
+    qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """`read_job_log` never raises: a permission change is not something the user can act on from
-    a Qt slot, and an exception there is printed and swallowed."""
-    path = write_log(tmp_path, "job-1", "text\n")
-    path.chmod(0o000)
-    try:
-        assert read_job_log("job-1", tmp_path) in ("", "text\n")  # root can still read it
-    finally:
-        path.chmod(0o644)
+    a Qt slot, and an exception there is printed and swallowed.
+
+    **The error is injected, not produced by `chmod`.** `chmod(0o000)` does not remove read access
+    on Windows and does not stop root on Linux, so the original version asserted
+    `in ("", "text\n")` — which passes whether or not the guard exists, and failed outright on the
+    Windows job. Raising the real exception from the real call site tests the real branch on every
+    platform.
+    """
+    write_log(tmp_path, "job-1", "text\n")
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise PermissionError(13, "permission denied")
+
+    monkeypatch.setattr(Path, "stat", refuse)
+
+    assert read_job_log("job-1", tmp_path) == ""
 
 
 def test_refresh_picks_up_lines_written_after_the_view_was_built(

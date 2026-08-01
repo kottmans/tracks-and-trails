@@ -525,6 +525,25 @@ This is what the task existed for. Criterion 1 — "three concurrent downloads" 
 *Evidenced* by `T-079`'s own acceptance criterion, and it is: the mechanism is sound. What no
 feature task asks is whether anything drives it.
 
+#### What they cost, measured
+
+**58 s for the file**, of which **45 s is one test** — `test_the_pool_never_exceeds_the_configured_limit`
+holds a fixed sampling window rather than exiting on a condition, because an overshoot *between*
+samples is exactly what it exists to catch. Everything else is under a second of call time.
+
+For scale: `tests/integration` without this file is 2 m 26 s.
+
+*(A note on measuring it: two runs took upwards of half an hour and I spent a while suspecting these
+tests. They were not the cause — I had `pkill`ed a mid-run pytest earlier and left the machine in a
+state that made everything slow. Recorded because the wrong conclusion was one step away, and
+because "my new tests are slow" is a much more comfortable explanation than "I broke my own
+machine".)*
+
+Not marked `slow` and excluded, deliberately: `pyproject.toml`'s default deselects `network` and
+`windows_desktop`, and a third exclusion would mean the phase's exit criteria stop running by
+default — which is how a proof becomes decoration. If the cost is judged too high, the honest fix
+is to shorten the windows and say what that gives up, not to stop running them.
+
 #### Two things the tests had to be careful about
 
 **The rows lead the processes.** `start()` writes `PROBING` through the writer thread and the worker
