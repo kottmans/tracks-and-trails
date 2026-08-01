@@ -704,6 +704,62 @@ def test_audio_postprocessing_does_not_overwrite_an_existing_final_path(
         assert spin(lambda: composition.shutdown.finished, timeout=120)
 
 
+def test_original_audio_preview_matches_the_real_postprocessor_output(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    hls_media_url: Callable[[], str],
+) -> None:
+    """``original`` keeps the codec, but yt-dlp may still replace its source container.
+
+    The built-in original-audio preset is one of the cases the amended ``REQ-011`` calls exact.
+    Drive the real FFmpegExtractAudio postprocessor because a fake that writes the previewed name
+    simply assumes the disputed behavior: AAC from this HLS fixture is copied into M4A even though
+    the probed download target has another extension.
+    """
+    from tracks_and_trails.downloader import worker, ytdlp_adapter
+    from tracks_and_trails.downloader.environment import ytdlp_candidates
+
+    composition = application.compose(
+        qapp,
+        database=tmp_path / "queue.db",
+        output_directory=tmp_path / "downloads",
+        geometry_file=tmp_path / "window.toml",
+    )
+    try:
+        url = hls_media_url()
+        job_id = queue_one(composition, url, preset="Audio only (original)")
+        job = composition.store.get(job_id)
+        assert job is not None
+
+        resolved = worker._import_ytdlp(ytdlp_candidates(None))
+        options = ytdlp_adapter.build_options(
+            job.request, job.request.output_template, probe_only=True
+        )
+        with resolved.module.YoutubeDL(options) as ydl:
+            info = dict(ydl.extract_info(url, download=False) or {})
+        preview = worker.preview_path(job.request, info, resolved)
+
+        composition.manager.start(job_id)
+        assert spin(
+            lambda: (
+                (stored := composition.store.get(job_id)) is not None
+                and stored.status is JobStatus.COMPLETED
+            ),
+            timeout=180,
+        ), f"the original-audio download never completed — {why(composition, job_id)}"
+
+        stored = composition.store.get(job_id)
+        assert stored is not None and stored.output_path is not None
+        assert Path(stored.output_path) == preview, (
+            f"preview promised {preview.name!r}, but the original-audio postprocessor produced "
+            f"{Path(stored.output_path).name!r}"
+        )
+    finally:
+        composition.shutdown.begin()
+        assert spin(lambda: composition.shutdown.finished, timeout=120)
+
+
 # --- 1. a download that completes (`REQ-012`, `REQ-014`) --------------------------------------
 
 

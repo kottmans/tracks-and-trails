@@ -1707,6 +1707,20 @@ def test_a_merging_request_says_its_preview_is_provisional(tmp_path: Path) -> No
     assert worker_module.preview_path(merging, dict(info), resolved).name.startswith("Clip")
 
 
+def test_mergeall_also_says_its_preview_is_provisional(tmp_path: Path) -> None:
+    """yt-dlp has a merging selector that contains no ``+`` at all.
+
+    ``mergeall`` is parsed by yt-dlp into one merged format assembled from every selected stream.
+    Looking only for the binary ``+`` operator therefore labels this container as exact even
+    though yt-dlp chooses it by the same rules as any other merge.
+    """
+    request = request_for(tmp_path, format_selector="mergeall")
+
+    assert worker_module.preview_is_provisional(request), (
+        "mergeall asks yt-dlp to merge streams but was presented as an exact output path"
+    )
+
+
 def test_two_downloads_converting_to_one_name_get_two_files(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

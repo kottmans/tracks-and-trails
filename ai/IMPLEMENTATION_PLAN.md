@@ -294,12 +294,12 @@ Phase 2 work. None is a deliverable and none gates the exit; they are listed in 
 
 | # | Criterion | State |
 |---|---|---|
-| 1 | Three concurrent downloads show independent accurate progress with the UI interactive throughout (`NFR-001`) | **Evidenced, not yet proven end to end.** `T-079`'s first acceptance criterion asserts it and was approved; `T-088` re-proves it against the whole phase |
+| 1 | Three concurrent downloads show independent accurate progress, UI interactive throughout (`NFR-001`) | **Evidenced.** `T-079`'s first acceptance criterion asserts it and is approved; `T-088` re-proves it against the whole phase |
 | 2 | Hard-killing the app mid-queue and restarting restores the queue with correct states | **Not met** — `T-082` (Ready) and `T-088` (Proposed) |
-| 3 | Concurrency limit is respected exactly; lowering it while running drains cleanly, and so does pausing the queue (`UX-001` — the same reasoning: no partial file to have a rule about) | **Half met.** The limit half is `T-078`, approved, including a lowered limit draining. The pause half is `T-080`, in review |
-| 4 | A second launch attaches to or refuses in favor of the running instance | **Not met** — `T-087`, **Ready** and startable now |
-| 5 | No worker process outlives application exit, on both platforms | **Not met, and currently unreachable.** Linux is covered for a pool of one (`T-019`, Phase 1) and has never been re-run against a pool of N. **Windows has never run against the pool at all** — see below |
-| 6 | Reviewed and signed off | **Not met** — four tasks await a verdict |
+| 3 | Concurrency limit respected exactly; lowering it drains cleanly, and so does pausing | **Met.** Both halves are approved: the limit by `T-078`, the pause drain by `T-080` |
+| 4 | A second launch attaches to or refuses in favor of the running instance | **Blocked.** `T-087`'s Windows branch has never executed; `A-004` stays unverified |
+| 5 | No worker process outlives application exit, on both platforms | **Not met, and currently unreachable.** Windows has never run against the pool |
+| 6 | Reviewed and signed off | **Not met** — two deliverables await a third review pass |
 
 > **What stands between here and the exit is a runner, not a feature.**
 >

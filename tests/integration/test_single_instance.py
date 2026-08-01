@@ -322,3 +322,37 @@ def test_the_createfilew_prototype_is_declared_in_full() -> None:
     assert "create_file.argtypes = (" in WINDOWS_BRANCH
     for parameter in ("LPCWSTR", "DWORD", "LPVOID", "HANDLE"):
         assert f"wintypes.{parameter}" in WINDOWS_BRANCH, f"{parameter} is missing from argtypes"
+
+
+def test_the_closehandle_prototype_keeps_the_handle_pointer_sized() -> None:
+    """The cleanup call has the same pointer-width requirement as ``CreateFileW``.
+
+    ``ctypes`` assumes undeclared arguments are C ``int`` values.  On 64-bit Windows that is
+    narrower than ``HANDLE``, so the recovery path added for ``T087-R2`` can itself fail or close
+    the wrong value when descriptor conversion fails.  Merely asserting that ``CloseHandle`` is
+    present did not establish that the raw lock handle is actually released.
+    """
+    assert "close_handle = kernel32.CloseHandle" in WINDOWS_BRANCH, (
+        "CloseHandle is still called through an untyped ctypes export"
+    )
+    assert "close_handle.argtypes = (wintypes.HANDLE,)" in WINDOWS_BRANCH, (
+        "CloseHandle's HANDLE argument is not declared at pointer width"
+    )
+    assert "close_handle.restype = wintypes.BOOL" in WINDOWS_BRANCH, (
+        "CloseHandle's Win32 return type is not declared"
+    )
+
+
+def test_the_crt_descriptor_cannot_inherit_the_process_lock() -> None:
+    """A worker process must not acquire ownership of the application's instance lock.
+
+    Python documents that ``open_osfhandle`` returns an inheritable descriptor unless
+    ``O_NOINHERIT`` is passed.  If a spawned worker inherits this descriptor, closing the GUI's
+    copy no longer releases the kernel object; the next launch can stay refused until that worker
+    exits.  This flag is part of the wrapper's ownership guarantee, not a Windows execution gate.
+    """
+    conversion = WINDOWS_BRANCH[WINDOWS_BRANCH.index("msvcrt.open_osfhandle") :]
+    call = conversion[: conversion.index(")") + 1]
+    assert "os.O_NOINHERIT" in call, (
+        f"the lock descriptor is inheritable: {call.strip()!r} has no O_NOINHERIT"
+    )
