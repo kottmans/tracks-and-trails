@@ -5,8 +5,8 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-31
-**Last reviewed:** 2026-07-31
+**Last updated:** 2026-08-01
+**Last reviewed:** 2026-08-01
 **Update when:** Phase scope, delivery order, dependencies, or exit criteria change.
 **Does not contain:** Individual coding tasks (`TASKS.md`), progress (`STATUS.md`).
 
@@ -180,15 +180,15 @@ them, which is the argument for having built it.)*
 
 **Prerequisites:** Phase 1 approved. `ARC-002` confirmed sound. **Satisfied 2026-07-29.**
 
-**Status: in progress** (2026-07-31). **Seven of thirteen deliverables are built** — three approved,
-four awaiting a verdict. Five more are Ready and one is still Proposed. **The blocking risk is not
-code:** exit criterion 5 says *on both platforms*, and no CI job of any kind has executed a step
-since 2026-07-30 — see "What stands between here and the exit" below, and `STATUS.md` for the
-measurement.
+**Status: in progress** (2026-08-01). **Eight of thirteen deliverables are built** — six approved,
+two awaiting a third review pass. Three more are Ready, one is Blocked and one is still Proposed.
+**The blocking risk is not code:** exit criterion 4 is blocked on `T-087`, whose Windows branch has
+never executed, and criterion 5 says *on both platforms* while no CI job has executed a step since
+2026-07-30.
 
 *(These counts are transcribed from the table below rather than written beside it. `COORD-R5`
 through `COORD-R11` are seven rounds of a hand-written summary drifting from the thing it
-summarises, and the first draft of this line said "five approved, four in review, three not
+summarises, and an earlier draft of this line said "five approved, four in review, three not
 started" against a table holding three, four, four and two.)*
 
 ### The shape of what is left
@@ -266,17 +266,17 @@ Recorded here because each one changed what a deliverable *is*, not merely how i
 |---|---|---|---|
 | 1 | Bounded concurrent worker pool, configurable limit (`REQ-013`). **The configuration surface is `ARC-007`**: `settings.toml` via `core/settings.py`, plus one control in the existing main window. The full `REQ-023` settings dialog stays Phase 4 | `T-078`, `T-097` | **Approved** 2026-07-30 (`0f9986f`) |
 | 2 | Queue view: multi-job table, per-job status/progress | `T-079` | **Approved** 2026-07-31 (`da49a51`) |
-| 3 | **Pause and resume are queue-level** (`UX-001`); cancel, retry and remove are per job (`REQ-015` as amended 2026-07-29). *(This read "per-job status/progress, pause/resume/retry/remove", which contradicted the amendment — `P2PLAN-R1`.)* | `T-080` | **In review** 2026-07-31 |
-| 4 | Reordering and clear-completed (`REQ-016`) | `T-081` | **In review** 2026-07-31 |
-| 5 | Output-path collision policy against the filesystem (`DAT-002`, `REQ-011`) | `T-046` | **In review** 2026-07-31 |
-| 6 | Bounded retry with backoff for `NETWORK` failures only (`REQ-018`) | `T-083` | **In review** 2026-07-31 — its bound and backoff ship **provisional**, awaiting a `DECISIONS.md` entry (`AGENTS.md` §4) |
+| 3 | **Pause and resume are queue-level** (`UX-001`); cancel, retry and remove are per job (`REQ-015` as amended 2026-07-29). *(This read "per-job status/progress, pause/resume/retry/remove", which contradicted the amendment — `P2PLAN-R1`.)* | `T-080` | **Approved** 2026-08-01 (`05e5312`) |
+| 4 | Reordering and clear-completed (`REQ-016`) | `T-081` | **In review** — corrected twice; `T081-R4` was a defect the first correction introduced |
+| 5 | Output-path collision policy against the filesystem (`DAT-002`, `REQ-011`) | `T-046` | **In review** — `T046-R1` was **Critical**: a converted download overwrote the user's file |
+| 6 | Bounded retry with backoff for `NETWORK` failures only (`REQ-018`) | `T-083` | **Approved** 2026-08-01 (`97f96c0`). `UX-002` ratifies 3 attempts at 2s/4s/8s |
 | 7 | History persistence and completed-download records (`REQ-020`) | `T-085`, `T-050`, `T-093` | **Approved** 2026-07-30 |
-| 8 | A corrupt `settings.toml` reports rather than reverting silently (`ARC-008`) | `T-102` | **Ready** — filed 2026-07-31 |
+| 8 | A corrupt `settings.toml` reports rather than reverting silently (`ARC-008`) | `T-102` | **Approved** 2026-08-01 (`97f96c0`) |
 | 9 | Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`) | `T-082` | **Ready** |
-| 10 | Per-job log capture and log view (`REQ-019`) | `T-084`, gated by `T-053` | **Ready**; `T-053` in review |
+| 10 | Per-job log capture and log view (`REQ-019`) | `T-084` | **Ready.** `T-053`, which gated its approval, is **Approved** |
 | 11 | History view over those records | `T-100` | **Ready** |
 | 12 | Open file / reveal in file manager (`REQ-021`), from both views | `T-086` | **Proposed** — released once `T-100` lands |
-| 13 | Single-instance guard (`A-004`, `ARC-006`) | `T-087` | **Ready** — promoted 2026-07-31; its `T-094` primitive is approved |
+| 13 | Single-instance guard (`A-004`, `ARC-006`) | `T-087` | **Blocked.** Linux is done; the Windows branch has **never executed**, so `A-004` stays unverified |
 
 *(Deliverable 5 was **added 2026-07-31**. `DAT-002` filed `T-046` as a Phase 2 task and this list
 never named it — the same class as `P2PLAN-R8`, where the history records were listed and the view

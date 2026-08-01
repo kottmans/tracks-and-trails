@@ -860,128 +860,6 @@ account for rather than one.
 
 ---
 
-### T-092 — Arm `STARBASE` so the next access violation leaves a cause, not a stack
-
-**Status:** **Ready — prepared 2026-08-01, and NOT complete.** The maintainer's consent was given
-2026-08-01 and the whole configurable half is committed: `tools/windows/crash-dumps.ps1` arms and
-disarms it, `docs/WINDOWS_VERIFICATION.md` records the procedure and its disk cost, and both
-`STARBASE` jobs collect a dump when one exists. **Three of the five acceptance criteria are
-unmet and cannot be met from here** — they require running the script on `STARBASE`, crashing a
-process on purpose, and opening the dump. See "Prepared, and what remains" below.
-*(This read "Ready — the instrument `OPS-007` leans on".)*
-**Owner:** Implementer
-**Priority:** Medium — it buys nothing today and is the whole diagnostic plan if `T-074` recurs
-**Phase:** Phase 1 origin; it is an instrument, not a deliverable, and gates no exit
-**Depends on:** `STARBASE`, which exists. Needs the maintainer's consent to write dumps on a
-machine they use
-**Relevant context:** `OPS-007`, `T-074`, `T-073`, `docs/WINDOWS_VERIFICATION.md`
-**Affected surfaces:** `docs/WINDOWS_VERIFICATION.md`, `.github/workflows/ci.yml` and
-`t074-repeat.yml` (artifact upload only), `STARBASE` machine configuration
-**Risk:** Low to the product — it touches no source. The real risk is on the machine: dumps are
-written unattended and a full-memory dump of a Python process with Qt loaded is not small
-
-#### Scope
-
-`T-074`'s second acceptance criterion is that **the faulting thread and the object it touched are
-identified — a stack is not a cause.** `faulthandler` cannot supply that: it printed
-`[ResultPump]` and `Thread-50 (_monitor)` and named neither the faulting module nor the address.
-A minidump does.
-
-So: configure Windows Error Reporting local dumps on `STARBASE` for the interpreter that runs the
-suite, and have the `t074-repeat.yml` and `windows desktop` jobs upload any dump they find as an
-artifact. Then a recurrence — in CI or in an ordinary run — produces something a debugger can read
-instead of another anecdote.
-
-**Consent first, and this is not a formality.** `STARBASE` is the maintainer's own desktop.
-`OPS-005` and `T-073` both carry the rule that a workflow must never provision it, and
-`docs/WINDOWS_VERIFICATION.md` records what installing Python there already cost. Dump capture is
-machine configuration and belongs in that document as a manual, reversible step — not in a
-workflow.
-
-#### Acceptance criteria
-
-- A **deliberately crashed** Python process on `STARBASE` leaves a dump at a known path — proven by
-  causing an access violation on purpose, not by trusting the registry keys
-- That dump, opened, names a faulting module and address. If it cannot, this task has failed at the
-  thing it exists for and says so rather than reporting the keys as success
-- Dump size and retention are bounded and stated; the disk cost on a real machine is named
-- **The jobs report a dump's existence and never upload it** — name, size and timestamp into
-  `reports/crashdumps.txt`, with the dump left on `STARBASE` for deliberate retrieval. Both the
-  "a dump was written" and "no dump" paths stay green: a missing dump is the normal case and must
-  not redden the gate
-  *(**Scope amended 2026-08-01, maintainer decision** — `T092-R2`. This read "upload a dump when
-  one exists". WER is keyed by executable *file name*, so the folder collects any `python.exe`
-  under that account and a full memory dump can carry an unrelated program's heap into a CI
-  artifact; the old wording could not be met without reintroducing `T092-R1`. The narrower
-  alternative — copy the interpreter to a distinct name and key WER to that — is recorded in
-  `docs/WINDOWS_VERIFICATION.md` rather than taken, because it changes how the suite is
-  launched.)*
-- `docs/WINDOWS_VERIFICATION.md` records the configuration, how to undo it, and the disk cost
-
-#### Out of scope
-
-- Diagnosing `T-074` — this task cannot, and pretending otherwise is what `T074-R4` caught
-- Any change to `src/`
-- Dump capture on Linux, or on hosted runners, which are discarded anyway
-- Making `T-074`'s recurrence more likely; this is passive capture, not a stress test
-
-#### Prepared, and what remains, 2026-08-01
-
-**Done, and committed:**
-
-- `tools/windows/crash-dumps.ps1` — arms WER local dumps for `python.exe` under `HKCU` (no
-  elevation, scoped to one executable rather than the whole machine), and `-Remove` undoes it.
-- `docs/WINDOWS_VERIFICATION.md` — why, how to arm it, **how to prove it**, the disk cost, and how
-  to undo it.
-- `ci.yml`'s `windows desktop` job and `t074-repeat.yml` each stamp their start time and write
-  `reports/crashdumps.txt` naming any dump written **during that run** — and upload no dump at all.
-  `if: always()` and `continue-on-error: true`, because **no dump is the normal case and must not
-  redden the gate**.
-  *(This described copying the dump into `reports/`, which is what `T092-R1` found unsafe. The
-  scope amendment above is the maintainer's, taken 2026-08-01.)*
-- Full dumps (`DumpType 2`) rather than mini, stated with the cost: ~300–600 MB each for a Python
-  process with Qt loaded, five kept, so up to ~3 GB. A mini dump routinely lacks the heap the
-  faulting address points into, which is the entire question `T-074` is asking.
-
-**Unmet, and honestly so** — each needs the machine:
-
-| Criterion | State |
-|---|---|
-| A deliberately crashed process leaves a dump at a known path | **Unmet.** Nobody has run the script or the crash |
-| The dump names a faulting module and address | **Unmet**, and it is the one that decides whether this task succeeded at all |
-| Dump size and retention bounded and stated | **Met** — in `docs/WINDOWS_VERIFICATION.md` |
-| The jobs **report** a dump and never upload one | **Half met.** The steps exist and both YAML files parse; no CI job has executed a step since 2026-07-30, so neither branch has run |
-| `docs/WINDOWS_VERIFICATION.md` records config, undo and cost | **Met** |
-
-**Why this is filed as prepared rather than done.** `T074-R4` caught this task's predecessor
-reporting registry keys as evidence. The keys are not the evidence; a dump that names a faulting
-module is. Until somebody runs the two commands in the document on `STARBASE`, the correct status
-is that the instrument is *ready to arm* and has never fired.
-
-
-#### Correction, 2026-08-01 — `T092-R1`
-
-**The prepared upload was unsafe before it had ever run.** Three problems, all real:
-
-- **WER is keyed by the executable's file name**, so `python.exe` collects *any* Python process
-  under that account, not this project. There is no narrower WER key. A dump in the folder is
-  therefore not by itself evidence of `T-074`, and the report now says exactly that.
-- **Nothing cleared or time-filtered the folder**, so the deliberate proof dump — or a months-old
-  one — would be re-uploaded on every later run and announced as a recurrence that never happened.
-  Both jobs now stamp their start time and report only what was written after it.
-- **A full memory dump can carry an unrelated process's heap**, and a CI artifact is a copy of it
-  somewhere else. **Nothing is uploaded now.** The jobs write `reports/crashdumps.txt` with the
-  dump's name, size and timestamp and leave the dump on `STARBASE` for deliberate retrieval.
-
-`docs/WINDOWS_VERIFICATION.md` gains the provenance and disclosure reasoning beside the disk cost,
-which is what it was missing. The narrower alternative — copy the interpreter to a distinct file
-name and key WER to that — is recorded rather than done, because it changes how the suite is
-launched.
-
-**Three acceptance criteria remain unmet and still need the machine.** Nothing here changes that.
-
----
-
 ## Proposed — Phase 0
 
 ### T-021 — Simplified small-size icon glyph
@@ -1775,6 +1653,133 @@ is about creation, not access.
 own criterion is both platforms, `ARC-006` says `A-004` stays unverified until then, and no CI job
 has executed a step since 2026-07-30. What changes is that the code now matches the decision, so
 the outstanding item is **evidence** rather than evidence *plus* an unauthorised design change.
+
+---
+
+### T-092 — Arm `STARBASE` so the next access violation leaves a cause, not a stack
+
+**Status:** **Blocked — prepared 2026-08-01, blocked on `STARBASE`.** The reviewer classified it
+so on 2026-08-01: the safe correction is accepted (`T092-R1`) and the scope amendment is taken
+(`T092-R2`), and **nothing further can be done from here.** Three criteria need somebody at the
+machine.
+*(This read "Ready — prepared 2026-08-01, and NOT complete", which put a task nobody could pick up
+in the list of tasks to pick up.)* The maintainer's consent was given
+2026-08-01 and the whole configurable half is committed: `tools/windows/crash-dumps.ps1` arms and
+disarms it, `docs/WINDOWS_VERIFICATION.md` records the procedure and its disk cost, and both
+`STARBASE` jobs collect a dump when one exists. **Three of the five acceptance criteria are
+unmet and cannot be met from here** — they require running the script on `STARBASE`, crashing a
+process on purpose, and opening the dump. See "Prepared, and what remains" below.
+*(This read "Ready — the instrument `OPS-007` leans on".)*
+**Owner:** Implementer
+**Priority:** Medium — it buys nothing today and is the whole diagnostic plan if `T-074` recurs
+**Phase:** Phase 1 origin; it is an instrument, not a deliverable, and gates no exit
+**Depends on:** `STARBASE`, which exists. Needs the maintainer's consent to write dumps on a
+machine they use
+**Relevant context:** `OPS-007`, `T-074`, `T-073`, `docs/WINDOWS_VERIFICATION.md`
+**Affected surfaces:** `docs/WINDOWS_VERIFICATION.md`, `.github/workflows/ci.yml` and
+`t074-repeat.yml` (artifact upload only), `STARBASE` machine configuration
+**Risk:** Low to the product — it touches no source. The real risk is on the machine: dumps are
+written unattended and a full-memory dump of a Python process with Qt loaded is not small
+
+#### Scope
+
+`T-074`'s second acceptance criterion is that **the faulting thread and the object it touched are
+identified — a stack is not a cause.** `faulthandler` cannot supply that: it printed
+`[ResultPump]` and `Thread-50 (_monitor)` and named neither the faulting module nor the address.
+A minidump does.
+
+So: configure Windows Error Reporting local dumps on `STARBASE` for the interpreter that runs the
+suite, and have the `t074-repeat.yml` and `windows desktop` jobs upload any dump they find as an
+artifact. Then a recurrence — in CI or in an ordinary run — produces something a debugger can read
+instead of another anecdote.
+
+**Consent first, and this is not a formality.** `STARBASE` is the maintainer's own desktop.
+`OPS-005` and `T-073` both carry the rule that a workflow must never provision it, and
+`docs/WINDOWS_VERIFICATION.md` records what installing Python there already cost. Dump capture is
+machine configuration and belongs in that document as a manual, reversible step — not in a
+workflow.
+
+#### Acceptance criteria
+
+- A **deliberately crashed** Python process on `STARBASE` leaves a dump at a known path — proven by
+  causing an access violation on purpose, not by trusting the registry keys
+- That dump, opened, names a faulting module and address. If it cannot, this task has failed at the
+  thing it exists for and says so rather than reporting the keys as success
+- Dump size and retention are bounded and stated; the disk cost on a real machine is named
+- **The jobs report a dump's existence and never upload it** — name, size and timestamp into
+  `reports/crashdumps.txt`, with the dump left on `STARBASE` for deliberate retrieval. Both the
+  "a dump was written" and "no dump" paths stay green: a missing dump is the normal case and must
+  not redden the gate
+  *(**Scope amended 2026-08-01, maintainer decision** — `T092-R2`. This read "upload a dump when
+  one exists". WER is keyed by executable *file name*, so the folder collects any `python.exe`
+  under that account and a full memory dump can carry an unrelated program's heap into a CI
+  artifact; the old wording could not be met without reintroducing `T092-R1`. The narrower
+  alternative — copy the interpreter to a distinct name and key WER to that — is recorded in
+  `docs/WINDOWS_VERIFICATION.md` rather than taken, because it changes how the suite is
+  launched.)*
+- `docs/WINDOWS_VERIFICATION.md` records the configuration, how to undo it, and the disk cost
+
+#### Out of scope
+
+- Diagnosing `T-074` — this task cannot, and pretending otherwise is what `T074-R4` caught
+- Any change to `src/`
+- Dump capture on Linux, or on hosted runners, which are discarded anyway
+- Making `T-074`'s recurrence more likely; this is passive capture, not a stress test
+
+#### Prepared, and what remains, 2026-08-01
+
+**Done, and committed:**
+
+- `tools/windows/crash-dumps.ps1` — arms WER local dumps for `python.exe` under `HKCU` (no
+  elevation, scoped to one executable rather than the whole machine), and `-Remove` undoes it.
+- `docs/WINDOWS_VERIFICATION.md` — why, how to arm it, **how to prove it**, the disk cost, and how
+  to undo it.
+- `ci.yml`'s `windows desktop` job and `t074-repeat.yml` each stamp their start time and write
+  `reports/crashdumps.txt` naming any dump written **during that run** — and upload no dump at all.
+  `if: always()` and `continue-on-error: true`, because **no dump is the normal case and must not
+  redden the gate**.
+  *(This described copying the dump into `reports/`, which is what `T092-R1` found unsafe. The
+  scope amendment above is the maintainer's, taken 2026-08-01.)*
+- Full dumps (`DumpType 2`) rather than mini, stated with the cost: ~300–600 MB each for a Python
+  process with Qt loaded, five kept, so up to ~3 GB. A mini dump routinely lacks the heap the
+  faulting address points into, which is the entire question `T-074` is asking.
+
+**Unmet, and honestly so** — each needs the machine:
+
+| Criterion | State |
+|---|---|
+| A deliberately crashed process leaves a dump at a known path | **Unmet.** Nobody has run the script or the crash |
+| The dump names a faulting module and address | **Unmet**, and it is the one that decides whether this task succeeded at all |
+| Dump size and retention bounded and stated | **Met** — in `docs/WINDOWS_VERIFICATION.md` |
+| The jobs **report** a dump and never upload one | **Half met.** The steps exist and both YAML files parse; no CI job has executed a step since 2026-07-30, so neither branch has run |
+| `docs/WINDOWS_VERIFICATION.md` records config, undo and cost | **Met** |
+
+**Why this is filed as prepared rather than done.** `T074-R4` caught this task's predecessor
+reporting registry keys as evidence. The keys are not the evidence; a dump that names a faulting
+module is. Until somebody runs the two commands in the document on `STARBASE`, the correct status
+is that the instrument is *ready to arm* and has never fired.
+
+
+#### Correction, 2026-08-01 — `T092-R1`
+
+**The prepared upload was unsafe before it had ever run.** Three problems, all real:
+
+- **WER is keyed by the executable's file name**, so `python.exe` collects *any* Python process
+  under that account, not this project. There is no narrower WER key. A dump in the folder is
+  therefore not by itself evidence of `T-074`, and the report now says exactly that.
+- **Nothing cleared or time-filtered the folder**, so the deliberate proof dump — or a months-old
+  one — would be re-uploaded on every later run and announced as a recurrence that never happened.
+  Both jobs now stamp their start time and report only what was written after it.
+- **A full memory dump can carry an unrelated process's heap**, and a CI artifact is a copy of it
+  somewhere else. **Nothing is uploaded now.** The jobs write `reports/crashdumps.txt` with the
+  dump's name, size and timestamp and leave the dump on `STARBASE` for deliberate retrieval.
+
+`docs/WINDOWS_VERIFICATION.md` gains the provenance and disclosure reasoning beside the disk cost,
+which is what it was missing. The narrower alternative — copy the interpreter to a distinct file
+name and key WER to that — is recorded rather than done, because it changes how the suite is
+launched.
+
+**Three acceptance criteria remain unmet and still need the machine.** Nothing here changes that.
 
 ---
 
