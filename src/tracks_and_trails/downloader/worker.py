@@ -1150,7 +1150,7 @@ def _extract(
     ffmpeg_location: Path | None = None,
     overwrites: bool | None = None,
 ) -> dict[str, Any]:
-    from tracks_and_trails.core.logging import YtdlpLog, third_party_logger
+    from tracks_and_trails.core.logging import YtdlpLog, ytdlp_logger
 
     options = adapter.build_options(
         request,
@@ -1163,7 +1163,7 @@ def _extract(
         # `REQ-019`. Built here rather than passed in from `spawn_session` because both the probe
         # and the download go through this function, and `REQ-019` wants *the* diagnostic output
         # for the job — a failure during the probe is the case a user most needs the log for.
-        logger=YtdlpLog(third_party_logger("ytdlp")),
+        logger=YtdlpLog(ytdlp_logger()),
     )
     with resolved.module.YoutubeDL(options) as ydl:
         info = ydl.extract_info(request.url, download=not probe_only)

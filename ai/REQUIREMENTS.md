@@ -99,9 +99,13 @@ residue and blocks the first public release.
 - **REQ-019** — Provide a per-job log view containing the actual yt-dlp diagnostic output for that job, copyable for bug reports.
   - *Scoped 2026-08-01 by `T-084`, in two ways.* **Bounded:** a job's log is capped at 4 MiB
     (`MAX_JOB_LOG_BYTES` × two files), and the **newest** lines are the ones kept — a log is read
-    to find out how something ended. **Verbatim within `DAT-003`'s provenance boundary,** now
-    implemented as `DAT-004`: values this application supplied are removed; prose yt-dlp emitted is
-    intact, and no claim is made about what it may contain. What is copied is the file exactly.
+    to find out how something ended. **Redacted origin-agnostically** — `DAT-003`'s
+    accepted rule for log *emission*, which `DAT-004` briefly and wrongly narrowed (`T084-R1`,
+    Critical; that entry is withdrawn). Every line is redacted whoever wrote the text inside it, so
+    a diagnostic can lose a path it named. **Ruled 2026-08-01:** `DAT-003` wins and `T-084`'s
+    contradictory criterion was amended; `NFR-006`'s promise is kept at the database sink, which
+    stores the extractor's message verbatim. **What is copied is the file exactly** — the
+    view is capped for the GUI thread's sake and Copy re-reads the artifact (`T084-R2`).
 
 ### Library and results
 

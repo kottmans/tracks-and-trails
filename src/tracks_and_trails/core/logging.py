@@ -69,7 +69,6 @@ from tracks_and_trails.downloader.environment import APP_SLUG
 __all__ = [
     "MAX_JOB_LOG_BYTES",
     "REDACTED",
-    "THIRD_PARTY_FIELD",
     "RedactingFormatter",
     "YtdlpLog",
     "application_log_path",
@@ -80,10 +79,10 @@ __all__ = [
     "redact",
     "remember_a_secret",
     "stop_listening_for_worker_logs",
-    "third_party_logger",
     "wait_for_the_log_listener_to_stop",
     "worker_log_queue",
     "worker_logging_handler",
+    "ytdlp_logger",
 ]
 
 REDACTED: Final = "<redacted>"
@@ -107,16 +106,18 @@ LOG_FORMAT: Final = "%(asctime)s %(levelname)-8s %(name)s %(message)s"
 MAX_JOB_LOG_BYTES: Final = 2 * 1024 * 1024
 JOB_LOG_BACKUPS: Final = 1
 
-#: The record attribute marking text **this application did not write** (`T-084`, `DAT-003`).
+#: **There is deliberately no provenance flag here** (`T084-R1`).
 #:
-#: `DAT-003` as amended by `T-049` makes the redaction boundary *provenance*, not shape: values this
-#: application supplies are removed, and prose a third party emitted is preserved intact because
-#: `NFR-006` requires it. A formatter cannot infer which it is holding, so the record says.
+#: `T-084` shipped one and it was a **Critical** regression. `DAT-003`'s `T-049` amendment has a
+#: section headed *"`T-038` is unchanged and origin-agnostic"* saying in as many words: *every log
+#: this application emits is redacted, whatever the provenance of the text inside it*. I read the
+#: amendment's provenance **table** — which is about the *database* — and applied it to logs, when
+#: the next section says storage and emission are different sinks with different rules.
 #:
-#: **Exact-value redaction still applies to marked records.** What is dropped for them is the
-#: *pattern* set — the rules that guess from shape, and would scrub a cookie path yt-dlp itself
-#: named, which is precisely the "scrubs everything" failure `DAT-003` records two attempts at.
-THIRD_PARTY_FIELD: Final = "tracks_and_trails_third_party"
+#: What made it Critical rather than merely wrong: the scheme kept exact `remember_a_secret()`
+#: values for third-party records and dropped the pattern rules. **No production caller registers
+#: anything**, so that tier is empty, and a yt-dlp line echoing the source URL wrote its userinfo
+#: password and signed query to the job log verbatim — onto a surface with a Copy button.
 
 #: A URL with an authority. Matched loosely on purpose: this is the *finder*, and everything it
 #: finds is then parsed properly and rebuilt without its query, userinfo or fragment.
@@ -178,28 +179,23 @@ def forget_the_secrets() -> None:
     _secrets.clear()
 
 
-def redact(text: str, *, third_party: bool = False) -> str:
+def redact(text: str) -> str:
     """Remove supplied credentials and cookie material from one finished log line.
 
     Ordered deliberately: registered literals first, because they are exact and a later rewrite
     could otherwise alter the text they would have matched; then cookie material by shape; then
     every URL, which is the rule with no exceptions in it.
 
-    **`third_party` stops after the literals** (`T-084`, `DAT-003` as amended by `T-049`). The
-    boundary is provenance: a value this application supplied is removed wherever it appears,
-    because we know we supplied it; the shape rules below are guesses, and applying a guess to
-    prose a third party emitted is how `NFR-006`'s "preserved intact" is lost. Two implementations
-    of exactly that guess are on record failing — three credential escapes and one Critical
-    regression that rewrote a user's output directory.
+    **Origin-agnostic, and that is `DAT-003`'s accepted rule rather than a choice made here.**
+    Every line is treated identically whoever wrote the text inside it. `T-084` briefly made this
+    provenance-aware and that was `T084-R1`, a Critical — see the note where the provenance flag
+    used to be, above `remember_a_secret`.
 
-    So the guarantee that survives is one-directional and is the only one two failed recognisers
-    did not already disprove: **what this application supplies never reaches a log**, and nothing
-    is claimed about what a diagnostic may contain.
+    The `NFR-006` tension is real: a diagnostic can lose a cookie path it named. That is **the
+    maintainer's to resolve**, not this function's, and `T-084`'s record says so.
     """
     for secret in _secrets:
         text = text.replace(secret, REDACTED)
-    if third_party:
-        return text
     text = _COOKIE_HEADER.sub(lambda match: f"{match.group(1)}: {REDACTED}", text)
     text = _COOKIE_PATH.sub(REDACTED, text)
     text = _COOKIE_FILENAME.sub(REDACTED, text)
@@ -241,10 +237,7 @@ class RedactingFormatter(logging.Formatter):
     """
 
     def format(self, record: logging.LogRecord) -> str:
-        return redact(
-            super().format(record),
-            third_party=bool(getattr(record, THIRD_PARTY_FIELD, False)),
-        )
+        return redact(super().format(record))
 
 
 def application_log_path(directory: Path | None = None) -> Path:
@@ -275,33 +268,14 @@ def job_log_path(job_id: str, directory: Path | None = None) -> Path:
 JOB_FIELD: Final = "tracks_and_trails_job"
 
 
-class _MarkThirdParty(logging.Filter):
-    """Marks every record as text this application did not write. Never filters anything.
+def ytdlp_logger() -> logging.Logger:
+    """The logger yt-dlp's output travels on. **A name, and nothing else.**
 
-    On the logger rather than on a handler: `logging` applies a logger's filters before the record
-    starts propagating, so the mark is set once and travels — through the worker's queue to the
-    parent, where the formatter that reads it lives (`T-038` renders in the parent so a worker
-    cannot emit an unredacted line even in principle).
+    Under `APP_SLUG` so it reaches the same handlers as everything else, and separately named so a
+    reader can tell yt-dlp's lines from ours. It carries **no filter and no mark**: redaction is
+    origin-agnostic (`DAT-003`), so nothing downstream needs to know who wrote a line.
     """
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        setattr(record, THIRD_PARTY_FIELD, True)
-        return True
-
-
-def third_party_logger(name: str) -> logging.Logger:
-    """A logger whose records are marked as prose this application did not write (`DAT-003`).
-
-    Under `APP_SLUG` so it reaches the same handlers as everything else — the mark changes how a
-    line is *redacted*, not where it goes.
-
-    Idempotent: asked twice for the same name it returns the same logger with one filter, because
-    `logging` caches loggers by name and a second `addFilter` would mark every record twice.
-    """
-    logger = logging.getLogger(f"{APP_SLUG}.{name}")
-    if not any(isinstance(existing, _MarkThirdParty) for existing in logger.filters):
-        logger.addFilter(_MarkThirdParty())
-    return logger
+    return logging.getLogger(f"{APP_SLUG}.ytdlp")
 
 
 class YtdlpLog:

@@ -2348,7 +2348,8 @@ policy here is about *when*, not *where*.
 
 ## DAT-004 — Log redaction is provenance-aware: exact values always, shape rules only on our own lines
 
-**Status:** **Proposed** (2026-08-01) — implements `DAT-003` as amended by `T-049` in the logging
+**Status:** **WITHDRAWN** (2026-08-01) — see the withdrawal at the end of this entry. It was
+**Proposed** (2026-08-01) — implements `DAT-003` as amended by `T-049` in the logging
 layer. **Not a new boundary**; it is the first place the amended boundary had to be built, and it
 changes observable behaviour, so it is recorded rather than left in a commit message.
 **Date:** 2026-08-01
@@ -2423,3 +2424,50 @@ narrow reading and says so, rather than relying on it silently.**
 - **Infer provenance from the logger name at format time** — rejected: the same string then means
   different things depending on a name a future refactor may change. A record attribute set at the
   source is the fact, not a proxy for it.
+
+### Withdrawn 2026-08-01 — it contradicted an accepted decision, and shipped a Critical
+
+**Status:** **Withdrawn** by the implementer on `T084-R1`. Nothing in this entry is in force.
+
+`DAT-003`'s `T-049` amendment has a section headed **"`T-038` is unchanged and origin-agnostic"**:
+
+> Every log this application **emits** is redacted, whatever the provenance of the text inside it.
+> That is not in tension with the table: storage and emission are different sinks with different
+> rules, and the supplied-value rule binds emission in full.
+
+I read the amendment's provenance **table** — which governs the *database* — and applied it to logs,
+without reading the section directly beneath it that says logs are not provenance-scoped. This entry
+then argued for a change to an accepted decision from inside a task, which is not a route that
+exists: a `Proposed` entry cannot supersede an `Accepted` one.
+
+**Why it was Critical rather than merely wrong.** The scheme had two tiers: exact
+`remember_a_secret()` values, always removed; and the pattern rules, dropped for third-party
+records. **No production caller registers anything**, so the first tier is empty in the running
+application — and "provenance-aware" collapsed to *no redaction at all* for every line yt-dlp emits.
+A diagnostic echoing the source URL wrote its userinfo password and signed query to the job log
+verbatim, onto a surface `T-084` had just given a Copy button.
+
+**What replaces it:** nothing. `core/logging.py` is back to origin-agnostic redaction and the
+`third_party` parameter is gone, so there is no flag for a caller to pass.
+
+### The question this leaves open, which is the maintainer's
+
+`T-084`'s second acceptance criterion asks that **a cookie path yt-dlp emitted survive character for
+character** in the job log. Accepted `DAT-003` forbids that at this sink. The criterion and the
+decision cannot both hold, and the cost is real in both directions:
+
+- **As it now stands**, a user reading their own log cannot see which cookie database yt-dlp failed
+  to open — `NFR-006`'s "preserved intact" is lost for exactly the diagnostics it was written for.
+- **Loosening it** puts credentials a user typed into a URL onto a surface built for pasting into
+  bug reports, which is `DAT-003`'s own named reopening condition.
+
+#### Ruled 2026-08-01 — accepted `DAT-003` wins, and the criterion is amended
+
+**Maintainer ruling.** Log emission stays origin-agnostic; `T-084`'s contradictory acceptance
+criterion is **amended** rather than left unmet, because a criterion that contradicts an accepted
+decision is the thing that is wrong.
+
+What that costs is stated rather than absorbed: a user reading a job log will not see which cookie
+database yt-dlp could not open. `NFR-006`'s promise is kept at the **other** sink — the database
+stores the extractor's message verbatim — and `T-084`'s amended criterion now asserts the two sinks
+against each other on one value, so neither rule can quietly drift into the other.

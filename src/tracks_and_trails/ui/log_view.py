@@ -17,17 +17,28 @@ attach. **The file is the artefact; this is a window onto it.**
 Reading is capped — see `MAX_DISPLAY_BYTES`. `MAX_JOB_LOG_BYTES` bounds the file, so this is not
 the safety net; it is about not stalling the GUI thread on a multi-megabyte read.
 
-## Verbatim within the provenance boundary
+## What is on screen is what is in the file
 
-What is on screen is what is in the file, character for character. The redaction happened when the
-line was written and it happened by **provenance**, not by shape (`DAT-003` as amended by `T-049`):
-values this application supplied are gone; prose yt-dlp emitted is intact. Nothing here filters
-further, because a view that re-redacted would make the copied text disagree with the file.
+Character for character, and this view filters nothing: re-redacting here would make the copied text
+disagree with the file a maintainer asked the user to attach.
 
-**One thing for a maintainer to rule on.** `DAT-003` says the decision reopens if the database or
-its diagnostics stop being local and user-owned — and names *"a bug report attaching it"* as one of
-the triggers. This view exists to make exactly that easy. The boundary is implemented as `DAT-003`
-specifies and this note is the flag, not a unilateral change: see `T-084`'s record.
+**The redaction already happened when the line was written, and it is origin-agnostic** — accepted
+`DAT-003`, whose `T-049` amendment says every log this application *emits* is redacted whatever the
+provenance of the text inside it. `T-084` briefly made it provenance-aware and that was `T084-R1`, a
+Critical: with no production caller registering a secret, the scheme left yt-dlp's lines unredacted
+entirely, so a diagnostic echoing the source URL wrote its credentials here. `DAT-004`, which argued
+for that reading, is withdrawn.
+
+The cost is real and is `DAT-003`'s choice rather than this module's: a user reading their own log
+will not see a cookie path yt-dlp named. `NFR-006`'s promise is kept at the **other** sink — the
+database stores the extractor's message verbatim (`T-014`), and `T-084`'s amended criterion asserts
+the two sinks against each other so neither drifts into the other.
+
+## Copy reads the file, not this view
+
+`copy_to_clipboard` re-reads the artifact rather than taking what is rendered. The rendering is
+capped so the GUI thread never blocks; the clipboard is not, because `REQ-019` promises the file
+exactly and the omitted beginning is where the session header lives. That was `T084-R2`.
 """
 
 from __future__ import annotations
@@ -61,6 +72,31 @@ EMPTY_TEXT: Final = "No diagnostics recorded for this download yet."
 TRUNCATION_NOTICE: Final = (
     "… earlier lines are in the log file itself; the most recent {kib} KiB are shown here.\n"
 )
+
+
+def read_whole_job_log(job_id: str, directory: Path | None = None) -> str | None:
+    """**The whole file**, or `None` if it could not be read (`T084-R2`).
+
+    Separate from `read_job_log` because the two callers want different things and conflating them
+    lost the thing that mattered. The **view** is capped so the GUI thread never blocks on a large
+    read; **Copy** must produce the file, because `REQ-019` says so in as many words — *"What is
+    copied is the file exactly"* — and the omitted beginning is where the session header and the
+    first extractor decisions live, which is exactly what a bug report is opened about.
+
+    Copying the capped rendering was `T084-R2`. For a log past the cap the clipboard lost its
+    beginning, and for a single long line it could contain nothing but the truncation notice.
+
+    **Unbounded is safe here** only because the artifact is bounded: `MAX_JOB_LOG_BYTES` caps the
+    live file at 2 MiB. This reads that file, not the rotated backup.
+
+    `None` rather than `""`: the caller must be able to say *could not read* rather than silently
+    copying an empty string, which is indistinguishable from a job that logged nothing.
+    """
+    path = job_log_path(job_id, directory)
+    try:
+        return path.read_bytes().decode("utf-8", errors="replace")
+    except OSError:
+        return None
 
 
 def read_job_log(job_id: str, directory: Path | None = None) -> str:
@@ -156,6 +192,10 @@ class LogView(QWidget):
     def copy_button(self) -> QPushButton:
         return self._copy
 
+    def status_text(self) -> str:
+        """What the label beside Copy last said. **The only report of a refused copy.**"""
+        return self._status.text()
+
     def text(self) -> str:
         """What is on screen, which is what `copy_to_clipboard` puts on the clipboard."""
         return self._text.toPlainText()
@@ -187,14 +227,24 @@ class LogView(QWidget):
         self._status.setText("")
 
     def copy_to_clipboard(self) -> str:
-        """Put the whole log on the clipboard and say so. Returns what was copied.
+        """Put **the file** on the clipboard and say so. Returns what was copied.
+
+        **Re-read here rather than taken from the widget** (`T084-R2`). What is on screen is the
+        capped tail; what `REQ-019` promises is the file. Taking `self.text()` meant a long log was
+        copied without its beginning — the session header and the first extractor decisions — and a
+        single very long line could copy nothing but the truncation notice.
 
         Returned as well as copied because a test asserting only the clipboard would depend on a
         clipboard existing, which is not true of every CI image; and confirming in the label
-        matters because a copy that silently does nothing is indistinguishable from one that
-        worked (`NFR-006`'s posture, at the smallest possible scale).
+        matters because a copy that silently does nothing is indistinguishable from one that worked
+        (`NFR-006`'s posture, at the smallest possible scale).
         """
-        body = self.text()
+        body = read_whole_job_log(self._job_id, self._directory)
+        if body is None:
+            # **Refused, not approximated.** Copying the rendered tail as a fallback would put a
+            # truncated log into a bug report while telling the user it was copied.
+            self._status.setText("The log file could not be read, so nothing was copied.")
+            return ""
         clipboard = QGuiApplication.clipboard()
         if clipboard is not None:
             clipboard.setText(body)

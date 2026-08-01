@@ -79,12 +79,20 @@ def test_copying_a_large_log_copies_the_file_not_only_the_rendered_tail(
     Capping the GUI rendering is sound, but that cap must not silently become the clipboard cap:
     the omitted beginning is precisely where session versions and initial extractor decisions live.
     """
-    body = "session header that the bug report needs\n" + "x" * (MAX_DISPLAY_BYTES + 1024)
+    line = "payload line whose beginning is deliberately omitted from the rendered tail\n"
+    body = "session header that the bug report needs\n" + line * (
+        MAX_DISPLAY_BYTES // len(line) + 32
+    )
     write_log(tmp_path, "job-1", body)
     view = LogView("job-1", directory=tmp_path)
 
     assert view.text() != body, "the fixture did not cross the display cap"
-    assert view.copy_to_clipboard() == body
+    copied = view.copy_to_clipboard()
+    if copied != body:
+        raise AssertionError(
+            f"copied {len(copied)} characters from a {len(body)}-character file; "
+            f"session header present: {'session header' in copied}"
+        )
 
 
 def test_a_job_with_no_log_says_so_and_offers_nothing_to_copy(
@@ -199,3 +207,30 @@ def test_refresh_picks_up_lines_written_after_the_view_was_built(
 
     assert "second" in view.text()
     assert view.copy_button.isEnabled()
+
+
+def test_copy_refuses_rather_than_copying_the_rendered_view_when_the_file_cannot_be_read(
+    qapp: QApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**The other half of `T084-R2`.**
+
+    Copy re-reads the artifact, so it has a failure mode the rendered view does not. Falling back
+    to `self.text()` would look like a kindness and would put a truncated log into a bug report
+    while the label said it had been copied — the same defect the finding is about, reached from
+    the error path instead of the size path.
+
+    A mutation replacing the refusal with that fallback survived until this test existed.
+    """
+    write_log(tmp_path, "job-1", "line one\nline two\n")
+    view = LogView("job-1", directory=tmp_path)
+    assert view.copy_button.isEnabled()
+
+    def refuse(*args: object, **kwargs: object) -> None:
+        raise PermissionError(13, "permission denied")
+
+    monkeypatch.setattr(Path, "read_bytes", refuse)
+
+    copied = view.copy_to_clipboard()
+
+    assert copied == "", f"copied {copied!r} from a file that could not be read"
+    assert "could not be read" in view.status_text()
