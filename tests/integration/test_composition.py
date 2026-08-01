@@ -1168,8 +1168,54 @@ def test_an_ordinary_settings_file_opens_no_dialog(
 
     good = tmp_path / "good.toml"
     good.write_text("[queue]\nconcurrency = 4\n", encoding="utf-8")
-    second = composed(settings_file=good)
+    # A **different database**, because the first composition still holds the single-instance lock
+    # on the default one (`T-087`, `A-004`). Two instances against different databases harm nothing
+    # and must both start, which is one of that task's criteria — this is it, incidentally.
+    second = composed(settings_file=good, database=tmp_path / "second.db")
     assert second.window.findChild(QMessageBox, "settingsProblemDialog") is None, (
         "a perfectly good settings file opened a warning"
     )
     assert second.manager.concurrency == 4
+
+
+def test_a_second_composition_against_one_database_is_refused(
+    qapp: QApplication,
+    tmp_path: Path,
+    composed: Callable[..., application.Composition],
+) -> None:
+    """`T-087`, `A-004`: the guard is taken by `compose()`, before anything opens the database.
+
+    Through the real composition rather than the lock alone, because the ordering is the part that
+    can be wired wrong: recovery rewrites rows on the line after `db.connect`, so a guard taken
+    afterwards would let a second launch rewrite a live instance's in-flight jobs before refusing.
+    """
+    from tracks_and_trails.core.instance_lock import AlreadyRunningError
+
+    database = tmp_path / "shared.db"
+    first = composed(database=database)
+    assert first.instance.is_held
+
+    with pytest.raises(AlreadyRunningError, match="already using"):
+        composed(database=database)
+
+
+def test_the_lock_is_released_only_after_the_database_is_closed(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    composed: Callable[..., application.Composition],
+) -> None:
+    """Ownership outlives the last write, so the next launch never opens a half-closed database."""
+    database = tmp_path / "shared.db"
+    composition = composed(database=database)
+    assert composition.instance.is_held
+
+    composition.shutdown.begin()
+    assert spin(lambda: composition.shutdown.finished, timeout=30), "shutdown never completed"
+
+    assert not composition.instance.is_held, (
+        "the lock outlived the shutdown lifecycle, so a relaunch would be refused by a process "
+        "that has finished with the database"
+    )
+    # And the next launch really can start.
+    composed(database=database)

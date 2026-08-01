@@ -328,7 +328,9 @@ one-button downloader.
 
 **Prerequisites:** Phase 2 approved.
 
-**Trigger:** `docs/UX_SPEC.md` is created at the start of this phase (`DOC-002`).
+**Trigger:** `docs/UX_SPEC.md` is created at the start of this phase (`DOC-002`). **Owned by
+`T-105`** as of 2026-08-01 — it was a scheduled trigger with no task behind it, which is how a
+phase starts without the document it is supposed to start with.
 
 ### Deliverables
 
@@ -395,7 +397,11 @@ one-button downloader.
 
 **Trigger:** `docs/RELEASE.md`, `SECURITY.md`, and `CHANGELOG.md` are created here
 (`DOC-002`). A `REL-` decision recording the Linux packaging format must be accepted before
-the first build.
+the first build. **That decision does not exist** — the only `REL-` entry is `REL-001`, which
+decides artifacts are frozen and says nothing about format. **`T-106` owns taking it** (filed
+2026-08-01), and it is worth taking early: AppImage, Flatpak and system packages differ in how the
+application finds `ffmpeg` and where it may write, which reaches back into `REQ-024` and `NFR-004`
+long before Phase 5.
 
 ### Deliverables
 

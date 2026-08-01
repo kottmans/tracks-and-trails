@@ -594,6 +594,138 @@ test was corrected rather than the behaviour.
 
 ---
 
+### T-087 — Single-instance guard
+
+**Status:** **In Review — complete 2026-08-01.** Promoted from Proposed on 2026-07-31: nothing had
+blocked it since `ARC-006`'s amendment landed on 2026-07-29, and it sat there because nobody moved
+it — the same class as `T-079`'s stale `In Review`. **It owns Phase 2 exit criterion 4.**
+**The attach half is deliberately not built** — see the scope note below.
+*(This read "Proposed" from the day it was filed, then "Ready — promoted 2026-07-31".)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** nothing technical. Its `DECISIONS.md` entry exists: **`ARC-006`**, whose mechanism
+was **amended 2026-07-29** after `P2PLAN-R5` — implement the amendment, not the original
+**Relevant context:** **`ARC-006`** (the mechanism and its rationale), `A-004`, `DAT-001`,
+`ARC-005`, `OPS-004`
+**Affected surfaces:** `app.py`, a platform seam, `ai/DECISIONS.md`
+**Risk:** Medium — the failure it prevents is two writers on one database
+
+#### Scope
+
+`A-004` assumes a single local user and **no concurrent instances against the same database**, and
+records itself as *unverified*, with enforcement named as a Phase 2 task. This is that task.
+
+The database is the reason. `ARC-005` puts every write on one writer thread *within a process*;
+two processes have two writer threads and no shared lock discipline.
+
+#### The mechanism — `ARC-006` **as amended 2026-07-29**; read the amendment first
+
+**`ARC-006` is the canonical record** (`P2PLAN-R2`). **Its original mechanism is withdrawn**
+(`P2PLAN-R5`): Qt documents that on Windows **two local servers can listen on the same pipe name at
+once**, so *connect-first-then-claim* is not exclusive and two simultaneous launches can both become
+servers — the two-writer state this task exists to prevent.
+
+**Ownership is now an atomic kernel lock** on a file derived from the resolved database path
+(`flock(LOCK_EX | LOCK_NB)` on POSIX, exclusive-access open on Windows), released by the kernel when
+the holder dies. **`QLocalServer` remains only the attach channel**, started after ownership is won.
+
+**This task's acceptance criteria must gate simultaneous starts, not just stale-owner recovery** —
+the withdrawn design passes a sequential test, which is how it survived being written down. See the
+amendment for what it changes.
+
+*(Superseded, kept because the sequence is the point — this read as the decided mechanism:)*
+
+**`QLocalServer` / `QLocalSocket`, named from the resolved database path.**
+
+- **Already Qt**, so no new dependency, and one code path compiles to a named pipe on Windows and
+  a Unix domain socket on Linux — two correct platform implementations rather than two guesses.
+- **It is a channel, not a flag.** That is what makes *attach* possible rather than only *refuse*:
+  a second launch can hand its URL to the first instance and raise its window. A lock file can
+  only say no.
+- **Crash behaviour decided it**, because that is the case the guard exists for. Windows destroys
+  a named pipe when its owning process dies. On Linux a killed process leaves the socket file, so
+  the protocol is *connect first; if the connection fails the owner is gone, remove the stale name
+  and become the server*. A PID lock file needs a liveness check and is wrong under PID reuse;
+  `flock` is robust but offers no channel.
+- **Named from the database path**, because `A-004` is about the database rather than the
+  application. Two instances against different databases harm nothing and must not be blocked.
+
+#### Acceptance criteria
+
+- A second launch either attaches to the running instance or refuses in its favour, and says which
+- **Two launches started simultaneously do not both win** (`P2PLAN-R5`). Racing starts, not a
+  sequential pair: the withdrawn `QLocalServer`-as-lock design passes the sequential test and fails
+  this one, because two servers may listen on one Windows pipe name at the same time
+- A stale lock left by a killed process does not permanently block startup
+- Verified on both platforms, `STARBASE` included
+- The mechanism and its crash behaviour are recorded in `ai/DECISIONS.md` with an ID
+- **The stale-socket path is tested by killing an instance**, not by deleting a file by hand: the
+  recovery has to work against the failure it was chosen for
+- Two instances against *different* databases both start
+
+#### Out of scope
+
+- Multi-user or networked access (`A-004` scopes it out)
+
+#### What was built, 2026-08-01
+
+**Evidence.** `ruff`, `ruff format`, `mypy src` and `mypy --platform win32 src` clean. New module
+`core/instance_lock.py`; 9 tests in `tests/integration/test_single_instance.py` and 2 in
+`test_composition.py`. Removing the lock call kills **3** of the 9 — the cross-process claim is
+genuinely exercised rather than asserted in-process.
+
+**An atomic kernel lock, per `ARC-006`'s amendment.** `fcntl.flock(LOCK_EX | LOCK_NB)` on POSIX,
+`msvcrt.locking(LK_NBLCK)` on Windows. Both are released **by the kernel when the holder dies**,
+which is the property a PID file cannot offer and the reason `ARC-006` rejected PID files.
+
+**`flock` rather than `lockf`.** POSIX record locks are released when *any* descriptor for the file
+closes in the process, so a program that opens the same path elsewhere silently drops its own lock.
+`flock` is tied to the open file description.
+
+**The lock file is never unlinked**, and that is a decision rather than an omission. Removing it
+races: another launch may have opened that same path and be about to lock it, and unlinking
+underneath them hands a lock on an orphaned inode to a process that thinks it owns the database. An
+abandoned file is inert because the *lock* is gone, which is the same reason a killed process leaves
+nothing to clean up. A test asserts the file still exists after a kill, so a future change that
+starts unlinking is caught rather than silently making the stale-path test vacuous.
+
+**Taken before `db.connect`.** Recovery runs on the next line and rewrites rows left `RUNNING`; a
+guard taken afterwards would let a second launch rewrite a live instance's in-flight jobs before
+refusing. **Released after the connection closes**, for the mirror reason.
+
+**Named from the resolved database path.** `A-004` is about the database, not the application, so
+two instances against different databases both start. `resolve()` matters: without it `./queue.db`
+and `/home/me/queue.db` would take two locks on one database.
+
+| Mutation | Killed by |
+|---|---|
+| No lock is taken at all | the refusal, racing and killed-holder tests (3 of 9) |
+
+#### Scope: the attach channel is not built
+
+`ARC-006` keeps `QLocalServer`/`QLocalSocket` as an **attach channel** — what lets a second launch
+hand its URL to the running instance and raise its window instead of merely refusing. **This task
+refuses.** The acceptance criterion is *"attaches to the running instance **or** refuses in its
+favour, and says which"*, and refusing-and-saying-which satisfies it; exit criterion 4 reads the
+same way.
+
+Stated as a choice rather than left as a gap: **`T-104`** owns the attach channel. A user who
+double-clicks a second time today gets a message box naming the running instance, not a hand-over.
+
+#### Not covered, stated rather than implied
+
+- **Windows.** The `msvcrt` branch is `# pragma: no cover` on Linux and has **never executed** —
+  `mypy --platform win32` type-checks it and nothing has run it. This is the half `ARC-006`'s
+  withdrawn design got wrong, so it is the half most worth running on `STARBASE`, and no CI job has
+  executed a step since 2026-07-30.
+- **`A-004` therefore stays unverified**, exactly as `ARC-006` says it must until this is tested on
+  both platforms. Linux is done; Windows is not.
+- **A read-only or full filesystem** where the lock file cannot be created. `acquire` would raise
+  `OSError` rather than `AlreadyRunningError`, and `run()` does not catch that.
+
+---
+
 ### T-046 — Output path collision policy against the filesystem
 
 **Status:** **In Review — complete 2026-07-31.** Reservation is atomic (`O_CREAT | O_EXCL`),
@@ -905,83 +1037,6 @@ it, which is what makes its "history half" dependency real rather than dangling.
 - Pruning, retention, or any deletion. Nothing in this view removes a record; `REQ-020` is a record
   of what was obtained
 - Re-downloading from history, and duplicate detection (`REQ-022`, Phase 3)
-
----
-
-### T-087 — Single-instance guard
-
-**Status:** **Ready — promoted 2026-07-31.** Nothing has blocked it since `ARC-006`'s amendment
-landed on 2026-07-29 and `T-094` gave it an atomic Windows ownership primitive (approved
-2026-07-30). It sat Proposed because nobody moved it, which is the same class as `T-079`'s stale
-`In Review` — a task held by a block that had already lifted. **It owns Phase 2 exit criterion 4**,
-so nothing else can meet that criterion while this waits.
-*(This read "Proposed" from the day it was filed.)*
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** nothing technical. Its `DECISIONS.md` entry exists: **`ARC-006`**, whose mechanism
-was **amended 2026-07-29** after `P2PLAN-R5` — implement the amendment, not the original
-**Relevant context:** **`ARC-006`** (the mechanism and its rationale), `A-004`, `DAT-001`,
-`ARC-005`, `OPS-004`
-**Affected surfaces:** `app.py`, a platform seam, `ai/DECISIONS.md`
-**Risk:** Medium — the failure it prevents is two writers on one database
-
-#### Scope
-
-`A-004` assumes a single local user and **no concurrent instances against the same database**, and
-records itself as *unverified*, with enforcement named as a Phase 2 task. This is that task.
-
-The database is the reason. `ARC-005` puts every write on one writer thread *within a process*;
-two processes have two writer threads and no shared lock discipline.
-
-#### The mechanism — `ARC-006` **as amended 2026-07-29**; read the amendment first
-
-**`ARC-006` is the canonical record** (`P2PLAN-R2`). **Its original mechanism is withdrawn**
-(`P2PLAN-R5`): Qt documents that on Windows **two local servers can listen on the same pipe name at
-once**, so *connect-first-then-claim* is not exclusive and two simultaneous launches can both become
-servers — the two-writer state this task exists to prevent.
-
-**Ownership is now an atomic kernel lock** on a file derived from the resolved database path
-(`flock(LOCK_EX | LOCK_NB)` on POSIX, exclusive-access open on Windows), released by the kernel when
-the holder dies. **`QLocalServer` remains only the attach channel**, started after ownership is won.
-
-**This task's acceptance criteria must gate simultaneous starts, not just stale-owner recovery** —
-the withdrawn design passes a sequential test, which is how it survived being written down. See the
-amendment for what it changes.
-
-*(Superseded, kept because the sequence is the point — this read as the decided mechanism:)*
-
-**`QLocalServer` / `QLocalSocket`, named from the resolved database path.**
-
-- **Already Qt**, so no new dependency, and one code path compiles to a named pipe on Windows and
-  a Unix domain socket on Linux — two correct platform implementations rather than two guesses.
-- **It is a channel, not a flag.** That is what makes *attach* possible rather than only *refuse*:
-  a second launch can hand its URL to the first instance and raise its window. A lock file can
-  only say no.
-- **Crash behaviour decided it**, because that is the case the guard exists for. Windows destroys
-  a named pipe when its owning process dies. On Linux a killed process leaves the socket file, so
-  the protocol is *connect first; if the connection fails the owner is gone, remove the stale name
-  and become the server*. A PID lock file needs a liveness check and is wrong under PID reuse;
-  `flock` is robust but offers no channel.
-- **Named from the database path**, because `A-004` is about the database rather than the
-  application. Two instances against different databases harm nothing and must not be blocked.
-
-#### Acceptance criteria
-
-- A second launch either attaches to the running instance or refuses in its favour, and says which
-- **Two launches started simultaneously do not both win** (`P2PLAN-R5`). Racing starts, not a
-  sequential pair: the withdrawn `QLocalServer`-as-lock design passes the sequential test and fails
-  this one, because two servers may listen on one Windows pipe name at the same time
-- A stale lock left by a killed process does not permanently block startup
-- Verified on both platforms, `STARBASE` included
-- The mechanism and its crash behaviour are recorded in `ai/DECISIONS.md` with an ID
-- **The stale-socket path is tested by killing an instance**, not by deleting a file by hand: the
-  recovery has to work against the failure it was chosen for
-- Two instances against *different* databases both start
-
-#### Out of scope
-
-- Multi-user or networked access (`A-004` scopes it out)
 
 ---
 
@@ -1355,6 +1410,137 @@ agreement on the reduced form before implementation.
 deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are follow-ups carried out
 of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
 prerequisite is Phase 1 approved.)*
+
+### T-105 — Write `docs/UX_SPEC.md` before Phase 3 starts
+
+**Status:** Proposed — **filed 2026-08-01**, from the Phase 3 roadmap review. It is a scheduled
+trigger nobody had turned into work.
+**Owner:** Planner
+**Priority:** Medium — it gates nothing today and gates the start of Phase 3
+**Phase:** Phase 3 (its opening act)
+**Depends on:** nothing
+**Relevant context:** `DOC-002`, `IMPLEMENTATION_PLAN.md` §Phase 3, `REQ-003`, `REQ-004`, `REQ-007`,
+`REQ-010`, `REQ-011`
+**Affected surfaces:** `docs/UX_SPEC.md`
+**Risk:** Low as a document; Medium as an omission — Phase 3 is the phase with the most UI surface
+and the least written down about it
+
+#### Scope
+
+`IMPLEMENTATION_PLAN.md` §Phase 3 carries **Trigger:** *"`docs/UX_SPEC.md` is created at the start of
+this phase (`DOC-002`)"*. `docs/` holds `DEVELOPMENT.md` and `WINDOWS_VERIFICATION.md` and nothing
+else, and no task owned the trigger — so the first Phase 3 task would either have started without it
+or quietly invented the spec as it went.
+
+Phase 3 is where it matters most. A sortable format table, per-entry playlist selection, an output
+template editor with live preview and seven post-processing options are the densest UI in the
+project, and `REQ-007`'s user presets add a CRUD surface on top. Deciding all of that inside
+individual implementation tasks is how two of them end up disagreeing.
+
+#### Acceptance criteria
+
+- Covers every Phase 3 deliverable's user-facing surface, and says which requirement each serves
+- States the keyboard path through each new surface (`NFR-005`), because retrofitting that is what
+  `T-040` and `T-060` cost
+- Records what is **deliberately not** offered, so a later task does not read an absence as an
+  oversight
+- Is referenced by the Phase 3 tasks rather than duplicated into them
+
+#### Out of scope
+
+- Visual design beyond the brand palette already fixed in `ARCHITECTURE.md` §8
+- Phase 4's settings dialog (`REQ-023`), which has its own requirement
+
+---
+
+### T-106 — Decide the Linux packaging format before Phase 5
+
+**Status:** Proposed — **filed 2026-08-01**, from the Phase 5 roadmap review. `IMPLEMENTATION_PLAN.md`
+requires this decision *before the first build* and it does not exist.
+**Owner:** Architect / maintainer decision
+**Priority:** Medium — nothing is blocked until Phase 5, and the answer shapes work well before then
+**Phase:** Phase 5 prerequisite
+**Depends on:** nothing
+**Relevant context:** `REL-001` (ship frozen artifacts, no Python on the user's machine),
+`IMPLEMENTATION_PLAN.md` §Phase 5, `LIC-001`, `NFR-009` (Qt stays dynamically linked), `OPS-001`
+**Affected surfaces:** `ai/DECISIONS.md`, and later `packaging/`
+**Risk:** Medium — taken late, it constrains a build that has already been written
+
+#### Scope
+
+§Phase 5's trigger reads: *"A `REL-` decision recording the Linux packaging format must be accepted
+before the first build."* The only `REL-` entry is `REL-001`, which decides that artifacts are
+frozen and self-contained and says nothing about **format**. The deliverable list says only
+"Linux: packaging per the `REL-` decision" — pointing at an entry that does not exist.
+
+**Why it is worth taking early rather than at Phase 5.** The candidates differ in ways that reach
+back into the build: AppImage wants everything in one tree and is closest to what PyInstaller
+already produces; Flatpak has its own runtime and sandbox, which changes how the application finds
+`ffmpeg` and where it may write (`NFR-004`, `REQ-024`); a `.deb`/`.rpm` pair means system packaging
+per distribution and a dependency story rather than a bundle. `NFR-009` constrains all of them —
+Qt must stay dynamically linked (`LIC-001`'s LGPL condition).
+
+#### Acceptance criteria
+
+- A `REL-` entry naming the format, with the rejected alternatives and **why**, in the house style
+- States how the choice interacts with `REQ-024`'s ffmpeg detection and `NFR-004`'s directories,
+  since that is where a sandboxed format differs most from a bundle
+- States what it means for `NFR-009`, and how that is checked in the release gate
+- Names its reopening condition
+
+#### Out of scope
+
+- Building anything. This is the decision; Phase 5 owns the packaging work
+- Windows, which `OPS-001` already settles
+
+---
+
+### T-104 — Hand a second launch's URL to the running instance
+
+**Status:** Proposed — **filed 2026-08-01 by `T-087`**, which built the ownership half of `ARC-006`
+and deliberately not the attach half.
+**Owner:** Implementer
+**Priority:** Low — `T-087` satisfies exit criterion 4 and `A-004` by refusing; this is the nicer
+half of "attaches **or** refuses"
+**Phase:** Phase 2
+**Depends on:** `T-087`
+**Relevant context:** **`ARC-006`** and its 2026-07-29 amendment, `A-004`, `REQ-001`
+**Affected surfaces:** `app.py`, a new channel module
+**Risk:** Low — the ownership guard already prevents the harm; this only improves the outcome
+
+#### Scope
+
+`ARC-006` keeps `QLocalServer`/`QLocalSocket` as an **attach channel**, and is explicit that this is
+what makes *attach* possible rather than only *refuse*: "a second launch can hand its URL to the
+running instance and raise its window. A lock file can only say no."
+
+`T-087` built the ownership lock and stopped there, because the criterion it owns is satisfied by
+refusing. Today a user who double-clicks the application a second time — or opens a link with it
+while it is running — gets a message box naming the running instance and nothing happens to the URL.
+
+**The channel is started by whoever wins the lock, and never decides who owns the database.** That
+separation is the whole point of the amendment and must survive this task: the loser connects to the
+channel and hands over; it does not attempt to become a server.
+
+#### Acceptance criteria
+
+- A second launch with a URL passes it to the running instance, which enqueues it, and the second
+  process exits reporting that it did so
+- The running instance's window is raised and focused
+- **A second launch with no URL still raises the window** rather than doing nothing visible
+- The channel is started **after** the lock is won, asserted — a channel started first would
+  reintroduce the design `P2PLAN-R5` withdrew
+- A second launch when the channel is unreachable — the owner is alive but wedged — still refuses
+  rather than hanging, within a stated timeout
+- Verified on both platforms, `STARBASE` included: the named-pipe and Unix-socket halves are
+  different system calls
+
+#### Out of scope
+
+- Anything that makes the channel decide ownership (`ARC-006` amendment)
+- Multi-user or networked access (`A-004`)
+
+---
 
 ### T-103 — Cancelling a waiting job leaves its id on the pool's waiting list
 

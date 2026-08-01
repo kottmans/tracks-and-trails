@@ -51,6 +51,7 @@ from tracks_and_trails import __version__
 if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
 
+    from tracks_and_trails.core.instance_lock import InstanceLock
     from tracks_and_trails.downloader.environment import FfmpegReport
     from tracks_and_trails.downloader.manager import DownloadManager
     from tracks_and_trails.persistence.store import PersistentJobStore
@@ -128,7 +129,23 @@ def run(argv: Sequence[str]) -> int:
     app.setOrganizationName(APP_NAME)
     app.setWindowIcon(app_icon())
 
-    composition = compose(app)
+    from tracks_and_trails.core.instance_lock import AlreadyRunningError
+
+    try:
+        composition = compose(app)
+    except AlreadyRunningError as refusal:
+        # **It says which thing it did** (`ARC-006`): silence is indistinguishable from a hang, and
+        # a second launch that exits quietly looks like a broken shortcut. A message box because
+        # this is a desktop application launched from an icon, where stderr goes nowhere anybody
+        # will see; the same text goes to the log for the case where it was launched from a shell.
+        from PySide6.QtWidgets import QMessageBox
+
+        logging.getLogger("tracksandtrails.app").warning("refusing to start: %s", refusal)
+        QMessageBox.information(None, APP_NAME, str(refusal))
+        # Refusing in favour of the running instance is the outcome `A-004` asks for, not a crash.
+        # Non-zero so a script can tell it apart from a normal run that the user closed.
+        return 3
+
     composition.window.show()
     return app.exec()
 
@@ -167,6 +184,7 @@ class Composition:
     database_path: Path
     settings_path: Path
     shutdown: OrderlyShutdown
+    instance: InstanceLock
 
 
 def compose(
@@ -190,6 +208,7 @@ def compose(
     extractor would make the proof depend on a site staying up.
     """
     from tracks_and_trails.core import settings as app_settings
+    from tracks_and_trails.core.instance_lock import InstanceLock
     from tracks_and_trails.core.job_state import JobStatus
     from tracks_and_trails.downloader import worker
     from tracks_and_trails.downloader.environment import find_ffmpeg
@@ -203,6 +222,18 @@ def compose(
     database_path = database if database is not None else db.database_path()
     downloads = output_directory if output_directory is not None else default_output_directory()
     downloads.mkdir(parents=True, exist_ok=True)
+
+    # **Ownership before anything opens the database** (`A-004`, `ARC-006`, `T-087`). An atomic
+    # kernel lock, not `QLocalServer` — Qt documents two local servers listening on one Windows pipe
+    # name simultaneously, so *connect-then-listen* admits the two-writer state the guard exists to
+    # prevent. Raising `AlreadyRunningError` out of `compose()` is deliberate: there is nothing
+    # useful this process can do against a database another process is writing, and `run()` turns it
+    # into a message and a non-zero exit rather than a traceback.
+    #
+    # Taken *before* `db.connect`, because recovery runs on the very next line and would otherwise
+    # rewrite rows belonging to a live instance's in-flight jobs.
+    instance = InstanceLock(database_path)
+    instance.acquire()
 
     # **The read connection is opened here and the writer opens its own inside its thread**
     # (`ARC-005`). `check_same_thread` stays on, so the two cannot quietly become one.
@@ -353,7 +384,7 @@ def compose(
 
     manager.job_changed.connect(on_job_changed)
 
-    shutdown = OrderlyShutdown(app, manager, writer, connection)
+    shutdown = OrderlyShutdown(app, manager, writer, connection, instance)
     window.closing.connect(shutdown.begin)
     # **Every quit, not only the one through the window.** Qt aborts the process if a `QThread`
     # is destroyed while running, so a quit that skipped the lifecycle — `QApplication.quit()`
@@ -376,6 +407,7 @@ def compose(
         database_path=database_path,
         settings_path=settings_file if settings_file is not None else app_settings.settings_path(),
         shutdown=shutdown,
+        instance=instance,
     )
 
 
@@ -402,11 +434,16 @@ class OrderlyShutdown:
         manager: DownloadManager,
         writer: QueueWriter,
         connection: sqlite3.Connection,
+        instance: InstanceLock | None = None,
     ) -> None:
         self._app = app
         self._manager = manager
         self._writer = writer
         self._connection = connection
+        #: Optional, because `T-013`'s tests construct this without one and the ownership guard is
+        #: composition's concern rather than the shutdown sequence's. When present it is released
+        #: last — see `_writes_are_finished`.
+        self._instance = instance
         self._begun = False
         self._finished = False
         manager.idle.connect(self._workers_are_gone)
@@ -467,5 +504,12 @@ class OrderlyShutdown:
         # Last, and only here: every queued revision has been written by now, so nothing is
         # reading or writing this file any more.
         self._connection.close()
+        # **After the connection, never before** (`T-087`). The lock says "this process owns this
+        # database"; releasing it while a write could still land would let the next launch open a
+        # database this one has not finished with. The kernel would release it at exit anyway —
+        # doing it here is what makes the ordering true for a process that keeps running, which is
+        # every test in `test_composition.py`.
+        if self._instance is not None:
+            self._instance.release()
         if self._app is not None:
             self._app.quit()
