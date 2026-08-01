@@ -5,8 +5,8 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-31
-**Last verified against repository:** 2026-07-31
+**Last updated:** 2026-08-01
+**Last verified against repository:** 2026-08-01
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -16,45 +16,50 @@
 Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLAN-R2` at `f858da9`,
 `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
-**Nothing is a choke point as of 2026-07-31.** `T-078` — the pool — was approved at `0f9986f` on
-2026-07-30 and released the subtree; `T-079` — the queue view — was approved at `da49a51` on
-2026-07-31 and was the last task anything waited on. **Five tasks are Ready and every one of them
-can start without waiting for a verdict:** `T-082`, `T-084`, `T-100`, `T-102`, plus `T-074` and
-`T-092`, which block nothing and never did.
+**Nothing is a choke point as of 2026-08-01.** `T-078` (the pool) was approved 2026-07-30 and
+`T-079` (the queue view) 2026-07-31; nothing has waited on anything since. **Three tasks are Ready
+and startable:** `T-082`, `T-084`, `T-100`, plus `T-074` and `T-092`, which block nothing.
 
-**Five tasks are in review, all delivered 2026-07-31:** `T-080` (queue-level pause and resume,
-per-job remove, manual retry to the back of the queue, and `JobStatus.PAUSED` deleted — 14
-mutations), `T-081` (reordering in one transaction against a `UNIQUE` index, and clear-finished that
-keeps history — 13 mutations), `T-046` (atomic output-path reservation, because `ARC-002` makes the
-racing writers separate processes and check-then-create between them is the hole itself), `T-053`
-(two live spawned workers proved not to cross-write their logs — it gates `T-084`'s approval, not
-its start), and `T-083` (bounded retry on `NETWORK` only, whose bound and backoff ship marked
-provisional because `AGENTS.md` §4 makes those numbers the Architect's).
+**Ten tasks are in review**, eight of them delivered overnight on 2026-08-01 under standing
+maintainer authorisation to work unattended: `T-080`, `T-081`, `T-102`, `T-087`, `T-103`, `T-099`,
+`T-101`, joining `T-046`, `T-053` and `T-083`. Eight commits, each its own task, all pushed. **Full
+Linux suite: 1726 passed / 11 skipped / 2 deselected.**
 
-**`T-081` found one defect and filed it rather than fixing it** (`AGENTS.md` §7): `T-103` —
-cancelling a job that is merely *waiting for a slot* leaves its id on the pool's waiting list.
-Harmless while the row exists, because the later `start()` refuses; `T-081`'s clear-finished deletes
-that row, so `T-081` carries a narrow sweep and `T-103` owns the general fix.
+**`T-080` and `T-081` were reviewed and came back Changes requested — six findings, four High.**
+All six are closed at `910f3cb`. The theme is worth keeping: **the persistence primitives were
+right and the queue the user looks at never heard about any of it.** Removal, reorder and clear each
+reached the database and left the table showing the old world indefinitely, because `job_removed`,
+`queue_reordered` and `queue_cleared` had **zero receivers**. The other half was that pause guarded
+the scheduler and not the public `start()`, so pressing Add while paused began a download — and
+**my own test protected that defect**, describing a probe while calling `start()` with its
+`DOWNLOAD` default.
 
-**`T-079`'s approval sat unrecorded for most of a day, and that is worth naming.** The focused
-correction re-review recorded **Approved** in `ai/REVIEWS.md` at `19f6015`; `TASKS.md` went on
-saying "In Review — awaiting re-review" because its status line was last written at `da49a51`, one
-commit earlier. Two tasks were held Proposed by a block that had already lifted. **`T-096` cannot
-see this class** — the status and the section agreed with each other, and both disagreed with a
-different file. It is `COORD-R11` across documents rather than within one.
+**Two mutations survived their first battery, and both times the test was at fault rather than the
+code.** One asserted on a disabled `QAction`, which Qt makes a no-op. One asserted on
+`active_job_ids()`, which deliberately counts *waiting* jobs — so a wrongly parked probe still
+looked active. That accounting split (`T078-R1`) is easy to read past and has now caught this
+project twice in two days.
 
-**Two maintainer calls `T-080` had been waiting on were taken 2026-07-31.** The unreachable
-`RUNNING → PAUSED` and `PAUSED → RUNNING` edges are **removed** — `REQ-017` in Phase 3 can add the
-edges its own semantics need rather than inheriting a guess. And `P2PLAN-R7` is **confirmed**:
-manual retry re-enters the queue at the back, recorded as a maintainer decision and explicitly not
-as something `P2PLAN-R1` settled.
+**`T-103` produced a finding of its own.** A first draft added a `_retry_at` pop to `cancel()`; the
+mutation survived, and writing the test showed why — a job awaiting a retry is `FAILED`, and
+`FAILED` allows only `QUEUED`, so the line could never run. The mutation survived because the code
+was unreachable, not because the test was weak. Removed, with `remove()` covering the reachable
+path.
 
-**The last open question is closed: `ARC-008`, 2026-07-31.** A `settings.toml` that exists and
-cannot be used now reports to the user that defaults are in force, as a modal at startup naming the
-path and the reason; a missing file, and one that merely omits the value, stay silent — `save()`'s
-own header promises deleting a line is safe. The fallback does not change and `load()` still never
-raises; the silence is what goes. **`T-102`** implements it, including deleting the module
-docstring paragraph that documents the silence.
+**Decisions taken 2026-08-01:** `UX-002` ratifies the automatic retry policy — three attempts at
+2s, 4s and 8s, `NETWORK` only — which was the last thing `T-083` was waiting on. `ARC-008` was
+implemented by `T-102`. `ARC-006`'s ownership half is implemented by `T-087`; **`A-004` stays
+unverified**, exactly as `ARC-006` requires, because the Windows branch of the lock has never
+executed.
+
+**Phase 3 is decomposed** (`T-107`–`T-114`). It had **zero** tasks against seven deliverables, so
+any statement of its size — including the one given on 2026-07-31 — came from prose rather than
+from work anybody had broken down. Two of the eight are structural rather than additive: `T-110`
+changes what a *job* is, and `T-113` reopens `UX-001` and `T-080`'s `PAUSED` removal by design.
+
+**Four scheduled things had no task behind them and now do:** `T-104` (the attach channel `T-087`
+deliberately did not build), `T-105` (`docs/UX_SPEC.md`, a Phase 3 trigger), `T-106` (the Linux
+packaging `REL-` decision Phase 5 requires and which does not exist), and `T-103` itself.
 
 **CI is not running at all, and no document said so until now.** This is measured, not inferred
 from a red badge:
@@ -79,10 +84,11 @@ a queue this deep can drain.
 
 **What it costs, stated rather than absorbed.** The gate the trunk-based workflow leans on — *CI
 runs on every push to `main`, and a red run still blocks* — has not run on `T-078` or `T-079`, and
-cannot run on any of the five now in review. Their Linux evidence is the maintainer's own machine
-(`OPS-006`): the full local suite is **1684 passed / 11 skipped / 2 deselected** on the working
-tree, run 2026-07-31. Windows runtime has still never run against the pool, and now cannot until
-runners return. **No task should be reported as gated by CI until a run executes a step.**
+cannot run on any of the ten now in review. Their Linux evidence is the maintainer's own machine
+(`OPS-006`): **1726 passed / 11 skipped / 2 deselected**, 2026-08-01, plus `mypy --platform win32`.
+**Windows has never run against the pool, and `T-087`'s `msvcrt` branch has never executed at
+all** — that is the half `ARC-006`'s withdrawn design got wrong, so it is the half most worth
+running. **No task should be reported as gated by CI until a run executes a step.**
 
 **Overall state:** Phase 0's five exit criteria were each verified rather than asserted, and the
 evidence is recorded in `IMPLEMENTATION_PLAN.md` §Phase 0 — including a fresh mutation run
