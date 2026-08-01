@@ -874,12 +874,17 @@ def test_the_composed_pause_control_changes_the_real_manager(
     action = composition.window.pause_action
     assert action is not None
 
+    # Read into locals: mypy narrows a property across asserts, so asserting the opposite
+    # afterwards types the rest of the test as unreachable and stops it being a gate. The same
+    # idiom `job_detail`'s `view.failure` uses.
     action.trigger()
-    assert composition.manager.is_paused
+    paused = composition.manager.is_paused
+    assert paused
     assert action.isChecked()
 
     action.trigger()
-    assert not composition.manager.is_paused
+    resumed = composition.manager.is_paused
+    assert not resumed
     assert not action.isChecked()
 
 
@@ -1208,12 +1213,16 @@ def test_the_lock_is_released_only_after_the_database_is_closed(
     """Ownership outlives the last write, so the next launch never opens a half-closed database."""
     database = tmp_path / "shared.db"
     composition = composed(database=database)
-    assert composition.instance.is_held
+    # Locals both sides of the shutdown, for the reason above: narrowing from the first assert
+    # otherwise makes the second one — and everything after it — unreachable to mypy.
+    held = composition.instance.is_held
+    assert held
 
     composition.shutdown.begin()
     assert spin(lambda: composition.shutdown.finished, timeout=30), "shutdown never completed"
 
-    assert not composition.instance.is_held, (
+    released = composition.instance.is_held
+    assert not released, (
         "the lock outlived the shutdown lifecycle, so a relaunch would be refused by a process "
         "that has finished with the database"
     )

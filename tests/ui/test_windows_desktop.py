@@ -27,6 +27,7 @@ from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
 from PySide6.QtCore import Qt
@@ -113,6 +114,22 @@ class _EmptyStore:
     def submit(self, jobs: object, done: object = None) -> None:
         if callable(done):
             done(None)
+
+    def requeue_at_end(self, job: Any, done: Any) -> None:
+        """Part of `JobStore` since `T-080`. Unused here; present so the fake satisfies it."""
+        raise NotImplementedError
+
+    def remove(self, job_id: str, done: Any) -> None:
+        """Part of `JobStore` since `T-080`. Unused here; present so the fake satisfies it."""
+        raise NotImplementedError
+
+    def reorder(self, job_ids: Any, done: Any) -> None:
+        """Part of `JobStore` since `T-081`. Unused here; present so the fake satisfies it."""
+        raise NotImplementedError
+
+    def clear_completed(self, done: Any) -> None:
+        """Part of `JobStore` since `T-081`. Unused here; present so the fake satisfies it."""
+        raise NotImplementedError
 
 
 def _screenshot(widget: object, name: str) -> Path:

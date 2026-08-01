@@ -17,7 +17,12 @@ from typing import Any, Final
 import pytest
 
 from tracks_and_trails.core.errors import ErrorKind, is_auto_retryable, is_retryable
-from tracks_and_trails.core.job_state import TERMINAL, IllegalTransitionError, JobStatus
+from tracks_and_trails.core.job_state import (
+    REORDERABLE,
+    TERMINAL,
+    IllegalTransitionError,
+    JobStatus,
+)
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, Job, MediaKind
 from tracks_and_trails.persistence import db, repositories
 from tracks_and_trails.persistence.repositories import (
@@ -978,13 +983,13 @@ def test_the_reorderable_statuses_partition_the_enum() -> None:
     no test could see it — `ai/TESTING.md` §13. This makes adding a status fail here until somebody
     decides which side it belongs on.
     """
-    covered = repositories.REORDERABLE | repositories.INTERRUPTED_ON_STARTUP | TERMINAL
+    covered = REORDERABLE | repositories.INTERRUPTED_ON_STARTUP | TERMINAL
 
     assert covered == set(JobStatus), (
         f"these statuses belong to no group: {sorted(s.value for s in set(JobStatus) - covered)}"
     )
-    assert not (repositories.REORDERABLE & repositories.INTERRUPTED_ON_STARTUP)
-    assert not (repositories.REORDERABLE & TERMINAL)
+    assert not (REORDERABLE & repositories.INTERRUPTED_ON_STARTUP)
+    assert not (REORDERABLE & TERMINAL)
     assert not (repositories.INTERRUPTED_ON_STARTUP & TERMINAL)
 
 

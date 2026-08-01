@@ -2220,6 +2220,22 @@ def test_no_companion_signal_arrives_before_its_transition_is_durable(
                 self.jobs[job.id] = job
                 done(None)
 
+        def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
+            """Part of `JobStore` since `T-080`. Unused here; present so the fake satisfies it."""
+            raise NotImplementedError
+
+        def remove(self, job_id: str, done: Callable[[str | None], None]) -> None:
+            """Part of `JobStore` since `T-080`. Unused here; present so the fake satisfies it."""
+            raise NotImplementedError
+
+        def reorder(self, job_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
+            """Part of `JobStore` since `T-081`. Unused here; present so the fake satisfies it."""
+            raise NotImplementedError
+
+        def clear_completed(self, done: Callable[[str | None], None]) -> None:
+            """Part of `JobStore` since `T-081`. Unused here; present so the fake satisfies it."""
+            raise NotImplementedError
+
     store = HeldStore()
     store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
     download = DownloadManager(store, entry_point=child_reporting_nothing)
@@ -2305,6 +2321,22 @@ def test_a_second_session_is_refused_while_the_first_is_still_being_stored(
                 self.jobs[job.id] = job
                 done(None)
 
+        def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
+            """Part of `JobStore` since `T-080`. Unused here; present so the fake satisfies it."""
+            raise NotImplementedError
+
+        def remove(self, job_id: str, done: Callable[[str | None], None]) -> None:
+            """Part of `JobStore` since `T-080`. Unused here; present so the fake satisfies it."""
+            raise NotImplementedError
+
+        def reorder(self, job_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
+            """Part of `JobStore` since `T-081`. Unused here; present so the fake satisfies it."""
+            raise NotImplementedError
+
+        def clear_completed(self, done: Callable[[str | None], None]) -> None:
+            """Part of `JobStore` since `T-081`. Unused here; present so the fake satisfies it."""
+            raise NotImplementedError
+
     store = HeldStore()
     store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
     store.jobs["job-2"] = make_job("job-2", "https://example.invalid/y", tmp_path)
@@ -2364,6 +2396,22 @@ def test_a_transition_that_cannot_be_stored_is_reported_and_not_announced(
             """
             self.completions.append((job.id, format_used))
             self.update(job, done)
+
+        def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
+            """Part of `JobStore` since `T-080`. Unused here; present so the fake satisfies it."""
+            raise NotImplementedError
+
+        def remove(self, job_id: str, done: Callable[[str | None], None]) -> None:
+            """Part of `JobStore` since `T-080`. Unused here; present so the fake satisfies it."""
+            raise NotImplementedError
+
+        def reorder(self, job_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
+            """Part of `JobStore` since `T-081`. Unused here; present so the fake satisfies it."""
+            raise NotImplementedError
+
+        def clear_completed(self, done: Callable[[str | None], None]) -> None:
+            """Part of `JobStore` since `T-081`. Unused here; present so the fake satisfies it."""
+            raise NotImplementedError
 
     store = RefusingStore()
     store.jobs["job-1"] = make_job("job-1", "https://example.invalid/x", tmp_path)
@@ -5450,13 +5498,15 @@ def test_removing_a_job_awaiting_an_automatic_retry_drops_the_retry(
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
     try:
         download._schedule_automatic_retry("job-1", ErrorKind.NETWORK)
-        assert not download.is_idle, "a job waiting out its backoff is work this manager will do"
+        # Read into locals for `test_composition`'s reason: mypy narrows a property across
+        # asserts, and asserting the opposite afterwards makes the rest of the test unreachable.
+        waiting = download.is_idle
+        assert not waiting, "a job waiting out its backoff is work this manager will do"
 
         download.remove("job-1")
 
-        assert download.is_idle, (
-            "the manager still reports work in hand for a removed job's automatic retry"
-        )
+        idle = download.is_idle
+        assert idle, "the manager still reports work in hand for a removed job's automatic retry"
         spin(lambda: False, timeout=0.5)
         assert repository.get("job-1") is None, "the removed job came back when its retry fired"
     finally:

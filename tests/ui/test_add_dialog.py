@@ -274,6 +274,22 @@ class FakeStore:
     def statuses(self, job_id: str) -> list[JobStatus]:
         return [status for stored_id, status in self.writes if stored_id == job_id]
 
+    def requeue_at_end(self, job: Any, done: Any) -> None:
+        """Part of `JobStore` since `T-080`. Unused here; present so the fake satisfies it."""
+        raise NotImplementedError
+
+    def remove(self, job_id: str, done: Any) -> None:
+        """Part of `JobStore` since `T-080`. Unused here; present so the fake satisfies it."""
+        raise NotImplementedError
+
+    def reorder(self, job_ids: Any, done: Any) -> None:
+        """Part of `JobStore` since `T-081`. Unused here; present so the fake satisfies it."""
+        raise NotImplementedError
+
+    def clear_completed(self, done: Any) -> None:
+        """Part of `JobStore` since `T-081`. Unused here; present so the fake satisfies it."""
+        raise NotImplementedError
+
 
 class FakeSink:
     """A `JobSink` whose completion the test controls.

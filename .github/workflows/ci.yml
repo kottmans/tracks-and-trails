@@ -160,6 +160,14 @@ jobs:
       - name: Types
         run: mypy src 2>&1 | tee "reports/mypy.txt"
 
+      - name: Types, tests included
+        # `pyproject.toml` declares `files = ["src", "tests"]`, so plain `mypy` — what a developer
+        # actually types — covers the test tree. CI checked only `src`, so the two disagreed and
+        # the fuller gate went red for a whole session without anything noticing: fakes fell behind
+        # a protocol they implement, and a property narrowed across asserts made whole tests
+        # unreachable. A gate nobody runs is not a gate.
+        run: mypy 2>&1 | tee "reports/mypy-all.txt"
+
       - name: Qt baseline
         # Discharges the Windows half of T-002, which was verified on Linux only: PySide6
         # installs, imports, and constructs a QApplication + QWidget offscreen.
