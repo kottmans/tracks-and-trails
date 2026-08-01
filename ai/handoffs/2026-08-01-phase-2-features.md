@@ -3,18 +3,22 @@
 You are the Reviewer (`AGENTS.md` §3). This is my own work; none of it is signed off.
 
 **Repository:** `/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails`, branch `main`
+**Review boundary:** `eb6f690..57518ce`
 **Awaiting a verdict:** `T-100`, `T-086`, `T-084`, `T-082`, `T-088`. Nothing else is in review.
+
+| Commit | Task |
+|---|---|
+| `c242dd3` | `T-100` — the history view |
+| `46c1709` | `T-086` — open a completed file, or reveal it |
+| `d86240c` | `T-084` — capture yt-dlp's diagnostics, and show them |
+| `b1b7cd6` | `T-082` — offer to restart what a crash interrupted |
+| `de7d13b` | `T-088` — prove the phase |
+| `5ea6656` | the Windows test corrections (§ *CI caught 38 Windows failures*) |
+| `2e3d926`, `57518ce` | coordination only |
 
 With these, **every Phase 2 deliverable is written.** `T-088` — the phase's proof — is included, and
 **it found a High defect that no feature task would have surfaced.** Read §0 first.
 
-| Commit | Task | What it is |
-|---|---|---|
-| `c242dd3` | `T-100` | The history view (`REQ-020`) |
-| `46c1709` | `T-086` | Open a completed file, or reveal it (`REQ-021`) |
-| *(this batch)* | `T-084` | Per-job diagnostics and the log view (`REQ-019`) |
-| *(this batch)* | `T-082` | Interrupted jobs offered for retry (`REQ-012`) |
-| *(this batch)* | `T-088` | Phase 2's exit criteria in executable form |
 
 `T-046` and `T-087` are filed **Complete** at `eb6f690`, which closed `T046-R6`, `T087-R4`,
 `T046-R7` and `T087-R5` from your fourth review. That review is recorded and committed.
@@ -22,7 +26,9 @@ With these, **every Phase 2 deliverable is written.** `T-088` — the phase's pr
 ## Evidence
 
 `ruff`, `ruff format`, and **all four** `mypy` gates (`src` and full tree, both platforms) clean.
-Full Linux suite green. **Forty-seven mutations across the four new tasks;
+**`ubuntu-latest` is green at `57518ce`** — the first full-suite CI pass that includes `T-088`.
+`windows-latest` was still running when this was written; **check it before signing anything off**,
+because the section below is about exactly that gate being the one I failed to consult. **Forty-seven mutations across the four new tasks;
 all forty-seven killed**, every source file verified byte-identical afterwards.
 
 Windows carries no new surface here — none of these touch the platform seam except `T-086`, whose
