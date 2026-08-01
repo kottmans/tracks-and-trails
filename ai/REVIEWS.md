@@ -8217,3 +8217,60 @@ re-review on the findings above. T-115 remains an independent High product defec
 exit criterion 7 is not met. The hosted Windows run corrected a real test portability lapse, but it
 does not turn argv construction into desktop Open-file evidence. No reviewed production source was
 edited by the Reviewer.
+
+## 2026-08-01 — Phase 2 correction re-review: T-084, T-086 and T-088
+
+**Reviewer:** Codex (Reviewer)
+**Correction boundary:** `ff16034..2a41c5f`
+**Exact candidate head:** `2a41c5fdc58763506e830401793ce231a023f7cd`
+**Overall verdict:** **Changes requested for T-088.** T-084 and T-086 are approved at the exact
+candidate head. T-115 remains a separate High Phase-2 blocker. T-087's approved implementation is
+not reopened, but its killed-holder evidence test needs correction.
+
+### Task verdicts
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-084` | **Approved at `2a41c5f`** | Log redaction again follows accepted DAT-003 origin-agnostically; the database/log distinction is asserted on one diagnostic; Copy reads the bounded artifact rather than the capped rendering and refuses on read failure; the contradictory criterion and all live pre-ruling prose are reconciled. |
+| `T-086` | **Approved at `2a41c5f`** | Windows Open uses the associated-application API through a separately testable starter; Reveal alone uses Explorer; every test caller is pinned or injected safely; the non-vacuous default-starter and FileActions routes passed on hosted Windows. Real desktop association remains explicitly outside this gate. |
+| `T-088` | **Changes requested at `2a41c5f`** | T088-R1/R2/R3 are substantively corrected, including the Add-only strict xfail and real composed restart, but T088-R4 leaves the phase's three-worker evidence unreliable on Windows and makes the exact-head Windows job fail. |
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T088-R4` | **Medium** | **Yes — T-088** | Windows phase-test lifecycle | `test_three_real_workers_each_write_their_whole_file` receives the application's reported PID and discards it, then kills only the `Popen` process before reopening the database. Under a Windows virtualenv that process can be the launcher rather than the composed application—the exact distinction the shared process-tree helpers document. The real application may still own SQLite; hosted Windows failed at the post-kill `PRAGMA journal_mode = WAL` with `sqlite3.OperationalError: disk I/O error`. | Keep the terminal snapshot before teardown, retain the reported application PID, capture the real tree, and reap it through `capture_the_doomed_tree` / `kill_the_application`. Do not reopen the database in the window between killing a launcher and proving the application is gone. | **Open** |
+| `T087-R6` | **Medium** | No — implementation approval unchanged; **yes — reliable CI evidence** | Windows killed-holder gate | `test_a_killed_holder_leaves_a_lock_the_next_launch_can_take` has the same launcher/holder confusion. It kills and waits for the `Popen` process, not the process that acquired the lock. The failure previously classified as flaky has now recurred: the child still held the lock and reacquisition correctly received WinError 32. This is a test-evidence defect, not evidence that `InstanceLock` failed to release a handle owned by a dead process. | Have the holder report its own PID with `HELD`; kill and wait for that exact process, then assert reacquisition. Preserve the stale lock-file assertion. | **Open** |
+
+### Resolved prior findings
+
+| Prior finding | Result |
+|---|---|
+| `T084-R1` | **Resolved.** The provenance flag and caller parameter are gone; yt-dlp lines take the same emission redaction as application lines. The amended criterion separately proves verbatim database storage and redacted log emission on one value. |
+| `T084-R2` | **Resolved.** Copy re-reads the live bounded log artifact and refuses rather than silently falling back to the rendered tail. |
+| `T086-R1` | **Resolved.** Windows Open calls the associated-application seam and builds no argv; Explorer remains only on Reveal. The default seam is observed by monkeypatching and invoking `os.startfile`, not by source-string inspection. |
+| `T088-R1` | **Resolved.** The strict xfail now drives Add only, with no priming `manager.start()` calls, and asserts the wanted eventual-drain outcome. |
+| `T088-R2` | **Resolved as a claim correction.** The real-worker test is narrowed to spawned workers and complete independent outputs; progress and UI responsiveness cite the tests that actually observe them. T088-R4 concerns its Windows lifecycle, not that narrower claim. |
+| `T088-R3` | **Resolved.** Recovery is observed through a real composed restart against the killed database, including the offer over rows produced by the real kill. All embedded launchers compile, and settings are parent-written, parsed and non-default where the limit is under test. |
+
+### CI and independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and tree | `ff16034..2a41c5f` inspected; `HEAD == origin/main == 2a41c5fdc58763506e830401793ce231a023f7cd`; worktree clean; `git diff --check` passed. |
+| Local full suite (implementer) | **1875 passed / 11 skipped / 1 xfailed** on the exact tree. The xfail is T-115. |
+| Local static/mutation evidence (implementer) | Ruff, format and all four mypy gates passed; **14 mutations killed** with source restored byte-identically. |
+| Reviewer focused checks | T-084/T-086 focused slice previously **72 passed**; embedded-launcher compile gate passed at the exact head; `ruff check .` and `ruff format --check .` passed (**129 files**). |
+| Exact GitHub Actions run | Run `30717153962`, exact SHA `2a41c5fdc58763506e830401793ce231a023f7cd`, conclusion **failure**. |
+| Ubuntu / frozen jobs | Ubuntu **1875 passed / 11 skipped / 2 deselected / 1 xfailed**; frozen Ubuntu and frozen Windows passed; Windows desktop skipped with zero steps. |
+| Hosted Windows | **2 failed / 1861 passed / 21 skipped / 32 deselected / 1 xfailed**. The failures are T088-R4's SQLite reopen race and T087-R6's launcher/holder confusion. All corrected T-086 Windows-route tests passed. |
+
+### Final disposition
+
+T-084 and T-086 need no further implementation pass and are approved at `2a41c5f`. T-088 needs a
+focused correction for T088-R4 and new exact-head Windows evidence. T087-R6 should be corrected in
+the same lifecycle-focused pass because it is the identical process-identity error and currently
+keeps the Windows gate red; that correction does not reopen T-087's production implementation.
+
+T-115 remains confirmed High and keeps Phase 2 exit criterion 7 unmet independently of this CI
+failure. No reviewed production source was edited by the Reviewer.

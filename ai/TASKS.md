@@ -577,6 +577,28 @@ workers the question is whether that holds N times, including for the ones that 
 - The evidence table in `ai/IMPLEMENTATION_PLAN.md` §Phase 2 is filled from real runs, and states
   its limits — building Phase 1's table is what exposed two wrong rows (`P1EXIT-R1`, `P1EXIT-R2`)
 
+#### `T088-R4` — the corrections had a defect of their own
+
+The read-only observer fixed the `disk I/O error` on `windows-latest` — `db.connect()` runs
+`migrate()`, so a polling "reader" was opening a **migrating** connection against a database the
+application under test was writing. But the retry returned `{}` on persistent failure, and:
+
+**`all([])` is `True`.** One missed read would have reported every job terminal, turned `T-115`'s
+strict `xfail` into an `XPASS`, and **announced a repair that had not happened** — the precise
+failure the strict marker was added to prevent. `settled()` and `snapshot()` now require every id
+to be present before they answer, `settled([])` is explicitly `False`, and both are tested directly.
+
+**And the teardown reached only `Popen`.** Four tests ended with `process.kill()`, three of them
+having discarded the reported application pid entirely. Under a Windows virtualenv `Popen` returns
+the *launcher* — `T-066` found that and `T072-R1` is why the handshake reports the application's own
+pid — so those teardowns could leave a composed application, its writer thread and its workers
+running after the test passed. One `reap_application` helper now reaps the captured tree at all four
+sites, and the three-worker test takes its final snapshot **before** teardown rather than racing it.
+
+Writing the test for that helper found something worth keeping: `kill_the_application` reaps the
+process **group** on POSIX, so a child spawned without `isolate_the_application()` takes pytest down
+with it. The first version SIGKILLed its own runner — exit 137, no report at all.
+
 #### The three findings, and what changed
 
 **`T088-R1` (High) — the `T-115` case could not detect its own repair.** It called `pytest.xfail()`
@@ -2301,11 +2323,21 @@ Assert, on `windows-latest`:
 
 ### T-087 — Single-instance guard
 
-**Status:** **Complete — Approved at `ea9d752`**, 2026-08-01. Implementation and the Windows gate
-are both approved; `T087-R4`'s coordination corrections are applied below. **`A-004` is verified**
-and **Phase 2 exit criterion 4 is met**. `T087-R1`
-(the architecture mismatch) and `T087-R3` (the untyped `CloseHandle` and inheritable descriptor) are
-both corrected. **The Windows branch has executed**, on `check (windows-latest)` at `7516f61`:
+**Status:** **Complete — Approved at `ea9d752`**, 2026-08-01. **A test defect was corrected the same
+day under `T087-R6`; the guard itself is unchanged and its approval stands.**
+
+What was wrong is how the test killed the holder:
+`_spawn` runs `sys.executable`, which under a Windows virtualenv is a launcher shim, so
+`holder.kill()` killed the shim and **left the real holder alive still holding the lock**. The next
+`acquire()` was then refused by a process the test believed it had killed — which is exactly how
+`test_a_killed_holder_leaves_a_lock_the_next_launch_can_take` failed on `windows-latest`, twice.
+The holder now reports its own pid, the test kills *that* process and waits for it to be gone, and
+the `reap` fixture takes the whole tree.
+
+Implementation and the Windows gate are both approved; `T087-R4`'s coordination corrections are
+applied below. **`A-004` is verified** and **Phase 2 exit criterion 4 is met**. `T087-R1` (the
+architecture mismatch) and `T087-R3` (the untyped `CloseHandle` and inheritable descriptor) are both
+corrected. **The Windows branch has executed**, on `check (windows-latest)` at `7516f61`:
 first acquisition and refusal, **two launches racing**, and killed-holder recovery all passed —
 `T-087`'s three required cases, and the exact ones `P2PLAN-R5` withdrew the previous design over.
 

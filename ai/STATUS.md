@@ -21,11 +21,36 @@ Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLA
 
 - **Approved:** `T-078`, `T-079`, `T-080`, `T-081`, `T-046`, `T-083`, `T-085`, `T-087`, `T-102`,
   plus the supporting `T-053`, `T-099`, `T-101`, `T-103`.
-- **Approved 2026-08-01 by review:** `T-100` (history view) and `T-082` (interrupted jobs offered
-  for retry), without follow-up.
-- **Changes requested, corrected the same day, awaiting re-review:** `T-084`, `T-086`, `T-088`.
+- **Approved 2026-08-01:** `T-100`, `T-082` (first pass, no follow-up), then `T-084` and `T-086`
+  on re-review after their Critical and High were corrected.
+- **Open:** `T-088`, on `T088-R4` — the corrections had a defect of their own, now fixed.
+- **Reopened and corrected:** `T-087`'s killed-holder test (`T087-R6`). The guard is unchanged and
+  its approval stands; the test was killing a launcher shim and leaving the real holder alive.
 - **`T-088` is written**, and it found the defect below.
 - **Blocked on `STARBASE`, which is offline:** `T-092` and `T-074`. Neither gates the phase.
+
+## **`T088-R4`: my correction for the Windows failure introduced a way to fake a repair**
+
+The `disk I/O error` on `windows-latest` had a real cause — `db.connect()` runs `migrate()`, so my
+polling "reader" was opening a **migrating** connection against a database the application was
+writing. The read-only fix was right. What I then did with the failure was not: on persistent error
+the helper returned `{}`, and **`all([])` is `True`**.
+
+One missed read would have reported every job terminal, turned `T-115`'s strict `xfail` into an
+`XPASS`, and **announced a repair that had not happened** — the exact failure the strict marker
+exists to prevent. Completeness is now checked before any `all`, and `settled([])` is explicitly
+`False` rather than vacuously true.
+
+The same round found four teardowns that killed only `Popen` — three having discarded the reported
+application pid entirely. Under a Windows virtualenv `Popen` is the *launcher*, so those could leave
+a composed application and its workers running after the test passed. One `reap_application` helper
+now reaps the captured tree everywhere.
+
+**`T087-R6` is the same mistake in an approved task.** `test_a_killed_holder_leaves_a_lock_the_next_launch_can_take`
+failed twice on `windows-latest` and I had twice called it flaky. It is not: `_spawn` runs
+`sys.executable`, the shim gets killed, the real holder keeps the lock, and the next acquire is
+refused by a process the test believed it had killed. **Calling it flaky was the error** — I had the
+evidence to look and did not.
 
 ## **The review found a Critical in `T-084`, and it was a decision I misread**
 
