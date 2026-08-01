@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import json
 import os
+import sqlite3
 import subprocess
 import sys
 import threading
@@ -60,8 +61,7 @@ from tests.integration.test_end_to_end import (
     the_workers_that_must_die,
 )
 from tracks_and_trails.core.job_state import JobStatus
-from tracks_and_trails.persistence import db
-from tracks_and_trails.persistence.repositories import INTERRUPTED_ON_STARTUP, JobRepository
+from tracks_and_trails.persistence.repositories import INTERRUPTED_ON_STARTUP
 
 
 @pytest.fixture
@@ -329,23 +329,81 @@ def launch(
     return process, int(reported_pid), job_ids
 
 
-def statuses(database: Path, job_ids: list[str]) -> dict[str, JobStatus]:
-    """Read every job's status from a **separate connection**.
+def statuses(database: Path, job_ids: list[str], *, attempts: int = 3) -> dict[str, JobStatus]:
+    """Each job's status, read through a **genuinely read-only** connection.
 
-    The application that owns the database is the one about to be killed, so its connection is not
-    a thing this test may borrow.
+    **Not `db.connect`** — that runs `migrate()`, which *writes*. This helper is an out-of-process
+    observer polling a database the application under test is actively writing, and opening a
+    migrating connection against it every 100 ms is a write-write conflict wearing a reader's name.
+    On Linux SQLite tolerated it; on `windows-latest` it produced `sqlite3.OperationalError: disk
+    I/O error` and failed the run. `mode=ro` cannot migrate and cannot create.
+
+    Querying the table directly rather than through `JobRepository` for the same reason: the
+    repository is the application's, and this is not the application.
+
+    **Transient errors are retried and then reported as no sample.** That is safe only because no
+    caller feeds this straight into an `all(...)`: `all([])` is `True`, so a single missed read
+    would have turned `T-115`'s strict xfail into an `XPASS` and **announced a repair that had not
+    happened** (`T088-R4`). Use `settled()` and `snapshot()` below, which require every id to be
+    present before they answer.
     """
-    reader = db.connect(database)
-    try:
-        repository = JobRepository(reader)
-        found = {}
-        for job_id in job_ids:
-            job = repository.get(job_id)
-            if job is not None:
-                found[job_id] = job.status
-        return found
-    finally:
-        reader.close()
+    wanted = set(job_ids)
+    for attempt in range(attempts):
+        try:
+            connection = sqlite3.connect(f"{database.as_uri()}?mode=ro", uri=True)
+            try:
+                rows = connection.execute("SELECT id, status FROM jobs").fetchall()
+            finally:
+                connection.close()
+        except sqlite3.Error:
+            if attempt + 1 == attempts:
+                return {}
+            time.sleep(0.15)
+            continue
+        return {job_id: JobStatus(status) for job_id, status in rows if job_id in wanted}
+    return {}
+
+
+#: The states a job stops moving in.
+TERMINAL = frozenset({JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED})
+
+
+def snapshot(database: Path, job_ids: list[str], *, timeout: float = 30.0) -> dict[str, JobStatus]:
+    """Every job's status, or **raise**. For authoritative reads (`T088-R4`).
+
+    `statuses()` answers `{}` when it cannot read, which is right for a poll and wrong for a
+    verdict — an assertion over an empty mapping is vacuously true. This retries to a deadline and
+    fails loudly rather than reporting a queue that is empty because the disk was busy.
+    """
+    deadline = time.monotonic() + timeout
+    found: dict[str, JobStatus] = {}
+    while time.monotonic() < deadline:
+        found = statuses(database, job_ids)
+        if set(found) == set(job_ids):
+            return found
+        time.sleep(0.2)
+    raise AssertionError(
+        f"could not read all {len(job_ids)} jobs from {database} within {timeout}s; got "
+        f"{sorted(found)}. This is a read failure, not an empty queue — see T088-R4"
+    )
+
+
+def settled(database: Path, job_ids: list[str]) -> bool:
+    """Whether **every** job is in a terminal state. Never true on a partial read (`T088-R4`).
+
+    The completeness check is the whole point: `all(...)` over a mapping missing rows — or over an
+    empty one — is `True`, and the loops that use this are what decide whether `T-115` still
+    reproduces.
+    """
+    if not job_ids:
+        # "Every job in an empty list is terminal" is vacuously true and is the same trap one
+        # level down. No caller passes an empty list, and if one ever does it is a defect rather
+        # than a settled queue.
+        return False
+    found = statuses(database, job_ids)
+    if set(found) != set(job_ids):
+        return False
+    return all(status in TERMINAL for status in found.values())
 
 
 def wait_until(predicate: Callable[[], bool], timeout: float = 120.0) -> bool:
@@ -355,6 +413,51 @@ def wait_until(predicate: Callable[[], bool], timeout: float = 120.0) -> bool:
             return True
         time.sleep(0.1)
     return False
+
+
+def running_count(database: Path, job_ids: list[str]) -> int:
+    live = {JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING, JobStatus.POST_PROCESSING}
+    return sum(1 for status in statuses(database, job_ids).values() if status in live)
+
+
+def reap_application(process: subprocess.Popen[str], application_pid: int) -> None:
+    """Take down the application **and everything under it** (`T088-R4`).
+
+    `process.kill()` alone is not enough and this file used it in four places. Under a Windows
+    virtualenv `Popen` returns the **launcher**, not the application — `T-066` found that, and
+    `T072-R1` is why the handshake reports the application's own pid. Killing only what `Popen`
+    holds can therefore leave a composed application, its writer thread and its workers running
+    after the test that started them has passed.
+
+    The captured tree is built while it is still intact: once the parent is gone its children are
+    reparented and a walk finds nothing. `capture_the_doomed_tree` and `kill_the_application` are
+    `test_end_to_end`'s, so there is one implementation of this reasoning rather than two.
+
+    **The caller must have spawned with `isolate_the_application()`.** `kill_the_application` reaps
+    the process *group* on POSIX; without isolation that group is pytest's own. `launch()` does it
+    for every caller in this file.
+
+    **`application_pid` is required.** An optional one with a `process.kill()` fallback would
+    quietly reinstate the launcher-only teardown this helper exists to remove — the caller that
+    forgot to thread the pid would get the old behaviour and no warning. Every `launch()` returns
+    it.
+
+    Only `NoSuchProcess` is tolerated, and only while walking: the application having already
+    exited is ordinary. `AccessDenied` is not, and neither is a `wait` that times out —
+    `kill_the_application` asserts no survivor, and this lets `wait` raise.
+    """
+    try:
+        doomed = capture_the_doomed_tree(process, application_pid)
+    except psutil.NoSuchProcess:
+        # The application is already gone; only our own direct child can remain.
+        doomed = []
+
+    if doomed:
+        kill_the_application(process, doomed)
+    else:
+        with suppress(ProcessLookupError):
+            process.kill()
+    process.wait(timeout=30)
 
 
 def wait_for_workers(
@@ -384,9 +487,66 @@ def wait_for_workers(
     )
 
 
-def running_count(database: Path, job_ids: list[str]) -> int:
-    live = {JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING, JobStatus.POST_PROCESSING}
-    return sum(1 for status in statuses(database, job_ids).values() if status in live)
+# --- the helpers these criteria rest on (`T088-R4`) ----------------------------------------------
+
+
+def test_settled_is_false_on_a_partial_read(tmp_path: Path) -> None:
+    """**`all([])` is `True`**, and that is why this check exists.
+
+    `statuses()` answers `{}` when it cannot read — on `windows-latest` a polling reader against a
+    database the application is writing produced `disk I/O error`. Fed straight into an `all(...)`,
+    one missed sample would have reported every job terminal, turned `T-115`'s strict xfail into an
+    `XPASS`, and **announced a repair that never happened**.
+    """
+    database = tmp_path / "absent.db"
+
+    assert statuses(database, ["job-1"]) == {}, "a database that cannot be read reported rows"
+    assert not settled(database, ["job-1"]), "an unreadable database looked like a settled queue"
+    assert not settled(database, []), "no ids at all cannot mean every id is terminal"
+
+
+def test_snapshot_refuses_a_partial_read(tmp_path: Path) -> None:
+    """An authoritative read fails loudly rather than reporting an empty queue (`T088-R4`)."""
+    database = tmp_path / "absent.db"
+
+    with pytest.raises(AssertionError, match="read failure, not an empty queue"):
+        snapshot(database, ["job-1"], timeout=0.5)
+
+
+def test_reap_application_kills_the_whole_tree(tmp_path: Path) -> None:
+    """**`Popen.pid` is not always the application** (`T088-R4`, `T-066`, `T072-R1`).
+
+    Under a Windows virtualenv `sys.executable` is a launcher and the application is its child, so
+    a teardown that kills only what `Popen` returned leaves a composed application, its writer
+    thread and its workers running after the test that started them has passed.
+
+    Asserted with a plain parent-and-child pair rather than a real application: what is under test
+    is that the *tree* is reaped, and a real composition would make the check depend on its
+    shutdown behaviour instead.
+    """
+    source = (
+        "import subprocess, sys, os, time\n"
+        "child = subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(120)'])\n"
+        "print(os.getpid(), child.pid, flush=True)\n"
+        "time.sleep(120)\n"
+    )
+    # **`isolate_the_application()` is not optional.** `kill_the_application` reaps the process
+    # *group* on POSIX, so a child sharing pytest's group takes pytest down with it — measured:
+    # without this the test SIGKILLed its own runner, exit 137, with no report at all.
+    process = subprocess.Popen(
+        [sys.executable, "-c", source],
+        stdout=subprocess.PIPE,
+        text=True,
+        **isolate_the_application(),
+    )
+    assert process.stdout is not None
+    parent_pid, child_pid = (int(part) for part in process.stdout.readline().split())
+    child = psutil.Process(child_pid)
+
+    reap_application(process, parent_pid)
+
+    _, alive = psutil.wait_procs([child], timeout=30)
+    assert not alive, f"the grandchild (pid {child_pid}) outlived the reap"
 
 
 # --- criterion 2: a hard kill mid-queue, and what the next start finds ------------------------
@@ -441,15 +601,14 @@ def test_a_hard_kill_mid_queue_restores_every_job_state_at_the_next_start(
             ),
             timeout=90,
         ), f"no job ever reached RUNNING; saw {statuses(database, job_ids)}"
-        before = statuses(database, job_ids)
+        before = snapshot(database, job_ids)
         doomed = capture_the_doomed_tree(process, application_pid)
 
         kill_the_application(process, doomed)
         _, alive = psutil.wait_procs(workers, timeout=30)
         assert not alive, f"{len(alive)} worker(s) outlived the kill: {[p.pid for p in alive]}"
     finally:
-        process.kill()
-        process.wait(timeout=30)
+        reap_application(process, application_pid)
 
     # **A real next start**, in its own interpreter (`T088-R3`). Recovery happens inside
     # `compose()`, so a test that called `recover_interrupted()` itself would be asserting on its
@@ -505,7 +664,7 @@ def test_no_worker_outlives_a_hard_kill_with_a_full_pool(
     """
     database = tmp_path / "queue.db"
     urls = [media_url(total_bytes=CLIP_BYTES, chunk_delay=0.5) for _ in range(CONCURRENT)]
-    process, application_pid, _ = launch(
+    process, application_pid, _job_ids = launch(
         QUEUE_MANY_AND_WAIT,
         database=database,
         downloads=tmp_path / "downloads",
@@ -525,8 +684,7 @@ def test_no_worker_outlives_a_hard_kill_with_a_full_pool(
             f"{[(p.pid, ' '.join(p.cmdline()[:3])) for p in alive]}"
         )
     finally:
-        process.kill()
-        process.wait(timeout=30)
+        reap_application(process, application_pid)
 
 
 # --- criterion 3: the limit is respected exactly ----------------------------------------------
@@ -575,15 +733,11 @@ def test_the_pool_never_exceeds_the_configured_limit(
             with suppress(AssertionError, psutil.NoSuchProcess):
                 # Between jobs there is briefly no worker, which is not an overshoot.
                 peak_workers = max(peak_workers, len(the_workers_that_must_die(application_pid)))
-            if all(
-                status in {JobStatus.COMPLETED, JobStatus.FAILED}
-                for status in statuses(database, job_ids).values()
-            ):
+            if settled(database, job_ids):
                 break
             time.sleep(0.1)
     finally:
-        process.kill()
-        process.wait(timeout=30)
+        reap_application(process, application_pid)
 
     assert peak_rows, "no job was ever observed in flight, so no limit was ever tested"
     assert peak_rows <= POOL_LIMIT, (
@@ -617,7 +771,7 @@ def test_a_second_launch_refuses_in_favour_of_the_running_instance(
     """
     database = tmp_path / "queue.db"
     urls = [media_url(total_bytes=CLIP_BYTES, chunk_delay=0.5) for _ in range(CONCURRENT)]
-    process, _, job_ids = launch(
+    process, application_pid, job_ids = launch(
         QUEUE_MANY_AND_WAIT,
         database=database,
         downloads=tmp_path / "downloads",
@@ -660,8 +814,7 @@ def test_a_second_launch_refuses_in_favour_of_the_running_instance(
         )
         assert str(database) in output, "the refusal does not name the database it refused"
     finally:
-        process.kill()
-        process.wait(timeout=30)
+        reap_application(process, application_pid)
 
 
 # --- criterion 1: three at once, and the UI still answering ------------------------------------
@@ -692,7 +845,7 @@ def test_three_real_workers_each_write_their_whole_file(
     database = tmp_path / "queue.db"
     downloads = tmp_path / "downloads"
     urls = [media_url(total_bytes=CLIP_BYTES, chunk_delay=0.3) for _ in range(CONCURRENT)]
-    process, _, job_ids = launch(
+    process, application_pid, job_ids = launch(
         QUEUE_MANY_AND_WAIT,
         database=database,
         downloads=downloads,
@@ -708,19 +861,18 @@ def test_three_real_workers_each_write_their_whole_file(
 
         deadline = time.monotonic() + 60
         while time.monotonic() < deadline:
-            snapshot = statuses(database, job_ids)
-            if not transitions or snapshot != transitions[-1]:
-                transitions.append(snapshot)
-            if all(
-                status in {JobStatus.COMPLETED, JobStatus.FAILED} for status in snapshot.values()
-            ):
+            sample = statuses(database, job_ids)
+            if sample and (not transitions or sample != transitions[-1]):
+                transitions.append(sample)
+            if settled(database, job_ids):
                 break
             time.sleep(0.1)
+        # **Taken before teardown** (`T088-R4`): the database is the application's, and reading it
+        # after the process tree is reaped is a race with whatever the OS is still closing.
+        final = snapshot(database, job_ids)
     finally:
-        process.kill()
-        process.wait(timeout=30)
+        reap_application(process, application_pid)
 
-    final = statuses(database, job_ids)
     assert len(final) == CONCURRENT
     assert all(status is JobStatus.COMPLETED for status in final.values()), (
         f"not every concurrent download completed: {final}"
@@ -784,7 +936,7 @@ def test_every_queued_job_eventually_starts_as_slots_free(
         media_url(total_bytes=CLIP_BYTES, chunk_delay=0.05)
         for _ in range(CONCURRENT + QUEUED_BEYOND_LIMIT)
     ]
-    process, _, job_ids = launch(
+    process, application_pid, job_ids = launch(
         ADD_ONLY_AND_WAIT,
         database=database,
         downloads=tmp_path / "downloads",
@@ -795,18 +947,20 @@ def test_every_queued_job_eventually_starts_as_slots_free(
     try:
         # Generous, because the claim is "eventually" and a slow agent must not be the reason this
         # reports the defect. Three downloads of this size finish in a few seconds.
-        settled = wait_until(
-            lambda: all(
-                status is JobStatus.COMPLETED for status in statuses(database, job_ids).values()
-            ),
-            timeout=90,
-        )
-        final = statuses(database, job_ids)
-    finally:
-        process.kill()
-        process.wait(timeout=30)
+        # **Completeness before `all`** (`T088-R4`). `all([])` is `True`, so one missed read would
+        # turn this strict xfail into an `XPASS` and announce a repair that never happened.
+        def every_job_completed() -> bool:
+            found = statuses(database, job_ids)
+            return set(found) == set(job_ids) and all(
+                status is JobStatus.COMPLETED for status in found.values()
+            )
 
-    assert settled, (
+        drained = wait_until(every_job_completed, timeout=90)
+        final = snapshot(database, job_ids)
+    finally:
+        reap_application(process, application_pid)
+
+    assert drained, (
         f"{sum(1 for s in final.values() if s is JobStatus.QUEUED)} of {len(job_ids)} jobs were "
         f"still QUEUED after Add with nothing else done — nothing admits durable queued intent. "
         f"Final: "

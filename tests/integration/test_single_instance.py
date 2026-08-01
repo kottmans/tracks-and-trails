@@ -14,6 +14,7 @@ The two cases that matter are the ones `ARC-006`'s amendment names:
   against the failure it was chosen for, so no test here deletes a lock file by hand.
 """
 
+import contextlib
 import os
 import signal
 import subprocess
@@ -23,6 +24,7 @@ import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+import psutil
 import pytest
 
 from tracks_and_trails.core.instance_lock import (
@@ -43,7 +45,7 @@ REPORT_TIMEOUT_SECONDS = 30.0
 def _holder_source(database: Path) -> str:
     """A program that takes the lock, says so, and holds it until killed."""
     return textwrap.dedent(f"""
-        import sys, time
+        import os, sys, time
         from pathlib import Path
         from tracks_and_trails.core.instance_lock import InstanceLock, AlreadyRunningError
 
@@ -53,7 +55,7 @@ def _holder_source(database: Path) -> str:
         except AlreadyRunningError:
             print("REFUSED", flush=True)
             sys.exit(1)
-        print("HELD", flush=True)
+        print("HELD", os.getpid(), flush=True)
         time.sleep({HOLDER_LIFETIME_SECONDS})
     """)
 
@@ -84,7 +86,14 @@ def _first_line(process: subprocess.Popen[str], timeout: float = REPORT_TIMEOUT_
 
 @pytest.fixture
 def reap() -> Iterator[Callable[[subprocess.Popen[str]], None]]:
-    """Kill and collect a spawned holder, so no test leaks one into the next."""
+    """Kill and collect a spawned holder, so no test leaks one into the next.
+
+    **The whole tree, not just `Popen`** (`T087-R6`). `_spawn` runs `sys.executable`, and under a
+    Windows virtualenv that is a launcher shim: `Popen.pid` is the shim and the holder is its
+    child. Killing only what `Popen` returned leaves the holder alive **still holding the lock**,
+    which is how `test_a_killed_holder_leaves_a_lock_the_next_launch_can_take` came to fail on
+    `windows-latest` — the next launch was refused by a process the test believed it had killed.
+    """
     spawned: list[subprocess.Popen[str]] = []
 
     def track(process: subprocess.Popen[str]) -> None:
@@ -93,9 +102,51 @@ def reap() -> Iterator[Callable[[subprocess.Popen[str]], None]]:
     yield track
 
     for process in spawned:
-        if process.poll() is None:
-            process.kill()
-        process.wait(timeout=10)
+        _kill_tree(process)
+
+
+def _kill_tree(process: subprocess.Popen[str]) -> None:
+    """Kill `process` and every descendant, and **assert that all of them are gone**.
+
+    A teardown that cannot report a survivor is not a teardown: the whole point of `T087-R6` is
+    that a holder left alive keeps the lock and refuses the *next* test. So the wait is checked,
+    and the only thing suppressed is a process that has already exited — `NoSuchProcess` while
+    walking or killing is the ordinary race, and nothing else here is expected.
+    """
+    doomed: list[psutil.Process] = []
+    try:
+        parent = psutil.Process(process.pid)
+        doomed = [*parent.children(recursive=True), parent]
+    except psutil.NoSuchProcess:
+        doomed = []
+
+    for victim in doomed:
+        with contextlib.suppress(psutil.NoSuchProcess):
+            victim.kill()
+    with contextlib.suppress(ProcessLookupError):
+        # Already reaped by the loop above; on POSIX `Popen.kill` then raises.
+        process.kill()
+
+    process.wait(timeout=10)
+    _, alive = psutil.wait_procs(doomed, timeout=10)
+    assert not alive, (
+        f"{len(alive)} process(es) survived the reap and may still hold a lock the next test "
+        f"needs: {sorted(survivor.pid for survivor in alive)}"
+    )
+
+
+def _held_pid(process: subprocess.Popen[str]) -> int:
+    """Assert the holder reported `HELD` and return **its own pid**, not `Popen`'s (`T087-R6`).
+
+    The two differ under a Windows virtualenv launcher, and the difference is the whole finding:
+    a test that kills `Popen.pid` and then expects the lock to be free is asserting against the
+    wrong process.
+    """
+    line = _first_line(process)
+    head, _, reported = line.partition(" ")
+    assert head == "HELD", f"the holder did not take the lock: {line!r}"
+    assert reported.isdigit(), f"the holder did not report its pid: {line!r}"
+    return int(reported)
 
 
 def test_one_process_takes_the_lock_and_a_second_is_refused(
@@ -105,7 +156,7 @@ def test_one_process_takes_the_lock_and_a_second_is_refused(
     database = tmp_path / "queue.db"
     holder = _spawn(_holder_source(database))
     reap(holder)
-    assert _first_line(holder) == "HELD"
+    _held_pid(holder)
 
     with pytest.raises(AlreadyRunningError):
         InstanceLock(database).acquire()
@@ -131,7 +182,7 @@ def test_two_launches_racing_do_not_both_win(
     reap(first)
     reap(second)
 
-    outcomes = sorted([_first_line(first), _first_line(second)])
+    outcomes = sorted([_first_line(first).split(" ")[0], _first_line(second).split(" ")[0]])
 
     assert outcomes == ["HELD", "REFUSED"], (
         f"outcomes {outcomes}; two simultaneous launches must not both take the database. Both "
@@ -155,10 +206,17 @@ def test_a_killed_holder_leaves_a_lock_the_next_launch_can_take(
     database = tmp_path / "queue.db"
     holder = _spawn(_holder_source(database))
     reap(holder)
-    assert _first_line(holder) == "HELD"
+    held = _held_pid(holder)
 
-    holder.kill()
-    holder.wait(timeout=10)
+    # **Kill the process that reported HELD, and wait for it to be gone** (`T087-R6`).
+    # `holder.kill()` kills `Popen.pid`, which under a Windows virtualenv is the launcher shim —
+    # the real holder survives, keeps the lock, and the acquire below is refused by a process this
+    # test believed it had killed. That is how this failed on `windows-latest`.
+    victim = psutil.Process(held)
+    victim.kill()
+    _, alive = psutil.wait_procs([victim], timeout=20)
+    assert not alive, f"the holder (pid {held}) survived the kill, so it still holds the lock"
+    _kill_tree(holder)
 
     assert lock_path_for(database).exists(), (
         "the killed holder's lock file is gone, so this test no longer exercises the stale-file "
@@ -181,7 +239,7 @@ def test_a_holder_terminated_politely_also_releases(
     database = tmp_path / "queue.db"
     holder = _spawn(_holder_source(database))
     reap(holder)
-    assert _first_line(holder) == "HELD"
+    _held_pid(holder)
 
     holder.send_signal(signal.SIGTERM)
     holder.wait(timeout=10)
@@ -360,3 +418,42 @@ def test_the_crt_descriptor_cannot_inherit_the_process_lock() -> None:
     assert "os.O_NOINHERIT" in call, (
         f"the lock descriptor is inheritable: {call.strip()!r} has no O_NOINHERIT"
     )
+
+
+def test_a_holder_that_does_not_report_its_pid_is_a_defect(
+    reap: Callable[[subprocess.Popen[str]], None],
+) -> None:
+    """`_held_pid` must refuse a `HELD` line with no pid, not fall back to `Popen`'s (`T087-R6`).
+
+    Falling back is the defect wearing a helpful face: under a Windows virtualenv `Popen.pid` is
+    the launcher, so the caller would kill the shim, leave the holder running, and then be refused
+    the lock by a process it believed it had killed. That is the failure this finding is about, so
+    the helper has to fail loudly rather than guess.
+    """
+    holder = _spawn('import sys, time\nprint("HELD", flush=True)\ntime.sleep(5)\n')
+    reap(holder)
+
+    with pytest.raises(AssertionError, match="did not report its pid"):
+        _held_pid(holder)
+
+
+def test_kill_tree_reports_a_survivor(
+    reap: Callable[[subprocess.Popen[str]], None], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`_kill_tree` must **fail** when something outlives it, not return quietly (`T087-R6`).
+
+    A teardown that cannot report a survivor is not a teardown. The survivor here is simulated by
+    making the kill a no-op, because a process that genuinely resists `SIGKILL` is not something a
+    test can arrange — what is under test is that the *check* exists, and a mutation removing the
+    assertion survived every other test in this file.
+    """
+    holder = _spawn('import time\nprint("HELD", 0, flush=True)\ntime.sleep(30)\n')
+    reap(holder)
+    _first_line(holder)
+
+    monkeypatch.setattr(psutil.Process, "kill", lambda self: None)
+    monkeypatch.setattr(subprocess.Popen, "kill", lambda self: None)
+    monkeypatch.setattr(subprocess.Popen, "wait", lambda self, timeout=None: 0)
+
+    with pytest.raises(AssertionError, match="survived the reap"):
+        _kill_tree(holder)
