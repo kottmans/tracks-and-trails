@@ -1334,6 +1334,18 @@ def test_retrying_a_job_retires_the_failed_attempts_live_state(
         time.sleep(0.005)
     assert view.stage_text() == STAGE_TEXT[Stage.DOWNLOADING_VIDEO]
 
+    # **Both live labels must hold a non-default value before the reset is asserted** (`T-101`).
+    # Without this, `etaValue == UNKNOWN_TEXT` afterwards is satisfied by the label never having
+    # been written at all, and the assertion passes against a production line that does nothing.
+    drawn_speed = view.findChild(QLabel, "speedValue")
+    drawn_eta = view.findChild(QLabel, "etaValue")
+    assert drawn_speed is not None and drawn_speed.text() != UNKNOWN_TEXT, (
+        "the speed label was never drawn, so retiring it proves nothing"
+    )
+    assert drawn_eta is not None and drawn_eta.text() != UNKNOWN_TEXT, (
+        "the ETA label was never drawn, so retiring it proves nothing"
+    )
+
     view._on_job_failed("job-1", ErrorKind.NETWORK, "ERROR: timed out")
     store.update(replace(store.jobs["job-1"], status=JobStatus.FAILED))
     view._on_job_changed("job-1", JobStatus.FAILED.value)
@@ -1360,4 +1372,13 @@ def test_retrying_a_job_retires_the_failed_attempts_live_state(
     speed_label = view.findChild(QLabel, "speedValue")
     assert speed_label is not None and speed_label.text() == UNKNOWN_TEXT, (
         "a queued job has no worker and cannot have a speed"
+    )
+    # **Separately asserted, which is the whole of `T-101`** (`T079-R3`). The correction resets both
+    # labels and this scenario checked only the speed, so deleting `_eta.setText(UNKNOWN_TEXT)`
+    # alone left the complete 82-test file green while a re-queued job showed the failed attempt's
+    # ETA. One combined assertion cannot gate two independent production lines.
+    eta_label = view.findChild(QLabel, "etaValue")
+    assert eta_label is not None and eta_label.text() == UNKNOWN_TEXT, (
+        "a queued job is still reporting the failed attempt's ETA — it has no worker, and so "
+        "nothing to estimate from"
     )

@@ -52,6 +52,48 @@ def forbidden_for(module: str) -> tuple[str, ...]:
     return FORBIDDEN_EVERYWHERE + FORBIDDEN_BY_MODULE.get(module, ())
 
 
+#: Which decision each prohibition serves, and therefore what a failure should send somebody to
+#: read (`T-099`, `T097-R2`).
+#:
+#: **The gate was right and its diagnostic was wrong.** `T097-R1` split the manager-only settings
+#: rule from the persistence rules shared by both modules, but the real-source assertion still
+#: combined their offenders and always explained repository injection — so a real `core.settings`
+#: import failed the correct gate while sending the reader to `T-013`'s rule about a repository it
+#: had not imported. A diagnostic that names the wrong decision costs more than none: it is
+#: believed.
+#:
+#: Keyed by prohibition rather than by module, because the *rule* is what was violated. Matching is
+#: by prefix, exactly as `offenders` matches.
+WHY_FORBIDDEN = {
+    "tracks_and_trails.persistence": (
+        "The repository is injected as a protocol, not imported: see ARCHITECTURE.md §3 and "
+        "DownloadManager's docstring (T-013)."
+    ),
+    "sqlite3": (
+        "Importing the engine directly is the repository dependency wearing a disguise: see "
+        "ARCHITECTURE.md §3 and DownloadManager's docstring (T-013)."
+    ),
+    "tracks_and_trails.core.settings": (
+        "ARC-007 gives the manager a concurrency value and a way to be told it changed; "
+        "composition and the UI own settings.toml. Inject the value, do not read the file (T-097)."
+    ),
+}
+
+
+def explain(offender: str) -> str:
+    """Why `offender` is forbidden, in the words of the decision that forbids it.
+
+    Falls back to naming the offender rather than guessing. A prohibition added to
+    `FORBIDDEN_EVERYWHERE` or `FORBIDDEN_BY_MODULE` without a matching explanation should read as
+    an unexplained rule, not as one of the rules that happens to be listed first — that
+    substitution is the defect `T-099` exists to fix.
+    """
+    for forbidden, reason in WHY_FORBIDDEN.items():
+        if offender == forbidden or offender.startswith(f"{forbidden}."):
+            return reason
+    return f"{offender} is forbidden here, and no rule in WHY_FORBIDDEN explains why."
+
+
 def _absolute(module: str, node: ast.ImportFrom) -> str:
     """The absolute module name `node` imports *from*, resolving `.` and `..` against `module`.
 
@@ -132,10 +174,11 @@ def test_the_manager_never_imports_persistence(module: str) -> None:
     """
     path = SRC / module
     found = offenders(path.read_text(encoding="utf-8"), module)
-    assert not found, (
-        f"{module} imports {sorted(found)}. The repository is injected as a protocol, not "
-        "imported: see ARCHITECTURE.md §3 and DownloadManager's docstring."
-    )
+    # **One line per violated rule** (`T-099`). Combining them under a single explanation is what
+    # sent a real settings import to the repository-injection rule; `explain` keys the reason to the
+    # prohibition that actually matched, and the set keeps it to one line per distinct rule.
+    reasons = sorted({explain(offender) for offender in found})
+    assert not found, "{} imports {}.\n{}".format(module, sorted(found), "\n".join(reasons))
 
 
 @pytest.mark.parametrize(
@@ -264,3 +307,67 @@ def test_every_module_the_rules_name_is_a_module_under_test() -> None:
     for module in FORBIDDEN_BY_MODULE:
         assert module in MODULES, f"{module} has rules but is not checked"
         assert (SRC / module).is_file(), f"{module} has rules but does not exist"
+
+
+# --- T-099 / T097-R2: the failure names the rule that was broken ---------------------------
+
+
+def test_a_real_settings_import_fails_with_the_arc_007_diagnostic() -> None:
+    """`T-099`: the gate was already right; the reason it gave was not.
+
+    Driven through `explain` against a real offender rather than by editing `manager.py` on disk,
+    because the assertion under test is a string and the file is under review. What is proven is
+    the mapping the assertion uses.
+    """
+    reason = explain("tracks_and_trails.core.settings")
+
+    assert "ARC-007" in reason, f"a settings import is explained as: {reason}"
+    assert "settings.toml" in reason
+    assert "repository" not in reason.lower(), (
+        "a settings import is still explained by the repository-injection rule, which is exactly "
+        "T097-R2: the correct gate failing with the wrong reason"
+    )
+
+
+def test_a_real_persistence_import_fails_with_the_t_013_diagnostic() -> None:
+    """The other half, and it must not drift into naming ARC-007 instead."""
+    for offender in (
+        "tracks_and_trails.persistence",
+        "tracks_and_trails.persistence.repositories",
+        "sqlite3",
+    ):
+        reason = explain(offender)
+        assert "ARCHITECTURE.md §3" in reason, f"{offender} is explained as: {reason}"
+        assert "ARC-007" not in reason, f"{offender} is explained by the settings rule"
+
+
+def test_every_prohibition_has_an_explanation() -> None:
+    """A rule added without a reason must read as unexplained, not inherit the first one listed.
+
+    This is the invariant that stops `T-099` from decaying: `explain` falls back to saying so, and
+    this asserts no live prohibition is currently in that state.
+    """
+    live = set(FORBIDDEN_EVERYWHERE)
+    for extra in FORBIDDEN_BY_MODULE.values():
+        live.update(extra)
+
+    unexplained = [rule for rule in sorted(live) if "no rule in WHY_FORBIDDEN" in explain(rule)]
+
+    assert not unexplained, (
+        f"{unexplained} are enforced with no explanation. Add one to WHY_FORBIDDEN naming the "
+        "decision, or a future violation will fail with a message that names the wrong rule"
+    )
+
+
+def test_two_rules_broken_at_once_report_both() -> None:
+    """A module violating both prohibitions must be told about both, not the first one found."""
+    source = (
+        "from tracks_and_trails.core import settings\n"
+        "from tracks_and_trails.persistence import db\n"
+    )
+    found = offenders(source)
+    reasons = sorted({explain(offender) for offender in found})
+
+    assert len(reasons) == 2, f"two distinct rules were broken and {len(reasons)} were explained"
+    assert any("ARC-007" in reason for reason in reasons)
+    assert any("ARCHITECTURE.md §3" in reason for reason in reasons)

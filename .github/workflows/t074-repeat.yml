@@ -95,6 +95,28 @@ jobs:
             echo "failures:   $failures"
           } | tee "reports/t074-rate.txt"
 
+      - name: Collect any crash dump
+        # `T-092`: WER writes dumps outside the workspace, so they have to be fetched before the
+        # upload step can see them. **Never fails the job** — no dump is the normal case, and a
+        # green run that found nothing is exactly what this is meant to look like.
+        if: always()
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $folder = "$env:LOCALAPPDATA\CrashDumps\tracks-and-trails"
+          if (Test-Path $folder) {
+            $dumps = Get-ChildItem -Path $folder -Filter *.dmp -ErrorAction SilentlyContinue
+            if ($dumps) {
+              New-Item -Path reports/crashdumps -ItemType Directory -Force | Out-Null
+              $dumps | Copy-Item -Destination reports/crashdumps
+              Write-Host "Collected $($dumps.Count) dump(s) — T-074 may have recurred."
+            } else {
+              Write-Host "No crash dump: the normal case."
+            }
+          } else {
+            Write-Host "Dump capture is not armed on this machine (tools/windows/crash-dumps.ps1)."
+          }
+
       - name: Upload every run
         if: always()
         uses: actions/upload-artifact@v7

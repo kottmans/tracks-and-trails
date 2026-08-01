@@ -1309,7 +1309,13 @@ account for rather than one.
 
 ### T-092 — Arm `STARBASE` so the next access violation leaves a cause, not a stack
 
-**Status:** Ready — the instrument `OPS-007` leans on
+**Status:** **Ready — prepared 2026-08-01, and NOT complete.** The maintainer's consent was given
+2026-08-01 and the whole configurable half is committed: `tools/windows/crash-dumps.ps1` arms and
+disarms it, `docs/WINDOWS_VERIFICATION.md` records the procedure and its disk cost, and both
+`STARBASE` jobs collect a dump when one exists. **Three of the five acceptance criteria are
+unmet and cannot be met from here** — they require running the script on `STARBASE`, crashing a
+process on purpose, and opening the dump. See "Prepared, and what remains" below.
+*(This read "Ready — the instrument `OPS-007` leans on".)*
 **Owner:** Implementer
 **Priority:** Medium — it buys nothing today and is the whole diagnostic plan if `T-074` recurs
 **Phase:** Phase 1 origin; it is an instrument, not a deliverable, and gates no exit
@@ -1356,6 +1362,36 @@ workflow.
 - Any change to `src/`
 - Dump capture on Linux, or on hosted runners, which are discarded anyway
 - Making `T-074`'s recurrence more likely; this is passive capture, not a stress test
+
+#### Prepared, and what remains, 2026-08-01
+
+**Done, and committed:**
+
+- `tools/windows/crash-dumps.ps1` — arms WER local dumps for `python.exe` under `HKCU` (no
+  elevation, scoped to one executable rather than the whole machine), and `-Remove` undoes it.
+- `docs/WINDOWS_VERIFICATION.md` — why, how to arm it, **how to prove it**, the disk cost, and how
+  to undo it.
+- `ci.yml`'s `windows desktop` job and `t074-repeat.yml` both copy any dump into
+  `reports/crashdumps/` before their existing evidence upload. `if: always()` and
+  `continue-on-error: true`, because **no dump is the normal case and must not redden the gate**.
+- Full dumps (`DumpType 2`) rather than mini, stated with the cost: ~300–600 MB each for a Python
+  process with Qt loaded, five kept, so up to ~3 GB. A mini dump routinely lacks the heap the
+  faulting address points into, which is the entire question `T-074` is asking.
+
+**Unmet, and honestly so** — each needs the machine:
+
+| Criterion | State |
+|---|---|
+| A deliberately crashed process leaves a dump at a known path | **Unmet.** Nobody has run the script or the crash |
+| The dump names a faulting module and address | **Unmet**, and it is the one that decides whether this task succeeded at all |
+| Dump size and retention bounded and stated | **Met** — in `docs/WINDOWS_VERIFICATION.md` |
+| The jobs upload a dump when one exists and stay green when none does | **Half met.** The steps exist and the YAML parses; no CI job has executed a step since 2026-07-30, so neither branch has run |
+| `docs/WINDOWS_VERIFICATION.md` records config, undo and cost | **Met** |
+
+**Why this is filed as prepared rather than done.** `T074-R4` caught this task's predecessor
+reporting registry keys as evidence. The keys are not the evidence; a dump that names a faulting
+module is. Until somebody runs the two commands in the document on `STARBASE`, the correct status
+is that the instrument is *ready to arm* and has never fired.
 
 ---
 

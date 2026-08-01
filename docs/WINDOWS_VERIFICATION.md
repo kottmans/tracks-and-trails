@@ -250,3 +250,76 @@ Kept here because each row was a failing test before it was understood.
 | Install | virtualenv as of `T-066`; none before | virtualenv, per `docs/DEVELOPMENT.md` |
 | Process depth | one extra generation under a venv, because `Scripts\python.exe` is a launcher that spawns the real interpreter (`T-066`) | same, now that CI matches |
 | Fonts under `offscreen` | populated | **empty** without `QT_QPA_FONTDIR` (`T-068`) |
+
+---
+
+## Crash dump capture (`T-092`)
+
+**Status: prepared, not armed.** Everything below is committed and ready; nobody has run it on
+`STARBASE`, and until somebody does, `T-092`'s acceptance criteria are **unmet** — see its task
+entry. The maintainer consented to this on 2026-08-01; what is missing is the machine, not the
+permission.
+
+### Why
+
+`T-074`'s second acceptance criterion is that the faulting thread **and the object it touched** are
+identified: *a stack is not a cause*. On the single recorded access violation, `faulthandler`
+printed `[ResultPump]` and `Thread-50 (_monitor)` and named neither the faulting module nor the
+address. `OPS-007` accepted that crash as residual risk on 361 attempts without a reproduction, and
+`T-092` is the instrument that makes the *next* one answerable rather than another anecdote.
+
+It buys nothing until then. That is the point of arming it in advance.
+
+### Arming it
+
+```powershell
+# From the repository root, in a normal (non-elevated) PowerShell:
+.\tools\windows\crash-dumps.ps1
+```
+
+`HKCU`, so it applies to the current user and needs no elevation, and it is scoped to `python.exe`
+rather than to every process on the machine.
+
+### Proving it — do not skip this
+
+The registry keys are **not** the evidence. `T-092`'s first criterion is a deliberately crashed
+process leaving a dump at a known path:
+
+```powershell
+python -c "import ctypes; ctypes.string_at(0)"
+dir $env:LOCALAPPDATA\CrashDumps\tracks-and-trails
+```
+
+A `.dmp` file must appear. If none does, the configuration has failed at the thing it exists for,
+and that must be recorded as a failure rather than the keys being reported as success.
+
+Then open it (WinDbg, or Visual Studio) and confirm it names a **faulting module and address**. A
+dump that cannot is `T-092` failing its second criterion.
+
+### What it costs
+
+| | |
+|---|---|
+| Dump type | **Full** (`DumpType 2`) |
+| Size each | roughly 300–600 MB for a Python process with Qt loaded |
+| Kept | 5 by default, so **up to ~3 GB** |
+| Location | `%LOCALAPPDATA%\CrashDumps\tracks-and-trails` |
+
+A *mini* dump is a few megabytes and routinely lacks the heap the faulting address points into,
+which is exactly the question being asked — so the size is the price of an answer, not waste. Lower
+`-DumpCount 2` if the disk is tight.
+
+### Undoing it
+
+```powershell
+.\tools\windows\crash-dumps.ps1 -Remove
+```
+
+Dumps already written are left behind deliberately; delete them yourself when the investigation is
+over.
+
+### What CI does with them
+
+The `windows desktop` job and `t074-repeat` both copy any dump into `reports/crashdumps/` before
+their evidence upload. Both steps are `if: always()` and `continue-on-error: true`: **no dump is the
+normal case and must never redden the gate.** A job that finds nothing says so and stays green.
