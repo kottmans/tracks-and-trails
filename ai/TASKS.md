@@ -203,6 +203,69 @@ asserts the user-visible consequence.
 
 ---
 
+### T-086 — Open a completed file, or reveal it in the file manager
+
+**Status:** **In Review — complete 2026-08-01.** Sixteen mutations run; all sixteen killed. Two
+survived the first pass: one was a defective mutation, and one was a **real gap** — nothing asserted
+that Show-in-folder built the *reveal* argv rather than the open one, so both actions wired to
+`open_file` passed every test in the file. `test_reveal_asks_the_file_manager_to_show_the_file_...`
+closes it. **This is the last Phase 2 feature deliverable**; only `T-088` remains.
+*(This read "Proposed", held by `T-100`, which landed at `c242dd3`.)*
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 2
+**Depends on:** **`T-100`** for the history half — the view this acts on, which `P2PLAN-R8`
+found had no owner; `T-085` for the records beneath it. The queue half needs only `T-079`
+**Relevant context:** `REQ-021`, `T-034`, `SEC-001`, `OPS-004`
+**Affected surfaces:** `ui/`, a small platform seam
+**Risk:** Medium despite being small — it hands a path to the operating system
+
+#### Scope
+
+Small in code, and the one place in Phase 2 where this application asks the OS to act on a path.
+`T-034` already governs where files may be written; this is the reverse direction.
+
+**A path is not a command.** Reveal is `explorer /select,` on Windows and a file-manager call on
+Linux, and both must receive the path as an argument rather than through a shell. A title
+containing a quote is an ordinary title (`T-034` has the fixtures), and it must not become an
+argument boundary.
+
+#### Acceptance criteria
+
+- Open and reveal both work on Linux and on Windows — **narrowed from "verified on `STARBASE`"**
+  under the `OPS-005` amendment of 2026-08-01, for the reason `T087-R4` gives: that runner is
+  offline and the maintainer is away from it, so the criterion as written was a stall rather than a
+  gate. What replaces it is stronger than the hosted-Windows job alone: **`platform` is a parameter
+  of every command builder**, so the exact Windows argv — including `/select,` as one element — is
+  asserted by the ordinary suite on every machine, not only where Windows happens to be. What is
+  *not* covered is that a real Explorer selects the file when handed that argv; that is desktop
+  behaviour and stays with the `STARBASE` slice alongside `T-026` and `T-040`
+- A path with quotes, spaces, or a leading dash is passed intact and executes nothing
+- A file that has been moved or deleted says so rather than failing silently
+- Nothing outside the output directory can be opened through this route
+
+#### Out of scope
+
+- Choosing which application opens a file
+
+---
+
+#### Delivered
+
+`ui/reveal.py` — Qt-free, so its argv assertions need no `QApplication` — and `ui/file_actions.py`,
+the Qt half. Attached to **both** tables `REQ-021` names, as a context menu rather than a toolbar
+button: `T-100` put the queue and history on screen at once, so a single toolbar Open would have had
+to guess which selection it meant.
+
+Two decisions worth a reviewer's disagreement:
+
+- **A refusal is a returned value, not an exception**, because raising out of a Qt slot is printed
+  and swallowed. It goes to the status bar rather than a dialog — a moved file is the *ordinary*
+  case under `UX-001`, and a modal for an ordinary case trains people to dismiss dialogs unread.
+- **`shell=True` is refused in code rather than suppressed in a comment.** `ruff`'s `S603` fires on
+  the one `subprocess` call in the package; the answer is a guard that raises, with a test that
+  fires it, rather than a `noqa` nothing checks.
+
 ## Ready
 *(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
 which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
@@ -760,41 +823,6 @@ channel and hands over; it does not attempt to become a server.
 
 - Anything that makes the channel decide ownership (`ARC-006` amendment)
 - Multi-user or networked access (`A-004`)
-
----
-
-### T-086 — Open a completed file, or reveal it in the file manager
-
-**Status:** Proposed
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 2
-**Depends on:** **`T-100`** for the history half — the view this acts on, which `P2PLAN-R8`
-found had no owner; `T-085` for the records beneath it. The queue half needs only `T-079`
-**Relevant context:** `REQ-021`, `T-034`, `SEC-001`, `OPS-004`
-**Affected surfaces:** `ui/`, a small platform seam
-**Risk:** Medium despite being small — it hands a path to the operating system
-
-#### Scope
-
-Small in code, and the one place in Phase 2 where this application asks the OS to act on a path.
-`T-034` already governs where files may be written; this is the reverse direction.
-
-**A path is not a command.** Reveal is `explorer /select,` on Windows and a file-manager call on
-Linux, and both must receive the path as an argument rather than through a shell. A title
-containing a quote is an ordinary title (`T-034` has the fixtures), and it must not become an
-argument boundary.
-
-#### Acceptance criteria
-
-- Open and reveal both work on Linux and on Windows, verified on `STARBASE`
-- A path with quotes, spaces, or a leading dash is passed intact and executes nothing
-- A file that has been moved or deleted says so rather than failing silently
-- Nothing outside the output directory can be opened through this route
-
-#### Out of scope
-
-- Choosing which application opens a file
 
 ---
 

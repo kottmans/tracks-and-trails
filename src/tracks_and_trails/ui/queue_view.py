@@ -609,6 +609,19 @@ class QueueView(QWidget):
             return None
         return self._model.job_ids()[rows[0].row()]
 
+    def selected_path(self) -> str | None:
+        """The selected job's written file, or `None`. **`T-086`'s one question of this view.**
+
+        `Job.output_path` is set by the completion transaction, so a job still running answers
+        `None` and the open actions stay disabled — which is correct: `T-046` writes into a staging
+        directory and the final name does not exist until the download succeeds.
+        """
+        job_id = self.selected_job_id()
+        if job_id is None:
+            return None
+        job = self._model.job_for(job_id)
+        return None if job is None else job.output_path
+
     def select(self, job_id: str) -> bool:
         """Select `job_id`'s row. `False` when this table does not hold it."""
         index = self._model.row_of(job_id)

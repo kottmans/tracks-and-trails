@@ -187,6 +187,18 @@ class HistoryModel(QAbstractTableModel):
             return entry.completed_at.strftime(COMPLETED_FORMAT)
         return ""
 
+    def path_for(self, entry_id: str) -> str | None:
+        """Where the file was written, or `None`. **Not `text_at(PATH_COLUMN)`** (`T-086`).
+
+        That renders `UNKNOWN_TEXT` for a record with no path, which is right on screen and would
+        be catastrophic as a filename — `open_file` would be handed the em-dash placeholder and
+        refuse it for the wrong reason, reporting that a file named "—" is missing.
+        """
+        for entry in self._entries:
+            if entry.id == entry_id:
+                return entry.output_path
+        return None
+
     def refresh(self) -> None:
         """Re-read every entry.
 
@@ -267,6 +279,11 @@ class HistoryView(QWidget):
         if not rows:
             return None
         return self._model.entry_ids()[rows[0].row()]
+
+    def selected_path(self) -> str | None:
+        """The selected record's file, or `None`. **`T-086`'s one question of this view.**"""
+        entry_id = self.selected_entry_id()
+        return None if entry_id is None else self._model.path_for(entry_id)
 
     def focus_chain(self) -> list[QWidget]:
         """The keyboard order, per state (`NFR-005`, `T-060`'s rule).

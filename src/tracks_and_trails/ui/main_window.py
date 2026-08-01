@@ -20,7 +20,7 @@ state at all; see `T-007`'s record, where that gap is reported rather than decid
 import tomllib
 from collections.abc import Callable
 from pathlib import Path
-from typing import Final
+from typing import Final, cast
 
 from platformdirs import user_config_dir
 from PySide6.QtCore import QRect, QSize, Qt, Signal
@@ -41,6 +41,7 @@ from tracks_and_trails.core.job_state import REORDERABLE
 from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
+from tracks_and_trails.ui.file_actions import MESSAGE_TIMEOUT_MS, FileActions
 from tracks_and_trails.ui.history_view import HistoryReader, HistoryView, build_history_view
 from tracks_and_trails.ui.job_detail import JobProgressView, JobReader, build_progress_view
 from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
@@ -242,6 +243,9 @@ class MainWindow(QMainWindow):
         self._view: JobProgressView | None = None
         self._queue: QueueView | None = None
         self._history_view: HistoryView | None = None
+        #: `T-086`'s open/reveal, one set per table. Held so they outlive `_build_body` — a
+        #: `QObject` whose only reference was a local is collected, taking its connections.
+        self._file_actions: list[FileActions] = []
         #: Supplied together or not at all: the add-URL dialog needs all three, and a window
         #: holding two of them could only offer an action that fails. `T-036` passes them.
         self._manager = manager
@@ -315,6 +319,51 @@ class MainWindow(QMainWindow):
         if history is not None:
             self._history_view = build_history_view(history)
             self._body.addWidget(self._history_view)
+
+        self._attach_file_actions()
+
+    def _attach_file_actions(self) -> None:
+        """Open and Show-in-folder on both tables (`T-086`, `REQ-021`).
+
+        **On each table rather than on the toolbar.** `REQ-021` names *the history and queue views*
+        and both are on screen at once, so a single toolbar Open would have to guess which selection
+        it meant. `FileActions` explains the rest of the reasoning.
+
+        Attached only when composition supplied an `output_directory`: containment is what makes
+        this safe (`SEC-001`), and a window that does not know where downloads go cannot check it —
+        so it offers no way to open anything rather than an unchecked one.
+        """
+        if self._output_directory is None:
+            return
+        for view in (self._queue, self._history_view):
+            if view is None:
+                continue
+            self._file_actions.append(
+                FileActions(
+                    table=view.table,
+                    selected_path=view.selected_path,
+                    # Read at the moment of use, not captured: `T-079` lets the download folder
+                    # change while the window is open, and the boundary checked must be the current
+                    # one. `_output_directory` is not `None` here — the guard above returned.
+                    output_directory=lambda: cast("Path", self._output_directory),
+                    report=self._report_transiently,
+                    parent=self,
+                )
+            )
+
+    def _report_transiently(self, message: str) -> None:
+        """Say something in the status bar, without a dialog (`NFR-006`).
+
+        A file that has been moved is the *ordinary* case — `UX-001` promises nothing here deletes
+        the user's files, so they are free to move them — and a modal dialog for an ordinary case
+        trains people to dismiss dialogs unread.
+        """
+        self.statusBar().showMessage(message, MESSAGE_TIMEOUT_MS)
+
+    @property
+    def file_actions(self) -> list[FileActions]:
+        """The open/reveal actions, one set per table. Empty without an output directory."""
+        return list(self._file_actions)
 
     @property
     def watched_job_id(self) -> str | None:
