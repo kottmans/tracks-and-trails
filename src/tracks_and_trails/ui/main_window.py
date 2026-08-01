@@ -41,6 +41,7 @@ from tracks_and_trails.core.job_state import REORDERABLE
 from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
+from tracks_and_trails.ui.history_view import HistoryReader, HistoryView, build_history_view
 from tracks_and_trails.ui.job_detail import JobProgressView, JobReader, build_progress_view
 from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
 
@@ -232,6 +233,7 @@ class MainWindow(QMainWindow):
         on_reorder_requested: Callable[[list[str]], None] | None = None,
         on_clear_requested: Callable[[], None] | None = None,
         queue: QueueReader | None = None,
+        history: HistoryReader | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
@@ -239,6 +241,7 @@ class MainWindow(QMainWindow):
         self._retry = retry
         self._view: JobProgressView | None = None
         self._queue: QueueView | None = None
+        self._history_view: HistoryView | None = None
         #: Supplied together or not at all: the add-URL dialog needs all three, and a window
         #: holding two of them could only offer an action that fails. `T-036` passes them.
         self._manager = manager
@@ -269,10 +272,10 @@ class MainWindow(QMainWindow):
         self._environment.setAccessibleName("Environment")
         self._environment.setTextFormat(Qt.TextFormat.PlainText)
         self.statusBar().addPermanentWidget(self._environment)
-        self._build_body(queue)
+        self._build_body(queue, history)
         self._restore_geometry()
 
-    def _build_body(self, queue: QueueReader | None) -> None:
+    def _build_body(self, queue: QueueReader | None, history: HistoryReader | None = None) -> None:
         """The queue above, the selected job's detail below (`T-079`).
 
         **A splitter rather than one or the other**, because the two answer different questions:
@@ -303,6 +306,15 @@ class MainWindow(QMainWindow):
         # table is built after the toolbar and the action has to exist before it can be enabled.
         self._queue.job_selected.connect(self._selection_changed)
         self._body.addWidget(self._queue)
+
+        # **Below the queue, in the same splitter** (`T-100`). A tab would hide it, and the whole
+        # reason it exists is that a user who cleared their completed jobs cannot otherwise find
+        # what they downloaded (`P2PLAN-R8`) — a surface you have to go looking for does not solve
+        # that. Built only when composition supplies something to read history from, exactly as the
+        # queue is.
+        if history is not None:
+            self._history_view = build_history_view(history)
+            self._body.addWidget(self._history_view)
 
     @property
     def watched_job_id(self) -> str | None:
@@ -353,6 +365,21 @@ class MainWindow(QMainWindow):
         """
         if job_id and self._job_reader is not None:
             self.watch(job_id)
+
+    @property
+    def history_view(self) -> HistoryView | None:
+        """The history table, if this window was given something to read history from."""
+        return self._history_view
+
+    def refresh_history(self) -> None:
+        """Re-read the history table. Composition calls this when the set of records can differ.
+
+        A history row is written once and never changes, so there is nothing to subscribe to — the
+        two moments the *set* can differ are a completion and a clear-finished, and composition
+        knows about both.
+        """
+        if self._history_view is not None:
+            self._history_view.refresh()
 
     @property
     def queue_view(self) -> QueueView | None:

@@ -273,7 +273,7 @@ Recorded here because each one changed what a deliverable *is*, not merely how i
 | 8 | A corrupt `settings.toml` reports rather than reverting silently (`ARC-008`) | `T-102` | **Approved** 2026-08-01 (`97f96c0`) |
 | 9 | Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`) | `T-082` | **Ready** |
 | 10 | Per-job log capture and log view (`REQ-019`) | `T-084` | **Ready.** `T-053`, which gated its approval, is **Approved** |
-| 11 | History view over those records | `T-100` | **Ready** |
+| 11 | History view over those records | `T-100` | **In review** 2026-08-01 |
 | 12 | Open file / reveal in file manager (`REQ-021`), from both views | `T-086` | **Proposed** — released once `T-100` lands |
 | 13 | Single-instance guard (`A-004`, `ARC-006`) | `T-087` | **In review.** Linux and hosted Windows both green, including racing starts |
 

@@ -327,10 +327,22 @@ def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
     assert connection_count(manager, "progress") == 1, (
         "the queue model should be the only progress listener before any detail view exists"
     )
-    for name in ("queue_paused", "job_removed", "queue_reordered", "queue_cleared"):
+    for name in ("queue_paused", "job_removed", "queue_reordered"):
         assert connection_count(manager, name) == 1, (
             f"{name} should have exactly the queue UI listener that reflects the durable change"
         )
+    # **Two, and each is named**, on `job_changed`'s pattern. The queue model rebuilds its rows;
+    # the history view re-reads, because clear-finished is precisely the moment history stops
+    # agreeing with the queue and starts being the only record of what was downloaded (`T-100`,
+    # `P2PLAN-R8`). A third is still a failure.
+    assert connection_count(manager, "queue_cleared") == 2, (
+        "queue_cleared should have the queue model's listener and the history view's refresh"
+    )
+    # `T-100`: a completion writes a history row in the same transaction (`T050-R1`), so the view
+    # has to re-read. Nothing else listens to this signal in composition.
+    assert connection_count(manager, "job_succeeded") == 1, (
+        "job_succeeded should have exactly the history refresh"
+    )
 
     dialog = composition.window.open_add_dialog()
     # The dialog adds its own four. Named individually rather than counted in bulk, so a signal

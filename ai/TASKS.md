@@ -251,6 +251,116 @@ the outstanding item is **evidence** rather than evidence *plus* an unauthorised
 
 ---
 
+### T-100 — The history view: what was obtained, after the queue has forgotten it
+
+**Status:** **In Review — complete 2026-08-01.** Seven mutations run; all seven killed, including
+the two this task names. **It releases `T-086`**, the last Phase 2 deliverable that had not started.
+*(This read "Ready — nothing blocks it; `T-085` wrote the table it reads".)*
+**Owner:** Implementer
+**Priority:** Medium — `REQ-021` is a Phase 2 deliverable and cannot be met without it
+**Phase:** Phase 2
+**Depends on:** `T-085` (approved). Independent of `T-078` and the queue view
+**Relevant context:** `P2PLAN-R8` (why this exists), `REQ-020`, `REQ-021`, `UX-001`, `T-050`,
+`T-085`, `T-086`, `persistence/repositories.py` (`HistoryRepository`)
+**Affected surfaces:** `ui/`, `app.py`, `ai/IMPLEMENTATION_PLAN.md`
+**Risk:** Low — read-only over a table that already exists and is already gated
+
+#### Scope
+
+**`P2PLAN-R8`: the history view had no owner in any phase.** Phase 2's deliverables named
+persistence and records; Phase 3 is format and content depth; Phase 4 is settings and polish. None
+of them mentioned it, and `T-050` pointed at a "Phase 3" deliverable that has never existed.
+
+**The reframe that settles where it belongs.** `REQ-020` — *"Maintain a history of completed
+downloads with source URL, title, resolved output path, format used, size, and completion time"* —
+is a **data** requirement, and `T-050` and `T-085` satisfied it. The view is presupposed by
+**`REQ-021`**: *"Open a completed file, or reveal it in the system file manager, from the **history
+and queue views**."* `REQ-021` is a Phase 2 deliverable, so the view it names is Phase 2 work.
+
+**And Phase 2's own features combine into a hole without it.** `UX-001` says remove never deletes a
+file. `T-081` delivers clear-completed. Together, in a Phase 2 with no history view: the user clears
+completed jobs, every file is still on disk, and **the application can no longer say where any of it
+went.** That is not a polish gap; it is this phase's own combination of features losing information
+the user needs.
+
+So: a read-only table over `HistoryRepository.all_entries()`. `T-086` then adds open and reveal to
+it, which is what makes its "history half" dependency real rather than dangling.
+
+#### Acceptance criteria
+
+- **Every field `REQ-020` names is on screen**: source URL, title, resolved output path, format
+  used, size, completion time. Asserted against a row whose fields are all populated, so a column
+  that is never rendered fails rather than being invisible behind a `None`
+- **A completed download appears after its job row is gone.** That is the whole point of the view —
+  drive `T-081`'s clear-completed if it exists by then, or delete the job row directly if it does
+  not, and assert the entry is still listed. `history` carries no foreign key to `jobs`
+  (`T-085` gates that structurally); this asserts the user-visible consequence
+- **Newest first, asserted** — `all_entries()` already orders by `completed_at DESC, id`, and a view
+  that re-sorted or relied on insertion order would disagree with it silently
+- **An empty history says so** rather than presenting a blank table. A user who has downloaded
+  nothing and a view that failed to load look identical otherwise
+- **A null field renders as absence, not as `"None"`.** `title`, `output_path`, `format_used` and
+  `bytes_total` are all nullable by design (`T-085`), and `str(None)` reaching a cell is the defect
+  class `_str_or_none` exists to prevent one layer down
+- Object names and accessible names on the table and its columns (`NFR-005`), following
+  `ui/job_detail.py`'s existing pattern
+- Mutation-checked: removing a column from the view, and reversing the order, each fail
+
+#### Out of scope
+
+- **Open and reveal** — `REQ-021`, and `T-086`'s job. This view is what it acts on
+- Search, sorting by column, filtering, export — `T-085` put these out of scope and nothing has
+  asked for them since
+- Pruning, retention, or any deletion. Nothing in this view removes a record; `REQ-020` is a record
+  of what was obtained
+- Re-downloading from history, and duplicate detection (`REQ-022`, Phase 3)
+
+
+#### What was built, 2026-08-01
+
+**Evidence.** `ruff`, `ruff format`, and all four `mypy` gates clean; full Linux suite **1766 passed
+/ 11 skipped / 2 deselected**. Seven mutations, all killed, tree hash identical before and after.
+
+**A read-only table with no live subscription.** `QueueModel` coalesces progress on a timer because
+a running job changes several times a second; a history row is written once by the completion
+transaction (`T050-R1`) and never changes again. So this reads on construction and on `refresh()`,
+and has no timer, no signal connection of its own and nothing to detach. Composition refreshes it on
+`job_succeeded` and `queue_cleared` — the only two moments the *set* of records can differ.
+
+**`HistoryEntry` is imported under `TYPE_CHECKING`.** `ARCHITECTURE.md` §3 has `ui/` depend on the
+shape of a repository rather than on `persistence`, and the layering test only forbids `ui/` →
+yt-dlp — so importing the type at runtime would have created a **new architectural edge** without a
+decision behind it. Type-only keeps the annotation complete and the edge non-existent.
+
+**Below the queue in the same splitter, not behind a tab.** The whole reason it exists is that a
+user who cleared their completed jobs cannot otherwise find what they downloaded (`P2PLAN-R8`), and
+a surface you have to go looking for does not solve that.
+
+**The clear-completed criterion is driven through the real repositories**, not a fake: a job is
+completed through `complete_job`, `T-081`'s `clear_completed` deletes the queue row, and the entry
+is still listed. `history` has no foreign key to `jobs` — `T-085` gates that structurally — and this
+asserts the user-visible consequence.
+
+| Mutation | Killed by |
+|---|---|
+| A column is removed from the view | the every-field test |
+| The order is reversed | the newest-first test, against the real repository |
+| A null field renders as the word `None` | the absence test |
+| The empty notice never appears | the empty-history and populated tests |
+| A hidden table stays in the keyboard order | the empty-history focus chain |
+| The accessible text drops its column name | the `NFR-005` test |
+| Composition stops refreshing on clear-finished | the composed signal invariant |
+
+#### Not covered, stated rather than implied
+
+- **Windows.** Platform-neutral; the hosted Windows job runs it.
+- **A history large enough to be slow.** `all_entries()` is unbounded and the view rebuilds wholly
+  on refresh. Fine for a table that grows one row per download; `T-085` put paging out of scope and
+  nothing has asked for it.
+- **Open and reveal** — `REQ-021`, and `T-086`'s job. This view is what it acts on.
+
+---
+
 ### T-046 — Output path collision policy against the filesystem
 
 **Status:** **In Review — corrected again 2026-08-01, awaiting re-review.** `T046-R1` is
@@ -510,70 +620,6 @@ the criterion below names the decision instead of restating its conclusion.
 #### Out of scope
 
 - Shipping logs anywhere, or a crash reporter
-
----
-
-### T-100 — The history view: what was obtained, after the queue has forgotten it
-
-**Status:** Ready — nothing blocks it; `T-085` wrote the table it reads
-**Owner:** Implementer
-**Priority:** Medium — `REQ-021` is a Phase 2 deliverable and cannot be met without it
-**Phase:** Phase 2
-**Depends on:** `T-085` (approved). Independent of `T-078` and the queue view
-**Relevant context:** `P2PLAN-R8` (why this exists), `REQ-020`, `REQ-021`, `UX-001`, `T-050`,
-`T-085`, `T-086`, `persistence/repositories.py` (`HistoryRepository`)
-**Affected surfaces:** `ui/`, `app.py`, `ai/IMPLEMENTATION_PLAN.md`
-**Risk:** Low — read-only over a table that already exists and is already gated
-
-#### Scope
-
-**`P2PLAN-R8`: the history view had no owner in any phase.** Phase 2's deliverables named
-persistence and records; Phase 3 is format and content depth; Phase 4 is settings and polish. None
-of them mentioned it, and `T-050` pointed at a "Phase 3" deliverable that has never existed.
-
-**The reframe that settles where it belongs.** `REQ-020` — *"Maintain a history of completed
-downloads with source URL, title, resolved output path, format used, size, and completion time"* —
-is a **data** requirement, and `T-050` and `T-085` satisfied it. The view is presupposed by
-**`REQ-021`**: *"Open a completed file, or reveal it in the system file manager, from the **history
-and queue views**."* `REQ-021` is a Phase 2 deliverable, so the view it names is Phase 2 work.
-
-**And Phase 2's own features combine into a hole without it.** `UX-001` says remove never deletes a
-file. `T-081` delivers clear-completed. Together, in a Phase 2 with no history view: the user clears
-completed jobs, every file is still on disk, and **the application can no longer say where any of it
-went.** That is not a polish gap; it is this phase's own combination of features losing information
-the user needs.
-
-So: a read-only table over `HistoryRepository.all_entries()`. `T-086` then adds open and reveal to
-it, which is what makes its "history half" dependency real rather than dangling.
-
-#### Acceptance criteria
-
-- **Every field `REQ-020` names is on screen**: source URL, title, resolved output path, format
-  used, size, completion time. Asserted against a row whose fields are all populated, so a column
-  that is never rendered fails rather than being invisible behind a `None`
-- **A completed download appears after its job row is gone.** That is the whole point of the view —
-  drive `T-081`'s clear-completed if it exists by then, or delete the job row directly if it does
-  not, and assert the entry is still listed. `history` carries no foreign key to `jobs`
-  (`T-085` gates that structurally); this asserts the user-visible consequence
-- **Newest first, asserted** — `all_entries()` already orders by `completed_at DESC, id`, and a view
-  that re-sorted or relied on insertion order would disagree with it silently
-- **An empty history says so** rather than presenting a blank table. A user who has downloaded
-  nothing and a view that failed to load look identical otherwise
-- **A null field renders as absence, not as `"None"`.** `title`, `output_path`, `format_used` and
-  `bytes_total` are all nullable by design (`T-085`), and `str(None)` reaching a cell is the defect
-  class `_str_or_none` exists to prevent one layer down
-- Object names and accessible names on the table and its columns (`NFR-005`), following
-  `ui/job_detail.py`'s existing pattern
-- Mutation-checked: removing a column from the view, and reversing the order, each fail
-
-#### Out of scope
-
-- **Open and reveal** — `REQ-021`, and `T-086`'s job. This view is what it acts on
-- Search, sorting by column, filtering, export — `T-085` put these out of scope and nothing has
-  asked for them since
-- Pruning, retention, or any deletion. Nothing in this view removes a record; `REQ-020` is a record
-  of what was obtained
-- Re-downloading from history, and duplicate detection (`REQ-022`, Phase 3)
 
 ---
 

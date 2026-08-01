@@ -214,7 +214,7 @@ def compose(
     from tracks_and_trails.downloader.environment import find_ffmpeg
     from tracks_and_trails.downloader.manager import DownloadManager
     from tracks_and_trails.persistence import db
-    from tracks_and_trails.persistence.repositories import JobRepository
+    from tracks_and_trails.persistence.repositories import HistoryRepository, JobRepository
     from tracks_and_trails.persistence.store import PersistentJobStore
     from tracks_and_trails.persistence.writer import QueueWriter, open_connection_factory
     from tracks_and_trails.ui.main_window import MainWindow
@@ -346,6 +346,10 @@ def compose(
         # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
         # a single row cannot accidentally enumerate the queue.
         queue=store,
+        # `T-100`: read-only over the table `T-085` writes. A third narrow protocol rather than
+        # widening `QueueReader` — the history view enumerates records and nothing else, and a
+        # reader that could also reach jobs would let it.
+        history=HistoryRepository(connection),
     )
     # The control follows the queue, not only the other way round: anything that pauses the pool
     # without going through the toolbar still leaves the toggle telling the truth (`T-080`).
@@ -366,6 +370,19 @@ def compose(
     #: is worth watching, and deriving it from the manager's internals would make the two agree
     #: unconditionally (`ai/TESTING.md` §13).
     watchable = (JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING, JobStatus.POST_PROCESSING)
+
+    def refresh_history_if_the_set_changed(*_: object) -> None:
+        """Re-read history when a completion or a clear can have changed which records exist.
+
+        `T-100`'s view has no live subscription because a history row is written once and never
+        changes. These are the only two moments the *set* differs: a job completing writes a row in
+        the same transaction (`T050-R1`), and clear-finished deletes queue rows while deliberately
+        leaving history alone — which is exactly the state the view exists to make visible.
+        """
+        window.refresh_history()
+
+    manager.job_succeeded.connect(refresh_history_if_the_set_changed)
+    manager.queue_cleared.connect(refresh_history_if_the_set_changed)
 
     def on_job_changed(job_id: str, status: str) -> None:
         """Show a starting job **only when the detail pane is empty** (`T-079`).
