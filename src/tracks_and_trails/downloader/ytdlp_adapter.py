@@ -334,6 +334,7 @@ def build_options(
     postprocessor_hooks: Sequence[Any] = (),
     ffmpeg_location: Path | None = None,
     overwrites: bool | None = None,
+    logger: Any = None,
 ) -> dict[str, Any]:
     """Build the yt-dlp options dict for one session.
 
@@ -344,6 +345,12 @@ def build_options(
 
     Deliberately quiet and non-interactive: a worker has no console and no user. `noprogress`
     is set because progress reaches the GUI through `progress_hooks`, not stdout.
+
+    **`logger` changes what `quiet` and `no_warnings` mean** (`T-084`). Measured against yt-dlp
+    2026.07.04: `to_screen` calls `logger.debug` and returns *before* consulting `quiet`, and
+    `report_warning` consults `logger` before `no_warnings`. Both flags stay because they are
+    still correct when no logger is passed — a probe run by a test, for instance — but with one
+    present they suppress nothing. `core.logging.YtdlpLog` is what this receives.
     """
     options: dict[str, Any] = {
         "outtmpl": output_template,
@@ -358,6 +365,11 @@ def build_options(
         "progress_hooks": list(progress_hooks),
         "postprocessor_hooks": list(postprocessor_hooks),
     }
+
+    if logger is not None:
+        # `REQ-019`: without this, yt-dlp's diagnostics go to a console the worker does not have
+        # and are lost. `verbose` is deliberately *not* set alongside it — see `YtdlpLog`.
+        options["logger"] = logger
 
     # Connection settings apply to **both** phases (`T012-R5`). A download probes first, and
     # these used to be added only after the `probe_only` early return — so a URL that needed

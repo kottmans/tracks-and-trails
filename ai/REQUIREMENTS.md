@@ -97,6 +97,11 @@ residue and blocks the first public release.
 - **REQ-017** — Resume partially completed downloads across restarts where the site and format allow it, and state clearly when resumption is not possible.
 - **REQ-018** — On failure, record the error, keep the job in the queue in a failed state, and offer retry. Never fail silently.
 - **REQ-019** — Provide a per-job log view containing the actual yt-dlp diagnostic output for that job, copyable for bug reports.
+  - *Scoped 2026-08-01 by `T-084`, in two ways.* **Bounded:** a job's log is capped at 4 MiB
+    (`MAX_JOB_LOG_BYTES` × two files), and the **newest** lines are the ones kept — a log is read
+    to find out how something ended. **Verbatim within `DAT-003`'s provenance boundary,** now
+    implemented as `DAT-004`: values this application supplied are removed; prose yt-dlp emitted is
+    intact, and no claim is made about what it may contain. What is copied is the file exactly.
 
 ### Library and results
 

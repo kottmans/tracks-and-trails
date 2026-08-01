@@ -43,6 +43,7 @@ observe them (`REQ-015`, `ARCHITECTURE.md` §3):
 import logging
 import multiprocessing
 import os
+import platform
 import shutil
 import sys
 import tempfile
@@ -358,6 +359,7 @@ def run_session(
     exit_code = 0
     try:
         resolved = _import_ytdlp(ytdlp_candidates(user_ytdlp_directory))
+        _log_the_session_header(kind, resolved)
         reporter.use_cancellation_error(_cancellation_error(resolved))
         # Reported before the work starts, so it reaches the parent even if the job then fails
         # (`T012-R1`, `REQ-025`, `ARCHITECTURE.md` §6).
@@ -391,6 +393,32 @@ def run_session(
     finally:
         reporter.send(WorkerFinished(job_id=job_id, exit_code=exit_code))
     return exit_code
+
+
+def _log_the_session_header(kind: SessionKind, resolved: ResolvedYtdlp) -> None:
+    """The versions a bug report needs, at the top of the job's log (`T-084`, `REQ-019`).
+
+    **This is what replaces yt-dlp's `verbose` banner, and writing it ourselves is the point.**
+    Verbose would supply the same versions and, measured, also dump `params:` and `Proxy map:` —
+    the proxy URL and `cookiesfrombrowser`, which are values *this application supplies* and the
+    one row of `DAT-003`'s provenance table that must never reach a log. Here every field is
+    chosen, and the line is application-authored, so the full redaction rules apply to it.
+
+    Never raises. A header is a convenience and a job that failed to start because its log banner
+    could not be assembled would be an absurd way to lose a download.
+    """
+    logger = logging.getLogger(f"{APP_SLUG}.worker")
+    try:
+        logger.info(
+            "%s session: yt-dlp %s (%s), Python %s, %s",
+            kind.value,
+            resolved.version,
+            resolved.source,
+            platform.python_version(),
+            platform.platform(),
+        )
+    except Exception:  # a header is never worth failing a download over
+        logger.debug("the session header could not be assembled", exc_info=True)
 
 
 def _run(
@@ -1122,6 +1150,8 @@ def _extract(
     ffmpeg_location: Path | None = None,
     overwrites: bool | None = None,
 ) -> dict[str, Any]:
+    from tracks_and_trails.core.logging import YtdlpLog, third_party_logger
+
     options = adapter.build_options(
         request,
         output_template if output_template is not None else request.output_template,
@@ -1130,6 +1160,10 @@ def _extract(
         postprocessor_hooks=[reporter.postprocessor_hook],
         ffmpeg_location=ffmpeg_location,
         overwrites=overwrites,
+        # `REQ-019`. Built here rather than passed in from `spawn_session` because both the probe
+        # and the download go through this function, and `REQ-019` wants *the* diagnostic output
+        # for the job — a failure during the probe is the case a user most needs the log for.
+        logger=YtdlpLog(third_party_logger("ytdlp")),
     )
     with resolved.module.YoutubeDL(options) as ydl:
         info = ydl.extract_info(request.url, download=not probe_only)

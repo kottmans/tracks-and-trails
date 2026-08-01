@@ -79,6 +79,7 @@ shown, and nothing signalled by colour.
 
 from collections.abc import Callable
 from contextlib import suppress
+from pathlib import Path
 from typing import Final, Protocol
 
 from PySide6.QtCore import Qt, QTimer, Signal
@@ -98,6 +99,7 @@ from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import Job
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import Progress, Stage
+from tracks_and_trails.ui.log_view import LogView, build_log_view
 
 #: The stated maximum repaint rate: ten a second. Comfortably inside `NFR-001`'s ~100 ms
 #: interaction budget while being far slower than yt-dlp's hook, which is the whole point.
@@ -278,11 +280,18 @@ class JobProgressView(QWidget):
         job_id: str,
         parent: QWidget | None = None,
         repaint_interval_ms: int = REPAINT_INTERVAL_MS,
+        log_directory: Path | None = None,
     ) -> None:
         super().__init__(parent)
         self._manager = manager
         self._jobs = jobs
         self._job_id = job_id
+        #: Where per-job logs live. `None` means `platformdirs`' cache directory, which is right in
+        #: production and is a **machine-wide shared location** — so without this parameter a test
+        #: reads whatever some other test left in the real cache. That is not hypothetical: the
+        #: diagnostics box's focus-order test passed alone and failed in the full suite, because a
+        #: `job-1.log` written elsewhere in the run made the copy button live.
+        self._log_directory = log_directory
 
         #: The newest message that has arrived but not yet been drawn. See the module docstring.
         self._pending: Progress | None = None
@@ -307,6 +316,22 @@ class JobProgressView(QWidget):
 
         self._connect_manager()
         self._load()
+
+    @property
+    def log_view(self) -> LogView:
+        """This job's diagnostics (`T-084`)."""
+        return self._log
+
+    @property
+    def log_box(self) -> QGroupBox:
+        """The collapsible box holding them, closed until the user asks."""
+        return self._log_box
+
+    def _log_box_toggled(self, expanded: bool) -> None:
+        """Show and re-read, or hide. Reading only when expanded keeps it off the ordinary path."""
+        self._log.setVisible(expanded)
+        if expanded:
+            self._log.refresh()
 
     # --- construction -------------------------------------------------------------------
 
@@ -343,6 +368,27 @@ class JobProgressView(QWidget):
         layout.addWidget(self._error)
 
         layout.addWidget(self._build_actions())
+
+        # `T-084`, `REQ-019`. **In a collapsible box, closed by default**: the diagnostics are what
+        # a user needs when something has gone wrong and clutter every other time, and a pane that
+        # opens several hundred lines of extractor output over the progress bar would make the
+        # ordinary case worse to serve the exceptional one.
+        self._log_box = QGroupBox("Diagnostics", self)
+        self._log_box.setObjectName("diagnosticsBox")
+        self._log_box.setAccessibleName("Diagnostics")
+        self._log_box.setCheckable(True)
+        self._log_box.setChecked(False)
+        self._log_box.setToolTip(
+            "The diagnostic output recorded for this download, for including in a bug report."
+        )
+        box_layout = QVBoxLayout(self._log_box)
+        self._log = build_log_view(self._job_id, self._log_directory)
+        self._log.setVisible(False)
+        box_layout.addWidget(self._log)
+        # Re-read on expand rather than on a timer: the file grows while a job runs, and a user
+        # opening the box is saying *now* is when they want to see it.
+        self._log_box.toggled.connect(self._log_box_toggled)
+        layout.addWidget(self._log_box)
 
         for name in UNTRUSTED_TEXT_LABELS:
             label = self.findChild(QLabel, name)
@@ -484,8 +530,17 @@ class JobProgressView(QWidget):
         return self._error.text()
 
     def focus_chain(self) -> list[QWidget]:
-        """Every keyboard-focusable control, in its intended order (`NFR-005`)."""
-        return [self._error, self._cancel_button, self._retry_button]
+        """Every keyboard-focusable control, in its intended order (`NFR-005`).
+
+        **Per state, not once** (`T-060`'s rule). The diagnostics box is a checkable `QGroupBox`,
+        so its own indicator is always focusable; what is *inside* it is only reachable once it is
+        expanded, and naming a hidden widget in the order describes a control the user cannot get
+        to — which is the defect `T-060` found the queue committing.
+        """
+        chain = [self._error, self._cancel_button, self._retry_button, self._log_box]
+        if self._log_box.isChecked():
+            chain.extend(self._log.focus_chain())
+        return chain
 
     # --- actions ------------------------------------------------------------------------
 

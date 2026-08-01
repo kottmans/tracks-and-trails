@@ -67,8 +67,11 @@ from tracks_and_trails.core.paths import sanitize_component
 from tracks_and_trails.downloader.environment import APP_SLUG
 
 __all__ = [
+    "MAX_JOB_LOG_BYTES",
     "REDACTED",
+    "THIRD_PARTY_FIELD",
     "RedactingFormatter",
+    "YtdlpLog",
     "application_log_path",
     "close_job_log_when_drained",
     "configure_logging",
@@ -77,6 +80,7 @@ __all__ = [
     "redact",
     "remember_a_secret",
     "stop_listening_for_worker_logs",
+    "third_party_logger",
     "wait_for_the_log_listener_to_stop",
     "worker_log_queue",
     "worker_logging_handler",
@@ -92,6 +96,27 @@ JOB_LOG_DIRECTORY: Final = "jobs"
 
 #: One line, and the fields a person reading it after the fact actually needs.
 LOG_FORMAT: Final = "%(asctime)s %(levelname)-8s %(name)s %(message)s"
+
+#: **The stated bound on one job's log** (`T-084`). Two files of 2 MiB, so a job's diagnostics can
+#: never exceed **4 MiB** however long it runs or however loudly yt-dlp complains.
+#:
+#: Bounded by rotation rather than by refusing to write: `REQ-019` wants the output for a bug
+#: report, and the *end* of a long log is where the failure is. A cap that stopped writing would
+#: keep the least useful half. One backup rather than none so a rotation mid-failure does not throw
+#: away the lines immediately before it.
+MAX_JOB_LOG_BYTES: Final = 2 * 1024 * 1024
+JOB_LOG_BACKUPS: Final = 1
+
+#: The record attribute marking text **this application did not write** (`T-084`, `DAT-003`).
+#:
+#: `DAT-003` as amended by `T-049` makes the redaction boundary *provenance*, not shape: values this
+#: application supplies are removed, and prose a third party emitted is preserved intact because
+#: `NFR-006` requires it. A formatter cannot infer which it is holding, so the record says.
+#:
+#: **Exact-value redaction still applies to marked records.** What is dropped for them is the
+#: *pattern* set — the rules that guess from shape, and would scrub a cookie path yt-dlp itself
+#: named, which is precisely the "scrubs everything" failure `DAT-003` records two attempts at.
+THIRD_PARTY_FIELD: Final = "tracks_and_trails_third_party"
 
 #: A URL with an authority. Matched loosely on purpose: this is the *finder*, and everything it
 #: finds is then parsed properly and rebuilt without its query, userinfo or fragment.
@@ -153,15 +178,28 @@ def forget_the_secrets() -> None:
     _secrets.clear()
 
 
-def redact(text: str) -> str:
+def redact(text: str, *, third_party: bool = False) -> str:
     """Remove supplied credentials and cookie material from one finished log line.
 
     Ordered deliberately: registered literals first, because they are exact and a later rewrite
     could otherwise alter the text they would have matched; then cookie material by shape; then
     every URL, which is the rule with no exceptions in it.
+
+    **`third_party` stops after the literals** (`T-084`, `DAT-003` as amended by `T-049`). The
+    boundary is provenance: a value this application supplied is removed wherever it appears,
+    because we know we supplied it; the shape rules below are guesses, and applying a guess to
+    prose a third party emitted is how `NFR-006`'s "preserved intact" is lost. Two implementations
+    of exactly that guess are on record failing — three credential escapes and one Critical
+    regression that rewrote a user's output directory.
+
+    So the guarantee that survives is one-directional and is the only one two failed recognisers
+    did not already disprove: **what this application supplies never reaches a log**, and nothing
+    is claimed about what a diagnostic may contain.
     """
     for secret in _secrets:
         text = text.replace(secret, REDACTED)
+    if third_party:
+        return text
     text = _COOKIE_HEADER.sub(lambda match: f"{match.group(1)}: {REDACTED}", text)
     text = _COOKIE_PATH.sub(REDACTED, text)
     text = _COOKIE_FILENAME.sub(REDACTED, text)
@@ -203,7 +241,10 @@ class RedactingFormatter(logging.Formatter):
     """
 
     def format(self, record: logging.LogRecord) -> str:
-        return redact(super().format(record))
+        return redact(
+            super().format(record),
+            third_party=bool(getattr(record, THIRD_PARTY_FIELD, False)),
+        )
 
 
 def application_log_path(directory: Path | None = None) -> Path:
@@ -234,6 +275,78 @@ def job_log_path(job_id: str, directory: Path | None = None) -> Path:
 JOB_FIELD: Final = "tracks_and_trails_job"
 
 
+class _MarkThirdParty(logging.Filter):
+    """Marks every record as text this application did not write. Never filters anything.
+
+    On the logger rather than on a handler: `logging` applies a logger's filters before the record
+    starts propagating, so the mark is set once and travels — through the worker's queue to the
+    parent, where the formatter that reads it lives (`T-038` renders in the parent so a worker
+    cannot emit an unredacted line even in principle).
+    """
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        setattr(record, THIRD_PARTY_FIELD, True)
+        return True
+
+
+def third_party_logger(name: str) -> logging.Logger:
+    """A logger whose records are marked as prose this application did not write (`DAT-003`).
+
+    Under `APP_SLUG` so it reaches the same handlers as everything else — the mark changes how a
+    line is *redacted*, not where it goes.
+
+    Idempotent: asked twice for the same name it returns the same logger with one filter, because
+    `logging` caches loggers by name and a second `addFilter` would mark every record twice.
+    """
+    logger = logging.getLogger(f"{APP_SLUG}.{name}")
+    if not any(isinstance(existing, _MarkThirdParty) for existing in logger.filters):
+        logger.addFilter(_MarkThirdParty())
+    return logger
+
+
+class YtdlpLog:
+    """yt-dlp's `logger` option, bridged onto this application's logging (`T-084`, `REQ-019`).
+
+    **Setting `logger` is what makes yt-dlp's output reachable at all.** Measured against yt-dlp
+    2026.07.04: `to_screen` calls `logger.debug(...)` **and returns before the `quiet` check**, and
+    `report_warning` checks `logger` before `no_warnings`. So the `quiet=True` and
+    `no_warnings=True` this application has always passed do not suppress anything once a logger is
+    present — they only ever governed writes to a console a worker does not have.
+
+    **`verbose` is deliberately not enabled**, and that is a security decision rather than a volume
+    one. Measured: verbose makes yt-dlp dump `params:` and `Proxy map:`, which contain the proxy
+    URL and `cookiesfrombrowser` — **values this application supplies**, which is the one row of
+    `DAT-003`'s provenance table that must never reach a log. The version banner a bug report wants
+    is written by `session_header()` instead, where this application chooses every field.
+
+    ## Levels
+
+    yt-dlp's `debug` carries its ordinary screen output — "Extracting URL", "Downloading webpage" —
+    which is the substance of `REQ-019` rather than debug detail, so it is logged at `INFO`. Only
+    lines yt-dlp itself prefixes `[debug]` (verbose-only, and therefore unreachable today) go to
+    `DEBUG`. Logging the lot at `DEBUG` would have been the quiet failure here: the worker's
+    handler sits at `INFO`, so the job log would have been created, been empty, and looked fine.
+    """
+
+    def __init__(self, logger: logging.Logger) -> None:
+        self._logger = logger
+
+    def debug(self, message: str) -> None:
+        if message.startswith("[debug] "):
+            self._logger.debug("%s", message)
+        else:
+            self._logger.info("%s", message)
+
+    def info(self, message: str) -> None:
+        self._logger.info("%s", message)
+
+    def warning(self, message: str) -> None:
+        self._logger.warning("%s", message)
+
+    def error(self, message: str) -> None:
+        self._logger.error("%s", message)
+
+
 class _OnlyThisJob(logging.Filter):
     """Admits records stamped with one job id, and nothing else.
 
@@ -262,9 +375,19 @@ class _StampTheJob(logging.Filter):
         return True
 
 
-def _file_handler(path: Path, level: int) -> logging.Handler:
+def _file_handler(
+    path: Path, level: int, *, max_bytes: int = 0, backups: int = 0
+) -> logging.Handler:
+    """One file, redacted, and optionally bounded.
+
+    `max_bytes=0` is stdlib's "never rotate" and is what the application log uses — `NFR-004` puts
+    it under `user_cache_dir` where the OS may reclaim it, and it is one file for the whole
+    application rather than one per job. Per-job logs pass the bound; see `MAX_JOB_LOG_BYTES`.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    handler = logging.FileHandler(path, encoding="utf-8")
+    handler = logging.handlers.RotatingFileHandler(
+        path, encoding="utf-8", maxBytes=max_bytes, backupCount=backups
+    )
     handler.setLevel(level)
     handler.setFormatter(RedactingFormatter(LOG_FORMAT))
     return handler
@@ -323,7 +446,7 @@ def open_job_log(
     still_draining = _take_the_drain_back(job_id, path)
     if still_draining is not None:
         return still_draining
-    handler = _file_handler(path, level)
+    handler = _file_handler(path, level, max_bytes=MAX_JOB_LOG_BYTES, backups=JOB_LOG_BACKUPS)
     handler.addFilter(_OnlyThisJob(job_id))
     return handler
 

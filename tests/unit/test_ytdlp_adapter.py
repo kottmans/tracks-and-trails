@@ -838,3 +838,44 @@ def test_hooks_are_passed_through_so_progress_can_be_reported() -> None:
     )
     assert options["progress_hooks"] == [hook]
     assert options["postprocessor_hooks"] == [hook]
+
+
+# --- T-084: the logger, and the flag that must not accompany it -------------------------------
+
+
+def test_a_logger_is_passed_through_so_yt_dlp_s_diagnostics_are_reachable() -> None:
+    """`REQ-019`. Without this yt-dlp writes to a console the worker does not have."""
+    sentinel = object()
+
+    options = adapter.build_options(request_for(), "%(title)s.%(ext)s", logger=sentinel)
+
+    assert options["logger"] is sentinel
+
+
+def test_no_logger_means_no_logger_key() -> None:
+    """A probe run by a test has no parent to send records to, and `None` is not a logger."""
+    assert "logger" not in adapter.build_options(request_for(), "%(title)s.%(ext)s")
+
+
+def test_verbose_is_never_enabled() -> None:
+    """**A security assertion, not a volume one** (`T-084`, `DAT-003`).
+
+    Measured against yt-dlp 2026.07.04: `verbose` makes it dump `params:` and `Proxy map:`, which
+    carry the proxy URL and `cookiesfrombrowser` — **values this application supplies**, the one
+    row of `DAT-003`'s provenance table that must never reach a log. The version banner a bug
+    report wants is written by `worker._log_the_session_header` instead, where every field is ours.
+
+    Asserted **here** rather than in the end-to-end test, where the equivalent assertion is a guard
+    that cannot fire: yt-dlp's verbose lines are prefixed `[debug]`, `YtdlpLog` sends those to
+    `DEBUG`, and the worker's handler sits at `INFO`, so they would be dropped for a second and
+    unrelated reason. A test that passes for a reason other than the one it names proves nothing
+    (`ai/TESTING.md` §13).
+    """
+    for options in (
+        adapter.build_options(request_for(), "%(title)s.%(ext)s"),
+        adapter.build_options(request_for(), "%(title)s.%(ext)s", logger=object()),
+        adapter.build_options(request_for(), "%(title)s.%(ext)s", probe_only=True, logger=object()),
+    ):
+        assert not options.get("verbose"), (
+            "verbose dumps params and the proxy map — values this application supplied"
+        )

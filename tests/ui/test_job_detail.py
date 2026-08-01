@@ -1192,6 +1192,10 @@ def test_every_control_has_an_accessible_name(
         # The two layout containers carry no information of their own; a screen reader announces
         # what is inside them, and naming a box that is only there to hold a row adds noise.
         and child.objectName() not in {"progressNumbers", "jobActions"}
+        # Qt's own internals — the scroll-area viewport and its containers, which every
+        # `QAbstractScrollArea` brings with it. They are named by Qt, not by this project, and
+        # a screen reader announces the widget that owns them.
+        and not child.objectName().startswith("qt_")
     ]
     assert not unnamed, f"these controls have no accessible name: {unnamed}"
 
@@ -1210,17 +1214,37 @@ def test_the_declared_focus_order_is_the_one_qt_builds(
     test. So the order below is written out (`ai/TESTING.md` §13).
     """
     store.add(make_job("job-1", tmp_path, status=JobStatus.FAILED, error_kind=ErrorKind.NETWORK))
-    view = views(manager=managers(), jobs=store, job_id="job-1")
+    # `log_directory` pinned to this test's own tree. Without it the view reads the machine's real
+    # cache, and a `job-1.log` left there by any other test makes the copy button live — which is
+    # exactly how this test came to pass alone and fail in the full suite.
+    view = views(manager=managers(), jobs=store, job_id="job-1", log_directory=tmp_path)
     view.show()
     qapp.processEvents()
 
-    expected = ["errorMessage", "cancelJobButton", "retryJobButton"]
-    assert [widget.objectName() for widget in view.focus_chain()] == expected
+    expected = ["errorMessage", "cancelJobButton", "retryJobButton", "diagnosticsBox"]
+    assert [widget.objectName() for widget in view.focus_chain()] == expected, (
+        "the collapsed state's order changed; the diagnostics box's own indicator is focusable "
+        "but what is inside it is not reachable until it is expanded (T-084)"
+    )
+
+    # Expanded is a second state and is transcribed separately, for the reason above.
+    view.log_box.setChecked(True)
+    qapp.processEvents()
+    assert [widget.objectName() for widget in view.focus_chain()] == [
+        *expected,
+        "logText",
+    ], "an expanded diagnostics box must put its text in the keyboard order"
+    view.log_box.setChecked(False)
 
     focusable = {
         child.objectName()
         for child in view.findChildren(QWidget)
-        if child.focusPolicy() != Qt.FocusPolicy.NoFocus and child.objectName()
+        if child.focusPolicy() != Qt.FocusPolicy.NoFocus
+        and child.objectName()
+        and not child.objectName().startswith("qt_")
+        # Hidden while the box is collapsed, and `focus_chain` says so; Qt still reports the
+        # policy of a widget nobody can reach.
+        and child.isVisibleTo(view)
     }
     assert focusable == set(expected), (
         f"a focusable control is missing from the declared order: {focusable ^ set(expected)}"
@@ -1398,3 +1422,37 @@ def test_retrying_a_job_retires_the_failed_attempts_live_state(
         "a queued job is still reporting the failed attempt's ETA — it has no worker, and so "
         "nothing to estimate from"
     )
+
+
+def test_the_diagnostics_box_is_closed_until_asked_and_re_reads_when_opened(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., JobProgressView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T-084`, `REQ-019`. **Closed by default and re-read on expand.**
+
+    Closed because diagnostics are what a user needs when something went wrong and clutter every
+    other time. Re-read on expand rather than on a timer because the file grows while a job runs,
+    and a box showing what the log said when the pane was built is worse than one showing nothing —
+    it looks current.
+    """
+    store.add(make_job("job-1", tmp_path, status=JobStatus.FAILED, error_kind=ErrorKind.NETWORK))
+    view = views(manager=managers(), jobs=store, job_id="job-1", log_directory=tmp_path)
+
+    assert not view.log_box.isChecked(), "the diagnostics box opened over the progress bar"
+    assert not view.log_view.isVisible()
+
+    reads: list[int] = []
+    original = view.log_view.refresh
+
+    def counted() -> None:
+        reads.append(1)
+        original()
+
+    view.log_view.refresh = counted  # type: ignore[method-assign]
+    view.log_box.setChecked(True)
+    qapp.processEvents()
+
+    assert reads, "expanding the box showed whatever it had read at construction time"

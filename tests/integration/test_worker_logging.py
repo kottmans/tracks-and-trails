@@ -14,13 +14,14 @@ import threading
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Final
+from typing import Any, Final, cast
 
 import pytest
 from PySide6.QtCore import QCoreApplication
 
 from tests.integration.test_manager import FakeRepository, make_job
 from tracks_and_trails.core import logging as app_logging
+from tracks_and_trails.downloader import ytdlp_adapter
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import Succeeded, WorkerFinished
 
@@ -649,3 +650,108 @@ def test_two_live_workers_cannot_write_into_each_others_logs(
         "an unstamped record was written into a per-job log. A per-job file that also collects "
         "whatever the parent happened to log is not a per-job file"
     )
+
+
+def a_worker_that_really_runs_ytdlp(
+    kind: Any, job_id: str, request: Any, queue: Any, **kwargs: Any
+) -> None:
+    """A worker that probes an unreachable URL through **real yt-dlp** and reports the failure.
+
+    Real rather than faked, because what is under test is a bridge into a third-party library: a
+    fake `logger` object would prove that this project can call its own adapter. `example.invalid`
+    is reserved by RFC 2606 and never resolves, so the failure is deterministic and the run needs
+    no network.
+    """
+    from tracks_and_trails.core.errors import ErrorKind
+    from tracks_and_trails.downloader import worker
+    from tracks_and_trails.downloader.protocol import Failed
+
+    worker.prepare_this_worker(kwargs.get("log_queue"), kwargs.get("log_job_id"))
+    try:
+        from tracks_and_trails.downloader.environment import ytdlp_candidates
+
+        resolved = worker._import_ytdlp(ytdlp_candidates(None))
+        worker._log_the_session_header(kind, resolved)
+
+        class Silent:
+            def progress_hook(self, status: Any) -> None: ...
+            def postprocessor_hook(self, status: Any) -> None: ...
+
+        try:
+            worker._extract(
+                ytdlp_adapter,
+                request,
+                resolved,
+                cast("Any", Silent()),
+                probe_only=True,
+            )
+        except Exception as error:  # the point of the run: yt-dlp must have said something first
+            queue.put(Failed(job_id=job_id, kind=ErrorKind.NETWORK, message=str(error)[:200]))
+        else:
+            queue.put(Succeeded(job_id=job_id, output_path="/unused", total_bytes=1))
+    finally:
+        queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+
+
+def test_real_yt_dlp_diagnostics_reach_that_job_s_log_file(
+    tmp_path: Path, qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """**`REQ-019`, end to end, through a spawned process and real yt-dlp** (`T-084`).
+
+    Everything else about this feature is unit-tested: the bridge maps levels, the formatter reads
+    the provenance mark, the view renders a file. None of that proves the thing the requirement
+    names — that after a download fails, *that job's* log file holds yt-dlp's own account of why.
+
+    The failure mode this exists to catch is silent and was nearly shipped: yt-dlp routes its
+    ordinary output to `logger.debug`, the worker's handler sits at `INFO`, and a bridge that
+    logged at `DEBUG` would leave a job log that is created, empty and entirely plausible.
+
+    `verbose` is asserted absent for a second reason — measured, it makes yt-dlp dump `params:`
+    and `Proxy map:`, which carry values this application supplied (`DAT-003`'s first row).
+    """
+    monkeypatch.setattr(
+        app_logging, "user_cache_dir", lambda *args, **kwargs: str(tmp_path), raising=False
+    )
+    repository = FakeRepository()
+    repository.add(make_job("job-1", "https://example.invalid/watch?v=abc", tmp_path))
+    app_logging.configure_logging(directory=tmp_path, level=logging.DEBUG)
+    download = DownloadManager(repository, entry_point=a_worker_that_really_runs_ytdlp)
+
+    try:
+        download.start("job-1")
+        deadline = time.monotonic() + 120
+        while time.monotonic() < deadline and not download.is_idle:
+            qapp.processEvents()
+            time.sleep(0.05)
+
+        job_log = app_logging.job_log_path("job-1", tmp_path)
+        deadline = time.monotonic() + 60
+        while time.monotonic() < deadline and "example.invalid" not in _read(job_log):
+            qapp.processEvents()
+            time.sleep(0.05)
+        for handler in logging.getLogger("tracksandtrails").handlers:
+            handler.flush()
+        written = _read(job_log)
+    finally:
+        quiet_the_logging()
+
+    assert written, f"job-1 has no log at all. Cache tree: {sorted(tmp_path.rglob('*'))}"
+    assert "example.invalid" in written, (
+        "yt-dlp ran and said nothing this job's log kept. If the file exists and is empty, the "
+        f"bridge is logging below the handler's level. Written:\n{written}"
+    )
+    assert "yt-dlp" in written, "the session header a bug report needs is missing"
+    # yt-dlp's own words, not a paraphrase of them (`NFR-006`).
+    assert "ERROR:" in written or "Unable to download" in written, (
+        f"the log holds no diagnostic from yt-dlp itself. Written:\n{written}"
+    )
+    assert "Proxy map:" not in written and "params:" not in written, (
+        "verbose is enabled; it dumps values this application supplied (DAT-003, first row)"
+    )
+
+
+def _read(path: Path) -> str:
+    try:
+        return path.read_text("utf-8", errors="replace")
+    except OSError:
+        return ""

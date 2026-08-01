@@ -2343,3 +2343,83 @@ policy here is about *when*, not *where*.
   cost of starting over.
 - Changing the policy is one tuple. Anything that adds a second constant beside it should be
   treated as reintroducing the disagreement this entry exists to prevent.
+
+---
+
+## DAT-004 — Log redaction is provenance-aware: exact values always, shape rules only on our own lines
+
+**Status:** **Proposed** (2026-08-01) — implements `DAT-003` as amended by `T-049` in the logging
+layer. **Not a new boundary**; it is the first place the amended boundary had to be built, and it
+changes observable behaviour, so it is recorded rather than left in a commit message.
+**Date:** 2026-08-01
+**Implements:** `DAT-003` (2026-07-26) and its `T-049` amendment (2026-07-30).
+**Touches:** one sentence of `DAT-003`'s original *Consequences*; see below.
+
+### Context
+
+`T-084` has an acceptance criterion that names both directions of the boundary and says why:
+
+> a value this application supplied does not reach the log, **and** a cookie path yt-dlp emitted
+> inside a diagnostic is still there, character for character. One test each. A gate that only
+> proves the first would pass an implementation that scrubs everything, which is the failure
+> `DAT-003` records twice.
+
+`T-038` redacted every log line by **shape** — patterns for URLs, proxy userinfo, cookie headers and
+cookie paths. That satisfies the first direction and fails the second: a path yt-dlp itself named
+matches `_COOKIE_PATH` and is removed, which is exactly the "scrubs everything" implementation
+`DAT-003` records two failed attempts at.
+
+### Decision
+
+**Redaction asks who wrote the line.**
+
+| The line was written by | Registered exact secrets | Pattern rules |
+|---|---|---|
+| This application | Removed | **Applied** |
+| A third party (yt-dlp) | Removed | **Not applied** |
+
+Mechanically: a `logging` filter stamps `THIRD_PARTY_FIELD` on records from the bridge yt-dlp writes
+through, and `RedactingFormatter` reads it. Nothing infers provenance from the text.
+
+### Rationale
+
+- **It is `DAT-003`'s own boundary, applied where it had not been.** The amendment states the rule
+  as *"binds on **who put the value there**, not on what the value looks like"*. A shape-based
+  formatter is the thing that sentence rules out.
+- **The guarantee that survives is one-directional, and deliberately so.** What this application
+  supplies never reaches a log; **nothing is claimed about what a diagnostic may contain**. That is
+  the only form two failed recognisers did not already disprove.
+- **Exact values still bind everywhere**, including inside third-party prose, because there is
+  nothing to be wrong about in an exact string this application is holding.
+
+### The sentence this touches
+
+`DAT-003`'s original *Consequences* says *"`T-038` still owns log redaction, and its scope is
+unchanged — logs are written by this application, so the supplied-value rule binds there in full."*
+
+Read precisely, that says the **supplied-value rule** binds fully in logs — which is exactly the
+first row above and is preserved. It does not say every value is removed regardless of provenance,
+and reading it that way contradicts the amendment written four days later. **This entry adopts the
+narrow reading and says so, rather than relying on it silently.**
+
+### Consequences
+
+- Text yt-dlp emits now reaches a job log intact where it previously did not. That is the point, and
+  it is a widening of what a log can contain.
+- **`DAT-003`'s reopening clause is now live and is not settled here.** It names *"a bug report
+  attaching it"* as a trigger, and `T-084` ships a Copy-diagnostics button whose whole purpose is
+  that. The copied text is the file verbatim; no second, more-scrubbed rendering was invented,
+  because that would be writing a specification rather than implementing one. **A maintainer ruling
+  is owed on whether the clipboard path should differ from the file.**
+- If the answer is that it should, the seam already exists: `redact(text, third_party=...)` is one
+  call, and the view is the only caller that would pass a different flag.
+
+### Alternatives considered
+
+- **Keep shape-based redaction everywhere** — rejected: fails `T-084`'s second direction, and is the
+  implementation `DAT-003` records failing twice.
+- **Drop redaction for third-party lines entirely** — rejected: a supplied secret quoted back inside
+  a diagnostic would survive. A mutation doing exactly this is in the battery and is killed.
+- **Infer provenance from the logger name at format time** — rejected: the same string then means
+  different things depending on a name a future refactor may change. A record attribute set at the
+  source is the fact, not a proxy for it.
