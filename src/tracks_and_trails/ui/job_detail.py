@@ -704,7 +704,11 @@ class JobProgressView(QWidget):
         if self._status is JobStatus.CANCELLED:
             # A cancellation is shown as one, and never as an error (`ARCHITECTURE.md` §7). The
             # worker's own words are used when it managed to send them, because they are the
-            # evidence that the cooperative path ran and left partial files in a known state.
+            # evidence that the cooperative path ran.
+            #
+            # *(This ended "and left partial files in a known state". `T046-R1` moved the download
+            # into a staging directory that is discarded whatever the outcome, so a cancelled job
+            # leaves no partial file at all — `T046-R3`.)*
             spoken = failure[1] if failure is not None else ""
             self._error.setText(spoken or CANCELLED_TEXT)
             self._error.setVisible(True)

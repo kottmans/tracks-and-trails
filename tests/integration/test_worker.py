@@ -22,7 +22,7 @@ from typing import Any
 import pytest
 
 from tracks_and_trails.core.errors import ErrorKind
-from tracks_and_trails.core.models import DownloadRequest, MediaKind
+from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.core.paths import UnsafePathError, is_contained, safe_output_path
 from tracks_and_trails.downloader import worker as worker_module
 from tracks_and_trails.downloader.environment import FfmpegReport, ytdlp_candidates
@@ -1586,6 +1586,125 @@ def test_a_postprocessor_that_changes_the_extension_never_overwrites_an_existing
     assert Path(succeeded.output_path).suffix == ".mp3", (
         "the claimed name kept the template's extension rather than the one that was produced"
     )
+
+
+def test_an_audio_request_previews_the_extension_it_will_actually_produce(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T046-R2`: the case that made the preview lie, now derived exactly.
+
+    `%(ext)s` renders the *pre-conversion* container, so an MP3 request previewed `Clip.webm` and
+    wrote `Clip.mp3`. `preferredcodec` names the output outright, so this one is derivable — and
+    deriving it for the **preview** is right even though `T046-R1` established that deriving it for
+    the **claim** is not.
+    """
+    info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "webm", "format_id": "webm"}
+    resolved = worker_module._import_ytdlp(ytdlp_candidates(None))
+    request = request_for(
+        tmp_path,
+        format_selector="bestaudio",
+        media_kind=MediaKind.AUDIO,
+        audio_codec=AudioCodec.MP3,
+    )
+    preview = worker_module.preview_path(request, dict(info), resolved)
+
+    assert preview.suffix == ".mp3", (
+        f"preview promised {preview.name!r}; an MP3 request converts, and %(ext)s renders the "
+        "container that arrives rather than the one that is kept"
+    )
+    assert not worker_module.preview_is_provisional(request), (
+        "an audio request's container is named by preferredcodec and is not a guess"
+    )
+
+    # An audio request converts, so it needs ffmpeg — refusing it is `T-061`'s gate doing its job
+    # and would leave nothing to compare the preview against.
+    ffmpeg = tmp_path / "ffmpeg"
+    ffmpeg.write_text("#!/bin/sh\n", encoding="utf-8")
+    monkeypatch.setattr(
+        worker_module, "find_ffmpeg", lambda **_: FfmpegReport(path=ffmpeg, source="for the test")
+    )
+    monkeypatch.setattr(worker_module, "_extract", fake_extract(info, produces="Clip.mp3"))
+    monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: tmp_path / "Clip.webm")
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(SessionKind.DOWNLOAD, "job-1", request, queue)
+
+    succeeded = next(m for m in drain(queue) if isinstance(m, Succeeded))
+    assert succeeded.output_path == str(preview), (
+        f"preview promised {preview.name!r}, but the completed download was "
+        f"{Path(succeeded.output_path).name!r}"
+    )
+
+
+def test_an_original_audio_request_previews_the_container_it_arrives_in(
+    tmp_path: Path,
+) -> None:
+    """`ORIGINAL` carries yt-dlp's `best`, which means **keep the source codec** — not convert.
+
+    Substituting an extension for it would render `Clip.best`, which is not a file anybody gets.
+    Found by mutation: removing the `ORIGINAL` guard survived, because every other preview test
+    either asks for MP3 or is not an audio request at all.
+    """
+    info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "webm", "format_id": "webm"}
+    resolved = worker_module._import_ytdlp(ytdlp_candidates(None))
+    request = request_for(
+        tmp_path,
+        format_selector="bestaudio",
+        media_kind=MediaKind.AUDIO,
+        audio_codec=AudioCodec.ORIGINAL,
+    )
+
+    preview = worker_module.preview_path(request, dict(info), resolved)
+
+    assert preview.suffix == ".webm", (
+        f"preview promised {preview.name!r}; ORIGINAL keeps the source container, so the rendered "
+        "extension was already right and nothing should have been substituted"
+    )
+
+
+def test_an_audio_request_is_exact_even_with_a_merging_selector(tmp_path: Path) -> None:
+    """Extraction decides the container whatever the selector did, so it is not a guess.
+
+    The selector may merge streams; `preferredcodec` then converts the result, so the output is
+    named by the request either way. Without this the audio branch of `preview_is_provisional` is
+    unreachable by any test — a mutation deleting it survived, because every other audio fixture
+    uses a selector with no `+` in it and reaches the same answer by the other route.
+    """
+    merging_audio = request_for(
+        tmp_path,
+        format_selector="bestvideo+bestaudio",
+        media_kind=MediaKind.AUDIO,
+        audio_codec=AudioCodec.MP3,
+    )
+
+    assert not worker_module.preview_is_provisional(merging_audio), (
+        "an MP3 request was called provisional because its selector merges; extraction converts "
+        "whatever the merge produced, so preferredcodec still names the output"
+    )
+
+
+def test_a_merging_request_says_its_preview_is_provisional(tmp_path: Path) -> None:
+    """The residual `REQ-011`'s amendment covers (2026-08-01, maintainer).
+
+    When yt-dlp merges a separate video and audio stream it chooses the container by its own
+    rules, which are not derivable from the request. `T-046` rejected predicting a name to reserve
+    against; showing that same prediction as a promise is the identical mistake one field over. So
+    the preview is **labelled** rather than quietly wrong.
+    """
+    info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "webm", "format_id": "137"}
+    resolved = worker_module._import_ytdlp(ytdlp_candidates(None))
+
+    merging = request_for(tmp_path, format_selector="bestvideo+bestaudio")
+    single = request_for(tmp_path, format_selector="best")
+
+    assert worker_module.preview_is_provisional(merging), (
+        "a merging selector's container is yt-dlp's to choose, so the preview cannot promise it"
+    )
+    assert not worker_module.preview_is_provisional(single), (
+        "a single progressive format is written as downloaded; nothing can change its container"
+    )
+    # And the path is still shown either way — provisional means labelled, not withheld.
+    assert worker_module.preview_path(merging, dict(info), resolved).name.startswith("Clip")
 
 
 def test_two_downloads_converting_to_one_name_get_two_files(

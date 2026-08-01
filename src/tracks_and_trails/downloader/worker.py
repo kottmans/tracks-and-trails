@@ -55,7 +55,7 @@ from pathlib import Path
 from typing import Any, Final, Protocol
 
 from tracks_and_trails.core.errors import ErrorKind, FailureDetail
-from tracks_and_trails.core.models import DownloadRequest
+from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.core.paths import (
     UnsafePathError,
     escapes_directory,
@@ -1007,16 +1007,77 @@ def as_literal_template(path: Path) -> str:
     return str(path).replace("%", "%%")
 
 
+def postprocessed_name(target: Path, request: DownloadRequest) -> Path:
+    """`target` under the extension the postprocessor chain will actually produce (`T046-R2`).
+
+    **For the preview, and never for the claim.** `T046-R1` established that predicting the final
+    name is not safe to *reserve* against — a wrong prediction overwrites somebody's file. It is
+    exactly the right thing to *display*: `%(ext)s` renders the pre-conversion container, so an MP3
+    request previewed `Clip.webm` and produced `Clip.mp3`, and `REQ-011` asks for a preview of the
+    resulting path. Rejecting a prediction for safety and then silently showing it anyway would
+    have been the broken promise `T-046` exists to prevent, one field over.
+
+    The extension is `preferredcodec`, which is the same value `build_postprocessors` hands
+    `FFmpegExtractAudio` — read from the request rather than mapped, so the two cannot drift.
+
+    **`ORIGINAL` is not a conversion.** It carries yt-dlp's `best`, which means *keep the source
+    codec*; the container is whatever was downloaded, so the rendered extension is already right
+    and nothing is substituted.
+
+    **What this does not model, stated:** an arbitrary entry in `request.post_processors` that
+    changes the container — a remux or recode — is not derivable from the request alone, and this
+    returns the unchanged name for it. Phase 2 exposes no such option; `REQ-010` and `T-109` are
+    where the general case belongs, and `T-109` already owes this surface a sidecar audit.
+    """
+    if request.media_kind is not MediaKind.AUDIO:
+        return target
+    if request.audio_codec is AudioCodec.ORIGINAL:
+        return target
+    return target.with_suffix(f".{request.audio_codec.value}")
+
+
+def preview_is_provisional(request: DownloadRequest) -> bool:
+    """Whether `preview_path`'s container can still change before the file lands (`T046-R2`).
+
+    **`REQ-011` amended, 2026-08-01 (maintainer).** The requirement asks for a preview of *the
+    resulting path*, and for one class of request this module cannot honestly promise it: when
+    yt-dlp merges a separate video and audio stream it chooses the container itself by rules that
+    are not derivable from the request. `T-046` established that a prediction is unsafe to reserve
+    against; the same honesty applies to showing it. So the preview is labelled rather than
+    silently wrong, and the UI says *intended path* for these.
+
+    **Audio extraction is not provisional**, because `preferredcodec` names the output container
+    outright — that case is derived exactly by `postprocessed_name`.
+
+    Phase 3 widens this: `REQ-010`'s remux and recode are container choices the request *will*
+    carry, and `T-112` owns making the preview equal the write once they exist.
+    """
+    if request.media_kind is MediaKind.AUDIO and request.audio_codec is not AudioCodec.ORIGINAL:
+        return False
+    # A merging selector is the case yt-dlp decides for itself. `+` is its own syntax for it
+    # (`REQ-009`), which is why the selector is read rather than the resolved format: this is
+    # answered *before* the download, and nothing has resolved anything yet.
+    return "+" in request.format_selector
+
+
 def preview_path(request: DownloadRequest, info: dict[str, Any], resolved: ResolvedYtdlp) -> Path:
     """The path a download *would* write (`REQ-011`).
 
     Deliberately the same code as the real thing rather than a parallel implementation: a
     preview computed differently from the write is a preview that will eventually lie.
+
+    **Including the extension a postprocessor will produce** (`T046-R2`). `_validated_target`
+    renders `%(ext)s`, which is the *pre-conversion* container — so an MP3 request previewed
+    `Clip.webm` and wrote `Clip.mp3`. The download claims the name it actually produced and never
+    trusts this prediction; the preview's job is to be accurate about what the user will see.
     """
     from tracks_and_trails.downloader import ytdlp_adapter as adapter
 
     return free_output_path(
-        _validated_target(Path(request.output_directory), request, adapter, resolved, info)
+        postprocessed_name(
+            _validated_target(Path(request.output_directory), request, adapter, resolved, info),
+            request,
+        )
     )
 
 

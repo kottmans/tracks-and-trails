@@ -85,7 +85,7 @@ residue and blocks the first public release.
 - **REQ-008** — Allow selecting specific format IDs directly from the format table (`REQ-003`), including a separate video and audio stream to be merged.
 - **REQ-009** — Allow entering a **raw yt-dlp format selector string** as an escape hatch, with the effective selector always visible for any preset so users can learn the syntax.
 - **REQ-010** — Support post-processing options: extract/convert audio to a chosen codec and quality, remux/recode container, embed thumbnail, embed metadata, embed chapters, embed or write subtitle files (with language selection).
-- **REQ-011** — Support output path and filename control via a configurable output template, with a live preview of the resulting path for the current item.
+- **REQ-011** — Support output path and filename control via a configurable output template, with a live preview of the resulting path for the current item. **Where the final container is yt-dlp's to choose, the preview is labelled as the *intended* path rather than presented as the resulting one** (amended 2026-08-01, maintainer decision, `T046-R2`). Audio extraction names its own output through `preferredcodec` and is previewed exactly; a merge of separate video and audio streams is not derivable from the request, and `T-046` established that a predicted name is unsafe to rely on — showing that prediction as a promise is the same mistake one field over. *(This read only "a live preview of the resulting path", which `%(ext)s` cannot honestly deliver for a merge: it renders the container that arrives, not the one that is kept. `REQ-010`'s remux and recode make the choice explicit in the request, and `T-112` owns making preview equal write once they exist.)*
 
 ### Queue and execution
 
