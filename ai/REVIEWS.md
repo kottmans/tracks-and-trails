@@ -7875,3 +7875,100 @@ runtime evidence. T-092 remains both incomplete on its recorded external criteri
 requested on dump provenance/disclosure. The four failing reviewer regressions remain in the
 checkout as correction gates; the passing T-099 assertion-level regression remains as a permanent
 strengthening candidate.
+
+## 2026-08-01 — overnight batch focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Prior review head:** `05e5312`
+**Implementation correction head:** `aff4e87`
+**Review handoff / boundary-record head:** `97f96c0`
+**Correction span:** `05e5312..aff4e87`; one mixed commit carries all six tasks despite its
+`T-046`-only subject and trailer. `97f96c0` records that fact and changes no implementation.
+**Platforms verified:** Linux; Win32 static analysis and a deterministic ctypes failure probe only
+**CI:** no job has executed a step since 2026-07-30 04:08 UTC; no CI evidence is claimed
+**Overall verdict:** **Changes requested**
+
+### Task verdicts
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-046` | **Changes requested** | T046-R1's data-loss path is structurally closed, but T046-R2 reproduces a postprocessor output path that disagrees with the required preview. |
+| `T-081` | **Changes requested** | The direct-start barrier hole is closed, but T081-R4 makes a settled reorder admit and start a different job that had no start intent. |
+| `T-083` | **Approved at `97f96c0`** | T083-R1 is resolved on immediate, deferred/full-pool, PROBE and DOWNLOAD paths. |
+| `T-102` | **Approved at `97f96c0`** | T102-R1 is resolved; both non-UTF-8 shapes return defaults plus a precise problem instead of escaping composition. |
+| `T-087` | **Blocked; changes required before Windows verification** | T087-R1's architectural mismatch is gone, but T087-R2 mishandles `CreateFileW` failure before STARBASE has executed the branch. A-004 and Phase 2 exit criterion 4 remain blocked. |
+| `T-092` | **Blocked; safe correction accepted, task not complete** | T092-R1 is resolved: no dump is uploaded and the metadata report is time-filtered and honest about attribution. T092-R2 leaves the task's upload criterion inconsistent with that safe design, and the three machine-dependent criteria remain unmet. |
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T046-R2` | **High** | **Yes — T-046** | Postprocessed path preview | The actual-name claim fixes overwrite safety by discovering the final path after extraction (`worker.py:453-488`), but `preview_path()` still renders the pre-postprocessor target (`:1010-1020`). The reviewer fixture previews `Clip.webm`, has the postprocessor produce `Clip.mp3`, and receives success for `Clip.mp3`. This directly fails T-046's criterion that collision resolution is visible in the REQ-011 preview and the existing `preview_path()` contract that it names the path the download would write. Rejecting a predicted name for the **claim** is sound; silently predicting a different name for the **preview** is still a broken promise. | Keep the actual-file atomic claim, but reconcile preview semantics explicitly. Either derive an accurate displayed final path without trusting it for safety, or obtain an authorised requirement/task amendment and make the UI/API label the path as provisional. Retain the extension-changing regression; the existing same-extension preview test is not sufficient. | **Open** |
+| `T081-R4` | **High** | **Yes — T-081** | Reorder admission intent | `_settle_reorder()` calls `_admit_reordered()` whenever anything is waiting, and that helper adds every named `QUEUED` or `READY` row (`manager.py:710-753`). A held-reorder regression parks the only explicit start for `requested`, puts a recovered `QUEUED` row first, settles, and observes `recovered` occupying the pool while `requested` remains waiting. Reordering admitted work is not itself permission to start every persisted row; startup recovery deliberately leaves queued rows dormant. This can begin an unattended download for a different job. The reviewer's earlier direct-start regression caused this rule by incorrectly demanding job-2 after only job-1 was started; that assertion is corrected in the checkout. | Preserve the set and operation kinds of already admitted intents across the barrier, then use the new durable positions only to order that set. Do not promote other reordered rows into `_waiting`. Test two already-waiting jobs for new-order selection separately from one explicitly waiting job plus dormant `QUEUED`/`READY` rows. | **Open** |
+| `T087-R2` | **High** | **Yes — T-087 / A-004** | Windows `CreateFileW` wrapper | `CreateFileW` correctly uses share mode zero, but failure returns pointer-sized `INVALID_HANDLE_VALUE`. With `restype = wintypes.HANDLE`, ctypes returns the pointer value as a Python integer; on 64-bit Windows that is `18446744073709551615`, not `-1`. The check at `instance_lock.py:192-209` therefore falls through to `msvcrt.open_osfhandle()` instead of raising the `OSError` that `acquire()` converts to `AlreadyRunningError`. A deterministic branch probe supplied that exact pointer and observed it passed through, ending in `OverflowError`. The wrapper also reads `ctypes.get_last_error()` from `ctypes.windll`, which was not loaded with `use_last_error=True`, so its claimed Windows error code is not reliably captured. | Compare against `wintypes.HANDLE(-1).value` (or use `errcheck`), define the API prototype completely, and retrieve the actual last error via a `use_last_error=True` binding or direct `GetLastError`. Audit raw-handle cleanup if descriptor conversion fails and pass the non-inheritable flag. Then execute first acquisition, simultaneous refusal and killed-holder recovery on STARBASE. | **Open — code correction plus external evidence** |
+| `T092-R2` | **Medium** | **Yes — T-092 completion** | Current task contract | The correction safely uploads metadata only, but current `TASKS.md:1042-1062` still scopes and requires uploading the dump, and `:1079-1094` still describes that copy as the prepared implementation. The appended correction says the opposite. T-092 can no longer meet its own current acceptance table without reintroducing T092-R1's disclosure defect. | Obtain the maintainer/Planner's explicit metadata-only scope decision and rewrite T-092's current scope, criterion and state table to match it. Keep the old unsafe proposal only as clearly superseded history. | **Open — decision required** |
+| `T046-R3` | **Low** | **No** | Cancellation documentation | The Phase 2 behavior change itself is acceptable: cooperative cancellation is proved by the worker's own message and staging leaves neither a complete nor partial file. However, current manager and UI comments still say partial files survive in a known state, and `remove()` says a cancelled partial is the user's to delete (`manager.py:646-649`, `:1227-1229`, `:1958-1961`; `job_detail.py:703-708`). Those claims are now false. | Correct current source documentation with the behavior change; let T-113 decide future resumable-partial lifetime rather than preserving the old Phase 2 claim. | **Open — non-blocking** |
+
+### Focused correction disposition
+
+| Prior finding | Result |
+|---|---|
+| `T046-R1` | **Resolved.** Each job downloads in a private same-filesystem staging directory; the actual produced basename is claimed with `O_CREAT | O_EXCL` before `os.replace`. The real yt-dlp/ffmpeg existing-MP3 regression passes and the original bytes survive. The three successful fakes now write what they report. |
+| `T081-R1` | **Resolved as originally stated.** Public DOWNLOAD starts now park behind the reorder counter, PROBE remains exempt, and settlement releases refusal and multiple-in-flight paths. T081-R4 is the new admission regression in the settlement policy, not a surviving barrier bypass. |
+| `T083-R1` | **Resolved.** The failed session kind reaches backoff, immediate restart and `_fill_free_slots`; paired PROBE/DOWNLOAD tests pass and the deferred probe remains a probe. |
+| `T102-R1` | **Resolved.** `UnicodeDecodeError` becomes a `SettingsProblem`; the never-raises matrix covers Latin-1 and a truncated multi-byte sequence, and the exact byte offset is asserted. |
+| `T087-R1` | **Resolved.** The source now implements ARC-006's selected exclusive-access-open primitive. T087-R2 concerns the correctness of that wrapper and the task remains blocked on Windows evidence. |
+| `T092-R1` | **Resolved.** Both workflows upload only `reports/crashdumps.txt`; stale dumps are excluded by job start time and the report disclaims executable-name attribution. No `.dmp` enters `reports/`. |
+
+### Review judgments
+
+**Cancellation leaving nothing is acceptable for Phase 2.** REQ-015 requires prompt cooperative
+termination and no partial presented as complete; REQ-017/T-113 owns resumability and partial-file
+lifetime. The worker message is stronger evidence of cooperative unwind than the old `.part`
+assertion once staging is intentionally discarded. The false current comments are T046-R3, not a
+reason to retain an unusable partial.
+
+**The staging design needs a T-109 sidecar audit.** `_discard_staging()` removes everything except
+the single path returned by `_written_path()`. That is correct for temporary conversion inputs and
+embedded thumbnails/subtitles, but a future `embed_subtitles=False` request intentionally produces
+subtitle sidecars. T-109 must claim every user-requested output before cleanup; this is a future
+surface rather than a Phase 2 blocker because no current UI exposes write-only subtitles.
+
+**Removing T-081's clear sweep remains safe.** T-103 discards waiting intent synchronously in
+`cancel()` and `remove()`, before either path can delete the row. The correction introduces no new
+row-deletion path; T081-R4 is an admission-set expansion, not a stale-id cleanup problem.
+
+**T-092's metadata-only response is the safe response to T092-R1.** A timestamp narrows the window
+but cannot attribute a `python.exe` dump to this project, and the report says that. Leaving a full
+heap on STARBASE until deliberate retrieval avoids the disclosure boundary. The remaining problem
+is that current task truth still requires the unsafe upload, so completion needs an authorised
+scope amendment as well as STARBASE execution.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and tree | `05e5312..aff4e87` is the mixed implementation correction; `97f96c0` records the boundary; tree was clean before reviewer tests |
+| `git diff --check 05e5312..aff4e87` and current `git diff --check` | Passed |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **114 files** |
+| `mypy src` | Passed; **36 source files** |
+| `mypy --platform win32 src` | Passed; **36 source files** |
+| Workflow syntax | Both changed YAML files parsed with PyYAML |
+| Focused six-file correction suite, excluding intentional reviewer negatives | **290 passed, 3 deselected** |
+| Real T046-R1 yt-dlp/ffmpeg regression | **Passed**; protected MP3 bytes survived |
+| T046-R2 reviewer regression | **Failed as expected:** preview `Clip.webm`, success `Clip.mp3` |
+| T081-R4 reviewer regressions | **Failed as expected:** `job-2` / `recovered` occupied the slot instead of the sole explicitly started job |
+| Windows invalid-handle probe | **Failed as expected:** pointer value `18446744073709551615` reached `open_osfhandle`, producing `OverflowError` in the probe |
+| Implementer full suite | Reported **1738 passed / 11 skipped / 2 deselected** before reviewer negatives; not rerun by reviewer |
+| CI / Windows runtime | Not run; no CI step executed, and STARBASE evidence remains absent |
+
+### Final disposition
+
+The correction batch is **not approved as a whole**. T046-R1, T081-R1, T083-R1, T102-R1,
+T087-R1 and T092-R1 are independently resolved. T-083 and T-102 are approved at `97f96c0`.
+T-046 and T-081 require another focused High-severity correction for T046-R2 and T081-R4.
+T-087 needs T087-R2 corrected before its already-required STARBASE run. T-092's unsafe upload is
+gone, but the task remains blocked on an authorised metadata-only criterion plus its recorded
+machine evidence. The three reviewer regressions remain in the checkout as failing gates; no
+production source or coordination status was edited by the reviewer.

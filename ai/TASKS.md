@@ -20,16 +20,14 @@ IDs are never reused. Completed tasks move to `ai/archive/` once they bury the l
 `COORD-R5` through `COORD-R11` are seven rounds of a hand-written summary drifting from the file it
 summarises; this one is transcribed from the actual `## ` sections so it starts correct.
 
-- **In Review:** `T-081`, `T-046`, `T-083`, `T-102` and `T-092` — all corrected 2026-08-01 after
-  the batch review and awaiting a focused re-review. **The correction boundary is `05e5312..aff4e87`
-  for all five**, despite that commit's subject and `Task:` trailer naming only `T-046`: the whole
-  tree was staged in one step. The message is pushed and `AGENTS.md` §7 forbids rewriting it, so the
-  per-finding boundary is each entry's `#### Correction, 2026-08-01` section and
-  `ai/handoffs/2026-08-01-corrections.md`. `T-092` is *prepared*, not complete: three of
+- **In Review:** `T-046`, `T-081` and `T-092` — corrected again 2026-08-01 after the focused
+  re-review, awaiting a third pass. Each entry's `#### Correction` sections carry the per-finding
+  detail; `ai/handoffs/` carries the boundaries.
+- **Approved 2026-08-01** at `97f96c0`: `T-083` and `T-102`. At `05e5312`: `T-080`, `T-053`,
+  `T-099`, `T-101`, `T-103`. `T-092` is *prepared*, not complete: three of
   its criteria need `STARBASE`.
 - **Blocked:** **`T-087`**. Its Windows primitive now matches `ARC-006` but has never executed;
   `A-004` stays unverified and **Phase 2 exit criterion 4 is blocked with it**.
-- **Approved 2026-08-01** at `05e5312`: `T-080`, `T-053`, `T-099`, `T-101`, `T-103`.
 - **Ready, and nothing among them waits on anything:** `T-082`, `T-084`, `T-100`, plus `T-074`,
   which blocks nothing. `T-084`'s *approval* waited on `T-053`, which is now approved.
 - **All three Phase 2 planning gates are clear.** `P2PLAN-R2` at `f858da9`; `P2PLAN-R1` and
@@ -95,7 +93,9 @@ here, which is the drift it is written to make visible.)*
 
 ### T-081 — Reorder pending jobs, and clear completed ones
 
-**Status:** **In Review — corrected again 2026-08-01, awaiting re-review.** `T081-R2` and
+**Status:** **In Review — corrected a third time 2026-08-01, awaiting re-review.** `T081-R1`
+is now **Resolved**; `T081-R4` is the finding my *own* correction to it introduced, and is closed
+below. `T081-R2` and
 `T081-R3` are Resolved. **`T081-R1` stayed open** through the first correction — the barrier went
 on `_fill_free_slots` and `_start_when_free` and the public `start()` walked past it, which is the
 untested third path I named in my own handoff. Closed now, with admission re-decided from the
@@ -281,149 +281,34 @@ not a request to start anything.
 | The public start guard swallows probes too | the probe exemption test |
 | A settled reorder does not re-decide admission | the same direct-start regression |
 
----
 
-### T-102 — A settings file that cannot be read says so, instead of reverting in silence
+#### Correction, 2026-08-01 (second) — `T081-R4`, a finding my own fix caused
 
-**Status:** **In Review — corrected 2026-08-01, awaiting re-review.** `T102-R1`: a non-UTF-8
-file escaped as `UnicodeDecodeError` and aborted composition, breaking both `ARC-008` and the
-never-raises contract. Filed 2026-07-31 by `ARC-008`, which decided the
-question `T-078` deferred and `TASKS.md` carried as the last open one. **Eight mutations run; all
-eight killed.**
-*(This read "Ready — filed 2026-07-31 by `ARC-008` … Nothing blocks it".)*
-**Owner:** Implementer
-**Priority:** Medium — the failure it addresses is silent, which is why it has waited; nobody is
-blocked on it
-**Phase:** Phase 2
-**Depends on:** `T-078` (Complete — it wrote `core/settings.py` and the main-window control)
-**Relevant context:** **`ARC-008`** (the decision, its exact reporting boundary, and the two edges
-deliberately left silent), `ARC-007`, `DAT-001`, `AGENTS.md` §7 layering, `core/settings.py`,
-`app.py`'s composition, `ui/main_window.py`
-**Affected surfaces:** `core/settings.py`, `app.py`, `ui/`
-**Risk:** Low — the fallback behaviour does not change; what changes is that it is announced
+**`_admit_reordered` was a product rule I invented to satisfy an assertion that was itself wrong.**
+The reviewer's first direct-start regression demanded that `job-2` start after only `job-1` had been
+requested; I made settlement promote every reordered `QUEUED` or `READY` row into `_waiting` to
+satisfy it. The reviewer has since corrected that assertion and shown what mine cost: **startup
+recovery deliberately leaves queued rows dormant** (`T-014`, `NFR-003`), so a reorder naming one of
+them began an unattended download for a job nobody had asked for.
 
-#### Scope
+Removed entirely. The barrier still delays admission, and the new positions are used only to
+*order* the intents already waiting — which is what `_next_waiting` does with them.
 
-`load()` answers with `Settings()` for four different reasons and says nothing about which. A user
-who hand-edits `settings.toml` — the act `DAT-001` chose the format to invite — and gets the syntax
-wrong sees their concurrency silently revert to 3, with the file still on disk holding what they
-meant. `ARC-008` decided that a file which **exists and cannot be used** reports; a missing one, and
-one that merely omits the value, still do not.
-
-**`ARC-008` holds the table of which case reports.** It is not restated here, because a boundary
-copied into two files is a boundary that will disagree with itself — `COORD-R5` through `COORD-R11`
-are seven rounds of exactly that. Read it there.
-
-**The diagnostic is data, not a dialog.** `core/**` must not import Qt, and `load()` runs in
-composition before the main window exists. So `core/settings.py` returns the report alongside the
-settings and `ui/` presents it, as a modal warning at startup naming the path and the underlying
-reason. The shape of the return is this task's to choose; that it stays importable without a
-display is not.
-
-**`load()` "never raises" survives.** That property is why a broken config file is not a fatal
-state, and `ui/main_window.py.save_geometry` follows the same rule for `window.toml`.
-
-#### Acceptance criteria
-
-- Every row of `ARC-008`'s table is asserted, in both directions — each reporting case produces a
-  report, and each silent case produces **none**. The silent rows are the ones that matter: a
-  missing file and a file that omits the value are the two an over-eager implementation will
-  report, and they are the normal first run and a documented, invited edit
-- The report names the file's path, and the underlying reason where one exists — a `TOMLDecodeError`
-  carries a line and column, and discarding them leaves the user no better off than the silence did
-- `core/settings.py` stays importable and fully testable with no `QApplication` and no display,
-  asserted by the existing layering gate rather than by inspection
-- `load()` still never raises, asserted by driving each failure mode rather than by reading it
-- **The module docstring's "What that gives up, stated" paragraph is deleted**, not amended. It
-  describes behaviour this task removes, and a docstring that outlives its behaviour is the exact
-  finding the Phase 0 reviews returned repeatedly
-- The startup modal is asserted against a real corrupt file through composition, not only at the
-  widget level — the seam where `app.py` carries the report from `load()` to `ui/` is the half that
-  can be wired wrong while both ends pass their own tests
-
-#### Out of scope
-
-- Reporting a clamped out-of-range value (`ARC-008` leaves it silent deliberately, and names it as
-  a reopening condition)
-- Offering to repair, rename or rewrite the broken file. The user's text is theirs; `save()` already
-  overwrites it if they change the setting, and the modal says so
-- Phase 4's settings dialog (`REQ-023`), which is `ARC-008`'s other reopening condition
-
-#### What was built, 2026-08-01
-
-**Evidence.** `ruff check`, `ruff format --check`, `mypy src` and `mypy --platform win32 src`
-clean; full Linux suite green. Eight mutations, all killed, tree hash identical before and after.
-
-**`load()` answers with a `SettingsFile`**, carrying the settings in force and a `SettingsProblem`
-when something was discarded. A pair rather than a bare `Settings`, so a caller cannot read the
-values and stay unaware they are defaults standing in for a file somebody hand-edited wrongly.
-
-**`FileNotFoundError` is caught separately from every other `OSError`.** They were one branch, and
-they are the two most different cases this function has: one is every first run, the other is worth
-interrupting somebody for. Every row of `ARC-008`'s table is asserted in **both** directions — the
-silent rows matter more, because a report that fires on a first run is one nobody reads.
-
-**The words live in `core`, the box lives in `ui/`.** `SettingsProblem.summary` composes the
-sentence so it is testable with no display attached, which is the property the layering rule exists
-to protect; `MainWindow.report_settings_problem` decides only that it appears in a warning box with
-selectable text. Modal is justified by **rarity**, not severity: it fires only when a file that
-exists cannot be used.
-
-**The module docstring paragraph is deleted, not amended** — quoted once inside the note that
-replaces it, because it described behaviour that no longer exists.
+**The lesson is the one worth keeping.** A reviewer assertion is evidence, not a specification: I
+should have questioned an expectation that required inventing a scheduling rule, rather than
+building the rule to make it pass.
 
 | Mutation | Killed by |
 |---|---|
-| A missing file is reported like an unreadable one | the first-run tests, unit and composed |
-| A file that omits the value is reported | the `save()`-promise test |
-| A malformed file falls back silently again | the malformed and composed tests |
-| The parser's position is discarded from the reason | the line-and-column assertion |
-| A non-integer value defaults silently again | the discarded-value test |
-| Clamping starts reporting too | the deliberately-silent edge |
-| The summary stops naming the file | the summary and composed tests |
-| Composition never shows the report | the composed seam |
-
-**One test was wrong and the code was right.** The wrong-shaped-section test first asserted that a
-top-level `queue = 'three'` stayed silent, carried over from a pre-`ARC-008` code comment about
-what is *used*. The decision's table settles what is *reported*: not a table means reported. The
-test was corrected rather than the behaviour.
-
-#### Not covered, stated rather than implied
-
-- **Windows runtime.** Platform-neutral; `mypy --platform win32` clean. No CI job has executed a
-  step since 2026-07-30.
-- **A read-only config directory.** `save()` already swallows `OSError` and that is unchanged, but
-  the combination — an unreadable file the user then cannot fix by saving over it — is not tested.
-
-
-#### Correction, 2026-08-01 — `T102-R1`
-
-**`tomllib` decodes before it parses.** A file saved in another encoding — or truncated mid
-multi-byte sequence by a partial write — raises `UnicodeDecodeError`, which is neither an `OSError`
-nor a `TOMLDecodeError`. It escaped both branches and **aborted composition**: an existing unusable
-settings file stopped the application starting, which is the exact opposite of what `ARC-008` and
-this function's never-raises contract promise.
-
-Treated as another unusable existing file, keeping the codec's own reason and the byte offset —
-they are what tells somebody which editor wrote it and where to look. **The never-raises matrix had
-no encoding case at all**, which is why nothing caught it; it now has two, including a truncated
-emoji.
-
-| Mutation | Killed by |
-|---|---|
-| A non-UTF-8 file escapes as `UnicodeDecodeError` | the encoding tests and the never-raises matrix |
-| The decoding reason loses its offset | the offset assertion, **after correction** |
-
-**One of my assertions was vacuous.** It read `any(ch.isdigit() for ch in reason)` to check the
-offset was present — and `"UTF-8"` satisfies that by itself, so a mutation replacing the whole
-reason survived. It now computes the expected offset and asserts it exactly.
+| Reorder settlement promotes dormant rows again | the recovered-job regression |
 
 ---
 
 ### T-046 — Output path collision policy against the filesystem
 
-**Status:** **In Review — corrected 2026-08-01, awaiting re-review.** `T046-R1` was **Critical
-and real data loss**: the reservation covered the pre-postprocessor name, so an MP3 conversion wrote
+**Status:** **In Review — corrected again 2026-08-01, awaiting re-review.** `T046-R1` is
+**Resolved**; `T046-R2` (the preview) and `T046-R3` (stale comments) are closed below. `T046-R1` was
+**Critical and real data loss**: the reservation covered the pre-postprocessor name, so an MP3 conversion wrote
 over a file the user already had. Corrected below. Reservation is atomic (`O_CREAT | O_EXCL`),
 because `ARC-002` makes the racing writers separate processes and a check-then-create between
 them is the hole itself. Nine mutations run; all nine killed.
@@ -505,73 +390,36 @@ harness. They write now, so a download that produces nothing is correctly a fail
 | Overwrite the destination instead of claiming it | the existing-MP3 and concurrent-pair tests |
 | Leave the staging directory behind | the leftover-directory test |
 
----
 
-### T-083 — Bounded retry with backoff, for network failures only
+#### Correction, 2026-08-01 (second) — `T046-R2` and `T046-R3`
 
-**Status:** **In Review — corrected 2026-08-01, awaiting re-review.** `T083-R1` (High): `_retry_at`
-held only `job_id -> deadline`, so the tick had nothing to say *what* to restart and `start`'s
-default turned a failed metadata **probe** into a `DOWNLOAD` — a transient preview failure began
-writing media nobody had confirmed. Corrected below.
+**`T046-R2`: the preview promised the container that arrives, not the one that is kept.** `%(ext)s`
+renders `webm` and an MP3 request writes `mp3`. Rejecting a prediction for the *claim* was right;
+showing that same prediction as a promise is the identical mistake one field over.
 
-**The bound and the backoff are no longer provisional.** `UX-002` (2026-08-01) ratifies three
-attempts at 2s, 4s and 8s on `NETWORK` only, and `manager.py` cites it in place of the
-awaiting-ratification note. This task's own scope said they "need stating in `DECISIONS.md`, not
-choosing in code" (`AGENTS.md` §4 makes that file the Architect's), and they now are.
-*(This read "complete 2026-07-31, with one decision outstanding … the bound and the backoff are
-provisional" — the second half outlived `UX-002` by a day.)*
-*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`".)*
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** `T-078`
-**Relevant context:** `REQ-018`, `core/errors.py`, `is_retryable`, `T-017`
-**Affected surfaces:** `downloader/manager.py`, `core/`
-**Risk:** Medium — an automatic retry that fires on the wrong class is a loop nobody asked for
+**Derived where derivable, labelled where not.** `postprocessed_name` substitutes
+`preferredcodec` — the same value `build_postprocessors` hands `FFmpegExtractAudio`, read from the
+request so the two cannot drift — so every audio case Phase 2 exposes previews exactly.
+`preview_is_provisional` reports the residual: when a selector merges, yt-dlp picks the container
+by its own rules and no derivation can honestly promise it. **`REQ-011` is amended** (2026-08-01,
+maintainer) so the requirement says what is actually promised, with `T-112` owning preview-equals-
+write once `REQ-010`'s remux and recode make the choice explicit.
 
-#### Scope
+`ORIGINAL` is not a conversion — it carries yt-dlp's `best`, meaning *keep the source codec* — so
+nothing is substituted for it. Both of those were found by mutation rather than by reading.
 
-The taxonomy already distinguishes retryable failures, and `is_retryable` already governs whether
-the progress view offers a Retry control — `DRM_PROTECTED` never reaches it (`SEC-001`,
-`REQ-EXCL-001`). This adds *automatic* retry, and the requirement is narrow: `NETWORK` only.
-
-**The narrowness is the point.** An `UNSUPPORTED_URL` retried on a timer is a request the site
-will refuse identically, forever. The bound and the backoff both need stating in
-`DECISIONS.md`, not choosing in code.
-
-#### Acceptance criteria
-
-- Only `NETWORK` retries automatically, asserted by driving each other kind and observing none
-- The attempt count is bounded, persisted, and visible — a job silently on attempt four is a job
-  whose history the user cannot see
-- Backoff is real and asserted, and a retry never jumps the queue ahead of jobs that have not run
-- Exhausting the bound leaves the job `FAILED` with the *last* error, still manually retryable
-
-#### Out of scope
-
-- Retrying a partially downloaded file from where it stopped (`REQ-017`, Phase 3)
-
-
-#### Correction, 2026-08-01 — `T083-R1`
-
-**`_retry_at` remembered when, not what.** It held `job_id -> deadline`, so the tick had nothing to
-say which operation to restart and `_start_when_free` reached `start`'s default — `DOWNLOAD`. A
-transient failure while *previewing* a URL therefore came back as a download and began writing media
-the user had not confirmed. Every committed retry test started a `DOWNLOAD`, so none could tell.
-
-The failed session's kind is now carried from `_on_session_ended` through the retry and recorded in
-`_intended_kind` for any start that is deferred — behind pause, a slot, a reorder barrier or a
-backoff. `_start_or_report` reads it rather than defaulting.
+**`T046-R3`: three comments claimed partial files survive.** They stopped being true when the
+download moved into a discarded staging directory. Corrected in `manager.remove`,
+`_on_session_ended` and `job_detail`, each quoting what it replaced. The cancel test's assertion had
+already moved to the worker's own message, which is now the **only** evidence the unwind was
+cooperative rather than forced.
 
 | Mutation | Killed by |
 |---|---|
-| The retry forgets which operation failed | the probe-stays-a-probe and no-output tests |
-| A deferred start always resumes as a download | the parked-probe test, **added after it survived** |
-
-**A second path was untested and a mutation found it.** `_perform_due_retries` passes the kind
-explicitly, so a retry that starts *immediately* keeps it either way; a retry parked behind a full
-pool is restarted by `_fill_free_slots`, which has no kind of its own. Every existing test
-exercised only the immediate path.
+| The preview drops back to the pre-conversion extension | the audio preview test |
+| `ORIGINAL` is treated as a conversion | the original-audio test, **added after it survived** |
+| A merging request is not reported provisional | the merging test |
+| Every request is reported provisional | the audio-with-merging-selector test, **added after it survived** |
 
 ---
 
@@ -1057,8 +905,17 @@ workflow.
 - That dump, opened, names a faulting module and address. If it cannot, this task has failed at the
   thing it exists for and says so rather than reporting the keys as success
 - Dump size and retention are bounded and stated; the disk cost on a real machine is named
-- The jobs upload a dump when one exists and stay green when none does — a missing dump is the
-  normal case and must not redden the gate
+- **The jobs report a dump's existence and never upload it** — name, size and timestamp into
+  `reports/crashdumps.txt`, with the dump left on `STARBASE` for deliberate retrieval. Both the
+  "a dump was written" and "no dump" paths stay green: a missing dump is the normal case and must
+  not redden the gate
+  *(**Scope amended 2026-08-01, maintainer decision** — `T092-R2`. This read "upload a dump when
+  one exists". WER is keyed by executable *file name*, so the folder collects any `python.exe`
+  under that account and a full memory dump can carry an unrelated program's heap into a CI
+  artifact; the old wording could not be met without reintroducing `T092-R1`. The narrower
+  alternative — copy the interpreter to a distinct name and key WER to that — is recorded in
+  `docs/WINDOWS_VERIFICATION.md` rather than taken, because it changes how the suite is
+  launched.)*
 - `docs/WINDOWS_VERIFICATION.md` records the configuration, how to undo it, and the disk cost
 
 #### Out of scope
@@ -1076,9 +933,12 @@ workflow.
   elevation, scoped to one executable rather than the whole machine), and `-Remove` undoes it.
 - `docs/WINDOWS_VERIFICATION.md` — why, how to arm it, **how to prove it**, the disk cost, and how
   to undo it.
-- `ci.yml`'s `windows desktop` job and `t074-repeat.yml` both copy any dump into
-  `reports/crashdumps/` before their existing evidence upload. `if: always()` and
-  `continue-on-error: true`, because **no dump is the normal case and must not redden the gate**.
+- `ci.yml`'s `windows desktop` job and `t074-repeat.yml` each stamp their start time and write
+  `reports/crashdumps.txt` naming any dump written **during that run** — and upload no dump at all.
+  `if: always()` and `continue-on-error: true`, because **no dump is the normal case and must not
+  redden the gate**.
+  *(This described copying the dump into `reports/`, which is what `T092-R1` found unsafe. The
+  scope amendment above is the maintainer's, taken 2026-08-01.)*
 - Full dumps (`DumpType 2`) rather than mini, stated with the cost: ~300–600 MB each for a Python
   process with Qt loaded, five kept, so up to ~3 GB. A mini dump routinely lacks the heap the
   faulting address points into, which is the entire question `T-074` is asking.
@@ -1090,7 +950,7 @@ workflow.
 | A deliberately crashed process leaves a dump at a known path | **Unmet.** Nobody has run the script or the crash |
 | The dump names a faulting module and address | **Unmet**, and it is the one that decides whether this task succeeded at all |
 | Dump size and retention bounded and stated | **Met** — in `docs/WINDOWS_VERIFICATION.md` |
-| The jobs upload a dump when one exists and stay green when none does | **Half met.** The steps exist and the YAML parses; no CI job has executed a step since 2026-07-30, so neither branch has run |
+| The jobs **report** a dump and never upload one | **Half met.** The steps exist and both YAML files parse; no CI job has executed a step since 2026-07-30, so neither branch has run |
 | `docs/WINDOWS_VERIFICATION.md` records config, undo and cost | **Met** |
 
 **Why this is filed as prepared rather than done.** `T074-R4` caught this task's predecessor
@@ -1541,6 +1401,13 @@ on a guess, because `docs/UX_SPEC.md` may draw the line differently.
 
 #### Acceptance criteria
 
+- **Every user-requested output is claimed before staging is discarded** (`T046-R3`, reviewer note
+  of 2026-08-01). `T-046`'s staging directory is removed wholesale except the single path
+  `_written_path` returns — correct for conversion inputs and for a thumbnail or subtitle that was
+  *embedded*, and **wrong the moment a request asks for a sidecar it wants kept**:
+  `embed_subtitles=False` with `subtitle_languages` produces `.srt` files beside the media, and
+  today they would be deleted with the directory. No current UI exposes write-only subtitles, which
+  is why this is Phase 3's rather than a Phase 2 blocker — this task is where it stops being safe
 - **Each of the seven produces an observable change in the output file**, asserted on the file —
   not on the options dictionary handed to yt-dlp (`T-077`)
 - Every option that needs ffmpeg is refused before starting when it is absent (`REQ-024`)
@@ -2483,6 +2350,211 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-083 — Bounded retry with backoff, for network failures only
+
+**Status:** **Complete — Approved at `97f96c0`**, 2026-08-01. `T083-R1` is **Resolved** on the
+immediate, deferred/full-pool, PROBE and DOWNLOAD paths. It held only `job_id -> deadline`, so the
+tick had nothing to say *what* to restart and `start`'s default turned a failed metadata **probe**
+into a `DOWNLOAD` — a transient preview failure began writing media nobody had confirmed.
+
+**The bound and the backoff are no longer provisional.** `UX-002` (2026-08-01) ratifies three
+attempts at 2s, 4s and 8s on `NETWORK` only, and `manager.py` cites it in place of the
+awaiting-ratification note. This task's own scope said they "need stating in `DECISIONS.md`, not
+choosing in code" (`AGENTS.md` §4 makes that file the Architect's), and they now are.
+*(This read "complete 2026-07-31, with one decision outstanding … the bound and the backoff are
+provisional" — the second half outlived `UX-002` by a day.)*
+*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`".)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`
+**Relevant context:** `REQ-018`, `core/errors.py`, `is_retryable`, `T-017`
+**Affected surfaces:** `downloader/manager.py`, `core/`
+**Risk:** Medium — an automatic retry that fires on the wrong class is a loop nobody asked for
+
+#### Scope
+
+The taxonomy already distinguishes retryable failures, and `is_retryable` already governs whether
+the progress view offers a Retry control — `DRM_PROTECTED` never reaches it (`SEC-001`,
+`REQ-EXCL-001`). This adds *automatic* retry, and the requirement is narrow: `NETWORK` only.
+
+**The narrowness is the point.** An `UNSUPPORTED_URL` retried on a timer is a request the site
+will refuse identically, forever. The bound and the backoff both need stating in
+`DECISIONS.md`, not choosing in code.
+
+#### Acceptance criteria
+
+- Only `NETWORK` retries automatically, asserted by driving each other kind and observing none
+- The attempt count is bounded, persisted, and visible — a job silently on attempt four is a job
+  whose history the user cannot see
+- Backoff is real and asserted, and a retry never jumps the queue ahead of jobs that have not run
+- Exhausting the bound leaves the job `FAILED` with the *last* error, still manually retryable
+
+#### Out of scope
+
+- Retrying a partially downloaded file from where it stopped (`REQ-017`, Phase 3)
+
+
+#### Correction, 2026-08-01 — `T083-R1`
+
+**`_retry_at` remembered when, not what.** It held `job_id -> deadline`, so the tick had nothing to
+say which operation to restart and `_start_when_free` reached `start`'s default — `DOWNLOAD`. A
+transient failure while *previewing* a URL therefore came back as a download and began writing media
+the user had not confirmed. Every committed retry test started a `DOWNLOAD`, so none could tell.
+
+The failed session's kind is now carried from `_on_session_ended` through the retry and recorded in
+`_intended_kind` for any start that is deferred — behind pause, a slot, a reorder barrier or a
+backoff. `_start_or_report` reads it rather than defaulting.
+
+| Mutation | Killed by |
+|---|---|
+| The retry forgets which operation failed | the probe-stays-a-probe and no-output tests |
+| A deferred start always resumes as a download | the parked-probe test, **added after it survived** |
+
+**A second path was untested and a mutation found it.** `_perform_due_retries` passes the kind
+explicitly, so a retry that starts *immediately* keeps it either way; a retry parked behind a full
+pool is restarted by `_fill_free_slots`, which has no kind of its own. Every existing test
+exercised only the immediate path.
+
+---
+
+### T-102 — A settings file that cannot be read says so, instead of reverting in silence
+
+**Status:** **Complete — Approved at `97f96c0`**, 2026-08-01. `T102-R1` is **Resolved**: both
+non-UTF-8 shapes return defaults plus a precise problem. It had escaped as `UnicodeDecodeError` and aborted composition, breaking both `ARC-008` and the
+never-raises contract. Filed 2026-07-31 by `ARC-008`, which decided the
+question `T-078` deferred and `TASKS.md` carried as the last open one. **Eight mutations run; all
+eight killed.**
+*(This read "Ready — filed 2026-07-31 by `ARC-008` … Nothing blocks it".)*
+**Owner:** Implementer
+**Priority:** Medium — the failure it addresses is silent, which is why it has waited; nobody is
+blocked on it
+**Phase:** Phase 2
+**Depends on:** `T-078` (Complete — it wrote `core/settings.py` and the main-window control)
+**Relevant context:** **`ARC-008`** (the decision, its exact reporting boundary, and the two edges
+deliberately left silent), `ARC-007`, `DAT-001`, `AGENTS.md` §7 layering, `core/settings.py`,
+`app.py`'s composition, `ui/main_window.py`
+**Affected surfaces:** `core/settings.py`, `app.py`, `ui/`
+**Risk:** Low — the fallback behaviour does not change; what changes is that it is announced
+
+#### Scope
+
+`load()` answers with `Settings()` for four different reasons and says nothing about which. A user
+who hand-edits `settings.toml` — the act `DAT-001` chose the format to invite — and gets the syntax
+wrong sees their concurrency silently revert to 3, with the file still on disk holding what they
+meant. `ARC-008` decided that a file which **exists and cannot be used** reports; a missing one, and
+one that merely omits the value, still do not.
+
+**`ARC-008` holds the table of which case reports.** It is not restated here, because a boundary
+copied into two files is a boundary that will disagree with itself — `COORD-R5` through `COORD-R11`
+are seven rounds of exactly that. Read it there.
+
+**The diagnostic is data, not a dialog.** `core/**` must not import Qt, and `load()` runs in
+composition before the main window exists. So `core/settings.py` returns the report alongside the
+settings and `ui/` presents it, as a modal warning at startup naming the path and the underlying
+reason. The shape of the return is this task's to choose; that it stays importable without a
+display is not.
+
+**`load()` "never raises" survives.** That property is why a broken config file is not a fatal
+state, and `ui/main_window.py.save_geometry` follows the same rule for `window.toml`.
+
+#### Acceptance criteria
+
+- Every row of `ARC-008`'s table is asserted, in both directions — each reporting case produces a
+  report, and each silent case produces **none**. The silent rows are the ones that matter: a
+  missing file and a file that omits the value are the two an over-eager implementation will
+  report, and they are the normal first run and a documented, invited edit
+- The report names the file's path, and the underlying reason where one exists — a `TOMLDecodeError`
+  carries a line and column, and discarding them leaves the user no better off than the silence did
+- `core/settings.py` stays importable and fully testable with no `QApplication` and no display,
+  asserted by the existing layering gate rather than by inspection
+- `load()` still never raises, asserted by driving each failure mode rather than by reading it
+- **The module docstring's "What that gives up, stated" paragraph is deleted**, not amended. It
+  describes behaviour this task removes, and a docstring that outlives its behaviour is the exact
+  finding the Phase 0 reviews returned repeatedly
+- The startup modal is asserted against a real corrupt file through composition, not only at the
+  widget level — the seam where `app.py` carries the report from `load()` to `ui/` is the half that
+  can be wired wrong while both ends pass their own tests
+
+#### Out of scope
+
+- Reporting a clamped out-of-range value (`ARC-008` leaves it silent deliberately, and names it as
+  a reopening condition)
+- Offering to repair, rename or rewrite the broken file. The user's text is theirs; `save()` already
+  overwrites it if they change the setting, and the modal says so
+- Phase 4's settings dialog (`REQ-023`), which is `ARC-008`'s other reopening condition
+
+#### What was built, 2026-08-01
+
+**Evidence.** `ruff check`, `ruff format --check`, `mypy src` and `mypy --platform win32 src`
+clean; full Linux suite green. Eight mutations, all killed, tree hash identical before and after.
+
+**`load()` answers with a `SettingsFile`**, carrying the settings in force and a `SettingsProblem`
+when something was discarded. A pair rather than a bare `Settings`, so a caller cannot read the
+values and stay unaware they are defaults standing in for a file somebody hand-edited wrongly.
+
+**`FileNotFoundError` is caught separately from every other `OSError`.** They were one branch, and
+they are the two most different cases this function has: one is every first run, the other is worth
+interrupting somebody for. Every row of `ARC-008`'s table is asserted in **both** directions — the
+silent rows matter more, because a report that fires on a first run is one nobody reads.
+
+**The words live in `core`, the box lives in `ui/`.** `SettingsProblem.summary` composes the
+sentence so it is testable with no display attached, which is the property the layering rule exists
+to protect; `MainWindow.report_settings_problem` decides only that it appears in a warning box with
+selectable text. Modal is justified by **rarity**, not severity: it fires only when a file that
+exists cannot be used.
+
+**The module docstring paragraph is deleted, not amended** — quoted once inside the note that
+replaces it, because it described behaviour that no longer exists.
+
+| Mutation | Killed by |
+|---|---|
+| A missing file is reported like an unreadable one | the first-run tests, unit and composed |
+| A file that omits the value is reported | the `save()`-promise test |
+| A malformed file falls back silently again | the malformed and composed tests |
+| The parser's position is discarded from the reason | the line-and-column assertion |
+| A non-integer value defaults silently again | the discarded-value test |
+| Clamping starts reporting too | the deliberately-silent edge |
+| The summary stops naming the file | the summary and composed tests |
+| Composition never shows the report | the composed seam |
+
+**One test was wrong and the code was right.** The wrong-shaped-section test first asserted that a
+top-level `queue = 'three'` stayed silent, carried over from a pre-`ARC-008` code comment about
+what is *used*. The decision's table settles what is *reported*: not a table means reported. The
+test was corrected rather than the behaviour.
+
+#### Not covered, stated rather than implied
+
+- **Windows runtime.** Platform-neutral; `mypy --platform win32` clean. No CI job has executed a
+  step since 2026-07-30.
+- **A read-only config directory.** `save()` already swallows `OSError` and that is unchanged, but
+  the combination — an unreadable file the user then cannot fix by saving over it — is not tested.
+
+
+#### Correction, 2026-08-01 — `T102-R1`
+
+**`tomllib` decodes before it parses.** A file saved in another encoding — or truncated mid
+multi-byte sequence by a partial write — raises `UnicodeDecodeError`, which is neither an `OSError`
+nor a `TOMLDecodeError`. It escaped both branches and **aborted composition**: an existing unusable
+settings file stopped the application starting, which is the exact opposite of what `ARC-008` and
+this function's never-raises contract promise.
+
+Treated as another unusable existing file, keeping the codec's own reason and the byte offset —
+they are what tells somebody which editor wrote it and where to look. **The never-raises matrix had
+no encoding case at all**, which is why nothing caught it; it now has two, including a truncated
+emoji.
+
+| Mutation | Killed by |
+|---|---|
+| A non-UTF-8 file escapes as `UnicodeDecodeError` | the encoding tests and the never-raises matrix |
+| The decoding reason loses its offset | the offset assertion, **after correction** |
+
+**One of my assertions was vacuous.** It read `any(ch.isdigit() for ch in reason)` to check the
+offset was present — and `"UTF-8"` satisfies that by itself, so a mutation replacing the whole
+reason survived. It now computes the expected offset and asserts it exactly.
+
+---
 
 ### T-053 — Prove concurrent per-job log isolation
 
