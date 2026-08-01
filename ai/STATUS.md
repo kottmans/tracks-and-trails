@@ -86,9 +86,19 @@ it**: six `JobStore` fakes had fallen behind a protocol `T-080` and `T-081` exte
 narrowed across asserts had made three tests unreachable. Both are fixed, and CI now runs plain
 `mypy` as well — a gate nobody runs is not a gate.
 
-**What CI still cannot tell us.** `A-004` and Phase 2 exit criterion 4 remain blocked: `T-087`'s
-Windows *locking* branch runs only on `STARBASE`, and `STARBASE` is offline. `T-092`'s three
-machine-dependent criteria need the same machine.
+**`OPS-005` was amended and nothing is blocked on a machine any more.** Hosted Windows carries the
+Windows gate while `STARBASE` is unreachable — on that entry's own reasoning, which was written when
+the positions were reversed. **`T-087`'s Windows branch has executed**: first acquisition, two
+launches racing, and killed-holder recovery all passed on `check (windows-latest)`, which are its
+three required cases. It needs a review, not a machine. The `windows desktop` job is skipped unless
+`STARBASE_AVAILABLE` is set, because an offline self-hosted runner holds a run at `queued` forever
+rather than failing.
+
+**`17e7ba5` is green on all four hosted jobs** — the first fully successful run since 2026-07-28.
+
+**Two things still wait for `STARBASE`, and neither gates the phase:** `T-092` (arming crash dumps
+is configuration of that machine) and `T-074` (its segfault has only ever been seen there). The
+desktop slice and `OPS-004`'s subjective residue also stay with it, and still block first release.
 
 **Overall state:** Phase 0's five exit criteria were each verified rather than asserted, and the
 evidence is recorded in `IMPLEMENTATION_PLAN.md` §Phase 0 — including a fresh mutation run

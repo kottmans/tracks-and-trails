@@ -180,11 +180,10 @@ them, which is the argument for having built it.)*
 
 **Prerequisites:** Phase 1 approved. `ARC-002` confirmed sound. **Satisfied 2026-07-29.**
 
-**Status: in progress** (2026-08-01). **Eight of thirteen deliverables are built** — six approved,
-two awaiting a third review pass. Three more are Ready, one is Blocked and one is still Proposed.
-**The blocking risk is not code:** exit criterion 4 is blocked on `T-087`, whose Windows branch has
-never executed, and criterion 5 says *on both platforms* while no CI job has executed a step since
-2026-07-30.
+**Status: in progress** (2026-08-01). **Nine of thirteen deliverables are built** — seven approved,
+two awaiting review. Three more are Ready and one is Proposed. **Nothing is blocked on a machine any
+more:** `OPS-005` was amended so hosted Windows carries the gate while `STARBASE` is offline, and
+`17e7ba5` is the first fully green CI run since 2026-07-28.
 
 *(These counts are transcribed from the table below rather than written beside it. `COORD-R5`
 through `COORD-R11` are seven rounds of a hand-written summary drifting from the thing it
@@ -267,7 +266,7 @@ Recorded here because each one changed what a deliverable *is*, not merely how i
 | 1 | Bounded concurrent worker pool, configurable limit (`REQ-013`). **The configuration surface is `ARC-007`**: `settings.toml` via `core/settings.py`, plus one control in the existing main window. The full `REQ-023` settings dialog stays Phase 4 | `T-078`, `T-097` | **Approved** 2026-07-30 (`0f9986f`) |
 | 2 | Queue view: multi-job table, per-job status/progress | `T-079` | **Approved** 2026-07-31 (`da49a51`) |
 | 3 | **Pause and resume are queue-level** (`UX-001`); cancel, retry and remove are per job (`REQ-015` as amended 2026-07-29). *(This read "per-job status/progress, pause/resume/retry/remove", which contradicted the amendment — `P2PLAN-R1`.)* | `T-080` | **Approved** 2026-08-01 (`05e5312`) |
-| 4 | Reordering and clear-completed (`REQ-016`) | `T-081` | **In review** — corrected twice; `T081-R4` was a defect the first correction introduced |
+| 4 | Reordering and clear-completed (`REQ-016`) | `T-081` | **Approved** 2026-08-01 (`eb1bd70`) |
 | 5 | Output-path collision policy against the filesystem (`DAT-002`, `REQ-011`) | `T-046` | **In review** — `T046-R1` was **Critical**: a converted download overwrote the user's file |
 | 6 | Bounded retry with backoff for `NETWORK` failures only (`REQ-018`) | `T-083` | **Approved** 2026-08-01 (`97f96c0`). `UX-002` ratifies 3 attempts at 2s/4s/8s |
 | 7 | History persistence and completed-download records (`REQ-020`) | `T-085`, `T-050`, `T-093` | **Approved** 2026-07-30 |
