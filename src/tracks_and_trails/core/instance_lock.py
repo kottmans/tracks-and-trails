@@ -220,6 +220,14 @@ if sys.platform == "win32":  # pragma: no cover - exercised on STARBASE, not on 
         )
         create_file.restype = wintypes.HANDLE
 
+        # **`CloseHandle` needs its prototype too** (`T087-R3`). An undeclared ctypes export
+        # converts a Python integer as the platform C `int`, which is **narrower than `HANDLE`** on
+        # 64-bit Windows — so the cleanup below could truncate the very handle it exists to
+        # release, leaving the file exclusively open with nothing able to close it.
+        close_handle = kernel32.CloseHandle
+        close_handle.argtypes = (wintypes.HANDLE,)
+        close_handle.restype = wintypes.BOOL
+
         handle = create_file(
             str(path),
             generic_read_write,
@@ -235,12 +243,17 @@ if sys.platform == "win32":  # pragma: no cover - exercised on STARBASE, not on 
             raise ctypes.WinError(ctypes.get_last_error())
 
         try:
-            return msvcrt.open_osfhandle(handle, os.O_RDWR)
+            # **`O_NOINHERIT`, because the CRT descriptor is inheritable by default** (`T087-R3`,
+            # and Python documents it). `ARC-002` spawns a worker process per job; without this the
+            # child inherits the lock descriptor, and the exclusive claim then outlives the
+            # application in whichever worker is slowest to exit — so a relaunch is refused by a
+            # process that has already closed its window.
+            return msvcrt.open_osfhandle(handle, os.O_RDWR | os.O_NOINHERIT)
         except OSError:
             # **The raw handle would otherwise leak, and a leaked handle is a lock nothing can
             # release** — the file would stay unopenable until the process exited, which is worse
             # than failing to take it. Closed before the failure propagates.
-            kernel32.CloseHandle(handle)
+            close_handle(handle)
             raise
 
 else:

@@ -20,7 +20,7 @@ import subprocess
 import sys
 import textwrap
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 import pytest
@@ -73,7 +73,7 @@ def _first_line(process: subprocess.Popen[str], timeout: float = REPORT_TIMEOUT_
     deadline = time.monotonic() + timeout
     assert process.stdout is not None
     while time.monotonic() < deadline:
-        line = process.stdout.readline()
+        line = str(process.stdout.readline())
         if line:
             return line.strip()
         if process.poll() is not None:
@@ -83,7 +83,7 @@ def _first_line(process: subprocess.Popen[str], timeout: float = REPORT_TIMEOUT_
 
 
 @pytest.fixture
-def reap() -> Callable[[subprocess.Popen[str]], None]:
+def reap() -> Iterator[Callable[[subprocess.Popen[str]], None]]:
     """Kill and collect a spawned holder, so no test leaks one into the next."""
     spawned: list[subprocess.Popen[str]] = []
 
@@ -303,14 +303,18 @@ def test_a_failed_descriptor_conversion_closes_the_raw_handle() -> None:
     no descriptor to close it — unopenable until the process exits, which is worse than failing to
     take the lock at all.
     """
-    assert "kernel32.CloseHandle(handle)" in WINDOWS_BRANCH, (
+    assert "close_handle(handle)" in WINDOWS_BRANCH, (
         "a failed descriptor conversion leaks the exclusive handle"
     )
+    # *(This asserted the literal `kernel32.CloseHandle(handle)`, which `T087-R3` showed was the
+    # wrong thing to pin: calling it through an undeclared export truncates the handle on 64-bit
+    # Windows. The typed binding is asserted by
+    # `test_the_closehandle_prototype_keeps_the_handle_pointer_sized`.)*
     # **And it must be reached by the failure that actually happens.** Asserting the call alone
     # passes while it sits under an exception nothing raises — a mutation changing `except OSError`
     # to an unrelated type survived exactly that.
     conversion = WINDOWS_BRANCH[WINDOWS_BRANCH.index("msvcrt.open_osfhandle") :]
-    guard = conversion[: conversion.index("kernel32.CloseHandle(handle)")]
+    guard = conversion[: conversion.index("close_handle(handle)")]
     assert "except OSError:" in guard, (
         f"the CloseHandle cleanup is guarded by {guard.strip().splitlines()[-2:]!r} rather than "
         "OSError, which is what open_osfhandle raises"
