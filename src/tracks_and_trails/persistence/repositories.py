@@ -442,19 +442,36 @@ class JobRepository:
 
         Transitions go through `Job.with_failure`, so the state machine validates every one. A
         status this method cannot legally move to `FAILED` raises rather than being written.
+
+        **One transaction for all of them** (`T-082`). This used to call `update()` per job, and
+        `update()` opens its own transaction — so recovering a queue of twenty left-running jobs
+        was twenty commits, each with its own fsync, on the path that runs *before the window
+        appears*. `T-082`'s criterion names this directly: recovering N jobs must not mean N
+        unbatched writes. The transitions are still validated one at a time; only the commit is
+        shared.
+
+        **Every transition is computed before anything is written.** `with_failure` raises for a
+        status it cannot legally move, and doing that inside the transaction would leave some rows
+        recovered and some not if it ever fired — an application that half-recovers on startup is
+        worse than one that refuses to.
         """
         finished_at = now if now is not None else datetime.now().astimezone()
-        recovered: list[str] = []
-        for job in self.all_jobs():
-            if job.status not in INTERRUPTED_ON_STARTUP:
-                continue
-            failed = replace(
+        pending = [
+            replace(
                 job.with_failure(ErrorKind.INTERRUPTED, _INTERRUPTED_MESSAGE),
                 finished_at=finished_at,
             )
-            self.update(failed)
-            recovered.append(job.id)
-        return recovered
+            for job in self.all_jobs()
+            if job.status in INTERRUPTED_ON_STARTUP
+        ]
+        # No early return for the empty case. `with connection` issues **nothing** when no
+        # statement runs inside it — measured, and a mutation removing the guard survived because
+        # the guard changed no observable behaviour. A branch that saves a commit that was never
+        # going to happen is a claim the code does not earn.
+        with self._connection:
+            for failed in pending:
+                _write_job(self._connection, failed)
+        return [failed.id for failed in pending]
 
 
 #: `history`'s columns, in the order the insert names them. Same reasoning as `_JOB_COLUMNS`:

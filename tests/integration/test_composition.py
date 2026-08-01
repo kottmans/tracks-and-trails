@@ -1240,3 +1240,53 @@ def test_the_lock_is_released_only_after_the_database_is_closed(
     )
     # And the next launch really can start.
     composed(database=database)
+
+
+def test_interrupted_jobs_are_recovered_and_offered_by_the_composed_application(
+    tmp_path: Path,
+    qapp: QApplication,
+    composed: Callable[..., application.Composition],
+) -> None:
+    """`T-082` end to end: **the seam, which is where an offer gets lost.**
+
+    `recover_interrupted` returned its ids all along and composition threw them away, so the
+    recovery was correct and invisible. Nothing below `compose()` is stubbed here — a real
+    database carrying a row left `RUNNING`, the real recovery, and the real dialog.
+    """
+    from tracks_and_trails.core.job_state import JobStatus
+    from tracks_and_trails.core.models import DownloadRequest, Job
+    from tracks_and_trails.persistence import db
+    from tracks_and_trails.persistence.repositories import JobRepository
+
+    database = tmp_path / "library.sqlite3"
+    request = DownloadRequest(
+        url="https://example.invalid/clip",
+        output_directory=str(tmp_path),
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+    )
+    seeded = JobRepository(db.connect(database))
+    seeded.append([Job(id=f"job-{n}", url=request.url, request=request) for n in range(3)])
+    for index in range(3):
+        for status in (JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING):
+            stored = seeded.get(f"job-{index}")
+            assert stored is not None
+            seeded.update(stored.with_status(status))
+    seeded._connection.close()
+
+    composition = composed(database=database)
+
+    dialog = composition.window.findChild(QMessageBox, "interruptedJobsDialog")
+    assert dialog is not None, (
+        "three jobs were left running by an unclean exit and the application started as though "
+        "nothing had happened; the recovery is silent by design and the offer is what REQ-012 "
+        "asks for"
+    )
+    assert "3 downloads were interrupted" in dialog.text()
+
+    # And nothing restarted on its own, which is the other half of the criterion.
+    for index in range(3):
+        job = JobRepository(db.connect(database)).get(f"job-{index}")
+        assert job is not None
+        assert job.status is JobStatus.FAILED
+    dialog.close()

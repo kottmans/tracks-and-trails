@@ -18,7 +18,7 @@ state at all; see `T-007`'s record, where that gap is reported rather than decid
 """
 
 import tomllib
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import Final, cast
 
@@ -831,6 +831,68 @@ class MainWindow(QMainWindow):
         about.setStandardButtons(QMessageBox.StandardButton.Close)
         about.open()
         return about
+
+    def offer_to_retry_interrupted(self, job_ids: Sequence[str]) -> QMessageBox | None:
+        """Offer to restart downloads an unclean exit left in flight (`T-082`, `REQ-012`).
+
+        **An offer, not an action.** `recover_interrupted` has already moved these rows to a
+        retryable failure before anything could read the queue, so nothing is running and nothing
+        will start on its own. `REQ-018` reserves automatic restarts for `NETWORK` failures, and an
+        application that resumed a queue of downloads because the machine crashed would be spending
+        somebody's bandwidth on a decision they never made.
+
+        **"Not now" is the default button.** Enter at startup must not start N downloads — the
+        refusable half of the criterion is only real if refusing is the easier thing to do.
+
+        **The plural is the point** (`T-082`'s scope). One interrupted job was Phase 1's case and
+        the per-job Retry button already covers it; a queue of twelve is this one, and asking the
+        user to open each of them in turn is not an offer.
+
+        Returns `None` when there is nothing to offer, so a clean start shows no dialog at all —
+        and `open()` rather than `exec()` for `report_settings_problem`'s reason.
+        """
+        ids = list(job_ids)
+        if not ids:
+            return None
+
+        box = QMessageBox(self)
+        box.setObjectName("interruptedJobsDialog")
+        box.setWindowTitle(APP_NAME)
+        box.setIcon(QMessageBox.Icon.Question)
+        count = len(ids)
+        box.setText(
+            f"{count} download{'s were' if count != 1 else ' was'} interrupted when "
+            f"{APP_NAME} last closed."
+        )
+        box.setInformativeText(
+            "Nothing has been restarted. Anything already downloaded is still on disk, and these "
+            "downloads are waiting in the queue either way — you can retry them individually at "
+            "any time."
+        )
+        retry_all = box.addButton("&Retry all", QMessageBox.ButtonRole.AcceptRole)
+        later = box.addButton("&Not now", QMessageBox.ButtonRole.RejectRole)
+        box.setDefaultButton(later)
+        box.setEscapeButton(later)
+        retry_all.clicked.connect(lambda: self._retry_each(ids))
+        box.open()
+        return box
+
+    def _retry_each(self, job_ids: Sequence[str]) -> None:
+        """Retry every recovered job, **through the same route the user's own button uses**.
+
+        Not a new bulk path in the manager: one route means the two cannot come to disagree about
+        what a retry is, and `T-080`'s `requeue_at_end` already gives each one a fresh tail
+        position so a recovered job does not jump ahead of one that has never run.
+
+        *(This is N writes for N jobs, which `T-082`'s third criterion forbids for **recovery**
+        specifically — recovery happens before the window exists and the user cannot decline it.
+        This is a retry the user asked for, on the same path as any other. Recorded here because
+        the distinction is worth a reviewer disagreeing with rather than worth hiding.)*
+        """
+        if self._retry is None:
+            return
+        for job_id in job_ids:
+            self._retry(job_id)
 
     def report_settings_problem(self, problem: SettingsProblem) -> QMessageBox:
         """Tell the user their settings file could not be read (`ARC-008`, `T-102`).

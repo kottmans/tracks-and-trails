@@ -533,3 +533,98 @@ def test_clear_finished_is_always_offered_and_asks_once(qapp: QApplication) -> N
     assert action.isEnabled(), "clear-finished needs no selection and must not wait for one"
     action.trigger()
     assert asked == [1]
+
+
+# --- T-082: interrupted jobs are offered, never restarted -------------------------------------
+
+
+def test_a_clean_start_offers_nothing(window: MainWindow) -> None:
+    """No dialog at all when nothing was interrupted, which is every ordinary start."""
+    assert window.offer_to_retry_interrupted([]) is None
+    assert window.findChild(QMessageBox, "interruptedJobsDialog") is None
+
+
+def test_the_offer_names_how_many_and_is_refusable(qapp: QApplication, tmp_path: Path) -> None:
+    """**Explicit and refusable** (`T-082`'s second criterion).
+
+    `Not now` is the default *and* the escape button: Enter or Escape at startup must not begin
+    twelve downloads. Refusing has to be the easier of the two things to do, or the offer is a
+    prompt the user learns to dismiss without reading.
+    """
+    retried: list[str] = []
+    window = MainWindow(geometry_file=tmp_path / "window.toml", retry=retried.append)
+
+    box = window.offer_to_retry_interrupted(["a", "b", "c"])
+
+    assert box is not None
+    assert "3 downloads were interrupted" in box.text()
+    labels = [button.text().replace("&", "") for button in box.buttons()]
+    assert labels == ["Retry all", "Not now"]
+    default = box.defaultButton()
+    assert default.text().replace("&", "") == "Not now"
+    assert box.escapeButton() is default
+
+    assert retried == [], "the offer started downloads merely by being shown"
+    box.close()
+
+
+def test_one_interrupted_job_reads_as_one(qapp: QApplication, tmp_path: Path) -> None:
+    """The plural is the task, so the singular must not read as a bug."""
+    window = MainWindow(geometry_file=tmp_path / "window.toml")
+
+    box = window.offer_to_retry_interrupted(["only"])
+
+    assert box is not None
+    assert "1 download was interrupted" in box.text()
+    box.close()
+
+
+def test_accepting_retries_every_recovered_job_through_the_ordinary_route(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """Through the injected `retry`, which is the same callable the per-job button uses.
+
+    One route rather than a bulk path in the manager: two routes are two things that can come to
+    disagree about what a retry is.
+    """
+    retried: list[str] = []
+    window = MainWindow(geometry_file=tmp_path / "window.toml", retry=retried.append)
+
+    box = window.offer_to_retry_interrupted(["a", "b", "c"])
+    assert box is not None
+    for button in box.buttons():
+        if button.text().replace("&", "") == "Retry all":
+            button.click()
+
+    assert retried == ["a", "b", "c"]
+    box.close()
+
+
+def test_declining_retries_nothing(qapp: QApplication, tmp_path: Path) -> None:
+    """The half of "refusable" that a test which only clicked Retry would never notice."""
+    retried: list[str] = []
+    window = MainWindow(geometry_file=tmp_path / "window.toml", retry=retried.append)
+
+    box = window.offer_to_retry_interrupted(["a", "b"])
+    assert box is not None
+    for button in box.buttons():
+        if button.text().replace("&", "") == "Not now":
+            button.click()
+
+    assert retried == []
+    box.close()
+
+
+def test_a_window_with_no_retry_route_offers_without_raising(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """Composition supplies `retry`; a window built without one is `T-007`'s bare case, and an
+    exception out of a button's slot is printed and swallowed rather than handled."""
+    window = MainWindow(geometry_file=tmp_path / "window.toml")
+
+    box = window.offer_to_retry_interrupted(["a"])
+    assert box is not None
+    for button in box.buttons():
+        if button.text().replace("&", "") == "Retry all":
+            button.click()
+    box.close()

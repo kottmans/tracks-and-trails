@@ -240,7 +240,10 @@ def compose(
     connection = db.connect(database_path)
     # Recovery before anything can read the queue: a row left `RUNNING` by a killed application
     # is not in flight, whatever it says (`T-014`, `NFR-003`).
-    JobRepository(connection).recover_interrupted()
+    # The ids are **kept**, not discarded (`T-082`): recovery is silent by design — it happens
+    # before the window exists and the user cannot decline it — and the *offer* to restart them is
+    # the thing `REQ-012` wants and the thing this list makes possible.
+    recovered = JobRepository(connection).recover_interrupted()
     writer = QueueWriter(open_connection_factory(database_path))
     store = PersistentJobStore(connection, writer)
 
@@ -363,6 +366,13 @@ def compose(
             "settings: %s (%s)", settings_read.problem.reason, settings_read.problem.path
         )
         window.report_settings_problem(settings_read.problem)
+    # After the settings problem, so a user with both sees the one they cannot act on first and the
+    # one they can act on second — an offer buried under a warning gets dismissed with it.
+    if recovered:
+        logging.getLogger("tracksandtrails.app").info(
+            "recovered %d interrupted job(s) on startup", len(recovered)
+        )
+        window.offer_to_retry_interrupted(recovered)
     logging.getLogger("tracksandtrails.app").info("environment: %s", ffmpeg.summary())
 
     #: The statuses that mean a worker holds the job, so the window shows its progress. Not
