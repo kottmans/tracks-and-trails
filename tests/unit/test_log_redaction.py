@@ -14,9 +14,10 @@ dropped the pattern rules — and **no production caller registers anything**, s
 A yt-dlp line echoing the source URL wrote its userinfo password and signed query to the job log
 verbatim, onto a surface with a Copy button.
 
-**`T-084`'s second acceptance criterion is therefore unsatisfiable as written** — it asks that a
-cookie path yt-dlp emitted survive character for character, which accepted `DAT-003` forbids at this
-sink. That conflict is the maintainer's to resolve and is recorded in the task, not settled here.
+**`T-084`'s second acceptance criterion contradicted that and was amended** — ruled 2026-08-01,
+`DAT-003` wins. It asked that a cookie path yt-dlp emitted survive character for character, which
+accepted `DAT-003` forbids at this sink. The amended criterion asserts the **two sinks against each
+other on one value** instead, and `test_the_database_keeps_verbatim_what_the_log_redacts` is it.
 """
 
 from __future__ import annotations

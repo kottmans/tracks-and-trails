@@ -191,8 +191,10 @@ def redact(text: str) -> str:
     provenance-aware and that was `T084-R1`, a Critical — see the note where the provenance flag
     used to be, above `remember_a_secret`.
 
-    The `NFR-006` tension is real: a diagnostic can lose a cookie path it named. That is **the
-    maintainer's to resolve**, not this function's, and `T-084`'s record says so.
+    The `NFR-006` tension is real — a diagnostic can lose a cookie path it named — and it was
+    **ruled on 2026-08-01: `DAT-003` wins.** `T-084`'s contradictory criterion was amended, and
+    `NFR-006`'s promise is kept at the other sink: the database stores the extractor's message
+    verbatim (`T-014`, `DAT-003`).
     """
     for secret in _secrets:
         text = text.replace(secret, REDACTED)
