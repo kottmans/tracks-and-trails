@@ -21,7 +21,11 @@ IDs are never reused. Completed tasks move to `ai/archive/` once they bury the l
 summarises; this one is transcribed from the actual `## ` sections so it starts correct.
 
 - **In Review:** `T-081`, `T-046`, `T-083`, `T-102` and `T-092` — all corrected 2026-08-01 after
-  the batch review and awaiting a focused re-review. `T-092` is *prepared*, not complete: three of
+  the batch review and awaiting a focused re-review. **The correction boundary is `05e5312..aff4e87`
+  for all five**, despite that commit's subject and `Task:` trailer naming only `T-046`: the whole
+  tree was staged in one step. The message is pushed and `AGENTS.md` §7 forbids rewriting it, so the
+  per-finding boundary is each entry's `#### Correction, 2026-08-01` section and
+  `ai/handoffs/2026-08-01-corrections.md`. `T-092` is *prepared*, not complete: three of
   its criteria need `STARBASE`.
 - **Blocked:** **`T-087`**. Its Windows primitive now matches `ARC-006` but has never executed;
   `A-004` stays unverified and **Phase 2 exit criterion 4 is blocked with it**.
