@@ -946,8 +946,12 @@ def test_the_composed_remove_control_updates_the_store_and_the_table(
     assert spin(lambda: composition.store.get("job-2") is None, timeout=60), (
         "the composed Remove action never reached the durable queue"
     )
-    assert "job-2" not in table.model.job_ids(), (
-        "the row was deleted but the composed queue table still shows it"
+    # **Wait on the UI too** — this file's own rule, which this test broke. The store answering
+    # `None` and the view being told are two moments, and asserting the second immediately after
+    # the first is the gap the module docstring is about. It passed until `T-115` gave startup
+    # admission more event traffic to get through, and then failed only in a full run.
+    assert spin(lambda: "job-2" not in table.model.job_ids(), timeout=60), (
+        f"the row was deleted but the composed queue table still shows it: {table.model.job_ids()}"
     )
 
 
@@ -977,8 +981,10 @@ def test_the_composed_clear_control_updates_the_store_and_the_table(
     assert spin(lambda: composition.store.get("job-2") is None, timeout=60), (
         "the composed Clear finished action never reached the durable queue"
     )
-    assert "job-2" not in table.model.job_ids(), (
-        "the finished row was cleared but the composed queue table still shows it"
+    # Wait on the UI, for the reason above and in this file's module docstring.
+    assert spin(lambda: "job-2" not in table.model.job_ids(), timeout=60), (
+        f"the finished row was cleared but the composed queue table still shows it: "
+        f"{table.model.job_ids()}"
     )
 
 

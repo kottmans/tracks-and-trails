@@ -54,6 +54,7 @@ if TYPE_CHECKING:
     from tracks_and_trails.core.instance_lock import InstanceLock
     from tracks_and_trails.downloader.environment import FfmpegReport
     from tracks_and_trails.downloader.manager import DownloadManager
+    from tracks_and_trails.persistence.repositories import JobRepository
     from tracks_and_trails.persistence.store import PersistentJobStore
     from tracks_and_trails.persistence.writer import QueueWriter
     from tracks_and_trails.ui.main_window import MainWindow
@@ -150,6 +151,25 @@ def run(argv: Sequence[str]) -> int:
     return app.exec()
 
 
+def queued_job_ids(repository: JobRepository) -> list[str]:
+    """The ids of jobs left durably `QUEUED`, and **only** those (`T-115`).
+
+    A named function rather than a comprehension inside `compose()` so the filter can be asserted
+    directly. Without one, "admit everything" is invisible in a test: the state machine refuses
+    `FAILED → PROBING` and `COMPLETED → PROBING`, so a filter-less startup produces a burst of
+    rejections and no observable change — the defect hides behind a guard meant for something else.
+
+    **`T081-R4` is why that matters.** Relying on a downstream refusal to keep recovered jobs from
+    restarting unattended is exactly the shape of rule that finding was about. The filter is the
+    guarantee; the state machine is not a substitute for it.
+
+    Read **after** `recover_interrupted()`, so nothing that was in flight is in this list.
+    """
+    from tracks_and_trails.core.job_state import JobStatus
+
+    return [job.id for job in repository.all_jobs() if job.status is JobStatus.QUEUED]
+
+
 def default_output_directory() -> Path:
     """Where downloads go until `core/settings.py` lets the user say otherwise.
 
@@ -244,6 +264,15 @@ def compose(
     # before the window exists and the user cannot decline it — and the *offer* to restart them is
     # the thing `REQ-012` wants and the thing this list makes possible.
     recovered = JobRepository(connection).recover_interrupted()
+    # **Read after recovery, so nothing recovered is in this list** (`T-115`, and `T081-R4`'s
+    # lesson). Recovery moves in-flight rows to `FAILED`; what is left `QUEUED` is work the user
+    # asked for and this application never started — a queue closed while it was still going, or
+    # added to and then closed. Those are admitted below, once the manager exists.
+    #
+    # An enumeration on the GUI thread, which `ARC-005` allows only because this is startup: it
+    # runs before the writer, the store or the window exist, and `recover_interrupted` has just
+    # walked the same table for the same reason.
+    durable_queued = queued_job_ids(JobRepository(connection))
     writer = QueueWriter(open_connection_factory(database_path))
     store = PersistentJobStore(connection, writer)
 
@@ -373,6 +402,20 @@ def compose(
             "recovered %d interrupted job(s) on startup", len(recovered)
         )
         window.offer_to_retry_interrupted(recovered)
+
+    # **The queue a previous run left behind starts running** (`T-115`). Without this, `admit` on
+    # the add dialog would cover only jobs added in this session, and a user who closed the
+    # application with work still queued would find it inert on the next launch.
+    #
+    # **Nothing recovered is admitted.** `durable_queued` was read after `recover_interrupted`, so
+    # it holds no row that was in flight — starting those unattended is exactly the defect
+    # `T081-R4` filed, and `T-082`'s offer is how a user asks for them instead.
+    for job_id in durable_queued:
+        manager.admit(job_id)
+    if durable_queued:
+        logging.getLogger("tracksandtrails.app").info(
+            "admitted %d job(s) left queued by a previous run", len(durable_queued)
+        )
     logging.getLogger("tracksandtrails.app").info("environment: %s", ffmpeg.summary())
 
     #: The statuses that mean a worker holds the job, so the window shows its progress. Not

@@ -855,6 +855,38 @@ class DownloadManager(QObject):
 
     # --- starting -----------------------------------------------------------------------
 
+    def admit(self, job_id: str) -> None:
+        """Take responsibility for running `job_id` **when the queue can** (`T-115`, `REQ-012`).
+
+        The public counterpart to `start()`, and the difference is the whole point of `T-115`:
+        `start()` **raises** when the pool is full, because its caller asked for a session *now* and
+        deserves to be told it cannot have one. `admit()` expresses durable intent instead — run
+        this when there is room — so a caller adding five URLs to a pool of three does not have to
+        decide which two to drop on the floor.
+
+        Before this existed nothing drained the queue. `_fill_free_slots` drains `_waiting`, which
+        is in-memory and was only ever populated by an internal parking path; `start()` refused at
+        saturation; and the add dialog started only the job it had probed. So five URLs and a limit
+        of three left two `QUEUED` for ever, and five URLs with no probe started nothing at all.
+
+        **Ordering is `queue_position`'s**, through `_next_waiting` — not arrival, and not this
+        call. That is what survives a restart and what the queue view already shows.
+
+        **A paused queue admits and starts nothing** (`UX-001`): `_start_when_free` parks it, and
+        `resume()` drains. Admission is not a start; it is a claim on the next free slot.
+
+        **A row this manager cannot see is reported, not raised.** `start()` raises for it, and is
+        right to: its caller asked for a session on a specific job and a vanished row means their
+        model of the queue is wrong. `admit()` is called from Qt slots — the add dialog's save
+        callback, and composition's startup loop — where an exception is printed and swallowed, and
+        where the row may simply not have landed yet. `start_rejected` is the channel every other
+        refusal already uses and the dialog already listens to.
+        """
+        try:
+            self._start_when_free(job_id, SessionKind.DOWNLOAD)
+        except KeyError as missing:
+            self.start_rejected.emit(job_id, f"this job is not in the queue: {missing}")
+
     def start(self, job_id: str, kind: SessionKind = SessionKind.DOWNLOAD) -> None:
         """Spawn a worker for `job_id` and move it to the status that says a worker holds it.
 

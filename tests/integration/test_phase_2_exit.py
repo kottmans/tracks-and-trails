@@ -114,7 +114,7 @@ from PySide6.QtWidgets import QApplication
 
 from tracks_and_trails import app as application
 
-database, downloads, geometry, settings, *urls = sys.argv[1:]
+database, downloads, geometry, settings, paused, *urls = sys.argv[1:]
 qapp = QApplication([])
 composition = application.compose(
     qapp,
@@ -123,6 +123,10 @@ composition = application.compose(
     geometry_file=Path(geometry),
     settings_file=Path(settings),
 )
+# Pause is a runtime state, not a setting — `app.py` deliberately does not restore it — so a
+# test that wants a paused queue has to ask for one here (`UX-001`).
+if paused == "1":
+    composition.manager.pause()
 dialog = composition.window.open_add_dialog()
 dialog._urls.setPlainText(chr(10).join(urls))
 names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
@@ -156,7 +160,7 @@ from PySide6.QtWidgets import QApplication
 
 from tracks_and_trails import app as application
 
-database, downloads, geometry, settings, *urls = sys.argv[1:]
+database, downloads, geometry, settings, paused, *urls = sys.argv[1:]
 qapp = QApplication([])
 composition = application.compose(
     qapp,
@@ -165,6 +169,10 @@ composition = application.compose(
     geometry_file=Path(geometry),
     settings_file=Path(settings),
 )
+# Pause is a runtime state, not a setting — `app.py` deliberately does not restore it — so a
+# test that wants a paused queue has to ask for one here (`UX-001`).
+if paused == "1":
+    composition.manager.pause()
 dialog = composition.window.open_add_dialog()
 dialog._urls.setPlainText(chr(10).join(urls))
 names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
@@ -289,6 +297,7 @@ def launch(
     geometry: Path,
     concurrency: int,
     urls: list[str],
+    paused: bool = False,
 ) -> tuple[subprocess.Popen[str], int, list[str]]:
     """Start a real application in another interpreter and read its startup handshake."""
     downloads.mkdir(exist_ok=True)
@@ -303,6 +312,7 @@ def launch(
             str(downloads),
             str(geometry),
             str(settings),
+            "1" if paused else "0",
             *urls,
         ],
         stdout=subprocess.PIPE,
@@ -631,8 +641,13 @@ def test_a_hard_kill_mid_queue_restores_every_job_state_at_the_next_start(
         f"every job had started, so this says nothing about the ones that had not: {before}"
     )
     for job_id in never_started:
-        assert after[job_id] is JobStatus.QUEUED, (
-            f"{job_id} had never started and the next start moved it to {after[job_id]}"
+        # **Not `is QUEUED`** — that assertion was correct until `T-115` and is now a race. The
+        # next start *admits* durable queued intent, so by the time this reads the row the job may
+        # legitimately be probing or running. What recovery must never do is treat a job that had
+        # not started as interrupted, and that is what this says.
+        assert after[job_id] is not JobStatus.FAILED, (
+            f"{job_id} had never started and the next start recovered it as interrupted "
+            f"({after[job_id]}) — recovery must only touch rows that were in flight"
         )
 
     # And the user is told, which is `T-082`'s half of the same criterion — asserted here because
@@ -900,10 +915,6 @@ def test_three_real_workers_each_write_their_whole_file(
 # --- what proving the phase found: the queue does not drain -----------------------------------
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="T-115: nothing admits durable QUEUED rows, so jobs beyond the limit never start",
-)
 def test_every_queued_job_eventually_starts_as_slots_free(
     qapp: QApplication, tmp_path: Path, media_url: Callable[..., str]
 ) -> None:
@@ -921,15 +932,18 @@ def test_every_queued_job_eventually_starts_as_slots_free(
     is what admits it. Which of those owns durable admission is the maintainer's design call, and
     the review's own recommendation is a direction rather than an approval.
 
-    **Driven through the user route alone** (`T088-R1`, second round). The other phase tests use a
-    launcher that calls `manager.start()` per job after Add, to prime a pool they then observe. This
-    one must not: with that priming, a change making `start()` park instead of raise would admit
-    every job and turn this `XPASS` while the application still admitted nothing by itself. `Add`
-    is all a user does, so `Add` is all this does.
+    **Driven through the user route alone** (`T088-R1`). The other phase tests use a launcher that
+    calls `manager.start()` per job after Add, to prime a pool they then observe. This one must
+    not: with that priming, a change making `start()` park instead of raise would admit every job
+    and pass this while the application still admitted nothing by itself. `Add` is all a user
+    does, so `Add` is all this does.
 
-    Measured today: **nothing runs at all** on this route, because the dialog starts only a probed
-    job and there is no probe here. That is a sharper reproduction than the priming one — three run
-    and two stall — and it is the shape a user actually meets.
+    **This was `xfail(strict=True)` and is now an ordinary test** — `T-115` is fixed and the marker
+    was removed the moment it reported `XPASS(strict)`, which is the gate working: the promise was
+    that closing `T-115` reddens the build until someone inverts this, and it did.
+
+    Before the fix, on this route, **nothing ran at all** — the dialog started only a probed job and
+    there is no probe here. Five URLs, a limit of three, and zero downloads.
     """
     database = tmp_path / "queue.db"
     urls = [
@@ -965,4 +979,105 @@ def test_every_queued_job_eventually_starts_as_slots_free(
         f"still QUEUED after Add with nothing else done — nothing admits durable queued intent. "
         f"Final: "
         f"{ {k[:6]: v.value for k, v in final.items()} }"
+    )
+
+
+def test_a_queue_left_by_a_previous_run_starts_on_the_next_launch(
+    qapp: QApplication, tmp_path: Path, media_url: Callable[..., str]
+) -> None:
+    """**`T-115`'s restart half**, which the Add route alone cannot reach.
+
+    A user who closes the application with work still queued must not find it inert next time. The
+    in-memory waiting list dies with the process, so durable `QUEUED` intent has to be admitted at
+    startup — and that is the half a dialog-only fix would have missed.
+
+    **Nothing recovered is admitted**, which is the other half of the same seam.
+    `recover_interrupted` moves in-flight rows to `FAILED` before this reads them, so a job that
+    was *running* when the
+    application died is offered for retry (`T-082`) rather than restarted unattended. That was
+    `T081-R4`, and it is why the startup read happens after recovery rather than before.
+    """
+    database = tmp_path / "queue.db"
+    # **A limit of one, and three URLs.** With the limit equal to the URL count every job is
+    # admitted at once and nothing is left `QUEUED` to test — which is how the first version of
+    # this test passed vacuously on its own setup rather than on the behaviour.
+    urls = [media_url(total_bytes=CLIP_BYTES, chunk_delay=0.3) for _ in range(3)]
+
+    # First launch: add, then kill while two are still waiting for the first to finish.
+    process, application_pid, job_ids = launch(
+        ADD_ONLY_AND_WAIT,
+        database=database,
+        downloads=tmp_path / "downloads",
+        geometry=tmp_path / "window.toml",
+        concurrency=1,
+        urls=urls,
+    )
+    reap_application(process, application_pid)
+    left_behind = snapshot(database, job_ids)
+    # The recovery on the *next* launch will move anything in flight to FAILED; what this test is
+    # about is the rows that never started at all.
+    assert any(status is JobStatus.QUEUED for status in left_behind.values()), (
+        f"nothing was left queued, so this says nothing about the next launch: {left_behind}"
+    )
+
+    # Second launch: the same database, and nothing done but starting the application.
+    process, application_pid, _second = launch(
+        ADD_ONLY_AND_WAIT,
+        database=database,
+        downloads=tmp_path / "downloads-second",
+        geometry=tmp_path / "window-second.toml",
+        concurrency=CONCURRENT,
+        urls=[media_url(total_bytes=CLIP_BYTES, chunk_delay=0.05)],
+    )
+    try:
+        left_queued = [
+            job_id for job_id, status in left_behind.items() if status is JobStatus.QUEUED
+        ]
+
+        def the_old_queue_finished() -> bool:
+            found = statuses(database, left_queued)
+            return set(found) == set(left_queued) and all(
+                status is JobStatus.COMPLETED for status in found.values()
+            )
+
+        drained = wait_until(the_old_queue_finished, timeout=120)
+        final = snapshot(database, left_queued)
+    finally:
+        reap_application(process, application_pid)
+
+    assert drained, (
+        f"the previous run's queue was still inert after a restart: "
+        f"{ {k[:6]: v.value for k, v in final.items()} }"
+    )
+
+
+def test_a_paused_queue_admits_and_still_starts_nothing(
+    qapp: QApplication, tmp_path: Path, media_url: Callable[..., str]
+) -> None:
+    """`UX-001`: admission is a claim on the next free slot, **not a start**.
+
+    The risk `T-115` introduces is precisely this — a fix that drains the queue could drain it past
+    a pause, which is the one thing pause exists to stop. Asserted against a real application whose
+    settings pause it before anything is added.
+    """
+    database = tmp_path / "queue.db"
+    urls = [media_url(total_bytes=CLIP_BYTES, chunk_delay=0.3) for _ in range(CONCURRENT)]
+    process, application_pid, job_ids = launch(
+        ADD_ONLY_AND_WAIT,
+        database=database,
+        downloads=tmp_path / "downloads",
+        geometry=tmp_path / "window.toml",
+        concurrency=CONCURRENT,
+        urls=urls,
+        paused=True,
+    )
+    try:
+        # Long enough that an unpaused queue would have started and finished all three.
+        time.sleep(6)
+        while_paused = snapshot(database, job_ids)
+    finally:
+        reap_application(process, application_pid)
+
+    assert all(status is JobStatus.QUEUED for status in while_paused.values()), (
+        f"a paused queue started work: { {k[:6]: v.value for k, v in while_paused.items()} }"
     )

@@ -940,7 +940,22 @@ class AddUrlDialog(QDialog):
         for url, job in fresh:
             self._persisted.record(url, job.id)
 
+        # **Every job just added is admitted, not only the probed one** (`T-115`, `REQ-012`).
+        #
+        # This used to start the probed job and nothing else, which is why a user who pasted five
+        # URLs and pressed Add got at most one download and four rows that sat `QUEUED` for ever.
+        # `admit` expresses intent rather than demanding a session, so a pool of three takes three
+        # and keeps the rest in `queue_position` order until a slot frees.
+        #
+        # The probed job is deliberately excluded here and admitted below instead: its request is
+        # retargeted first (`T-075`), and admitting it now could start it against the preset the
+        # probe happened to be built with.
         probe = self._probe
+        probed_id = probe.job_id if probe is not None else None
+        for _, job in fresh:
+            if job.id != probed_id:
+                self._manager.admit(job.id)
+
         if probe is not None and probe.ready and probe.usable:
             # **The preset is bound here, not at probe time** (`T-075`). `probe()` had to persist
             # a job before asking a worker anything (`REQ-012`), and it built that job from
@@ -963,12 +978,22 @@ class AddUrlDialog(QDialog):
         self.accept()
 
     def _start_probed(self, job_id: str) -> None:
-        """Start the probed job, now that the request it will read is durable (`T-075`)."""
+        """Admit the probed job, now that the request it will read is durable (`T-075`).
+
+        **`admit` rather than `start`** (`T-115`). `start` raises when the pool is full, and this
+        is the one job the dialog most wants queued rather than dropped — the user probed it, so it
+        is the one they were looking at. Admission runs it when there is room and keeps it in
+        `queue_position` order until then.
+
+        The refusal path stays for the errors that are still real: the state machine refusing a
+        transition, or a job that has gone. Those are worth telling the user about; "the pool is
+        busy" no longer is, because it is no longer an outcome.
+        """
         try:
-            self._manager.start(job_id, SessionKind.DOWNLOAD)
+            self._manager.admit(job_id)
         except (RuntimeError, ValueError) as start_error:
-            # The jobs are stored, so nothing is lost by not starting: whatever runs the
-            # queue picks it up. Saying so beats closing on a silent failure.
+            # The jobs are stored, so nothing is lost by not starting. Saying so beats closing on
+            # a silent failure.
             self._status.setText(
                 f"Queued, but the download did not start: {start_error} "
                 "It stays in the queue and can be started from there."

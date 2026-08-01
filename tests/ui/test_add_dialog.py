@@ -1709,8 +1709,11 @@ def test_multi_line_paste_queues_each_url_as_a_separate_job(
     assert [job.url for job in queued] == urls
     assert [job.request.url for job in queued] == urls
     assert len({job.id for job in queued}) == 3
-    assert all(job.status is JobStatus.QUEUED for job in queued)
     assert len({job.queue_position for job in queued}) == 3
+    # **Not "every job is still QUEUED".** That was true only because nothing started them, which
+    # is the defect `T-115` fixed — Add now admits every job it persisted. What this test is about
+    # is one job per line with its own url, request and position; the starting is asserted where it
+    # belongs, in `tests/integration/test_phase_2_exit.py`.
 
 
 def test_the_chosen_preset_reaches_every_queued_job(
@@ -1899,18 +1902,29 @@ def test_a_queued_job_still_starts_at_probing(
     store: FakeStore,
     spin: Callable[..., bool],
 ) -> None:
-    """The second entry point did not replace the first (`ARC-004`)."""
+    """The second entry point did not replace the first (`ARC-004`).
+
+    A job added without a probe enters at **`PROBING`**, not `RUNNING`: nothing is resolved yet, so
+    the session's first act is to extract. That is the property, and it is unchanged.
+
+    **What changed is who starts it.** This used to assert the job sat at `QUEUED` after Add and
+    then call `manager.start()` by hand — an accurate description of the application until `T-115`,
+    which is to say a test that only passed because the queue never drained. Add admits it now, so
+    the transition happens without help and the sequence is asserted instead.
+    """
     manager = managers(entry_point=child_never_returning)
     dialog = dialogs(manager)
     type_urls(dialog, "https://a.invalid/1")
     dialog.add_to_queue()
 
     (job_id,) = dialog.queued_job_ids
-    assert store.jobs[job_id].status is JobStatus.QUEUED
 
-    manager.start(job_id, SessionKind.DOWNLOAD)
-    assert spin(lambda: store.jobs[job_id].status is JobStatus.PROBING)
-    assert store.statuses(job_id) == [JobStatus.QUEUED, JobStatus.PROBING]
+    assert spin(lambda: store.jobs[job_id].status is JobStatus.PROBING), (
+        f"an added job never started on its own; it is {store.jobs[job_id].status}"
+    )
+    assert store.statuses(job_id) == [JobStatus.QUEUED, JobStatus.PROBING], (
+        "the entry point changed: a job added without a probe must enter at PROBING"
+    )
 
 
 # --- 11. accessibility (`NFR-005`) ------------------------------------------------------------

@@ -227,3 +227,43 @@ def test_the_connection_is_still_usable_after_a_refusal(
 
     assert isinstance(repository._connection, sqlite3.Connection)
     assert len(repository.all_jobs()) == 2
+
+
+def test_only_queued_jobs_are_admitted_at_startup(
+    repository: JobRepository, tmp_path: Path
+) -> None:
+    """**`T-115` must not restart what `T-082` recovered** (`T081-R4`).
+
+    Asserted on the filter directly, because through the application it is invisible: the state
+    machine refuses `FAILED → PROBING`, so admitting everything produces rejections and no state
+    change, and a mutation removing the filter survives every end-to-end test. Relying on that
+    refusal is precisely the rule `T081-R4` was filed about.
+    """
+    from tracks_and_trails.app import queued_job_ids
+
+    request = a_request(tmp_path)
+    repository.append(
+        [Job(id=f"job-{n}", url=request.url, request=request) for n in ("queued", "ran", "done")]
+    )
+    # One left in flight and then recovered, as an unclean exit leaves it.
+    for status in (JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING):
+        stored = repository.get("job-ran")
+        assert stored is not None
+        repository.update(stored.with_status(status))
+    repository.recover_interrupted()
+    # And one that finished.
+    for status in (
+        JobStatus.PROBING,
+        JobStatus.READY,
+        JobStatus.RUNNING,
+        JobStatus.POST_PROCESSING,
+        JobStatus.COMPLETED,
+    ):
+        stored = repository.get("job-done")
+        assert stored is not None
+        repository.update(stored.with_status(status))
+
+    assert queued_job_ids(repository) == ["job-queued"], (
+        "startup would admit a job it did not leave queued — a recovered one restarts unattended, "
+        "which is T081-R4"
+    )

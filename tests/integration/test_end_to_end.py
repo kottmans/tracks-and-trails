@@ -343,6 +343,10 @@ def queue_one(
     assert dialog.queued_job_ids, f"the paste never persisted: {dialog.status_text()}"
     job_id = dialog.queued_job_ids[0]
     dialog.close()
+    # **Add already admitted it** (`T-115`). Callers used to follow this with
+    # `manager.start(job_id)`, which was necessary while nothing drained the queue and is now an
+    # error: `start()` refuses a job that is already probing, correctly, because `ARC-004` says a
+    # session begins at `QUEUED` or `READY`.
     return job_id
 
 
@@ -612,7 +616,6 @@ def test_each_preset_produces_the_file_it_promises(
     )
     try:
         job_id = queue_one(composition, hls_media_url(), preset=preset, bitrate=bitrate)
-        composition.manager.start(job_id)
         assert spin(
             lambda: (
                 composition.window.progress_view is not None
@@ -684,7 +687,6 @@ def test_audio_postprocessing_does_not_overwrite_an_existing_final_path(
         protected.parent.mkdir(parents=True, exist_ok=True)
         protected.write_bytes(b"the user's existing mp3")
 
-        composition.manager.start(job_id)
         assert spin(
             lambda: (
                 (stored := composition.store.get(job_id)) is not None
@@ -740,7 +742,6 @@ def test_original_audio_preview_matches_the_real_postprocessor_output(
             info = dict(ydl.extract_info(url, download=False) or {})
         preview = worker.preview_path(job.request, info, resolved)
 
-        composition.manager.start(job_id)
         assert spin(
             lambda: (
                 (stored := composition.store.get(job_id)) is not None
@@ -804,7 +805,6 @@ def test_a_url_becomes_a_file_with_the_bytes_it_reported(
 
     try:
         job_id = queue_one(composition, media_url(total_bytes=CLIP_BYTES, chunk_delay=0.0))
-        composition.manager.start(job_id)
 
         view = composition.window.progress_view
         assert spin(
@@ -888,7 +888,6 @@ def test_a_progressive_download_completes_with_no_ffmpeg_at_all(
             "ffmpeg was available, so this proves nothing about doing without it"
         )
         job_id = queue_one(composition, media_url(total_bytes=CLIP_BYTES, chunk_delay=0.0))
-        composition.manager.start(job_id)
 
         assert spin(
             lambda: (
@@ -940,7 +939,7 @@ while not dialog.queued_job_ids:
     qapp.processEvents()
 job_id = dialog.queued_job_ids[0]
 dialog.close()
-composition.manager.start(job_id)
+# No explicit start: Add admits the job now (`T-115`), and starting it again is refused.
 # `os.getpid()` is this interpreter, which under a Windows venv is *not* the pid Popen returned
 # — that one is the launcher. T072-R1: the test needs the application's own identity to walk
 # from, because a count beneath the launcher cannot tell a worker-less tree from a healthy one.
