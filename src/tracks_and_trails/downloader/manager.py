@@ -95,10 +95,10 @@ from tracks_and_trails.downloader.result_pump import ResultPump
 #: A literal rather than `math.inf` so the key stays `tuple[int, str]` and mypy can check it.
 _UNPLACED: Final = 1 << 62
 
-#: **Provisional, and awaiting a `DECISIONS.md` entry.** `T-083`'s scope says the bound and the
-#: backoff "need stating in `DECISIONS.md`, not choosing in code", and writing that file is not
-#: the Implementer's to do (`AGENTS.md` §4). These are the values the mechanism runs on until the
-#: maintainer ratifies or replaces them; a draft entry accompanies the review handoff.
+#: **Ratified by `UX-002`** (maintainer, 2026-08-01). `T-083`'s scope said the bound and the backoff
+#: "need stating in `DECISIONS.md`, not choosing in code", and they now are: the decision holds the
+#: reasoning, the rejected alternative, and the condition that reopens it. These values are no
+#: longer provisional.
 #:
 #: Seconds to wait before each automatic attempt, indexed by how many have already been spent.
 #: Doubling, so a site that is briefly unreachable is retried quickly and one that is down is not

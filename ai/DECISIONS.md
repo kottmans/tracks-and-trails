@@ -2226,3 +2226,75 @@ this fires only when a file that exists cannot be used, which is never during no
 - **This decision reopens** if Phase 4's settings dialog lands (`REQ-023`), which gives the report a
   natural home other than a startup modal — and separately if clamping proves to surprise anyone,
   which is the edge deliberately left silent above.
+
+---
+
+## UX-002 — Automatic retry is three attempts at 2s, 4s and 8s, on `NETWORK` failures only
+
+**Status:** **Accepted** (2026-08-01) — maintainer decision
+**Date:** 2026-08-01
+**Supersedes:** nothing. **Closes** the provisional marking `T-083` shipped with on 2026-07-31.
+
+### Context
+
+`REQ-018` requires that a failed job stays in the queue and offers retry, and never fails silently.
+It says nothing about *automatic* retry, and `T-083` added it for the one class where a retry can
+plausibly succeed unchanged: `NETWORK`. The narrowness is the point — an `UNSUPPORTED_URL` retried
+on a timer is a request the site will refuse identically, forever, and `DRM_PROTECTED` never
+reaches retry at all (`SEC-001`, `REQ-EXCL-001`).
+
+`T-083` built the mechanism and **deliberately did not choose the numbers**, because its own scope
+said they "need stating in `DECISIONS.md`, not choosing in code" and `AGENTS.md` §4 makes that file
+the Architect's. It shipped them marked provisional with a draft entry. This is that entry.
+
+### Decision
+
+**Three automatic attempts follow the first, waiting 2, 4 and 8 seconds.** Only `NETWORK` failures
+retry automatically.
+
+```
+attempt 1 fails → wait 2s
+attempt 2 fails → wait 4s
+attempt 3 fails → wait 8s
+attempt 4 fails → FAILED, and manual retry only
+```
+
+**The bound is derived from the table, not declared beside it.** `AUTOMATIC_RETRY_LIMIT` is
+`len(RETRY_BACKOFF_SECONDS)`. Two constants written separately can disagree, and the thing that
+would notice is an `IndexError` inside a Qt slot. Changing the policy means changing one tuple.
+
+**Doubling, and starting small.** The failure this exists for is transient — a dropped connection,
+a moment of packet loss — and something that recovers in seconds should be retried in seconds. A
+fourth attempt is evidence the problem is not transient, at which point a person should decide.
+
+**An automatic retry spends an attempt; a manual one does not.** `Job.attempts` counts what the
+queue did unattended, so `with_another_attempt` is called only on the automatic path. A user who
+presses Retry four times is not throttled by a budget that exists to stop a machine looping.
+
+**A retry never jumps the queue.** Automatic retries sort behind jobs that have never run, and
+manual retry re-enters at the tail (`P2PLAN-R7`). Both are `T-080`'s and `T-083`'s to enforce; the
+policy here is about *when*, not *where*.
+
+### Alternatives considered
+
+- **Longer backoff — 5s, 30s, 120s.** Kinder to a site that is genuinely down rather than briefly
+  unreachable. Rejected on what it costs the common case: a job sits visibly idle for over two
+  minutes before its last attempt, against roughly fourteen seconds here, and a user watching a
+  queue cannot tell a long backoff from a hang. Reconsider if real-world failures turn out to
+  cluster on sites that are down rather than connections that blip — that is the reopening
+  condition below, and it wants evidence rather than a preference.
+- **Unbounded retry with a growing delay.** Rejected: `REQ-018` requires the failure be *recorded*
+  and the user offered a retry, which presumes retrying eventually stops.
+- **Retrying every retryable class rather than `NETWORK` alone.** Rejected as `T-083`'s scope
+  already had it: `is_retryable` governs whether a person may retry, which is a different question
+  from whether a machine should.
+
+### Consequences
+
+- `manager.py`'s `RETRY_BACKOFF_SECONDS` loses its provisional marking and cites this entry.
+- **This decision reopens** if failure data shows transient network faults are not the dominant
+  automatic-retry case, or if `REQ-017`'s resume lands in Phase 3 — a retry that resumes a partial
+  download is a different cost from one that starts over, and the backoff was chosen against the
+  cost of starting over.
+- Changing the policy is one tuple. Anything that adds a second constant beside it should be
+  treated as reintroducing the disagreement this entry exists to prevent.
