@@ -93,449 +93,6 @@ both while every status and section agreed. The invariant test cannot see that, 
 written by hand for exactly that reason. It said "Empty as of 2026-07-30" until `T-079` landed
 here, which is the drift it is written to make visible.)*
 
-### T-100 — The history view: what was obtained, after the queue has forgotten it
-
-**Status:** **In Review — complete 2026-08-01.** Seven mutations run; all seven killed, including
-the two this task names. **It releases `T-086`**, the last Phase 2 deliverable that had not started.
-*(This read "Ready — nothing blocks it; `T-085` wrote the table it reads".)*
-**Owner:** Implementer
-**Priority:** Medium — `REQ-021` is a Phase 2 deliverable and cannot be met without it
-**Phase:** Phase 2
-**Depends on:** `T-085` (approved). Independent of `T-078` and the queue view
-**Relevant context:** `P2PLAN-R8` (why this exists), `REQ-020`, `REQ-021`, `UX-001`, `T-050`,
-`T-085`, `T-086`, `persistence/repositories.py` (`HistoryRepository`)
-**Affected surfaces:** `ui/`, `app.py`, `ai/IMPLEMENTATION_PLAN.md`
-**Risk:** Low — read-only over a table that already exists and is already gated
-
-#### Scope
-
-**`P2PLAN-R8`: the history view had no owner in any phase.** Phase 2's deliverables named
-persistence and records; Phase 3 is format and content depth; Phase 4 is settings and polish. None
-of them mentioned it, and `T-050` pointed at a "Phase 3" deliverable that has never existed.
-
-**The reframe that settles where it belongs.** `REQ-020` — *"Maintain a history of completed
-downloads with source URL, title, resolved output path, format used, size, and completion time"* —
-is a **data** requirement, and `T-050` and `T-085` satisfied it. The view is presupposed by
-**`REQ-021`**: *"Open a completed file, or reveal it in the system file manager, from the **history
-and queue views**."* `REQ-021` is a Phase 2 deliverable, so the view it names is Phase 2 work.
-
-**And Phase 2's own features combine into a hole without it.** `UX-001` says remove never deletes a
-file. `T-081` delivers clear-completed. Together, in a Phase 2 with no history view: the user clears
-completed jobs, every file is still on disk, and **the application can no longer say where any of it
-went.** That is not a polish gap; it is this phase's own combination of features losing information
-the user needs.
-
-So: a read-only table over `HistoryRepository.all_entries()`. `T-086` then adds open and reveal to
-it, which is what makes its "history half" dependency real rather than dangling.
-
-#### Acceptance criteria
-
-- **Every field `REQ-020` names is on screen**: source URL, title, resolved output path, format
-  used, size, completion time. Asserted against a row whose fields are all populated, so a column
-  that is never rendered fails rather than being invisible behind a `None`
-- **A completed download appears after its job row is gone.** That is the whole point of the view —
-  drive `T-081`'s clear-completed if it exists by then, or delete the job row directly if it does
-  not, and assert the entry is still listed. `history` carries no foreign key to `jobs`
-  (`T-085` gates that structurally); this asserts the user-visible consequence
-- **Newest first, asserted** — `all_entries()` already orders by `completed_at DESC, id`, and a view
-  that re-sorted or relied on insertion order would disagree with it silently
-- **An empty history says so** rather than presenting a blank table. A user who has downloaded
-  nothing and a view that failed to load look identical otherwise
-- **A null field renders as absence, not as `"None"`.** `title`, `output_path`, `format_used` and
-  `bytes_total` are all nullable by design (`T-085`), and `str(None)` reaching a cell is the defect
-  class `_str_or_none` exists to prevent one layer down
-- Object names and accessible names on the table and its columns (`NFR-005`), following
-  `ui/job_detail.py`'s existing pattern
-- Mutation-checked: removing a column from the view, and reversing the order, each fail
-
-#### Out of scope
-
-- **Open and reveal** — `REQ-021`, and `T-086`'s job. This view is what it acts on
-- Search, sorting by column, filtering, export — `T-085` put these out of scope and nothing has
-  asked for them since
-- Pruning, retention, or any deletion. Nothing in this view removes a record; `REQ-020` is a record
-  of what was obtained
-- Re-downloading from history, and duplicate detection (`REQ-022`, Phase 3)
-
-
-#### What was built, 2026-08-01
-
-**Evidence.** `ruff`, `ruff format`, and all four `mypy` gates clean; full Linux suite **1766 passed
-/ 11 skipped / 2 deselected**. Seven mutations, all killed, tree hash identical before and after.
-
-**A read-only table with no live subscription.** `QueueModel` coalesces progress on a timer because
-a running job changes several times a second; a history row is written once by the completion
-transaction (`T050-R1`) and never changes again. So this reads on construction and on `refresh()`,
-and has no timer, no signal connection of its own and nothing to detach. Composition refreshes it on
-`job_succeeded` and `queue_cleared` — the only two moments the *set* of records can differ.
-
-**`HistoryEntry` is imported under `TYPE_CHECKING`.** `ARCHITECTURE.md` §3 has `ui/` depend on the
-shape of a repository rather than on `persistence`, and the layering test only forbids `ui/` →
-yt-dlp — so importing the type at runtime would have created a **new architectural edge** without a
-decision behind it. Type-only keeps the annotation complete and the edge non-existent.
-
-**Below the queue in the same splitter, not behind a tab.** The whole reason it exists is that a
-user who cleared their completed jobs cannot otherwise find what they downloaded (`P2PLAN-R8`), and
-a surface you have to go looking for does not solve that.
-
-**The clear-completed criterion is driven through the real repositories**, not a fake: a job is
-completed through `complete_job`, `T-081`'s `clear_completed` deletes the queue row, and the entry
-is still listed. `history` has no foreign key to `jobs` — `T-085` gates that structurally — and this
-asserts the user-visible consequence.
-
-| Mutation | Killed by |
-|---|---|
-| A column is removed from the view | the every-field test |
-| The order is reversed | the newest-first test, against the real repository |
-| A null field renders as the word `None` | the absence test |
-| The empty notice never appears | the empty-history and populated tests |
-| A hidden table stays in the keyboard order | the empty-history focus chain |
-| The accessible text drops its column name | the `NFR-005` test |
-| Composition stops refreshing on clear-finished | the composed signal invariant |
-
-#### Not covered, stated rather than implied
-
-- **Windows.** Platform-neutral; the hosted Windows job runs it.
-- **A history large enough to be slow.** `all_entries()` is unbounded and the view rebuilds wholly
-  on refresh. Fine for a table that grows one row per download; `T-085` put paging out of scope and
-  nothing has asked for it.
-- **Open and reveal** — `REQ-021`, and `T-086`'s job. This view is what it acts on.
-
----
-
-### T-086 — Open a completed file, or reveal it in the file manager
-
-**Status:** **In Review — corrected 2026-08-01 after `T086-R1` (High).** Windows Open no longer
-runs the file manager; it takes the associated-application route the platform documents.
-*(This read "In Review — complete 2026-08-01. Sixteen mutations run; all sixteen killed.")* Two
-survived the first pass: one was a defective mutation, and one was a **real gap** — nothing asserted
-that Show-in-folder built the *reveal* argv rather than the open one, so both actions wired to
-`open_file` passed every test in the file. `test_reveal_asks_the_file_manager_to_show_the_file_...`
-closes it. **This is the last Phase 2 feature deliverable**; only `T-088` remains.
-*(This read "Proposed", held by `T-100`, which landed at `c242dd3`.)*
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 2
-**Depends on:** **`T-100`** for the history half — the view this acts on, which `P2PLAN-R8`
-found had no owner; `T-085` for the records beneath it. The queue half needs only `T-079`
-**Relevant context:** `REQ-021`, `T-034`, `SEC-001`, `OPS-004`
-**Affected surfaces:** `ui/`, a small platform seam
-**Risk:** Medium despite being small — it hands a path to the operating system
-
-#### Scope
-
-Small in code, and the one place in Phase 2 where this application asks the OS to act on a path.
-`T-034` already governs where files may be written; this is the reverse direction.
-
-**A path is not a command.** Reveal is `explorer /select,` on Windows and a file-manager call on
-Linux, and both must receive the path as an argument rather than through a shell. A title
-containing a quote is an ordinary title (`T-034` has the fixtures), and it must not become an
-argument boundary.
-
-#### Acceptance criteria
-
-- Open and reveal both work on Linux and on Windows — **narrowed from "verified on `STARBASE`"**
-  under the `OPS-005` amendment of 2026-08-01, for the reason `T087-R4` gives: that runner is
-  offline and the maintainer is away from it, so the criterion as written was a stall rather than a
-  gate. What replaces it is stronger than the hosted-Windows job alone: **`platform` is a parameter
-  of every command builder**, so the exact Windows argv — including `/select,` as one element — is
-  asserted by the ordinary suite on every machine, not only where Windows happens to be. What is
-  *not* covered is that a real Explorer selects the file when handed that argv; that is desktop
-  behaviour and stays with the `STARBASE` slice alongside `T-026` and `T-040`
-- A path with quotes, spaces, or a leading dash is passed intact and executes nothing
-- A file that has been moved or deleted says so rather than failing silently
-- Nothing outside the output directory can be opened through this route
-
-#### Out of scope
-
-- Choosing which application opens a file
-
----
-
-#### `T086-R1` (High) — Open ran the file manager and a comment claimed otherwise
-
-`open_command(path, "win32")` returned `explorer <path>`, with a comment asserting that this opens
-the file with its associated application. **`explorer` is the file-manager process.** Windows'
-documented associated-application operations are `ShellExecuteW`'s `open` verb and `os.startfile`,
-which wraps it — so the likely real behaviour was navigating Explorer rather than launching a media
-player.
-
-**An argv assertion could never have caught this.** It proves a list was built, not what the
-operating system does with it, and the list was built correctly for the wrong command. That is the
-shape of the finding worth remembering: the Windows job was green.
-
-Open and Reveal now have separate seams — `os.startfile` on Windows and `xdg-open` on Linux for
-Open; `explorer /select,` stays on Reveal, where it belongs. `FileActions` carries a `platform`
-parameter so the Windows route is exercised from Linux, and it injects the starter as well as the
-spawner: without that, the Windows CI job would call the real `os.startfile` and launch a media
-player on a build agent.
-
-**Still not established:** that a real Explorer session launches the *right* application. That is
-desktop behaviour and stays with the `STARBASE` slice alongside `T-026` and `T-040`.
-
-#### Delivered
-
-`ui/reveal.py` — Qt-free, so its argv assertions need no `QApplication` — and `ui/file_actions.py`,
-the Qt half. Attached to **both** tables `REQ-021` names, as a context menu rather than a toolbar
-button: `T-100` put the queue and history on screen at once, so a single toolbar Open would have had
-to guess which selection it meant.
-
-Two decisions worth a reviewer's disagreement:
-
-- **A refusal is a returned value, not an exception**, because raising out of a Qt slot is printed
-  and swallowed. It goes to the status bar rather than a dialog — a moved file is the *ordinary*
-  case under `UX-001`, and a modal for an ordinary case trains people to dismiss dialogs unread.
-- **`shell=True` is refused in code rather than suppressed in a comment.** `ruff`'s `S603` fires on
-  the one `subprocess` call in the package; the answer is a guard that raises, with a test that
-  fires it, rather than a `noqa` nothing checks.
-
-### T-084 — Per-job log capture and a log view
-
-**Status:** **In Review — corrected 2026-08-01 after `T084-R1` (Critical) and `T084-R2` (High).**
-Fourteen further mutations across the corrections; all fourteen killed. **The contradictory
-acceptance criterion was amended by maintainer ruling on 2026-08-01 — `DAT-003` wins — and every
-criterion is now met.**
-*(This read "In Review — complete 2026-08-01. Nineteen mutations run; all nineteen killed.")*
-Three survived the first pass and **two of the three were my tests' fault, not defective mutations**
-— see *What the mutation battery found* below. `T-053`'s concurrent evidence, which this task's
-last criterion requires before approval, was approved at `05e5312` earlier today.
-*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`. Reconciled against
-`DAT-003` on 2026-07-31".)*
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** `T-078`. **`T-053` is not a prerequisite — it is required for approval**, which is
-the ordering `P2PLAN-R4` asked to be made explicit; the criteria below say so
-**Relevant context:** `REQ-019`, `REQ-026`, **`DAT-003`** (the verbatim boundary, amended
-2026-07-30 by `T-049`), `T-038`, `NFR-006`, `T-053`
-**Affected surfaces:** `downloader/worker.py`, `logging`, `ui/`
-**Risk:** Medium — redaction has to hold per job, under concurrency
-
-#### Scope
-
-`T-038` established logging with handler-level redaction. `REQ-019` wants the *yt-dlp diagnostic
-output for that job*, copyable for a bug report — so the worker's output has to be attributable to
-a job and kept, not merged into one stream.
-
-`T-053` already exists to prove isolation once the pool permits two live sessions, and is the
-gate this task's correctness rests on.
-
-#### The boundary is two sinks, and it is already decided
-
-*(Rewritten 2026-08-01 after `T084-R1`. This section previously said "**Text a third party emits**
-is preserved intact … a cookie path yt-dlp itself names inside a diagnostic is accepted rather than
-scrubbed" — describing the **database** rule as though it governed logs. Implementing what it said
-was the Critical. The paragraph that warned against re-deriving the rule instead of reading it was,
-itself, a re-derivation.)*
-
-`DAT-003` decided this on 2026-07-26 and `T-049`'s amendment sharpened it on 2026-07-30. **The
-amendment has two parts and they govern different sinks:**
-
-- **The database stores verbatim.** A cookie path yt-dlp named inside a diagnostic is accepted
-  there, because `NFR-006` exists — a paraphrased error destroys the only thing a user can act on.
-- **Every log this application *emits* is redacted, origin-agnostically.** That is the amendment's
-  own next section, headed "`T-038` is unchanged and origin-agnostic": storage and emission are
-  different sinks with different rules, and the supplied-value rule binds emission in full.
-
-Scrubbing third-party prose *before storing it* was tried twice and failed both times — three
-credential escapes, and one Critical regression that turned a user's output directory into a
-relative path. That is why the **database** keeps it. It is not an argument about the log.
-
-#### Acceptance criteria
-
-- A job's log contains that job's output and no other's, under a saturated pool
-- Redaction holds per job — a cookie or proxy credential must not survive because two sessions
-  interleaved
-- **The two sinks are asserted separately, and against each other** (`DAT-003`, `REQ-026`).
-  *Amended 2026-08-01 by maintainer ruling on `T084-R1`;* this previously read *"a cookie path
-  yt-dlp emitted inside a diagnostic is still there, character for character"*, which contradicted
-  accepted `DAT-003` — the amendment's own next section says log **emission** is origin-agnostic,
-  whatever the provenance of the text. The ruling is that `DAT-003` wins and the criterion changes:
-  - **Log emission is origin-agnostic:** a value this application supplied and a value yt-dlp
-    emitted are both redacted, and the *same string* down both routes gets the same treatment.
-    An implementation that redacted by provenance produces two different answers there
-  - **Database storage stays verbatim**, which is where `DAT-003` keeps `NFR-006`'s promise and
-    where a retry or a bug report can still find the extractor's exact words (`T-014`)
-  - **One test asserts the difference between the sinks on one value**, so neither rule can drift
-    into the other. Scrubbing everything everywhere fails it, and so does redacting nothing
-- The text is copyable, and verbatim within that boundary (`NFR-006`); a summarised log is not a
-  bug report
-- Log growth is bounded, and the bound is stated
-- **`T-053`'s concurrent isolation evidence exists before this is approved.** Not before it
-  starts — both are Ready and idling one for the other buys nothing — but "redaction holds per
-  job under a saturated pool" cannot honestly be claimed without the concurrent proof, so the
-  coupling sits at approval (`P2PLAN-R4`)
-
-#### What was actually missing, and what was already there
-
-`T-038` and `T-053` had built most of the plumbing: per-job files, the job stamp, the drain
-ordering, handler-level redaction. **Two things were absent and one was invisible.**
-
-1. **yt-dlp's diagnostics were being discarded entirely.** `build_options` passed `quiet=True` and
-   `no_warnings=True` and set no `logger`, so the output `REQ-019` names went to a console a worker
-   does not have. The per-job log existed and held this application's own lines only.
-2. **Nothing bounded a job's log**, and the criterion asks for the bound to be *stated*.
-3. **There was no view**, so nothing was copyable.
-
-#### Two measured findings that changed the design
-
-**`logger` overrides `quiet` and `no_warnings`.** Read in yt-dlp 2026.07.04: `to_screen` calls
-`logger.debug(...)` and **returns before consulting `quiet`**; `report_warning` consults `logger`
-before `no_warnings`. Both flags stay — they are still right when no logger is passed — but with one
-present they suppress nothing. This is worth a reviewer's attention because the flags now read as
-doing something they do not.
-
-**`verbose` is deliberately off, and that is a security decision.** Measured: verbose makes yt-dlp
-dump `params:` and `Proxy map:`, which carry the proxy URL and `cookiesfrombrowser` — **values this
-application supplies**, the one row of `DAT-003`'s provenance table that must never reach a log. The
-version banner a bug report wants is written by `worker._log_the_session_header` instead, where
-every field is chosen here.
-
-*(The equivalent assertion in the end-to-end test would have been a guard that cannot fire: yt-dlp
-prefixes verbose lines `[debug]`, `YtdlpLog` sends those to `DEBUG`, and the worker's handler sits
-at `INFO`, so they are dropped for a second unrelated reason. It is asserted on the options dict
-instead — `ai/TESTING.md` §13.)*
-
-#### `T084-R1` (Critical) — the provenance scheme was wrong and is gone
-
-`DAT-003`'s `T-049` amendment has a section headed **"`T-038` is unchanged and origin-agnostic"**
-saying every log this application emits is redacted whatever the provenance of the text inside it.
-I read the amendment's provenance *table* — which governs the **database** — and applied it to logs
-without reading the section directly beneath it. `DAT-004` argued for the change and is **withdrawn**:
-a `Proposed` entry cannot supersede an `Accepted` one, and that was not a route I should have taken.
-
-**Why Critical rather than merely wrong:** the scheme kept exact `remember_a_secret()` values for
-third-party records and dropped the pattern rules. **No production caller registers anything**, so
-that tier is empty in the running application and "provenance-aware" collapsed to *no redaction at
-all* for every line yt-dlp emits — a diagnostic echoing the source URL wrote its userinfo password
-and signed query to the job log verbatim, onto the surface this task had just given a Copy button.
-
-Redaction is origin-agnostic again and `redact()` has no provenance parameter, so there is nothing
-for a caller to pass.
-
-#### **The criterion that contradicted the decision — amended, not left unmet**
-
-> *a cookie path yt-dlp emitted inside a diagnostic is still there, character for character*
-
-Accepted `DAT-003` forbids that at this sink, so the criterion and the decision could not both hold.
-**Ruled 2026-08-01: `DAT-003` wins, and the criterion is amended** — a criterion that contradicts an
-accepted decision is the thing that is wrong.
-
-What it cost is recorded rather than absorbed: a user reading a job log will not see which cookie
-database yt-dlp could not open. `NFR-006`'s promise is kept at the **other** sink, where `DAT-003`
-puts it — the database stores the extractor's message verbatim (`T-014`) — and the amended criterion
-asserts the two sinks **against each other on one value**, so neither rule can drift into the other.
-Scrubbing everywhere fails it; redacting nothing fails it too.
-
-#### `T084-R2` (High) — Copy took the rendered tail
-
-`read_job_log` caps the view at 512 KiB so the GUI thread never blocks; `copy_to_clipboard` then
-copied `self.text()`. For a log past the cap the clipboard lost its beginning — the session header
-and the first extractor decisions — and a single very long line could copy nothing but the
-truncation notice, against `REQ-019`'s explicit *"what is copied is the file exactly"*.
-
-Copy now re-reads the artifact through `read_whole_job_log`, and **refuses rather than
-approximating** when that read fails: falling back to the rendered view would put a truncated log
-into a bug report while the label said it had been copied.
-
-#### How redaction is implemented
-
-`RedactingFormatter` applies the same rules to every record: registered literals, then cookie
-material by shape, then every URL rebuilt without its userinfo, query or fragment. **There is no
-provenance flag and no parameter to ask for a laxer rendering.**
-
-`DAT-003`'s reopening clause named *"a bug report attaching it"* as a trigger, and this task ships
-the button that does exactly that. **That is what the 2026-08-01 ruling settled:** emission stays
-origin-agnostic, so the Copy surface carries nothing the log did not already redact.
-
-#### What the mutation battery found
-
-Three of nineteen survived the first pass:
-
-- **A real gap:** the bound test wrote 2.5 MB against a 4 MiB total, so an unrotated single file
-  passed it. It now asserts the *live* file against `MAX_JOB_LOG_BYTES`, which fails immediately.
-- **An over-claim of mine:** a test said passing yt-dlp's text as a `%`-argument prevented it being
-  read as a format string. `logging` applies `%` only when a record carries args, so both spellings
-  are identical and the claim was unfalsifiable. The docstring now says so and the test asserts what
-  is really guarded — that a percent sign survives redaction to the file.
-- **A guard that could not fire:** the verbose assertion, described above, moved to where it can.
-
-#### Out of scope
-
-- Shipping logs anywhere, or a crash reporter
-
----
-
-### T-082 — Interrupted jobs are offered for retry at startup
-
-**Status:** **In Review — complete 2026-08-01.** Eight mutations run; all eight killed. Two
-survived the first pass and **one of them found a claim the code had not earned** — see below.
-*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`".)*
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** `T-078`
-**Relevant context:** `REQ-012`, `T-037`, `T-014`
-**Affected surfaces:** `app.py`, `persistence/`, `ui/`
-**Risk:** Low — the recovery exists; the offer does not
-
-#### Scope
-
-Phase 1 already recovers: `compose()` moves jobs left `RUNNING` to `FAILED`/`INTERRUPTED` before
-anything reads the queue, and `test_recovery_is_the_applications_own_and_not_the_tests` proves the
-application does it rather than the test. What Phase 2 adds is the **offer** — and the plural.
-One interrupted job is Phase 1's case; a queue of them is this one.
-
-#### Acceptance criteria
-
-- Every interrupted job is recovered before the queue is readable, not as the user scrolls to it
-- The offer is explicit and refusable; nothing restarts a download the user did not ask to restart
-- Recovering N jobs does not mean N unbatched writes on the writer thread
-
-#### What was missing, against each criterion
-
-**Criterion 1 — recovered before the queue is readable.** Already true: `compose()` calls
-`recover_interrupted()` before the writer, the store or the window exist. Nothing to do; now
-asserted end to end through the composed application rather than left as a property of the
-call order.
-
-**Criterion 2 — the offer.** Absent. `compose()` called `recover_interrupted()` and **threw the
-returned ids away**, so the recovery was correct and completely invisible: a user who lost twelve
-downloads to a crash saw twelve failed rows and no acknowledgement that anything had happened. The
-offer is a `QMessageBox` following `report_settings_problem`'s precedent, with **`Not now` as both
-the default and the escape button** — Enter or Escape at startup must not begin twelve downloads.
-
-**Criterion 3 — N jobs is not N unbatched writes.** Was violated. `recover_interrupted` called
-`update()` per job and `update()` opens its own transaction, so recovering a queue was one commit
-and one fsync per row, on the path that runs before the window appears. Now one transaction, with
-**every transition computed before anything is written** — `with_failure` validates, and validating
-inside the transaction would half-recover the queue if it ever raised.
-
-Counted with sqlite3's trace callback rather than asserted about, so the test cannot pass against an
-implementation that batches in Python and still commits per row.
-
-#### A claim the code had not earned
-
-The first version had an early return for "nothing to recover", commented as avoiding a needless
-fsync. A mutation removing it survived. **Measured: `with connection` issues nothing at all when no
-statement runs inside it**, so the branch prevented a commit that was never going to happen. The
-guard is gone and the comment now says why there is no guard. The test that covered it asserts the
-behaviour that is real — a clean start writes nothing — rather than the branch that did not.
-
-#### One thing worth a reviewer's disagreement
-
-**Accepting the offer is N retries, one per job**, through the same injected `retry` the per-job
-button uses. That is N writes, which looks like criterion 3 again — but criterion 3 is about
-*recovery*, which happens before the window exists and which the user cannot decline. This is a
-retry the user asked for, on the ordinary route. A bulk path in the manager would be a second
-definition of "retry" that can drift from the first; if that trade is wrong, it is one call site.
-
-#### Out of scope
-
-- Automatic resumption without asking
-
----
-
 ### T-088 — Prove the phase: three at once, killed mid-queue, nothing left behind
 
 **Status:** **In Review — complete 2026-08-01.** Five criteria proved against a real composed
@@ -2375,6 +1932,457 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-086 — Open a completed file, or reveal it in the file manager
+
+**Status:** **Complete — Approved at `233c5fd`**, 2026-08-01, after `T086-R1` (High) was corrected. Windows Open no longer
+runs the file manager; it takes the associated-application route the platform documents.
+*(This read "In Review — complete 2026-08-01. Sixteen mutations run; all sixteen killed.")* Two
+survived the first pass: one was a defective mutation, and one was a **real gap** — nothing asserted
+that Show-in-folder built the *reveal* argv rather than the open one, so both actions wired to
+`open_file` passed every test in the file. `test_reveal_asks_the_file_manager_to_show_the_file_...`
+closes it. **This is the last Phase 2 feature deliverable**; only `T-088` remains.
+*(This read "Proposed", held by `T-100`, which landed at `c242dd3`.)*
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 2
+**Depends on:** **`T-100`** for the history half — the view this acts on, which `P2PLAN-R8`
+found had no owner; `T-085` for the records beneath it. The queue half needs only `T-079`
+**Relevant context:** `REQ-021`, `T-034`, `SEC-001`, `OPS-004`
+**Affected surfaces:** `ui/`, a small platform seam
+**Risk:** Medium despite being small — it hands a path to the operating system
+
+#### Scope
+
+Small in code, and the one place in Phase 2 where this application asks the OS to act on a path.
+`T-034` already governs where files may be written; this is the reverse direction.
+
+**A path is not a command.** Reveal is `explorer /select,` on Windows and a file-manager call on
+Linux, and both must receive the path as an argument rather than through a shell. A title
+containing a quote is an ordinary title (`T-034` has the fixtures), and it must not become an
+argument boundary.
+
+#### Acceptance criteria
+
+- Open and reveal both work on Linux and on Windows — **narrowed from "verified on `STARBASE`"**
+  under the `OPS-005` amendment of 2026-08-01, for the reason `T087-R4` gives: that runner is
+  offline and the maintainer is away from it, so the criterion as written was a stall rather than a
+  gate. What replaces it is stronger than the hosted-Windows job alone: **`platform` is a parameter
+  of every command builder**, so the exact Windows argv — including `/select,` as one element — is
+  asserted by the ordinary suite on every machine, not only where Windows happens to be. What is
+  *not* covered is that a real Explorer selects the file when handed that argv; that is desktop
+  behaviour and stays with the `STARBASE` slice alongside `T-026` and `T-040`
+- A path with quotes, spaces, or a leading dash is passed intact and executes nothing
+- A file that has been moved or deleted says so rather than failing silently
+- Nothing outside the output directory can be opened through this route
+
+#### Out of scope
+
+- Choosing which application opens a file
+
+---
+
+#### `T086-R1` (High) — Open ran the file manager and a comment claimed otherwise
+
+`open_command(path, "win32")` returned `explorer <path>`, with a comment asserting that this opens
+the file with its associated application. **`explorer` is the file-manager process.** Windows'
+documented associated-application operations are `ShellExecuteW`'s `open` verb and `os.startfile`,
+which wraps it — so the likely real behaviour was navigating Explorer rather than launching a media
+player.
+
+**An argv assertion could never have caught this.** It proves a list was built, not what the
+operating system does with it, and the list was built correctly for the wrong command. That is the
+shape of the finding worth remembering: the Windows job was green.
+
+Open and Reveal now have separate seams — `os.startfile` on Windows and `xdg-open` on Linux for
+Open; `explorer /select,` stays on Reveal, where it belongs. `FileActions` carries a `platform`
+parameter so the Windows route is exercised from Linux, and it injects the starter as well as the
+spawner: without that, the Windows CI job would call the real `os.startfile` and launch a media
+player on a build agent.
+
+**Still not established:** that a real Explorer session launches the *right* application. That is
+desktop behaviour and stays with the `STARBASE` slice alongside `T-026` and `T-040`.
+
+#### Delivered
+
+`ui/reveal.py` — Qt-free, so its argv assertions need no `QApplication` — and `ui/file_actions.py`,
+the Qt half. Attached to **both** tables `REQ-021` names, as a context menu rather than a toolbar
+button: `T-100` put the queue and history on screen at once, so a single toolbar Open would have had
+to guess which selection it meant.
+
+Two decisions worth a reviewer's disagreement:
+
+- **A refusal is a returned value, not an exception**, because raising out of a Qt slot is printed
+  and swallowed. It goes to the status bar rather than a dialog — a moved file is the *ordinary*
+  case under `UX-001`, and a modal for an ordinary case trains people to dismiss dialogs unread.
+- **`shell=True` is refused in code rather than suppressed in a comment.** `ruff`'s `S603` fires on
+  the one `subprocess` call in the package; the answer is a guard that raises, with a test that
+  fires it, rather than a `noqa` nothing checks.
+
+### T-084 — Per-job log capture and a log view
+
+**Status:** **Complete — Approved at `75f1c32`**, 2026-08-01, after `T084-R1` (Critical) and
+`T084-R2` (High) were corrected.
+Fourteen further mutations across the corrections; all fourteen killed. **The contradictory
+acceptance criterion was amended by maintainer ruling on 2026-08-01 — `DAT-003` wins — and every
+criterion is now met.**
+*(This read "In Review — complete 2026-08-01. Nineteen mutations run; all nineteen killed.")*
+Three survived the first pass and **two of the three were my tests' fault, not defective mutations**
+— see *What the mutation battery found* below. `T-053`'s concurrent evidence, which this task's
+last criterion requires before approval, was approved at `05e5312` earlier today.
+*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`. Reconciled against
+`DAT-003` on 2026-07-31".)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`. **`T-053` is not a prerequisite — it is required for approval**, which is
+the ordering `P2PLAN-R4` asked to be made explicit; the criteria below say so
+**Relevant context:** `REQ-019`, `REQ-026`, **`DAT-003`** (the verbatim boundary, amended
+2026-07-30 by `T-049`), `T-038`, `NFR-006`, `T-053`
+**Affected surfaces:** `downloader/worker.py`, `logging`, `ui/`
+**Risk:** Medium — redaction has to hold per job, under concurrency
+
+#### Scope
+
+`T-038` established logging with handler-level redaction. `REQ-019` wants the *yt-dlp diagnostic
+output for that job*, copyable for a bug report — so the worker's output has to be attributable to
+a job and kept, not merged into one stream.
+
+`T-053` already exists to prove isolation once the pool permits two live sessions, and is the
+gate this task's correctness rests on.
+
+#### The boundary is two sinks, and it is already decided
+
+*(Rewritten 2026-08-01 after `T084-R1`. This section previously said "**Text a third party emits**
+is preserved intact … a cookie path yt-dlp itself names inside a diagnostic is accepted rather than
+scrubbed" — describing the **database** rule as though it governed logs. Implementing what it said
+was the Critical. The paragraph that warned against re-deriving the rule instead of reading it was,
+itself, a re-derivation.)*
+
+`DAT-003` decided this on 2026-07-26 and `T-049`'s amendment sharpened it on 2026-07-30. **The
+amendment has two parts and they govern different sinks:**
+
+- **The database stores verbatim.** A cookie path yt-dlp named inside a diagnostic is accepted
+  there, because `NFR-006` exists — a paraphrased error destroys the only thing a user can act on.
+- **Every log this application *emits* is redacted, origin-agnostically.** That is the amendment's
+  own next section, headed "`T-038` is unchanged and origin-agnostic": storage and emission are
+  different sinks with different rules, and the supplied-value rule binds emission in full.
+
+Scrubbing third-party prose *before storing it* was tried twice and failed both times — three
+credential escapes, and one Critical regression that turned a user's output directory into a
+relative path. That is why the **database** keeps it. It is not an argument about the log.
+
+#### Acceptance criteria
+
+- A job's log contains that job's output and no other's, under a saturated pool
+- Redaction holds per job — a cookie or proxy credential must not survive because two sessions
+  interleaved
+- **The two sinks are asserted separately, and against each other** (`DAT-003`, `REQ-026`).
+  *Amended 2026-08-01 by maintainer ruling on `T084-R1`;* this previously read *"a cookie path
+  yt-dlp emitted inside a diagnostic is still there, character for character"*, which contradicted
+  accepted `DAT-003` — the amendment's own next section says log **emission** is origin-agnostic,
+  whatever the provenance of the text. The ruling is that `DAT-003` wins and the criterion changes:
+  - **Log emission is origin-agnostic:** a value this application supplied and a value yt-dlp
+    emitted are both redacted, and the *same string* down both routes gets the same treatment.
+    An implementation that redacted by provenance produces two different answers there
+  - **Database storage stays verbatim**, which is where `DAT-003` keeps `NFR-006`'s promise and
+    where a retry or a bug report can still find the extractor's exact words (`T-014`)
+  - **One test asserts the difference between the sinks on one value**, so neither rule can drift
+    into the other. Scrubbing everything everywhere fails it, and so does redacting nothing
+- The text is copyable, and verbatim within that boundary (`NFR-006`); a summarised log is not a
+  bug report
+- Log growth is bounded, and the bound is stated
+- **`T-053`'s concurrent isolation evidence exists before this is approved.** Not before it
+  starts — both are Ready and idling one for the other buys nothing — but "redaction holds per
+  job under a saturated pool" cannot honestly be claimed without the concurrent proof, so the
+  coupling sits at approval (`P2PLAN-R4`)
+
+#### What was actually missing, and what was already there
+
+`T-038` and `T-053` had built most of the plumbing: per-job files, the job stamp, the drain
+ordering, handler-level redaction. **Two things were absent and one was invisible.**
+
+1. **yt-dlp's diagnostics were being discarded entirely.** `build_options` passed `quiet=True` and
+   `no_warnings=True` and set no `logger`, so the output `REQ-019` names went to a console a worker
+   does not have. The per-job log existed and held this application's own lines only.
+2. **Nothing bounded a job's log**, and the criterion asks for the bound to be *stated*.
+3. **There was no view**, so nothing was copyable.
+
+#### Two measured findings that changed the design
+
+**`logger` overrides `quiet` and `no_warnings`.** Read in yt-dlp 2026.07.04: `to_screen` calls
+`logger.debug(...)` and **returns before consulting `quiet`**; `report_warning` consults `logger`
+before `no_warnings`. Both flags stay — they are still right when no logger is passed — but with one
+present they suppress nothing. This is worth a reviewer's attention because the flags now read as
+doing something they do not.
+
+**`verbose` is deliberately off, and that is a security decision.** Measured: verbose makes yt-dlp
+dump `params:` and `Proxy map:`, which carry the proxy URL and `cookiesfrombrowser` — **values this
+application supplies**, the one row of `DAT-003`'s provenance table that must never reach a log. The
+version banner a bug report wants is written by `worker._log_the_session_header` instead, where
+every field is chosen here.
+
+*(The equivalent assertion in the end-to-end test would have been a guard that cannot fire: yt-dlp
+prefixes verbose lines `[debug]`, `YtdlpLog` sends those to `DEBUG`, and the worker's handler sits
+at `INFO`, so they are dropped for a second unrelated reason. It is asserted on the options dict
+instead — `ai/TESTING.md` §13.)*
+
+#### `T084-R1` (Critical) — the provenance scheme was wrong and is gone
+
+`DAT-003`'s `T-049` amendment has a section headed **"`T-038` is unchanged and origin-agnostic"**
+saying every log this application emits is redacted whatever the provenance of the text inside it.
+I read the amendment's provenance *table* — which governs the **database** — and applied it to logs
+without reading the section directly beneath it. `DAT-004` argued for the change and is **withdrawn**:
+a `Proposed` entry cannot supersede an `Accepted` one, and that was not a route I should have taken.
+
+**Why Critical rather than merely wrong:** the scheme kept exact `remember_a_secret()` values for
+third-party records and dropped the pattern rules. **No production caller registers anything**, so
+that tier is empty in the running application and "provenance-aware" collapsed to *no redaction at
+all* for every line yt-dlp emits — a diagnostic echoing the source URL wrote its userinfo password
+and signed query to the job log verbatim, onto the surface this task had just given a Copy button.
+
+Redaction is origin-agnostic again and `redact()` has no provenance parameter, so there is nothing
+for a caller to pass.
+
+#### **The criterion that contradicted the decision — amended, not left unmet**
+
+> *a cookie path yt-dlp emitted inside a diagnostic is still there, character for character*
+
+Accepted `DAT-003` forbids that at this sink, so the criterion and the decision could not both hold.
+**Ruled 2026-08-01: `DAT-003` wins, and the criterion is amended** — a criterion that contradicts an
+accepted decision is the thing that is wrong.
+
+What it cost is recorded rather than absorbed: a user reading a job log will not see which cookie
+database yt-dlp could not open. `NFR-006`'s promise is kept at the **other** sink, where `DAT-003`
+puts it — the database stores the extractor's message verbatim (`T-014`) — and the amended criterion
+asserts the two sinks **against each other on one value**, so neither rule can drift into the other.
+Scrubbing everywhere fails it; redacting nothing fails it too.
+
+#### `T084-R2` (High) — Copy took the rendered tail
+
+`read_job_log` caps the view at 512 KiB so the GUI thread never blocks; `copy_to_clipboard` then
+copied `self.text()`. For a log past the cap the clipboard lost its beginning — the session header
+and the first extractor decisions — and a single very long line could copy nothing but the
+truncation notice, against `REQ-019`'s explicit *"what is copied is the file exactly"*.
+
+Copy now re-reads the artifact through `read_whole_job_log`, and **refuses rather than
+approximating** when that read fails: falling back to the rendered view would put a truncated log
+into a bug report while the label said it had been copied.
+
+#### How redaction is implemented
+
+`RedactingFormatter` applies the same rules to every record: registered literals, then cookie
+material by shape, then every URL rebuilt without its userinfo, query or fragment. **There is no
+provenance flag and no parameter to ask for a laxer rendering.**
+
+`DAT-003`'s reopening clause named *"a bug report attaching it"* as a trigger, and this task ships
+the button that does exactly that. **That is what the 2026-08-01 ruling settled:** emission stays
+origin-agnostic, so the Copy surface carries nothing the log did not already redact.
+
+#### What the mutation battery found
+
+Three of nineteen survived the first pass:
+
+- **A real gap:** the bound test wrote 2.5 MB against a 4 MiB total, so an unrotated single file
+  passed it. It now asserts the *live* file against `MAX_JOB_LOG_BYTES`, which fails immediately.
+- **An over-claim of mine:** a test said passing yt-dlp's text as a `%`-argument prevented it being
+  read as a format string. `logging` applies `%` only when a record carries args, so both spellings
+  are identical and the claim was unfalsifiable. The docstring now says so and the test asserts what
+  is really guarded — that a percent sign survives redaction to the file.
+- **A guard that could not fire:** the verbose assertion, described above, moved to where it can.
+
+#### Out of scope
+
+- Shipping logs anywhere, or a crash reporter
+
+---
+
+### T-082 — Interrupted jobs are offered for retry at startup
+
+**Status:** **Complete — Approved at `b1b7cd6`**, 2026-08-01, without follow-up. The review credits
+it with recovering interrupted rows in one transaction, offering exactly those ids before ordinary
+interaction, a safe default of *Not now*, and a Retry all that reuses the per-job retry path.
+*(This read "In Review — complete 2026-08-01".)* Eight mutations run; all eight killed. Two
+survived the first pass and **one of them found a claim the code had not earned** — see below.
+*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`".)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`
+**Relevant context:** `REQ-012`, `T-037`, `T-014`
+**Affected surfaces:** `app.py`, `persistence/`, `ui/`
+**Risk:** Low — the recovery exists; the offer does not
+
+#### Scope
+
+Phase 1 already recovers: `compose()` moves jobs left `RUNNING` to `FAILED`/`INTERRUPTED` before
+anything reads the queue, and `test_recovery_is_the_applications_own_and_not_the_tests` proves the
+application does it rather than the test. What Phase 2 adds is the **offer** — and the plural.
+One interrupted job is Phase 1's case; a queue of them is this one.
+
+#### Acceptance criteria
+
+- Every interrupted job is recovered before the queue is readable, not as the user scrolls to it
+- The offer is explicit and refusable; nothing restarts a download the user did not ask to restart
+- Recovering N jobs does not mean N unbatched writes on the writer thread
+
+#### What was missing, against each criterion
+
+**Criterion 1 — recovered before the queue is readable.** Already true: `compose()` calls
+`recover_interrupted()` before the writer, the store or the window exist. Nothing to do; now
+asserted end to end through the composed application rather than left as a property of the
+call order.
+
+**Criterion 2 — the offer.** Absent. `compose()` called `recover_interrupted()` and **threw the
+returned ids away**, so the recovery was correct and completely invisible: a user who lost twelve
+downloads to a crash saw twelve failed rows and no acknowledgement that anything had happened. The
+offer is a `QMessageBox` following `report_settings_problem`'s precedent, with **`Not now` as both
+the default and the escape button** — Enter or Escape at startup must not begin twelve downloads.
+
+**Criterion 3 — N jobs is not N unbatched writes.** Was violated. `recover_interrupted` called
+`update()` per job and `update()` opens its own transaction, so recovering a queue was one commit
+and one fsync per row, on the path that runs before the window appears. Now one transaction, with
+**every transition computed before anything is written** — `with_failure` validates, and validating
+inside the transaction would half-recover the queue if it ever raised.
+
+Counted with sqlite3's trace callback rather than asserted about, so the test cannot pass against an
+implementation that batches in Python and still commits per row.
+
+#### A claim the code had not earned
+
+The first version had an early return for "nothing to recover", commented as avoiding a needless
+fsync. A mutation removing it survived. **Measured: `with connection` issues nothing at all when no
+statement runs inside it**, so the branch prevented a commit that was never going to happen. The
+guard is gone and the comment now says why there is no guard. The test that covered it asserts the
+behaviour that is real — a clean start writes nothing — rather than the branch that did not.
+
+#### One thing worth a reviewer's disagreement
+
+**Accepting the offer is N retries, one per job**, through the same injected `retry` the per-job
+button uses. That is N writes, which looks like criterion 3 again — but criterion 3 is about
+*recovery*, which happens before the window exists and which the user cannot decline. This is a
+retry the user asked for, on the ordinary route. A bulk path in the manager would be a second
+definition of "retry" that can drift from the first; if that trade is wrong, it is one call site.
+
+#### Out of scope
+
+- Automatic resumption without asking
+
+---
+
+### T-100 — The history view: what was obtained, after the queue has forgotten it
+
+**Status:** **Complete — Approved at `c242dd3`**, 2026-08-01, without follow-up. The review credits
+it with a read-only, newest-first projection covering every `REQ-020` field including null output
+paths, refreshing only after the committed success signal, and staying separate from clear-completed
+persistence.
+*(This read "In Review — complete 2026-08-01".)* Seven mutations run; all seven killed, including
+the two this task names. **It releases `T-086`**, the last Phase 2 deliverable that had not started.
+*(This read "Ready — nothing blocks it; `T-085` wrote the table it reads".)*
+**Owner:** Implementer
+**Priority:** Medium — `REQ-021` is a Phase 2 deliverable and cannot be met without it
+**Phase:** Phase 2
+**Depends on:** `T-085` (approved). Independent of `T-078` and the queue view
+**Relevant context:** `P2PLAN-R8` (why this exists), `REQ-020`, `REQ-021`, `UX-001`, `T-050`,
+`T-085`, `T-086`, `persistence/repositories.py` (`HistoryRepository`)
+**Affected surfaces:** `ui/`, `app.py`, `ai/IMPLEMENTATION_PLAN.md`
+**Risk:** Low — read-only over a table that already exists and is already gated
+
+#### Scope
+
+**`P2PLAN-R8`: the history view had no owner in any phase.** Phase 2's deliverables named
+persistence and records; Phase 3 is format and content depth; Phase 4 is settings and polish. None
+of them mentioned it, and `T-050` pointed at a "Phase 3" deliverable that has never existed.
+
+**The reframe that settles where it belongs.** `REQ-020` — *"Maintain a history of completed
+downloads with source URL, title, resolved output path, format used, size, and completion time"* —
+is a **data** requirement, and `T-050` and `T-085` satisfied it. The view is presupposed by
+**`REQ-021`**: *"Open a completed file, or reveal it in the system file manager, from the **history
+and queue views**."* `REQ-021` is a Phase 2 deliverable, so the view it names is Phase 2 work.
+
+**And Phase 2's own features combine into a hole without it.** `UX-001` says remove never deletes a
+file. `T-081` delivers clear-completed. Together, in a Phase 2 with no history view: the user clears
+completed jobs, every file is still on disk, and **the application can no longer say where any of it
+went.** That is not a polish gap; it is this phase's own combination of features losing information
+the user needs.
+
+So: a read-only table over `HistoryRepository.all_entries()`. `T-086` then adds open and reveal to
+it, which is what makes its "history half" dependency real rather than dangling.
+
+#### Acceptance criteria
+
+- **Every field `REQ-020` names is on screen**: source URL, title, resolved output path, format
+  used, size, completion time. Asserted against a row whose fields are all populated, so a column
+  that is never rendered fails rather than being invisible behind a `None`
+- **A completed download appears after its job row is gone.** That is the whole point of the view —
+  drive `T-081`'s clear-completed if it exists by then, or delete the job row directly if it does
+  not, and assert the entry is still listed. `history` carries no foreign key to `jobs`
+  (`T-085` gates that structurally); this asserts the user-visible consequence
+- **Newest first, asserted** — `all_entries()` already orders by `completed_at DESC, id`, and a view
+  that re-sorted or relied on insertion order would disagree with it silently
+- **An empty history says so** rather than presenting a blank table. A user who has downloaded
+  nothing and a view that failed to load look identical otherwise
+- **A null field renders as absence, not as `"None"`.** `title`, `output_path`, `format_used` and
+  `bytes_total` are all nullable by design (`T-085`), and `str(None)` reaching a cell is the defect
+  class `_str_or_none` exists to prevent one layer down
+- Object names and accessible names on the table and its columns (`NFR-005`), following
+  `ui/job_detail.py`'s existing pattern
+- Mutation-checked: removing a column from the view, and reversing the order, each fail
+
+#### Out of scope
+
+- **Open and reveal** — `REQ-021`, and `T-086`'s job. This view is what it acts on
+- Search, sorting by column, filtering, export — `T-085` put these out of scope and nothing has
+  asked for them since
+- Pruning, retention, or any deletion. Nothing in this view removes a record; `REQ-020` is a record
+  of what was obtained
+- Re-downloading from history, and duplicate detection (`REQ-022`, Phase 3)
+
+
+#### What was built, 2026-08-01
+
+**Evidence.** `ruff`, `ruff format`, and all four `mypy` gates clean; full Linux suite **1766 passed
+/ 11 skipped / 2 deselected**. Seven mutations, all killed, tree hash identical before and after.
+
+**A read-only table with no live subscription.** `QueueModel` coalesces progress on a timer because
+a running job changes several times a second; a history row is written once by the completion
+transaction (`T050-R1`) and never changes again. So this reads on construction and on `refresh()`,
+and has no timer, no signal connection of its own and nothing to detach. Composition refreshes it on
+`job_succeeded` and `queue_cleared` — the only two moments the *set* of records can differ.
+
+**`HistoryEntry` is imported under `TYPE_CHECKING`.** `ARCHITECTURE.md` §3 has `ui/` depend on the
+shape of a repository rather than on `persistence`, and the layering test only forbids `ui/` →
+yt-dlp — so importing the type at runtime would have created a **new architectural edge** without a
+decision behind it. Type-only keeps the annotation complete and the edge non-existent.
+
+**Below the queue in the same splitter, not behind a tab.** The whole reason it exists is that a
+user who cleared their completed jobs cannot otherwise find what they downloaded (`P2PLAN-R8`), and
+a surface you have to go looking for does not solve that.
+
+**The clear-completed criterion is driven through the real repositories**, not a fake: a job is
+completed through `complete_job`, `T-081`'s `clear_completed` deletes the queue row, and the entry
+is still listed. `history` has no foreign key to `jobs` — `T-085` gates that structurally — and this
+asserts the user-visible consequence.
+
+| Mutation | Killed by |
+|---|---|
+| A column is removed from the view | the every-field test |
+| The order is reversed | the newest-first test, against the real repository |
+| A null field renders as the word `None` | the absence test |
+| The empty notice never appears | the empty-history and populated tests |
+| A hidden table stays in the keyboard order | the empty-history focus chain |
+| The accessible text drops its column name | the `NFR-005` test |
+| Composition stops refreshing on clear-finished | the composed signal invariant |
+
+#### Not covered, stated rather than implied
+
+- **Windows.** Platform-neutral; the hosted Windows job runs it.
+- **A history large enough to be slow.** `all_entries()` is unbounded and the view rebuilds wholly
+  on refresh. Fine for a table that grows one row per download; `T-085` put paging out of scope and
+  nothing has asked for it.
+- **Open and reveal** — `REQ-021`, and `T-086`'s job. This view is what it acts on.
+
+---
 
 ### T-087 — Single-instance guard
 
