@@ -332,16 +332,30 @@ one-button downloader.
 `T-105`** as of 2026-08-01 — it was a scheduled trigger with no task behind it, which is how a
 phase starts without the document it is supposed to start with.
 
+**Decomposed 2026-08-01** into `T-107`–`T-114`. Before that this phase had **zero** tasks against
+seven deliverables, so any statement of its size came from prose rather than from work anybody had
+broken down — and Phase 1 listed nine deliverables and produced fifty tasks. Eight is the starting
+point, not the total.
+
 ### Deliverables
 
-- Full sortable format table with separate video/audio selection and merge (`REQ-003`, `REQ-008`)
-- Playlist probing and per-entry selection (`REQ-004`)
-- Output template editor with live path preview (`REQ-011`)
-- Post-processing: audio extraction/conversion, remux/recode, embed thumbnail, embed
-  metadata, embed chapters, subtitle download/embed with language selection (`REQ-010`)
-- User-defined presets: create, edit, duplicate, delete, set default (`REQ-007`)
-- Cross-restart resume of partial downloads (`REQ-017`)
-- Duplicate-URL detection and warning (`REQ-022`)
+| Deliverable | Owner | Risk |
+|---|---|---|
+| Sortable format table (`REQ-003`) | `T-107` | Medium — the projection is where `NFR-008`'s churn lands |
+| Separate video/audio selection and merge (`REQ-008`) | `T-108` | Medium — `T-061` is what a wrong ffmpeg check costs |
+| Post-processing, seven options (`REQ-010`) | `T-109` | **High** — `T-077` found four of five Phase 1 options never produced a file |
+| Playlist probing and per-entry selection (`REQ-004`) | `T-110` | **High** — one URL is one job today; a playlist is one probe producing N |
+| User-defined presets (`REQ-007`) | `T-111` | Medium — persisted state, and where it lives needs a decision |
+| Output template editor with live preview (`REQ-011`) | `T-112` | Medium — preview and real path must be one function |
+| Cross-restart resume of partial downloads (`REQ-017`) | `T-113` | **High** — reopens `UX-001` and `T-080`'s `PAUSED` removal |
+| Duplicate-URL detection and warning (`REQ-022`) | `T-114` | Low |
+
+**Every one of them depends on `T-105`**, which writes `docs/UX_SPEC.md` — the trigger this phase
+already carried and which had no task behind it until 2026-08-01.
+
+**Two are structural rather than additive**, and are the reason this phase is not smaller than
+Phase 2 despite listing fewer deliverables: `T-110` changes what a *job* is, and `T-113` reopens two
+accepted decisions by design.
 
 ### Exit criteria
 

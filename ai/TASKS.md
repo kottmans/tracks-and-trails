@@ -1858,6 +1858,343 @@ beats designing it against an imagined one.
 
 ---
 
+## Proposed — Phase 3
+
+*(**Decomposed 2026-08-01.** Phase 3 had **zero** tasks against
+seven plan deliverables, so its size was an estimate from prose rather than from work anybody had
+broken down. Phase 1 listed nine deliverables and produced fifty tasks; these eight are the
+starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
+it.)*
+
+### T-107 — The format table: every stream a probe found
+
+**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.** Blocked on Phase 2's exit and on
+`T-105`'s `docs/UX_SPEC.md`.
+**Owner:** Implementer
+**Priority:** High — `REQ-008` and `T-109` both act on this table; it is the phase's foundation
+**Phase:** Phase 3
+**Depends on:** `T-105` (the UX spec), Phase 2 exit
+**Relevant context:** `REQ-003`, `NFR-005`, `NFR-008`, `T-018` (recorded `info_dict` fixtures),
+`downloader/ytdlp_adapter.py`, `T-079` (the queue table's repaint and ordering rules)
+**Affected surfaces:** `core/models.py` (a `FormatInfo` projection), `downloader/ytdlp_adapter.py`,
+`ui/`
+**Risk:** Medium — the projection is where `NFR-008`'s churn lands
+
+#### Scope
+
+`REQ-003`: format ID, extension, resolution, fps, codecs, bitrate, filesize or estimate, notes, in
+a **sortable** table. `ARCHITECTURE.md` already names `FormatInfo` as a *projection of yt-dlp's
+`info_dict`, declared fields only* — this is where that stops being a plan.
+
+**The projection is the whole risk.** `NFR-008` isolates yt-dlp churn behind the adapter, and a
+table that reads raw `info_dict` keys in the widget puts churn straight into `ui/`. `T-018`'s
+recorded fixtures are what make the mapping assertable without a network.
+
+**Sorting is over the projection, not the display strings.** "1080p" sorts after "720p" and
+"144p"; "~12.4 MB" is an estimate and must sort as a number. A table that sorts its own text is the
+class of defect `T-075` was.
+
+#### Acceptance criteria
+
+- Every column `REQ-003` names is present, populated from a recorded fixture, and asserted by value
+- **The table matches `yt-dlp -F` for a fixture set** — Phase 3's own exit criterion, so this owns
+  proving it rather than assuming it
+- Sorting is numeric where the value is numeric, asserted with a set that text-sorts differently
+- A format missing a field renders a stated placeholder rather than an empty cell or `None`
+- Repaint cost is bounded with a realistic format count (a large playlist entry has dozens)
+- Keyboard reachable and screen-reader labelled per `NFR-005`, per widget state (`T-060`'s rule)
+- `ui/` reads no raw `info_dict` key — asserted statically, as `T-097` does for settings
+
+#### Out of scope
+
+- Selecting from the table (`T-108`), which is `REQ-008`
+- Playlists (`T-110`)
+
+---
+
+### T-108 — Choose a video and an audio stream, and merge them
+
+**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.**
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 3
+**Depends on:** `T-107`
+**Relevant context:** `REQ-008`, `REQ-009`, `REQ-024` (ffmpeg detection), `core/presets.py`
+(`effective_selector`, `custom_preset`), `T-061` (the ffmpeg gate reads the selector, not the
+chosen format), `T-075`
+**Affected surfaces:** `core/presets.py`, `ui/`, `downloader/ytdlp_adapter.py`
+**Risk:** Medium — a merge needs ffmpeg, and `T-061` is what happens when the check reads the wrong
+thing
+
+#### Scope
+
+`REQ-008`: select specific format IDs from `T-107`'s table, **including a separate video and audio
+stream to be merged**. The selector this produces is `bestvideo[...]+bestaudio[...]`-shaped, so it
+flows through the existing `custom_preset` path rather than a new one.
+
+**ffmpeg is required for a merge and optional otherwise**, which is exactly `T-061`'s defect one
+layer up: that gate read the *selector* rather than the format actually chosen, so it approved a
+merge it could not perform. The check here must read the user's actual selection.
+
+#### Acceptance criteria
+
+- A video-only and an audio-only selection produce one merged file, on **both** platforms
+- **With ffmpeg absent, a merge selection is refused before the download starts**, naming ffmpeg —
+  not at merge time, which `REQ-024` is explicit about
+- The refusal reads the chosen formats, asserted by choosing a pair that a selector-only check
+  would wrongly approve (`T-061`)
+- The effective selector is visible, per `REQ-009`'s learn-the-syntax rule
+- A single progressive format still downloads with no ffmpeg involvement
+
+#### Out of scope
+
+- Post-processing (`T-109`), even though it shares the ffmpeg dependency
+
+---
+
+### T-109 — Post-processing: audio, container, thumbnail, metadata, chapters, subtitles
+
+**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.** **Consider splitting** — see below.
+**Owner:** Implementer
+**Priority:** High — the largest single item in the phase
+**Phase:** Phase 3
+**Depends on:** `T-105`; `T-108` for the ffmpeg-presence rule it shares
+**Relevant context:** `REQ-010`, `REQ-024`, `T-077` (four of five download options had never
+produced a file), `T-076`, `T-089`, `downloader/ytdlp_adapter.py`
+**Affected surfaces:** `core/models.py`, `core/presets.py`, `downloader/ytdlp_adapter.py`, `ui/`
+**Risk:** **High** — seven independent options, each of which can be wired to produce no effect
+
+#### Scope
+
+`REQ-010` names seven: extract/convert audio to a chosen codec and quality, remux container, recode
+container, embed thumbnail, embed metadata, embed chapters, and subtitles (download or embed, with
+language selection).
+
+**`T-077` is the reason this is High risk rather than merely long.** Phase 1 shipped five download
+options and four of them had never produced a file — the options were wired into the request and
+nothing asserted the output. Each option here needs a test that looks at what came out.
+
+**Splitting is likely right.** Suggested boundary if it is split: audio extraction and container
+work (which need ffmpeg and change the file) versus embedding and subtitles (which need network or
+metadata and change the file's contents). Left as one task with the split named, rather than split
+on a guess, because `docs/UX_SPEC.md` may draw the line differently.
+
+#### Acceptance criteria
+
+- **Each of the seven produces an observable change in the output file**, asserted on the file —
+  not on the options dictionary handed to yt-dlp (`T-077`)
+- Every option that needs ffmpeg is refused before starting when it is absent (`REQ-024`)
+- Subtitle language selection is asserted with more than one language, including one absent from
+  the source
+- Options that combine are tested together, not only singly — an audio extraction plus an embedded
+  thumbnail is one file that must have both
+- Recorded fixtures where a real download is not needed; a real file where it is (`ai/TESTING.md` §6)
+
+#### Out of scope
+
+- Presets that bundle these (`T-111`)
+
+---
+
+### T-110 — Playlists: probe the entries, choose which to enqueue
+
+**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.**
+**Owner:** Implementer
+**Priority:** High — it changes what a *job* is, which reaches `core/`
+**Phase:** Phase 3
+**Depends on:** `T-105`
+**Relevant context:** `REQ-004`, `REQ-002`, `core/models.py`, `ui/add_dialog.py`,
+`persistence/repositories.py` (`append` allocates positions in one transaction), `T-078`
+**Affected surfaces:** `core/models.py`, `downloader/ytdlp_adapter.py`, `ui/add_dialog.py`,
+`persistence/`
+**Risk:** **High** — today one URL is one job; a playlist is one probe producing N
+
+#### Scope
+
+`REQ-004`: for a playlist, let the user pick which entries to enqueue — **including select-all and
+range selection** — *before any download starts*.
+
+**This is the structural task of Phase 3.** `Job` is currently one URL, and the add-URL dialog
+probes one thing and creates one job. A playlist probe returns entries, each of which becomes a
+job, and they must be appended in **one transaction** so a crash cannot leave half a playlist
+queued (`append` already does this — the task is to use it rather than loop).
+
+**A playlist probe is slow and must not block.** `NFR-001` and `REQ-027` apply: a hundred-entry
+playlist is a long extraction, and the dialog has to stay responsive and cancellable.
+
+#### Acceptance criteria
+
+- A playlist probe lists its entries with enough to choose by (title, duration, index)
+- Select-all and range selection, both keyboard reachable (`NFR-005`)
+- Only selected entries become jobs, asserted on the stored queue
+- **The whole selection is appended in one transaction** — a kill mid-append leaves none, not some
+- Nothing downloads until the user confirms (`REQ-004` is explicit)
+- A probe of a very large playlist keeps the UI responsive and can be cancelled
+- A single-video URL still behaves exactly as it does today, asserted
+
+#### Out of scope
+
+- Per-entry format choice; the selection applies one preset to the chosen entries
+
+---
+
+### T-111 — User presets: create, edit, duplicate, delete, set default
+
+**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.**
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 3
+**Depends on:** `T-105`; `T-109` for the option set a preset can carry
+**Relevant context:** `REQ-007`, `REQ-006`, `core/presets.py` (`check_registry`, `by_name`,
+`to_request`), `ARC-007`/`core/settings.py`, `DAT-001`
+**Affected surfaces:** `core/presets.py`, `core/settings.py` or a new store, `ui/`
+**Risk:** Medium — user presets are persisted state with a name-collision problem
+
+#### Scope
+
+`REQ-007`: create, edit, duplicate, delete, and set a default. The built-in presets (`REQ-006`) stay
+and must not be editable into something that no longer matches its own name.
+
+**Where they live is a decision this task must take or raise.** `settings.toml` is `ARC-007`'s and
+holds settings; a list of user presets is closer to data. `DAT-001` chose TOML for
+human-editability, which argues for a sibling file rather than a table — but that is a decision,
+not an implementation choice, and it needs an entry.
+
+#### Acceptance criteria
+
+- All five operations, each asserted on what is stored afterwards
+- A built-in preset cannot be edited or deleted; duplicating one is how you start from it
+- A user preset with a colliding name is refused or disambiguated, stated either way
+- The default survives a restart, and deleting the default leaves a defined default
+- A preset carrying options that need ffmpeg behaves like `T-108`/`T-109` when it is absent
+- A hand-edited preset file that is malformed reports rather than reverting silently (`ARC-008`)
+
+#### Out of scope
+
+- Sharing or importing presets
+
+---
+
+### T-112 — The output template editor, with a live path preview
+
+**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.**
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 3
+**Depends on:** `T-105`
+**Relevant context:** `REQ-011`, `DAT-002`, `core/paths.py` (`sanitize_component`, and `T-046`'s
+atomic reservation), `T-034`, `T-045`, `T-067` (long paths), `NFR-004`
+**Affected surfaces:** `core/paths.py`, `ui/`
+**Risk:** Medium — the preview must be the same function the download uses, or it lies
+
+#### Scope
+
+`REQ-011`: output path and filename control via a configurable template, **with a live preview of
+the resulting path for the current item**.
+
+**The preview and the real path must come from one function.** Two implementations of "where will
+this go" is the `T-059` shape — one widget answering a question two ways — and here the two answers
+are visible side by side, so a divergence is a promise broken in front of the user.
+
+`T-034`, `T-045` and `T-046` already own sanitizing and containment. This adds the *template*, and
+must not reimplement any of it.
+
+#### Acceptance criteria
+
+- The preview is produced by the same code path that names the actual output, asserted by
+  downloading and comparing
+- **Phase 3's exit criterion:** the preview matches the written path in every tested case,
+  including titles with characters illegal on Windows
+- **Path containment holds**: no rendered template escapes the output directory — asserted with
+  `..`, absolute paths, and a template that resolves to one
+- An invalid template is reported as the user types, not at download time
+- Long paths behave per `T-067`'s finding, which is that the default configuration is the case
+  to test
+
+#### Out of scope
+
+- Collision policy (`T-046`, already delivered)
+
+---
+
+### T-113 — Resume a partial download across a restart
+
+**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.**
+**Owner:** Implementer
+**Priority:** Medium — and the highest *uncertainty* in the phase
+**Phase:** Phase 3
+**Depends on:** Phase 2 exit
+**Relevant context:** `REQ-017`, `UX-001` (this is its named reopening condition), `T-080`
+(removed `JobStatus.PAUSED`), `ARCHITECTURE.md` §5, `NFR-003`
+**Affected surfaces:** `core/job_state.py`, `downloader/`, `persistence/`
+**Risk:** **High** — it is the one Phase 3 item whose feasibility depends on the site and format
+
+#### Scope
+
+`REQ-017`: resume partially completed downloads across restarts **where the site and format allow
+it**, and *state clearly when resumption is not possible*. The second half is as much of the
+requirement as the first.
+
+**This reopens two accepted decisions, and should do so explicitly rather than by accident:**
+
+- **`UX-001`** names `REQ-017` as its reopening condition. Once a partial file can be resumed,
+  per-job pause becomes coherent — pause would stop having to mean "drain".
+- **`T-080` removed `JobStatus.PAUSED`** on the reasoning that nothing could enter it. If this task
+  needs a paused state it should add the one its own semantics require, which is exactly what that
+  removal was for.
+
+Neither is this task's to decide alone; both need an entry.
+
+#### Acceptance criteria
+
+- A partial download resumes after a real restart, verified by killing the process mid-download
+  (`ai/TESTING.md` §7's rule — a real kill, not a clean shutdown)
+- A format that cannot resume says so, in the UI, **before** the user waits for it to fail
+- The partial file's lifetime is defined: what happens to it on cancel, on remove, and on a
+  resume that the server refuses
+- Whether `UX-001` and `JobStatus.PAUSED` change is recorded as a decision, either way
+
+#### Out of scope
+
+- Resuming across a *format* change, which is a different download
+
+---
+
+### T-114 — Warn when a URL has been downloaded before
+
+**Status:** Proposed — **Phase 3 decomposition, 2026-08-01.**
+**Owner:** Implementer
+**Priority:** Low — the smallest item in the phase
+**Phase:** Phase 3
+**Depends on:** `T-085` (history records, approved) and `T-100` (the history view)
+**Relevant context:** `REQ-022`, `T-085`, `persistence/repositories.py` (`HistoryRepository`)
+**Affected surfaces:** `persistence/`, `ui/add_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+`REQ-022`: detect that a URL has been downloaded before and warn, **with an override**. The history
+table already stores the source URL (`T-085`), so this is a lookup and a prompt rather than new
+state.
+
+**The override is the requirement, not a concession.** Re-downloading at a different quality, or
+because the file was deleted, is an ordinary thing to want.
+
+#### Acceptance criteria
+
+- A URL present in history warns before enqueueing, naming when it was downloaded and where it went
+- The override enqueues it anyway, asserted on the stored queue
+- A URL **not** in history enqueues with no prompt — the silent case, which an over-eager
+  implementation breaks
+- The lookup is indexed, not a scan of history on the GUI thread (`T079-R2`'s rule)
+- A cleared queue does not clear history, so the warning survives clear-finished (`T-081`)
+
+#### Out of scope
+
+- Detecting the same *video* at a different URL
+
+---
+
 ## Blocked
 
 ### T-066 — CI installs the project differently from how the documentation says to
