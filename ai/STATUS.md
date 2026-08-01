@@ -16,21 +16,37 @@
 Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLAN-R2` at `f858da9`,
 `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
-**Nine of thirteen Phase 2 deliverables are approved as of 2026-08-01**, one is in review, and
-nothing is blocked on a decision.
+**Every Phase 2 feature deliverable is now written.** Nine are approved, four await review, and
+`T-088` — the phase's own proof — is the only one not started.
 
 - **Approved:** `T-078`, `T-079`, `T-080`, `T-081`, `T-046`, `T-083`, `T-085`, `T-087`, `T-102`,
   plus the supporting `T-053`, `T-099`, `T-101`, `T-103`.
-- **In review:** `T-100`, the history view.
-- **Ready:** `T-082`, `T-084`, and `T-086` once `T-100` lands.
+- **In review, all four delivered 2026-08-01:** `T-100` (history view), `T-086` (open and reveal),
+  `T-084` (per-job diagnostics and the log view), `T-082` (interrupted jobs offered for retry).
+- **Not started:** `T-088`, which proves the phase and depends on `T-078`…`T-087`.
 - **Blocked on `STARBASE`, which is offline:** `T-092` and `T-074`. Neither gates the phase.
+
+**`T-084` found that yt-dlp's diagnostics were being discarded entirely.** `build_options` set no
+`logger`, so the output `REQ-019` names went to a console a worker does not have; the per-job log
+existed and held this application's own lines only. Two measured findings came out of fixing it:
+**`logger` overrides `quiet` and `no_warnings`** (yt-dlp returns from `to_screen` before consulting
+either), and **`verbose` must stay off** because it dumps `params:` and `Proxy map:` — values this
+application supplies, which `DAT-003`'s provenance table says must never reach a log.
+
+**`DAT-004` is proposed and needs a maintainer ruling.** Log redaction is now provenance-aware, as
+`DAT-003`'s `T-049` amendment requires. Separately, `DAT-003` says it **reopens** for *"a bug report
+attaching it"* — and `T-084` ships a Copy-diagnostics button whose whole purpose is that. The
+implementation follows `DAT-003` as written and the copied text is the file verbatim; **whether the
+clipboard path should differ from the file is not mine to decide** and is flagged rather than
+quietly settled.
 
 **`A-004` is verified and Phase 2 exit criterion 4 is met.** `T-087`'s three required Windows cases
 — first acquisition and refusal, **two launches racing**, killed-holder recovery — passed on
 `check (windows-latest)` at `ea9d752`. Under `OPS-005`'s 2026-08-01 amendment that is the Windows
 gate while `STARBASE` is unreachable.
 
-**Full Linux suite: 1766 passed / 11 skipped / 2 deselected**, with all four `mypy` gates clean.
+**Full Linux suite: 1860 passed / 11 skipped / 2 deselected**, with all four `mypy` gates clean
+(`ruff`, `ruff format`, `mypy src`, `mypy`, and both under `--platform win32`).
 
 *(This block previously said ten tasks were in review and that the Windows branch had never
 executed, several paragraphs before a later section said the reverse — `T087-R4`. Every claim in it

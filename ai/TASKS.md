@@ -266,50 +266,14 @@ Two decisions worth a reviewer's disagreement:
   the one `subprocess` call in the package; the answer is a guard that raises, with a test that
   fires it, rather than a `noqa` nothing checks.
 
-## Ready
-*(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
-which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
-For two commits `T-074`, `T-089`, `T-091`, `T-092` and `T-096` therefore sat under `## In Review`
-while each said Ready: the exact status-versus-section class `COORD-R5` through `COORD-R10`
-reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
-and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
-being necessary.)*
-
-### T-082 — Interrupted jobs are offered for retry at startup
-
-**Status:** **Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`.** Depends on the
-pool alone, so it can run beside `T-079`.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** `T-078`
-**Relevant context:** `REQ-012`, `T-037`, `T-014`
-**Affected surfaces:** `app.py`, `persistence/`, `ui/`
-**Risk:** Low — the recovery exists; the offer does not
-
-#### Scope
-
-Phase 1 already recovers: `compose()` moves jobs left `RUNNING` to `FAILED`/`INTERRUPTED` before
-anything reads the queue, and `test_recovery_is_the_applications_own_and_not_the_tests` proves the
-application does it rather than the test. What Phase 2 adds is the **offer** — and the plural.
-One interrupted job is Phase 1's case; a queue of them is this one.
-
-#### Acceptance criteria
-
-- Every interrupted job is recovered before the queue is readable, not as the user scrolls to it
-- The offer is explicit and refusable; nothing restarts a download the user did not ask to restart
-- Recovering N jobs does not mean N unbatched writes on the writer thread
-
-#### Out of scope
-
-- Automatic resumption without asking
-
----
-
 ### T-084 — Per-job log capture and a log view
 
-**Status:** **Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`.** Reconciled against
-`DAT-003` on 2026-07-31; see *The verbatim boundary* below.
+**Status:** **In Review — complete 2026-08-01.** Nineteen mutations run; all nineteen killed.
+Three survived the first pass and **two of the three were my tests' fault, not defective mutations**
+— see *What the mutation battery found* below. `T-053`'s concurrent evidence, which this task's
+last criterion requires before approval, was approved at `05e5312` earlier today.
+*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`. Reconciled against
+`DAT-003` on 2026-07-31".)*
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 2
@@ -366,11 +330,151 @@ the criterion below names the decision instead of restating its conclusion.
   job under a saturated pool" cannot honestly be claimed without the concurrent proof, so the
   coupling sits at approval (`P2PLAN-R4`)
 
+#### What was actually missing, and what was already there
+
+`T-038` and `T-053` had built most of the plumbing: per-job files, the job stamp, the drain
+ordering, handler-level redaction. **Two things were absent and one was invisible.**
+
+1. **yt-dlp's diagnostics were being discarded entirely.** `build_options` passed `quiet=True` and
+   `no_warnings=True` and set no `logger`, so the output `REQ-019` names went to a console a worker
+   does not have. The per-job log existed and held this application's own lines only.
+2. **Nothing bounded a job's log**, and the criterion asks for the bound to be *stated*.
+3. **There was no view**, so nothing was copyable.
+
+#### Two measured findings that changed the design
+
+**`logger` overrides `quiet` and `no_warnings`.** Read in yt-dlp 2026.07.04: `to_screen` calls
+`logger.debug(...)` and **returns before consulting `quiet`**; `report_warning` consults `logger`
+before `no_warnings`. Both flags stay — they are still right when no logger is passed — but with one
+present they suppress nothing. This is worth a reviewer's attention because the flags now read as
+doing something they do not.
+
+**`verbose` is deliberately off, and that is a security decision.** Measured: verbose makes yt-dlp
+dump `params:` and `Proxy map:`, which carry the proxy URL and `cookiesfrombrowser` — **values this
+application supplies**, the one row of `DAT-003`'s provenance table that must never reach a log. The
+version banner a bug report wants is written by `worker._log_the_session_header` instead, where
+every field is chosen here.
+
+*(The equivalent assertion in the end-to-end test would have been a guard that cannot fire: yt-dlp
+prefixes verbose lines `[debug]`, `YtdlpLog` sends those to `DEBUG`, and the worker's handler sits
+at `INFO`, so they are dropped for a second unrelated reason. It is asserted on the options dict
+instead — `ai/TESTING.md` §13.)*
+
+#### How the provenance boundary is implemented
+
+A record attribute, `THIRD_PARTY_FIELD`, set by a filter on the logger yt-dlp's bridge writes to.
+`RedactingFormatter` reads it: **exact registered secrets are removed from every record**, and the
+*pattern* rules — the ones that guess from shape — are applied only to lines this application wrote.
+
+That is what lets both directions of the criterion hold **on the same string**: a cookie path is kept
+in yt-dlp's line and removed from ours, in one file, which no shape-based rule could produce.
+
+#### For the maintainer to rule on — `DAT-003`'s reopening clause
+
+`DAT-003` says the decision reopens if the diagnostics stop being local and user-owned, and names
+**"a bug report attaching it"** as a trigger. **This task builds the button that does exactly that.**
+
+The boundary is implemented as `DAT-003` specifies and the copied text is the file verbatim. I did
+*not* quietly add a second, more-scrubbed rendering for the clipboard: inventing a specification is
+not mine to do, and NFR-006 argues against it. But the trigger condition is now met in fact, so this
+is flagged rather than left for someone to notice later.
+
+#### What the mutation battery found
+
+Three of nineteen survived the first pass:
+
+- **A real gap:** the bound test wrote 2.5 MB against a 4 MiB total, so an unrotated single file
+  passed it. It now asserts the *live* file against `MAX_JOB_LOG_BYTES`, which fails immediately.
+- **An over-claim of mine:** a test said passing yt-dlp's text as a `%`-argument prevented it being
+  read as a format string. `logging` applies `%` only when a record carries args, so both spellings
+  are identical and the claim was unfalsifiable. The docstring now says so and the test asserts what
+  is really guarded — that a percent sign survives redaction to the file.
+- **A guard that could not fire:** the verbose assertion, described above, moved to where it can.
+
 #### Out of scope
 
 - Shipping logs anywhere, or a crash reporter
 
 ---
+
+### T-082 — Interrupted jobs are offered for retry at startup
+
+**Status:** **In Review — complete 2026-08-01.** Eight mutations run; all eight killed. Two
+survived the first pass and **one of them found a claim the code had not earned** — see below.
+*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`".)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`
+**Relevant context:** `REQ-012`, `T-037`, `T-014`
+**Affected surfaces:** `app.py`, `persistence/`, `ui/`
+**Risk:** Low — the recovery exists; the offer does not
+
+#### Scope
+
+Phase 1 already recovers: `compose()` moves jobs left `RUNNING` to `FAILED`/`INTERRUPTED` before
+anything reads the queue, and `test_recovery_is_the_applications_own_and_not_the_tests` proves the
+application does it rather than the test. What Phase 2 adds is the **offer** — and the plural.
+One interrupted job is Phase 1's case; a queue of them is this one.
+
+#### Acceptance criteria
+
+- Every interrupted job is recovered before the queue is readable, not as the user scrolls to it
+- The offer is explicit and refusable; nothing restarts a download the user did not ask to restart
+- Recovering N jobs does not mean N unbatched writes on the writer thread
+
+#### What was missing, against each criterion
+
+**Criterion 1 — recovered before the queue is readable.** Already true: `compose()` calls
+`recover_interrupted()` before the writer, the store or the window exist. Nothing to do; now
+asserted end to end through the composed application rather than left as a property of the
+call order.
+
+**Criterion 2 — the offer.** Absent. `compose()` called `recover_interrupted()` and **threw the
+returned ids away**, so the recovery was correct and completely invisible: a user who lost twelve
+downloads to a crash saw twelve failed rows and no acknowledgement that anything had happened. The
+offer is a `QMessageBox` following `report_settings_problem`'s precedent, with **`Not now` as both
+the default and the escape button** — Enter or Escape at startup must not begin twelve downloads.
+
+**Criterion 3 — N jobs is not N unbatched writes.** Was violated. `recover_interrupted` called
+`update()` per job and `update()` opens its own transaction, so recovering a queue was one commit
+and one fsync per row, on the path that runs before the window appears. Now one transaction, with
+**every transition computed before anything is written** — `with_failure` validates, and validating
+inside the transaction would half-recover the queue if it ever raised.
+
+Counted with sqlite3's trace callback rather than asserted about, so the test cannot pass against an
+implementation that batches in Python and still commits per row.
+
+#### A claim the code had not earned
+
+The first version had an early return for "nothing to recover", commented as avoiding a needless
+fsync. A mutation removing it survived. **Measured: `with connection` issues nothing at all when no
+statement runs inside it**, so the branch prevented a commit that was never going to happen. The
+guard is gone and the comment now says why there is no guard. The test that covered it asserts the
+behaviour that is real — a clean start writes nothing — rather than the branch that did not.
+
+#### One thing worth a reviewer's disagreement
+
+**Accepting the offer is N retries, one per job**, through the same injected `retry` the per-job
+button uses. That is N writes, which looks like criterion 3 again — but criterion 3 is about
+*recovery*, which happens before the window exists and which the user cannot decline. This is a
+retry the user asked for, on the ordinary route. A bulk path in the manager would be a second
+definition of "retry" that can drift from the first; if that trade is wrong, it is one call site.
+
+#### Out of scope
+
+- Automatic resumption without asking
+
+---
+
+## Ready
+*(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
+which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
+For two commits `T-074`, `T-089`, `T-091`, `T-092` and `T-096` therefore sat under `## In Review`
+while each said Ready: the exact status-versus-section class `COORD-R5` through `COORD-R10`
+reported six times, produced here by a tool rather than by inattention. **`T-096` is the answer**
+and this is its seventh instance — found by reading the file, which is what `T-096` exists to stop
+being necessary.)*
 
 ### T-074 — The Windows suite segfaults intermittently while the result pump is delivering
 
