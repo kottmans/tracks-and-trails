@@ -5372,9 +5372,53 @@ def test_a_direct_download_start_cannot_bypass_the_reorder_barrier(
         )
 
         repository.release_reorders()
-        assert "job-2" in download._occupant_ids(), (
-            f"occupants {download._occupant_ids()}; after the reorder landed the new head did "
-            "not start"
+        # The first reviewer version asserted that job-2 starts here. That invented a product
+        # rule: only job-1 has been admitted, so the reorder may delay that intent but may not
+        # replace it with an unattended start of a different row. Ordering decides between work
+        # already waiting; it does not make every row in the durable table waiting.
+        assert "job-1" in download._occupant_ids(), (
+            f"occupants {download._occupant_ids()}; after the reorder landed the explicitly "
+            "started job did not run"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_settling_a_reorder_does_not_admit_a_job_nobody_started(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T081-R4`: re-deciding order must not invent admission intent.
+
+    The durable table contains jobs that this manager is not currently meant to run: most
+    concretely, a `QUEUED` row recovered after an interrupted application start.  Reordering says
+    where admitted work runs; it is not itself a request to restart every row named by the order.
+
+    Hold a reorder while the user explicitly starts only the READY job.  When the write settles,
+    the recovered job is first in the new order but still has no start intent.  Starting it would
+    turn one requested download into unattended work on a different job.
+    """
+    repository = ReorderHoldingRepository()
+    queued(repository, "recovered", "requested", directory=tmp_path)
+    requested = repository.get("requested")
+    assert requested is not None
+    repository.add(replace(requested, status=JobStatus.READY))
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.reorder(["recovered", "requested"])
+        download.start("requested", SessionKind.DOWNLOAD)
+        assert download._waiting == ["requested"], "the explicit start intent was not parked"
+
+        repository.release_reorders()
+
+        assert "requested" in download._occupant_ids(), (
+            f"occupants {download._occupant_ids()}; settling the order dropped the job the user "
+            "actually started"
+        )
+        assert "recovered" not in download.active_job_ids(), (
+            f"active jobs {download.active_job_ids()}; reordering admitted a recovered job that "
+            "nobody asked this manager to start"
         )
     finally:
         download.shutdown()

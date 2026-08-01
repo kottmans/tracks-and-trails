@@ -644,9 +644,14 @@ class DownloadManager(QObject):
         job cannot be started by the tick that fires between the delete being queued and landing.
 
         **What survives is the file**, deliberately. `UX-001`: remove takes the job out of the
-        queue, and nothing this application deletes from disk goes by this route. A partially
-        written file from a cancelled download is the user's to delete, and `T-085`'s history keeps
-        a completed job's record even after its queue row is gone.
+        queue, and nothing this application deletes from disk goes by this route. `T-085`'s history
+        keeps a completed job's record even after its queue row is gone.
+
+        *(This added "a partially written file from a cancelled download is the user's to delete".
+        That stopped being true with `T046-R1`: the download happens in a staging directory which
+        is discarded whatever the outcome, so **a cancelled job leaves no partial at all**. What
+        this method promises is unchanged — it deletes nothing — but the sentence described a file
+        that no longer exists. `REQ-017` and `T-113` own partial-file lifetime when resume lands.)*
         """
         self._discard_waiting(job_id)
         self._retry_at.pop(job_id, None)
@@ -720,37 +725,20 @@ class DownloadManager(QObject):
             self.persistence_failed.emit(job_ids[0], error)
         else:
             self.queue_reordered.emit(tuple(job_ids))
-            # **Admission is re-decided from the durable order, not from who asked first**
-            # (`T081-R1`). A job parked while this was in flight was chosen against the positions
-            # this reorder replaced, so honouring it as-is would start the old head immediately
-            # after the user said something else should go first — the same defect one step later.
-            #
-            # The reordered jobs are candidates because the user has just expressed an order over
-            # them, which is a statement about what should run and in what sequence. Only while
-            # something is already parked: a reorder of an idle queue is a rearrangement, not a
-            # request to start anything.
-            if self._waiting:
-                self._admit_reordered(job_ids)
         # Whatever the outcome, scheduling was suspended while this was in flight and the durable
         # order is now settled. Filling here is what makes the barrier a delay rather than a drop.
+        #
+        # **It fills from the intents already admitted, and only those** (`T081-R4`). A correction
+        # briefly promoted every reordered row into `_waiting` on the reasoning that ordering some
+        # jobs is a statement about what should run — it is not. Startup recovery deliberately
+        # leaves `QUEUED` rows dormant (`T-014`, `NFR-003`), so a reorder naming one of them started
+        # an unattended download for a job nobody had asked for. Reordering admitted work is not
+        # permission to start work that was never admitted.
+        #
+        # The new positions are used only to *order* the set that was already waiting, which is
+        # what `_next_waiting` does with them.
         if not self._shutting_down:
             self._fill_free_slots()
-
-    def _admit_reordered(self, job_ids: list[str]) -> None:
-        """Let every startable job in a settled reorder compete for the next slot (`T081-R1`).
-
-        `_next_waiting` then picks by `queue_position`, so the head of the *new* order wins rather
-        than whichever job happened to be requested before the reorder landed.
-
-        Startable only — a job that is running, finished or failed is not a candidate, and adding
-        one would produce a refusal the user did not cause.
-        """
-        for job_id in job_ids:
-            if job_id in self._waiting or job_id in self._sessions or job_id in self._reserved:
-                continue
-            job = self._repository.get(job_id)
-            if job is not None and job.status in _ENTRY_STATUS:
-                self._waiting.append(job_id)
 
     def clear_completed(self) -> None:
         """Remove every finished job from the queue. **Never deletes a file** (`REQ-016`).
@@ -1956,9 +1944,15 @@ class DownloadManager(QObject):
             # would tell the user their own cancel button broke something.
             #
             # The worker's own words are kept when it managed to send them, because they are the
-            # evidence that the *cooperative* path ran and left partial files in a known state
-            # (`REQ-015`). The generic text is for a worker that was killed before it could say
-            # anything, where claiming a clean stop would be a guess.
+            # evidence that the *cooperative* path ran (`REQ-015`). The generic text is for a
+            # worker that was killed before it could say anything, where claiming a clean stop
+            # would be a guess.
+            #
+            # *(This said the cooperative path "left partial files in a known state". Since
+            # `T046-R1` the download runs in a staging directory that is discarded either way, so
+            # there is no partial to be in any state — and the message is now the **only** evidence
+            # that the unwind was cooperative rather than forced, which is why the cancel test
+            # asserts it instead of a `.part` file.)*
             spoken = session.outcome
             reason = (
                 spoken.message
