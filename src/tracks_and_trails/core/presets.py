@@ -191,6 +191,32 @@ def check_registry(presets: tuple[Preset, ...]) -> None:
 check_registry(BUILT_IN_PRESETS)
 
 
+#: Every yt-dlp selector form that produces a *merged* output, and therefore a container yt-dlp
+#: chooses rather than one the request names (`T046-R5`).
+#:
+#: **`+` is not the whole syntax.** `mergeall` folds every selected format into one without
+#: containing a `+` at all, so a check that scanned for that one token reported a merging request as
+#: exact — in precisely the direction `REQ-011`'s amendment exists to prevent. Listed rather than
+#: pattern-matched so adding a form is a visible edit, and `test_presets` asserts the list against
+#: yt-dlp's own documented selectors.
+MERGE_TOKENS: Final = ("+", "mergeall")
+
+
+def selector_merges(selector: str) -> bool:
+    """Whether `selector` asks yt-dlp to merge streams, and so to pick the container itself.
+
+    Answered from the selector text because it is asked **before** anything is resolved — the
+    preview exists to be shown while the user is still deciding.
+
+    **Conservative on purpose.** A selector this does not recognise as merging is reported exact,
+    so a form nobody has listed here shows a confident path. That is the failure mode `T046-R5`
+    reported, and the mitigation is that the list is short, visible and asserted rather than
+    inferred — if a new merge spelling appears, it is one line.
+    """
+    lowered = selector.lower()
+    return any(token in lowered for token in MERGE_TOKENS)
+
+
 def effective_selector(preset: Preset) -> str:
     """The selector string this preset actually downloads with (`REQ-009`).
 

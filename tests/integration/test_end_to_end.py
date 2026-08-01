@@ -751,10 +751,24 @@ def test_original_audio_preview_matches_the_real_postprocessor_output(
 
         stored = composition.store.get(job_id)
         assert stored is not None and stored.output_path is not None
-        assert Path(stored.output_path) == preview, (
-            f"preview promised {preview.name!r}, but the original-audio postprocessor produced "
-            f"{Path(stored.output_path).name!r}"
+        written = Path(stored.output_path)
+
+        # **The real download is kept and the claim it gates is amended** (`T046-R4`). Equality is
+        # not achievable here and the failure proved why: `FFmpegExtractAudioPP.run` decides the
+        # container from `get_audio_codec(path)` — **ffprobe on the downloaded file** — and skips
+        # conversion outright when the *downloaded* extension is already a common audio one.
+        # Neither input exists when the preview is drawn, so "Audio only (original)" is labelled
+        # provisional rather than predicted, and `REQ-011`'s exactness claim is narrowed to
+        # extraction with a **named** codec.
+        assert worker.preview_is_provisional(job.request), (
+            "the original-audio preset was presented as an exact path; its container is decided "
+            "by ffprobe on a file that does not exist yet"
         )
+        assert written.stem == preview.stem, (
+            f"preview promised the name {preview.stem!r} and the download wrote {written.stem!r}; "
+            "provisional is about the container, and the rest of the path is still a promise"
+        )
+        assert written.parent == preview.parent, "the download landed outside the previewed folder"
     finally:
         composition.shutdown.begin()
         assert spin(lambda: composition.shutdown.finished, timeout=120)

@@ -1636,14 +1636,14 @@ def test_an_audio_request_previews_the_extension_it_will_actually_produce(
     )
 
 
-def test_an_original_audio_request_previews_the_container_it_arrives_in(
+def test_an_original_audio_request_is_labelled_rather_than_predicted(
     tmp_path: Path,
 ) -> None:
-    """`ORIGINAL` carries yt-dlp's `best`, which means **keep the source codec** — not convert.
+    """`ORIGINAL` carries yt-dlp's `best`, and its container is decided after the download.
 
-    Substituting an extension for it would render `Clip.best`, which is not a file anybody gets.
-    Found by mutation: removing the `ORIGINAL` guard survived, because every other preview test
-    either asks for MP3 or is not an audio request at all.
+    Substituting the codec name would render `Clip.best`, which is not a file anybody gets — and
+    substituting the *source* container is what `T046-R4` disproved against a real download. So
+    nothing is substituted and the preview is labelled.
     """
     info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "webm", "format_id": "webm"}
     resolved = worker_module._import_ytdlp(ytdlp_candidates(None))
@@ -1657,8 +1657,16 @@ def test_an_original_audio_request_previews_the_container_it_arrives_in(
     preview = worker_module.preview_path(request, dict(info), resolved)
 
     assert preview.suffix == ".webm", (
-        f"preview promised {preview.name!r}; ORIGINAL keeps the source container, so the rendered "
-        "extension was already right and nothing should have been substituted"
+        f"preview promised {preview.name!r}; nothing is substituted for ORIGINAL, because the "
+        "container it lands in is not knowable before the write"
+    )
+    # *(This test's docstring used to say ORIGINAL "keeps the source container, so the rendered
+    # extension was already right". `T046-R4` disproved that with a real download: AAC inside an
+    # `.mp4` is copied into an `.m4a`. The rendered extension is not right — it is merely the best
+    # available, which is why the case is labelled rather than promised.)*
+    assert worker_module.preview_is_provisional(request), (
+        "ORIGINAL was presented as exact; yt-dlp decides its container by running ffprobe on the "
+        "downloaded file, which does not exist when the preview is drawn"
     )
 
 
@@ -1791,3 +1799,72 @@ def test_the_staging_directory_does_not_outlive_the_download(
 
     leftovers = [p for p in tmp_path.iterdir() if p.name.startswith(worker_module.STAGING_PREFIX)]
     assert leftovers == [], f"staging directories survived the download: {leftovers}"
+
+
+def test_the_previewed_container_comes_from_yt_dlps_table_not_the_codec_name(
+    tmp_path: Path,
+) -> None:
+    """`T046-R4`: the codec is **not** the extension, for three of the eight.
+
+    yt-dlp copies `aac` and `alac` into **m4a** and `vorbis` into **ogg**. Using `codec.value`
+    directly is right for mp3, opus, flac, wav and m4a and wrong for the rest — and being right
+    most of the time is what makes a preview believed. Found by mutation: every existing preview
+    test asked for MP3, where the two happen to agree.
+    """
+    expected = {
+        AudioCodec.MP3: ".mp3",
+        AudioCodec.AAC: ".m4a",
+        AudioCodec.ALAC: ".m4a",
+        AudioCodec.M4A: ".m4a",
+        AudioCodec.VORBIS: ".ogg",
+        AudioCodec.OPUS: ".opus",
+        AudioCodec.FLAC: ".flac",
+        AudioCodec.WAV: ".wav",
+    }
+    info = {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "webm", "format_id": "webm"}
+    resolved = worker_module._import_ytdlp(ytdlp_candidates(None))
+
+    for codec, suffix in expected.items():
+        request = request_for(
+            tmp_path,
+            format_selector="bestaudio",
+            media_kind=MediaKind.AUDIO,
+            audio_codec=codec,
+        )
+        preview = worker_module.preview_path(request, dict(info), resolved)
+        assert preview.suffix == suffix, (
+            f"{codec.value} previewed as {preview.suffix!r}; yt-dlp's ACODECS table says "
+            f"{suffix!r}, and the codec name is not the container for aac, alac or vorbis"
+        )
+        assert not worker_module.preview_is_provisional(request), f"{codec.value} is derivable"
+
+
+def test_original_stays_unpredictable_even_if_yt_dlp_names_a_container_for_it(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The `ORIGINAL` guard is a decision about *us*, not a gap in yt-dlp's table.
+
+    `ACODECS` has no `best` key today, so the guard and the lookup currently give the same answer
+    and a mutation removing it survived. It is kept rather than deleted because it encodes
+    something the table cannot: even if yt-dlp named a container for `best`, that container is
+    chosen by `ffprobe` on the downloaded file and by the *downloaded* extension, so it would still
+    not be knowable when the preview is drawn.
+
+    Simulated by giving the table a `best` entry, which is the only way to reach the guard.
+    """
+    from yt_dlp.postprocessor import ffmpeg as ffmpeg_pp
+
+    monkeypatch.setitem(ffmpeg_pp.ACODECS, "best", ("mp4", None, []))
+
+    request = request_for(
+        tmp_path,
+        format_selector="bestaudio",
+        media_kind=MediaKind.AUDIO,
+        audio_codec=AudioCodec.ORIGINAL,
+    )
+
+    assert worker_module.audio_extension_for(AudioCodec.ORIGINAL) is None, (
+        "a container yt-dlp names for 'best' was taken as a prediction; it still depends on "
+        "ffprobe of a file that does not exist when the preview is drawn"
+    )
+    assert worker_module.preview_is_provisional(request)
