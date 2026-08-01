@@ -241,6 +241,17 @@ class QueueModel(QAbstractTableModel):
     def row_of(self, job_id: str) -> int | None:
         return self._index_of.get(job_id)
 
+    def job_for(self, job_id: str) -> Job | None:
+        """The job behind a row, as the table currently holds it (`T-081`).
+
+        **An indexed lookup into rows already built**, not a read (`T079-R2`). The window asks this
+        to decide whether to offer the move actions, and it must get the same answer the user is
+        looking at — a fresh `QueueReader.get` could disagree with the row on screen and offer a
+        control for a state the table is not showing.
+        """
+        index = self._index_of.get(job_id)
+        return None if index is None else self._rows[index].job
+
     def displayed_progress(self, job_id: str) -> Progress | None:
         index = self._index_of.get(job_id)
         return None if index is None else self._rows[index].displayed

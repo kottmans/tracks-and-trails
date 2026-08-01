@@ -28,11 +28,17 @@ class JobStatus(StrEnum):
     PROBING = "probing"
     READY = "ready"
     RUNNING = "running"
-    PAUSED = "paused"
     POST_PROCESSING = "post_processing"
     COMPLETED = "completed"
     FAILED = "failed"
     CANCELLED = "cancelled"
+
+    # `PAUSED` was here until `T-080` (2026-07-31, maintainer decision). It was never reachable:
+    # `UX-001` makes pause a queue-level drain, so a paused *queue* has running jobs that finish
+    # and waiting jobs that do not start, and no job's own status ever changes. Keeping a status
+    # nothing can enter reads as capability without being it. `REQ-017`'s partial-download resume
+    # in Phase 3 is the reopening condition, and it can add the status its own semantics need
+    # rather than inheriting this one, which was a guess nothing ever exercised.
 
 
 #: States from which nothing further happens.
@@ -41,6 +47,23 @@ class JobStatus(StrEnum):
 #: and `REQ-018` requires a failed job to stay in the queue and offer retry. A job that failed
 #: is finished with *this attempt*, not with its life.
 TERMINAL: Final = frozenset({JobStatus.COMPLETED, JobStatus.CANCELLED})
+
+#: Statuses whose queue position the user may rearrange (`REQ-016`, `T-081`).
+#:
+#: **The complement of "in flight or finished", written out rather than derived.** Deriving it as
+#: `set(JobStatus) - INTERRUPTED_ON_STARTUP - TERMINAL` would make the three agree
+#: unconditionally, which `ai/TESTING.md` §13 is about: a new status would silently become
+#: reorderable and no test could tell. `test_the_reorderable_statuses_partition_the_enum` asserts
+#: the partition instead, so adding a status fails the suite until somebody decides its side.
+#:
+#: `FAILED` is here because a failed job is still in the queue offering a retry (`TERMINAL`'s own
+#: note), and where it sits decides when that retry runs.
+REORDERABLE: Final = frozenset({JobStatus.QUEUED, JobStatus.READY, JobStatus.FAILED})
+
+#: Lives here rather than in `persistence/` because it is a fact about a *status*, like `TERMINAL`
+#: and `CANCELLABLE` above — and because `ui/` needs it to decide whether to offer the move
+#: actions. Reaching into the persistence layer for that would have `ui/` importing a module it
+#: has no other business with (`ARCHITECTURE.md` §3).
 
 #: The legal transition table, transcribed from `ARCHITECTURE.md` §5's diagram.
 #:
@@ -52,18 +75,17 @@ _TRANSITIONS: Final[dict[JobStatus, frozenset[JobStatus]]] = {
     JobStatus.QUEUED: frozenset({JobStatus.PROBING, JobStatus.FAILED, JobStatus.CANCELLED}),
     JobStatus.PROBING: frozenset({JobStatus.READY, JobStatus.FAILED, JobStatus.CANCELLED}),
     JobStatus.READY: frozenset({JobStatus.RUNNING, JobStatus.FAILED, JobStatus.CANCELLED}),
+    # `RUNNING → PAUSED` and `PAUSED → RUNNING` were removed by `T-080`. See `JobStatus` for why;
+    # the short version is that `UX-001`'s pause never changes a job's status, so both edges were
+    # unreachable and the second one's comment ("resume returns to RUNNING, not READY") was
+    # reasoning about a transition nothing could take.
     JobStatus.RUNNING: frozenset(
         {
             JobStatus.POST_PROCESSING,
-            JobStatus.PAUSED,
             JobStatus.FAILED,
             JobStatus.CANCELLED,
         }
     ),
-    # Resume returns to RUNNING. It does not go back to READY: the partial download and the
-    # already-resolved format belong to this attempt, and re-entering READY would imply
-    # re-deciding them (`REQ-015`).
-    JobStatus.PAUSED: frozenset({JobStatus.RUNNING, JobStatus.FAILED, JobStatus.CANCELLED}),
     JobStatus.POST_PROCESSING: frozenset(
         {JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED}
     ),

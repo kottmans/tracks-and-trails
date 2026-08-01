@@ -14,6 +14,9 @@ from PySide6.QtGui import QAction, QGuiApplication
 from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox
 
 from tracks_and_trails import __version__
+from tracks_and_trails.core.job_state import JobStatus
+from tracks_and_trails.core.models import DownloadRequest, Job
+from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.main_window import (
     _MAX_COORD,
     APP_NAME,
@@ -268,3 +271,265 @@ def test_a_rect_already_on_screen_is_left_alone(qapp: QApplication) -> None:
     available = QGuiApplication.primaryScreen().availableGeometry()
     rect = QRect(available.x() + 10, available.y() + 10, 400, 300)
     assert moved_onto_a_screen(rect) == rect
+
+
+# --- T-080: the queue's pause toggle and the selected job's remove action ------------------
+
+
+def test_the_queue_actions_exist_only_with_the_control_bar(qapp: QApplication) -> None:
+    """`T-007`'s bare window still opens, and offers neither action.
+
+    The all-or-nothing rule the add-URL action follows: a window holding half of what an action
+    needs could only offer one that fails. A window built with no `concurrency` has no toolbar, so
+    it has no queue actions either — and `T-007`'s tests construct exactly that window.
+    """
+    bare = MainWindow()
+    assert bare.pause_action is None
+    assert bare.remove_action is None
+
+    equipped = MainWindow(concurrency=3)
+    assert equipped.pause_action is not None
+    assert equipped.remove_action is not None
+
+
+def test_pausing_reports_once_and_says_which_way(qapp: QApplication) -> None:
+    """The toggle reports the state it moved to, and reports it exactly once per change.
+
+    `toggled` rather than `triggered`: a checkable action fires `triggered` on every activation
+    including the ones that do not change the state, and a queue asked to pause twice would be a
+    manager call the second press did not earn.
+    """
+    reported: list[bool] = []
+    window = MainWindow(concurrency=3, on_pause_changed=reported.append)
+    action = window.pause_action
+    assert action is not None
+
+    action.setChecked(True)
+    assert reported == [True]
+
+    action.setChecked(False)
+    assert reported == [True, False]
+
+    # Setting it to what it already is changes nothing, so it says nothing.
+    action.setChecked(False)
+    assert reported == [True, False], "an unchanged toggle reported a change"
+
+
+def test_showing_the_pause_state_does_not_report_it_back(qapp: QApplication) -> None:
+    """`T-080`: the manager telling the control must not become the control telling the manager.
+
+    Composition connects `DownloadManager.queue_paused` to `show_queue_paused`, so without blocking
+    signals the round trip is control → manager → control → manager. The assertion is on the
+    handler never firing, which is the half a `setChecked` that merely *looks* right would fail.
+    """
+    reported: list[bool] = []
+    window = MainWindow(concurrency=3, on_pause_changed=reported.append)
+    action = window.pause_action
+    assert action is not None
+
+    window.show_queue_paused(True)
+
+    assert action.isChecked(), "the control did not follow the queue"
+    assert reported == [], (
+        "reflecting the queue's state called back into the queue; that round trip is how a toggle "
+        "ends up fighting itself"
+    )
+
+    window.show_queue_paused(False)
+    assert not action.isChecked()
+    assert reported == []
+
+
+def test_remove_is_offered_only_when_something_is_selected(qapp: QApplication) -> None:
+    """An action that needs a selection starts disabled, and a press with none does nothing.
+
+    Both halves, because they fail differently: the enabled state is what the user sees, and the
+    handler's own guard is what a keyboard shortcut would otherwise walk straight past.
+    """
+    asked: list[str] = []
+    window = MainWindow(concurrency=3, on_remove_requested=asked.append)
+    action = window.remove_action
+    assert action is not None
+
+    assert not action.isEnabled(), "Remove was offered with nothing selected"
+
+    # **Enabled first, deliberately.** `QAction.trigger()` on a disabled action is a no-op, so
+    # triggering it while disabled asserts Qt's behaviour and not this window's — the first
+    # version of this test did exactly that and survived a mutation removing the handler's own
+    # guard. Enabling it reproduces the state the guard exists for: the action's enabled state and
+    # the table's selection disagreeing, which is one stale signal or one shortcut away.
+    action.setEnabled(True)
+    action.trigger()
+    assert asked == [], (
+        "Remove acted with nothing selected. The enabled state is what the user sees; the "
+        "handler's own check is what a keyboard shortcut walks past"
+    )
+
+
+# --- T-081: reordering the queue, and clearing the finished jobs --------------------------
+
+
+class _FakeQueue:
+    """A `QueueReader` over a fixed list of jobs, in the order a table would show them."""
+
+    def __init__(self, jobs: list[Job]) -> None:
+        self._jobs = jobs
+
+    def get(self, job_id: str) -> Job | None:
+        return next((job for job in self._jobs if job.id == job_id), None)
+
+    def all_jobs(self) -> list[Job]:
+        return list(self._jobs)
+
+
+def _job(job_id: str, position: int, status: JobStatus = JobStatus.QUEUED) -> Job:
+    request = DownloadRequest(
+        url="https://example.invalid/clip",
+        output_directory="/downloads",
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+    )
+    return Job(
+        id=job_id,
+        url=request.url,
+        request=request,
+        status=status,
+        queue_position=position,
+    )
+
+
+def _window_over(jobs: list[Job], **handlers: object) -> MainWindow:
+    manager = DownloadManager(_EmptyJobStore(), concurrency=1)
+    return MainWindow(concurrency=1, manager=manager, queue=_FakeQueue(jobs), **handlers)  # type: ignore[arg-type]
+
+
+class _EmptyJobStore:
+    """The narrowest thing `DownloadManager` will accept; nothing here starts a job."""
+
+    def get(self, job_id: str) -> Job | None:
+        return None
+
+    def update(self, job: Job, done: object) -> None: ...
+    def complete(self, job: Job, format_used: object, done: object) -> None: ...
+    def requeue_at_end(self, job: Job, done: object) -> None: ...
+    def remove(self, job_id: str, done: object) -> None: ...
+    def reorder(self, job_ids: object, done: object) -> None: ...
+    def clear_completed(self, done: object) -> None: ...
+
+
+def test_moving_a_job_sends_the_whole_new_order(qapp: QApplication) -> None:
+    """`REQ-016`: the window hands over the order it wants, not "move this one".
+
+    `JobRepository.reorder` redeals the positions the named jobs hold, so the caller that knows
+    what the user is looking at supplies the arrangement. A delta would make the repository infer
+    it from a position it did not choose.
+    """
+    asked: list[list[str]] = []
+    window = _window_over(
+        [_job("a", 0), _job("b", 1), _job("c", 2)],
+        on_reorder_requested=asked.append,
+    )
+    assert window.queue_view is not None
+    window.queue_view.select("c")
+
+    assert window.move_up_action is not None
+    window.move_up_action.trigger()
+
+    assert asked == [["a", "c", "b"]], (
+        f"sent {asked}; moving `c` up swaps it with `b` and leaves `a` where it was"
+    )
+
+
+def test_moving_across_a_running_job_moves_the_pending_pair(qapp: QApplication) -> None:
+    """`T-081`: a running job's position is not a promise the pool can keep, so it is not moved.
+
+    **The running job sits between the two pending ones**, which is the arrangement that tells a
+    correct implementation from one that swaps with `index ± 1` in the table. The repository
+    *refuses* to reorder a running job, so naming it here would turn a legal move into an error the
+    user did not cause.
+    """
+    asked: list[list[str]] = []
+    window = _window_over(
+        [_job("a", 0), _job("busy", 1, JobStatus.RUNNING), _job("c", 2)],
+        on_reorder_requested=asked.append,
+    )
+    assert window.queue_view is not None
+    window.queue_view.select("c")
+
+    assert window.move_up_action is not None
+    window.move_up_action.trigger()
+
+    assert asked == [["c", "a"]], (
+        f"sent {asked}; the running job must not be named, and `c` moving up past it means `c` "
+        "and `a` swap"
+    )
+
+
+def test_the_move_actions_are_not_offered_for_a_running_job(qapp: QApplication) -> None:
+    """An action that is offered and then refuses is a UI that lies about what its buttons do.
+
+    Remove stays available — a running job can be removed, which cancels it first (`T-080`). The
+    two differ, and asserting both is what stops the enabling rule collapsing into one flag.
+    """
+    window = _window_over([_job("busy", 0, JobStatus.RUNNING)], on_reorder_requested=lambda _: None)
+    assert window.queue_view is not None
+    window.queue_view.select("busy")
+
+    assert window.move_up_action is not None
+    assert window.move_down_action is not None
+    assert window.remove_action is not None
+    assert not window.move_up_action.isEnabled(), "a running job was offered a move"
+    assert not window.move_down_action.isEnabled()
+    assert window.remove_action.isEnabled(), (
+        "a running job must still be removable; T-080 cancels it first"
+    )
+
+
+def test_clearing_the_selection_disables_every_per_job_action(qapp: QApplication) -> None:
+    """A refresh or explicit deselection must not leave actions offered for no selected row."""
+    window = _window_over(
+        [_job("a", 0), _job("b", 1)],
+        on_remove_requested=lambda _: None,
+        on_reorder_requested=lambda _: None,
+    )
+    assert window.queue_view is not None
+    window.queue_view.select("a")
+
+    assert window.remove_action is not None and window.remove_action.isEnabled()
+    assert window.move_up_action is not None and window.move_up_action.isEnabled()
+    assert window.move_down_action is not None and window.move_down_action.isEnabled()
+
+    window.queue_view.table.clearSelection()
+
+    assert not window.remove_action.isEnabled(), "Remove stayed enabled with no selected row"
+    assert not window.move_up_action.isEnabled(), "Move up stayed enabled with no selected row"
+    assert not window.move_down_action.isEnabled(), "Move down stayed enabled with no selected row"
+
+
+def test_moving_past_either_end_asks_for_nothing(qapp: QApplication) -> None:
+    """The first job cannot move up and the last cannot move down, and neither is an error."""
+    asked: list[list[str]] = []
+    window = _window_over([_job("a", 0), _job("b", 1)], on_reorder_requested=asked.append)
+    assert window.queue_view is not None
+
+    window.queue_view.select("a")
+    assert window.move_up_action is not None
+    window.move_up_action.trigger()
+
+    window.queue_view.select("b")
+    assert window.move_down_action is not None
+    window.move_down_action.trigger()
+
+    assert asked == [], f"sent {asked}; moving past an end must ask for no reordering at all"
+
+
+def test_clear_finished_is_always_offered_and_asks_once(qapp: QApplication) -> None:
+    """Unlike the per-job actions, this needs no selection — it is a queue-level chore."""
+    asked: list[int] = []
+    window = MainWindow(concurrency=1, on_clear_requested=lambda: asked.append(1))
+    action = window.clear_completed_action
+    assert action is not None
+
+    assert action.isEnabled(), "clear-finished needs no selection and must not wait for one"
+    action.trigger()
+    assert asked == [1]

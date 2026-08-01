@@ -26,7 +26,7 @@ import subprocess
 import sys
 import threading
 import time
-from collections.abc import Callable, Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from dataclasses import replace
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -97,6 +97,12 @@ class FakeRepository:
         self.jobs: dict[str, Job] = {}
         self.writes: list[tuple[str, JobStatus]] = []
         self.completions: list[tuple[str, str | None]] = []
+        #: Ids removed, in order (`T-080`). A list rather than a count, so a test can assert
+        #: *which* job left the queue rather than only that something did.
+        self.removals: list[str] = []
+        #: Orders asked for, and ids cleared (`T-081`), for the same reason.
+        self.reorderings: list[tuple[str, ...]] = []
+        self.cleared: list[str] = []
 
     def add(self, job: Job) -> None:
         self.jobs[job.id] = job
@@ -130,6 +136,49 @@ class FakeRepository:
         """
         self.completions.append((job.id, format_used))
         self.update(job, done)
+
+    def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
+        """`JobStore.requeue_at_end` — a write that allocates a tail position (`T-080`).
+
+        **The position is allocated here, as the real one allocates it inside the transaction.**
+        A fake that stored the job with the position it arrived carrying would let a manual retry
+        keep its old place and still satisfy the ordering assertion, which is the one claim this
+        method exists to support.
+        """
+        placed = max((stored.queue_position or 0) for stored in self.jobs.values()) + 1
+        self.update(replace(job, queue_position=placed), done)
+
+    def remove(self, job_id: str, done: Callable[[str | None], None]) -> None:
+        """`JobStore.remove` — delete the row and nothing else (`UX-001`, `T-080`).
+
+        **No filesystem call, deliberately.** The fake can only be as honest as the real one about
+        this, and what makes the promise checkable is that a test asserts on the output directory
+        rather than on this method.
+        """
+        self.jobs.pop(job_id, None)
+        self.removals.append(job_id)
+        done(None)
+
+    def reorder(self, job_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
+        """`JobStore.reorder` — redeal the positions those jobs hold (`REQ-016`, `T-081`).
+
+        **Redealt, not renumbered**, exactly as the real one does: a fake that renumbered from zero
+        would move jobs nobody touched and still satisfy a test where the reordered jobs are the
+        whole queue.
+        """
+        positions = sorted(self.jobs[job_id].queue_position or 0 for job_id in job_ids)
+        for position, job_id in zip(positions, job_ids, strict=True):
+            self.jobs[job_id] = replace(self.jobs[job_id], queue_position=position)
+        self.reorderings.append(tuple(job_ids))
+        done(None)
+
+    def clear_completed(self, done: Callable[[str | None], None]) -> None:
+        """`JobStore.clear_completed` — drop terminal rows, keep `FAILED` (`REQ-016`, `T-081`)."""
+        for job_id, job in list(self.jobs.items()):
+            if job.status in (JobStatus.COMPLETED, JobStatus.CANCELLED):
+                del self.jobs[job_id]
+                self.cleared.append(job_id)
+        done(None)
 
     def statuses(self, job_id: str) -> list[JobStatus]:
         return [status for stored_id, status in self.writes if stored_id == job_id]
@@ -2999,7 +3048,15 @@ class HeldStore:
     def __init__(self) -> None:
         self.jobs: dict[str, Job] = {}
         self.pending: list[tuple[Job, Callable[[str | None], None]]] = []
+        #: Removals queued and not yet released (`T-080`). **A second list rather than a sentinel
+        #: in `pending`**: every reader of `pending` unpacks a `Job`, and a `None` in there would
+        #: turn a fake's bookkeeping into an `AttributeError` inside the code under test. Ordering
+        #: between the two is preserved by `_order`, which is the property the chain relies on.
+        self.removals: list[tuple[str, Callable[[str | None], None]]] = []
+        #: The order writes and removals were asked for, so `release` can replay it exactly.
+        self._order: list[str] = []
         self.written: list[tuple[str, JobStatus]] = []
+        self.removed: list[str] = []
         self.completions: list[tuple[str, str | None]] = []
         self.failing = False
 
@@ -3008,6 +3065,7 @@ class HeldStore:
 
     def update(self, job: Job, done: Callable[[str | None], None]) -> None:
         self.pending.append((job, done))
+        self._order.append("write")
 
     def complete(
         self, job: Job, format_used: str | None, done: Callable[[str | None], None]
@@ -3021,16 +3079,65 @@ class HeldStore:
         self.completions.append((job.id, format_used))
         self.update(job, done)
 
+    def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
+        """`JobStore.requeue_at_end` — a write that allocates a tail position (`T-080`).
+
+        **The position is allocated here, as the real one allocates it inside the transaction.**
+        A fake that stored the job with the position it arrived carrying would let a manual retry
+        keep its old place and still pass the ordering test, which is the one claim this method
+        exists to support.
+        """
+        placed = max((stored.queue_position or 0) for stored in self.jobs.values()) + 1
+        self.update(replace(job, queue_position=placed), done)
+
+    def remove(self, job_id: str, done: Callable[[str | None], None]) -> None:
+        """`JobStore.remove` — delete the row, touching nothing else (`UX-001`, `T-080`)."""
+        self.removals.append((job_id, done))
+        self._order.append("remove")
+
+    def reorder(self, job_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
+        """`JobStore.reorder` — settles immediately; this store holds *job* writes, not orders."""
+        positions = sorted(self.jobs[job_id].queue_position or 0 for job_id in job_ids)
+        for position, job_id in zip(positions, job_ids, strict=True):
+            self.jobs[job_id] = replace(self.jobs[job_id], queue_position=position)
+        done(None)
+
+    def clear_completed(self, done: Callable[[str | None], None]) -> None:
+        """`JobStore.clear_completed` — settles immediately, for `reorder`'s reason."""
+        for job_id, job in list(self.jobs.items()):
+            if job.status in (JobStatus.COMPLETED, JobStatus.CANCELLED):
+                del self.jobs[job_id]
+        done(None)
+
     def release(self) -> None:
-        """Complete every queued write, oldest first, as the writer thread would."""
+        """Complete every queued write and removal, **oldest first**, as the writer would.
+
+        One interleaved replay rather than writes-then-removals: removal of a running job is a
+        cancel's write followed by a delete, and a fake that always settled the delete last would
+        hide an ordering the real single writer guarantees and the manager depends on.
+        """
+        order, self._order = self._order, []
         pending, self.pending = self.pending, []
-        for job, done in pending:
-            if self.failing:
-                done("the writer refused this transition")
-                continue
-            self.jobs[job.id] = job
-            self.written.append((job.id, job.status))
-            done(None)
+        removals, self.removals = self.removals, []
+        writes = iter(pending)
+        deletes = iter(removals)
+        for kind in order:
+            if kind == "write":
+                job, done = next(writes)
+                if self.failing:
+                    done("the writer refused this transition")
+                    continue
+                self.jobs[job.id] = job
+                self.written.append((job.id, job.status))
+                done(None)
+            else:
+                job_id, done = next(deletes)
+                if self.failing:
+                    done("the writer refused this removal")
+                    continue
+                self.jobs.pop(job_id, None)
+                self.removed.append(job_id)
+                done(None)
 
     def statuses(self, job_id: str) -> list[JobStatus]:
         return [status for stored_id, status in self.written if stored_id == job_id]
@@ -4373,3 +4480,597 @@ def test_idle_is_not_announced_while_a_retry_is_waiting(
         assert spin(lambda: download.is_idle, timeout=60), (
             "shutdown did not drop the pending retry, so the application could not quit"
         )
+
+
+# --- T-080: queue-level pause and resume; per-job cancel, retry and remove -----------------
+#
+# `UX-001` is the decision these gate, and it is a decision about *granularity* before it is one
+# about behaviour: pause and resume act on the queue, cancel and retry and remove act on a job.
+# The assertions below are written to fail if that split is reversed, because the previous version
+# of `T-080` described queue-level behaviour under a per-job title and an implementer reading it
+# received mutually exclusive instructions.
+
+
+def test_pausing_a_saturated_queue_drains_it_and_starts_nothing(
+    tmp_path: Path, media_url: Callable[..., str], spin: Callable[..., bool]
+) -> None:
+    """`UX-001`, `T-080`: pause lets in-flight work finish and starts none of the waiting jobs.
+
+    **The pool is saturated and there are jobs behind it**, which is the only arrangement where
+    pause is distinguishable from doing nothing. A test that paused an idle queue would pass
+    against an implementation whose `pause()` was `return None`.
+
+    Real sessions against the slow local server, because "the in-flight ones finish" is a claim
+    about processes rather than about rows: a killed session also stops being active.
+    """
+    repository = FakeRepository()
+    url = media_url(total_bytes=4 * 1024 * 1024, chunk_delay=0.02)
+    for position, job_id in enumerate(("job-1", "job-2", "job-3", "job-4")):
+        repository.add(replace(make_job(job_id, url, tmp_path), queue_position=position))
+
+    download = DownloadManager(repository, concurrency=2)
+    try:
+        download.start("job-1")
+        download.start("job-2")
+        download._start_when_free("job-3")
+        download._start_when_free("job-4")
+        assert spin(lambda: len(download._sessions) == 2, timeout=60), "the pool never saturated"
+
+        download.pause()
+        assert download.is_paused
+
+        # The two in flight are still in flight, and stay so after the loop has had its chance.
+        live = set(download._sessions)
+        spin(lambda: False, timeout=0.5)
+        assert set(download._sessions) == live, (
+            "pausing stopped work already in flight; UX-001 chose draining precisely because a "
+            "stopped download leaves a partial file nothing can resume in this phase"
+        )
+        assert download._waiting == ["job-3", "job-4"], (
+            f"waiting {download._waiting}; a paused queue must start none of them"
+        )
+
+        # And a slot opening while paused still starts nothing — the tick is the path that would.
+        download.set_concurrency(4)
+        spin(lambda: False, timeout=0.5)
+        assert download._waiting == ["job-3", "job-4"], (
+            "a free slot started a waiting job while the queue was paused; the pause guard is not "
+            "on the path the tick takes"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_resuming_starts_the_waiting_jobs(tmp_path: Path, spin: Callable[..., bool]) -> None:
+    """`UX-001`, `T-080`: the other half, and it is a separate test on purpose.
+
+    A `pause()` that set a flag nothing ever cleared would pass the drain assertion above. This is
+    what says the queue comes back.
+
+    **Resume fills the slots without spinning the event loop**, which is `set_concurrency`'s rule
+    for the same reason: a tick is up to `poll_interval_ms` away, invisible in a test that spins
+    and perfectly visible to somebody who just pressed Resume.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=2, entry_point=child_downloading_forever)
+    try:
+        download.pause()
+        download._start_when_free("job-1")
+        download._start_when_free("job-2")
+        assert download._waiting == ["job-1", "job-2"], "a paused queue started something"
+        assert not download._sessions
+
+        download.resume()
+
+        assert not download.is_paused
+        assert download._waiting == [], (
+            f"waiting {download._waiting}; resume must take the work, and take it now rather than "
+            "on whichever tick happens to fire next"
+        )
+        assert set(download.active_job_ids()) == {"job-1", "job-2"}
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_pause_leaves_no_partial_file_because_it_stops_nothing(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`UX-001`, `T-080`: asserted by **looking at the output directory**, not at the code path.
+
+    This is the whole reason pause drains rather than stops. `REQ-017`'s resume is Phase 3, so a
+    paused download's partial file would have no defined meaning — nothing could resume from it and
+    nothing was specified to clean it up. Draining means the question never arises, and the way to
+    show that is that pausing a queue with nothing running writes nothing at all.
+    """
+    outputs = tmp_path / "downloads"
+    outputs.mkdir()
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", directory=outputs)
+
+    download = DownloadManager(repository, concurrency=2, entry_point=child_downloading_forever)
+    try:
+        download.pause()
+        download._start_when_free("job-1")
+        download._start_when_free("job-2")
+        spin(lambda: False, timeout=0.5)
+
+        assert list(outputs.iterdir()) == [], (
+            f"pausing produced files: {[p.name for p in outputs.iterdir()]}. A paused queue has "
+            "not started the work, so there is nothing partial for a phase without REQ-017 to "
+            "have a rule about"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_no_job_ever_reaches_a_paused_status_because_there_is_no_such_status(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-080`'s fourth criterion, asserted against the **stored status** and against the enum.
+
+    Two assertions, because they fail for different reasons. The stored-status one would catch an
+    implementation that invented a paused state under another name; the enum one records the
+    maintainer decision of 2026-07-31 — `JobStatus.PAUSED` is gone, so an implementation that
+    wanted to write it cannot even spell it.
+
+    `RUNNING → PAUSED` was the edge that made it look reachable. Removing the member is what makes
+    the removal of the edge checkable: a member left behind with no transitions would still let
+    `replace(job, status=PAUSED)` build a job nothing could move.
+    """
+    assert not hasattr(JobStatus, "PAUSED"), (
+        "JobStatus.PAUSED is back. UX-001 makes pause a queue-level drain, so no job enters it; "
+        "T-080 removed it because an unreachable status reads as capability without being it"
+    )
+
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.start("job-1")
+        # **Settled before pausing, not merely started.** `child_downloading_forever` walks
+        # `PROBING → READY → RUNNING` and then stays, so a snapshot taken the moment a session
+        # exists can be overtaken by the pipeline's own next step — which made the first version of
+        # this test fail intermittently under the full suite while passing alone. Waiting for the
+        # status the worker settles at means any later change is one pause caused.
+        assert spin(lambda: job_row(repository, "job-1").status is JobStatus.RUNNING, timeout=60), (
+            "the session never reached RUNNING, so there was no settled status to pause against"
+        )
+
+        download.pause()
+        spin(lambda: False, timeout=0.5)
+
+        stored = repository.get("job-1")
+        assert stored is not None
+        assert stored.status is JobStatus.RUNNING, (
+            f"a paused queue moved a running job to {stored.status.value}; pause is a property of "
+            "the queue and of nothing else, which is why T-080 could delete JobStatus.PAUSED"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_removing_a_job_takes_it_out_of_the_queue_and_leaves_the_files_alone(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`UX-001`, `REQ-015` as amended: remove is per job, and it **never deletes a file**.
+
+    The file assertion looks at the directory rather than trusting that no `unlink` was called,
+    because that is the promise a user cares about and the only form of it a future refactor
+    cannot quietly break.
+    """
+    outputs = tmp_path / "downloads"
+    outputs.mkdir()
+    already_there = outputs / "something the user already had.mp4"
+    already_there.write_bytes(b"not ours to delete")
+
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", directory=outputs)
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    removed: list[str] = []
+    download.job_removed.connect(removed.append)
+    try:
+        download.remove("job-2")
+        assert spin(lambda: removed == ["job-2"], timeout=10), (
+            "job_removed never arrived; removal is announced from the write callback, so a "
+            "removal that is never announced is one that may never have landed"
+        )
+        assert repository.get("job-2") is None
+        assert repository.removals == ["job-2"]
+        assert repository.get("job-1") is not None, "removing one job took another with it"
+
+        assert already_there.exists(), (
+            "removing a job deleted a file. UX-001: remove takes the job out of the queue, and "
+            "nothing this application deletes from disk goes by that route"
+        )
+        assert already_there.read_bytes() == b"not ours to delete"
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_removing_a_waiting_job_stops_the_pool_from_ever_starting_it(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-080`: a removed job must not be started by the tick that fires while its delete is queued.
+
+    The window is real — `remove()` returns before the row is gone — and the waiting list is what
+    the tick reads. Dropping the id from it is therefore part of removing the job, not tidying up
+    afterwards.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.start("job-1")
+        download._start_when_free("job-2")
+        assert download._waiting == ["job-2"]
+
+        download.remove("job-2")
+
+        assert download._waiting == [], "a removed job was left waiting for a slot"
+        download.set_concurrency(2)
+        spin(lambda: False, timeout=0.5)
+        assert "job-2" not in download.active_job_ids(), (
+            "a removed job was started when a slot opened; it was still on the waiting list"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_removing_a_running_job_cancels_it_first_and_inside_the_budget(
+    tmp_path: Path,
+    media_url: Callable[..., str],
+    spin: Callable[..., bool],
+    existing_children: set[int],
+    record_property: Callable[[str, object], None],
+) -> None:
+    """`T-080`: removing a running job is a cancel **plus** a delete, and cancel keeps its budget.
+
+    `REQ-015`'s two seconds is not relaxed by the delete being queued behind it, so the clock is
+    the same one `test_cancel_stops_a_real_in_flight_download_within_the_budget` runs.
+
+    **The row must outlive the process**, which is the ordering half. Deleting it when the cancel
+    was asked for would leave a live worker whose next message reaches a job that is not there.
+    """
+    repository = FakeRepository()
+    url = media_url(total_bytes=512 * 1024 * 1024, chunk_delay=0.01)
+    repository.add(make_job("job-1", url, tmp_path))
+    download = DownloadManager(repository, concurrency=1)
+    removed: list[str] = []
+    download.job_removed.connect(removed.append)
+    recorder = Recorder(download, repository)
+    try:
+        download.start("job-1")
+        assert spin(lambda: bool(recorder.progress), timeout=60), "the download never moved"
+        assert worker_processes(existing_children), "there was no worker process to remove"
+
+        started = time.monotonic()
+        download.remove("job-1")
+        stopped = spin(
+            lambda: not worker_processes(existing_children), timeout=CANCEL_BUDGET_SECONDS + 3.0
+        )
+        elapsed = time.monotonic() - started
+
+        assert stopped, "a worker process outlived the removal of its job"
+        record_property("remove_seconds", round(elapsed, 3))
+        assert elapsed < CANCEL_BUDGET_SECONDS, (
+            f"removing a running job took {elapsed:.2f}s to stop it (REQ-015: 2s)"
+        )
+
+        assert spin(lambda: removed == ["job-1"], timeout=10), "the row was never removed"
+        assert repository.get("job-1") is None
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_manual_retry_re_enters_the_queue_at_the_back(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`P2PLAN-R7`, confirmed 2026-07-31: manual retry does not jump jobs that have not run.
+
+    **The jobs behind it have never run**, which is the arrangement the rule is about. A failed job
+    keeps the `queue_position` it was added with — earlier than everything queued since — so a
+    retry that re-queued in place would run a second attempt before another job's first.
+
+    Asserted on `queue_position` rather than only on which job starts next, because the position is
+    what the table shows: a scheduling rule the column disagrees with is a view that lies about
+    what happens next, which is `T-081`'s criterion one task early.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", "job-3", directory=tmp_path)
+    failed = repository.get("job-1")
+    assert failed is not None
+    repository.jobs["job-1"] = failed.with_failure(ErrorKind.NETWORK, "the transfer stalled")
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        before = repository.get("job-1")
+        assert before is not None and before.queue_position == 0
+
+        # Paused so the retry parks instead of starting immediately, which keeps this test about
+        # the position it was written with rather than about how far the restarted job got.
+        download.pause()
+        download.retry("job-1")
+
+        after = repository.get("job-1")
+        assert after is not None
+        assert after.status is JobStatus.QUEUED
+        assert after.queue_position is not None
+        assert after.queue_position > 2, (
+            f"a manual retry kept position {after.queue_position}; job-2 and job-3 have never run "
+            "and sit at 1 and 2, so re-queuing in place puts a second attempt ahead of two firsts"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_manual_retry_starts_after_the_jobs_that_have_not_run(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """The same rule, observed as **the order jobs actually start** rather than as a column.
+
+    Two assertions of one contract, deliberately: the position could be written correctly and read
+    by nothing, or the scheduler could order correctly and leave the table disagreeing. `T-075` is
+    what a view and a scheduler disagreeing looks like when only one of them is gated.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+    failed = repository.get("job-1")
+    assert failed is not None
+    repository.jobs["job-1"] = failed.with_failure(ErrorKind.NETWORK, "the transfer stalled")
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        # Saturate with a job that is not part of the comparison, so both candidates must wait.
+        repository.add(
+            replace(make_job("job-hold", "https://example.invalid/x", tmp_path), queue_position=99)
+        )
+        download.start("job-hold")
+        assert spin(lambda: "job-hold" in download.active_job_ids(), timeout=60)
+
+        download.retry("job-1")
+        download._start_when_free("job-2")
+        assert set(download._waiting) == {"job-1", "job-2"}
+
+        assert download._next_waiting() == "job-2", (
+            "the retried job was scheduled ahead of a job that has never run; P2PLAN-R7 puts a "
+            "manual retry at the back"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_pause_does_not_refuse_a_probe_the_user_just_asked_for(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`UX-001` scopes pause to the queue draining; a probe is not queue work waiting for a slot.
+
+    The add-URL dialog calls `start(..., PROBE)` when the user types a URL. Refusing it silently
+    while the queue is paused would hang the dialog on "Probing …" with nothing to say why — the
+    exact shape `start_rejected` exists to prevent.
+
+    Recorded as a test rather than a comment because it is the one place the pause guard is
+    deliberately *absent*, and an absence that nothing asserts is indistinguishable from an
+    oversight.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.pause()
+        download.start("job-1", SessionKind.PROBE)
+
+        assert "job-1" in download.active_job_ids(), (
+            "a paused queue refused a directly requested probe; pause governs downloads waiting "
+            "in the queue, not the metadata request the user just made"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_pause_does_not_allow_a_direct_download_start(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`UX-001`: the probe exemption must not exempt a download from queue pause.
+
+    The add dialog calls ``start(..., DOWNLOAD)`` after a successful probe.  That is new queue
+    work, unlike the metadata probe itself, so allowing every direct ``start`` through makes the
+    ordinary Add path start a download while the queue says it is paused.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.pause()
+        with contextlib.suppress(RuntimeError):
+            download.start("job-1", SessionKind.DOWNLOAD)
+
+        assert download._occupant_ids() == (), (
+            "a direct DOWNLOAD start bypassed queue pause; only PROBE has the user-requested "
+            "metadata exemption"
+        )
+        stored = repository.get("job-1")
+        assert stored is not None and stored.status is JobStatus.QUEUED
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+# --- T-081: reordering and clearing, through the manager ----------------------------------
+
+
+def test_reordering_changes_the_order_the_pool_starts_jobs_in(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-081`'s fourth criterion: the order the pool starts jobs in is the order the table shows.
+
+    **Asserted through `_next_waiting`, which is what actually decides**, rather than through the
+    stored column alone. `T-075` is what a view and a scheduler disagreeing looks like when only
+    one of them is gated, and `queue_position` is the single fact both read — so a reordering that
+    wrote the column without the scheduler noticing would be that defect again.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", "job-3", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    ordered: list[tuple[str, ...]] = []
+    download.queue_reordered.connect(ordered.append)
+    try:
+        download.pause()
+        for job_id in ("job-1", "job-2", "job-3"):
+            download._start_when_free(job_id)
+        assert download._next_waiting() == "job-1", "before reordering, position decides"
+
+        download.reorder(["job-3", "job-2", "job-1"])
+
+        assert ordered == [("job-3", "job-2", "job-1")], (
+            "the reordering was not announced; a view that is not told keeps showing the order the "
+            "user replaced"
+        )
+        assert download._next_waiting() == "job-3", (
+            "the pool still starts the old first job; queue_position is the one fact the table and "
+            "the scheduler share, and reordering must move it"
+        )
+        assert repository.reorderings == [("job-3", "job-2", "job-1")]
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_pool_does_not_start_from_the_old_order_while_reordering_is_in_flight(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`REQ-016`: an asynchronous reorder must gate scheduling on the order it replaces.
+
+    The writer serialises the *writes*, but the scheduler chooses a job on the GUI thread before
+    its start transition is submitted.  If it reads while the reorder is still in flight, it can
+    choose job-1 from the old order, after which the writer commits job-2 first and then starts
+    job-1.  Both writes succeed, but the pool has started a job behind the new head.
+
+    Holding only the reorder callback reproduces that exact window.  The store otherwise settles
+    job writes synchronously, so any active job before ``release_reorder`` is one the scheduler
+    chose from the old positions rather than one allowed by the new order.
+    """
+
+    class HeldReorderStore(FakeRepository):
+        def __init__(self) -> None:
+            super().__init__()
+            self.pending_reorder: tuple[tuple[str, ...], Callable[[str | None], None]] | None = None
+
+        def reorder(self, job_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
+            assert self.pending_reorder is None
+            self.pending_reorder = (tuple(job_ids), done)
+
+        def release_reorder(self) -> None:
+            assert self.pending_reorder is not None
+            job_ids, done = self.pending_reorder
+            self.pending_reorder = None
+            super().reorder(job_ids, done)
+
+    repository = HeldReorderStore()
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.pause()
+        download._start_when_free("job-1")
+        download._start_when_free("job-2")
+
+        download.reorder(["job-2", "job-1"])
+        download.resume()
+
+        assert download._occupant_ids() == (), (
+            "the pool chose a job while the reorder was still in flight; that choice used the "
+            "old queue positions"
+        )
+
+        repository.release_reorder()
+        download._fill_free_slots()
+
+        assert "job-2" in download._occupant_ids(), (
+            "after the reorder landed, the pool did not start the new first job"
+        )
+        assert "job-1" not in download._occupant_ids(), (
+            "the pool started job-1 even though the committed order puts job-2 first"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_clearing_finished_jobs_announces_and_keeps_the_unfinished(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`REQ-016`: completed and cancelled go; queued and failed stay, and the queue is told."""
+    repository = FakeRepository()
+    queued(repository, "done", "stopped", "waiting", "broken", directory=tmp_path)
+    for job_id, status in (
+        ("done", JobStatus.COMPLETED),
+        ("stopped", JobStatus.CANCELLED),
+        ("broken", JobStatus.FAILED),
+    ):
+        stored = repository.get(job_id)
+        assert stored is not None
+        repository.jobs[job_id] = replace(stored, status=status)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    cleared: list[int] = []
+    download.queue_cleared.connect(lambda: cleared.append(1))
+    try:
+        download.clear_completed()
+
+        assert cleared == [1], "clearing was not announced"
+        assert sorted(repository.cleared) == ["done", "stopped"]
+        assert repository.get("waiting") is not None
+        assert repository.get("broken") is not None, (
+            "a failed job was cleared; it is still in the queue offering a retry"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_clearing_sweeps_a_cancelled_job_off_the_waiting_list(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-081` closes the case it opens; `T-103` owns the general one.
+
+    **The setup is the current behaviour of `cancel`, asserted rather than assumed.** Cancelling a
+    job that is merely waiting for a slot writes `CANCELLED` and leaves its id on `_waiting` —
+    nothing removes it. That was harmless while the row existed, because the pool's later `start()`
+    simply refused. Once clearing deletes the row, the same path reaches a job that is not there.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.start("job-1")
+        download._start_when_free("job-2")
+        assert download._waiting == ["job-2"]
+
+        download.cancel("job-2")
+        assert download._waiting == ["job-2"], (
+            "cancel now drops a waiting job, so this test's premise is stale — T-103 landed, and "
+            "the sweep below may be redundant (T-103's fourth criterion)"
+        )
+
+        download.clear_completed()
+
+        assert download._waiting == [], (
+            "a cancelled job whose row has been cleared is still queued to start; the next free "
+            "slot would look up a job that no longer exists"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)

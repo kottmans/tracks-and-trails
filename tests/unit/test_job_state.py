@@ -38,11 +38,9 @@ EXPECTED: dict[JobStatus, set[JobStatus]] = {
     JobStatus.READY: {JobStatus.RUNNING, JobStatus.FAILED, JobStatus.CANCELLED},
     JobStatus.RUNNING: {
         JobStatus.POST_PROCESSING,
-        JobStatus.PAUSED,
         JobStatus.FAILED,
         JobStatus.CANCELLED,
     },
-    JobStatus.PAUSED: {JobStatus.RUNNING, JobStatus.FAILED, JobStatus.CANCELLED},
     JobStatus.POST_PROCESSING: {
         JobStatus.COMPLETED,
         JobStatus.FAILED,
@@ -65,7 +63,6 @@ CANCELLABLE: frozenset[JobStatus] = frozenset(
         JobStatus.PROBING,
         JobStatus.READY,
         JobStatus.RUNNING,
-        JobStatus.PAUSED,
         JobStatus.POST_PROCESSING,
     }
 )

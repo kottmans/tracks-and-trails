@@ -63,7 +63,7 @@ import multiprocessing
 import threading
 import time
 from collections import deque
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field, replace
 from datetime import datetime
 from functools import partial
@@ -213,6 +213,18 @@ class JobStore(Protocol):
     immediately** — the manager reads a job back before advancing it, and a store that answered
     from disk alone would hand it the state it had just replaced.
 
+    **`requeue_at_end` and `remove` are `T-080`'s** (`UX-001`, `P2PLAN-R7`), and both are here
+    rather than expressed as an `update` because both need the *database* to decide something the
+    manager cannot know:
+
+    - `requeue_at_end` writes the job **and** allocates it a fresh tail `queue_position` in one
+      transaction. The tail cannot be computed here — `MAX(queue_position) + 1` is a read of the
+      whole queue's ordering, and two callers computing it separately would hand out the same
+      position, which a `UNIQUE` index turns into a failed write rather than a silent tie.
+    - `remove` deletes the row. It is not a status: `CANCELLED` is a job that stopped and is still
+      in the queue, and removal is a job that is no longer in the queue at all. **Neither touches a
+      file** (`UX-001`).
+
     `JobRepository` alone no longer satisfies this: its `update` is synchronous and blocked the
     GUI thread for a measured 5.017 s under contention (`T016-R3`). It is now reached through
     `PersistentJobStore`, which owns that contract.
@@ -225,6 +237,14 @@ class JobStore(Protocol):
     def complete(
         self, job: Job, format_used: str | None, done: Callable[[str | None], None]
     ) -> None: ...
+
+    def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None: ...
+
+    def remove(self, job_id: str, done: Callable[[str | None], None]) -> None: ...
+
+    def reorder(self, job_ids: Sequence[str], done: Callable[[str | None], None]) -> None: ...
+
+    def clear_completed(self, done: Callable[[str | None], None]) -> None: ...
 
 
 class ProcessLike(Protocol):
@@ -419,6 +439,36 @@ class DownloadManager(QObject):
     #: previous synchronous write raised an `OperationalError` that reached no user at all.
     persistence_failed = Signal(str, str)
 
+    #: `paused` — the queue stopped starting work, or started again (`UX-001`, `T-080`).
+    #:
+    #: Emitted rather than polled because pause is **queue-level**: there is no job whose
+    #: `job_changed` would carry it. A control that reads `is_paused` on a timer would be inventing
+    #: a signal this class is better placed to send.
+    queue_paused = Signal(bool)
+
+    #: `job_id` — the job is no longer in the queue, and its row is gone (`UX-001`, `T-080`).
+    #:
+    #: Distinct from `job_changed`, which announces a job that still exists in a new state. A view
+    #: told a removed job had "changed" would go looking for a row that is not there.
+    #:
+    #: **This says nothing about the filesystem**, because removal does not touch it. Whatever the
+    #: job had already written is still on disk, which is `UX-001`'s rule and not an oversight.
+    job_removed = Signal(str)
+
+    #: `tuple[str, ...]` — the queue was rearranged into this order (`REQ-016`, `T-081`).
+    #:
+    #: Carries the order rather than being a bare "something changed", so a view can apply it
+    #: without re-reading the whole queue to discover what moved — `T079-R2`'s rule about
+    #: enumerations on the GUI thread applies to the refresh a reordering triggers too.
+    queue_reordered = Signal(tuple)
+
+    #: The finished jobs were cleared (`REQ-016`, `T-081`).
+    #:
+    #: No payload: the ids are of rows that no longer exist, and a view's only useful response is to
+    #: rebuild from what is left. **History is untouched**, so this announces a smaller queue and
+    #: never a smaller record of what was obtained.
+    queue_cleared = Signal()
+
     def __init__(
         self,
         repository: JobStore,
@@ -466,6 +516,15 @@ class DownloadManager(QObject):
         #: (`T-083`). Held on the tick rather than on a timer per job, for the reason every other
         #: deadline in this class is: one place where the lifetime rules are applied.
         self._retry_at: dict[str, float] = {}
+        #: Whether the queue is paused (`UX-001`, `T-080`). **Not a job status** — that is the whole
+        #: decision. Pause governs what this manager *starts*; it never changes a job, which is why
+        #: `T-080` could delete `JobStatus.PAUSED` outright.
+        self._paused = False
+        #: Jobs asked to be removed whose session has not ended yet (`T-080`). Removal of a running
+        #: job is a cancel followed by a delete, and the delete cannot happen until the process is
+        #: gone — a row deleted out from under a live session leaves `_require` raising on the next
+        #: message it sends.
+        self._remove_when_done: set[str] = set()
         self._shutting_down = False
         self._shutdown_deadline: float | None = None
         # The log listener's ending, which `idle` now waits on (`T038-R2`). Three states rather
@@ -511,6 +570,184 @@ class DownloadManager(QObject):
         self._limit = max(limit, 1)
         if not self._shutting_down:
             self._fill_free_slots()
+
+    # --- queue-level pause (`UX-001`) ---------------------------------------------------
+
+    @property
+    def is_paused(self) -> bool:
+        """Whether the queue is paused. **A property of the queue, never of a job** (`UX-001`)."""
+        return self._paused
+
+    def pause(self) -> None:
+        """Stop starting work. **In-flight sessions finish; nothing new begins** (`UX-001`).
+
+        This is `set_concurrency(0)` in spirit and deliberately not in fact: the limit stays what
+        the user chose, so resuming restores it without having to remember it. What pause changes
+        is whether `_fill_free_slots` is willing to spend a slot at all.
+
+        **Nothing is asked to stop, and no job's status changes.** `UX-001` chose draining because
+        every alternative buys a half-written file plus a rule about its lifetime, in a phase where
+        `REQ-017`'s resume does not exist — so there is no partial file to have a rule about. That
+        is also why `T-080` removed `JobStatus.PAUSED`: a paused queue has running jobs and waiting
+        jobs, and no job in a paused state.
+
+        A direct `start()` — the add-URL dialog's probe — is **not** governed by this. Pause is
+        about the queue draining, and a probe the user just asked for by typing a URL is not queue
+        work waiting for a slot. Silently refusing it would make the dialog hang on "Probing …"
+        with nothing to say why.
+
+        Idempotent, and refused during shutdown: a queue that is already ending is not a queue to
+        pause, and pausing it would be a second reason nothing starts, with only one of them ever
+        cleared.
+        """
+        if self._paused or self._shutting_down:
+            return
+        self._paused = True
+        self.queue_paused.emit(True)
+
+    def resume(self) -> None:
+        """Start taking work again, filling every free slot **now** (`UX-001`).
+
+        Immediately rather than on the next tick, for `set_concurrency`'s reason: a tick is up to
+        `poll_interval_ms` away, which is invisible to a test that spins the event loop and
+        perfectly visible to somebody who just pressed Resume.
+        """
+        if not self._paused:
+            return
+        self._paused = False
+        self.queue_paused.emit(False)
+        if not self._shutting_down:
+            self._fill_free_slots()
+
+    # --- removal (`UX-001`) -------------------------------------------------------------
+
+    def remove(self, job_id: str) -> None:
+        """Take `job_id` out of the queue. **Never deletes a file** (`UX-001`, `REQ-015`).
+
+        **Removing a running job cancels it first**, and the row is deleted when the session has
+        actually ended rather than when the cancel is asked for. Deleting it immediately would
+        leave a live worker whose every message reaches `_require` and finds nothing — the job
+        would be gone from the queue and still writing to disk, which is the opposite of what the
+        user asked for. The cancel keeps its full escalation and its 2-second budget; removal adds
+        the delete behind it.
+
+        A job that is merely waiting for a slot is dropped from the waiting list too, so a removed
+        job cannot be started by the tick that fires between the delete being queued and landing.
+
+        **What survives is the file**, deliberately. `UX-001`: remove takes the job out of the
+        queue, and nothing this application deletes from disk goes by this route. A partially
+        written file from a cancelled download is the user's to delete, and `T-085`'s history keeps
+        a completed job's record even after its queue row is gone.
+        """
+        self._discard_waiting(job_id)
+        self._retry_at.pop(job_id, None)
+
+        session = self._sessions.get(job_id)
+        if session is not None:
+            # Cancel owns the stopping; `_release` owns what happens after it. Recorded before the
+            # cancel so a session that ends synchronously inside it still finds the intent.
+            self._remove_when_done.add(job_id)
+            self.cancel(job_id)
+            return
+
+        reservation = self._reserved.get(job_id)
+        if reservation is not None and not reservation.withdrawn:
+            # A reservation has no process to wait for: withdrawing it is what stops the worker
+            # from ever being spawned (`T016-R1`), so there is no session that will reach
+            # `_release` and no reason to defer. The delete is enqueued on the same chain as the
+            # cancel's write and therefore lands behind it.
+            self.cancel(job_id)
+        self._delete_row(job_id)
+
+    # --- reordering and clearing (`REQ-016`, `T-081`) -----------------------------------
+
+    def reorder(self, job_ids: Sequence[str]) -> None:
+        """Rearrange the pending jobs into `job_ids`' order (`REQ-016`).
+
+        **Through the manager rather than through the store**, which is `T036-R1`'s rule and not a
+        formality here: `_next_waiting` reads `queue_position` to decide what starts next, so a
+        reordering that composition wrote directly would change the scheduler's mind with nothing
+        announcing it, and the table would keep showing the order the user replaced.
+
+        **What is reordered is checked by the repository, not here.** `REORDERABLE` is a fact about
+        stored status and the transaction that rewrites the positions is the only place it can be
+        read without a race — a check on this side would be reading a status that the write it
+        guards may invalidate before it lands.
+
+        A failure is surfaced through `persistence_failed` and the order is unchanged, which is
+        what `REQ-016`'s single-transaction criterion buys: there is no half-reordered outcome to
+        report.
+        """
+        if not job_ids:
+            return
+        self._repository.reorder(
+            list(job_ids), lambda error: self._settle_reorder(list(job_ids), error)
+        )
+
+    def _settle_reorder(self, job_ids: list[str], error: str | None) -> None:
+        if error is not None:
+            logging.getLogger(f"{APP_SLUG}.manager").error("could not reorder the queue: %s", error)
+            self.persistence_failed.emit(job_ids[0], error)
+            return
+        self.queue_reordered.emit(tuple(job_ids))
+
+    def clear_completed(self) -> None:
+        """Remove every finished job from the queue. **Never deletes a file** (`REQ-016`).
+
+        Completed and cancelled rows go; a failed job stays, because it is still offering a retry.
+        `JobRepository.clear_completed` owns that line and this does not restate it.
+
+        **The waiting list is swept afterwards, and the reason is not hypothetical.** `cancel()` on
+        a job that is merely waiting for a slot writes `CANCELLED` and leaves the id on
+        `_waiting` — nothing removes it, because the pool's later refusal was harmless while the
+        row still existed. Once clearing deletes that row, the same path reaches `_require` with
+        nothing to find. Sweeping ids that are no longer stored is the narrow fix; the broader one
+        is `T-103`.
+        """
+        self._repository.clear_completed(self._settle_clear)
+
+    def _settle_clear(self, error: str | None) -> None:
+        if error is not None:
+            logging.getLogger(f"{APP_SLUG}.manager").error(
+                "could not clear finished jobs: %s", error
+            )
+            self.persistence_failed.emit("", error)
+            return
+        # Read back rather than trusting a list built before the write: what was terminal when the
+        # user pressed the button is not necessarily what was terminal when the transaction ran.
+        gone = [job_id for job_id in self._waiting if self._repository.get(job_id) is None]
+        for job_id in gone:
+            self._discard_waiting(job_id)
+            self._retry_at.pop(job_id, None)
+        self.queue_cleared.emit()
+
+    def _delete_row(self, job_id: str) -> None:
+        """Delete the job's row and announce it, through the same chain every write uses.
+
+        Queued on `_Chain` like any other write, so a removal asked for while a transition is still
+        in flight for this job lands *after* it rather than racing it. A delete that overtook a
+        pending `CANCELLED` write would be followed by that write recreating nothing — `update`
+        raises when the row is gone — and the failure would surface as a persistence error for a
+        job the user had already removed.
+        """
+
+        def step() -> None:
+            self._remove_when_done.discard(job_id)
+            self._repository.remove(job_id, lambda error: self._settle_removal(job_id, error))
+
+        self._enqueue(job_id, step)
+
+    def _settle_removal(self, job_id: str, error: str | None) -> None:
+        """Announce a durable removal, or report that it did not happen."""
+        if error is not None:
+            logging.getLogger(f"{APP_SLUG}.manager").error(
+                "could not remove %s from the queue: %s", job_id, error
+            )
+            self.persistence_failed.emit(job_id, error)
+            self._step_finished(job_id)
+            return
+        self.job_removed.emit(job_id)
+        self._step_finished(job_id)
 
     @property
     def is_idle(self) -> bool:
@@ -999,6 +1236,23 @@ class DownloadManager(QObject):
         A job that is not `FAILED` is not retried, and saying so beats raising: this is reached
         from a widget's signal (`T-017`), and `FAILED → QUEUED` is the state machine's only edge
         back.
+
+        **It re-enters the queue at the back** (`P2PLAN-R7`, confirmed 2026-07-31 by maintainer
+        decision). A failed job keeps the `queue_position` it was given when it was added, which is
+        *earlier* than everything queued since — so re-queuing it in place would let a job the user
+        retried on its second attempt run ahead of jobs that have never run at all.
+
+        **Written as a new position rather than as a scheduling rule, and the difference is
+        visible.** `_next_waiting` already sorts automatic retries last using `Job.attempts`, and
+        reusing that here does not work: `with_another_attempt` is spent by *automatic* retry only,
+        so a manual retry leaves `attempts` at whatever it was and a first manual retry would sort
+        as "never run". Renumbering also keeps the table honest — `T-081`'s criterion is that the
+        order the pool starts jobs in is the order the table shows, and a scheduling rule the
+        `queue_position` column disagrees with is a view that lies about what happens next.
+
+        The tail is allocated inside the write's transaction (`JobStore.requeue_at_end`), not read
+        here and passed in: `queue_position` carries a `UNIQUE` index, and two callers computing
+        `MAX + 1` separately would collide rather than tie.
         """
         job = self._repository.get(job_id)
         if job is None or job.status is not JobStatus.FAILED:
@@ -1011,6 +1265,7 @@ class DownloadManager(QObject):
                 else None
             ),
             then=lambda: self._start_when_free(job_id),
+            write=self._repository.requeue_at_end,
         )
 
     def _has_capacity(self) -> bool:
@@ -1042,12 +1297,17 @@ class DownloadManager(QObject):
         which has no position, sorts last on its id — deterministic rather than incidental, so a
         test comparing whole lists is comparing something real.
 
-        Called from the tick **and** from `set_concurrency`, which is what makes a raised limit take
-        effect at once rather than on whichever tick happens next. `T-078`'s criterion says
-        "without waiting for a tick that happens to fire", and sharing this is how both paths keep
-        the same promise.
+        Called from the tick, from `set_concurrency`, **and from `resume`** — which is what makes a
+        raised limit, or an un-paused queue, take effect at once rather than on whichever tick
+        happens next. `T-078`'s criterion says "without waiting for a tick that happens to fire",
+        and sharing this is how all three paths keep the same promise.
+
+        **A paused queue starts nothing** (`UX-001`, `T-080`). The guard is here rather than at the
+        call sites because this is the single place a waiting job becomes a running one; a check
+        spread across the tick, `set_concurrency` and `resume` would be three chances to forget it,
+        and the tick is the one that fires on its own.
         """
-        if self._shutting_down:
+        if self._shutting_down or self._paused:
             return
         while self._waiting and self._has_capacity():
             job_id = self._next_waiting()
@@ -1073,10 +1333,16 @@ class DownloadManager(QObject):
         return min(self._waiting, key=order)
 
     def _start_when_free(self, job_id: str) -> None:
-        """Start `job_id` now, or queue it for the first moment a slot opens."""
+        """Start `job_id` now, or queue it for the first moment a slot opens.
+
+        **A paused queue always parks it**, even with the pool empty (`UX-001`). This is the path a
+        retry takes — manual through `retry()`, automatic through `_perform_due_retries` — so
+        without the check a `NETWORK` failure would restart itself while the user had the queue
+        paused, which is precisely the work pause exists to stop.
+        """
         if self._shutting_down:
             return
-        if not self._has_capacity():
+        if self._paused or not self._has_capacity():
             if job_id not in self._waiting:
                 self._waiting.append(job_id)
             # The tick is what will notice; without this the timer may not be running at all.
@@ -1402,6 +1668,13 @@ class DownloadManager(QObject):
         self._close_quietly(session.job_id, session.queue)
         self._close_job_log(session)
         self._sessions.pop(session.job_id, None)
+        if session.job_id in self._remove_when_done:
+            # **Here rather than in `remove()`, because here is where the process is actually
+            # gone** (`T-080`). Deleting the row when the cancel was *asked for* would leave a live
+            # worker whose next message reaches `_require` and finds nothing. By this point the
+            # tree is reaped, the pump has returned and the session is dropped, so the delete
+            # queues behind the cancel's own terminal write and nothing else will look for the row.
+            self._delete_row(session.job_id)
 
     def _force_stop(self, session: _Session) -> None:
         """Kill the worker and end its stream. **Waits for nothing** (`T013-R2`).

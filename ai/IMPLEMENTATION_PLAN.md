@@ -5,8 +5,8 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-26
-**Last reviewed:** 2026-07-26
+**Last updated:** 2026-07-31
+**Last reviewed:** 2026-07-31
 **Update when:** Phase scope, delivery order, dependencies, or exit criteria change.
 **Does not contain:** Individual coding tasks (`TASKS.md`), progress (`STATUS.md`).
 
@@ -178,39 +178,146 @@ them, which is the argument for having built it.)*
 
 **Goal:** Turn one download into a managed queue.
 
-**Prerequisites:** Phase 1 approved. `ARC-002` confirmed sound.
+**Prerequisites:** Phase 1 approved. `ARC-002` confirmed sound. **Satisfied 2026-07-29.**
+
+**Status: in progress** (2026-07-31). **Seven of thirteen deliverables are built** — three approved,
+four awaiting a verdict. Five more are Ready and one is still Proposed. **The blocking risk is not
+code:** exit criterion 5 says *on both platforms*, and no CI job of any kind has executed a step
+since 2026-07-30 — see "What stands between here and the exit" below, and `STATUS.md` for the
+measurement.
+
+*(These counts are transcribed from the table below rather than written beside it. `COORD-R5`
+through `COORD-R11` are seven rounds of a hand-written summary drifting from the thing it
+summarises, and the first draft of this line said "five approved, four in review, three not
+started" against a table holding three, four, four and two.)*
+
+### The shape of what is left
+
+```mermaid
+flowchart LR
+    classDef approved fill:#1a7f4b,stroke:#0d4f2d,stroke-width:2px,color:#fff
+    classDef review   fill:#b8860b,stroke:#7a5808,stroke-width:2px,color:#fff
+    classDef ready    fill:#1f5fa8,stroke:#123a68,stroke-width:2px,color:#fff
+    classDef proposed fill:#4a4a4a,stroke:#2a2a2a,stroke-width:2px,color:#fff
+    classDef exit     fill:#5b2d8e,stroke:#3a1c5c,stroke-width:3px,color:#fff
+
+    T078["<b>T-078</b><br/>worker pool"]:::approved
+    T079["<b>T-079</b><br/>queue view"]:::approved
+    T085["<b>T-085</b><br/>history records"]:::approved
+
+    T080["<b>T-080</b><br/>pause · resume<br/>cancel · retry · remove"]:::review
+    T081["<b>T-081</b><br/>reorder<br/>clear finished"]:::review
+    T046["<b>T-046</b><br/>path collision"]:::review
+    T083["<b>T-083</b><br/>bounded retry"]:::review
+    T053["<b>T-053</b><br/>log isolation proof"]:::review
+
+    T082["<b>T-082</b><br/>crash recovery"]:::ready
+    T084["<b>T-084</b><br/>log capture + view"]:::ready
+    T100["<b>T-100</b><br/>history view"]:::ready
+    T102["<b>T-102</b><br/>settings reports"]:::ready
+    T087["<b>T-087</b><br/>single instance"]:::ready
+
+    T086["<b>T-086</b><br/>open · reveal file"]:::proposed
+    T088["<b>T-088</b><br/>prove the phase"]:::proposed
+    EXIT(["<b>Phase 2 exit</b>"]):::exit
+
+    T078 --> T079
+    T078 --> T046
+    T078 --> T083
+    T078 --> T082
+    T078 --> T084
+    T078 --> T053
+    T079 --> T080
+    T079 --> T081
+    T085 --> T100
+    T100 --> T086
+    T053 -. gates approval .-> T084
+
+    T080 --> T088
+    T081 --> T088
+    T082 --> T088
+    T084 --> T088
+    T086 --> T088
+    T087 --> T088
+    T088 --> EXIT
+```
+
+**Green is approved, amber awaits a verdict, blue is startable now, grey has not started.**
+`T-046`, `T-083` and `T-102` are deliverables that `T-088` does not gate — they are correctness and
+diagnostics rather than queue behaviour the phase proof exercises — so they carry no edge into it.
+
+### Decisions taken during this phase
+
+Recorded here because each one changed what a deliverable *is*, not merely how it was built:
+
+| Decision | What it settled |
+|---|---|
+| `ARC-007` (+ amendment) | The settings surface is `settings.toml` plus one main-window control, and `CONCURRENCY_MAXIMUM = 16` |
+| `ARC-008` | A `settings.toml` that exists and cannot be used **reports** rather than reverting silently. `T-102` implements it |
+| `UX-001` | Pause is a queue-level drain; remove never deletes a file |
+| `ARC-006` (+ `T-094`) | The single-instance guard is a `QLocalServer` named from the resolved database path, with an atomic Windows ownership primitive |
+| `OPS-008` | The environment ownership gate's three blind spots stay open |
+| **The `PAUSED` edges** (maintainer, 2026-07-31) | `RUNNING → PAUSED` and `PAUSED → RUNNING` were unreachable under `UX-001`, so `T-080` removed them **and the `JobStatus.PAUSED` member**. `REQ-017` in Phase 3 is the named reopening condition |
+| **`P2PLAN-R7`** (maintainer, 2026-07-31) | Manual retry re-enters the queue at the back. Confirmed as a decision in its own right, **not** as something `P2PLAN-R1` settled |
 
 ### Deliverables
 
-- Bounded concurrent worker pool, configurable limit (`REQ-013`). **The configuration surface
-  is `ARC-007`**: `settings.toml` via `core/settings.py`, plus one control in the existing main
-  window. The full `REQ-023` settings dialog stays Phase 4
-- Queue view: multi-job table, per-job status/progress. **Pause and resume are queue-level**
-  (`UX-001`); cancel, retry and remove are per job (`REQ-015` as amended 2026-07-29).
-  *(This read "per-job status/progress, pause/resume/retry/remove", which contradicted the
-  amendment — `P2PLAN-R1`.)*
-- Reordering and clear-completed (`REQ-016`)
-- Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`)
-- Bounded retry with backoff for `NETWORK` failures only (`REQ-018`)
-- History persistence and completed-download records (`REQ-020`)
-- History view over those records (`T-100`). *(Added 2026-07-30 after `P2PLAN-R8`: this list
-  named the records and not the view, Phase 3 and 4 named neither, and `REQ-021` below
-  presupposes one. Phase 2's own clear-completed plus `UX-001`'s remove-never-deletes leave
-  the user unable to find their files without it.)*
-- Open file / reveal in file manager (`REQ-021`), from both views
-- Per-job log capture and log view (`REQ-019`)
-- Single-instance guard (`A-004`)
+| # | Deliverable | Owner | State |
+|---|---|---|---|
+| 1 | Bounded concurrent worker pool, configurable limit (`REQ-013`). **The configuration surface is `ARC-007`**: `settings.toml` via `core/settings.py`, plus one control in the existing main window. The full `REQ-023` settings dialog stays Phase 4 | `T-078`, `T-097` | **Approved** 2026-07-30 (`0f9986f`) |
+| 2 | Queue view: multi-job table, per-job status/progress | `T-079` | **Approved** 2026-07-31 (`da49a51`) |
+| 3 | **Pause and resume are queue-level** (`UX-001`); cancel, retry and remove are per job (`REQ-015` as amended 2026-07-29). *(This read "per-job status/progress, pause/resume/retry/remove", which contradicted the amendment — `P2PLAN-R1`.)* | `T-080` | **In review** 2026-07-31 |
+| 4 | Reordering and clear-completed (`REQ-016`) | `T-081` | **In review** 2026-07-31 |
+| 5 | Output-path collision policy against the filesystem (`DAT-002`, `REQ-011`) | `T-046` | **In review** 2026-07-31 |
+| 6 | Bounded retry with backoff for `NETWORK` failures only (`REQ-018`) | `T-083` | **In review** 2026-07-31 — its bound and backoff ship **provisional**, awaiting a `DECISIONS.md` entry (`AGENTS.md` §4) |
+| 7 | History persistence and completed-download records (`REQ-020`) | `T-085`, `T-050`, `T-093` | **Approved** 2026-07-30 |
+| 8 | A corrupt `settings.toml` reports rather than reverting silently (`ARC-008`) | `T-102` | **Ready** — filed 2026-07-31 |
+| 9 | Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`) | `T-082` | **Ready** |
+| 10 | Per-job log capture and log view (`REQ-019`) | `T-084`, gated by `T-053` | **Ready**; `T-053` in review |
+| 11 | History view over those records | `T-100` | **Ready** |
+| 12 | Open file / reveal in file manager (`REQ-021`), from both views | `T-086` | **Proposed** — released once `T-100` lands |
+| 13 | Single-instance guard (`A-004`, `ARC-006`) | `T-087` | **Ready** — promoted 2026-07-31; its `T-094` primitive is approved |
+
+*(Deliverable 5 was **added 2026-07-31**. `DAT-002` filed `T-046` as a Phase 2 task and this list
+never named it — the same class as `P2PLAN-R8`, where the history records were listed and the view
+that makes them reachable was not. A deliverable nothing lists is one nothing can report as
+outstanding.)*
+
+*(Deliverable 11 was added 2026-07-30 after `P2PLAN-R8`: this list named the records and not the
+view, Phase 3 and 4 named neither, and `REQ-021` presupposes one. Phase 2's own clear-completed
+plus `UX-001`'s remove-never-deletes leave the user unable to find their files without it.)*
+
+**Carried, blocking nothing:** `T-099`, `T-101` and `T-103` are review follow-ups filed against
+Phase 2 work. None is a deliverable and none gates the exit; they are listed in `TASKS.md`.
 
 ### Exit criteria
 
-- Three concurrent downloads show independent accurate progress with the UI interactive
-  throughout (`NFR-001`)
-- Hard-killing the app mid-queue and restarting restores the queue with correct states
-- Concurrency limit is respected exactly; lowering it while running drains cleanly, and so does
-  pausing the queue (`UX-001` — the same reasoning: no partial file to have a rule about)
-- A second launch attaches to or refuses in favor of the running instance
-- No worker process outlives application exit, on both platforms
-- Reviewed and signed off
+| # | Criterion | State |
+|---|---|---|
+| 1 | Three concurrent downloads show independent accurate progress with the UI interactive throughout (`NFR-001`) | **Evidenced, not yet proven end to end.** `T-079`'s first acceptance criterion asserts it and was approved; `T-088` re-proves it against the whole phase |
+| 2 | Hard-killing the app mid-queue and restarting restores the queue with correct states | **Not met** — `T-082` (Ready) and `T-088` (Proposed) |
+| 3 | Concurrency limit is respected exactly; lowering it while running drains cleanly, and so does pausing the queue (`UX-001` — the same reasoning: no partial file to have a rule about) | **Half met.** The limit half is `T-078`, approved, including a lowered limit draining. The pause half is `T-080`, in review |
+| 4 | A second launch attaches to or refuses in favor of the running instance | **Not met** — `T-087`, **Ready** and startable now |
+| 5 | No worker process outlives application exit, on both platforms | **Not met, and currently unreachable.** Linux is covered for a pool of one (`T-019`, Phase 1) and has never been re-run against a pool of N. **Windows has never run against the pool at all** — see below |
+| 6 | Reviewed and signed off | **Not met** — four tasks await a verdict |
+
+> **What stands between here and the exit is a runner, not a feature.**
+>
+> Criterion 5 says *on both platforms*, and Phase 1's own note fixes what "Windows" means: it is
+> `STARBASE` (`OPS-005`). **No CI job has executed a single step since 2026-07-30 04:08 UTC** —
+> GitHub-hosted jobs fail in three to four seconds having run nothing, and the self-hosted
+> `windows desktop` job is starved and then cancelled by the next push. The last fully green CI
+> push run was 2026-07-28 (`11e1203`).
+>
+> Every Phase 2 task approved or delivered since then rests on the maintainer's Linux machine
+> alone (`OPS-006`). That is sufficient for a *task* under `AGENTS.md` §8; it is **not** sufficient
+> for criterion 5, which is a claim about Windows.
+>
+> `OPS-005` covers a criterion that waits on an unreachable environment and `OPS-006` states the
+> general rule — *a criterion that waits on a payment is not a gate*. **Neither is invoked here**,
+> and this note is not an application for a waiver: the phase is not ready to exit on other
+> grounds, so nothing needs deciding yet. It is recorded now so the decision is made deliberately
+> when criteria 2, 4 and 6 are met, rather than discovered at the exit review.
 
 ---
 
@@ -339,4 +446,5 @@ being added here first.
 | Windows packaging of a Qt app proves painful | 5 | Prototype the build in Phase 0 CI (`T-020`), not first at Phase 5 |
 | Frozen build breaks `spawn` (recursive launch) | 0 | `freeze_support()` + `T-020` CI assertion from Phase 0 |
 | yt-dlp gains a compiled dependency, breaking the `OPS-002` updater | ongoing | Purity re-checked at every release gate (`TESTING.md` §8) |
+| **CI stops executing entirely, so "a red run blocks" stops meaning anything** | 2 | **Live as of 2026-07-31**, not hypothetical: no job has run a step since 2026-07-30, hosted jobs fail before step one and the self-hosted job is starved. Measured in `STATUS.md`. The mitigation is that it is *visible* — a zero-step failure must never be read as a test failure, and no task may be reported as gated by CI until a run executes a step. It blocks Phase 2's exit criterion 5, not its tasks |
 | License choice blocks public release | 0 | `LIC-001` resolved as a Phase 0 exit criterion |

@@ -94,6 +94,46 @@ class _Worker(QObject):
         self._perform(token, lambda connection: JobRepository(connection).update(job))
 
     @Slot(int, object)
+    def requeue_at_end(self, token: int, job: Job) -> None:
+        """Write one job with a freshly allocated tail position, then report (`T-080`).
+
+        Here rather than on the GUI thread for every other write's reason, plus one of its own:
+        the tail is read and written in the same transaction, and `ARC-005`'s single writer is what
+        makes that allocation the only one in flight.
+        """
+        self._perform(token, lambda connection: JobRepository(connection).requeue_at_end(job))
+
+    @Slot(int, object)
+    def reorder(self, token: int, job_ids: Sequence[str]) -> None:
+        """Rearrange the queue, then report (`REQ-016`, `T-081`).
+
+        On this thread for `ARC-005`'s reason and one of its own: reordering reads several rows and
+        rewrites their positions in one transaction, and the single writer is what stops an append
+        allocating a tail position in the middle of it.
+        """
+        self._perform(token, lambda connection: JobRepository(connection).reorder(job_ids))
+
+    @Slot(int, object)
+    def clear_completed(self, token: int, _: object) -> None:
+        """Delete every finished job's row, then report (`REQ-016`, `T-081`).
+
+        Takes an ignored payload so it can share `_submit`'s two-argument signal shape rather than
+        needing a signal of its own — the token is the part that matters, and a slot with a
+        different arity would need one.
+        """
+        self._perform(token, lambda connection: JobRepository(connection).clear_completed())
+
+    @Slot(int, object)
+    def remove(self, token: int, job_id: str) -> None:
+        """Delete one job's row, then report (`UX-001`, `T-080`).
+
+        A delete is a queue write like any other, so it belongs on this thread and in this order:
+        a removal asked for while a transition for the same job is still in flight must land
+        behind it, and the single writer is what guarantees that.
+        """
+        self._perform(token, lambda connection: JobRepository(connection).remove(job_id))
+
+    @Slot(int, object)
     def complete(self, token: int, payload: tuple[Job, HistoryEntry]) -> None:
         """Store a completed job **and** its history record in one transaction (`T050-R1`).
 
@@ -166,6 +206,20 @@ class QueueWriter(QObject):
     #: so they land in one transaction (`T050-R1`).
     _complete = Signal(int, object)
 
+    #: Internal: carries a manual retry's re-queue to the worker, which allocates its tail
+    #: position inside the transaction (`T-080`).
+    _requeue = Signal(int, object)
+
+    #: Internal: carries a removal to the worker (`T-080`).
+    _remove = Signal(int, object)
+
+    #: Internal: carries a reordering to the worker, which rewrites every position in one
+    #: transaction (`T-081`).
+    _reorder = Signal(int, object)
+
+    #: Internal: asks the worker to clear every finished job (`T-081`).
+    _clear = Signal(int, object)
+
     #: The writer thread has finished and its connection is closed. **Shutdown is a lifecycle,
     #: not a call** — the same rule `T013-R2` established for the manager, and for the same
     #: reason: `close()` used to `QThread.wait(5000)` on the GUI thread, which a contended write
@@ -182,6 +236,10 @@ class QueueWriter(QObject):
         self._submit.connect(self._worker.write)
         self._revise.connect(self._worker.revise)
         self._complete.connect(self._worker.complete)
+        self._requeue.connect(self._worker.requeue_at_end)
+        self._remove.connect(self._worker.remove)
+        self._reorder.connect(self._worker.reorder)
+        self._clear.connect(self._worker.clear_completed)
         self._shutdown.connect(self._worker.close)
         self._thread.finished.connect(self.closed)
         self._pending: dict[int, Callable[[str | None], None]] = {}
@@ -233,6 +291,47 @@ class QueueWriter(QObject):
             done("the queue writer is shutting down; nothing was saved")
             return
         self._complete.emit(self._track(done), (job, entry))
+
+    def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
+        """Persist a manual retry, re-placed at the tail of the queue. **Returns immediately.**
+
+        Refused through the callback after `close()`, like every other submission.
+        """
+        if self._closed:
+            done("the queue writer is shutting down; nothing was saved")
+            return
+        self._requeue.emit(self._track(done), job)
+
+    def remove(self, job_id: str, done: Callable[[str | None], None]) -> None:
+        """Delete one job's row. **Returns immediately**; `done` fires on the GUI thread.
+
+        Refused through the callback after `close()`. A caller waiting to hear whether a removal
+        landed must not wait forever because shutdown got there first — and a removal reported as
+        failed is one the queue view can leave on screen rather than hiding a row that is still
+        there.
+        """
+        if self._closed:
+            done("the queue writer is shutting down; nothing was saved")
+            return
+        self._remove.emit(self._track(done), job_id)
+
+    def reorder(self, job_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
+        """Rearrange the queue into `job_ids`' order. **Returns immediately.**
+
+        `list()` for `submit`'s reason: the sequence crosses a thread boundary, and a caller that
+        mutated its own list afterwards would be editing an order already being written.
+        """
+        if self._closed:
+            done("the queue writer is shutting down; nothing was saved")
+            return
+        self._reorder.emit(self._track(done), list(job_ids))
+
+    def clear_completed(self, done: Callable[[str | None], None]) -> None:
+        """Delete every finished job's row. **Returns immediately.**"""
+        if self._closed:
+            done("the queue writer is shutting down; nothing was saved")
+            return
+        self._clear.emit(self._track(done), None)
 
     def _track(self, done: Callable[[str | None], None]) -> int:
         token = self._next_token

@@ -37,6 +37,7 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails import __version__
 from tracks_and_trails.core import settings
+from tracks_and_trails.core.job_state import REORDERABLE
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
 from tracks_and_trails.ui.job_detail import JobProgressView, JobReader, build_progress_view
@@ -225,6 +226,10 @@ class MainWindow(QMainWindow):
         retry: Callable[[str], None] | None = None,
         concurrency: int | None = None,
         on_concurrency_changed: Callable[[int], None] | None = None,
+        on_pause_changed: Callable[[bool], None] | None = None,
+        on_remove_requested: Callable[[str], None] | None = None,
+        on_reorder_requested: Callable[[list[str]], None] | None = None,
+        on_clear_requested: Callable[[], None] | None = None,
         queue: QueueReader | None = None,
     ) -> None:
         super().__init__()
@@ -242,8 +247,20 @@ class MainWindow(QMainWindow):
         self.setWindowTitle(APP_NAME)
         self.setWindowIcon(app_icon())
         self._on_concurrency_changed = on_concurrency_changed
+        self._on_pause_changed = on_pause_changed
+        self._on_remove_requested = on_remove_requested
+        self._on_reorder_requested = on_reorder_requested
+        self._on_clear_requested = on_clear_requested
         self._build_menus()
         self._concurrency: QSpinBox | None = None
+        #: `T-080`'s queue actions. Built with the control bar, so a window given no `concurrency`
+        #: has no toolbar and therefore neither of them — the same all-or-nothing rule the add-URL
+        #: action follows, and the reason `T-007`'s bare-window tests keep working.
+        self._pause: QAction | None = None
+        self._remove: QAction | None = None
+        self._move_up: QAction | None = None
+        self._move_down: QAction | None = None
+        self._clear: QAction | None = None
         if concurrency is not None:
             self._build_concurrency_control(concurrency)
         self._environment = QLabel(self)
@@ -280,6 +297,10 @@ class MainWindow(QMainWindow):
         self._queue = build_queue_view(
             queue, self._manager, self._watch_if_possible if self._job_reader is not None else None
         )
+        # Remove acts on the selection, so it follows the selection rather than being enabled once
+        # and left that way. Connected here rather than where the action is built, because the
+        # table is built after the toolbar and the action has to exist before it can be enabled.
+        self._queue.job_selected.connect(self._selection_changed)
         self._body.addWidget(self._queue)
 
     @property
@@ -431,8 +452,220 @@ class MainWindow(QMainWindow):
         box.valueChanged.connect(self._concurrency_chosen)
         bar.addWidget(box)
 
+        bar.addSeparator()
+        self._build_queue_actions(bar)
+
         self.addToolBar(bar)
         self._concurrency = box
+
+    def _build_queue_actions(self, bar: QToolBar) -> None:
+        """Pause/Resume for the queue, Remove for the selected job (`UX-001`, `T-080`).
+
+        **They share a toolbar and not a granularity**, which is the distinction `P2PLAN-R1` found
+        the task's own description getting wrong. Pause and resume act on the queue and are always
+        available; remove acts on whichever row is selected and is disabled when none is. Putting
+        remove on the queue toolbar rather than in the detail pane is deliberate — a user removing
+        several finished jobs is working in the table, and making them open each one first would be
+        a per-job gesture for a queue-level chore.
+
+        **The pause control is one checkable action, not two buttons.** Pause and Resume are the
+        two states of one thing; a pair of buttons would spend the whole session with one of them
+        disabled, and a screen reader would read the disabled one too.
+        """
+        pause = QAction("&Pause queue", self)
+        pause.setObjectName("pauseQueueAction")
+        pause.setCheckable(True)
+        pause.setStatusTip("Stop starting new downloads; let running ones finish")
+        # `NFR-005`, through the tooltip rather than through `setAccessibleName`: `QAction` has
+        # no accessible-name property in Qt 6 — an action's accessible name comes from its text,
+        # and the toolbar button takes its accessible *description* from the tooltip. So the
+        # sentence a user is most likely to need goes here, which is that pause does not stop what
+        # is already running (`UX-001`).
+        pause.setToolTip(
+            "Stop starting new downloads. Downloads already running finish; nothing is cancelled "
+            "and no partly downloaded file is left behind."
+        )
+        pause.toggled.connect(self._pause_toggled)
+        bar.addAction(pause)
+        self._pause = pause
+
+        remove = QAction("&Remove", self)
+        remove.setObjectName("removeJobAction")
+        remove.setStatusTip("Take the selected job out of the queue; files are left alone")
+        # The second sentence is `UX-001`'s promise, and it belongs where the user reads it rather
+        # than only in the decision that made it. Tooltip for `pause`'s reason.
+        remove.setToolTip(
+            "Take the selected download out of the queue. Anything already downloaded stays on "
+            "disk; nothing is deleted."
+        )
+        remove.setEnabled(False)
+        remove.triggered.connect(self._remove_selected)
+        bar.addAction(remove)
+        self._remove = remove
+
+        # `REQ-016` is "reordering", not a gesture (`T-081`'s Out of scope). Two actions rather
+        # than drag-and-drop: they are keyboard-reachable, which drag is not, and `NFR-005` makes
+        # that the requirement rather than the nicety. Drag can be added later over the same call.
+        move_up = QAction("Move &up", self)
+        move_up.setObjectName("moveJobUpAction")
+        move_up.setStatusTip("Move the selected job earlier in the queue")
+        move_up.setToolTip(
+            "Move the selected download earlier in the queue. Downloads already running keep "
+            "their place — the pool has started them."
+        )
+        move_up.setEnabled(False)
+        move_up.triggered.connect(lambda: self._move_selected(-1))
+        bar.addAction(move_up)
+        self._move_up = move_up
+
+        move_down = QAction("Move &down", self)
+        move_down.setObjectName("moveJobDownAction")
+        move_down.setStatusTip("Move the selected job later in the queue")
+        move_down.setToolTip(
+            "Move the selected download later in the queue. Downloads already running keep their "
+            "place — the pool has started them."
+        )
+        move_down.setEnabled(False)
+        move_down.triggered.connect(lambda: self._move_selected(1))
+        bar.addAction(move_down)
+        self._move_down = move_down
+
+        clear = QAction("&Clear finished", self)
+        clear.setObjectName("clearCompletedAction")
+        clear.setStatusTip("Remove finished downloads from the queue; files and history are kept")
+        # The history half is the sentence that stops this looking destructive. `P2PLAN-R8` filed
+        # `T-100` precisely because clearing the queue without a history view would leave somebody
+        # unable to find what they had downloaded.
+        clear.setToolTip(
+            "Remove completed and cancelled downloads from the queue. Files stay on disk and the "
+            "history of what was downloaded is kept; failed downloads stay so you can retry them."
+        )
+        clear.triggered.connect(self._clear_finished)
+        bar.addAction(clear)
+        self._clear = clear
+
+    def _pause_toggled(self, paused: bool) -> None:
+        """Hand the queue's pause state to whoever composition said owns it.
+
+        Injected exactly as `retry` and the concurrency handler are, so the control can be driven
+        in a test with no pool behind it (`ARCHITECTURE.md` §3).
+        """
+        if self._on_pause_changed is not None:
+            self._on_pause_changed(paused)
+
+    def _remove_selected(self) -> None:
+        """Remove whichever job the table has selected, or nothing if it has none.
+
+        The guard is not defensive clutter: the action is disabled with no selection, and an
+        enabled-state check that the handler does not repeat is one keyboard shortcut away from
+        being wrong.
+        """
+        if self._on_remove_requested is None or self._queue is None:
+            return
+        job_id = self._queue.selected_job_id()
+        if job_id is not None:
+            self._on_remove_requested(job_id)
+
+    def _move_selected(self, offset: int) -> None:
+        """Move the selected job `offset` places, and hand the whole new order over (`T-081`).
+
+        **The whole order, not "move this one".** `JobRepository.reorder` redeals the positions the
+        named jobs hold, and the caller that knows what the *user* sees is this one — the table's
+        order is what they are rearranging. Sending a delta would make the repository infer the
+        arrangement from a position it did not choose.
+
+        **Only reorderable rows are named**, and the neighbour is found among those rather than at
+        `index ± 1` in the table. A running job sits in the table between two pending ones, and
+        swapping across it must move the pending pair past each other rather than asking the
+        repository to move the running one — which it refuses, by design.
+        """
+        if self._on_reorder_requested is None or self._queue is None:
+            return
+        selected = self._queue.selected_job_id()
+        if selected is None:
+            return
+        movable = [job_id for job_id in self._queue.model.job_ids() if self._is_movable(job_id)]
+        if selected not in movable:
+            return
+        index = movable.index(selected)
+        target = index + offset
+        if not 0 <= target < len(movable):
+            return
+        movable[index], movable[target] = movable[target], movable[index]
+        self._on_reorder_requested(movable)
+
+    def _is_movable(self, job_id: str) -> bool:
+        """Whether the queue's row for `job_id` is one the user may rearrange.
+
+        Reads the status through the same reader the table does, so this cannot disagree with what
+        is on screen. The authority is still `REORDERABLE` in the persistence layer; this asks the
+        same question early so a refused reorder is not the way the user finds out.
+        """
+        if self._queue is None:
+            return False
+        job = self._queue.model.job_for(job_id)
+        return job is not None and job.status in REORDERABLE
+
+    def _clear_finished(self) -> None:
+        """Ask composition to clear the finished jobs (`REQ-016`)."""
+        if self._on_clear_requested is not None:
+            self._on_clear_requested()
+
+    def _selection_changed(self, job_id: str) -> None:
+        """Enable the per-job actions once there is something for them to act on.
+
+        Remove takes any row; the move actions take only a row the user may rearrange, so a
+        selected running download offers Remove and not Move. An action that is offered and then
+        refuses is a UI that lies about what its buttons do (`can_transition`'s note, one layer up).
+        """
+        if self._remove is not None:
+            self._remove.setEnabled(bool(job_id))
+        movable = bool(job_id) and self._is_movable(job_id)
+        if self._move_up is not None:
+            self._move_up.setEnabled(movable)
+        if self._move_down is not None:
+            self._move_down.setEnabled(movable)
+
+    @property
+    def pause_action(self) -> QAction | None:
+        """The queue's pause toggle, if this window was given a control bar."""
+        return self._pause
+
+    @property
+    def remove_action(self) -> QAction | None:
+        """The selected job's remove action, if this window was given a control bar."""
+        return self._remove
+
+    @property
+    def move_up_action(self) -> QAction | None:
+        """The selected job's move-earlier action, if this window was given a control bar."""
+        return self._move_up
+
+    @property
+    def move_down_action(self) -> QAction | None:
+        """The selected job's move-later action, if this window was given a control bar."""
+        return self._move_down
+
+    @property
+    def clear_completed_action(self) -> QAction | None:
+        """The clear-finished action, if this window was given a control bar."""
+        return self._clear
+
+    def show_queue_paused(self, paused: bool) -> None:
+        """Reflect the queue's pause state **without re-emitting it** (`T-080`).
+
+        Composition connects this to `DownloadManager.queue_paused`, so the control follows the
+        queue whatever changed it. Signals are blocked for the assignment because `setChecked`
+        emits `toggled`, and a round trip — control tells manager, manager tells control, control
+        tells manager — is how a toggle ends up fighting itself.
+        """
+        if self._pause is None:
+            return
+        blocked = self._pause.blockSignals(True)
+        try:
+            self._pause.setChecked(paused)
+        finally:
+            self._pause.blockSignals(blocked)
 
     def _concurrency_chosen(self, value: int) -> None:
         """Hand the new limit to whoever composition said owns it.

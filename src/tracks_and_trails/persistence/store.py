@@ -198,6 +198,76 @@ class PersistentJobStore(QObject):
             settle,
         )
 
+    def requeue_at_end(self, job: Job, done: Callable[[str | None], None]) -> None:
+        """Persist a manual retry at the tail of the queue. **Returns immediately** (`T-080`).
+
+        Identical in-flight bookkeeping to `update`, and that is the point: the revision is
+        recorded here so a `get()` between now and the callback answers `QUEUED` rather than
+        `FAILED`, and forgotten the moment it settles either way (`T016-R1`).
+
+        **The recorded revision carries the job's *old* `queue_position`**, because the new one is
+        allocated on the writer thread and is not known here. That is deliberate and narrow: what
+        the manager reads back before the write lands is the status, which decides whether the
+        retry still applies. Position only matters to `_next_waiting`, which runs when a slot opens
+        — after the write has settled and `get()` answers from the database. Recording a *guessed*
+        tail position would be worse than recording a stale one, because it would be wrong in a way
+        the database never corrects.
+        """
+        queued = self._pending.setdefault(job.id, [])
+        queued.append(job)
+
+        def settle(error: str | None) -> None:
+            remaining = self._pending.get(job.id)
+            if remaining is not None:
+                for index, candidate in enumerate(remaining):
+                    if candidate is job:
+                        del remaining[index]
+                        break
+                if not remaining:
+                    del self._pending[job.id]
+            done(error)
+
+        self._writer.requeue_at_end(job, settle)
+
+    def remove(self, job_id: str, done: Callable[[str | None], None]) -> None:
+        """Delete the job's row. **Returns immediately** (`UX-001`, `T-080`).
+
+        **Nothing is recorded in memory**, unlike `update`, and the asymmetry is deliberate. The
+        in-flight record exists to answer "what is true now" for a job that still exists; there is
+        no `Job` value that means "removed", and inventing one — a sentinel in `_pending`, a
+        tombstone — would put a second kind of thing in a dictionary whose whole contract is that
+        it holds newest revisions.
+
+        The consequence is stated rather than hidden: between this call and its callback, `get()`
+        and `all_jobs()` still answer with the row, because the row is still there. The manager
+        announces `job_removed` from the callback, so the view is told when it is durable — which
+        is `T-013`'s persist-then-announce rule, not an exception to it.
+        """
+        self._writer.remove(job_id, done)
+
+    def reorder(self, job_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
+        """Rearrange the queue into `job_ids`' order. **Returns immediately** (`REQ-016`, `T-081`).
+
+        **Nothing is recorded in memory**, for `remove`'s reason one step further: `_pending` holds
+        newest *revisions of a job*, and a reordering is a fact about several jobs' relationship to
+        each other. There is no single-job value that expresses it, so between this call and its
+        callback `get()` answers with the positions on disk — the ones that are still true, because
+        the write has not landed.
+
+        The consequence for the caller is stated rather than hidden: the queue view refreshes when
+        the manager announces the reordering from this callback, which is `T-013`'s
+        persist-then-announce rule rather than an exception to it.
+        """
+        self._writer.reorder(job_ids, done)
+
+    def clear_completed(self, done: Callable[[str | None], None]) -> None:
+        """Delete every finished job's row. **Returns immediately** (`REQ-016`, `T-081`).
+
+        **History is not touched**, which is `JobRepository.clear_completed`'s guarantee and the
+        reason `T-100`'s view can still answer "where did my file go" afterwards.
+        """
+        self._writer.clear_completed(done)
+
     def submit(self, jobs: Sequence[Job], done: Callable[[str | None], None]) -> None:
         """Append `jobs` in one transaction. **Returns immediately** (`ARC-005`).
 

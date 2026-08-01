@@ -9,6 +9,7 @@ because it needs a real process to kill. Everything provable in-process is here.
 
 import json
 import sqlite3
+from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
@@ -16,7 +17,7 @@ from typing import Any, Final
 import pytest
 
 from tracks_and_trails.core.errors import ErrorKind, is_auto_retryable, is_retryable
-from tracks_and_trails.core.job_state import IllegalTransitionError, JobStatus
+from tracks_and_trails.core.job_state import TERMINAL, IllegalTransitionError, JobStatus
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, Job, MediaKind
 from tracks_and_trails.persistence import db, repositories
 from tracks_and_trails.persistence.repositories import (
@@ -691,12 +692,20 @@ def test_recovery_is_recorded_rather_than_silent(repository: JobRepository) -> N
 
 
 @pytest.mark.parametrize(
-    "status", [JobStatus.QUEUED, JobStatus.READY, JobStatus.PAUSED, JobStatus.COMPLETED]
+    "status",
+    [JobStatus.QUEUED, JobStatus.READY, JobStatus.FAILED, JobStatus.COMPLETED, JobStatus.CANCELLED],
 )
 def test_recovery_leaves_every_other_status_alone(
     repository: JobRepository, status: JobStatus
 ) -> None:
-    """`PAUSED` especially: the user asked for that, and it is meant to survive a restart."""
+    """Recovery touches `INTERRUPTED_ON_STARTUP` and nothing else.
+
+    This used to parametrize `PAUSED` and single it out as the case that mattered — "the user
+    asked for that, and it is meant to survive a restart". `T-080` removed the status: under
+    `UX-001` no job ever entered it, so the sentence described a state no test could produce
+    honestly. The parameters now cover every status recovery must leave alone, which is what the
+    test was always for.
+    """
     repository.add(a_job("untouched", status=status))
     assert repository.recover_interrupted() == []
     stored = repository.get("untouched")
@@ -867,3 +876,332 @@ def test_a_history_entry_refuses_negative_bytes() -> None:
     """The table's CHECK says the same; saying it at construction names the field."""
     with pytest.raises(ValueError, match="cannot be negative"):
         _entry(bytes_total=-1)
+
+
+# --- T-080: re-queuing at the tail, and removal --------------------------------------------
+
+
+def test_requeue_at_end_allocates_a_fresh_tail_position(repository: JobRepository) -> None:
+    """`T-080`, `P2PLAN-R7`: a manual retry goes behind everything already queued.
+
+    **Two rounds, for `append`'s reason.** With one job re-queued into a two-job queue, "read the
+    maximum" and "add one to my own position" give the same answer. The second round is what tells
+    them apart: `a` re-queued twice must land behind `c`, not back where it started.
+    """
+    repository.append([a_job("a"), a_job("b"), a_job("c")])
+    original = repository.get("a")
+    assert original is not None and original.queue_position == 0
+
+    placed = repository.requeue_at_end(original)
+    assert placed.queue_position == 3
+    assert [job.id for job in repository.queued()] == ["b", "c", "a"]
+
+    again = repository.requeue_at_end(placed)
+    assert again.queue_position == 4
+    assert [job.id for job in repository.queued()] == ["b", "c", "a"]
+
+    stored = repository.get("a")
+    assert stored is not None
+    assert stored.queue_position == 4, "the returned job was placed but the row was not"
+
+
+def test_requeue_at_end_keeps_every_other_field(repository: JobRepository) -> None:
+    """The position is the *only* thing it decides. A write that reset a field would be silent."""
+    repository.append([a_job("a", title="a title", attempts=2)])
+    stored = repository.get("a")
+    assert stored is not None
+
+    repository.requeue_at_end(replace(stored, status=JobStatus.FAILED))
+
+    after = repository.get("a")
+    assert after is not None
+    assert after.title == "a title"
+    assert after.attempts == 2, (
+        "re-queuing spent or reset the attempt counter; manual retry deliberately does not, so "
+        "the automatic budget is not consumed by a person pressing Retry"
+    )
+    assert after.status is JobStatus.FAILED
+
+
+def test_requeue_at_end_refuses_a_job_that_is_not_there(repository: JobRepository) -> None:
+    """`update`'s rule: re-queuing a vanished row means the caller's model of the queue is wrong."""
+    with pytest.raises(Exception):  # noqa: B017 — the type is `_write_job`'s, not this test's
+        repository.requeue_at_end(a_job("never added"))
+
+
+def test_remove_deletes_the_row_and_reports_whether_there_was_one(
+    repository: JobRepository,
+) -> None:
+    """`UX-001`, `T-080`: removal takes the row out and says whether it had anything to take.
+
+    The second call is the point: pressing Remove twice is a thing a person does, and the outcome
+    they asked for is the outcome they have. It must not raise, and it must not claim it deleted
+    something.
+    """
+    repository.append([a_job("a"), a_job("b")])
+
+    assert repository.remove("a") is True
+    assert repository.get("a") is None
+    assert [job.id for job in repository.queued()] == ["b"]
+
+    assert repository.remove("a") is False, (
+        "removing an already-removed job reported a deletion; the boolean exists so a caller that "
+        "cares can tell the two apart"
+    )
+
+
+def test_remove_leaves_a_gap_that_nothing_depends_on_being_absent(
+    repository: JobRepository,
+) -> None:
+    """Positions stay sparse after a removal, and the next append still goes to the end.
+
+    Recorded because "gaps are harmless" is a claim about every consumer, and the cheapest way to
+    stop it becoming false is a test that fails if something starts renumbering.
+    """
+    repository.append([a_job("a"), a_job("b"), a_job("c")])
+    repository.remove("b")
+
+    assert [job.queue_position for job in repository.queued()] == [0, 2]
+    appended = repository.append([a_job("d")])
+    assert appended[0].queue_position == 3
+    assert [job.id for job in repository.queued()] == ["a", "c", "d"]
+
+
+# --- T-081: reordering pending jobs, and clearing the finished ones ------------------------
+
+
+def test_the_reorderable_statuses_partition_the_enum() -> None:
+    """`REORDERABLE`, `INTERRUPTED_ON_STARTUP` and `TERMINAL` cover every status exactly once.
+
+    **The reason `REORDERABLE` is written out rather than derived.** A derived complement would
+    agree with the other two unconditionally, so a new status would become reorderable silently and
+    no test could see it — `ai/TESTING.md` §13. This makes adding a status fail here until somebody
+    decides which side it belongs on.
+    """
+    covered = repositories.REORDERABLE | repositories.INTERRUPTED_ON_STARTUP | TERMINAL
+
+    assert covered == set(JobStatus), (
+        f"these statuses belong to no group: {sorted(s.value for s in set(JobStatus) - covered)}"
+    )
+    assert not (repositories.REORDERABLE & repositories.INTERRUPTED_ON_STARTUP)
+    assert not (repositories.REORDERABLE & TERMINAL)
+    assert not (repositories.INTERRUPTED_ON_STARTUP & TERMINAL)
+
+
+def test_reorder_deals_out_the_positions_those_jobs_already_held(
+    repository: JobRepository,
+) -> None:
+    """`REQ-016`: the moved jobs swap places, and nothing else in the queue moves.
+
+    **Asserted with a job that is *not* being reordered sitting between them**, because that is the
+    property "redeal the positions they occupied" has and "renumber from zero" does not. A
+    renumbering implementation passes a test where the reordered jobs are the whole queue.
+    """
+    repository.append([a_job("a"), a_job("b"), a_job("c"), a_job("d")])
+    # `c` is running, so it is not in the rearrangement and its position must not move.
+    running = repository.get("c")
+    assert running is not None
+    repository.update(replace(running, status=JobStatus.RUNNING))
+
+    placed = repository.reorder(["d", "b", "a"])
+
+    assert [job.id for job in placed] == ["d", "b", "a"]
+    assert [job.queue_position for job in placed] == [0, 1, 3]
+    after = repository.get("c")
+    assert after is not None
+    assert after.queue_position == 2, "a job nobody moved changed position"
+    assert [job.id for job in repository.queued()] == ["d", "b", "c", "a"]
+
+
+def test_reorder_survives_the_unique_index_when_positions_cross(
+    repository: JobRepository,
+) -> None:
+    """A straight swap is the case a one-phase implementation cannot do.
+
+    `jobs_queue_position` is `UNIQUE` over non-`NULL` values and SQLite enforces it per statement,
+    so assigning `a → 1` while `b` still holds `1` raises `IntegrityError`. This is the smallest
+    reorder that crosses, and it is the whole reason for the `NULL` phase.
+    """
+    repository.append([a_job("a"), a_job("b")])
+
+    repository.reorder(["b", "a"])
+
+    assert [job.id for job in repository.queued()] == ["b", "a"]
+    assert [job.queue_position for job in repository.queued()] == [0, 1]
+
+
+def test_reorder_refuses_a_running_job_rather_than_skipping_it(repository: JobRepository) -> None:
+    """`T-081`: a running job's position is not a promise the pool can keep.
+
+    Refused rather than silently dropped from the rearrangement: a caller asking to move a running
+    job has a stale view of the queue, and quietly reordering the rest would leave the table
+    showing an order the database never agreed to.
+    """
+    repository.append([a_job("a"), a_job("b")])
+    running = repository.get("a")
+    assert running is not None
+    repository.update(replace(running, status=JobStatus.RUNNING))
+
+    with pytest.raises(ValueError, match="running or finished"):
+        repository.reorder(["b", "a"])
+
+    assert [job.id for job in repository.queued()] == ["a", "b"], (
+        "the refusal left the queue partly reordered; the check must happen before any write"
+    )
+
+
+class _FailsOnExecutemany:
+    """A connection that forwards everything except `executemany`, which raises.
+
+    A proxy rather than a `monkeypatch.setattr` on the connection, because
+    `sqlite3.Connection.executemany` is a read-only attribute and cannot be patched. A proxy is
+    also the more honest instrument: it fails at exactly the call the repository makes, rather than
+    at a layer the repository does not use.
+    """
+
+    def __init__(self, connection: sqlite3.Connection) -> None:
+        self._connection = connection
+
+    def execute(self, *arguments: Any) -> sqlite3.Cursor:
+        return self._connection.execute(*arguments)
+
+    def executemany(self, *arguments: Any) -> sqlite3.Cursor:
+        raise sqlite3.OperationalError("disk I/O error")
+
+    def __enter__(self) -> sqlite3.Connection:
+        return self._connection.__enter__()
+
+    def __exit__(self, *arguments: Any) -> Any:
+        return self._connection.__exit__(*arguments)
+
+
+def test_reorder_is_one_transaction(tmp_path: Path) -> None:
+    """`REQ-016`: a queue half-reordered by a crash is a queue in an order nobody chose.
+
+    The failure is injected **between** the `NULL` phase and the reassignment, which is the only
+    window where the moved rows are outside the queue order entirely. If the two phases were
+    separate transactions, this would leave every named job with no position at all — and a queue
+    whose jobs have no position has no order for the pool or the table to agree on.
+    """
+    connection = db.connect(tmp_path / "library.sqlite3")
+    repository = JobRepository(connection)
+    repository.append([a_job("a"), a_job("b"), a_job("c")])
+
+    broken = JobRepository(_FailsOnExecutemany(connection))  # type: ignore[arg-type]
+    with pytest.raises(sqlite3.OperationalError):
+        broken.reorder(["c", "b", "a"])
+
+    assert [job.id for job in repository.queued()] == ["a", "b", "c"], (
+        "a failed reorder left the queue changed; the NULL phase and the reassignment must be one "
+        "transaction or a crash between them strands every moved job outside the queue"
+    )
+    assert [job.queue_position for job in repository.queued()] == [0, 1, 2]
+
+
+def test_reorder_refuses_unknown_and_unplaced_and_duplicated_jobs(
+    repository: JobRepository,
+) -> None:
+    """Three refusals, because each would corrupt the order in a different way."""
+    repository.append([a_job("a"), a_job("b")])
+    repository.add(a_job("loose"))  # added directly, so it holds no queue position
+
+    with pytest.raises(KeyError, match="unknown"):
+        repository.reorder(["a", "ghost"])
+    with pytest.raises(ValueError, match="no queue position"):
+        repository.reorder(["a", "loose"])
+    with pytest.raises(ValueError, match="named twice"):
+        repository.reorder(["a", "a"])
+
+    assert [job.id for job in repository.queued()] == ["a", "b"]
+
+
+def test_clear_completed_removes_finished_rows_and_keeps_the_rest(
+    repository: JobRepository,
+) -> None:
+    """`REQ-016`: completed and cancelled go; queued, running and **failed** stay.
+
+    `FAILED` staying is the one worth asserting. A failed job is still in the queue offering a
+    retry (`REQ-018`), so clearing it would throw away work the user has not decided about — while
+    a cancelled job is a decision they already made.
+    """
+    repository.append(
+        [a_job("done"), a_job("stopped"), a_job("waiting"), a_job("broken"), a_job("busy")]
+    )
+    for job_id, status in (
+        ("done", JobStatus.COMPLETED),
+        ("stopped", JobStatus.CANCELLED),
+        ("broken", JobStatus.FAILED),
+        ("busy", JobStatus.RUNNING),
+    ):
+        stored = repository.get(job_id)
+        assert stored is not None
+        repository.update(replace(stored, status=status))
+
+    cleared = repository.clear_completed()
+
+    assert sorted(cleared) == ["done", "stopped"]
+    assert repository.get("done") is None
+    assert repository.get("stopped") is None
+    assert repository.get("broken") is not None, (
+        "clear-completed removed a failed job; it is still in the queue offering a retry"
+    )
+    assert repository.get("waiting") is not None
+    assert repository.get("busy") is not None
+
+
+def test_clear_completed_leaves_history_alone(tmp_path: Path) -> None:
+    """`T-085`, `P2PLAN-R8`: the queue forgets, and history is how the user still finds the file.
+
+    The two live in different tables and the completion transaction writes both. Clearing the queue
+    must remove only the queue's record — otherwise clear-completed plus `UX-001`'s
+    remove-never-deletes leaves somebody with files on disk and no record of where they went.
+    """
+    connection = db.connect(tmp_path / "library.sqlite3")
+    jobs = JobRepository(connection)
+    history = HistoryRepository(connection)
+
+    jobs.append([a_job("done")])
+    stored = jobs.get("done")
+    assert stored is not None
+    completed = replace(stored, status=JobStatus.COMPLETED, output_path=str(tmp_path / "clip.mp4"))
+    repositories.complete_job(
+        connection,
+        completed,
+        HistoryEntry(
+            id="done",
+            url=completed.url,
+            title="A clip",
+            output_path=completed.output_path,
+            format_used="mp4",
+            bytes_total=1024,
+            completed_at=datetime(2026, 7, 31, 12, 0, tzinfo=UTC),
+        ),
+    )
+
+    assert jobs.clear_completed() == ["done"]
+
+    assert jobs.get("done") is None
+    kept = history.get("done")
+    assert kept is not None, (
+        "clearing the queue deleted the history record; T-100's view would then have nothing to "
+        "show and the user could not find what they downloaded"
+    )
+    assert kept.output_path == completed.output_path
+
+
+def test_clear_completed_touches_no_file(repository: JobRepository, tmp_path: Path) -> None:
+    """`UX-001`'s rule applied to the other bulk operation, asserted at the directory."""
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    obtained = downloads / "a clip.mp4"
+    obtained.write_bytes(b"the user's file")
+
+    repository.append([a_job("done")])
+    stored = repository.get("done")
+    assert stored is not None
+    repository.update(replace(stored, status=JobStatus.COMPLETED, output_path=str(obtained)))
+
+    repository.clear_completed()
+
+    assert obtained.exists(), "clearing completed jobs deleted the file one of them produced"
+    assert obtained.read_bytes() == b"the user's file"

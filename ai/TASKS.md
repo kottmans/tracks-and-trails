@@ -16,32 +16,34 @@ IDs are never reused. Completed tasks move to `ai/archive/` once they bury the l
 `ai/REVIEWS.md`. **The current phase is Phase 2, all three of its planning gates are clear, and
 `T-078` — the choke point the phase descends from — was approved at `0f9986f` on 2026-07-30.**
 
-**The live queue** — generated from the sections below on 2026-07-30, not written alongside them.
+**The live queue** — rebuilt from the sections below on 2026-07-31, not written alongside them.
 `COORD-R5` through `COORD-R11` are seven rounds of a hand-written summary drifting from the file it
 summarises; this one is transcribed from the actual `## ` sections so it starts correct.
 
-- **In Review:** `T-079`, the queue view — complete 2026-07-31, twelve mutations killed. Its
-  approval is what unblocks `T-080` and `T-081`.
-- **Ready, and nothing among them waits on anything:** `T-082`, `T-083`, `T-084`, `T-053`,
-  `T-046`, `T-100` (the history view, independent of the queue), plus `T-074` and `T-092`, which
-  block nothing. `T-092` needs maintainer consent before writing to `STARBASE`.
+- **In Review:** `T-080`, `T-081`, `T-046`, `T-053` and `T-083`, all five delivered 2026-07-31.
+  None of them blocks another task; `T-053` gates `T-084`'s *approval* rather than its start.
+- **Ready, and nothing among them waits on anything:** `T-082`, `T-084`, `T-087` (promoted
+  2026-07-31 — it owns Phase 2 exit criterion 4), `T-100` (the history view, independent of the
+  queue), `T-102` (filed 2026-07-31 by `ARC-008`), plus `T-074` and `T-092`, which block nothing.
+  `T-092` needs maintainer consent before writing to `STARBASE`.
+- **Approved 2026-07-31:** `T-079`, at `da49a51`.
 - **Approved 2026-07-30:** `T-047`, `T-049`, `T-050`, `T-078`, `T-085`, `T-089`, `T-091`, `T-093`,
   `T-094`, `T-095`, `T-096`, `T-097`, `T-098`.
-- **Still Proposed, and why** — `T-080` and `T-081` descend from `T-078` but wait on **`T-079`**,
-  not on the pool. `T-080` also needs two maintainer calls first: the unreachable `PAUSED` edges,
-  and whether `P2PLAN-R7`'s manual-retry ordering is kept.
 - **All three Phase 2 planning gates are clear.** `P2PLAN-R2` at `f858da9`; `P2PLAN-R1` and
   `P2PLAN-R3` at `8306378`. `ARC-007` decides the settings surface, `UX-001` the pause semantics.
-- **One open question, not mine to answer:** whether a corrupt `settings.toml` should report rather
-  than fall back silently. *(Two others were decided 2026-07-30: the concurrency **maximum** —
-  `ARC-007` amended, `CONCURRENCY_MAXIMUM = 16` — and **`P2PLAN-R8`**, the history view's owner,
-  which is now **`T-100`**. `T-086` depends on it and is unblocked once it lands.)*
+- **No open questions are outstanding.** The last one — whether a corrupt `settings.toml` should
+  report rather than fall back silently — was **decided 2026-07-31**: it reports. `ARC-008` holds
+  the decision and **`T-102`** implements it. *(Two others were decided 2026-07-30: the concurrency
+  **maximum** — `ARC-007` amended, `CONCURRENCY_MAXIMUM = 16` — and **`P2PLAN-R8`**, the history
+  view's owner, which is now **`T-100`**. `T-086` depends on it and is unblocked once it lands.)*
 - **Carried, blocking nothing:** `T-099` (`T097-R2` — the boundary analyser reports a settings
-  offender under the persistence rule's explanation) and `T-101` (`T079-R3` — the corrected
-  detail view resets retry ETA correctly, but the ETA-only mutation survives).
+  offender under the persistence rule's explanation), `T-101` (`T079-R3` — the corrected detail view
+  resets retry ETA correctly, but the ETA-only mutation survives) and `T-103` (found by `T-081`:
+  cancelling a *waiting* job leaves its id on the pool's waiting list).
 
-**`T-079` is built and awaiting a verdict**, and six other Ready tasks can run beside it. `T-078`
-was the last point at which that was not true.
+**Nothing is a choke point as of 2026-07-31.** `T-078` was the last one, and `T-079` was the last
+task anything waited on; every Ready task above can start without waiting for a verdict on the
+three in review.
 
 **Windows runtime has still never run against the pool.** It is not a completion gate for source
 changes here, but `T-078` is the first task to run several worker trees at once, so the risk is
@@ -73,8 +75,11 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**Four tasks await a verdict as of 2026-07-31** — `T-079`, `T-046`, `T-053` and `T-083`, and this note is rebuilt from the
-section rather than edited beside it. Before them, `T-078` was approved at `0f9986f`;
+*(**Five tasks await a verdict as of 2026-07-31** — `T-080`, `T-081`, `T-046`, `T-053` and `T-083`, and this note is rebuilt from the
+section rather than edited beside it. It said **four** and named `T-079` first, for the whole time
+between the re-review recording **Approved** and its correction; it then said **three**, then
+**four** again as `T-080` and `T-081` landed here. Before them, `T-079` was approved
+at `da49a51` and `T-078` at `0f9986f`;
 `T-047`, `T-089` and `T-097` at `321c672`, `128be39` and `34addcb`; `T-091`, `T-096` and `T-098`
 before them.
 `COORD-R2` is why this note exists rather than the section sitting bare: a section's contents are
@@ -85,155 +90,304 @@ both while every status and section agreed. The invariant test cannot see that, 
 written by hand for exactly that reason. It said "Empty as of 2026-07-30" until `T-079` landed
 here, which is the drift it is written to make visible.)*
 
-### T-079 — The queue view: many jobs, each with its own progress
+### T-080 — Queue-level pause and resume; per-job cancel, retry and remove
 
-**Status:** **In Review — corrected 2026-07-31, awaiting re-review.** Changes were requested at
-`cb008da` on two blocking Medium findings; both are addressed below. `ui/queue_view.py` stops
-being a stub: a `QAbstractTableModel` over every job, a `QTableView` above the detail pane in a
-splitter, and one coalescing timer for the whole table. **Twenty mutations across two rounds; all
-twenty killed.** `T-080` and `T-081` are unblocked by its approval.
-*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`", then "In Review —
-complete 2026-07-31" before the review.)*
+**Status:** **In Review — complete 2026-07-31.** Released by `T-079`'s approval at `da49a51`;
+rewritten from `UX-001` on 2026-07-30 (`P2PLAN-R1`). **Both maintainer calls were taken 2026-07-31**
+and are recorded in place below: the unreachable `PAUSED` edges are **removed**, and `P2PLAN-R7`'s
+manual-retry ordering is **confirmed** — as a maintainer decision, not as something `P2PLAN-R1`
+settled. **Fourteen mutations run; all fourteen killed**, nine against the queue and persistence
+layers and five against the controls. One of the fourteen **survived its first run** and the test
+was wrong, not the code — see the mutation table.
+*(This read "Proposed — … **Not released by `T-078`:** it waits on `T-079` as well", then "Ready …
+two maintainer calls are still open", then "Ready and startable".)*
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 2
-**Depends on:** `T-078`
-**Relevant context:** `REQ-015`, `NFR-001`, `T-017`, `T-059`, `T040-R1`
-**Affected surfaces:** `ui/`, `main_window.py`
-**Risk:** Medium — the repaint discipline that made one job cheap is what N jobs will test
+**Depends on:** `T-078`, `T-079`
+**Relevant context:** **`UX-001`** (the canonical pause and remove semantics, with rationale and
+reopening condition), `REQ-015` **as amended**, `T-051`, `core/job_state.py`, `T036-R1`
+**Affected surfaces:** `downloader/manager.py`, `ui/`, possibly `core/job_state.py` (the `PAUSED`
+edges — see below)
+**Risk:** Medium — every one of these is a state transition plus an effect, which is `T036-R1`
 
 #### Scope
 
-Phase 1 shows **one** job: `MainWindow.progress_view`, a single `JobProgressView`. Phase 2 needs a
-table — every job, its status, its progress, whatever it is doing.
+**Two different things, and conflating them is what `P2PLAN-R1` reported.** This task delivers:
 
-**`T-017`'s lessons transfer directly and are worth reading before starting.** Progress messages
-arrive faster than a human can read, so the view coalesces on a `REPAINT_INTERVAL_MS` timer rather
-than repainting per message; with N jobs that stops being an optimisation and becomes the thing
-that keeps `NFR-001` true. `describe_bar` is a pure function precisely so the same rendering rule
-cannot drift between paths — a table has more paths, not fewer. And `T-059` found a view rendering
-a finished job from the wrong source: a row for a job that finished before the view existed is the
-same question.
+| Surface | Actions | Granularity |
+|---|---|---|
+| The queue | pause, resume | **Queue-level** (`UX-001`) |
+| A job | cancel, retry, remove | **Per job** (`REQ-015` as amended) |
+
+The previous version of this entry was titled *"…per job"*, quoted the pre-amendment `REQ-015` as
+though it still governed, and then described queue-level behaviour in its acceptance criteria. An
+implementer reading it received mutually exclusive instructions from the two halves.
+
+**Pause drains the queue; it does not stop a download.** In-flight work finishes, nothing new
+starts, resume takes work again. `UX-001` holds the reasoning and the rejected alternatives; the
+short version is that every alternative buys a half-written file and a rule about its lifetime, in a
+phase where `REQ-017`'s resume does not exist yet.
+
+**Remove takes the job out of the queue and never deletes a file.** Removing a running job cancels
+it first. Nothing this application deletes from disk, in this phase, by this route.
+
+#### The `PAUSED` edges — **settled 2026-07-31: remove both**
+
+`core/job_state.py`'s `_TRANSITIONS` carries `RUNNING → PAUSED` and `PAUSED → RUNNING`, with a
+comment explaining why resume returns to `RUNNING` rather than `READY`. **Under `UX-001` no job ever
+enters `PAUSED`, so both edges are unreachable.**
+
+`UX-001` assigned the choice here — remove them, or record why a state nothing reaches is kept —
+and the maintainer took it on 2026-07-31: **both edges are removed, and `PAUSED` with them if
+nothing else references it.** An unreachable state reads as capability without being it, which is
+`ai/TESTING.md` §13's shape one layer up from a test. `REQ-017`'s partial-download resume in Phase 3
+was the argument for keeping them and is not persuasive in advance: it can add the edges its own
+semantics need, rather than inheriting a guess made a phase early — and a guess is what they are,
+since nothing has ever traversed them.
+
+**This is a change to an approved state machine, so it is `T-080`'s to make and not to assume.**
+The removal must be asserted, not just performed: driving `RUNNING → PAUSED` has to raise the
+transition error, and the criterion below that no job reaches `PAUSED` is what proves the removal
+did not simply relocate the problem.
+
+*(Superseded, kept because the amendment is the point: this section used to argue that `REQ-015`
+"says otherwise" and that an amendment was needed. That amendment landed on 2026-07-29 — `REQ-015`
+now reads queue-level and cites `UX-001` — so the conflict this described no longer exists. The
+pre-amendment wording is preserved in `REQ-015`'s own parenthetical and in `UX-001`.)*
 
 #### Acceptance criteria
 
-- Three concurrent downloads show independent, accurate progress with the UI interactive
-  throughout — the phase's first exit criterion, asserted rather than observed
-- A row opened onto a job that is already finished renders its ending, not an empty bar (`T-059`)
-- The table's keyboard order is declared and asserted per state, as `T-060` established
-- Repaint cost is bounded and measured with N rows, not argued from the single-job case
+- Each action goes through the manager, not through the store — `T036-R1` is what it costs when a
+  caller writes a status change directly and nothing announces it
+- Cancel still meets its 2-second budget under a saturated pool, not just an idle one
+- **Pause and resume act on the queue, and the assertion says so:** with the pool saturated, pausing
+  lets every in-flight session finish and starts none of the waiting jobs; resuming starts them. A
+  test that pauses a single job proves the wrong contract
+- **No job reaches `PAUSED`** — asserted against the stored status, not inferred from the UI. This is
+  the observable half of the decision above
+- **No partial file exists as a result of pausing** — asserted by looking at the output directory,
+  since that is the whole reason for this shape rather than a happy consequence of it
+- Remove takes the job out of the queue and leaves every file on disk untouched, asserted by looking
+  at the directory rather than by trusting the code path
+- Removing a running job cancels it first, within the same 2-second budget
+- **`P2PLAN-R7` — confirmed 2026-07-31 by maintainer decision:** *"manual retry re-enters the queue
+  at the back and does not jump jobs that have not run."* Asserted with jobs that have never run
+  waiting behind the retried one, since a rule about ordering that is only tested on an empty queue
+  is not tested. **Its provenance is recorded rather than smoothed over:** it arrived with the
+  `P2PLAN-R1` correction and was **not part of it** — `UX-001` decides pause and remove, not retry
+  order; `REQ-018` requires retry without ordering it; and `T-083`'s no-jump criterion is explicitly
+  about *automatic* retries. It is confirmed as the manual-retry consequence of the scheduling order
+  `T-078` records, and it is **not** settled by `P2PLAN-R1`. `T-083` shipped the automatic half on
+  2026-07-31, so confirming this makes the two halves agree instead of leaving manual retry
+  unstated
 
 #### Out of scope
 
-- Sorting and filtering, which are `REQ-016`'s neighbours but not its text
-- The log view (`T-084`) and history (`T-085`), which are their own surfaces
-
-#### Corrections, 2026-07-31 — `T079-R1` and `T079-R2`
-
-**`T079-R1` — a drawn message outlived the attempt that produced it.** `REQ-018`'s retry edge is
-`FAILED → QUEUED`, and a job in `QUEUED` has no worker; the row kept the failed attempt's message,
-so a re-queued job went on saying "Downloading video" at the old percentage, speed and ETA. A
-saturated pool leaves that on screen for as long as the retry waits for a slot.
-
-**The boundary is the status, and it could not have been `Job.attempts`.** The reviewer offered
-"key it to the attempt it belongs to" as an alternative, and that reading is worth recording as
-closed: **nothing in this project ever increments `attempts`.** It is a schema column with a
-default that no code writes — `with_status` does not touch it, `retry()` does not touch it — so
-every job's attempt number is `0` for life and a comparison against it is always equal. Keying to
-it would have produced a guard that can never fire, which is exactly what `ai/TESTING.md` §13
-exists to prevent.
-
-**The detail view had it too**, which the reviewer asked be audited rather than assumed. It did
-not fall out of the table's fix: `JobProgressView._refresh` rewrites the stage line only when the
-job is terminal *or* nothing has been drawn, and after a failed attempt something had been drawn.
-Three fields there, not one — the drawn message, the recorded failure (`failure` is public, and a
-queued job reporting the previous attempt's error is the same lie one field over), and the speed
-and ETA **labels**, which `_refresh` never writes at all. That last one was found by the test for
-this correction rather than by inspection: dropping the state behind a label does not clear the
-label.
-
-**Not "clear on every rebuild".** `refresh()` still keeps drawn state *within* an attempt, or a
-newly added neighbour would erase a running job's live total and `T017-R4`'s ending rule would
-fall back to the durable row's lagging counter. Both halves have a test, and the over-application
-is one of the mutations below.
-
-**`T079-R2` — every status change read the whole queue on the GUI thread.** `_durable()` was a
-point lookup implemented as a scan of `all_jobs()`, which in the real graph is `SELECT *` plus
-deserialisation of every stored job, synchronously inside a Qt slot. `ARCHITECTURE.md` §3 permits
-a synchronous GUI read only when it is an *indexed single-row lookup*. A reviewer probe measured
-one transition at **150.7 ms** against `NFR-001`'s ~100 ms budget, and the cost grew with queue
-history — the queue got slower the longer it was used.
-
-`QueueReader` now requires `get` as well as `all_jobs`; `PersistentJobStore` already had both.
-Enumeration is for building the table and for an explicit refresh. **This is my own criterion
-failing:** the task says repaint cost is bounded and measured, and I bounded the repaint path
-while leaving the status path unbounded — the committed responsiveness test had three rows, where
-a full enumeration is too cheap to show up however wrongly the read is chosen.
-
-| Mutation | Killed by |
-|---|---|
-| The queue row keeps the failed attempt's drawn message | the retry regression |
-| The queue row keeps the failed attempt's *pending* message | the pending half of the boundary |
-| Every rebuild wipes drawn state, not just an attempt boundary | the within-attempt regression |
-| The detail view keeps the failed attempt's stage and totals | the detail-view retry regression |
-| The detail view keeps the failed attempt's speed and ETA labels | the same |
-| The detail view keeps the previous attempt's failure | the same |
-| A status change enumerates the queue to find one job | the read-count gate |
-| The same, against the budget rather than the count | the slow-enumeration probe |
-
-Both `T079-R2` gates are independent on purpose: the count says *which* read happened, because a
-fast enumeration is still an enumeration, and the probe says what it costs when the enumeration is
-expensive. The committed suite had neither.
+- Resuming a *partial download* from disk (`REQ-017`, Phase 3). Phase 2's resume restarts
 
 #### What was built, 2026-07-31
 
-**`totals_for_ending` moved out of `JobProgressView` and became a free function.** `T-059` was one
-widget answering "how big was this" two ways depending on whether anyone had been watching. A
-table is the *third* caller of that question and, unlike the detail view, most of its rows were
-never watched by anything — every restart is full of them. Reimplementing the rule here would have
-been `T-059` with more surfaces, so both viewers now call one function. Mutating it kills tests in
-both files.
+**Evidence.** `ruff check`, `ruff format --check` and `mypy src` clean; full Linux suite **1667
+passed / 11 skipped / 2 deselected**. Fourteen mutations, all killed, tree hash identical before and
+after each battery. No CI run — see "Not covered" below.
 
-**One coalescing timer for the table, not one per row.** With N running jobs the message rates
-add, so the repaint budget is the thing that has to stay bounded — and a per-row timer would
-satisfy "ten a second per row" while redrawing the screen eighty times a second. `renders` counts
-ticks that drew, which is `T017-R1`'s counting rule one surface over.
+**`JobStatus.PAUSED` is gone, not merely unreferenced.** The maintainer decision was to remove the
+two edges; removing the *member* is what makes that checkable. A member left behind with no
+transitions still lets `replace(job, status=PAUSED)` build a job nothing can move, so the enum is
+asserted directly — `not hasattr(JobStatus, "PAUSED")` — beside the stored-status assertion. Two
+documents that explained the exclusion (`repositories.py`'s `INTERRUPTED_ON_STARTUP` comment, a
+`test_persistence.py` docstring saying `PAUSED` "is meant to survive a restart") described a state
+nothing could reach, and both were corrected rather than left standing.
 
-**Progress is text; `REQ-011`'s bar stays in the detail view.** `REQ-014` names percent, size,
-speed, ETA and stage — all text. A `QProgressBar` per row is N live widgets inside a scroll area
-to render six characters, against a criterion that says repaint cost is bounded with N rows. The
-accessible description is still `describe_bar`'s output, so the words a screen reader hears are
-produced by the same function that produces them beside the real bar.
+**Pause is one flag on the scheduler, and the guard is in one place.** `_fill_free_slots` is the
+single point where a waiting job becomes a running one, so the check lives there rather than at the
+tick, `set_concurrency` and `resume` separately — three chances to forget it, and the tick is the
+one that fires on its own. `_start_when_free` carries the second half, because a retry that took
+the direct path would restart a `NETWORK` failure while the user had the queue paused.
 
-**Composition stopped following every watchable transition.** With a pool of one, claiming the
-detail pane on each `job_changed` was right — one job, one place to see it. With three running it
-means they evict each other several times a second, and a user who selected a row loses it. The
-pane is now claimed once and then belongs to the user; the table is what shows all N.
+**A direct `start()` is deliberately *not* paused**, and that absence has its own test. The
+add-URL dialog probes when the user types a URL; refusing it silently would hang the dialog on
+"Probing …". An absence nothing asserts is indistinguishable from an oversight.
+
+**Removal is a delete, not a status**, and it waits for the process. `CANCELLED` is a job that
+stopped and is still in the queue; removal is a job that is not in the queue. Deleting the row when
+the cancel is *asked for* would leave a live worker whose next message reaches `_require` and finds
+nothing — so `remove()` records the intent, `cancel()` owns the stopping, and `_release` performs
+the delete once the tree is reaped and the pump has returned. The waiting list is cleared
+synchronously, because the tick that fires while the delete is in flight reads it.
+
+**Manual retry is renumbered rather than re-sorted.** `_next_waiting` already orders automatic
+retries last using `Job.attempts`, and reusing that fails here: `with_another_attempt` is spent by
+automatic retry only, so a first manual retry would sort as "never run". Writing a fresh tail
+`queue_position` also keeps the table honest — a scheduling rule the column disagrees with is
+`T-075`'s shape, and `T-081`'s criterion one task early. The tail is allocated **inside** the
+write's transaction, because `queue_position` carries a `UNIQUE` index and two callers computing
+`MAX + 1` would collide rather than tie.
 
 | Mutation | Killed by |
 |---|---|
-| Progress written into one shared row | the widget test **and** the composed-application test |
-| A terminal row reads its raw counter, not the shared rule | the completed-total test |
-| Every message repaints, no coalescing | the burst-at-eight-rows test |
-| Rows keep the repository's order | the `queue_position` ordering test |
-| A job with no position sorts first | the unplaced-job test |
-| The keyboard order names the table while it is hidden | the empty-queue test |
-| A status change flushes pending progress | `T017-R1`'s rule, one surface over |
-| A stopped job keeps its speed and ETA | the stale-speed test |
-| The progress column describes itself by percentage | the `describe_bar` identity test |
-| A rebuild forgets what each row drew | the refresh test |
-| The shared ending rule prefers the row over what was shown | a test in `test_job_detail.py` |
-| A starting job takes the detail pane | the composed-application test |
+| A paused queue still fills free slots | the saturated-drain test |
+| A paused queue still starts a job asked to wait | the resume and partial-file tests |
+| Resume clears the flag but takes no work | the resume test |
+| Remove leaves the job on the waiting list | the removed-waiting-job test |
+| A removed running job's row is never deleted | the running-removal test |
+| Manual retry re-queues in place | both retry-ordering tests |
+| `JobStatus.PAUSED` is restored | the enum assertion |
+| The repository re-queues without allocating a tail | `test_requeue_at_end_allocates_a_fresh_tail_position` |
+| Removal deletes nothing | `test_remove_deletes_the_row_and_reports_whether_there_was_one` |
+| Reflecting the pause state emits back at the manager | the round-trip test |
+| The pause action reports on `triggered`, not `toggled` | the reports-once test |
+| Remove starts enabled with nothing selected | the selection test |
+| The Remove handler skips its own selection check | the same, **after correction** |
+| The queue actions are built without a control bar | the bare-window test |
 
-**Two of these were caught only by running them, and both were tests passing incidentally:**
+**One mutation survived its first run, and the test was at fault.** "The Remove handler skips its
+own selection check" survived because the test called `action.trigger()` while the action was
+disabled — and `QAction.trigger()` on a disabled action is a no-op, so the handler never ran. The
+assertion was passing on Qt's behaviour rather than on this window's. Corrected by enabling the
+action first, which reproduces the state the guard actually exists for: the enabled state and the
+table's selection disagreeing, one stale signal or one shortcut apart. **This is the class the
+Phase 0 reviews returned repeatedly** — a property asserted more confidently than it was tested —
+and it was found by running the mutation rather than by reading the test.
 
-- **The composed-application test did not catch the routing defect at first.** It asserted on
-  durable rows after completion, and durable rows really are per job — so a model writing every
-  live message into row 0 passed it. It now asserts on what each row has *drawn*, while the three
-  are still running, which is the only place the routing is visible.
-- **The detail-pane test waited a fixed second** and could assert before the signal that would
-  steal the pane arrived. It waits on the signal itself now. Under the old version the mutation
-  survived; under the new one it died three times out of three.
+**And one test was intermittent, which only the full suite showed.** The no-`PAUSED` test first
+snapshotted whatever status the session happened to hold and asserted pause did not change it. That
+passes alone and fails under load: `child_downloading_forever` walks `PROBING → READY → RUNNING`,
+so the pipeline's own next step can land between the two reads — it failed once at
+`RUNNING is PROBING` in a full run after passing in isolation. Corrected to wait for `RUNNING`, the
+status that worker settles at, so any later change is one pause caused. Re-run five times green and
+the mutation re-confirmed killed. **Recorded rather than quietly fixed:** a test that passes alone
+and fails in the suite is a test whose green was not evidence, and the first version of this entry
+would have claimed fourteen clean kills on the strength of it.
+
+#### Not covered, stated rather than implied
+
+- **Windows runtime.** Nothing here is platform-specific and `mypy --platform win32` is clean, but
+  no Windows job has executed a step since 2026-07-30 (`STATUS.md`), so this is reasoned and not
+  measured.
+- **The pause control against a real pool.** The toolbar tests drive the action with injected
+  handlers and the manager tests drive the queue directly; the two are wired in `app.py` and that
+  seam is covered only by `mypy` and by composition's own launch test.
+
+---
+
+### T-081 — Reorder pending jobs, and clear completed ones
+
+**Status:** **In Review — complete 2026-07-31.** Released by `T-079`'s approval at `da49a51`, which
+owns the view the reordering acts on. **Thirteen mutations run; all thirteen killed.** One adjacent
+defect was found and **filed rather than fixed** (`AGENTS.md` §7) — `T-103`.
+*(This read "Proposed — **not released by `T-078`:** it waits on `T-079`", then "Ready — released
+2026-07-31".)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`, `T-079`
+**Relevant context:** `REQ-016`, `ARC-005`, `persistence/repositories.py`
+**Affected surfaces:** `persistence/`, `ui/`
+**Risk:** Low to medium — reordering is a write pattern the writer thread has not seen
+
+#### Scope
+
+`queue_position` already exists and is allocated by the writer inside the insert transaction,
+specifically so two callers cannot read the same `MAX()`. Reordering is the first thing that
+*rewrites* it, for several rows at once.
+
+#### Acceptance criteria
+
+- Reordering is one transaction: a queue half-reordered by a crash is a queue in an order nobody
+  chose
+- Only pending jobs reorder; a running job's position is not a promise the pool can keep
+- Clear-completed removes records, states whether history keeps them (`T-085`), and never touches
+  a file
+- The order the pool starts jobs in is the order the table shows — asserted, since a view that
+  disagrees with the scheduler is the `T-075` shape
+
+#### Out of scope
+
+- Drag-and-drop specifically; the requirement is reordering, not a gesture
+
+#### What was built, 2026-07-31
+
+**Evidence.** `ruff check`, `ruff format --check` and `mypy src` clean; full Linux suite **1684
+passed / 11 skipped / 2 deselected**. Thirteen mutations, all killed, tree hash identical before and
+after.
+
+**Reordering redeals the positions the named jobs already hold**, rather than renumbering from
+zero. Two consequences, both wanted: a running job keeps its slot, because its position is not
+among the ones being redealt; and jobs the user did not touch do not move relative to anything.
+Renumbering the whole queue would reorder by side effect, and it passes any test where the
+reordered jobs are the entire queue — so the test that gates this has a **running job sitting
+between the two being swapped**.
+
+**The `UNIQUE` index is the reason there are two phases.** `jobs_queue_position` is unique over
+non-`NULL` values and SQLite checks per *statement*, not at commit, so assigning new positions
+directly fails the moment two of them cross — which is what reordering is. The rows are set to
+`NULL` first (the partial index excludes `NULL`), then given their new values, both inside one
+transaction. The single-transaction criterion is gated by injecting a failure **between** the two
+phases through a proxy connection, because that is the only window in which the moved rows are
+outside the queue order entirely.
+
+**Only pending jobs reorder, and the refusal is loud.** `REORDERABLE` moved to `core/job_state.py`
+beside `TERMINAL` and `CANCELLABLE` — it is a fact about a status, and putting it there keeps `ui/`
+from importing `persistence/` to decide whether to offer the move actions. It is **written out
+rather than derived**: a derived complement would agree with the other two unconditionally, so a
+new status would become reorderable silently. `test_the_reorderable_statuses_partition_the_enum`
+asserts the partition instead, which fails the suite until somebody decides the new status's side.
+
+**Clearing keeps history, and that is the answer to "where did my file go".** Completed and
+cancelled rows go; `FAILED` stays, because a failed job is still offering a retry and clearing it
+would throw away a decision the user has not made. The `history` table is untouched — `T-085` wrote
+it inside the completion transaction and `T-100` is the view over it, which is exactly why
+`P2PLAN-R8` filed that view. A mutation that also deletes the history rows is killed by a test that
+completes a job through `complete_job` and then looks for its record.
+
+**Two actions rather than drag-and-drop.** `REQ-016` asks for reordering, not a gesture, and Move
+up / Move down are keyboard-reachable where a drag is not — `NFR-005` makes that the requirement.
+The window sends the **whole new order**, computed over the movable rows only, so moving a pending
+job past a running one swaps it with the next *pending* job rather than naming the running one the
+repository would refuse.
+
+| Mutation | Killed by |
+|---|---|
+| Reorder renumbers from zero | the redeal test, via the untouched job between them |
+| Reorder skips the `NULL` phase | the crossing-positions swap |
+| Reorder runs the two phases in two transactions | the injected mid-reorder failure |
+| Reorder silently skips a running job | the refusal test |
+| Reorder accepts a job named twice | the three-refusals test |
+| The manager announces a reordering it never performed | the scheduler-order test |
+| Clearing does not sweep the waiting list | the cancelled-then-cleared test |
+| The window moves by table index, not among movable rows | the move-across-a-running-job test |
+| The move actions are offered for a running job | the enabling test |
+| Moving past an end wraps instead of doing nothing | the either-end test |
+| `clear_completed` also clears `FAILED` | the keeps-the-rest test |
+| `clear_completed` also deletes the history rows | the history test |
+| `REORDERABLE` quietly gains a running status | the partition test |
+
+#### `T-103`, found here and filed rather than fixed
+
+`cancel()` on a job that is **waiting for a slot** writes `CANCELLED` and leaves its id on
+`_waiting`; nothing removes it. That was harmless while the row existed — the pool's later `start()`
+simply refused — and this task makes it reachable, because clearing deletes the row and the same
+path then looks up a job that is not there.
+
+**A narrow sweep is included here** (`_settle_clear` drops waiting ids whose rows have gone) and the
+general fix is `T-103`. Not fixed inline for two reasons: `AGENTS.md` §7 says file it, and `cancel`
+is covered by `REQ-015`'s budget tests under a `T-080` that is already with the reviewer — editing
+it now would put an unreviewed change under a task already handed over. **The test asserts the stale
+premise deliberately**, so that when `T-103` lands it fails and says so rather than passing silently
+over a sweep that has become redundant.
+
+#### Not covered, stated rather than implied
+
+- **Windows runtime.** Nothing here is platform-specific and `mypy --platform win32` is clean, but
+  no CI job has executed a step since 2026-07-30 (`STATUS.md`).
+- **The `app.py` seam.** The toolbar tests drive the actions with injected handlers and the manager
+  tests drive the queue directly; the wiring between them is covered by `mypy` and the launch test.
+- **Reordering while the pool is actively starting a job.** The repository refuses a `RUNNING` row,
+  but a job in the window between `_next_waiting` choosing it and its status write landing is still
+  `QUEUED`. I believe the single writer serialises this; it is **reasoned, not tested**, and it is
+  the first thing I would ask a reviewer to attack.
 
 ---
 
@@ -548,6 +702,147 @@ it, which is what makes its "history half" dependency real rather than dangling.
 - Pruning, retention, or any deletion. Nothing in this view removes a record; `REQ-020` is a record
   of what was obtained
 - Re-downloading from history, and duplicate detection (`REQ-022`, Phase 3)
+
+---
+
+### T-102 — A settings file that cannot be read says so, instead of reverting in silence
+
+**Status:** **Ready — filed 2026-07-31 by `ARC-008`**, which decided the question `T-078` deferred
+and `TASKS.md` carried as the last open one. Nothing blocks it.
+**Owner:** Implementer
+**Priority:** Medium — the failure it addresses is silent, which is why it has waited; nobody is
+blocked on it
+**Phase:** Phase 2
+**Depends on:** `T-078` (Complete — it wrote `core/settings.py` and the main-window control)
+**Relevant context:** **`ARC-008`** (the decision, its exact reporting boundary, and the two edges
+deliberately left silent), `ARC-007`, `DAT-001`, `AGENTS.md` §7 layering, `core/settings.py`,
+`app.py`'s composition, `ui/main_window.py`
+**Affected surfaces:** `core/settings.py`, `app.py`, `ui/`
+**Risk:** Low — the fallback behaviour does not change; what changes is that it is announced
+
+#### Scope
+
+`load()` answers with `Settings()` for four different reasons and says nothing about which. A user
+who hand-edits `settings.toml` — the act `DAT-001` chose the format to invite — and gets the syntax
+wrong sees their concurrency silently revert to 3, with the file still on disk holding what they
+meant. `ARC-008` decided that a file which **exists and cannot be used** reports; a missing one, and
+one that merely omits the value, still do not.
+
+**`ARC-008` holds the table of which case reports.** It is not restated here, because a boundary
+copied into two files is a boundary that will disagree with itself — `COORD-R5` through `COORD-R11`
+are seven rounds of exactly that. Read it there.
+
+**The diagnostic is data, not a dialog.** `core/**` must not import Qt, and `load()` runs in
+composition before the main window exists. So `core/settings.py` returns the report alongside the
+settings and `ui/` presents it, as a modal warning at startup naming the path and the underlying
+reason. The shape of the return is this task's to choose; that it stays importable without a
+display is not.
+
+**`load()` "never raises" survives.** That property is why a broken config file is not a fatal
+state, and `ui/main_window.py.save_geometry` follows the same rule for `window.toml`.
+
+#### Acceptance criteria
+
+- Every row of `ARC-008`'s table is asserted, in both directions — each reporting case produces a
+  report, and each silent case produces **none**. The silent rows are the ones that matter: a
+  missing file and a file that omits the value are the two an over-eager implementation will
+  report, and they are the normal first run and a documented, invited edit
+- The report names the file's path, and the underlying reason where one exists — a `TOMLDecodeError`
+  carries a line and column, and discarding them leaves the user no better off than the silence did
+- `core/settings.py` stays importable and fully testable with no `QApplication` and no display,
+  asserted by the existing layering gate rather than by inspection
+- `load()` still never raises, asserted by driving each failure mode rather than by reading it
+- **The module docstring's "What that gives up, stated" paragraph is deleted**, not amended. It
+  describes behaviour this task removes, and a docstring that outlives its behaviour is the exact
+  finding the Phase 0 reviews returned repeatedly
+- The startup modal is asserted against a real corrupt file through composition, not only at the
+  widget level — the seam where `app.py` carries the report from `load()` to `ui/` is the half that
+  can be wired wrong while both ends pass their own tests
+
+#### Out of scope
+
+- Reporting a clamped out-of-range value (`ARC-008` leaves it silent deliberately, and names it as
+  a reopening condition)
+- Offering to repair, rename or rewrite the broken file. The user's text is theirs; `save()` already
+  overwrites it if they change the setting, and the modal says so
+- Phase 4's settings dialog (`REQ-023`), which is `ARC-008`'s other reopening condition
+
+---
+
+### T-087 — Single-instance guard
+
+**Status:** **Ready — promoted 2026-07-31.** Nothing has blocked it since `ARC-006`'s amendment
+landed on 2026-07-29 and `T-094` gave it an atomic Windows ownership primitive (approved
+2026-07-30). It sat Proposed because nobody moved it, which is the same class as `T-079`'s stale
+`In Review` — a task held by a block that had already lifted. **It owns Phase 2 exit criterion 4**,
+so nothing else can meet that criterion while this waits.
+*(This read "Proposed" from the day it was filed.)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** nothing technical. Its `DECISIONS.md` entry exists: **`ARC-006`**, whose mechanism
+was **amended 2026-07-29** after `P2PLAN-R5` — implement the amendment, not the original
+**Relevant context:** **`ARC-006`** (the mechanism and its rationale), `A-004`, `DAT-001`,
+`ARC-005`, `OPS-004`
+**Affected surfaces:** `app.py`, a platform seam, `ai/DECISIONS.md`
+**Risk:** Medium — the failure it prevents is two writers on one database
+
+#### Scope
+
+`A-004` assumes a single local user and **no concurrent instances against the same database**, and
+records itself as *unverified*, with enforcement named as a Phase 2 task. This is that task.
+
+The database is the reason. `ARC-005` puts every write on one writer thread *within a process*;
+two processes have two writer threads and no shared lock discipline.
+
+#### The mechanism — `ARC-006` **as amended 2026-07-29**; read the amendment first
+
+**`ARC-006` is the canonical record** (`P2PLAN-R2`). **Its original mechanism is withdrawn**
+(`P2PLAN-R5`): Qt documents that on Windows **two local servers can listen on the same pipe name at
+once**, so *connect-first-then-claim* is not exclusive and two simultaneous launches can both become
+servers — the two-writer state this task exists to prevent.
+
+**Ownership is now an atomic kernel lock** on a file derived from the resolved database path
+(`flock(LOCK_EX | LOCK_NB)` on POSIX, exclusive-access open on Windows), released by the kernel when
+the holder dies. **`QLocalServer` remains only the attach channel**, started after ownership is won.
+
+**This task's acceptance criteria must gate simultaneous starts, not just stale-owner recovery** —
+the withdrawn design passes a sequential test, which is how it survived being written down. See the
+amendment for what it changes.
+
+*(Superseded, kept because the sequence is the point — this read as the decided mechanism:)*
+
+**`QLocalServer` / `QLocalSocket`, named from the resolved database path.**
+
+- **Already Qt**, so no new dependency, and one code path compiles to a named pipe on Windows and
+  a Unix domain socket on Linux — two correct platform implementations rather than two guesses.
+- **It is a channel, not a flag.** That is what makes *attach* possible rather than only *refuse*:
+  a second launch can hand its URL to the first instance and raise its window. A lock file can
+  only say no.
+- **Crash behaviour decided it**, because that is the case the guard exists for. Windows destroys
+  a named pipe when its owning process dies. On Linux a killed process leaves the socket file, so
+  the protocol is *connect first; if the connection fails the owner is gone, remove the stale name
+  and become the server*. A PID lock file needs a liveness check and is wrong under PID reuse;
+  `flock` is robust but offers no channel.
+- **Named from the database path**, because `A-004` is about the database rather than the
+  application. Two instances against different databases harm nothing and must not be blocked.
+
+#### Acceptance criteria
+
+- A second launch either attaches to the running instance or refuses in its favour, and says which
+- **Two launches started simultaneously do not both win** (`P2PLAN-R5`). Racing starts, not a
+  sequential pair: the withdrawn `QLocalServer`-as-lock design passes the sequential test and fails
+  this one, because two servers may listen on one Windows pipe name at the same time
+- A stale lock left by a killed process does not permanently block startup
+- Verified on both platforms, `STARBASE` included
+- The mechanism and its crash behaviour are recorded in `ai/DECISIONS.md` with an ID
+- **The stale-socket path is tested by killing an instance**, not by deleting a file by hand: the
+  recovery has to work against the failure it was chosen for
+- Two instances against *different* databases both start
+
+#### Out of scope
+
+- Multi-user or networked access (`A-004` scopes it out)
 
 ---
 
@@ -922,118 +1217,55 @@ deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are fo
 of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
 prerequisite is Phase 1 approved.)*
 
-### T-080 — Queue-level pause and resume; per-job cancel, retry and remove
+### T-103 — Cancelling a waiting job leaves its id on the pool's waiting list
 
-**Status:** Proposed — rewritten from `UX-001` on 2026-07-30 (`P2PLAN-R1`). **Not released by
-`T-078`:** it waits on `T-079` as well, and on two maintainer calls — the unreachable `PAUSED`
-edges, and whether `P2PLAN-R7`'s manual-retry ordering is kept.
+**Status:** Proposed — **found by `T-081` on 2026-07-31**, filed rather than fixed inline
+(`AGENTS.md` §7). `T-081` carries a narrow sweep that covers the case it made reachable; this owns
+the general one.
 **Owner:** Implementer
-**Priority:** High
+**Priority:** Low — no observed user-visible failure. It is filed because the *reason* it is
+harmless changed, not because it started misbehaving
 **Phase:** Phase 2
-**Depends on:** `T-078`, `T-079`
-**Relevant context:** **`UX-001`** (the canonical pause and remove semantics, with rationale and
-reopening condition), `REQ-015` **as amended**, `T-051`, `core/job_state.py`, `T036-R1`
-**Affected surfaces:** `downloader/manager.py`, `ui/`, possibly `core/job_state.py` (the `PAUSED`
-edges — see below)
-**Risk:** Medium — every one of these is a state transition plus an effect, which is `T036-R1`
+**Depends on:** nothing. `T-078` created the waiting list; `T-080` and `T-081` both walk past this
+**Relevant context:** `downloader/manager.py` — `cancel`, `_discard_waiting`, `_fill_free_slots`,
+`_start_or_report`; `T-078`; `T036-R1`
+**Affected surfaces:** `downloader/manager.py`
+**Risk:** Low
 
 #### Scope
 
-**Two different things, and conflating them is what `P2PLAN-R1` reported.** This task delivers:
+`cancel(job_id)` on a job that is **waiting for a slot** — not running, not reserved — writes
+`CANCELLED` and returns. It never calls `_discard_waiting`, so the id stays on `_waiting`. When a
+slot opens, `_fill_free_slots` picks it, `_start_or_report` calls `start()`, and `start()` refuses
+it because a `CANCELLED` job is not startable. The refusal is reported through `start_rejected` and
+nothing breaks.
 
-| Surface | Actions | Granularity |
-|---|---|---|
-| The queue | pause, resume | **Queue-level** (`UX-001`) |
-| A job | cancel, retry, remove | **Per job** (`REQ-015` as amended) |
+**What changed is why that is safe.** It was safe because the row still existed, so the refusal was
+an ordinary "this job is cancelled". `T-081`'s clear-completed deletes cancelled rows, and the same
+path then reaches `_require` with an id that no longer resolves. `T-081` sweeps ids whose rows have
+gone, immediately after clearing, which closes the case it opened. It does not close the general
+one: a cancelled job still occupies a place in the waiting list until something happens to notice.
 
-The previous version of this entry was titled *"…per job"*, quoted the pre-amendment `REQ-015` as
-though it still governed, and then described queue-level behaviour in its acceptance criteria. An
-implementer reading it received mutually exclusive instructions from the two halves.
-
-**Pause drains the queue; it does not stop a download.** In-flight work finishes, nothing new
-starts, resume takes work again. `UX-001` holds the reasoning and the rejected alternatives; the
-short version is that every alternative buys a half-written file and a rule about its lifetime, in a
-phase where `REQ-017`'s resume does not exist yet.
-
-**Remove takes the job out of the queue and never deletes a file.** Removing a running job cancels
-it first. Nothing this application deletes from disk, in this phase, by this route.
-
-#### The `PAUSED` edges are this task's to settle
-
-`core/job_state.py`'s `_TRANSITIONS` carries `RUNNING → PAUSED` and `PAUSED → RUNNING`, with a
-comment explaining why resume returns to `RUNNING` rather than `READY`. **Under `UX-001` no job ever
-enters `PAUSED`, so both edges are unreachable.**
-
-`UX-001` assigns the choice here: remove them, or record why a state nothing reaches is kept. Either
-is defensible — `REQ-017` in Phase 3 is a named reopening condition, so keeping them has an argument
-— but leaving it undecided is not. An unreachable state reads as capability without being it, which
-is `ai/TESTING.md` §13's shape one layer up from a test.
-
-*(Superseded, kept because the amendment is the point: this section used to argue that `REQ-015`
-"says otherwise" and that an amendment was needed. That amendment landed on 2026-07-29 — `REQ-015`
-now reads queue-level and cites `UX-001` — so the conflict this described no longer exists. The
-pre-amendment wording is preserved in `REQ-015`'s own parenthetical and in `UX-001`.)*
+**The general fix is one line in `cancel`,** and it is not taken here because `cancel` is covered by
+`REQ-015`'s budget tests and `T-080` is in review against its current shape. Changing it now would
+put an unreviewed edit under a task already handed to a reviewer.
 
 #### Acceptance criteria
 
-- Each action goes through the manager, not through the store — `T036-R1` is what it costs when a
-  caller writes a status change directly and nothing announces it
-- Cancel still meets its 2-second budget under a saturated pool, not just an idle one
-- **Pause and resume act on the queue, and the assertion says so:** with the pool saturated, pausing
-  lets every in-flight session finish and starts none of the waiting jobs; resuming starts them. A
-  test that pauses a single job proves the wrong contract
-- **No job reaches `PAUSED`** — asserted against the stored status, not inferred from the UI. This is
-  the observable half of the decision above
-- **No partial file exists as a result of pausing** — asserted by looking at the output directory,
-  since that is the whole reason for this shape rather than a happy consequence of it
-- Remove takes the job out of the queue and leaves every file on disk untouched, asserted by looking
-  at the directory rather than by trusting the code path
-- Removing a running job cancels it first, within the same 2-second budget
-- **`P2PLAN-R7` — unconfirmed, decide before starting:** *"manual retry re-enters the queue at the
-  back and does not jump jobs that have not run."* This was added with the `P2PLAN-R1` correction and
-  **is not part of it.** `UX-001` decides pause and remove, not retry order; `REQ-018` requires retry
-  without ordering it; and `T-083`'s no-jump criterion is explicitly about *automatic* retries. The
-  policy is coherent with queue fairness, but it is new scope wearing reconciliation's clothes.
-  Either confirm it as the manual-retry consequence of the scheduling order `T-078` records, or
-  remove it — and do not describe it as settled by `P2PLAN-R1`
+- Cancelling a waiting job drops it from `_waiting` **at the cancel**, asserted on the list rather
+  than inferred from nothing starting
+- `start_rejected` is no longer emitted for a job the user cancelled while it waited — asserted,
+  since the current behaviour emits it and a fix that merely stopped the start would leave the
+  signal
+- `is_idle` becomes true without waiting for a slot to open, for a queue whose only waiting job was
+  cancelled. This is the observable cost today: shutdown and the idle signal both count a job that
+  will never start
+- `T-081`'s sweep is re-examined once this lands — if `cancel` drops the id, the sweep may be
+  redundant, and a guard kept after its reason has gone is what `ai/TESTING.md` §13 is about
 
 #### Out of scope
 
-- Resuming a *partial download* from disk (`REQ-017`, Phase 3). Phase 2's resume restarts
-
----
-
-### T-081 — Reorder pending jobs, and clear completed ones
-
-**Status:** Proposed — **not released by `T-078`:** it waits on `T-079`, which owns the view the
-reordering acts on.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** `T-078`, `T-079`
-**Relevant context:** `REQ-016`, `ARC-005`, `persistence/repositories.py`
-**Affected surfaces:** `persistence/`, `ui/`
-**Risk:** Low to medium — reordering is a write pattern the writer thread has not seen
-
-#### Scope
-
-`queue_position` already exists and is allocated by the writer inside the insert transaction,
-specifically so two callers cannot read the same `MAX()`. Reordering is the first thing that
-*rewrites* it, for several rows at once.
-
-#### Acceptance criteria
-
-- Reordering is one transaction: a queue half-reordered by a crash is a queue in an order nobody
-  chose
-- Only pending jobs reorder; a running job's position is not a promise the pool can keep
-- Clear-completed removes records, states whether history keeps them (`T-085`), and never touches
-  a file
-- The order the pool starts jobs in is the order the table shows — asserted, since a view that
-  disagrees with the scheduler is the `T-075` shape
-
-#### Out of scope
-
-- Drag-and-drop specifically; the requirement is reordering, not a gesture
+- The reservation path, which `T016-R1` already handles by withdrawal
 
 ---
 
@@ -1134,78 +1366,6 @@ argument boundary.
 #### Out of scope
 
 - Choosing which application opens a file
-
----
-
-### T-087 — Single-instance guard
-
-**Status:** Proposed
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** nothing technical. Its `DECISIONS.md` entry exists: **`ARC-006`**, whose mechanism
-was **amended 2026-07-29** after `P2PLAN-R5` — implement the amendment, not the original
-**Relevant context:** **`ARC-006`** (the mechanism and its rationale), `A-004`, `DAT-001`,
-`ARC-005`, `OPS-004`
-**Affected surfaces:** `app.py`, a platform seam, `ai/DECISIONS.md`
-**Risk:** Medium — the failure it prevents is two writers on one database
-
-#### Scope
-
-`A-004` assumes a single local user and **no concurrent instances against the same database**, and
-records itself as *unverified*, with enforcement named as a Phase 2 task. This is that task.
-
-The database is the reason. `ARC-005` puts every write on one writer thread *within a process*;
-two processes have two writer threads and no shared lock discipline.
-
-#### The mechanism — `ARC-006` **as amended 2026-07-29**; read the amendment first
-
-**`ARC-006` is the canonical record** (`P2PLAN-R2`). **Its original mechanism is withdrawn**
-(`P2PLAN-R5`): Qt documents that on Windows **two local servers can listen on the same pipe name at
-once**, so *connect-first-then-claim* is not exclusive and two simultaneous launches can both become
-servers — the two-writer state this task exists to prevent.
-
-**Ownership is now an atomic kernel lock** on a file derived from the resolved database path
-(`flock(LOCK_EX | LOCK_NB)` on POSIX, exclusive-access open on Windows), released by the kernel when
-the holder dies. **`QLocalServer` remains only the attach channel**, started after ownership is won.
-
-**This task's acceptance criteria must gate simultaneous starts, not just stale-owner recovery** —
-the withdrawn design passes a sequential test, which is how it survived being written down. See the
-amendment for what it changes.
-
-*(Superseded, kept because the sequence is the point — this read as the decided mechanism:)*
-
-**`QLocalServer` / `QLocalSocket`, named from the resolved database path.**
-
-- **Already Qt**, so no new dependency, and one code path compiles to a named pipe on Windows and
-  a Unix domain socket on Linux — two correct platform implementations rather than two guesses.
-- **It is a channel, not a flag.** That is what makes *attach* possible rather than only *refuse*:
-  a second launch can hand its URL to the first instance and raise its window. A lock file can
-  only say no.
-- **Crash behaviour decided it**, because that is the case the guard exists for. Windows destroys
-  a named pipe when its owning process dies. On Linux a killed process leaves the socket file, so
-  the protocol is *connect first; if the connection fails the owner is gone, remove the stale name
-  and become the server*. A PID lock file needs a liveness check and is wrong under PID reuse;
-  `flock` is robust but offers no channel.
-- **Named from the database path**, because `A-004` is about the database rather than the
-  application. Two instances against different databases harm nothing and must not be blocked.
-
-#### Acceptance criteria
-
-- A second launch either attaches to the running instance or refuses in its favour, and says which
-- **Two launches started simultaneously do not both win** (`P2PLAN-R5`). Racing starts, not a
-  sequential pair: the withdrawn `QLocalServer`-as-lock design passes the sequential test and fails
-  this one, because two servers may listen on one Windows pipe name at the same time
-- A stale lock left by a killed process does not permanently block startup
-- Verified on both platforms, `STARBASE` included
-- The mechanism and its crash behaviour are recorded in `ai/DECISIONS.md` with an ID
-- **The stale-socket path is tested by killing an instance**, not by deleting a file by hand: the
-  recovery has to work against the failure it was chosen for
-- Two instances against *different* databases both start
-
-#### Out of scope
-
-- Multi-user or networked access (`A-004` scopes it out)
 
 ---
 
@@ -1861,6 +2021,164 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-079 — The queue view: many jobs, each with its own progress
+
+**Status:** **Complete — Approved at `da49a51`**, 2026-07-31. Changes were requested at `cb008da`
+on two blocking Medium findings; the focused correction re-review of `cb008da..da49a51` records
+both **Resolved** and carries `T079-R3` (Low) as non-blocking, owned by `T-101`. `ui/queue_view.py`
+stops being a stub: a `QAbstractTableModel` over every job, a `QTableView` above the detail pane in
+a splitter, and one coalescing timer for the whole table. **Twenty mutations across two rounds; all
+twenty killed.** **This releases `T-080` and `T-081`**, which waited on this task and not on the
+pool.
+*(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`", then "In Review —
+complete 2026-07-31", then "In Review — corrected 2026-07-31, awaiting re-review" — the last of
+those was still standing after the re-review had recorded **Approved**. The verdict was written to
+`ai/REVIEWS.md` in `19f6015`, one commit after `da49a51` last rewrote this line, so the two never
+met. `T-096` cannot see this class: the status and the section agreed with each other and both
+disagreed with `REVIEWS.md`, which is `COORD-R11` across files rather than within one.)*
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 2
+**Depends on:** `T-078`
+**Relevant context:** `REQ-015`, `NFR-001`, `T-017`, `T-059`, `T040-R1`
+**Affected surfaces:** `ui/`, `main_window.py`
+**Risk:** Medium — the repaint discipline that made one job cheap is what N jobs will test
+
+#### Scope
+
+Phase 1 shows **one** job: `MainWindow.progress_view`, a single `JobProgressView`. Phase 2 needs a
+table — every job, its status, its progress, whatever it is doing.
+
+**`T-017`'s lessons transfer directly and are worth reading before starting.** Progress messages
+arrive faster than a human can read, so the view coalesces on a `REPAINT_INTERVAL_MS` timer rather
+than repainting per message; with N jobs that stops being an optimisation and becomes the thing
+that keeps `NFR-001` true. `describe_bar` is a pure function precisely so the same rendering rule
+cannot drift between paths — a table has more paths, not fewer. And `T-059` found a view rendering
+a finished job from the wrong source: a row for a job that finished before the view existed is the
+same question.
+
+#### Acceptance criteria
+
+- Three concurrent downloads show independent, accurate progress with the UI interactive
+  throughout — the phase's first exit criterion, asserted rather than observed
+- A row opened onto a job that is already finished renders its ending, not an empty bar (`T-059`)
+- The table's keyboard order is declared and asserted per state, as `T-060` established
+- Repaint cost is bounded and measured with N rows, not argued from the single-job case
+
+#### Out of scope
+
+- Sorting and filtering, which are `REQ-016`'s neighbours but not its text
+- The log view (`T-084`) and history (`T-085`), which are their own surfaces
+
+#### Corrections, 2026-07-31 — `T079-R1` and `T079-R2`
+
+**`T079-R1` — a drawn message outlived the attempt that produced it.** `REQ-018`'s retry edge is
+`FAILED → QUEUED`, and a job in `QUEUED` has no worker; the row kept the failed attempt's message,
+so a re-queued job went on saying "Downloading video" at the old percentage, speed and ETA. A
+saturated pool leaves that on screen for as long as the retry waits for a slot.
+
+**The boundary is the status, and it could not have been `Job.attempts`.** The reviewer offered
+"key it to the attempt it belongs to" as an alternative, and that reading is worth recording as
+closed: **nothing in this project ever increments `attempts`.** It is a schema column with a
+default that no code writes — `with_status` does not touch it, `retry()` does not touch it — so
+every job's attempt number is `0` for life and a comparison against it is always equal. Keying to
+it would have produced a guard that can never fire, which is exactly what `ai/TESTING.md` §13
+exists to prevent.
+
+**The detail view had it too**, which the reviewer asked be audited rather than assumed. It did
+not fall out of the table's fix: `JobProgressView._refresh` rewrites the stage line only when the
+job is terminal *or* nothing has been drawn, and after a failed attempt something had been drawn.
+Three fields there, not one — the drawn message, the recorded failure (`failure` is public, and a
+queued job reporting the previous attempt's error is the same lie one field over), and the speed
+and ETA **labels**, which `_refresh` never writes at all. That last one was found by the test for
+this correction rather than by inspection: dropping the state behind a label does not clear the
+label.
+
+**Not "clear on every rebuild".** `refresh()` still keeps drawn state *within* an attempt, or a
+newly added neighbour would erase a running job's live total and `T017-R4`'s ending rule would
+fall back to the durable row's lagging counter. Both halves have a test, and the over-application
+is one of the mutations below.
+
+**`T079-R2` — every status change read the whole queue on the GUI thread.** `_durable()` was a
+point lookup implemented as a scan of `all_jobs()`, which in the real graph is `SELECT *` plus
+deserialisation of every stored job, synchronously inside a Qt slot. `ARCHITECTURE.md` §3 permits
+a synchronous GUI read only when it is an *indexed single-row lookup*. A reviewer probe measured
+one transition at **150.7 ms** against `NFR-001`'s ~100 ms budget, and the cost grew with queue
+history — the queue got slower the longer it was used.
+
+`QueueReader` now requires `get` as well as `all_jobs`; `PersistentJobStore` already had both.
+Enumeration is for building the table and for an explicit refresh. **This is my own criterion
+failing:** the task says repaint cost is bounded and measured, and I bounded the repaint path
+while leaving the status path unbounded — the committed responsiveness test had three rows, where
+a full enumeration is too cheap to show up however wrongly the read is chosen.
+
+| Mutation | Killed by |
+|---|---|
+| The queue row keeps the failed attempt's drawn message | the retry regression |
+| The queue row keeps the failed attempt's *pending* message | the pending half of the boundary |
+| Every rebuild wipes drawn state, not just an attempt boundary | the within-attempt regression |
+| The detail view keeps the failed attempt's stage and totals | the detail-view retry regression |
+| The detail view keeps the failed attempt's speed and ETA labels | the same |
+| The detail view keeps the previous attempt's failure | the same |
+| A status change enumerates the queue to find one job | the read-count gate |
+| The same, against the budget rather than the count | the slow-enumeration probe |
+
+Both `T079-R2` gates are independent on purpose: the count says *which* read happened, because a
+fast enumeration is still an enumeration, and the probe says what it costs when the enumeration is
+expensive. The committed suite had neither.
+
+#### What was built, 2026-07-31
+
+**`totals_for_ending` moved out of `JobProgressView` and became a free function.** `T-059` was one
+widget answering "how big was this" two ways depending on whether anyone had been watching. A
+table is the *third* caller of that question and, unlike the detail view, most of its rows were
+never watched by anything — every restart is full of them. Reimplementing the rule here would have
+been `T-059` with more surfaces, so both viewers now call one function. Mutating it kills tests in
+both files.
+
+**One coalescing timer for the table, not one per row.** With N running jobs the message rates
+add, so the repaint budget is the thing that has to stay bounded — and a per-row timer would
+satisfy "ten a second per row" while redrawing the screen eighty times a second. `renders` counts
+ticks that drew, which is `T017-R1`'s counting rule one surface over.
+
+**Progress is text; `REQ-011`'s bar stays in the detail view.** `REQ-014` names percent, size,
+speed, ETA and stage — all text. A `QProgressBar` per row is N live widgets inside a scroll area
+to render six characters, against a criterion that says repaint cost is bounded with N rows. The
+accessible description is still `describe_bar`'s output, so the words a screen reader hears are
+produced by the same function that produces them beside the real bar.
+
+**Composition stopped following every watchable transition.** With a pool of one, claiming the
+detail pane on each `job_changed` was right — one job, one place to see it. With three running it
+means they evict each other several times a second, and a user who selected a row loses it. The
+pane is now claimed once and then belongs to the user; the table is what shows all N.
+
+| Mutation | Killed by |
+|---|---|
+| Progress written into one shared row | the widget test **and** the composed-application test |
+| A terminal row reads its raw counter, not the shared rule | the completed-total test |
+| Every message repaints, no coalescing | the burst-at-eight-rows test |
+| Rows keep the repository's order | the `queue_position` ordering test |
+| A job with no position sorts first | the unplaced-job test |
+| The keyboard order names the table while it is hidden | the empty-queue test |
+| A status change flushes pending progress | `T017-R1`'s rule, one surface over |
+| A stopped job keeps its speed and ETA | the stale-speed test |
+| The progress column describes itself by percentage | the `describe_bar` identity test |
+| A rebuild forgets what each row drew | the refresh test |
+| The shared ending rule prefers the row over what was shown | a test in `test_job_detail.py` |
+| A starting job takes the detail pane | the composed-application test |
+
+**Two of these were caught only by running them, and both were tests passing incidentally:**
+
+- **The composed-application test did not catch the routing defect at first.** It asserted on
+  durable rows after completion, and durable rows really are per job — so a model writing every
+  live message into row 0 passed it. It now asserts on what each row has *drawn*, while the three
+  are still running, which is the only place the routing is visible.
+- **The detail-pane test waited a fixed second** and could assert before the signal that would
+  steal the pane arrived. It waits on the signal itself now. Under the old version the mutation
+  survived; under the new one it died three times out of three.
+
+---
 
 ### T-078 — A real worker pool, bounded and configurable
 

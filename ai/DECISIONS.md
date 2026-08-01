@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-27
+**Last updated:** 2026-07-31
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -2037,7 +2037,9 @@ building a dialog twice.
 - `T-078` gains acceptance criteria for the user-facing path and for live application; see the task.
 - `core/settings.py` stops being a stub, and its read/write contract is Phase 2's to establish —
   including what happens to an unparseable or hand-corrupted `settings.toml`, which `T-078` must
-  state rather than discover.
+  state rather than discover. *(`T-078` stated it: a silent fallback to defaults, with the silence
+  named as the cost. **`ARC-008` decided the other half on 2026-07-31** — a file that exists and
+  cannot be used now reports; a missing or value-omitting one still does not.)*
 - Phase 4's dialog is additive over this layer. **This decision reopens** when it lands: the
   main-window control may move into the dialog, and this entry is the record of why it was there.
 - `REQ-013`'s "minimum 1" is a constraint the settings layer enforces, not the spinbox — a
@@ -2134,3 +2136,93 @@ set that follows from the gaps' own definitions, rather than for bindings.
 - **This decision reopens** if `downloader/environment.py` gains a module-scope guard, an
   import-with-fallback, or any dynamic namespace manipulation — each of which makes one specific gap
   reachable — or if the gate is ever proposed to bind a second module with a different shape.
+
+---
+
+## ARC-008 — A settings file that exists and cannot be used says so; a missing one does not
+
+**Status:** **Accepted** (2026-07-31) — maintainer decision
+**Date:** 2026-07-31
+**Supersedes:** nothing. **Extends** `ARC-007`, whose Consequences delegated the read contract for
+"an unparseable or hand-corrupted `settings.toml`" to Phase 2. `T-078` established that contract as
+a silent fallback and **named the silence as what it gave up**, in `core/settings.py`'s own module
+docstring. This decides the half `T-078` deferred.
+
+### Context
+
+`core/settings.py.load()` never raises. A missing file, an unreadable one, a malformed one and one
+whose shape is wrong all produce `Settings()`. The module docstring states the cost plainly:
+
+> **What that gives up, stated:** a corrupt file is silently replaced by defaults rather than
+> reported. Nothing in `REQ-023` or `ARC-007` asks for a settings-parse diagnostic, and there is
+> nowhere to show one until Phase 4's dialog exists.
+
+Both halves of that justification have weakened. `T-078` shipped a main-window concurrency control,
+so there **is** somewhere to show one; and `save()` writes the file the control edits, so a user
+whose hand-edit is discarded now sees their number silently revert in the UI with no cause offered.
+`settings.toml` is one of only two ways to change the value until Phase 4, and `DAT-001` chose a
+human-editable format precisely so people would edit it by hand — which is the act that produces
+the malformed file.
+
+### Decision
+
+**A `settings.toml` that exists and cannot be used is reported to the user, naming the file and
+saying that defaults are in use.** The fallback itself does not change: `load()` still never raises
+and still answers with `Settings()`. What changes is that the fallback stops being silent.
+
+**The line is whether something was discarded, not whether the read was perfect.**
+
+| The file | `load()` returns | Reported |
+|---|---|---|
+| Does not exist | `Settings()` | **No** — the normal first run |
+| Exists, cannot be opened or read (`OSError`) | `Settings()` | **Yes** |
+| Exists, is not valid TOML (`TOMLDecodeError`) | `Settings()` | **Yes** |
+| Parses, but `[queue]` is not a table | `Settings()` | **Yes** |
+| Parses, `[queue]` is a table, `concurrency` is not an `int` | `Settings()` | **Yes** |
+| Parses and simply omits `concurrency` | `Settings()` | **No** — see below |
+| Parses, `concurrency` is an `int` out of range | clamped | **No** — see below |
+
+**Omission is silent because `save()` promises it is.** The file this application writes carries the
+header *"Safe to delete: every value falls back to its default."* A user who takes that at its word
+and deletes the line must not then be told their file is broken. The same reasoning covers an empty
+file and one with no `[queue]` table at all.
+
+**Clamping is silent because nothing was discarded.** `ARC-007`'s amendment decided that `0` means
+"as few as possible" and `30` means "a lot", and that both intents are honoured up to the bound.
+A report would contradict the decision to honour them. *(This is the weakest edge of the three and
+is named as such: a user who writes `30` and gets 16 is not told. It is a reopening condition below
+rather than a settled question.)*
+
+**The report is a returned value, not a dialog raised from `core/`.** `AGENTS.md` §7's layering rule
+forbids `core/**` from importing Qt, and `load()` is called from composition in `app.py` before the
+main window exists. So `core/settings.py` answers with the diagnostic alongside the settings, and
+the presentation belongs to `ui/`. This keeps `load()` testable without a display, which is the
+property the layering rule exists to protect.
+
+**Presentation is a modal warning at startup**, before the main window is usable, naming the path
+and the underlying reason where one exists. Modal is justified by rarity rather than by severity:
+this fires only when a file that exists cannot be used, which is never during normal operation.
+
+### Alternatives considered
+
+- **A status-bar message.** Rejected: transient and easy to miss, and the user this exists for is
+  one who already missed something — they will notice the reverted value later, when the message
+  is gone.
+- **A dismissible banner above the queue.** Rejected on `ARC-007`'s reasoning: it is a new
+  persistent UI element in a phase that deliberately shipped one control rather than a surface.
+  Phase 4's dialog is where a settings surface belongs.
+- **Logging it and nothing else.** Rejected as the status quo wearing diligence: `T-038`'s log is
+  not a channel a user reads, and the whole finding is that the user is not told.
+- **Raising from `load()`.** Rejected — "never raises" is the property that makes a broken config
+  file a non-fatal state, and `save_geometry` follows the same rule for `window.toml`.
+
+### Consequences
+
+- **`T-102`** implements it. `core/settings.py`'s module docstring loses the "what that gives up"
+  paragraph, because it will no longer be given up — and the paragraph must not outlive the
+  behaviour it describes.
+- `load()`'s signature changes, which reaches its callers in `app.py` and `ui/main_window.py`.
+  The shape is `T-102`'s to choose; the constraint is that the diagnostic travels as data.
+- **This decision reopens** if Phase 4's settings dialog lands (`REQ-023`), which gives the report a
+  natural home other than a startup modal — and separately if clamping proves to surprise anyone,
+  which is the edge deliberately left silent above.

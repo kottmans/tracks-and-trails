@@ -258,6 +258,42 @@ def compose(
         manager.set_concurrency(chosen.concurrency)
         app_settings.save(chosen, settings_file)
 
+    def choose_pause(paused: bool) -> None:
+        """Pause or resume the queue (`UX-001`, `T-080`).
+
+        **Not saved to `settings.toml`, unlike the concurrency limit.** A limit is a preference —
+        the user chose 5 and means it next time. A paused queue is a *state*, and restoring it at
+        launch would mean starting the application to find it deliberately doing nothing, with the
+        reason a session old. `ARC-007`'s file holds settings, and this is not one.
+        """
+        if paused:
+            manager.pause()
+        else:
+            manager.resume()
+
+    def remove_job(job_id: str) -> None:
+        """Route a removal to the manager, which owns it (`T036-R1`, `UX-001`).
+
+        Through the manager rather than the store, for the reason `T036-R1` recorded when a retry
+        went the other way: removal of a running job is a cancel *plus* a delete, and only the
+        manager knows there is a session to stop. A composition that deleted the row itself would
+        leave the worker running and nothing to announce it.
+        """
+        manager.remove(job_id)
+
+    def reorder_queue(job_ids: list[str]) -> None:
+        """Route a reordering to the manager (`REQ-016`, `T-081`).
+
+        Through the manager for `remove_job`'s reason: `_next_waiting` reads `queue_position` to
+        decide what starts next, so the object whose scheduling changes is the one that should be
+        told.
+        """
+        manager.reorder(job_ids)
+
+    def clear_finished() -> None:
+        """Route a clear-finished to the manager (`REQ-016`, `T-081`)."""
+        manager.clear_completed()
+
     window = MainWindow(
         geometry_file,
         manager=manager,
@@ -267,11 +303,18 @@ def compose(
         retry=retry,
         concurrency=settings.concurrency,
         on_concurrency_changed=choose_concurrency,
+        on_pause_changed=choose_pause,
+        on_remove_requested=remove_job,
+        on_reorder_requested=reorder_queue,
+        on_clear_requested=clear_finished,
         # The same store, through a second protocol: `JobReader` is one job, `QueueReader` is all
         # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
         # a single row cannot accidentally enumerate the queue.
         queue=store,
     )
+    # The control follows the queue, not only the other way round: anything that pauses the pool
+    # without going through the toolbar still leaves the toggle telling the truth (`T-080`).
+    manager.queue_paused.connect(window.show_queue_paused)
     window.report_environment(ffmpeg.summary())
     logging.getLogger("tracksandtrails.app").info("environment: %s", ffmpeg.summary())
 

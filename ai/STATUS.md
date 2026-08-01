@@ -5,34 +5,84 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-30
-**Last verified against repository:** 2026-07-30
+**Last updated:** 2026-07-31
+**Last verified against repository:** 2026-07-31
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
 ---
 
 **Current phase:** **Phase 2 — Queue and concurrency.** **Phase 1 formally exited 2026-07-29**;
-Phase 0 exited 2026-07-26. **Nothing is in review.** `T-050`, `T-093` and `T-095` were approved at
-`6d14e78` on 2026-07-30, carrying non-blocking `T-096`; `T-094` and `P2PLAN-R2` were approved
-earlier at `f858da9`. **`T-085` is unblocked** — `T-050` writes the table it reads — and `T-049` and
-`T-047` need nothing either, so three tasks can start today. No Phase 2 *deliverable* is Ready:
-**All three Phase 2 planning gates are clear** (2026-07-30). `P2PLAN-R2` was approved at
-`f858da9`; `P2PLAN-R1` and `P2PLAN-R3` at `8306378`. **`T-078` is Ready** — the first Phase 2 task
-out of Proposed, and the choke point eight tasks descend from.
+Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLAN-R2` at `f858da9`,
+`P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
-**Four tasks were delivered on 2026-07-30 and are in review**, as four separate boundaries: `T-085`
-gates the six facts `REQ-020` names; `T-049` restates `DAT-003`'s boundary as provenance after two of
-its three scope claims proved *measurably* false; `T-047` is **decided — no**, on a measurement
-showing all three of its blind spots are structurally unreachable in the module the gate protects;
-and `T-097` closes `ARC-007`'s settings boundary, which also fixed a hole that had made `T-013`'s own
-prohibition unreachable by its most natural spelling.
+**Nothing is a choke point as of 2026-07-31.** `T-078` — the pool — was approved at `0f9986f` on
+2026-07-30 and released the subtree; `T-079` — the queue view — was approved at `da49a51` on
+2026-07-31 and was the last task anything waited on. **Five tasks are Ready and every one of them
+can start without waiting for a verdict:** `T-082`, `T-084`, `T-100`, `T-102`, plus `T-074` and
+`T-092`, which block nothing and never did.
 
-**Three things they turned up, filed rather than absorbed.** `T-098` guards the premise `T-047`'s
-decision rests on — true as measured, enforced by nothing. **`REQ-020`'s view has no owner:** the
-plan puts records in Phase 2, lists nothing in Phase 3, and `T-050` points at a Phase 3 deliverable
-that does not exist, while `REQ-021` presupposes a view. And `P2PLAN-R7` still sits inside `T-080`,
-which needs two calls made before it starts — that, and the unreachable `PAUSED` edges.
+**Five tasks are in review, all delivered 2026-07-31:** `T-080` (queue-level pause and resume,
+per-job remove, manual retry to the back of the queue, and `JobStatus.PAUSED` deleted — 14
+mutations), `T-081` (reordering in one transaction against a `UNIQUE` index, and clear-finished that
+keeps history — 13 mutations), `T-046` (atomic output-path reservation, because `ARC-002` makes the
+racing writers separate processes and check-then-create between them is the hole itself), `T-053`
+(two live spawned workers proved not to cross-write their logs — it gates `T-084`'s approval, not
+its start), and `T-083` (bounded retry on `NETWORK` only, whose bound and backoff ship marked
+provisional because `AGENTS.md` §4 makes those numbers the Architect's).
+
+**`T-081` found one defect and filed it rather than fixing it** (`AGENTS.md` §7): `T-103` —
+cancelling a job that is merely *waiting for a slot* leaves its id on the pool's waiting list.
+Harmless while the row exists, because the later `start()` refuses; `T-081`'s clear-finished deletes
+that row, so `T-081` carries a narrow sweep and `T-103` owns the general fix.
+
+**`T-079`'s approval sat unrecorded for most of a day, and that is worth naming.** The focused
+correction re-review recorded **Approved** in `ai/REVIEWS.md` at `19f6015`; `TASKS.md` went on
+saying "In Review — awaiting re-review" because its status line was last written at `da49a51`, one
+commit earlier. Two tasks were held Proposed by a block that had already lifted. **`T-096` cannot
+see this class** — the status and the section agreed with each other, and both disagreed with a
+different file. It is `COORD-R11` across documents rather than within one.
+
+**Two maintainer calls `T-080` had been waiting on were taken 2026-07-31.** The unreachable
+`RUNNING → PAUSED` and `PAUSED → RUNNING` edges are **removed** — `REQ-017` in Phase 3 can add the
+edges its own semantics need rather than inheriting a guess. And `P2PLAN-R7` is **confirmed**:
+manual retry re-enters the queue at the back, recorded as a maintainer decision and explicitly not
+as something `P2PLAN-R1` settled.
+
+**The last open question is closed: `ARC-008`, 2026-07-31.** A `settings.toml` that exists and
+cannot be used now reports to the user that defaults are in force, as a modal at startup naming the
+path and the reason; a missing file, and one that merely omits the value, stay silent — `save()`'s
+own header promises deleting a line is safe. The fallback does not change and `load()` still never
+raises; the silence is what goes. **`T-102`** implements it, including deleting the module
+docstring paragraph that documents the silence.
+
+**CI is not running at all, and no document said so until now.** This is measured, not inferred
+from a red badge:
+
+- **The last fully green CI push run was 2026-07-28**, at head `11e1203`. **97 commits** have landed
+  since.
+- **The last CI job to execute a single step was 2026-07-30 04:08 UTC**, run `30513067158` — and
+  only one job in it ran: the **self-hosted `windows desktop`** job, 16 steps, **passed**. All four
+  GitHub-hosted jobs in that same run *failed in three to four seconds having executed zero steps*.
+- **Across the 17 CI push runs since, not one job has executed a step.** The hosted jobs
+  (`ubuntu-latest`, `windows-latest`, and both frozen variants) fail instantly with `steps=0`; the
+  self-hosted `windows desktop` job is cancelled without starting; the run for `733209d` has been
+  **queued 18.6 hours** and has never begun.
+
+**A zero-step three-second job failure is not a test failure**, so the 47 "failure" conclusions in
+that window say nothing about the code. The signature — hosted jobs dying before step one while the
+self-hosted job is merely starved — points at **GitHub-hosted runner unavailability**, consistent
+with the quota exhaustion `OPS-005` was amended over. *That last clause is inference from the run
+metadata; nobody has read a billing page, and it is recorded as unverified.* The cancellations are
+separately explained by `ci.yml:30-32` (`cancel-in-progress: true`) plus pushes arriving faster than
+a queue this deep can drain.
+
+**What it costs, stated rather than absorbed.** The gate the trunk-based workflow leans on — *CI
+runs on every push to `main`, and a red run still blocks* — has not run on `T-078` or `T-079`, and
+cannot run on any of the five now in review. Their Linux evidence is the maintainer's own machine
+(`OPS-006`): the full local suite is **1684 passed / 11 skipped / 2 deselected** on the working
+tree, run 2026-07-31. Windows runtime has still never run against the pool, and now cannot until
+runners return. **No task should be reported as gated by CI until a run executes a step.**
 
 **Overall state:** Phase 0's five exit criteria were each verified rather than asserted, and the
 evidence is recorded in `IMPLEMENTATION_PLAN.md` §Phase 0 — including a fresh mutation run

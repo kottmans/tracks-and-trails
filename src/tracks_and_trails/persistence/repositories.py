@@ -28,15 +28,18 @@ from datetime import datetime
 from typing import Any, Final
 
 from tracks_and_trails.core.errors import ErrorKind
-from tracks_and_trails.core.job_state import JobStatus
+from tracks_and_trails.core.job_state import REORDERABLE, TERMINAL, JobStatus
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.core.models import Job as JobModel
 
 #: Statuses that cannot still be true at startup (`ARCHITECTURE.md` §5).
 #:
 #: All three mean "in flight". If the application is only now starting, nothing was running when
-#: it did, so a row claiming otherwise was interrupted by an unclean exit. `PAUSED` is absent on
-#: purpose: the user asked for that, and it survives a restart intact.
+#: it did, so a row claiming otherwise was interrupted by an unclean exit.
+#:
+#: *(This used to add "`PAUSED` is absent on purpose: the user asked for that, and it survives a
+#: restart intact." `T-080` removed the status — `UX-001`'s pause is a queue-level drain that never
+#: changes a job's own status — so the exclusion it explained no longer has anything to exclude.)*
 #:
 #: `ARCHITECTURE.md` §5 names all three. `T-014`'s acceptance criterion and `ai/TESTING.md` §7
 #: mention only `RUNNING`; the architecture outranks both (`AGENTS.md` §5), and recovering only
@@ -250,6 +253,154 @@ class JobRepository:
         """
         with self._connection:
             _write_job(self._connection, job)
+
+    def requeue_at_end(self, job: JobModel) -> JobModel:
+        """Write `job` carrying a **freshly allocated tail position**, in one transaction (`T-080`).
+
+        Manual retry's write (`P2PLAN-R7`): a failed job keeps the position it was added with, so
+        re-queuing it in place would let a second attempt run ahead of jobs that have never run.
+
+        **The position is allocated here, not by the caller.** `queue_position` carries a `UNIQUE`
+        index, so two callers each computing `MAX + 1` outside a transaction would not tie — one of
+        them would fail to write. Reading and writing inside the same transaction is the same
+        guarantee `append` relies on, for the same reason.
+
+        Returns the job as stored, because the caller cannot know the position it was given and a
+        caller that guessed would be guessing against every other writer.
+
+        Raises if the row is not there, exactly as `update` does: re-queuing a job that vanished
+        means the caller's model of the queue is wrong, and silently inserting it would hide that.
+        """
+        with self._connection:
+            row = self._connection.execute("SELECT MAX(queue_position) FROM jobs").fetchone()
+            placed = replace(job, queue_position=0 if row[0] is None else int(row[0]) + 1)
+            _write_job(self._connection, placed)
+        return placed
+
+    def remove(self, job_id: str) -> bool:
+        """Delete the job's row. Returns whether there was one (`UX-001`, `T-080`).
+
+        **This deletes a database row and nothing else.** No file is touched, by this method or by
+        anything it calls — `UX-001` makes that the rule for remove, and the absence of any
+        filesystem call here is the whole of its implementation.
+
+        A boolean rather than raising on a missing row, unlike `update`: "remove what is already
+        gone" is a state the user can reach by pressing the same button twice, and the outcome they
+        asked for is the outcome they have. The return value exists so a caller that *does* care
+        can tell the two apart.
+
+        The row's `queue_position` goes with it, which leaves a gap in the sequence. Gaps are
+        harmless: every consumer orders by the column and none of them counts on it being dense.
+        """
+        with self._connection:
+            cursor = self._connection.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+        return cursor.rowcount > 0
+
+    def reorder(self, job_ids: Sequence[str]) -> list[JobModel]:
+        """Rearrange `job_ids` into that order, in **one** transaction (`REQ-016`, `T-081`).
+
+        Returns them carrying their new positions.
+
+        **They are dealt the positions they already collectively occupied**, rather than being
+        renumbered from zero. Two consequences, both wanted: a running job keeps its slot, because
+        its position is not among the ones being redealt; and jobs the user did not touch do not
+        move relative to anything, because no position outside this set changes. Renumbering the
+        whole queue would reorder by side effect.
+
+        **Two phases, and the `UNIQUE` index is why.** `jobs_queue_position` is unique over
+        non-`NULL` values, and SQLite checks uniqueness per *statement*, not at commit — so
+        assigning the new positions directly fails the moment two of them cross, which is what
+        reordering is. The rows are set to `NULL` first, which the partial index excludes, and then
+        given their new values. Both phases are inside one transaction, so a crash between them
+        leaves the queue as it was: `REQ-016`'s criterion is that a queue half-reordered by a crash
+        is a queue in an order nobody chose.
+
+        **Only pending jobs** (`REORDERABLE`). A running job's position is not a promise this pool
+        can keep — it is already started, and moving it says otherwise. Raises rather than skipping
+        silently: a caller asking to move a running job has a stale view, and quietly reordering the
+        rest would leave the table showing an order the database never agreed to.
+
+        Raises if an id is unknown, or if a named job holds no position at all — a job outside the
+        queue order has no place in a rearrangement of it.
+        """
+        if not job_ids:
+            return []
+        if len(set(job_ids)) != len(job_ids):
+            raise ValueError("cannot reorder: the same job was named twice")
+        with self._connection:
+            placeholders = ", ".join("?" for _ in job_ids)
+            # S608: `placeholders` is generated `?` marks, never caller text. Every value below is
+            # parameterised — same boundary `add` and `append` document.
+            rows = self._connection.execute(
+                f"SELECT * FROM jobs WHERE id IN ({placeholders})",  # noqa: S608
+                tuple(job_ids),
+            ).fetchall()
+            found = {row["id"]: _row_to_job(row) for row in rows}
+
+            missing = [job_id for job_id in job_ids if job_id not in found]
+            if missing:
+                raise KeyError(f"cannot reorder unknown jobs: {', '.join(missing)}")
+            unplaced = [job_id for job_id in job_ids if found[job_id].queue_position is None]
+            if unplaced:
+                raise ValueError(
+                    f"cannot reorder jobs that hold no queue position: {', '.join(unplaced)}"
+                )
+            fixed = [job_id for job_id in job_ids if found[job_id].status not in REORDERABLE]
+            if fixed:
+                raise ValueError(
+                    "cannot reorder jobs that are running or finished: "
+                    + ", ".join(f"{job_id} is {found[job_id].status.value}" for job_id in fixed)
+                )
+
+            positions = sorted(found[job_id].queue_position or 0 for job_id in job_ids)
+            # Phase one: out of the unique index entirely. Without this, the first assignment that
+            # lands on a position another named row still holds raises `IntegrityError`.
+            self._connection.execute(
+                f"UPDATE jobs SET queue_position = NULL WHERE id IN ({placeholders})",  # noqa: S608
+                tuple(job_ids),
+            )
+            self._connection.executemany(
+                "UPDATE jobs SET queue_position = ? WHERE id = ?",
+                list(zip(positions, job_ids, strict=True)),
+            )
+        return [
+            replace(found[job_id], queue_position=position)
+            for position, job_id in zip(positions, job_ids, strict=True)
+        ]
+
+    def clear_completed(self) -> list[str]:
+        """Delete every finished job's row. Returns their ids (`REQ-016`, `T-081`).
+
+        **Finished means `TERMINAL` — completed *or* cancelled — and not `FAILED`.** A failed job is
+        still in the queue offering a retry (`REQ-018`), so clearing it would throw away work the
+        user has not decided about. A cancelled one is a decision they already made.
+
+        **History is untouched, and that is the answer to "where did my file go".** `T-085` writes a
+        `history` row inside the completion transaction, in a different table; clearing the queue
+        removes the queue's record and leaves the record of what was obtained. `T-100`'s view is
+        how the user finds it afterwards, which is why `P2PLAN-R8` filed that view:
+        clear-completed plus `UX-001`'s remove-never-deletes would otherwise leave them unable
+        to find their own downloads.
+
+        **No file is touched**, by this method or anything it calls. Same rule and same
+        implementation as `remove`: the absence of any filesystem call is the whole of it.
+
+        One statement, one transaction. There is no window where half the finished rows are gone.
+        """
+        statuses = sorted(status.value for status in TERMINAL)
+        placeholders = ", ".join("?" for _ in statuses)
+        with self._connection:
+            # S608: `placeholders` is generated `?` marks; the status values are parameterised.
+            rows = self._connection.execute(
+                f"SELECT id FROM jobs WHERE status IN ({placeholders})",  # noqa: S608
+                tuple(statuses),
+            ).fetchall()
+            cleared = [row["id"] for row in rows]
+            self._connection.execute(
+                f"DELETE FROM jobs WHERE status IN ({placeholders})",  # noqa: S608
+                tuple(statuses),
+            )
+        return cleared
 
     def get(self, job_id: str) -> JobModel | None:
         row = self._connection.execute("SELECT * FROM jobs WHERE id = ?", (job_id,)).fetchone()
