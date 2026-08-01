@@ -178,6 +178,19 @@ if sys.platform == "win32":  # pragma: no cover - exercised on STARBASE, not on 
         `OPEN_ALWAYS` creates the file if it is absent and opens it if not, so a first run works
         with no lock file present. Creation is **not** the claim; the share mode is.
 
+        **Failure is a pointer, not `-1`** (`T087-R2`). `CreateFileW` returns
+        `INVALID_HANDLE_VALUE` on failure, and with `restype = HANDLE` ctypes hands back the
+        pointer value as a Python integer — `18446744073709551615` on 64-bit Windows. Comparing
+        against `-1` therefore never matched, the failure fell through to `open_osfhandle`, and the
+        refusal a second launch is supposed to get came out as an `OverflowError` instead. A
+        reviewer probe supplied that exact value and watched it pass through. `HANDLE(-1).value`
+        is the same comparison written so the width is the platform's rather than assumed.
+
+        **`use_last_error=True` is what makes the error code real.** `ctypes.get_last_error()`
+        reads the value ctypes saved for the *last call made through a library loaded with that
+        flag*; `ctypes.windll` is not, so the code reported here was whatever happened to be
+        there. A private `WinDLL` binding fixes it without changing the global one.
+
         Returned as a C runtime file descriptor so the rest of this module — `os.write`,
         `os.truncate`, `os.close` — is one implementation across both platforms.
         """
@@ -189,10 +202,24 @@ if sys.platform == "win32":  # pragma: no cover - exercised on STARBASE, not on 
         no_sharing = 0
         open_always = 4
         file_attribute_normal = 0x80
-        invalid_handle = -1
+        invalid_handle = wintypes.HANDLE(-1).value
 
-        create_file = ctypes.windll.kernel32.CreateFileW
+        # Loaded with `use_last_error=True` so `get_last_error()` reports *this* call's error.
+        kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+        create_file = kernel32.CreateFileW
+        # The prototype in full: an incomplete one lets ctypes guess at argument widths, and the
+        # arguments here include two that must be pointer-sized nulls.
+        create_file.argtypes = (
+            wintypes.LPCWSTR,  # lpFileName
+            wintypes.DWORD,  # dwDesiredAccess
+            wintypes.DWORD,  # dwShareMode
+            wintypes.LPVOID,  # lpSecurityAttributes
+            wintypes.DWORD,  # dwCreationDisposition
+            wintypes.DWORD,  # dwFlagsAndAttributes
+            wintypes.HANDLE,  # hTemplateFile
+        )
         create_file.restype = wintypes.HANDLE
+
         handle = create_file(
             str(path),
             generic_read_write,
@@ -202,11 +229,19 @@ if sys.platform == "win32":  # pragma: no cover - exercised on STARBASE, not on 
             file_attribute_normal,
             None,
         )
-        if handle == invalid_handle or handle is None:
-            # Raises `OSError` carrying the Windows error code — `ERROR_SHARING_VIOLATION` when
-            # another instance holds it, which is what `acquire` converts to `AlreadyRunningError`.
+        if handle is None or handle == invalid_handle:
+            # `OSError` carrying the Windows error code — `ERROR_SHARING_VIOLATION` when another
+            # instance holds it, which is what `acquire` converts to `AlreadyRunningError`.
             raise ctypes.WinError(ctypes.get_last_error())
-        return msvcrt.open_osfhandle(handle, os.O_RDWR)
+
+        try:
+            return msvcrt.open_osfhandle(handle, os.O_RDWR)
+        except OSError:
+            # **The raw handle would otherwise leak, and a leaked handle is a lock nothing can
+            # release** — the file would stay unopenable until the process exited, which is worse
+            # than failing to take it. Closed before the failure propagates.
+            kernel32.CloseHandle(handle)
+            raise
 
 else:
 

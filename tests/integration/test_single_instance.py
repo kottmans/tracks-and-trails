@@ -245,3 +245,80 @@ def test_acquiring_twice_in_one_process_is_a_defect_not_a_no_op(tmp_path: Path) 
             lock.acquire()
     finally:
         lock.release()
+
+
+# --- T087-R2: the Windows branch, gated statically because it cannot run here ---------------
+#
+# **This is a source gate, not execution, and that is the whole limitation.** The `msvcrt`/
+# `CreateFileW` branch is unreachable on Linux and no CI job has executed a step since
+# 2026-07-30, so nothing here establishes that the primitive *works* — only that the three
+# specific mistakes the reviewer found are not present. `T-087` stays Blocked on STARBASE
+# evidence and these tests do not change that.
+#
+# A static gate is worth having anyway: every one of these was a silent defect that Win32 `mypy`
+# passed and that would have surfaced as a wrong exception type on a real second launch.
+
+WINDOWS_BRANCH = (
+    Path(__file__).resolve().parents[2] / "src" / "tracks_and_trails" / "core" / "instance_lock.py"
+).read_text(encoding="utf-8")
+
+
+def test_the_windows_failure_check_is_pointer_sized() -> None:
+    """`T087-R2`: `INVALID_HANDLE_VALUE` comes back as a pointer, not as `-1`.
+
+    With `restype = HANDLE`, ctypes hands the pointer value back as a Python integer —
+    `18446744073709551615` on 64-bit Windows. A comparison against `-1` never matched, so the
+    failure fell through to `open_osfhandle` and a second launch got an `OverflowError` instead of
+    the refusal it is supposed to get.
+    """
+    assert "wintypes.HANDLE(-1).value" in WINDOWS_BRANCH, (
+        "the invalid-handle comparison is not written in the platform's own width"
+    )
+    assert "invalid_handle = -1" not in WINDOWS_BRANCH, (
+        "a bare -1 is back as the invalid-handle sentinel; on 64-bit Windows CreateFileW's "
+        "failure value is 18446744073709551615 and this comparison never matches"
+    )
+
+
+def test_the_windows_error_code_is_captured_from_a_binding_that_saves_it() -> None:
+    """`T087-R2`: `get_last_error()` reads what ctypes saved, and only for `use_last_error` libs.
+
+    `ctypes.windll` is not loaded with that flag, so the Windows error code reported alongside the
+    refusal was whatever happened to be there — including for `ERROR_SHARING_VIOLATION`, which is
+    the one case this whole module exists to report.
+    """
+    assert 'ctypes.WinDLL("kernel32", use_last_error=True)' in WINDOWS_BRANCH, (
+        "the kernel32 binding does not save the last error, so the code it reports is not this "
+        "call's"
+    )
+    assert "ctypes.windll.kernel32" not in WINDOWS_BRANCH, (
+        "the global windll binding is back; it does not save the last error"
+    )
+
+
+def test_a_failed_descriptor_conversion_closes_the_raw_handle() -> None:
+    """A leaked handle is a lock nothing can release.
+
+    If `open_osfhandle` fails after `CreateFileW` succeeded, the file stays exclusively open with
+    no descriptor to close it — unopenable until the process exits, which is worse than failing to
+    take the lock at all.
+    """
+    assert "kernel32.CloseHandle(handle)" in WINDOWS_BRANCH, (
+        "a failed descriptor conversion leaks the exclusive handle"
+    )
+    # **And it must be reached by the failure that actually happens.** Asserting the call alone
+    # passes while it sits under an exception nothing raises — a mutation changing `except OSError`
+    # to an unrelated type survived exactly that.
+    conversion = WINDOWS_BRANCH[WINDOWS_BRANCH.index("msvcrt.open_osfhandle") :]
+    guard = conversion[: conversion.index("kernel32.CloseHandle(handle)")]
+    assert "except OSError:" in guard, (
+        f"the CloseHandle cleanup is guarded by {guard.strip().splitlines()[-2:]!r} rather than "
+        "OSError, which is what open_osfhandle raises"
+    )
+
+
+def test_the_createfilew_prototype_is_declared_in_full() -> None:
+    """An incomplete prototype lets ctypes guess argument widths, including two pointer nulls."""
+    assert "create_file.argtypes = (" in WINDOWS_BRANCH
+    for parameter in ("LPCWSTR", "DWORD", "LPVOID", "HANDLE"):
+        assert f"wintypes.{parameter}" in WINDOWS_BRANCH, f"{parameter} is missing from argtypes"
