@@ -7770,3 +7770,108 @@ T-080 and T-081 are **Changes requested** against the uncommitted implementation
 The focused correction re-review should verify all six findings and the correction diff, including
 the reorder-failure and multiple-in-flight cases named in T081-R1. Reviewer regressions are left in
 place as failing evidence. No task or status coordination file was changed by the reviewer.
+
+## 2026-08-01 — complete overnight batch review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `da49a51` — T-079's approved head
+**Review head:** `05e5312`
+**Complete span:** `da49a51..05e5312` — twelve commits, including the T-080/T-081 correction,
+T-046, T-053, T-083, T-102, T-087, T-099, T-101, T-092 and T-103
+**Platforms verified:** Linux; Win32 static analysis only
+**CI:** no job has executed a step since 2026-07-30 04:08 UTC; no CI evidence is claimed
+**Boundary treatment:** T-080/T-081 received the focused correction pass allowed by their six
+initial findings. Every other named task received its initial review. Reviewer-only tests were
+added for four reproduced defects and one diagnostic-gate strengthening; production source was not
+edited.
+**Overall verdict:** **Changes requested**
+
+### Task verdicts
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-080` | **Approved at `05e5312`** | T080-R1, T080-R2 and T080-R3 are resolved. Pause parks direct downloads while retaining the explicit probe exemption; durable removal refreshes the table; current architecture no longer advertises per-job `PAUSED`. |
+| `T-081` | **Changes requested** | T081-R2 and T081-R3 are resolved, and the counter handles the tested waiting-list paths, refusal and multiple reorders. T081-R1 remains open because public direct DOWNLOAD admission bypasses the barrier. |
+| `T-046` | **Changes requested** | T046-R1 reproduces silent overwrite of a post-processed final file. |
+| `T-053` | **Approved at `05e5312`** | The concurrent process/log-queue test establishes overlapping live workers, deliberate interleaving, per-job isolation, shared-log delivery and rejection of unstamped records. |
+| `T-083` | **Changes requested** | T083-R1 changes a failed metadata probe into a DOWNLOAD on the first automatic retry. |
+| `T-102` | **Changes requested** | T102-R1 lets non-UTF-8 settings bytes escape as `UnicodeDecodeError`, violating `load()`'s never-raises/start-with-defaults contract. |
+| `T-087` | **Blocked; changes required before Windows verification** | The Linux implementation is coherent, but T087-R1 covers an unexecuted Windows primitive that also differs from ARC-006's accepted primitive. The task's own both-platform criterion and A-004 remain unmet. |
+| `T-099` | **Approved at `05e5312`** | Each prohibited boundary maps to its own decision and the real failing assertion now has a reviewer gate, not only the explanation helper. |
+| `T-101` | **Approved at `05e5312`** | The test first proves ETA is non-default and then independently asserts its reset; the T079-R3 gap is closed. |
+| `T-092` | **Changes requested; not complete** | Three acceptance criteria remain externally unmet as recorded, and T092-R1 makes the prepared automatic upload unsafe and causally ambiguous even before STARBASE execution. |
+| `T-103` | **Approved at `05e5312`** | Cancellation drops waiting intent at the cause; remove drops retry intent; clear-after-cancel remains covered without the unreachable sweep. |
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T081-R1` | **High** | **Yes — T-081** | Reorder admission barrier | The correction gates `_fill_free_slots()` and `_start_when_free()` on `_reorders_in_flight` (`manager.py:1410`), but public `start(..., DOWNLOAD)` checks only pause before reserving and persisting a start (`:894-942`). The add-dialog seam uses that public path. A reviewer regression holds `reorder([job-2, job-1])`, directly starts job-1, and finds `('job-1',)` occupying the pool before the reorder settles. The new durable order can therefore say job-2 first while job-1 has already been admitted. This is the untested third path named in the handoff and a continuation of the original High finding, not a new review round. | Apply the same in-flight-reorder admission rule to every DOWNLOAD entry, including public `start`; park the intent and admit from durable positions after the final reorder settles. Preserve the PROBE exemption explicitly. | **Open** |
+| `T046-R1` | **Critical** | **Yes — T-046; data loss** | Final output collision | The worker reserves only the pre-postprocessor target (`worker.py:450-469`). It then passes `overwrites=True`, and when yt-dlp reports a different final extension it merely releases the old reservation (`:471-480`). A real yt-dlp/ffmpeg MP3 download with an existing final `master.mp3` replaced that user's bytes with an ID3 file. The `O_EXCL` guarantee at `:873-900` never covered the file that survived conversion, so the comment that overwrite is safe is false for every extension-changing postprocessor. Concurrent MP3 jobs have the same unclaimed-final-path race. | Reserve/claim the actual final path atomically, or use an yt-dlp/postprocessor collision mechanism that protects both source and final names without global overwrite. Keep the real existing-MP3 regression and add a concurrent extension-changing pair. Preview must show the chosen final name. | **Open** |
+| `T083-R1` | **High** | **Yes — T-083** | Retry operation identity | `_retry_at` stores only `job_id -> deadline` (`manager.py:1990-1997`); `_perform_due_retries()` later calls `_start_when_free(job_id)`, which reaches `start(job_id)` with the default DOWNLOAD kind (`:1999-2015`, `:1419-1425`). The reviewer started a PROBE, made it fail NETWORK, and recorded the spawned kinds as `['probe', 'download']`. A transient preview failure can therefore begin writing media without the user confirming a download. All committed retry tests start the default DOWNLOAD kind, so none distinguishes this. | Carry the failed session kind through retry scheduling and restart that same operation. Add paired PROBE and DOWNLOAD retry tests; the former must never create output. | **Open** |
+| `T102-R1` | **High** | **Yes — T-102** | Settings fallback | `load()` catches `OSError` and `TOMLDecodeError` around `tomllib.load()` (`settings.py:230-241`), but `tomllib` decodes bytes first and raises `UnicodeDecodeError` for a non-UTF-8 file. The reviewer wrote `concurrency = \xff`; `load()` raised instead of returning defaults plus `SettingsProblem`. This aborts application composition for an existing unusable settings file, contradicting both ARC-008 and the explicit never-raises criterion. | Treat decoding failure as another existing-file parse problem, preserving its codec/offset reason. Add it to both the report-direction table and the never-raises matrix. | **Open** |
+| `T087-R1` | **High** | **Yes — T-087 / A-004** | Windows ownership primitive | ARC-006's accepted amendment and T-094 choose an **exclusive-access open** on Windows. The implementation instead opens normally and applies a one-byte `msvcrt.locking(LK_NBLCK)` range (`instance_lock.py:118-124`, `:164-177`). That may be a defensible primitive, but it is a different architectural choice and its branch has never executed. Linux `flock` tests and Win32 mypy cannot establish simultaneous-start exclusivity, killed-holder recovery, or even first acquisition on Windows; those are the task's explicit both-platform criteria and the exact half the withdrawn design got wrong. | Either implement ARC-006's chosen Windows primitive or obtain an authorised amendment for the byte-range-lock design, then run simultaneous starts and killed-holder recovery on STARBASE. Keep A-004 unverified and T-087 out of Complete until that evidence exists. | **Open — blocked on decision/evidence** |
+| `T092-R1` | **High** | **Yes — T-092 prepared implementation** | Crash-dump provenance and disclosure | WER is keyed by the filename `python.exe`, so it captures any Python process for that user, not only this project (`crash-dumps.ps1:46-50`). Both persistent-runner workflows then copy **every** dump in the folder, without clearing it or filtering by job start time (`ci.yml:382-388`; `t074-repeat.yml:106-112`), and automatically upload full-memory dumps. A deliberate proof dump, a stale T-074 dump, or an unrelated Python crash will be uploaded on every later run and announced as “T-074 may have recurred.” Besides destroying causal attribution, a full dump can expose unrelated heap contents in a CI artifact; the documentation discusses disk cost but not artifact sensitivity or provenance. | Do not automatically upload an unscoped persistent folder. Establish per-run provenance (or a dedicated executable/account/folder), collect only new dumps attributable to the run, and explicitly decide access/retention for full-memory artifacts. A safe alternative is to upload metadata only and leave the dump for deliberate maintainer retrieval. Exercise both “new dump” and “stale/unrelated dump” paths before arming STARBASE. | **Open** |
+
+### Focused correction disposition
+
+| Prior finding | Result |
+|---|---|
+| `T080-R1` | **Resolved.** Explicit PROBE starts still run while paused; direct DOWNLOAD starts are parked and remain durably queued until resume. |
+| `T080-R2` | **Resolved.** `job_removed` now refreshes `QueueModel` after durability and is disconnected in `detach()`; the composed remove path updates store and table. |
+| `T081-R1` | **Open.** Waiting-list admission, refusal and multiple in-flight reorder cases are covered, but public DOWNLOAD admission bypasses the counter as described above. |
+| `T081-R2` | **Resolved.** Reorder and clear success signals refresh the model after the write; composed controls update the durable order/set and the visible table. |
+| `T081-R3` | **Resolved.** Deselection emits the empty job id, model reset re-announces selection state, and every per-job action disables when nothing is selected. |
+| `T080-R3` | **Resolved.** ARCHITECTURE.md §5 no longer draws the removed PAUSED state or its edges. |
+
+### Review judgments
+
+**T-080 can be approved independently of T-081.** The surviving barrier hole violates reordered
+DOWNLOAD admission, not pause semantics. The three T-080 findings are independently corrected and
+their assembled wiring passes. T-081 remains the inherited dependency risk for later manager work.
+
+**T-103 makes the old clear sweep unnecessary.** A waiting id can become clearable through cancel,
+which now discards it synchronously before the terminal write is queued. `remove()` also discards
+waiting and retry intent before deletion. Under the manager-owned write boundary, no remaining path
+can delete a waiting row behind the model; retaining the old read-back sweep would not add a live
+guarantee.
+
+**The changed T-102 return type is acceptable.** `SettingsFile` makes the diagnostic impossible for
+the sole production caller to ignore accidentally, and repository-wide search finds every internal
+caller adapted. T102-R1 is about an exception outside that return path, not the wrapper type.
+
+**Group C is not blanket-approved through its dependency.** T-099, T-101 and T-103 satisfy their
+own bounded criteria, but the manager tree they sit on still carries open T081-R1 and T083-R1.
+Approval of those task-specific changes does not approve the inherited manager head as a whole.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Span accounting | `da49a51..05e5312` contains the twelve handoff commits; base is T-079's approved head |
+| `git diff --check da49a51..05e5312` | Passed |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **113 files** |
+| `mypy src` | Passed; **36 source files** |
+| `mypy --platform win32 src` | Passed; **36 source files** |
+| Manager suite excluding the two intentional reviewer negatives | **120 passed, 2 deselected** |
+| T-046/T-053/T-087 plus settings, boundary and detail-view files, excluding T102-R1 | **271 passed, 1 deselected** |
+| Queue-view and main-window UI files | **79 passed** |
+| Eight composed toolbar/settings/lock cases | **8 passed** |
+| T081-R1 reviewer regression | **Failed as expected:** direct job-1 occupied the pool before held reorder settled |
+| T046-R1 reviewer regression | **Failed as expected with real yt-dlp/ffmpeg:** existing MP3 bytes were replaced |
+| T083-R1 reviewer regression | **Failed as expected:** spawned kinds were `probe`, then `download` |
+| T102-R1 reviewer regression | **Failed as expected:** uncaught `UnicodeDecodeError` |
+| T-099 assertion-level reviewer strengthening | **Passed** |
+| Full suite | Not rerun by reviewer; handoff reports **1726 passed / 11 skipped / 2 deselected** before the reviewer negatives were added |
+| CI / Windows runtime | Not run; no CI job executed a step and STARBASE evidence required by T-087/T-092 is absent |
+
+### Final disposition
+
+The complete batch is **not approved**. T-080, T-053, T-099, T-101 and T-103 are approved at
+`05e5312` for their task-specific changes. T-081, T-046, T-083 and T-102 require corrections for
+the open findings above. T-087 remains blocked on an authorised Windows primitive plus STARBASE
+runtime evidence. T-092 remains both incomplete on its recorded external criteria and changes
+requested on dump provenance/disclosure. The four failing reviewer regressions remain in the
+checkout as correction gates; the passing T-099 assertion-level regression remains as a permanent
+strengthening candidate.

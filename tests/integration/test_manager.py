@@ -1055,8 +1055,23 @@ def test_cancel_stops_a_real_in_flight_download_within_the_budget(
         f"the worker never reported the cancellation itself ({stored.error_message!r}); it was "
         "stopped by force, so the cooperative path left partial files in an unknown state"
     )
-    assert list(tmp_path.glob("*.part")), (
-        "yt-dlp left no partial file, so the download did not unwind through its own cleanup"
+    # **The `.part` assertion that stood here is gone, and its signal is not lost** (`T046-R1`).
+    # The download now happens in a staging directory that is discarded whatever the outcome, so a
+    # cancelled job leaves nothing in the user's folder — including no partial. What that assertion
+    # actually established, that the worker unwound *cooperatively* rather than being killed, is
+    # carried by the message check immediately above: "parent process cancelled" is the worker's
+    # own word and a forced stop cannot produce it.
+    #
+    # **The behaviour change is deliberate and stated.** Before this, cancelling left a `.part` in
+    # the user's downloads folder with nothing specified about its lifetime. `REQ-017` (Phase 3,
+    # `T-113`) is where resuming a partial download is decided, and it will have to say where
+    # partials live; a randomly named per-run directory is not resumable across restarts either
+    # way. Until then, cancel leaves the folder as it found it.
+    assert not list(tmp_path.glob("*.part")), (
+        f"a partial file was left in the user's folder: {list(tmp_path.glob('*.part'))}"
+    )
+    assert not [p for p in tmp_path.iterdir() if p.name.startswith(".tracks-and-trails-staging")], (
+        "a staging directory outlived the cancelled download"
     )
     # **And nothing finished** (`T019-R4`). Asserting only that a `.part` exists would pass if a
     # completed file sat beside it, and a cancel that leaves a finished download is a cancel the
@@ -4342,6 +4357,51 @@ def test_a_network_failure_retries_itself_and_counts_the_attempt(
         assert spin(lambda: download.is_idle, timeout=60)
 
 
+def child_recording_kind_then_failing_network(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """Record which session kind an automatic retry actually launches."""
+    from tracks_and_trails.downloader.protocol import Failed
+
+    with (Path(request.output_directory) / "session-kinds.txt").open(
+        "a", encoding="utf-8"
+    ) as stream:
+        stream.write(f"{kind.value}\n")
+    queue.put(Failed(job_id=job_id, kind=ErrorKind.NETWORK, message="temporary network failure"))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+
+
+def test_an_automatic_retry_preserves_a_probe_as_a_probe(
+    tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A failed add-dialog probe must not turn into an unattended download.
+
+    The manager accepts both probe and download sessions, but the retry bookkeeping currently
+    remembers only the job id.  Falling back to ``start(job_id)`` selects DOWNLOAD, which changes
+    the user's requested operation at the retry boundary.
+    """
+    quick_backoff(monkeypatch)
+    repository = FakeRepository()
+    repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
+    download = DownloadManager(repository, entry_point=child_recording_kind_then_failing_network)
+    try:
+        download.start("job-NETWORK", SessionKind.PROBE)
+        kinds_path = tmp_path / "session-kinds.txt"
+        assert spin(
+            lambda: kinds_path.exists() and len(kinds_path.read_text("utf-8").splitlines()) >= 2,
+            timeout=60,
+        ), "the probe's automatic retry never ran"
+
+        kinds = kinds_path.read_text("utf-8").splitlines()
+        assert kinds[:2] == [SessionKind.PROBE.value, SessionKind.PROBE.value], (
+            "the automatic retry changed a probe into a download, so a transient preview "
+            f"failure can start writing without confirmation: {kinds[:2]}"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
 def test_the_attempt_count_is_bounded_and_the_last_error_survives(
     tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -5289,6 +5349,38 @@ def test_two_reorders_in_flight_hold_the_barrier_until_both_settle(
         assert spin(lambda: download.is_idle, timeout=60)
 
 
+def test_a_direct_download_start_cannot_bypass_the_reorder_barrier(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T081-R1`: the public download entry point is an admission path too.
+
+    The scheduler normally reaches ``start`` through ``_fill_free_slots`` or
+    ``_start_when_free``, but the add dialog calls ``start(..., DOWNLOAD)`` directly after a
+    probe. While a reorder is in flight that call must not admit a queued job using the order
+    being replaced. Metadata probes retain their separate exemption.
+    """
+    repository = ReorderHoldingRepository()
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.reorder(["job-2", "job-1"])
+        download.start("job-1", SessionKind.DOWNLOAD)
+
+        assert download._occupant_ids() == (), (
+            f"occupants {download._occupant_ids()}; direct DOWNLOAD bypassed the in-flight "
+            "reorder barrier and admitted a job from the order being replaced"
+        )
+
+        repository.release_reorders()
+        assert "job-2" in download._occupant_ids(), (
+            f"occupants {download._occupant_ids()}; after the reorder landed the new head did "
+            "not start"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
 def test_removing_a_job_awaiting_an_automatic_retry_drops_the_retry(
     tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -5323,6 +5415,112 @@ def test_removing_a_job_awaiting_an_automatic_retry_drops_the_retry(
         )
         spin(lambda: False, timeout=0.5)
         assert repository.get("job-1") is None, "the removed job came back when its retry fired"
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+# --- T083-R1: a retry restarts the operation that failed -----------------------------------
+
+
+def test_an_automatic_retry_of_a_download_stays_a_download(
+    tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The paired half of `T083-R1`, and the one every committed retry test already covered.
+
+    Written as a pair with `test_an_automatic_retry_preserves_a_probe_as_a_probe` because the fix
+    carries the failed session's kind: it must not quietly become "always probe" either. The
+    reviewer's probe test alone would pass against exactly that mistake.
+
+    Uses the same file-based recorder, because `ARC-002` puts the entry point in another process
+    and an in-memory list would record nothing.
+    """
+    quick_backoff(monkeypatch)
+    repository = FakeRepository()
+    repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
+    download = DownloadManager(repository, entry_point=child_recording_kind_then_failing_network)
+    try:
+        download.start("job-NETWORK", SessionKind.DOWNLOAD)
+        kinds_path = tmp_path / "session-kinds.txt"
+        assert spin(
+            lambda: kinds_path.exists() and len(kinds_path.read_text("utf-8").splitlines()) >= 2,
+            timeout=60,
+        ), "the download's automatic retry never ran"
+
+        kinds = kinds_path.read_text("utf-8").splitlines()
+        assert kinds[:2] == [SessionKind.DOWNLOAD.value, SessionKind.DOWNLOAD.value], (
+            f"spawned kinds {kinds[:2]}; a failed download must be retried as a download"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_retried_probe_writes_no_output(
+    tmp_path: Path, spin: Callable[..., bool], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`T083-R1`'s consequence, asserted where the user would feel it.
+
+    The finding is not "the enum is wrong" — it is that a transient failure while *previewing* a
+    URL began writing media nobody had confirmed. So this asserts the output directory, which is
+    the thing a probe must never touch and the only assertion a future regression cannot satisfy
+    by relabelling a session.
+    """
+    quick_backoff(monkeypatch)
+    downloads = tmp_path / "downloads"
+    downloads.mkdir()
+    repository = FakeRepository()
+    repository.add(make_job("job-NETWORK", "https://example.invalid/clip", downloads))
+    download = DownloadManager(repository, entry_point=child_recording_kind_then_failing_network)
+    try:
+        download.start("job-NETWORK", SessionKind.PROBE)
+        kinds_path = downloads / "session-kinds.txt"
+        assert spin(
+            lambda: kinds_path.exists() and len(kinds_path.read_text("utf-8").splitlines()) >= 2,
+            timeout=60,
+        ), "the probe's automatic retry never ran"
+
+        produced = [p for p in downloads.iterdir() if p.name != "session-kinds.txt"]
+        assert produced == [], (
+            f"a retried probe produced {[p.name for p in produced]}; probing must never write"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_probe_parked_behind_a_full_pool_still_resumes_as_a_probe(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T083-R1`'s second path: the retry defers, and `_fill_free_slots` is what restarts it.
+
+    `_perform_due_retries` passes the kind explicitly, so a retry that starts *immediately* keeps
+    it either way. When the pool is full the retry parks instead, and the job is later picked up by
+    `_fill_free_slots`, which has no kind of its own — taking `start`'s default there turns the
+    parked probe into a download at the moment a slot opens.
+
+    Found by mutation: replacing the recorded-kind lookup with a plain `DOWNLOAD` survived the
+    whole battery, because every existing test exercised the immediate path.
+    """
+    repository = FakeRepository()
+    queued(repository, "holder", "job-1", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.start("holder")
+        assert spin(lambda: "holder" in download._occupant_ids(), timeout=60)
+
+        # A probe deferred behind the full pool, exactly as a retried probe would be.
+        download._start_when_free("job-1", SessionKind.PROBE)
+        assert download._waiting == ["job-1"], "the probe was not parked"
+
+        download.set_concurrency(2)
+
+        assert "job-1" in download._occupant_ids(), "the parked probe never started"
+        assert download._sessions["job-1"].kind is SessionKind.PROBE, (
+            f"the parked probe resumed as {download._sessions['job-1'].kind.value}; a slot opening "
+            "must not change what operation the user asked for"
+        )
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)

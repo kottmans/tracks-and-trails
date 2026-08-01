@@ -329,6 +329,25 @@ def test_a_real_settings_import_fails_with_the_arc_007_diagnostic() -> None:
     )
 
 
+def test_the_real_gate_uses_the_arc_007_diagnostic(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Exercise the failing assertion, not only the helper that supplies its text."""
+    source_root = tmp_path / "tracks_and_trails"
+    module = source_root / "downloader" / "manager.py"
+    module.parent.mkdir(parents=True)
+    module.write_text("from tracks_and_trails.core import settings\n", encoding="utf-8")
+    monkeypatch.setattr("tests.unit.test_manager_boundaries.SRC", source_root)
+
+    with pytest.raises(AssertionError) as raised:
+        test_the_manager_never_imports_persistence("downloader/manager.py")
+
+    diagnostic = str(raised.value)
+    assert "ARC-007" in diagnostic
+    assert "settings.toml" in diagnostic
+    assert "repository is injected" not in diagnostic.lower()
+
+
 def test_a_real_persistence_import_fails_with_the_t_013_diagnostic() -> None:
     """The other half, and it must not drift into naming ARC-007 instead."""
     for offender in (

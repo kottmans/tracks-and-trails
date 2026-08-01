@@ -516,6 +516,11 @@ class DownloadManager(QObject):
         #: (`T-083`). Held on the tick rather than on a timer per job, for the reason every other
         #: deadline in this class is: one place where the lifetime rules are applied.
         self._retry_at: dict[str, float] = {}
+        #: What to restart, for a job whose start is deferred — parked behind pause, a slot,
+        #: a reorder barrier, or a retry's backoff (`T083-R1`). Absent means `DOWNLOAD`, which
+        #: is what every deferred start was silently assumed to be until a retried **probe**
+        #: came back as a download and began writing media nobody had confirmed.
+        self._intended_kind: dict[str, SessionKind] = {}
         #: Whether the queue is paused (`UX-001`, `T-080`). **Not a job status** — that is the whole
         #: decision. Pause governs what this manager *starts*; it never changes a job, which is why
         #: `T-080` could delete `JobStatus.PAUSED` outright.
@@ -715,10 +720,37 @@ class DownloadManager(QObject):
             self.persistence_failed.emit(job_ids[0], error)
         else:
             self.queue_reordered.emit(tuple(job_ids))
+            # **Admission is re-decided from the durable order, not from who asked first**
+            # (`T081-R1`). A job parked while this was in flight was chosen against the positions
+            # this reorder replaced, so honouring it as-is would start the old head immediately
+            # after the user said something else should go first — the same defect one step later.
+            #
+            # The reordered jobs are candidates because the user has just expressed an order over
+            # them, which is a statement about what should run and in what sequence. Only while
+            # something is already parked: a reorder of an idle queue is a rearrangement, not a
+            # request to start anything.
+            if self._waiting:
+                self._admit_reordered(job_ids)
         # Whatever the outcome, scheduling was suspended while this was in flight and the durable
         # order is now settled. Filling here is what makes the barrier a delay rather than a drop.
         if not self._shutting_down:
             self._fill_free_slots()
+
+    def _admit_reordered(self, job_ids: list[str]) -> None:
+        """Let every startable job in a settled reorder compete for the next slot (`T081-R1`).
+
+        `_next_waiting` then picks by `queue_position`, so the head of the *new* order wins rather
+        than whichever job happened to be requested before the reorder landed.
+
+        Startable only — a job that is running, finished or failed is not a candidate, and adding
+        one would produce a refusal the user did not cause.
+        """
+        for job_id in job_ids:
+            if job_id in self._waiting or job_id in self._sessions or job_id in self._reserved:
+                continue
+            job = self._repository.get(job_id)
+            if job is not None and job.status in _ENTRY_STATUS:
+                self._waiting.append(job_id)
 
     def clear_completed(self) -> None:
         """Remove every finished job from the queue. **Never deletes a file** (`REQ-016`).
@@ -904,9 +936,25 @@ class DownloadManager(QObject):
         # Parked rather than refused, because a refusal has nowhere to put the user's intent. The
         # job is already durably `QUEUED`; adding it to the waiting list means resume starts it,
         # which is what somebody who queued work while paused meant to happen.
-        if self._paused and kind is SessionKind.DOWNLOAD:
+        # **Every DOWNLOAD admission goes through the same two rules** (`T080-R1`, `T081-R1`).
+        #
+        # The first correction put the pause guard here and the reorder barrier only on
+        # `_fill_free_slots` and `_start_when_free` — so the public path honoured one and walked
+        # past the other. The add-dialog seam uses exactly this entry point, so starting a job by
+        # hand while a reorder was in flight admitted it against the positions the reorder was
+        # replacing: both writes then succeeded and the durable order named a different job first.
+        #
+        # Parked rather than refused, for pause's reason: the job is already durably `QUEUED`, so
+        # the waiting list is where the intent belongs until the queue can honour it. `resume()`
+        # and `_settle_reorder` both fill from durable positions afterwards.
+        #
+        # **The PROBE exemption is explicit and applies to both rules.** A metadata probe is not
+        # queue work waiting for a slot — it neither depends on `queue_position` nor changes it —
+        # and refusing it silently hangs the add dialog on "Probing ...".
+        if kind is SessionKind.DOWNLOAD and (self._paused or self._reorders_in_flight):
             if job_id not in self._waiting:
                 self._waiting.append(job_id)
+            self._intended_kind[job_id] = kind
             # No reservation to withdraw: this runs before one is taken, which is the point of
             # placing the guard here rather than inside the write's callback.
             self._timer.start()
@@ -1352,6 +1400,7 @@ class DownloadManager(QObject):
         """
         if job_id in self._waiting:
             self._waiting.remove(job_id)
+        self._intended_kind.pop(job_id, None)
 
     def _fill_free_slots(self) -> None:
         """Start waiting jobs while there is room, in the order the queue defines (`T-078`).
@@ -1397,7 +1446,7 @@ class DownloadManager(QObject):
 
         return min(self._waiting, key=order)
 
-    def _start_when_free(self, job_id: str) -> None:
+    def _start_when_free(self, job_id: str, kind: SessionKind = SessionKind.DOWNLOAD) -> None:
         """Start `job_id` now, or queue it for the first moment a slot opens.
 
         **A paused queue always parks it**, even with the pool empty (`UX-001`). This is the path a
@@ -1410,21 +1459,30 @@ class DownloadManager(QObject):
         if self._paused or self._reorders_in_flight or not self._has_capacity():
             if job_id not in self._waiting:
                 self._waiting.append(job_id)
+            self._intended_kind[job_id] = kind
             # The tick is what will notice; without this the timer may not be running at all.
             self._timer.start()
             return
         self._discard_waiting(job_id)
-        self._start_or_report(job_id)
+        self._start_or_report(job_id, kind)
 
-    def _start_or_report(self, job_id: str) -> None:
+    def _start_or_report(self, job_id: str, kind: SessionKind | None = None) -> None:
         """Start `job_id`, reporting a refusal rather than swallowing it.
 
         Reported, not swallowed. `start_rejected` is the asynchronous half of `start()`'s answer and
         the dialog already listens to it; a job that cannot start has exactly the same shape as a
         probe that cannot.
+
+        **`kind` defaults to what the deferred start recorded**, not to `DOWNLOAD` (`T083-R1`).
+        `_fill_free_slots` reaches this with no kind of its own, so taking `start`'s default here
+        is what turned a parked probe into a download the moment a slot opened.
         """
+        if kind is None:
+            kind = self._intended_kind.pop(job_id, SessionKind.DOWNLOAD)
+        else:
+            self._intended_kind.pop(job_id, None)
         try:
-            self.start(job_id)
+            self.start(job_id, kind)
         except (RuntimeError, ValueError) as refusal:
             self.start_rejected.emit(job_id, str(refusal))
 
@@ -1963,21 +2021,31 @@ class DownloadManager(QObject):
                         job.with_failure(outcome.kind, outcome.message), finished_at=_now()
                     ),
                 ),
-                then=lambda: self._failed_and_maybe_retry(job_id, outcome.kind, outcome.message),
+                then=lambda: self._failed_and_maybe_retry(
+                    job_id, outcome.kind, outcome.message, session.kind
+                ),
             )
 
-    def _failed_and_maybe_retry(self, job_id: str, kind: ErrorKind, message: str) -> None:
+    def _failed_and_maybe_retry(
+        self, job_id: str, kind: ErrorKind, message: str, session_kind: SessionKind
+    ) -> None:
         """Announce the failure, then decide whether this queue will try again (`T-083`).
 
         **The announcement comes first and is unconditional.** A job that will be retried has
         still failed, and `REQ-018` records failures rather than hiding the ones that turn out to
         be temporary — a view that showed nothing until the last attempt would leave a user
         watching a job do nothing for fourteen seconds.
+
+        **`session_kind` is what failed, and it is what will be retried** (`T083-R1`). Without it
+        a transient failure during a *metadata probe* came back as a `DOWNLOAD`, because that is
+        `start`'s default — so a preview the user was still deciding about began writing media.
         """
         self.job_failed.emit(job_id, kind, message)
-        self._schedule_automatic_retry(job_id, kind)
+        self._schedule_automatic_retry(job_id, kind, session_kind)
 
-    def _schedule_automatic_retry(self, job_id: str, kind: ErrorKind) -> None:
+    def _schedule_automatic_retry(
+        self, job_id: str, kind: ErrorKind, session_kind: SessionKind = SessionKind.DOWNLOAD
+    ) -> None:
         """Queue an automatic attempt if this failure is one worth repeating (`REQ-018`).
 
         **`NETWORK` only, and the narrowness is the point.** An `UNSUPPORTED_URL` retried on a
@@ -1993,6 +2061,10 @@ class DownloadManager(QObject):
         if job is None or job.attempts >= AUTOMATIC_RETRY_LIMIT:
             return
         self._retry_at[job_id] = time.monotonic() + RETRY_BACKOFF_SECONDS[job.attempts]
+        # **The operation is remembered with the deadline** (`T083-R1`). `_retry_at` used to
+        # hold only `job_id -> when`, so the tick had nothing to say *what* to restart and
+        # `start`'s default turned every retried probe into a download.
+        self._intended_kind[job_id] = session_kind
         # The tick is what will notice; without this the timer may not be running at all.
         self._timer.start()
 
@@ -2011,7 +2083,12 @@ class DownloadManager(QObject):
                 ),
                 # `partial` rather than a lambda with a default argument: the latter is a
                 # late-binding workaround mypy cannot type, and this loop rebinds `job_id`.
-                then=partial(self._start_when_free, job_id),
+                # The kind is the one that failed (`T083-R1`), read back rather than defaulted.
+                then=partial(
+                    self._start_when_free,
+                    job_id,
+                    self._intended_kind.get(job_id, SessionKind.DOWNLOAD),
+                ),
             )
 
     def _settled(self, job: Job, build: Callable[..., Job], *arguments: Any) -> Job | None:

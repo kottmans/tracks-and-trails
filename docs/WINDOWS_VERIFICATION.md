@@ -318,8 +318,25 @@ which is exactly the question being asked — so the size is the price of an ans
 Dumps already written are left behind deliberately; delete them yourself when the investigation is
 over.
 
-### What CI does with them
+### What CI does with them — metadata only
 
-The `windows desktop` job and `t074-repeat` both copy any dump into `reports/crashdumps/` before
-their evidence upload. Both steps are `if: always()` and `continue-on-error: true`: **no dump is the
-normal case and must never redden the gate.** A job that finds nothing says so and stays green.
+**No dump is ever uploaded** (`T092-R1`). Both `STARBASE` jobs write `reports/crashdumps.txt`
+naming any dump written **during that run**, with its size and timestamp, and leave the dump on the
+machine for you to fetch deliberately.
+
+Three reasons, and the first version of this got all three wrong:
+
+- **WER is keyed by executable *file name*.** `python.exe` is every Python process under your
+  account, not this project. A dump here is *not by itself evidence of `T-074`* and the report says
+  so in as many words.
+- **Stale dumps destroy attribution.** The folder persists, so an upload with no time filter would
+  re-upload the deliberate proof dump on every later run and announce a recurrence that never
+  happened. The jobs stamp their start time and report only what was written after it.
+- **A full memory dump can carry another program's heap**, and a CI artifact is a copy of it
+  somewhere else. Metadata leaves the machine; the dump does not.
+
+Both steps are `if: always()` and `continue-on-error: true`: **no dump is the normal case and must
+never redden the gate.** A job that finds nothing says so and stays green.
+
+If you want dumps narrowed to this project, copy the interpreter to a distinct file name and point
+WER at that. Noted rather than done — it changes how the suite is launched.

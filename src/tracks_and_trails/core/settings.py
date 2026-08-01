@@ -239,6 +239,23 @@ def load(path: Path | None = None) -> SettingsFile:
     except tomllib.TOMLDecodeError as error:
         # `tomllib`'s message carries the line and column, which is the whole value of reporting.
         return SettingsFile(Settings(), SettingsProblem(target, str(error)))
+    except UnicodeDecodeError as error:
+        # **Decoding fails before parsing can** (`T102-R1`). `tomllib.load` reads bytes and decodes
+        # them as UTF-8 first, so a file saved in another encoding — or a truncated multi-byte
+        # sequence from a partial write — raises here and never reaches the TOML parser. It is not
+        # a `TOMLDecodeError` and not an `OSError`, so it escaped both branches and **aborted
+        # composition**: an existing unusable settings file stopped the application starting, which
+        # is the opposite of what `ARC-008` and this function's never-raises contract promise.
+        #
+        # Reported like any other unusable existing file, keeping the codec and the byte offset —
+        # they are what tells somebody which editor wrote it and where to look.
+        return SettingsFile(
+            Settings(),
+            SettingsProblem(
+                target,
+                f"The file is not valid UTF-8: {error.reason} at byte {error.start}.",
+            ),
+        )
 
     table = document.get(_TABLE)
     if table is None:

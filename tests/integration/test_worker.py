@@ -323,8 +323,18 @@ def test_a_completely_unimportable_ytdlp_raises_rather_than_returning_nothing() 
 # --- session outcomes (T-011's grammar) -------------------------------------------------------
 
 
-def fake_extract(info: dict[str, Any]) -> Any:
-    """Replace extraction with a recorded result, leaving the rest of the worker real."""
+def fake_extract(info: dict[str, Any], *, produces: str | None = None) -> Any:
+    """Replace extraction with a recorded result, leaving the rest of the worker real.
+
+    **A download that reports success also writes a file** (`T046-R1`). It did not until then, and
+    the worker tolerated it because the *reservation* was the file — so every fake here claimed a
+    successful download that had produced nothing, and `T-077`'s lesson (four of five options never
+    produced a file) was reproduced in the harness itself.
+
+    `produces` overrides the written name when a postprocessor would have changed the extension,
+    which is the case the reservation never covered. Left `None`, the file is written at the name
+    the worker asked for.
+    """
 
     def _extract(
         _adapter: Any,
@@ -336,7 +346,14 @@ def fake_extract(info: dict[str, Any]) -> Any:
         output_template: str | None = None,
         **_extra: Any,
     ) -> dict[str, Any]:
-        return dict(info)
+        result = dict(info)
+        if not probe_only and output_template is not None:
+            asked = Path(output_template)
+            written = asked if produces is None else asked.with_name(produces)
+            written.parent.mkdir(parents=True, exist_ok=True)
+            written.write_bytes(b"fake media")
+            result.setdefault("requested_downloads", [{"filepath": str(written)}])
+        return result
 
     return _extract
 
@@ -627,6 +644,12 @@ def test_the_preview_equals_the_path_the_download_actually_uses(
     ) -> dict[str, Any]:
         if probe_only:
             return dict(info)
+        # Writes what it reports (`T046-R1`): the claim moves the produced file, so a download
+        # that reports a path it never wrote is now correctly a failure rather than a success.
+        assert output_template is not None
+        written = Path(output_template)
+        written.parent.mkdir(parents=True, exist_ok=True)
+        written.write_bytes(b"fake media")
         return {**info, "requested_downloads": [{"filepath": output_template}]}
 
     monkeypatch.setattr(worker_module, "_extract", extract_reporting_its_target)
@@ -943,6 +966,13 @@ def _run_download(
             .module.YoutubeDL({"outtmpl": output_template, "quiet": True})
             .prepare_filename(info)
         )
+        # **And writes the file** (`T046-R1`). It did not before, and the worker did not notice
+        # because the reservation was itself a file — so these tests asserted a successful download
+        # that had produced nothing. The claim now moves what was produced, so producing nothing
+        # is correctly a failure.
+        written = Path(rendered)
+        written.parent.mkdir(parents=True, exist_ok=True)
+        written.write_bytes(b"fake media")
         return {**info, "requested_downloads": [{"filepath": rendered}]}
 
     monkeypatch.setattr(worker_module, "_extract", extract_reporting_its_target)
@@ -1510,3 +1540,121 @@ def test_a_download_that_fails_releases_its_reservation(
         "a failed download left its zero-byte reservation in the user's download folder, so a "
         "retry would be handed Clip (2).mp4"
     )
+
+
+# --- T046-R1: the file that survives conversion is the one that must be claimed -------------
+
+
+def test_a_postprocessor_that_changes_the_extension_never_overwrites_an_existing_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Critical finding, at the worker seam.
+
+    `%(ext)s` renders `webm`, so the old code reserved `Clip.webm` — and the MP3 extractor then
+    wrote `Clip.mp3` **over the user's existing `Clip.mp3`**, because `O_EXCL` never covered the
+    name that survived conversion. `overwrites=True` was documented as safe on the strength of a
+    reservation that was for a different file.
+    """
+    theirs = tmp_path / "Clip.mp3"
+    theirs.write_bytes(b"the user's own recording")
+
+    monkeypatch.setattr(
+        worker_module, "find_ffmpeg", lambda **_: FfmpegReport(path=None, source="absent")
+    )
+    monkeypatch.setattr(
+        worker_module,
+        "_extract",
+        fake_extract(
+            {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "webm", "format_id": "webm"},
+            produces="Clip.mp3",
+        ),
+    )
+    monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: tmp_path / "Clip.webm")
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(
+        SessionKind.DOWNLOAD, "job-1", request_for(tmp_path, format_selector="best"), queue
+    )
+
+    succeeded = next(m for m in drain(queue) if isinstance(m, Succeeded))
+    assert theirs.read_bytes() == b"the user's own recording", (
+        "the download replaced a file the user already had — the reservation covered the "
+        "pre-conversion name and the postprocessor wrote past it"
+    )
+    assert Path(succeeded.output_path) != theirs
+    assert Path(succeeded.output_path).exists()
+    assert Path(succeeded.output_path).suffix == ".mp3", (
+        "the claimed name kept the template's extension rather than the one that was produced"
+    )
+
+
+def test_two_downloads_converting_to_one_name_get_two_files(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The concurrent half of the same finding.
+
+    Two jobs whose *post-processed* names collide are the case the reservation never saw: their
+    pre-conversion names differ, so nothing contended, and both then wrote `Clip.mp3`. Run in
+    sequence here because the claim is about the claim being atomic per name, which
+    `reserve_output_path` already proves across processes for the pre-conversion case.
+    """
+    monkeypatch.setattr(
+        worker_module, "find_ffmpeg", lambda **_: FfmpegReport(path=None, source="absent")
+    )
+    monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: tmp_path / "Clip.webm")
+
+    written: list[Path] = []
+    for job_id in ("job-1", "job-2"):
+        monkeypatch.setattr(
+            worker_module,
+            "_extract",
+            fake_extract(
+                {
+                    "title": "Clip",
+                    "webpage_url": "https://e.com/x",
+                    "ext": "webm",
+                    "format_id": "webm",
+                },
+                produces="Clip.mp3",
+            ),
+        )
+        queue: Queue[Any] = Queue()
+        worker_module.run_session(
+            SessionKind.DOWNLOAD, job_id, request_for(tmp_path, format_selector="best"), queue
+        )
+        succeeded = next(m for m in drain(queue) if isinstance(m, Succeeded))
+        written.append(Path(succeeded.output_path))
+
+    assert written[0] != written[1], (
+        f"both downloads claimed {written[0]}; the second replaced the first"
+    )
+    assert all(path.exists() for path in written)
+
+
+def test_the_staging_directory_does_not_outlive_the_download(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A private directory in the user's downloads folder must not accumulate.
+
+    Asserted on the folder rather than on the cleanup call, because what the user sees is the
+    folder — and `_discard_staging` deliberately swallows its own failures.
+    """
+    monkeypatch.setattr(
+        worker_module, "find_ffmpeg", lambda **_: FfmpegReport(path=None, source="absent")
+    )
+    monkeypatch.setattr(
+        worker_module,
+        "_extract",
+        fake_extract(
+            {"title": "Clip", "webpage_url": "https://e.com/x", "ext": "mp4", "format_id": "mp4"}
+        ),
+    )
+    monkeypatch.setattr(worker_module, "_validated_target", lambda *a, **k: tmp_path / "Clip.mp4")
+    queue: Queue[Any] = Queue()
+
+    worker_module.run_session(
+        SessionKind.DOWNLOAD, "job-1", request_for(tmp_path, format_selector="best"), queue
+    )
+
+    leftovers = [p for p in tmp_path.iterdir() if p.name.startswith(worker_module.STAGING_PREFIX)]
+    assert leftovers == [], f"staging directories survived the download: {leftovers}"

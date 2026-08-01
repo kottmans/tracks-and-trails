@@ -21,7 +21,13 @@ so the broken mechanism looks correct. Racing starts are the case, which is why 
 An atomic, kernel-backed exclusive lock on a file derived from the resolved database path:
 
 - **POSIX** — `fcntl.flock(LOCK_EX | LOCK_NB)`.
-- **Windows** — `msvcrt.locking(LK_NBLCK)`, the same non-blocking exclusive byte-range lock.
+- **Windows** — an **exclusive-access open**: `CreateFileW` with `dwShareMode = 0`, so a second
+  opener fails with `ERROR_SHARING_VIOLATION`.
+
+*(The Windows half was first written as `msvcrt.locking(LK_NBLCK)`, a one-byte range lock.
+`T087-R1`: that may be a defensible primitive, but **`ARC-006`'s amendment names an exclusive-access
+open**, and substituting a different mechanism in the one branch nothing can execute here is not
+the implementer's call to make silently. It is now the primitive the decision chose.)*
 
 Both are released **by the kernel when the holder dies**, which is the property a PID file cannot
 offer and the reason `ARC-006` rejected PID files in the first place. A stale lock file left by a
@@ -108,19 +114,17 @@ class InstanceLock:
         Non-blocking on both platforms deliberately: a launch that waited would look like a hang,
         and the answer to "somebody else has it" is to say so, not to queue behind them.
 
-        The file is opened (and created) before the lock is attempted, so a first run works with no
-        lock file present. Creating it is *not* the claim — the lock is — which is why two racing
-        launches can both create the file and only one can lock it.
+        A first run works with no lock file present: both platforms create it if it is absent.
+        **Creating it is not the claim** — the exclusive access is — which is why two racing
+        launches can both reach the file and only one can hold it.
         """
         if self._handle is not None:
             raise RuntimeError(f"this process already holds the lock on {self.database}")
 
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        handle = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o600)
         try:
-            _lock_exclusive(handle)
+            handle = _open_exclusive(self.path)
         except OSError as error:
-            os.close(handle)
             raise AlreadyRunningError(self.database) from error
 
         self._handle = handle
@@ -163,31 +167,67 @@ class InstanceLock:
 
 if sys.platform == "win32":  # pragma: no cover - exercised on STARBASE, not on Linux
 
-    def _lock_exclusive(handle: int) -> None:
-        """`msvcrt.locking` with `LK_NBLCK`: non-blocking exclusive byte-range lock.
+    def _open_exclusive(path: Path) -> int:
+        """Open `path` for exclusive access, per `ARC-006`'s amendment.
 
-        One byte at offset zero. Windows byte-range locks are mandatory and exclusive, and the range
-        need only be consistent between contenders — locking the whole file would mean choosing a
-        length for a file whose length is a diagnostic line.
+        `CreateFileW` with **`dwShareMode = 0`**: while this handle is open, no other process may
+        open the file at all, and a second launch fails with `ERROR_SHARING_VIOLATION`. That is the
+        atomic claim the amendment specifies — the kernel decides, and it releases the handle when
+        the holder dies, which is the property a PID file cannot offer.
 
-        Raises `OSError` when another process holds it, which is what `acquire` converts.
+        `OPEN_ALWAYS` creates the file if it is absent and opens it if not, so a first run works
+        with no lock file present. Creation is **not** the claim; the share mode is.
+
+        Returned as a C runtime file descriptor so the rest of this module — `os.write`,
+        `os.truncate`, `os.close` — is one implementation across both platforms.
         """
+        import ctypes
         import msvcrt
+        from ctypes import wintypes
 
-        msvcrt.locking(handle, msvcrt.LK_NBLCK, 1)
+        generic_read_write = 0x80000000 | 0x40000000
+        no_sharing = 0
+        open_always = 4
+        file_attribute_normal = 0x80
+        invalid_handle = -1
+
+        create_file = ctypes.windll.kernel32.CreateFileW
+        create_file.restype = wintypes.HANDLE
+        handle = create_file(
+            str(path),
+            generic_read_write,
+            no_sharing,
+            None,
+            open_always,
+            file_attribute_normal,
+            None,
+        )
+        if handle == invalid_handle or handle is None:
+            # Raises `OSError` carrying the Windows error code — `ERROR_SHARING_VIOLATION` when
+            # another instance holds it, which is what `acquire` converts to `AlreadyRunningError`.
+            raise ctypes.WinError(ctypes.get_last_error())
+        return msvcrt.open_osfhandle(handle, os.O_RDWR)
 
 else:
 
-    def _lock_exclusive(handle: int) -> None:
-        """`fcntl.flock` with `LOCK_EX | LOCK_NB`.
+    def _open_exclusive(path: Path) -> int:
+        """Open `path`, then take `flock(LOCK_EX | LOCK_NB)` on it.
 
-        `flock` rather than `fcntl.lockf`: `lockf`/POSIX record locks are released when *any*
-        descriptor for the file is closed in the process, which makes them unsafe in a program that
-        may open the same path elsewhere. `flock` is tied to the open file description, so the lock
-        lives exactly as long as the handle this class holds.
+        POSIX has no exclusive-*open* — `O_EXCL` is about creation, not access — so the two steps
+        are separate here where Windows fuses them into one. The guarantee is the same: an atomic,
+        kernel-held claim released when the process dies.
 
-        Raises `BlockingIOError` — an `OSError` — when another process holds it.
+        `flock` rather than `fcntl.lockf`: POSIX record locks are released when *any* descriptor
+        for the file is closed in the process, which makes them unsafe in a program that may open
+        the same path elsewhere. `flock` is tied to the open file description, so the lock lives
+        exactly as long as this handle.
         """
         import fcntl
 
-        fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        handle = os.open(path, os.O_RDWR | os.O_CREAT, 0o600)
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            os.close(handle)
+            raise
+        return handle

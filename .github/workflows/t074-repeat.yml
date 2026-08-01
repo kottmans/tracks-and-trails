@@ -47,6 +47,15 @@ jobs:
         shell: bash
 
     steps:
+      - name: Stamp the job start time
+        # `T092-R1`: the crash-dump report filters on this, so a dump from an earlier run or an
+        # unrelated process cannot be attributed to this one.
+        if: always()
+        shell: pwsh
+        run: |
+          "JOB_STARTED_AT=$([datetime]::UtcNow.ToString('o'))" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - uses: actions/checkout@v7
 
       # Same reasoning as the `windows desktop` job: this runner is a machine somebody uses, and
@@ -95,27 +104,50 @@ jobs:
             echo "failures:   $failures"
           } | tee "reports/t074-rate.txt"
 
-      - name: Collect any crash dump
-        # `T-092`: WER writes dumps outside the workspace, so they have to be fetched before the
-        # upload step can see them. **Never fails the job** — no dump is the normal case, and a
-        # green run that found nothing is exactly what this is meant to look like.
+      - name: Report any crash dump
+        # `T092-R1`: **metadata only, and only dumps this run could have produced.**
+        #
+        # The first version copied every `.dmp` in a persistent folder and uploaded it. Three
+        # problems, all real: WER is keyed by the executable *name*, so the folder collects any
+        # `python.exe` on the machine and not only this project; nothing cleared or time-filtered
+        # it, so a deliberate proof dump or a months-old T-074 dump would be re-uploaded on every
+        # later run and announced as a recurrence; and a **full memory dump of an unrelated
+        # process can carry that process's heap into a CI artifact**.
+        #
+        # So: report *that* a dump exists, with its name, size and timestamp, and leave the dump
+        # on STARBASE for deliberate retrieval by the maintainer. Nothing sensitive leaves the
+        # machine, and the causal claim is limited to what the timestamp supports.
         if: always()
         shell: pwsh
         continue-on-error: true
         run: |
           $folder = "$env:LOCALAPPDATA\CrashDumps\tracks-and-trails"
-          if (Test-Path $folder) {
-            $dumps = Get-ChildItem -Path $folder -Filter *.dmp -ErrorAction SilentlyContinue
-            if ($dumps) {
-              New-Item -Path reports/crashdumps -ItemType Directory -Force | Out-Null
-              $dumps | Copy-Item -Destination reports/crashdumps
-              Write-Host "Collected $($dumps.Count) dump(s) — T-074 may have recurred."
-            } else {
-              Write-Host "No crash dump: the normal case."
-            }
-          } else {
-            Write-Host "Dump capture is not armed on this machine (tools/windows/crash-dumps.ps1)."
+          New-Item -Path reports -ItemType Directory -Force | Out-Null
+          $report = "reports/crashdumps.txt"
+          if (-not (Test-Path $folder)) {
+            "Dump capture is not armed (tools/windows/crash-dumps.ps1)." | Set-Content $report
+            exit 0
           }
+          # Only dumps written after this job began. `$env:JOB_STARTED_AT` is stamped by the first
+          # step of the job, so anything older belongs to an earlier run or another process and
+          # says nothing about this one.
+          $since = [datetime]::Parse($env:JOB_STARTED_AT)
+          $fresh = Get-ChildItem -Path $folder -Filter *.dmp -ErrorAction SilentlyContinue |
+                   Where-Object { $_.LastWriteTime -ge $since }
+          if (-not $fresh) {
+            "No dump written during this run. This is the normal case." | Set-Content $report
+            exit 0
+          }
+          $lines = @("A crash dump was written during this run. It has NOT been uploaded.",
+                     "Retrieve it from $folder on STARBASE.", "")
+          foreach ($dump in $fresh) {
+            $lines += "{0}  {1:N0} bytes  {2:o}" -f $dump.Name, $dump.Length, $dump.LastWriteTime
+          }
+          $lines += ""
+          $lines += "A dump here is not by itself evidence of T-074: it means some python.exe"
+          $lines += "under this account faulted during the window, and WER is keyed by file name."
+          $lines | Set-Content $report
+          Write-Host ($lines -join "`n")
 
       - name: Upload every run
         if: always()

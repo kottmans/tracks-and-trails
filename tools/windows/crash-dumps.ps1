@@ -31,8 +31,18 @@
     address points into, which is the whole question here. `DumpCount` is the bound; lower it to 2
     if the disk is tight, and `-Remove` when the investigation is over.
 
-    **Scoped to one executable**, not to every process on the machine. WER's per-application key
-    means nothing else on STARBASE starts writing dumps because of this.
+    **Scoped as narrowly as WER allows, which is not very** (`T092-R1`). Its per-application key
+    matches on the executable *file name*, so `python.exe` means **every** Python process this user
+    runs — not only this project's suite. There is no narrower WER key. Two consequences, both
+    stated rather than discovered:
+
+    - A dump in this folder is **not by itself evidence of T-074**. It means some `python.exe`
+      under this account faulted. CI reports the timestamp so a dump can be attributed to a run,
+      and says exactly this in the report.
+    - **A full memory dump can contain another program's data.** CI therefore reports metadata and
+      **never uploads the dump**; retrieval is a deliberate act by the maintainer. If you want a
+      dump narrowed to this project, copy the interpreter to a distinct file name and point WER at
+      that instead — noted here rather than done, because it changes how the suite is launched.
 #>
 [CmdletBinding()]
 param(

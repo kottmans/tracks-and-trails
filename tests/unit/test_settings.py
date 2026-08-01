@@ -338,6 +338,22 @@ def test_a_malformed_file_is_reported_with_the_parser_s_own_words(tmp_path: Path
     )
 
 
+def test_a_non_utf8_settings_file_is_reported_instead_of_aborting_startup(tmp_path: Path) -> None:
+    """Invalid bytes are another way an existing TOML file cannot be parsed.
+
+    ``tomllib.load`` raises ``UnicodeDecodeError`` before its TOML parser can turn the failure into
+    ``TOMLDecodeError``.  The public contract is broader: ``load`` never raises for a file on disk.
+    """
+    target = tmp_path / "settings.toml"
+    target.write_bytes(b"[queue]\nconcurrency = \xff\n")
+
+    answer = load(target)
+
+    assert answer.settings == Settings()
+    assert answer.problem is not None
+    assert answer.problem.path == target
+
+
 def test_a_wrong_shaped_queue_section_is_reported(tmp_path: Path) -> None:
     """`ARC-008`: a file that parses but is not the shape this module writes discarded something.
 
@@ -390,16 +406,59 @@ def test_an_unreadable_file_is_told_apart_from_a_missing_one(tmp_path: Path) -> 
 
 
 def test_load_still_never_raises_for_any_of_them(tmp_path: Path) -> None:
-    """The property that makes a broken config file a non-fatal state (`ARC-008`)."""
+    """The property that makes a broken config file a non-fatal state (`ARC-008`).
+
+    **The non-UTF-8 row is `T102-R1`.** `tomllib.load` decodes bytes before parsing, so a file in
+    another encoding raised `UnicodeDecodeError` — neither an `OSError` nor a `TOMLDecodeError`,
+    so it escaped both branches and aborted composition. This matrix had no encoding case at all,
+    which is why nothing caught it.
+    """
     directory = tmp_path / "as-a-directory.toml"
     directory.mkdir()
+    latin1 = tmp_path / "latin1.toml"
+    latin1.write_bytes(b"[queue]\n# caf\xe9\nconcurrency = 3\n")
+    truncated = tmp_path / "truncated.toml"
+    truncated.write_bytes(b"[queue]\nconcurrency = 3  # \xf0\x9f")
     for target in (
         tmp_path / "absent.toml",
         write(tmp_path, "concurrency = = ="),
         write(tmp_path, "[queue]\nconcurrency = 'x'\n"),
         directory,
+        latin1,
+        truncated,
     ):
         load(target)
+
+
+def test_a_file_in_another_encoding_is_reported_with_its_codec_and_offset(tmp_path: Path) -> None:
+    """`T102-R1`: a decoding failure is another way an existing file cannot be used.
+
+    The reason keeps the codec's own words and the byte offset, for the same reason the TOML branch
+    keeps line and column: they are what tells somebody which editor wrote the file and where to
+    look. A bare "could not be read" leaves them no better off than the silence this replaced.
+    """
+    target = tmp_path / "settings.toml"
+    target.write_bytes(b"[queue]\nconcurrency = 3\n# caf\xe9\n")
+
+    answer = load(target)
+
+    assert answer.settings == Settings(), "the fallback itself must not change"
+    assert answer.problem is not None, "a file in another encoding was silently replaced"
+    assert answer.problem.path == target
+    assert "UTF-8" in answer.problem.reason
+    # **The offset, precisely** — not "contains a digit", which "UTF-8" satisfies by itself. A
+    # mutation replacing the whole reason with "The file is not valid UTF-8." survived that
+    # weaker assertion.
+    try:
+        target.read_bytes().decode("utf-8")
+    except UnicodeDecodeError as expected:
+        offset = expected.start
+    else:  # pragma: no cover - the fixture above is deliberately undecodable
+        raise AssertionError("the fixture decoded cleanly, so this test proves nothing")
+    assert f"byte {offset}" in answer.problem.reason, (
+        f"reason {answer.problem.reason!r} does not say where the bad byte is; that offset is "
+        "what tells somebody which line their editor mangled"
+    )
 
 
 def test_the_summary_names_the_file_and_the_reason(tmp_path: Path) -> None:

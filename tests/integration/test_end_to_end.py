@@ -650,6 +650,60 @@ def test_each_preset_produces_the_file_it_promises(
         assert spin(lambda: composition.shutdown.finished, timeout=120)
 
 
+def test_audio_postprocessing_does_not_overwrite_an_existing_final_path(
+    qapp: QApplication,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+    hls_media_url: Callable[[], str],
+) -> None:
+    """T-046 must reserve the file that survives post-processing, not only its input name."""
+    from tracks_and_trails.downloader import worker, ytdlp_adapter
+    from tracks_and_trails.downloader.environment import ytdlp_candidates
+
+    downloads = tmp_path / "downloads"
+    composition = application.compose(
+        qapp,
+        database=tmp_path / "queue.db",
+        output_directory=downloads,
+        geometry_file=tmp_path / "window.toml",
+    )
+    try:
+        url = hls_media_url()
+        job_id = queue_one(composition, url, preset="Audio only (MP3)")
+        job = composition.store.get(job_id)
+        assert job is not None
+
+        resolved = worker._import_ytdlp(ytdlp_candidates(None))
+        options = ytdlp_adapter.build_options(
+            job.request, job.request.output_template, probe_only=True
+        )
+        with resolved.module.YoutubeDL(options) as ydl:
+            info = dict(ydl.extract_info(url, download=False) or {})
+        source_target = worker.preview_path(job.request, info, resolved)
+        protected = source_target.with_suffix(".mp3")
+        protected.parent.mkdir(parents=True, exist_ok=True)
+        protected.write_bytes(b"the user's existing mp3")
+
+        composition.manager.start(job_id)
+        assert spin(
+            lambda: (
+                (stored := composition.store.get(job_id)) is not None
+                and stored.status is JobStatus.COMPLETED
+            ),
+            timeout=180,
+        ), f"the MP3 download never completed — {why(composition, job_id)}"
+
+        stored = composition.store.get(job_id)
+        assert stored is not None and stored.output_path is not None
+        assert protected.read_bytes() == b"the user's existing mp3", (
+            "the source-extension reservation did not protect the MP3 produced by the postprocessor"
+        )
+        assert Path(stored.output_path) != protected
+    finally:
+        composition.shutdown.begin()
+        assert spin(lambda: composition.shutdown.finished, timeout=120)
+
+
 # --- 1. a download that completes (`REQ-012`, `REQ-014`) --------------------------------------
 
 

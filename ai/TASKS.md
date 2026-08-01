@@ -20,15 +20,14 @@ IDs are never reused. Completed tasks move to `ai/archive/` once they bury the l
 `COORD-R5` through `COORD-R11` are seven rounds of a hand-written summary drifting from the file it
 summarises; this one is transcribed from the actual `## ` sections so it starts correct.
 
-- **In Review:** `T-080`, `T-081`, `T-046`, `T-053` and `T-083`, all five delivered 2026-07-31.
-  None of them blocks another task; `T-053` gates `T-084`'s *approval* rather than its start.
-- **Ready, and nothing among them waits on anything:** `T-082`, `T-084`, `T-087` (promoted
-  2026-07-31 — it owns Phase 2 exit criterion 4), `T-100` (the history view, independent of the
-  queue), `T-102` (filed 2026-07-31 by `ARC-008`), plus `T-074` and `T-092`, which block nothing.
-  `T-092` needs maintainer consent before writing to `STARBASE`.
-- **Approved 2026-07-31:** `T-079`, at `da49a51`.
-- **Approved 2026-07-30:** `T-047`, `T-049`, `T-050`, `T-078`, `T-085`, `T-089`, `T-091`, `T-093`,
-  `T-094`, `T-095`, `T-096`, `T-097`, `T-098`.
+- **In Review:** `T-081`, `T-046`, `T-083`, `T-102` and `T-092` — all corrected 2026-08-01 after
+  the batch review and awaiting a focused re-review. `T-092` is *prepared*, not complete: three of
+  its criteria need `STARBASE`.
+- **Blocked:** **`T-087`**. Its Windows primitive now matches `ARC-006` but has never executed;
+  `A-004` stays unverified and **Phase 2 exit criterion 4 is blocked with it**.
+- **Approved 2026-08-01** at `05e5312`: `T-080`, `T-053`, `T-099`, `T-101`, `T-103`.
+- **Ready, and nothing among them waits on anything:** `T-082`, `T-084`, `T-100`, plus `T-074`,
+  which blocks nothing. `T-084`'s *approval* waited on `T-053`, which is now approved.
 - **All three Phase 2 planning gates are clear.** `P2PLAN-R2` at `f858da9`; `P2PLAN-R1` and
   `P2PLAN-R3` at `8306378`. `ARC-007` decides the settings surface, `UX-001` the pause semantics.
 - **No open questions are outstanding.** The last one — whether a corrupt `settings.toml` should
@@ -90,240 +89,13 @@ both while every status and section agreed. The invariant test cannot see that, 
 written by hand for exactly that reason. It said "Empty as of 2026-07-30" until `T-079` landed
 here, which is the drift it is written to make visible.)*
 
-### T-080 — Queue-level pause and resume; per-job cancel, retry and remove
-
-**Status:** **In Review — corrected 2026-08-01, awaiting re-review.** Changes were requested at
-`3fed547` on three findings — `T080-R1` (High), `T080-R2` (High) and `T080-R3` (Medium); all three
-are addressed below. Released by `T-079`'s approval at `da49a51`;
-rewritten from `UX-001` on 2026-07-30 (`P2PLAN-R1`). **Both maintainer calls were taken 2026-07-31**
-and are recorded in place below: the unreachable `PAUSED` edges are **removed**, and `P2PLAN-R7`'s
-manual-retry ordering is **confirmed** — as a maintainer decision, not as something `P2PLAN-R1`
-settled. **Fourteen mutations run; all fourteen killed**, nine against the queue and persistence
-layers and five against the controls. One of the fourteen **survived its first run** and the test
-was wrong, not the code — see the mutation table.
-*(This read "Proposed — … **Not released by `T-078`:** it waits on `T-079` as well", then "Ready …
-two maintainer calls are still open", then "Ready and startable".)*
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 2
-**Depends on:** `T-078`, `T-079`
-**Relevant context:** **`UX-001`** (the canonical pause and remove semantics, with rationale and
-reopening condition), `REQ-015` **as amended**, `T-051`, `core/job_state.py`, `T036-R1`
-**Affected surfaces:** `downloader/manager.py`, `ui/`, possibly `core/job_state.py` (the `PAUSED`
-edges — see below)
-**Risk:** Medium — every one of these is a state transition plus an effect, which is `T036-R1`
-
-#### Scope
-
-**Two different things, and conflating them is what `P2PLAN-R1` reported.** This task delivers:
-
-| Surface | Actions | Granularity |
-|---|---|---|
-| The queue | pause, resume | **Queue-level** (`UX-001`) |
-| A job | cancel, retry, remove | **Per job** (`REQ-015` as amended) |
-
-The previous version of this entry was titled *"…per job"*, quoted the pre-amendment `REQ-015` as
-though it still governed, and then described queue-level behaviour in its acceptance criteria. An
-implementer reading it received mutually exclusive instructions from the two halves.
-
-**Pause drains the queue; it does not stop a download.** In-flight work finishes, nothing new
-starts, resume takes work again. `UX-001` holds the reasoning and the rejected alternatives; the
-short version is that every alternative buys a half-written file and a rule about its lifetime, in a
-phase where `REQ-017`'s resume does not exist yet.
-
-**Remove takes the job out of the queue and never deletes a file.** Removing a running job cancels
-it first. Nothing this application deletes from disk, in this phase, by this route.
-
-#### The `PAUSED` edges — **settled 2026-07-31: remove both**
-
-`core/job_state.py`'s `_TRANSITIONS` carries `RUNNING → PAUSED` and `PAUSED → RUNNING`, with a
-comment explaining why resume returns to `RUNNING` rather than `READY`. **Under `UX-001` no job ever
-enters `PAUSED`, so both edges are unreachable.**
-
-`UX-001` assigned the choice here — remove them, or record why a state nothing reaches is kept —
-and the maintainer took it on 2026-07-31: **both edges are removed, and `PAUSED` with them if
-nothing else references it.** An unreachable state reads as capability without being it, which is
-`ai/TESTING.md` §13's shape one layer up from a test. `REQ-017`'s partial-download resume in Phase 3
-was the argument for keeping them and is not persuasive in advance: it can add the edges its own
-semantics need, rather than inheriting a guess made a phase early — and a guess is what they are,
-since nothing has ever traversed them.
-
-**This is a change to an approved state machine, so it is `T-080`'s to make and not to assume.**
-The removal must be asserted, not just performed: driving `RUNNING → PAUSED` has to raise the
-transition error, and the criterion below that no job reaches `PAUSED` is what proves the removal
-did not simply relocate the problem.
-
-*(Superseded, kept because the amendment is the point: this section used to argue that `REQ-015`
-"says otherwise" and that an amendment was needed. That amendment landed on 2026-07-29 — `REQ-015`
-now reads queue-level and cites `UX-001` — so the conflict this described no longer exists. The
-pre-amendment wording is preserved in `REQ-015`'s own parenthetical and in `UX-001`.)*
-
-#### Acceptance criteria
-
-- Each action goes through the manager, not through the store — `T036-R1` is what it costs when a
-  caller writes a status change directly and nothing announces it
-- Cancel still meets its 2-second budget under a saturated pool, not just an idle one
-- **Pause and resume act on the queue, and the assertion says so:** with the pool saturated, pausing
-  lets every in-flight session finish and starts none of the waiting jobs; resuming starts them. A
-  test that pauses a single job proves the wrong contract
-- **No job reaches `PAUSED`** — asserted against the stored status, not inferred from the UI. This is
-  the observable half of the decision above
-- **No partial file exists as a result of pausing** — asserted by looking at the output directory,
-  since that is the whole reason for this shape rather than a happy consequence of it
-- Remove takes the job out of the queue and leaves every file on disk untouched, asserted by looking
-  at the directory rather than by trusting the code path
-- Removing a running job cancels it first, within the same 2-second budget
-- **`P2PLAN-R7` — confirmed 2026-07-31 by maintainer decision:** *"manual retry re-enters the queue
-  at the back and does not jump jobs that have not run."* Asserted with jobs that have never run
-  waiting behind the retried one, since a rule about ordering that is only tested on an empty queue
-  is not tested. **Its provenance is recorded rather than smoothed over:** it arrived with the
-  `P2PLAN-R1` correction and was **not part of it** — `UX-001` decides pause and remove, not retry
-  order; `REQ-018` requires retry without ordering it; and `T-083`'s no-jump criterion is explicitly
-  about *automatic* retries. It is confirmed as the manual-retry consequence of the scheduling order
-  `T-078` records, and it is **not** settled by `P2PLAN-R1`. `T-083` shipped the automatic half on
-  2026-07-31, so confirming this makes the two halves agree instead of leaving manual retry
-  unstated
-
-#### Out of scope
-
-- Resuming a *partial download* from disk (`REQ-017`, Phase 3). Phase 2's resume restarts
-
-#### What was built, 2026-07-31
-
-**Evidence.** `ruff check`, `ruff format --check`, `mypy src` and `mypy --platform win32 src`
-clean; full Linux suite **1694 passed / 11 skipped / 2 deselected** after the 2026-08-01
-corrections. Fourteen mutations, all killed, tree hash identical before and
-after each battery. No CI run — see "Not covered" below.
-
-**`JobStatus.PAUSED` is gone, not merely unreferenced.** The maintainer decision was to remove the
-two edges; removing the *member* is what makes that checkable. A member left behind with no
-transitions still lets `replace(job, status=PAUSED)` build a job nothing can move, so the enum is
-asserted directly — `not hasattr(JobStatus, "PAUSED")` — beside the stored-status assertion. Two
-documents that explained the exclusion (`repositories.py`'s `INTERRUPTED_ON_STARTUP` comment, a
-`test_persistence.py` docstring saying `PAUSED` "is meant to survive a restart") described a state
-nothing could reach, and both were corrected rather than left standing.
-
-**Pause is one flag on the scheduler, and the guard is in one place.** `_fill_free_slots` is the
-single point where a waiting job becomes a running one, so the check lives there rather than at the
-tick, `set_concurrency` and `resume` separately — three chances to forget it, and the tick is the
-one that fires on its own. `_start_when_free` carries the second half, because a retry that took
-the direct path would restart a `NETWORK` failure while the user had the queue paused.
-
-**A direct `start()` is deliberately *not* paused**, and that absence has its own test. The
-add-URL dialog probes when the user types a URL; refusing it silently would hang the dialog on
-"Probing …". An absence nothing asserts is indistinguishable from an oversight.
-
-**Removal is a delete, not a status**, and it waits for the process. `CANCELLED` is a job that
-stopped and is still in the queue; removal is a job that is not in the queue. Deleting the row when
-the cancel is *asked for* would leave a live worker whose next message reaches `_require` and finds
-nothing — so `remove()` records the intent, `cancel()` owns the stopping, and `_release` performs
-the delete once the tree is reaped and the pump has returned. The waiting list is cleared
-synchronously, because the tick that fires while the delete is in flight reads it.
-
-**Manual retry is renumbered rather than re-sorted.** `_next_waiting` already orders automatic
-retries last using `Job.attempts`, and reusing that fails here: `with_another_attempt` is spent by
-automatic retry only, so a first manual retry would sort as "never run". Writing a fresh tail
-`queue_position` also keeps the table honest — a scheduling rule the column disagrees with is
-`T-075`'s shape, and `T-081`'s criterion one task early. The tail is allocated **inside** the
-write's transaction, because `queue_position` carries a `UNIQUE` index and two callers computing
-`MAX + 1` would collide rather than tie.
-
-| Mutation | Killed by |
-|---|---|
-| A paused queue still fills free slots | the saturated-drain test |
-| A paused queue still starts a job asked to wait | the resume and partial-file tests |
-| Resume clears the flag but takes no work | the resume test |
-| Remove leaves the job on the waiting list | the removed-waiting-job test |
-| A removed running job's row is never deleted | the running-removal test |
-| Manual retry re-queues in place | both retry-ordering tests |
-| `JobStatus.PAUSED` is restored | the enum assertion |
-| The repository re-queues without allocating a tail | `test_requeue_at_end_allocates_a_fresh_tail_position` |
-| Removal deletes nothing | `test_remove_deletes_the_row_and_reports_whether_there_was_one` |
-| Reflecting the pause state emits back at the manager | the round-trip test |
-| The pause action reports on `triggered`, not `toggled` | the reports-once test |
-| Remove starts enabled with nothing selected | the selection test |
-| The Remove handler skips its own selection check | the same, **after correction** |
-| The queue actions are built without a control bar | the bare-window test |
-
-**One mutation survived its first run, and the test was at fault.** "The Remove handler skips its
-own selection check" survived because the test called `action.trigger()` while the action was
-disabled — and `QAction.trigger()` on a disabled action is a no-op, so the handler never ran. The
-assertion was passing on Qt's behaviour rather than on this window's. Corrected by enabling the
-action first, which reproduces the state the guard actually exists for: the enabled state and the
-table's selection disagreeing, one stale signal or one shortcut apart. **This is the class the
-Phase 0 reviews returned repeatedly** — a property asserted more confidently than it was tested —
-and it was found by running the mutation rather than by reading the test.
-
-**And one test was intermittent, which only the full suite showed.** The no-`PAUSED` test first
-snapshotted whatever status the session happened to hold and asserted pause did not change it. That
-passes alone and fails under load: `child_downloading_forever` walks `PROBING → READY → RUNNING`,
-so the pipeline's own next step can land between the two reads — it failed once at
-`RUNNING is PROBING` in a full run after passing in isolation. Corrected to wait for `RUNNING`, the
-status that worker settles at, so any later change is one pause caused. Re-run five times green and
-the mutation re-confirmed killed. **Recorded rather than quietly fixed:** a test that passes alone
-and fails in the suite is a test whose green was not evidence, and the first version of this entry
-would have claimed fourteen clean kills on the strength of it.
-
-#### Corrections, 2026-08-01 — `T080-R1`, `T080-R2`, `T080-R3`
-
-**`T080-R1` — the pause guard was on the scheduler, and `start()` walked past it.** Pause gated
-`_fill_free_slots` and `_start_when_free`, but not the public entry point. The add-URL dialog calls
-`start(job_id)` after a probe resolves and that parameter defaults to `SessionKind.DOWNLOAD`, so
-pressing Add while paused began a download immediately — against the one thing pause promises.
-
-**My own test protected the defect.** `test_pause_does_not_refuse_a_probe...` described a probe in
-its docstring and called `start("job-1")`, taking the same default. It therefore asserted that a
-paused queue starts a *download* and called that the probe exemption. The reviewer split the pair;
-both cases are now explicit and the download case is a negative.
-
-**And the corrected test was still weak.** Its assertion read `active_job_ids()`, which by design
-includes jobs merely *waiting* for a slot (`T078-R1`) — so a probe the guard had wrongly parked
-would still have appeared in it and the assertion would have passed while the dialog hung. Found by
-running the over-application mutation, which **survived** the first battery. It asserts occupancy
-now.
-
-A download is **parked, not refused**: the job is already durably `QUEUED`, so adding it to the
-waiting list means resume starts it, which is what somebody who queued work while paused meant.
-
-**`T080-R2` — `job_removed` had zero receivers.** Removal reached the writer and deleted the row,
-and the row stayed on screen indefinitely. `QueueModel` connected `progress` and `job_changed`
-only: those announce a job that still exists in a new state, and no amount of per-job news can say
-that the *set* of jobs changed. Now connected, with `queue_reordered` and `queue_cleared` (see
-`T-081`), through one slot — what all three mean to this table is identical.
-
-**`T080-R3` — `ARCHITECTURE.md` §5 still drew `RUNNING → PAUSED → RUNNING`.** The code was
-corrected and the canonical architecture was left advertising per-job pause after the product had
-removed it, while `core/job_state.py` described itself as transcribed from that diagram. §5 is
-rewritten, with the removal and its `REQ-017` reopening condition recorded. The same pass corrected
-"(attempts incremented)" beside the retry edge: only *automatic* retry spends an attempt.
-
-| Mutation | Killed by |
-|---|---|
-| Pause stops gating a direct `DOWNLOAD` start | the paired download negative |
-| The guard over-applies and swallows a probe too | the probe case, **after correction** |
-| The table stops hearing about removal | the composed remove regression |
-
-**One mutation survived its first run**, and it was the test's fault rather than the code's — see
-`T080-R1` above. That is the second time in two days this task has been caught asserting on
-`active_job_ids()` where occupancy was meant; the accounting split `T078-R1` introduced is easy to
-read past, and both tests now say which one they mean and why.
-
-#### Not covered, stated rather than implied
-
-- **Windows runtime.** Nothing here is platform-specific and `mypy --platform win32` is clean, but
-  no Windows job has executed a step since 2026-07-30 (`STATUS.md`), so this is reasoned and not
-  measured.
-- **The pause control against a real pool.** The toolbar tests drive the action with injected
-  handlers and the manager tests drive the queue directly; the two are wired in `app.py` and that
-  seam is covered only by `mypy` and by composition's own launch test.
-
----
-
 ### T-081 — Reorder pending jobs, and clear completed ones
 
-**Status:** **In Review — corrected 2026-08-01, awaiting re-review.** Changes were requested at
-`3fed547` on three findings — `T081-R1` (High), `T081-R2` (High) and `T081-R3` (Medium); all three
-are addressed below. Released by `T-079`'s approval at `da49a51`, which
+**Status:** **In Review — corrected again 2026-08-01, awaiting re-review.** `T081-R2` and
+`T081-R3` are Resolved. **`T081-R1` stayed open** through the first correction — the barrier went
+on `_fill_free_slots` and `_start_when_free` and the public `start()` walked past it, which is the
+untested third path I named in my own handoff. Closed now, with admission re-decided from the
+durable order rather than from who asked first. Released by `T-079`'s approval at `da49a51`, which
 owns the view the reordering acts on. **Thirteen mutations run; all thirteen killed.** One adjacent
 defect was found and **filed rather than fixed** (`AGENTS.md` §7) — `T-103`.
 *(This read "Proposed — **not released by `T-078`:** it waits on `T-079`", then "Ready — released
@@ -480,11 +252,38 @@ is the path a user actually takes to end up with nothing selected.
   `QUEUED`. I believe the single writer serialises this; it is **reasoned, not tested**, and it is
   the first thing I would ask a reviewer to attack.
 
+
+#### Correction, 2026-08-01 — `T081-R1`, still open after the first pass
+
+**The barrier went on the scheduler and the public entry point walked past it.** `_fill_free_slots`
+and `_start_when_free` were gated; `start(..., DOWNLOAD)` was not, and the add-dialog seam uses
+exactly that path. Starting a job by hand while a reorder was in flight admitted it against the
+positions the reorder was replacing. **This is the untested third path I named in my own handoff**
+as the thing I could not rule out — it was there.
+
+Both admission rules now sit on one condition in `start()`, with the PROBE exemption explicit and
+applying to both: a metadata probe neither depends on `queue_position` nor changes it.
+
+**Admission is also re-decided when the reorder settles**, which is the half a park alone does not
+give. A parked job was chosen against the *old* order, so honouring it as-is starts the old head
+immediately after the user said something else should go first — the same defect one step later.
+The jobs named in a settled reorder become candidates, and `_next_waiting` picks by the new
+positions. Only while something is already parked: a reorder of an idle queue is a rearrangement,
+not a request to start anything.
+
+| Mutation | Killed by |
+|---|---|
+| The public start ignores the reorder barrier | the reviewer's direct-start regression |
+| The public start guard swallows probes too | the probe exemption test |
+| A settled reorder does not re-decide admission | the same direct-start regression |
+
 ---
 
 ### T-102 — A settings file that cannot be read says so, instead of reverting in silence
 
-**Status:** **In Review — complete 2026-08-01.** Filed 2026-07-31 by `ARC-008`, which decided the
+**Status:** **In Review — corrected 2026-08-01, awaiting re-review.** `T102-R1`: a non-UTF-8
+file escaped as `UnicodeDecodeError` and aborted composition, breaking both `ARC-008` and the
+never-raises contract. Filed 2026-07-31 by `ARC-008`, which decided the
 question `T-078` deferred and `TASKS.md` carried as the last open one. **Eight mutations run; all
 eight killed.**
 *(This read "Ready — filed 2026-07-31 by `ARC-008` … Nothing blocks it".)*
@@ -592,310 +391,36 @@ test was corrected rather than the behaviour.
 - **A read-only config directory.** `save()` already swallows `OSError` and that is unchanged, but
   the combination — an unreadable file the user then cannot fix by saving over it — is not tested.
 
----
 
-### T-087 — Single-instance guard
+#### Correction, 2026-08-01 — `T102-R1`
 
-**Status:** **In Review — complete 2026-08-01.** Promoted from Proposed on 2026-07-31: nothing had
-blocked it since `ARC-006`'s amendment landed on 2026-07-29, and it sat there because nobody moved
-it — the same class as `T-079`'s stale `In Review`. **It owns Phase 2 exit criterion 4.**
-**The attach half is deliberately not built** — see the scope note below.
-*(This read "Proposed" from the day it was filed, then "Ready — promoted 2026-07-31".)*
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** nothing technical. Its `DECISIONS.md` entry exists: **`ARC-006`**, whose mechanism
-was **amended 2026-07-29** after `P2PLAN-R5` — implement the amendment, not the original
-**Relevant context:** **`ARC-006`** (the mechanism and its rationale), `A-004`, `DAT-001`,
-`ARC-005`, `OPS-004`
-**Affected surfaces:** `app.py`, a platform seam, `ai/DECISIONS.md`
-**Risk:** Medium — the failure it prevents is two writers on one database
+**`tomllib` decodes before it parses.** A file saved in another encoding — or truncated mid
+multi-byte sequence by a partial write — raises `UnicodeDecodeError`, which is neither an `OSError`
+nor a `TOMLDecodeError`. It escaped both branches and **aborted composition**: an existing unusable
+settings file stopped the application starting, which is the exact opposite of what `ARC-008` and
+this function's never-raises contract promise.
 
-#### Scope
-
-`A-004` assumes a single local user and **no concurrent instances against the same database**, and
-records itself as *unverified*, with enforcement named as a Phase 2 task. This is that task.
-
-The database is the reason. `ARC-005` puts every write on one writer thread *within a process*;
-two processes have two writer threads and no shared lock discipline.
-
-#### The mechanism — `ARC-006` **as amended 2026-07-29**; read the amendment first
-
-**`ARC-006` is the canonical record** (`P2PLAN-R2`). **Its original mechanism is withdrawn**
-(`P2PLAN-R5`): Qt documents that on Windows **two local servers can listen on the same pipe name at
-once**, so *connect-first-then-claim* is not exclusive and two simultaneous launches can both become
-servers — the two-writer state this task exists to prevent.
-
-**Ownership is now an atomic kernel lock** on a file derived from the resolved database path
-(`flock(LOCK_EX | LOCK_NB)` on POSIX, exclusive-access open on Windows), released by the kernel when
-the holder dies. **`QLocalServer` remains only the attach channel**, started after ownership is won.
-
-**This task's acceptance criteria must gate simultaneous starts, not just stale-owner recovery** —
-the withdrawn design passes a sequential test, which is how it survived being written down. See the
-amendment for what it changes.
-
-*(Superseded, kept because the sequence is the point — this read as the decided mechanism:)*
-
-**`QLocalServer` / `QLocalSocket`, named from the resolved database path.**
-
-- **Already Qt**, so no new dependency, and one code path compiles to a named pipe on Windows and
-  a Unix domain socket on Linux — two correct platform implementations rather than two guesses.
-- **It is a channel, not a flag.** That is what makes *attach* possible rather than only *refuse*:
-  a second launch can hand its URL to the first instance and raise its window. A lock file can
-  only say no.
-- **Crash behaviour decided it**, because that is the case the guard exists for. Windows destroys
-  a named pipe when its owning process dies. On Linux a killed process leaves the socket file, so
-  the protocol is *connect first; if the connection fails the owner is gone, remove the stale name
-  and become the server*. A PID lock file needs a liveness check and is wrong under PID reuse;
-  `flock` is robust but offers no channel.
-- **Named from the database path**, because `A-004` is about the database rather than the
-  application. Two instances against different databases harm nothing and must not be blocked.
-
-#### Acceptance criteria
-
-- A second launch either attaches to the running instance or refuses in its favour, and says which
-- **Two launches started simultaneously do not both win** (`P2PLAN-R5`). Racing starts, not a
-  sequential pair: the withdrawn `QLocalServer`-as-lock design passes the sequential test and fails
-  this one, because two servers may listen on one Windows pipe name at the same time
-- A stale lock left by a killed process does not permanently block startup
-- Verified on both platforms, `STARBASE` included
-- The mechanism and its crash behaviour are recorded in `ai/DECISIONS.md` with an ID
-- **The stale-socket path is tested by killing an instance**, not by deleting a file by hand: the
-  recovery has to work against the failure it was chosen for
-- Two instances against *different* databases both start
-
-#### Out of scope
-
-- Multi-user or networked access (`A-004` scopes it out)
-
-#### What was built, 2026-08-01
-
-**Evidence.** `ruff`, `ruff format`, `mypy src` and `mypy --platform win32 src` clean. New module
-`core/instance_lock.py`; 9 tests in `tests/integration/test_single_instance.py` and 2 in
-`test_composition.py`. Removing the lock call kills **3** of the 9 — the cross-process claim is
-genuinely exercised rather than asserted in-process.
-
-**An atomic kernel lock, per `ARC-006`'s amendment.** `fcntl.flock(LOCK_EX | LOCK_NB)` on POSIX,
-`msvcrt.locking(LK_NBLCK)` on Windows. Both are released **by the kernel when the holder dies**,
-which is the property a PID file cannot offer and the reason `ARC-006` rejected PID files.
-
-**`flock` rather than `lockf`.** POSIX record locks are released when *any* descriptor for the file
-closes in the process, so a program that opens the same path elsewhere silently drops its own lock.
-`flock` is tied to the open file description.
-
-**The lock file is never unlinked**, and that is a decision rather than an omission. Removing it
-races: another launch may have opened that same path and be about to lock it, and unlinking
-underneath them hands a lock on an orphaned inode to a process that thinks it owns the database. An
-abandoned file is inert because the *lock* is gone, which is the same reason a killed process leaves
-nothing to clean up. A test asserts the file still exists after a kill, so a future change that
-starts unlinking is caught rather than silently making the stale-path test vacuous.
-
-**Taken before `db.connect`.** Recovery runs on the next line and rewrites rows left `RUNNING`; a
-guard taken afterwards would let a second launch rewrite a live instance's in-flight jobs before
-refusing. **Released after the connection closes**, for the mirror reason.
-
-**Named from the resolved database path.** `A-004` is about the database, not the application, so
-two instances against different databases both start. `resolve()` matters: without it `./queue.db`
-and `/home/me/queue.db` would take two locks on one database.
+Treated as another unusable existing file, keeping the codec's own reason and the byte offset —
+they are what tells somebody which editor wrote it and where to look. **The never-raises matrix had
+no encoding case at all**, which is why nothing caught it; it now has two, including a truncated
+emoji.
 
 | Mutation | Killed by |
 |---|---|
-| No lock is taken at all | the refusal, racing and killed-holder tests (3 of 9) |
+| A non-UTF-8 file escapes as `UnicodeDecodeError` | the encoding tests and the never-raises matrix |
+| The decoding reason loses its offset | the offset assertion, **after correction** |
 
-#### Scope: the attach channel is not built
-
-`ARC-006` keeps `QLocalServer`/`QLocalSocket` as an **attach channel** — what lets a second launch
-hand its URL to the running instance and raise its window instead of merely refusing. **This task
-refuses.** The acceptance criterion is *"attaches to the running instance **or** refuses in its
-favour, and says which"*, and refusing-and-saying-which satisfies it; exit criterion 4 reads the
-same way.
-
-Stated as a choice rather than left as a gap: **`T-104`** owns the attach channel. A user who
-double-clicks a second time today gets a message box naming the running instance, not a hand-over.
-
-#### Not covered, stated rather than implied
-
-- **Windows.** The `msvcrt` branch is `# pragma: no cover` on Linux and has **never executed** —
-  `mypy --platform win32` type-checks it and nothing has run it. This is the half `ARC-006`'s
-  withdrawn design got wrong, so it is the half most worth running on `STARBASE`, and no CI job has
-  executed a step since 2026-07-30.
-- **`A-004` therefore stays unverified**, exactly as `ARC-006` says it must until this is tested on
-  both platforms. Linux is done; Windows is not.
-- **A read-only or full filesystem** where the lock file cannot be created. `acquire` would raise
-  `OSError` rather than `AlreadyRunningError`, and `run()` does not catch that.
-
----
-
-### T-103 — Cancelling a waiting job leaves its id on the pool's waiting list
-
-**Status:** **In Review — complete 2026-08-01.** Found by `T-081` on 2026-07-31 and filed rather
-than fixed inline (`AGENTS.md` §7); taken now on the maintainer's explicit instruction, knowing it
-edits `cancel()` inside a diff already with the reviewer. **`T-081`'s sweep is removed**, per this
-task's own fourth criterion. Three mutations run; all three killed.
-*(This read "Proposed — found by `T-081` on 2026-07-31 …".)*
-**Owner:** Implementer
-**Priority:** Low — no observed user-visible failure. It is filed because the *reason* it is
-harmless changed, not because it started misbehaving
-**Phase:** Phase 2
-**Depends on:** nothing. `T-078` created the waiting list; `T-080` and `T-081` both walk past this
-**Relevant context:** `downloader/manager.py` — `cancel`, `_discard_waiting`, `_fill_free_slots`,
-`_start_or_report`; `T-078`; `T036-R1`
-**Affected surfaces:** `downloader/manager.py`
-**Risk:** Low
-
-#### Scope
-
-`cancel(job_id)` on a job that is **waiting for a slot** — not running, not reserved — writes
-`CANCELLED` and returns. It never calls `_discard_waiting`, so the id stays on `_waiting`. When a
-slot opens, `_fill_free_slots` picks it, `_start_or_report` calls `start()`, and `start()` refuses
-it because a `CANCELLED` job is not startable. The refusal is reported through `start_rejected` and
-nothing breaks.
-
-**What changed is why that is safe.** It was safe because the row still existed, so the refusal was
-an ordinary "this job is cancelled". `T-081`'s clear-completed deletes cancelled rows, and the same
-path then reaches `_require` with an id that no longer resolves. `T-081` sweeps ids whose rows have
-gone, immediately after clearing, which closes the case it opened. It does not close the general
-one: a cancelled job still occupies a place in the waiting list until something happens to notice.
-
-**The general fix is one line in `cancel`,** and it is not taken here because `cancel` is covered by
-`REQ-015`'s budget tests and `T-080` is in review against its current shape. Changing it now would
-put an unreviewed edit under a task already handed to a reviewer.
-
-#### Acceptance criteria
-
-- Cancelling a waiting job drops it from `_waiting` **at the cancel**, asserted on the list rather
-  than inferred from nothing starting
-- `start_rejected` is no longer emitted for a job the user cancelled while it waited — asserted,
-  since the current behaviour emits it and a fix that merely stopped the start would leave the
-  signal
-- `is_idle` becomes true without waiting for a slot to open, for a queue whose only waiting job was
-  cancelled. This is the observable cost today: shutdown and the idle signal both count a job that
-  will never start
-- `T-081`'s sweep is re-examined once this lands — if `cancel` drops the id, the sweep may be
-  redundant, and a guard kept after its reason has gone is what `ai/TESTING.md` §13 is about
-
-#### Out of scope
-
-- The reservation path, which `T016-R1` already handles by withdrawal
-
-#### What was built, 2026-08-01
-
-**One line in `cancel()`, and one deletion in `clear_completed()`.** `cancel` now calls
-`_discard_waiting(job_id)`; `_settle_clear`'s sweep is gone.
-
-**The sweep had to go, and this task said so in advance.** Its fourth criterion: *"if `cancel`
-drops the id, the sweep may be redundant, and a guard kept after its reason has gone is what
-`ai/TESTING.md` §13 is about."* It is redundant — `remove()` and `clear_completed()` are the only
-paths that delete a waiting job's row, and both now drop the id from the list first, so nothing
-could reach the sweep.
-
-**`T-081`'s inverted test did its job.** It asserted the stale premise deliberately, with a message
-saying so, and failed the moment this landed:
-
-> `cancel now drops a waiting job, so this test's premise is stale — T-103 landed, and the sweep
-> below may be redundant (T-103's fourth criterion)`
-
-It is replaced by three tests of the new single mechanism rather than deleted quietly.
-
-**A mutation found a second gap and then disproved my fix for it.** Removing `_retry_at.pop` from
-`cancel()` survived the first battery, so I wrote a test for cancelling a job awaiting an automatic
-retry — and it raised `IllegalTransitionError`. **A job awaiting a retry is `FAILED`, and `FAILED`
-allows only `QUEUED`** (`T010-R3`: cancelling stops in-flight work, and a failed job has none). So
-that pop could never have run: the mutation survived because the line was unreachable, not because
-the test was weak. It is removed, with the reasoning in place, and the reachable path — `remove()`
-on a job awaiting a retry — is what the test now drives.
-
-| Mutation | Killed by |
-|---|---|
-| `cancel` stops dropping a waiting job | all three of the new tests |
-| `remove` stops dropping a pending automatic retry | the awaiting-retry test |
-| `remove` stops dropping a waiting job | `T-080`'s removed-waiting-job test |
-
-#### Not covered, stated rather than implied
-
-- **Windows.** Platform-neutral; no CI job has executed a step since 2026-07-30.
-- **Whether `FAILED → CANCELLED` should be legal.** `T010-R3` decided it should not and this task
-  did not reopen it, but "cancel a job that is waiting out its retry backoff" is a thing a user may
-  reasonably expect to work, and today the answer is Remove. Worth a decision if it comes up.
-
----
-
-### T-099 — Make the manager-boundary gate say which boundary failed
-
-**Status:** **In Review — complete 2026-08-01.** Each prohibition is now keyed to the decision
-behind it, and a failure reports one line per rule actually broken. A fourth test asserts every
-live prohibition has an explanation, so a rule added without one reads as unexplained rather than
-silently inheriting the first one listed.
-*(This read "Proposed".)*
-**Owner:** Implementer
-**Priority:** Low — enforcement is correct; the failure points at the wrong rule
-**Phase:** Phase 2 test infrastructure; blocks nothing
-**Depends on:** none
-**Relevant context:** `T097-R2`, `T-097`, `ARC-007`, `T-013`
-**Affected surfaces:** `tests/unit/test_manager_boundaries.py`
-**Risk:** Low — a future settings violation is caught, but its diagnostic sends the maintainer to
-the repository-injection rule instead of ARC-007
-
-#### Scope
-
-`T097-R1` split the manager-only settings prohibition from the persistence/sqlite rules shared by
-manager and result pump. The real-source assertion still combines their offenders under
-`test_the_manager_never_imports_persistence` and always explains repository injection. A real
-`core.settings` import therefore fails the correct gate with the wrong reason.
-
-Keep one read of each real module and the current per-module rule table, but report which rule was
-violated. Do not broaden ARC-007 back to `result_pump.py`.
-
-#### Acceptance criteria
-
-- A real manager settings import fails with an ARC-007/settings-injection diagnostic
-- A real manager or result-pump persistence/sqlite import fails with the T-013 repository diagnostic
-- Existing relative and absolute forbidden forms remain caught, and result-pump settings imports
-  remain permitted
-
----
-
-### T-101 — Gate the detail view's retry ETA reset independently
-
-**Status:** **In Review — complete 2026-08-01.** The scenario now proves a non-default ETA was
-drawn before asserting the reset — without which the assertion passes on a label that was never
-written — and asserts `etaValue` separately from `speedValue`. Its own criterion is met: deleting
-only `_eta.setText(UNKNOWN_TEXT)` makes the unmodified test fail, verified.
-*(This read "Proposed".)*
-**Owner:** Implementer
-**Priority:** Low — the production reset is correct; one sibling label is not independently gated
-**Phase:** Phase 2 test infrastructure; blocks nothing
-**Depends on:** none
-**Relevant context:** `T079-R3`, `T079-R1`, `T-079`, `ai/TESTING.md` §13
-**Affected surfaces:** `tests/ui/test_job_detail.py`
-**Risk:** Low — a future one-line regression can leave an obsolete ETA on a re-queued detail view
-
-#### Scope
-
-`T079-R1`'s correction resets both the speed and ETA labels when `FAILED → QUEUED`. The committed
-detail-view regression creates non-default values for both, but asserts only `speedValue`.
-Deleting only `_eta.setText(UNKNOWN_TEXT)` from production therefore left the entire 82-test
-detail-view file green even though the re-queued job still showed the failed attempt's ETA.
-
-Add the independent ETA assertion to the existing scenario. Do not change the already-correct
-production behavior or reopen T-079.
-
-#### Acceptance criteria
-
-- The scenario first proves a non-default ETA was drawn, so the reset assertion cannot pass from
-  the label's initial value
-- After `FAILED → QUEUED`, `etaValue` is asserted as `UNKNOWN_TEXT` independently of `speedValue`
-- Removing only `_eta.setText(UNKNOWN_TEXT)` makes the unmodified test fail
-
-#### Out of scope
-
-- Changing retry behavior or the production reset
+**One of my assertions was vacuous.** It read `any(ch.isdigit() for ch in reason)` to check the
+offset was present — and `"UTF-8"` satisfies that by itself, so a mutation replacing the whole
+reason survived. It now computes the expected offset and asserts it exactly.
 
 ---
 
 ### T-046 — Output path collision policy against the filesystem
 
-**Status:** **In Review — complete 2026-07-31.** Reservation is atomic (`O_CREAT | O_EXCL`),
+**Status:** **In Review — corrected 2026-08-01, awaiting re-review.** `T046-R1` was **Critical
+and real data loss**: the reservation covered the pre-postprocessor name, so an MP3 conversion wrote
+over a file the user already had. Corrected below. Reservation is atomic (`O_CREAT | O_EXCL`),
 because `ARC-002` makes the racing writers separate processes and a check-then-create between
 them is the hole itself. Nine mutations run; all nine killed.
 *(This read "Ready 2026-07-30. `T-034`, `T-045` and `T-013` are all Complete, and `T-078` makes
@@ -941,69 +466,56 @@ pushing it into the sanitizer would make it stateful and re-open `DAT-002`.
 - Which names are legal or reserved — settled by `T-034` and `T-045`
 - Resume semantics for a partially downloaded file, beyond not colliding with one
 
----
 
-### T-053 — Prove concurrent per-job log isolation
+#### Correction, 2026-08-01 — `T046-R1` (**Critical**, data loss)
 
-**Status:** **In Review — complete 2026-07-31.** Two real spawned workers, both live before
-either emits, interleaved through the production log queue. Four mutations run; all four killed.
-**`T-084` cannot be approved without this**, recorded there as a criterion on 2026-07-31
-(`P2PLAN-R4`).
-*(This read "Ready — the pool now permits two live sessions (`T-078`, approved 2026-07-30 at
-`0f9986f`)".)*
-**Owner:** Implementer
-**Priority:** Low — Phase 1's structural routing is correct; concurrency is the missing proof.
-*Low is about this task's own risk, not its urgency:* it now gates another task's approval
-**Phase:** Phase 2
-**Depends on:** `T-038` and **`T-078`**, which is the task that implemented `REQ-013` — named now
-that it exists, rather than described
-**Relevant context:** `T038-R2`; `ARCHITECTURE.md` §8; `REQ-013`, `REQ-019`;
-`ai/REVIEWS.md` (2026-07-27 T-019/T-038 focused correction re-review)
-**Affected surfaces:** `tests/integration/test_worker_logging.py`
-**Risk:** Low until concurrency exists; High if the pool ships without the proof
-**Review base:** the Phase 2 concurrency implementation head
+**The reservation covered a file the download did not write.** `%(ext)s` rendered `webm`, so
+`reserve_output_path` claimed `Clip.webm` — and the MP3 extractor then wrote `Clip.mp3` **over the
+user's existing `Clip.mp3`**. `overwrites=True` was documented as safe *because* the path was
+reserved, and the reserved path was a different file. A reviewer reproduced it against real yt-dlp
+and ffmpeg: an ID3 file replaced the user's bytes. Every extension-changing postprocessor had it,
+and two concurrent MP3 jobs raced for the same unclaimed final name.
 
-#### Scope
+**The download now happens in a staging directory and the real name is claimed afterwards.**
+Predicting the final extension was rejected: it is a function of yt-dlp's postprocessor chain, and
+a prediction that is wrong is this defect again with more code. So `_extract` writes into a private
+per-job directory where nothing of the user's can be, and `claim_output_path` reserves the *actual*
+produced name with `O_CREAT | O_EXCL` and `os.replace`s the file into it. The staging directory
+sits **inside the destination's own directory**, so the move is a same-filesystem rename rather
+than a copy of a multi-gigabyte file.
 
-Phase 1 runs one session at a time. `T-038` proves that worker records carry a job-id stamp and
-that a per-job handler rejects every other stamp, using two sequential jobs. That establishes
-per-job routing, but it cannot establish the concurrent cross-write property while the manager
-refuses to keep two sessions open.
+**A behaviour change, stated rather than absorbed:** a cancelled or failed download now leaves
+**nothing** in the user's folder, where it used to leave a `.part`. `REQ-017` (Phase 3, `T-113`) is
+where resuming a partial is decided and will have to say where partials live; a randomly named
+per-run directory is not resumable across restarts either way. The cancel test's `.part` assertion
+is replaced rather than deleted — what it actually established, that the worker unwound
+*cooperatively*, is carried by the worker's own "parent process cancelled" message.
 
-When Phase 2 first permits two live sessions, coordinate two real spawned workers so both
-per-job handlers are open at the same time. Have both workers emit interleaved, unique markers
-through the production log queue and prove that each file contains its own complete stream and
-none of the other job's.
+**Three test fakes were reporting successful downloads that produced no file**, and the worker did
+not notice because the *reservation* was itself a file. That is `T-077`'s lesson reproduced in the
+harness. They write now, so a download that produces nothing is correctly a failure.
 
-This is not the current `T038-R2` ordered-drain correction. `T-038` must already retain a
-worker's final emitted records and stop its listener without blocking the GUI thread before this
-follow-up becomes relevant.
-
-#### Acceptance criteria
-
-- Two real worker sessions are simultaneously active before either emits its test records
-- Their records are deliberately interleaved through the production worker-log queue
-- Each per-job log contains every marker its worker emitted and no marker from the other worker
-- The application log still contains both streams
-- Removing the job-id filter or stamp makes the test fail
-
-#### Out of scope
-
-- Implementing Phase 2 concurrency or its scheduling policy
-- Repairing the current single-session ordered-drain and non-blocking-shutdown defect in
-  `T038-R2`
+| Mutation | Killed by |
+|---|---|
+| Claim the template's name instead of what was produced | the existing-MP3 regression |
+| Overwrite the destination instead of claiming it | the existing-MP3 and concurrent-pair tests |
+| Leave the staging directory behind | the leftover-directory test |
 
 ---
 
 ### T-083 — Bounded retry with backoff, for network failures only
 
-**Status:** **In Review — complete 2026-07-31, with one decision outstanding.** The mechanism is
-built and gated; eight mutations run, all eight killed. **The bound and the backoff are
-provisional.** This task's own scope says they "need stating in `DECISIONS.md`, not choosing in
-code", and `AGENTS.md` §4 makes that file the Architect's — so `manager.py` carries them marked as
-awaiting ratification and a draft entry accompanies the review handoff. Only
-`RETRY_BACKOFF_SECONDS` needs changing if the maintainer picks different numbers: the bound is
-derived from its length, so the two cannot disagree.
+**Status:** **In Review — corrected 2026-08-01, awaiting re-review.** `T083-R1` (High): `_retry_at`
+held only `job_id -> deadline`, so the tick had nothing to say *what* to restart and `start`'s
+default turned a failed metadata **probe** into a `DOWNLOAD` — a transient preview failure began
+writing media nobody had confirmed. Corrected below.
+
+**The bound and the backoff are no longer provisional.** `UX-002` (2026-08-01) ratifies three
+attempts at 2s, 4s and 8s on `NETWORK` only, and `manager.py` cites it in place of the
+awaiting-ratification note. This task's own scope said they "need stating in `DECISIONS.md`, not
+choosing in code" (`AGENTS.md` §4 makes that file the Architect's), and they now are.
+*(This read "complete 2026-07-31, with one decision outstanding … the bound and the backoff are
+provisional" — the second half outlived `UX-002` by a day.)*
 *(This read "Ready — released 2026-07-30 by `T-078`'s approval at `0f9986f`".)*
 **Owner:** Implementer
 **Priority:** Medium
@@ -1034,6 +546,28 @@ will refuse identically, forever. The bound and the backoff both need stating in
 #### Out of scope
 
 - Retrying a partially downloaded file from where it stopped (`REQ-017`, Phase 3)
+
+
+#### Correction, 2026-08-01 — `T083-R1`
+
+**`_retry_at` remembered when, not what.** It held `job_id -> deadline`, so the tick had nothing to
+say which operation to restart and `_start_when_free` reached `start`'s default — `DOWNLOAD`. A
+transient failure while *previewing* a URL therefore came back as a download and began writing media
+the user had not confirmed. Every committed retry test started a `DOWNLOAD`, so none could tell.
+
+The failed session's kind is now carried from `_on_session_ended` through the retry and recorded in
+`_intended_kind` for any start that is deferred — behind pause, a slot, a reorder barrier or a
+backoff. `_start_or_report` reads it rather than defaulting.
+
+| Mutation | Killed by |
+|---|---|
+| The retry forgets which operation failed | the probe-stays-a-probe and no-output tests |
+| A deferred start always resumes as a download | the parked-probe test, **added after it survived** |
+
+**A second path was untested and a mutation found it.** `_perform_due_retries` passes the kind
+explicitly, so a retry that starts *immediately* keeps it either way; a retry parked behind a full
+pool is restarted by `_fill_free_slots`, which has no kind of its own. Every existing test
+exercised only the immediate path.
 
 ---
 
@@ -1559,6 +1093,28 @@ workflow.
 reporting registry keys as evidence. The keys are not the evidence; a dump that names a faulting
 module is. Until somebody runs the two commands in the document on `STARBASE`, the correct status
 is that the instrument is *ready to arm* and has never fired.
+
+
+#### Correction, 2026-08-01 — `T092-R1`
+
+**The prepared upload was unsafe before it had ever run.** Three problems, all real:
+
+- **WER is keyed by the executable's file name**, so `python.exe` collects *any* Python process
+  under that account, not this project. There is no narrower WER key. A dump in the folder is
+  therefore not by itself evidence of `T-074`, and the report now says exactly that.
+- **Nothing cleared or time-filtered the folder**, so the deliberate proof dump — or a months-old
+  one — would be re-uploaded on every later run and announced as a recurrence that never happened.
+  Both jobs now stamp their start time and report only what was written after it.
+- **A full memory dump can carry an unrelated process's heap**, and a CI artifact is a copy of it
+  somewhere else. **Nothing is uploaded now.** The jobs write `reports/crashdumps.txt` with the
+  dump's name, size and timestamp and leave the dump on `STARBASE` for deliberate retrieval.
+
+`docs/WINDOWS_VERIFICATION.md` gains the provenance and disclosure reasoning beside the disk cost,
+which is what it was missing. The narrower alternative — copy the interpreter to a distinct file
+name and key WER to that — is recorded rather than done, because it changes how the suite is
+launched.
+
+**Three acceptance criteria remain unmet and still need the machine.** Nothing here changes that.
 
 ---
 
@@ -2197,6 +1753,160 @@ because the file was deleted, is an ordinary thing to want.
 
 ## Blocked
 
+### T-087 — Single-instance guard
+
+**Status:** **Blocked — reviewed 2026-08-01, changes required before Windows verification.** The
+Linux implementation is coherent and its primitive now matches `ARC-006` (`T087-R1`, corrected
+below), **but the Windows branch has never executed.** This task's own criterion is both platforms,
+`ARC-006` says `A-004` stays unverified until then, and no CI job has executed a step since
+2026-07-30. **It owns Phase 2 exit criterion 4**, so that criterion is blocked with it.
+**Blocked on evidence, not on a decision** — `STARBASE` has to run simultaneous starts and
+killed-holder recovery. **The attach half is deliberately not built** (`T-104`).
+*(This read "Proposed", then "Ready — promoted 2026-07-31", then "In Review — complete
+2026-08-01".)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** nothing technical. Its `DECISIONS.md` entry exists: **`ARC-006`**, whose mechanism
+was **amended 2026-07-29** after `P2PLAN-R5` — implement the amendment, not the original
+**Relevant context:** **`ARC-006`** (the mechanism and its rationale), `A-004`, `DAT-001`,
+`ARC-005`, `OPS-004`
+**Affected surfaces:** `app.py`, a platform seam, `ai/DECISIONS.md`
+**Risk:** Medium — the failure it prevents is two writers on one database
+
+#### Scope
+
+`A-004` assumes a single local user and **no concurrent instances against the same database**, and
+records itself as *unverified*, with enforcement named as a Phase 2 task. This is that task.
+
+The database is the reason. `ARC-005` puts every write on one writer thread *within a process*;
+two processes have two writer threads and no shared lock discipline.
+
+#### The mechanism — `ARC-006` **as amended 2026-07-29**; read the amendment first
+
+**`ARC-006` is the canonical record** (`P2PLAN-R2`). **Its original mechanism is withdrawn**
+(`P2PLAN-R5`): Qt documents that on Windows **two local servers can listen on the same pipe name at
+once**, so *connect-first-then-claim* is not exclusive and two simultaneous launches can both become
+servers — the two-writer state this task exists to prevent.
+
+**Ownership is now an atomic kernel lock** on a file derived from the resolved database path
+(`flock(LOCK_EX | LOCK_NB)` on POSIX, exclusive-access open on Windows), released by the kernel when
+the holder dies. **`QLocalServer` remains only the attach channel**, started after ownership is won.
+
+**This task's acceptance criteria must gate simultaneous starts, not just stale-owner recovery** —
+the withdrawn design passes a sequential test, which is how it survived being written down. See the
+amendment for what it changes.
+
+*(Superseded, kept because the sequence is the point — this read as the decided mechanism:)*
+
+**`QLocalServer` / `QLocalSocket`, named from the resolved database path.**
+
+- **Already Qt**, so no new dependency, and one code path compiles to a named pipe on Windows and
+  a Unix domain socket on Linux — two correct platform implementations rather than two guesses.
+- **It is a channel, not a flag.** That is what makes *attach* possible rather than only *refuse*:
+  a second launch can hand its URL to the first instance and raise its window. A lock file can
+  only say no.
+- **Crash behaviour decided it**, because that is the case the guard exists for. Windows destroys
+  a named pipe when its owning process dies. On Linux a killed process leaves the socket file, so
+  the protocol is *connect first; if the connection fails the owner is gone, remove the stale name
+  and become the server*. A PID lock file needs a liveness check and is wrong under PID reuse;
+  `flock` is robust but offers no channel.
+- **Named from the database path**, because `A-004` is about the database rather than the
+  application. Two instances against different databases harm nothing and must not be blocked.
+
+#### Acceptance criteria
+
+- A second launch either attaches to the running instance or refuses in its favour, and says which
+- **Two launches started simultaneously do not both win** (`P2PLAN-R5`). Racing starts, not a
+  sequential pair: the withdrawn `QLocalServer`-as-lock design passes the sequential test and fails
+  this one, because two servers may listen on one Windows pipe name at the same time
+- A stale lock left by a killed process does not permanently block startup
+- Verified on both platforms, `STARBASE` included
+- The mechanism and its crash behaviour are recorded in `ai/DECISIONS.md` with an ID
+- **The stale-socket path is tested by killing an instance**, not by deleting a file by hand: the
+  recovery has to work against the failure it was chosen for
+- Two instances against *different* databases both start
+
+#### Out of scope
+
+- Multi-user or networked access (`A-004` scopes it out)
+
+#### What was built, 2026-08-01
+
+**Evidence.** `ruff`, `ruff format`, `mypy src` and `mypy --platform win32 src` clean. New module
+`core/instance_lock.py`; 9 tests in `tests/integration/test_single_instance.py` and 2 in
+`test_composition.py`. Removing the lock call kills **3** of the 9 — the cross-process claim is
+genuinely exercised rather than asserted in-process.
+
+**An atomic kernel lock, per `ARC-006`'s amendment.** `fcntl.flock(LOCK_EX | LOCK_NB)` on POSIX,
+`msvcrt.locking(LK_NBLCK)` on Windows. Both are released **by the kernel when the holder dies**,
+which is the property a PID file cannot offer and the reason `ARC-006` rejected PID files.
+
+**`flock` rather than `lockf`.** POSIX record locks are released when *any* descriptor for the file
+closes in the process, so a program that opens the same path elsewhere silently drops its own lock.
+`flock` is tied to the open file description.
+
+**The lock file is never unlinked**, and that is a decision rather than an omission. Removing it
+races: another launch may have opened that same path and be about to lock it, and unlinking
+underneath them hands a lock on an orphaned inode to a process that thinks it owns the database. An
+abandoned file is inert because the *lock* is gone, which is the same reason a killed process leaves
+nothing to clean up. A test asserts the file still exists after a kill, so a future change that
+starts unlinking is caught rather than silently making the stale-path test vacuous.
+
+**Taken before `db.connect`.** Recovery runs on the next line and rewrites rows left `RUNNING`; a
+guard taken afterwards would let a second launch rewrite a live instance's in-flight jobs before
+refusing. **Released after the connection closes**, for the mirror reason.
+
+**Named from the resolved database path.** `A-004` is about the database, not the application, so
+two instances against different databases both start. `resolve()` matters: without it `./queue.db`
+and `/home/me/queue.db` would take two locks on one database.
+
+| Mutation | Killed by |
+|---|---|
+| No lock is taken at all | the refusal, racing and killed-holder tests (3 of 9) |
+
+#### Scope: the attach channel is not built
+
+`ARC-006` keeps `QLocalServer`/`QLocalSocket` as an **attach channel** — what lets a second launch
+hand its URL to the running instance and raise its window instead of merely refusing. **This task
+refuses.** The acceptance criterion is *"attaches to the running instance **or** refuses in its
+favour, and says which"*, and refusing-and-saying-which satisfies it; exit criterion 4 reads the
+same way.
+
+Stated as a choice rather than left as a gap: **`T-104`** owns the attach channel. A user who
+double-clicks a second time today gets a message box naming the running instance, not a hand-over.
+
+#### Not covered, stated rather than implied
+
+- **Windows.** The `msvcrt` branch is `# pragma: no cover` on Linux and has **never executed** —
+  `mypy --platform win32` type-checks it and nothing has run it. This is the half `ARC-006`'s
+  withdrawn design got wrong, so it is the half most worth running on `STARBASE`, and no CI job has
+  executed a step since 2026-07-30.
+- **`A-004` therefore stays unverified**, exactly as `ARC-006` says it must until this is tested on
+  both platforms. Linux is done; Windows is not.
+- **A read-only or full filesystem** where the lock file cannot be created. `acquire` would raise
+  `OSError` rather than `AlreadyRunningError`, and `run()` does not catch that.
+
+
+#### Correction, 2026-08-01 — `T087-R1`, and why this stays blocked
+
+**The Windows primitive was mine, not `ARC-006`'s.** The amendment names an **exclusive-access
+open**; I wrote `msvcrt.locking(LK_NBLCK)`, a one-byte range lock. It may well be defensible, but
+substituting a different mechanism — in the one branch nothing here can execute — is not an
+implementation choice, and doing it silently is how a decision gets rewritten by its implementer.
+
+It is now `CreateFileW` with `dwShareMode = 0`: while the handle is open no other process may open
+the file at all, and a second launch fails with `ERROR_SHARING_VIOLATION`. Both platforms are one
+`_open_exclusive` seam; POSIX still needs two steps because it has no exclusive-*open* — `O_EXCL`
+is about creation, not access.
+
+**This does not unblock the task, and should not.** The branch has still never executed. `T-087`'s
+own criterion is both platforms, `ARC-006` says `A-004` stays unverified until then, and no CI job
+has executed a step since 2026-07-30. What changes is that the code now matches the decision, so
+the outstanding item is **evidence** rather than evidence *plus* an unauthorised design change.
+
+---
+
 ### T-066 — CI installs the project differently from how the documentation says to
 
 **Status:** **Blocked — on frozen-artifact evidence only, and no longer a Phase 1 exit
@@ -2769,6 +2479,458 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-053 — Prove concurrent per-job log isolation
+
+**Status:** **Complete — Approved at `05e5312`**, 2026-08-01. Two real spawned workers, both
+live before either emits, interleaved through the production log queue. Four mutations run; all
+four killed. The review credits it with establishing overlapping live workers, deliberate
+interleaving, per-job isolation, shared-log delivery and rejection of unstamped records.
+**`T-084` cannot be approved without this**, recorded there as a criterion on 2026-07-31
+(`P2PLAN-R4`).
+*(This read "Ready — the pool now permits two live sessions (`T-078`, approved 2026-07-30 at
+`0f9986f`)".)*
+**Owner:** Implementer
+**Priority:** Low — Phase 1's structural routing is correct; concurrency is the missing proof.
+*Low is about this task's own risk, not its urgency:* it now gates another task's approval
+**Phase:** Phase 2
+**Depends on:** `T-038` and **`T-078`**, which is the task that implemented `REQ-013` — named now
+that it exists, rather than described
+**Relevant context:** `T038-R2`; `ARCHITECTURE.md` §8; `REQ-013`, `REQ-019`;
+`ai/REVIEWS.md` (2026-07-27 T-019/T-038 focused correction re-review)
+**Affected surfaces:** `tests/integration/test_worker_logging.py`
+**Risk:** Low until concurrency exists; High if the pool ships without the proof
+**Review base:** the Phase 2 concurrency implementation head
+
+#### Scope
+
+Phase 1 runs one session at a time. `T-038` proves that worker records carry a job-id stamp and
+that a per-job handler rejects every other stamp, using two sequential jobs. That establishes
+per-job routing, but it cannot establish the concurrent cross-write property while the manager
+refuses to keep two sessions open.
+
+When Phase 2 first permits two live sessions, coordinate two real spawned workers so both
+per-job handlers are open at the same time. Have both workers emit interleaved, unique markers
+through the production log queue and prove that each file contains its own complete stream and
+none of the other job's.
+
+This is not the current `T038-R2` ordered-drain correction. `T-038` must already retain a
+worker's final emitted records and stop its listener without blocking the GUI thread before this
+follow-up becomes relevant.
+
+#### Acceptance criteria
+
+- Two real worker sessions are simultaneously active before either emits its test records
+- Their records are deliberately interleaved through the production worker-log queue
+- Each per-job log contains every marker its worker emitted and no marker from the other worker
+- The application log still contains both streams
+- Removing the job-id filter or stamp makes the test fail
+
+#### Out of scope
+
+- Implementing Phase 2 concurrency or its scheduling policy
+- Repairing the current single-session ordered-drain and non-blocking-shutdown defect in
+  `T038-R2`
+
+---
+
+### T-099 — Make the manager-boundary gate say which boundary failed
+
+**Status:** **Complete — Approved at `05e5312`**, 2026-08-01. The reviewer added a gate on the
+real failing assertion rather than only the explanation helper. Each prohibition is keyed to the
+decision behind it, and a failure reports one line per rule actually broken. A fourth test asserts every
+live prohibition has an explanation, so a rule added without one reads as unexplained rather than
+silently inheriting the first one listed.
+*(This read "Proposed".)*
+**Owner:** Implementer
+**Priority:** Low — enforcement is correct; the failure points at the wrong rule
+**Phase:** Phase 2 test infrastructure; blocks nothing
+**Depends on:** none
+**Relevant context:** `T097-R2`, `T-097`, `ARC-007`, `T-013`
+**Affected surfaces:** `tests/unit/test_manager_boundaries.py`
+**Risk:** Low — a future settings violation is caught, but its diagnostic sends the maintainer to
+the repository-injection rule instead of ARC-007
+
+#### Scope
+
+`T097-R1` split the manager-only settings prohibition from the persistence/sqlite rules shared by
+manager and result pump. The real-source assertion still combines their offenders under
+`test_the_manager_never_imports_persistence` and always explains repository injection. A real
+`core.settings` import therefore fails the correct gate with the wrong reason.
+
+Keep one read of each real module and the current per-module rule table, but report which rule was
+violated. Do not broaden ARC-007 back to `result_pump.py`.
+
+#### Acceptance criteria
+
+- A real manager settings import fails with an ARC-007/settings-injection diagnostic
+- A real manager or result-pump persistence/sqlite import fails with the T-013 repository diagnostic
+- Existing relative and absolute forbidden forms remain caught, and result-pump settings imports
+  remain permitted
+
+---
+
+### T-101 — Gate the detail view's retry ETA reset independently
+
+**Status:** **Complete — Approved at `05e5312`**, 2026-08-01. `T079-R3` is closed. The scenario
+proves a non-default ETA was
+drawn before asserting the reset — without which the assertion passes on a label that was never
+written — and asserts `etaValue` separately from `speedValue`. Its own criterion is met: deleting
+only `_eta.setText(UNKNOWN_TEXT)` makes the unmodified test fail, verified.
+*(This read "Proposed".)*
+**Owner:** Implementer
+**Priority:** Low — the production reset is correct; one sibling label is not independently gated
+**Phase:** Phase 2 test infrastructure; blocks nothing
+**Depends on:** none
+**Relevant context:** `T079-R3`, `T079-R1`, `T-079`, `ai/TESTING.md` §13
+**Affected surfaces:** `tests/ui/test_job_detail.py`
+**Risk:** Low — a future one-line regression can leave an obsolete ETA on a re-queued detail view
+
+#### Scope
+
+`T079-R1`'s correction resets both the speed and ETA labels when `FAILED → QUEUED`. The committed
+detail-view regression creates non-default values for both, but asserts only `speedValue`.
+Deleting only `_eta.setText(UNKNOWN_TEXT)` from production therefore left the entire 82-test
+detail-view file green even though the re-queued job still showed the failed attempt's ETA.
+
+Add the independent ETA assertion to the existing scenario. Do not change the already-correct
+production behavior or reopen T-079.
+
+#### Acceptance criteria
+
+- The scenario first proves a non-default ETA was drawn, so the reset assertion cannot pass from
+  the label's initial value
+- After `FAILED → QUEUED`, `etaValue` is asserted as `UNKNOWN_TEXT` independently of `speedValue`
+- Removing only `_eta.setText(UNKNOWN_TEXT)` makes the unmodified test fail
+
+#### Out of scope
+
+- Changing retry behavior or the production reset
+
+---
+
+### T-103 — Cancelling a waiting job leaves its id on the pool's waiting list
+
+**Status:** **Complete — Approved at `05e5312`**, 2026-08-01. Found by `T-081` on 2026-07-31 and filed rather
+than fixed inline (`AGENTS.md` §7); taken now on the maintainer's explicit instruction, knowing it
+edits `cancel()` inside a diff already with the reviewer. **`T-081`'s sweep is removed**, per this
+task's own fourth criterion. Three mutations run; all three killed.
+*(This read "Proposed — found by `T-081` on 2026-07-31 …".)*
+**Owner:** Implementer
+**Priority:** Low — no observed user-visible failure. It is filed because the *reason* it is
+harmless changed, not because it started misbehaving
+**Phase:** Phase 2
+**Depends on:** nothing. `T-078` created the waiting list; `T-080` and `T-081` both walk past this
+**Relevant context:** `downloader/manager.py` — `cancel`, `_discard_waiting`, `_fill_free_slots`,
+`_start_or_report`; `T-078`; `T036-R1`
+**Affected surfaces:** `downloader/manager.py`
+**Risk:** Low
+
+#### Scope
+
+`cancel(job_id)` on a job that is **waiting for a slot** — not running, not reserved — writes
+`CANCELLED` and returns. It never calls `_discard_waiting`, so the id stays on `_waiting`. When a
+slot opens, `_fill_free_slots` picks it, `_start_or_report` calls `start()`, and `start()` refuses
+it because a `CANCELLED` job is not startable. The refusal is reported through `start_rejected` and
+nothing breaks.
+
+**What changed is why that is safe.** It was safe because the row still existed, so the refusal was
+an ordinary "this job is cancelled". `T-081`'s clear-completed deletes cancelled rows, and the same
+path then reaches `_require` with an id that no longer resolves. `T-081` sweeps ids whose rows have
+gone, immediately after clearing, which closes the case it opened. It does not close the general
+one: a cancelled job still occupies a place in the waiting list until something happens to notice.
+
+**The general fix is one line in `cancel`,** and it is not taken here because `cancel` is covered by
+`REQ-015`'s budget tests and `T-080` is in review against its current shape. Changing it now would
+put an unreviewed edit under a task already handed to a reviewer.
+
+#### Acceptance criteria
+
+- Cancelling a waiting job drops it from `_waiting` **at the cancel**, asserted on the list rather
+  than inferred from nothing starting
+- `start_rejected` is no longer emitted for a job the user cancelled while it waited — asserted,
+  since the current behaviour emits it and a fix that merely stopped the start would leave the
+  signal
+- `is_idle` becomes true without waiting for a slot to open, for a queue whose only waiting job was
+  cancelled. This is the observable cost today: shutdown and the idle signal both count a job that
+  will never start
+- `T-081`'s sweep is re-examined once this lands — if `cancel` drops the id, the sweep may be
+  redundant, and a guard kept after its reason has gone is what `ai/TESTING.md` §13 is about
+
+#### Out of scope
+
+- The reservation path, which `T016-R1` already handles by withdrawal
+
+#### What was built, 2026-08-01
+
+**One line in `cancel()`, and one deletion in `clear_completed()`.** `cancel` now calls
+`_discard_waiting(job_id)`; `_settle_clear`'s sweep is gone.
+
+**The sweep had to go, and this task said so in advance.** Its fourth criterion: *"if `cancel`
+drops the id, the sweep may be redundant, and a guard kept after its reason has gone is what
+`ai/TESTING.md` §13 is about."* It is redundant — `remove()` and `clear_completed()` are the only
+paths that delete a waiting job's row, and both now drop the id from the list first, so nothing
+could reach the sweep.
+
+**`T-081`'s inverted test did its job.** It asserted the stale premise deliberately, with a message
+saying so, and failed the moment this landed:
+
+> `cancel now drops a waiting job, so this test's premise is stale — T-103 landed, and the sweep
+> below may be redundant (T-103's fourth criterion)`
+
+It is replaced by three tests of the new single mechanism rather than deleted quietly.
+
+**A mutation found a second gap and then disproved my fix for it.** Removing `_retry_at.pop` from
+`cancel()` survived the first battery, so I wrote a test for cancelling a job awaiting an automatic
+retry — and it raised `IllegalTransitionError`. **A job awaiting a retry is `FAILED`, and `FAILED`
+allows only `QUEUED`** (`T010-R3`: cancelling stops in-flight work, and a failed job has none). So
+that pop could never have run: the mutation survived because the line was unreachable, not because
+the test was weak. It is removed, with the reasoning in place, and the reachable path — `remove()`
+on a job awaiting a retry — is what the test now drives.
+
+| Mutation | Killed by |
+|---|---|
+| `cancel` stops dropping a waiting job | all three of the new tests |
+| `remove` stops dropping a pending automatic retry | the awaiting-retry test |
+| `remove` stops dropping a waiting job | `T-080`'s removed-waiting-job test |
+
+#### Not covered, stated rather than implied
+
+- **Windows.** Platform-neutral; no CI job has executed a step since 2026-07-30.
+- **Whether `FAILED → CANCELLED` should be legal.** `T010-R3` decided it should not and this task
+  did not reopen it, but "cancel a job that is waiting out its retry backoff" is a thing a user may
+  reasonably expect to work, and today the answer is Remove. Worth a decision if it comes up.
+
+---
+
+### T-080 — Queue-level pause and resume; per-job cancel, retry and remove
+
+**Status:** **Complete — Approved at `05e5312`**, 2026-08-01. `T080-R1`, `T080-R2` and `T080-R3`
+are all **Resolved**. Approved independently of `T-081`: the surviving barrier hole violated
+reordered DOWNLOAD admission, not pause semantics. Released by `T-079`'s approval at `da49a51`;
+rewritten from `UX-001` on 2026-07-30 (`P2PLAN-R1`). **Both maintainer calls were taken 2026-07-31**
+and are recorded in place below: the unreachable `PAUSED` edges are **removed**, and `P2PLAN-R7`'s
+manual-retry ordering is **confirmed** — as a maintainer decision, not as something `P2PLAN-R1`
+settled. **Fourteen mutations run; all fourteen killed**, nine against the queue and persistence
+layers and five against the controls. One of the fourteen **survived its first run** and the test
+was wrong, not the code — see the mutation table.
+*(This read "Proposed — … **Not released by `T-078`:** it waits on `T-079` as well", then "Ready …
+two maintainer calls are still open", then "Ready and startable".)*
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 2
+**Depends on:** `T-078`, `T-079`
+**Relevant context:** **`UX-001`** (the canonical pause and remove semantics, with rationale and
+reopening condition), `REQ-015` **as amended**, `T-051`, `core/job_state.py`, `T036-R1`
+**Affected surfaces:** `downloader/manager.py`, `ui/`, possibly `core/job_state.py` (the `PAUSED`
+edges — see below)
+**Risk:** Medium — every one of these is a state transition plus an effect, which is `T036-R1`
+
+#### Scope
+
+**Two different things, and conflating them is what `P2PLAN-R1` reported.** This task delivers:
+
+| Surface | Actions | Granularity |
+|---|---|---|
+| The queue | pause, resume | **Queue-level** (`UX-001`) |
+| A job | cancel, retry, remove | **Per job** (`REQ-015` as amended) |
+
+The previous version of this entry was titled *"…per job"*, quoted the pre-amendment `REQ-015` as
+though it still governed, and then described queue-level behaviour in its acceptance criteria. An
+implementer reading it received mutually exclusive instructions from the two halves.
+
+**Pause drains the queue; it does not stop a download.** In-flight work finishes, nothing new
+starts, resume takes work again. `UX-001` holds the reasoning and the rejected alternatives; the
+short version is that every alternative buys a half-written file and a rule about its lifetime, in a
+phase where `REQ-017`'s resume does not exist yet.
+
+**Remove takes the job out of the queue and never deletes a file.** Removing a running job cancels
+it first. Nothing this application deletes from disk, in this phase, by this route.
+
+#### The `PAUSED` edges — **settled 2026-07-31: remove both**
+
+`core/job_state.py`'s `_TRANSITIONS` carries `RUNNING → PAUSED` and `PAUSED → RUNNING`, with a
+comment explaining why resume returns to `RUNNING` rather than `READY`. **Under `UX-001` no job ever
+enters `PAUSED`, so both edges are unreachable.**
+
+`UX-001` assigned the choice here — remove them, or record why a state nothing reaches is kept —
+and the maintainer took it on 2026-07-31: **both edges are removed, and `PAUSED` with them if
+nothing else references it.** An unreachable state reads as capability without being it, which is
+`ai/TESTING.md` §13's shape one layer up from a test. `REQ-017`'s partial-download resume in Phase 3
+was the argument for keeping them and is not persuasive in advance: it can add the edges its own
+semantics need, rather than inheriting a guess made a phase early — and a guess is what they are,
+since nothing has ever traversed them.
+
+**This is a change to an approved state machine, so it is `T-080`'s to make and not to assume.**
+The removal must be asserted, not just performed: driving `RUNNING → PAUSED` has to raise the
+transition error, and the criterion below that no job reaches `PAUSED` is what proves the removal
+did not simply relocate the problem.
+
+*(Superseded, kept because the amendment is the point: this section used to argue that `REQ-015`
+"says otherwise" and that an amendment was needed. That amendment landed on 2026-07-29 — `REQ-015`
+now reads queue-level and cites `UX-001` — so the conflict this described no longer exists. The
+pre-amendment wording is preserved in `REQ-015`'s own parenthetical and in `UX-001`.)*
+
+#### Acceptance criteria
+
+- Each action goes through the manager, not through the store — `T036-R1` is what it costs when a
+  caller writes a status change directly and nothing announces it
+- Cancel still meets its 2-second budget under a saturated pool, not just an idle one
+- **Pause and resume act on the queue, and the assertion says so:** with the pool saturated, pausing
+  lets every in-flight session finish and starts none of the waiting jobs; resuming starts them. A
+  test that pauses a single job proves the wrong contract
+- **No job reaches `PAUSED`** — asserted against the stored status, not inferred from the UI. This is
+  the observable half of the decision above
+- **No partial file exists as a result of pausing** — asserted by looking at the output directory,
+  since that is the whole reason for this shape rather than a happy consequence of it
+- Remove takes the job out of the queue and leaves every file on disk untouched, asserted by looking
+  at the directory rather than by trusting the code path
+- Removing a running job cancels it first, within the same 2-second budget
+- **`P2PLAN-R7` — confirmed 2026-07-31 by maintainer decision:** *"manual retry re-enters the queue
+  at the back and does not jump jobs that have not run."* Asserted with jobs that have never run
+  waiting behind the retried one, since a rule about ordering that is only tested on an empty queue
+  is not tested. **Its provenance is recorded rather than smoothed over:** it arrived with the
+  `P2PLAN-R1` correction and was **not part of it** — `UX-001` decides pause and remove, not retry
+  order; `REQ-018` requires retry without ordering it; and `T-083`'s no-jump criterion is explicitly
+  about *automatic* retries. It is confirmed as the manual-retry consequence of the scheduling order
+  `T-078` records, and it is **not** settled by `P2PLAN-R1`. `T-083` shipped the automatic half on
+  2026-07-31, so confirming this makes the two halves agree instead of leaving manual retry
+  unstated
+
+#### Out of scope
+
+- Resuming a *partial download* from disk (`REQ-017`, Phase 3). Phase 2's resume restarts
+
+#### What was built, 2026-07-31
+
+**Evidence.** `ruff check`, `ruff format --check`, `mypy src` and `mypy --platform win32 src`
+clean; full Linux suite **1694 passed / 11 skipped / 2 deselected** after the 2026-08-01
+corrections. Fourteen mutations, all killed, tree hash identical before and
+after each battery. No CI run — see "Not covered" below.
+
+**`JobStatus.PAUSED` is gone, not merely unreferenced.** The maintainer decision was to remove the
+two edges; removing the *member* is what makes that checkable. A member left behind with no
+transitions still lets `replace(job, status=PAUSED)` build a job nothing can move, so the enum is
+asserted directly — `not hasattr(JobStatus, "PAUSED")` — beside the stored-status assertion. Two
+documents that explained the exclusion (`repositories.py`'s `INTERRUPTED_ON_STARTUP` comment, a
+`test_persistence.py` docstring saying `PAUSED` "is meant to survive a restart") described a state
+nothing could reach, and both were corrected rather than left standing.
+
+**Pause is one flag on the scheduler, and the guard is in one place.** `_fill_free_slots` is the
+single point where a waiting job becomes a running one, so the check lives there rather than at the
+tick, `set_concurrency` and `resume` separately — three chances to forget it, and the tick is the
+one that fires on its own. `_start_when_free` carries the second half, because a retry that took
+the direct path would restart a `NETWORK` failure while the user had the queue paused.
+
+**A direct `start()` is deliberately *not* paused**, and that absence has its own test. The
+add-URL dialog probes when the user types a URL; refusing it silently would hang the dialog on
+"Probing …". An absence nothing asserts is indistinguishable from an oversight.
+
+**Removal is a delete, not a status**, and it waits for the process. `CANCELLED` is a job that
+stopped and is still in the queue; removal is a job that is not in the queue. Deleting the row when
+the cancel is *asked for* would leave a live worker whose next message reaches `_require` and finds
+nothing — so `remove()` records the intent, `cancel()` owns the stopping, and `_release` performs
+the delete once the tree is reaped and the pump has returned. The waiting list is cleared
+synchronously, because the tick that fires while the delete is in flight reads it.
+
+**Manual retry is renumbered rather than re-sorted.** `_next_waiting` already orders automatic
+retries last using `Job.attempts`, and reusing that fails here: `with_another_attempt` is spent by
+automatic retry only, so a first manual retry would sort as "never run". Writing a fresh tail
+`queue_position` also keeps the table honest — a scheduling rule the column disagrees with is
+`T-075`'s shape, and `T-081`'s criterion one task early. The tail is allocated **inside** the
+write's transaction, because `queue_position` carries a `UNIQUE` index and two callers computing
+`MAX + 1` would collide rather than tie.
+
+| Mutation | Killed by |
+|---|---|
+| A paused queue still fills free slots | the saturated-drain test |
+| A paused queue still starts a job asked to wait | the resume and partial-file tests |
+| Resume clears the flag but takes no work | the resume test |
+| Remove leaves the job on the waiting list | the removed-waiting-job test |
+| A removed running job's row is never deleted | the running-removal test |
+| Manual retry re-queues in place | both retry-ordering tests |
+| `JobStatus.PAUSED` is restored | the enum assertion |
+| The repository re-queues without allocating a tail | `test_requeue_at_end_allocates_a_fresh_tail_position` |
+| Removal deletes nothing | `test_remove_deletes_the_row_and_reports_whether_there_was_one` |
+| Reflecting the pause state emits back at the manager | the round-trip test |
+| The pause action reports on `triggered`, not `toggled` | the reports-once test |
+| Remove starts enabled with nothing selected | the selection test |
+| The Remove handler skips its own selection check | the same, **after correction** |
+| The queue actions are built without a control bar | the bare-window test |
+
+**One mutation survived its first run, and the test was at fault.** "The Remove handler skips its
+own selection check" survived because the test called `action.trigger()` while the action was
+disabled — and `QAction.trigger()` on a disabled action is a no-op, so the handler never ran. The
+assertion was passing on Qt's behaviour rather than on this window's. Corrected by enabling the
+action first, which reproduces the state the guard actually exists for: the enabled state and the
+table's selection disagreeing, one stale signal or one shortcut apart. **This is the class the
+Phase 0 reviews returned repeatedly** — a property asserted more confidently than it was tested —
+and it was found by running the mutation rather than by reading the test.
+
+**And one test was intermittent, which only the full suite showed.** The no-`PAUSED` test first
+snapshotted whatever status the session happened to hold and asserted pause did not change it. That
+passes alone and fails under load: `child_downloading_forever` walks `PROBING → READY → RUNNING`,
+so the pipeline's own next step can land between the two reads — it failed once at
+`RUNNING is PROBING` in a full run after passing in isolation. Corrected to wait for `RUNNING`, the
+status that worker settles at, so any later change is one pause caused. Re-run five times green and
+the mutation re-confirmed killed. **Recorded rather than quietly fixed:** a test that passes alone
+and fails in the suite is a test whose green was not evidence, and the first version of this entry
+would have claimed fourteen clean kills on the strength of it.
+
+#### Corrections, 2026-08-01 — `T080-R1`, `T080-R2`, `T080-R3`
+
+**`T080-R1` — the pause guard was on the scheduler, and `start()` walked past it.** Pause gated
+`_fill_free_slots` and `_start_when_free`, but not the public entry point. The add-URL dialog calls
+`start(job_id)` after a probe resolves and that parameter defaults to `SessionKind.DOWNLOAD`, so
+pressing Add while paused began a download immediately — against the one thing pause promises.
+
+**My own test protected the defect.** `test_pause_does_not_refuse_a_probe...` described a probe in
+its docstring and called `start("job-1")`, taking the same default. It therefore asserted that a
+paused queue starts a *download* and called that the probe exemption. The reviewer split the pair;
+both cases are now explicit and the download case is a negative.
+
+**And the corrected test was still weak.** Its assertion read `active_job_ids()`, which by design
+includes jobs merely *waiting* for a slot (`T078-R1`) — so a probe the guard had wrongly parked
+would still have appeared in it and the assertion would have passed while the dialog hung. Found by
+running the over-application mutation, which **survived** the first battery. It asserts occupancy
+now.
+
+A download is **parked, not refused**: the job is already durably `QUEUED`, so adding it to the
+waiting list means resume starts it, which is what somebody who queued work while paused meant.
+
+**`T080-R2` — `job_removed` had zero receivers.** Removal reached the writer and deleted the row,
+and the row stayed on screen indefinitely. `QueueModel` connected `progress` and `job_changed`
+only: those announce a job that still exists in a new state, and no amount of per-job news can say
+that the *set* of jobs changed. Now connected, with `queue_reordered` and `queue_cleared` (see
+`T-081`), through one slot — what all three mean to this table is identical.
+
+**`T080-R3` — `ARCHITECTURE.md` §5 still drew `RUNNING → PAUSED → RUNNING`.** The code was
+corrected and the canonical architecture was left advertising per-job pause after the product had
+removed it, while `core/job_state.py` described itself as transcribed from that diagram. §5 is
+rewritten, with the removal and its `REQ-017` reopening condition recorded. The same pass corrected
+"(attempts incremented)" beside the retry edge: only *automatic* retry spends an attempt.
+
+| Mutation | Killed by |
+|---|---|
+| Pause stops gating a direct `DOWNLOAD` start | the paired download negative |
+| The guard over-applies and swallows a probe too | the probe case, **after correction** |
+| The table stops hearing about removal | the composed remove regression |
+
+**One mutation survived its first run**, and it was the test's fault rather than the code's — see
+`T080-R1` above. That is the second time in two days this task has been caught asserting on
+`active_job_ids()` where occupancy was meant; the accounting split `T078-R1` introduced is easy to
+read past, and both tests now say which one they mean and why.
+
+#### Not covered, stated rather than implied
+
+- **Windows runtime.** Nothing here is platform-specific and `mypy --platform win32` is clean, but
+  no Windows job has executed a step since 2026-07-30 (`STATUS.md`), so this is reasoned and not
+  measured.
+- **The pause control against a real pool.** The toolbar tests drive the action with injected
+  handlers and the manager tests drive the queue directly; the two are wired in `app.py` and that
+  seam is covered only by `mypy` and by composition's own launch test.
+
+---
 
 ### T-079 — The queue view: many jobs, each with its own progress
 

@@ -43,10 +43,13 @@ observe them (`REQ-015`, `ARCHITECTURE.md` §3):
 import logging
 import multiprocessing
 import os
+import shutil
 import sys
+import tempfile
 import threading
 import traceback
 from collections.abc import Iterator, Mapping
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final, Protocol
@@ -447,11 +450,20 @@ def _run(
                 context=tuple(sorted(context.items())),
             )
 
-        # **Reserved, not merely computed** (`T-046`). The sanitized target is where this job
-        # *wants* to write; the reservation is where it may. Two jobs whose titles sanitize to
-        # one component are two processes racing for one name, and this is the only point that
-        # can decide between them — see `reserve_output_path`.
-        target = reserve_output_path(_validated_target(directory, request, adapter, resolved, info))
+        # **The download writes into a staging directory, and the real name is claimed after**
+        # (`T046-R1`). The obvious shape — reserve the target, hand it to yt-dlp with
+        # `overwrites=True` — reserves the wrong file whenever a postprocessor changes the
+        # extension. `%(ext)s` renders `webm`, the reservation is `master.webm`, and the MP3
+        # extractor then writes `master.mp3` **over the user's existing `master.mp3`**, because
+        # `O_EXCL` never covered the name that survived conversion. A reviewer reproduced exactly
+        # that against real yt-dlp and ffmpeg: an ID3 file replaced the user's bytes.
+        #
+        # Predicting the final extension was rejected: it is a function of yt-dlp's postprocessor
+        # chain, and a prediction that is wrong is this defect again with more code. Instead the
+        # download happens somewhere nothing of the user's can be, and the destination is claimed
+        # atomically once yt-dlp has said what it actually produced.
+        target = _validated_target(directory, request, adapter, resolved, info)
+        staging = _staging_directory(target)
         try:
             result = _extract(
                 adapter,
@@ -460,24 +472,20 @@ def _run(
                 reporter,
                 probe_only=False,
                 # Literal, not a second template — see `as_literal_template`.
-                output_template=as_literal_template(target),
+                output_template=as_literal_template(staging / target.name),
                 # `OPS-001`: yt-dlp must use the binary the worker gated on, not its own lookup.
                 ffmpeg_location=ffmpeg.path,
-                # Safe only because the path was reserved: the file at `target` is the zero-byte
-                # reservation this process just made, and yt-dlp would otherwise report it as
-                # already downloaded and write nothing.
+                # Safe **because the directory is this job's alone**. Nothing of the user's is in
+                # it, so an overwrite can only ever replace this job's own intermediate files —
+                # which is what the flag is for, and is no longer a claim about the output folder.
                 overwrites=True,
             )
-            written = _written_path(result, target)
-        except BaseException:
-            release_output_path(target)
-            raise
-        if written != target:
-            # A postprocessor changed the extension — `%(ext)s` said `webm`, the audio extractor
-            # produced `mp3`. The reservation is not the file that was written and nothing will
-            # ever fill it, so it goes back rather than sitting in the user's folder as a
-            # zero-byte twin of their download.
-            release_output_path(target)
+            produced = _written_path(result, staging / target.name)
+            # The destination keeps the *final* extension, not the template's. This is the name
+            # the user will see and the one that has to be free.
+            written = claim_output_path(target.with_name(produced.name), produced)
+        finally:
+            _discard_staging(staging)
         return with_hook_failures(
             Succeeded(
                 job_id=job_id,
@@ -901,6 +909,68 @@ def reserve_output_path(target: Path) -> Path:
     raise UnsafePathError(
         f"{str(target)!r} and {MAX_COLLISION_ATTEMPTS} numbered alternatives are all taken"
     )
+
+
+#: Where a job's download happens before its output is claimed (`T046-R1`).
+#:
+#: **Inside the user's output directory, not the system temp area**, so the final move is a rename
+#: within one filesystem — atomic, and never a copy of a multi-gigabyte file. A dot prefix keeps it
+#: out of the way of somebody looking at their downloads folder.
+STAGING_PREFIX: Final = ".tracks-and-trails-staging"
+
+
+def _staging_directory(target: Path) -> Path:
+    """A private directory for one download, beside where its output will land.
+
+    Unique per call, because `ARC-002` runs every job in its own process and two of them may be
+    downloading titles that sanitize to the same name — the whole reason `T-046` exists. Sharing a
+    staging directory would move that collision one level up rather than removing it.
+    """
+    target.parent.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix=f"{STAGING_PREFIX}-", dir=target.parent))
+
+
+def _discard_staging(staging: Path) -> None:
+    """Remove the staging directory and anything left in it.
+
+    Anything still here after the claim is yt-dlp's intermediate work — the pre-conversion audio,
+    a `.part` file from a failed attempt, a thumbnail that was embedded rather than kept. None of
+    it is the user's, because nothing of the user's could ever be in a directory this process
+    created for itself.
+
+    Failure to clean up is not worth propagating, for `release_output_path`'s reason: the download
+    has already succeeded or failed on its own terms, and a leftover directory is a much smaller
+    problem than an exception raised from the path that reports the real outcome.
+    """
+    with suppress(OSError):
+        shutil.rmtree(staging)
+
+
+def claim_output_path(target: Path, produced: Path) -> Path:
+    """Move `produced` to the first free candidate for `target`, and return where it landed.
+
+    **The claim and the move are one step, and the claim comes first** (`T046-R1`).
+    `reserve_output_path` takes the name with `O_CREAT | O_EXCL`, so the kernel decides between
+    two processes racing for it; `os.replace` then puts the file into the name we hold. Because
+    the reservation is a zero-byte file this process just created, replacing it cannot destroy
+    anything of the user's — which is the guarantee `overwrites=True` used to be claimed to have
+    and did not, for every extension-changing postprocessor.
+
+    `os.replace` rather than `shutil.move`: it is atomic within a filesystem, and the staging
+    directory is deliberately created inside the destination's own directory so that it is one.
+
+    A failure to move gives the reservation back rather than leaving a zero-byte file standing in
+    for a download that is still sitting in staging.
+    """
+    reserved = reserve_output_path(target)
+    try:
+        produced.replace(reserved)
+    except OSError as error:
+        release_output_path(reserved)
+        raise UnsafePathError(
+            f"cannot move the finished download to {str(reserved)!r}: {error}"
+        ) from error
+    return reserved
 
 
 def release_output_path(reserved: Path) -> None:
