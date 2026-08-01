@@ -133,9 +133,10 @@ def test_a_cookie_path_is_redacted_even_when_yt_dlp_itself_named_it(
     provenance of the text inside it."*
 
     **The `NFR-006` cost is real and is recorded rather than hidden.** A user reading this log will
-    not see which cookie database yt-dlp could not open. That is a genuine loss of diagnostic value,
-    it is what accepted `DAT-003` chooses at this sink, and `T-084`'s criterion asking for the
-    opposite needs a maintainer ruling — not an implementation that quietly picks a side.
+    not see which cookie database yt-dlp could not open. That is a genuine loss of diagnostic value
+    and it is what accepted `DAT-003` chooses at this sink — **ruled 2026-08-01**, with `T-084`'s
+    contradictory criterion amended rather than left unmet. `NFR-006`'s promise is kept at the other
+    sink; `test_the_database_keeps_verbatim_what_the_log_redacts` is where that is asserted.
     """
     ytdlp_logger().error("ERROR: unable to open cookie database %s", COOKIE_PATH)
 
