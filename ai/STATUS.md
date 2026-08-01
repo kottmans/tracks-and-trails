@@ -29,6 +29,29 @@ Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLA
 - **`T-088` is written**, and it found the defect below.
 - **Blocked on `STARBASE`, which is offline:** `T-092` and `T-074`. Neither gates the phase.
 
+## **`T-115` is fixed — the queue drains, and the gate fired to say so**
+
+`DownloadManager.admit(job_id)` is the public counterpart to `start()`: `start()` raises at
+saturation because its caller wanted a session *now*; `admit()` expresses durable intent, so five
+URLs into a pool of three no longer makes the caller choose which two to drop. The parking
+primitive already existed — `_start_when_free` — and had no public door.
+
+Two callers cover both halves: the **add dialog** admits every job it persisted rather than only
+the probed one, and **`compose()`** admits every durable `QUEUED` row at startup, which is what a
+dialog-only fix would have missed since `_waiting` dies with the process.
+
+**The `QUEUED` list is read after recovery**, so nothing that was in flight is admitted. Starting
+those unattended was `T081-R4`, and this ordering is the only thing preventing it.
+
+**The strict `xfail` reported `XPASS(strict)` on the first run after the fix** — reddening the build
+exactly as promised — and was then inverted. Two tests were added for what the Add route cannot
+reach: a queue left by a previous run, and a paused queue that admits and still starts nothing.
+
+Chasing a surviving mutation found that `test_a_hard_kill_mid_queue_restores_every_job_state_at_the_next_start`
+had **become racy**: it asserted never-started rows stay `QUEUED`, which startup now legitimately
+changes. It was passing on timing. It asserts what recovery actually promises instead — those rows
+are not moved to `FAILED`.
+
 ## **`T088-R4`: my correction for the Windows failure introduced a way to fake a repair**
 
 The `disk I/O error` on `windows-latest` had a real cause — `db.connect()` runs `migrate()`, so my

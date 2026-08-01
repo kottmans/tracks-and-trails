@@ -695,6 +695,135 @@ for one job to reach `RUNNING`, and asserts recovery against the same set the re
 ---
 
 
+### T-115 — Nothing drains the queue: jobs beyond the limit never start
+
+**Status:** **In Review — complete 2026-08-01.** Five mutations run; all five killed. The strict
+`xfail` that carried this reported **`XPASS(strict)`** the moment the fix landed — the gate firing
+exactly as promised — and was then inverted.
+*(This read "Proposed — found by `T-088` on 2026-08-01, by measurement".)*
+**Owner:** Implementer
+**Priority:** **High** — `REQ-012` is "a queue", and a queue that never starts is a list
+**Phase:** Phase 2
+**Depends on:** nothing. `T-078`'s pool is what would be driven; it is already approved
+**Relevant context:** `REQ-012`, `REQ-001`, `T-078`, `T-016`, `UX-001`, `ARC-004`
+**Affected surfaces:** `downloader/manager.py` or `app.py` — see *Where it belongs*
+**Risk:** Low to fix, High to leave. The phase cannot honestly exit with it open
+
+#### What was measured
+
+A real composed application, concurrency 3, five URLs queued through the real dialog:
+
+```
+  0.5s  probing  running  probing  queued  queued   (4 child processes)
+  8.0s  completed completed completed queued queued (1)
+  9.5s  completed completed completed queued queued (1)
+```
+
+The three that started ran concurrently and completed — **the pool itself is fine.** The other two
+were still `queued` with an empty pool when the run ended.
+
+#### Why, from the code
+
+- `DownloadManager._fill_free_slots` drains `self._waiting`, an **in-memory** list.
+- `_waiting` is populated only when `_start_or_report` parks a job — the internal path, used by
+  retry and by the pause/reorder guards.
+- The **public** `start()` *raises* `RuntimeError("the pool is full at N")` instead of parking.
+- **Nothing anywhere scans the database for `QUEUED` rows.**
+- `AddUrlDialog.add_to_queue` starts only the **probed** job, and Probe is a manual button covering
+  only the **first** URL.
+
+So a user who pastes five URLs and presses Add gets **zero** downloads started, or one if they
+probed first. The rest are durable, correct, ordered — and inert.
+
+**`add_dialog.py` already assumes otherwise.** A comment there reads *"leaving it durably `QUEUED`,
+where whatever runs the queue next would download the URL"*. There is no "whatever runs the queue
+next", and that comment is the clearest evidence this was believed to exist.
+
+#### Where it belongs — stated as options, not decided
+
+1. **`start()` parks instead of raising when full.** Smallest change, and it makes the public and
+   internal paths agree. Against it: `start()`'s refusal is deliberate and `T016-R3` reasoned about
+   it; callers currently distinguish "queued" from "started" by whether it threw.
+2. **A tick that admits `QUEUED` rows from the repository.** Matches `_next_waiting`'s existing use
+   of `queue_position` as the durable order, and survives a restart — which the in-memory
+   `_waiting` does not. Against it: a database read on the manager's tick (`ARC-005` allows indexed
+   single-row reads; this is an enumeration).
+3. **Composition starts each freshly added job.** Keeps the manager unchanged. Against it: it
+   leaves rows recovered by `T-082`, or added by a previous run, still inert.
+
+Option 2 is the one that also fixes restart, which is why I would start there — but this is a
+design decision and `T-088` is not the place to make it.
+
+#### What was built
+
+**`DownloadManager.admit(job_id)`** — the public counterpart to `start()`. `start()` raises at
+saturation, which is right for a caller that asked for a session *now*; `admit()` expresses durable
+intent instead, so adding five URLs to a pool of three does not make the caller decide which two to
+drop. It routes through `_start_when_free`, which already parked correctly — the primitive existed
+and had no public door.
+
+**Two callers, which is what covers both halves:**
+
+- `AddUrlDialog` admits **every** job it just persisted, not only the probed one. That is the
+  newly-added queue.
+- `compose()` admits every durable `QUEUED` row **after** recovery has run. That is the queue a
+  previous run left behind, and it is the half a dialog-only fix would have missed — `_waiting` is
+  in-memory and dies with the process.
+
+**Nothing recovered is admitted**, and the ordering of those two reads is what guarantees it:
+`recover_interrupted()` moves in-flight rows to `FAILED` before the `QUEUED` list is taken, so a job
+that was *running* when the application died is offered for retry (`T-082`) rather than restarted
+unattended. Starting those was `T081-R4`, and this is the rule that would have resurrected it.
+
+Order stays `queue_position`'s, through `_next_waiting`. Admission is not a start.
+
+#### What it broke, and why that was right
+
+**Ten end-to-end tests failed**, all with `ValueError: … is probing; a session starts from queued or
+ready only (ARC-004)`. Their harness did `add_to_queue()` and then `manager.start(job_id)` — which
+was *necessary* while nothing drained the queue, and is now an error, because Add has already
+admitted the job and `start()` correctly refuses one that is already probing.
+
+That is the shape of a genuine behaviour change rather than a regression: the redundant start is
+gone from the harness and every test passes without it. It is also the clearest measure of what
+`T-115` was: **every end-to-end test in the project had been compensating for it.**
+
+One real defect of my own surfaced with them. `admit()` inherited `start()`'s contract of raising
+when the row is not there — right for `start()`, whose caller asked for a session on a specific job,
+and wrong for `admit()`, which is called from the add dialog's save callback and composition's
+startup loop, where an exception is printed and swallowed and where a row may simply not have landed
+yet. It reports through `start_rejected` now, which is the channel every other refusal uses. Your
+contended-database test caught it.
+
+#### One thing the mutation battery could not show, recorded rather than worked around
+
+**Pause is enforced at three sites** — `_start_when_free`, `start()` and `_fill_free_slots` — and
+each alone is sufficient. So a mutation removing any *one* of them is not observable: the other two
+still stop the queue. That is redundancy in the code, not a gap in the tests, and pretending
+otherwise by inventing a test that could tell them apart would be testing an implementation detail.
+
+The battery therefore mutates the flag all three read, which puts the **property** under test —
+*a paused queue starts nothing* — rather than any one guard. Whether three checks are worth keeping
+is a question for `T-080`'s owner; this task did not add them and does not remove them.
+
+#### Acceptance criteria
+
+- Adding N URLs with a limit of M starts M immediately and the rest as slots free, with no user
+  action beyond Add
+- **The order is `queue_position`**, so it survives a restart and matches what the queue shows
+- A queue paused per `UX-001` still starts nothing, and resuming drains it
+- Jobs left `QUEUED` by a *previous* run start on the next launch — the `T-082` recovery case
+- ~~the strict `xfail` must be inverted~~ — **done**. It reported `XPASS(strict)` on the first run
+  after the fix, reddening the build exactly as the promise said it would, and is now an ordinary
+  passing test. Two more were added for the halves it cannot reach: the restart case and the
+  paused case
+
+#### Out of scope
+
+- Changing the concurrency limit's semantics, which `T-078` owns
+
+---
+
 ## Ready
 *(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
 which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
@@ -1155,80 +1284,6 @@ channel and hands over; it does not attempt to become a server.
 
 - Anything that makes the channel decide ownership (`ARC-006` amendment)
 - Multi-user or networked access (`A-004`)
-
----
-
-### T-115 — Nothing drains the queue: jobs beyond the limit never start
-
-**Status:** **Proposed — found by `T-088` on 2026-08-01, by measurement.** Blocks Phase 2's first
-exit criterion in the only sense that matters: the mechanism works and **no user route reaches it.**
-**Owner:** Implementer
-**Priority:** **High** — `REQ-012` is "a queue", and a queue that never starts is a list
-**Phase:** Phase 2
-**Depends on:** nothing. `T-078`'s pool is what would be driven; it is already approved
-**Relevant context:** `REQ-012`, `REQ-001`, `T-078`, `T-016`, `UX-001`, `ARC-004`
-**Affected surfaces:** `downloader/manager.py` or `app.py` — see *Where it belongs*
-**Risk:** Low to fix, High to leave. The phase cannot honestly exit with it open
-
-#### What was measured
-
-A real composed application, concurrency 3, five URLs queued through the real dialog:
-
-```
-  0.5s  probing  running  probing  queued  queued   (4 child processes)
-  8.0s  completed completed completed queued queued (1)
-  9.5s  completed completed completed queued queued (1)
-```
-
-The three that started ran concurrently and completed — **the pool itself is fine.** The other two
-were still `queued` with an empty pool when the run ended.
-
-#### Why, from the code
-
-- `DownloadManager._fill_free_slots` drains `self._waiting`, an **in-memory** list.
-- `_waiting` is populated only when `_start_or_report` parks a job — the internal path, used by
-  retry and by the pause/reorder guards.
-- The **public** `start()` *raises* `RuntimeError("the pool is full at N")` instead of parking.
-- **Nothing anywhere scans the database for `QUEUED` rows.**
-- `AddUrlDialog.add_to_queue` starts only the **probed** job, and Probe is a manual button covering
-  only the **first** URL.
-
-So a user who pastes five URLs and presses Add gets **zero** downloads started, or one if they
-probed first. The rest are durable, correct, ordered — and inert.
-
-**`add_dialog.py` already assumes otherwise.** A comment there reads *"leaving it durably `QUEUED`,
-where whatever runs the queue next would download the URL"*. There is no "whatever runs the queue
-next", and that comment is the clearest evidence this was believed to exist.
-
-#### Where it belongs — stated as options, not decided
-
-1. **`start()` parks instead of raising when full.** Smallest change, and it makes the public and
-   internal paths agree. Against it: `start()`'s refusal is deliberate and `T016-R3` reasoned about
-   it; callers currently distinguish "queued" from "started" by whether it threw.
-2. **A tick that admits `QUEUED` rows from the repository.** Matches `_next_waiting`'s existing use
-   of `queue_position` as the durable order, and survives a restart — which the in-memory
-   `_waiting` does not. Against it: a database read on the manager's tick (`ARC-005` allows indexed
-   single-row reads; this is an enumeration).
-3. **Composition starts each freshly added job.** Keeps the manager unchanged. Against it: it
-   leaves rows recovered by `T-082`, or added by a previous run, still inert.
-
-Option 2 is the one that also fixes restart, which is why I would start there — but this is a
-design decision and `T-088` is not the place to make it.
-
-#### Acceptance criteria
-
-- Adding N URLs with a limit of M starts M immediately and the rest as slots free, with no user
-  action beyond Add
-- **The order is `queue_position`**, so it survives a restart and matches what the queue shows
-- A queue paused per `UX-001` still starts nothing, and resuming drains it
-- Jobs left `QUEUED` by a *previous* run start on the next launch — the `T-082` recovery case
-- `tests/integration/test_phase_2_exit.py::test_a_job_beyond_the_limit_never_starts_even_once_the_pool_empties`
-  is `xfail(strict=True)`, so **fixing this fails the build until that test is inverted**. Invert
-  it; do not delete it
-
-#### Out of scope
-
-- Changing the concurrency limit's semantics, which `T-078` owns
 
 ---
 
