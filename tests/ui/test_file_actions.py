@@ -173,11 +173,17 @@ def test_reveal_asks_the_file_manager_to_show_the_file_rather_than_opening_it(
 def test_reveal_and_open_do_different_things(
     qapp: QApplication, downloads: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Stated as a difference, so neither action can drift onto the other's implementation."""
+    """Stated as a difference, so neither action can drift onto the other's implementation.
+
+    Pinned to Linux: on Windows Open takes the starter and builds no argv, so only one spawner call
+    would exist and comparing two would fail for a reason unrelated to the difference under test.
+    """
     monkeypatch.setattr("tracks_and_trails.ui.reveal.dbus_available", lambda: False)
     written = downloads / "clip.mp4"
     written.write_bytes(b"")
-    attached = Attached(entries=[an_entry("a", str(written))], downloads=downloads)
+    attached = Attached(
+        entries=[an_entry("a", str(written))], downloads=downloads, platform="linux"
+    )
     attached.select_row(0)
 
     attached.actions.open_selected()
