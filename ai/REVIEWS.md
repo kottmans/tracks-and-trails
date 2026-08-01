@@ -7972,3 +7972,99 @@ T-087 needs T087-R2 corrected before its already-required STARBASE run. T-092's 
 gone, but the task remains blocked on an authorised metadata-only criterion plus its recorded
 machine evidence. The three reviewer regressions remain in the checkout as failing gates; no
 production source or coordination status was edited by the reviewer.
+
+## 2026-08-01 — second correction batch, third focused review
+
+**Reviewer:** Codex (Reviewer)
+**Implementation boundary:** `97f96c0..9a8eaeb` — four correction commits, one per task
+**Implementation head reviewed:** `9a8eaeb`
+**Later heads observed during review:** `7f877d2` and `049b595`; coordination changes only with
+respect to the reviewed production source
+**Platforms verified:** Linux; Win32 source inspection and static analysis only
+**CI:** no job has executed a step since 2026-07-30; no CI evidence is claimed
+**Overall verdict:** **Changes requested**
+
+### Task verdicts
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-046` | **Changes requested** | MP3 preview is corrected, but the built-in original-audio preset still promises a path the real postprocessor changes, and `mergeall` is a merge the provisional test misses. |
+| `T-081` | **Approved at `eb1bd70`** | T081-R4 is resolved. Reorder settlement preserves the admitted set and operation kinds, then uses the new durable positions only to order that set. Dormant recovered rows stay dormant. |
+| `T-087` | **Blocked; code correction still required before Windows verification** | The invalid-handle and last-error fixes are sound, but the unexecuted wrapper still has two handle-ownership holes in the conversion/cleanup path. `A-004` and Phase 2 exit criterion 4 remain blocked. |
+| `T-092` | **Blocked; T092-R2 remains partly open** | The metadata-only criterion and implementation agree, but the live task Scope still instructs both jobs to upload a dump artifact. The STARBASE criteria also remain externally unmet. |
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T046-R4` | **High** | **Yes — T-046** | Original-audio preview | `postprocessed_name()` treats `AudioCodec.ORIGINAL` as “keep the source container” (`worker.py:1023-1035`). yt-dlp's `best` extraction keeps the **codec**, not necessarily the container. The reviewer drove the built-in **Audio only (original)** preset through the real HLS/yt-dlp/ffmpeg path: the preview promised `master.mp4`, while `FFmpegExtractAudio` copied AAC into `master.m4a`. This is one of the exact Phase 2 cases the amended `REQ-011` explicitly calls non-provisional, so the correction's premise and its fake `.webm` assertion are false. The same shortcut also assumes every supported `preferredcodec` value is its extension, although yt-dlp maps AAC and ALAC to M4A and Vorbis to OGG. | Do not infer a final container from “keep source codec” or from the raw codec enum. Either derive the postprocessor's actual output semantics from enough resolved information and cover every supported codec, or label cases that cannot be known before the write as intended and amend the exactness claim accordingly. Keep the real built-in regression. | **Open** |
+| `T046-R5` | **Medium** | **Yes — T-046** | Provisional merge detection | `preview_is_provisional()` equates merging with a raw `+` in the selector (`worker.py:1055-1060`). Pinned yt-dlp also recognizes the special selector `mergeall`, which folds all selected formats into a merged format without containing `+`. The reviewer regression receives `False`, so the UI presents yt-dlp's container choice as an exact path in precisely the direction the amendment was meant to prevent. | Classify all yt-dlp merge forms rather than scanning for one token. Keep `mergeall` as the no-`+` regression; if complete pre-resolution classification is not maintainable, make the label conservative. | **Open** |
+| `T087-R3` | **High** | **Yes — T-087 / A-004** | Win32 handle ownership | T087-R2 fixed `CreateFileW`'s prototype, sentinel and saved error, but its ownership cleanup remains only superficially gated. `kernel32.CloseHandle(handle)` is called without declaring `CloseHandle(HANDLE)`: ctypes passes an undeclared Python integer as the platform C `int`, which is narrower than `HANDLE` on 64-bit Windows, so the conversion-failure cleanup can truncate the handle it is meant to release (`instance_lock.py:237-244`). The successful conversion also calls `open_osfhandle(handle, os.O_RDWR)` without `os.O_NOINHERIT`; Python explicitly documents the returned descriptor as inheritable by default. Both omissions were named in T087-R2's recommendation, and both new static regressions fail. | Bind `CloseHandle` with `argtypes = (wintypes.HANDLE,)` and `restype = wintypes.BOOL`; pass `os.O_NOINHERIT` when transferring ownership to the CRT descriptor. Then execute the already-required first-acquire, simultaneous-refusal and killed-holder cases on STARBASE. See the official [ctypes argument conversion](https://docs.python.org/3/library/ctypes.html) and [open_osfhandle inheritance](https://docs.python.org/3/library/msvcrt.html#msvcrt.open_osfhandle) contracts. | **Open — code plus external evidence** |
+| `T092-R2` | **Medium** | **Yes — T-092 prepared contract** | Current task truth | The authorised metadata-only criterion and state table are corrected, but the live `#### Scope` still directs `t074-repeat.yml` and `windows desktop` to “upload any dump they find as an artifact” (`TASKS.md:1691-1694`), and the affected-surface label still says “artifact upload only” (`:1679-1680`). Those are current instructions, not text inside the clearly marked superseded parenthetical. The entry therefore still tells the next reader both to upload and never upload. | Rewrite the remaining live Scope and affected-surface text to metadata-only reporting. Preserve the former upload design only inside an explicitly superseded historical note. | **Open — partial closure** |
+
+### Focused correction disposition
+
+| Prior finding | Result |
+|---|---|
+| `T046-R2` | **Open in a narrower form.** MP3 extension preview now matches the real write, but T046-R4 disproves the correction's broader claim that every Phase 2 audio extraction is exact. |
+| `T046-R3` | **Resolved.** Current manager comments no longer claim cancellation leaves a partial; the cooperative worker message remains the asserted evidence. |
+| `T081-R4` | **Resolved.** `_admit_reordered` is removed. A settled reorder orders only existing `_waiting` intents, and the corrected direct-start assertion no longer invents admission of job-2. |
+| `T087-R2` | **Partly resolved.** Pointer-width failure detection, a `use_last_error=True` binding and the full `CreateFileW` prototype are correct. T087-R3 covers the two ownership details left from the same recommendation. |
+| `T092-R2` | **Partly resolved.** The maintainer's metadata-only decision is taken in the criterion and prepared-state table, but current Scope still requires upload as described above. |
+
+### Review judgments
+
+**Removing `_admit_reordered` does not reopen the original barrier.** Public DOWNLOAD admission,
+the waiting-list fill path, resume, concurrency changes and retry deferral all meet at the same
+reorder counter. Settlement calls `_fill_free_slots()`, which observes any remaining in-flight
+reorder and otherwise selects only from existing waiting intents by the now-durable positions.
+The seven focused reorder tests pass, including refusal, two outstanding writes, direct admission,
+two already-waiting jobs and a recovered dormant row.
+
+**The T-046 staging/claim design remains approved.** These findings affect what is promised before
+the write, not the structural data-loss fix: the actual produced file is still claimed with
+`O_CREAT | O_EXCL` and moved on the same filesystem. The real original-audio failure completes
+successfully and records the correct `master.m4a`; it is the preview's `master.mp4` promise that is
+wrong.
+
+**T-092's runtime design is still the safe one.** Both YAML files parse, only metadata enters
+`reports/`, stale files are time-filtered, and the report disclaims attribution to this project.
+The finding is the remaining contradictory current instruction, not a request to restore upload.
+
+### Boundary and process observation
+
+`049b595` was committed and pushed while this review was active. Its subject and `Task:` trailer
+name only Phase 2 / T-080 / T-087 coordination, but it also stages all four reviewer regressions
+for T-046 and T-087 from the shared working tree. That is the same stage-the-whole-tree habit the
+handoff said had been corrected, for a third boundary muddle. It does not change the frozen
+implementation verdict above, and published history must not be rewritten, but the real contents
+of `049b595` need to be carried forward: current `main` deliberately has four failing reviewer
+tests until these findings close.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Correction boundary | `97f96c0..9a8eaeb`; four task commits, production source unchanged by later observed heads |
+| `git diff --check 97f96c0..9a8eaeb` and `9a8eaeb..049b595` | Passed |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **115 files** |
+| `mypy src` | Passed; **36 source files** |
+| `mypy --platform win32 src` | Passed; **36 source files** |
+| Bare `mypy` / `mypy --platform win32` | **Failed: 14 / 16 errors** in the existing test tree. None points at the new assertions, but `ai/TESTING.md` requires these wider gates when tests change, so the stronger gate is not clean. |
+| Focused passing reviewer slice | **25 passed, 191 deselected**: 13 instance-lock, 5 preview and 7 reorder tests |
+| T046-R4 real yt-dlp/ffmpeg regression | **Failed as expected:** preview `master.mp4`, stored output `master.m4a` |
+| T046-R5 merge regression | **Failed as expected:** `preview_is_provisional("mergeall")` returned false |
+| T087-R3 source gates | **2 failed as expected:** no typed `CloseHandle`, no `O_NOINHERIT` |
+| Workflow syntax | Both changed workflow YAML files parsed; no `.dmp` path is copied into `reports/` |
+| Implementer full suite | Reported **1747 passed / 11 skipped / 2 deselected** before reviewer regressions; not reproducible at current head because those four failures are now committed |
+| CI / Windows runtime | Not run; STARBASE evidence remains absent |
+
+### Final disposition
+
+T-081 is approved at `eb1bd70`; its third correction removes the invented scheduling rule without
+reopening the admission race. T-046 remains Changes requested on T046-R4 and T046-R5. T-087 remains
+Blocked with T087-R3 requiring a code correction before its external Windows evidence can be
+meaningful. T-092 remains Blocked, and T092-R2 is not fully closed until all live task text says
+metadata-only. Reviewer production edits were not made. The four failing regressions are committed
+at `049b595`; this review record is left uncommitted for the maintainer.

@@ -20,9 +20,10 @@ IDs are never reused. Completed tasks move to `ai/archive/` once they bury the l
 `COORD-R5` through `COORD-R11` are seven rounds of a hand-written summary drifting from the file it
 summarises; this one is transcribed from the actual `## ` sections so it starts correct.
 
-- **In Review:** `T-046`, `T-081` and `T-092` — corrected again 2026-08-01 after the focused
-  re-review, awaiting a third pass. Each entry's `#### Correction` sections carry the per-finding
-  detail; `ai/handoffs/` carries the boundaries.
+- **In Review:** `T-046` only — corrected a third time 2026-08-01 (`T046-R4`, `T046-R5`).
+- **Blocked:** `T-087` (`T087-R3` corrected; the Windows branch has still never executed) and
+  `T-092` (three criteria need `STARBASE`). Both are blocked on the machine, not on a decision.
+- **Approved 2026-08-01** at `eb1bd70`: `T-081`.
 - **Approved 2026-08-01** at `97f96c0`: `T-083` and `T-102`. At `05e5312`: `T-080`, `T-053`,
   `T-099`, `T-101`, `T-103`. `T-092` is *prepared*, not complete: three of
   its criteria need `STARBASE`.
@@ -90,219 +91,6 @@ exists — but `T-096` gates *status against section*, and `COORD-R11` was prose
 both while every status and section agreed. The invariant test cannot see that, and this note is
 written by hand for exactly that reason. It said "Empty as of 2026-07-30" until `T-079` landed
 here, which is the drift it is written to make visible.)*
-
-### T-081 — Reorder pending jobs, and clear completed ones
-
-**Status:** **In Review — corrected a third time 2026-08-01, awaiting re-review.** `T081-R1`
-is now **Resolved**; `T081-R4` is the finding my *own* correction to it introduced, and is closed
-below. `T081-R2` and
-`T081-R3` are Resolved. **`T081-R1` stayed open** through the first correction — the barrier went
-on `_fill_free_slots` and `_start_when_free` and the public `start()` walked past it, which is the
-untested third path I named in my own handoff. Closed now, with admission re-decided from the
-durable order rather than from who asked first. Released by `T-079`'s approval at `da49a51`, which
-owns the view the reordering acts on. **Thirteen mutations run; all thirteen killed.** One adjacent
-defect was found and **filed rather than fixed** (`AGENTS.md` §7) — `T-103`.
-*(This read "Proposed — **not released by `T-078`:** it waits on `T-079`", then "Ready — released
-2026-07-31".)*
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** `T-078`, `T-079`
-**Relevant context:** `REQ-016`, `ARC-005`, `persistence/repositories.py`
-**Affected surfaces:** `persistence/`, `ui/`
-**Risk:** Low to medium — reordering is a write pattern the writer thread has not seen
-
-#### Scope
-
-`queue_position` already exists and is allocated by the writer inside the insert transaction,
-specifically so two callers cannot read the same `MAX()`. Reordering is the first thing that
-*rewrites* it, for several rows at once.
-
-#### Acceptance criteria
-
-- Reordering is one transaction: a queue half-reordered by a crash is a queue in an order nobody
-  chose
-- Only pending jobs reorder; a running job's position is not a promise the pool can keep
-- Clear-completed removes records, states whether history keeps them (`T-085`), and never touches
-  a file
-- The order the pool starts jobs in is the order the table shows — asserted, since a view that
-  disagrees with the scheduler is the `T-075` shape
-
-#### Out of scope
-
-- Drag-and-drop specifically; the requirement is reordering, not a gesture
-
-#### What was built, 2026-07-31
-
-**Evidence.** `ruff check`, `ruff format --check`, `mypy src` and `mypy --platform win32 src`
-clean; full Linux suite **1694 passed / 11 skipped / 2 deselected** after the 2026-08-01
-corrections. Thirteen mutations, all killed, tree hash identical before and
-after.
-
-**Reordering redeals the positions the named jobs already hold**, rather than renumbering from
-zero. Two consequences, both wanted: a running job keeps its slot, because its position is not
-among the ones being redealt; and jobs the user did not touch do not move relative to anything.
-Renumbering the whole queue would reorder by side effect, and it passes any test where the
-reordered jobs are the entire queue — so the test that gates this has a **running job sitting
-between the two being swapped**.
-
-**The `UNIQUE` index is the reason there are two phases.** `jobs_queue_position` is unique over
-non-`NULL` values and SQLite checks per *statement*, not at commit, so assigning new positions
-directly fails the moment two of them cross — which is what reordering is. The rows are set to
-`NULL` first (the partial index excludes `NULL`), then given their new values, both inside one
-transaction. The single-transaction criterion is gated by injecting a failure **between** the two
-phases through a proxy connection, because that is the only window in which the moved rows are
-outside the queue order entirely.
-
-**Only pending jobs reorder, and the refusal is loud.** `REORDERABLE` moved to `core/job_state.py`
-beside `TERMINAL` and `CANCELLABLE` — it is a fact about a status, and putting it there keeps `ui/`
-from importing `persistence/` to decide whether to offer the move actions. It is **written out
-rather than derived**: a derived complement would agree with the other two unconditionally, so a
-new status would become reorderable silently. `test_the_reorderable_statuses_partition_the_enum`
-asserts the partition instead, which fails the suite until somebody decides the new status's side.
-
-**Clearing keeps history, and that is the answer to "where did my file go".** Completed and
-cancelled rows go; `FAILED` stays, because a failed job is still offering a retry and clearing it
-would throw away a decision the user has not made. The `history` table is untouched — `T-085` wrote
-it inside the completion transaction and `T-100` is the view over it, which is exactly why
-`P2PLAN-R8` filed that view. A mutation that also deletes the history rows is killed by a test that
-completes a job through `complete_job` and then looks for its record.
-
-**Two actions rather than drag-and-drop.** `REQ-016` asks for reordering, not a gesture, and Move
-up / Move down are keyboard-reachable where a drag is not — `NFR-005` makes that the requirement.
-The window sends the **whole new order**, computed over the movable rows only, so moving a pending
-job past a running one swaps it with the next *pending* job rather than naming the running one the
-repository would refuse.
-
-| Mutation | Killed by |
-|---|---|
-| Reorder renumbers from zero | the redeal test, via the untouched job between them |
-| Reorder skips the `NULL` phase | the crossing-positions swap |
-| Reorder runs the two phases in two transactions | the injected mid-reorder failure |
-| Reorder silently skips a running job | the refusal test |
-| Reorder accepts a job named twice | the three-refusals test |
-| The manager announces a reordering it never performed | the scheduler-order test |
-| Clearing does not sweep the waiting list | the cancelled-then-cleared test |
-| The window moves by table index, not among movable rows | the move-across-a-running-job test |
-| The move actions are offered for a running job | the enabling test |
-| Moving past an end wraps instead of doing nothing | the either-end test |
-| `clear_completed` also clears `FAILED` | the keeps-the-rest test |
-| `clear_completed` also deletes the history rows | the history test |
-| `REORDERABLE` quietly gains a running status | the partition test |
-
-#### `T-103`, found here and filed rather than fixed
-
-`cancel()` on a job that is **waiting for a slot** writes `CANCELLED` and leaves its id on
-`_waiting`; nothing removes it. That was harmless while the row existed — the pool's later `start()`
-simply refused — and this task makes it reachable, because clearing deletes the row and the same
-path then looks up a job that is not there.
-
-**A narrow sweep is included here** (`_settle_clear` drops waiting ids whose rows have gone) and the
-general fix is `T-103`. Not fixed inline for two reasons: `AGENTS.md` §7 says file it, and `cancel`
-is covered by `REQ-015`'s budget tests under a `T-080` that is already with the reviewer — editing
-it now would put an unreviewed change under a task already handed over. **The test asserts the stale
-premise deliberately**, so that when `T-103` lands it fails and says so rather than passing silently
-over a sweep that has become redundant.
-
-#### Corrections, 2026-08-01 — `T081-R1`, `T081-R2`, `T081-R3`
-
-**`T081-R1` — `ARC-005`'s single writer does not serialise the scheduling *read*.** I flagged this
-in the handoff as reasoned-but-untested and asked for it to be attacked; it is real. While a
-reorder is on the writer thread, a tick, `resume()` or `set_concurrency()` can run `_next_waiting()`
-against the positions the reorder is replacing, pick the old head, and queue its start. Both writes
-then succeed — the reorder first, because FIFO — so the queue durably says one thing and the job
-that actually started says another. **Reordering the transactions cannot fix it**: the wrong
-decision was already made before either was queued.
-
-An in-flight reorder is now an **admission barrier**. Nothing is taken from the waiting list until
-every outstanding reorder has settled, and the barrier is released on **both** paths — a refused
-reorder leaves the stored order untouched, so holding the queue shut would turn one failed write
-into a stalled pool. **A counter, not a flag**, because two reorders can be in flight and a boolean
-cleared by the first callback reopens the window while the second is still running. All three cases
-the reviewer named are asserted.
-
-**`T081-R2` — `queue_reordered` and `queue_cleared` had zero receivers**, the same defect as
-`T080-R2`. Both commit through the assembled toolbar path and the table reflected neither: reorder
-appeared to do nothing and Clear finished appeared to do nothing, while the database was correct
-each time. Wired through the same `_on_set_changed` slot.
-
-**`T081-R3` — deselection was silent.** `_announce_selection` emitted only when a row existed, and
-that signal is the sole updater of the per-job actions — so "nothing is selected" was exactly the
-news the toolbar needed and never received. Remove, Move up and Move down stayed enabled over an
-empty selection and their handlers then did nothing. It now emits the empty string; one signal
-carrying *what is selected now* cannot get out of order with itself, where a separate
-`selection_cleared` could arrive either side of a selection and leave the actions reflecting the
-older one. The model reset that removal and clearing now cause is connected to it too, since that
-is the path a user actually takes to end up with nothing selected.
-
-| Mutation | Killed by |
-|---|---|
-| The reorder barrier is removed from the scheduler | the in-flight admission test |
-| The barrier is a flag the first callback clears | the two-in-flight test |
-| A refused reorder leaves the pool shut | the refusal test |
-| The table stops hearing about reordering | the composed move regression |
-| The table stops hearing about clearing | the composed clear regression |
-| Deselection is silent again | the cleared-selection gate |
-| An empty selection still enables the move actions | the same |
-
-#### Not covered, stated rather than implied
-
-- **Windows runtime.** Nothing here is platform-specific and `mypy --platform win32` is clean, but
-  no CI job has executed a step since 2026-07-30 (`STATUS.md`).
-- **The `app.py` seam.** The toolbar tests drive the actions with injected handlers and the manager
-  tests drive the queue directly; the wiring between them is covered by `mypy` and the launch test.
-- **Reordering while the pool is actively starting a job.** The repository refuses a `RUNNING` row,
-  but a job in the window between `_next_waiting` choosing it and its status write landing is still
-  `QUEUED`. I believe the single writer serialises this; it is **reasoned, not tested**, and it is
-  the first thing I would ask a reviewer to attack.
-
-
-#### Correction, 2026-08-01 — `T081-R1`, still open after the first pass
-
-**The barrier went on the scheduler and the public entry point walked past it.** `_fill_free_slots`
-and `_start_when_free` were gated; `start(..., DOWNLOAD)` was not, and the add-dialog seam uses
-exactly that path. Starting a job by hand while a reorder was in flight admitted it against the
-positions the reorder was replacing. **This is the untested third path I named in my own handoff**
-as the thing I could not rule out — it was there.
-
-Both admission rules now sit on one condition in `start()`, with the PROBE exemption explicit and
-applying to both: a metadata probe neither depends on `queue_position` nor changes it.
-
-**Admission is also re-decided when the reorder settles**, which is the half a park alone does not
-give. A parked job was chosen against the *old* order, so honouring it as-is starts the old head
-immediately after the user said something else should go first — the same defect one step later.
-The jobs named in a settled reorder become candidates, and `_next_waiting` picks by the new
-positions. Only while something is already parked: a reorder of an idle queue is a rearrangement,
-not a request to start anything.
-
-| Mutation | Killed by |
-|---|---|
-| The public start ignores the reorder barrier | the reviewer's direct-start regression |
-| The public start guard swallows probes too | the probe exemption test |
-| A settled reorder does not re-decide admission | the same direct-start regression |
-
-
-#### Correction, 2026-08-01 (second) — `T081-R4`, a finding my own fix caused
-
-**`_admit_reordered` was a product rule I invented to satisfy an assertion that was itself wrong.**
-The reviewer's first direct-start regression demanded that `job-2` start after only `job-1` had been
-requested; I made settlement promote every reordered `QUEUED` or `READY` row into `_waiting` to
-satisfy it. The reviewer has since corrected that assertion and shown what mine cost: **startup
-recovery deliberately leaves queued rows dormant** (`T-014`, `NFR-003`), so a reorder naming one of
-them began an unattended download for a job nobody had asked for.
-
-Removed entirely. The barrier still delays admission, and the new positions are used only to
-*order* the intents already waiting — which is what `_next_waiting` does with them.
-
-**The lesson is the one worth keeping.** A reviewer assertion is evidence, not a specification: I
-should have questioned an expectation that required inventing a scheduling rule, rather than
-building the rule to make it pass.
-
-| Mutation | Killed by |
-|---|---|
-| Reorder settlement promotes dormant rows again | the recovered-job regression |
-
----
 
 ### T-046 — Output path collision policy against the filesystem
 
@@ -420,6 +208,43 @@ cooperative rather than forced.
 | `ORIGINAL` is treated as a conversion | the original-audio test, **added after it survived** |
 | A merging request is not reported provisional | the merging test |
 | Every request is reported provisional | the audio-with-merging-selector test, **added after it survived** |
+
+
+#### Correction, 2026-08-01 (third) — `T046-R4` and `T046-R5`
+
+**`T046-R4`: a real download disproved the correction's premise.** The previous pass claimed every
+Phase 2 audio extraction was previewed exactly. A real HLS download through the built-in **Audio
+only (original)** preset previewed `master.mp4` and produced `master.m4a`.
+
+Two mistakes in one line. **The codec is not the extension** — yt-dlp copies `aac` and `alac` into
+`m4a` and `vorbis` into `ogg` — so `codec.value` was right for five of eight and confidently wrong
+for three. The container now comes from yt-dlp's own `ACODECS` table rather than being restated.
+
+**And `ORIGINAL` is not derivable at all**, which is worth stating precisely because the obvious
+next move is to read the codec from the probed `info_dict`. `FFmpegExtractAudioPP.run` calls
+`get_audio_codec(path)` — **ffprobe on the downloaded file** — and skips converting entirely when
+the *downloaded* extension is already a common audio one. Both inputs exist only after the write.
+So it is labelled provisional, `REQ-011`'s exactness claim is narrowed to extraction with a **named**
+codec, and the reviewer's real regression is kept with its assertion amended rather than deleted.
+
+**`T046-R5`: `mergeall` merges with no `+` in it.** Scanning for one token reported a merging
+request as exact — precisely the direction the amendment exists to prevent. Merge classification
+moved to `core/presets.selector_merges`, which lists the forms rather than pattern-matching one, and
+says plainly that an unlisted form is reported exact so the list is the thing to keep short and
+visible.
+
+| Mutation | Killed by |
+|---|---|
+| The codec name is used as the extension again | the eight-codec table test, **added after it survived** |
+| `ORIGINAL` is predicted instead of labelled | the simulated-`best`-entry test, **added after it survived** |
+| Merge detection scans for a plus again | the `mergeall` regression |
+| Every selector is called merging | the exact-audio and single-format tests |
+
+**Both `T046-R4` mutations survived their first run.** Every existing preview test asked for MP3,
+where codec and container agree; and `ACODECS` has no `best` key, so the `ORIGINAL` guard and the
+table lookup gave the same answer and nothing could tell them apart. The guard is kept rather than
+deleted — it encodes a decision the table cannot, that even a named container for `best` would still
+depend on ffprobe — and the test now reaches it by giving the table such an entry.
 
 ---
 
@@ -1677,7 +1502,7 @@ process on purpose, and opening the dump. See "Prepared, and what remains" below
 machine they use
 **Relevant context:** `OPS-007`, `T-074`, `T-073`, `docs/WINDOWS_VERIFICATION.md`
 **Affected surfaces:** `docs/WINDOWS_VERIFICATION.md`, `.github/workflows/ci.yml` and
-`t074-repeat.yml` (artifact upload only), `STARBASE` machine configuration
+`t074-repeat.yml` (a metadata report, never a dump artifact), `STARBASE` machine configuration
 **Risk:** Low to the product — it touches no source. The real risk is on the machine: dumps are
 written unattended and a full-memory dump of a Python process with Qt loaded is not small
 
@@ -1689,9 +1514,18 @@ identified — a stack is not a cause.** `faulthandler` cannot supply that: it p
 A minidump does.
 
 So: configure Windows Error Reporting local dumps on `STARBASE` for the interpreter that runs the
-suite, and have the `t074-repeat.yml` and `windows desktop` jobs upload any dump they find as an
-artifact. Then a recurrence — in CI or in an ordinary run — produces something a debugger can read
-instead of another anecdote.
+suite, and have the `t074-repeat.yml` and `windows desktop` jobs **report** any dump written during
+that run — name, size and timestamp into `reports/crashdumps.txt` — leaving the dump on the machine
+for deliberate retrieval. Then a recurrence, in CI or in an ordinary run, produces something a
+debugger can read instead of another anecdote.
+
+*(**Superseded, and the wording matters because this is the live instruction.** This said "upload any
+dump they find as an artifact", which `T092-R1` found unsafe on three counts: WER is keyed by
+executable *file name* so the folder collects any `python.exe` under that account, nothing filtered
+stale dumps so the deliberate proof dump would be re-uploaded on every later run and announced as a
+recurrence, and a full memory dump can carry an unrelated program's heap into a CI artifact. The
+metadata-only scope is the maintainer's decision of 2026-08-01 — `T092-R2`, which stayed open once
+because the criterion was corrected and this sentence was not.)*
 
 **Consent first, and this is not a formality.** `STARBASE` is the maintainer's own desktop.
 `OPS-005` and `T-073` both carry the rule that a workflow must never provision it, and
@@ -2355,6 +2189,214 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-081 — Reorder pending jobs, and clear completed ones
+
+**Status:** **Complete — Approved at `eb1bd70`**, 2026-08-01. All four findings are **Resolved**.
+Reorder settlement preserves the admitted set and uses the new durable positions only to order it;
+dormant recovered rows stay dormant.
+*(Its history is worth keeping: `T081-R1` — the barrier missing from the public `start()` — stayed
+open through the first correction, and `T081-R4` was a defect that correction *introduced*, by
+inventing an admission rule to satisfy a reviewer assertion that was later withdrawn.)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** `T-078`, `T-079`
+**Relevant context:** `REQ-016`, `ARC-005`, `persistence/repositories.py`
+**Affected surfaces:** `persistence/`, `ui/`
+**Risk:** Low to medium — reordering is a write pattern the writer thread has not seen
+
+#### Scope
+
+`queue_position` already exists and is allocated by the writer inside the insert transaction,
+specifically so two callers cannot read the same `MAX()`. Reordering is the first thing that
+*rewrites* it, for several rows at once.
+
+#### Acceptance criteria
+
+- Reordering is one transaction: a queue half-reordered by a crash is a queue in an order nobody
+  chose
+- Only pending jobs reorder; a running job's position is not a promise the pool can keep
+- Clear-completed removes records, states whether history keeps them (`T-085`), and never touches
+  a file
+- The order the pool starts jobs in is the order the table shows — asserted, since a view that
+  disagrees with the scheduler is the `T-075` shape
+
+#### Out of scope
+
+- Drag-and-drop specifically; the requirement is reordering, not a gesture
+
+#### What was built, 2026-07-31
+
+**Evidence.** `ruff check`, `ruff format --check`, `mypy src` and `mypy --platform win32 src`
+clean; full Linux suite **1694 passed / 11 skipped / 2 deselected** after the 2026-08-01
+corrections. Thirteen mutations, all killed, tree hash identical before and
+after.
+
+**Reordering redeals the positions the named jobs already hold**, rather than renumbering from
+zero. Two consequences, both wanted: a running job keeps its slot, because its position is not
+among the ones being redealt; and jobs the user did not touch do not move relative to anything.
+Renumbering the whole queue would reorder by side effect, and it passes any test where the
+reordered jobs are the entire queue — so the test that gates this has a **running job sitting
+between the two being swapped**.
+
+**The `UNIQUE` index is the reason there are two phases.** `jobs_queue_position` is unique over
+non-`NULL` values and SQLite checks per *statement*, not at commit, so assigning new positions
+directly fails the moment two of them cross — which is what reordering is. The rows are set to
+`NULL` first (the partial index excludes `NULL`), then given their new values, both inside one
+transaction. The single-transaction criterion is gated by injecting a failure **between** the two
+phases through a proxy connection, because that is the only window in which the moved rows are
+outside the queue order entirely.
+
+**Only pending jobs reorder, and the refusal is loud.** `REORDERABLE` moved to `core/job_state.py`
+beside `TERMINAL` and `CANCELLABLE` — it is a fact about a status, and putting it there keeps `ui/`
+from importing `persistence/` to decide whether to offer the move actions. It is **written out
+rather than derived**: a derived complement would agree with the other two unconditionally, so a
+new status would become reorderable silently. `test_the_reorderable_statuses_partition_the_enum`
+asserts the partition instead, which fails the suite until somebody decides the new status's side.
+
+**Clearing keeps history, and that is the answer to "where did my file go".** Completed and
+cancelled rows go; `FAILED` stays, because a failed job is still offering a retry and clearing it
+would throw away a decision the user has not made. The `history` table is untouched — `T-085` wrote
+it inside the completion transaction and `T-100` is the view over it, which is exactly why
+`P2PLAN-R8` filed that view. A mutation that also deletes the history rows is killed by a test that
+completes a job through `complete_job` and then looks for its record.
+
+**Two actions rather than drag-and-drop.** `REQ-016` asks for reordering, not a gesture, and Move
+up / Move down are keyboard-reachable where a drag is not — `NFR-005` makes that the requirement.
+The window sends the **whole new order**, computed over the movable rows only, so moving a pending
+job past a running one swaps it with the next *pending* job rather than naming the running one the
+repository would refuse.
+
+| Mutation | Killed by |
+|---|---|
+| Reorder renumbers from zero | the redeal test, via the untouched job between them |
+| Reorder skips the `NULL` phase | the crossing-positions swap |
+| Reorder runs the two phases in two transactions | the injected mid-reorder failure |
+| Reorder silently skips a running job | the refusal test |
+| Reorder accepts a job named twice | the three-refusals test |
+| The manager announces a reordering it never performed | the scheduler-order test |
+| Clearing does not sweep the waiting list | the cancelled-then-cleared test |
+| The window moves by table index, not among movable rows | the move-across-a-running-job test |
+| The move actions are offered for a running job | the enabling test |
+| Moving past an end wraps instead of doing nothing | the either-end test |
+| `clear_completed` also clears `FAILED` | the keeps-the-rest test |
+| `clear_completed` also deletes the history rows | the history test |
+| `REORDERABLE` quietly gains a running status | the partition test |
+
+#### `T-103`, found here and filed rather than fixed
+
+`cancel()` on a job that is **waiting for a slot** writes `CANCELLED` and leaves its id on
+`_waiting`; nothing removes it. That was harmless while the row existed — the pool's later `start()`
+simply refused — and this task makes it reachable, because clearing deletes the row and the same
+path then looks up a job that is not there.
+
+**A narrow sweep is included here** (`_settle_clear` drops waiting ids whose rows have gone) and the
+general fix is `T-103`. Not fixed inline for two reasons: `AGENTS.md` §7 says file it, and `cancel`
+is covered by `REQ-015`'s budget tests under a `T-080` that is already with the reviewer — editing
+it now would put an unreviewed change under a task already handed over. **The test asserts the stale
+premise deliberately**, so that when `T-103` lands it fails and says so rather than passing silently
+over a sweep that has become redundant.
+
+#### Corrections, 2026-08-01 — `T081-R1`, `T081-R2`, `T081-R3`
+
+**`T081-R1` — `ARC-005`'s single writer does not serialise the scheduling *read*.** I flagged this
+in the handoff as reasoned-but-untested and asked for it to be attacked; it is real. While a
+reorder is on the writer thread, a tick, `resume()` or `set_concurrency()` can run `_next_waiting()`
+against the positions the reorder is replacing, pick the old head, and queue its start. Both writes
+then succeed — the reorder first, because FIFO — so the queue durably says one thing and the job
+that actually started says another. **Reordering the transactions cannot fix it**: the wrong
+decision was already made before either was queued.
+
+An in-flight reorder is now an **admission barrier**. Nothing is taken from the waiting list until
+every outstanding reorder has settled, and the barrier is released on **both** paths — a refused
+reorder leaves the stored order untouched, so holding the queue shut would turn one failed write
+into a stalled pool. **A counter, not a flag**, because two reorders can be in flight and a boolean
+cleared by the first callback reopens the window while the second is still running. All three cases
+the reviewer named are asserted.
+
+**`T081-R2` — `queue_reordered` and `queue_cleared` had zero receivers**, the same defect as
+`T080-R2`. Both commit through the assembled toolbar path and the table reflected neither: reorder
+appeared to do nothing and Clear finished appeared to do nothing, while the database was correct
+each time. Wired through the same `_on_set_changed` slot.
+
+**`T081-R3` — deselection was silent.** `_announce_selection` emitted only when a row existed, and
+that signal is the sole updater of the per-job actions — so "nothing is selected" was exactly the
+news the toolbar needed and never received. Remove, Move up and Move down stayed enabled over an
+empty selection and their handlers then did nothing. It now emits the empty string; one signal
+carrying *what is selected now* cannot get out of order with itself, where a separate
+`selection_cleared` could arrive either side of a selection and leave the actions reflecting the
+older one. The model reset that removal and clearing now cause is connected to it too, since that
+is the path a user actually takes to end up with nothing selected.
+
+| Mutation | Killed by |
+|---|---|
+| The reorder barrier is removed from the scheduler | the in-flight admission test |
+| The barrier is a flag the first callback clears | the two-in-flight test |
+| A refused reorder leaves the pool shut | the refusal test |
+| The table stops hearing about reordering | the composed move regression |
+| The table stops hearing about clearing | the composed clear regression |
+| Deselection is silent again | the cleared-selection gate |
+| An empty selection still enables the move actions | the same |
+
+#### Not covered, stated rather than implied
+
+- **Windows runtime.** Nothing here is platform-specific and `mypy --platform win32` is clean, but
+  no CI job has executed a step since 2026-07-30 (`STATUS.md`).
+- **The `app.py` seam.** The toolbar tests drive the actions with injected handlers and the manager
+  tests drive the queue directly; the wiring between them is covered by `mypy` and the launch test.
+- **Reordering while the pool is actively starting a job.** The repository refuses a `RUNNING` row,
+  but a job in the window between `_next_waiting` choosing it and its status write landing is still
+  `QUEUED`. I believe the single writer serialises this; it is **reasoned, not tested**, and it is
+  the first thing I would ask a reviewer to attack.
+
+
+#### Correction, 2026-08-01 — `T081-R1`, still open after the first pass
+
+**The barrier went on the scheduler and the public entry point walked past it.** `_fill_free_slots`
+and `_start_when_free` were gated; `start(..., DOWNLOAD)` was not, and the add-dialog seam uses
+exactly that path. Starting a job by hand while a reorder was in flight admitted it against the
+positions the reorder was replacing. **This is the untested third path I named in my own handoff**
+as the thing I could not rule out — it was there.
+
+Both admission rules now sit on one condition in `start()`, with the PROBE exemption explicit and
+applying to both: a metadata probe neither depends on `queue_position` nor changes it.
+
+**Admission is also re-decided when the reorder settles**, which is the half a park alone does not
+give. A parked job was chosen against the *old* order, so honouring it as-is starts the old head
+immediately after the user said something else should go first — the same defect one step later.
+The jobs named in a settled reorder become candidates, and `_next_waiting` picks by the new
+positions. Only while something is already parked: a reorder of an idle queue is a rearrangement,
+not a request to start anything.
+
+| Mutation | Killed by |
+|---|---|
+| The public start ignores the reorder barrier | the reviewer's direct-start regression |
+| The public start guard swallows probes too | the probe exemption test |
+| A settled reorder does not re-decide admission | the same direct-start regression |
+
+
+#### Correction, 2026-08-01 (second) — `T081-R4`, a finding my own fix caused
+
+**`_admit_reordered` was a product rule I invented to satisfy an assertion that was itself wrong.**
+The reviewer's first direct-start regression demanded that `job-2` start after only `job-1` had been
+requested; I made settlement promote every reordered `QUEUED` or `READY` row into `_waiting` to
+satisfy it. The reviewer has since corrected that assertion and shown what mine cost: **startup
+recovery deliberately leaves queued rows dormant** (`T-014`, `NFR-003`), so a reorder naming one of
+them began an unattended download for a job nobody had asked for.
+
+Removed entirely. The barrier still delays admission, and the new positions are used only to
+*order* the intents already waiting — which is what `_next_waiting` does with them.
+
+**The lesson is the one worth keeping.** A reviewer assertion is evidence, not a specification: I
+should have questioned an expectation that required inventing a scheduling rule, rather than
+building the rule to make it pass.
+
+| Mutation | Killed by |
+|---|---|
+| Reorder settlement promotes dormant rows again | the recovered-job regression |
+
+---
 
 ### T-083 — Bounded retry with backoff, for network failures only
 
