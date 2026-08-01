@@ -93,164 +93,6 @@ both while every status and section agreed. The invariant test cannot see that, 
 written by hand for exactly that reason. It said "Empty as of 2026-07-30" until `T-079` landed
 here, which is the drift it is written to make visible.)*
 
-### T-087 — Single-instance guard
-
-**Status:** **In Review — corrected 2026-08-01, and its Windows evidence now exists.** `T087-R1`
-(the architecture mismatch) and `T087-R3` (the untyped `CloseHandle` and inheritable descriptor) are
-both corrected. **The Windows branch has executed**, on `check (windows-latest)` at `7516f61`:
-first acquisition and refusal, **two launches racing**, and killed-holder recovery all passed —
-`T-087`'s three required cases, and the exact ones `P2PLAN-R5` withdrew the previous design over.
-
-**`OPS-005` was amended 2026-08-01** (maintainer): hosted Windows carries the Windows gate while
-`STARBASE` is unreachable. So this is no longer blocked on a machine nobody can reach — it needs a
-review. **It owns Phase 2 exit criterion 4.** **The attach half is deliberately not built**
-(`T-104`).
-*(This read "Proposed", "Ready — promoted 2026-07-31", "In Review — complete 2026-08-01", then
-"Blocked … the Windows branch has never executed". That last one was true when written and stopped
-being true the moment the hosted runners came back.)*
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 2
-**Depends on:** nothing technical. Its `DECISIONS.md` entry exists: **`ARC-006`**, whose mechanism
-was **amended 2026-07-29** after `P2PLAN-R5` — implement the amendment, not the original
-**Relevant context:** **`ARC-006`** (the mechanism and its rationale), `A-004`, `DAT-001`,
-`ARC-005`, `OPS-004`
-**Affected surfaces:** `app.py`, a platform seam, `ai/DECISIONS.md`
-**Risk:** Medium — the failure it prevents is two writers on one database
-
-#### Scope
-
-`A-004` assumes a single local user and **no concurrent instances against the same database**, and
-records itself as *unverified*, with enforcement named as a Phase 2 task. This is that task.
-
-The database is the reason. `ARC-005` puts every write on one writer thread *within a process*;
-two processes have two writer threads and no shared lock discipline.
-
-#### The mechanism — `ARC-006` **as amended 2026-07-29**; read the amendment first
-
-**`ARC-006` is the canonical record** (`P2PLAN-R2`). **Its original mechanism is withdrawn**
-(`P2PLAN-R5`): Qt documents that on Windows **two local servers can listen on the same pipe name at
-once**, so *connect-first-then-claim* is not exclusive and two simultaneous launches can both become
-servers — the two-writer state this task exists to prevent.
-
-**Ownership is now an atomic kernel lock** on a file derived from the resolved database path
-(`flock(LOCK_EX | LOCK_NB)` on POSIX, exclusive-access open on Windows), released by the kernel when
-the holder dies. **`QLocalServer` remains only the attach channel**, started after ownership is won.
-
-**This task's acceptance criteria must gate simultaneous starts, not just stale-owner recovery** —
-the withdrawn design passes a sequential test, which is how it survived being written down. See the
-amendment for what it changes.
-
-*(Superseded, kept because the sequence is the point — this read as the decided mechanism:)*
-
-**`QLocalServer` / `QLocalSocket`, named from the resolved database path.**
-
-- **Already Qt**, so no new dependency, and one code path compiles to a named pipe on Windows and
-  a Unix domain socket on Linux — two correct platform implementations rather than two guesses.
-- **It is a channel, not a flag.** That is what makes *attach* possible rather than only *refuse*:
-  a second launch can hand its URL to the first instance and raise its window. A lock file can
-  only say no.
-- **Crash behaviour decided it**, because that is the case the guard exists for. Windows destroys
-  a named pipe when its owning process dies. On Linux a killed process leaves the socket file, so
-  the protocol is *connect first; if the connection fails the owner is gone, remove the stale name
-  and become the server*. A PID lock file needs a liveness check and is wrong under PID reuse;
-  `flock` is robust but offers no channel.
-- **Named from the database path**, because `A-004` is about the database rather than the
-  application. Two instances against different databases harm nothing and must not be blocked.
-
-#### Acceptance criteria
-
-- A second launch either attaches to the running instance or refuses in its favour, and says which
-- **Two launches started simultaneously do not both win** (`P2PLAN-R5`). Racing starts, not a
-  sequential pair: the withdrawn `QLocalServer`-as-lock design passes the sequential test and fails
-  this one, because two servers may listen on one Windows pipe name at the same time
-- A stale lock left by a killed process does not permanently block startup
-- Verified on both platforms, `STARBASE` included
-- The mechanism and its crash behaviour are recorded in `ai/DECISIONS.md` with an ID
-- **The stale-socket path is tested by killing an instance**, not by deleting a file by hand: the
-  recovery has to work against the failure it was chosen for
-- Two instances against *different* databases both start
-
-#### Out of scope
-
-- Multi-user or networked access (`A-004` scopes it out)
-
-#### What was built, 2026-08-01
-
-**Evidence.** `ruff`, `ruff format`, `mypy src` and `mypy --platform win32 src` clean. New module
-`core/instance_lock.py`; 9 tests in `tests/integration/test_single_instance.py` and 2 in
-`test_composition.py`. Removing the lock call kills **3** of the 9 — the cross-process claim is
-genuinely exercised rather than asserted in-process.
-
-**An atomic kernel lock, per `ARC-006`'s amendment.** `fcntl.flock(LOCK_EX | LOCK_NB)` on POSIX,
-`msvcrt.locking(LK_NBLCK)` on Windows. Both are released **by the kernel when the holder dies**,
-which is the property a PID file cannot offer and the reason `ARC-006` rejected PID files.
-
-**`flock` rather than `lockf`.** POSIX record locks are released when *any* descriptor for the file
-closes in the process, so a program that opens the same path elsewhere silently drops its own lock.
-`flock` is tied to the open file description.
-
-**The lock file is never unlinked**, and that is a decision rather than an omission. Removing it
-races: another launch may have opened that same path and be about to lock it, and unlinking
-underneath them hands a lock on an orphaned inode to a process that thinks it owns the database. An
-abandoned file is inert because the *lock* is gone, which is the same reason a killed process leaves
-nothing to clean up. A test asserts the file still exists after a kill, so a future change that
-starts unlinking is caught rather than silently making the stale-path test vacuous.
-
-**Taken before `db.connect`.** Recovery runs on the next line and rewrites rows left `RUNNING`; a
-guard taken afterwards would let a second launch rewrite a live instance's in-flight jobs before
-refusing. **Released after the connection closes**, for the mirror reason.
-
-**Named from the resolved database path.** `A-004` is about the database, not the application, so
-two instances against different databases both start. `resolve()` matters: without it `./queue.db`
-and `/home/me/queue.db` would take two locks on one database.
-
-| Mutation | Killed by |
-|---|---|
-| No lock is taken at all | the refusal, racing and killed-holder tests (3 of 9) |
-
-#### Scope: the attach channel is not built
-
-`ARC-006` keeps `QLocalServer`/`QLocalSocket` as an **attach channel** — what lets a second launch
-hand its URL to the running instance and raise its window instead of merely refusing. **This task
-refuses.** The acceptance criterion is *"attaches to the running instance **or** refuses in its
-favour, and says which"*, and refusing-and-saying-which satisfies it; exit criterion 4 reads the
-same way.
-
-Stated as a choice rather than left as a gap: **`T-104`** owns the attach channel. A user who
-double-clicks a second time today gets a message box naming the running instance, not a hand-over.
-
-#### Not covered, stated rather than implied
-
-- **Windows.** The `msvcrt` branch is `# pragma: no cover` on Linux and has **never executed** —
-  `mypy --platform win32` type-checks it and nothing has run it. This is the half `ARC-006`'s
-  withdrawn design got wrong, so it is the half most worth running on `STARBASE`, and no CI job has
-  executed a step since 2026-07-30.
-- **`A-004` therefore stays unverified**, exactly as `ARC-006` says it must until this is tested on
-  both platforms. Linux is done; Windows is not.
-- **A read-only or full filesystem** where the lock file cannot be created. `acquire` would raise
-  `OSError` rather than `AlreadyRunningError`, and `run()` does not catch that.
-
-
-#### Correction, 2026-08-01 — `T087-R1`, and why this stays blocked
-
-**The Windows primitive was mine, not `ARC-006`'s.** The amendment names an **exclusive-access
-open**; I wrote `msvcrt.locking(LK_NBLCK)`, a one-byte range lock. It may well be defensible, but
-substituting a different mechanism — in the one branch nothing here can execute — is not an
-implementation choice, and doing it silently is how a decision gets rewritten by its implementer.
-
-It is now `CreateFileW` with `dwShareMode = 0`: while the handle is open no other process may open
-the file at all, and a second launch fails with `ERROR_SHARING_VIOLATION`. Both platforms are one
-`_open_exclusive` seam; POSIX still needs two steps because it has no exclusive-*open* — `O_EXCL`
-is about creation, not access.
-
-**This does not unblock the task, and should not.** The branch has still never executed. `T-087`'s
-own criterion is both platforms, `ARC-006` says `A-004` stays unverified until then, and no CI job
-has executed a step since 2026-07-30. What changes is that the code now matches the decision, so
-the outstanding item is **evidence** rather than evidence *plus* an unauthorised design change.
-
----
-
 ### T-100 — The history view: what was obtained, after the queue has forgotten it
 
 **Status:** **In Review — complete 2026-08-01.** Seven mutations run; all seven killed, including
@@ -358,162 +200,6 @@ asserts the user-visible consequence.
   on refresh. Fine for a table that grows one row per download; `T-085` put paging out of scope and
   nothing has asked for it.
 - **Open and reveal** — `REQ-021`, and `T-086`'s job. This view is what it acts on.
-
----
-
-### T-046 — Output path collision policy against the filesystem
-
-**Status:** **In Review — corrected again 2026-08-01, awaiting re-review.** `T046-R1` is
-**Resolved**; `T046-R2` (the preview) and `T046-R3` (stale comments) are closed below. `T046-R1` was
-**Critical and real data loss**: the reservation covered the pre-postprocessor name, so an MP3 conversion wrote
-over a file the user already had. Corrected below. Reservation is atomic (`O_CREAT | O_EXCL`),
-because `ARC-002` makes the racing writers separate processes and a check-then-create between
-them is the hole itself. Nine mutations run; all nine killed.
-*(This read "Ready 2026-07-30. `T-034`, `T-045` and `T-013` are all Complete, and `T-078` makes
-collisions reachable concurrently rather than one job at a time".)*
-**Owner:** Implementer
-**Priority:** Medium — **raise to High before first release.** Until this lands, two downloads
-whose titles sanitize to the same component contend for one path
-**Phase:** Phase 2
-**Depends on:** `T-034`, `T-045`, and the download manager (`T-013`)
-**Relevant context:** `DAT-002`; `ARCHITECTURE.md` §8; `REQ-011`
-**Affected surfaces:** the download manager's path selection; `core/paths.py` remains pure
-**Risk:** Medium — the failure mode is one download overwriting another's output
-
-#### Scope
-
-**Filed by `DAT-002`, which is where the reasoning lives.** `T-045` established that
-`sanitize_component` cannot promise a unique path: it is a pure function of one string, and
-"does this collide with something?" is a question about the filesystem. The maintainer kept
-idempotence and narrowed the sanitizer's promise to the plausible neighbour class, moving real
-uniqueness here.
-
-This task owns the guarantee at the layer that can keep it — the one that knows what is already
-on disk and what other jobs are queued. That covers the ordinary case, not only the reserved-name
-residue: two different videos whose titles sanitize identically collide today by the same
-mechanism, and always have.
-
-**`core/paths.py` stays pure.** The resolution belongs to the caller that has filesystem context;
-pushing it into the sanitizer would make it stateful and re-open `DAT-002`.
-
-#### Acceptance criteria
-
-- Two jobs whose sanitized components are equal resolve to distinct output paths
-- The resolution is visible in the `REQ-011` preview before the write, not applied silently
-  afterwards — a preview that disagrees with the write is the failure `DAT-002` protects against
-- An existing file at the target is never silently overwritten
-- Concurrent writers cannot both win the same path — asserted against real concurrent jobs
-  rather than by inspection, since Phase 2 is where the second worker arrives
-- The residual collision `T-045` pins is covered by this policy, so `DAT-002`'s assumption that
-  `T-046` lands before first release is discharged
-
-#### Out of scope
-
-- Which names are legal or reserved — settled by `T-034` and `T-045`
-- Resume semantics for a partially downloaded file, beyond not colliding with one
-
-
-#### Correction, 2026-08-01 — `T046-R1` (**Critical**, data loss)
-
-**The reservation covered a file the download did not write.** `%(ext)s` rendered `webm`, so
-`reserve_output_path` claimed `Clip.webm` — and the MP3 extractor then wrote `Clip.mp3` **over the
-user's existing `Clip.mp3`**. `overwrites=True` was documented as safe *because* the path was
-reserved, and the reserved path was a different file. A reviewer reproduced it against real yt-dlp
-and ffmpeg: an ID3 file replaced the user's bytes. Every extension-changing postprocessor had it,
-and two concurrent MP3 jobs raced for the same unclaimed final name.
-
-**The download now happens in a staging directory and the real name is claimed afterwards.**
-Predicting the final extension was rejected: it is a function of yt-dlp's postprocessor chain, and
-a prediction that is wrong is this defect again with more code. So `_extract` writes into a private
-per-job directory where nothing of the user's can be, and `claim_output_path` reserves the *actual*
-produced name with `O_CREAT | O_EXCL` and `os.replace`s the file into it. The staging directory
-sits **inside the destination's own directory**, so the move is a same-filesystem rename rather
-than a copy of a multi-gigabyte file.
-
-**A behaviour change, stated rather than absorbed:** a cancelled or failed download now leaves
-**nothing** in the user's folder, where it used to leave a `.part`. `REQ-017` (Phase 3, `T-113`) is
-where resuming a partial is decided and will have to say where partials live; a randomly named
-per-run directory is not resumable across restarts either way. The cancel test's `.part` assertion
-is replaced rather than deleted — what it actually established, that the worker unwound
-*cooperatively*, is carried by the worker's own "parent process cancelled" message.
-
-**Three test fakes were reporting successful downloads that produced no file**, and the worker did
-not notice because the *reservation* was itself a file. That is `T-077`'s lesson reproduced in the
-harness. They write now, so a download that produces nothing is correctly a failure.
-
-| Mutation | Killed by |
-|---|---|
-| Claim the template's name instead of what was produced | the existing-MP3 regression |
-| Overwrite the destination instead of claiming it | the existing-MP3 and concurrent-pair tests |
-| Leave the staging directory behind | the leftover-directory test |
-
-
-#### Correction, 2026-08-01 (second) — `T046-R2` and `T046-R3`
-
-**`T046-R2`: the preview promised the container that arrives, not the one that is kept.** `%(ext)s`
-renders `webm` and an MP3 request writes `mp3`. Rejecting a prediction for the *claim* was right;
-showing that same prediction as a promise is the identical mistake one field over.
-
-**Derived where derivable, labelled where not.** `postprocessed_name` substitutes
-`preferredcodec` — the same value `build_postprocessors` hands `FFmpegExtractAudio`, read from the
-request so the two cannot drift — so every audio case Phase 2 exposes previews exactly.
-`preview_is_provisional` reports the residual: when a selector merges, yt-dlp picks the container
-by its own rules and no derivation can honestly promise it. **`REQ-011` is amended** (2026-08-01,
-maintainer) so the requirement says what is actually promised, with `T-112` owning preview-equals-
-write once `REQ-010`'s remux and recode make the choice explicit.
-
-`ORIGINAL` is not a conversion — it carries yt-dlp's `best`, meaning *keep the source codec* — so
-nothing is substituted for it. Both of those were found by mutation rather than by reading.
-
-**`T046-R3`: three comments claimed partial files survive.** They stopped being true when the
-download moved into a discarded staging directory. Corrected in `manager.remove`,
-`_on_session_ended` and `job_detail`, each quoting what it replaced. The cancel test's assertion had
-already moved to the worker's own message, which is now the **only** evidence the unwind was
-cooperative rather than forced.
-
-| Mutation | Killed by |
-|---|---|
-| The preview drops back to the pre-conversion extension | the audio preview test |
-| `ORIGINAL` is treated as a conversion | the original-audio test, **added after it survived** |
-| A merging request is not reported provisional | the merging test |
-| Every request is reported provisional | the audio-with-merging-selector test, **added after it survived** |
-
-
-#### Correction, 2026-08-01 (third) — `T046-R4` and `T046-R5`
-
-**`T046-R4`: a real download disproved the correction's premise.** The previous pass claimed every
-Phase 2 audio extraction was previewed exactly. A real HLS download through the built-in **Audio
-only (original)** preset previewed `master.mp4` and produced `master.m4a`.
-
-Two mistakes in one line. **The codec is not the extension** — yt-dlp copies `aac` and `alac` into
-`m4a` and `vorbis` into `ogg` — so `codec.value` was right for five of eight and confidently wrong
-for three. The container now comes from yt-dlp's own `ACODECS` table rather than being restated.
-
-**And `ORIGINAL` is not derivable at all**, which is worth stating precisely because the obvious
-next move is to read the codec from the probed `info_dict`. `FFmpegExtractAudioPP.run` calls
-`get_audio_codec(path)` — **ffprobe on the downloaded file** — and skips converting entirely when
-the *downloaded* extension is already a common audio one. Both inputs exist only after the write.
-So it is labelled provisional, `REQ-011`'s exactness claim is narrowed to extraction with a **named**
-codec, and the reviewer's real regression is kept with its assertion amended rather than deleted.
-
-**`T046-R5`: `mergeall` merges with no `+` in it.** Scanning for one token reported a merging
-request as exact — precisely the direction the amendment exists to prevent. Merge classification
-moved to `core/presets.selector_merges`, which lists the forms rather than pattern-matching one, and
-says plainly that an unlisted form is reported exact so the list is the thing to keep short and
-visible.
-
-| Mutation | Killed by |
-|---|---|
-| The codec name is used as the extension again | the eight-codec table test, **added after it survived** |
-| `ORIGINAL` is predicted instead of labelled | the simulated-`best`-entry test, **added after it survived** |
-| Merge detection scans for a plus again | the `mergeall` regression |
-| Every selector is called merging | the exact-audio and single-format tests |
-
-**Both `T046-R4` mutations survived their first run.** Every existing preview test asked for MP3,
-where codec and container agree; and `ACODECS` has no `best` key, so the `ORIGINAL` guard and the
-table lookup gave the same answer and nothing could tell them apart. The guard is kept rather than
-deleted — it encodes a decision the table cannot, that even a named container for `best` would still
-depend on ffprobe — and the test now reaches it by giving the table such an entry.
 
 ---
 
@@ -1063,7 +749,11 @@ channel and hands over; it does not attempt to become a server.
   reintroduce the design `P2PLAN-R5` withdrew
 - A second launch when the channel is unreachable — the owner is alive but wedged — still refuses
   rather than hanging, within a stated timeout
-- Verified on both platforms, `STARBASE` included: the named-pipe and Unix-socket halves are
+- Verified on both platforms. **`OPS-005` amended 2026-08-01:** hosted Windows carries the Windows
+  gate while `STARBASE` is unreachable, so `check (windows-latest)` satisfies this and the desktop
+  slice stays with `STARBASE` for first release
+  *(This read "`STARBASE` included" without qualification, which after the amendment demanded a
+  machine nobody could reach for a criterion hosted Windows had already met — `T087-R4`.)*: the named-pipe and Unix-socket halves are
   different system calls
 
 #### Out of scope
@@ -2240,6 +1930,350 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-087 — Single-instance guard
+
+**Status:** **Complete — Approved at `ea9d752`**, 2026-08-01. Implementation and the Windows gate
+are both approved; `T087-R4`'s coordination corrections are applied below. **`A-004` is verified**
+and **Phase 2 exit criterion 4 is met**. `T087-R1`
+(the architecture mismatch) and `T087-R3` (the untyped `CloseHandle` and inheritable descriptor) are
+both corrected. **The Windows branch has executed**, on `check (windows-latest)` at `7516f61`:
+first acquisition and refusal, **two launches racing**, and killed-holder recovery all passed —
+`T-087`'s three required cases, and the exact ones `P2PLAN-R5` withdrew the previous design over.
+
+**`OPS-005` was amended 2026-08-01** (maintainer): hosted Windows carries the Windows gate while
+`STARBASE` is unreachable. So this is no longer blocked on a machine nobody can reach — it needs a
+review. **It owns Phase 2 exit criterion 4.** **The attach half is deliberately not built**
+(`T-104`).
+*(This read "Proposed", "Ready — promoted 2026-07-31", "In Review — complete 2026-08-01", then
+"Blocked … the Windows branch has never executed". That last one was true when written and stopped
+being true the moment the hosted runners came back.)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 2
+**Depends on:** nothing technical. Its `DECISIONS.md` entry exists: **`ARC-006`**, whose mechanism
+was **amended 2026-07-29** after `P2PLAN-R5` — implement the amendment, not the original
+**Relevant context:** **`ARC-006`** (the mechanism and its rationale), `A-004`, `DAT-001`,
+`ARC-005`, `OPS-004`
+**Affected surfaces:** `app.py`, a platform seam, `ai/DECISIONS.md`
+**Risk:** Medium — the failure it prevents is two writers on one database
+
+#### Scope
+
+`A-004` assumes a single local user and **no concurrent instances against the same database**, and
+records itself as *unverified*, with enforcement named as a Phase 2 task. This is that task.
+
+The database is the reason. `ARC-005` puts every write on one writer thread *within a process*;
+two processes have two writer threads and no shared lock discipline.
+
+#### The mechanism — `ARC-006` **as amended 2026-07-29**; read the amendment first
+
+**`ARC-006` is the canonical record** (`P2PLAN-R2`). **Its original mechanism is withdrawn**
+(`P2PLAN-R5`): Qt documents that on Windows **two local servers can listen on the same pipe name at
+once**, so *connect-first-then-claim* is not exclusive and two simultaneous launches can both become
+servers — the two-writer state this task exists to prevent.
+
+**Ownership is now an atomic kernel lock** on a file derived from the resolved database path
+(`flock(LOCK_EX | LOCK_NB)` on POSIX, exclusive-access open on Windows), released by the kernel when
+the holder dies. **`QLocalServer` remains only the attach channel**, started after ownership is won.
+
+**This task's acceptance criteria must gate simultaneous starts, not just stale-owner recovery** —
+the withdrawn design passes a sequential test, which is how it survived being written down. See the
+amendment for what it changes.
+
+*(Superseded, kept because the sequence is the point — this read as the decided mechanism:)*
+
+**`QLocalServer` / `QLocalSocket`, named from the resolved database path.**
+
+- **Already Qt**, so no new dependency, and one code path compiles to a named pipe on Windows and
+  a Unix domain socket on Linux — two correct platform implementations rather than two guesses.
+- **It is a channel, not a flag.** That is what makes *attach* possible rather than only *refuse*:
+  a second launch can hand its URL to the first instance and raise its window. A lock file can
+  only say no.
+- **Crash behaviour decided it**, because that is the case the guard exists for. Windows destroys
+  a named pipe when its owning process dies. On Linux a killed process leaves the socket file, so
+  the protocol is *connect first; if the connection fails the owner is gone, remove the stale name
+  and become the server*. A PID lock file needs a liveness check and is wrong under PID reuse;
+  `flock` is robust but offers no channel.
+- **Named from the database path**, because `A-004` is about the database rather than the
+  application. Two instances against different databases harm nothing and must not be blocked.
+
+#### Acceptance criteria
+
+- A second launch either attaches to the running instance or refuses in its favour, and says which
+- **Two launches started simultaneously do not both win** (`P2PLAN-R5`). Racing starts, not a
+  sequential pair: the withdrawn `QLocalServer`-as-lock design passes the sequential test and fails
+  this one, because two servers may listen on one Windows pipe name at the same time
+- A stale lock left by a killed process does not permanently block startup
+- Verified on both platforms. **`OPS-005` amended 2026-08-01:** hosted Windows carries the Windows
+  gate while `STARBASE` is unreachable, so `check (windows-latest)` satisfies this and the desktop
+  slice stays with `STARBASE` for first release
+  *(This read "`STARBASE` included" without qualification, which after the amendment demanded a
+  machine nobody could reach for a criterion hosted Windows had already met — `T087-R4`.)*
+- The mechanism and its crash behaviour are recorded in `ai/DECISIONS.md` with an ID
+- **The stale-socket path is tested by killing an instance**, not by deleting a file by hand: the
+  recovery has to work against the failure it was chosen for
+- Two instances against *different* databases both start
+
+#### Out of scope
+
+- Multi-user or networked access (`A-004` scopes it out)
+
+#### What was built, 2026-08-01
+
+**Evidence.** `ruff`, `ruff format`, `mypy src` and `mypy --platform win32 src` clean. New module
+`core/instance_lock.py`; 9 tests in `tests/integration/test_single_instance.py` and 2 in
+`test_composition.py`. Removing the lock call kills **3** of the 9 — the cross-process claim is
+genuinely exercised rather than asserted in-process.
+
+**An atomic kernel lock, per `ARC-006`'s amendment.** `fcntl.flock(LOCK_EX | LOCK_NB)` on POSIX,
+an **exclusive-access open** on Windows — `CreateFileW` with `dwShareMode = 0`, per `ARC-006`'s
+amendment. Both are released **by the kernel when the holder dies**,
+*(This described `msvcrt.locking(LK_NBLCK)`, a one-byte range lock, which `T087-R1` found was a
+different primitive from the one the decision chose. Withdrawn — `T087-R4`.)*
+which is the property a PID file cannot offer and the reason `ARC-006` rejected PID files.
+
+**`flock` rather than `lockf`.** POSIX record locks are released when *any* descriptor for the file
+closes in the process, so a program that opens the same path elsewhere silently drops its own lock.
+`flock` is tied to the open file description.
+
+**The lock file is never unlinked**, and that is a decision rather than an omission. Removing it
+races: another launch may have opened that same path and be about to lock it, and unlinking
+underneath them hands a lock on an orphaned inode to a process that thinks it owns the database. An
+abandoned file is inert because the *lock* is gone, which is the same reason a killed process leaves
+nothing to clean up. A test asserts the file still exists after a kill, so a future change that
+starts unlinking is caught rather than silently making the stale-path test vacuous.
+
+**Taken before `db.connect`.** Recovery runs on the next line and rewrites rows left `RUNNING`; a
+guard taken afterwards would let a second launch rewrite a live instance's in-flight jobs before
+refusing. **Released after the connection closes**, for the mirror reason.
+
+**Named from the resolved database path.** `A-004` is about the database, not the application, so
+two instances against different databases both start. `resolve()` matters: without it `./queue.db`
+and `/home/me/queue.db` would take two locks on one database.
+
+| Mutation | Killed by |
+|---|---|
+| No lock is taken at all | the refusal, racing and killed-holder tests (3 of 9) |
+
+#### Scope: the attach channel is not built
+
+`ARC-006` keeps `QLocalServer`/`QLocalSocket` as an **attach channel** — what lets a second launch
+hand its URL to the running instance and raise its window instead of merely refusing. **This task
+refuses.** The acceptance criterion is *"attaches to the running instance **or** refuses in its
+favour, and says which"*, and refusing-and-saying-which satisfies it; exit criterion 4 reads the
+same way.
+
+Stated as a choice rather than left as a gap: **`T-104`** owns the attach channel. A user who
+double-clicks a second time today gets a message box naming the running instance, not a hand-over.
+
+#### Not covered, stated rather than implied
+
+- **A real Windows *desktop* session.** The `windows desktop` job is skipped while `STARBASE` is
+  offline, so the platform-plugin surface (`T-026`, `T-040`) is unexercised. That blocks first
+  release, not this task.
+- **A child launched with handle inheritance.** `O_NOINHERIT` is defence against one; CPython's
+  Windows spawn path passes `bInheritHandles=False`, so no test on the `ARC-002` worker path can
+  demonstrate it (`T087-R5`).
+
+*(This section read "the `msvcrt` branch … has **never executed**" and "**`A-004` therefore stays
+unverified**". Both were true when written and stopped being true on 2026-08-01: the branch is
+`CreateFileW` now, and it executed on `check (windows-latest)` at `ea9d752` — first acquisition and
+refusal, two launches racing, and killed-holder recovery all passed. `T087-R4`.)*
+- **A read-only or full filesystem** where the lock file cannot be created. `acquire` would raise
+  `OSError` rather than `AlreadyRunningError`, and `run()` does not catch that.
+
+
+#### Correction, 2026-08-01 — `T087-R1`, and why this stays blocked
+
+**The Windows primitive was mine, not `ARC-006`'s.** The amendment names an **exclusive-access
+open**; I wrote `msvcrt.locking(LK_NBLCK)`, a one-byte range lock. It may well be defensible, but
+substituting a different mechanism — in the one branch nothing here can execute — is not an
+implementation choice, and doing it silently is how a decision gets rewritten by its implementer.
+
+It is now `CreateFileW` with `dwShareMode = 0`: while the handle is open no other process may open
+the file at all, and a second launch fails with `ERROR_SHARING_VIOLATION`. Both platforms are one
+`_open_exclusive` seam; POSIX still needs two steps because it has no exclusive-*open* — `O_EXCL`
+is about creation, not access.
+
+**This did not unblock the task at the time, and the evidence arrived separately.** When written,
+the branch had never executed and `A-004` stayed unverified. The hosted runners returned the same
+day; `ea9d752` ran the corrected branch on `check (windows-latest)` and passed all three required
+cases — first acquisition and refusal, two launches racing, killed-holder recovery. Under
+`OPS-005`'s amendment that **is** the Windows gate, so `A-004` is verified and Phase 2 exit
+criterion 4 is met.
+*(This paragraph read "the branch has still never executed … `A-004` stays unverified until then",
+which was true for a few hours and then was not — `T087-R4`.)*
+
+---
+
+### T-046 — Output path collision policy against the filesystem
+
+**Status:** **Complete — Approved at `9c5745a`**, 2026-08-01. All seven findings are **Resolved**:
+`T046-R1` (Critical), `R2`, `R3`, `R4`, `R5`, plus the coordination `R6` and the evidence overclaim
+`R7`. `T046-R1` was **Critical and real data loss**: the reservation covered the pre-postprocessor name, so an MP3 conversion wrote
+over a file the user already had. Corrected below. Reservation is atomic (`O_CREAT | O_EXCL`),
+because `ARC-002` makes the racing writers separate processes and a check-then-create between
+them is the hole itself. Nine mutations run; all nine killed.
+*(This read "Ready 2026-07-30. `T-034`, `T-045` and `T-013` are all Complete, and `T-078` makes
+collisions reachable concurrently rather than one job at a time".)*
+**Owner:** Implementer
+**Priority:** Medium — **raise to High before first release.** Until this lands, two downloads
+whose titles sanitize to the same component contend for one path
+**Phase:** Phase 2
+**Depends on:** `T-034`, `T-045`, and the download manager (`T-013`)
+**Relevant context:** `DAT-002`; `ARCHITECTURE.md` §8; `REQ-011`
+**Affected surfaces:** the download manager's path selection; `core/paths.py` remains pure
+**Risk:** Medium — the failure mode is one download overwriting another's output
+
+#### Scope
+
+**Filed by `DAT-002`, which is where the reasoning lives.** `T-045` established that
+`sanitize_component` cannot promise a unique path: it is a pure function of one string, and
+"does this collide with something?" is a question about the filesystem. The maintainer kept
+idempotence and narrowed the sanitizer's promise to the plausible neighbour class, moving real
+uniqueness here.
+
+This task owns the guarantee at the layer that can keep it — the one that knows what is already
+on disk and what other jobs are queued. That covers the ordinary case, not only the reserved-name
+residue: two different videos whose titles sanitize identically collide today by the same
+mechanism, and always have.
+
+**`core/paths.py` stays pure.** The resolution belongs to the caller that has filesystem context;
+pushing it into the sanitizer would make it stateful and re-open `DAT-002`.
+
+#### Acceptance criteria
+
+- Two jobs whose sanitized components are equal resolve to distinct output paths
+- **The collision resolution** is visible in the `REQ-011` preview before the write, not applied
+  silently afterwards — a numbered alternative the user is not shown is the failure `DAT-002`
+  protects against
+- **The previewed *container* matches the write wherever `REQ-011` still promises it**, which after
+  its 2026-08-01 amendment is extraction to a **named** audio codec. Two cases are authorised
+  exceptions and must be **labelled** rather than matched: a merging selector, whose container
+  yt-dlp chooses; and `ORIGINAL` audio, whose container `FFmpegExtractAudioPP` decides by running
+  `ffprobe` on the downloaded file. Both are unknowable when the preview is drawn
+  *(`T046-R6`. This criterion read "the resolution is visible in the preview … a preview that
+  disagrees with the write is the failure" without qualification, which after the amendment made
+  the canonical requirement and the canonical criterion prescribe **opposite verdicts** on the same
+  approved behaviour: an `ORIGINAL` request correctly previews `.mp4` and correctly writes `.m4a`.
+  The exception is stated here rather than only in the correction narrative below, because this is
+  the part somebody reads to decide whether the task is done.)*
+- An existing file at the target is never silently overwritten
+- Concurrent writers cannot both win the same path — asserted against real concurrent jobs
+  rather than by inspection, since Phase 2 is where the second worker arrives
+- The residual collision `T-045` pins is covered by this policy, so `DAT-002`'s assumption that
+  `T-046` lands before first release is discharged
+
+#### Out of scope
+
+- Which names are legal or reserved — settled by `T-034` and `T-045`
+- Resume semantics for a partially downloaded file, beyond not colliding with one
+
+
+#### Correction, 2026-08-01 — `T046-R1` (**Critical**, data loss)
+
+**The reservation covered a file the download did not write.** `%(ext)s` rendered `webm`, so
+`reserve_output_path` claimed `Clip.webm` — and the MP3 extractor then wrote `Clip.mp3` **over the
+user's existing `Clip.mp3`**. `overwrites=True` was documented as safe *because* the path was
+reserved, and the reserved path was a different file. A reviewer reproduced it against real yt-dlp
+and ffmpeg: an ID3 file replaced the user's bytes. Every extension-changing postprocessor had it,
+and two concurrent MP3 jobs raced for the same unclaimed final name.
+
+**The download now happens in a staging directory and the real name is claimed afterwards.**
+Predicting the final extension was rejected: it is a function of yt-dlp's postprocessor chain, and
+a prediction that is wrong is this defect again with more code. So `_extract` writes into a private
+per-job directory where nothing of the user's can be, and `claim_output_path` reserves the *actual*
+produced name with `O_CREAT | O_EXCL` and `os.replace`s the file into it. The staging directory
+sits **inside the destination's own directory**, so the move is a same-filesystem rename rather
+than a copy of a multi-gigabyte file.
+
+**A behaviour change, stated rather than absorbed:** a cancelled or failed download now leaves
+**nothing** in the user's folder, where it used to leave a `.part`. `REQ-017` (Phase 3, `T-113`) is
+where resuming a partial is decided and will have to say where partials live; a randomly named
+per-run directory is not resumable across restarts either way. The cancel test's `.part` assertion
+is replaced rather than deleted — what it actually established, that the worker unwound
+*cooperatively*, is carried by the worker's own "parent process cancelled" message.
+
+**Three test fakes were reporting successful downloads that produced no file**, and the worker did
+not notice because the *reservation* was itself a file. That is `T-077`'s lesson reproduced in the
+harness. They write now, so a download that produces nothing is correctly a failure.
+
+| Mutation | Killed by |
+|---|---|
+| Claim the template's name instead of what was produced | the existing-MP3 regression |
+| Overwrite the destination instead of claiming it | the existing-MP3 and concurrent-pair tests |
+| Leave the staging directory behind | the leftover-directory test |
+
+
+#### Correction, 2026-08-01 (second) — `T046-R2` and `T046-R3`
+
+**`T046-R2`: the preview promised the container that arrives, not the one that is kept.** `%(ext)s`
+renders `webm` and an MP3 request writes `mp3`. Rejecting a prediction for the *claim* was right;
+showing that same prediction as a promise is the identical mistake one field over.
+
+**Derived where derivable, labelled where not.** `postprocessed_name` substitutes
+`preferredcodec` — the same value `build_postprocessors` hands `FFmpegExtractAudio`, read from the
+request so the two cannot drift — so every audio case Phase 2 exposes previews exactly.
+`preview_is_provisional` reports the residual: when a selector merges, yt-dlp picks the container
+by its own rules and no derivation can honestly promise it. **`REQ-011` is amended** (2026-08-01,
+maintainer) so the requirement says what is actually promised, with `T-112` owning preview-equals-
+write once `REQ-010`'s remux and recode make the choice explicit.
+
+`ORIGINAL` is not a conversion — it carries yt-dlp's `best`, meaning *keep the source codec* — so
+nothing is substituted for it. Both of those were found by mutation rather than by reading.
+
+**`T046-R3`: three comments claimed partial files survive.** They stopped being true when the
+download moved into a discarded staging directory. Corrected in `manager.remove`,
+`_on_session_ended` and `job_detail`, each quoting what it replaced. The cancel test's assertion had
+already moved to the worker's own message, which is now the **only** evidence the unwind was
+cooperative rather than forced.
+
+| Mutation | Killed by |
+|---|---|
+| The preview drops back to the pre-conversion extension | the audio preview test |
+| `ORIGINAL` is treated as a conversion | the original-audio test, **added after it survived** |
+| A merging request is not reported provisional | the merging test |
+| Every request is reported provisional | the audio-with-merging-selector test, **added after it survived** |
+
+
+#### Correction, 2026-08-01 (third) — `T046-R4` and `T046-R5`
+
+**`T046-R4`: a real download disproved the correction's premise.** The previous pass claimed every
+Phase 2 audio extraction was previewed exactly. A real HLS download through the built-in **Audio
+only (original)** preset previewed `master.mp4` and produced `master.m4a`.
+
+Two mistakes in one line. **The codec is not the extension** — yt-dlp copies `aac` and `alac` into
+`m4a` and `vorbis` into `ogg` — so `codec.value` was right for five of eight and confidently wrong
+for three. The container now comes from yt-dlp's own `ACODECS` table rather than being restated.
+
+**And `ORIGINAL` is not derivable at all**, which is worth stating precisely because the obvious
+next move is to read the codec from the probed `info_dict`. `FFmpegExtractAudioPP.run` calls
+`get_audio_codec(path)` — **ffprobe on the downloaded file** — and skips converting entirely when
+the *downloaded* extension is already a common audio one. Both inputs exist only after the write.
+So it is labelled provisional, `REQ-011`'s exactness claim is narrowed to extraction with a **named**
+codec, and the reviewer's real regression is kept with its assertion amended rather than deleted.
+
+**`T046-R5`: `mergeall` merges with no `+` in it.** Scanning for one token reported a merging
+request as exact — precisely the direction the amendment exists to prevent. Merge classification
+moved to `core/presets.selector_merges`, which lists the forms rather than pattern-matching one, and
+says plainly that an unlisted form is reported exact so the list is the thing to keep short and
+visible.
+
+| Mutation | Killed by |
+|---|---|
+| The codec name is used as the extension again | the eight-codec table test, **added after it survived** |
+| `ORIGINAL` is predicted instead of labelled | the simulated-`best`-entry test, **added after it survived** |
+| Merge detection scans for a plus again | the `mergeall` regression |
+| Every selector is called merging | the exact-audio and single-format tests |
+
+**Both `T046-R4` mutations survived their first run.** Every existing preview test asked for MP3,
+where codec and container agree; and `ACODECS` has no `best` key, so the `ORIGINAL` guard and the
+table lookup gave the same answer and nothing could tell them apart. The guard is kept rather than
+deleted — it encodes a decision the table cannot, that even a named container for `best` would still
+depend on ffprobe — and the test now reaches it by giving the table such an entry.
+
+---
 
 ### T-081 — Reorder pending jobs, and clear completed ones
 

@@ -8068,3 +8068,88 @@ Blocked with T087-R3 requiring a code correction before its external Windows evi
 meaningful. T-092 remains Blocked, and T092-R2 is not fully closed until all live task text says
 metadata-only. Reviewer production edits were not made. The four failing regressions are committed
 at `049b595`; this review record is left uncommitted for the maintainer.
+
+## 2026-08-01 — fourth focused correction re-review: T-046 and T-087
+
+**Reviewer:** Codex (Reviewer)
+**Correction boundary:** `049b595..ea9d752`
+**Implementation commits reviewed:** `9c5745a` (`T-046`) and `bddf1bb` (`T-087`)
+**Evidence head:** `ea9d752`
+**Handoff head:** `d818c77`; coordination only after the evidence head
+**Platforms verified:** Linux locally; Linux and Windows on GitHub-hosted runners
+**Overall verdict:** **Implementation approved; coordination-only changes requested before either
+task is filed Complete. No fifth implementation pass is required.**
+
+### Task verdicts
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-046` | **Implementation approved at `9c5745a`; current task text must be corrected before filing** | T046-R4 and T046-R5 are closed. Named audio codecs follow yt-dlp's container table; ORIGINAL is honestly provisional; current pinned yt-dlp has exactly the two classified merge spellings. T046-R6 leaves the live acceptance criterion contradicting the authorised REQ-011 amendment. |
+| `T-087` | **Implementation and Windows gate approved at `ea9d752`; current task text must be corrected before filing** | T087-R3 is closed and all three required Windows process cases passed on the exact evidence head. Under the 2026-08-01 OPS-005 amendment, `A-004` is verified and Phase 2 exit criterion 4 is met. T087-R4 leaves the canonical task record saying the opposite in several places. |
+
+### Findings
+
+| ID | Severity | Blocks filing | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T046-R6` | **Medium** | **Yes — task filing, not implementation** | Current task contract | `REQ-011` now explicitly permits an *intended* path where yt-dlp chooses the final container and marks ORIGINAL audio provisional. `TASKS.md:289-294` still requires every resolution to be visible before the write and calls any preview/write disagreement a failure. The approved ORIGINAL behavior can preview `.mp4` and correctly write `.m4a`, so the canonical requirement and canonical task criteria prescribe opposite verdicts. | Narrow T-046's live criterion to atomic collision resolution and the exact-preview cases REQ-011 still promises. State the authorised intended-path exception in the criterion, not only in the later correction narrative. | **Open — coordination only** |
+| `T087-R4` | **Medium** | **Yes — task filing, not implementation** | Current task and status truth | The current T-087 entry correctly says hosted Windows executed at `TASKS.md:98-106`, but its criterion still demands STARBASE (`:168`), its built description still names withdrawn `msvcrt.locking` (`:185-187`), and its not-covered/correction sections still say Windows never ran and `A-004` is unverified (`:223-250`). The live-queue summary likewise says both that T-087 is no longer blocked (`:23-26`) and that it is blocked with an unexecuted branch (`:31-32`). `STATUS.md:23-26` and `:49-53` repeat stale counts and unverified-Windows claims before `:64-101` says the reverse. | Rebuild current TASKS/STATUS truth from the accepted OPS-005 amendment and exact CI run, preserving obsolete claims only as explicitly superseded history. Move T-087 to Complete once that record is internally consistent. | **Open — coordination only** |
+| `T046-R7` | **Low** | No | Merge update gate | `presets.py:200-201` says `test_presets` asserts `MERGE_TOKENS` against yt-dlp's documented selectors, but no such test exists. The two behavior regressions cover `+` and `mergeall`; they do not detect a future upstream spelling. Current behavior is correct for pinned yt-dlp, so this is an evidence overclaim rather than a present defect. | Remove the nonexistent-gate claim or add a real, maintainable upstream-syntax gate. Keep the user-managed yt-dlp update risk explicit. | **Open — non-blocking** |
+| `T087-R5` | **Low** | No | Handle-inheritance rationale | `O_NOINHERIT` is the correct defensive flag, but `instance_lock.py:246-250` says current ARC-002 workers would otherwise inherit the lock. CPython's Windows multiprocessing spawn path invokes `CreateProcess` with `bInheritHandles=False`, so those workers do not inherit arbitrary handles. A normal spawned-worker test therefore cannot prove this flag. | Describe the flag as defense against a child explicitly launched with handle inheritance. If dynamic mutation evidence is wanted, use such a child (for example an inheriting subprocess), not the existing multiprocessing worker path. | **Open — non-blocking** |
+
+### Focused correction disposition
+
+| Prior finding | Result |
+|---|---|
+| `T046-R4` | **Resolved.** Named codecs use yt-dlp's `ACODECS` output extension, including AAC/ALAC to M4A and Vorbis to OGG. ORIGINAL bypasses that table even if a future table contains `best`, remains provisional, and the real HLS/ffmpeg regression asserts the honest contract. The simulated table entry is useful: it pins the product distinction rather than today's table contents. |
+| `T046-R5` | **Resolved for the pinned parser.** Inspection of yt-dlp's selector parser finds the `+` merge operator and special `mergeall` form; both regressions pass. Unrecognised future forms remain the update risk described by T046-R7. |
+| `T087-R3` | **Resolved.** `CloseHandle` has pointer-width-correct `HANDLE -> BOOL` types, conversion failure transfers no ownership and closes the raw handle, and successful CRT conversion uses `O_NOINHERIT`. |
+
+### Review judgments
+
+**T-046's staging and actual-name claim remain the safety boundary.** Preview classification does
+not participate in collision ownership: every successful output is discovered, atomically claimed
+with `O_CREAT | O_EXCL`, then renamed on the destination filesystem. The authorised provisional
+label makes the unavoidable pre-write uncertainty honest without weakening overwrite protection.
+
+**The ORIGINAL guard test earns its place.** Its synthetic `ACODECS["best"]` entry prevents a future
+table update from silently converting an explicitly provisional product case into an exact one.
+That is a contract mutation which current real table data cannot exercise.
+
+**Hosted Windows satisfies T-087 under the amended OPS-005 gate.** The exact evidence head ran
+first acquisition/refusal, simultaneous launches and killed-holder recovery on `windows-latest`.
+The desktop job was skipped, not left queued. STARBASE still owns the desktop-specific and
+subjective residue, but neither is a T-087 or Phase 2 completion gate under the amendment.
+
+**The OPS-005 amendment is narrow enough.** It substitutes reachable hosted Windows for STARBASE
+only while the latter is unreachable for cases hosted Windows can execute, preserves STARBASE-only
+work, and makes the self-hosted workflow opt-in via `STARBASE_AVAILABLE`. It does not turn a skipped
+desktop job into evidence.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `049b595..ea9d752` inspected; `git diff --check` passed; production source last changed by `9c5745a` / `bddf1bb` |
+| Exact GitHub Actions evidence | Run `30707898266`, exact SHA `ea9d752f36ac4112c0b7f236715bedade6577451`, conclusion **success** |
+| Hosted jobs | Ubuntu, Windows and both frozen jobs **passed**; Windows desktop **skipped with zero steps** |
+| Full Ubuntu suite | **1753 passed / 11 skipped / 2 deselected** |
+| Full Windows suite | **1741 passed / 21 skipped / 32 deselected** |
+| Required T-087 Windows cases | **3 passed:** acquisition/refusal, two launches racing, killed-holder recovery |
+| `ruff check .` / `ruff format --check .` | Passed; format checked **116 files** |
+| `mypy src` / bare `mypy` | Passed; **36 / 84 files** |
+| `mypy --platform win32 src` / bare `mypy --platform win32` | Passed; **36 / 84 files** |
+| Focused T-046 preview slice | **7 passed / 70 deselected** |
+| Full Linux instance-lock file | **15 passed** |
+| Real ORIGINAL HLS/yt-dlp/ffmpeg case | **1 passed** |
+
+### Final disposition
+
+T046-R4, T046-R5 and T087-R3 are closed. T-046's implementation is approved at `9c5745a` and
+T-087's implementation plus amended Windows gate is approved at `ea9d752`; `A-004` is verified and
+Phase 2 exit criterion 4 is met. Do not send either implementation through a fifth correction pass.
+
+Neither task should be filed Complete while its canonical current text contradicts the approved
+contract or evidence. T046-R6 and T087-R4 require a coordination-only correction and mechanical
+recheck; T046-R7 and T087-R5 are non-blocking documentation/evidence follow-ups. Reviewer production
+source was not edited. A separate T-100 working tree appeared after the frozen-head verification and
+was preserved untouched and excluded from every result above; only this review record was added.

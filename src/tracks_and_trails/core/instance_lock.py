@@ -244,10 +244,14 @@ if sys.platform == "win32":  # pragma: no cover - exercised on STARBASE, not on 
 
         try:
             # **`O_NOINHERIT`, because the CRT descriptor is inheritable by default** (`T087-R3`,
-            # and Python documents it). `ARC-002` spawns a worker process per job; without this the
-            # child inherits the lock descriptor, and the exclusive claim then outlives the
-            # application in whichever worker is slowest to exit — so a relaunch is refused by a
-            # process that has already closed its window.
+            # and Python documents it as such).
+            #
+            # *(This said `ARC-002`'s workers would otherwise inherit the lock. That is wrong —
+            # `T087-R5`: CPython's Windows spawn path calls `CreateProcess` with
+            # `bInheritHandles=False`, so a multiprocessing worker inherits no arbitrary handles
+            # and no test on that path could demonstrate this flag. It is defence against a child
+            # launched **with** handle inheritance — a `subprocess` call passing `close_fds=False`,
+            # or any future code that does. Correct flag, wrong reason given for it.)*
             return msvcrt.open_osfhandle(handle, os.O_RDWR | os.O_NOINHERIT)
         except OSError:
             # **The raw handle would otherwise leak, and a leaked handle is a lock nothing can

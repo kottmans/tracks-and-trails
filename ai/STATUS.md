@@ -16,14 +16,26 @@
 Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLAN-R2` at `f858da9`,
 `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
-**Nothing is a choke point as of 2026-08-01.** `T-078` (the pool) was approved 2026-07-30 and
-`T-079` (the queue view) 2026-07-31; nothing has waited on anything since. **Three tasks are Ready
-and startable:** `T-082`, `T-084`, `T-100`, plus `T-074` and `T-092`, which block nothing.
+**Nine of thirteen Phase 2 deliverables are approved as of 2026-08-01**, one is in review, and
+nothing is blocked on a decision.
 
-**Ten tasks are in review**, eight of them delivered overnight on 2026-08-01 under standing
-maintainer authorisation to work unattended: `T-080`, `T-081`, `T-102`, `T-087`, `T-103`, `T-099`,
-`T-101`, joining `T-046`, `T-053` and `T-083`. Eight commits, each its own task, all pushed. **Full
-Linux suite: 1726 passed / 11 skipped / 2 deselected.**
+- **Approved:** `T-078`, `T-079`, `T-080`, `T-081`, `T-046`, `T-083`, `T-085`, `T-087`, `T-102`,
+  plus the supporting `T-053`, `T-099`, `T-101`, `T-103`.
+- **In review:** `T-100`, the history view.
+- **Ready:** `T-082`, `T-084`, and `T-086` once `T-100` lands.
+- **Blocked on `STARBASE`, which is offline:** `T-092` and `T-074`. Neither gates the phase.
+
+**`A-004` is verified and Phase 2 exit criterion 4 is met.** `T-087`'s three required Windows cases
+— first acquisition and refusal, **two launches racing**, killed-holder recovery — passed on
+`check (windows-latest)` at `ea9d752`. Under `OPS-005`'s 2026-08-01 amendment that is the Windows
+gate while `STARBASE` is unreachable.
+
+**Full Linux suite: 1766 passed / 11 skipped / 2 deselected**, with all four `mypy` gates clean.
+
+*(This block previously said ten tasks were in review and that the Windows branch had never
+executed, several paragraphs before a later section said the reverse — `T087-R4`. Every claim in it
+was true when written and stopped being true the same day. Rebuilt from `TASKS.md`'s sections and
+the CI run rather than edited in place, which is the seventh instance of `COORD-R5`'s class.)*
 
 **`T-080` and `T-081` were reviewed and came back Changes requested — six findings, four High.**
 All six are closed at `910f3cb`. The theme is worth keeping: **the persistence primitives were
