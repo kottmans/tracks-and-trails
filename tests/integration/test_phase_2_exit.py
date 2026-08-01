@@ -33,15 +33,18 @@ check passes with no kill at all.
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
 import threading
 import time
+import tomllib
 from collections.abc import Callable, Iterator
 from contextlib import suppress
 from http.server import ThreadingHTTPServer
 from pathlib import Path
+from typing import Any
 
 import psutil
 import pytest
@@ -88,6 +91,15 @@ def media_url() -> Iterator[Callable[..., str]]:
 #: exit criterion both say three, not because three is a round number.
 CONCURRENT = 3
 
+#: The limit the pool test configures. **Deliberately not `CONCURRENT` and not the default.**
+#:
+#: `core/settings.py`'s default is 3. The embedded launcher used to write its own `settings.toml`
+#: with escaped newlines that produced a literal `\n` — invalid TOML — so `compose()` fell back to
+#: defaults and this test measured a limit it had never set. It passed because the default happened
+#: to equal the number it thought it had configured. A value the default cannot produce is what
+#: makes the assertion mean something.
+POOL_LIMIT = 2
+
 #: Queued but deliberately **beyond** the limit, so some jobs have never started when the
 #: application is killed or shut down. Criterion 5 is about workers that were never launched as
 #: much as about ones that were.
@@ -102,19 +114,17 @@ from PySide6.QtWidgets import QApplication
 
 from tracks_and_trails import app as application
 
-database, downloads, geometry, concurrency, *urls = sys.argv[1:]
+database, downloads, geometry, settings, *urls = sys.argv[1:]
 qapp = QApplication([])
-settings = Path(geometry).with_name("settings.toml")
-settings.write_text("[queue]\\nconcurrency = " + concurrency + "\\n", encoding="utf-8")
 composition = application.compose(
     qapp,
     database=Path(database),
     output_directory=Path(downloads),
     geometry_file=Path(geometry),
-    settings_file=settings,
+    settings_file=Path(settings),
 )
 dialog = composition.window.open_add_dialog()
-dialog._urls.setPlainText("\\n".join(urls))
+dialog._urls.setPlainText(chr(10).join(urls))
 names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
 dialog._preset_choice.setCurrentIndex(names.index("Best video available"))
 dialog.add_to_queue()
@@ -126,11 +136,9 @@ dialog.close()
 # `DownloadManager.start()` raises when the pool is full; the internal path parks instead. That
 # asymmetry is deliberate on the manager's side and it is *also* why this loop cannot simply
 # start everything. See `T-115` — the application offers no route that drains a queue at all.
-started = []
 for job_id in job_ids:
     try:
         composition.manager.start(job_id)
-        started.append(job_id)
     except RuntimeError:
         pass
 # The application's own pid, not the launcher's: under a Windows venv `Popen` returns the
@@ -138,6 +146,139 @@ for job_id in job_ids:
 print(os.getpid(), " ".join(job_ids), flush=True)
 sys.exit(qapp.exec())
 """
+
+
+ADD_ONLY_AND_WAIT = """
+import os
+import sys
+from pathlib import Path
+from PySide6.QtWidgets import QApplication
+
+from tracks_and_trails import app as application
+
+database, downloads, geometry, settings, *urls = sys.argv[1:]
+qapp = QApplication([])
+composition = application.compose(
+    qapp,
+    database=Path(database),
+    output_directory=Path(downloads),
+    geometry_file=Path(geometry),
+    settings_file=Path(settings),
+)
+dialog = composition.window.open_add_dialog()
+dialog._urls.setPlainText(chr(10).join(urls))
+names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
+dialog._preset_choice.setCurrentIndex(names.index("Best video available"))
+dialog.add_to_queue()
+while len(dialog.queued_job_ids) < len(urls):
+    qapp.processEvents()
+job_ids = list(dialog.queued_job_ids)
+dialog.close()
+# **Nothing else happens here, and that is the whole point.** No `manager.start()`, no priming
+# loop. Adding URLs is everything a user does, so anything that runs afterwards is the
+# application admitting its own queue — which is exactly what `T-115` says nothing does.
+print(os.getpid(), " ".join(job_ids), flush=True)
+sys.exit(qapp.exec())
+"""
+
+
+RESTART_AND_REPORT = """
+import json
+import sys
+import time
+from pathlib import Path
+from PySide6.QtWidgets import QApplication, QMessageBox
+
+from tracks_and_trails import app as application
+from tracks_and_trails.persistence import db
+from tracks_and_trails.persistence.repositories import JobRepository
+
+database, downloads, geometry, settings = sys.argv[1:5]
+qapp = QApplication([])
+composition = application.compose(
+    qapp,
+    database=Path(database),
+    output_directory=Path(downloads),
+    geometry_file=Path(geometry),
+    settings_file=Path(settings),
+)
+# Read after compose() returns: recovery runs inside it, before anything can read the queue.
+rows = {job.id: job.status.value for job in JobRepository(db.connect(database)).all_jobs()}
+offered = composition.window.findChild(QMessageBox, "interruptedJobsDialog") is not None
+print(json.dumps({"rows": rows, "offered": offered}), flush=True)
+# **Shut down through the real lifecycle before exiting.** Calling sys.exit() with the writer
+# thread still running aborts the interpreter with "QThread: Destroyed while thread
+# 'queue-writer' is still running", which is a SIGABRT the parent reads as a failed start.
+composition.shutdown.begin()
+deadline = time.monotonic() + 60
+while not composition.shutdown.finished and time.monotonic() < deadline:
+    qapp.processEvents()
+    time.sleep(0.01)
+sys.exit(0 if composition.shutdown.finished else 2)
+"""
+
+
+def test_the_restart_helper_is_valid_python() -> None:
+    """The recovery gate cannot reach `compose()` if its child script does not compile.
+
+    Extended to **every** embedded launcher, not just the one that broke. All three are `\"\"\"`
+    literals whose contents are compiled in another interpreter, so an escape that renders a string
+    across two lines is a `SyntaxError` the parent only sees as a non-zero exit — and `T-115`'s gate
+    would then report the defect it exists to report for entirely the wrong reason.
+    """
+    for name, script in (
+        ("<phase-2-restart>", RESTART_AND_REPORT),
+        ("<phase-2-queue-many>", QUEUE_MANY_AND_WAIT),
+        ("<phase-2-add-only>", ADD_ONLY_AND_WAIT),
+    ):
+        compile(script, name, "exec")
+
+
+def restart_against(database: Path, tmp_path: Path) -> dict[str, Any]:
+    """Start a **real composed application** against `database` and report what it found.
+
+    `T088-R3`: this test used to call `JobRepository(...).recover_interrupted()` itself while its
+    name, its comment and the evidence table all said "the next start". That is the seam the
+    criterion is about — `compose()` recovers before anything can read the queue — and a test that
+    performs the recovery cannot observe whether the application performs it.
+    """
+    environment = dict(os.environ, PYTHONPATH=str(REPO_ROOT / "src"), QT_QPA_PLATFORM="offscreen")
+    restarted = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            RESTART_AND_REPORT,
+            str(database),
+            str(tmp_path / "downloads-restart"),
+            str(tmp_path / "window-restart.toml"),
+            str(write_settings(tmp_path / "settings-restart.toml", 1)),
+        ],
+        capture_output=True,
+        text=True,
+        env=environment,
+        timeout=180,
+    )
+    assert restarted.returncode == 0, (
+        f"the application did not start against the killed database: {restarted.stderr[-1500:]}"
+    )
+    return dict(json.loads(restarted.stdout.strip().splitlines()[-1]))
+
+
+def write_settings(path: Path, concurrency: int) -> Path:
+    """Write `settings.toml` **from the parent**, and assert it parses.
+
+    The child used to write this itself, from a string embedded in a `\"\"\"` literal — and the
+    escaping was wrong, so it produced a literal backslash-n and invalid TOML. `compose()` reports a
+    settings problem and carries on with defaults (`ARC-008`), which is the right behaviour and
+    which made the mistake invisible: the run looked normal and the configured limit never applied.
+
+    Parsing it here is the guard. A test that silently gets defaults is not testing settings.
+    """
+    path.write_text(f"[queue]\nconcurrency = {concurrency}\n", encoding="utf-8")
+    with path.open("rb") as handle:
+        parsed = tomllib.load(handle)
+    assert parsed["queue"]["concurrency"] == concurrency, f"unusable settings written: {parsed}"
+    return path
 
 
 def launch(
@@ -151,6 +292,7 @@ def launch(
 ) -> tuple[subprocess.Popen[str], int, list[str]]:
     """Start a real application in another interpreter and read its startup handshake."""
     downloads.mkdir(exist_ok=True)
+    settings = write_settings(geometry.with_name("settings.toml"), concurrency)
     environment = dict(os.environ, PYTHONPATH=str(REPO_ROOT / "src"), QT_QPA_PLATFORM="offscreen")
     process = subprocess.Popen(
         [
@@ -160,7 +302,7 @@ def launch(
             str(database),
             str(downloads),
             str(geometry),
-            str(concurrency),
+            str(settings),
             *urls,
         ],
         stdout=subprocess.PIPE,
@@ -264,8 +406,12 @@ def test_a_hard_kill_mid_queue_restores_every_job_state_at_the_next_start(
     every row would move them too, and a user would find downloads that had not begun reported as
     interrupted.
 
-    *Does not cover:* the offer dialog, which is `T-082`'s and is tested at composition level; and
-    resumption of partial bytes, which this phase does not do.
+    **The offer is covered here too**, since the correction for `T088-R3` made this a real restart:
+    these are the only recovered rows in the suite that came from an actual kill rather than from a
+    seeded database, so this is the one place the offer is observed over them. `T-082` covers the
+    seeded case at composition level.
+
+    *Does not cover:* resumption of partial bytes, which this phase does not do.
     """
     database = tmp_path / "queue.db"
     urls = [
@@ -305,9 +451,11 @@ def test_a_hard_kill_mid_queue_restores_every_job_state_at_the_next_start(
         process.kill()
         process.wait(timeout=30)
 
-    # The next start is the application's own recovery, not this test's.
-    recovered = JobRepository(db.connect(database)).recover_interrupted()
-    after = statuses(database, job_ids)
+    # **A real next start**, in its own interpreter (`T088-R3`). Recovery happens inside
+    # `compose()`, so a test that called `recover_interrupted()` itself would be asserting on its
+    # own call rather than on the application's.
+    report = restart_against(database, tmp_path)
+    after = {job_id: JobStatus(value) for job_id, value in report["rows"].items()}
 
     # **The same set the recovery uses**, not just `RUNNING`. A worker resolving a URL is as
     # interrupted as one writing bytes, and asserting only on `RUNNING` would make this test's
@@ -315,16 +463,25 @@ def test_a_hard_kill_mid_queue_restores_every_job_state_at_the_next_start(
     in_flight = [job_id for job_id, status in before.items() if status in INTERRUPTED_ON_STARTUP]
     assert in_flight, f"nothing was in flight at kill time: {before}"
     for job_id in in_flight:
-        assert job_id in recovered, f"{job_id} was in flight and was not recovered"
-        assert after[job_id] is JobStatus.FAILED
+        assert after[job_id] is JobStatus.FAILED, (
+            f"{job_id} was in flight at the kill and the next start left it {after[job_id]}"
+        )
 
     never_started = [job_id for job_id, status in before.items() if status is JobStatus.QUEUED]
     assert never_started, (
         f"every job had started, so this says nothing about the ones that had not: {before}"
     )
     for job_id in never_started:
-        assert job_id not in recovered, f"{job_id} had never started and was reported interrupted"
-        assert after[job_id] is JobStatus.QUEUED
+        assert after[job_id] is JobStatus.QUEUED, (
+            f"{job_id} had never started and the next start moved it to {after[job_id]}"
+        )
+
+    # And the user is told, which is `T-082`'s half of the same criterion — asserted here because
+    # this is the only place the rows come from a real kill rather than from a seeded database.
+    assert report["offered"], (
+        "the next start recovered the interrupted jobs and offered nothing, so a user who lost "
+        "downloads to a crash sees failed rows and no acknowledgement"
+    )
 
 
 # --- criterion 5: no worker outlives application exit -----------------------------------------
@@ -387,6 +544,11 @@ def test_the_pool_never_exceeds_the_configured_limit(
     in flight, and the worker processes that actually exist. They can disagree, and the second is
     the one that costs a user their bandwidth.
 
+    **The limit is `POOL_LIMIT`, not `CONCURRENT`, and that is load-bearing.** `settings.py`'s
+    default is 3; while the launcher wrote invalid TOML this test measured the default and passed
+    because the default matched the number it believed it had set. A limit the default cannot
+    produce is what turns this from a tautology into a test of `REQ-013`.
+
     *Does not cover:* raising the limit while running, which `T-078` covers; and the exact moment
     a slot is released, which is the manager's own tests.
     """
@@ -400,7 +562,7 @@ def test_the_pool_never_exceeds_the_configured_limit(
         database=database,
         downloads=tmp_path / "downloads",
         geometry=tmp_path / "window.toml",
-        concurrency=CONCURRENT,
+        concurrency=POOL_LIMIT,
         urls=urls,
     )
     peak_rows = 0
@@ -424,12 +586,13 @@ def test_the_pool_never_exceeds_the_configured_limit(
         process.wait(timeout=30)
 
     assert peak_rows, "no job was ever observed in flight, so no limit was ever tested"
-    assert peak_rows <= CONCURRENT, (
-        f"{peak_rows} jobs were in flight at once against a limit of {CONCURRENT}"
+    assert peak_rows <= POOL_LIMIT, (
+        f"{peak_rows} jobs were in flight at once against a configured limit of {POOL_LIMIT}"
     )
-    assert peak_workers <= CONCURRENT, (
-        f"{peak_workers} worker processes existed at once against a limit of {CONCURRENT}; the "
-        "queue's own accounting agreed with the limit, so this is the pool and not the rows"
+    assert peak_workers <= POOL_LIMIT, (
+        f"{peak_workers} worker processes existed at once against a configured limit of "
+        f"{POOL_LIMIT}; the queue's own accounting agreed with the limit, so this is the pool and "
+        "not the rows"
     )
 
 
@@ -504,22 +667,27 @@ def test_a_second_launch_refuses_in_favour_of_the_running_instance(
 # --- criterion 1: three at once, and the UI still answering ------------------------------------
 
 
-def test_three_downloads_progress_independently_while_the_ui_keeps_answering(
+def test_three_real_workers_each_write_their_whole_file(
     qapp: QApplication, tmp_path: Path, media_url: Callable[..., str]
 ) -> None:
-    """**Exit criterion 1**, observed from outside the application.
+    """**Exit criterion 1's process half, and deliberately only that half** (`T088-R2`).
 
-    Independence is asserted as **distinct progress**: three jobs whose written bytes differ from
-    one another at some sampled moment. Three jobs that all report the same number are the shape a
-    single shared counter produces, and it looks exactly like success on a fast machine.
+    This test used to be named for progress and interactivity and claimed both. It observes
+    neither: it samples durable status dictionaries and terminal file sizes, and never sees a
+    progress byte, a signal, a table cell or an event-loop tick. **A mutation dropping every live
+    progress update passes it.** `T088-R2` filed that as an overclaim and was right.
 
-    Interactivity is asserted as the application still **advancing its own state** while three
-    workers run — the rows keep changing. A GUI thread blocked on a worker or on SQLite (`ARC-005`)
-    stops producing transitions, and that is observable from another process.
+    What it does prove, which nothing else does: three **real spawned worker processes** run at
+    once against a real extractor and each writes its own complete file — three distinct outputs of
+    the full size, not one file three times and not a shared counter.
 
-    *Does not cover:* `NFR-001`'s responsiveness as a human perceives it. This says the event loop
-    is being serviced, not that a person would call it smooth. `T-079`'s own tests assert the
-    progress rendering; this asserts that three of them are genuinely three.
+    The claims this no longer makes are covered, and the evidence table cites them rather than this:
+
+    - *independent accurate progress* — `tests/ui/test_queue_view.py::
+      test_three_concurrent_downloads_show_independent_progress` and
+      `tests/integration/test_composition.py::test_three_concurrent_downloads_each_keep_their_own_row`
+    - *UI interactive throughout* — `tests/integration/test_composition.py::
+      test_the_interface_stays_inside_its_budget_while_three_downloads_run`
     """
     database = tmp_path / "queue.db"
     downloads = tmp_path / "downloads"
@@ -558,53 +726,89 @@ def test_three_downloads_progress_independently_while_the_ui_keeps_answering(
         f"not every concurrent download completed: {final}"
     )
     assert len(transitions) > 1, (
-        "the application's state never changed while three workers ran, which is what a blocked "
-        "GUI thread looks like from outside"
+        "the application never advanced its own state while three workers ran. **This is a "
+        "liveness check, not a responsiveness one** — see the docstring; the interactivity claim "
+        "belongs to the composed budget test"
     )
 
-    written = sorted(path.stat().st_size for path in downloads.glob("*") if path.is_file())
-    assert len(written) == CONCURRENT, f"expected {CONCURRENT} files, found {written}"
+    files = [path for path in downloads.glob("*") if path.is_file()]
+    written = sorted(path.stat().st_size for path in files)
+    assert len(written) == CONCURRENT, (
+        f"expected {CONCURRENT} files, found {[f.name for f in files]}"
+    )
     assert all(size == CLIP_BYTES for size in written), (
         f"three concurrent downloads did not each write the whole clip: {written}"
+    )
+    assert len({path.name for path in files}) == CONCURRENT, (
+        "three downloads produced fewer than three distinct filenames, so they were not three "
+        "independent outputs"
     )
 
 
 # --- what proving the phase found: the queue does not drain -----------------------------------
 
 
-def test_a_job_beyond_the_limit_never_starts_even_once_the_pool_empties() -> None:
-    """**`T-115`. Recorded as an expected failure, because it is a real gap and not a quirk.**
+@pytest.mark.xfail(
+    strict=True,
+    reason="T-115: nothing admits durable QUEUED rows, so jobs beyond the limit never start",
+)
+def test_every_queued_job_eventually_starts_as_slots_free(
+    qapp: QApplication, tmp_path: Path, media_url: Callable[..., str]
+) -> None:
+    """**`T-115`, asserted as the behaviour that is wanted rather than the one that happens.**
 
-    Measured 2026-08-01 against a real composed application, concurrency 3, five jobs queued:
+    The previous version of this test called `pytest.xfail()` unconditionally with no setup and no
+    assertion. `T088-R1` filed that as High and was right: it reports `XFAIL` whatever the code
+    does, so the gate this file promised — *fixing it fails the build until the test is inverted* —
+    could never fire. A strict marker over a real reproduction is what makes that promise real:
+    when `T-115` is fixed this becomes `XPASS` and the build goes red until someone removes the
+    marker.
 
-    ```
-      0.5s  probing  running  probing  queued  queued   (4 children)
-      8.0s  completed completed completed queued queued (1 child)
-      9.5s  completed completed completed queued queued (1 child)
-    ```
+    **The assertion deliberately does not choose a layer.** It says every queued job eventually
+    runs with no user action beyond Add — not that the manager, or composition, or a startup sweep
+    is what admits it. Which of those owns durable admission is the maintainer's design call, and
+    the review's own recommendation is a direction rather than an approval.
 
-    The three that started ran concurrently and completed. **The other two stayed `queued` with an
-    empty pool**, and were still queued when the run ended.
+    **Driven through the user route alone** (`T088-R1`, second round). The other phase tests use a
+    launcher that calls `manager.start()` per job after Add, to prime a pool they then observe. This
+    one must not: with that priming, a change making `start()` park instead of raise would admit
+    every job and turn this `XPASS` while the application still admitted nothing by itself. `Add`
+    is all a user does, so `Add` is all this does.
 
-    Reading the code says the same thing. `DownloadManager._fill_free_slots` drains `_waiting`,
-    which is an **in-memory** list populated only when `_start_or_report` parks a job. The public
-    `start()` *raises* when the pool is full rather than parking, and nothing anywhere scans the
-    database for `QUEUED` rows. `AddUrlDialog.add_to_queue` starts **only the probed job**, and
-    Probe is a manual button covering only the first URL — so a user who pastes five URLs and
-    presses Add gets **zero** downloads, or one if they probed first.
-
-    `add_dialog.py` has a comment reading *"leaving it durably `QUEUED`, where whatever runs the
-    queue next would download the URL"*. **There is no "whatever runs the queue next."**
-
-    This is marked `xfail(strict=True)` rather than deleted or asserted the other way round, so it
-    **fails the build the day someone fixes it** and this file stops describing a defect as though
-    it were behaviour. It is not skipped: a skip records nothing.
-
-    *What this does not claim:* that the fix belongs in the manager rather than in composition.
-    `T-115` states the options; this states the fact.
+    Measured today: **nothing runs at all** on this route, because the dialog starts only a probed
+    job and there is no probe here. That is a sharper reproduction than the priming one — three run
+    and two stall — and it is the shape a user actually meets.
     """
-    pytest.xfail(
-        "T-115: nothing drains the queue. Jobs beyond the concurrency limit stay QUEUED "
-        "indefinitely, including after every running job completes. Measured, and confirmed by "
-        "reading _fill_free_slots, start() and add_to_queue."
+    database = tmp_path / "queue.db"
+    urls = [
+        media_url(total_bytes=CLIP_BYTES, chunk_delay=0.05)
+        for _ in range(CONCURRENT + QUEUED_BEYOND_LIMIT)
+    ]
+    process, _, job_ids = launch(
+        ADD_ONLY_AND_WAIT,
+        database=database,
+        downloads=tmp_path / "downloads",
+        geometry=tmp_path / "window.toml",
+        concurrency=CONCURRENT,
+        urls=urls,
+    )
+    try:
+        # Generous, because the claim is "eventually" and a slow agent must not be the reason this
+        # reports the defect. Three downloads of this size finish in a few seconds.
+        settled = wait_until(
+            lambda: all(
+                status is JobStatus.COMPLETED for status in statuses(database, job_ids).values()
+            ),
+            timeout=90,
+        )
+        final = statuses(database, job_ids)
+    finally:
+        process.kill()
+        process.wait(timeout=30)
+
+    assert settled, (
+        f"{sum(1 for s in final.values() if s is JobStatus.QUEUED)} of {len(job_ids)} jobs were "
+        f"still QUEUED after Add with nothing else done — nothing admits durable queued intent. "
+        f"Final: "
+        f"{ {k[:6]: v.value for k, v in final.items()} }"
     )
