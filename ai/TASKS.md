@@ -92,7 +92,9 @@ here, which is the drift it is written to make visible.)*
 
 ### T-080 — Queue-level pause and resume; per-job cancel, retry and remove
 
-**Status:** **In Review — complete 2026-07-31.** Released by `T-079`'s approval at `da49a51`;
+**Status:** **In Review — corrected 2026-08-01, awaiting re-review.** Changes were requested at
+`3fed547` on three findings — `T080-R1` (High), `T080-R2` (High) and `T080-R3` (Medium); all three
+are addressed below. Released by `T-079`'s approval at `da49a51`;
 rewritten from `UX-001` on 2026-07-30 (`P2PLAN-R1`). **Both maintainer calls were taken 2026-07-31**
 and are recorded in place below: the unreachable `PAUSED` edges are **removed**, and `P2PLAN-R7`'s
 manual-retry ordering is **confirmed** — as a maintainer decision, not as something `P2PLAN-R1`
@@ -188,8 +190,9 @@ pre-amendment wording is preserved in `REQ-015`'s own parenthetical and in `UX-0
 
 #### What was built, 2026-07-31
 
-**Evidence.** `ruff check`, `ruff format --check` and `mypy src` clean; full Linux suite **1667
-passed / 11 skipped / 2 deselected**. Fourteen mutations, all killed, tree hash identical before and
+**Evidence.** `ruff check`, `ruff format --check`, `mypy src` and `mypy --platform win32 src`
+clean; full Linux suite **1694 passed / 11 skipped / 2 deselected** after the 2026-08-01
+corrections. Fourteen mutations, all killed, tree hash identical before and
 after each battery. No CI run — see "Not covered" below.
 
 **`JobStatus.PAUSED` is gone, not merely unreferenced.** The maintainer decision was to remove the
@@ -261,6 +264,50 @@ the mutation re-confirmed killed. **Recorded rather than quietly fixed:** a test
 and fails in the suite is a test whose green was not evidence, and the first version of this entry
 would have claimed fourteen clean kills on the strength of it.
 
+#### Corrections, 2026-08-01 — `T080-R1`, `T080-R2`, `T080-R3`
+
+**`T080-R1` — the pause guard was on the scheduler, and `start()` walked past it.** Pause gated
+`_fill_free_slots` and `_start_when_free`, but not the public entry point. The add-URL dialog calls
+`start(job_id)` after a probe resolves and that parameter defaults to `SessionKind.DOWNLOAD`, so
+pressing Add while paused began a download immediately — against the one thing pause promises.
+
+**My own test protected the defect.** `test_pause_does_not_refuse_a_probe...` described a probe in
+its docstring and called `start("job-1")`, taking the same default. It therefore asserted that a
+paused queue starts a *download* and called that the probe exemption. The reviewer split the pair;
+both cases are now explicit and the download case is a negative.
+
+**And the corrected test was still weak.** Its assertion read `active_job_ids()`, which by design
+includes jobs merely *waiting* for a slot (`T078-R1`) — so a probe the guard had wrongly parked
+would still have appeared in it and the assertion would have passed while the dialog hung. Found by
+running the over-application mutation, which **survived** the first battery. It asserts occupancy
+now.
+
+A download is **parked, not refused**: the job is already durably `QUEUED`, so adding it to the
+waiting list means resume starts it, which is what somebody who queued work while paused meant.
+
+**`T080-R2` — `job_removed` had zero receivers.** Removal reached the writer and deleted the row,
+and the row stayed on screen indefinitely. `QueueModel` connected `progress` and `job_changed`
+only: those announce a job that still exists in a new state, and no amount of per-job news can say
+that the *set* of jobs changed. Now connected, with `queue_reordered` and `queue_cleared` (see
+`T-081`), through one slot — what all three mean to this table is identical.
+
+**`T080-R3` — `ARCHITECTURE.md` §5 still drew `RUNNING → PAUSED → RUNNING`.** The code was
+corrected and the canonical architecture was left advertising per-job pause after the product had
+removed it, while `core/job_state.py` described itself as transcribed from that diagram. §5 is
+rewritten, with the removal and its `REQ-017` reopening condition recorded. The same pass corrected
+"(attempts incremented)" beside the retry edge: only *automatic* retry spends an attempt.
+
+| Mutation | Killed by |
+|---|---|
+| Pause stops gating a direct `DOWNLOAD` start | the paired download negative |
+| The guard over-applies and swallows a probe too | the probe case, **after correction** |
+| The table stops hearing about removal | the composed remove regression |
+
+**One mutation survived its first run**, and it was the test's fault rather than the code's — see
+`T080-R1` above. That is the second time in two days this task has been caught asserting on
+`active_job_ids()` where occupancy was meant; the accounting split `T078-R1` introduced is easy to
+read past, and both tests now say which one they mean and why.
+
 #### Not covered, stated rather than implied
 
 - **Windows runtime.** Nothing here is platform-specific and `mypy --platform win32` is clean, but
@@ -274,7 +321,9 @@ would have claimed fourteen clean kills on the strength of it.
 
 ### T-081 — Reorder pending jobs, and clear completed ones
 
-**Status:** **In Review — complete 2026-07-31.** Released by `T-079`'s approval at `da49a51`, which
+**Status:** **In Review — corrected 2026-08-01, awaiting re-review.** Changes were requested at
+`3fed547` on three findings — `T081-R1` (High), `T081-R2` (High) and `T081-R3` (Medium); all three
+are addressed below. Released by `T-079`'s approval at `da49a51`, which
 owns the view the reordering acts on. **Thirteen mutations run; all thirteen killed.** One adjacent
 defect was found and **filed rather than fixed** (`AGENTS.md` §7) — `T-103`.
 *(This read "Proposed — **not released by `T-078`:** it waits on `T-079`", then "Ready — released
@@ -309,8 +358,9 @@ specifically so two callers cannot read the same `MAX()`. Reordering is the firs
 
 #### What was built, 2026-07-31
 
-**Evidence.** `ruff check`, `ruff format --check` and `mypy src` clean; full Linux suite **1684
-passed / 11 skipped / 2 deselected**. Thirteen mutations, all killed, tree hash identical before and
+**Evidence.** `ruff check`, `ruff format --check`, `mypy src` and `mypy --platform win32 src`
+clean; full Linux suite **1694 passed / 11 skipped / 2 deselected** after the 2026-08-01
+corrections. Thirteen mutations, all killed, tree hash identical before and
 after.
 
 **Reordering redeals the positions the named jobs already hold**, rather than renumbering from
@@ -377,6 +427,47 @@ is covered by `REQ-015`'s budget tests under a `T-080` that is already with the 
 it now would put an unreviewed change under a task already handed over. **The test asserts the stale
 premise deliberately**, so that when `T-103` lands it fails and says so rather than passing silently
 over a sweep that has become redundant.
+
+#### Corrections, 2026-08-01 — `T081-R1`, `T081-R2`, `T081-R3`
+
+**`T081-R1` — `ARC-005`'s single writer does not serialise the scheduling *read*.** I flagged this
+in the handoff as reasoned-but-untested and asked for it to be attacked; it is real. While a
+reorder is on the writer thread, a tick, `resume()` or `set_concurrency()` can run `_next_waiting()`
+against the positions the reorder is replacing, pick the old head, and queue its start. Both writes
+then succeed — the reorder first, because FIFO — so the queue durably says one thing and the job
+that actually started says another. **Reordering the transactions cannot fix it**: the wrong
+decision was already made before either was queued.
+
+An in-flight reorder is now an **admission barrier**. Nothing is taken from the waiting list until
+every outstanding reorder has settled, and the barrier is released on **both** paths — a refused
+reorder leaves the stored order untouched, so holding the queue shut would turn one failed write
+into a stalled pool. **A counter, not a flag**, because two reorders can be in flight and a boolean
+cleared by the first callback reopens the window while the second is still running. All three cases
+the reviewer named are asserted.
+
+**`T081-R2` — `queue_reordered` and `queue_cleared` had zero receivers**, the same defect as
+`T080-R2`. Both commit through the assembled toolbar path and the table reflected neither: reorder
+appeared to do nothing and Clear finished appeared to do nothing, while the database was correct
+each time. Wired through the same `_on_set_changed` slot.
+
+**`T081-R3` — deselection was silent.** `_announce_selection` emitted only when a row existed, and
+that signal is the sole updater of the per-job actions — so "nothing is selected" was exactly the
+news the toolbar needed and never received. Remove, Move up and Move down stayed enabled over an
+empty selection and their handlers then did nothing. It now emits the empty string; one signal
+carrying *what is selected now* cannot get out of order with itself, where a separate
+`selection_cleared` could arrive either side of a selection and leave the actions reflecting the
+older one. The model reset that removal and clearing now cause is connected to it too, since that
+is the path a user actually takes to end up with nothing selected.
+
+| Mutation | Killed by |
+|---|---|
+| The reorder barrier is removed from the scheduler | the in-flight admission test |
+| The barrier is a flag the first callback clears | the two-in-flight test |
+| A refused reorder leaves the pool shut | the refusal test |
+| The table stops hearing about reordering | the composed move regression |
+| The table stops hearing about clearing | the composed clear regression |
+| Deselection is silent again | the cleared-selection gate |
+| An empty selection still enables the move actions | the same |
 
 #### Not covered, stated rather than implied
 

@@ -223,22 +223,38 @@ diffable by a user — that is TOML's job. Neither is a good substitute for the 
 ### Job state machine (`core/job_state.py`)
 
 ```
-                  ┌──────────────────────────────┐
-                  ▼                              │
 QUEUED ──▶ PROBING ──▶ READY ──▶ RUNNING ──▶ POST_PROCESSING ──▶ COMPLETED
-   │          │                     │  ▲             │
-   │          │                     ▼  │             │
-   │          │                   PAUSED             │
-   │          ▼                     │                ▼
-   └──────▶ FAILED ◀────────────────┴──────────── FAILED
+   │          │                     │                │
+   │          ▼                     ▼                ▼
+   └──────▶ FAILED ◀────────────────┴────────────────┘
+   │          │                                      │
+   │          │ retry                                │
+   │          ▼                                      │
+   │        QUEUED                                   │
    │                                                 │
    └──────▶ CANCELLED ◀──────────────────────────────┘
 
-FAILED ──retry──▶ QUEUED        (attempts incremented)
+FAILED ──retry──▶ QUEUED
 ```
 
 Transitions are validated in one place. An illegal transition raises rather than silently
 corrupting state — a persisted queue that lies about its state is worse than a crash.
+
+**There is no `PAUSED` state, and pause is not a job transition** (`UX-001`, `T-080`, 2026-07-31).
+This diagram carried `RUNNING → PAUSED → RUNNING` until then, and `core/job_state.py` described
+itself as transcribed from it. `UX-001` made pause a **queue-level drain**: in-flight downloads
+finish, nothing new starts, and no job's status changes — so nothing ever entered `PAUSED` and the
+status advertised a capability the product had rejected. The member and both edges are gone.
+
+*(`T080-R3`: the code was corrected first and this diagram was left standing, so the canonical
+current architecture went on drawing per-job pause after the product had removed it. `REQ-017`'s
+partial-download resume in Phase 3 is the named reopening condition — it may add the state its own
+semantics need rather than inheriting this one.)*
+
+**`attempts` is incremented by automatic retry only** (`REQ-018`, `T-083`). This read
+"(attempts incremented)" beside the retry edge as though every retry spent one; a manual retry the
+user asked for deliberately does not, so the counter measures what the queue did unattended rather
+than how many times the job has been tried.
 
 **Starting a session sets the status that says a worker holds the job** (`T-051`, `ARC-004`).
 There are two entry points into the machine and they use the two edges already drawn above:

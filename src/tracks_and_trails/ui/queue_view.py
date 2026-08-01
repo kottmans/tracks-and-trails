@@ -215,6 +215,19 @@ class QueueModel(QAbstractTableModel):
 
         self._manager.progress.connect(self._on_progress)
         self._manager.job_changed.connect(self._on_job_changed)
+        # **The three signals that change which rows exist** (`T080-R2`, `T081-R2`). `job_changed`
+        # announces a job that still exists in a new state; these announce that the *set* of jobs
+        # has changed, which no amount of per-job news can express. Without them the database
+        # reached the state the user asked for and the table went on showing the old one
+        # indefinitely — a removed job stayed on screen, and reorder and clear appeared to do
+        # nothing at all.
+        #
+        # Each is emitted only after its write is durable, so refreshing here re-reads a queue that
+        # really is in the announced state. A failed write emits nothing and the table correctly
+        # keeps showing what is still stored.
+        self._manager.job_removed.connect(self._on_set_changed)
+        self._manager.queue_reordered.connect(self._on_set_changed)
+        self._manager.queue_cleared.connect(self._on_set_changed)
         self.refresh()
 
     # --- the promises tests read -----------------------------------------------------------
@@ -451,6 +464,19 @@ class QueueModel(QAbstractTableModel):
             row.retire_live_state()
         self._emit_row_changed(index)
 
+    def _on_set_changed(self, *_: object) -> None:
+        """A job left the queue, or the order changed. Rebuild from what is stored.
+
+        Takes and ignores its arguments so one slot serves all three signals — `job_removed`
+        carries an id, `queue_reordered` a tuple, `queue_cleared` nothing. What each of them means
+        to this table is identical: the rows it holds are no longer the rows that exist.
+
+        A full `refresh()` rather than a targeted edit, for the reason `refresh` already gives:
+        the set of jobs changes rarely and never in a burst, and a second place that decides row
+        order is a second place for it to disagree with `queue_position`.
+        """
+        self.refresh()
+
     def _draw_pending(self) -> None:
         """One tick: draw every job holding something undrawn, then stop if nothing is left."""
         pending, self._pending = self._pending, {}
@@ -492,6 +518,9 @@ class QueueModel(QAbstractTableModel):
         for signal, slot in (
             (self._manager.progress, self._on_progress),
             (self._manager.job_changed, self._on_job_changed),
+            (self._manager.job_removed, self._on_set_changed),
+            (self._manager.queue_reordered, self._on_set_changed),
+            (self._manager.queue_cleared, self._on_set_changed),
         ):
             with suppress(RuntimeError):
                 signal.disconnect(slot)
@@ -547,6 +576,10 @@ class QueueView(QWidget):
         layout.addWidget(self._table)
 
         self._model.modelReset.connect(self._show_the_right_thing)
+        # A reset drops the selection, and the per-job actions have to hear about it
+        # (`T081-R3`). Removal and clearing both reset the model now, so this is the path a
+        # user actually takes to end up with nothing selected — not an edge case.
+        self._model.modelReset.connect(self._announce_selection)
         self._show_the_right_thing()
 
     @property
@@ -602,9 +635,21 @@ class QueueView(QWidget):
         self._empty.setVisible(not has_rows)
 
     def _announce_selection(self, *_: object) -> None:
+        """Report the selected job, or **the empty string when nothing is selected** (`T081-R3`).
+
+        Deselection used to emit nothing at all, on the reading that there was no job to announce.
+        But this signal is the only thing that updates the per-job actions, so "no job" was exactly
+        the news the toolbar needed and never got: clearing the selection — with the keyboard, by
+        clicking empty space, or through the model reset a removal now causes — left Remove, Move
+        up and Move down enabled with no row to act on. Their handlers then did nothing, which is a
+        control that lies about what it does.
+
+        The empty string rather than a separate `selection_cleared` signal: one signal carrying
+        "what is selected now" cannot get out of order with itself, where two can arrive in either
+        order and leave the actions reflecting the older one.
+        """
         job_id = self.selected_job_id()
-        if job_id is not None:
-            self.job_selected.emit(job_id)
+        self.job_selected.emit(job_id if job_id is not None else "")
 
 
 def build_queue_view(

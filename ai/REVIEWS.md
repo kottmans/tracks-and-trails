@@ -7694,3 +7694,79 @@ T079-R1 and T079-R2 are **Resolved**. T-079 is **Approved at `da49a51`** and may
 Complete, releasing T-080 and T-081 subject to their remaining gates and maintainer decisions.
 T079-R3 is a non-blocking Low test-strength follow-up owned by T-101; it does not reopen T-079 or
 require another focused pass.
+
+## 2026-07-31 — T-080 and T-081 initial review
+
+**Reviewer:** Codex (Reviewer)
+**Tasks:** `T-080`, `T-081`
+**Review base:** `733209d`
+**Implementation boundary:** the bounded uncommitted T-080/T-081 source and test diff over that
+base; the implementation source was not edited during review. Reviewer-only regression tests were
+added to the three existing test files named below. The two handoff files named by the maintainer
+were not present in the checkout, so the matching `TASKS.md` handoff sections supplied the stated
+boundary, risks and evidence.
+**Platforms verified:** Linux; Win32 static analysis only
+**CI:** Not run — consistent with the handoff and current `STATUS.md`; no CI result is claimed.
+**Verdict:** **Changes requested**
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T080-R1` | **High** | **Yes — UX-001 / REQ-015** | Pause admission | `pause()` gates `_fill_free_slots()` and `_start_when_free()`, but `start()` itself has no pause check (`manager.py:811-894`). The comment at `:594-597` exempts a direct start because the add dialog must still probe, but the exemption is not limited to `SessionKind.PROBE`. The normal add-after-probe path calls `start(job_id, SessionKind.DOWNLOAD)` (`add_dialog.py:968`), so pressing Add while paused starts a new download. The implementer test described a probe but called `start("job-1")`, whose default is `DOWNLOAD`, and therefore positively protected the defect. The reviewer split the cases: the explicit PROBE case passes; the DOWNLOAD negative fails with occupant `('job-1',)`. | Exempt only metadata probes. Route or refuse direct `DOWNLOAD` starts while paused so the durable queued job remains for resume, and retain the paired PROBE/DOWNLOAD regression. Exercise the composed add-after-probe path while paused if the correction changes that call site. | **Open** |
+| `T080-R2` | **High** | **Yes — T-080 visible remove behavior** | Queue view / composition | Remove reaches the real manager and writer and deletes the row, but the row remains visible. `DownloadManager.job_removed` is emitted only after durability, yet `QueueModel` connects only `progress` and `job_changed` (`queue_view.py:216-218`) and composition adds no removal listener. Qt reports zero receivers. The assembled regression successfully waits until `store.get("job-2") is None`, then fails because the model still contains `job-2`. The user is shown a job that no longer exists, and another unrelated refresh is the only workaround. | Connect the durable removal signal to the queue UI, update or refresh the model only after success, and detach the connection with the existing model lifecycle. Keep the assembled control → manager → writer → table regression. | **Open** |
+| `T081-R1` | **High** | **Yes — T-081 scheduler-order acceptance criterion** | Reorder/start race | The single writer serialises writes but not the GUI-thread scheduling read that precedes a start write. While `reorder(["job-2", "job-1"])` is in flight, `resume()` or a tick can run `_next_waiting()` against the old positions at `manager.py:1312-1333`, choose job-1, and queue its start transition. The writer then commits the reorder first and job-1's start second: both writes succeed, while the committed queue says job-2 is first. A held-reorder regression deterministically fails because job-1 becomes the occupant before the reorder callback. | Treat an in-flight reorder as an admission barrier (including tick, resume and limit-change paths), then fill slots from durable positions after it settles. Define and test the failure path as well: a refused reorder must release the barrier and schedule from the unchanged order. Audit multiple queued reorder requests rather than representing the barrier as a boolean that the first callback can clear too early. | **Open** |
+| `T081-R2` | **High** | **Yes — REQ-016 visible behavior** | Queue view / composition | Reorder and Clear finished both commit through the assembled toolbar path, but the table never reflects either result. `queue_reordered` and `queue_cleared` have zero UI receivers for the same reason as T080-R2. The real-store regressions observe `job-2, job-1, job-3` durably while the table remains `job-1, job-2, job-3`, and observe a cancelled row deleted while it remains onscreen. This directly contradicts the handoff's claim that the view refreshes from the reorder callback and leaves Clear finished appearing to do nothing. | Wire both success signals into one explicit queue-model refresh/update path, preserve persist-then-announce ordering, and add the two assembled regressions. A persistence failure must retain the old model rather than applying the requested order optimistically. | **Open** |
+| `T081-R3` | **Medium** | **Yes — observable control correctness** | Selection state | `QueueView._announce_selection()` emits only when a row exists, while `MainWindow._selection_changed()` is the sole action-state updater. Clearing selection therefore sends nothing and leaves Remove, Move up and Move down enabled for no selected row. The reviewer regression selects a pending row, calls the real table's `clearSelection()`, and all three actions remain enabled; their handlers then silently do nothing. Model resets required by T080-R2/T081-R2 reach the same state. | Represent deselection explicitly and disable every per-job action when it occurs. Gate move directions at the ends as well if the correction centralises action-state calculation; retain a test that clears selection independently of a model refresh. | **Open** |
+| `T080-R3` | **Medium** | **Yes — current architecture materially misstates behavior** | State-machine documentation | T-080 removes `JobStatus.PAUSED` and its transitions under the accepted UX-001 decision, but current `ARCHITECTURE.md:223-238` still draws `RUNNING → PAUSED → RUNNING`. The source comment says its transition table is transcribed from that diagram while deliberately no longer matching it. This is not harmless history: the canonical current architecture still advertises per-job pause capability the product explicitly rejected. | Have an authorised architecture owner update §5 to the accepted queue-level drain and remove the per-job state/edges. Keep the rationale in UX-001 rather than duplicating it. | **Open** |
+
+### Review judgments
+
+**The persistence primitives are otherwise coherent.** Repository reordering validates all ids
+and statuses inside the transaction, temporarily leaves the unique partial index through `NULL`,
+and rolls both phases back together on failure. The real toolbar regressions prove that reorder,
+remove and clear reach those primitives through `app.py`; the failure is the missing return path
+to the table, not the injected handlers or the database operations.
+
+**The reorder race is not closed by FIFO writer delivery.** FIFO is what makes the reproduced
+outcome deterministic: reorder commits, then the already chosen old-head job transitions. The
+stale decision happens before either write, on the GUI thread. Any correction that changes only
+the transaction or signal ordering leaves that decision window open.
+
+**T080-R1 is distinct from the scheduler race.** It needs no write latency and no reorder. The
+public direct-start path simply bypasses the only pause guards. The probe exception is required;
+the download exception is the violation.
+
+**The view defects are user-visible, not test-strength notes.** In every assembled probe the
+database reaches the requested state. The user-facing queue alone remains wrong indefinitely,
+which is core functionality these tasks exist to deliver and therefore High rather than a Low
+request for extra integration coverage.
+
+**Windows runtime remains unverified.** The whole-project Win32 type gate passes, but no Windows
+process or Qt runtime check ran. That residual matches the handoff and is not an additional
+finding.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Review boundary | Base `733209d`; implementation source left unchanged; reviewer tests only |
+| `git diff --check` | Passed |
+| `ruff check .` | Passed |
+| `ruff format --check .` | Passed; **110 files** already formatted |
+| `mypy src` | Passed; **35 source files** |
+| `mypy --platform win32 src` | Passed; **35 source files** |
+| Five affected files without reviewer negatives | **262 passed, 7 reviewer tests deselected**; 16 loopback cases required the permitted rerun outside the restricted network sandbox |
+| Reviewer pause pair | Explicit PROBE **passed**; direct DOWNLOAD **failed as expected** with job-1 occupying a slot |
+| Reviewer reorder/start race | **Failed as expected**; job-1 occupied the slot while the new order naming job-2 first was in flight |
+| Assembled queue controls | Pause **passed**; reorder, remove and clear each reached the real store, then **failed as expected** on the stale table |
+| New manager-signal receiver gate | **Failed as expected**; `job_removed`, `queue_reordered` and `queue_cleared` each have zero UI receivers (`queue_paused` has one) |
+| Deselection action-state gate | **Failed as expected**; all three per-job actions remained enabled |
+| Full suite / CI / Windows runtime | Not run |
+
+### Final disposition
+
+T-080 and T-081 are **Changes requested** against the uncommitted implementation over `733209d`.
+The focused correction re-review should verify all six findings and the correction diff, including
+the reorder-failure and multiple-in-flight cases named in T081-R1. Reviewer regressions are left in
+place as failing evidence. No task or status coordination file was changed by the reviewer.

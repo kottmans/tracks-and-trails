@@ -525,6 +525,10 @@ class DownloadManager(QObject):
         #: gone — a row deleted out from under a live session leaves `_require` raising on the next
         #: message it sends.
         self._remove_when_done: set[str] = set()
+        #: Reorders queued and not yet settled (`T081-R1`). **A count, not a flag** — two can be in
+        #: flight, and a boolean cleared by the first callback reopens the admission window while
+        #: the second is still running.
+        self._reorders_in_flight = 0
         self._shutting_down = False
         self._shutdown_deadline: float | None = None
         # The log listener's ending, which `idle` now waits on (`T038-R2`). Three states rather
@@ -677,19 +681,44 @@ class DownloadManager(QObject):
         A failure is surfaced through `persistence_failed` and the order is unchanged, which is
         what `REQ-016`'s single-transaction criterion buys: there is no half-reordered outcome to
         report.
+
+        **An in-flight reorder is an admission barrier** (`T081-R1`). `ARC-005`'s single writer
+        serialises the *writes* and does nothing about the scheduling *read* that precedes one:
+        while a reorder is on the writer thread, a tick, `resume()` or `set_concurrency()` can run
+        `_next_waiting()` against the positions the reorder is replacing, pick the old head, and
+        queue its start. Both writes then succeed — the reorder first, because FIFO — and the queue
+        durably says one thing while the job that actually started says another. Ordering the
+        transactions differently cannot fix it, because the wrong decision was already made before
+        either was queued.
+
+        So nothing is admitted from the waiting list until every outstanding reorder has settled.
+        **A counter rather than a flag**: two reorders can be in flight, and a boolean cleared by
+        the first callback would reopen the window while the second was still running.
         """
         if not job_ids:
             return
+        self._reorders_in_flight += 1
         self._repository.reorder(
             list(job_ids), lambda error: self._settle_reorder(list(job_ids), error)
         )
 
     def _settle_reorder(self, job_ids: list[str], error: str | None) -> None:
+        """Release this reorder's hold on admission, then report what happened.
+
+        The barrier is released on **both** paths. A refused reorder leaves the stored order
+        exactly as it was, so there is nothing to wait for and holding the queue shut would turn a
+        failed write into a stalled pool.
+        """
+        self._reorders_in_flight = max(0, self._reorders_in_flight - 1)
         if error is not None:
             logging.getLogger(f"{APP_SLUG}.manager").error("could not reorder the queue: %s", error)
             self.persistence_failed.emit(job_ids[0], error)
-            return
-        self.queue_reordered.emit(tuple(job_ids))
+        else:
+            self.queue_reordered.emit(tuple(job_ids))
+        # Whatever the outcome, scheduling was suspended while this was in flight and the durable
+        # order is now settled. Filling here is what makes the barrier a delay rather than a drop.
+        if not self._shutting_down:
+            self._fill_free_slots()
 
     def clear_completed(self) -> None:
         """Remove every finished job from the queue. **Never deletes a file** (`REQ-016`).
@@ -863,6 +892,27 @@ class DownloadManager(QObject):
                 f"{JobStatus.QUEUED.value} only. ARC-004 has no READY -> PROBING edge, and a "
                 "probe that moved the job to running would say a download holds it."
             )
+
+        # **A paused queue admits a probe and parks a download** (`T080-R1`, `UX-001`).
+        #
+        # The pause guards used to sit only on `_fill_free_slots` and `_start_when_free`, so this
+        # public entry point walked straight past them. That is not a hypothetical hole: the
+        # add-URL dialog calls `start(job_id)` after a probe resolves, and its default `kind` is
+        # `DOWNLOAD` — so pressing Add while the queue was paused started a download immediately.
+        # **The test that was supposed to cover this protected the defect**: it described a probe
+        # and called `start("job-1")`, taking the same default, so it asserted that a paused queue
+        # starts a *download* and called that the probe exemption.
+        #
+        # Parked rather than refused, because a refusal has nowhere to put the user's intent. The
+        # job is already durably `QUEUED`; adding it to the waiting list means resume starts it,
+        # which is what somebody who queued work while paused meant to happen.
+        if self._paused and kind is SessionKind.DOWNLOAD:
+            if job_id not in self._waiting:
+                self._waiting.append(job_id)
+            # No reservation to withdraw: this runs before one is taken, which is the point of
+            # placing the guard here rather than inside the write's callback.
+            self._timer.start()
+            return
 
         def entering(current: Job) -> Job | None:
             # Recomputed when the write runs rather than reused from the check above, because a
@@ -1307,7 +1357,7 @@ class DownloadManager(QObject):
         spread across the tick, `set_concurrency` and `resume` would be three chances to forget it,
         and the tick is the one that fires on its own.
         """
-        if self._shutting_down or self._paused:
+        if self._shutting_down or self._paused or self._reorders_in_flight:
             return
         while self._waiting and self._has_capacity():
             job_id = self._next_waiting()
@@ -1342,7 +1392,7 @@ class DownloadManager(QObject):
         """
         if self._shutting_down:
             return
-        if self._paused or not self._has_capacity():
+        if self._paused or self._reorders_in_flight or not self._has_capacity():
             if job_id not in self._waiting:
                 self._waiting.append(job_id)
             # The tick is what will notice; without this the timer may not be running at all.

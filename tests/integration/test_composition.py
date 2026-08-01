@@ -327,6 +327,10 @@ def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
     assert connection_count(manager, "progress") == 1, (
         "the queue model should be the only progress listener before any detail view exists"
     )
+    for name in ("queue_paused", "job_removed", "queue_reordered", "queue_cleared"):
+        assert connection_count(manager, name) == 1, (
+            f"{name} should have exactly the queue UI listener that reflects the durable change"
+        )
 
     dialog = composition.window.open_add_dialog()
     # The dialog adds its own four. Named individually rather than counted in bulk, so a signal
@@ -856,6 +860,105 @@ def queue_three(
     )
     assert spin(lambda: bool(saved), timeout=60), "the queue rows were never written"
     assert saved == [None], f"submitting the queue failed: {saved}"
+
+
+def test_the_composed_pause_control_changes_the_real_manager(
+    composed: Callable[..., application.Composition],
+) -> None:
+    """`T-080`: prove the toolbar-to-manager seam instead of either component in isolation."""
+    composition = composed()
+    action = composition.window.pause_action
+    assert action is not None
+
+    action.trigger()
+    assert composition.manager.is_paused
+    assert action.isChecked()
+
+    action.trigger()
+    assert not composition.manager.is_paused
+    assert not action.isChecked()
+
+
+def test_the_composed_move_control_updates_the_store_and_the_table(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """`T-081`: action, composition, manager, writer, and queue view form one reorder path."""
+    composition = composed()
+    queue_three(composition, spin, tmp_path / "downloads")
+    table = composition.window.queue_view
+    action = composition.window.move_up_action
+    assert table is not None and action is not None
+    table.refresh()
+    assert table.select("job-2") and action.isEnabled()
+
+    action.trigger()
+
+    assert spin(
+        lambda: (
+            tuple(job.id for job in composition.store.all_jobs()) == ("job-2", "job-1", "job-3")
+        ),
+        timeout=60,
+    ), "the composed move action never reached the durable queue"
+    assert table.model.job_ids() == ("job-2", "job-1", "job-3"), (
+        "the database was reordered but the composed queue table still shows the old order"
+    )
+
+
+def test_the_composed_remove_control_updates_the_store_and_the_table(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """`T-080`: a durable removal must disappear from the assembled queue view."""
+    composition = composed()
+    queue_three(composition, spin, tmp_path / "downloads")
+    table = composition.window.queue_view
+    action = composition.window.remove_action
+    assert table is not None and action is not None
+    table.refresh()
+    assert table.select("job-2") and action.isEnabled()
+
+    action.trigger()
+
+    assert spin(lambda: composition.store.get("job-2") is None, timeout=60), (
+        "the composed Remove action never reached the durable queue"
+    )
+    assert "job-2" not in table.model.job_ids(), (
+        "the row was deleted but the composed queue table still shows it"
+    )
+
+
+def test_the_composed_clear_control_updates_the_store_and_the_table(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """`T-081`: Clear finished reaches the manager and refreshes the assembled queue view."""
+    composition = composed()
+    queue_three(composition, spin, tmp_path / "downloads")
+    job = composition.store.get("job-2")
+    assert job is not None
+    settled: list[str | None] = []
+    composition.store.update(job.with_status(JobStatus.CANCELLED), settled.append)
+    assert spin(lambda: bool(settled), timeout=60)
+    assert settled == [None]
+
+    table = composition.window.queue_view
+    action = composition.window.clear_completed_action
+    assert table is not None and action is not None
+    table.refresh()
+    assert "job-2" in table.model.job_ids()
+
+    action.trigger()
+
+    assert spin(lambda: composition.store.get("job-2") is None, timeout=60), (
+        "the composed Clear finished action never reached the durable queue"
+    )
+    assert "job-2" not in table.model.job_ids(), (
+        "the finished row was cleared but the composed queue table still shows it"
+    )
 
 
 def test_three_concurrent_downloads_each_keep_their_own_row(

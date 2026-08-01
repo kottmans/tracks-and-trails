@@ -4870,9 +4870,14 @@ def test_pause_does_not_refuse_a_probe_the_user_just_asked_for(
         download.pause()
         download.start("job-1", SessionKind.PROBE)
 
-        assert "job-1" in download.active_job_ids(), (
-            "a paused queue refused a directly requested probe; pause governs downloads waiting "
-            "in the queue, not the metadata request the user just made"
+        # **Occupancy, not `active_job_ids()`.** That accounting deliberately includes jobs merely
+        # *waiting* for a slot (`T078-R1`), so a probe the guard had wrongly parked would still
+        # appear in it — the assertion would pass while the dialog hung. A probe that really ran
+        # holds a slot.
+        assert "job-1" in download._occupant_ids(), (
+            f"occupants {download._occupant_ids()}; a paused queue refused or parked a directly "
+            "requested probe. Pause governs downloads waiting in the queue, not the metadata "
+            "request the user just made, and a parked probe hangs the add dialog on 'Probing ...'"
         )
     finally:
         download.shutdown()
@@ -5071,6 +5076,150 @@ def test_clearing_sweeps_a_cancelled_job_off_the_waiting_list(
             "a cancelled job whose row has been cleared is still queued to start; the next free "
             "slot would look up a job that no longer exists"
         )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+# --- T081-R1: an in-flight reorder is an admission barrier ---------------------------------
+
+
+class ReorderHoldingRepository(FakeRepository):
+    """`FakeRepository`, but reorder settles only when the test says so.
+
+    The defect `T081-R1` reports lives entirely inside the window between asking for a reorder and
+    it landing, and a store that settles immediately closes that window and proves nothing. Same
+    reasoning as `HeldStore`, applied to the one operation that needs it.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.held: list[tuple[list[str], Callable[[str | None], None]]] = []
+
+    def reorder(self, job_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
+        self.held.append((list(job_ids), done))
+
+    def release_reorders(self, error: str | None = None) -> None:
+        """Settle every held reorder, applying it first unless this one failed."""
+        held, self.held = self.held, []
+        for job_ids, done in held:
+            if error is None:
+                super().reorder(job_ids, lambda _: None)
+            done(error)
+
+
+def test_a_reorder_in_flight_stops_the_pool_admitting_the_old_head(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T081-R1`: the stale read happens on the GUI thread, before either write is queued.
+
+    `ARC-005`'s single writer serialises writes and does nothing about the scheduling decision that
+    precedes one. With a reorder in flight, a tick or a resume could run `_next_waiting()` against
+    the positions the reorder was replacing, pick the old head, and start it — and because the
+    writer is FIFO the reorder committed *first*, leaving the queue durably saying one thing and
+    the running job saying another.
+
+    **Asserted at the moment of the race, not after it.** Waiting for the dust to settle would
+    show a consistent queue and hide that the wrong job was chosen.
+    """
+    repository = ReorderHoldingRepository()
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.pause()
+        download._start_when_free("job-1")
+        download._start_when_free("job-2")
+
+        download.reorder(["job-2", "job-1"])
+        download.resume()
+
+        assert download._occupant_ids() == (), (
+            f"occupants {download._occupant_ids()}; a job was admitted while the order deciding "
+            "which job runs next had not landed"
+        )
+
+        repository.release_reorders()
+
+        assert "job-2" in download._occupant_ids(), (
+            f"occupants {download._occupant_ids()}; once the reorder settled the pool must start "
+            "the job the *new* order puts first"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_refused_reorder_releases_the_barrier_and_uses_the_old_order(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """A failed write must not leave the pool shut. The order is simply unchanged.
+
+    The barrier exists to stop a decision being made against positions that are about to change.
+    When the change does not happen, the positions are still authoritative and the queue must run
+    on them — holding it closed would turn one failed write into a stalled application.
+    """
+    repository = ReorderHoldingRepository()
+    queued(repository, "job-1", "job-2", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    refusals: list[tuple[str, str]] = []
+    download.persistence_failed.connect(lambda job_id, reason: refusals.append((job_id, reason)))
+    try:
+        download.pause()
+        download._start_when_free("job-1")
+        download._start_when_free("job-2")
+        download.reorder(["job-2", "job-1"])
+        download.resume()
+        assert download._occupant_ids() == ()
+
+        repository.release_reorders(error="the writer refused this reorder")
+
+        assert refusals, "a refused reorder was not surfaced"
+        assert "job-1" in download._occupant_ids(), (
+            f"occupants {download._occupant_ids()}; the reorder did not happen, so the stored "
+            "order still puts job-1 first and the pool must run on it rather than stay shut"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_two_reorders_in_flight_hold_the_barrier_until_both_settle(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T081-R1` names this case: a boolean cleared by the first callback reopens the window.
+
+    Two reorders are asked for and released one at a time. After the first settles the second is
+    still in flight, so its positions are still about to change and nothing may be admitted yet.
+    """
+    repository = ReorderHoldingRepository()
+    queued(repository, "job-1", "job-2", "job-3", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.pause()
+        for job_id in ("job-1", "job-2", "job-3"):
+            download._start_when_free(job_id)
+
+        download.reorder(["job-2", "job-1"])
+        download.reorder(["job-3", "job-2"])
+        download.resume()
+        assert download._occupant_ids() == ()
+
+        # Settle exactly one of the two.
+        first, repository.held = repository.held[:1], repository.held[1:]
+        for job_ids, done in first:
+            FakeRepository.reorder(repository, job_ids, lambda _: None)
+            done(None)
+
+        assert download._occupant_ids() == (), (
+            f"occupants {download._occupant_ids()}; one reorder settled but another is still in "
+            "flight, and a counter is what stops the first callback reopening the window"
+        )
+
+        repository.release_reorders()
+        assert download._occupant_ids(), "the barrier never lifted once both reorders settled"
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)

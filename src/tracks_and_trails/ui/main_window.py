@@ -344,8 +344,13 @@ class MainWindow(QMainWindow):
         `watch` refuses without a job reader, and that refusal is right for a caller that asked
         for a view; a selection is the user clicking a row, and an exception out of a Qt slot is
         printed and swallowed rather than handled.
+
+        **An empty id means nothing is selected** (`T081-R3`), and there is no job to show. The
+        detail pane keeps whatever it was showing rather than being torn down: a user who cleared
+        the selection did not ask to stop looking at what they had open, and `T-079` already
+        established that the pane belongs to the user once claimed.
         """
-        if self._job_reader is not None:
+        if job_id and self._job_reader is not None:
             self.watch(job_id)
 
     @property
