@@ -33,7 +33,7 @@ from typing import Any
 
 import pytest
 from PySide6.QtCore import QMetaMethod, QObject
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QMessageBox
 
 from tracks_and_trails import app as application
 from tracks_and_trails.core.errors import ErrorKind
@@ -665,7 +665,9 @@ def test_the_limit_changes_through_the_control_and_survives_a_restart(
         "the running pool did not change. A control that edits a file and not the pool is T-075's "
         "shape one setting over: the stored value and the running behaviour disagree"
     )
-    assert app_settings.load(settings_file).concurrency == 5, "the choice never reached disk"
+    assert app_settings.load(settings_file).settings.concurrency == 5, (
+        "the choice never reached disk"
+    )
 
     second = composed(
         database=tmp_path / "second.db",
@@ -770,7 +772,9 @@ def test_lowering_the_limit_through_the_control_holds_new_work_without_stopping_
         "decreases leaves the file saying 1 and the pool running 3 — T-075's shape, one setting "
         "over, and invisible to any test that only ever raises the limit"
     )
-    assert app_settings.load(settings_file).concurrency == 1, "the decrease never reached disk"
+    assert app_settings.load(settings_file).settings.concurrency == 1, (
+        "the decrease never reached disk"
+    )
 
     # The tick fills free slots too, so give it several before deciding nothing started.
     spin(lambda: False, timeout=0.5)
@@ -1106,3 +1110,66 @@ def test_a_second_job_starting_does_not_take_the_detail_pane_from_the_first(
     assert table.select("job-2") and composition.window.watched_job_id == "job-2", (
         "selecting a row is what changes the detail pane, and it did not"
     )
+
+
+# --- T-102 / ARC-008: the corrupt-settings report, through the assembled application -------
+
+
+def test_a_corrupt_settings_file_is_reported_through_the_composed_application(
+    qapp: QApplication,
+    tmp_path: Path,
+    composed: Callable[..., application.Composition],
+) -> None:
+    """`ARC-008`, `T-102`: the seam between `load()` and the window is the half that can be wired
+    wrong while both ends pass their own tests.
+
+    `core` cannot show a dialog and composition has no window when it reads the file, so the
+    diagnostic has to travel as data and be presented after the window exists. Nothing below the
+    composed application is stubbed: a real malformed file on disk, the real `compose()`, and the
+    real dialog it opens.
+    """
+    from tracks_and_trails.core import settings as app_settings
+
+    settings_file = tmp_path / "settings.toml"
+    settings_file.write_text("[queue]\nconcurrency = = 3\n", encoding="utf-8")
+
+    composition = composed(settings_file=settings_file)
+
+    dialog = composition.window.findChild(QMessageBox, "settingsProblemDialog")
+    assert dialog is not None, (
+        "a corrupt settings file started the application silently; ARC-008 requires the user be "
+        "told that defaults are in force, and the seam between load() and the window is where "
+        "that gets lost"
+    )
+    try:
+        assert str(settings_file) in dialog.text()
+        assert "default settings are in use" in dialog.text()
+        # The fallback itself is unchanged: the application runs on defaults rather than refusing.
+        assert composition.manager.concurrency == app_settings.CONCURRENCY_DEFAULT
+    finally:
+        dialog.close()
+
+
+def test_an_ordinary_settings_file_opens_no_dialog(
+    qapp: QApplication,
+    tmp_path: Path,
+    composed: Callable[..., application.Composition],
+) -> None:
+    """The silent half, and the one an over-eager implementation breaks.
+
+    A first run has no file at all, and a good file has nothing to report. Either opening a warning
+    box would make the report worthless — a dialog that appears every launch is one nobody reads.
+    """
+    absent = tmp_path / "never-written.toml"
+    composition = composed(settings_file=absent)
+    assert composition.window.findChild(QMessageBox, "settingsProblemDialog") is None, (
+        "a first run opened a settings warning"
+    )
+
+    good = tmp_path / "good.toml"
+    good.write_text("[queue]\nconcurrency = 4\n", encoding="utf-8")
+    second = composed(settings_file=good)
+    assert second.window.findChild(QMessageBox, "settingsProblemDialog") is None, (
+        "a perfectly good settings file opened a warning"
+    )
+    assert second.manager.concurrency == 4

@@ -482,6 +482,118 @@ is the path a user actually takes to end up with nothing selected.
 
 ---
 
+### T-102 — A settings file that cannot be read says so, instead of reverting in silence
+
+**Status:** **In Review — complete 2026-08-01.** Filed 2026-07-31 by `ARC-008`, which decided the
+question `T-078` deferred and `TASKS.md` carried as the last open one. **Eight mutations run; all
+eight killed.**
+*(This read "Ready — filed 2026-07-31 by `ARC-008` … Nothing blocks it".)*
+**Owner:** Implementer
+**Priority:** Medium — the failure it addresses is silent, which is why it has waited; nobody is
+blocked on it
+**Phase:** Phase 2
+**Depends on:** `T-078` (Complete — it wrote `core/settings.py` and the main-window control)
+**Relevant context:** **`ARC-008`** (the decision, its exact reporting boundary, and the two edges
+deliberately left silent), `ARC-007`, `DAT-001`, `AGENTS.md` §7 layering, `core/settings.py`,
+`app.py`'s composition, `ui/main_window.py`
+**Affected surfaces:** `core/settings.py`, `app.py`, `ui/`
+**Risk:** Low — the fallback behaviour does not change; what changes is that it is announced
+
+#### Scope
+
+`load()` answers with `Settings()` for four different reasons and says nothing about which. A user
+who hand-edits `settings.toml` — the act `DAT-001` chose the format to invite — and gets the syntax
+wrong sees their concurrency silently revert to 3, with the file still on disk holding what they
+meant. `ARC-008` decided that a file which **exists and cannot be used** reports; a missing one, and
+one that merely omits the value, still do not.
+
+**`ARC-008` holds the table of which case reports.** It is not restated here, because a boundary
+copied into two files is a boundary that will disagree with itself — `COORD-R5` through `COORD-R11`
+are seven rounds of exactly that. Read it there.
+
+**The diagnostic is data, not a dialog.** `core/**` must not import Qt, and `load()` runs in
+composition before the main window exists. So `core/settings.py` returns the report alongside the
+settings and `ui/` presents it, as a modal warning at startup naming the path and the underlying
+reason. The shape of the return is this task's to choose; that it stays importable without a
+display is not.
+
+**`load()` "never raises" survives.** That property is why a broken config file is not a fatal
+state, and `ui/main_window.py.save_geometry` follows the same rule for `window.toml`.
+
+#### Acceptance criteria
+
+- Every row of `ARC-008`'s table is asserted, in both directions — each reporting case produces a
+  report, and each silent case produces **none**. The silent rows are the ones that matter: a
+  missing file and a file that omits the value are the two an over-eager implementation will
+  report, and they are the normal first run and a documented, invited edit
+- The report names the file's path, and the underlying reason where one exists — a `TOMLDecodeError`
+  carries a line and column, and discarding them leaves the user no better off than the silence did
+- `core/settings.py` stays importable and fully testable with no `QApplication` and no display,
+  asserted by the existing layering gate rather than by inspection
+- `load()` still never raises, asserted by driving each failure mode rather than by reading it
+- **The module docstring's "What that gives up, stated" paragraph is deleted**, not amended. It
+  describes behaviour this task removes, and a docstring that outlives its behaviour is the exact
+  finding the Phase 0 reviews returned repeatedly
+- The startup modal is asserted against a real corrupt file through composition, not only at the
+  widget level — the seam where `app.py` carries the report from `load()` to `ui/` is the half that
+  can be wired wrong while both ends pass their own tests
+
+#### Out of scope
+
+- Reporting a clamped out-of-range value (`ARC-008` leaves it silent deliberately, and names it as
+  a reopening condition)
+- Offering to repair, rename or rewrite the broken file. The user's text is theirs; `save()` already
+  overwrites it if they change the setting, and the modal says so
+- Phase 4's settings dialog (`REQ-023`), which is `ARC-008`'s other reopening condition
+
+#### What was built, 2026-08-01
+
+**Evidence.** `ruff check`, `ruff format --check`, `mypy src` and `mypy --platform win32 src`
+clean; full Linux suite green. Eight mutations, all killed, tree hash identical before and after.
+
+**`load()` answers with a `SettingsFile`**, carrying the settings in force and a `SettingsProblem`
+when something was discarded. A pair rather than a bare `Settings`, so a caller cannot read the
+values and stay unaware they are defaults standing in for a file somebody hand-edited wrongly.
+
+**`FileNotFoundError` is caught separately from every other `OSError`.** They were one branch, and
+they are the two most different cases this function has: one is every first run, the other is worth
+interrupting somebody for. Every row of `ARC-008`'s table is asserted in **both** directions — the
+silent rows matter more, because a report that fires on a first run is one nobody reads.
+
+**The words live in `core`, the box lives in `ui/`.** `SettingsProblem.summary` composes the
+sentence so it is testable with no display attached, which is the property the layering rule exists
+to protect; `MainWindow.report_settings_problem` decides only that it appears in a warning box with
+selectable text. Modal is justified by **rarity**, not severity: it fires only when a file that
+exists cannot be used.
+
+**The module docstring paragraph is deleted, not amended** — quoted once inside the note that
+replaces it, because it described behaviour that no longer exists.
+
+| Mutation | Killed by |
+|---|---|
+| A missing file is reported like an unreadable one | the first-run tests, unit and composed |
+| A file that omits the value is reported | the `save()`-promise test |
+| A malformed file falls back silently again | the malformed and composed tests |
+| The parser's position is discarded from the reason | the line-and-column assertion |
+| A non-integer value defaults silently again | the discarded-value test |
+| Clamping starts reporting too | the deliberately-silent edge |
+| The summary stops naming the file | the summary and composed tests |
+| Composition never shows the report | the composed seam |
+
+**One test was wrong and the code was right.** The wrong-shaped-section test first asserted that a
+top-level `queue = 'three'` stayed silent, carried over from a pre-`ARC-008` code comment about
+what is *used*. The decision's table settles what is *reported*: not a table means reported. The
+test was corrected rather than the behaviour.
+
+#### Not covered, stated rather than implied
+
+- **Windows runtime.** Platform-neutral; `mypy --platform win32` clean. No CI job has executed a
+  step since 2026-07-30.
+- **A read-only config directory.** `save()` already swallows `OSError` and that is unchanged, but
+  the combination — an unreadable file the user then cannot fix by saving over it — is not tested.
+
+---
+
 ### T-046 — Output path collision policy against the filesystem
 
 **Status:** **In Review — complete 2026-07-31.** Reservation is atomic (`O_CREAT | O_EXCL`),
@@ -793,70 +905,6 @@ it, which is what makes its "history half" dependency real rather than dangling.
 - Pruning, retention, or any deletion. Nothing in this view removes a record; `REQ-020` is a record
   of what was obtained
 - Re-downloading from history, and duplicate detection (`REQ-022`, Phase 3)
-
----
-
-### T-102 — A settings file that cannot be read says so, instead of reverting in silence
-
-**Status:** **Ready — filed 2026-07-31 by `ARC-008`**, which decided the question `T-078` deferred
-and `TASKS.md` carried as the last open one. Nothing blocks it.
-**Owner:** Implementer
-**Priority:** Medium — the failure it addresses is silent, which is why it has waited; nobody is
-blocked on it
-**Phase:** Phase 2
-**Depends on:** `T-078` (Complete — it wrote `core/settings.py` and the main-window control)
-**Relevant context:** **`ARC-008`** (the decision, its exact reporting boundary, and the two edges
-deliberately left silent), `ARC-007`, `DAT-001`, `AGENTS.md` §7 layering, `core/settings.py`,
-`app.py`'s composition, `ui/main_window.py`
-**Affected surfaces:** `core/settings.py`, `app.py`, `ui/`
-**Risk:** Low — the fallback behaviour does not change; what changes is that it is announced
-
-#### Scope
-
-`load()` answers with `Settings()` for four different reasons and says nothing about which. A user
-who hand-edits `settings.toml` — the act `DAT-001` chose the format to invite — and gets the syntax
-wrong sees their concurrency silently revert to 3, with the file still on disk holding what they
-meant. `ARC-008` decided that a file which **exists and cannot be used** reports; a missing one, and
-one that merely omits the value, still do not.
-
-**`ARC-008` holds the table of which case reports.** It is not restated here, because a boundary
-copied into two files is a boundary that will disagree with itself — `COORD-R5` through `COORD-R11`
-are seven rounds of exactly that. Read it there.
-
-**The diagnostic is data, not a dialog.** `core/**` must not import Qt, and `load()` runs in
-composition before the main window exists. So `core/settings.py` returns the report alongside the
-settings and `ui/` presents it, as a modal warning at startup naming the path and the underlying
-reason. The shape of the return is this task's to choose; that it stays importable without a
-display is not.
-
-**`load()` "never raises" survives.** That property is why a broken config file is not a fatal
-state, and `ui/main_window.py.save_geometry` follows the same rule for `window.toml`.
-
-#### Acceptance criteria
-
-- Every row of `ARC-008`'s table is asserted, in both directions — each reporting case produces a
-  report, and each silent case produces **none**. The silent rows are the ones that matter: a
-  missing file and a file that omits the value are the two an over-eager implementation will
-  report, and they are the normal first run and a documented, invited edit
-- The report names the file's path, and the underlying reason where one exists — a `TOMLDecodeError`
-  carries a line and column, and discarding them leaves the user no better off than the silence did
-- `core/settings.py` stays importable and fully testable with no `QApplication` and no display,
-  asserted by the existing layering gate rather than by inspection
-- `load()` still never raises, asserted by driving each failure mode rather than by reading it
-- **The module docstring's "What that gives up, stated" paragraph is deleted**, not amended. It
-  describes behaviour this task removes, and a docstring that outlives its behaviour is the exact
-  finding the Phase 0 reviews returned repeatedly
-- The startup modal is asserted against a real corrupt file through composition, not only at the
-  widget level — the seam where `app.py` carries the report from `load()` to `ui/` is the half that
-  can be wired wrong while both ends pass their own tests
-
-#### Out of scope
-
-- Reporting a clamped out-of-range value (`ARC-008` leaves it silent deliberately, and names it as
-  a reopening condition)
-- Offering to repair, rename or rewrite the broken file. The user's text is theirs; `save()` already
-  overwrites it if they change the setting, and the modal says so
-- Phase 4's settings dialog (`REQ-023`), which is `ARC-008`'s other reopening condition
 
 ---
 

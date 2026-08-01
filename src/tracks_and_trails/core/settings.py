@@ -22,7 +22,7 @@ one place a value can be wrong and one place it is corrected. `T-044`, `T-045` a
 three rounds of the same lesson — constrain what the value can be rather than filtering what
 arrives.
 
-## Reading never fails
+## Reading never fails, and no longer fails quietly
 
 A missing file is the normal first run. An unparseable one is a hand-edit that went wrong, a partial
 write, or a file from a future version. None of those is a reason the application cannot start, so
@@ -30,9 +30,21 @@ write, or a file from a future version. None of those is a reason the applicatio
 `ui/main_window.py.save_geometry` follows for `window.toml`, and for the same reason: a read-only
 config directory is a real deployment state.
 
-**What that gives up, stated:** a corrupt file is silently replaced by defaults rather than
-reported. Nothing in `REQ-023` or `ARC-007` asks for a settings-parse diagnostic, and there is
-nowhere to show one until Phase 4's dialog exists.
+**A file that exists and cannot be used now says so** (`ARC-008`, `T-102`). The fallback is
+unchanged; the silence is what went. `load()` answers with a `SettingsFile` carrying both the
+settings in force and, when something was discarded, a `SettingsProblem` describing it — as
+**data**, because `core/**` may not import Qt and this runs in composition before any window
+exists. `ui/` presents it.
+
+`SettingsProblem.summary` is composed here rather than in the widget so the words a user reads are
+testable with no display attached, which is the property the layering rule exists to protect.
+
+*(This section used to end: "**What that gives up, stated:** a corrupt file is silently replaced by
+defaults rather than reported. Nothing in `REQ-023` or `ARC-007` asks for a settings-parse
+diagnostic, and there is nowhere to show one until Phase 4's dialog exists." Both halves of that
+justification had weakened — `T-078` shipped a main-window control, so there **is** somewhere to
+show one, and `save()` writes the file that control edits. `ARC-008` decided it; the paragraph is
+deleted rather than amended, because it described behaviour that no longer exists.)*
 """
 
 import tomllib
@@ -146,25 +158,113 @@ def _concurrency_from(raw: Any) -> int:
     return min(max(raw, CONCURRENCY_MINIMUM), CONCURRENCY_MAXIMUM)
 
 
-def load(path: Path | None = None) -> Settings:
+@dataclass(frozen=True, slots=True)
+class SettingsProblem:
+    """A settings file that exists and could not be used (`ARC-008`, `T-102`).
+
+    **Data, not a dialog.** `core/**` may not import Qt (`AGENTS.md` §7) and `load()` runs in
+    composition before any window exists, so the diagnostic travels back to the caller and `ui/`
+    decides how to show it.
+    """
+
+    #: The file this is about. Named in the report, because a user who has more than one profile,
+    #: or who edited the wrong copy, cannot act on "your settings file" alone.
+    path: Path
+
+    #: What went wrong, in the underlying layer's own words where it has any. A
+    #: `TOMLDecodeError` carries a line and column, and discarding them would leave the reader no
+    #: better off than the silence this replaces.
+    reason: str
+
+    @property
+    def summary(self) -> str:
+        """The sentence a user reads. Composed here so it is testable with no display attached."""
+        return (
+            f"Your settings file could not be read, so default settings are in use.\n\n"
+            f"{self.path}\n{self.reason}\n\n"
+            "Saving settings will overwrite this file."
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class SettingsFile:
+    """What `load()` answers: the settings in force, and why they are not the file's.
+
+    A pair rather than a bare `Settings`, so a caller cannot read the values and stay unaware that
+    they are defaults standing in for a file somebody hand-edited wrongly. `problem` is `None` on
+    every ordinary path, including the normal first run.
+    """
+
+    settings: Settings
+    problem: SettingsProblem | None = None
+
+
+def load(path: Path | None = None) -> SettingsFile:
     """Read settings from `path`. **Never raises**; unreadable or invalid means defaults.
 
     A missing file is the normal first run, and `tomllib` raising on a malformed one says the file
     is wrong rather than that the application is. Both answer with `Settings()`.
+
+    **`ARC-008` decides which of those is reported**, and the line is whether something was
+    *discarded* rather than whether the read was perfect:
+
+    | The file | Reported |
+    |---|---|
+    | Does not exist | **No** — the normal first run |
+    | Exists, cannot be opened or read | **Yes** |
+    | Exists, is not valid TOML | **Yes** |
+    | Parses, but `[queue]` is not a table | **Yes** |
+    | Parses, `[queue]` is a table, `concurrency` is not an `int` | **Yes** |
+    | Parses and simply omits `concurrency` | **No** |
+    | Parses, `concurrency` is an `int` out of range | **No** — clamped, see `_concurrency_from` |
+
+    **Omission is silent because `save()` promises it is.** The file this application writes says
+    *"Safe to delete: every value falls back to its default."* A user who takes that at its word and
+    deletes the line must not then be told their file is broken. An empty file and one with no
+    `[queue]` table are the same case.
+
+    **A missing file is told apart from an unreadable one**, rather than both landing in one
+    `OSError` branch. They are the two most different cases this function has — one is every first
+    run, the other is the one worth interrupting somebody for.
     """
     target = path if path is not None else settings_path()
     try:
         with target.open("rb") as handle:
             document = tomllib.load(handle)
-    except OSError, tomllib.TOMLDecodeError:
-        return Settings()
+    except FileNotFoundError:
+        # The normal first run. Nothing was discarded, because there was nothing to discard.
+        return SettingsFile(Settings())
+    except OSError as error:
+        return SettingsFile(Settings(), SettingsProblem(target, f"{type(error).__name__}: {error}"))
+    except tomllib.TOMLDecodeError as error:
+        # `tomllib`'s message carries the line and column, which is the whole value of reporting.
+        return SettingsFile(Settings(), SettingsProblem(target, str(error)))
 
     table = document.get(_TABLE)
-    if not isinstance(table, dict) or _CONCURRENCY_KEY not in table:
-        # A file holding the key at the top level, or a string where the table belongs, is not a
-        # partial success. Nothing in it is trusted.
-        return Settings()
-    return Settings(concurrency=_concurrency_from(table[_CONCURRENCY_KEY]))
+    if table is None:
+        # Parsed, and says nothing about the queue. Same promise as a deleted line.
+        return SettingsFile(Settings())
+    if not isinstance(table, dict):
+        return SettingsFile(
+            Settings(),
+            SettingsProblem(
+                target,
+                f"The [{_TABLE}] section is a {type(table).__name__}, not a section.",
+            ),
+        )
+    if _CONCURRENCY_KEY not in table:
+        return SettingsFile(Settings())
+
+    raw = table[_CONCURRENCY_KEY]
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        return SettingsFile(
+            Settings(),
+            SettingsProblem(
+                target,
+                f"{_TABLE}.{_CONCURRENCY_KEY} is {raw!r}, which is not a whole number.",
+            ),
+        )
+    return SettingsFile(Settings(concurrency=_concurrency_from(raw)))
 
 
 def save(settings: Settings, path: Path | None = None) -> None:

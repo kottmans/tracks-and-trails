@@ -217,7 +217,11 @@ def compose(
     # `ARC-007`: composition owns `settings.toml`; the manager receives a value. The read happens
     # here so a settings-format change cannot reach `downloader/`, which `T-097` enforces
     # statically.
-    settings = app_settings.load(settings_file)
+    # `ARC-008`: the read answers with the settings *and* why they are not the file's, when the
+    # file exists and could not be used. The problem is carried to the window rather than logged
+    # here — `core/` cannot show a dialog and composition has no window yet.
+    settings_read = app_settings.load(settings_file)
+    settings = settings_read.settings
     manager = DownloadManager(
         store,
         # History is no longer a second injected sink (`T050-R1`, `T050-R2`): completion is one
@@ -316,6 +320,14 @@ def compose(
     # without going through the toolbar still leaves the toggle telling the truth (`T-080`).
     manager.queue_paused.connect(window.show_queue_paused)
     window.report_environment(ffmpeg.summary())
+    # `ARC-008`: after the window exists, because that is the earliest a modal can be shown, and
+    # before it is interactive, because the reverted setting is what the user would otherwise
+    # notice first and have no explanation for.
+    if settings_read.problem is not None:
+        logging.getLogger("tracksandtrails.app").warning(
+            "settings: %s (%s)", settings_read.problem.reason, settings_read.problem.path
+        )
+        window.report_settings_problem(settings_read.problem)
     logging.getLogger("tracksandtrails.app").info("environment: %s", ffmpeg.summary())
 
     #: The statuses that mean a worker holds the job, so the window shows its progress. Not

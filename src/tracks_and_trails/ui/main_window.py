@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
 from tracks_and_trails import __version__
 from tracks_and_trails.core import settings
 from tracks_and_trails.core.job_state import REORDERABLE
+from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
 from tracks_and_trails.ui.job_detail import JobProgressView, JobReader, build_progress_view
@@ -754,6 +755,33 @@ class MainWindow(QMainWindow):
         about.setStandardButtons(QMessageBox.StandardButton.Close)
         about.open()
         return about
+
+    def report_settings_problem(self, problem: SettingsProblem) -> QMessageBox:
+        """Tell the user their settings file could not be read (`ARC-008`, `T-102`).
+
+        **Modal, and justified by rarity rather than severity.** This fires only when a file that
+        exists cannot be used — never during normal operation, and never on a first run. A status
+        line would be transient and the user this exists for has already missed something: they
+        will notice their concurrency back at 3 later, when the message is gone.
+
+        **The words come from `core`**, not from here. `SettingsProblem.summary` composes them so
+        they can be asserted with no display attached; this method decides only that they appear in
+        a warning box with the path shown as selectable text somebody can copy into a bug report.
+
+        `open()` rather than `exec()`, and the box is returned, exactly as `show_about` does: a
+        modal driven by `exec()` blocks the event loop inside a test with nothing to dismiss it.
+        """
+        box = QMessageBox(self)
+        box.setObjectName("settingsProblemDialog")
+        box.setWindowTitle(APP_NAME)
+        box.setIcon(QMessageBox.Icon.Warning)
+        box.setText(problem.summary)
+        # Selectable so the path and the parser's line and column can be copied out. A diagnostic
+        # nobody can quote is one that reaches a bug report as "it said something about settings".
+        box.setTextInteractionFlags(Qt.TextInteractionFlag.TextBrowserInteraction)
+        box.setStandardButtons(QMessageBox.StandardButton.Ok)
+        box.open()
+        return box
 
     def _restore_geometry(self) -> None:
         stored = load_geometry(self._geometry_file)
