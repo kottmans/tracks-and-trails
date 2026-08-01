@@ -1,12 +1,12 @@
-# Review handoff — the last four Phase 2 feature deliverables
+# Review handoff — the last five Phase 2 deliverables, and what proving the phase found
 
 You are the Reviewer (`AGENTS.md` §3). This is my own work; none of it is signed off.
 
 **Repository:** `/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails`, branch `main`
-**Awaiting a verdict:** `T-100`, `T-086`, `T-084`, `T-082`. Nothing else is in review.
+**Awaiting a verdict:** `T-100`, `T-086`, `T-084`, `T-082`, `T-088`. Nothing else is in review.
 
-With these, **every Phase 2 feature deliverable is written.** Only `T-088` — the phase's own proof —
-has not started, and it depends on all of them.
+With these, **every Phase 2 deliverable is written.** `T-088` — the phase's proof — is included, and
+**it found a High defect that no feature task would have surfaced.** Read §0 first.
 
 | Commit | Task | What it is |
 |---|---|---|
@@ -14,6 +14,7 @@ has not started, and it depends on all of them.
 | `46c1709` | `T-086` | Open a completed file, or reveal it (`REQ-021`) |
 | *(this batch)* | `T-084` | Per-job diagnostics and the log view (`REQ-019`) |
 | *(this batch)* | `T-082` | Interrupted jobs offered for retry (`REQ-012`) |
+| *(this batch)* | `T-088` | Phase 2's exit criteria in executable form |
 
 `T-046` and `T-087` are filed **Complete** at `eb6f690`, which closed `T046-R6`, `T087-R4`,
 `T046-R7` and `T087-R5` from your fourth review. That review is recorded and committed.
@@ -21,13 +22,45 @@ has not started, and it depends on all of them.
 ## Evidence
 
 `ruff`, `ruff format`, and **all four** `mypy` gates (`src` and full tree, both platforms) clean.
-Full Linux suite green. **Forty-three mutations across the three new tasks; all forty-three
-killed**, every source file verified byte-identical afterwards.
+Full Linux suite green. **Forty-seven mutations across the four new tasks;
+all forty-seven killed**, every source file verified byte-identical afterwards.
 
-Windows carries no new surface here — none of these four touch the platform seam except `T-086`,
-and `T-086`'s Windows argv is asserted **from Linux** by design (below).
+Windows carries no new surface here — none of these touch the platform seam except `T-086`, whose
+Windows argv is asserted **from Linux** by design (§3).
 
-## The four things I would look at first
+## 0. `T-088` found that nothing drains the queue — `T-115`
+
+**Start here.** Measured against a real composed application, concurrency 3, five URLs added through
+the real dialog:
+
+```
+  0.5s  probing  running  probing  queued  queued   (4 child processes)
+  8.0s  completed completed completed queued queued (1)
+  9.5s  completed completed completed queued queued (1)
+```
+
+Three ran concurrently and completed. **The other two stayed `queued` with an empty pool.**
+
+The pool is fine; nothing drives it. `_fill_free_slots` drains an **in-memory** list that only the
+internal path populates; the public `start()` **raises** when full rather than parking; nothing
+scans the database for `QUEUED` rows; and `add_to_queue` starts only the **probed** job, with Probe
+a manual button covering the first URL alone. So a user who pastes five URLs and presses Add gets
+**zero** downloads, or one if they probed.
+
+`add_dialog.py` already has a comment reading *"leaving it durably `QUEUED`, where whatever runs the
+queue next would download the URL"*. There is no such thing.
+
+Filed as **`T-115`** with three placement options stated and none chosen — where the fix belongs is
+a design decision and `T-088` is not the place to make it. Recorded as a **strict `xfail`**, so
+**fixing it fails the build** until the test is inverted rather than leaving this file describing a
+defect as behaviour.
+
+**What I want checked:** that criterion 1 is now marked honestly. `T-079`'s acceptance criterion is
+satisfied and correct — three concurrent downloads do show independent accurate progress. The
+evidence table says *mechanism met, no user route*, and I would rather be told that is too harsh
+than have it read as met.
+
+## The four things I would look at next
 
 ### 1. `T-084`: yt-dlp's diagnostics were never being captured at all
 
@@ -136,10 +169,23 @@ written by some other test made the copy button live. `log_directory` is now thr
 was never wrong in production — but a widget whose content depends on machine state is untestable,
 and I would not have found it from the file I was editing.
 
+## `T-088`: two things the tests had to be careful about
+
+**The rows lead the processes.** `start()` writes `PROBING` through the writer thread and the worker
+spawns after, so three rows can claim to be in flight with an empty process tree — measured at
+t = 0.0 s. My first version waited on the rows, raced the spawn, and made
+`the_workers_that_must_die` fire its own guard. It was correct to fire. Waiting on the **processes**
+is the fix; weakening that guard would have been the `T072-R1` mistake a third time.
+
+**A kill during a probe is not a kill during a download.** Both are "mid-queue" and
+`INTERRUPTED_ON_STARTUP` covers both, but a kill that always landed while workers were resolving
+URLs would never exercise what a user loses — bytes in flight.
+
 ## What is still not verified
 
 - **A real Windows desktop session.** The desktop slice does not run on a hosted image.
 - **`T-092`'s three machine-dependent criteria**, unchanged — `STARBASE` is offline.
 - **That a real file manager selects the file** given `T-086`'s reveal argv, per §3 above.
-- **`T-088` has not started.** Phase 2's exit criteria in executable form are still absent, and
-  nothing here should be read as evidence for them.
+- **Phase 2 cannot exit.** Criterion 6 needs this review, and criterion 7 needs `T-115`. The
+  evidence table in `ai/IMPLEMENTATION_PLAN.md` now states, per row, what its evidence does not
+  cover — building Phase 1's table is what exposed two wrong rows (`P1EXIT-R1`, `P1EXIT-R2`).

@@ -23,8 +23,28 @@ Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLA
   plus the supporting `T-053`, `T-099`, `T-101`, `T-103`.
 - **In review, all four delivered 2026-08-01:** `T-100` (history view), `T-086` (open and reveal),
   `T-084` (per-job diagnostics and the log view), `T-082` (interrupted jobs offered for retry).
-- **Not started:** `T-088`, which proves the phase and depends on `T-078`…`T-087`.
+- **`T-088` is written**, and it found the defect below.
 - **Blocked on `STARBASE`, which is offline:** `T-092` and `T-074`. Neither gates the phase.
+
+## **`T-088` found that nothing drains the queue — `T-115`, High, and it blocks the exit**
+
+Measured against a real composed application, concurrency 3, five URLs added through the real
+dialog: **three ran concurrently and completed; the other two stayed `queued` with an empty pool**
+and were still queued when the run ended.
+
+The pool is not the problem — it works. **Nothing drives it.** `_fill_free_slots` drains an
+in-memory list that only the internal path populates; the public `start()` raises when full rather
+than parking; nothing anywhere scans the database for `QUEUED` rows; and `add_to_queue` starts only
+the **probed** job, with Probe a manual button covering the first URL alone. A user who pastes five
+URLs and presses Add gets **zero** downloads started, or one if they probed first.
+
+`add_dialog.py` already carries a comment reading *"leaving it durably `QUEUED`, where whatever runs
+the queue next would download the URL"*. There is no "whatever runs the queue next", and that
+comment is the clearest evidence it was believed to exist.
+
+Recorded as a **strict `xfail`**, so fixing it fails the build until the test is inverted. Phase 2's
+exit criterion 1 is now marked *mechanism met, no user route*: `T-079`'s acceptance criterion is
+satisfied and correct, and what no feature task asks is whether anything drives the pool.
 
 **`T-084` found that yt-dlp's diagnostics were being discarded entirely.** `build_options` set no
 `logger`, so the output `REQ-019` names went to a console a worker does not have; the per-job log

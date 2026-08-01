@@ -267,15 +267,15 @@ Recorded here because each one changed what a deliverable *is*, not merely how i
 | 2 | Queue view: multi-job table, per-job status/progress | `T-079` | **Approved** 2026-07-31 (`da49a51`) |
 | 3 | **Pause and resume are queue-level** (`UX-001`); cancel, retry and remove are per job (`REQ-015` as amended 2026-07-29). *(This read "per-job status/progress, pause/resume/retry/remove", which contradicted the amendment — `P2PLAN-R1`.)* | `T-080` | **Approved** 2026-08-01 (`05e5312`) |
 | 4 | Reordering and clear-completed (`REQ-016`) | `T-081` | **Approved** 2026-08-01 (`eb1bd70`) |
-| 5 | Output-path collision policy against the filesystem (`DAT-002`, `REQ-011`) | `T-046` | **In review** — `T046-R1` was **Critical**: a converted download overwrote the user's file |
+| 5 | Output-path collision policy against the filesystem (`DAT-002`, `REQ-011`) | `T-046` | **Approved** 2026-08-01 (`9c5745a`). `T046-R1` was **Critical**: a converted download overwrote the user's file |
 | 6 | Bounded retry with backoff for `NETWORK` failures only (`REQ-018`) | `T-083` | **Approved** 2026-08-01 (`97f96c0`). `UX-002` ratifies 3 attempts at 2s/4s/8s |
 | 7 | History persistence and completed-download records (`REQ-020`) | `T-085`, `T-050`, `T-093` | **Approved** 2026-07-30 |
 | 8 | A corrupt `settings.toml` reports rather than reverting silently (`ARC-008`) | `T-102` | **Approved** 2026-08-01 (`97f96c0`) |
-| 9 | Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`) | `T-082` | **Ready** |
-| 10 | Per-job log capture and log view (`REQ-019`) | `T-084` | **Ready.** `T-053`, which gated its approval, is **Approved** |
+| 9 | Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`) | `T-082` | **In review** 2026-08-01. The recovery always worked; composition threw the recovered ids away, so nobody was ever told |
+| 10 | Per-job log capture and log view (`REQ-019`) | `T-084` | **In review** 2026-08-01. `T-053`, which gates its approval, is **Approved**. Found that yt-dlp's diagnostics were never captured at all |
 | 11 | History view over those records | `T-100` | **In review** 2026-08-01 |
-| 12 | Open file / reveal in file manager (`REQ-021`), from both views | `T-086` | **Proposed** — released once `T-100` lands |
-| 13 | Single-instance guard (`A-004`, `ARC-006`) | `T-087` | **In review.** Linux and hosted Windows both green, including racing starts |
+| 12 | Open file / reveal in file manager (`REQ-021`), from both views | `T-086` | **In review** 2026-08-01 (`46c1709`) |
+| 13 | Single-instance guard (`A-004`, `ARC-006`) | `T-087` | **Approved** 2026-08-01 (`ea9d752`). Linux and hosted Windows both green, including racing starts |
 
 *(Deliverable 5 was **added 2026-07-31**. `DAT-002` filed `T-046` as a Phase 2 task and this list
 never named it — the same class as `P2PLAN-R8`, where the history records were listed and the view
@@ -291,14 +291,27 @@ Phase 2 work. None is a deliverable and none gates the exit; they are listed in 
 
 ### Exit criteria
 
-| # | Criterion | State |
-|---|---|---|
-| 1 | Three concurrent downloads show independent accurate progress, UI interactive throughout (`NFR-001`) | **Evidenced.** `T-079`'s first acceptance criterion asserts it and is approved; `T-088` re-proves it against the whole phase |
-| 2 | Hard-killing the app mid-queue and restarting restores the queue with correct states | **Not met** — `T-082` (Ready) and `T-088` (Proposed) |
-| 3 | Concurrency limit respected exactly; lowering it drains cleanly, and so does pausing | **Met.** Both halves are approved: the limit by `T-078`, the pause drain by `T-080` |
-| 4 | A second launch attaches to or refuses in favor of the running instance | **Evidenced, awaiting review.** `T-087`'s three Windows cases — first acquire, racing starts, killed-holder recovery — passed on `check (windows-latest)` at `7516f61` |
-| 5 | No worker process outlives application exit, on both platforms | **Not met.** Reachable again: the hosted Windows job runs the full suite against the pool. `T-088` owns proving it |
-| 6 | Reviewed and signed off | **Not met** — two deliverables await a third review pass |
+| # | Criterion | State | Evidence |
+|---|---|---|---|
+| 1 | Three concurrent downloads show independent accurate progress, UI interactive throughout (`NFR-001`) | **Mechanism met; no user route** | `test_three_downloads_progress_independently_while_the_ui_keeps_answering` — three real workers, three whole files, the application's own state still advancing. **But see criterion 7**: the test starts them through `manager.start()`, which the UI does not offer for more than one job |
+| 2 | Hard-killing the app mid-queue and restarting restores the queue with correct states | **Met** | `test_a_hard_kill_mid_queue_restores_every_job_state_at_the_next_start` — `SIGKILL` with three workers downloading and two jobs never started. In-flight rows recover; **never-started rows are left alone**, which a single-job test cannot reach |
+| 3 | Concurrency limit respected exactly; lowering it drains cleanly, and so does pausing | **Met** | `test_the_pool_never_exceeds_the_configured_limit` samples **both** the rows and the actual process count over a whole run. The lowering and pause halves are `T-078` and `T-080`, both approved |
+| 4 | A second launch attaches to or refuses in favour of the running instance | **Met** | `test_a_second_launch_refuses_in_favour_of_the_running_instance`, against a first instance with a **full pool** — the state a guard built on polling would be likeliest to let through. `T-087`'s three Windows cases passed on `check (windows-latest)` |
+| 5 | No worker process outlives application exit, on both platforms | **Met on Linux and hosted Windows** | `test_no_worker_outlives_a_hard_kill_with_a_full_pool` — the worker set obtained independently of what is killed, the resource tracker excluded by being identified, and asserted non-empty before the kill (`T072-R1`) |
+| 6 | Reviewed and signed off | **Not met** | Four deliverables await review: `T-100`, `T-086`, `T-084`, `T-082` |
+| 7 | *(Found by `T-088`)* A user can actually start a queue | **NOT MET — `T-115`** | Measured: five URLs, limit 3 — three run and complete, **two stay `queued` with an empty pool**. Nothing scans the database for `QUEUED` rows; `start()` raises when full instead of parking; the dialog starts only the probed job. Recorded as a strict `xfail` so fixing it fails the build |
+
+**What the evidence does *not* cover**, stated because building Phase 1's table is what exposed two
+wrong rows (`P1EXIT-R1`, `P1EXIT-R2`):
+
+- **A real Windows desktop session.** These run on `ubuntu-latest` and `windows-latest`. `STARBASE`
+  is offline and `OPS-005`'s amendment puts the gate on the hosted job; the desktop slice (`T-026`,
+  `T-040`) is covered nowhere.
+- **Real network conditions.** The media server is localhost.
+- **`NFR-001` as a person experiences it.** Criterion 1's test asserts the event loop keeps being
+  serviced, not that anyone would call it smooth.
+- **An `ffmpeg` grandchild surviving a kill.** These presets do not spawn one; `T-019`'s own tests
+  cover the grandchild case for a single worker.
 
 > **What stood between here and the exit was a runner, and that changed on 2026-08-01.**
 >

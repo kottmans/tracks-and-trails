@@ -467,6 +467,84 @@ definition of "retry" that can drift from the first; if that trade is wrong, it 
 
 ---
 
+### T-088 — Prove the phase: three at once, killed mid-queue, nothing left behind
+
+**Status:** **In Review — complete 2026-08-01.** Five criteria proved against a real composed
+application in another interpreter; four mutations run, all four killed. **It found a High defect
+that no feature task would have surfaced — `T-115`, the queue does not drain** — and the evidence
+table now carries a seventh row for it.
+*(This read "Proposed — the Phase 2 analogue of `T-037`".)*
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 2
+**Depends on:** `T-078`…`T-087`
+**Relevant context:** `T-037`, `T-019`, `T-073`, `NFR-001`, `ai/TESTING.md` §13
+**Affected surfaces:** `tests/integration/`
+**Risk:** High to omit — it is the phase's exit criteria in executable form
+
+#### Scope
+
+Phase 1's exit criteria were met by tests that existed for other reasons plus `T-037`, which was
+written to close the two that had no owner. Phase 2's criteria name things no feature task would
+assert on its own:
+
+- three concurrent downloads with independent accurate progress and an interactive UI (`NFR-001`)
+- hard-killing the app mid-queue and restarting restores the queue with correct states
+- the concurrency limit respected exactly, and lowering it while running drains cleanly
+- a second launch attaches or refuses
+- **no worker process outlives application exit, on both platforms**
+
+**The last one is where this project's scar tissue is.** `T-019` reaps the tree, `T-066` found
+that a virtualenv adds a process level nobody was testing, and `T-072` established that the
+worker's own `parent-watchdog` — not the captured set — is what actually prevents orphans. With N
+workers the question is whether that holds N times, including for the ones that had not started.
+
+#### Acceptance criteria
+
+- One test per exit criterion, each mutation-verified, each stating what it does not cover
+- Orphan checks count actual processes, and exclude `multiprocessing`'s resource tracker by being
+  the tracker rather than by everything else being excluded (`T-019`)
+- Runs on `STARBASE` as well as Linux; a criterion that says "both platforms" is not met by one
+- The evidence table in `ai/IMPLEMENTATION_PLAN.md` §Phase 2 is filled from real runs, and states
+  its limits — building Phase 1's table is what exposed two wrong rows (`P1EXIT-R1`, `P1EXIT-R2`)
+
+#### What it found
+
+**The pool works and no user can reach it.** Measured against a real application, concurrency 3,
+five URLs queued through the real dialog: three ran concurrently and completed, and **the other two
+stayed `queued` with an empty pool** until the run ended. Nothing scans the database for `QUEUED`
+rows; `_fill_free_slots` drains an in-memory list that only the internal path populates; the public
+`start()` raises when full instead of parking; and the dialog starts only the probed job, with Probe
+a manual button covering the first URL alone.
+
+Filed as **`T-115`** and recorded here as a strict `xfail`, so **fixing it fails the build** until
+that test is inverted rather than quietly passing and leaving this file describing a defect as
+behaviour.
+
+This is what the task existed for. Criterion 1 — "three concurrent downloads" — was marked
+*Evidenced* by `T-079`'s own acceptance criterion, and it is: the mechanism is sound. What no
+feature task asks is whether anything drives it.
+
+#### Two things the tests had to be careful about
+
+**The rows lead the processes.** `start()` writes `PROBING` through the writer thread and the worker
+spawns after, so three rows can claim to be in flight with an empty process tree — measured at
+t = 0.0 s. A kill test waiting on the rows raced the spawn and made `the_workers_that_must_die` fire
+its own guard, correctly. Waiting on the **processes** is the fix; weakening that guard would have
+been the `T072-R1` mistake for the third time.
+
+**A kill during a probe is not a kill during a download.** Both are "mid-queue" and
+`INTERRUPTED_ON_STARTUP` covers both, but a test that always landed while workers were still
+resolving URLs would never exercise the case a user actually loses — bytes in flight. It now waits
+for one job to reach `RUNNING`, and asserts recovery against the same set the recovery uses.
+
+#### Out of scope
+
+- Performance targets beyond `NFR-001`'s responsiveness
+
+---
+
+
 ## Ready
 *(**Restored 2026-07-30.** This heading was silently deleted by a scripted edit in `6768f06`,
 which replaced everything between `## In Review` and `### T-074` — the heading sat between them.
@@ -930,49 +1008,79 @@ channel and hands over; it does not attempt to become a server.
 
 ---
 
-### T-088 — Prove the phase: three at once, killed mid-queue, nothing left behind
+### T-115 — Nothing drains the queue: jobs beyond the limit never start
 
-**Status:** Proposed — the Phase 2 analogue of `T-037`
+**Status:** **Proposed — found by `T-088` on 2026-08-01, by measurement.** Blocks Phase 2's first
+exit criterion in the only sense that matters: the mechanism works and **no user route reaches it.**
 **Owner:** Implementer
-**Priority:** High
+**Priority:** **High** — `REQ-012` is "a queue", and a queue that never starts is a list
 **Phase:** Phase 2
-**Depends on:** `T-078`…`T-087`
-**Relevant context:** `T-037`, `T-019`, `T-073`, `NFR-001`, `ai/TESTING.md` §13
-**Affected surfaces:** `tests/integration/`
-**Risk:** High to omit — it is the phase's exit criteria in executable form
+**Depends on:** nothing. `T-078`'s pool is what would be driven; it is already approved
+**Relevant context:** `REQ-012`, `REQ-001`, `T-078`, `T-016`, `UX-001`, `ARC-004`
+**Affected surfaces:** `downloader/manager.py` or `app.py` — see *Where it belongs*
+**Risk:** Low to fix, High to leave. The phase cannot honestly exit with it open
 
-#### Scope
+#### What was measured
 
-Phase 1's exit criteria were met by tests that existed for other reasons plus `T-037`, which was
-written to close the two that had no owner. Phase 2's criteria name things no feature task would
-assert on its own:
+A real composed application, concurrency 3, five URLs queued through the real dialog:
 
-- three concurrent downloads with independent accurate progress and an interactive UI (`NFR-001`)
-- hard-killing the app mid-queue and restarting restores the queue with correct states
-- the concurrency limit respected exactly, and lowering it while running drains cleanly
-- a second launch attaches or refuses
-- **no worker process outlives application exit, on both platforms**
+```
+  0.5s  probing  running  probing  queued  queued   (4 child processes)
+  8.0s  completed completed completed queued queued (1)
+  9.5s  completed completed completed queued queued (1)
+```
 
-**The last one is where this project's scar tissue is.** `T-019` reaps the tree, `T-066` found
-that a virtualenv adds a process level nobody was testing, and `T-072` established that the
-worker's own `parent-watchdog` — not the captured set — is what actually prevents orphans. With N
-workers the question is whether that holds N times, including for the ones that had not started.
+The three that started ran concurrently and completed — **the pool itself is fine.** The other two
+were still `queued` with an empty pool when the run ended.
+
+#### Why, from the code
+
+- `DownloadManager._fill_free_slots` drains `self._waiting`, an **in-memory** list.
+- `_waiting` is populated only when `_start_or_report` parks a job — the internal path, used by
+  retry and by the pause/reorder guards.
+- The **public** `start()` *raises* `RuntimeError("the pool is full at N")` instead of parking.
+- **Nothing anywhere scans the database for `QUEUED` rows.**
+- `AddUrlDialog.add_to_queue` starts only the **probed** job, and Probe is a manual button covering
+  only the **first** URL.
+
+So a user who pastes five URLs and presses Add gets **zero** downloads started, or one if they
+probed first. The rest are durable, correct, ordered — and inert.
+
+**`add_dialog.py` already assumes otherwise.** A comment there reads *"leaving it durably `QUEUED`,
+where whatever runs the queue next would download the URL"*. There is no "whatever runs the queue
+next", and that comment is the clearest evidence this was believed to exist.
+
+#### Where it belongs — stated as options, not decided
+
+1. **`start()` parks instead of raising when full.** Smallest change, and it makes the public and
+   internal paths agree. Against it: `start()`'s refusal is deliberate and `T016-R3` reasoned about
+   it; callers currently distinguish "queued" from "started" by whether it threw.
+2. **A tick that admits `QUEUED` rows from the repository.** Matches `_next_waiting`'s existing use
+   of `queue_position` as the durable order, and survives a restart — which the in-memory
+   `_waiting` does not. Against it: a database read on the manager's tick (`ARC-005` allows indexed
+   single-row reads; this is an enumeration).
+3. **Composition starts each freshly added job.** Keeps the manager unchanged. Against it: it
+   leaves rows recovered by `T-082`, or added by a previous run, still inert.
+
+Option 2 is the one that also fixes restart, which is why I would start there — but this is a
+design decision and `T-088` is not the place to make it.
 
 #### Acceptance criteria
 
-- One test per exit criterion, each mutation-verified, each stating what it does not cover
-- Orphan checks count actual processes, and exclude `multiprocessing`'s resource tracker by being
-  the tracker rather than by everything else being excluded (`T-019`)
-- Runs on `STARBASE` as well as Linux; a criterion that says "both platforms" is not met by one
-- The evidence table in `ai/IMPLEMENTATION_PLAN.md` §Phase 2 is filled from real runs, and states
-  its limits — building Phase 1's table is what exposed two wrong rows (`P1EXIT-R1`, `P1EXIT-R2`)
+- Adding N URLs with a limit of M starts M immediately and the rest as slots free, with no user
+  action beyond Add
+- **The order is `queue_position`**, so it survives a restart and matches what the queue shows
+- A queue paused per `UX-001` still starts nothing, and resuming drains it
+- Jobs left `QUEUED` by a *previous* run start on the next launch — the `T-082` recovery case
+- `tests/integration/test_phase_2_exit.py::test_a_job_beyond_the_limit_never_starts_even_once_the_pool_empties`
+  is `xfail(strict=True)`, so **fixing this fails the build until that test is inverted**. Invert
+  it; do not delete it
 
 #### Out of scope
 
-- Performance targets beyond `NFR-001`'s responsiveness
+- Changing the concurrency limit's semantics, which `T-078` owns
 
 ---
-
 
 ### T-048 — Verify the first real data migration when one is written
 
