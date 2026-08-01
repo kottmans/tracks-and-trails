@@ -51,6 +51,12 @@ seeing it.** The first was four failing tests pushed unrun; this one was run, on
 green local suite is not the gate — `AGENTS.md` §8 says so and I read it as satisfied by `ruff`,
 `mypy` and `pytest` on the machine in front of me.
 
+**The same run carried a genuinely good result.** All five of `T-088`'s phase-exit tests
+**passed on `windows-latest`** (run `30712201443`), and `T-115`'s case reported `XFAIL` there as
+designed. So exit criteria 2 and 5 — hard-kill recovery and no worker outliving exit — are
+evidenced on both platforms by measurement rather than by assertion. Only the three UI test files
+failed there, and those are the Linux-only assumptions above.
+
 **Two flakes found while chasing that, both recorded rather than chased:**
 
 - `test_a_killed_holder_leaves_a_lock_the_next_launch_can_take` failed on `windows-latest` in one

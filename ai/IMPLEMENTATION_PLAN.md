@@ -297,14 +297,15 @@ Phase 2 work. None is a deliverable and none gates the exit; they are listed in 
 | 2 | Hard-killing the app mid-queue and restarting restores the queue with correct states | **Met** | `test_a_hard_kill_mid_queue_restores_every_job_state_at_the_next_start` — `SIGKILL` with three workers downloading and two jobs never started. In-flight rows recover; **never-started rows are left alone**, which a single-job test cannot reach |
 | 3 | Concurrency limit respected exactly; lowering it drains cleanly, and so does pausing | **Met** | `test_the_pool_never_exceeds_the_configured_limit` samples **both** the rows and the actual process count over a whole run. The lowering and pause halves are `T-078` and `T-080`, both approved |
 | 4 | A second launch attaches to or refuses in favour of the running instance | **Met** | `test_a_second_launch_refuses_in_favour_of_the_running_instance`, against a first instance with a **full pool** — the state a guard built on polling would be likeliest to let through. `T-087`'s three Windows cases passed on `check (windows-latest)` |
-| 5 | No worker process outlives application exit, on both platforms | **Met on Linux and hosted Windows** | `test_no_worker_outlives_a_hard_kill_with_a_full_pool` — the worker set obtained independently of what is killed, the resource tracker excluded by being identified, and asserted non-empty before the kill (`T072-R1`) |
+| 5 | No worker process outlives application exit, on both platforms | **Met on Linux and hosted Windows** — measured, not asserted: **all five phase-exit tests passed on `windows-latest`** in run `30712201443`, and the `T-115` case reported `XFAIL` there as designed | `test_no_worker_outlives_a_hard_kill_with_a_full_pool` — the worker set obtained independently of what is killed, the resource tracker excluded by being identified, and asserted non-empty before the kill (`T072-R1`) |
 | 6 | Reviewed and signed off | **Not met** | Four deliverables await review: `T-100`, `T-086`, `T-084`, `T-082` |
 | 7 | *(Found by `T-088`)* A user can actually start a queue | **NOT MET — `T-115`** | Measured: five URLs, limit 3 — three run and complete, **two stay `queued` with an empty pool**. Nothing scans the database for `QUEUED` rows; `start()` raises when full instead of parking; the dialog starts only the probed job. Recorded as a strict `xfail` so fixing it fails the build |
 
 **What the evidence does *not* cover**, stated because building Phase 1's table is what exposed two
 wrong rows (`P1EXIT-R1`, `P1EXIT-R2`):
 
-- **A real Windows desktop session.** These run on `ubuntu-latest` and `windows-latest`. `STARBASE`
+- **A real Windows desktop session.** The phase-exit tests themselves *do* run on `windows-latest`
+  and passed there (run `30712201443`); what is uncovered is the interactive desktop. `STARBASE`
   is offline and `OPS-005`'s amendment puts the gate on the hosted job; the desktop slice (`T-026`,
   `T-040`) is covered nowhere.
 - **Real network conditions.** The media server is localhost.

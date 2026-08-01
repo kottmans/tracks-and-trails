@@ -55,6 +55,11 @@ a design decision and `T-088` is not the place to make it. Recorded as a **stric
 **fixing it fails the build** until the test is inverted rather than leaving this file describing a
 defect as behaviour.
 
+**`T-088`'s own tests pass on Windows.** In run `30712201443` all five phase-exit tests reported
+`PASSED` on `windows-latest` and the `T-115` case reported `XFAIL` there, so criteria 2 and 5 —
+hard-kill recovery and no worker outliving exit — are evidenced on both platforms by measurement.
+The 38 failures in that same run were entirely in the three UI test files, and are fixed.
+
 **What I want checked:** that criterion 1 is now marked honestly. `T-079`'s acceptance criterion is
 satisfied and correct — three concurrent downloads do show independent accurate progress. The
 evidence table says *mechanism met, no user route*, and I would rather be told that is too harsh
