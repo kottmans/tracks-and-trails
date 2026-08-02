@@ -45,6 +45,12 @@ criterion 6 — every deliverable reviewed — is the only one not met.
   `T014-R4`'s frozen-fixture gate refused the build until v2's own bytes were captured.
 - **`T-118`** — the add dialog is a staging list. Pasting resolves every line and Add commits what
   resolved; the Probe button is gone. `ui/staging.py` holds the state machine, Qt-free.
+- **`T-120`** — the brand palette, applied. `ui/theme.py` was one line and nothing imported it, so
+  the application had been showing whatever Qt's default style chose since Phase 0.
+
+**`T-119` is deliberately not started.** It depends on `T-117` and `T-118`, both unreviewed, and
+`T-118` alone found six defects in code it did not write. Maintainer decision, 2026-08-02: take a
+verdict on what exists before building the queue delegate on top of it.
 
 ## What `T-118` found in code it did not write
 

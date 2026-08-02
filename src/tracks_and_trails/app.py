@@ -130,6 +130,18 @@ def run(argv: Sequence[str]) -> int:
     app.setOrganizationName(APP_NAME)
     app.setWindowIcon(app_icon())
 
+    # **The brand palette, applied once to the application** (`T-120`, `ARCHITECTURE.md` §8).
+    #
+    # Here rather than in `compose()` because it is a property of the *running* application, not
+    # of the object graph: a test composing the graph against a temporary database has no business
+    # restyling the `QApplication` it shares with every other test in the session.
+    #
+    # Applied to the application rather than per widget, so a widget added later inherits it
+    # instead of becoming the only unstyled thing on the screen.
+    from tracks_and_trails.ui import theme
+
+    theme.apply(app)
+
     from tracks_and_trails.core.instance_lock import AlreadyRunningError
 
     try:

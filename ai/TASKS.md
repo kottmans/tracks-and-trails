@@ -78,8 +78,10 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**Four tasks await a verdict as of 2026-08-02** — `T-118`, `T-117` and `T-116`, the first
-three of the UI rework, and `T-115`, returned for `T115-R1` and corrected the same day. This note is rebuilt from the section rather than edited beside it. It said **five**
+*(**Five tasks await a verdict as of 2026-08-02** — `T-120`, `T-118`, `T-117` and `T-116`, four
+of the five UI rework tasks, and `T-115`, returned for `T115-R1` and corrected the same day.
+`T-119` is deliberately **not** started: it depends on `T-117` and `T-118`, and the maintainer
+chose a verdict on those before building on them. This note is rebuilt from the section rather than edited beside it. It said **five**
 — `T-080`, `T-081`, `T-046`, `T-053` and `T-083` — for the whole time after all five were approved
 and `T-088` and `T-115` had taken their place, which is `COORD-R12`. Before that it said **four**,
 naming `T-079` first, between the re-review recording **Approved** and its correction; then
@@ -90,6 +92,41 @@ through `COORD-R12` are eight rounds of this file contradicting itself, which is
 exists — but `T-096` gates *status against section*, and `COORD-R11` and `COORD-R12` were both
 prose that contradicted the sections while every status and section agreed. The invariant test
 cannot see that, and this note is written by hand for exactly that reason.)*
+
+### T-120 — Implement the brand palette
+
+**Status:** **In Review — complete 2026-08-02.** Eight mutations run; all eight killed. Writing
+the contrast test found **two real failures** in a palette that looked fine: the dark primary
+measured 4.33 against a 4.5 floor, and one colour was serving as both a divider and a control
+edge, failing the control floor in both themes.
+*(This read "Proposed — UI rework decomposition, 2026-08-02".)* Independent of the other four.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `ARCHITECTURE.md` §8 (forest `#1E5E47`, gold `#D9A24C`, deep `#083122`),
+`NFR-005`, `ui/theme.py`
+**Affected surfaces:** `ui/theme.py`, `ui/` styling
+**Risk:** Low
+
+#### Scope
+
+`ui/theme.py` is one line — a module docstring reading *"Brand palette and light/dark theming"* —
+and nothing imports it. The palette has been specified since Phase 0 and has never been applied.
+
+#### Acceptance criteria
+
+- The palette `ARCHITECTURE.md` §8 names is defined in one place and applied from it
+- Light and dark are both defined; neither is a naive inversion of the other
+- Contrast is asserted against a stated ratio for text and for controls, in both themes
+- **No state is signalled by colour alone** (`NFR-005`) — asserted over the states the queue can
+  show, not spot-checked
+- A widget added without asking for a colour inherits the theme rather than a Qt default
+
+#### Out of scope
+
+- The row layout (`T-119`). A palette and an anatomy are different changes and reviewing them
+  together hides both
 
 ### T-118 — The add dialog becomes a staging list
 
@@ -938,37 +975,6 @@ GUI thread never blocking on a fetch or a decode (`ARC-005`).
 - History's rendering. If it should match, that is its own task against `T-100`
 
 ---
-
-### T-120 — Implement the brand palette
-
-**Status:** Proposed — **UI rework decomposition, 2026-08-02.** Independent of the other four.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `ARCHITECTURE.md` §8 (forest `#1E5E47`, gold `#D9A24C`, deep `#083122`),
-`NFR-005`, `ui/theme.py`
-**Affected surfaces:** `ui/theme.py`, `ui/` styling
-**Risk:** Low
-
-#### Scope
-
-`ui/theme.py` is one line — a module docstring reading *"Brand palette and light/dark theming"* —
-and nothing imports it. The palette has been specified since Phase 0 and has never been applied.
-
-#### Acceptance criteria
-
-- The palette `ARCHITECTURE.md` §8 names is defined in one place and applied from it
-- Light and dark are both defined; neither is a naive inversion of the other
-- Contrast is asserted against a stated ratio for text and for controls, in both themes
-- **No state is signalled by colour alone** (`NFR-005`) — asserted over the states the queue can
-  show, not spot-checked
-- A widget added without asking for a colour inherits the theme rather than a Qt default
-
-#### Out of scope
-
-- The row layout (`T-119`). A palette and an anatomy are different changes and reviewing them
-  together hides both
 
 ---
 
