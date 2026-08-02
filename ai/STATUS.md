@@ -838,6 +838,17 @@ reproduced every asset byte-for-byte from the script — and filed Complete. See
 
 ## Next
 
+**Current, 2026-08-02.** `T-115`'s re-verdict is the only thing between here and Phase 2's exit.
+After it: the **UI rework**, `T-116` through `T-120`, filed from mockups the maintainer reviewed
+and chose between. It precedes `T-107` deliberately — Phase 3 and 4 add a format table, a stream
+chooser, a playlist picker and a preset editor **to the queue that already exists**, so what a row
+is gets decided once rather than renegotiated by each feature. `UX-003` is the rule the add flow
+now follows: nothing enters the queue unprobed. `T-116` comes first because mandatory probing
+through the shared pool would stall downloads already running.
+
+**Everything below this line is Phase 1 narrative** and has not been swept since. It is kept for
+the reasoning, not as a statement of what happens next.
+
 `ARC-002`'s ordinary end-to-end path is proven: a spawned child imports yt-dlp, extracts and
 reports typed messages back (`T-012`); a job survives a restart and an unclean kill (`T-014`);
 and, in a test, a URL becomes a file on disk through `T-013`. T-013 is now approved, so that path

@@ -724,11 +724,242 @@ beats designing it against an imagined one.
 
 ## Proposed — Phase 3
 
+*(**UI rework filed 2026-08-02** — `T-116` through `T-120`, from mockups the maintainer reviewed
+and chose between. They precede `T-107`: Phase 3 and 4 add a format table, a stream chooser, a
+playlist picker and a preset editor **to the queue that exists**, so settling what a row is first
+means the anatomy is decided once rather than renegotiated by each feature. `T-105`'s
+`docs/UX_SPEC.md` should absorb the chosen design; `UX-003` records the rule the add flow now
+follows.)*
+
 *(**Decomposed 2026-08-01.** Phase 3 had **zero** tasks against
 seven plan deliverables, so its size was an estimate from prose rather than from work anybody had
 broken down. Phase 1 listed nine deliverables and produced fifty tasks; these eight are the
 starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
 it.)*
+
+### T-116 — A metadata lane: probing stops competing with downloads
+
+**Status:** Proposed — **UI rework decomposition, 2026-08-02.** Precedes `T-118`, which is
+unusable without it.
+**Owner:** Implementer
+**Priority:** **High** — `UX-003` makes probing mandatory, and mandatory probing through the
+download pool stalls downloads that are already running
+**Phase:** Phase 3
+**Depends on:** nothing. `T-078`'s pool is what changes; it is approved
+**Relevant context:** `UX-003`, `REQ-013`, `NFR-001`, `ARC-002`, `T-078`, `T-115`,
+`downloader/manager.py` (`_has_capacity`, `SessionKind`)
+**Affected surfaces:** `downloader/manager.py`, `core/settings.py`
+**Risk:** Medium — it changes the admission rule the phase's own proof measures
+
+#### Scope
+
+`_has_capacity()` is `len(self._sessions) + len(self._reserved) < self._limit`, with no
+`SessionKind` exemption, so **a probe occupies a download slot**. Measured consequence with a limit
+of three and twenty URLs added: the twentieth is probed after the nineteenth has finished
+downloading.
+
+That is tolerable while probing is a button. `UX-003` makes it the thing that happens when a user
+pastes, so the same rule means **adding URLs stalls downloads in flight** — the user presses Add
+and the transfers they were watching stop.
+
+Probes and downloads are different work: a probe is one short metadata round trip, a download is
+bandwidth-bound and long. They should not draw from one budget.
+
+#### Acceptance criteria
+
+- Probe sessions and download sessions have **separate concurrency**, with the download limit
+  unchanged in meaning — `REQ-013`'s setting still governs downloads and nothing else
+- A test with the download pool **saturated** starts a probe, and asserts a running download is
+  neither stopped nor delayed
+- The probe lane has its own ceiling, asserted with a value the default cannot produce (`T-088`'s
+  lesson: a limit test that measures the default proves nothing)
+- Probes beyond the lane's ceiling **queue** rather than being refused, in the order asked for
+- Cancellation reaches a queued probe as well as a running one — closing the dialog must not leave
+  a lane full of probes for URLs nobody is waiting on
+- `T-088`'s phase proof still passes unchanged, including the pool-limit test
+- Shutdown drains both lanes; no probe worker outlives the application (`ARC-002`)
+
+#### Out of scope
+
+- What the dialog does with the results (`T-118`)
+- Any change to `REQ-013`'s user-facing setting. If the probe ceiling should be configurable, that
+  is a separate decision — this task fixes it in code and says so
+
+---
+
+### T-117 — Persist the thumbnail URL so a queued row can show one
+
+**Status:** Proposed — **UI rework decomposition, 2026-08-02.**
+**Owner:** Implementer
+**Priority:** Medium — small, and `T-118` and `T-119` both need it
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `REQ-002`, `DAT-001`, `core/models.py:314` (`MediaInfo.thumbnail_url`),
+`persistence/migrations/`, `persistence/repositories.py`
+**Affected surfaces:** `core/models.py`, `persistence/` (schema, migration, repository)
+**Risk:** **Medium, and not for its size** — this is the **first migration after the initial
+schema**. The machinery has never run a second one against a database with rows in it
+
+#### Scope
+
+`MediaInfo` carries `thumbnail_url`; `Job` does not, and neither does the `jobs` table. A probe's
+thumbnail therefore lives exactly as long as the dialog that asked for it. Every row in the queue
+that wants to show a picture needs the URL to have survived the probe.
+
+`persistence/migrations/` holds `0001_initial.sql` and nothing else. This adds `0002`, which makes
+the migration path itself part of the task rather than an assumption.
+
+#### Acceptance criteria
+
+- `Job` carries an optional thumbnail URL, validated as the other optional text fields are
+- A migration adds the column, and a test **migrates a database populated under `0001`** and asserts
+  every existing row survives with its other columns intact
+- Migrating twice is a no-op (`PRAGMA user_version` already guarantees this; assert it here, where a
+  second migration exists to prove it against)
+- A probe result writes the URL through the same route that writes the rest of its media fields —
+  not a second write that could half-land
+- A job whose probe reported no thumbnail stores `NULL`, and that is distinguishable from a job that
+  has not been probed
+- A database at `0001` opened by this version is migrated on open, not refused
+
+#### Out of scope
+
+- Fetching or caching the bytes (`T-119`)
+- Any history-table column. `T-085`'s records are separate and unchanged
+
+---
+
+### T-118 — The add dialog becomes a staging list
+
+**Status:** Proposed — **UI rework decomposition, 2026-08-02.** This is `UX-003` in code.
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 3
+**Depends on:** `T-116` (or Add stalls the downloads already running), `T-117` (or the thumbnail
+dies with the dialog), `T-105`'s UX spec
+**Relevant context:** `UX-003`, `REQ-001`, `REQ-002`, `REQ-012`, `REQ-018`, `NFR-005`, `NFR-006`,
+`T-016`, `T-075` (the preset is bound at Add, not at probe), `T-115`, `T115-R1`, `T-060`
+**Affected surfaces:** `ui/add_dialog.py`
+**Risk:** **High** — it rewrites the dialog `T-016`, `T-075` and `T-115` all landed corrections in
+
+#### Scope
+
+`UX-003`: the paste resolves before anything is queued. Pasting starts the work — the
+`&Probe first URL` button goes, because there is no second thing to press and no route to queueing
+something unread. Each line becomes a row that resolves in place into title, uploader, duration and
+thumbnail.
+
+**Every prior correction to this dialog is a constraint on the rewrite, not history.** `T-016`: a
+probe belongs to a URL and a generation, not to a job id, and an input that moves on cancels what
+is in flight. `T-075`: the request that runs is the one selected when Add was pressed, retargeted
+before the job may start. `T115-R1`: the batch is **one** admission decision, taken after the
+retarget settles, in durable queue order. A rewrite that loses any of these re-earns its review
+round.
+
+#### Acceptance criteria
+
+- Pasting resolves every line without a second control; no route exists to queue an unresolved URL
+- A line that fails to resolve **stays in the list** with the extractor's message verbatim
+  (`NFR-006`) and its own retry, and is excluded from the commit — asserted on the count the button
+  commits, not only on its label
+- Commit admits in durable `queue_position` order, one decision, after any retarget (`T115-R1`'s
+  regression must still pass against the rewritten dialog)
+- A row that has not resolved yet is **filled, not blank** — the derived placeholder of `UX-003`'s
+  rejected-as-sufficient alternative — and every state is named in words, never signalled by colour
+  alone (`NFR-005`)
+- Cancelling the dialog cancels every outstanding probe, queued or running (`T-116`'s ceiling makes
+  queued ones real)
+- The preset applies to the paste, overridable per row; the effective selector shown stays the one
+  that will run (`T-075`)
+- Focus order is declared per state and excludes hidden rows (`T-060`); a resolving row and a failed
+  row are different states
+- A paste large enough to exceed the probe lane resolves in order and does not freeze the dialog
+  (`NFR-001`)
+
+#### Out of scope
+
+- Playlist expansion beyond showing that a URL **is** one and how many entries it has — choosing
+  entries is `T-110`
+- The queue's own rendering (`T-119`)
+
+---
+
+### T-119 — The queue row: thumbnail, title and progress in one delegate
+
+**Status:** Proposed — **UI rework decomposition, 2026-08-02.**
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 3
+**Depends on:** `T-117`, `T-118`, `T-105`
+**Relevant context:** `REQ-002`, `REQ-014`, `NFR-001`, `NFR-004` (cache location), `NFR-005`,
+`ARC-005`, `T-079` (the queue table's repaint and ordering rules), `T-081`
+**Affected surfaces:** `ui/queue_view.py`, a new delegate module, `core/paths.py`
+**Risk:** Medium — repaint cost is the thing that regresses, and it regresses at a size no
+hand-driven test reaches
+
+#### Scope
+
+The rich row from the accepted mockup: thumbnail, title, uploader, progress and state in one row
+rather than a grid of columns. `T-118` guarantees the text is there; this draws it.
+
+**The scale rule is the task, not the drawing.** A public application cannot assume a queue of
+twenty. The policy is: bytes fetched only for rows the view asks to paint plus a small look-ahead,
+a bounded pixmap cache, a disk cache under `NFR-004`'s cache directory swept with the job, and the
+GUI thread never blocking on a fetch or a decode (`ARC-005`).
+
+#### Acceptance criteria
+
+- A row renders every field `REQ-002` names, asserted by value rather than by pixel
+- **No fetch is issued for a row the view never asked to paint** — asserted with a model far larger
+  than the viewport, counting requests
+- The pixmap cache has a stated bound, and a test that exceeds it asserts memory is released rather
+  than that the cache "works"
+- The disk cache lives under `NFR-004`'s directory, is keyed so two jobs for one URL share it, and
+  is removed with the job
+- A failed or missing thumbnail keeps the placeholder and is **not** reported as an error — a
+  missing picture is not a failed download — and does not retry in a loop
+- Repaint cost is bounded with a realistic queue size, in the shape `T-079` already asserts
+- Everything a sighted user reads from the row is available to a screen reader (`NFR-005`), and the
+  derived placeholder is never the only thing distinguishing two rows
+
+#### Out of scope
+
+- History's rendering. If it should match, that is its own task against `T-100`
+
+---
+
+### T-120 — Implement the brand palette
+
+**Status:** Proposed — **UI rework decomposition, 2026-08-02.** Independent of the other four.
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `ARCHITECTURE.md` §8 (forest `#1E5E47`, gold `#D9A24C`, deep `#083122`),
+`NFR-005`, `ui/theme.py`
+**Affected surfaces:** `ui/theme.py`, `ui/` styling
+**Risk:** Low
+
+#### Scope
+
+`ui/theme.py` is one line — a module docstring reading *"Brand palette and light/dark theming"* —
+and nothing imports it. The palette has been specified since Phase 0 and has never been applied.
+
+#### Acceptance criteria
+
+- The palette `ARCHITECTURE.md` §8 names is defined in one place and applied from it
+- Light and dark are both defined; neither is a naive inversion of the other
+- Contrast is asserted against a stated ratio for text and for controls, in both themes
+- **No state is signalled by colour alone** (`NFR-005`) — asserted over the states the queue can
+  show, not spot-checked
+- A widget added without asking for a colour inherits the theme rather than a Qt default
+
+#### Out of scope
+
+- The row layout (`T-119`). A palette and an anatomy are different changes and reviewing them
+  together hides both
+
+---
 
 ### T-107 — The format table: every stream a probe found
 

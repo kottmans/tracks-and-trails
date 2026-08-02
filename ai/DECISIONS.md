@@ -6,7 +6,7 @@ requirements or design — those live in `REQUIREMENTS.md` and `ARCHITECTURE.md`
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-07-31
+**Last updated:** 2026-08-02
 **Update when:** A durable choice is accepted, superseded, or deliberately rejected.
 **Does not contain:** Completion notes for routine work. Routine fixes go to `TASKS.md` and `CHANGELOG.md`.
 
@@ -2471,3 +2471,82 @@ What that costs is stated rather than absorbed: a user reading a job log will no
 database yt-dlp could not open. `NFR-006`'s promise is kept at the **other** sink — the database
 stores the extractor's message verbatim — and `T-084`'s amended criterion now asserts the two sinks
 against each other on one value, so neither rule can quietly drift into the other.
+
+---
+
+## UX-003 — Nothing enters the queue unprobed
+
+**Status:** **Accepted** (2026-08-02) — maintainer decision
+**Date:** 2026-08-02
+**Supersedes:** nothing. **Changes** the add flow `T-016` shipped, which `REQ-001` and `REQ-012`
+leave open.
+
+### Context
+
+Probing is optional today, and covers the **first URL only**: `ui/add_dialog.py` offers a
+`&Probe first URL` button, and every other pasted line is persisted `QUEUED` having never been
+looked at. Nothing decided that. `REQ-002` names title, uploader, duration and thumbnail as things
+the application shows about a URL; `REQ-001` says a queue accepts many; neither says when the two
+meet. The manual button is what fell out of Phase 1 running a pool of exactly one, where probing a
+batch would have been a queue of probes with no scheduler to run it.
+
+The consequence reaches the queue. A row for an unprobed job has **no title, no duration and no
+thumbnail** — nothing but its URL — so a queue of twenty pasted links is twenty rows that cannot be
+told apart until each one reaches the front. Filling those rows was raised as a display question
+and turned out not to be one: a thumbnail exists only after a probe, and `_has_capacity()` counts
+every session, so probes queue *behind downloads*. With a limit of three and twenty URLs added, the
+last is probed only after the nineteenth has finished downloading.
+
+**The add-time probe is not load-bearing, which is what makes this affordable.** A download session
+already probes first — `downloader/worker.py`: *"A download session probes first, so DRM and ffmpeg
+are caught before any bytes move."* Nothing downstream reads the earlier probe's result, so probing
+at the door costs one round trip and cannot go stale.
+
+### Decision
+
+**A job enters the queue only once it has been probed.** The add dialog resolves the whole paste
+before anything is queued: it becomes a staging list where each pasted line resolves in place into
+a row carrying its title, uploader, duration and thumbnail, and *Add to queue* commits what
+resolved.
+
+Three rules follow, and they are the decision as much as the sentence above:
+
+1. **A URL that will not probe never becomes a job.** It stays in the dialog with the extractor's
+   message verbatim (`NFR-006`) and its own retry, and the commit button counts only what resolved.
+2. **Probe state is shown in the dialog and nowhere else.** It answers "why is the button not
+   ready"; in the queue it describes something already finished.
+3. **`PROBING` stays in the state machine.** A retry re-enters `QUEUED → PROBING` (`REQ-018`), and
+   a download session reports a probing stage of its own. What changes is that it stops being a
+   status a user *reads*, not a state the machine has.
+
+### Consequences
+
+- **`REQ-018`'s retry splits by cause.** A job that fails *downloading* still sits in the queue
+  offering retry, unchanged. A URL that never probed has no job to carry that offer, so its retry
+  lives in the dialog. Both paths exist; neither is silent.
+- **A long resolve is not durable.** Nothing is persisted until Add is pressed, so closing the
+  window mid-paste loses the reading. That is the ordinary behaviour of an uncommitted dialog, and
+  it is stated rather than discovered.
+- **The metadata lane becomes a precondition, not an optimisation.** Mandatory probing through the
+  shared pool means pasting twenty URLs takes the download slots and **stalls downloads already
+  running** — a worse symptom than the ragged rows this started from, and one that appears only
+  once probing is required. `T-116` owns it and precedes the rest.
+- **Phase 3's playlist picker gets its prerequisite for free.** A playlist expands into entries only
+  after a probe, which this guarantees has happened by the time a row exists (`T-110`).
+
+### Alternatives considered
+
+**Fill the unprobed rows with a generated placeholder and leave probing where it is.** A gradient
+derived from the URL fills every tile the moment a row appears, costs nothing, and needs no
+network. Rejected as *sufficient*: it stops the column looking broken but the row is still
+title-less, and the title is the part a user actually reads. Kept as a **component** — a row still
+needs something to draw between appearing and resolving, and `T-118` uses exactly this.
+
+**Probe lazily, for visible rows only.** Cheapest at scale, and it is the right rule for *fetching
+thumbnail bytes* (`T-119`). Rejected for metadata: it makes what a row says depend on where the
+user has scrolled, and a queue that fills in as you look at it is harder to trust than one that
+was complete when it was made.
+
+**Refuse the whole paste when any URL fails.** Simple, and wrong on a flaky connection: paste
+thirty, lose eight to timeouts, and the user loses all thirty. Rule 1 above costs a button press
+instead.
