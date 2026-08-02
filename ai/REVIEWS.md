@@ -8274,3 +8274,76 @@ keeps the Windows gate red; that correction does not reopen T-087's production i
 
 T-115 remains confirmed High and keeps Phase 2 exit criterion 7 unmet independently of this CI
 failure. No reviewed production source was edited by the Reviewer.
+
+## 2026-08-01 — T-115 and the final T-088 correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Review boundary:** `2a41c5f..f5dd8cb`
+**Implementation commits:** `d999df1` (`T088-R4`, `T087-R6`) and `9e133a6` (`T-115`)
+**Handoff head:** `6cdf1fc`
+**Overall verdict:** **Changes requested for T-115. T-088 is approved.** The phase proof and its
+Windows lifecycle corrections are sound, but the new admission route violates T-115's own queue
+ordering criterion when a probed first row is retargeted before download.
+
+### Task verdicts
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-088` | **Approved at `9e133a6`** | T088-R4's observer cannot turn a partial read into a terminal verdict; authoritative snapshots fail loudly; all four application teardowns reap the reported process tree; the three-worker snapshot precedes teardown; T087-R6 kills the holder's reported PID. The corrected suite passed on hosted Windows and Ubuntu. |
+| `T-115` | **Changes requested at `9e133a6`** | Add-only draining, restart admission, recovery exclusion and pause all work, but the probed multi-URL route starts later queue positions before the probed head. That directly fails the task's explicit `queue_position` ordering criterion. |
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T115-R1` | **High** | **Yes — T-115** | Probed batch admission order | `AddUrlDialog._on_queue_saved()` admits every fresh, later-position row at `add_dialog.py:943-957`, then begins the probed row's asynchronous retarget at `:959-976`; the probed row is admitted only from its completion callback at `:980-993`. With a pool of one, probing the first URL and then adding it with a second URL leaves queue position 0 `READY` and starts position 1 at `PROBING`. The deterministic reviewer regression `test_a_probed_first_url_keeps_its_queue_position_when_the_batch_is_admitted` fails on exactly those states. The table says the probed row is first while the scheduler starts the second, contradicting T-115's acceptance criterion and T-081's established table/scheduler agreement. | Treat the saved batch as one admission decision. When a usable probe exists, settle its retarget first, then admit the probed id followed by the fresh ids in durable queue order. On retarget refusal, keep the probed row stopped as T-075 requires but still admit the other saved rows. Preserve the no-probe path and add a pool-of-one regression that distinguishes positions 0 and 1. | **Open** |
+| `T115-R2` | **Low** | No | Behavioral prose | The implementation moved and several behavioral statements did not. `app.compose()` still promises “Constructs everything; starts nothing” at `app.py:220` although it now admits durable queued rows. The embedded phase launchers at `test_phase_2_exit.py:139-147` and `:185-187` still say the application has no route that drains a queue and that T-115 remains unfixed; the first also retains a now-redundant explicit-start loop. These are executable-surface comments/docstrings describing obsolete behavior. | Reconcile the compose contract with startup admission and update the embedded launcher prose. Remove the redundant priming loop if the phase tests do not intentionally need a second route; otherwise state that it is deliberately redundant and what independent claim it serves. | **Open, non-blocking** |
+| `COORD-R12` | **Low** | No | Current-state coordination | Canonical current truth gives incompatible review queues. `TASKS.md:81-94` says five old tasks await verdict immediately above T-088/T-115. `STATUS.md:19-29` says four await review, T-088 is not started and T088-R4 remains open, while `:32` says T-115 is fixed and `:180-198` again says T-115 is an unfixed phase blocker. This is the same prose-drift class COORD-R11 and the session's stale behavior docstrings recorded. | Rebuild the TASKS In Review note and the leading STATUS snapshot from this verdict; mark superseded narrative explicitly historical or remove it from current truth. Do not leave both “fixed” and “blocks the exit” as live headings. | **Open, non-blocking coordination** |
+
+### Resolved prior findings
+
+| Prior finding | Result |
+|---|---|
+| `T088-R4` | **Resolved.** `settled()` requires a complete, non-empty id set; `snapshot()` retries and raises on incomplete reads; polling uses SQLite `mode=ro`; application trees are reaped by reported PID at every site; the three-worker final snapshot is taken before teardown. Direct helper tests and both hosted suites pass. |
+| `T087-R6` | **Resolved as test evidence.** The holder reports its interpreter PID, the killed-holder case kills and waits for that process, and `_kill_tree` asserts no descendant survives. The production `InstanceLock` approval remains unchanged. |
+
+### Review judgments
+
+**T-115's placement is otherwise right.** A public durable-intent operation plus one startup
+enumeration covers both newly added and previously queued work without a periodic database sweep.
+Reading durable QUEUED ids after recovery prevents interrupted work restarting unattended, and the
+direct filter test makes that rule independent of a downstream state-machine refusal.
+
+**The probed-order defect is not a retarget-versus-safety trade.** T-075 correctly requires the
+chosen request to be durable before the probed download starts. The defect is admitting later
+positions while that prerequisite settles. Sequencing the batch after retarget preserves both
+contracts; it does not require predicting the write or weakening persist-before-start.
+
+**T-088 has real Windows evidence now.** Run `30719224116` at the T088-R4 coordination head passed
+Windows with **1868 passed / 21 skipped / 32 deselected / 1 xfailed** and Ubuntu with **1880 passed /
+11 skipped / 2 deselected / 1 xfailed**. The exact handoff-head run `30721559613` also passed after
+T-115 inverted the xfail: Windows **1872 passed / 21 skipped / 32 deselected**, Ubuntu **1884 passed /
+11 skipped / 2 deselected**; both frozen jobs passed and Windows desktop was skipped.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `2a41c5f..f5dd8cb` inspected; `git diff --check` passed. `6cdf1fc` is handoff only. |
+| Exact-head CI | Run `30721559613`, SHA `6cdf1fce7b59cacae0e35e91b61ba915f67d0760`, conclusion **success**; Ubuntu, Windows and both frozen jobs passed; Windows desktop skipped with zero steps. |
+| Focused existing unit/UI slice | **90 passed** (`test_interrupted_offer.py` + `test_add_dialog.py`, before adding the reviewer regression). |
+| T-115 real application routes | **3 passed / 9 deselected**: Add-only drain, previous-run drain and paused admission. The sandbox initially refused localhost sockets; the same command passed with localhost access. |
+| T088-R4 helper slice | **3 passed / 26 deselected**: incomplete settled read, refusing snapshot and whole-tree reap. |
+| Full single-instance file | **17 passed**, including the corrected holder PID and survivor-reporting checks. |
+| Ruff / format | `ruff check .` and `ruff format --check .` passed before the regression (**130 files**); the added regression separately passes both checks. |
+| Reviewer regression | **1 failed as expected:** the probed position-0 row remained `READY` while the later position-1 row took the only slot and entered `PROBING`. |
+
+### Final disposition
+
+T088-R4 and T087-R6 are closed, and T-088 is approved at the final implementation/test head
+`9e133a6`. T-115 needs one focused correction for T115-R1 before approval; Phase 2 does not exit
+while that High acceptance-criterion failure remains. T115-R2 and COORD-R12 are non-blocking but
+should be reconciled in the same handoff so the next review is not asked to infer current behavior
+from contradictory prose. Reviewer production source was not edited. The intentionally failing
+reviewer regression is the only test change in the working tree; this review record is the only
+other change. Nothing was committed or pushed.
