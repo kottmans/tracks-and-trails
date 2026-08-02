@@ -709,6 +709,76 @@ def test_a_probed_url_is_not_stored_again_when_the_batch_is_added(
     assert urls == [url, "https://second.invalid/2"], "the probed URL was queued twice"
 
 
+def test_a_probed_first_url_keeps_its_queue_position_when_the_batch_is_admitted(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """`T-115`: retargeting the probed row must not let later rows take its slot.
+
+    The probe row is persisted first and therefore has the lowest `queue_position`. Add has to
+    retarget it before a download may read the request, but that asynchronous ordering constraint
+    is not permission to admit every later row first. With a pool of one, doing so starts the
+    second URL and parks the first even though the queue displays the first URL at its head.
+    """
+    first = fixture_url(SINGLE_ITEM)
+    dialog, manager = probe_of(dialogs, managers, spin, SINGLE_ITEM)
+    probed_id = dialog.probed_job_id
+    assert probed_id is not None
+    type_urls(dialog, f"{first}\nhttps://second.invalid/2")
+
+    dialog.add_to_queue()
+
+    second_id = next(job_id for job_id in dialog.queued_job_ids if job_id != probed_id)
+    assert store.jobs[probed_id].status is JobStatus.RUNNING, (
+        "the lowest-position probed job was parked behind a later row"
+    )
+    assert store.jobs[second_id].status is JobStatus.QUEUED, (
+        "a later queue position took the only slot before the probed head was admitted"
+    )
+    assert set(manager.active_job_ids()) == {probed_id, second_id}
+
+
+def test_a_refused_retarget_still_admits_the_rest_of_the_batch(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """`T115-R1`: the probed row's failure is not the other pasted URLs' failure.
+
+    `T-075` requires the probed job to stay stopped when its request could not be retargeted —
+    starting it would download what the probe chose rather than what the user did. That reason
+    does not reach the other rows in the same paste: they were built from the selected preset when
+    they were saved, so nothing stale can run for them. Stranding them would reintroduce `T-115`
+    for everyone who probed first.
+    """
+    first = fixture_url(SINGLE_ITEM)
+    dialog, _ = probe_of(dialogs, managers, spin, SINGLE_ITEM)
+    probed_id = dialog.probed_job_id
+    assert probed_id is not None
+    # Out of `Job.RETARGETABLE`, which is what a job cancelled from the queue while the dialog was
+    # open looks like. `retarget` reports that rather than raising, and this is that report.
+    store.jobs[probed_id] = replace(store.jobs[probed_id], status=JobStatus.CANCELLED)
+    type_urls(dialog, f"{first}\nhttps://second.invalid/2")
+
+    dialog.add_to_queue()
+
+    second_id = next(job_id for job_id in dialog.queued_job_ids if job_id != probed_id)
+    # `PROBING` rather than `RUNNING`: this URL was never probed, so admitting it starts a probe
+    # session. What matters is that it started at all.
+    assert store.jobs[second_id].status is JobStatus.PROBING, (
+        "the rest of the paste was stranded by the probed row's refusal"
+    )
+    assert store.jobs[probed_id].status is JobStatus.CANCELLED, (
+        "the probed job was started against the request the probe wrote (T-075)"
+    )
+    reported = label(dialog, "statusMessage").text()
+    assert "was not started" in reported, f"the refusal was not reported: {reported!r}"
+    assert dialog.isVisible() is False or not dialog.result(), "the dialog closed on a refusal"
+
+
 def test_a_cancelled_probes_url_can_be_queued_again(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],

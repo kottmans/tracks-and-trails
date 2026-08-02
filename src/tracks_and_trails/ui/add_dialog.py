@@ -946,15 +946,9 @@ class AddUrlDialog(QDialog):
         # URLs and pressed Add got at most one download and four rows that sat `QUEUED` for ever.
         # `admit` expresses intent rather than demanding a session, so a pool of three takes three
         # and keeps the rest in `queue_position` order until a slot frees.
-        #
-        # The probed job is deliberately excluded here and admitted below instead: its request is
-        # retargeted first (`T-075`), and admitting it now could start it against the preset the
-        # probe happened to be built with.
         probe = self._probe
         probed_id = probe.job_id if probe is not None else None
-        for _, job in fresh:
-            if job.id != probed_id:
-                self._manager.admit(job.id)
+        fresh_ids = [job.id for _, job in fresh if job.id != probed_id]
 
         if probe is not None and probe.ready and probe.usable:
             # **The preset is bound here, not at probe time** (`T-075`). `probe()` had to persist
@@ -971,46 +965,77 @@ class AddUrlDialog(QDialog):
             self._manager.retarget(
                 probe.job_id,
                 self._request_for(probe.url),
-                then=lambda: self._start_probed(probe.job_id),
-                otherwise=self._on_retarget_failed,
+                then=lambda: self._admit_and_close([probe.job_id, *fresh_ids]),
+                otherwise=lambda reason: self._on_retarget_failed(reason, fresh_ids),
             )
             return
-        self.accept()
+        self._admit_and_close(fresh_ids)
 
-    def _start_probed(self, job_id: str) -> None:
-        """Admit the probed job, now that the request it will read is durable (`T-075`).
+    def _admit_batch(self, job_ids: Sequence[str]) -> str | None:
+        """Admit everything this press of Add is responsible for, in durable queue order.
 
-        **`admit` rather than `start`** (`T-115`). `start` raises when the pool is full, and this
-        is the one job the dialog most wants queued rather than dropped — the user probed it, so it
-        is the one they were looking at. Admission runs it when there is room and keeps it in
-        `queue_position` order until then.
+        **One admission decision, taken once** (`T115-R1`). Admitting the fresh rows as soon as
+        they were saved and leaving the probed row until its retarget had settled meant a later
+        `queue_position` could take a slot the head of the queue was still waiting for: with a pool
+        of one, probing the first URL and adding it alongside a second started the *second*, while
+        the table showed the first at the head. `T-081` establishes that the table and the
+        scheduler agree; that agreement is not something an asynchronous prerequisite may suspend.
+
+        **The order is insertion order, and that is why the probed id leads.** `queue_position` is
+        allocated by the repository as `MAX + 1` at insert, and the probed job was submitted by
+        `probe()` before any of these were, so it necessarily holds the lower position. Reading the
+        positions back to sort by them would put a database read in front of a GUI callback for an
+        ordering the writes already fixed (`ARC-005`).
+
+        **`admit` rather than `start`** (`T-115`). `start` raises when the pool is full, and these
+        are the jobs the dialog most wants queued rather than dropped. Admission runs what fits and
+        keeps the rest in `queue_position` order until a slot frees.
 
         The refusal path stays for the errors that are still real: the state machine refusing a
         transition, or a job that has gone. Those are worth telling the user about; "the pool is
         busy" no longer is, because it is no longer an outcome.
+
+        Returns the refusal, or `None` when every id was admitted. One `try` around the whole loop
+        rather than one per id: `Job.RETARGETABLE` and the statuses `admit` accepts are the same
+        set, so within a single batch there is no reachable case where one id refuses and a later
+        one would not. Catching per id would read as resilience nothing can exercise.
         """
         try:
-            self._manager.admit(job_id)
+            for job_id in job_ids:
+                self._manager.admit(job_id)
         except (RuntimeError, ValueError) as start_error:
-            # The jobs are stored, so nothing is lost by not starting. Saying so beats closing on
-            # a silent failure.
-            self._status.setText(
-                f"Queued, but the download did not start: {start_error} "
-                "It stays in the queue and can be started from there."
-            )
-            self._refresh_actions()
+            return str(start_error)
+        return None
+
+    def _admit_and_close(self, job_ids: Sequence[str]) -> None:
+        """Admit the batch and close, unless something refused — then say so and stay open."""
+        refusal = self._admit_batch(job_ids)
+        if refusal is None:
+            self.accept()
             return
-        self.accept()
-
-    def _on_retarget_failed(self, reason: str) -> None:
-        """The chosen preset could not be stored, so nothing is started with the old one.
-
-        Refusing to start is the point. A download that ran here would run the request the probe
-        wrote, which is the defect `T-075` is about — and it would do it after telling the user
-        their choice had been saved.
-        """
+        # The jobs are stored, so nothing is lost by not starting. Saying so beats closing on a
+        # silent failure.
         self._status.setText(
-            f"Your format choice could not be saved, so nothing was started: {reason} "
+            f"Queued, but the download did not start: {refusal} "
+            "It stays in the queue and can be started from there."
+        )
+        self._refresh_actions()
+
+    def _on_retarget_failed(self, reason: str, fresh_ids: Sequence[str]) -> None:
+        """The chosen preset could not be stored, so the probed job is not started with the old one.
+
+        Refusing to start *it* is the point. A download that ran here would run the request the
+        probe wrote, which is the defect `T-075` is about — and it would do it after telling the
+        user their choice had been saved.
+
+        **The rest of the batch is still admitted** (`T115-R1`). Those rows were built from the
+        selected preset when they were saved, so nothing stale can run for them, and a probe whose
+        retarget failed is no reason to strand the other URLs in the same paste. The dialog stays
+        open, because the one job the user was looking at is the one that did not start.
+        """
+        self._admit_batch(fresh_ids)
+        self._status.setText(
+            f"Your format choice could not be saved, so the probed URL was not started: {reason} "
             "The URLs are still queued; press Add to queue again to retry."
         )
         self._refresh_actions()

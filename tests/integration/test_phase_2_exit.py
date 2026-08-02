@@ -106,53 +106,16 @@ POOL_LIMIT = 2
 QUEUED_BEYOND_LIMIT = 2
 
 
-QUEUE_MANY_AND_WAIT = """
-import os
-import sys
-from pathlib import Path
-from PySide6.QtWidgets import QApplication
-
-from tracks_and_trails import app as application
-
-database, downloads, geometry, settings, paused, *urls = sys.argv[1:]
-qapp = QApplication([])
-composition = application.compose(
-    qapp,
-    database=Path(database),
-    output_directory=Path(downloads),
-    geometry_file=Path(geometry),
-    settings_file=Path(settings),
-)
-# Pause is a runtime state, not a setting — `app.py` deliberately does not restore it — so a
-# test that wants a paused queue has to ask for one here (`UX-001`).
-if paused == "1":
-    composition.manager.pause()
-dialog = composition.window.open_add_dialog()
-dialog._urls.setPlainText(chr(10).join(urls))
-names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
-dialog._preset_choice.setCurrentIndex(names.index("Best video available"))
-dialog.add_to_queue()
-while len(dialog.queued_job_ids) < len(urls):
-    qapp.processEvents()
-job_ids = list(dialog.queued_job_ids)
-dialog.close()
-# **Started explicitly, and the refusal beyond the limit is caught rather than fatal.**
-# `DownloadManager.start()` raises when the pool is full; the internal path parks instead. That
-# asymmetry is deliberate on the manager's side and it is *also* why this loop cannot simply
-# start everything. See `T-115` — the application offers no route that drains a queue at all.
-for job_id in job_ids:
-    try:
-        composition.manager.start(job_id)
-    except RuntimeError:
-        pass
-# The application's own pid, not the launcher's: under a Windows venv `Popen` returns the
-# launcher and a count beneath it cannot tell a worker-less tree from a healthy one (`T072-R1`).
-print(os.getpid(), " ".join(job_ids), flush=True)
-sys.exit(qapp.exec())
-"""
-
-
-ADD_ONLY_AND_WAIT = """
+#: **Add URLs and then do nothing.** Every phase test drives the application this way, because
+#: adding is everything a user does — anything that runs afterwards is the application admitting
+#: its own queue.
+#:
+#: There were two of these until `T115-R2`. The other one primed the pool with `manager.start()`
+#: in a loop that swallowed the refusal past the limit, because before `T-115` nothing else
+#: drained the queue. Once Add had its own admission the loop started jobs the application had
+#: already started, and the two launchers were the same program under two names — which hides
+#: which route the evidence came from.
+ADD_AND_WAIT = """
 import os
 import sys
 from pathlib import Path
@@ -184,7 +147,10 @@ job_ids = list(dialog.queued_job_ids)
 dialog.close()
 # **Nothing else happens here, and that is the whole point.** No `manager.start()`, no priming
 # loop. Adding URLs is everything a user does, so anything that runs afterwards is the
-# application admitting its own queue — which is exactly what `T-115` says nothing does.
+# application admitting its own queue — the route `T-115` added and this file exists to prove.
+#
+# The application's own pid, not the launcher's: under a Windows venv `Popen` returns the launcher
+# and a count beneath it cannot tell a worker-less tree from a healthy one (`T072-R1`).
 print(os.getpid(), " ".join(job_ids), flush=True)
 sys.exit(qapp.exec())
 """
@@ -236,8 +202,7 @@ def test_the_restart_helper_is_valid_python() -> None:
     """
     for name, script in (
         ("<phase-2-restart>", RESTART_AND_REPORT),
-        ("<phase-2-queue-many>", QUEUE_MANY_AND_WAIT),
-        ("<phase-2-add-only>", ADD_ONLY_AND_WAIT),
+        ("<phase-2-add>", ADD_AND_WAIT),
     ):
         compile(script, name, "exec")
 
@@ -589,7 +554,7 @@ def test_a_hard_kill_mid_queue_restores_every_job_state_at_the_next_start(
         for _ in range(CONCURRENT + QUEUED_BEYOND_LIMIT)
     ]
     process, application_pid, job_ids = launch(
-        QUEUE_MANY_AND_WAIT,
+        ADD_AND_WAIT,
         database=database,
         downloads=tmp_path / "downloads",
         geometry=tmp_path / "window.toml",
@@ -680,7 +645,7 @@ def test_no_worker_outlives_a_hard_kill_with_a_full_pool(
     database = tmp_path / "queue.db"
     urls = [media_url(total_bytes=CLIP_BYTES, chunk_delay=0.5) for _ in range(CONCURRENT)]
     process, application_pid, _job_ids = launch(
-        QUEUE_MANY_AND_WAIT,
+        ADD_AND_WAIT,
         database=database,
         downloads=tmp_path / "downloads",
         geometry=tmp_path / "window.toml",
@@ -731,7 +696,7 @@ def test_the_pool_never_exceeds_the_configured_limit(
         for _ in range(CONCURRENT + QUEUED_BEYOND_LIMIT)
     ]
     process, application_pid, job_ids = launch(
-        QUEUE_MANY_AND_WAIT,
+        ADD_AND_WAIT,
         database=database,
         downloads=tmp_path / "downloads",
         geometry=tmp_path / "window.toml",
@@ -787,7 +752,7 @@ def test_a_second_launch_refuses_in_favour_of_the_running_instance(
     database = tmp_path / "queue.db"
     urls = [media_url(total_bytes=CLIP_BYTES, chunk_delay=0.5) for _ in range(CONCURRENT)]
     process, application_pid, job_ids = launch(
-        QUEUE_MANY_AND_WAIT,
+        ADD_AND_WAIT,
         database=database,
         downloads=tmp_path / "downloads",
         geometry=tmp_path / "window.toml",
@@ -806,7 +771,7 @@ def test_a_second_launch_refuses_in_favour_of_the_running_instance(
             [
                 sys.executable,
                 "-c",
-                QUEUE_MANY_AND_WAIT,
+                ADD_AND_WAIT,
                 str(database),
                 str(tmp_path / "downloads2"),
                 str(tmp_path / "window2.toml"),
@@ -861,7 +826,7 @@ def test_three_real_workers_each_write_their_whole_file(
     downloads = tmp_path / "downloads"
     urls = [media_url(total_bytes=CLIP_BYTES, chunk_delay=0.3) for _ in range(CONCURRENT)]
     process, application_pid, job_ids = launch(
-        QUEUE_MANY_AND_WAIT,
+        ADD_AND_WAIT,
         database=database,
         downloads=downloads,
         geometry=tmp_path / "window.toml",
@@ -951,7 +916,7 @@ def test_every_queued_job_eventually_starts_as_slots_free(
         for _ in range(CONCURRENT + QUEUED_BEYOND_LIMIT)
     ]
     process, application_pid, job_ids = launch(
-        ADD_ONLY_AND_WAIT,
+        ADD_AND_WAIT,
         database=database,
         downloads=tmp_path / "downloads",
         geometry=tmp_path / "window.toml",
@@ -1005,7 +970,7 @@ def test_a_queue_left_by_a_previous_run_starts_on_the_next_launch(
 
     # First launch: add, then kill while two are still waiting for the first to finish.
     process, application_pid, job_ids = launch(
-        ADD_ONLY_AND_WAIT,
+        ADD_AND_WAIT,
         database=database,
         downloads=tmp_path / "downloads",
         geometry=tmp_path / "window.toml",
@@ -1022,7 +987,7 @@ def test_a_queue_left_by_a_previous_run_starts_on_the_next_launch(
 
     # Second launch: the same database, and nothing done but starting the application.
     process, application_pid, _second = launch(
-        ADD_ONLY_AND_WAIT,
+        ADD_AND_WAIT,
         database=database,
         downloads=tmp_path / "downloads-second",
         geometry=tmp_path / "window-second.toml",
@@ -1063,7 +1028,7 @@ def test_a_paused_queue_admits_and_still_starts_nothing(
     database = tmp_path / "queue.db"
     urls = [media_url(total_bytes=CLIP_BYTES, chunk_delay=0.3) for _ in range(CONCURRENT)]
     process, application_pid, job_ids = launch(
-        ADD_ONLY_AND_WAIT,
+        ADD_AND_WAIT,
         database=database,
         downloads=tmp_path / "downloads",
         geometry=tmp_path / "window.toml",

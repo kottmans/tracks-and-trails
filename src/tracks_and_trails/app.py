@@ -217,7 +217,13 @@ def compose(
     settings_file: Path | None = None,
     entry_point: Callable[..., None] | None = None,
 ) -> Composition:
-    """Build the object graph and wire it up. **Constructs everything; starts nothing.**
+    """Build the object graph and wire it up, then admit what the last run left queued.
+
+    **Constructing is separate from starting, and the one thing it starts is deliberate.** Since
+    `T-115` this admits the rows that were durably `QUEUED` when the application last exited —
+    read *after* `recover_interrupted()`, so nothing that was in flight is resumed unattended
+    (`T081-R4`). Nothing else here begins work: no download is started for a job the user has not
+    already committed to the queue.
 
     The arguments exist so a test can drive the assembled application against a temporary
     database and a crafted worker (`T-037`), not as configuration — `run()` passes none of them.

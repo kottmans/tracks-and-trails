@@ -78,185 +78,29 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**Five tasks await a verdict as of 2026-07-31** — `T-080`, `T-081`, `T-046`, `T-053` and `T-083`, and this note is rebuilt from the
-section rather than edited beside it. It said **four** and named `T-079` first, for the whole time
-between the re-review recording **Approved** and its correction; it then said **three**, then
-**four** again as `T-080` and `T-081` landed here. Before them, `T-079` was approved
-at `da49a51` and `T-078` at `0f9986f`;
-`T-047`, `T-089` and `T-097` at `321c672`, `128be39` and `34addcb`; `T-091`, `T-096` and `T-098`
-before them.
+*(**One task awaits a verdict as of 2026-08-02** — `T-115`, returned for `T115-R1` and corrected
+the same day. This note is rebuilt from the section rather than edited beside it. It said **five**
+— `T-080`, `T-081`, `T-046`, `T-053` and `T-083` — for the whole time after all five were approved
+and `T-088` and `T-115` had taken their place, which is `COORD-R12`. Before that it said **four**,
+naming `T-079` first, between the re-review recording **Approved** and its correction; then
+**three**; then **four** again.
 `COORD-R2` is why this note exists rather than the section sitting bare: a section's contents are
 a claim about readiness, and the claim should be legible without counting entries. `COORD-R5`
-through `COORD-R11` are seven rounds of this file contradicting itself, which is why **`T-096`**
-exists — but `T-096` gates *status against section*, and `COORD-R11` was prose that contradicted
-both while every status and section agreed. The invariant test cannot see that, and this note is
-written by hand for exactly that reason. It said "Empty as of 2026-07-30" until `T-079` landed
-here, which is the drift it is written to make visible.)*
-
-### T-088 — Prove the phase: three at once, killed mid-queue, nothing left behind
-
-**Status:** **In Review — complete 2026-08-01.** Five criteria proved against a real composed
-application in another interpreter; four mutations run, all four killed. **It found a High defect
-that no feature task would have surfaced — `T-115`, the queue does not drain** — and the evidence
-table now carries a seventh row for it.
-*(This read "Proposed — the Phase 2 analogue of `T-037`".)*
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 2
-**Depends on:** `T-078`…`T-087`
-**Relevant context:** `T-037`, `T-019`, `T-073`, `NFR-001`, `ai/TESTING.md` §13
-**Affected surfaces:** `tests/integration/`
-**Risk:** High to omit — it is the phase's exit criteria in executable form
-
-#### Scope
-
-Phase 1's exit criteria were met by tests that existed for other reasons plus `T-037`, which was
-written to close the two that had no owner. Phase 2's criteria name things no feature task would
-assert on its own:
-
-- three concurrent downloads with independent accurate progress and an interactive UI (`NFR-001`)
-- hard-killing the app mid-queue and restarting restores the queue with correct states
-- the concurrency limit respected exactly, and lowering it while running drains cleanly
-- a second launch attaches or refuses
-- **no worker process outlives application exit, on both platforms**
-
-**The last one is where this project's scar tissue is.** `T-019` reaps the tree, `T-066` found
-that a virtualenv adds a process level nobody was testing, and `T-072` established that the
-worker's own `parent-watchdog` — not the captured set — is what actually prevents orphans. With N
-workers the question is whether that holds N times, including for the ones that had not started.
-
-#### Acceptance criteria
-
-- One test per exit criterion, each mutation-verified, each stating what it does not cover
-- Orphan checks count actual processes, and exclude `multiprocessing`'s resource tracker by being
-  the tracker rather than by everything else being excluded (`T-019`)
-- Runs on `STARBASE` as well as Linux; a criterion that says "both platforms" is not met by one
-- The evidence table in `ai/IMPLEMENTATION_PLAN.md` §Phase 2 is filled from real runs, and states
-  its limits — building Phase 1's table is what exposed two wrong rows (`P1EXIT-R1`, `P1EXIT-R2`)
-
-#### `T088-R4` — the corrections had a defect of their own
-
-The read-only observer fixed the `disk I/O error` on `windows-latest` — `db.connect()` runs
-`migrate()`, so a polling "reader" was opening a **migrating** connection against a database the
-application under test was writing. But the retry returned `{}` on persistent failure, and:
-
-**`all([])` is `True`.** One missed read would have reported every job terminal, turned `T-115`'s
-strict `xfail` into an `XPASS`, and **announced a repair that had not happened** — the precise
-failure the strict marker was added to prevent. `settled()` and `snapshot()` now require every id
-to be present before they answer, `settled([])` is explicitly `False`, and both are tested directly.
-
-**And the teardown reached only `Popen`.** Four tests ended with `process.kill()`, three of them
-having discarded the reported application pid entirely. Under a Windows virtualenv `Popen` returns
-the *launcher* — `T-066` found that and `T072-R1` is why the handshake reports the application's own
-pid — so those teardowns could leave a composed application, its writer thread and its workers
-running after the test passed. One `reap_application` helper now reaps the captured tree at all four
-sites, and the three-worker test takes its final snapshot **before** teardown rather than racing it.
-
-Writing the test for that helper found something worth keeping: `kill_the_application` reaps the
-process **group** on POSIX, so a child spawned without `isolate_the_application()` takes pytest down
-with it. The first version SIGKILLed its own runner — exit 137, no report at all.
-
-#### The three findings, and what changed
-
-**`T088-R1` (High) — the `T-115` case could not detect its own repair.** It called `pytest.xfail()`
-unconditionally, with no setup and no assertion, and carried no `strict` marker despite this record
-and the plan both saying it was strict. It would have reported `XFAIL` for ever, so the promised
-gate — *fixing it fails the build until the test is inverted* — could never fire. It is now the
-measured five-job reproduction asserting the **wanted** outcome under `@pytest.mark.xfail(strict=True)`,
-so closing `T-115` turns it into an `XPASS` and reddens the build. The assertion deliberately does
-not name which layer admits durable queued intent; that is the design call.
-
-**`T088-R2` — the progress test observed no progress.** It claimed distinct progress and an
-interactive UI while sampling only status dictionaries and terminal file sizes; a mutation dropping
-every live progress update passed it. Renamed to what it does prove — three **real spawned worker
-processes** each writing their own complete file — and the evidence table now cites
-`test_three_concurrent_downloads_show_independent_progress`,
-`test_three_concurrent_downloads_each_keep_their_own_row` and
-`test_the_interface_stays_inside_its_budget_while_three_downloads_run` for the claims it cannot make.
-
-**A second defect, found by chasing `T088-R3`'s fix.** The correction's embedded restart script
-had unescaped newlines inside its settings string, so the child died with a `SyntaxError` before
-`compose()` ran — caught by the reviewer, not by me, because I did not re-run the phase tests after
-writing it.
-
-Checking the sibling launcher for the same mistake turned up **the worse one**: it wrote
-`"[queue]\\nconcurrency = N\\n"`, which lands a *literal backslash-n* in `settings.toml`. That is
-invalid TOML, so `compose()` reported a settings problem and carried on with defaults (`ARC-008`,
-working exactly as designed) — and `settings.py`'s default concurrency is **3**, which is the number
-the test believed it had configured. **`test_the_pool_never_exceeds_the_configured_limit` has never
-tested a configured limit.** It measured the default and passed because the two matched.
-
-Both scripts now receive a settings path the **parent** writes and parses, and the pool test
-configures `POOL_LIMIT = 2` — a value the default cannot produce, so the assertion fails if settings
-are ignored again.
-
-**`T088-R3` — there was no next start.** The test called `JobRepository(...).recover_interrupted()`
-itself while its name, its comment and the evidence table all said the application did. It now
-launches a **real composed application** against the killed database in its own interpreter and
-reads what that start found — including that the interrupted jobs were *offered*, which is the one
-place those rows come from a real kill rather than a seeded database.
-
-#### What it found
-
-**The pool works and no user can reach it.** Measured against a real application, concurrency 3,
-five URLs queued through the real dialog: three ran concurrently and completed, and **the other two
-stayed `queued` with an empty pool** until the run ended. Nothing scans the database for `QUEUED`
-rows; `_fill_free_slots` drains an in-memory list that only the internal path populates; the public
-`start()` raises when full instead of parking; and the dialog starts only the probed job, with Probe
-a manual button covering the first URL alone.
-
-Filed as **`T-115`** and recorded here as a strict `xfail`, so **fixing it fails the build** until
-that test is inverted rather than quietly passing and leaving this file describing a defect as
-behaviour.
-
-This is what the task existed for. Criterion 1 — "three concurrent downloads" — was marked
-*Evidenced* by `T-079`'s own acceptance criterion, and it is: the mechanism is sound. What no
-feature task asks is whether anything drives it.
-
-#### What they cost, measured
-
-**58 s for the file**, of which **45 s is one test** — `test_the_pool_never_exceeds_the_configured_limit`
-holds a fixed sampling window rather than exiting on a condition, because an overshoot *between*
-samples is exactly what it exists to catch. Everything else is under a second of call time.
-
-For scale: `tests/integration` without this file is 2 m 26 s.
-
-*(A note on measuring it: two runs took upwards of half an hour and I spent a while suspecting these
-tests. They were not the cause — I had `pkill`ed a mid-run pytest earlier and left the machine in a
-state that made everything slow. Recorded because the wrong conclusion was one step away, and
-because "my new tests are slow" is a much more comfortable explanation than "I broke my own
-machine".)*
-
-Not marked `slow` and excluded, deliberately: `pyproject.toml`'s default deselects `network` and
-`windows_desktop`, and a third exclusion would mean the phase's exit criteria stop running by
-default — which is how a proof becomes decoration. If the cost is judged too high, the honest fix
-is to shorten the windows and say what that gives up, not to stop running them.
-
-#### Two things the tests had to be careful about
-
-**The rows lead the processes.** `start()` writes `PROBING` through the writer thread and the worker
-spawns after, so three rows can claim to be in flight with an empty process tree — measured at
-t = 0.0 s. A kill test waiting on the rows raced the spawn and made `the_workers_that_must_die` fire
-its own guard, correctly. Waiting on the **processes** is the fix; weakening that guard would have
-been the `T072-R1` mistake for the third time.
-
-**A kill during a probe is not a kill during a download.** Both are "mid-queue" and
-`INTERRUPTED_ON_STARTUP` covers both, but a test that always landed while workers were still
-resolving URLs would never exercise the case a user actually loses — bytes in flight. It now waits
-for one job to reach `RUNNING`, and asserts recovery against the same set the recovery uses.
-
-#### Out of scope
-
-- Performance targets beyond `NFR-001`'s responsiveness
-
----
-
+through `COORD-R12` are eight rounds of this file contradicting itself, which is why **`T-096`**
+exists — but `T-096` gates *status against section*, and `COORD-R11` and `COORD-R12` were both
+prose that contradicted the sections while every status and section agreed. The invariant test
+cannot see that, and this note is written by hand for exactly that reason.)*
 
 ### T-115 — Nothing drains the queue: jobs beyond the limit never start
 
-**Status:** **In Review — complete 2026-08-01.** Five mutations run; all five killed. The strict
-`xfail` that carried this reported **`XPASS(strict)`** the moment the fix landed — the gate firing
-exactly as promised — and was then inverted.
+**Status:** **In Review — `T115-R1` corrected 2026-08-02.** Review returned **changes
+requested**: the probed row was retargeted while every *later* queue position was admitted ahead
+of it, so with a pool of one the second URL started and the head of the queue waited. Add now
+takes **one admission decision** after the retarget settles, probed id first. Three further
+mutations run on the correction; all three killed.
+*(This read "In Review — complete 2026-08-01. Five mutations run; all five killed.")* The strict
+`xfail` that carried this reported **`XPASS(strict)`** the moment the first fix landed — the gate
+firing exactly as promised — and was then inverted.
 *(This read "Proposed — found by `T-088` on 2026-08-01, by measurement".)*
 **Owner:** Implementer
 **Priority:** **High** — `REQ-012` is "a queue", and a queue that never starts is a list
@@ -1932,6 +1776,167 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-088 — Prove the phase: three at once, killed mid-queue, nothing left behind
+
+**Status:** **Complete — Approved at `9e133a6`**, 2026-08-02, after `T088-R4` and `T087-R6`
+were corrected. Five criteria proved against a real composed application in another interpreter;
+the corrected suite passed on hosted Windows and Ubuntu. **It found a High defect that no feature
+task would have surfaced — `T-115`, the queue does not drain** — and the evidence table carries a
+seventh row for it.
+*(This read "In Review — complete 2026-08-01. Four mutations run, all four killed.")*
+*(This read "Proposed — the Phase 2 analogue of `T-037`".)*
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 2
+**Depends on:** `T-078`…`T-087`
+**Relevant context:** `T-037`, `T-019`, `T-073`, `NFR-001`, `ai/TESTING.md` §13
+**Affected surfaces:** `tests/integration/`
+**Risk:** High to omit — it is the phase's exit criteria in executable form
+
+#### Scope
+
+Phase 1's exit criteria were met by tests that existed for other reasons plus `T-037`, which was
+written to close the two that had no owner. Phase 2's criteria name things no feature task would
+assert on its own:
+
+- three concurrent downloads with independent accurate progress and an interactive UI (`NFR-001`)
+- hard-killing the app mid-queue and restarting restores the queue with correct states
+- the concurrency limit respected exactly, and lowering it while running drains cleanly
+- a second launch attaches or refuses
+- **no worker process outlives application exit, on both platforms**
+
+**The last one is where this project's scar tissue is.** `T-019` reaps the tree, `T-066` found
+that a virtualenv adds a process level nobody was testing, and `T-072` established that the
+worker's own `parent-watchdog` — not the captured set — is what actually prevents orphans. With N
+workers the question is whether that holds N times, including for the ones that had not started.
+
+#### Acceptance criteria
+
+- One test per exit criterion, each mutation-verified, each stating what it does not cover
+- Orphan checks count actual processes, and exclude `multiprocessing`'s resource tracker by being
+  the tracker rather than by everything else being excluded (`T-019`)
+- Runs on `STARBASE` as well as Linux; a criterion that says "both platforms" is not met by one
+- The evidence table in `ai/IMPLEMENTATION_PLAN.md` §Phase 2 is filled from real runs, and states
+  its limits — building Phase 1's table is what exposed two wrong rows (`P1EXIT-R1`, `P1EXIT-R2`)
+
+#### `T088-R4` — the corrections had a defect of their own
+
+The read-only observer fixed the `disk I/O error` on `windows-latest` — `db.connect()` runs
+`migrate()`, so a polling "reader" was opening a **migrating** connection against a database the
+application under test was writing. But the retry returned `{}` on persistent failure, and:
+
+**`all([])` is `True`.** One missed read would have reported every job terminal, turned `T-115`'s
+strict `xfail` into an `XPASS`, and **announced a repair that had not happened** — the precise
+failure the strict marker was added to prevent. `settled()` and `snapshot()` now require every id
+to be present before they answer, `settled([])` is explicitly `False`, and both are tested directly.
+
+**And the teardown reached only `Popen`.** Four tests ended with `process.kill()`, three of them
+having discarded the reported application pid entirely. Under a Windows virtualenv `Popen` returns
+the *launcher* — `T-066` found that and `T072-R1` is why the handshake reports the application's own
+pid — so those teardowns could leave a composed application, its writer thread and its workers
+running after the test passed. One `reap_application` helper now reaps the captured tree at all four
+sites, and the three-worker test takes its final snapshot **before** teardown rather than racing it.
+
+Writing the test for that helper found something worth keeping: `kill_the_application` reaps the
+process **group** on POSIX, so a child spawned without `isolate_the_application()` takes pytest down
+with it. The first version SIGKILLed its own runner — exit 137, no report at all.
+
+#### The three findings, and what changed
+
+**`T088-R1` (High) — the `T-115` case could not detect its own repair.** It called `pytest.xfail()`
+unconditionally, with no setup and no assertion, and carried no `strict` marker despite this record
+and the plan both saying it was strict. It would have reported `XFAIL` for ever, so the promised
+gate — *fixing it fails the build until the test is inverted* — could never fire. It is now the
+measured five-job reproduction asserting the **wanted** outcome under `@pytest.mark.xfail(strict=True)`,
+so closing `T-115` turns it into an `XPASS` and reddens the build. The assertion deliberately does
+not name which layer admits durable queued intent; that is the design call.
+
+**`T088-R2` — the progress test observed no progress.** It claimed distinct progress and an
+interactive UI while sampling only status dictionaries and terminal file sizes; a mutation dropping
+every live progress update passed it. Renamed to what it does prove — three **real spawned worker
+processes** each writing their own complete file — and the evidence table now cites
+`test_three_concurrent_downloads_show_independent_progress`,
+`test_three_concurrent_downloads_each_keep_their_own_row` and
+`test_the_interface_stays_inside_its_budget_while_three_downloads_run` for the claims it cannot make.
+
+**A second defect, found by chasing `T088-R3`'s fix.** The correction's embedded restart script
+had unescaped newlines inside its settings string, so the child died with a `SyntaxError` before
+`compose()` ran — caught by the reviewer, not by me, because I did not re-run the phase tests after
+writing it.
+
+Checking the sibling launcher for the same mistake turned up **the worse one**: it wrote
+`"[queue]\\nconcurrency = N\\n"`, which lands a *literal backslash-n* in `settings.toml`. That is
+invalid TOML, so `compose()` reported a settings problem and carried on with defaults (`ARC-008`,
+working exactly as designed) — and `settings.py`'s default concurrency is **3**, which is the number
+the test believed it had configured. **`test_the_pool_never_exceeds_the_configured_limit` has never
+tested a configured limit.** It measured the default and passed because the two matched.
+
+Both scripts now receive a settings path the **parent** writes and parses, and the pool test
+configures `POOL_LIMIT = 2` — a value the default cannot produce, so the assertion fails if settings
+are ignored again.
+
+**`T088-R3` — there was no next start.** The test called `JobRepository(...).recover_interrupted()`
+itself while its name, its comment and the evidence table all said the application did. It now
+launches a **real composed application** against the killed database in its own interpreter and
+reads what that start found — including that the interrupted jobs were *offered*, which is the one
+place those rows come from a real kill rather than a seeded database.
+
+#### What it found
+
+**The pool works and no user can reach it.** Measured against a real application, concurrency 3,
+five URLs queued through the real dialog: three ran concurrently and completed, and **the other two
+stayed `queued` with an empty pool** until the run ended. Nothing scans the database for `QUEUED`
+rows; `_fill_free_slots` drains an in-memory list that only the internal path populates; the public
+`start()` raises when full instead of parking; and the dialog starts only the probed job, with Probe
+a manual button covering the first URL alone.
+
+Filed as **`T-115`** and recorded here as a strict `xfail`, so **fixing it fails the build** until
+that test is inverted rather than quietly passing and leaving this file describing a defect as
+behaviour.
+
+This is what the task existed for. Criterion 1 — "three concurrent downloads" — was marked
+*Evidenced* by `T-079`'s own acceptance criterion, and it is: the mechanism is sound. What no
+feature task asks is whether anything drives it.
+
+#### What they cost, measured
+
+**58 s for the file**, of which **45 s is one test** — `test_the_pool_never_exceeds_the_configured_limit`
+holds a fixed sampling window rather than exiting on a condition, because an overshoot *between*
+samples is exactly what it exists to catch. Everything else is under a second of call time.
+
+For scale: `tests/integration` without this file is 2 m 26 s.
+
+*(A note on measuring it: two runs took upwards of half an hour and I spent a while suspecting these
+tests. They were not the cause — I had `pkill`ed a mid-run pytest earlier and left the machine in a
+state that made everything slow. Recorded because the wrong conclusion was one step away, and
+because "my new tests are slow" is a much more comfortable explanation than "I broke my own
+machine".)*
+
+Not marked `slow` and excluded, deliberately: `pyproject.toml`'s default deselects `network` and
+`windows_desktop`, and a third exclusion would mean the phase's exit criteria stop running by
+default — which is how a proof becomes decoration. If the cost is judged too high, the honest fix
+is to shorten the windows and say what that gives up, not to stop running them.
+
+#### Two things the tests had to be careful about
+
+**The rows lead the processes.** `start()` writes `PROBING` through the writer thread and the worker
+spawns after, so three rows can claim to be in flight with an empty process tree — measured at
+t = 0.0 s. A kill test waiting on the rows raced the spawn and made `the_workers_that_must_die` fire
+its own guard, correctly. Waiting on the **processes** is the fix; weakening that guard would have
+been the `T072-R1` mistake for the third time.
+
+**A kill during a probe is not a kill during a download.** Both are "mid-queue" and
+`INTERRUPTED_ON_STARTUP` covers both, but a test that always landed while workers were still
+resolving URLs would never exercise the case a user actually loses — bytes in flight. It now waits
+for one job to reach `RUNNING`, and asserts recovery against the same set the recovery uses.
+
+#### Out of scope
+
+- Performance targets beyond `NFR-001`'s responsiveness
+
+---
+
 
 ### T-086 — Open a completed file, or reveal it in the file manager
 

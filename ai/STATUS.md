@@ -5,8 +5,8 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-01
-**Last verified against repository:** 2026-08-01
+**Last updated:** 2026-08-02
+**Last verified against repository:** 2026-08-02
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -16,17 +16,21 @@
 Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLAN-R2` at `f858da9`,
 `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
-**Every Phase 2 feature deliverable is now written.** Nine are approved, four await review, and
-`T-088` — the phase's own proof — is the only one not started.
+**Every Phase 2 deliverable is approved except `T-115`, which awaits a re-verdict.** Phase 2 exit
+criterion 6 — every deliverable reviewed — is the only one not met.
 
 - **Approved:** `T-078`, `T-079`, `T-080`, `T-081`, `T-046`, `T-083`, `T-085`, `T-087`, `T-102`,
   plus the supporting `T-053`, `T-099`, `T-101`, `T-103`.
 - **Approved 2026-08-01:** `T-100`, `T-082` (first pass, no follow-up), then `T-084` and `T-086`
   on re-review after their Critical and High were corrected.
-- **Open:** `T-088`, on `T088-R4` — the corrections had a defect of their own, now fixed.
+- **Approved 2026-08-02:** `T-088` at `9e133a6`, the phase's own proof, once `T088-R4` and
+  `T087-R6` were corrected and the suite passed on hosted Windows and Ubuntu.
+- **In review:** `T-115`. Returned **changes requested** for `T115-R1` (High) — the probed row was
+  retargeted while every later queue position was admitted ahead of it, so with a pool of one the
+  second URL started and the head of the queue waited. Corrected 2026-08-02: Add takes one
+  admission decision after the retarget settles, probed id first.
 - **Reopened and corrected:** `T-087`'s killed-holder test (`T087-R6`). The guard is unchanged and
   its approval stands; the test was killing a launcher shim and leaving the real holder alive.
-- **`T-088` is written**, and it found the defect below.
 - **Blocked on `STARBASE`, which is offline:** `T-092` and `T-074`. Neither gates the phase.
 
 ## **`T-115` is fixed — the queue drains, and the gate fired to say so**
@@ -39,6 +43,14 @@ primitive already existed — `_start_when_free` — and had no public door.
 Two callers cover both halves: the **add dialog** admits every job it persisted rather than only
 the probed one, and **`compose()`** admits every durable `QUEUED` row at startup, which is what a
 dialog-only fix would have missed since `_waiting` dies with the process.
+
+**`T115-R1` (High) corrected the dialog's half on 2026-08-02.** The first version admitted the
+fresh rows immediately and left the probed row until its retarget had settled, so a later
+`queue_position` could take a slot the head of the queue was still waiting for — with a pool of
+one, probing the first URL and adding it alongside a second started the *second*. Add now takes
+**one admission decision**, after the retarget, probed id first; a refused retarget still admits
+the rest of the paste rather than stranding it. Insertion order is the durable order, because
+`queue_position` is allocated `MAX + 1` at insert and the probed job was submitted first.
 
 **The `QUEUED` list is read after recovery**, so nothing that was in flight is admitted. Starting
 those unattended was `T081-R4`, and this ordering is the only thing preventing it.
@@ -177,7 +189,12 @@ mistaken a non-failure for a failure once.
   leakage, not a defect in the control. It predates this session's work: `test_composition.py`
   passes complete, including the `T-082` test added to it.
 
-## **`T-088` found that nothing drains the queue — `T-115`, High, and it blocks the exit**
+## How `T-115` was found — historical, kept because the measurement is the evidence
+
+**This section is a record, not current state.** `T-115` was fixed on 2026-08-01 and corrected for
+`T115-R1` on 2026-08-02; see the snapshot above for where it stands. `COORD-R12` is why the
+heading says so: this read *"and it blocks the exit"* while the snapshot above said the same task
+was fixed, and a reader had no way to tell which was current.
 
 Measured against a real composed application, concurrency 3, five URLs added through the real
 dialog: **three ran concurrently and completed; the other two stayed `queued` with an empty pool**
