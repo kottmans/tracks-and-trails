@@ -78,8 +78,8 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**Two tasks await a verdict as of 2026-08-02** — `T-116`, the first of the UI rework, and
-`T-115`, returned for `T115-R1` and corrected the same day. This note is rebuilt from the section rather than edited beside it. It said **five**
+*(**Three tasks await a verdict as of 2026-08-02** — `T-117` and `T-116`, the first two of the
+UI rework, and `T-115`, returned for `T115-R1` and corrected the same day. This note is rebuilt from the section rather than edited beside it. It said **five**
 — `T-080`, `T-081`, `T-046`, `T-053` and `T-083` — for the whole time after all five were approved
 and `T-088` and `T-115` had taken their place, which is `COORD-R12`. Before that it said **four**,
 naming `T-079` first, between the re-review recording **Approved** and its correction; then
@@ -90,6 +90,52 @@ through `COORD-R12` are eight rounds of this file contradicting itself, which is
 exists — but `T-096` gates *status against section*, and `COORD-R11` and `COORD-R12` were both
 prose that contradicted the sections while every status and section agreed. The invariant test
 cannot see that, and this note is written by hand for exactly that reason.)*
+
+### T-117 — Persist the thumbnail URL so a queued row can show one
+
+**Status:** **In Review — complete 2026-08-02.** Six mutations run; all six killed, two of them
+against the migration itself. The frozen-fixture gate `T014-R4` left behind did its job: adding a
+schema version fails the build until that version's bytes are captured, which is the only moment
+they can be.
+*(This read "Proposed — UI rework decomposition, 2026-08-02".)*
+**Owner:** Implementer
+**Priority:** Medium — small, and `T-118` and `T-119` both need it
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `REQ-002`, `DAT-001`, `core/models.py:314` (`MediaInfo.thumbnail_url`),
+`persistence/migrations/`, `persistence/repositories.py`
+**Affected surfaces:** `core/models.py`, `persistence/` (schema, migration, repository)
+**Risk:** **Medium, and not for its size** — this is the **first migration after the initial
+schema**. The machinery has never run a second one against a database with rows in it
+
+#### Scope
+
+`MediaInfo` carries `thumbnail_url`; `Job` does not, and neither does the `jobs` table. A probe's
+thumbnail therefore lives exactly as long as the dialog that asked for it. Every row in the queue
+that wants to show a picture needs the URL to have survived the probe.
+
+`persistence/migrations/` holds `0001_initial.sql` and nothing else. This adds `0002`, which makes
+the migration path itself part of the task rather than an assumption.
+
+#### Acceptance criteria
+
+- `Job` carries an optional thumbnail URL, validated as the other optional text fields are
+- A migration adds the column, and a test **migrates a database populated under `0001`** and asserts
+  every existing row survives with its other columns intact
+- Migrating twice is a no-op (`PRAGMA user_version` already guarantees this; assert it here, where a
+  second migration exists to prove it against)
+- A probe result writes the URL through the same route that writes the rest of its media fields —
+  not a second write that could half-land
+- A job whose probe reported no thumbnail stores `NULL`, and that is distinguishable from a job that
+  has not been probed
+- A database at `0001` opened by this version is migrated on open, not refused
+
+#### Out of scope
+
+- Fetching or caching the bytes (`T-119`)
+- Any history-table column. `T-085`'s records are separate and unchanged
+
+---
 
 ### T-116 — A metadata lane: probing stops competing with downloads
 
@@ -789,48 +835,6 @@ seven plan deliverables, so its size was an estimate from prose rather than from
 broken down. Phase 1 listed nine deliverables and produced fifty tasks; these eight are the
 starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
 it.)*
-
-### T-117 — Persist the thumbnail URL so a queued row can show one
-
-**Status:** Proposed — **UI rework decomposition, 2026-08-02.**
-**Owner:** Implementer
-**Priority:** Medium — small, and `T-118` and `T-119` both need it
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `REQ-002`, `DAT-001`, `core/models.py:314` (`MediaInfo.thumbnail_url`),
-`persistence/migrations/`, `persistence/repositories.py`
-**Affected surfaces:** `core/models.py`, `persistence/` (schema, migration, repository)
-**Risk:** **Medium, and not for its size** — this is the **first migration after the initial
-schema**. The machinery has never run a second one against a database with rows in it
-
-#### Scope
-
-`MediaInfo` carries `thumbnail_url`; `Job` does not, and neither does the `jobs` table. A probe's
-thumbnail therefore lives exactly as long as the dialog that asked for it. Every row in the queue
-that wants to show a picture needs the URL to have survived the probe.
-
-`persistence/migrations/` holds `0001_initial.sql` and nothing else. This adds `0002`, which makes
-the migration path itself part of the task rather than an assumption.
-
-#### Acceptance criteria
-
-- `Job` carries an optional thumbnail URL, validated as the other optional text fields are
-- A migration adds the column, and a test **migrates a database populated under `0001`** and asserts
-  every existing row survives with its other columns intact
-- Migrating twice is a no-op (`PRAGMA user_version` already guarantees this; assert it here, where a
-  second migration exists to prove it against)
-- A probe result writes the URL through the same route that writes the rest of its media fields —
-  not a second write that could half-land
-- A job whose probe reported no thumbnail stores `NULL`, and that is distinguishable from a job that
-  has not been probed
-- A database at `0001` opened by this version is migrated on open, not refused
-
-#### Out of scope
-
-- Fetching or caching the bytes (`T-119`)
-- Any history-table column. `T-085`'s records are separate and unchanged
-
----
 
 ### T-118 — The add dialog becomes a staging list
 

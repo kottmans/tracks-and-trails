@@ -472,6 +472,36 @@ def test_required_text_fields_raise_type_error_for_the_wrong_type(
         model(**kwargs)
 
 
+@pytest.mark.parametrize(
+    ("model", "field_name"),
+    [
+        (Job, "title"),
+        (Job, "thumbnail_url"),
+        (Job, "output_path"),
+        (Job, "error_message"),
+        (MediaInfo, "thumbnail_url"),
+    ],
+)
+def test_optional_text_fields_accept_none_and_refuse_the_wrong_type(
+    request_: DownloadRequest, model: type, field_name: str
+) -> None:
+    """`T041-R4`'s contract for the fields that are genuinely allowed to be absent.
+
+    `T-117` added `Job.thumbnail_url` and it goes through the same validator as the three optional
+    text fields already here, rather than a check of its own. Listed explicitly rather than
+    derived from the annotations: a field that acquired `str | None` by accident would be swept
+    into a derived list and validated by default, which is the opposite of noticing it.
+    """
+    kwargs = dict(valid_kwargs(request_)[model])
+
+    kwargs[field_name] = None
+    assert getattr(model(**kwargs), field_name) is None
+
+    kwargs[field_name] = 7
+    with pytest.raises(TypeError):
+        model(**kwargs)
+
+
 def test_media_info_rejects_raw_yt_dlp_format_dicts() -> None:
     """`T011-R8`'s exact reproduction, kept as a regression test.
 

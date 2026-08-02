@@ -2125,8 +2125,14 @@ class DownloadManager(QObject):
                 job_id,
                 lambda current: self._settled(
                     current,
+                    # **One write carries every field the probe resolved** (`T-117`). The title and
+                    # the thumbnail URL arrive in the same `Probed` message and land in the same
+                    # revision, so there is no instant where a row has been told what it is called
+                    # but not what it looks like — and no second write that could fail on its own.
                     lambda job: replace(
-                        self._advance(job, JobStatus.READY), title=outcome.media.title
+                        self._advance(job, JobStatus.READY),
+                        title=outcome.media.title,
+                        thumbnail_url=outcome.media.thumbnail_url,
                     ),
                 ),
                 then=lambda: self.media_probed.emit(job_id, outcome.media),

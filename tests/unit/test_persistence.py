@@ -391,6 +391,66 @@ def test_migrating_twice_applies_nothing_the_second_time(tmp_path: Path) -> None
     connection.close()
 
 
+def test_a_version_1_database_is_migrated_when_it_is_opened(tmp_path: Path) -> None:
+    """`T-117`: an existing library opens and gains the column, rather than being refused.
+
+    The path a user actually takes on upgrade. `connect()` runs the migrator, so the assertion is
+    that opening a v1 database leaves it at the latest version **and readable through the current
+    repository** — a migration that ran but produced rows the model cannot build would still be a
+    library the user could not open.
+    """
+    database = tmp_path / "from_v1.sqlite3"
+    raw = sqlite3.connect(database)
+    raw.executescript((HISTORICAL_FIXTURES / "v1.sql").read_text(encoding="utf-8"))
+    raw.commit()
+    raw.close()
+
+    connection = db.connect(database)
+
+    assert db.schema_version(connection) == db.latest_version()
+    jobs = {job.id: job for job in JobRepository(connection).all_jobs()}
+    assert set(jobs) == {"v1-queued", "v1-failed"}, "the upgrade lost the user's queue"
+    assert jobs["v1-queued"].title == "A v1-era job", "an unrelated column changed"
+    connection.close()
+
+
+def test_a_job_written_before_the_column_existed_reads_as_having_no_thumbnail(
+    tmp_path: Path,
+) -> None:
+    """`T-117`: no backfill, and `None` is the honest value for a row nobody asked.
+
+    A v1 row was never probed for a thumbnail, so inventing one — a placeholder address, an empty
+    string — would be a claim the probe never made. `None` is what `T-119` draws its placeholder
+    for, and it is what a probed job that found nothing stores too; `status` is what tells those
+    two apart.
+    """
+    database = tmp_path / "from_v1.sqlite3"
+    raw = sqlite3.connect(database)
+    raw.executescript((HISTORICAL_FIXTURES / "v1.sql").read_text(encoding="utf-8"))
+    raw.commit()
+    raw.close()
+
+    connection = db.connect(database)
+
+    assert all(job.thumbnail_url is None for job in JobRepository(connection).all_jobs())
+    connection.close()
+
+
+def test_a_thumbnail_url_round_trips_through_the_database(repository: JobRepository) -> None:
+    """`T-117`: the column is wired through the mapping in both directions.
+
+    Both states, because a mapping that wrote the value and read back a constant would pass a
+    test that only ever stored one of them.
+    """
+    with_picture = a_job(title="Has one", thumbnail_url="https://example.invalid/thumb.jpg")
+    without = a_job("second", title="Has none")
+    repository.add(with_picture)
+    repository.add(without)
+
+    assert repository.get(with_picture.id) == with_picture
+    assert repository.get("second") == without
+
+
 # --- storage and the durable queue (REQ-012) -------------------------------------------------
 
 

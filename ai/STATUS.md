@@ -34,10 +34,15 @@ criterion 6 — every deliverable reviewed — is the only one not met.
 - **Blocked on `STARBASE`, which is offline:** `T-092` and `T-074`. Neither gates the phase.
 
 **The UI rework has started.** `UX-003` is accepted — nothing enters the queue unprobed — and
-`T-116` through `T-120` are filed. `T-116` is **in review**: probes and downloads now draw on
-separate lanes, so pasting URLs no longer takes the slots a running transfer is using. It came
-first because `UX-003` makes probing mandatory, and mandatory probing through one budget would
-have stalled downloads in flight every time somebody pressed Add.
+`T-116` through `T-120` are filed. Two are **in review**:
+
+- **`T-116`** — probes and downloads now draw on separate lanes, so pasting URLs no longer takes
+  the slots a running transfer is using. It came first because `UX-003` makes probing mandatory,
+  and mandatory probing through one budget would have stalled downloads in flight every time
+  somebody pressed Add.
+- **`T-117`** — `jobs.thumbnail_url`, and **the first migration after the initial schema**. The
+  runner had never applied a second script to a database with rows in it; it does now, and
+  `T014-R4`'s frozen-fixture gate refused the build until v2's own bytes were captured.
 
 ## **`T-115` is fixed — the queue drains, and the gate fired to say so**
 

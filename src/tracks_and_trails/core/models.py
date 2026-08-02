@@ -504,6 +504,18 @@ class Job:
     bytes_done: int = 0
     bytes_total: int | None = None
 
+    #: Where the site says this job's thumbnail is (`T-117`, `REQ-002`).
+    #:
+    #: **A URL, not bytes.** `MediaInfo` has carried one since `T-016`; what it did not have was
+    #: anywhere to live once the dialog that fetched it closed, so a queued row could show a title
+    #: and never a picture. Persisted with the rest of the probe's result rather than fetched
+    #: again, because the fetch is `T-119`'s problem and the address is this one's.
+    #:
+    #: `None` means two different things and the difference is legible from `status`: a job that
+    #: has not been probed has nothing to say yet, and one that has been probed is saying the site
+    #: offered no thumbnail. Neither is an error, and neither should be drawn as one.
+    thumbnail_url: str | None = None
+
     #: Failure is stored as two fields rather than a `FailureDetail`, mirroring the columns in
     #: `ARCHITECTURE.md` §5 so the persistence layer (`T-014`) is a direct mapping. The
     #: verbatim message requirement (`NFR-006`) applies here just as strongly.
@@ -527,6 +539,7 @@ class Job:
         _require_enum("Job", "status", self.status, JobStatus)
         _require_optional_enum("Job", "error_kind", self.error_kind, ErrorKind)
         _require_optional_text("Job", "title", self.title)
+        _require_optional_text("Job", "thumbnail_url", self.thumbnail_url)
         _require_optional_text("Job", "output_path", self.output_path)
         _require_optional_text("Job", "error_message", self.error_message)
         _require_optional_count("Job", "queue_position", self.queue_position)

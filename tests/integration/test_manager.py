@@ -5837,3 +5837,99 @@ def test_shutdown_drains_both_lanes(tmp_path: Path, spin: Callable[..., bool]) -
     assert spin(lambda: download.is_idle, timeout=60)
     assert download._occupant_ids(SessionKind.DOWNLOAD) == ()
     assert download._occupant_ids(SessionKind.PROBE) == ()
+
+
+# --- T-117: the probe's thumbnail URL reaches the row -------------------------------------------
+
+
+def child_probing_with_a_thumbnail(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """A probe that resolves a title **and** an address for the picture."""
+    from tracks_and_trails.core.models import MediaInfo
+
+    queue.put(
+        Probed(
+            job_id=job_id,
+            media=MediaInfo(
+                url="https://example.invalid/x",
+                title="Trail running in the Cairngorms",
+                thumbnail_url="https://example.invalid/thumb.jpg",
+            ),
+        )
+    )
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+    queue.close()
+    queue.join_thread()
+
+
+def child_probing_without_a_thumbnail(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """A probe against a site that offers no thumbnail at all."""
+    from tracks_and_trails.core.models import MediaInfo
+
+    queue.put(
+        Probed(
+            job_id=job_id,
+            media=MediaInfo(url="https://example.invalid/x", title="No picture here"),
+        )
+    )
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+    queue.close()
+    queue.join_thread()
+
+
+def test_a_probe_stores_the_thumbnail_url_in_the_same_revision_as_the_title(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-117`: the address survives the dialog that asked for it.
+
+    `MediaInfo` has carried a thumbnail URL since `T-016` and nothing stored it, so a queued row
+    could show a title and never a picture. Both fields arrive in one `Probed` message and are
+    written in one revision — asserted on the *number of writes* as well as their content, because
+    a second write for the thumbnail could fail on its own and leave a row that knows what it is
+    called but not what it looks like.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+
+    download = DownloadManager(repository, entry_point=child_probing_with_a_thumbnail)
+    try:
+        download.start("job-1", SessionKind.PROBE)
+        assert spin(lambda: repository.jobs["job-1"].status is JobStatus.READY, timeout=60)
+
+        stored = repository.jobs["job-1"]
+        assert stored.title == "Trail running in the Cairngorms"
+        assert stored.thumbnail_url == "https://example.invalid/thumb.jpg"
+        assert repository.statuses("job-1") == [JobStatus.PROBING, JobStatus.READY], (
+            "the thumbnail took a revision of its own, which is a write that can half-land"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_probe_that_found_no_thumbnail_stores_null(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-117`: "the site offered none" is an answer, and it is recorded as one.
+
+    The row is `READY`, so it *has* been probed — which is what distinguishes this `None` from the
+    `None` an unprobed job carries. `T-119` draws the placeholder either way and must never draw
+    an error: a missing picture is not a failed download.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+
+    download = DownloadManager(repository, entry_point=child_probing_without_a_thumbnail)
+    try:
+        download.start("job-1", SessionKind.PROBE)
+        assert spin(lambda: repository.jobs["job-1"].status is JobStatus.READY, timeout=60)
+
+        stored = repository.jobs["job-1"]
+        assert stored.thumbnail_url is None
+        assert stored.title == "No picture here", "a probe with no thumbnail lost its title too"
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
