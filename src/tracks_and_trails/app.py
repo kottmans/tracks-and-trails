@@ -152,7 +152,7 @@ def run(argv: Sequence[str]) -> int:
 
 
 def queued_job_ids(repository: JobRepository) -> list[str]:
-    """The ids of jobs left durably `QUEUED`, and **only** those (`T-115`).
+    """The ids of jobs waiting to be downloaded, and **only** those (`T-115`, `UX-003`).
 
     A named function rather than a comprehension inside `compose()` so the filter can be asserted
     directly. Without one, "admit everything" is invisible in a test: the state machine refuses
@@ -163,11 +163,24 @@ def queued_job_ids(repository: JobRepository) -> list[str]:
     restarting unattended is exactly the shape of rule that finding was about. The filter is the
     guarantee; the state machine is not a substitute for it.
 
+    **`READY` is here because of `UX-003`, and leaving it out was `T-115` all over again.** This
+    read `QUEUED` only, which was every waiting job while probing was a button nobody pressed.
+    Now a job is probed *before* it is queued, so what a previous run leaves behind is `READY` —
+    and a startup that admitted only `QUEUED` would have found nothing and drained nothing. The
+    phase proof caught it: `test_a_queue_left_by_a_previous_run_starts_on_the_next_launch` found
+    the queue it was handed was `READY` rows.
+
+    Both are safe for the same reason, and it is not that they look similar: `ARC-004` starts a
+    session from either, recovery has already moved everything that was *in flight* to `FAILED`,
+    and neither status can be reached by a job that a worker was holding when the application
+    died. `RUNNING` is absent for exactly that reason and stays absent.
+
     Read **after** `recover_interrupted()`, so nothing that was in flight is in this list.
     """
     from tracks_and_trails.core.job_state import JobStatus
 
-    return [job.id for job in repository.all_jobs() if job.status is JobStatus.QUEUED]
+    waiting = (JobStatus.QUEUED, JobStatus.READY)
+    return [job.id for job in repository.all_jobs() if job.status in waiting]
 
 
 def default_output_directory() -> Path:

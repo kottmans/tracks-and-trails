@@ -43,6 +43,27 @@ criterion 6 — every deliverable reviewed — is the only one not met.
 - **`T-117`** — `jobs.thumbnail_url`, and **the first migration after the initial schema**. The
   runner had never applied a second script to a database with rows in it; it does now, and
   `T014-R4`'s frozen-fixture gate refused the build until v2's own bytes were captured.
+- **`T-118`** — the add dialog is a staging list. Pasting resolves every line and Add commits what
+  resolved; the Probe button is gone. `ui/staging.py` holds the state machine, Qt-free.
+
+## What `T-118` found in code it did not write
+
+Six, and only two by reading the diff. Listed because the pattern matters more than the fixes:
+
+1. **`T-115` came back as `READY`.** A job is probed before it is queued, so a previous run leaves
+   `READY` rows and startup admitted `QUEUED` only — it would have drained nothing. **The phase
+   proof caught it.**
+2. **A paused queue refused to read URLs.** `start()` has admitted a probe since `T080-R1`;
+   `admit()` never had the rule. **The phase proof caught it by hanging.**
+3. **`done()` disposed of the wrong set** — "never committable" excludes a `READY` row nobody
+   committed, which is the case that looks like success and leaves a download the user never added.
+4. **`bytes_total` was never persisted for a pre-probed download.** It is written only by a message
+   that *moves* a stage, and a `READY` job is moved to `RUNNING` by `start()` before any progress
+   arrives. Every download would have shown an unknown size.
+5. **A Windows-only focus-chain table still encoded the old rule.** Invisible on Linux; **caught by
+   `mypy --platform win32`**, which type-checks tests.
+6. **Admitted rows claimed to be reading.** A paste of five hundred showed five hundred rows saying
+   "Reading" when four were. Found by a mutation, fixed with a `WAITING` state.
 
 ## **`T-115` is fixed — the queue drains, and the gate fired to say so**
 

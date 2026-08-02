@@ -879,10 +879,26 @@ def test_the_detector_still_ignores_the_resource_tracker(existing_children: set[
     being excluded too.
     """
     mp.get_context("spawn").Event()  # starts the tracker if nothing else has
+
+    def is_tracker(process: psutil.Process) -> bool:
+        """Whether `process` is the resource tracker, tolerating one that is no longer readable.
+
+        **`cmdline()` raises on a zombie**, and a zombie is an ordinary transient state: a child
+        that has exited and whose parent has not collected it yet. This preamble read every child
+        unguarded, which was harmless while the suite spawned a worker at a time and became a
+        reliable failure once `T-118` gave every pasted URL a probe. `worker_processes` — the
+        helper this test is *about* — has skipped zombies since it was written; the gap was here,
+        in the question this test asks before it starts.
+        """
+        try:
+            return RESOURCE_TRACKER_MARKER in " ".join(process.cmdline())
+        except psutil.NoSuchProcess, psutil.ZombieProcess, psutil.AccessDenied:
+            return False
+
     trackers = [
         process
         for process in psutil.Process(os.getpid()).children(recursive=True)
-        if RESOURCE_TRACKER_MARKER in " ".join(process.cmdline())
+        if is_tracker(process)
     ]
     if not trackers:  # pragma: no cover - it exists on both supported platforms
         pytest.skip("no resource tracker is running, so there is nothing to exclude")
@@ -5594,27 +5610,30 @@ def test_a_parked_probe_still_resumes_as_a_probe(tmp_path: Path, spin: Callable[
     Found by mutation: replacing the recorded-kind lookup with a plain `DOWNLOAD` survived the
     whole battery, because every existing test exercised the immediate path.
 
-    **Parked behind pause rather than behind a full pool** (`T-116`). It used to hold the single
-    download slot with a running download, which parked a probe only while both drew on one
-    budget; separate lanes mean a saturated download lane no longer touches a probe at all —
-    `test_a_saturated_download_lane_no_longer_parks_a_probe` is where that is asserted. Pause parks
-    every kind (`UX-001`) and `resume()` drains through the same `_fill_free_slots`, so the claim
-    under test is unchanged and its trigger is still deterministic.
+    **Parked behind a full probe lane** (`T-116`). It used to hold the single *download* slot,
+    which parked a probe only while both drew on one budget. A version between the two parked it
+    behind **pause**, which stopped working when pause became kind-aware — `UX-003` needs a paused
+    queue to keep reading URLs, so pause parks downloads and admits probes. The lane is the only
+    thing left that parks a probe, which is as it should be.
     """
     repository = FakeRepository()
-    queued(repository, "job-1", directory=tmp_path)
+    queued(repository, "holder", "job-1", directory=tmp_path)
 
-    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download = DownloadManager(
+        repository, concurrency=3, probe_concurrency=1, entry_point=child_downloading_forever
+    )
     try:
-        download.pause()
+        download.start("holder", SessionKind.PROBE)
+        assert spin(lambda: "holder" in download._occupant_ids(SessionKind.PROBE), timeout=60)
 
-        # A probe deferred, exactly as a retried probe would be.
         download._start_when_free("job-1", SessionKind.PROBE)
-        assert download._waiting == ["job-1"], "the probe was not parked"
+        assert download._waiting == ["job-1"], "the probe was not parked behind the full lane"
 
-        download.resume()
+        download.cancel("holder")
 
-        assert "job-1" in download._occupant_ids(), "the parked probe never started"
+        assert spin(lambda: "job-1" in download._sessions, timeout=60), (
+            "the parked probe never started once the lane freed"
+        )
         assert download._sessions["job-1"].kind is SessionKind.PROBE, (
             f"the parked probe resumed as {download._sessions['job-1'].kind.value}; a slot opening "
             "must not change what operation the user asked for"
@@ -5744,36 +5763,82 @@ def test_a_waiting_download_does_not_hold_up_a_waiting_probe(
 ) -> None:
     """`T-116`: the fill loop takes the next job it *can* start, not the next job.
 
-    The download lane is full and a download waits at the head of the queue. A probe behind it must
-    still start, because nothing about the download's lane says anything about the probe's. The
-    loop used to stop at the first job it could not start — correct with one budget, and with two
-    it makes a probe wait for a download to finish all over again.
+    Both lanes are saturated and both a download and a probe are waiting, with the **download at
+    the lower queue position**. Freeing the probe lane must start the probe, stepping over a
+    download whose own lane is still full. The loop used to stop at the first job it could not
+    start — correct with one budget, and with two it makes a probe wait for a download to finish
+    all over again.
 
-    **Both are parked first, and `resume()` is what runs the loop.** An earlier version admitted
-    the probe while the manager was running, which starts it directly through `_start_when_free`
-    and never reaches `_fill_free_slots` at all — so it passed with the loop's filter removed,
-    proving something other than what it says. Pause parks every kind (`UX-001`), which is how
-    both jobs are on the waiting list when the loop finally runs.
+    An earlier version parked both behind **pause** and resumed. That stopped proving anything
+    when pause became kind-aware for `UX-003`: a paused queue admits probes, so the probe never
+    reached the waiting list and the fill loop was never the thing that started it. Saturating the
+    lane is the only way to park a probe, and therefore the only way to test this.
     """
     repository = FakeRepository()
-    queued(repository, "holder", "waiting-download", "job-probe", directory=tmp_path)
+    queued(
+        repository,
+        "holder-download",
+        "holder-probe",
+        "waiting-download",
+        "job-probe",
+        directory=tmp_path,
+    )
 
-    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    download = DownloadManager(
+        repository, concurrency=1, probe_concurrency=1, entry_point=child_downloading_forever
+    )
     try:
-        download.start("holder")
-        assert spin(lambda: "holder" in download._occupant_ids(), timeout=60)
+        download.start("holder-download")
+        download.start("holder-probe", SessionKind.PROBE)
+        assert spin(lambda: len(download._occupant_ids()) == 2, timeout=60)
 
-        download.pause()
         download.admit("waiting-download")
         download.admit("job-probe", SessionKind.PROBE)
         assert download._waiting == ["waiting-download", "job-probe"], "both should be parked"
 
-        download.resume()
+        download.cancel("holder-probe")
 
-        assert download._waiting == ["waiting-download"], (
+        assert spin(lambda: "job-probe" in download._sessions, timeout=60), (
             "the probe was stuck behind a waiting download it shares no budget with"
         )
         assert download._sessions["job-probe"].kind is SessionKind.PROBE
+        assert "waiting-download" in download._waiting, (
+            "the download started while its own lane was still full"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_paused_queue_still_reads_urls(tmp_path: Path, spin: Callable[..., bool]) -> None:
+    """`UX-001`, `T080-R1`, `UX-003`: pause stops downloads, not reading.
+
+    `start()` has admitted a probe on a paused queue since `T080-R1`. `admit()` did not, which was
+    invisible while probing was a button nobody pressed on a paused queue — and immediately fatal
+    once `UX-003` made the add dialog probe through `admit`: every pasted URL stayed unread and
+    the dialog had nothing it could ever offer to queue. The phase proof found it by hanging.
+
+    Both halves asserted together, because the rule is a distinction: the probe starts **and** the
+    download does not. A pause that stopped nothing would pass half of this.
+    """
+    repository = FakeRepository()
+    queued(repository, "to-read", "to-download", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=2, entry_point=child_downloading_forever)
+    try:
+        download.pause()
+
+        download.admit("to-read", SessionKind.PROBE)
+        download.admit("to-download")
+
+        assert spin(lambda: "to-read" in download._sessions, timeout=60), (
+            "a paused queue refused to read a URL, which is not the work pause exists to stop"
+        )
+        assert download._sessions["to-read"].kind is SessionKind.PROBE
+        assert download._waiting == ["to-download"], (
+            "a paused queue started a download, which is exactly the work it exists to stop"
+        )
+        assert "to-download" not in download._sessions
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)

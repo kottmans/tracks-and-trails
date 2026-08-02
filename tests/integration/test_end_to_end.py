@@ -335,6 +335,18 @@ def queue_one(
         index = box.findData(bitrate)
         assert index >= 0, f"the dialog offers no {bitrate} kbps entry"
         box.setCurrentIndex(index)
+    # **Read before queued** (`UX-003`, `T-118`). Pasting resolves the line; nothing may be
+    # queued until it has been, so this waits on the dialog's rows before committing.
+    dialog.resolve()
+    deadline = time.monotonic() + 60
+    while time.monotonic() < deadline and not (
+        dialog.rows and all(row.committable for row in dialog.rows)
+    ):
+        composition.app.processEvents()
+        time.sleep(0.005)
+    assert dialog.rows and all(row.committable for row in dialog.rows), (
+        f"the URL never resolved: {dialog.status_text()}"
+    )
     dialog.add_to_queue()
     deadline = time.monotonic() + 30
     while time.monotonic() < deadline and not dialog.queued_job_ids:
@@ -934,6 +946,10 @@ dialog = composition.window.open_add_dialog()
 dialog._urls.setPlainText(url)
 names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
 dialog._preset_choice.setCurrentIndex(names.index("Best video available"))
+# **Read before queued** (`UX-003`, `T-118`).
+dialog.resolve()
+while not (dialog.rows and all(row.committable for row in dialog.rows)):
+    qapp.processEvents()
 dialog.add_to_queue()
 while not dialog.queued_job_ids:
     qapp.processEvents()

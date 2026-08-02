@@ -1449,6 +1449,18 @@ class DownloadManager(QObject):
             write=self._repository.requeue_at_end,
         )
 
+    def _pause_blocks(self, kind: SessionKind) -> bool:
+        """Whether a paused queue stops a session of `kind` from starting (`UX-001`, `T080-R1`).
+
+        **Pause stops downloads, not reading.** `start()` has encoded that since `T080-R1` — "a
+        paused queue admits a probe and parks a download" — and admission did not, which was
+        invisible while probing was a button. `UX-003` made it visible immediately: the add dialog
+        probes through `admit`, so a paused queue left every pasted URL unread and the dialog with
+        nothing it could ever offer to queue. Reading a URL moves no bytes and writes no file; it
+        is not the work pause exists to stop.
+        """
+        return self._paused and kind is not SessionKind.PROBE
+
     def _limit_for(self, kind: SessionKind) -> int:
         """The ceiling on `kind`'s lane. **Two lanes, not one budget** (`T-116`)."""
         return self._probe_limit if kind is SessionKind.PROBE else self._limit
@@ -1504,10 +1516,12 @@ class DownloadManager(QObject):
         happens next. `T-078`'s criterion says "without waiting for a tick that happens to fire",
         and sharing this is how all three paths keep the same promise.
 
-        **A paused queue starts nothing** (`UX-001`, `T-080`). The guard is here rather than at the
-        call sites because this is the single place a waiting job becomes a running one; a check
-        spread across the tick, `set_concurrency` and `resume` would be three chances to forget it,
-        and the tick is the one that fires on its own.
+        **A paused queue starts no download** (`UX-001`, `T-080`). The guard is applied through
+        `_pause_blocks` rather than as an early return, because pause has never stopped a *probe* —
+        `start()` has said so since `T080-R1` and this path did not, which `UX-003` turned from a
+        latent inconsistency into a dialog that could read nothing while the queue was paused.
+        Keeping the rule in one predicate is what stops the tick, `set_concurrency` and `resume`
+        being three chances to get it wrong.
 
         **A full download lane no longer stops a waiting probe** (`T-116`). The loop used to end
         at the first job it could not start, which was correct with one budget and starves the
@@ -1515,7 +1529,7 @@ class DownloadManager(QObject):
         download to finish, which is the delay `UX-003` exists to remove. It now takes the next
         job *that can start*, and ends when no waiting job can.
         """
-        if self._shutting_down or self._paused or self._reorders_in_flight:
+        if self._shutting_down or self._reorders_in_flight:
             return
         while True:
             job_id = self._next_startable()
@@ -1531,7 +1545,12 @@ class DownloadManager(QObject):
         lane is full is skipped rather than blocking the ones behind it, so the two lanes drain
         independently while each stays in `queue_position` order within itself.
         """
-        startable = [job_id for job_id in self._waiting if self._has_capacity(self._wants(job_id))]
+
+        def may_start(job_id: str) -> bool:
+            kind = self._wants(job_id)
+            return self._has_capacity(kind) and not self._pause_blocks(kind)
+
+        startable = [job_id for job_id in self._waiting if may_start(job_id)]
         return min(startable, key=self._waiting_order) if startable else None
 
     def _wants(self, job_id: str) -> SessionKind:
@@ -1575,7 +1594,7 @@ class DownloadManager(QObject):
         """
         if self._shutting_down:
             return
-        if self._paused or self._reorders_in_flight or not self._has_capacity(kind):
+        if self._pause_blocks(kind) or self._reorders_in_flight or not self._has_capacity(kind):
             if job_id not in self._waiting:
                 self._waiting.append(job_id)
             self._intended_kind[job_id] = kind
@@ -2007,6 +2026,20 @@ class DownloadManager(QObject):
                 # a late message for an earlier stage from asking the pipeline to walk backwards,
                 # which `_advance` refuses by raising — out of a Qt slot, from a timer's thread of
                 # control, for an event that is merely out of date.
+                #
+                # **Except for a size this row does not have yet** (`T-118`). Persisting only on a
+                # stage move was complete while every download began at `QUEUED` and was moved to
+                # `RUNNING` by its first downloading message, which carried the total with it.
+                # `UX-003` probes first, so a download starts from `READY` and `start()` has
+                # already moved it — no message moves anything, and `bytes_total` stayed `NULL`
+                # for the life of the job. The queue then showed an unknown size for every
+                # download, and `T-014`'s stored total was a column nothing ever wrote.
+                #
+                # Bounded deliberately: this fires **once** per job, when a total first becomes
+                # known. Writing on every progress message would put a row write behind every
+                # frame of a progress bar.
+                if current.bytes_total is None and message.total_bytes:
+                    return replace(current, bytes_total=message.total_bytes)
                 return None
             return replace(
                 self._advance(current, target),

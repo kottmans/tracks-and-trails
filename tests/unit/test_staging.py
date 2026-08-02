@@ -1,0 +1,269 @@
+"""The staging list's state machine (`T-118`, `UX-003`).
+
+No `QApplication` and no event loop: `ui/staging.py` is Qt-free precisely so these rules can be
+asserted directly. What the widget does *with* them is `tests/ui/test_add_dialog.py`.
+"""
+
+import pytest
+
+from tracks_and_trails.ui.staging import Row, RowState, Staging, placeholder_hue, summarise
+
+
+def a_staging(*urls: str) -> Staging:
+    staging = Staging()
+    staging.reconcile(urls)
+    return staging
+
+
+# --- reconciling the rows with what is entered -------------------------------------------------
+
+
+def test_every_entered_line_becomes_a_row_in_entry_order() -> None:
+    """`UX-003`: the paste is the batch, not just its first line.
+
+    Order matters beyond tidiness — it is the order the jobs are written in, and therefore the
+    `queue_position` order the pool will start them in (`T115-R1`).
+    """
+    staging = a_staging("https://a.invalid/1", "https://b.invalid/2", "https://c.invalid/3")
+
+    assert [row.url for row in staging.visible] == [
+        "https://a.invalid/1",
+        "https://b.invalid/2",
+        "https://c.invalid/3",
+    ]
+    assert all(row.state is RowState.PENDING for row in staging.visible)
+
+
+def test_two_identical_lines_are_two_rows() -> None:
+    """`REQ-001`, `T016-R1`: the user asked for both, so both resolve and both commit.
+
+    The failure this guards is quiet: one row for two lines means one download, and the user gets
+    what looks like a successful add with half the work missing.
+    """
+    staging = a_staging("https://same.invalid/x", "https://same.invalid/x")
+
+    assert len(staging.visible) == 2
+    first, second = staging.visible
+    assert first is not second, "the two lines share one row"
+
+
+def test_a_row_is_an_identity_rather_than_a_value() -> None:
+    """`REQ-001`: two rows describing the same line are not the same row.
+
+    Written because a mutation removing `eq=False` **survived the whole battery**. Nothing in
+    `staging.py` currently depends on it — `reconcile` tracks what it creates rather than asking
+    what it had — so the docstring was claiming a protection no test could see. This pins the
+    semantics at the level the claim is actually made: anything reaching for `in`, `remove`,
+    `index` or a `set` must be able to tell two identical lines apart.
+    """
+    one = Row(url="https://same.invalid/x", generation=1)
+    other = Row(url="https://same.invalid/x", generation=1)
+
+    assert one != other, "two rows for two identical lines compare as one"
+    assert len({id(one), id(other)}) == 2
+    assert [one, other].index(other) == 1, "the second row resolves to the first"
+    assert len({one, other}) == 2, "a set collapses two identical lines into one download"
+
+
+def test_editing_one_line_leaves_the_other_rows_alone() -> None:
+    """Retyping must not restart twenty probes.
+
+    Asserted on **identity**, not on the URL: a row rebuilt from scratch would carry the same URL
+    and compare equal, while having lost its probe, its media and its job id. That is the whole
+    difference between editing a batch and re-entering it.
+    """
+    staging = a_staging("https://a.invalid/1", "https://b.invalid/2")
+    kept, replaced = staging.visible
+    kept.state = RowState.READY
+    replaced.state = RowState.READY
+
+    fresh = staging.reconcile(["https://a.invalid/1", "https://c.invalid/3"])
+
+    assert staging.visible[0] is kept, "an untouched line lost its row, and its probe with it"
+    assert kept.state is RowState.READY
+    assert [row.url for row in fresh] == ["https://c.invalid/3"]
+    assert replaced.state is RowState.SUPERSEDED
+
+
+def test_a_line_that_is_gone_is_superseded_rather_than_dropped() -> None:
+    """`T016-R1`: a result already in flight still arrives, and has to be refused **by name**.
+
+    Deleting the record would leave the refusal in `_on_media_probed` unreachable — a guard that
+    reads as protection while protecting nothing, which `ai/TESTING.md` §13 exists to catch.
+    """
+    staging = a_staging("https://gone.invalid/x")
+    row = staging.visible[0]
+    row.job_id = "job-1"
+    row.state = RowState.PROBING
+
+    staging.reconcile([])
+
+    assert staging.visible == ()
+    assert row.state is RowState.SUPERSEDED
+    assert staging.for_job("job-1") is row, "the late result has nothing to be refused against"
+
+
+def test_reconciling_bumps_the_generation() -> None:
+    """A line typed, cleared and retyped produces a row that cannot be confused with the first."""
+    staging = Staging()
+    first = staging.generation
+    staging.reconcile(["https://a.invalid/1"])
+    original = staging.visible[0]
+
+    staging.reconcile([])
+    staging.reconcile(["https://a.invalid/1"])
+
+    assert staging.generation > first
+    retyped = staging.visible[0]
+    assert retyped is not original
+    assert retyped.generation > original.generation
+
+
+# --- what may be committed ---------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("state", "allowed"),
+    [
+        (RowState.PENDING, False),
+        (RowState.SAVING, False),
+        (RowState.WAITING, False),
+        (RowState.PROBING, False),
+        (RowState.READY, True),
+        (RowState.FAILED, False),
+        (RowState.SUPERSEDED, False),
+    ],
+)
+def test_only_a_resolved_row_may_be_committed(state: RowState, allowed: bool) -> None:
+    """`UX-003` in one assertion, over **every** state rather than a sampled pair.
+
+    Adding a state without deciding which side of this line it falls on fails here, which is the
+    same shape `job_state.py`'s transition table is tested with.
+    """
+    row = Row(url="https://a.invalid/1", generation=1, state=state)
+    assert row.committable is allowed
+
+
+def test_a_failed_row_stays_visible_and_out_of_the_commit() -> None:
+    """`UX-003`'s first rule: a URL that will not probe never becomes queued work.
+
+    It stays on screen with its message so a timeout costs a button press rather than the paste —
+    refusing the whole batch was the alternative, and it loses thirty URLs to eight bad ones.
+    """
+    staging = a_staging("https://good.invalid/1", "https://bad.invalid/2")
+    good, bad = staging.visible
+    good.state = RowState.READY
+    bad.state = RowState.FAILED
+    bad.message = "ERROR: [generic] Unable to download webpage: <urlopen error timed out>"
+
+    assert staging.committable() == (good,)
+    assert staging.failed() == (bad,)
+    assert bad in staging.visible, "the failed row was hidden, so its message went with it"
+
+
+def test_a_persisted_row_that_will_not_be_committed_is_reported_for_withdrawal() -> None:
+    """A row is persisted before it can be probed (`REQ-012`), so a failure leaves a row on disk.
+
+    `UX-003` promises that never becomes queued work, which means the dialog has to withdraw it.
+    Rows with no job at all are excluded: there is nothing to withdraw, and passing `None` to a
+    cancel would be an error rather than a no-op.
+    """
+    staging = a_staging("https://a.invalid/1", "https://b.invalid/2", "https://c.invalid/3")
+    ready, failed, never_saved = staging.visible
+    ready.state, ready.job_id = RowState.READY, "job-ready"
+    failed.state, failed.job_id = RowState.FAILED, "job-failed"
+    never_saved.state = RowState.PENDING
+
+    assert staging.unresolved_job_ids() == ("job-failed",)
+
+
+def test_a_superseded_rows_job_is_reported_for_withdrawal_too() -> None:
+    """The row the user replaced still wrote a job, and nobody is waiting for it."""
+    staging = a_staging("https://a.invalid/1")
+    row = staging.visible[0]
+    row.job_id = "job-1"
+    row.state = RowState.PROBING
+
+    staging.reconcile([])
+
+    assert staging.unresolved_job_ids() == ("job-1",)
+
+
+# --- when the batch is done ----------------------------------------------------------------------
+
+
+def test_an_empty_batch_is_not_settled() -> None:
+    """`all([])` is `True`, and `T088-R4` is what that costs.
+
+    An observer that reported "everything is finished" for nothing at all turned a strict xfail
+    into an `XPASS` and announced a repair that had not happened. Nothing pasted is not a batch
+    that has resolved.
+    """
+    assert Staging().settled() is False
+
+
+def test_a_batch_is_settled_only_when_every_visible_row_has_an_answer() -> None:
+    staging = a_staging("https://a.invalid/1", "https://b.invalid/2")
+    first, second = staging.visible
+    first.state = RowState.READY
+
+    assert staging.settled() is False
+
+    second.state = RowState.FAILED
+    assert staging.settled() is True, "a failure is an answer; the batch is as resolved as it gets"
+
+
+def test_a_superseded_row_does_not_hold_the_batch_open() -> None:
+    """Nobody is waiting on a line that is no longer entered."""
+    staging = a_staging("https://a.invalid/1", "https://b.invalid/2")
+    first, second = staging.visible
+    first.state = RowState.READY
+    second.state = RowState.PROBING
+
+    staging.reconcile(["https://a.invalid/1"])
+
+    assert staging.settled() is True
+
+
+# --- the summary line ----------------------------------------------------------------------------
+
+
+def test_a_urls_placeholder_tile_is_stable_and_process_independent() -> None:
+    """`UX-003`: a row is filled the moment it appears, and keeps its tile.
+
+    Stability is the whole property. `hash()` would satisfy "derived from the URL" and is salted
+    per process, so every launch would repaint the queue in different colours — which is worse
+    than no tile, because it looks like the rows changed.
+    """
+    first = placeholder_hue("https://example.invalid/a")
+    assert first == placeholder_hue("https://example.invalid/a")
+    assert 0 <= first < 360
+
+    neighbours = {placeholder_hue(f"https://example.invalid/{n}") for n in range(8)}
+    assert len(neighbours) > 1, "adjacent URLs all drew the same tile, so the column is one colour"
+
+
+def test_the_summary_names_the_state_in_words() -> None:
+    """`NFR-005`: never a colour alone. The counts come from the rows, not from a second tally."""
+    assert summarise(()) == "Paste one URL per line."
+
+    rows = [Row(url=f"https://a.invalid/{n}", generation=1) for n in range(3)]
+    assert summarise(rows) == "Reading 3 URLs — 0 done"
+
+    rows[0].state = RowState.READY
+    assert summarise(rows) == "Reading 3 URLs — 1 done"
+
+    rows[1].state = RowState.READY
+    rows[2].state = RowState.FAILED
+    assert summarise(rows) == "2 ready · 1 URL could not be read"
+
+    rows[2].state = RowState.READY
+    assert summarise(rows) == "3 ready"
+
+
+def test_the_summary_pluralises_the_failures_it_reports() -> None:
+    """One bad URL and two are different sentences, and a user reads the sentence."""
+    rows = [
+        Row(url=f"https://a.invalid/{n}", generation=1, state=RowState.FAILED) for n in range(2)
+    ]
+    assert summarise(rows) == "0 ready · 2 URLs could not be read"

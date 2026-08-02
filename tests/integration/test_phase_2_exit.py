@@ -61,6 +61,7 @@ from tests.integration.test_end_to_end import (
     the_workers_that_must_die,
 )
 from tracks_and_trails.core.job_state import JobStatus
+from tracks_and_trails.downloader.manager import DEFAULT_PROBE_CONCURRENCY
 from tracks_and_trails.persistence.repositories import INTERRUPTED_ON_STARTUP
 
 
@@ -140,6 +141,12 @@ dialog = composition.window.open_add_dialog()
 dialog._urls.setPlainText(chr(10).join(urls))
 names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
 dialog._preset_choice.setCurrentIndex(names.index("Best video available"))
+# **Read before queued** (`UX-003`, `T-118`). Pasting resolves every line; nothing may be queued
+# until it has been. This waits on the dialog's own rows rather than on the store, because the
+# rows are what decides whether Add can do anything.
+dialog.resolve()
+while len(dialog.rows) < len(urls) or not all(row.committable for row in dialog.rows):
+    qapp.processEvents()
 dialog.add_to_queue()
 while len(dialog.queued_job_ids) < len(urls):
     qapp.processEvents()
@@ -390,9 +397,25 @@ def wait_until(predicate: Callable[[], bool], timeout: float = 120.0) -> bool:
     return False
 
 
+#: A job the **download** lane is holding. `REQ-013`'s limit governs exactly these.
+#:
+#: **`READY` and `PROBING` left this set at `T-118`**, and neither departure is cosmetic. `READY`
+#: used to be a step *inside* a download session — `QUEUED → PROBING → READY → RUNNING`, all under
+#: one worker — so a row sitting in it was a download in progress. `UX-003` probes first, which
+#: makes `READY` a durable resting state meaning "read, and waiting for a slot": counting it would
+#: report every queued job as in flight. `PROBING` left because `T-116` gave probes their own lane
+#: with its own ceiling, so counting them against the download limit is measuring the wrong number.
+DOWNLOADING = frozenset({JobStatus.RUNNING, JobStatus.POST_PROCESSING})
+
+
 def running_count(database: Path, job_ids: list[str]) -> int:
-    live = {JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING, JobStatus.POST_PROCESSING}
-    return sum(1 for status in statuses(database, job_ids).values() if status in live)
+    """How many of `job_ids` the download lane is holding right now."""
+    return sum(1 for status in statuses(database, job_ids).values() if status in DOWNLOADING)
+
+
+def probing_count(database: Path, job_ids: list[str]) -> int:
+    """How many of `job_ids` the probe lane is holding right now (`T-116`)."""
+    return sum(1 for status in statuses(database, job_ids).values() if status is JobStatus.PROBING)
 
 
 def reap_application(process: subprocess.Popen[str], application_pid: int) -> None:
@@ -601,7 +624,12 @@ def test_a_hard_kill_mid_queue_restores_every_job_state_at_the_next_start(
             f"{job_id} was in flight at the kill and the next start left it {after[job_id]}"
         )
 
-    never_started = [job_id for job_id, status in before.items() if status is JobStatus.QUEUED]
+    # **`READY`, not `QUEUED`** (`UX-003`, `T-118`). A job that has been read and is waiting for a
+    # slot has never started a download, which is what this half of the criterion is about. Before
+    # `UX-003` such a job sat in `QUEUED` because nothing had looked at it yet.
+    never_started = [
+        job_id for job_id, status in before.items() if status in (JobStatus.QUEUED, JobStatus.READY)
+    ]
     assert never_started, (
         f"every job had started, so this says nothing about the ones that had not: {before}"
     )
@@ -704,12 +732,14 @@ def test_the_pool_never_exceeds_the_configured_limit(
         urls=urls,
     )
     peak_rows = 0
+    peak_probes = 0
     peak_workers = 0
     try:
         assert wait_until(lambda: running_count(database, job_ids) > 0), "nothing ever started"
         deadline = time.monotonic() + 45
         while time.monotonic() < deadline:
             peak_rows = max(peak_rows, running_count(database, job_ids))
+            peak_probes = max(peak_probes, probing_count(database, job_ids))
             with suppress(AssertionError, psutil.NoSuchProcess):
                 # Between jobs there is briefly no worker, which is not an overshoot.
                 peak_workers = max(peak_workers, len(the_workers_that_must_die(application_pid)))
@@ -722,6 +752,13 @@ def test_the_pool_never_exceeds_the_configured_limit(
     assert peak_rows, "no job was ever observed in flight, so no limit was ever tested"
     assert peak_rows <= POOL_LIMIT, (
         f"{peak_rows} jobs were in flight at once against a configured limit of {POOL_LIMIT}"
+    )
+    # **Both lanes, because `T-116` made there be two** (`REQ-013`). Asserting only the download
+    # limit after splitting the budget would leave the new lane unbounded and call the criterion
+    # met — the probe lane can spawn an interpreter per URL, so an unchecked ceiling there is the
+    # same defect this criterion exists for, one layer over.
+    assert peak_probes <= DEFAULT_PROBE_CONCURRENCY, (
+        f"{peak_probes} probes ran at once against a lane ceiling of {DEFAULT_PROBE_CONCURRENCY}"
     )
     assert peak_workers <= POOL_LIMIT, (
         f"{peak_workers} worker processes existed at once against a configured limit of "
@@ -981,8 +1018,9 @@ def test_a_queue_left_by_a_previous_run_starts_on_the_next_launch(
     left_behind = snapshot(database, job_ids)
     # The recovery on the *next* launch will move anything in flight to FAILED; what this test is
     # about is the rows that never started at all.
-    assert any(status is JobStatus.QUEUED for status in left_behind.values()), (
-        f"nothing was left queued, so this says nothing about the next launch: {left_behind}"
+    waiting = (JobStatus.QUEUED, JobStatus.READY)
+    assert any(status in waiting for status in left_behind.values()), (
+        f"nothing was left waiting, so this says nothing about the next launch: {left_behind}"
     )
 
     # Second launch: the same database, and nothing done but starting the application.
@@ -1043,6 +1081,15 @@ def test_a_paused_queue_admits_and_still_starts_nothing(
     finally:
         reap_application(process, application_pid)
 
-    assert all(status is JobStatus.QUEUED for status in while_paused.values()), (
-        f"a paused queue started work: { {k[:6]: v.value for k, v in while_paused.items()} }"
+    # **Reading is not the work pause stops** (`UX-001`, `T080-R1`, `UX-003`). Pause has admitted
+    # a probe since `T080-R1`; what it must never do is move bytes. So the assertion is that no row
+    # reached a downloading state, not that every row stayed untouched — a paused queue whose add
+    # dialog could read nothing would be a dialog with nothing it could ever offer to queue, which
+    # is the defect `test_a_paused_queue_still_reads_urls` covers from the other side.
+    started = {job_id: status for job_id, status in while_paused.items() if status in DOWNLOADING}
+    assert not started, (
+        f"a paused queue started downloading: { {k[:6]: v.value for k, v in started.items()} }"
+    )
+    assert all(status is not JobStatus.COMPLETED for status in while_paused.values()), (
+        f"a paused queue finished a download: { {k[:6]: v.value for k, v in while_paused.items()} }"
     )

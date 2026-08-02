@@ -73,6 +73,12 @@ def test_one_real_url_downloads_end_to_end(
         dialog._urls.setPlainText(REAL_URL)
         names = [dialog._preset_choice.itemText(i) for i in range(dialog._preset_choice.count())]
         dialog._preset_choice.setCurrentIndex(names.index(PRESET))
+        # **Read before queued** (`UX-003`, `T-118`), and here that read is a real network probe
+        # against a real site — which is exactly what this test exists to exercise.
+        dialog.resolve()
+        assert spin(
+            lambda: bool(dialog.rows) and all(row.committable for row in dialog.rows), timeout=120
+        ), dialog.status_text()
         dialog.add_to_queue()
         assert spin(lambda: bool(dialog.queued_job_ids), timeout=60), dialog.status_text()
         job_id = dialog.queued_job_ids[0]

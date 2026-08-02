@@ -78,8 +78,8 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**Three tasks await a verdict as of 2026-08-02** — `T-117` and `T-116`, the first two of the
-UI rework, and `T-115`, returned for `T115-R1` and corrected the same day. This note is rebuilt from the section rather than edited beside it. It said **five**
+*(**Four tasks await a verdict as of 2026-08-02** — `T-118`, `T-117` and `T-116`, the first
+three of the UI rework, and `T-115`, returned for `T115-R1` and corrected the same day. This note is rebuilt from the section rather than edited beside it. It said **five**
 — `T-080`, `T-081`, `T-046`, `T-053` and `T-083` — for the whole time after all five were approved
 and `T-088` and `T-115` had taken their place, which is `COORD-R12`. Before that it said **four**,
 naming `T-079` first, between the re-review recording **Approved** and its correction; then
@@ -90,6 +90,65 @@ through `COORD-R12` are eight rounds of this file contradicting itself, which is
 exists — but `T-096` gates *status against section*, and `COORD-R11` and `COORD-R12` were both
 prose that contradicted the sections while every status and section agreed. The invariant test
 cannot see that, and this note is written by hand for exactly that reason.)*
+
+### T-118 — The add dialog becomes a staging list
+
+**Status:** **In Review — complete 2026-08-02.** Ten mutations run; all ten killed, **three of
+them only after the tests they exposed were written**. It found six defects in code it did not
+write — see the handoff; three were caught by `T-088`'s phase proof or by `mypy --platform win32`
+rather than by reading the diff.
+*(This read "Proposed — UI rework decomposition, 2026-08-02".)* This is `UX-003` in code.
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 3
+**Depends on:** `T-116` (or Add stalls the downloads already running), `T-117` (or the thumbnail
+dies with the dialog), `T-105`'s UX spec
+**Relevant context:** `UX-003`, `REQ-001`, `REQ-002`, `REQ-012`, `REQ-018`, `NFR-005`, `NFR-006`,
+`T-016`, `T-075` (the preset is bound at Add, not at probe), `T-115`, `T115-R1`, `T-060`
+**Affected surfaces:** `ui/add_dialog.py`
+**Risk:** **High** — it rewrites the dialog `T-016`, `T-075` and `T-115` all landed corrections in
+
+#### Scope
+
+`UX-003`: the paste resolves before anything is queued. Pasting starts the work — the
+`&Probe first URL` button goes, because there is no second thing to press and no route to queueing
+something unread. Each line becomes a row that resolves in place into title, uploader, duration and
+thumbnail.
+
+**Every prior correction to this dialog is a constraint on the rewrite, not history.** `T-016`: a
+probe belongs to a URL and a generation, not to a job id, and an input that moves on cancels what
+is in flight. `T-075`: the request that runs is the one selected when Add was pressed, retargeted
+before the job may start. `T115-R1`: the batch is **one** admission decision, taken after the
+retarget settles, in durable queue order. A rewrite that loses any of these re-earns its review
+round.
+
+#### Acceptance criteria
+
+- Pasting resolves every line without a second control; no route exists to queue an unresolved URL
+- A line that fails to resolve **stays in the list** with the extractor's message verbatim
+  (`NFR-006`) and its own retry, and is excluded from the commit — asserted on the count the button
+  commits, not only on its label
+- Commit admits in durable `queue_position` order, one decision, after any retarget (`T115-R1`'s
+  regression must still pass against the rewritten dialog)
+- A row that has not resolved yet is **filled, not blank** — the derived placeholder of `UX-003`'s
+  rejected-as-sufficient alternative — and every state is named in words, never signalled by colour
+  alone (`NFR-005`)
+- Cancelling the dialog cancels every outstanding probe, queued or running (`T-116`'s ceiling makes
+  queued ones real)
+- The preset applies to the paste, overridable per row; the effective selector shown stays the one
+  that will run (`T-075`)
+- Focus order is declared per state and excludes hidden rows (`T-060`); a resolving row and a failed
+  row are different states
+- A paste large enough to exceed the probe lane resolves in order and does not freeze the dialog
+  (`NFR-001`)
+
+#### Out of scope
+
+- Playlist expansion beyond showing that a URL **is** one and how many entries it has — choosing
+  entries is `T-110`
+- The queue's own rendering (`T-119`)
+
+---
 
 ### T-117 — Persist the thumbnail URL so a queued row can show one
 
@@ -835,61 +894,6 @@ seven plan deliverables, so its size was an estimate from prose rather than from
 broken down. Phase 1 listed nine deliverables and produced fifty tasks; these eight are the
 starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
 it.)*
-
-### T-118 — The add dialog becomes a staging list
-
-**Status:** Proposed — **UI rework decomposition, 2026-08-02.** This is `UX-003` in code.
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 3
-**Depends on:** `T-116` (or Add stalls the downloads already running), `T-117` (or the thumbnail
-dies with the dialog), `T-105`'s UX spec
-**Relevant context:** `UX-003`, `REQ-001`, `REQ-002`, `REQ-012`, `REQ-018`, `NFR-005`, `NFR-006`,
-`T-016`, `T-075` (the preset is bound at Add, not at probe), `T-115`, `T115-R1`, `T-060`
-**Affected surfaces:** `ui/add_dialog.py`
-**Risk:** **High** — it rewrites the dialog `T-016`, `T-075` and `T-115` all landed corrections in
-
-#### Scope
-
-`UX-003`: the paste resolves before anything is queued. Pasting starts the work — the
-`&Probe first URL` button goes, because there is no second thing to press and no route to queueing
-something unread. Each line becomes a row that resolves in place into title, uploader, duration and
-thumbnail.
-
-**Every prior correction to this dialog is a constraint on the rewrite, not history.** `T-016`: a
-probe belongs to a URL and a generation, not to a job id, and an input that moves on cancels what
-is in flight. `T-075`: the request that runs is the one selected when Add was pressed, retargeted
-before the job may start. `T115-R1`: the batch is **one** admission decision, taken after the
-retarget settles, in durable queue order. A rewrite that loses any of these re-earns its review
-round.
-
-#### Acceptance criteria
-
-- Pasting resolves every line without a second control; no route exists to queue an unresolved URL
-- A line that fails to resolve **stays in the list** with the extractor's message verbatim
-  (`NFR-006`) and its own retry, and is excluded from the commit — asserted on the count the button
-  commits, not only on its label
-- Commit admits in durable `queue_position` order, one decision, after any retarget (`T115-R1`'s
-  regression must still pass against the rewritten dialog)
-- A row that has not resolved yet is **filled, not blank** — the derived placeholder of `UX-003`'s
-  rejected-as-sufficient alternative — and every state is named in words, never signalled by colour
-  alone (`NFR-005`)
-- Cancelling the dialog cancels every outstanding probe, queued or running (`T-116`'s ceiling makes
-  queued ones real)
-- The preset applies to the paste, overridable per row; the effective selector shown stays the one
-  that will run (`T-075`)
-- Focus order is declared per state and excludes hidden rows (`T-060`); a resolving row and a failed
-  row are different states
-- A paste large enough to exceed the probe lane resolves in order and does not freeze the dialog
-  (`NFR-001`)
-
-#### Out of scope
-
-- Playlist expansion beyond showing that a URL **is** one and how many entries it has — choosing
-  entries is `T-110`
-- The queue's own rendering (`T-119`)
-
----
 
 ### T-119 — The queue row: thumbnail, title and progress in one delegate
 

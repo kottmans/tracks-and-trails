@@ -38,7 +38,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 from tracks_and_trails import app as application
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
-from tracks_and_trails.core.models import DownloadRequest
+from tracks_and_trails.core.models import DownloadRequest, MediaInfo
 from tracks_and_trails.downloader.protocol import (
     Failed,
     Probed,
@@ -51,6 +51,7 @@ from tracks_and_trails.downloader.protocol import (
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
 from tracks_and_trails.ui.queue_view import PROGRESS_COLUMN, SIZE_COLUMN
+from tracks_and_trails.ui.staging import RowState
 
 # --- children the composed application spawns -------------------------------------------------
 
@@ -63,7 +64,6 @@ def child_probing_then_waiting(
     One function for both session kinds because the composed application chooses the kind, not
     the test — which is the point of driving the assembled thing.
     """
-    from tracks_and_trails.core.models import MediaInfo
 
     if kind is SessionKind.PROBE:
         queue.put(
@@ -100,7 +100,6 @@ def child_probing_then_waiting(
 def child_probing_then_succeeding(
     kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
 ) -> None:
-    from tracks_and_trails.core.models import MediaInfo
 
     if kind is SessionKind.PROBE:
         queue.put(
@@ -222,6 +221,13 @@ def test_pasting_a_url_into_the_assembled_application_reaches_the_database(
 
     dialog = composition.window.open_add_dialog()
     type_urls(dialog, "https://composed.invalid/one\nhttps://composed.invalid/two")
+    # `UX-003`: both lines are read before either can be queued, so this waits on the rows before
+    # committing. The previous version pasted and added in one breath, which was the whole defect
+    # `T-118` is about — a URL entering the queue nobody had looked at.
+    dialog.resolve()
+    assert spin(
+        lambda: len(dialog.rows) == 2 and all(row.committable for row in dialog.rows), timeout=60
+    ), "the pasted URLs never resolved"
     dialog.add_to_queue()
     assert spin(lambda: len(dialog.queued_job_ids) == 2, timeout=30), "the paste never persisted"
 
@@ -249,10 +255,13 @@ def test_the_composed_application_downloads_a_file_and_shows_it_finished(
     composition = composed(entry_point=child_probing_then_succeeding)
     dialog = composition.window.open_add_dialog()
     type_urls(dialog, "https://composed.invalid/movie")
-    dialog.probe()
+    dialog.resolve()
 
-    assert spin(lambda: dialog.media is not None, timeout=60), "the probe never reported"
-    assert dialog.media is not None and dialog.media.title == "A video that exists"
+    assert spin(lambda: bool(dialog.rows) and dialog.rows[0].state is RowState.READY, timeout=60), (
+        "the URL never resolved"
+    )
+    media = dialog.rows[0].media
+    assert isinstance(media, MediaInfo) and media.title == "A video that exists"
     assert composition.window.watched_job_id is not None, (
         "the window never showed the job the manager was working on"
     )
@@ -467,8 +476,8 @@ def test_closing_the_window_with_a_download_running_stops_everything_in_order(
     composition = composed(entry_point=child_probing_then_waiting)
     dialog = composition.window.open_add_dialog()
     type_urls(dialog, "https://composed.invalid/long")
-    dialog.probe()
-    assert spin(lambda: dialog.media is not None, timeout=60)
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and dialog.rows[0].state is RowState.READY, timeout=60)
     assert spin(lambda: composition.manager.is_idle, timeout=60), "the probe session never ended"
     dialog.add_to_queue()
     assert spin(lambda: composition.manager.active_job_ids() != (), timeout=60), (
@@ -519,8 +528,8 @@ def test_shutdown_is_idempotent_and_does_not_quit_on_an_ordinary_idle(
     composition = composed(entry_point=child_probing_then_succeeding)
     dialog = composition.window.open_add_dialog()
     type_urls(dialog, "https://composed.invalid/short")
-    dialog.probe()
-    assert spin(lambda: dialog.media is not None, timeout=60)
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and dialog.rows[0].state is RowState.READY, timeout=60)
     assert spin(lambda: composition.manager.is_idle, timeout=60), "the probe never finished"
 
     assert not composition.shutdown.finished, "an ordinary idle closed the writer"
@@ -531,6 +540,12 @@ def test_shutdown_is_idempotent_and_does_not_quit_on_an_ordinary_idle(
     # exactly that check. What must still be true is that persistence *works*.
     second = composition.window.open_add_dialog()
     type_urls(second, "https://composed.invalid/after-idle")
+    # `UX-003`: reading the URL is itself a write, so this waits for the row to resolve before
+    # committing. That the row resolved at all is the persistence this test is about.
+    second.resolve()
+    assert spin(lambda: bool(second.rows) and second.rows[0].committable, timeout=60), (
+        "the URL never resolved, so nothing could be queued for reasons other than the writer"
+    )
     second.add_to_queue()
     assert spin(lambda: len(second.queued_job_ids) == 1, timeout=60), (
         "nothing could be queued after an ordinary idle; the writer was closed while the "
@@ -597,7 +612,7 @@ def test_retrying_a_failed_job_re_queues_it_and_starts_it_again(
     composition = composed(entry_point=child_failing_to_extract)
     dialog = composition.window.open_add_dialog()
     type_urls(dialog, "https://composed.invalid/gone")
-    dialog.probe()
+    dialog.resolve()
 
     # Waited on the view, per the module docstring: the row is `FAILED` on disk before the
     # manager announces it, and a retry control that exists only after the announcement cannot

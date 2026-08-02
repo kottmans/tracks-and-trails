@@ -243,7 +243,10 @@ def test_only_queued_jobs_are_admitted_at_startup(
 
     request = a_request(tmp_path)
     repository.append(
-        [Job(id=f"job-{n}", url=request.url, request=request) for n in ("queued", "ran", "done")]
+        [
+            Job(id=f"job-{n}", url=request.url, request=request)
+            for n in ("queued", "read", "ran", "done")
+        ]
     )
     # One left in flight and then recovered, as an unclean exit leaves it.
     for status in (JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING):
@@ -263,7 +266,14 @@ def test_only_queued_jobs_are_admitted_at_startup(
         assert stored is not None
         repository.update(stored.with_status(status))
 
-    assert queued_job_ids(repository) == ["job-queued"], (
-        "startup would admit a job it did not leave queued — a recovered one restarts unattended, "
-        "which is T081-R4"
+    # And one probed but never downloaded, which is what `UX-003` leaves behind on every ordinary
+    # exit: a job is read *before* it is queued, so `READY` is the resting state of waiting work.
+    stored = repository.get("job-read")
+    assert stored is not None
+    repository.update(stored.with_status(JobStatus.PROBING).with_status(JobStatus.READY))
+
+    assert queued_job_ids(repository) == ["job-queued", "job-read"], (
+        "startup would admit a job it did not leave waiting — a recovered one restarts unattended, "
+        "which is T081-R4 — or would skip a READY one, which is T-115 for every queue UX-003 "
+        "leaves behind"
     )

@@ -503,12 +503,8 @@ def test_escape_does_not_close_the_main_window(shown_window: MainWindow) -> None
 #: a user actually walks is this list filtered by what the current state offers.
 EXPECTED_DIALOG_ORDER = (
     "urlInput",
-    "probeButton",
-    "cancelProbeButton",
-    "titleValue",
-    "uploaderValue",
-    "durationValue",
-    "kindValue",
+    "retryFailedButton",
+    "stagingList",
     "statusMessage",
     "presetChoice",
     "audioBitrateChoice",
@@ -534,27 +530,27 @@ DIALOG_STATES = (
         "",
         False,
         None,
-        # Probe, Cancel and Add are all unavailable: there is no URL to act on.
-        frozenset(EXPECTED_DIALOG_ORDER)
-        - {"probeButton", "cancelProbeButton", "addButton", "audioBitrateChoice"},
+        # Nothing has been read, so there is nothing to add and nothing to retry.
+        frozenset(EXPECTED_DIALOG_ORDER) - {"retryFailedButton", "addButton", "audioBitrateChoice"},
     ),
     (
-        "a URL typed",
+        "a URL typed and not yet read",
         "https://focus.invalid/clip",
         False,
         None,
-        # Probe and Add become available; Cancel stays out until a probe is running.
-        frozenset(EXPECTED_DIALOG_ORDER) - {"cancelProbeButton", "audioBitrateChoice"},
+        # **Add stays out** (`UX-003`). Typing a URL does not make it addable; being read does.
+        # This row was "Probe and Add become available" until `T-118`, which is the whole change.
+        frozenset(EXPECTED_DIALOG_ORDER) - {"retryFailedButton", "addButton", "audioBitrateChoice"},
     ),
     (
-        "a probe in flight",
+        "a read in flight",
         "https://focus.invalid/clip",
         True,
         None,
-        # The exchange: Cancel becomes the live control, and Probe and Add step out — a second
-        # probe would have nowhere to run in a pool of one, and `Add` is disabled while a probe is
-        # outstanding because that is what keeps one job per entered line (`T016-R1`).
-        frozenset(EXPECTED_DIALOG_ORDER) - {"probeButton", "addButton", "audioBitrateChoice"},
+        # Still nothing to add: a row that is being read has not been read. Retry stays out
+        # because nothing has failed — it appears only when there is a failure to act on, which
+        # keeps the control's meaning exact rather than "press me and see".
+        frozenset(EXPECTED_DIALOG_ORDER) - {"retryFailedButton", "addButton", "audioBitrateChoice"},
     ),
     (
         "an audio preset chosen",
@@ -565,7 +561,7 @@ DIALOG_STATES = (
         # state that offers it. Without this row the control would be declared and unreachable in
         # every state the suite walks — a chain asserted over a control no test can ever visit,
         # which is the shape `T060-R1` was.
-        frozenset(EXPECTED_DIALOG_ORDER) - {"cancelProbeButton"},
+        frozenset(EXPECTED_DIALOG_ORDER) - {"retryFailedButton", "addButton"},
     ),
 )
 
@@ -691,10 +687,13 @@ def dialog_factory(shown_window: MainWindow, tmp_path: Path) -> Callable[..., Ad
         dialog.activateWindow()
         QApplication.processEvents()
         if probing:
-            dialog.probe()
+            # `T-118`: resolving is what starts a probe now, and it starts one per entered line.
+            # The manager here never answers, so the rows stay in flight — which is the state the
+            # chain below is asserted over.
+            dialog.resolve()
             QApplication.processEvents()
-            assert dialog.probing_job_id is not None, (
-                "the dialog was asked for a probe and did not enter the in-flight state, so the "
+            assert any(row.in_flight for row in dialog.rows), (
+                "the dialog was asked to resolve and no row entered the in-flight state, so the "
                 "chain below would be asserted over the wrong one. Status: "
                 f"{dialog.status_text()!r}"
             )
