@@ -111,6 +111,17 @@ RETRY_BACKOFF_SECONDS: Final = (2.0, 4.0, 8.0)
 #: network one and a fourth try is evidence the problem is not transient.
 AUTOMATIC_RETRY_LIMIT: Final = len(RETRY_BACKOFF_SECONDS)
 
+#: How many probe sessions may run at once, independently of `REQ-013`'s download limit
+#: (`T-116`, `UX-003`).
+#:
+#: **Four, and the number is a judgement about latency rather than about throughput.** A probe is
+#: one metadata round trip; what a user waits for is the *last* line of their paste resolving, so
+#: more lanes shorten that wait roughly linearly. Against that: every lane is a spawned
+#: interpreter (`ARC-002`), so the cost is real and paid up front on a machine that may already be
+#: downloading. Four resolves a twenty-line paste in five rounds while leaving the download pool
+#: untouched.
+DEFAULT_PROBE_CONCURRENCY: Final = 4
+
 #: How often process liveness and cancellation deadlines are checked. Fifty milliseconds is
 #: below `NFR-001`'s ~100 ms interaction budget, so an escalation never *adds* a perceptible
 #: delay, and it costs one `is_alive()` per tick per running job.
@@ -474,6 +485,7 @@ class DownloadManager(QObject):
         repository: JobStore,
         *,
         concurrency: int = 1,
+        probe_concurrency: int = DEFAULT_PROBE_CONCURRENCY,
         parent: QObject | None = None,
         poll_interval_ms: int = DEFAULT_POLL_INTERVAL_MS,
         cooperative_seconds: float = DEFAULT_COOPERATIVE_SECONDS,
@@ -504,6 +516,15 @@ class DownloadManager(QObject):
         #: second bound here. A caller constructing this object directly is trusted the same way
         #: every other constructor argument is.
         self._limit = max(concurrency, 1)
+        #: How many **probe** sessions may run at once (`T-116`, `UX-003`). A separate lane from
+        #: the download limit above, because the two are different work and sharing one budget
+        #: means adding URLs stalls transfers already in flight.
+        #:
+        #: Fixed in code rather than exposed as a setting. `REQ-013` is about downloads — it is
+        #: what a user throttles to protect their connection — and a second spinbox for something
+        #: nobody has asked to tune would be capability without a reason. If it should be
+        #: configurable, that is a decision to take rather than a default to leak.
+        self._probe_limit = max(probe_concurrency, 1)
 
         #: Jobs accepted and waiting for a slot, in the order they will be started (`T-078`).
         #:
@@ -842,7 +863,7 @@ class DownloadManager(QObject):
         """
         return tuple(sorted(set(self._sessions) | set(self._reserved) | set(self._waiting)))
 
-    def _occupant_ids(self) -> tuple[str, ...]:
+    def _occupant_ids(self, kind: SessionKind | None = None) -> tuple[str, ...]:
         """The jobs holding a slot — running sessions and reservations, never waiting jobs.
 
         Split from `active_job_ids()` by `T078-R1`. The public accounting answers "what is this
@@ -850,12 +871,29 @@ class DownloadManager(QObject):
         same question when the waiting list arrived. Using the wrong one would make `start()`'s
         refusal name jobs that are not occupying anything and are, in fact, waiting for exactly
         the slot the caller wanted.
+
+        **`kind` narrows it to one lane** (`T-116`). A refusal names the lane it is about, so a
+        caller refused a probe is not handed the ids of three running downloads as the reason.
+        `None` keeps the whole-pool answer, which is what shutdown and the diagnostics want.
         """
-        return tuple(sorted(set(self._sessions) | set(self._reserved)))
+        occupying = set(self._sessions) | set(self._reserved)
+        if kind is None:
+            return tuple(sorted(occupying))
+        return tuple(
+            sorted(job_id for job_id in occupying if self._kind_of(job_id) is kind),
+        )
+
+    def _kind_of(self, job_id: str) -> SessionKind | None:
+        """What kind of session `job_id` holds a slot with, or `None` if it holds none."""
+        session = self._sessions.get(job_id)
+        if session is not None:
+            return session.kind
+        pending = self._reserved.get(job_id)
+        return pending.kind if pending is not None else None
 
     # --- starting -----------------------------------------------------------------------
 
-    def admit(self, job_id: str) -> None:
+    def admit(self, job_id: str, kind: SessionKind = SessionKind.DOWNLOAD) -> None:
         """Take responsibility for running `job_id` **when the queue can** (`T-115`, `REQ-012`).
 
         The public counterpart to `start()`, and the difference is the whole point of `T-115`:
@@ -881,9 +919,15 @@ class DownloadManager(QObject):
         callback, and composition's startup loop — where an exception is printed and swallowed, and
         where the row may simply not have landed yet. `start_rejected` is the channel every other
         refusal already uses and the dialog already listens to.
+
+        **`kind` is here because probing needed the same door** (`T-116`, `UX-003`). The only public
+        route to a probe was `start(job_id, PROBE)`, which raises when the lane is full — correct
+        while probing was a button covering one URL, and useless once pasting twenty URLs probes
+        all twenty. A caller pasting a batch is expressing the same durable intent a caller adding
+        one is, and should no more have to decide which probes to drop.
         """
         try:
-            self._start_when_free(job_id, SessionKind.DOWNLOAD)
+            self._start_when_free(job_id, kind)
         except KeyError as missing:
             self.start_rejected.emit(job_id, f"this job is not in the queue: {missing}")
 
@@ -915,7 +959,7 @@ class DownloadManager(QObject):
         """
         if self._shutting_down:
             raise RuntimeError("the manager is shutting down; no new session can be started")
-        if not self._has_capacity():
+        if not self._has_capacity(kind):
             # **Reservations count against the limit, not just running sessions** (`T016-R3`).
             # `_reserved` holds starts whose transition is still on the writer thread; without
             # counting them the limit would be "N plus however many `start()` calls fit between a
@@ -924,10 +968,14 @@ class DownloadManager(QObject):
             # Occupants, not everything held (`T078-R1`). A caller told "the pool is full at 3"
             # and then handed a list including jobs that are themselves waiting for a slot would
             # be reading a contradiction.
-            busy = self._occupant_ids()
+            #
+            # **The lane is named** (`T-116`). With two of them, "the pool is full at 3" while
+            # three downloads run and a probe was refused would be true of a limit the caller
+            # never asked about.
+            busy = self._occupant_ids(kind)
             raise RuntimeError(
-                f"the pool is full at {self._limit}: {busy}. Raise the concurrency limit, or "
-                "wait for a slot"
+                f"the {kind.value} lane is full at {self._limit_for(kind)}: {busy}. "
+                "Raise the concurrency limit, or wait for a slot"
             )
         job = self._require(job_id)
         target = _ENTRY_STATUS.get(job.status)
@@ -1401,15 +1449,35 @@ class DownloadManager(QObject):
             write=self._repository.requeue_at_end,
         )
 
-    def _has_capacity(self) -> bool:
-        """Whether another session may start right now.
+    def _limit_for(self, kind: SessionKind) -> int:
+        """The ceiling on `kind`'s lane. **Two lanes, not one budget** (`T-116`)."""
+        return self._probe_limit if kind is SessionKind.PROBE else self._limit
+
+    def _occupancy(self, kind: SessionKind) -> int:
+        """How much of `kind`'s lane is taken — running sessions and reservations alike."""
+        running = sum(1 for session in self._sessions.values() if session.kind is kind)
+        reserved = sum(1 for pending in self._reserved.values() if pending.kind is kind)
+        return running + reserved
+
+    def _has_capacity(self, kind: SessionKind = SessionKind.DOWNLOAD) -> bool:
+        """Whether another session of `kind` may start right now.
 
         Running sessions **and** reservations both occupy a slot. A reservation is a start whose
         transition has not landed yet, so it has no process — but it will, and counting only
         processes is what let the pool of one become a pool of several between a write and its
         callback (`T016-R3`).
+
+        **The two kinds draw on separate lanes** (`T-116`, `UX-003`). This counted every session
+        against `REQ-013`'s single limit, so a probe took a download slot. That was tolerable while
+        probing was a button covering one URL; `UX-003` makes probing what happens when a user
+        pastes, and under one budget pressing Add would stall the downloads already running —
+        measured, with a limit of three and twenty URLs added, as the twentieth being probed only
+        after the nineteenth had finished downloading.
+
+        They are different work: a probe is one short metadata round trip, a download is
+        bandwidth-bound and long. `REQ-013`'s setting still governs downloads and nothing else.
         """
-        return len(self._sessions) + len(self._reserved) < self._limit
+        return self._occupancy(kind) < self._limit_for(kind)
 
     def _discard_waiting(self, job_id: str) -> None:
         """Forget `job_id` is waiting, wherever in the list it sits.
@@ -1440,31 +1508,62 @@ class DownloadManager(QObject):
         call sites because this is the single place a waiting job becomes a running one; a check
         spread across the tick, `set_concurrency` and `resume` would be three chances to forget it,
         and the tick is the one that fires on its own.
+
+        **A full download lane no longer stops a waiting probe** (`T-116`). The loop used to end
+        at the first job it could not start, which was correct with one budget and starves the
+        other lane with two: a probe sitting behind three running downloads would wait for a
+        download to finish, which is the delay `UX-003` exists to remove. It now takes the next
+        job *that can start*, and ends when no waiting job can.
         """
         if self._shutting_down or self._paused or self._reorders_in_flight:
             return
-        while self._waiting and self._has_capacity():
-            job_id = self._next_waiting()
+        while True:
+            job_id = self._next_startable()
+            if job_id is None:
+                return
             self._waiting.remove(job_id)
             self._start_or_report(job_id)
 
+    def _next_startable(self) -> str | None:
+        """The waiting job that should start next, or `None` if none of them can.
+
+        Ordering is `_next_waiting`'s and unchanged; the filter is what `T-116` adds. A job whose
+        lane is full is skipped rather than blocking the ones behind it, so the two lanes drain
+        independently while each stays in `queue_position` order within itself.
+        """
+        startable = [job_id for job_id in self._waiting if self._has_capacity(self._wants(job_id))]
+        return min(startable, key=self._waiting_order) if startable else None
+
+    def _wants(self, job_id: str) -> SessionKind:
+        """The kind a deferred start recorded for `job_id` (`T083-R1`).
+
+        `DOWNLOAD` when nothing was recorded, which is what every deferred start was silently
+        assumed to be until a retried probe came back as a download.
+        """
+        return self._intended_kind.get(job_id, SessionKind.DOWNLOAD)
+
+    def _waiting_order(self, job_id: str) -> tuple[int, int, str]:
+        """The sort key deciding what starts next: has it run, its position, then its id."""
+        job = self._repository.get(job_id)
+        # **A retry never jumps the queue ahead of jobs that have not run** (`T-083`). A
+        # re-queued job keeps its original `queue_position`, which is *earlier* than
+        # everything added since — so ordering on position alone would let one job's third
+        # attempt run before another job's first. Sorted on "has this run" first, which is
+        # data already on the row rather than a renumbering that would have to enumerate the
+        # queue to find its tail (`T079-R2`).
+        attempted = 1 if job is not None and job.attempts > 0 else 0
+        position = job.queue_position if job is not None else None
+        # `None` sorts last explicitly rather than relying on a comparison that would raise.
+        return (attempted, position if position is not None else _UNPLACED, job_id)
+
     def _next_waiting(self) -> str:
-        """The waiting job with the lowest `queue_position`; ties and absences break on id."""
+        """The waiting job with the lowest `queue_position`; ties and absences break on id.
 
-        def order(job_id: str) -> tuple[int, int, str]:
-            job = self._repository.get(job_id)
-            # **A retry never jumps the queue ahead of jobs that have not run** (`T-083`). A
-            # re-queued job keeps its original `queue_position`, which is *earlier* than
-            # everything added since — so ordering on position alone would let one job's third
-            # attempt run before another job's first. Sorted on "has this run" first, which is
-            # data already on the row rather than a renumbering that would have to enumerate the
-            # queue to find its tail (`T079-R2`).
-            attempted = 1 if job is not None and job.attempts > 0 else 0
-            position = job.queue_position if job is not None else None
-            # `None` sorts last explicitly rather than relying on a comparison that would raise.
-            return (attempted, position if position is not None else _UNPLACED, job_id)
-
-        return min(self._waiting, key=order)
+        **Unfiltered, unlike `_next_startable`.** This answers "what is at the head of the queue",
+        which is the question the reordering and retry-ordering tests ask of it; whether that job's
+        lane happens to have room is a separate one.
+        """
+        return min(self._waiting, key=self._waiting_order)
 
     def _start_when_free(self, job_id: str, kind: SessionKind = SessionKind.DOWNLOAD) -> None:
         """Start `job_id` now, or queue it for the first moment a slot opens.
@@ -1476,7 +1575,7 @@ class DownloadManager(QObject):
         """
         if self._shutting_down:
             return
-        if self._paused or self._reorders_in_flight or not self._has_capacity():
+        if self._paused or self._reorders_in_flight or not self._has_capacity(kind):
             if job_id not in self._waiting:
                 self._waiting.append(job_id)
             self._intended_kind[job_id] = kind

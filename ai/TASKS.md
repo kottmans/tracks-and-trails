@@ -78,8 +78,8 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**One task awaits a verdict as of 2026-08-02** — `T-115`, returned for `T115-R1` and corrected
-the same day. This note is rebuilt from the section rather than edited beside it. It said **five**
+*(**Two tasks await a verdict as of 2026-08-02** — `T-116`, the first of the UI rework, and
+`T-115`, returned for `T115-R1` and corrected the same day. This note is rebuilt from the section rather than edited beside it. It said **five**
 — `T-080`, `T-081`, `T-046`, `T-053` and `T-083` — for the whole time after all five were approved
 and `T-088` and `T-115` had taken their place, which is `COORD-R12`. Before that it said **four**,
 naming `T-079` first, between the re-review recording **Approved** and its correction; then
@@ -90,6 +90,59 @@ through `COORD-R12` are eight rounds of this file contradicting itself, which is
 exists — but `T-096` gates *status against section*, and `COORD-R11` and `COORD-R12` were both
 prose that contradicted the sections while every status and section agreed. The invariant test
 cannot see that, and this note is written by hand for exactly that reason.)*
+
+### T-116 — A metadata lane: probing stops competing with downloads
+
+**Status:** **In Review — complete 2026-08-02.** Six mutations run; all six killed. One of them
+found a test of mine passing for the wrong reason: it admitted a probe while the manager was
+running, which starts it directly and never reaches the fill loop the test's own name is about.
+*(This read "Proposed — UI rework decomposition, 2026-08-02".)* Precedes `T-118`, which is
+unusable without it.
+**Owner:** Implementer
+**Priority:** **High** — `UX-003` makes probing mandatory, and mandatory probing through the
+download pool stalls downloads that are already running
+**Phase:** Phase 3
+**Depends on:** nothing. `T-078`'s pool is what changes; it is approved
+**Relevant context:** `UX-003`, `REQ-013`, `NFR-001`, `ARC-002`, `T-078`, `T-115`,
+`downloader/manager.py` (`_has_capacity`, `SessionKind`)
+**Affected surfaces:** `downloader/manager.py`, `core/settings.py`
+**Risk:** Medium — it changes the admission rule the phase's own proof measures
+
+#### Scope
+
+`_has_capacity()` is `len(self._sessions) + len(self._reserved) < self._limit`, with no
+`SessionKind` exemption, so **a probe occupies a download slot**. Measured consequence with a limit
+of three and twenty URLs added: the twentieth is probed after the nineteenth has finished
+downloading.
+
+That is tolerable while probing is a button. `UX-003` makes it the thing that happens when a user
+pastes, so the same rule means **adding URLs stalls downloads in flight** — the user presses Add
+and the transfers they were watching stop.
+
+Probes and downloads are different work: a probe is one short metadata round trip, a download is
+bandwidth-bound and long. They should not draw from one budget.
+
+#### Acceptance criteria
+
+- Probe sessions and download sessions have **separate concurrency**, with the download limit
+  unchanged in meaning — `REQ-013`'s setting still governs downloads and nothing else
+- A test with the download pool **saturated** starts a probe, and asserts a running download is
+  neither stopped nor delayed
+- The probe lane has its own ceiling, asserted with a value the default cannot produce (`T-088`'s
+  lesson: a limit test that measures the default proves nothing)
+- Probes beyond the lane's ceiling **queue** rather than being refused, in the order asked for
+- Cancellation reaches a queued probe as well as a running one — closing the dialog must not leave
+  a lane full of probes for URLs nobody is waiting on
+- `T-088`'s phase proof still passes unchanged, including the pool-limit test
+- Shutdown drains both lanes; no probe worker outlives the application (`ARC-002`)
+
+#### Out of scope
+
+- What the dialog does with the results (`T-118`)
+- Any change to `REQ-013`'s user-facing setting. If the probe ceiling should be configurable, that
+  is a separate decision — this task fixes it in code and says so
+
+---
 
 ### T-115 — Nothing drains the queue: jobs beyond the limit never start
 
@@ -736,56 +789,6 @@ seven plan deliverables, so its size was an estimate from prose rather than from
 broken down. Phase 1 listed nine deliverables and produced fifty tasks; these eight are the
 starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
 it.)*
-
-### T-116 — A metadata lane: probing stops competing with downloads
-
-**Status:** Proposed — **UI rework decomposition, 2026-08-02.** Precedes `T-118`, which is
-unusable without it.
-**Owner:** Implementer
-**Priority:** **High** — `UX-003` makes probing mandatory, and mandatory probing through the
-download pool stalls downloads that are already running
-**Phase:** Phase 3
-**Depends on:** nothing. `T-078`'s pool is what changes; it is approved
-**Relevant context:** `UX-003`, `REQ-013`, `NFR-001`, `ARC-002`, `T-078`, `T-115`,
-`downloader/manager.py` (`_has_capacity`, `SessionKind`)
-**Affected surfaces:** `downloader/manager.py`, `core/settings.py`
-**Risk:** Medium — it changes the admission rule the phase's own proof measures
-
-#### Scope
-
-`_has_capacity()` is `len(self._sessions) + len(self._reserved) < self._limit`, with no
-`SessionKind` exemption, so **a probe occupies a download slot**. Measured consequence with a limit
-of three and twenty URLs added: the twentieth is probed after the nineteenth has finished
-downloading.
-
-That is tolerable while probing is a button. `UX-003` makes it the thing that happens when a user
-pastes, so the same rule means **adding URLs stalls downloads in flight** — the user presses Add
-and the transfers they were watching stop.
-
-Probes and downloads are different work: a probe is one short metadata round trip, a download is
-bandwidth-bound and long. They should not draw from one budget.
-
-#### Acceptance criteria
-
-- Probe sessions and download sessions have **separate concurrency**, with the download limit
-  unchanged in meaning — `REQ-013`'s setting still governs downloads and nothing else
-- A test with the download pool **saturated** starts a probe, and asserts a running download is
-  neither stopped nor delayed
-- The probe lane has its own ceiling, asserted with a value the default cannot produce (`T-088`'s
-  lesson: a limit test that measures the default proves nothing)
-- Probes beyond the lane's ceiling **queue** rather than being refused, in the order asked for
-- Cancellation reaches a queued probe as well as a running one — closing the dialog must not leave
-  a lane full of probes for URLs nobody is waiting on
-- `T-088`'s phase proof still passes unchanged, including the pool-limit test
-- Shutdown drains both lanes; no probe worker outlives the application (`ARC-002`)
-
-#### Out of scope
-
-- What the dialog does with the results (`T-118`)
-- Any change to `REQ-013`'s user-facing setting. If the probe ceiling should be configurable, that
-  is a separate decision — this task fixes it in code and says so
-
----
 
 ### T-117 — Persist the thumbnail URL so a queued row can show one
 

@@ -2347,7 +2347,7 @@ def test_a_second_session_is_refused_while_the_first_is_still_being_stored(
         assert download.active_job_ids() == ("job-1",), "the reservation is what refuses the next"
         assert not download.is_idle
 
-        with pytest.raises(RuntimeError, match="the pool is full"):
+        with pytest.raises(RuntimeError, match="lane is full"):
             download.start("job-2")
     finally:
         download.shutdown()
@@ -2527,9 +2527,9 @@ def test_a_second_session_is_refused_while_one_is_running(
     """A full pool refuses rather than quietly queueing.
 
     **The default limit is 1, so this is the same contract Phase 1 had** (`T-078`). What changed is
-    why: the refusal is now "the pool is full at 1" rather than "concurrency is Phase 2", because
-    the bound is a configured limit rather than a fixed assumption. A manager built with a larger
-    limit accepts more — `test_the_limit_is_respected_exactly` is where that is asserted.
+    why: the refusal is now "the download lane is full at 1" rather than "concurrency is Phase 2",
+    because the bound is a configured limit rather than a fixed assumption. A manager built with a
+    larger limit accepts more — `test_the_limit_is_respected_exactly` is where that is asserted.
 
     Refusing rather than queueing is the point here. `start()` is a direct request and its caller
     gets an answer; the waiting list is for work this manager has already accepted, which is
@@ -2540,7 +2540,7 @@ def test_a_second_session_is_refused_while_one_is_running(
     download = manager(entry_point=child_downloading_forever)
     download.start("job-1")
 
-    with pytest.raises(RuntimeError, match="the pool is full"):
+    with pytest.raises(RuntimeError, match="lane is full"):
         download.start("job-2")
 
 
@@ -3991,7 +3991,7 @@ def test_the_limit_is_respected_exactly_at_saturation(
             download.start(job_id)
         assert spin(lambda: len(download.active_job_ids()) == 3, timeout=60)
 
-        with pytest.raises(RuntimeError, match="the pool is full at 3"):
+        with pytest.raises(RuntimeError, match="the download lane is full at 3"):
             download.start("job-4")
 
         assert len(download.active_job_ids()) == 3, (
@@ -4183,7 +4183,7 @@ def test_a_reservation_occupies_a_slot_at_a_limit_above_one(
         assert download.active_job_ids() == ("job-1", "job-2")
         assert not download.is_idle
 
-        with pytest.raises(RuntimeError, match="the pool is full at 2"):
+        with pytest.raises(RuntimeError, match="the download lane is full at 2"):
             download.start("job-3")
     finally:
         download.shutdown()
@@ -5583,32 +5583,36 @@ def test_a_retried_probe_writes_no_output(
         assert spin(lambda: download.is_idle, timeout=60)
 
 
-def test_a_probe_parked_behind_a_full_pool_still_resumes_as_a_probe(
-    tmp_path: Path, spin: Callable[..., bool]
-) -> None:
+def test_a_parked_probe_still_resumes_as_a_probe(tmp_path: Path, spin: Callable[..., bool]) -> None:
     """`T083-R1`'s second path: the retry defers, and `_fill_free_slots` is what restarts it.
 
     `_perform_due_retries` passes the kind explicitly, so a retry that starts *immediately* keeps
-    it either way. When the pool is full the retry parks instead, and the job is later picked up by
-    `_fill_free_slots`, which has no kind of its own — taking `start`'s default there turns the
-    parked probe into a download at the moment a slot opens.
+    it either way. When the probe parks instead, it is later picked up by `_fill_free_slots`,
+    which has no kind of its own — taking `start`'s default there turns the parked probe into a
+    download at the moment it resumes.
 
     Found by mutation: replacing the recorded-kind lookup with a plain `DOWNLOAD` survived the
     whole battery, because every existing test exercised the immediate path.
+
+    **Parked behind pause rather than behind a full pool** (`T-116`). It used to hold the single
+    download slot with a running download, which parked a probe only while both drew on one
+    budget; separate lanes mean a saturated download lane no longer touches a probe at all —
+    `test_a_saturated_download_lane_no_longer_parks_a_probe` is where that is asserted. Pause parks
+    every kind (`UX-001`) and `resume()` drains through the same `_fill_free_slots`, so the claim
+    under test is unchanged and its trigger is still deterministic.
     """
     repository = FakeRepository()
-    queued(repository, "holder", "job-1", directory=tmp_path)
+    queued(repository, "job-1", directory=tmp_path)
 
     download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
     try:
-        download.start("holder")
-        assert spin(lambda: "holder" in download._occupant_ids(), timeout=60)
+        download.pause()
 
-        # A probe deferred behind the full pool, exactly as a retried probe would be.
+        # A probe deferred, exactly as a retried probe would be.
         download._start_when_free("job-1", SessionKind.PROBE)
         assert download._waiting == ["job-1"], "the probe was not parked"
 
-        download.set_concurrency(2)
+        download.resume()
 
         assert "job-1" in download._occupant_ids(), "the parked probe never started"
         assert download._sessions["job-1"].kind is SessionKind.PROBE, (
@@ -5618,3 +5622,218 @@ def test_a_probe_parked_behind_a_full_pool_still_resumes_as_a_probe(
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)
+
+
+# --- T-116: the metadata lane -------------------------------------------------------------------
+#
+# `UX-003` makes probing what happens when a user pastes, rather than a button covering one URL.
+# Under a single budget that meant adding URLs took the download slots, so the transfers a user was
+# watching stopped while their paste resolved. These assert the two lanes are actually two.
+
+
+def test_a_saturated_download_lane_no_longer_parks_a_probe(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-116`: the download lane being full says nothing about whether a probe may start.
+
+    The single download slot is held by a download that never ends. Before separate lanes the
+    probe parked behind it and waited for a *download* to finish, which is the delay `UX-003`
+    exists to remove — with a limit of three and twenty URLs pasted, the twentieth resolved only
+    after the nineteenth had downloaded.
+
+    Asserted on the session's kind rather than only on its presence: a probe that started as a
+    download would also be "started".
+    """
+    repository = FakeRepository()
+    queued(repository, "holder", "job-1", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.start("holder")
+        assert spin(lambda: "holder" in download._occupant_ids(), timeout=60)
+        assert not download._has_capacity(SessionKind.DOWNLOAD), "the download lane is not full"
+
+        download.start("job-1", SessionKind.PROBE)
+
+        assert download._waiting == [], "the probe was parked behind a full download lane"
+        assert download._sessions["job-1"].kind is SessionKind.PROBE
+        assert "holder" in download._sessions, (
+            "starting a probe disturbed the download already running, which is the whole thing "
+            "separate lanes exist to prevent"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_the_probe_lane_has_its_own_ceiling(tmp_path: Path, spin: Callable[..., bool]) -> None:
+    """`T-116`: probes are bounded too, and by a number `REQ-013` does not supply.
+
+    **Two, which the default cannot produce.** `DEFAULT_PROBE_CONCURRENCY` is 4 and the download
+    limit here is 3, so a lane that ignored its own setting and read either of the others would
+    admit a third probe and pass a weaker test. `T-088`'s pool test measured the default for a
+    week for exactly this reason.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", "job-3", directory=tmp_path)
+
+    download = DownloadManager(
+        repository, concurrency=3, probe_concurrency=2, entry_point=child_downloading_forever
+    )
+    try:
+        download.start("job-1", SessionKind.PROBE)
+        download.start("job-2", SessionKind.PROBE)
+        assert spin(lambda: len(download._occupant_ids(SessionKind.PROBE)) == 2, timeout=60)
+
+        with pytest.raises(RuntimeError, match="the probe lane is full at 2"):
+            download.start("job-3", SessionKind.PROBE)
+
+        assert download._occupant_ids(SessionKind.PROBE) == ("job-1", "job-2"), (
+            "a third probe was admitted past the lane's own ceiling"
+        )
+        assert download._has_capacity(SessionKind.DOWNLOAD), (
+            "two probes consumed the download lane, which is the defect this task is about"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_probes_beyond_the_lane_queue_in_queue_order_rather_than_being_refused(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-116`: a pasted batch expresses intent, so the surplus waits rather than being dropped.
+
+    `start()` raises when a lane is full, and is right to — its caller asked for a session now.
+    `admit()` is the durable-intent door and `T-116` gave it a kind, because the only public route
+    to a probe used to be the one that raises. A user pasting twenty URLs should no more have to
+    decide which probes to drop than a user adding twenty downloads.
+
+    **Admitted out of queue order on purpose.** The two surplus probes are admitted highest
+    position first, so a scheduler that ran them in arrival order would pass a test that only
+    counted them.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", "job-2", "job-3", directory=tmp_path)
+
+    download = DownloadManager(
+        repository, concurrency=3, probe_concurrency=1, entry_point=child_downloading_forever
+    )
+    try:
+        download.admit("job-1", SessionKind.PROBE)
+        assert spin(lambda: "job-1" in download._occupant_ids(SessionKind.PROBE), timeout=60)
+
+        download.admit("job-3", SessionKind.PROBE)
+        download.admit("job-2", SessionKind.PROBE)
+
+        assert sorted(download._waiting) == ["job-2", "job-3"], (
+            "a probe beyond the lane's ceiling was refused instead of queued"
+        )
+        assert download._next_startable() is None, "the full probe lane admitted another probe"
+        assert download._next_waiting() == "job-2", (
+            "the surplus probes would start in the order they were asked for rather than in "
+            "queue_position order, which is the only order that survives a restart"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_waiting_download_does_not_hold_up_a_waiting_probe(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-116`: the fill loop takes the next job it *can* start, not the next job.
+
+    The download lane is full and a download waits at the head of the queue. A probe behind it must
+    still start, because nothing about the download's lane says anything about the probe's. The
+    loop used to stop at the first job it could not start — correct with one budget, and with two
+    it makes a probe wait for a download to finish all over again.
+
+    **Both are parked first, and `resume()` is what runs the loop.** An earlier version admitted
+    the probe while the manager was running, which starts it directly through `_start_when_free`
+    and never reaches `_fill_free_slots` at all — so it passed with the loop's filter removed,
+    proving something other than what it says. Pause parks every kind (`UX-001`), which is how
+    both jobs are on the waiting list when the loop finally runs.
+    """
+    repository = FakeRepository()
+    queued(repository, "holder", "waiting-download", "job-probe", directory=tmp_path)
+
+    download = DownloadManager(repository, concurrency=1, entry_point=child_downloading_forever)
+    try:
+        download.start("holder")
+        assert spin(lambda: "holder" in download._occupant_ids(), timeout=60)
+
+        download.pause()
+        download.admit("waiting-download")
+        download.admit("job-probe", SessionKind.PROBE)
+        assert download._waiting == ["waiting-download", "job-probe"], "both should be parked"
+
+        download.resume()
+
+        assert download._waiting == ["waiting-download"], (
+            "the probe was stuck behind a waiting download it shares no budget with"
+        )
+        assert download._sessions["job-probe"].kind is SessionKind.PROBE
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_cancelling_a_queued_probe_stops_it_ever_starting(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-116`, `T-103`: closing the dialog must not leave a lane full of unwanted probes.
+
+    A probe waiting for a lane has no process to kill, so cancelling it is a bookkeeping question
+    rather than a lifecycle one — and `T-103` is what happens when the id is left on the waiting
+    list: the next free slot picks it up and `start()` refuses a job that is already cancelled.
+
+    Asserted by freeing the lane afterwards and finding nothing started, rather than by reading the
+    waiting list alone. A list this test cleared and then never drained would prove nothing.
+    """
+    repository = FakeRepository()
+    queued(repository, "holder", "job-1", directory=tmp_path)
+
+    download = DownloadManager(
+        repository, concurrency=3, probe_concurrency=1, entry_point=child_downloading_forever
+    )
+    try:
+        download.start("holder", SessionKind.PROBE)
+        assert spin(lambda: "holder" in download._occupant_ids(SessionKind.PROBE), timeout=60)
+        download.admit("job-1", SessionKind.PROBE)
+        assert download._waiting == ["job-1"], "the probe was not queued"
+
+        download.cancel("job-1")
+
+        assert download._waiting == [], "the cancelled probe kept its claim on the lane"
+        download.cancel("holder")
+        assert spin(lambda: not download._occupant_ids(SessionKind.PROBE), timeout=60)
+        assert "job-1" not in download._sessions, (
+            "the cancelled probe started anyway once the lane freed, which is T-103's shape"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_shutdown_drains_both_lanes(tmp_path: Path, spin: Callable[..., bool]) -> None:
+    """`T-116`, `ARC-002`: no worker of either kind outlives the application.
+
+    `is_idle` is the whole-manager answer, so this asserts the lanes are empty *by kind* as well —
+    an accounting split that only ever adds could report idle while one lane still held a session.
+    """
+    repository = FakeRepository()
+    queued(repository, "downloading", "probing", directory=tmp_path)
+
+    download = DownloadManager(
+        repository, concurrency=1, probe_concurrency=1, entry_point=child_downloading_forever
+    )
+    download.start("downloading")
+    download.start("probing", SessionKind.PROBE)
+    assert spin(lambda: len(download._occupant_ids()) == 2, timeout=60)
+
+    download.shutdown()
+
+    assert spin(lambda: download.is_idle, timeout=60)
+    assert download._occupant_ids(SessionKind.DOWNLOAD) == ()
+    assert download._occupant_ids(SessionKind.PROBE) == ()

@@ -33,6 +33,12 @@ criterion 6 — every deliverable reviewed — is the only one not met.
   its approval stands; the test was killing a launcher shim and leaving the real holder alive.
 - **Blocked on `STARBASE`, which is offline:** `T-092` and `T-074`. Neither gates the phase.
 
+**The UI rework has started.** `UX-003` is accepted — nothing enters the queue unprobed — and
+`T-116` through `T-120` are filed. `T-116` is **in review**: probes and downloads now draw on
+separate lanes, so pasting URLs no longer takes the slots a running transfer is using. It came
+first because `UX-003` makes probing mandatory, and mandatory probing through one budget would
+have stalled downloads in flight every time somebody pressed Add.
+
 ## **`T-115` is fixed — the queue drains, and the gate fired to say so**
 
 `DownloadManager.admit(job_id)` is the public counterpart to `start()`: `start()` raises at
