@@ -36,8 +36,9 @@ from pathlib import Path
 from typing import Any, Final
 
 import pytest
-from PySide6.QtCore import QEvent, QRect, Qt
+from PySide6.QtCore import QEvent, QModelIndex, QPoint, QRect, Qt
 from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QApplication,
@@ -82,11 +83,19 @@ from tracks_and_trails.ui.add_dialog import (
 )
 from tracks_and_trails.ui.row_delegate import (
     EDIT_HINT,
+    EDITOR_WIDTH,
+    GAP,
+    INHERITED_TEXT,
     PADDING,
+    PRESET_CHOICES_ROLE,
+    PRESET_ROLE,
     ROW_HEIGHT,
     ROW_PRESET_NAME,
+    SELECTOR_LINES,
+    SELECTOR_ROLE,
 )
 from tracks_and_trails.ui.staging import SETTLED, RowState
+from tracks_and_trails.ui.thumbnails import THUMBNAIL_SIZE
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[2]
 INFODICTS: Final = REPO_ROOT / "tests" / "fixtures" / "infodicts"
@@ -1684,10 +1693,15 @@ def test_a_large_paste_builds_no_control_at_all_until_one_is_asked_for(
     Both of those measure a dialog that is never shown, and a hidden view lays nothing out: a
     mutation reintroducing a persistent editor per row passed both, because five hundred unshown
     combo boxes are cheap on this platform and ruinous on the one that measured 0.722 s. Counting
-    the controls says the thing directly and says it the same on every machine.
+    the live widgets says the thing directly and says it the same on every machine.
 
-    The delegate's contract is one editor for the row being edited, so a paste of any size holds
-    **zero** until something opens one.
+    **At most one, not zero** (`T118-R12`). The first version of this test demanded zero live
+    controls at all times, which the review correctly read as *encoding* the missing affordance
+    rather than catching it: a row with no visible control passed it, and `UX-004` requires one on
+    every row. What scales is the number of live `QComboBox` widgets; what `UX-004` requires is
+    that every row *shows* a control. The two are only compatible because the delegate paints the
+    control and instantiates one — which is `UX-004`'s own "C" — so this asserts the widget count
+    and `test_every_row_shows_its_download_as_control` asserts the visible half.
     """
     dialog = dialogs(managers(entry_point=child_never_returning))
     type_urls(dialog, "\n".join(f"https://many.invalid/{n}" for n in range(SUPPORTED_PASTE)))
@@ -1695,10 +1709,146 @@ def test_a_large_paste_builds_no_control_at_all_until_one_is_asked_for(
 
     assert len(dialog.rows) == SUPPORTED_PASTE
     controls = staging_list(dialog).findChildren(QComboBox, ROW_PRESET_NAME)
-    assert controls == [], (
-        f"{len(controls)} per-row controls exist for {SUPPORTED_PASTE} rows; the delegate builds "
-        "one, for the row being edited"
+    assert len(controls) <= 1, (
+        f"{len(controls)} live per-row controls exist for {SUPPORTED_PASTE} rows; the delegate "
+        "paints the control and instantiates at most one, for the row being edited"
     )
+
+
+def test_every_resolved_row_offers_its_download_as_control(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`UX-004` §1, `T118-R12`: every row that can be retargeted says so.
+
+    The dialog's half of the claim — that each resolved row offers the control and carries its
+    current value. That the control is actually *drawn* is
+    `test_row_delegate.test_a_row_with_choices_draws_a_control_and_one_without_does_not`, which
+    can hold the two rows identical apart from the choices and so isolates the drawing.
+
+    An earlier version of this test rendered the slot and asserted it was "not blank". It passed
+    with the control's painting disabled, because the item background fills that rectangle either
+    way — the same class of vacuous assertion the review was about, produced while fixing it.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
+    model = staging_list(dialog).model()
+
+    for index in range(model.rowCount()):
+        cell = model.index(index, 0)
+        assert model.data(cell, PRESET_CHOICES_ROLE), f"row {index} offers no format choices"
+        assert cell.flags() & Qt.ItemFlag.ItemIsEditable, f"row {index} is not editable"
+
+    # Spelled out rather than blank (`T118-R4`): a row following the batch reads as the inherited
+    # entry, which is what the control draws when the row has no preset of its own.
+    assert role_values(dialog, PRESET_ROLE) == [None, None]
+    assert INHERITED_TEXT.strip(), "the inherited entry has no words for the control to draw"
+
+
+def test_clicking_a_rows_control_opens_it_without_selecting_first(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """`T118-R12`: the drawn control is a control, not a picture of one.
+
+    `SelectedClicked` alone made the first click select the row and do nothing visible, so the user
+    had to click the same place twice with no way to know that. A click inside the control's own
+    rectangle opens the editor on the row it belongs to, whether or not that row was selected.
+
+    Driven through the delegate's `editorEvent` with a real mouse event at real coordinates —
+    a test that called `edit_row()` would prove the programmatic route the review already had.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
+    listing = staging_list(dialog)
+    dialog.show()
+    try:
+        qapp.processEvents()
+        listing.clearSelection()
+        listing.setCurrentIndex(QModelIndex())
+
+        target = listing.model().index(1, 0)
+        rect = listing.visualRect(target)
+        control = QPoint(rect.right() - EDITOR_WIDTH // 2, rect.center().y())
+        QTest.mouseClick(listing.viewport(), Qt.MouseButton.LeftButton, pos=control)
+        qapp.processEvents()
+
+        opened = listing.findChildren(QComboBox, ROW_PRESET_NAME)
+        assert len(opened) == 1, (
+            f"one click on row 1's control opened {len(opened)} editors; it must open exactly one"
+        )
+        assert listing.currentIndex().row() == 1, "the editor opened on the wrong row"
+    finally:
+        dialog.hide()
+
+
+def test_the_literal_selector_survives_at_a_realistic_width(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`T118-R8`, `REQ-009`: the **rendered** selector, not the model's copy of it.
+
+    The previous correction put the right string in `SELECTOR_ROLE` and then right-elided it at the
+    width left over beside the control — 382 px against a built-in that measures up to 962 px — so
+    the literal selector was cut off entirely and the tests, which read `DisplayRole`, never saw
+    it. This asserts what a sighted user can actually read.
+
+    The measurement is the delegate's own wrapped layout, so it fails if the line goes back to one
+    line, gets narrowed by the control's slot again, or is elided.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM)
+    row = dialog.rows[0]
+    selector = preset_registry.effective_selector(dialog.preset_for(row))
+
+    listing = staging_list(dialog)
+    metrics = QFontMetrics(listing.font())
+    available = QRect(0, 0, RENDER_WIDTH - 2 * PADDING - THUMBNAIL_SIZE[0] - GAP, ROW_HEIGHT)
+    drawn = metrics.boundingRect(
+        available,
+        int(Qt.TextFlag.TextWordWrap),
+        role_values(dialog, SELECTOR_ROLE)[0],
+    )
+
+    assert selector in role_values(dialog, SELECTOR_ROLE)[0], "the row does not carry its selector"
+    assert drawn.height() <= SELECTOR_LINES * metrics.height(), (
+        f"the selector needs {drawn.height()}px and the row draws {SELECTOR_LINES} lines "
+        f"({SELECTOR_LINES * metrics.height()}px), so it would be cut off"
+    )
+    assert drawn.width() <= available.width(), "the selector was measured wider than it is drawn"
+
+
+def test_the_copyable_selector_follows_the_current_row(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`REQ-009`'s other half: a selector you can *take away*.
+
+    A delegate paints pixels, so the drawn line cannot be selected or copied — and `REQ-009` exists
+    so a user can learn the syntax and write their own. The label below the list is the dedicated
+    selectable detail, and it follows whichever row is current so a mixed batch can be read one row
+    at a time.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
+    choose_in_editor(dialog, open_row_editor(dialog, 1), "Audio only (MP3)")
+    listing = staging_list(dialog)
+
+    label = dialog.findChild(QLabel, "selectorValue")
+    assert label is not None
+    assert label.textInteractionFlags() & Qt.TextInteractionFlag.TextSelectableByMouse, (
+        "the one copyable selector on screen cannot be selected"
+    )
+
+    listing.setCurrentIndex(listing.model().index(0, 0))
+    first = label.text()
+    listing.setCurrentIndex(listing.model().index(1, 0))
+    second = label.text()
+
+    assert preset_registry.effective_selector(dialog.preset_for(dialog.rows[0])) in first
+    assert preset_registry.effective_selector(dialog.preset_for(dialog.rows[1])) in second
+    assert first != second, "the label showed the same selector for two differently-targeted rows"
 
 
 def test_a_four_times_larger_paste_does_not_cost_four_times_more_than_linearly(

@@ -90,13 +90,22 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ### T-118 — The add dialog becomes a staging list
 
-**Status:** **In Review — the correction batch is complete and awaiting re-review**, 2026-08-03.
-`T118-R6`…`R11` are **corrected**; only the Reviewer marks them Resolved (`AGENTS.md` §10). The
-redesign the review asked for is built: `ui/row_delegate.py` draws one row for this dialog and the
-queue both, and `T-119`'s carried scope landed with it. **One thing is owed rather than done** — a
-hosted-Windows measurement at the replacement bound, recorded under the correction below.
-*(This read "In Review — changes requested 2026-08-03, and this one needs a redesign", listing
-`T118-R6`…`R10` as open, until the correction landed.)*
+**Status:** **In Review — changes requested a third time 2026-08-03, and corrected again the same
+day.** `T118-R6`, `R7`, `R9` and `R11` are **Resolved** by the reviewer, as are the `e300b04`
+teardown corrections. **`T118-R8`, `R12` and `R13` blocked and are now corrected**; `T118-R10`'s
+design was accepted with its verification still open. Only the Reviewer marks any of these
+Resolved (`AGENTS.md` §10).
+
+**What the second round found is worth stating plainly, because it is one mistake with three
+faces: I optimised away the thing `UX-004` chose, and then wrote tests that agreed with me.**
+`T118-R12` — the delegate reserved the control's slot and painted nothing in it, so the per-row
+format control `UX-004` §1 requires on *every* row existed only for someone who already knew to
+press F2. My own structural test demanded **zero** live controls, which encoded the absence rather
+than catching it. `T118-R8` — the correct selector reached the model and was then right-elided at
+382 px against a 962 px string, and the tests read `DisplayRole` so never saw what was drawn.
+`T118-R13` — the fetch was asynchronous and the *cleanup* was not.
+*(This read "the correction batch is complete and awaiting re-review" between the two rounds, and
+before that "changes requested … this one needs a redesign".)*
 `T118-R1`…`R3` are **resolved** — transient staging, synchronous staging identity, and an owned
 commit that writes each row's final request once — and were preserved through the rewrite.
 `T118-R5` is closed by `UX-004`. What was open was the whole per-row control path: `T118-R6`
@@ -322,6 +331,44 @@ trade here — the replacement bound carries a 24x margin rather than a 4 % one,
 that actually holds (the control count) needs no runner at all — but it is a substitution, and the
 re-review should see it named as one rather than discover it.
 
+#### Correction, 2026-08-03 (second round) — `T118-R8`, `R12`, `R13`
+
+**`T118-R12` — the control is drawn on every row.** `UX-004` §1 is unconditional: every row carries
+a visible *Download as* control showing what that row will download. `UX-004`'s own `T-119`
+sequencing note says the delegate may "draw the control only on the row under the pointer or
+holding focus: one widget reused, **identical interaction**". I took the widget-reuse half and
+dropped the drawing, which is not what it says.
+
+`RowDelegate._paint_control` now draws the control through the platform style — a real
+`QStyleOptionComboBox` and `CC_ComboBox`, so it is the machine's combo box rather than something
+that resembles one here — on every row that has choices, carrying that row's current value. The
+live `QComboBox` still exists only for the row being edited, so `T118-R10`'s cost does not return.
+`RowDelegate.editorEvent` opens that editor on a **direct click** in the control's rectangle:
+`SelectedClicked` alone meant the first click selected the row and did nothing visible, and the
+user had no way to know a second click was needed. One `_control_rect` serves the painted
+affordance, the live editor's geometry and the click target, so the control cannot move under the
+pointer.
+
+**`T118-R8` — the drawn selector wraps at full width, and there is a copyable one.** The line is no
+longer narrowed by the control's slot and no longer elided; it wraps into `SELECTOR_LINES`. And
+because a delegate paints pixels rather than selectable text, `REQ-009`'s promise that a user can
+*learn the syntax and write their own* needed somewhere to take it from: `selectorValue` below the
+list now follows the current row, falling back to the batch when none is current.
+
+**`T118-R13` — the lifecycle is asynchronous, not just the fetch.** `sweep()` resolves the names to
+keep and hands the directory listing, the stats and the unlinks to `_SweepTask` on the pool;
+`swept` reports the count. `close()` marks the store closed, cancels network work and **returns** —
+the `waitForDone(5000)` is gone. Ownership completes at `closed`, emitted when the last counted
+task drains. What the wait protected is still handled: `QThreadPool`'s own destructor waits for its
+runnables, and that runs when the store is destroyed rather than on the interaction.
+
+**Found while fixing it: the cache write was not atomic.** `write_bytes` creates the file and then
+fills it, so a reader — the next launch, or another window sharing the URL — could open a name that
+exists and get a truncated image. Written aside and renamed now. **This one is not covered by a
+test**, deliberately: it is a race whose window no deterministic test can observe, and a test that
+appeared to cover it would be worth less than this sentence. It was found by a test racing its own
+write, which is the only reason it is known about at all.
+
 ##### Mutations run
 
 Ten, of which **four initially survived — and each one changed the work rather than the record**.
@@ -340,6 +387,19 @@ reason it named, and the fourth exposed two guards that made each other untestab
 | `peek` starts a fetch, like `pixmap` | the probed-thumbnail test — **after `pending_urls` existed**. The effect is asynchronous, so a fetch *count* cannot see it in the same breath as the call. |
 | An unknown total draws a bar at zero | the indeterminate test — **after it also asserted `PROGRESS_ROLE`**. It checked the text only, so the graphical half could tell the lie the textual half was written to avoid. |
 | A persistent editor per row | the structural count — **after it existed**; the two timing tests both passed it. |
+
+**Second round, six more.** Four killed on the first attempt; **one survived and one is recorded as
+uncovered**:
+
+| Mutation | Killed by |
+|---|---|
+| A click on the drawn control does nothing | the shown-dialog click test |
+| The selector is elided at one line again | the rendered-selector test |
+| The copyable label ignores the current row | the follows-the-current-row test |
+| The sweep runs inline on the GUI thread | the blocked-pool sweep test |
+| `close()` waits for the pool again | the blocked-pool close test, which takes 5.11 s to fail — the wait it is asserting the absence of |
+| **The control's slot is reserved and nothing is painted** | **survived at first.** The test rendered the slot and asserted it was "not blank", which the item background satisfies either way — the same vacuous shape the review was about, produced while fixing it. Rewritten to hold two rows identical apart from `PRESET_CHOICES_ROLE` with empty text, so the only thing that can differ in the compared rectangle is the control. Now killed. |
+| The cache write is not atomic | **nothing.** Recorded above rather than covered: the window is unobservable to a deterministic test. |
 
 
 ---

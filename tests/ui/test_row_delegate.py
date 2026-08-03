@@ -19,13 +19,14 @@ only way to say "the view never asked for row 900" without depending on a scroll
 window size that CI does not have.
 """
 
+import threading
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, Final
 
 import pytest
-from PySide6.QtCore import QAbstractListModel, QModelIndex, QRect, Qt
+from PySide6.QtCore import QAbstractListModel, QModelIndex, QRect, QRunnable, Qt
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
@@ -33,9 +34,13 @@ from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 from tracks_and_trails.core.paths import thumbnail_cache_directory, thumbnail_cache_path
 from tracks_and_trails.ui.row_delegate import (
     DETAIL_ROLE,
+    EDITOR_WIDTH,
+    GAP,
     HEADLINE_ROLE,
     HUE_ROLE,
     PADDING,
+    PRESET_CHOICES_ROLE,
+    PRESET_ROLE,
     PROGRESS_ROLE,
     ROW_HEIGHT,
     STATE_ROLE,
@@ -52,6 +57,11 @@ IMAGE_SOURCE: Final = REPO_ROOT / "src" / "tracks_and_trails" / "resources" / "i
 
 #: The width a row is rendered at here. Wide enough that nothing under test is elided.
 RENDER_WIDTH: Final = 700
+
+#: `NFR-001` budgets ~100 ms for an interaction. Half a second here for the same reason the add
+#: dialog's tests use that figure: the property is that the call **does not wait**, which a
+#: blocking implementation misses by seconds rather than by milliseconds.
+INTERACTION_BUDGET_SECONDS: Final = 0.5
 
 #: A queue no hand-driven test reaches, and the size the repaint bound is asserted at.
 LARGE_QUEUE: Final = 500
@@ -142,6 +152,12 @@ def stores(qapp: QApplication, tmp_path: Path) -> Iterator[Callable[..., Thumbna
 
     for store in built:
         store.close()
+    # `close()` deliberately does not wait (`T118-R13`), so the *fixture* waits — a test's own
+    # teardown is not the GUI thread and is exactly where a bounded wait belongs.
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and any(store.outstanding for store in built):
+        qapp.processEvents()
+        time.sleep(0.005)
     qapp.processEvents()
 
 
@@ -233,6 +249,59 @@ def test_every_row_is_the_same_height_whatever_it_holds(qapp: QApplication) -> N
     heights = {delegate.sizeHint(option, model.index(i, 0)).height() for i in range(3)}
 
     assert len(heights) == 1, f"rows differ in height: {heights}"
+
+
+def test_a_row_with_choices_draws_a_control_and_one_without_does_not(
+    qapp: QApplication,
+) -> None:
+    """`UX-004` §1, `T118-R12`: the control is **drawn on the row**, not merely available.
+
+    The delegate reserved `EDITOR_WIDTH` and painted nothing in it, so the override existed only
+    for a user who already knew to press F2 or right-click. `UX-004` put the control on the row
+    precisely to stop that, and its `T-119` sequencing note permits *one reused widget* — not an
+    empty slot.
+
+    **Two rows identical apart from `PRESET_CHOICES_ROLE`**, and both with empty text, so the only
+    thing that can differ in the compared rectangle is the control. Asserting "the slot is not
+    blank" instead would pass with the control disabled, because the item background fills it —
+    which an earlier version of this test did.
+    """
+    delegate = RowDelegate()
+    blank_roles: dict[int, Any] = {HEADLINE_ROLE: "", DETAIL_ROLE: "", STATE_ROLE: "", HUE_ROLE: 0}
+    with_control = RowsModel([{**blank_roles, PRESET_CHOICES_ROLE: ("Best video", "Audio only")}])
+    without = RowsModel([dict(blank_roles)])
+
+    drawn = paint_rows(with_control, delegate, 0)
+    plain = paint_rows(without, delegate, 0)
+
+    slot = QRect(
+        RENDER_WIDTH - PADDING - EDITOR_WIDTH, PADDING, EDITOR_WIDTH, ROW_HEIGHT - 2 * PADDING
+    )
+    assert drawn.copy(slot) != plain.copy(slot), (
+        "a row offering format choices drew the same slot as one offering none, so no control "
+        "was painted"
+    )
+    # And only there: a control must not redraw the rest of the row differently.
+    rest = QRect(0, 0, RENDER_WIDTH - PADDING - EDITOR_WIDTH - GAP, ROW_HEIGHT)
+    assert drawn.copy(rest) == plain.copy(rest), "painting the control disturbed the row's text"
+
+
+def test_the_control_shows_the_rows_own_choice(qapp: QApplication) -> None:
+    """The drawn control carries the row's current value, not a blank (`T118-R4`, `UX-004`)."""
+    delegate = RowDelegate()
+    blank_roles: dict[int, Any] = {HEADLINE_ROLE: "", DETAIL_ROLE: "", STATE_ROLE: "", HUE_ROLE: 0}
+    choices = ("Best video", "Audio only")
+    inherited = RowsModel([{**blank_roles, PRESET_CHOICES_ROLE: choices}])
+    overridden = RowsModel(
+        [{**blank_roles, PRESET_CHOICES_ROLE: choices, PRESET_ROLE: "Audio only"}]
+    )
+
+    slot = QRect(
+        RENDER_WIDTH - PADDING - EDITOR_WIDTH, PADDING, EDITOR_WIDTH, ROW_HEIGHT - 2 * PADDING
+    )
+    assert paint_rows(inherited, delegate, 0).copy(slot) != paint_rows(
+        overridden, delegate, 0
+    ).copy(slot), "an inherited row and an overridden row drew the same control"
 
 
 # --- 2. no fetch for a row the view never asked to paint ---------------------------------------
@@ -366,9 +435,12 @@ def test_a_fetched_thumbnail_is_written_under_the_cache_directory(
     model = RowsModel([a_row(0, thumbnail=url)])
 
     paint_rows(model, delegate, 0)
-    assert spin_until(qapp, lambda: thumbnail_cache_path(url, root).exists())
+    # Waits on the decode rather than on the file existing: the write is what precedes it, so this
+    # cannot observe a half-written cache entry the way an `exists()` poll can.
+    assert spin_until(qapp, lambda: store.peek(url) is not None)
 
     written = thumbnail_cache_path(url, root)
+    assert written.exists(), "the decoded thumbnail was never written to the cache"
     assert written.parent == thumbnail_cache_directory(root)
     assert written.read_bytes() == IMAGE_SOURCE.read_bytes()
 
@@ -441,11 +513,123 @@ def test_sweeping_removes_what_no_job_names_and_keeps_what_one_does(
         ),
     )
 
-    removed = store.sweep({kept})
+    swept: list[int] = []
+    store.swept.connect(swept.append)
+    store.sweep({kept})
+    assert spin_until(qapp, lambda: bool(swept)), "the sweep never reported"
 
-    assert removed == 1
+    assert swept == [1]
     assert thumbnail_cache_path(kept, root).exists(), "a picture a live job still names was deleted"
     assert not thumbnail_cache_path(gone, root).exists(), "a picture nothing names survived"
+
+
+# --- 4b. the lifecycle never blocks the GUI thread (`T118-R13`) --------------------------------
+
+
+class _Blocker(QRunnable):
+    """Occupies a pool thread until released.
+
+    The pool is filled with these so the assertions below are about **scheduling**, not about
+    speed: if a UI call did its work inline it would finish regardless of how busy the pool is,
+    and if it schedules then the work provably has not happened yet. That is a deterministic
+    statement where a stopwatch would be a race.
+    """
+
+    def __init__(self, gate: threading.Event) -> None:
+        super().__init__()
+        self._gate = gate
+
+    def run(self) -> None:
+        self._gate.wait(timeout=30)
+
+
+def occupy_pool(store: ThumbnailStore, gate: threading.Event) -> None:
+    """Fill every pool thread. Reaches into `_pool` deliberately: the claim is about that pool."""
+    for _ in range(store._pool.maxThreadCount()):
+        store._pool.start(_Blocker(gate))
+
+
+def test_sweeping_schedules_the_disk_work_instead_of_doing_it(
+    qapp: QApplication, stores: Callable[..., ThumbnailStore], tmp_path: Path
+) -> None:
+    """`T118-R13`, `ARC-005`: cache deletion is disk work and must not run on the GUI thread.
+
+    `sweep()` enumerated the directory, stat'd every entry and unlinked inline — from *every* queue
+    model reset, which a removal, a reorder and a clear all cause. A long history on a slow or
+    networked cache directory would have paid for that on the thread drawing the window.
+
+    Proven by blocking the pool: if the call returns while no worker can run, the deletion cannot
+    have happened inline, and the doomed file is still there to prove it.
+    """
+    root = tmp_path / "cache"
+    store = stores(loader=FakeLoader(IMAGE_SOURCE.read_bytes()), cache_root=root)
+    doomed = thumbnail_cache_path("https://pics.invalid/gone.jpg", root)
+    doomed.parent.mkdir(parents=True, exist_ok=True)
+    doomed.write_bytes(b"stale")
+
+    gate = threading.Event()
+    occupy_pool(store, gate)
+    try:
+        started = time.perf_counter()
+        store.sweep(set())
+        elapsed = time.perf_counter() - started
+
+        assert elapsed < INTERACTION_BUDGET_SECONDS, (
+            f"sweep() held the GUI thread for {elapsed:.3f}s"
+        )
+        assert doomed.exists(), "the file was deleted inline; the sweep did not go to the pool"
+        assert store.outstanding, "no pool work was scheduled, so nothing will ever sweep"
+    finally:
+        gate.set()
+
+    swept: list[int] = []
+    store.swept.connect(swept.append)
+    assert spin_until(qapp, lambda: bool(swept)), "the scheduled sweep never ran"
+    assert not doomed.exists(), "the sweep ran but deleted nothing"
+
+
+def test_closing_returns_without_waiting_for_the_pool(
+    qapp: QApplication, stores: Callable[..., ThumbnailStore]
+) -> None:
+    """`T118-R13`: `close()` ran `waitForDone(5000)` on the GUI thread.
+
+    That is an explicit five-second stall on the thread drawing the window, at the moment the user
+    asked for the dialog to go away. Closing now marks the store closed, cancels network work and
+    returns; ownership completes from `closed` when the last pool task drains.
+
+    Blocked pool again, so "returned without waiting" is a fact rather than a measurement — and
+    `closed` must **not** have been emitted while a task is still outstanding, or the signal would
+    be lying about the thing it exists to report.
+    """
+    loader = FakeLoader(IMAGE_SOURCE.read_bytes())
+    store = stores(loader=loader)
+    finished: list[bool] = []
+    store.closed.connect(lambda: finished.append(True))
+
+    gate = threading.Event()
+    occupy_pool(store, gate)
+    # A task **of the store's own**, queued behind the blockers so it cannot finish. The blockers
+    # alone would not do: `outstanding` counts what this store started, and a first draft of this
+    # test asserted against foreign pool work and failed for that reason rather than for the one
+    # it names.
+    store.pixmap("https://pics.invalid/queued.jpg")
+    assert store.outstanding == 1, "the fetch did not reach the pool, so nothing is outstanding"
+
+    try:
+        started = time.perf_counter()
+        store.close()
+        elapsed = time.perf_counter() - started
+
+        assert elapsed < INTERACTION_BUDGET_SECONDS, (
+            f"close() held the GUI thread for {elapsed:.3f}s against a blocked pool"
+        )
+        assert loader.cancels == 1, "closing did not cancel network work"
+        qapp.processEvents()
+        assert finished == [], "closed was announced while a pool task was still running"
+    finally:
+        gate.set()
+
+    assert spin_until(qapp, lambda: bool(finished)), "closed was never announced after draining"
 
 
 # --- 5. a missing picture is not a failure ------------------------------------------------------

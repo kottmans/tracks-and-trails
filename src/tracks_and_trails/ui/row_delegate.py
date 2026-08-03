@@ -34,17 +34,21 @@ from typing import Any, Final, cast
 
 from PySide6.QtCore import (
     QAbstractItemModel,
+    QEvent,
     QModelIndex,
     QRect,
     QSize,
     Qt,
 )
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
-from PySide6.QtGui import QColor, QPainter, QPixmap
+from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractItemView,
+    QApplication,
     QComboBox,
     QStyle,
     QStyledItemDelegate,
+    QStyleOptionComboBox,
     QStyleOptionViewItem,
     QWidget,
 )
@@ -102,8 +106,15 @@ PADDING: Final = 6
 #: The gap between the thumbnail and the text.
 GAP: Final = 10
 
-#: How many lines of text a row draws: headline, detail and state, and what it downloads as.
-TEXT_LINES: Final = 3
+#: How many lines the wrapped literal selector may occupy (`T118-R8`).
+#:
+#: Two, because one is what truncated it. At a realistic dialog width the longest built-in
+#: selector — the 1080p line, ~962 px in the default font — fits inside two lines of the full body
+#: width, and eliding it is what `REQ-009`'s "learn the syntax and write your own" cannot survive.
+SELECTOR_LINES: Final = 2
+
+#: How many lines of text a row draws: headline, detail and state, then the selector's own lines.
+TEXT_LINES: Final = 2 + SELECTOR_LINES
 
 #: **The row is at least as tall as the thumbnail it contains** (`T118-R7`). Derived rather than
 #: chosen, so changing `THUMBNAIL_SIZE` cannot leave a 54 px picture in a 25 px row again.
@@ -119,6 +130,10 @@ EDITOR_WIDTH: Final = 190
 
 #: The height of the painted progress bar.
 BAR_HEIGHT: Final = 4
+
+#: How tall the row's format control is drawn. A combo box's own height, near enough, and bounded
+#: by the row so a large font cannot push it outside its own row.
+CONTROL_HEIGHT: Final = 26
 
 #: **The declared keyboard route to a row's editor** (`T118-R9`).
 #:
@@ -147,6 +162,10 @@ class RowDelegate(QStyledItemDelegate):
     ) -> None:
         super().__init__(parent)
         self._thumbnails = thumbnails
+        #: The row whose live editor is open, or `None`. At most one at a time — that is the whole
+        #: of `T118-R10`'s correction, and `_paint_control` reads it to avoid drawing the
+        #: affordance underneath the real control.
+        self._editing_row: int | None = None
 
     # --- size and drawing -----------------------------------------------------------------
 
@@ -204,13 +223,75 @@ class RowDelegate(QStyledItemDelegate):
 
         text_left = body.left() + THUMBNAIL_SIZE[0] + GAP
         text_area = QRect(text_left, body.top(), max(body.right() - text_left, 0), body.height())
-        if self._editable(index):
-            # Leave the editor's slot clear even while nothing is being edited, so opening one
-            # does not shuffle the text sideways under the user.
-            text_area.setWidth(max(text_area.width() - EDITOR_WIDTH - GAP, 0))
 
-        self._paint_text(painter, text_area, index, primary, muted)
+        # **The control is drawn on every row that has one** (`UX-004` §1, `T118-R12`). Reserving
+        # the slot and painting nothing in it was the defect: an empty 190 px gap is not a visible
+        # control, and it left the override discoverable only by knowing it was there.
+        #
+        # Drawn rather than instantiated, which is `UX-004`'s own sequencing note ("C") — the live
+        # `QComboBox` still exists only for the row being edited, so the widget-per-row cost that
+        # `T118-R10` measured does not come back. What the user sees is identical either way,
+        # because both are drawn by the same style.
+        if self._editable(index):
+            text_area.setWidth(max(text_area.width() - EDITOR_WIDTH - GAP, 0))
+            if not self._is_being_edited(index):
+                # Suppressed only under the live editor, which occupies the same rectangle —
+                # otherwise the painted affordance shows through the real control's edges.
+                self._paint_control(painter, body, option, index)
+
+        self._paint_text(painter, text_area, body, index, primary, muted)
         painter.restore()
+
+    def _control_rect(self, body: QRect) -> QRect:
+        """Where the row's format control sits. One definition, so the painted affordance, the
+        live editor and the click target cannot disagree about where it is."""
+        height = min(CONTROL_HEIGHT, body.height())
+        return QRect(
+            max(body.right() - EDITOR_WIDTH, body.left()),
+            body.top() + (body.height() - height) // 2,
+            min(EDITOR_WIDTH, body.width()),
+            height,
+        )
+
+    def _is_being_edited(self, index: QModelIndex | _PersistentIndex) -> bool:
+        """Whether the live editor is currently open on this row.
+
+        Tracked here rather than asked of the view, because the delegate is what creates and
+        destroys the editor and so is the only thing that cannot be wrong about it.
+        """
+        return self._editing_row == index.row()
+
+    def _paint_control(
+        self,
+        painter: QPainter,
+        body: QRect,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | _PersistentIndex,
+    ) -> None:
+        """Draw the row's **Download as** control, through the real style (`UX-004`, `T118-R12`).
+
+        `QStyleOptionComboBox` and `CC_ComboBox` rather than a hand-drawn rectangle: a control the
+        user is expected to recognise has to be the platform's combo box, not something that
+        resembles one on the machine it was drawn on. It also themes itself, which a rectangle
+        would have to be told how to do twice.
+        """
+        chosen = index.data(PRESET_ROLE)
+        label = chosen if isinstance(chosen, str) else INHERITED_TEXT
+
+        box = QStyleOptionComboBox()
+        box.rect = self._control_rect(body)
+        box.palette = option.palette
+        box.currentText = label
+        box.state = QStyle.StateFlag.State_Enabled
+        if option.state & QStyle.StateFlag.State_MouseOver:
+            box.state |= QStyle.StateFlag.State_MouseOver
+
+        widget = cast("QWidget | None", option.widget)
+        style = widget.style() if widget is not None else QApplication.style()
+        style.drawComplexControl(QStyle.ComplexControl.CC_ComboBox, box, painter, widget)
+        # The label is a separate element: `CC_ComboBox` draws the frame and the arrow, and
+        # `CE_ComboBoxLabel` draws the text inside whatever room they left.
+        style.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, box, painter, widget)
 
     def _paint_tile(
         self, painter: QPainter, body: QRect, index: QModelIndex | _PersistentIndex
@@ -247,6 +328,7 @@ class RowDelegate(QStyledItemDelegate):
         self,
         painter: QPainter,
         area: QRect,
+        body: QRect,
         index: QModelIndex | _PersistentIndex,
         primary: QColor,
         muted: QColor,
@@ -276,10 +358,29 @@ class RowDelegate(QStyledItemDelegate):
 
         selector = _text(index, SELECTOR_ROLE)
         if selector:
+            # **Not elided, and not narrowed by the control's slot** (`T118-R8`, `REQ-009`).
+            #
+            # This line was passed through `ElideRight` at the width left over beside the editor
+            # slot — 382 px at the tests' own render width — against a built-in selector that
+            # measures up to 962 px. The literal selector, which is the entire point of the line,
+            # was cut off every time; the tests asserted the model's string and so never saw it.
+            #
+            # So it wraps instead of eliding, and it runs the **full** body width: the control sits
+            # beside the first two lines, and nothing needs the third line's right-hand end.
+            # `SELECTOR_LINES` of room, which fits every built-in at a realistic dialog width.
             painter.drawText(
-                QRect(area.left(), area.top() + 2 * line, area.width(), line),
-                int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-                metrics.elidedText(selector, Qt.TextElideMode.ElideRight, area.width()),
+                QRect(
+                    area.left(),
+                    area.top() + 2 * line,
+                    max(body.right() - area.left(), 0),
+                    SELECTOR_LINES * line,
+                ),
+                int(
+                    Qt.AlignmentFlag.AlignLeft
+                    | Qt.AlignmentFlag.AlignTop
+                    | Qt.TextFlag.TextWordWrap
+                ),
+                selector,
             )
 
         fraction = index.data(PROGRESS_ROLE)
@@ -305,6 +406,36 @@ class RowDelegate(QStyledItemDelegate):
         choices = index.data(PRESET_CHOICES_ROLE)
         return bool(choices)
 
+    def editorEvent(
+        self,
+        event: Any,
+        model: QAbstractItemModel,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | _PersistentIndex,
+    ) -> bool:
+        """Open the row's editor when the user clicks the control that is drawn on it.
+
+        **The direct interaction, which is what makes the painted affordance a control** rather
+        than a picture of one (`T118-R12`). `SelectedClicked` alone required the row to be selected
+        first, so a click on an unselected row's control selected the row and did nothing visible —
+        the user had to click the same place twice and had no way to know that.
+
+        Returns `False` for everything else, so the view keeps its ordinary selection behaviour.
+        """
+        if not isinstance(event, QMouseEvent) or event.type() != QEvent.Type.MouseButtonRelease:
+            return False
+        if event.button() != Qt.MouseButton.LeftButton or not self._editable(index):
+            return False
+        body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
+        if not self._control_rect(body).contains(event.position().toPoint()):
+            return False
+        view = cast("QAbstractItemView | None", self.parent())
+        if view is None:
+            return False
+        view.setCurrentIndex(index)
+        view.edit(index)
+        return True
+
     def createEditor(
         self,
         parent: QWidget,
@@ -317,6 +448,7 @@ class RowDelegate(QStyledItemDelegate):
         cost is one control regardless of how many rows exist. The design this replaces built one
         per row up front, which is the whole of the 0.722 s.
         """
+        self._editing_row = index.row()
         choice = QComboBox(parent)
         choice.setObjectName(ROW_PRESET_NAME)
         choice.setAccessibleName("Download format for this URL")
@@ -328,6 +460,12 @@ class RowDelegate(QStyledItemDelegate):
         for name in index.data(PRESET_CHOICES_ROLE) or ():
             choice.addItem(str(name), str(name))
         return choice
+
+    def destroyEditor(self, editor: QWidget, index: QModelIndex | _PersistentIndex) -> None:
+        """Forget the open row. Every close route reaches here, which is why it is the one hook."""
+        if self._editing_row == index.row():
+            self._editing_row = None
+        super().destroyEditor(editor, index)
 
     def setEditorData(self, editor: QWidget, index: QModelIndex | _PersistentIndex) -> None:
         if not isinstance(editor, QComboBox):
@@ -354,15 +492,9 @@ class RowDelegate(QStyledItemDelegate):
     ) -> None:
         """Put the editor in the slot `paint` already reserved for it, on the row it belongs to."""
         body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
-        height = min(editor.sizeHint().height(), body.height())
-        editor.setGeometry(
-            QRect(
-                max(body.right() - EDITOR_WIDTH, body.left()),
-                body.top() + (body.height() - height) // 2,
-                min(EDITOR_WIDTH, body.width()),
-                height,
-            )
-        )
+        # **The same rectangle the affordance was painted in** (`T118-R12`). One definition, so the
+        # control does not move at the moment the user clicks it.
+        editor.setGeometry(self._control_rect(body))
 
 
 def _text(index: QModelIndex | _PersistentIndex, role: int) -> str:

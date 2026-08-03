@@ -8634,3 +8634,83 @@ the corrected plan and status say.
 
 No reviewed coordination/source/test files were edited. This review record is the only reviewer
 change; nothing was committed or pushed.
+
+## 2026-08-03 — T-118 delegate correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Submitted delegate span:** `446d151..d4d05de`
+**Effective review boundary:** `890fb5d..d4d05de`
+**Implementation head:** `797db86`; `d4d05de` is the handoff-only head
+**Overall verdict:** **Changes requested for T-118.** The transient staging teardown and effective
+request corrections are sound, and the shared delegate fixes the clipping and widget-per-row
+scaling defects. The rendered staging row does not provide the visible per-row control UX-004
+requires, elides the exact selector T118-R8/REQ-009 require, and performs thumbnail disk/lifecycle
+waits synchronously on the GUI thread. T118-R10 also remains open until the required Windows
+measurement runs on a corrected candidate.
+
+The submitted range is not a complete task boundary. Because Git ranges exclude their left-hand
+commit, it omits the Critical T118-R6 correction at `446d151`; it also omits the two teardown
+corrections at `e300b04`. Both were still unreviewed. This review therefore starts at the last
+approved coordination head, `890fb5d`, and covers those corrections as well as the delegate batch.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T118-R8` | **High** | **Yes — T-118** | Exact effective selector | The model now carries the correct per-row selector, but the renderer does not keep it visible. `row_delegate.py:76-80` says this line must survive eliding intact because a truncated selector cannot teach the syntax; `_paint_text()` nevertheless passes it through `elidedText(..., ElideRight, ...)` at `:277-283`. The delegate also removes a fixed 200 px from the text area for an empty editor slot at `:205-212`. At the tests' own 700 px render width, the available selector area is 382 px; the built-in 1080p line is 962 px and paints only through “following the batch …”, omitting the literal selector entirely. The other built-ins are also truncated. Existing tests assert the model's full string, not the text the sighted user sees, so they pass. This leaves the original “effective selector shown stays the one that will run” acceptance criterion and REQ-009 unmet. | Render the literal selector in full on the staging surface in a form that remains visible and selectable/copyable at realistic widths—wrapping or a dedicated selectable detail are preferable to a tooltip. Add a regression against the rendered/visible contract, not only `DisplayRole`. | **Open; prior finding not resolved** |
+| `T118-R12` | **High** | **Yes — T-118** | UX-004 visible per-row control | UX-004 says every row carries a visible **Download as** control and specifically rejects hiding the override behind discovery (`DECISIONS.md:2576-2583`, `:2612-2622`). The delegate reserves `EDITOR_WIDTH` but paints nothing in that slot (`row_delegate.py:202-212`); the only `QComboBox` is created after editing starts (`:308-330`). `SelectedClicked` at `add_dialog.py:548-555` opens it only after the row is already selected, while F2 and the context menu require the user to know the feature exists. The structural test at `test_add_dialog.py:1682-1701` requires **zero** controls until one is asked for, so it encodes the missing affordance rather than catching it. The accepted T-119 sequencing note permits one reused widget on the row under pointer or focus; it does not permit an empty 190 px slot. | Keep the one-editor scaling design, but draw a recognizable combo/control affordance and current value on the hovered or focused row, and make the direct pointer interaction open that same editor. Add a shown-dialog test that distinguishes a visible affordance from an editable model flag or programmatic `edit_row()` call. | **Open** |
+| `T118-R13` | **High** | **Yes — T-118** | NFR-001 / ARC-005 thumbnail lifecycle | Thumbnail fetch/decode are asynchronous, but cleanup is not. Every queue model reset invokes `_sweep_thumbnails()` synchronously (`queue_view.py:669-672`, `:760-772`), and `ThumbnailStore.sweep()` enumerates the cache directory, stats entries and unlinks files inline (`thumbnails.py:305-328`). Closing the add dialog and detaching the queue call `ThumbnailStore.close()`, which runs `QThreadPool.waitForDone(5000)` inline (`add_dialog.py:1124-1131`; `queue_view.py:709-712`; `thumbnails.py:330-341`). These are disk waits of unbounded duration, up to an explicit five seconds on close, on the GUI thread. NFR-001 and ARCHITECTURE §8 are unqualified: nothing on that thread may block on disk or long operations. The same project previously rejected blocking shutdown on exactly that basis. Current tests use a small local cache and completed workers, so they do not exercise either wait. | Move cache enumeration/deletion and pool retirement into an asynchronous lifecycle. Closing should mark the store closed, cancel network work, return, and complete ownership from a signal/callback when worker tasks have drained; do not replace the five-second wait with a shorter GUI-thread wait. Add slow-sweep and slow-runnable regressions that assert the UI call returns inside the interaction budget. | **Open** |
+| `COORD-R18` | **Medium** | No | Review boundary | `446d151..d4d05de` correctly describes the six commits after R6, but not a complete approval boundary: it excludes `446d151` itself and the unreviewed teardown correction at `e300b04` while asking for T-118's verdict. Following the range literally would sign off a Critical correction and two observed Windows teardown defects without reviewing them. The handoff discloses that they are ancestry, but disclosure does not put them inside the diff. This review compensated by inspecting `890fb5d..d4d05de`, so it no longer blocks this verdict. | For the next handoff, name the prior independently reviewed implementation head as the approval base and separately identify docs/handoff-only commits. A correction sub-range may start at `797db86`, but it must not be presented as the complete T-118 approval boundary unless this review record is included as the prior review. | **Open, non-blocking process follow-up** |
+
+### Prior-finding resolution
+
+| Prior finding / correction | Result |
+|---|---|
+| `T118-R6` | **Resolved.** `effective()` is the single derivation for batch and row presets; per-row MP3 overrides carry the selected non-default bitrate into both display and the durable request. The mixed-selector and non-default bitrate regressions cover the silent-wrong-request class. |
+| `T118-R7` | **Resolved.** The row widget is gone; `sizeHint()` is derived from the 54 px thumbnail plus padding and from three lines in the active font. The staging and queue views use the same delegate. |
+| `T118-R8` | **Not resolved.** The role value is correct, but the sighted rendering truncates the literal selector as recorded above. |
+| `T118-R9` | **Resolved for keyboard ownership.** The editor belongs to the row, F2/edit-trigger behavior is declared, the context menu reaches the same editor, and no persistent editor enters the fixed tab chain. T118-R12 is the separate UX-004 visibility failure. |
+| `T118-R10` | **Correction design accepted; verification remains open.** The widget-per-row design is gone, one editor exists only while editing, viewport paint cost is flat in model size, and the structural assertion kills restoration of persistent editors. The prior finding explicitly required a Windows measurement at the replacement bound. None has run on this candidate, and the maintainer-authorized STARBASE substitution is a different machine from the hosted runner where the flap was observed. Do not spend that run until the blocking source corrections above produce the actual candidate. |
+| `T118-R11` | **Resolved.** `_committing` and obsolete durable-staging helpers are gone, and the touched module prose now describes transient staging and the shared delegate. |
+| T-118 teardown corrections at `e300b04` | **Resolved.** `cancel()` drops an unknown occupant and its reservation without persistence; `_cancellation_of()` asks `can_transition` and declines FAILED→CANCELLED; an unstaged record survives only until its live session is reaped. The three direct regressions pass independently. |
+
+### Review judgments
+
+**The model's two vocabularies are acceptable.** `QueueModel` keeps the per-field columns REQ-014
+and existing consumers use, while the delegate roles compose those same `_text()` values. Column
+zero's accessible text reads the whole row. No independent formatter was found that could make the
+sighted and accessible values disagree; the current by-value tests are proportionate evidence.
+
+**The structural scaling gate is the useful one, but its UX premise is wrong.** Counting persistent
+row widgets correctly detects the Windows regression class. The two unshown-dialog timing tests
+remain coarse evidence at best, as the handoff discloses. The correction is not to restore 500
+combo boxes; it is to paint a discoverable control and reuse one live editor on hover/focus, which
+is exactly the C design UX-004 already authorized.
+
+**No STARBASE variable was changed and no CI run was spent.** The six delegate commits are not on
+`origin/main`, and this head already has blocking source findings. The owed Windows measurement
+belongs on the corrected implementation head so the limited run supplies evidence for the code
+that could actually be approved.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and tree | `890fb5d..d4d05de` inspected, including `e300b04` and `446d151`; `git diff --check` passed. Before the review record, `HEAD == d4d05de`, `origin/main == 446d151`, and the implementation tree was clean. |
+| Focused UI/model/cache slice | `tests/ui/test_add_dialog.py`, `test_row_delegate.py`, `test_queue_view.py` and `tests/unit/test_staging.py`: **122 passed in 35.29 s**. |
+| Excluded teardown corrections | Three named manager regressions: **3 passed in 1.46 s**. |
+| Wider manager/UI attempt | **246 passed / 1 deselected**; 16 integration cases failed before their assertions because this sandbox forbids the tests' localhost `ThreadingHTTPServer` socket (`PermissionError: Operation not permitted`). Those are environment denials, not counted as passing evidence. |
+| Selector render probe | Default Qt 9 pt font, 700 px row: 382 px remains after thumbnail, gaps and reserved editor. Built-in selector lines measure 507-962 px and every one is right-elided; the 1080p literal selector is entirely absent from the painted prefix. |
+| Static gates | `ruff check .`: passed; `ruff format --check .`: **140 files** formatted; bare `mypy`: clean, **101 files**; bare `mypy --platform win32`: clean, **101 files**. |
+| Implementer evidence | Reported **1972 passed / 11 skipped / 2 deselected** and ten killed mutations with byte-identical restoration. No CI or Windows execution exists for this candidate. |
+
+### Final disposition
+
+T-118 remains in review. T118-R8, T118-R10, T118-R12 and T118-R13 block approval. The next focused
+correction should preserve the resolved transient-staging, effective-request, row-height,
+keyboard-ownership and manager-teardown work; make the row's control genuinely visible; keep the
+literal effective selector visible/selectable; and remove all GUI-thread disk/pool waits. Then run
+the mutation battery and the STARBASE Windows job on the exact corrected implementation head.
+
+No reviewed production source or tests were edited. This review record is the only reviewer
+change; nothing was committed, pushed or changed in GitHub repository variables.

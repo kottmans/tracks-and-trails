@@ -559,6 +559,10 @@ class AddUrlDialog(QDialog):
         # The delegate paints every row and builds one editor, for the row being edited.
         self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list.customContextMenuRequested.connect(self._show_row_menu)
+        # The copyable selector below the list follows whichever row is current (`T118-R8`).
+        selection = self._list.selectionModel()
+        if selection is not None:
+            selection.currentChanged.connect(self._show_selector)
         layout.addWidget(self._list)
 
         return box
@@ -1149,7 +1153,14 @@ class AddUrlDialog(QDialog):
 
     def _refresh(self) -> None:
         visible = self._staging.visible
+        current = self._list.currentIndex().row()
         self._model.refresh()
+        # `beginResetModel` drops the current index, so restore it — otherwise every signal that
+        # reaches `_refresh` would silently deselect the row the user is working on, and the
+        # copyable selector below the list would fall back to the batch's (`T118-R8`).
+        if 0 <= current < len(visible):
+            self._list.setCurrentIndex(self._model.index(current, 0))
+        self._show_selector()
 
         if not self._saving:
             self._status.setText(summarise(visible))
@@ -1172,16 +1183,33 @@ class AddUrlDialog(QDialog):
         self._show_selector()
 
     def _show_selector(self) -> None:
-        """Display what the chosen preset actually downloads with (`REQ-009`).
+        """Display what will actually be downloaded, **for the row in hand** (`REQ-009`, `T118-R8`).
 
         The bitrate is shown alongside the selector when the preset converts audio, because it is
         equally part of what will run and `REQ-009`'s promise is about that, not about the
         selector string specifically. It is omitted otherwise rather than shown as "n/a", which
         would put a number on screen for a download that ignores it.
+
+        **This label follows the current row**, and falls back to the batch when no row is current.
+        `REQ-009` asks for a selector a user can *learn the syntax from and then write their own*,
+        which means it has to be selectable text they can copy — and a delegate paints pixels, not
+        selectable text. The row draws its own selector so a mixed batch can be read at a glance;
+        this is where the one in hand can be taken away.
+
+        `T118-R8` was reported twice. The first time the row named a preset instead of a selector;
+        the second time the row's selector was right-elided to nothing at a realistic width. The
+        drawn line wraps now rather than eliding, and this label is the copyable half.
         """
-        preset = self.selected_preset
+        row = self._current_row()
+        preset = self.preset_for(row) if row is not None else self.selected_preset
         selector = preset_registry.effective_selector(preset)
-        text = f"Format selector: {selector}"
+        scope = "This row" if row is not None else "Every row"
+        text = f"{scope} · Format selector: {selector}"
         if preset.audio_codec is AudioCodec.MP3:
             text += f"  ·  {preset.audio_quality} kbps {preset.audio_codec.value.upper()}"
         self._selector_value.setText(text)
+
+    def _current_row(self) -> Row | None:
+        """The row the list has landed on, or `None` when nothing is current."""
+        index = self._list.currentIndex()
+        return self._row_at(index.row()) if index.isValid() else None

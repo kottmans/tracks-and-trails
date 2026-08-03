@@ -26,6 +26,7 @@ the worker is what bounds the memory too: a 1920-wide thumbnail becomes a 96-wid
 ever held.
 """
 
+import os
 from collections import OrderedDict
 from collections.abc import Callable, Iterable
 from pathlib import Path
@@ -130,18 +131,23 @@ class _ReadFromDisk(QRunnable):
         self._path = path
 
     def run(self) -> None:
+        # `finally`, so the store's outstanding count cannot leak on any exit path — a leaked
+        # count would leave `close()` waiting for a task that had already finished (`T118-R13`).
         try:
-            data = self._path.read_bytes()
-        except OSError:
-            # An unreadable cache file is a cache miss, not an error worth telling anyone about.
-            # The bytes are regenerable by definition — that is what makes this a cache.
-            self._store.disk_missed.emit(self._url)
-            return
-        image = QImage()
-        if not image.loadFromData(data):
-            self._store.disk_missed.emit(self._url)
-            return
-        self._store.decoded.emit(self._url, _scaled(image))
+            try:
+                data = self._path.read_bytes()
+            except OSError:
+                # An unreadable cache file is a cache miss, not an error worth telling anyone
+                # about. The bytes are regenerable by definition — that is what makes it a cache.
+                self._store.disk_missed.emit(self._url)
+                return
+            image = QImage()
+            if not image.loadFromData(data):
+                self._store.disk_missed.emit(self._url)
+                return
+            self._store.decoded.emit(self._url, _scaled(image))
+        finally:
+            self._store.task_done.emit()
 
 
 class _DecodeAndStore(QRunnable):
@@ -155,19 +161,66 @@ class _DecodeAndStore(QRunnable):
         self._path = path
 
     def run(self) -> None:
-        image = QImage()
-        if not image.loadFromData(self._data):
-            # Undecodable bytes and a failed fetch are the same thing to a user: no picture.
-            self._store.failed.emit(self._url)
-            return
         try:
-            self._path.parent.mkdir(parents=True, exist_ok=True)
-            self._path.write_bytes(self._data)
-        except OSError:
-            # A cache that cannot be written still serves this launch from memory. Failing the
-            # thumbnail because the cache directory is read-only would be the tail wagging the dog.
-            pass
-        self._store.decoded.emit(self._url, _scaled(image))
+            image = QImage()
+            if not image.loadFromData(self._data):
+                # Undecodable bytes and a failed fetch are the same thing to a user: no picture.
+                self._store.failed.emit(self._url)
+                return
+            try:
+                # **Written aside and renamed**, not written in place. `write_bytes` creates the
+                # file and then fills it, so a reader — the next launch, or another window sharing
+                # this URL — can open a name that exists and get a truncated image. A rename is
+                # atomic on both platforms' local filesystems, so the cache file either is not
+                # there or is complete. Found by a test that raced its own write.
+                self._path.parent.mkdir(parents=True, exist_ok=True)
+                partial = self._path.with_name(f"{self._path.name}.{os.getpid()}.partial")
+                partial.write_bytes(self._data)
+                partial.replace(self._path)
+            except OSError:
+                # A cache that cannot be written still serves this launch from memory. Failing
+                # the thumbnail because the cache directory is read-only would be the tail
+                # wagging the dog.
+                pass
+            self._store.decoded.emit(self._url, _scaled(image))
+        finally:
+            self._store.task_done.emit()
+
+
+class _SweepTask(QRunnable):
+    """Delete cached files nothing names any more, off the GUI thread (`T118-R13`).
+
+    Takes the *names to keep* rather than the store's state, so nothing here reads anything the
+    GUI thread may be changing underneath it. The directory listing, the `is_file` stats and the
+    unlinks are all disk work of unbounded duration, which is why none of it may happen inline.
+    """
+
+    def __init__(self, store: ThumbnailStore, directory: Path, keep: set[str]) -> None:
+        super().__init__()
+        self._store = store
+        self._directory = directory
+        self._keep = keep
+
+    def run(self) -> None:
+        removed = 0
+        try:
+            try:
+                entries = list(self._directory.iterdir())
+            except OSError:
+                # No cache directory yet, or one this process cannot read. Nothing to sweep, and
+                # nothing worth reporting: the files are regenerable by definition.
+                entries = []
+            for entry in entries:
+                if entry.name in self._keep or not entry.is_file():
+                    continue
+                try:
+                    entry.unlink()
+                except OSError:
+                    continue
+                removed += 1
+            self._store.swept.emit(removed)
+        finally:
+            self._store.task_done.emit()
 
 
 class ThumbnailStore(QObject):
@@ -176,11 +229,20 @@ class ThumbnailStore(QObject):
     #: `(thumbnail_url)` — a pixmap became available and the rows showing it should repaint.
     ready = Signal(str)
 
+    #: `(removed_count)` — a sweep finished. Nothing in the UI needs this; a test waits on it,
+    #: which is the honest way to assert work that deliberately no longer happens inline.
+    swept = Signal(int)
+
+    #: The store has closed **and** its last pool task has drained. `close()` returns long before
+    #: this (`T118-R13`); ownership completes here instead of at a wait.
+    closed = Signal()
+
     # Internal, and emitted from worker threads: Qt queues these onto the GUI thread because the
     # store lives there. They are the only way a `QRunnable` can answer, since it is not a QObject.
     decoded = Signal(str, object)
     disk_missed = Signal(str)
     failed = Signal(str)
+    task_done = Signal()
 
     def __init__(
         self,
@@ -205,6 +267,8 @@ class ThumbnailStore(QObject):
         self._failed: set[str] = set()
         self._fetches = 0
         self._closed = False
+        #: Pool tasks started and not yet finished. What `close()` waits on — by callback.
+        self._outstanding = 0
 
         self._pool = QThreadPool(self)
         self._pool.setMaxThreadCount(_POOL_THREADS)
@@ -212,6 +276,7 @@ class ThumbnailStore(QObject):
         self.decoded.connect(self._on_decoded)
         self.disk_missed.connect(self._on_disk_missed)
         self.failed.connect(self._on_failed)
+        self.task_done.connect(self._on_task_done)
 
     # --- what the delegate calls ------------------------------------------------------------
 
@@ -257,7 +322,7 @@ class ThumbnailStore(QObject):
         if self._closed or url in self._inflight or url in self._failed:
             return
         self._inflight.add(url)
-        self._pool.start(_ReadFromDisk(self, url, thumbnail_cache_path(url, self._cache_root)))
+        self._start(_ReadFromDisk(self, url, thumbnail_cache_path(url, self._cache_root)))
 
     # --- the pipeline, all of it back on the GUI thread ---------------------------------------
 
@@ -275,7 +340,7 @@ class ThumbnailStore(QObject):
             if data is None:
                 self._on_failed(url)
                 return
-            self._pool.start(
+            self._start(
                 _DecodeAndStore(self, url, data, thumbnail_cache_path(url, self._cache_root))
             )
 
@@ -302,43 +367,63 @@ class ThumbnailStore(QObject):
 
     # --- what the queue calls -----------------------------------------------------------------
 
-    def sweep(self, live_thumbnail_urls: Iterable[str]) -> int:
-        """Delete cached files no remaining job names, and answer how many went.
+    def sweep(self, live_thumbnail_urls: Iterable[str]) -> None:
+        """Delete cached files no remaining job names. **Returns immediately** (`T118-R13`).
 
         **This is how "removed with the job" and "two jobs share one file" hold at once.** Keying
         by URL is what makes the sharing work, and it is exactly what makes deleting on one job's
         removal wrong — the other job still wants the picture. So removal is expressed as *what is
         still live*, and a file survives while any job names it.
+
+        **The work is on the pool, not on the GUI thread** (`ARC-005`, `NFR-001`). This enumerated
+        the cache directory, stat'd every entry and unlinked inline — and it is called from every
+        queue model reset, which is what a removal, a reorder and a clear all cause. A user with a
+        long history and a slow or networked cache directory would have paid that on the thread
+        drawing their window. The URLs are resolved to names here, where the caller's iterable is
+        still safe to read; everything touching the disk happens in `_SweepTask`.
+
+        `swept` reports the count when it is done, which is what a test waits on.
         """
         wanted = {thumbnail_cache_path(url, self._cache_root).name for url in live_thumbnail_urls}
-        directory = thumbnail_cache_directory(self._cache_root)
-        removed = 0
-        try:
-            entries = list(directory.iterdir())
-        except OSError:
-            return 0
-        for entry in entries:
-            if entry.name in wanted or not entry.is_file():
-                continue
-            try:
-                entry.unlink()
-            except OSError:
-                continue
-            removed += 1
-        return removed
+        if self._closed:
+            return
+        self._start(_SweepTask(self, thumbnail_cache_directory(self._cache_root), wanted))
 
     def close(self) -> None:
-        """Stop fetching and let the pool drain. Safe to call more than once.
+        """Stop fetching and **return**. Safe to call more than once (`T118-R13`).
 
-        The pool is waited on rather than abandoned: a `QRunnable` still running holds a reference
-        to this store and emits into it, and letting the store die underneath one is how a test
-        suite acquires an intermittent crash nobody can place.
+        This ran `QThreadPool.waitForDone(5000)` inline, on the GUI thread, from the add dialog's
+        `done()` and the queue's `detach()` — an explicit five-second stall on the thread that
+        draws the window, at exactly the moment the user asked for it to go away. `NFR-001` and
+        `ARCHITECTURE.md` §8 are unqualified about that, and this project has rejected a blocking
+        shutdown before on the same grounds.
+
+        So closing marks the store closed, cancels network work, and returns. Outstanding pool
+        tasks drain on their own and `closed` is emitted when the last one does — ownership
+        completes from a callback rather than from a wait.
+
+        **What the wait was for is still handled.** A running task emits into this object, so it
+        must not be destroyed underneath one; `QThreadPool`'s own destructor waits for its
+        runnables, and it runs when this store is destroyed — after its parent has let it go,
+        rather than on the interaction. Every task also checks `_closed` before touching anything.
         """
         if self._closed:
             return
         self._closed = True
         self._loader.cancel()
-        self._pool.waitForDone(5000)
+        if not self._outstanding:
+            self.closed.emit()
+
+    def _start(self, task: QRunnable) -> None:
+        """Run `task` on the pool, counting it so `close()` knows when the last one is done."""
+        self._outstanding += 1
+        self._pool.start(task)
+
+    def _on_task_done(self) -> None:
+        """One pool task finished. The last one after a close completes the shutdown."""
+        self._outstanding = max(self._outstanding - 1, 0)
+        if self._closed and not self._outstanding:
+            self.closed.emit()
 
     # --- what tests read ------------------------------------------------------------------------
 
@@ -366,3 +451,9 @@ class ThumbnailStore(QObject):
     @property
     def limit(self) -> int:
         return self._limit
+
+    @property
+    def outstanding(self) -> int:
+        """Pool tasks started and not yet finished. Synchronous, so a test can assert that a UI
+        call *scheduled* work rather than doing it (`T118-R13`)."""
+        return self._outstanding
