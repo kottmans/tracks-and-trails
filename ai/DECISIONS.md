@@ -2654,3 +2654,73 @@ fifteen-hundred-widget layout pass on the GUI thread, which needs a virtualised 
 **Write `T-105` first.** The most faithful reading of the plan, and rejected only on sequencing:
 `T-118` carries three Critical findings whose fixes do not depend on the spec, and holding them
 behind a document would leave known-broken behaviour on `main` for longer.
+
+---
+
+## OPS-009 — Where each CI job runs, now that `STARBASE` is back and minutes are metered
+
+**Status:** **Proposed** — awaiting the maintainer
+**Date:** 2026-08-03
+**Raised by:** the maintainer, on 2026-08-03: *"we should use STARBASE as much as possible going
+forward because github has limited use and we've burned most of it already"*
+
+### Context
+
+Two things changed on 2026-08-03. `STARBASE` came back online after being unreachable since
+2026-08-01, and the maintainer reported the repository's hosted Actions allowance is nearly spent.
+
+**`OPS-005`'s amendment has already expired by its own terms.** It says in as many words:
+*"This amendment reopens the moment `STARBASE` is reachable again: it is while unreachable, not
+instead of."* So the desktop slice returning to `STARBASE` needs no decision — that is the
+amendment ending, not a reversal of it. What needs deciding is everything else.
+
+**The repository is private, so minutes meter, and Windows meters at 2×.** Measured from run
+`30786142921`:
+
+| Job | Platform | Wall time | Billed multiple |
+|---|---|---:|---:|
+| `windows-latest` | hosted | 11m 04s | **2×** |
+| `ubuntu-latest` | hosted | 6m 32s | 1× |
+| `frozen windows-latest` | hosted | 2m 20s | **2×** |
+| `frozen ubuntu-latest` | hosted | 1m 28s | 1× |
+| `windows desktop` | `STARBASE` | — | **0** |
+
+The two Windows jobs bill roughly 27 minutes against the two Linux jobs' 8. **Windows is where the
+allowance goes**, and it is exactly what `STARBASE` can run natively.
+
+### The decision this asks for
+
+Move `windows-latest` and `frozen windows-latest` onto `STARBASE`, keep the Linux jobs hosted, or
+some other split. Three considerations, stated so the choice is informed rather than obvious:
+
+1. **`STARBASE` becomes a single point of failure for all Windows evidence.** Today, if it is
+   offline the desktop slice skips and hosted Windows still gates. If it carries everything, an
+   offline machine means *no* Windows evidence at all — and `OPS-005`'s amendment exists precisely
+   because that happened for two days.
+
+2. **A skipped job is silent, and that silence has already cost something.** The
+   `STARBASE_AVAILABLE` guard makes an absent runner skip rather than queue, which is right — but
+   it means config for that machine keeps merging unverified. `dd9c238` added two `shell: pwsh`
+   steps while `STARBASE` was unreachable; the machine has no PowerShell 7, and the whole desktop
+   slice failed at its first step the moment it came back. **Two days of green CI, and nothing
+   could see it.** Whatever this decides, more work on `STARBASE` means more surface that goes
+   unverified whenever it sleeps.
+
+3. **Hosted runners are the only clean-machine evidence there is.** `STARBASE` has a developer's
+   Python, PATH and installed tooling. A hosted image proves the project builds somewhere that has
+   never seen it — which has caught real defects, including 38 Windows-only failures in one push.
+
+### What I would propose, if asked
+
+**Move `frozen windows-latest` to `STARBASE` and leave `windows-latest` hosted.** The frozen job is
+a packaging check whose value is mostly "does the artifact run at all", which a real machine answers
+as well as a clean one; the full-suite Windows job is where clean-machine evidence actually pays.
+That is roughly a third of the Windows spend for the smallest loss of independence.
+
+**And make skipping loud.** If `STARBASE_AVAILABLE` is unset, the run should still *say* which jobs
+did not execute, so the gap is visible in the run rather than only in this file.
+
+### Not decided here
+
+Whether to install PowerShell 7 on `STARBASE`. The two steps that needed it now run on Windows
+PowerShell 5.1 (`bff9713`), so it is no longer a prerequisite for anything.
