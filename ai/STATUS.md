@@ -25,6 +25,13 @@ criterion 6 — every deliverable reviewed — is the only one not met.
   on re-review after their Critical and High were corrected.
 - **Approved 2026-08-02:** `T-088` at `9e133a6`, the phase's own proof, once `T088-R4` and
   `T087-R6` were corrected and the suite passed on hosted Windows and Ubuntu.
+- **Approved 2026-08-03:** `T-116` at `253bbce`, after `T116-R1`. `T117-R1` closed.
+- **In review, returned a second time:** `T-118`. `T118-R1`…`R3` are resolved — transient staging,
+  synchronous staging identity, an owned commit writing each row's final request once — and
+  `UX-004` closes `T118-R5`. The per-row control path is what is open, and it needs **one design
+  rather than five patches**: one rendered row, one declared keyboard route, one effective request.
+  `T118-R6` is Critical — a row overridden to MP3 stores 192 kbps while the visible control says
+  320, which is `T-075`'s consequence again.
 - **In review:** `T-115`. Returned **changes requested** for `T115-R1` (High) — the probed row was
   retargeted while every later queue position was admitted ahead of it, so with a pool of one the
   second URL started and the head of the queue waited. Corrected 2026-08-02: Add takes one

@@ -2720,6 +2720,25 @@ That is roughly a third of the Windows spend for the smallest loss of independen
 **And make skipping loud.** If `STARBASE_AVAILABLE` is unset, the run should still *say* which jobs
 did not execute, so the gap is visible in the run rather than only in this file.
 
+### Two cheaper savings, found while writing this
+
+Both are larger or safer than moving a job, and neither costs any coverage.
+
+**Documentation commits spend Windows minutes.** `ci.yml` triggers on every push with no path
+filter, so editing a file under `ai/` runs the full matrix — including two Windows jobs at 2×. A
+`paths-ignore` for `ai/**` and `docs/**` removes a whole category of spend and weakens no gate,
+because no test reads those files. *(The one caveat: `tests/unit/test_task_placement.py` and the
+schema-drift tests do read `ai/TASKS.md` and `persistence/schema.sql`, so the filter has to be
+written against paths nothing asserts on, not against "docs" as a vibe.)*
+
+**`cancel-in-progress: true` discards evidence as readily as it saves minutes.** It is the right
+default for superseded work, but it means any later push — however trivial — throws away a run
+somebody is waiting on. **Demonstrated the same night this was written:** a docs-only push
+cancelled four in-flight jobs on `bff9713`, including the first desktop-slice run since 07/29, and
+the two Windows jobs among them were the expensive kind. Batching pushes when a run's result
+matters is a habit rather than a setting, but it is worth writing down because the failure is
+silent — the run simply reports `cancelled`, which reads as nothing having happened.
+
 ### Not decided here
 
 Whether to install PowerShell 7 on `STARBASE`. The two steps that needed it now run on Windows

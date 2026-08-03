@@ -78,60 +78,29 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**Five tasks await a verdict as of 2026-08-02** — `T-120`, `T-118`, `T-117` and `T-116`, four
-of the five UI rework tasks, and `T-115`, returned for `T115-R1` and corrected the same day.
-`T-119` is deliberately **not** started: it depends on `T-117` and `T-118`, and the maintainer
-chose a verdict on those before building on them. This note is rebuilt from the section rather than edited beside it. It said **five**
-— `T-080`, `T-081`, `T-046`, `T-053` and `T-083` — for the whole time after all five were approved
-and `T-088` and `T-115` had taken their place, which is `COORD-R12`. Before that it said **four**,
-naming `T-079` first, between the re-review recording **Approved** and its correction; then
-**three**; then **four** again.
-`COORD-R2` is why this note exists rather than the section sitting bare: a section's contents are
-a claim about readiness, and the claim should be legible without counting entries. `COORD-R5`
-through `COORD-R12` are eight rounds of this file contradicting itself, which is why **`T-096`**
-exists — but `T-096` gates *status against section*, and `COORD-R11` and `COORD-R12` were both
-prose that contradicted the sections while every status and section agreed. The invariant test
-cannot see that, and this note is written by hand for exactly that reason.)*
-
-### T-120 — Implement the brand palette
-
-**Status:** **In Review — complete 2026-08-02.** Eight mutations run; all eight killed. Writing
-the contrast test found **two real failures** in a palette that looked fine: the dark primary
-measured 4.33 against a 4.5 floor, and one colour was serving as both a divider and a control
-edge, failing the control floor in both themes.
-*(This read "Proposed — UI rework decomposition, 2026-08-02".)* Independent of the other four.
-**Owner:** Implementer
-**Priority:** Low
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `ARCHITECTURE.md` §8 (forest `#1E5E47`, gold `#D9A24C`, deep `#083122`),
-`NFR-005`, `ui/theme.py`
-**Affected surfaces:** `ui/theme.py`, `ui/` styling
-**Risk:** Low
-
-#### Scope
-
-`ui/theme.py` is one line — a module docstring reading *"Brand palette and light/dark theming"* —
-and nothing imports it. The palette has been specified since Phase 0 and has never been applied.
-
-#### Acceptance criteria
-
-- The palette `ARCHITECTURE.md` §8 names is defined in one place and applied from it
-- Light and dark are both defined; neither is a naive inversion of the other
-- Contrast is asserted against a stated ratio for text and for controls, in both themes
-- **No state is signalled by colour alone** (`NFR-005`) — asserted over the states the queue can
-  show, not spot-checked
-- A widget added without asking for a colour inherits the theme rather than a Qt default
-
-#### Out of scope
-
-- The row layout (`T-119`). A palette and an anatomy are different changes and reviewing them
-  together hides both
+*(**One task awaits a verdict as of 2026-08-03** — `T-118`, returned a second time. `T-116`,
+`T-117` and `T-120` are approved and filed under Complete; `T-115` was approved on 2026-08-02.
+This note is rebuilt from the section rather than edited beside it, which is `COORD-R12`'s rule:
+`COORD-R5` through `COORD-R12` are eight rounds of this file contradicting itself, and `T-096`
+gates status against section but cannot see prose that disagrees with both.)*
 
 ### T-118 — The add dialog becomes a staging list
 
-**Status:** **In Review — complete 2026-08-02.** Ten mutations run; all ten killed, **three of
-them only after the tests they exposed were written**. It found six defects in code it did not
+**Status:** **In Review — changes requested 2026-08-03, and this one needs a redesign.**
+`T118-R1`…`R3` are **resolved** — transient staging, synchronous staging identity, and an owned
+commit that writes each row's final request once — and must be preserved. `T118-R5` is closed by
+`UX-004`. What is open is the whole per-row control path: `T118-R6` (**Critical** — a row
+overridden to MP3 stores the registry default 192 kbps while the visible control says 320),
+`T118-R7` (the row widget collides with the item delegate; a 54 px thumbnail is clipped into a
+25 px row), `T118-R8` (an overridden row never shows the selector that will run), `T118-R9` (the
+row controls are outside the declared focus order and land after Close) and `T118-R10` (hosted
+Windows measured 150 rows at 0.722 s, seven times `NFR-001`'s target).
+
+The reviewer's direction is one design rather than five patches: **one rendered row, one declared
+keyboard route, one effective request** — which most naturally means bringing `T-119`'s reusable
+delegate forward instead of installing a widget per row.
+*(This read "In Review — complete 2026-08-02. Ten mutations run; all ten killed".)* Ten mutations
+were run and killed; It found six defects in code it did not
 write — see the handoff; three were caught by `T-088`'s phase proof or by `mypy --platform win32`
 rather than by reading the diff.
 *(This read "Proposed — UI rework decomposition, 2026-08-02".)* This is `UX-003` in code.
@@ -230,59 +199,6 @@ the migration path itself part of the task rather than an assumption.
 
 - Fetching or caching the bytes (`T-119`)
 - Any history-table column. `T-085`'s records are separate and unchanged
-
----
-
-### T-116 — A metadata lane: probing stops competing with downloads
-
-**Status:** **In Review — complete 2026-08-02.** Six mutations run; all six killed. One of them
-found a test of mine passing for the wrong reason: it admitted a probe while the manager was
-running, which starts it directly and never reaches the fill loop the test's own name is about.
-*(This read "Proposed — UI rework decomposition, 2026-08-02".)* Precedes `T-118`, which is
-unusable without it.
-**Owner:** Implementer
-**Priority:** **High** — `UX-003` makes probing mandatory, and mandatory probing through the
-download pool stalls downloads that are already running
-**Phase:** Phase 3
-**Depends on:** nothing. `T-078`'s pool is what changes; it is approved
-**Relevant context:** `UX-003`, `REQ-013`, `NFR-001`, `ARC-002`, `T-078`, `T-115`,
-`downloader/manager.py` (`_has_capacity`, `SessionKind`)
-**Affected surfaces:** `downloader/manager.py`, `core/settings.py`
-**Risk:** Medium — it changes the admission rule the phase's own proof measures
-
-#### Scope
-
-`_has_capacity()` is `len(self._sessions) + len(self._reserved) < self._limit`, with no
-`SessionKind` exemption, so **a probe occupies a download slot**. Measured consequence with a limit
-of three and twenty URLs added: the twentieth is probed after the nineteenth has finished
-downloading.
-
-That is tolerable while probing is a button. `UX-003` makes it the thing that happens when a user
-pastes, so the same rule means **adding URLs stalls downloads in flight** — the user presses Add
-and the transfers they were watching stop.
-
-Probes and downloads are different work: a probe is one short metadata round trip, a download is
-bandwidth-bound and long. They should not draw from one budget.
-
-#### Acceptance criteria
-
-- Probe sessions and download sessions have **separate concurrency**, with the download limit
-  unchanged in meaning — `REQ-013`'s setting still governs downloads and nothing else
-- A test with the download pool **saturated** starts a probe, and asserts a running download is
-  neither stopped nor delayed
-- The probe lane has its own ceiling, asserted with a value the default cannot produce (`T-088`'s
-  lesson: a limit test that measures the default proves nothing)
-- Probes beyond the lane's ceiling **queue** rather than being refused, in the order asked for
-- Cancellation reaches a queued probe as well as a running one — closing the dialog must not leave
-  a lane full of probes for URLs nobody is waiting on
-- `T-088`'s phase proof still passes unchanged, including the pool-limit test
-- Shutdown drains both lanes; no probe worker outlives the application (`ARC-002`)
-
-#### Out of scope
-
-- What the dialog does with the results (`T-118`)
-- Any change to `REQ-013`'s user-facing setting. If the probe ceiling should be configurable, that
-  is a separate decision — this task fixes it in code and says so
 
 ---
 
@@ -2024,6 +1940,62 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-116 — A metadata lane: probing stops competing with downloads
+
+**Status:** **Complete — Approved at `253bbce`**, 2026-08-03, after `T116-R1` was corrected.
+One job cannot occupy both lanes: direct start refuses, admission parks, the fill loop skips a held
+id, and release re-decides immediately — while different jobs still use the two lanes concurrently.
+*(This read "In Review — complete 2026-08-02.")* Six mutations run; all six killed. One of them
+found a test of mine passing for the wrong reason: it admitted a probe while the manager was
+running, which starts it directly and never reaches the fill loop the test's own name is about.
+*(This read "Proposed — UI rework decomposition, 2026-08-02".)* Precedes `T-118`, which is
+unusable without it.
+**Owner:** Implementer
+**Priority:** **High** — `UX-003` makes probing mandatory, and mandatory probing through the
+download pool stalls downloads that are already running
+**Phase:** Phase 3
+**Depends on:** nothing. `T-078`'s pool is what changes; it is approved
+**Relevant context:** `UX-003`, `REQ-013`, `NFR-001`, `ARC-002`, `T-078`, `T-115`,
+`downloader/manager.py` (`_has_capacity`, `SessionKind`)
+**Affected surfaces:** `downloader/manager.py`, `core/settings.py`
+**Risk:** Medium — it changes the admission rule the phase's own proof measures
+
+#### Scope
+
+`_has_capacity()` is `len(self._sessions) + len(self._reserved) < self._limit`, with no
+`SessionKind` exemption, so **a probe occupies a download slot**. Measured consequence with a limit
+of three and twenty URLs added: the twentieth is probed after the nineteenth has finished
+downloading.
+
+That is tolerable while probing is a button. `UX-003` makes it the thing that happens when a user
+pastes, so the same rule means **adding URLs stalls downloads in flight** — the user presses Add
+and the transfers they were watching stop.
+
+Probes and downloads are different work: a probe is one short metadata round trip, a download is
+bandwidth-bound and long. They should not draw from one budget.
+
+#### Acceptance criteria
+
+- Probe sessions and download sessions have **separate concurrency**, with the download limit
+  unchanged in meaning — `REQ-013`'s setting still governs downloads and nothing else
+- A test with the download pool **saturated** starts a probe, and asserts a running download is
+  neither stopped nor delayed
+- The probe lane has its own ceiling, asserted with a value the default cannot produce (`T-088`'s
+  lesson: a limit test that measures the default proves nothing)
+- Probes beyond the lane's ceiling **queue** rather than being refused, in the order asked for
+- Cancellation reaches a queued probe as well as a running one — closing the dialog must not leave
+  a lane full of probes for URLs nobody is waiting on
+- `T-088`'s phase proof still passes unchanged, including the pool-limit test
+- Shutdown drains both lanes; no probe worker outlives the application (`ARC-002`)
+
+#### Out of scope
+
+- What the dialog does with the results (`T-118`)
+- Any change to `REQ-013`'s user-facing setting. If the probe ceiling should be configurable, that
+  is a separate decision — this task fixes it in code and says so
+
+---
 
 ### T-088 — Prove the phase: three at once, killed mid-queue, nothing left behind
 

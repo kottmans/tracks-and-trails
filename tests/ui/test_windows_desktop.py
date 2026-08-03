@@ -569,15 +569,23 @@ DIALOG_STATES = (
 #:
 #: A terminal job cannot be cancelled and a running one has nothing to retry (`T-017`), so no
 #: state offers all three — which is exactly what `T040-R1` caught this file asserting.
-EXPECTED_VIEW_ORDER = ("errorMessage", "cancelJobButton", "retryJobButton")
+#: `diagnosticsBox` was added to the view's chain by `T-084` on 2026-08-01 — the day `STARBASE`
+#: went offline — and this expectation was never updated, so the mismatch merged and sat there.
+#: **No other gate could see it.** The desktop job does not fail when its runner is absent, it
+#: *skips*, so two days of green CI said nothing about this file. It failed on the first run after
+#: the machine came back. `OPS-009` records the pattern; this is the second instance of it in one
+#: night, after the `pwsh` steps that had likewise never run there.
+EXPECTED_VIEW_ORDER = ("errorMessage", "cancelJobButton", "retryJobButton", "diagnosticsBox")
 VIEW_STATES = (
     (
         "failed, retryable",
         JobStatus.FAILED,
         ErrorKind.NETWORK,
-        frozenset({"errorMessage", "retryJobButton"}),
+        # The diagnostics box is offered in **every** state: a job that failed and a job that is
+        # running both have output worth reading, which is `T-084`'s whole point.
+        frozenset({"errorMessage", "retryJobButton", "diagnosticsBox"}),
     ),
-    ("running", JobStatus.RUNNING, None, frozenset({"cancelJobButton"})),
+    ("running", JobStatus.RUNNING, None, frozenset({"cancelJobButton", "diagnosticsBox"})),
 )
 
 
