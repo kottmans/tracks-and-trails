@@ -75,7 +75,7 @@ from PySide6.QtCore import QObject, QTimer, Signal
 
 from tracks_and_trails.core import logging as app_logging
 from tracks_and_trails.core.errors import ErrorKind
-from tracks_and_trails.core.job_state import JobStatus, is_terminal
+from tracks_and_trails.core.job_state import JobStatus, can_transition, is_terminal
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader import process_tree, worker
 from tracks_and_trails.downloader.environment import APP_SLUG
@@ -1434,12 +1434,28 @@ class DownloadManager(QObject):
 
         session = self._sessions.get(job_id)
         if session is None:
+            if not self._known(job_id):
+                # **An id this manager can no longer answer for is a no-op, not a crash**
+                # (`T-118`). The comment above already names this hazard for `_waiting` and
+                # `_discard_waiting` handles it there — but `shutdown()` cancels every *occupant*,
+                # and a reservation or a released session can outlive its record by the same
+                # routes: a staged job dropped as it is abandoned, a durable row deleted by
+                # `T-081`'s clear-finished. `_require` answers such an id with `KeyError`, raised
+                # out of a Qt slot from teardown.
+                #
+                # Observed twice on the self-hosted desktop runner, in teardown, where the test it
+                # hung off still reported as passed. Cancelling what the queue has no record of
+                # asks it to stop something it is not doing.
+                #
+                # **The reservation goes too, for `_discard_waiting`'s reason.** `is_idle` counts
+                # reservations, and one that can never be answered for can never be spawned or
+                # abandoned either — leaving it would hold the shutdown door open for a job that
+                # does not exist. `_spawn` already treats a missing reservation as nothing to do.
+                self._reserved.pop(job_id, None)
+                return
             # Queued behind the starting transition when there is one, so `CANCELLED` is written
             # after the `PROBING` it supersedes rather than racing it (`_Chain`).
-            self._persist(
-                job_id,
-                lambda current: None if is_terminal(current.status) else self._cancelled(current),
-            )
+            self._persist(job_id, self._cancellation_of)
             return
 
         if session.cancelling:
@@ -2484,6 +2500,27 @@ class DownloadManager(QObject):
             job = job.with_status(status)
         return job
 
+    def _cancellation_of(self, job: Job) -> Job | None:
+        """`job` cancelled, or `None` if this queue cannot legally cancel it (`T-118`).
+
+        **The guard asks the state machine rather than asking whether the job is terminal.** Those
+        are different questions and the difference is a crash: `FAILED` is *not* terminal here —
+        retry exists — so `is_terminal` said no, the cancellation was computed, and
+        `Job.with_status` refused `FAILED -> CANCELLED` with `IllegalTransitionError` raised out
+        of a Qt slot.
+
+        `cancel()`'s own comment has recorded that hazard since `T010-R3` and reasoned nothing
+        could reach it, because cancelling is for in-flight work and a failed job has none. That
+        held until `unstage()` existed: a staging probe that *fails* still owns its session until
+        the process is reaped, so abandoning it in that window cancels a `FAILED` job.
+
+        Declining is the whole fix, and it is the same answer the terminal check already gave for
+        the cases it did cover: there is nothing to stop, so there is nothing to write.
+        """
+        if not can_transition(job.status, JobStatus.CANCELLED):
+            return None
+        return self._cancelled(job)
+
     def _cancelled(self, job: Job, message: str | None = None) -> Job:
         """`CANCELLED`, with the reason recorded but not classified as a failure."""
         return replace(
@@ -2492,6 +2529,16 @@ class DownloadManager(QObject):
             error_message=message or "Cancelled at your request.",
             finished_at=_now(),
         )
+
+    def _known(self, job_id: str) -> bool:
+        """Whether this manager can still answer for `job_id` at all, staged or durable.
+
+        `_require`'s question without its exception, for the one caller that has to ask rather than
+        assume. Deliberately not a `try/except KeyError` around `_require`: that exception is the
+        contract for a lookup that *should* succeed, and swallowing it at a call site would hide
+        the next real instance.
+        """
+        return job_id in self._staged or self._repository.get(job_id) is not None
 
     def _require(self, job_id: str) -> Job:
         """The job `job_id` names, staged or durable. Staged first — it is never in the store."""

@@ -43,7 +43,7 @@ from tracks_and_trails.core.job_state import JobStatus, can_transition
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader import manager as manager_module
 from tracks_and_trails.downloader import process_tree
-from tracks_and_trails.downloader.manager import DownloadManager
+from tracks_and_trails.downloader.manager import DownloadManager, _PendingStart
 from tracks_and_trails.downloader.protocol import (
     MESSAGE_TYPES,
     Probed,
@@ -510,6 +510,25 @@ def child_probe_reporting_then_lingering(
     queue.put(Progress(job_id=job_id, stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=1))
     while True:
         time.sleep(0.05)
+
+
+def child_probe_failing_then_lingering(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """Fail a probe with a kind that is never retried, then keep the process alive.
+
+    The lingering half is the point: a probe whose *stream* has ended still owns a session until
+    `_release` establishes that its process is gone, so this reproduces the window in which a
+    staged job is both `FAILED` and still an occupant.
+    """
+    from tracks_and_trails.core.errors import ErrorKind
+    from tracks_and_trails.downloader.protocol import Failed
+
+    queue.put(Failed(job_id=job_id, kind=ErrorKind.UNSUPPORTED_URL, message="no extractor"))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+    queue.close()
+    queue.join_thread()
+    time.sleep(3)
 
 
 def child_ignoring_cancellation(
@@ -5780,6 +5799,133 @@ def test_a_staged_job_cannot_be_downloaded(tmp_path: Path, spin: Callable[..., b
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_cancelling_a_failed_job_declines_instead_of_raising_out_of_the_state_machine(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-118`: `FAILED` is not terminal here, so the terminal guard let an illegal write through.
+
+    `FAILED` allows `QUEUED` and nothing else — retry re-enters the queue. `is_terminal(FAILED)` is
+    therefore `False`, so `cancel()` computed a cancellation and `Job.with_status` refused it with
+    `IllegalTransitionError`, **raised out of a Qt slot**.
+
+    `shutdown()` cancels every occupant, and an occupant can be `FAILED` by the time it gets there
+    — which is how this surfaced: a teardown error on the self-hosted desktop runner (run
+    `30826638984`), in a test that still reported as passed.
+
+    Driven through the public verb on a durable row, because that is the line `shutdown()` reaches.
+    The staging case that found it is the same call with a staged record instead of a durable one;
+    `cancel()` cannot tell them apart and must not need to.
+    """
+    repository = FakeRepository()
+    failed = replace(
+        make_job("job-1", "https://example.invalid/x", tmp_path),
+        status=JobStatus.FAILED,
+        error_kind=ErrorKind.UNSUPPORTED_URL,
+        error_message="no extractor",
+    )
+    repository.add(failed)
+    download = DownloadManager(repository, entry_point=child_downloading_forever)
+    try:
+        assert not can_transition(JobStatus.FAILED, JobStatus.CANCELLED), (
+            "this test is about an illegal transition and the state machine now allows it"
+        )
+
+        download.cancel("job-1")
+
+        assert spin(lambda: download.is_idle, timeout=60)
+        assert job_row(repository, "job-1").status is JobStatus.FAILED, (
+            "cancelling a failed job moved it"
+        )
+        assert all(status is not JobStatus.CANCELLED for _, status in repository.writes), (
+            "a CANCELLED write was attempted for a job that cannot reach it"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_abandoning_a_failed_staging_probe_leaves_no_durable_trace(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-118`: the staging case that found the guard above, end to end.
+
+    A staging probe that *fails* still owns its session until the process is reaped, so abandoning
+    it in that window is `unstage()` cancelling a `FAILED` job. The window is opened deliberately
+    here: the child reports its failure and then lingers.
+
+    This asserts the outcome — the record goes and nothing is written — rather than the absence of
+    the exception, because with a live session `cancel()` takes its session branch and never
+    reaches the write. **Stated because the first version of this test claimed to cover the
+    illegal transition and a mutation showed it did not**; the transition is covered by the test
+    above, which reaches the write the way `shutdown()` does.
+    """
+    repository = FakeRepository()
+    download = DownloadManager(repository, entry_point=child_probe_failing_then_lingering)
+    try:
+        staged = download.stage(make_job("unused", "https://example.invalid/x", tmp_path).request)
+
+        assert spin(
+            lambda: (
+                download.is_staged(staged) and download._staged[staged].status is JobStatus.FAILED
+            ),
+            timeout=60,
+        ), "the staged probe never reached FAILED"
+        # **The child's own failure, not a crash.** `mypy` caught this helper using an unimported
+        # `Failed`, which would have crashed the child — and the job would have reached `FAILED`
+        # anyway, as `WORKER_CRASH`. The test passed either way until this line existed.
+        assert download._staged[staged].error_kind is ErrorKind.UNSUPPORTED_URL, (
+            f"the probe failed as {download._staged[staged].error_kind}, not as it was told to"
+        )
+        assert staged in download._occupant_ids(), "the session was released before the assertion"
+
+        download.unstage(staged)
+
+        assert spin(lambda: not download.is_staged(staged), timeout=60), (
+            "the staged record outlived its cancellation"
+        )
+        assert repository.jobs == {}, "abandoning a staging probe wrote to the store"
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_cancelling_an_id_the_queue_can_no_longer_answer_for_is_a_no_op(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T-118`: `shutdown()` cancels every occupant, and an occupant can outlive its record.
+
+    `cancel()` reached `_require` for an id that is neither staged nor durable and raised
+    `KeyError` out of a Qt slot — seen twice on the self-hosted desktop runner (runs
+    `30822454998`, `30826638984`), both times in **teardown**, so the tests they hung off still
+    reported as passed.
+
+    `cancel()`'s own comment already names this hazard for the *waiting* list and `_discard_waiting`
+    handles it there. A reservation reaches it by other routes: a staged job dropped as it is
+    abandoned, or a durable row deleted by `T-081`'s clear-finished.
+
+    **The occupant is constructed directly rather than raced into existence.** The race that
+    produced it on Windows is not reproducible on demand, and a test that waits for it would be a
+    test that passes because the race did not happen. What is asserted here is the property the
+    crash violated — cancelling an id the queue cannot answer for asks it to stop something it is
+    not doing — which holds whatever produced the id.
+    """
+    repository = FakeRepository()
+    download = DownloadManager(repository, entry_point=child_downloading_forever)
+    try:
+        orphan = "an-id-with-no-record"
+        download._reserved[orphan] = _PendingStart(job_id=orphan, kind=SessionKind.PROBE)
+        assert orphan in download._occupant_ids(), "the orphan is not an occupant"
+        assert not download._known(orphan), "the orphan has a record after all"
+
+        download.cancel(orphan)
+        download.shutdown()
+
+        assert repository.jobs == {}, "cancelling an unknown id wrote to the store"
+        assert spin(lambda: download.is_idle, timeout=60)
+    finally:
+        download.shutdown()
 
 
 def test_a_saturated_download_lane_no_longer_parks_a_probe(
