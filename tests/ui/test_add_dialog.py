@@ -98,22 +98,39 @@ THUMBNAIL_SOURCE: Final = (
     REPO_ROOT / "src" / "tracks_and_trails" / "resources" / "icons" / "icon.png"
 )
 
-#: `NFR-001`: an interaction responds within ~100 ms. Half a second here for the same reason
-#: `tests/integration/test_manager.py` uses that figure — `spawn` genuinely costs a process start
-#: on a loaded runner, and the property under test is that nothing *waits*, which a blocking call
-#: misses by seconds rather than by milliseconds.
-INTERACTION_BUDGET_SECONDS: Final = 0.5
-
-#: The paste size `UX-004`'s measurement says the current row anatomy supports.
+#: **The absolute budget, sized for headroom rather than for the measurement** (`T118-R10`).
 #:
-#: **Not five hundred, and that is a recorded limit rather than a weakened test.** Every row
-#: carries its own format control (`UX-004`, the maintainer's choice), which costs ~5 ms at twenty
-#: rows, ~86 ms at a hundred and fifty and ~300 ms at five hundred on a developer machine — over a
-#: second on a CI runner. `T-119`'s delegate draws that control only for the row under the pointer,
-#: which removes the ceiling without changing the interaction; until then this is the size the
-#: design honestly supports, and asserting the budget at five hundred asserts a promise nobody
-#: made.
-SUPPORTED_PASTE: Final = 150
+#: `NFR-001` budgets ~100 ms for an interaction. A paste of `SUPPORTED_PASTE` measures **0.042 s**
+#: on the development machine (2026-08-03, delegate build), so this is a **24x margin** — and it is
+#: deliberately not the 0.5 s the widget-per-row design needed, because that figure was the largest
+#: one Linux measurement would bear and it is exactly what made `T118-R10` pass on one hosted
+#: Windows run and fail on another with nothing changed between them.
+#:
+#: The property this can still catch is a return to cost that grows with the paste: the design it
+#: replaced would spend seconds here, not milliseconds. The *finer* claim — that cost stays linear
+#: — is `SCALING_HEADROOM`'s, which is a ratio and so does not move with runner speed at all.
+INTERACTION_BUDGET_SECONDS: Final = 1.0
+
+#: The paste size the design supports, and the size the budget is asserted at.
+#:
+#: **Five hundred, which is what the ceiling was hiding.** Every row used to carry its own format
+#: control widget (`UX-004`), costing ~86 ms at a hundred and fifty on a developer machine and
+#: 0.722 s on hosted Windows — so this constant was pinned at 150 and recorded as a real limit
+#: rather than a weakened test. `T-119`'s delegate builds one editor for the row being edited, so
+#: the limit is gone: measured 0.020 s at 125, 0.042 s at 500 and 0.047 s at 1000.
+SUPPORTED_PASTE: Final = 500
+
+#: A quarter-size paste, for the scaling comparison below.
+SMALL_PASTE: Final = SUPPORTED_PASTE // 4
+
+#: How much more a paste four times the size may cost. Four would be exactly linear; this allows
+#: it to be somewhat worse than linear while still failing hard on the quadratic-ish growth a
+#: widget per row produces.
+#:
+#: **A ratio, on purpose.** Two measurements taken moments apart on one machine share its speed, so
+#: a slow runner slows both sides and cancels out — which is the term that made `T118-R10`'s gate
+#: flap, and the same defect `T083-R2` records elsewhere in this repository.
+SCALING_HEADROOM: Final = 6.0
 
 SINGLE_ITEM: Final = "archive_org_big_buck_bunny"
 PLAYLIST: Final = "archive_org_art_of_war_playlist"
@@ -1560,6 +1577,14 @@ def test_a_probed_thumbnail_replaces_the_derived_tile(
     dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM)
 
     assert not thumbnails.requested, "a thumbnail was fetched before any row was painted"
+    # **Asking must not fetch either.** `thumbnail_for` goes through `peek`, and if it went
+    # through `pixmap` instead then anything that merely wondered whether a row had a picture
+    # would become a second fetch path — and "no fetch for a row the view never painted" would be
+    # false whenever a test, or the dialog itself, asked the question.
+    assert dialog.thumbnail_for(dialog.rows[0]) is None
+    assert dialog.thumbnails.pending_urls == frozenset(), (
+        "asking whether a row has a picture started fetching one"
+    )
 
     render_rows(dialog, 0)
     assert spin(lambda: dialog.thumbnail_for(dialog.rows[0]) is not None), (
@@ -1619,8 +1644,8 @@ def test_a_paste_the_design_supports_stays_inside_the_interaction_budget(
     """`NFR-001`: pasting five hundred URLs must not be five hundred of anything on the GUI thread.
 
     Asserted on the **submission count**, which is the thing that would multiply: one batch write,
-    one reconcile, one list rebuild. The probe lane bounds the sessions (`T-116`); nothing here
-    bounds the widgets except building them once.
+    one reconcile, one model reset. The probe lane bounds the sessions (`T-116`); the delegate is
+    what bounds the widgets, at one — see `INTERACTION_BUDGET_SECONDS`.
     """
     manager = managers(entry_point=child_never_returning)
     dialog = dialogs(manager)
@@ -1648,6 +1673,68 @@ def test_a_paste_the_design_supports_stays_inside_the_interaction_budget(
     assert sum(1 for row in dialog.rows if row.state is RowState.PROBING) <= (
         DEFAULT_PROBE_CONCURRENCY
     ), "more probes ran at once than the lane allows"
+
+
+def test_a_large_paste_builds_no_control_at_all_until_one_is_asked_for(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """`T118-R10`, **structurally** — the claim the two timing tests cannot make.
+
+    Both of those measure a dialog that is never shown, and a hidden view lays nothing out: a
+    mutation reintroducing a persistent editor per row passed both, because five hundred unshown
+    combo boxes are cheap on this platform and ruinous on the one that measured 0.722 s. Counting
+    the controls says the thing directly and says it the same on every machine.
+
+    The delegate's contract is one editor for the row being edited, so a paste of any size holds
+    **zero** until something opens one.
+    """
+    dialog = dialogs(managers(entry_point=child_never_returning))
+    type_urls(dialog, "\n".join(f"https://many.invalid/{n}" for n in range(SUPPORTED_PASTE)))
+    dialog.resolve()
+
+    assert len(dialog.rows) == SUPPORTED_PASTE
+    controls = staging_list(dialog).findChildren(QComboBox, ROW_PRESET_NAME)
+    assert controls == [], (
+        f"{len(controls)} per-row controls exist for {SUPPORTED_PASTE} rows; the delegate builds "
+        "one, for the row being edited"
+    )
+
+
+def test_a_four_times_larger_paste_does_not_cost_four_times_more_than_linearly(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+) -> None:
+    """**The claim `T118-R10` is really about**, stated as a ratio rather than a clock reading.
+
+    A wall-clock budget says the machine was fast enough. This says the *design* does not grow
+    faster than the paste — which is the property that made a hundred and fifty rows cost 0.722 s,
+    and the property a delegate buys. Comparing two pastes measured moments apart on one machine
+    also removes the runner-speed term, so unlike the bound it replaces this cannot flap between
+    two runs of unchanged code.
+
+    A widget per row fails this outright: the cost of building `SUPPORTED_PASTE` controls dwarfs
+    the fixed cost that dominates `SMALL_PASTE`, so the ratio runs far past `SCALING_HEADROOM`.
+    """
+
+    def cost(count: int) -> float:
+        dialog = dialogs(managers(entry_point=child_never_returning))
+        urls = "\n".join(f"https://many.invalid/{n}" for n in range(count))
+        started = time.monotonic()
+        type_urls(dialog, urls)
+        dialog.resolve()
+        return time.monotonic() - started
+
+    # The small paste first and again, so one-off import and style warm-up lands outside both
+    # measurements rather than inside the smaller one, where it would flatter the ratio.
+    cost(SMALL_PASTE)
+    small = cost(SMALL_PASTE)
+    large = cost(SUPPORTED_PASTE)
+
+    assert large < small * SCALING_HEADROOM, (
+        f"{SUPPORTED_PASTE} URLs cost {large:.4f}s against {small:.4f}s for {SMALL_PASTE} — a "
+        f"factor of {large / small:.1f} for four times the input, over {SCALING_HEADROOM}"
+    )
 
 
 # --- 9. the pure helpers, which the rewrite kept ------------------------------------------------

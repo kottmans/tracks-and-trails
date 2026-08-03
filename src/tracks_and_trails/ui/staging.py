@@ -217,25 +217,17 @@ class Staging:
         """The visible rows nothing has been started for yet."""
         return tuple(row for row in self.visible if row.wants_resolving)
 
-    def unresolved_job_ids(self) -> tuple[str, ...]:
-        """Every job written for a row that will not be committed.
+    def staged_job_ids(self) -> tuple[str, ...]:
+        """Every staging job this batch currently holds, resolved or not.
 
-        What the dialog has to withdraw when it closes, and what Add has to leave behind. A row is
-        persisted before it can be probed (`REQ-012`), so a failed or abandoned line still has a
-        row on disk — and `UX-003`'s promise is that it never becomes queued work.
-        """
-        return tuple(
-            row.job_id for row in self._rows if row.job_id is not None and not row.committable
-        )
+        What `done()` unstages. **Nothing here is durable** — a staging probe never writes a row
+        (`T118-R1`) — so this answers "what has a transient job to stop", not "what is on disk".
 
-    def written_job_ids(self) -> tuple[str, ...]:
-        """Every job this batch has written, committed or not.
-
-        What `done()` disposes of, minus whatever was committed. Distinct from
-        `unresolved_job_ids()` on purpose: that one answers "what will never be committable", which
-        is what *Add* needs, and a `READY` row nobody committed is not in it. Closing on such a row
-        would leave it in the queue as work the user never added — which is `UX-003` broken by the
-        one state that looks like success.
+        *(It replaces `unresolved_job_ids()` and `written_job_ids()`, which split that question
+        along a line that stopped existing: one returned what Add must leave behind and the other
+        what close must withdraw, and both described rows persisted before probing. `T118-R11`
+        found them still saying so. With nothing written, close stops everything and Add stops what
+        it committed, so one answer serves and neither caller has to reason about durability.)*
         """
         return tuple(row.job_id for row in self._rows if row.job_id is not None)
 

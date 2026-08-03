@@ -187,9 +187,16 @@ which Phase 0 and Phase 1 both required and neither could self-certify.
 
 **`T-118` lands before this phase exits**, carrying `T-119`'s scope after the two were merged.
 Maintainer decision, 2026-08-03. It is a Phase 3 task and not a Phase 2 deliverable, so this is a
-sequencing choice rather than a scope change — but it is the only thing currently keeping `main`
-red, and criterion 5 is evidenced by CI. An exit submitted against a red board invites rejection on
-that alone.
+sequencing choice rather than a scope change — but it was the only thing keeping `main` red, and
+criterion 5 is evidenced by CI. An exit submitted against a red board invites rejection on that
+alone.
+
+**Its correction batch is complete and awaiting re-review** (2026-08-03). The delegate redesign
+landed with `T-119`'s carried scope, and the three causes of the red board — `T118-R10`'s flapping
+bound and two teardown errors in the staging seam — are addressed. **What stands between here and a
+green board is a hosted-Windows run**: the new absolute bound has been measured on a development
+machine only, and the two teardown fixes have not been re-observed on `STARBASE`. Re-review and
+that run are the remaining steps, in that order.
 
 **Nothing is blocked on a machine any more, and `STARBASE` is back:** `OPS-005` was amended so
 hosted Windows carries the gate while it was offline; it returned 2026-08-03 and now runs both the
@@ -232,7 +239,7 @@ flowchart LR
     T116["<b>T-116</b><br/>probe lane"]:::approved
     T117["<b>T-117</b><br/>thumbnail_url"]:::approved
     T120["<b>T-120</b><br/>brand palette"]:::approved
-    T118["<b>T-118</b><br/>staging list + row delegate<br/><i>T-119 subsumed</i>"]:::review
+    T118["<b>T-118</b><br/>staging list + row delegate<br/><i>T-119 subsumed · corrected</i>"]:::review
 
     EXIT(["<b>Phase 2 exit</b>"]):::exit
 
@@ -386,14 +393,22 @@ the deliverables below, which is why it appeared nowhere in this document until 
 what `UX-003` and `UX-004` produced: nothing enters the queue unprobed, so the add dialog becomes a
 staging list and the queue row becomes a delegate. `T-116` (probe lane), `T-117` (`thumbnail_url`
 and the first migration after the initial schema) and `T-120` (brand palette) are **approved**;
-`T-118` is **in review**, and `T-119` is **subsumed into it**.
+`T-118` is **in review with its correction batch complete**, and `T-119` is **subsumed into it**.
 
 **One of them is being taken before Phase 2 exits** (maintainer, 2026-08-03). `T-119` is filed
 **Cancelled — subsumed into `T-118`**, with its scope, acceptance criteria and risk carried into
 that entry verbatim; `T-118` is therefore the single actionable item, and it lands first. Its
-per-row control path is what currently keeps `main` red, and Phase 2's criterion 5 is evidenced by
-CI. This does not move it into Phase 2 — it remains a Phase 3 task against no Phase 2 deliverable
-— it changes only what order the work happens in.
+per-row control path is what kept `main` red, and Phase 2's criterion 5 is evidenced by CI. This
+does not move it into Phase 2 — it remains a Phase 3 task against no Phase 2 deliverable — it
+changes only what order the work happens in.
+
+**What the correction actually produced, because it outlives the finding it answers:**
+`ui/row_delegate.py` is a **shared** row renderer, not a fix to one dialog. The add dialog and the
+queue now draw the same anatomy from the same named roles, which is what made three findings close
+together rather than one at a time — and it is the surface `T-100`'s history view would join if
+that is ever wanted (explicitly out of scope, and its own task if so). `ui/thumbnails.py` and
+`core/paths.cache_directory` are the caching half: this repository now has a place for regenerable
+data under `NFR-004`, which nothing before needed and several later tasks will.
 
 *(`COORD-R14`: this read "`T-118` and `T-119` are merged into one task" while `TASKS.md` still had
 `T-119` depending on `T-118` and `T-118` excluding the queue's rendering as `T-119`'s. The merged

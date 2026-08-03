@@ -45,6 +45,14 @@ from tracks_and_trails.ui.queue_view import (
     STATUS_COLUMN,
     QueueView,
 )
+from tracks_and_trails.ui.row_delegate import (
+    DETAIL_ROLE,
+    HEADLINE_ROLE,
+    HUE_ROLE,
+    PROGRESS_ROLE,
+    STATE_ROLE,
+    THUMBNAIL_URL_ROLE,
+)
 
 # --- a queue the table can read ---------------------------------------------------------------
 
@@ -179,10 +187,14 @@ def managers(queue: FakeQueue, qapp: QApplication) -> Iterator[Callable[..., Dow
 
 
 @pytest.fixture
-def views(qapp: QApplication) -> Iterator[Callable[..., QueueView]]:
+def views(qapp: QApplication, tmp_path: Path) -> Iterator[Callable[..., QueueView]]:
     built: list[QueueView] = []
 
     def build(**kwargs: Any) -> QueueView:
+        # **Never the real cache directory.** The thumbnail store writes under `NFR-004`'s cache
+        # root, and a view left on the default would write into the developer's own — then read it
+        # back next run, which is a test passing on what a previous run left behind.
+        kwargs.setdefault("cache_root", tmp_path / "cache")
         view = QueueView(**kwargs)
         built.append(view)
         return view
@@ -717,6 +729,93 @@ def test_every_column_req_014_names_is_on_screen(
     assert len(COLUMN_HEADERS) == 6
 
 
+def test_the_drawn_row_carries_every_field_the_columns_do(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`T-119`: one rich row instead of a grid — **and not one field fewer**.
+
+    The rich row is drawn from roles while `REQ-014`'s per-field vocabulary stays. This is what
+    stops the two diverging: every column's text must be findable in what the delegate is handed,
+    so a field that stops reaching the drawn row fails here rather than quietly disappearing off
+    a surface nobody re-reads.
+
+    Asserted **by value** (`T-119`), through the model's roles, rather than off the painted image.
+    """
+    queue.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING, title="A video"))
+    view = views(jobs=queue, manager=managers(), repaint_interval_ms=10)
+
+    view.model._on_progress(
+        Progress(
+            job_id="job-1",
+            stage=Stage.DOWNLOADING_AUDIO,
+            downloaded_bytes=512,
+            total_bytes=1024,
+            speed_bytes_per_second=1024,
+            eta_seconds=61,
+        )
+    )
+    assert spin_until(qapp, lambda: view.model.displayed_progress("job-1") is not None)
+
+    index = view.model.index(0, JOB_COLUMN)
+    headline = view.model.data(index, HEADLINE_ROLE)
+    detail = view.model.data(index, DETAIL_ROLE)
+    state = view.model.data(index, STATE_ROLE)
+
+    assert headline == view.model.text_at("job-1", JOB_COLUMN)
+    assert state == view.model.text_at("job-1", STATUS_COLUMN)
+    for column in (PROGRESS_COLUMN, SIZE_COLUMN, SPEED_COLUMN, ETA_COLUMN):
+        cell = view.model.text_at("job-1", column)
+        assert cell is not None and cell in detail, (
+            f"{COLUMN_HEADERS[column]} reads {cell!r} in the column and is missing from the "
+            f"drawn row: {detail!r}"
+        )
+
+    # The bar is drawn from the same numbers the percentage is, so it cannot say something else.
+    assert view.model.data(index, PROGRESS_ROLE) == pytest.approx(0.5)
+    # And `REQ-002`'s picture, for the row that has one.
+    assert view.model.data(index, THUMBNAIL_URL_ROLE) is None, "this job was never given one"
+    assert isinstance(view.model.data(index, HUE_ROLE), int), (
+        "no derived tile for a row with no picture"
+    )
+
+
+def test_the_drawn_row_is_spoken_whole_to_a_screen_reader(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`NFR-005`: everything a sighted user reads from the row is available to a screen reader.
+
+    The list draws column 0, so column 0 is the whole row to anyone listening — announcing only
+    "Job: A video" there would hide five fields that are on screen. The per-column announcements
+    stay for a caller that asks for one.
+    """
+    queue.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING, title="A video"))
+    view = views(jobs=queue, manager=managers(), repaint_interval_ms=10)
+
+    view.model._on_progress(
+        Progress(
+            job_id="job-1", stage=Stage.DOWNLOADING_AUDIO, downloaded_bytes=512, total_bytes=1024
+        )
+    )
+    assert spin_until(qapp, lambda: view.model.displayed_progress("job-1") is not None)
+
+    spoken = view.model.data(view.model.index(0, JOB_COLUMN), Qt.ItemDataRole.AccessibleTextRole)
+
+    assert isinstance(spoken, str)
+    for column in range(len(COLUMN_HEADERS)):
+        announced = view.model.accessible_text_at("job-1", column)
+        assert announced is not None and announced in spoken, (
+            f"{COLUMN_HEADERS[column]} is drawn but never spoken: {spoken!r}"
+        )
+
+
 def test_a_row_names_the_url_when_no_probe_found_a_title(
     queue: FakeQueue,
     managers: Callable[..., DownloadManager],
@@ -756,6 +855,12 @@ def test_an_unknown_total_is_stated_and_never_rendered_as_zero_percent(
     )
     assert view.model.accessible_text_at("job-1", PROGRESS_COLUMN) == (
         "Total size unknown; progress cannot be measured"
+    )
+    # **And the drawn bar refuses it too** (`T-119`). The text and the bar are two renderings of
+    # one fact, so a bar sitting at zero beside "—" would be the graphical half telling the lie
+    # the textual half was written to avoid.
+    assert view.model.data(view.model.index(0, JOB_COLUMN), PROGRESS_ROLE) is None, (
+        "an unknown total drew a progress bar at zero"
     )
 
 

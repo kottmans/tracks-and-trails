@@ -22,10 +22,17 @@ signals, on the GUI thread, one event-loop turn later.
 calling `JobRepository` straight from a button slot, under a contended writer lock, ending in an
 `OperationalError` no user ever saw. Jobs go to a `JobSink` that answers on a callback.
 
-**A row is persisted before it is probed** (`REQ-012`), because the manager works in job ids. So a
-line that fails, or that the user takes away, does have a row on disk — and `UX-003`'s promise is
-that it never becomes *queued* work. `done()` withdraws every such row and refuses to close until
-those cancellations are durable, which is `T016-R1` generalised from one probe to a batch.
+**Nothing is persisted before it is probed** (`T118-R1`, `UX-003`). Reading a line is a *staging*
+probe: the manager holds a transient job for it and never writes a row, so a line that fails or
+that the user takes away has nothing on disk to withdraw. `done()` unstages rather than cancelling,
+and closes immediately.
+
+*(This paragraph read the opposite — "a row is persisted before it is probed … `done()` withdraws
+every such row and refuses to close until those cancellations are durable" — for as long as that
+was true. `T118-R1` was **Critical** precisely because it was: `compose()` admits every durable
+`QUEUED` or `READY` row at startup, so a crash after a probe succeeded downloaded a URL the user
+had never committed to. `T118-R11` found this sentence still here afterwards, pointing maintenance
+at the design that defect was.)*
 
 ## Resolution is debounced, not fired per keystroke
 
@@ -435,9 +442,9 @@ class AddUrlDialog(QDialog):
         self._saving = False
         #: Jobs committed by `add_to_queue`, in the order they will be admitted.
         self._committed: tuple[str, ...] = ()
-
-        #: Rows whose durable write is outstanding. Close is held until it settles (`T118-R3`).
-        self._committing = False
+        # `T118-R11`: `_committing` was here too, written and never read. `_saving` is the flag
+        # that actually holds the close (`T118-R3`), and a second one that no branch consults is a
+        # claim the code does not make.
 
         self._resolve_timer = QTimer(self)
         self._resolve_timer.setSingleShot(True)

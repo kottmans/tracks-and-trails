@@ -246,7 +246,14 @@ class ThumbnailStore(QObject):
         return self._pixmaps.get(thumbnail_url)
 
     def _begin(self, url: str) -> None:
-        """Start looking for `url`'s picture: disk first, network only if it is not there."""
+        """Start looking for `url`'s picture: disk first, network only if it is not there.
+
+        **The one gate.** Every route into this pipeline goes through here, so "already running"
+        and "already known to fail" are decided once. A second copy of the `_failed` check further
+        down looked like defence in depth and was really an untestable branch: with two gates,
+        removing either left the other, so no test could tell whether the rule was enforced —
+        which a mutation duly demonstrated by surviving.
+        """
         if self._closed or url in self._inflight or url in self._failed:
             return
         self._inflight.add(url)
@@ -256,7 +263,7 @@ class ThumbnailStore(QObject):
 
     def _on_disk_missed(self, url: str) -> None:
         """Nothing cached, so ask the network. **This is the only counted fetch.**"""
-        if self._closed or url in self._failed:
+        if self._closed:
             self._inflight.discard(url)
             return
         self._fetches += 1
@@ -344,6 +351,17 @@ class ThumbnailStore(QObject):
     def cached_urls(self) -> tuple[str, ...]:
         """What is held in memory, least recently used first."""
         return tuple(self._pixmaps)
+
+    @property
+    def pending_urls(self) -> frozenset[str]:
+        """What is being looked for right now — **synchronously**, before anything completes.
+
+        `fetches` only rises once a disk miss has come back on the GUI thread, so it cannot answer
+        "did that call start any work?" in the same breath as the call. This can, which is what
+        lets `peek`'s promise be asserted rather than merely stated: a mutation making `peek` begin
+        a fetch is invisible to a fetch count and obvious here.
+        """
+        return frozenset(self._inflight)
 
     @property
     def limit(self) -> int:

@@ -90,15 +90,21 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ### T-118 — The add dialog becomes a staging list
 
-**Status:** **In Review — changes requested 2026-08-03, and this one needs a redesign.**
+**Status:** **In Review — the correction batch is complete and awaiting re-review**, 2026-08-03.
+`T118-R6`…`R11` are **corrected**; only the Reviewer marks them Resolved (`AGENTS.md` §10). The
+redesign the review asked for is built: `ui/row_delegate.py` draws one row for this dialog and the
+queue both, and `T-119`'s carried scope landed with it. **One thing is owed rather than done** — a
+hosted-Windows measurement at the replacement bound, recorded under the correction below.
+*(This read "In Review — changes requested 2026-08-03, and this one needs a redesign", listing
+`T118-R6`…`R10` as open, until the correction landed.)*
 `T118-R1`…`R3` are **resolved** — transient staging, synchronous staging identity, and an owned
-commit that writes each row's final request once — and must be preserved. `T118-R5` is closed by
-`UX-004`. What is open is the whole per-row control path: `T118-R6` (**Critical** — a row
-overridden to MP3 stores the registry default 192 kbps while the visible control says 320),
-`T118-R7` (the row widget collides with the item delegate; a 54 px thumbnail is clipped into a
-25 px row), `T118-R8` (an overridden row never shows the selector that will run), `T118-R9` (the
-row controls are outside the declared focus order and land after Close) and `T118-R10` (hosted
-Windows measured 150 rows at 0.722 s, seven times `NFR-001`'s target).
+commit that writes each row's final request once — and were preserved through the rewrite.
+`T118-R5` is closed by `UX-004`. What was open was the whole per-row control path: `T118-R6`
+(**Critical** — a row overridden to MP3 stores the registry default 192 kbps while the visible
+control says 320), `T118-R7` (the row widget collides with the item delegate; a 54 px thumbnail is
+clipped into a 25 px row), `T118-R8` (an overridden row never shows the selector that will run),
+`T118-R9` (the row controls are outside the declared focus order and land after Close) and
+`T118-R10` (hosted Windows measured 150 rows at 0.722 s, seven times `NFR-001`'s target).
 
 The reviewer's direction is one design rather than five patches: **one rendered row, one declared
 keyboard route, one effective request** — which most naturally means bringing `T-119`'s reusable
@@ -249,6 +255,79 @@ against `T-100`.
 
 **Risk, carried:** repaint cost is what regresses, and it regresses at a size no hand-driven test
 reaches — which is the same shape as `T118-R10`, measured on the wrong machine.
+
+#### Correction, 2026-08-03 — `T118-R6` through `R11`, and `T-119`'s carried scope
+
+**One design, not six patches**, which is what the review asked for. `ui/row_delegate.py` is the
+new module: named roles, one painted row, and one editor created for the row being edited.
+`ui/thumbnails.py` is the cache behind it, and `core/paths.py` gained the cache directory.
+
+| Finding | How it is answered |
+|---|---|
+| `T118-R6` | Already corrected at `446d151`, before this batch: the effective preset is derived in one place and the per-row override routes through it. Untouched here. |
+| `T118-R7` | There is no row widget. `ROW_HEIGHT` is **derived** from `THUMBNAIL_SIZE`, and `sizeHint` takes the larger of it and the height three lines need in the view's own font — so a large accessibility font cannot clip the row either. |
+| `T118-R8` | `SELECTOR_ROLE` is the row's third line, carrying the literal selector. `describe_preset` became one line rather than two, since the delegate draws three. |
+| `T118-R9` | `EDIT_KEY` is declared in the delegate and `EditKeyPressed` is set on both views. `AddUrlDialog.edit_row` is the single route the key, the context menu and the tests all take. The editor is **never a tab stop** — it does not exist until asked for — and the row's accessible text carries `EDIT_HINT`, so the control is discoverable to a screen-reader user who cannot see it. |
+| `T118-R10` | See the bound below. |
+| `T118-R11` | `_committing` is gone (written, never read). The module docstring said "a row is persisted before it is probed" — the design `T118-R1` was **Critical** for — and now says the opposite, with the history kept. `unresolved_job_ids()`/`written_job_ids()` split a question that no longer exists and are replaced by `staged_job_ids()`. The list comment claiming "not a widget per row" is true again. |
+
+**`T-119`'s carried criteria, each with the test that fails without it:** every field by value
+(`test_the_drawn_row_carries_every_field_the_columns_do`); no fetch for an unpainted row
+(`test_no_thumbnail_is_fetched_for_a_row_that_is_never_painted` — 500 rows, 12 painted, 12
+requests); a stated cache bound that releases (`test_the_pixmap_cache_releases_what_it_evicts`);
+the disk cache under `NFR-004`, shared by URL and swept when no job names it (three tests); a
+missing picture kept as a placeholder and never retried; repaint cost bounded; and the row spoken
+whole to a screen reader.
+
+**The queue keeps its columns and stops being a grid.** `COLUMN_HEADERS` is `REQ-014` transcribed
+by hand and `_text` still answers each field, because that is what `accessible_text_at` reads and
+what pins the requirement; the *view* became a `QListView` whose delegate composes those same
+answers into one row. Deleting the per-field vocabulary to change a widget would have thrown the
+transcription away.
+
+##### The replacement bound, and what is still owed
+
+`T118-R10`'s gate is replaced by **three** assertions, because the one it replaces could not
+distinguish "the machine was fast" from "the design is flat":
+
+1. **An absolute budget with real headroom.** `SUPPORTED_PASTE` rises from 150 to **500** — the
+   size the ceiling was hiding — and `INTERACTION_BUDGET_SECONDS` is **1.0 s** against a measured
+   **0.042 s** on the development machine. A 24x margin, deliberately not the largest number one
+   Linux measurement will bear.
+2. **A ratio, which does not move with runner speed.** Four times the paste must cost less than
+   six times the time. Measured: 0.020 s at 125, 0.042 s at 500, 0.047 s at 1000.
+3. **A structural count**, which is the one that actually holds. A mutation reintroducing a
+   persistent editor per row **passed both timing tests** — an unshown view lays nothing out, so
+   500 hidden combo boxes are cheap here and ruinous on the platform that measured 0.722 s.
+   `test_a_large_paste_builds_no_control_at_all_until_one_is_asked_for` counts the controls and
+   fails that mutation with `500 per-row controls exist for 500 rows`.
+
+Repaint was measured directly and is **flat in the model**: painting 12 rows costs 3.1 ms median
+whether the model holds 12, 150, 500 or 2000 rows; 40 rows costs 10.2 ms.
+
+**Owed, and not done: a hosted-Windows measurement at the new bound.** `T118-R10` asks for one
+explicitly and this session has no access to that runner, so the figures above are development-
+machine only. The ratio and the structural count are runner-invariant and do not need it; the
+1.0 s absolute budget does. It is recorded here rather than left implied.
+
+##### Mutations run
+
+Ten, of which **four initially survived — and each one changed the work rather than the record**.
+That is the value of running them: three of the four exposed a test that could not fail for the
+reason it named, and the fourth exposed two guards that made each other untestable.
+
+| Mutation | Killed by |
+|---|---|
+| The pixmap cache never evicts | the release and LRU tests |
+| The gate forgets what is already running | the fetch-once and shared-file tests |
+| The disk cache is keyed per row rather than per URL | the sharing and relaunch tests |
+| `sweep` deletes everything, live or not | the sweep test |
+| The drawn row drops speed and ETA | the every-field test |
+| Column 0 announces only its own cell | the spoken-whole test |
+| The gate forgets failures | the no-retry tests — **after the two redundant guards became one**. Either guard alone caught it, so removing either left the other and no test could tell whether the rule was enforced. |
+| `peek` starts a fetch, like `pixmap` | the probed-thumbnail test — **after `pending_urls` existed**. The effect is asynchronous, so a fetch *count* cannot see it in the same breath as the call. |
+| An unknown total draws a bar at zero | the indeterminate test — **after it also asserted `PROGRESS_ROLE`**. It checked the text only, so the graphical half could tell the lie the textual half was written to avoid. |
+| A persistent editor per row | the structural count — **after it existed**; the two timing tests both passed it. |
 
 
 ---

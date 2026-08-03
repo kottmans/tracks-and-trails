@@ -32,8 +32,24 @@ every status change.
 scroll area to render a number six characters already carry, and "repaint cost is bounded with N
 rows" is one of this task's criteria rather than an aspiration.
 
+*(`T-119` gives the delegate a **painted** bar. That does not reopen this: what was rejected is a
+widget per row, and a rectangle drawn during `paint` is not one. `DETAIL_ROLE` still carries the
+same number in words, so nothing is signalled by the bar alone — `NFR-005`.)*
+
 The accessible description is still `describe_bar`'s, so the words a screen reader hears in the
 table are produced by the same function that produces them beside the bar (`NFR-005`).
+
+## One rich row, drawn by the shared delegate — and still six fields
+
+`T-119`: thumbnail, title, progress and state in **one row rather than a grid of columns**, drawn
+by `ui/row_delegate.py` so the queue and the add dialog cannot drift apart.
+
+**The columns did not go away; they stopped being the layout.** `COLUMN_HEADERS` is `REQ-014`
+transcribed by hand, and `_text` still answers each field separately — that is what
+`accessible_text_at` reads, what a screen reader hears per field, and what pins the requirement.
+What changed is that the *view* is a `QListView` asking column 0 for the delegate's roles, which
+compose those same answers into one row. Deleting the per-field vocabulary to achieve the rich row
+would have thrown away `REQ-014`'s transcription to change a widget.
 
 ## Ordering is `queue_position`, and this does not decide it
 
@@ -47,15 +63,15 @@ no position sorts last on its id, which is what the scheduler does with one.
 
 from collections.abc import Callable
 from contextlib import suppress
+from pathlib import Path
 from typing import Any, Final, Protocol
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, QTimer, Signal
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QHeaderView,
     QLabel,
-    QTableView,
+    QListView,
     QVBoxLayout,
     QWidget,
 )
@@ -76,6 +92,17 @@ from tracks_and_trails.ui.job_detail import (
     percent_of,
     totals_for_ending,
 )
+from tracks_and_trails.ui.row_delegate import (
+    DETAIL_ROLE,
+    HEADLINE_ROLE,
+    HUE_ROLE,
+    PROGRESS_ROLE,
+    STATE_ROLE,
+    THUMBNAIL_URL_ROLE,
+    RowDelegate,
+)
+from tracks_and_trails.ui.staging import placeholder_hue
+from tracks_and_trails.ui.thumbnails import ThumbnailLoader, ThumbnailStore
 
 #: The columns, in order, with the header each shows. `REQ-014` names five things a user must be
 #: able to see per job; the sixth is which job it is. Transcribed from the requirement rather than
@@ -311,11 +338,66 @@ class QueueModel(QAbstractTableModel):
         if not index.isValid() or not 0 <= index.row() < len(self._rows):
             return None
         row = self._rows[index.row()]
+
+        # **The delegate's roles, composed from the very cells `_text` answers** (`T-119`). Not a
+        # second rendering of the same facts: each branch below is the column it names, so a
+        # change to a cell reaches the drawn row and the screen reader together.
+        if role == HEADLINE_ROLE:
+            return self._text(row, JOB_COLUMN)
+        if role == STATE_ROLE:
+            return self._text(row, STATUS_COLUMN)
+        if role == DETAIL_ROLE:
+            return self._detail(row)
+        if role == HUE_ROLE:
+            return placeholder_hue(row.job.url)
+        if role == THUMBNAIL_URL_ROLE:
+            return row.job.thumbnail_url
+        if role == PROGRESS_ROLE:
+            return self._fraction(row)
+
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole):
             return self._text(row, index.column())
         if role == Qt.ItemDataRole.AccessibleTextRole:
+            if index.column() == JOB_COLUMN:
+                # The list draws column 0, so this is what a screen reader hears for the whole
+                # row — every field `REQ-014` names, not just the one the column happens to be.
+                return self._whole_row(row)
             return self._accessible_text(row, index.column())
         return None
+
+    def _detail(self, row: _Row) -> str:
+        """The row's second line: percent, size, speed and ETA, in one sentence.
+
+        Built from the columns rather than beside them, so the rich row and the per-field
+        accessible text cannot say different things about one download.
+        """
+        parts = [
+            self._text(row, PROGRESS_COLUMN),
+            self._text(row, SIZE_COLUMN),
+            self._text(row, SPEED_COLUMN),
+            self._text(row, ETA_COLUMN),
+        ]
+        return " · ".join(part for part in parts if part and part != UNKNOWN_TEXT)
+
+    def _whole_row(self, row: _Row) -> str:
+        """Everything a sighted user reads from the drawn row, for a screen reader (`NFR-005`)."""
+        spoken = [self._accessible_text(row, column) for column in range(len(COLUMN_HEADERS))]
+        return ". ".join(spoken)
+
+    def _fraction(self, row: _Row) -> float | None:
+        """Completion from 0 to 1, or `None` when there is nothing honest to draw.
+
+        **`None` is not zero.** An unknown total is not "0%" — the same refusal `_text` makes for
+        `INDETERMINATE_TEXT`, so the bar is absent exactly when the percentage is.
+        """
+        if row.job.status is JobStatus.COMPLETED:
+            return 1.0
+        if row.is_terminal:
+            return None
+        done, total = self._totals(row)
+        if not total or done is None:
+            return None
+        return min(max(done / total, 0.0), 1.0)
 
     # --- what each cell says -----------------------------------------------------------------
 
@@ -541,11 +623,16 @@ class QueueView(QWidget):
         manager: DownloadManager,
         parent: QWidget | None = None,
         repaint_interval_ms: int = REPAINT_INTERVAL_MS,
+        thumbnail_loader: ThumbnailLoader | None = None,
+        cache_root: Path | None = None,
     ) -> None:
         super().__init__(parent)
         self.setObjectName("queueView")
         self._model = QueueModel(
             jobs=jobs, manager=manager, parent=self, repaint_interval_ms=repaint_interval_ms
+        )
+        self._thumbnails = ThumbnailStore(
+            loader=thumbnail_loader, cache_root=cache_root, parent=self
         )
 
         layout = QVBoxLayout(self)
@@ -558,22 +645,31 @@ class QueueView(QWidget):
         self._empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._empty)
 
-        self._table = QTableView(self)
-        self._table.setObjectName("queueTable")
-        self._table.setAccessibleName("Download queue")
-        self._table.setModel(self._model)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # **One rich row rather than a grid of columns** (`T-119`), drawn by the delegate the add
+        # dialog uses. The object name is unchanged: it is what the shell and `T-086`'s file
+        # actions attach to, and renaming it would be a second change riding on this one.
+        self._list = QListView(self)
+        self._list.setObjectName("queueTable")
+        self._list.setAccessibleName("Download queue")
+        self._list.setModel(self._model)
+        self._list.setItemDelegate(RowDelegate(thumbnails=self._thumbnails, parent=self._list))
+        self._list.setUniformItemSizes(True)
+        self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         # Rows are not editable and never will be: `T-081`'s reorder moves a row, it does not type
         # into one. An editable view also puts a text cursor into the keyboard order, which
-        # `focus_chain` would then be wrong about.
-        self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.verticalHeader().setVisible(False)
-        self._table.horizontalHeader().setSectionResizeMode(
-            JOB_COLUMN, QHeaderView.ResizeMode.Stretch
-        )
-        self._table.selectionModel().selectionChanged.connect(self._announce_selection)
-        layout.addWidget(self._table)
+        # `focus_chain` would then be wrong about. The delegate offers no editor here anyway —
+        # this model answers no `PRESET_CHOICES_ROLE` — but the trigger is stated rather than
+        # inherited, because that is the whole lesson of `T118-R9`.
+        self._list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self._list.selectionModel().selectionChanged.connect(self._announce_selection)
+        layout.addWidget(self._list)
+
+        # A picture arriving repaints the rows showing it; nothing about the queue changed.
+        self._thumbnails.ready.connect(self._on_thumbnail_ready)
+        # **The disk cache is swept with the job** (`T-119`), and only then: a file is kept while
+        # any remaining job names the same thumbnail URL, which is what "two jobs for one URL
+        # share it" requires. `sweep` takes what is still live rather than what just left.
+        self._model.modelReset.connect(self._sweep_thumbnails)
 
         self._model.modelReset.connect(self._show_the_right_thing)
         # A reset drops the selection, and the per-job actions have to hear about it
@@ -587,8 +683,18 @@ class QueueView(QWidget):
         return self._model
 
     @property
-    def table(self) -> QTableView:
-        return self._table
+    def table(self) -> QListView:
+        """The widget the rows are drawn in.
+
+        Still called `table` because that is what the shell and `T-086`'s file actions attach to,
+        and what every caller names it. It is a `QListView` now — the rows are one drawn row each
+        rather than a grid — but nothing outside this module uses more than `QAbstractItemView`.
+        """
+        return self._list
+
+    @property
+    def thumbnails(self) -> ThumbnailStore:
+        return self._thumbnails
 
     @property
     def shows_empty_notice(self) -> bool:
@@ -601,13 +707,15 @@ class QueueView(QWidget):
         self._model.refresh()
 
     def detach(self) -> None:
+        """Stop listening, and let the thumbnail pool drain before this widget goes."""
         self._model.detach()
+        self._thumbnails.close()
 
     def selected_job_id(self) -> str | None:
-        rows = self._table.selectionModel().selectedRows()
-        if not rows:
+        selected = self._list.selectionModel().selectedIndexes()
+        if not selected:
             return None
-        return self._model.job_ids()[rows[0].row()]
+        return self._model.job_ids()[selected[0].row()]
 
     def selected_path(self) -> str | None:
         """The selected job's written file, or `None`. **`T-086`'s one question of this view.**
@@ -627,7 +735,7 @@ class QueueView(QWidget):
         index = self._model.row_of(job_id)
         if index is None:
             return False
-        self._table.selectRow(index)
+        self._list.setCurrentIndex(self._model.index(index, JOB_COLUMN))
         return True
 
     def focus_chain(self) -> list[QWidget]:
@@ -639,12 +747,34 @@ class QueueView(QWidget):
         order is asserted per state rather than in general; the two states here are "has rows" and
         "does not".
         """
-        return [self._table] if self._model.rowCount() else []
+        return [self._list] if self._model.rowCount() else []
+
+    def _on_thumbnail_ready(self, _url: str) -> None:
+        """A picture arrived, so the rows showing it repaint. The queue itself did not change."""
+        count = self._model.rowCount()
+        if count:
+            self._model.dataChanged.emit(
+                self._model.index(0, JOB_COLUMN), self._model.index(count - 1, JOB_COLUMN)
+            )
+
+    def _sweep_thumbnails(self) -> None:
+        """Drop cached pictures no remaining job names (`T-119`, `NFR-004`).
+
+        Driven by the model reset, which is what `job_removed`, `queue_reordered` and
+        `queue_cleared` all cause — so a removed job's picture goes with it, and a picture two jobs
+        shared survives until the second one goes too.
+        """
+        live = {
+            job.thumbnail_url
+            for job in (self._model.job_for(job_id) for job_id in self._model.job_ids())
+            if job is not None and job.thumbnail_url
+        }
+        self._thumbnails.sweep(live)
 
     def _show_the_right_thing(self) -> None:
         """The table when there are rows, the notice when there are none. Never both."""
         has_rows = self._model.rowCount() > 0
-        self._table.setVisible(has_rows)
+        self._list.setVisible(has_rows)
         self._empty.setVisible(not has_rows)
 
     def _announce_selection(self, *_: object) -> None:

@@ -37,12 +37,14 @@ look one task from exiting when the sign-off it actually needs had not been requ
 - **Approved 2026-08-02:** `T-088` at `9e133a6`, the phase's own proof, once `T088-R4` and
   `T087-R6` were corrected and the suite passed on hosted Windows and Ubuntu.
 - **Approved 2026-08-03:** `T-116` at `253bbce`, after `T116-R1`. `T117-R1` closed.
-- **In review, returned a second time:** `T-118`. `T118-R1`…`R3` are resolved — transient staging,
-  synchronous staging identity, an owned commit writing each row's final request once — and
-  `UX-004` closes `T118-R5`. The per-row control path is what is open, and it needs **one design
-  rather than five patches**: one rendered row, one declared keyboard route, one effective request.
-  `T118-R6` is Critical — a row overridden to MP3 stores 192 kbps while the visible control says
-  320, which is `T-075`'s consequence again.
+- **In review, corrected and awaiting re-review:** `T-118`, carrying `T-119`. `T118-R1`…`R3`
+  remain resolved and survived the rewrite; `UX-004` closes `T118-R5`; `T118-R6` (Critical) was
+  corrected at `446d151`. **`T118-R7` and `R9`…`R11` are corrected by the redesign the review
+  asked for** — `ui/row_delegate.py` draws one row for the staging list and the queue both, with
+  one editor for the row being edited rather than a widget per row. `T-119`'s carried scope
+  (bounded pixmap cache, disk cache under `NFR-004`, no fetch for an unpainted row) landed with
+  it. Only the Reviewer marks any of these Resolved (`AGENTS.md` §10).
+  **One thing is owed:** a hosted-Windows measurement at the replacement bound. See `TASKS.md`.
 - **Approved 2026-08-02:** `T-115`, after `T115-R1` (High) — the probed row was retargeted while
   every later queue position was admitted ahead of it, so with a pool of one the second URL
   started and the head of the queue waited. Add now takes one admission decision after the
@@ -126,17 +128,25 @@ prior attempts having died in `setup-python` before reaching PyInstaller.
 job look green. The teardown errors were disclosed two paragraphs later; the number was not wrong,
 the framing was.)*
 
-**What is still red is `T-118`, and only `T-118`.**
+**What was still red was `T-118`, and only `T-118`. All three causes are now addressed** — locally,
+and not yet on the runner that found two of them.
 
 - **`T118-R10` flapped a third time.** `windows-latest` measured **0.520 s** for 150 URLs against
-  the test's own 0.5 s allowance. Three hosted measurements of one unchanged path now read
-  0.722 s (red), pass, 0.520 s (red) — the bound is marginal, and every red run of it costs a
-  Windows job.
+  the test's own 0.5 s allowance. Three hosted measurements of one unchanged path read 0.722 s
+  (red), pass, 0.520 s (red) — the bound was marginal, and every red run of it cost a Windows job.
+  **Replaced 2026-08-03** by three assertions rather than one: an absolute budget at 500 URLs with
+  a 24x margin, a runner-invariant scaling ratio, and a structural count of the per-row controls.
+  The third is the one that matters — a mutation restoring a widget per row passed *both* timing
+  tests, because an unshown view lays nothing out. **A hosted-Windows measurement at the new
+  absolute bound is owed and has not been taken.**
 - **Two teardown errors in the staging seam**, both `shutdown() → cancel()` reaching a staged job
   in a state `cancel` cannot express: `KeyError: no job with id …` (seen twice) and
   `IllegalTransitionError: cannot move a job from failed to cancelled`. Neither reproduces on
-  Linux and both are teardown-only, so the tests they hang off still report as passed. Recorded
-  against `T-118` in `TASKS.md`, including why `cancel()`'s own comment predicts the second.
+  Linux and both are teardown-only, so the tests they hang off still reported as passed.
+  **Both are fixed** — `cancel()` treats an id the manager cannot answer for as a no-op, and
+  `_cancellation_of` asks the state machine rather than `is_terminal`, which is the distinction
+  that made `FAILED → CANCELLED` reachable. Landed at `e300b04`, before this correction batch;
+  neither has yet been re-observed on `STARBASE`.
 
 ## What `T-118` found in code it did not write
 

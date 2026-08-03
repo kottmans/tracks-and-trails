@@ -38,7 +38,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, QPoint, Qt
 from PySide6.QtGui import QAction
-from PySide6.QtWidgets import QMenu, QTableView
+from PySide6.QtWidgets import QAbstractItemView, QMenu
 
 from tracks_and_trails.ui.reveal import Refusal, Spawner, Starter, open_file, reveal_file
 
@@ -59,12 +59,17 @@ class FileActions(QObject):
     one more: `output_directory` is read at the moment of use, not captured, because `T-079` lets
     the user change it while the window is open — and containment is checked against wherever
     downloads go *now*.
+
+    **`QAbstractItemView`, not `QTableView`.** Nothing here uses more than the base class offers —
+    a context-menu policy, `doubleClicked`, a selection model and a viewport — and history is a
+    table while the queue became a list of drawn rows (`T-119`). Naming the narrower type would
+    have made this file pick a side in a decision it has no stake in.
     """
 
     def __init__(
         self,
         *,
-        table: QTableView,
+        table: QAbstractItemView,
         selected_path: Callable[[], str | None],
         output_directory: Callable[[], Path],
         report: Callable[[str], None],

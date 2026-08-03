@@ -161,24 +161,28 @@ def test_a_failed_row_stays_visible_and_out_of_the_commit() -> None:
     assert bad in staging.visible, "the failed row was hidden, so its message went with it"
 
 
-def test_a_persisted_row_that_will_not_be_committed_is_reported_for_withdrawal() -> None:
-    """A row is persisted before it can be probed (`REQ-012`), so a failure leaves a row on disk.
+def test_every_row_holding_a_staging_job_is_reported_for_unstaging() -> None:
+    """What `done()` has to stop — **whatever state the row reached** (`T118-R1`).
 
-    `UX-003` promises that never becomes queued work, which means the dialog has to withdraw it.
-    Rows with no job at all are excluded: there is nothing to withdraw, and passing `None` to a
-    cancel would be an error rather than a no-op.
+    Resolved, failed and superseded rows all still own a transient probe until it is released, and
+    a row that was never staged owns nothing: passing `None` to `unstage` would be an error rather
+    than a no-op.
+
+    *(This asked `unresolved_job_ids()`, which excluded `READY` rows on the reasoning that Add
+    would commit them. Nothing is written before Add now, so a `READY` row nobody committed is a
+    probe like any other and close must stop it too — `T118-R11`.)*
     """
     staging = a_staging("https://a.invalid/1", "https://b.invalid/2", "https://c.invalid/3")
-    ready, failed, never_saved = staging.visible
+    ready, failed, never_staged = staging.visible
     ready.state, ready.job_id = RowState.READY, "job-ready"
     failed.state, failed.job_id = RowState.FAILED, "job-failed"
-    never_saved.state = RowState.PENDING
+    never_staged.state = RowState.PENDING
 
-    assert staging.unresolved_job_ids() == ("job-failed",)
+    assert staging.staged_job_ids() == ("job-ready", "job-failed")
 
 
-def test_a_superseded_rows_job_is_reported_for_withdrawal_too() -> None:
-    """The row the user replaced still wrote a job, and nobody is waiting for it."""
+def test_a_superseded_rows_job_is_reported_for_unstaging_too() -> None:
+    """The row the user replaced still owns a probe, and nobody is waiting for its answer."""
     staging = a_staging("https://a.invalid/1")
     row = staging.visible[0]
     row.job_id = "job-1"
@@ -186,7 +190,7 @@ def test_a_superseded_rows_job_is_reported_for_withdrawal_too() -> None:
 
     staging.reconcile([])
 
-    assert staging.unresolved_job_ids() == ("job-1",)
+    assert staging.staged_job_ids() == ("job-1",)
 
 
 # --- when the batch is done ----------------------------------------------------------------------
