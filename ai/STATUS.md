@@ -48,7 +48,11 @@ look one task from exiting when the sign-off it actually needs had not been requ
   fetch was asynchronous and the cleanup was not, blocking the GUI thread on disk and for an
   explicit five seconds on close. `T118-R10`'s design was accepted with verification still open.
   Only the Reviewer marks any of these Resolved (`AGENTS.md` §10).
-  **One thing is owed:** a Windows measurement at the replacement bound, on the corrected head.
+  **The owed Windows measurement is taken.** Run `30853680183` at `adc5355` ran the correction's
+  nine tests on hosted `windows-latest` — the runner where `T118-R10`'s flap was observed — and on
+  `STARBASE`; all nine passed on both, the paste budget included. What the run gives is a pass, not
+  a number, so the 24x margin is still a development-machine claim (`T-121`'s neighbour note in
+  `TASKS.md`).
 - **Approved 2026-08-02:** `T-115`, after `T115-R1` (High) — the probed row was retargeted while
   every later queue position was admitted ahead of it, so with a pool of one the second URL
   started and the head of the queue waited. Add now takes one admission decision after the
@@ -132,8 +136,14 @@ prior attempts having died in `setup-python` before reaching PyInstaller.
 job look green. The teardown errors were disclosed two paragraphs later; the number was not wrong,
 the framing was.)*
 
-**What was still red was `T-118`, and only `T-118`. All three causes are now addressed** — locally,
-and not yet on the runner that found two of them.
+**`T-118` is no longer what is red.** All three original causes are addressed and verified on both
+Windows runners. **What is red on `main` now is `T-121`**, filed 2026-08-03: the phase-exit test's
+own localhost clip server aborts a connection on hosted Windows (`ConnectionAbortedError`,
+`WinError 10053`), so one of five downloads fails and a test about *admission* goes red while
+reporting that zero jobs were left queued — which is the behaviour it exists to prove, holding.
+`STARBASE` ran the same test in the same run and passed.
+
+*(The three `T-118` causes, kept because the history is the argument:)*
 
 - **`T118-R10` flapped a third time.** `windows-latest` measured **0.520 s** for 150 URLs against
   the test's own 0.5 s allowance. Three hosted measurements of one unchanged path read 0.722 s

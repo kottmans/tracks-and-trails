@@ -314,12 +314,24 @@ distinguish "the machine was fast" from "the design is flat":
 Repaint was measured directly and is **flat in the model**: painting 12 rows costs 3.1 ms median
 whether the model holds 12, 150, 500 or 2000 rows; 40 rows costs 10.2 ms.
 
-**Owed, and not done: one Windows measurement at the new bound.** `T118-R10` asks for one
-explicitly and this session has no access to a Windows runner, so the figures above are
-development-machine only. The ratio and the structural count are runner-invariant and do not need
-it; the 1.0 s absolute budget does. Recorded here rather than left implied.
+**Taken 2026-08-03, on the machine the finding named.** Run `30853680183` at `adc5355` ran the
+correction's nine tests on **hosted `windows-latest`** — the runner where the flap was observed —
+and on `STARBASE`. All nine passed on both, including the paste budget at 500 URLs against the
+1.0 s bound, the scaling ratio and the structural control count. `T118-R10`'s owed measurement is
+therefore satisfied on hosted Windows directly, and the `STARBASE` substitution recorded below was
+not needed after all.
 
-**Take it on `STARBASE`, not on hosted Windows** (maintainer, 2026-08-03): hosted Actions minutes
+**What the run does not give is a number.** A pass proves the paste came in under 1.0 s; it does
+not say by how much, so the 24x margin remains a development-machine claim. Instrumenting the test
+with `record_property`, as `tests/network/test_real_download.py` already does, would put the figure
+in the junit artifact — filed rather than done here, because it costs a CI run and the gate it
+would inform is already green twice over.
+
+*(This read "Owed, and not done: one Windows measurement at the new bound", with the figures
+development-machine only, until the run above.)* The ratio and the structural count are runner-invariant and did not need
+it; the 1.0 s absolute budget did.
+
+**The standing preference is still `STARBASE`** (maintainer, 2026-08-03): hosted Actions minutes
 are nearly exhausted and the self-hosted desktop costs none. `ci.yml`'s Windows `check` job already
 reads `vars.WINDOWS_RUNNER` and falls back to `windows-latest` only when it is unset, so this is a
 repository variable rather than a workflow change — and `OPS-005` pointed it at hosted *while
@@ -725,6 +737,63 @@ agreement on the reduced form before implementation.
 ## Proposed — Phase 1
 
 ## Proposed — Phase 2
+
+### T-121 — The phase-exit clip server aborts connections on hosted Windows
+
+**Status:** **Proposed — found by CI run `30853680183`**, 2026-08-03, by measurement rather than by
+reading. Filed rather than fixed inline (`AGENTS.md` §7): it is not `T-118`'s, and it is the only
+thing red on `main`.
+**Owner:** Implementer
+**Priority:** Medium — a gate that fails for its own fixture's reasons is a gate that will be
+dismissed, which is `T118-R10`'s lesson in a different costume
+**Phase:** Phase 2 (its gate), though the defect is in test infrastructure
+**Relevant context:** `tests/integration/test_phase_2_exit.py`, its `media_url` fixture,
+`tests/network/conftest.py`
+**Affected surfaces:** `tests/**`
+**Risk:** Low to fix, and it is *not* a production defect
+
+**`test_every_queued_job_eventually_starts_as_slots_free` failed on hosted `windows-latest` while
+passing on `STARBASE`.** The assertion reads:
+
+```
+0 of 5 jobs were still QUEUED after Add with nothing else done
+Final: {'af90cb': 'completed', '660db5': 'completed', '83cc82': 'failed',
+        'bdd939': 'completed', '7cbf8e': 'completed'}
+```
+
+**Read the numbers before the message.** Zero jobs were still `QUEUED`, so the behaviour the test
+exists to prove — that a queue drains with no user action after Add — *held*. Four of five
+completed. The fifth **failed**, and the captured stderr says why:
+
+```
+ConnectionAbortedError: [WinError 10053] An established connection was aborted
+by the software in your host machine
+```
+
+That is the test's own `ThreadingHTTPServer` losing a connection to its own client, twice, on the
+loopback interface. The predicate demands all five `COMPLETED`, so one aborted download reddens a
+test whose subject is admission.
+
+**The message is now misleading, which is the part worth fixing.** It reports the `QUEUED` count
+and concludes "nothing admits durable queued intent" — a sentence that is false whenever the count
+it prints is zero. A reader who trusts the prose over the dict diagnoses the scheduler.
+
+#### Scope
+
+- Make the fixture server survive an aborted client connection rather than propagating it.
+- Distinguish the two failures in the message: *jobs did not start* is the defect this gate exists
+  for; *a job started and its download failed* is a different sentence and should say so.
+- Neither reproduces on Linux, and it is hosted-Windows-only so far — `STARBASE` ran the same test
+  in the same run and passed. Codex separately reported 16 localhost-server tests denied outright
+  by its sandbox, so this fixture is fragile in more than one constrained environment.
+
+#### Out of scope
+
+- The download path itself. Nothing here suggests a production defect: the worker did what a
+  worker does when a server drops the connection.
+
+---
+
 
 *(`T-078`…`T-088` are the phase's own deliverables, written 2026-07-29 from
 `ai/IMPLEMENTATION_PLAN.md` §Phase 2. `T-097` is a planning-review follow-up; the entries after the
