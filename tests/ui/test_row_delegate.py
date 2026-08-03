@@ -26,6 +26,7 @@ from typing import Any, Final
 
 import pytest
 from PySide6.QtCore import QAbstractListModel, QModelIndex, QRect, Qt
+from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
@@ -96,11 +97,15 @@ class RowsModel(QAbstractListModel):
         super().__init__()
         self._rows = rows
 
-    # Qt's override names, hence the camelCase.
-    def rowCount(self, parent: QModelIndex = QModelIndex()) -> int:  # noqa: B008, N802
+    # Qt's override names, hence the camelCase. The index type is the union Qt's own signature
+    # uses — narrowing it to `QModelIndex` is a Liskov violation that only the unscoped `mypy`
+    # gate can see (`ai/TESTING.md` §12).
+    def rowCount(self, parent: QModelIndex | _PersistentIndex = QModelIndex()) -> int:  # noqa: B008, N802
         return 0 if parent.isValid() else len(self._rows)
 
-    def data(self, index: QModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
+    def data(
+        self, index: QModelIndex | _PersistentIndex, role: int = Qt.ItemDataRole.DisplayRole
+    ) -> Any:
         if not index.isValid() or not 0 <= index.row() < len(self._rows):
             return None
         return self._rows[index.row()].get(role)
@@ -148,6 +153,16 @@ def spin_until(qapp: QApplication, predicate: Callable[[], bool], timeout: float
         qapp.processEvents()
         time.sleep(0.005)
     return predicate()
+
+
+def holds(store: ThumbnailStore, url: str) -> Callable[[], bool]:
+    """A `spin_until` predicate bound to `url` **now**, rather than when it is called.
+
+    A function rather than a `lambda` in the loop: closing over the loop variable is what `B023`
+    flags and what the `lambda url=url:` trick works around, and that trick in turn defeats mypy's
+    inference. Binding through a parameter satisfies both and says what it means.
+    """
+    return lambda: url in store.cached_urls
 
 
 def paint_rows(
@@ -297,10 +312,9 @@ def test_the_pixmap_cache_releases_what_it_evicts(
     )
 
     for index in range(over):
+        url = f"https://pics.invalid/{index}.jpg"
         paint_rows(model, delegate, index)
-        assert spin_until(
-            qapp, lambda index=index: f"https://pics.invalid/{index}.jpg" in store.cached_urls
-        ), f"row {index}'s picture never arrived"
+        assert spin_until(qapp, holds(store, url)), f"row {index}'s picture never arrived"
 
     assert len(store.cached_urls) == limit, (
         f"the cache holds {len(store.cached_urls)} pixmaps against a stated bound of {limit}"
@@ -323,10 +337,9 @@ def test_using_a_cached_pixmap_keeps_it_from_being_evicted(
     )
 
     for index in range(limit):
+        url = f"https://pics.invalid/{index}.jpg"
         paint_rows(model, delegate, index)
-        assert spin_until(
-            qapp, lambda index=index: f"https://pics.invalid/{index}.jpg" in store.cached_urls
-        )
+        assert spin_until(qapp, holds(store, url))
 
     # Touch the oldest, then overflow the cache by one.
     paint_rows(model, delegate, 0)
