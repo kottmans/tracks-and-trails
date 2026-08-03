@@ -191,18 +191,31 @@ sequencing choice rather than a scope change — but it was the only thing keepi
 criterion 5 is evidenced by CI. An exit submitted against a red board invites rejection on that
 alone.
 
-**Its correction batch is complete and awaiting re-review** (2026-08-03). The delegate redesign
-landed with `T-119`'s carried scope, and the three causes of the red board — `T118-R10`'s flapping
-bound and two teardown errors in the staging seam — are addressed. **What stands between here and a
-green board is one Windows run**: the new absolute bound has been measured on a development machine
-only, and the two teardown fixes have not been re-observed on `STARBASE`. Re-review and that run are
-the remaining steps, in that order.
+**Two correction rounds landed on 2026-08-03, and the second is awaiting re-review.** The first
+built the shared delegate and carried `T-119`'s scope; the re-review returned three blocking
+findings, all of them one mistake — the delegate reserved the per-row control's slot and painted
+nothing in it, so `UX-004` §1's visible control was absent, the literal selector was elided to
+nothing at a realistic width, and the thumbnail *cleanup* still blocked the GUI thread while the
+fetch did not. All three are corrected.
 
-**That run belongs on `STARBASE`, not on a hosted runner** (maintainer, 2026-08-03): hosted Actions
-minutes are nearly exhausted, and the self-hosted desktop costs none and is the machine both
-teardown errors were found on. `ci.yml`'s Windows `check` job already reads `vars.WINDOWS_RUNNER`,
-so this is a repository variable rather than a workflow change — and `OPS-005` pointed it at hosted
-only *while* `STARBASE` was offline, which stopped being true on 2026-08-03.
+**`T-118` is no longer what is red.** Run `30853680183` ran the correction's nine tests on hosted
+`windows-latest` — the runner where `T118-R10`'s flap was observed — and on `STARBASE`, and all
+nine passed on both. `T118-R10`'s owed Windows measurement is therefore satisfied on the machine
+the finding named, and the `STARBASE` substitution was not needed. What remains for `T-118` is the
+re-review verdict.
+
+**What is red is `T-121`**, filed from that same run: the phase-exit test's own localhost clip
+server aborts a loopback connection on hosted Windows, so one of five downloads fails and a test
+about *admission* goes red while reporting that zero jobs stayed queued — which is the behaviour it
+exists to prove, holding. `STARBASE` passed the same test in the same run. It is test
+infrastructure, not a production defect, and it is Phase 2's gate rather than `T-118`'s.
+
+**The standing preference remains `STARBASE` over hosted runners** (maintainer, 2026-08-03), since
+hosted Actions minutes are nearly exhausted. `ci.yml`'s Windows `check` job already reads
+`vars.WINDOWS_RUNNER`, so routing is a repository variable rather than a workflow change — **but
+`check`'s `setup-python` is unguarded**, unlike `frozen`'s, so pointing it at the desktop today
+would run the real Python installer there and repeat the incident `frozen`'s own comment records at
+run `30823595744`. Guarding it is the prerequisite, and it is nobody's task yet.
 
 **Nothing is blocked on a machine any more, and `STARBASE` is back:** `OPS-005` was amended so
 hosted Windows carries the gate while it was offline; it returned 2026-08-03 and now runs both the
@@ -245,7 +258,7 @@ flowchart LR
     T116["<b>T-116</b><br/>probe lane"]:::approved
     T117["<b>T-117</b><br/>thumbnail_url"]:::approved
     T120["<b>T-120</b><br/>brand palette"]:::approved
-    T118["<b>T-118</b><br/>staging list + row delegate<br/><i>T-119 subsumed · corrected</i>"]:::review
+    T118["<b>T-118</b><br/>staging list + row delegate<br/><i>T-119 subsumed · corrected twice</i>"]:::review
 
     EXIT(["<b>Phase 2 exit</b>"]):::exit
 
