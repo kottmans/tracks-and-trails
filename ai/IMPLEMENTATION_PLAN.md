@@ -191,23 +191,28 @@ sequencing choice rather than a scope change — but it was the only thing keepi
 criterion 5 is evidenced by CI. An exit submitted against a red board invites rejection on that
 alone.
 
-**Three correction rounds landed on 2026-08-03, and the third is awaiting re-review.** The first
+**Four correction rounds landed on 2026-08-03, and the fourth is awaiting re-review.** The first
 built the shared delegate and carried `T-119`'s scope. The second answered three blocking findings
 that were one mistake — the per-row control's slot was reserved and painted nothing, the literal
 selector was elided to nothing at a realistic width, and the thumbnail *cleanup* still blocked the
-GUI thread while the fetch did not. The third answers two Highs **the second round created or left
+GUI thread while the fetch did not. The third answered two Highs **the second round created or left
 behind**: deleting a store still waited on its child thread pool and let workers emit through a
-freed object, and resetting the model for every value change orphaned an open format control and
-discarded the user's choice whenever a sibling row settled.
+freed object, and resetting the model for every value change orphaned an open format control. The
+fourth answers the second of those **escalated to Critical**: the model's index mapping still read
+live staging rather than the snapshot the view held, so a format chosen for one row was written to
+the *next* one when a preceding row left the list mid-edit — a silently wrong per-URL download.
 
-*(The reviewer has since Resolved `R1`…`R3`, `R6`…`R12` and `COORD-R18`. The pattern across all
-three rounds is one thing: a correction verified by a test that agreed with the implementation
-rather than checking it against the finding.)*
+*(Resolved so far: `R1`…`R3`, `R6`…`R13`, `R15`, `R16`, `COORD-R18`. The pattern across all four
+rounds is one thing: a correction verified by a test that agreed with the implementation rather
+than checking it against the finding. The fourth round found the previous round's re-entrancy guard
+setting its flag and never reading it — caught by a mutation that could not find the branch it was
+deleting, not by anybody reading the code.)*
 
 **`T-118` is no longer what is red.** Run `30853680183` ran the correction's nine tests on hosted
 `windows-latest` — the runner where `T118-R10`'s flap was observed — and on `STARBASE`, and all
-nine passed on both. `T118-R10` is **Resolved**. That run covered `adc5355`; the third round's
-thumbnail-ownership rework has **never run on Windows**, which is the one gap left in its evidence.
+nine passed on both. `T118-R10` is **Resolved**. That run covered `adc5355`; the third and fourth
+rounds — thumbnail ownership, and the model's index mapping — have **never run on Windows**, which
+is the gap left in its evidence.
 
 **What is red is `T-121`**, filed from that same run: the phase-exit test's own localhost clip
 server aborts a loopback connection on hosted Windows, so one of five downloads fails and a test
@@ -263,7 +268,7 @@ flowchart LR
     T116["<b>T-116</b><br/>probe lane"]:::approved
     T117["<b>T-117</b><br/>thumbnail_url"]:::approved
     T120["<b>T-120</b><br/>brand palette"]:::approved
-    T118["<b>T-118</b><br/>staging list + row delegate<br/><i>T-119 subsumed · corrected 3x</i>"]:::review
+    T118["<b>T-118</b><br/>staging list + row delegate<br/><i>T-119 subsumed · corrected 4x</i>"]:::review
 
     EXIT(["<b>Phase 2 exit</b>"]):::exit
 
