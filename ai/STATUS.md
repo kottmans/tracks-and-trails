@@ -82,10 +82,14 @@ because it draws one reusable editor instead of a widget per row. `T118-R6` and 
 the request and its display done correctly inside a row the task owns. Patching five findings
 against the widget-per-row approach would be fixing what the review already said to replace.
 
-## Two red gates on `main`, both diagnosed 2026-08-03, neither in `T-116` or `T-118`
+## Two red gates that were on `main`, diagnosed and corrected 2026-08-03
 
-Corrected here at the maintainer's instruction. **Neither correction has been reviewed** — they are
-maintainer-directed, not reviewer-verified.
+Neither was in `T-116` or `T-118`. **Both corrections were reviewed and approved** at `6c38d5f` —
+`T-083`'s implementation and prior approval are unchanged, and `T-116` retains its approval, the
+review having independently ruled out its barrier as the cause. **`T-118` is the only thing still
+red.**
+*(`COORD-R17`: this read "neither correction has been reviewed", which was true when written and
+had stopped being true by the review recorded at this same head.)*
 
 **`test_the_attempt_count_is_bounded_and_the_last_error_survives` was racing a spawn, not catching
 a defect.** It failed on the `windows desktop` job in runs `30822454998` and `30823595744` —

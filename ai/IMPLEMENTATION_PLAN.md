@@ -388,8 +388,8 @@ staging list and the queue row becomes a delegate. `T-116` (probe lane), `T-117`
 and the first migration after the initial schema) and `T-120` (brand palette) are **approved**;
 `T-118` is **in review**, and `T-119` is **subsumed into it**.
 
-**One of them is being taken before Phase 2 exits** (maintainer, 2026-08-03). `T-119` is **filed
-`Cancelled — subsumed into `T-118``**, with its scope, acceptance criteria and risk carried into
+**One of them is being taken before Phase 2 exits** (maintainer, 2026-08-03). `T-119` is filed
+**Cancelled — subsumed into `T-118`**, with its scope, acceptance criteria and risk carried into
 that entry verbatim; `T-118` is therefore the single actionable item, and it lands first. Its
 per-row control path is what currently keeps `main` red, and Phase 2's criterion 5 is evidenced by
 CI. This does not move it into Phase 2 — it remains a Phase 3 task against no Phase 2 deliverable

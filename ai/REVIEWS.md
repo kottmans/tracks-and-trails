@@ -8586,3 +8586,51 @@ that correction rather than this CI/docs review.
 
 No reviewed source, tests or workflow files were edited. This review record is the only reviewer
 change; nothing was committed or pushed.
+
+## 2026-08-03 — Coordination corrections focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Submitted span:** `7202a5d..890fb5d`
+**Focused correction boundary:** `71fa992..890fb5d`
+**Correction commit:** `890fb5d`
+**Overall verdict:** **Approved with follow-up.** COORD-R13 through COORD-R16 are resolved. One
+non-blocking current-truth sentence and one Markdown typo remain; neither changes the task queue,
+phase gate, or T-118 scope, so T-118 may proceed.
+
+The submitted span contains two commits: `71fa992` adds the prior handoff and `890fb5d` contains the
+coordination corrections. The latter is the one-commit re-review boundary.
+
+### Prior-finding resolution
+
+| Finding | Result |
+|---|---|
+| `COORD-R13` | **Resolved.** STATUS now says 13/13 Phase 2 deliverables are approved while criterion 6 remains unmet pending an independent phase exit review. It names T-118's position before that review as a maintainer sequencing choice, not a phase criterion. This agrees with the higher-authority plan and its criterion-6 row. |
+| `COORD-R14` | **Resolved.** T-119 is a `Cancelled — subsumed into T-118` tombstone, not a second actionable task. T-118 removes the queue-rendering exclusion and T-105 dependency, carries T-119's affected surfaces, context, complete acceptance criteria and risk, and has no circular dependency. STATUS and the plan describe the same single item. |
+| `COORD-R15` | **Resolved.** T-115, T-117 and restored T-120 each appear exactly once under Complete at their reviewed heads. In Review contains exactly T-118, and the leading count says one. The placement test passes against the corrected ledger. |
+| `COORD-R16` | **Resolved.** STATUS and the handoff identify `windows desktop` as self-hosted and report the whole result together: corrected T-083 test passed, 1929 test calls passed, two teardown errors, job failed. The frozen Windows success remains stated separately. |
+
+### New non-blocking follow-up
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Owner / target | Status |
+|---|---|---:|---|---|---|---|---|
+| `COORD-R17` | **Low** | No | Current-truth prose / Markdown | STATUS `:85-88` still calls the earlier T-083/OPS-009 fixes “two red gates on main” and says neither correction has been reviewed, although the review committed at this same head approves both. `IMPLEMENTATION_PLAN.md:391-393` also attempts to nest backticks in `` `Cancelled — subsumed into `T-118`` ``, producing malformed inline code. Neither changes the now-correct gate or task state. | Say the two gate corrections were approved in the preceding review and leave only T-118 red. Render the tombstone without nested backticks, for example **Cancelled — subsumed into T-118**. | Documentation Maintainer; next coordination/status update before the Phase 2 exit review | **Open, non-blocking** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `71fa992..890fb5d` inspected; the wider submitted span contains the prior handoff as a separate commit. `git diff --check` passed for both spans. |
+| Change isolation | No files under `src/`, `tests/`, `.github/` or `pyproject.toml` changed in the focused correction. T-118 source and its existing verdict are unchanged. |
+| Task placement | `tests/unit/test_task_placement.py`: **14 passed in 0.09 s**. |
+| Ledger audit | Exactly one heading each for T-115, T-117, T-119 and T-120. T-115/T-117/T-120 are under Complete; T-119 is the subsumed tombstone; T-118 is the only In Review entry. |
+| Scope preservation | All seven T-119 acceptance criteria, its cache policy, affected surfaces, accessibility rule, out-of-scope history rendering and risk are carried into T-118. T-105 is explicitly not a dependency of the merged correction. |
+
+### Final disposition
+
+The coordination correction is approved at `890fb5d`; no maintainer waiver is needed. COORD-R17
+is a non-blocking documentation follow-up and does not consume another correction pass or prevent
+work on T-118. Phase 2 criterion 6 remains pending the independent phase exit review, exactly as
+the corrected plan and status say.
+
+No reviewed coordination/source/test files were edited. This review record is the only reviewer
+change; nothing was committed or pushed.
