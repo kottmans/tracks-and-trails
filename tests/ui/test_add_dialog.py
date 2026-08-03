@@ -735,6 +735,93 @@ def test_every_row_carries_its_own_format_control(
     )
 
 
+def test_an_overridden_row_downloads_at_the_bitrate_its_row_displays(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """`T118-R6` (Critical): the row's durable request must carry the *selected* MP3 quality.
+
+    A row overridden to MP3 stored the registry preset verbatim, whose `audio_quality` is the
+    192 kbps default — while the visible control said 320. `T-076` requires the displayed bitrate
+    to be the one that runs and derives the preset precisely so the two cannot separate; the
+    override reached for the raw preset and separated them again.
+
+    **A non-default bitrate, deliberately.** The defect is invisible at 192: the wrong answer and
+    the right one are the same number. The existing row test asserted only `media_kind`, which
+    both bitrates satisfy, which is why a Critical survived it.
+
+    Asserted on the durable `DownloadRequest` and on the row's own displayed text, because
+    `T118-R8` is the same defect seen from the front: what the row says and what it does are one
+    claim, not two.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
+
+    bitrate = dialog.findChild(QComboBox, "audioBitrateChoice")
+    assert bitrate is not None
+    wanted = "320"
+    assert wanted != preset_registry.MP3_QUALITY, (
+        "the registry default is now 320, so this test can no longer tell the two apart"
+    )
+    bitrate.setCurrentIndex(bitrate.findData(wanted))
+
+    listing = dialog.findChild(QListWidget, "stagingList")
+    assert listing is not None
+    control = listing.itemWidget(listing.item(1)).findChild(QComboBox, ROW_PRESET_NAME)
+    assert control is not None
+    control.setCurrentIndex(control.findData("Audio only (MP3)"))
+
+    # What the row promises, before anything is written.
+    shown = listing.item(1).text()
+    assert f"{wanted} kbps" in shown, f"the row does not show the bitrate it will use: {shown!r}"
+
+    dialog.add_to_queue()
+
+    committed = dialog.queued_job_ids
+    assert len(committed) == 2
+    stored = store.jobs[committed[1]].request
+    assert stored.audio_quality == wanted, (
+        f"the row displayed {wanted} kbps and queued {stored.audio_quality} kbps"
+    )
+
+
+def test_an_overridden_row_shows_the_selector_that_will_run(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """`T118-R8`: the per-row *literal* selector, not just a preset name.
+
+    `T-118` promises "the effective selector shown stays the one that will run". A row showed only
+    a preset name, and the one literal selector on screen was the batch's — so choosing an audio
+    override while the batch was video left the display describing the video download.
+
+    A mixed batch is the case that separates them: each row's shown selector must equal its own
+    durable request's `format_selector`, and the two rows must not agree.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
+    listing = dialog.findChild(QListWidget, "stagingList")
+    assert listing is not None
+    control = listing.itemWidget(listing.item(1)).findChild(QComboBox, ROW_PRESET_NAME)
+    assert control is not None
+    control.setCurrentIndex(control.findData("Audio only (MP3)"))
+
+    shown = [listing.item(index).text() for index in range(listing.count())]
+    dialog.add_to_queue()
+    committed = dialog.queued_job_ids
+    selectors = [store.jobs[job_id].request.format_selector for job_id in committed]
+
+    assert selectors[0] != selectors[1], (
+        "the batch and the overridden row resolved to the same selector, so this proves nothing"
+    )
+    for index, selector in enumerate(selectors):
+        assert f"Format selector: {selector}" in shown[index], (
+            f"row {index} shows {shown[index]!r} and will run {selector!r}"
+        )
+
+
 def test_a_failed_row_keeps_the_extractors_words_and_stays_on_screen(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],

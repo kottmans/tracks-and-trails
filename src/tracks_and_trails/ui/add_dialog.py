@@ -221,20 +221,38 @@ def describe_kind(media: MediaInfo) -> str:
     return f"Playlist ({media.entry_count} items)"
 
 
-def describe_preset(row: Row, batch: Preset) -> str:
-    """What `row` will be downloaded as, and whether that is its own choice (`UX-004`).
+def describe_quality(preset: Preset) -> str:
+    """The applicable quality for `preset`, or nothing when it has none.
 
-    **Inherited is spelled out**, not left blank. A row that has not been overridden names the
-    batch preset it is following, because a blank reads as "no format chosen" rather than "the one
-    below", and `T118-R4` requires the effective choice to be visible per row rather than inferred.
+    Omitted rather than shown as "n/a": a bitrate beside a video download would put a number on
+    screen for something that ignores it, which is `_show_selector`'s reasoning applied per row.
     """
-    own = row.preset
-    if isinstance(own, Preset):
-        return f"{own.name} — this row only"
-    return f"{batch.name} — following the batch"
+    if preset.audio_codec is not AudioCodec.MP3:
+        return ""
+    return f" · {preset.audio_quality} kbps {preset.audio_codec.value.upper()}"
 
 
-def row_text(row: Row, batch: Preset | None = None) -> str:
+def describe_preset(row: Row, effective: Preset) -> str:
+    """What `row` will be downloaded as — **literally** — and whether that is its own choice.
+
+    `effective` is the very `Preset` the caller passes to `to_request` (`T118-R8`), so the words
+    here and the request cannot describe different downloads. Taking the row's raw preset and
+    re-deriving from it is what let a display and a request disagree twice.
+
+    **The selector is spelled out, not just the preset's name** (`REQ-009`, `T118-R8`). A name is
+    not the promise `T-118` makes: *"the effective selector shown stays the one that will run"*.
+    Showing only `Audio only (MP3)` left the sole literal selector on screen describing the batch,
+    so an audio override under a video batch displayed the video selector.
+
+    **Inherited is spelled out too**, not left blank — a blank reads as "no format chosen" rather
+    than "the one below" (`T118-R4`).
+    """
+    source = "this row only" if isinstance(row.preset, Preset) else "following the batch"
+    selector = preset_registry.effective_selector(effective)
+    return f"{effective.name} — {source}\nFormat selector: {selector}{describe_quality(effective)}"
+
+
+def row_text(row: Row, effective: Preset | None = None) -> str:
     """What one row reads as: headline, detail, and what it will be downloaded as.
 
     A module function rather than a method so the wording is asserted without a `QApplication`,
@@ -258,7 +276,7 @@ def row_text(row: Row, batch: Preset | None = None) -> str:
             describe_kind(media),
         )
     )
-    tail = f"\nDownload as: {describe_preset(row, batch)}" if batch is not None else ""
+    tail = f"\nDownload as: {describe_preset(row, effective)}" if effective is not None else ""
     return f"{media.title}\n{details} — {state}{tail}"
 
 
@@ -493,12 +511,26 @@ class AddUrlDialog(QDialog):
         """What the dialog is telling the user. A method, as it has always been."""
         return self._status.text()
 
-    @property
-    def selected_preset(self) -> Preset:
-        preset = self._presets[max(self._preset_choice.currentIndex(), 0)]
+    def effective(self, preset: Preset) -> Preset:
+        """`preset` with every field the dialog's controls decide filled in (`T118-R6`).
+
+        **One derivation, reachable from every path that needs one.** The batch had this and the
+        per-row override did not: choosing *Audio only (MP3)* for one row stored the registry's
+        preset, whose `audio_quality` is the 192 kbps default, while the visible bitrate control
+        said 320. `T-076` requires the displayed bitrate to be the one that runs, and derives the
+        preset precisely so display and request cannot drift — this is the second time that pair
+        has been split apart, and both times by a caller that reached for the raw preset.
+
+        Bitrate is the only such field today. It is written as a derivation rather than a special
+        case so that the next one is added here instead of beside the next caller.
+        """
         if preset.audio_codec is not AudioCodec.MP3:
             return preset
         return preset_registry.with_audio_quality(preset, self.selected_bitrate)
+
+    @property
+    def selected_preset(self) -> Preset:
+        return self.effective(self._presets[max(self._preset_choice.currentIndex(), 0)])
 
     @property
     def selected_bitrate(self) -> str:
@@ -925,13 +957,19 @@ class AddUrlDialog(QDialog):
         )
 
     def preset_for(self, row: Row) -> Preset:
-        """`row`'s own preset, or the batch's when it has none (`UX-004`).
+        """`row`'s **effective** preset: its own if it has one, the batch's otherwise (`UX-004`).
 
         `None` on a row means *inherited*, not "no preset" — the row shows the batch's name so a
         blank cannot read as an absent choice.
+
+        **`effective()`, not the raw row preset** (`T118-R6`). This returned `row.preset` verbatim,
+        so an overridden MP3 row carried the registry's 192 kbps into `to_request` while the
+        control on screen said 320 — a silent wrong download, and the same split `T-076` exists to
+        prevent. The row test that was meant to cover this checked only `media_kind`, which both
+        bitrates satisfy.
         """
         chosen = row.preset
-        return chosen if isinstance(chosen, Preset) else self.selected_preset
+        return self.effective(chosen) if isinstance(chosen, Preset) else self.selected_preset
 
     # --- closing ------------------------------------------------------------------------
 
@@ -1036,14 +1074,14 @@ class AddUrlDialog(QDialog):
                 item.setSizeHint(widget.sizeHint())
                 self._list.setItemWidget(item, widget)
             self._show_row_preset(index, row)
-            item.setText(row_text(row, self.selected_preset))
+            # **The row's own effective preset, not the batch's** (`T118-R8`). This passed
+            # `selected_preset`, so an overridden row described the batch it was overriding.
+            text = row_text(row, self.preset_for(row))
+            item.setText(text)
             item.setIcon(self._tile_for(row))
             item.setData(Qt.ItemDataRole.UserRole, index)
             # Everything a sighted user reads from the row, for a screen reader (`NFR-005`).
-            item.setData(
-                Qt.ItemDataRole.AccessibleTextRole,
-                row_text(row, self.selected_preset).replace("\n", ". "),
-            )
+            item.setData(Qt.ItemDataRole.AccessibleTextRole, text.replace("\n", ". "))
         self._list.setUpdatesEnabled(True)
 
         if not self._saving:
