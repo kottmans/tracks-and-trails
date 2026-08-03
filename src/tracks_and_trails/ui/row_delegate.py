@@ -43,6 +43,7 @@ from PySide6.QtCore import (
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractItemDelegate,
     QAbstractItemView,
     QApplication,
     QComboBox,
@@ -106,11 +107,19 @@ PADDING: Final = 6
 #: The gap between the thumbnail and the text.
 GAP: Final = 10
 
-#: How many lines the wrapped literal selector may occupy (`T118-R8`).
+#: How many lines the wrapped literal selector may occupy on the row (`T118-R8`, `T118-R15`).
 #:
-#: Two, because one is what truncated it. At a realistic dialog width the longest built-in
-#: selector — the 1080p line, ~962 px in the default font — fits inside two lines of the full body
-#: width, and eliding it is what `REQ-009`'s "learn the syntax and write your own" cannot survive.
+#: **The row shows as much of the selector as fits in these lines; the complete, copyable value
+#: lives below the list.** That split is the contract, and it is narrower than the one this
+#: constant used to claim. Two lines holds the longest built-in at the default 9 pt font — and
+#: `T118-R15` measured the same string needing three lines at 12 to 15 pt and five at 18 pt, so a
+#: promise that the row never clips was true only of the font the tests happened to use.
+#:
+#: Sizing the row from the wrapped height instead would make row height depend on content, and
+#: uniform rows are what let a long list compute its visible range arithmetically rather than
+#: measuring every row — the property `T118-R10` turns on. So the row stays uniform and
+#: `add_dialog`'s `selectorValue` label, which wraps freely and is selectable, is the surface that
+#: carries the whole value at any font.
 SELECTOR_LINES: Final = 2
 
 #: How many lines of text a row draws: headline, detail and state, then the selector's own lines.
@@ -166,6 +175,9 @@ class RowDelegate(QStyledItemDelegate):
         #: of `T118-R10`'s correction, and `_paint_control` reads it to avoid drawing the
         #: affordance underneath the real control.
         self._editing_row: int | None = None
+        #: The live editor itself, so it can be committed and closed **before** a model reset
+        #: invalidates its index (`T118-R14`).
+        self._editor: QWidget | None = None
 
     # --- size and drawing -----------------------------------------------------------------
 
@@ -367,7 +379,8 @@ class RowDelegate(QStyledItemDelegate):
             #
             # So it wraps instead of eliding, and it runs the **full** body width: the control sits
             # beside the first two lines, and nothing needs the third line's right-hand end.
-            # `SELECTOR_LINES` of room, which fits every built-in at a realistic dialog width.
+            # `SELECTOR_LINES` of room, which holds every built-in at the default font and is
+            # explicitly *not* a promise at larger ones — see that constant, and `T118-R15`.
             painter.drawText(
                 QRect(
                     area.left(),
@@ -450,6 +463,7 @@ class RowDelegate(QStyledItemDelegate):
         """
         self._editing_row = index.row()
         choice = QComboBox(parent)
+        self._editor = choice
         choice.setObjectName(ROW_PRESET_NAME)
         choice.setAccessibleName("Download format for this URL")
         choice.setAccessibleDescription(
@@ -465,7 +479,27 @@ class RowDelegate(QStyledItemDelegate):
         """Forget the open row. Every close route reaches here, which is why it is the one hook."""
         if self._editing_row == index.row():
             self._editing_row = None
+            self._editor = None
         super().destroyEditor(editor, index)
+
+    def commit_and_close_editor(self) -> bool:
+        """Commit the open editor and close it. `True` if there was one (`T118-R14`).
+
+        **Called before a model reset, never after.** A reset invalidates the editor's model index,
+        after which Qt disowns the widget: `commitData` then reports *"called with an editor that
+        does not belong to this view"*, `setData` is never reached, and the user's chosen format is
+        discarded silently while the orphaned combo box stays on screen. The window for that is not
+        teardown — it is any sibling row finishing its probe while someone is choosing a format.
+        """
+        view = cast("QAbstractItemView | None", self.parent())
+        editor = self._editor
+        if view is None or editor is None:
+            return False
+        self._editor = None
+        self._editing_row = None
+        view.commitData(editor)
+        view.closeEditor(editor, QAbstractItemDelegate.EndEditHint.NoHint)
+        return True
 
     def setEditorData(self, editor: QWidget, index: QModelIndex | _PersistentIndex) -> None:
         if not isinstance(editor, QComboBox):

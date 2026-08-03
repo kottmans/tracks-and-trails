@@ -8714,3 +8714,77 @@ the mutation battery and the STARBASE Windows job on the exact corrected impleme
 
 No reviewed production source or tests were edited. This review record is the only reviewer
 change; nothing was committed, pushed or changed in GitHub repository variables.
+
+## 2026-08-03 — T-118 second delegate correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Approval base:** `890fb5d`
+**Focused correction boundary:** `d4d05de..d1d9cbb`
+**Implementation head:** `d1d9cbb`; `adc5355` is its handoff-only head
+**Coordination amendments inspected:** `c7ac845`, `2514d30` (local, unpushed)
+**Overall verdict:** **Changes requested for T-118.** The visible control, exact current-row
+selector and scaling evidence are now sound, and the Windows debt is discharged. T118-R13 remains
+open because destruction still waits on the pool and permits workers to emit through a deleted
+store. The model-reset correction also creates T118-R14: an open row editor becomes orphaned and
+its format choice is silently discarded when any other row refreshes.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T118-R13` | **High** | **Yes — T-118** | Thumbnail-store ownership / GUI-thread lifecycle | `close()` itself now returns, but the promised asynchronous ownership has no consumer: production connects nothing to `ThumbnailStore.closed`, while the `QThreadPool` remains the store's QObject child (`thumbnails.py:236-245`, `273-279`, `392-426`). Deleting the parent therefore invokes the pool destructor on the GUI thread, where Qt waits for its runnables. Worse, each runnable still emits through the store (`:133-150`, `:163-187`, `:204-224`) even though a Python reference does not keep the wrapped C++ QObject alive. A deterministic reviewer probe filled the pool, queued one real store read, called `close()` and delivered `DeferredDelete`; deletion blocked **1.008 s** until a timer released the pool, then `_ReadFromDisk` raised `RuntimeError: Signal source has been deleted` for both `disk_missed` and `task_done`. Queue shutdown has the same route: the queue store is parented to `QueueView`, and the main-window close path does not detach it. This still violates NFR-001 and can lose worker completion during shutdown. | Give the outstanding work real asynchronous ownership. For example, detach/retain a closing store until its counted tasks drain and only then `deleteLater`, or move worker signals to a separately owned result object. Wire the production owner to that lifecycle; do not rely on a child `QThreadPool` destructor. Add a regression that closes **and deletes** a store with a blocked, store-owned task and proves both that deletion returns within the interaction budget and that the worker emits through no deleted QObject. | **Open; prior finding not resolved** |
+| `T118-R14` | **High** | **Yes — T-118** | Per-row editor / model reset | `StagingModel.refresh()` uses `beginResetModel()` for every value change (`add_dialog.py:402-410`), and `_refresh()` restores only the numeric current index after the reset (`:1154-1163`). Qt invalidates the live editor's model index during that reset; `RowDelegate` nevertheless retains `_editing_row`, and the old `QComboBox` remains under the view (`row_delegate.py:451-468`). A deterministic shown-view probe opened row 0's control, reset the model, changed the surviving editor and committed it: Qt reported `commitData called with an editor that does not belong to this view`, `setData` was never called, and the editor remained orphaned. This is an ordinary multi-row path, not teardown: another row finishing or failing a probe calls `_refresh()` at `add_dialog.py:885-935` while the user is choosing a format. The visible choice can therefore be discarded, defeating the per-row request the task exists to deliver. | Emit `dataChanged` for value-only row updates and reserve model reset for structural reconciliation, or explicitly close/commit the active editor before a reset and reopen it against stable row identity. Do not preserve only a row number across a changing visible set. Add a shown-dialog regression that keeps row A's editor open while row B settles, then commits A and asserts A's effective and durable request changed. | **Open** |
+| `T118-R15` | **Medium** | No | Font scaling / row-selector claim | The dedicated selector detail resolves T118-R8, but the row's stronger “wraps rather than clips” claim is true only for the default 9 pt test font. `SELECTOR_LINES` is fixed at two and `sizeHint()` reserves four total lines (`row_delegate.py:109-125`, `173-184`, `359-384`). At the correction test's 582 px selector width, the longest built-in needs two lines at 9 pt, **three at 12–15 pt and five at 18 pt**. The existing large-font assertion still checks only three total lines (`test_row_delegate.py:230-232`), and the render test measures the default font. A user can select the row and read/copy the full value below the list, so this has a workaround and does not keep T-118 open. | Either size/layout the rendered selector from the active font and available width, or narrow the row contract and make the dedicated detail the explicit full-selector surface. Add a scaled-font case so the prose and test cannot claim clipping protection from a default-font measurement. | **Open, non-blocking; Implementer to file a follow-up target or close in the next correction** |
+| `T118-R16` | **Medium** | No | Atomic thumbnail-cache write | The new partial path is unique per **process**, not per writer: `f"{target.name}.{os.getpid()}.partial"` (`thumbnails.py:170-179`). The application has separate queue and add-dialog `ThumbnailStore`s sharing one cache root, so two stores fetching the same URL in one process open and truncate the same temporary file. On POSIX one writer can rename that inode while the other still writes through its open handle, making the published target change after the supposedly atomic replace; the second replace then has no source. The cache is regenerable and a failed decode refetches, so this is a narrow robustness defect rather than user-data corruption. | Allocate a unique same-directory temporary with exclusive creation for every write, then replace; clean its own temporary on failure. A deterministic two-writer regression can coordinate the writes before either rename instead of racing wall-clock timing. | **Open, non-blocking; Implementer to file a follow-up target or close in the next correction** |
+
+### Prior-finding resolution
+
+| Prior finding | Result |
+|---|---|
+| `T118-R8` | **Resolved.** The row carries the literal selector without right-eliding it, and the selectable detail below the list follows the current row. The full value remains visible and copyable even where T118-R15's scaled-font row clipping occurs. |
+| `T118-R10` | **Resolved.** One live editor remains the structural rule, viewport cost is flat in model size, and exact run `30853680183` exercised all nine correction tests on hosted `windows-latest`—the runner that observed the flap—and on STARBASE. A pass proves the 500-row paste stayed below 1.0 s but does not quantify the margin; that caveat is correctly preserved. |
+| `T118-R12` | **Resolved.** Every editable row paints a native-style combo affordance and current value, one direct click opens the single live editor on an unselected row, and the paint/editor/click geometry shares one definition. The corrected differential paint test and shown-dialog click test exercise the missing behavior rather than only the editable model flag. |
+| `T118-R13` | **Partly corrected, not resolved.** Sweep enumeration/deletion is off the GUI thread and `close()` no longer calls `waitForDone`. The ownership/destruction half remains open above. |
+| `COORD-R18` | **Resolved.** The handoff names `890fb5d`, the last independently reviewed head, as the approval base and separately identifies `d4d05de..d1d9cbb` as a focused correction sub-range. No Critical correction is excluded from the requested verdict. |
+
+### Review judgments
+
+**T-121 is separate from T-118.** Exact run `30853680183` is red only because the phase-exit
+fixture's localhost server aborted one hosted-Windows connection. Its own final state shows zero
+jobs queued, four completed and one download failed; STARBASE passed the same test. Filing the
+fixture and misleading assertion under T-121 is the correct scope boundary and does not erase the
+Windows evidence for the nine T-118 tests.
+
+**The selector's dedicated detail is enough to close R8.** REQ-009 promises that the effective
+selector remains visible so a user can learn and copy it. The current-row label now supplies that
+literal, selectable surface. R15 records that the additional at-a-glance row rendering is less
+font-robust than its comments claim; it does not pretend the full value has disappeared from the
+dialog again.
+
+**Do not push `c7ac845` and `2514d30` yet.** They correctly record the CI verdict and roadmap as of
+the submitted candidate, but the source verdict now needs another correction and those documents
+will need to say so. Let them travel with the next source/handoff update rather than spending a CI
+run on coordination text that is already stale.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and isolation | `890fb5d..d1d9cbb` and focused `d4d05de..d1d9cbb` inspected; both `git diff --check` clean. `d1d9cbb` is source/test plus the prior review/task record; `adc5355` is the pushed handoff; `c7ac845` and `2514d30` are local coordination-only commits. |
+| Focused correction tests | `tests/ui/test_add_dialog.py tests/ui/test_row_delegate.py`: **75 passed in 36.65 s**. |
+| Static and ledger gates | `ruff check .`: passed; `ruff format --check .`: **141 files** formatted; bare `mypy`: clean, **101 files**; bare `mypy --platform win32`: clean, **101 files**; task placement: **14 passed**. |
+| Exact GitHub Actions | Run `30853680183`, SHA `adc53555f0c67d9239c2911cdef8f9a83de3dcd4`: Ubuntu, STARBASE desktop, both frozen jobs and STARBASE coverage succeeded. Hosted Windows ended **1 failed / 1967 passed / 21 skipped / 32 deselected** on T-121's phase-exit fixture; the nine T-118 correction tests passed. |
+| Editor-reset probe | Open editor survived a model reset as an orphan; committing produced Qt's foreign-editor warning and made zero model `setData` calls. |
+| Store-destruction probe | `close()` returned, but delivering `DeferredDelete` blocked **1.008 s** until the occupied pool was released, followed by two “Signal source has been deleted” errors from the queued store task. |
+| Implementer evidence | Reported **1980 passed / 11 skipped / 2 deselected**, all static gates, and sixteen mutations across two rounds. The exact Windows run supplies the owed platform evidence but does not cover the two lifecycle probes above. |
+
+### Final disposition
+
+T-118 remains in review. Preserve the resolved visible-control, selectable-selector, scaling,
+transient-staging and effective-request work. The next focused correction must close T118-R13's
+actual QObject/pool lifetime and T118-R14's editor/reset ownership, with deterministic regressions
+that reach destruction and another row's live refresh respectively. T118-R15 and T118-R16 are
+non-blocking but need either correction in that batch or a named owner/target before approval.
+
+No production source or tests were edited. This review record is the only reviewer change; nothing
+was committed, pushed or changed in GitHub repository variables.

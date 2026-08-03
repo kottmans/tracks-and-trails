@@ -37,7 +37,7 @@ from typing import Any, Final
 
 import pytest
 from PySide6.QtCore import QEvent, QModelIndex, QPoint, QRect, Qt
-from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter
+from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
@@ -59,6 +59,7 @@ from tracks_and_trails.core.models import (
     Job,
     MediaInfo,
     MediaKind,
+    Preset,
 )
 from tracks_and_trails.downloader.manager import (
     DEFAULT_PROBE_CONCURRENCY,
@@ -1783,6 +1784,58 @@ def test_clicking_a_rows_control_opens_it_without_selecting_first(
         dialog.hide()
 
 
+def test_a_rows_open_editor_survives_another_row_settling(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """`T118-R14`: choosing a format must survive a *sibling* row finishing its probe.
+
+    `StagingModel.refresh()` reset the model for every value change, and a reset invalidates the
+    live editor's model index. Qt then disowns the widget: committing it reports *"called with an
+    editor that does not belong to this view"*, `setData` is never reached, and the chosen format
+    is discarded while the orphaned control stays on screen. The trigger is ordinary — another row
+    resolving while the user is mid-choice — not teardown.
+
+    Driven on a **shown** dialog and asserted all the way to the durable request, because the
+    finding is that the visible choice silently fails to become the queued one.
+    """
+    manager = managers(entry_point=child_replaying_a_fixture)
+    dialog = dialogs(manager)
+    dialog.show()
+    try:
+        type_urls(dialog, f"{fixture_url(AUDIO_ONLY)}\n{fixture_url(SINGLE_ITEM)}")
+        dialog.resolve()
+        assert spin(lambda: states(dialog) == [RowState.READY, RowState.READY])
+
+        control = open_row_editor(dialog, 0)
+        control.setCurrentIndex(control.findData("Audio only (MP3)"))
+
+        # Row 1 settles again while row 0's editor is open — the value-only refresh that used to
+        # reset the model out from under it.
+        dialog._refresh()
+        qapp.processEvents()
+
+        still_open = staging_list(dialog).findChildren(QComboBox, ROW_PRESET_NAME)
+        assert still_open == [control], "the open editor was orphaned by a refresh of another row"
+
+        choose_in_editor(dialog, control, "Audio only (MP3)")
+    finally:
+        dialog.hide()
+
+    assert isinstance(dialog.rows[0].preset, Preset), "the chosen format never reached the row"
+    assert dialog.preset_for(dialog.rows[0]).media_kind is MediaKind.AUDIO
+
+    dialog.add_to_queue()
+    committed = dialog.queued_job_ids
+    assert len(committed) == 2
+    assert store.jobs[committed[0]].request.media_kind is MediaKind.AUDIO, (
+        "the row's visible choice was not what got queued"
+    )
+
+
 def test_the_literal_selector_survives_at_a_realistic_width(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
@@ -1817,6 +1870,50 @@ def test_the_literal_selector_survives_at_a_realistic_width(
         f"({SELECTOR_LINES * metrics.height()}px), so it would be cut off"
     )
     assert drawn.width() <= available.width(), "the selector was measured wider than it is drawn"
+
+
+def test_the_full_selector_survives_a_scaled_font(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+) -> None:
+    """`T118-R15`: the row's line budget is fixed, so the *guaranteed* surface must not be.
+
+    The row draws as much of the selector as `SELECTOR_LINES` holds — two lines, which covers the
+    longest built-in at the default 9 pt and, as the review measured, **not** at 12 pt and above.
+    Sizing the row from the wrapped height would make row height depend on content and cost the
+    uniform-row property `T118-R10` turns on, so the contract is narrowed instead: the copyable
+    label below the list is what carries the whole value.
+
+    This asserts that at a font where the row provably cannot fit it — the case the previous
+    default-font measurement could never have caught.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM)
+    label = dialog.findChild(QLabel, "selectorValue")
+    assert label is not None
+
+    scaled = QFont(label.font())
+    scaled.setPointSize(18)
+    label.setFont(scaled)
+
+    selector = preset_registry.effective_selector(dialog.preset_for(dialog.rows[0]))
+    metrics = QFontMetrics(scaled)
+    # The row's budget at this font, measured the way the delegate lays it out.
+    available = RENDER_WIDTH - 2 * PADDING - THUMBNAIL_SIZE[0] - GAP
+    needed = metrics.boundingRect(
+        QRect(0, 0, available, 10_000),
+        int(Qt.TextFlag.TextWordWrap),
+        role_values(dialog, SELECTOR_ROLE)[0],
+    ).height()
+    assert needed > SELECTOR_LINES * metrics.height(), (
+        "this font still fits the row, so the test is not exercising the case it names"
+    )
+
+    assert selector in label.text(), (
+        "the copyable selector is incomplete at a scaled font, which is the one surface that "
+        "must always carry the whole value"
+    )
+    assert label.wordWrap(), "the label cannot grow, so a long selector would clip there too"
 
 
 def test_the_copyable_selector_follows_the_current_row(

@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Final
 
 import pytest
-from PySide6.QtCore import QAbstractListModel, QModelIndex, QRect, QRunnable, Qt
+from PySide6.QtCore import QAbstractListModel, QEvent, QModelIndex, QRect, QRunnable, Qt
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
@@ -44,6 +44,7 @@ from tracks_and_trails.ui.row_delegate import (
     PROGRESS_ROLE,
     ROW_HEIGHT,
     STATE_ROLE,
+    TEXT_LINES,
     THUMBNAIL_URL_ROLE,
     RowDelegate,
 )
@@ -227,9 +228,11 @@ def test_a_row_is_tall_enough_for_the_thumbnail_it_draws(qapp: QApplication) -> 
     assert height >= THUMBNAIL_SIZE[1], (
         f"a row is {height} px tall and must hold a {THUMBNAIL_SIZE[1]} px thumbnail"
     )
-    # Three lines of text, in the view's own font, must fit as well — the same defect approached
-    # from the other side, which is what a large accessibility font would produce.
-    assert height >= 3 * QFontMetrics(option.font).height()
+    # And the row's own line budget, in the view's own font — the same defect approached from the
+    # other side, which is what a large accessibility font would produce. `TEXT_LINES`, not the
+    # literal 3 this asserted while the row drew four: a constant the test does not share with the
+    # code is a constant the test cannot police.
+    assert height >= TEXT_LINES * QFontMetrics(option.font).height()
 
 
 def test_every_row_is_the_same_height_whatever_it_holds(qapp: QApplication) -> None:
@@ -544,9 +547,15 @@ class _Blocker(QRunnable):
 
 
 def occupy_pool(store: ThumbnailStore, gate: threading.Event) -> None:
-    """Fill every pool thread. Reaches into `_pool` deliberately: the claim is about that pool."""
-    for _ in range(store._pool.maxThreadCount()):
-        store._pool.start(_Blocker(gate))
+    """Fill every thread of **the pool this store schedules on**.
+
+    Asked of the store rather than fetched from the module, because the claim is about whichever
+    pool is really in use. An earlier version reached for the shared pool by name and therefore
+    passed against a mutation that handed the store a private child pool — reintroducing exactly
+    the ownership defect `T118-R13` reported.
+    """
+    for _ in range(store.pool.maxThreadCount()):
+        store.pool.start(_Blocker(gate))
 
 
 def test_sweeping_schedules_the_disk_work_instead_of_doing_it(
@@ -630,6 +639,64 @@ def test_closing_returns_without_waiting_for_the_pool(
         gate.set()
 
     assert spin_until(qapp, lambda: bool(finished)), "closed was never announced after draining"
+
+
+def test_deleting_a_closed_store_neither_waits_nor_is_emitted_through(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T118-R13`, **the half that was not resolved**: `close()` returned, and *deletion* blocked.
+
+    The first correction moved the wait out of `close()` and reasoned that `QThreadPool`'s
+    destructor would cover the rest "when the store is destroyed, rather than on the interaction".
+    Backwards: the pool was the store's **child**, so deleting the store ran that destructor on the
+    GUI thread — the reviewer measured 1.008 s — and the runnables emitted through the store
+    itself, which a Python reference does not keep alive on the C++ side. `_ReadFromDisk` then
+    raised `RuntimeError: Signal source has been deleted`, which is a lost worker completion.
+
+    This asserts both halves at once, against a blocked pool so neither is a stopwatch reading:
+    the delete returns inside the budget, and the task that outlives the store emits without
+    raising.
+    """
+    store = ThumbnailStore(loader=FakeLoader(IMAGE_SOURCE.read_bytes()), cache_root=tmp_path / "c")
+    gate = threading.Event()
+    occupy_pool(store, gate)
+    store.pixmap("https://pics.invalid/outlives.jpg")
+    assert store.outstanding == 1, "no store-owned task is queued, so this proves nothing"
+
+    faults: list[BaseException | None] = []
+    original = threading.excepthook
+
+    def record(args: threading.ExceptHookArgs) -> None:
+        """Capture anything a pool thread raises. `exc_value` is optional in the hook's own type,
+        so the list admits `None` rather than the assertion below being written around a cast."""
+        faults.append(args.exc_value)
+
+    threading.excepthook = record
+    try:
+        store.close()
+        started = time.perf_counter()
+        store.deleteLater()
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        elapsed = time.perf_counter() - started
+
+        assert elapsed < INTERACTION_BUDGET_SECONDS, (
+            f"deleting the store held the GUI thread for {elapsed:.3f}s while the pool was busy"
+        )
+
+        gate.set()
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and store.pool.activeThreadCount():
+            qapp.processEvents()
+            time.sleep(0.005)
+        qapp.processEvents()
+    finally:
+        gate.set()
+        threading.excepthook = original
+
+    assert faults == [], (
+        f"a worker raised after the store was deleted: {faults!r} — the task is emitting through a "
+        "dead QObject rather than through the sink"
+    )
 
 
 # --- 5. a missing picture is not a failure ------------------------------------------------------

@@ -90,10 +90,13 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ### T-118 — The add dialog becomes a staging list
 
-**Status:** **In Review — changes requested a third time 2026-08-03, and corrected again the same
-day.** `T118-R6`, `R7`, `R9` and `R11` are **Resolved** by the reviewer, as are the `e300b04`
-teardown corrections. **`T118-R8`, `R12` and `R13` blocked and are now corrected**; `T118-R10`'s
-design was accepted with its verification still open. Only the Reviewer marks any of these
+**Status:** **In Review — three rounds of changes requested on 2026-08-03, and three corrections.**
+**Resolved by the reviewer:** `T118-R1`…`R3`, `R6`, `R7`, `R8`, `R9`, `R10`, `R11`, `R12`,
+`COORD-R18`, and the `e300b04` teardown fixes. `UX-004` closed `R5`. **Open and corrected in the
+third round:** `T118-R13` (High — `close()` returned but *destruction* still waited on a child
+pool, and workers emitted through a store Python could not keep alive), `T118-R14` (High — every
+value refresh reset the model and orphaned an open format editor, discarding the choice silently)
+and the two non-blocking Mediums `T118-R15` and `T118-R16`. Only the Reviewer marks any of these
 Resolved (`AGENTS.md` §10).
 
 **What the second round found is worth stating plainly, because it is one mistake with three
@@ -381,6 +384,46 @@ test**, deliberately: it is a race whose window no deterministic test can observ
 appeared to cover it would be worth less than this sentence. It was found by a test racing its own
 write, which is the only reason it is known about at all.
 
+#### Correction, 2026-08-03 (third round) — `T118-R13` again, `R14`, `R15`, `R16`
+
+**`T118-R13` — I fixed the wait and left the ownership.** The second round moved the block out of
+`close()` and then reasoned, in a docstring, that `QThreadPool`'s destructor "runs when this store
+is destroyed — after its parent has let it go, rather than on the interaction". That is backwards
+and the reviewer proved it: the pool was a **child** of the store, so deleting the store ran the
+destructor **on the GUI thread**, measured at 1.008 s. Worse, every runnable emitted through the
+store, and a Python reference does not keep the wrapped C++ `QObject` alive — `_ReadFromDisk`
+raised `RuntimeError: Signal source has been deleted` for `disk_missed` and `task_done`, which is a
+worker completion lost during shutdown.
+
+Both are fixed at the root rather than by a longer wait. The pool is **module-level and shared**,
+so no store's destruction runs it and the application's two stores share one bound. Tasks emit
+through **`_Sink`**, a parentless `QObject` the runnables themselves keep alive; Qt severs the
+store's connections when the store dies, so a late emission goes nowhere instead of into freed
+memory.
+
+**`T118-R14` — the fix for one finding created another.** Making `refresh()` reset the model for
+every value change orphaned any open row editor: Qt invalidates the live editor's index on reset,
+so committing it reported *"called with an editor that does not belong to this view"*, `setData`
+was never reached, and the user's chosen format was discarded while the control stayed on screen.
+The trigger is ordinary — a sibling row finishing its probe while someone is mid-choice.
+
+`StagingModel.refresh()` now compares row **identity** (`Row` is `eq=False`, so tuple equality is
+object equality) and emits `dataChanged` when only values moved; a reset is reserved for the set of
+rows actually changing, and `commit_open_editor()` closes the editor first, while its index is
+still valid. `_refresh` restores the current row by identity rather than by row number.
+
+**`T118-R16` — the temporary was unique per process, not per write.** Two stores over one cache
+root fetching the same URL opened and truncated the same `.partial`. `tempfile.mkstemp` creates
+exclusively, per write, and its own temporary is removed on failure.
+
+**`T118-R15` — the contract is narrowed rather than the layout rebuilt.** The row's "wraps rather
+than clips" claim held only at the default 9 pt: the reviewer measured the longest built-in needing
+three lines at 12 to 15 pt and five at 18 pt. Sizing the row from the wrapped height would make row
+height depend on content and cost the uniform-row property `T118-R10` turns on. So the row shows as
+much as `SELECTOR_LINES` holds and **`selectorValue` below the list is the guaranteed complete,
+copyable surface** — stated in the constant, and asserted at 18 pt by a test that first proves the
+row cannot fit it.
+
 ##### Mutations run
 
 Ten, of which **four initially survived — and each one changed the work rather than the record**.
@@ -411,7 +454,15 @@ uncovered**:
 | The sweep runs inline on the GUI thread | the blocked-pool sweep test |
 | `close()` waits for the pool again | the blocked-pool close test, which takes 5.11 s to fail — the wait it is asserting the absence of |
 | **The control's slot is reserved and nothing is painted** | **survived at first.** The test rendered the slot and asserted it was "not blank", which the item background satisfies either way — the same vacuous shape the review was about, produced while fixing it. Rewritten to hold two rows identical apart from `PRESET_CHOICES_ROLE` with empty text, so the only thing that can differ in the compared rectangle is the control. Now killed. |
-| The cache write is not atomic | **nothing.** Recorded above rather than covered: the window is unobservable to a deterministic test. |
+| The cache write is not atomic | **nothing.** Recorded above rather than covered: the window is unobservable to a deterministic test. `T118-R16` then found a *second* defect in the same lines that a test could not have caught either, which is the honest cost of that decision. |
+
+**Third round, three more. Two killed; one survived and rewrote the test.**
+
+| Mutation | Killed by |
+|---|---|
+| The model resets on every refresh | the sibling-settles regression, with the reported symptom: *the chosen format never reached the row* |
+| A child `QThreadPool` and a parented sink | the delete-with-blocked-task regression, at 30 s against a 0.5 s budget — **after the test stopped naming the pool it expected** |
+| — the same mutation, first attempt | **survived.** The regression blocked the *module-level* pool by name, so a store handed a private child pool was never blocked and finished instantly. The test now asks the store which pool it uses (`ThumbnailStore.pool`), because a test that assumes the implementation cannot police it. |
 
 
 ---

@@ -321,6 +321,9 @@ class StagingModel(QAbstractListModel):
     def __init__(self, dialog: AddUrlDialog) -> None:
         super().__init__(dialog)
         self._dialog = dialog
+        #: The rows this model has told the view about. Compared by identity to tell a value
+        #: change from a structural one (`T118-R14`).
+        self._shown: tuple[Row, ...] = ()
 
     # Qt's override names, hence the camelCase: these are not project naming choices.
     def rowCount(self, parent: QModelIndex | _PersistentIndex = _ROOT) -> int:
@@ -400,13 +403,30 @@ class StagingModel(QAbstractListModel):
         return base
 
     def refresh(self) -> None:
-        """Say the rows changed, however they changed.
+        """Say what actually changed: values, or the set of rows (`T118-R14`).
 
-        A full reset rather than a diff, for the reason `queue_view.QueueModel.refresh` gives: the
-        set of rows changes when a user edits the box — rarely, and never in a burst — while what
-        changes constantly is each row's state, and that is a value the view re-reads anyway.
+        **A reset is not free, and this used to do one for every value change.** Qt invalidates a
+        live editor's model index on reset, so a sibling row finishing its probe — an ordinary
+        multi-row path, not teardown — orphaned the format control the user was in the middle of
+        using and discarded the choice without a word. That defeats the per-row request this task
+        exists to deliver.
+
+        So a value-only change emits `dataChanged`, which leaves the editor and the current index
+        alone. A reset is reserved for the set of rows actually changing, and the editor is
+        committed and closed **first**, while its index is still valid.
+
+        Row identity is what distinguishes the two: `Row` is `eq=False` (`REQ-001`, so two
+        identical pasted lines stay two rows), so comparing the tuples compares the objects.
         """
+        rows = self._dialog.rows
+        if rows == self._shown:
+            if rows:
+                self.dataChanged.emit(self.index(0, 0), self.index(len(rows) - 1, 0))
+            return
+
+        self._dialog.commit_open_editor()
         self.beginResetModel()
+        self._shown = rows
         self.endResetModel()
 
 
@@ -1153,13 +1173,16 @@ class AddUrlDialog(QDialog):
 
     def _refresh(self) -> None:
         visible = self._staging.visible
-        current = self._list.currentIndex().row()
+        # **By identity, not by row number** (`T118-R14`). A value-only refresh no longer resets
+        # the model at all, so nothing needs restoring; a structural one may have moved or removed
+        # the current row, and carrying a bare index across a changing set is how the selection
+        # lands on somebody else's row.
+        current = self._current_row()
         self._model.refresh()
-        # `beginResetModel` drops the current index, so restore it — otherwise every signal that
-        # reaches `_refresh` would silently deselect the row the user is working on, and the
-        # copyable selector below the list would fall back to the batch's (`T118-R8`).
-        if 0 <= current < len(visible):
-            self._list.setCurrentIndex(self._model.index(current, 0))
+        if current is not None:
+            restored = next((i for i, row in enumerate(visible) if row is current), None)
+            if restored is not None:
+                self._list.setCurrentIndex(self._model.index(restored, 0))
         self._show_selector()
 
         if not self._saving:
@@ -1176,6 +1199,15 @@ class AddUrlDialog(QDialog):
         # hidden, so the chain a keyboard walks does not change and the layout does not move.
         is_mp3 = self.selected_preset.audio_codec is AudioCodec.MP3
         self._bitrate_choice.setEnabled(is_mp3 and not self._saving)
+
+    def commit_open_editor(self) -> bool:
+        """Commit and close the row editor, if one is open. `True` if there was (`T118-R14`).
+
+        Public because `StagingModel` calls it before a structural reset, and a test drives it to
+        show the choice survives one. The delegate owns the editor, so it does the work.
+        """
+        delegate = self._list.itemDelegate()
+        return delegate.commit_and_close_editor() if isinstance(delegate, RowDelegate) else False
 
     def _on_preset_changed(self) -> None:
         """A different preset may or may not convert audio, so the bitrate control follows it."""
