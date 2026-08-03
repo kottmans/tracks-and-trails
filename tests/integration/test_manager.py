@@ -494,6 +494,24 @@ def child_downloading_forever(
         time.sleep(0.05)
 
 
+def child_probe_reporting_then_lingering(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """End a valid probe stream, then keep its process alive long enough to expose handoff races."""
+    if kind is SessionKind.PROBE:
+        from tracks_and_trails.core.models import MediaInfo
+
+        queue.put(Probed(job_id=job_id, media=MediaInfo(url=request.url, title="Resolved")))
+        queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+        queue.close()
+        queue.join_thread()
+        time.sleep(2)
+        return
+    queue.put(Progress(job_id=job_id, stage=Stage.DOWNLOADING_VIDEO, downloaded_bytes=1))
+    while True:
+        time.sleep(0.05)
+
+
 def child_ignoring_cancellation(
     kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
 ) -> None:
@@ -5648,6 +5666,50 @@ def test_a_parked_probe_still_resumes_as_a_probe(tmp_path: Path, spin: Callable[
 # `UX-003` makes probing what happens when a user pastes, rather than a button covering one URL.
 # Under a single budget that meant adding URLs took the download slots, so the transfers a user was
 # watching stopped while their paste resolved. These assert the two lanes are actually two.
+
+
+def test_a_probe_is_released_before_the_same_job_starts_downloading(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """Separate lane capacity must not overwrite the previous session for the same job.
+
+    `media_probed` is emitted after the probe stream ends but before its process is necessarily
+    gone. Starting the download from that callback must wait for release; otherwise `_spawn()`
+    replaces the probe in `_sessions`, and the manager loses the only object that can reap it.
+    """
+    before = {child.pid for child in psutil.Process(os.getpid()).children(recursive=True)}
+    repository = FakeRepository()
+    repository.add(make_job("job-1", "https://example.invalid/video", tmp_path))
+    download = DownloadManager(
+        repository,
+        concurrency=1,
+        probe_concurrency=1,
+        entry_point=child_probe_reporting_then_lingering,
+    )
+    download.media_probed.connect(lambda job_id, _: download.admit(job_id))
+
+    try:
+        download.start("job-1", SessionKind.PROBE)
+        assert spin(
+            lambda: (
+                "job-1" in download._sessions
+                and download._sessions["job-1"].kind is SessionKind.DOWNLOAD
+                and download._sessions["job-1"].process.is_alive()
+            ),
+            timeout=60,
+        ), "the download never started after probing"
+
+        workers = worker_processes(before)
+        assert len(workers) == 1, (
+            f"{len(workers)} worker processes exist for one job; the probe session was replaced "
+            "before its process was released"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+        assert spin(lambda: not worker_processes(before), timeout=10), (
+            "the overwritten probe process survived the test"
+        )
 
 
 def test_a_saturated_download_lane_no_longer_parks_a_probe(

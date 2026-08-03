@@ -10,7 +10,9 @@ from typing import Any
 
 import pytest
 
+from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.ui import theme
+from tracks_and_trails.ui.job_detail import STATUS_TEXT
 from tracks_and_trails.ui.theme import (
     DARK,
     DEEP,
@@ -138,6 +140,12 @@ def test_the_dark_theme_is_not_an_inversion_of_the_light_one() -> None:
     glaring. Asserted on the values rather than on a promise in a docstring.
     """
     assert LIGHT.accent != DARK.accent, "both themes use one accent, so one of them is wrong"
+
+
+def test_every_queue_state_is_named_in_words() -> None:
+    """`NFR-005`: colour may reinforce a state, but never replace its textual name."""
+    assert set(STATUS_TEXT) == set(JobStatus)
+    assert all(text.strip() for text in STATUS_TEXT.values())
     assert LIGHT.primary != DARK.primary
     for field in ("window", "surface", "sunken", "text", "muted", "rule", "border"):
         assert getattr(LIGHT, field) != getattr(DARK, field), f"{field} is shared between themes"

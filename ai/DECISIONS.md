@@ -2550,3 +2550,107 @@ was complete when it was made.
 **Refuse the whole paste when any URL fails.** Simple, and wrong on a flaky connection: paste
 thirty, lose eight to timeouts, and the user loses all thirty. Rule 1 above costs a button press
 instead.
+
+---
+
+## UX-004 — The staging row's controls: a visible preset, a menu for the rest
+
+**Status:** **Accepted** (2026-08-02) — maintainer decision
+**Date:** 2026-08-02
+**Amends:** the row anatomy the maintainer approved from the `T-118` mockups. **Does not amend**
+`UX-003`, whose rules are unchanged.
+
+### Context
+
+`T-118` shipped per-row Retry and Remove as a context menu rather than as the visible buttons the
+approved mock drew, and shipped **no** per-row preset override at all. `T118-R5` refused both: a
+keyboard-reachable menu is useful evidence about accessibility but is not authority to change an
+approved interaction, and `T-118`'s own acceptance criterion requires the paste preset to be
+overridable per row. The task also names `T-105`'s `docs/UX_SPEC.md` as a dependency, and that
+file does not exist.
+
+The reviewer stated the two ways out: complete `T-105` and build the approved anatomy, or take a
+maintainer amendment that chooses the divergence and says where the per-row override lives. This
+is the second.
+
+### Decision
+
+**The per-row format choice is a visible control on the row. Retry and Remove are a context menu.**
+
+1. **Every row carries a visible "Download as" control** showing what that row will be downloaded
+   with. A row that has not been overridden shows the batch preset explicitly as inherited — not as
+   a blank, which reads as "none" rather than "the one above". *(Amended below: the control is a
+   real combo on each row, after the alternative was measured.)*
+2. **Retry and Remove stay in a context menu**, reachable by the menu key and Shift+F10 as well as
+   by pointer.
+3. **`T-105` is not a prerequisite for this.** It remains filed and owns `docs/UX_SPEC.md`, which
+   should absorb this anatomy when it is written.
+
+### Amended 2026-08-02 — the control is on the row, and the cost was measured
+
+**Maintainer decision, after measurement.** The first version of this entry put the format control
+in the footer acting on the *selected* row, on the reasoning that a widget per row would not scale.
+That reasoning was asserted rather than measured, and the measurement does not support it.
+
+Building the list, median of five warm runs, offscreen Qt, one developer machine, against
+`NFR-001`'s ~100 ms interaction budget:
+
+| Rows | A: a control on every row | B: text only |
+|---:|---:|---:|
+| 10 | 3.1 ms | 0.8 ms |
+| 20 | 5.2 ms | 1.6 ms |
+| 50 | 29.4 ms | 2.2 ms |
+| 100 | 57.0 ms | 2.7 ms |
+| **150** | **85.7 ms** | 3.7 ms |
+| 200 | 116.2 ms | 5.3 ms |
+| 500 | 296.2 ms | 10.4 ms |
+
+**A crosses the budget between 150 and 200 rows**, and costs three to five milliseconds at any
+paste a person types by hand. It is also a *build* cost, paid once when the paste resolves, so a
+200-row paste is one visible hitch rather than a sluggish dialog.
+
+So the control is on the row, as the approved mock drew it. Two consequences are recorded rather
+than absorbed:
+
+- **The threshold is machine-dependent.** These numbers are one machine; a slower one moves the
+  crossing point down. No cap is imposed, because a silent switch to a different interaction at an
+  invisible row count is worse than a hitch — if a guard is ever wanted it should be a stated limit
+  with a message.
+- **`T-119` should turn this into C.** Its delegate can draw the control only on the row under the
+  pointer or holding focus: one widget reused, identical interaction, no threshold. That is a
+  sequencing note, not a second decision — nothing about the interaction changes, so nobody has to
+  relearn it.
+
+### Rationale
+
+The two row actions are not equivalent to the format choice and do not deserve equal weight.
+Retry applies only to a row that failed, and Remove is destructive and rarely wanted — putting
+both on every row spends the row's width on controls that are usually inapplicable, and a paste of
+five hundred pays for them five hundred times. The format choice is different: it is the decision
+the dialog exists to take, it applies to every row, and hiding it behind a right-click means a
+user who wants one MP3 among twenty videos has no way of discovering they can have it.
+
+`T118-R5` is right that the missing override is what made the divergence substantive. Restoring it
+as a *visible* control answers the finding at the point where it bites, rather than by restoring
+buttons whose absence nobody would have noticed.
+
+### Consequences
+
+- **`T-118` gains a per-row request model.** The final request for each row is built from that
+  row's effective choice at Add, which is `T-075`'s rule applied per row rather than per batch.
+- **The mock is now wrong in one respect** and should be treated as superseded here rather than as
+  the specification. `T-105` inherits the discrepancy.
+- **Discoverability of Retry is reduced**, and that is the cost of this decision. The batch-level
+  "Retry the ones that failed" control remains visible, so the *capability* is discoverable even
+  where the per-row route is not.
+
+### Alternatives considered
+
+**Build the approved mock exactly.** Three visible controls per row. Rejected on the scale
+property `UX-003` was chosen for: a widget per control per row makes a paste of five hundred a
+fifteen-hundred-widget layout pass on the GUI thread, which needs a virtualised delegate — pulling
+`T-119`'s work into a task that is already the largest in the rework.
+
+**Write `T-105` first.** The most faithful reading of the plan, and rejected only on sequencing:
+`T-118` carries three Critical findings whose fixes do not depend on the spec, and holding them
+behind a document would leave known-broken behaviour on `main` for longer.

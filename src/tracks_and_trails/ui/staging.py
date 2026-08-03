@@ -96,6 +96,11 @@ class Row:
 
     #: What the probe found. `None` until `READY`.
     media: object | None = None
+    #: This row's own preset, or `None` to follow the batch (`UX-004`, `T118-R4`).
+    #:
+    #: **`None` means inherited, not "none"**, and the row says so in words rather than leaving a
+    #: blank — a blank reads as no choice at all rather than as the one above it.
+    preset: object | None = None
     #: The extractor's own words, character for character (`NFR-006`). `None` unless `FAILED`.
     message: str | None = None
 
@@ -191,6 +196,10 @@ class Staging:
         message for a job this dialog never had.
         """
         return next((row for row in self._rows if row.job_id == job_id), None)
+
+    def overrides(self) -> tuple[Row, ...]:
+        """The rows carrying a preset of their own (`UX-004`)."""
+        return tuple(row for row in self.visible if row.preset is not None)
 
     def committable(self) -> tuple[Row, ...]:
         """The rows `UX-003` allows into the queue, in entry order."""

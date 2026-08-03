@@ -57,9 +57,10 @@ than as work in progress. Until real bytes arrive a row carries a tile derived f
 import uuid
 from collections.abc import Callable, Sequence
 from datetime import datetime
+from functools import partial
 from itertools import pairwise
 from pathlib import Path
-from typing import Any, Final, Protocol
+from typing import Any, Final, Protocol, cast
 
 from PySide6.QtCore import QObject, QSize, Qt, QTimer
 from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
@@ -90,7 +91,6 @@ from tracks_and_trails.core.models import (
     Preset,
 )
 from tracks_and_trails.downloader.manager import DownloadManager
-from tracks_and_trails.downloader.protocol import SessionKind
 from tracks_and_trails.ui.staging import Row, RowState, Staging, placeholder_hue, summarise
 
 #: The size a row's thumbnail is drawn at. A fixed box rather than the image's own size, so a
@@ -125,6 +125,16 @@ STATE_TEXT: Final[dict[RowState, str]] = {
 #: Every label that renders text this application did not author: extractor messages and site
 #: metadata. All are forced to `PlainText` (`T016-R6`).
 UNTRUSTED_TEXT_LABELS: Final = ("statusMessage", "selectorValue")
+
+#: What the per-row control's first entry says (`UX-004`). Named rather than blank: a row that
+#: follows the batch has made a choice — the same one as everything else — and an empty entry
+#: reads as no format at all.
+INHERITED_TEXT: Final = "Same as all"
+
+#: Every row's format control carries this name (`UX-004`). Shared deliberately: they are one
+#: control repeated, and a test asserting the keyboard surface counts them rather than naming
+#: twenty of them.
+ROW_PRESET_NAME: Final = "rowPresetChoice"
 
 
 class JobSink(Protocol):
@@ -211,8 +221,21 @@ def describe_kind(media: MediaInfo) -> str:
     return f"Playlist ({media.entry_count} items)"
 
 
-def row_text(row: Row) -> str:
-    """What one row reads as, headline and detail (`REQ-002`, `NFR-005`).
+def describe_preset(row: Row, batch: Preset) -> str:
+    """What `row` will be downloaded as, and whether that is its own choice (`UX-004`).
+
+    **Inherited is spelled out**, not left blank. A row that has not been overridden names the
+    batch preset it is following, because a blank reads as "no format chosen" rather than "the one
+    below", and `T118-R4` requires the effective choice to be visible per row rather than inferred.
+    """
+    own = row.preset
+    if isinstance(own, Preset):
+        return f"{own.name} — this row only"
+    return f"{batch.name} — following the batch"
+
+
+def row_text(row: Row, batch: Preset | None = None) -> str:
+    """What one row reads as: headline, detail, and what it will be downloaded as.
 
     A module function rather than a method so the wording is asserted without a `QApplication`,
     and so the failure case cannot drift from the success case.
@@ -235,7 +258,8 @@ def row_text(row: Row) -> str:
             describe_kind(media),
         )
     )
-    return f"{media.title}\n{details} — {state}"
+    tail = f"\nDownload as: {describe_preset(row, batch)}" if batch is not None else ""
+    return f"{media.title}\n{details} — {state}{tail}"
 
 
 class AddUrlDialog(QDialog):
@@ -267,22 +291,9 @@ class AddUrlDialog(QDialog):
         self._saving = False
         #: Jobs committed by `add_to_queue`, in the order they will be admitted.
         self._committed: tuple[str, ...] = ()
-        #: Retargets still settling before the batch can be admitted as one decision (`T115-R1`).
-        self._retargets_pending = 0
-        self._retarget_failure: str | None = None
 
-        #: Jobs this dialog has withdrawn, until their `CANCELLED` is durable (`T016-R1`).
-        #:
-        #: A withdrawal is the Critical consequence in reverse: the row exists, the user has taken
-        #: the URL away, and until the cancellation actually reaches disk that row is still live
-        #: work a restart would pick up. So the dialog owns the outcome instead of firing
-        #: `cancel()` and hoping — it refuses to close or queue while one is outstanding.
-        self._withdrawing: dict[str, str] = {}
-        self._withdraw_error: str | None = None
-        #: A close asked for and refused because it created a withdrawal. Holds the result code so
-        #: the dialog finishes that exact close once the cancellation lands, rather than making
-        #: the user press Close again to achieve nothing but waiting.
-        self._closing_with: int | None = None
+        #: Rows whose durable write is outstanding. Close is held until it settles (`T118-R3`).
+        self._committing = False
 
         self._resolve_timer = QTimer(self)
         self._resolve_timer.setSingleShot(True)
@@ -379,6 +390,7 @@ class AddUrlDialog(QDialog):
         self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list.customContextMenuRequested.connect(self._show_row_menu)
         layout.addWidget(self._list)
+
         return box
 
     def _build_preset_row(self) -> QWidget:
@@ -456,9 +468,10 @@ class AddUrlDialog(QDialog):
         self._manager.media_probed.connect(self._on_media_probed)
         self._manager.job_failed.connect(self._on_job_failed)
         self._manager.job_changed.connect(self._on_job_changed)
+        # Staging probes report on their own channel (`T118-R1`), because they are not queue work.
+        self._manager.staged_changed.connect(self._on_job_changed)
         self._manager.start_rejected.connect(self._on_start_rejected)
         self._manager.persistence_failed.connect(self._on_persistence_failed)
-        self._manager.job_removed.connect(self._on_job_removed)
 
     # --- queries ------------------------------------------------------------------------
 
@@ -475,14 +488,6 @@ class AddUrlDialog(QDialog):
     @property
     def is_saving(self) -> bool:
         return self._saving
-
-    @property
-    def withdrawing(self) -> tuple[str, ...]:
-        return tuple(self._withdrawing)
-
-    @property
-    def withdraw_failed(self) -> str | None:
-        return self._withdraw_error
 
     def status_text(self) -> str:
         """What the dialog is telling the user. A method, as it has always been."""
@@ -503,8 +508,6 @@ class AddUrlDialog(QDialog):
         """The decoded thumbnail for `row`, or `None` if none has arrived."""
         return self._pixmaps.get(row.job_id or "")
 
-    # --- resolving --------------------------------------------------------------------
-
     def _on_urls_changed(self) -> None:
         """Restart the debounce. **Nothing is started from a keystroke.**
 
@@ -515,110 +518,63 @@ class AddUrlDialog(QDialog):
         self._refresh()
 
     def resolve(self) -> None:
-        """Reconcile the rows with what is entered, and start what has not been started.
+        """Reconcile the rows with what is entered, and read whatever has not been read.
 
         Public so a test drives it directly rather than waiting on wall-clock time — the timer
         calls exactly this and nothing else, so the tested path is the real one.
 
-        **A superseded row's job is withdrawn here**, not left to `done()`: the user has taken the
-        line away, and until its cancellation is durable that row is live work a restart would run
-        (`T016-R1`).
+        **Nothing is persisted here** (`T118-R1`, `UX-003`). Reading is a *staging* probe: the
+        manager holds a transient job for it and never writes a row. The first version submitted
+        `QUEUED` jobs in order to have ids to probe, and `compose()` admits every durable `QUEUED`
+        or `READY` row at startup — so a crash after a probe succeeded downloaded a URL the user
+        had never committed to. Add is the only thing that writes.
+
+        **A row whose line is gone is unstaged, not withdrawn.** There is no queue row to cancel
+        or delete, which is the whole of the ruling: what the queue never held, it never has to be
+        told about.
         """
         self._resolve_timer.stop()
-        if self._saving:
-            # A batch write is already outstanding. Its callback resolves again, so nothing is
-            # lost by returning — and starting a second write would create a second job for lines
-            # the first one is already storing.
-            return
-
-        before = {row.job_id for row in self._staging.rows if row.state is RowState.SUPERSEDED}
         self._staging.reconcile(split_urls(self._urls.toPlainText()))
         for row in self._staging.rows:
-            newly_gone = (
-                row.state is RowState.SUPERSEDED
-                and row.job_id is not None
-                and row.job_id not in before
-                and row.job_id not in self._withdrawing
-            )
-            if newly_gone:
-                assert row.job_id is not None
-                self._withdraw(row.job_id, row.url)
+            if row.state is RowState.SUPERSEDED and row.job_id is not None:
+                self._manager.unstage(row.job_id)
+                self._pixmaps.pop(row.job_id, None)
+                row.job_id = None
 
-        pending = self._staging.pending()
-        if not pending:
-            self._refresh()
-            return
-
-        fresh = {row: self._new_job(row.url) for row in pending}
-        for row in pending:
-            row.state = RowState.SAVING
-        self._saving = True
-        self._refresh()
-        self._jobs.submit(
-            list(fresh.values()),
-            lambda error: self._on_rows_saved(fresh, error),
-        )
-
-    def _on_rows_saved(self, fresh: dict[Row, Job], error: str | None) -> None:
-        """The rows are stored, or they are not. Only then is a worker asked for anything.
-
-        `REQ-012`'s order, and `T016-R1`'s ownership: a row whose line went away while the write
-        was in flight is withdrawn rather than left durably `QUEUED`, where whatever runs the
-        queue next would download a URL the user had already taken back.
-        """
-        self._saving = False
-        if error is not None:
-            for row in fresh:
-                if row.state is RowState.SAVING:
-                    row.state = RowState.FAILED
-                    row.message = error
-            self._status.setText(f"Nothing was saved, so nothing was read. {error}")
-            self._refresh()
-            return
-
-        for row, job in fresh.items():
-            row.job_id = job.id
-            if row.state is RowState.SUPERSEDED:
-                self._withdraw(job.id, row.url)
-                continue
-            self._start_probe(row)
+        for row in self._staging.pending():
+            self._read(row)
         self._refresh()
 
-    def _start_probe(self, row: Row) -> None:
-        """Ask for a probe session, and record what happens.
+    def _read(self, row: Row) -> None:
+        """Start a staging probe for one row.
 
-        **`admit`, not `start`** (`T-116`). `start()` raises when the probe lane is full, which a
-        paste of twenty will reach immediately; admission expresses durable intent and the lane
-        drains in `queue_position` order. The refusal path stays for the errors that are still
-        real — a vanished row, or a state the machine will not move from.
+        **Synchronous up to the id**, which is what closes `T118-R2`: the first version wrote the
+        jobs first and started the probes in the write's callback, so editing or closing during
+        that window left the dialog with rows it had no ids for — `done()` withdrew nothing, and
+        the callback then persisted and started the URL the user had just taken away. There is no
+        such window now. `stage()` returns the id before it returns at all.
         """
-        if row.job_id is None:
-            return
         try:
-            self._manager.admit(row.job_id, SessionKind.PROBE)
+            row.job_id = self._manager.stage(self._request_for(row))
         except (RuntimeError, ValueError) as refusal:
             row.state = RowState.FAILED
             row.message = str(refusal)
             return
-        # **`WAITING`, not `PROBING`** (`T-116`). `admit` expresses intent; the lane decides when.
-        # Marking the row as being read here said five hundred pasted URLs were all in flight at
-        # once, when four were. `_on_job_changed` promotes it when the manager actually starts it.
         row.state = RowState.WAITING
 
     def retry_failed(self) -> None:
         """Read the failed URLs again (`UX-003`).
 
-        A timeout costs a button press rather than the paste. The old job is withdrawn and the row
-        goes back to `PENDING` with a **new** job rather than being restarted in place: its
-        existing row may be `FAILED` on disk, and `ARC-004` has no edge back to `QUEUED` that does
-        not go through a retry the queue owns.
+        A timeout costs a button press rather than the paste. The row goes back to `PENDING` and is
+        staged afresh; there is no durable row to withdraw, because a staging probe never was one
+        (`T118-R1`).
         """
         failed = self._staging.failed()
         if not failed:
             return
         for row in failed:
             if row.job_id is not None:
-                self._withdraw(row.job_id, row.url)
+                self._manager.unstage(row.job_id)
                 self._pixmaps.pop(row.job_id, None)
             row.job_id = None
             row.message = None
@@ -628,20 +584,101 @@ class AddUrlDialog(QDialog):
     def remove_row(self, row: Row) -> None:
         """Take one line out of the batch without editing the box.
 
-        The row is superseded and its job withdrawn, exactly as editing the line away would do —
-        one route, one set of consequences.
+        The row is superseded and its staging probe stopped, exactly as editing the line away would
+        do — one route, one set of consequences.
         """
         if row.state is RowState.SUPERSEDED:
             return
         remaining = [other.url for other in self._staging.visible if other is not row]
         row.state = RowState.SUPERSEDED
-        if row.job_id is not None and row.job_id not in self._withdrawing:
-            self._withdraw(row.job_id, row.url)
+        if row.job_id is not None:
+            self._manager.unstage(row.job_id)
+            self._pixmaps.pop(row.job_id, None)
+            row.job_id = None
         # The box is the source of truth for what is entered, so it changes too. Blocked so the
         # edit does not restart the debounce and reconcile against a list already correct.
         self._urls.blockSignals(True)
         self._urls.setPlainText("\n".join(remaining))
         self._urls.blockSignals(False)
+        self._refresh()
+
+    def _row_preset_widget(self, index: int) -> QWidget:
+        """The per-row format control (`UX-004`, `T118-R4`), built once and reused.
+
+        **A real control on the row, which is what the maintainer chose and what the mock drew.**
+        Measured before committing to it: building the list costs 3 ms at ten rows, 5 ms at twenty
+        and 86 ms at a hundred and fifty, against `NFR-001`'s ~100 ms budget — so it is free at any
+        paste a person types and crosses the budget somewhere between 150 and 200 rows. `UX-004`
+        records the numbers and the decision to move to a delegate (`T-119`) rather than to a
+        cheaper interaction.
+
+        Created only when a row has no widget yet: `_refresh` runs on every signal, and rebuilding
+        these each time would spend the whole budget redecorating rows nothing had changed.
+        """
+        holder = QWidget(self._list)
+        layout = QHBoxLayout(holder)
+        layout.setContentsMargins(2, 0, 2, 0)
+        layout.setSpacing(4)
+
+        caption = QLabel("Download as", holder)
+        caption.setObjectName("rowPresetLabel")
+        layout.addWidget(caption)
+
+        choice = QComboBox(holder)
+        choice.setObjectName(ROW_PRESET_NAME)
+        choice.setAccessibleName("Download preset for this URL")
+        choice.setAccessibleDescription(
+            "Choose a format for this URL alone. The first entry follows the preset chosen for "
+            "the whole paste."
+        )
+        choice.addItem(INHERITED_TEXT, None)
+        for preset in self._presets:
+            choice.addItem(preset.name, preset.name)
+        choice.currentIndexChanged.connect(partial(self._on_row_preset_changed, index))
+        layout.addWidget(choice, 1)
+        return holder
+
+    def _row_preset_control(self, index: int) -> QComboBox | None:
+        """One row's format control, or `None` if that row has no widget yet.
+
+        Qt's stubs type both `itemWidget` and `findChild` as returning the class asked for, so a
+        `None` check on either reads as unreachable — while both really answer `None` for a row
+        whose widget has not been built yet. `cast` states the real contract once, here, rather
+        than putting a suppression at every call site.
+        """
+        widget = cast("QWidget | None", self._list.itemWidget(self._list.item(index)))
+        if widget is None:
+            return None
+        return cast("QComboBox | None", widget.findChild(QComboBox, ROW_PRESET_NAME))
+
+    def _show_row_preset(self, index: int, row: Row) -> None:
+        """Point one row's control at that row's choice, without re-applying it."""
+        choice = self._row_preset_control(index)
+        if choice is None:
+            return
+        own = row.preset
+        wanted = choice.findData(own.name if isinstance(own, Preset) else None)
+        choice.blockSignals(True)
+        choice.setCurrentIndex(max(wanted, 0))
+        # A row that cannot be committed cannot usefully be retargeted either.
+        choice.setEnabled(row.committable and not self._saving)
+        choice.blockSignals(False)
+
+    def _on_row_preset_changed(self, index: int, _selected: int) -> None:
+        """Give one row its own preset, or send it back to following the batch.
+
+        Bound to the row's **position**, which is the only stable handle a widget in a list has:
+        rows are reconciled by identity but the widget belongs to a slot. `_refresh` rebuilds the
+        slots whenever the count changes, so a stale index cannot outlive its row.
+        """
+        visible = self._staging.visible
+        if not 0 <= index < len(visible):
+            return
+        choice = self._row_preset_control(index)
+        if choice is None:
+            return
+        name = choice.currentData()
+        visible[index].preset = next((p for p in self._presets if p.name == name), None)
         self._refresh()
 
     def _show_row_menu(self, position: Any) -> None:
@@ -672,7 +709,7 @@ class AddUrlDialog(QDialog):
         if row.state is not RowState.FAILED:
             return
         if row.job_id is not None:
-            self._withdraw(row.job_id, row.url)
+            self._manager.unstage(row.job_id)
             self._pixmaps.pop(row.job_id, None)
         row.job_id = None
         row.message = None
@@ -718,22 +755,6 @@ class AddUrlDialog(QDialog):
         row.message = f"{label}: {message}"
         self._refresh()
 
-    def _on_job_removed(self, job_id: str) -> None:
-        """A withdrawal landed. **Durable at last**, which is what the dialog was waiting for.
-
-        `job_removed` is emitted from the delete's own callback, so seeing it here means the row
-        really is gone from disk rather than merely asked to go (`T016-R3`, `T016-R1`).
-        """
-        if job_id not in self._withdrawing:
-            return
-        del self._withdrawing[job_id]
-        if not self._withdrawing:
-            self._withdraw_error = None
-            if self._status.text().startswith(WITHDRAW_FAILED_PREFIX):
-                self._status.setText(summarise(self._staging.visible))
-        self._refresh()
-        self._finish_closing()
-
     def _on_job_changed(self, job_id: str, status: str) -> None:
         """Notice a resolved row that stopped being startable."""
         row = self._staging.for_job(job_id)
@@ -753,6 +774,29 @@ class AddUrlDialog(QDialog):
             row.state = RowState.FAILED
             row.message = f"this URL left the queue while the dialog was open (now {status})"
             self._refresh()
+
+    def _on_persistence_failed(self, job_id: str, reason: str) -> None:
+        """A durable write failed for something this dialog is responsible for.
+
+        **Not swallowed**, which is `T016-R1`'s rule surviving the change of mechanism. The
+        withdrawal machinery that used to own this signal is gone — there is nothing to withdraw
+        before Add — but a write that fails *after* Add is a row the queue may now be wrong about,
+        and the person who just pressed the button is the one who should hear.
+
+        Scoped to ids this dialog knows. A failure for someone else's job is the queue's business,
+        and reporting it here would put a message about an unrelated download in front of a user
+        who is adding URLs. **That leaves a real gap** — nothing owns this signal once the dialog
+        closes — and it is recorded rather than papered over: the dialog was this signal's only
+        listener before this change too.
+        """
+        mine = job_id in self._committed or self._staging.for_job(job_id) is not None
+        if not mine:
+            return
+        self._status.setText(
+            f"The queue's record of this download could not be written: {reason} "
+            "The download itself may be running; the queue is what is behind."
+        )
+        self._refresh()
 
     def _on_start_rejected(self, job_id: str, reason: str) -> None:
         """The probe this dialog asked for never became a session (`T016-R3`).
@@ -774,86 +818,26 @@ class AddUrlDialog(QDialog):
         row.message = f"could not be read: {reason}"
         self._refresh()
 
-    def _on_persistence_failed(self, job_id: str, reason: str) -> None:
-        """A withdrawal that could not be written is the Critical consequence, not a detail.
-
-        Until it lands, the row the user took away is still queued work a restart would run
-        (`T016-R1`). The dialog says so and refuses to close or add until it is retried
-        successfully, because closing on it silently is exactly the outcome the finding is about.
-        """
-        if job_id not in self._withdrawing:
-            return
-        self._withdraw_error = reason
-        self._status.setText(
-            f"{WITHDRAW_FAILED_PREFIX} {self._withdrawing[job_id]} is still in the queue "
-            f"because it could not be withdrawn: {reason} "
-            "Press Close again to retry; the queue is not safe to leave until it succeeds."
-        )
-        self._refresh()
-
-    def _withdraw(self, job_id: str, url: str) -> None:
-        """Take a row this dialog wrote out of the queue, and own the outcome.
-
-        **`remove`, not `cancel`** — and this reverses what `T016-R1` chose, deliberately.
-
-        That ruling kept a withdrawn row as `CANCELLED` rather than deleting it, on the reasoning
-        that it was "an honest record of something asked for and withdrawn". It was: the user had
-        pressed *Probe* on that URL, so the row recorded an intent they really had. `UX-003`
-        removes that intent — a row is written because the manager works in job ids and a probe
-        needs one, not because the user committed to anything by pasting. A queue full of
-        `CANCELLED` rows for URLs somebody typed and thought better of is not a record, it is
-        litter.
-
-        It is also the only route that works. `ARC-004` has `FAILED → QUEUED` and nothing else, so
-        cancelling a row whose probe failed raises `IllegalTransitionError` — the exact case
-        `UX-003` says must not reach the queue. A rule needing two disposal routes, one of which
-        is unreachable for the commonest case, is the wrong rule.
-
-        `remove` cancels a live session first and deletes only once it has ended, so the
-        `T016-R2` guarantee is unchanged: nothing is stranded and no worker outlives the dialog.
-        """
-        self._withdrawing[job_id] = url
-        self._manager.remove(job_id)
-
-    def retry_withdrawals(self) -> None:
-        """Re-issue every outstanding cancellation. Reached by pressing Close again.
-
-        **Only once a failure has been reported.** A cancellation that is merely slow is already
-        on its way, and re-issuing it would ask the manager to cancel a job its own pending write
-        has already moved to `CANCELLED`. Waiting is the correct answer to "not finished yet";
-        retrying is the correct answer to "it failed".
-        """
-        if self._withdraw_error is None:
-            self._status.setText(
-                f"{WITHDRAW_FAILED_PREFIX} still withdrawing "
-                f"{', '.join(self._withdrawing.values())} from the queue. One moment."
-            )
-            self._refresh()
-            return
-        self._withdraw_error = None
-        self._status.setText("Retrying the withdrawal …")
-        for job_id in list(self._withdrawing):
-            self._manager.remove(job_id)
-        self._refresh()
-
     # --- queueing -----------------------------------------------------------------------
 
     def add_to_queue(self) -> None:
-        """Commit the rows that resolved, and only those (`UX-003`, `REQ-012`).
+        """Persist the rows that resolved, and only those (`UX-003`, `REQ-012`, `T118-R3`).
+
+        **This is the first and only write.** Each committable row becomes a durable `Job` built
+        from *its own* effective preset (`UX-004`), so the request that runs is the one selected
+        when Add was pressed and there is nothing to retarget afterwards. `T-075`'s rule, applied
+        per row and satisfied by construction rather than by a second write.
+
+        The retarget it replaces is what `T118-R3` was about: Add stayed enabled while retargets
+        were outstanding, and `done()` exempted the committed ids from cleanup before their chosen
+        request was durable — so a dialog closed in that window left a `READY` row carrying the
+        *old* request, which startup then admitted and downloaded in the wrong format. No request
+        is ever stored and then changed, so that window does not exist.
 
         **The count is what resolved, not what was pasted.** A URL that would not read never
         becomes queued work; it stays on screen with its message and its retry.
-
-        The rows are already on disk — they had to be, to be probed — so this is a retarget
-        followed by one admission rather than a write. `T-075`: the request that runs is the one
-        selected **now**, not whichever preset happened to be current when the row was saved.
         """
-        if self._saving or self._withdrawing:
-            if self._withdrawing:
-                self._status.setText(
-                    f"{WITHDRAW_FAILED_PREFIX} a withdrawn URL is still in the queue. "
-                    "Press Close to retry before adding more."
-                )
+        if self._saving:
             return
         committable = self._staging.committable()
         if not committable:
@@ -863,158 +847,125 @@ class AddUrlDialog(QDialog):
             )
             return
 
-        # **Every unresolved row is withdrawn as part of committing** (`UX-003`). Leaving them
-        # would put rows in the database that the queue never runs and the dialog has forgotten.
-        for job_id in self._staging.unresolved_job_ids():
-            if job_id not in self._withdrawing:
-                row = self._staging.for_job(job_id)
-                self._withdraw(job_id, row.url if row is not None else job_id)
-
-        self._committed = tuple(row.job_id for row in committable if row.job_id is not None)
-        self._retargets_pending = len(self._committed)
-        self._retarget_failure = None
-        self._status.setText(f"Adding {len(self._committed)} to the queue …")
+        # Entry order, which becomes `queue_position` order: the repository allocates `MAX + 1`
+        # inside the insert transaction, so submitting in this order is what the pool will start
+        # in (`T115-R1`).
+        fresh = [(row, self._durable_job(row)) for row in committable]
+        self._saving = True
+        self._status.setText(f"Adding {len(fresh)} to the queue …")
         self._refresh()
+        self._jobs.submit([job for _, job in fresh], lambda error: self._on_committed(fresh, error))
 
-        for row in committable:
-            if row.job_id is None:
-                continue
-            self._manager.retarget(
-                row.job_id,
-                self._request_for(row.url),
-                then=self._on_retarget_settled,
-                otherwise=self._on_retarget_failed,
-            )
+    def _on_committed(self, fresh: Sequence[tuple[Row, Job]], error: str | None) -> None:
+        """The rows are durable, or they are not. Only then is anything admitted.
 
-    def _on_retarget_settled(self) -> None:
-        self._retargets_pending -= 1
-        self._admit_when_ready()
-
-    def _on_retarget_failed(self, reason: str) -> None:
-        """`T-075`: a row whose request could not be stored is not started with the old one."""
-        self._retarget_failure = reason
-        self._retargets_pending -= 1
-        self._admit_when_ready()
-
-    def _admit_when_ready(self) -> None:
-        """Admit the whole batch **once**, in durable queue order (`T115-R1`).
-
-        Admitting each row as its own retarget settled would let a later `queue_position` take a
-        slot the head of the queue was still waiting for — with a pool of one, the row the user
-        sees at the top waits while the second one downloads. `T-081` establishes that the table
-        and the scheduler agree, and an asynchronous prerequisite does not get to suspend that.
-
-        The order is the order the rows were written in, which is `queue_position` order:
-        positions are allocated `MAX + 1` inside the insert transaction, and the rows were
-        submitted in entry order. Reading them back to sort would put a database read in front of
-        a GUI callback for an ordering the writes already fixed (`ARC-005`).
+        `REQ-012`'s persist-before-start, and the dialog closes **inside** this callback so it
+        cannot close before the rows exist. A failed write leaves it open with the user's input
+        intact and nothing staged discarded.
         """
-        if self._retargets_pending > 0:
-            return
-        if self._retarget_failure is not None:
+        self._saving = False
+        if error is not None:
             self._status.setText(
-                f"Your format choice could not be saved, so nothing was started: "
-                f"{self._retarget_failure} The URLs are still here; press Add to queue again."
+                f"Nothing was added and the queue is unchanged. {error} "
+                "Your URLs are still here; try again."
             )
-            self._committed = ()
             self._refresh()
             return
 
+        # The staging probes have served their purpose; the durable rows are different ids.
+        for row, _ in fresh:
+            if row.job_id is not None:
+                self._manager.unstage(row.job_id)
+
+        self._committed = tuple(job.id for _, job in fresh)
         refusal: str | None = None
         try:
             for job_id in self._committed:
                 self._manager.admit(job_id)
-        except (RuntimeError, ValueError) as error:
-            refusal = str(error)
+        except (RuntimeError, ValueError) as start_error:
+            refusal = str(start_error)
 
         if refusal is not None:
             self._status.setText(
-                f"Queued, but the downloads did not start: {refusal} "
+                f"Added, but the downloads did not start: {refusal} "
                 "They stay in the queue and can be started from there."
             )
             self._refresh()
             return
         self.accept()
 
-    def _request_for(self, url: str) -> DownloadRequest:
-        """The request the **currently selected** preset would download `url` with (`T-075`).
+    def _durable_job(self, row: Row) -> Job:
+        """The queue job for a resolved row, carrying everything the probe learned.
 
-        One place builds a request, so "what the user chose" cannot mean two different things in
-        two code paths — which is the shape the preset defect had.
+        `title` and `thumbnail_url` come across from the staging probe rather than being left for
+        the download session to rediscover (`T-117`): the row on screen already knows them, and a
+        queue that showed a URL until its download started would be `UX-003` undone at the moment
+        of committing.
         """
-        return preset_registry.to_request(
-            self.selected_preset, url=url, output_directory=str(self._output_directory)
-        )
-
-    def _new_job(self, url: str) -> Job:
-        """A `QUEUED` job for `url`, with **no** queue position.
-
-        The position is allocated by the writer, inside the same transaction as the insert
-        (`ARC-005`). Reading `MAX(queue_position)` here would be both a GUI-thread database call
-        and a guess against every other writer.
-        """
+        media = row.media
         return Job(
             id=str(uuid.uuid4()),
-            url=url,
-            request=self._request_for(url),
-            status=JobStatus.QUEUED,
+            url=row.url,
+            request=self._request_for(row),
+            status=JobStatus.READY if isinstance(media, MediaInfo) else JobStatus.QUEUED,
+            title=media.title if isinstance(media, MediaInfo) else None,
+            thumbnail_url=media.thumbnail_url if isinstance(media, MediaInfo) else None,
             created_at=datetime.now().astimezone(),
         )
+
+    def _request_for(self, row: Row) -> DownloadRequest:
+        """The request `row`'s **effective** preset would download it with (`T-075`, `UX-004`).
+
+        One place builds a request, so "what the user chose" cannot mean two different things in
+        two code paths — which is the shape the preset defect had. `UX-004` made that choice
+        per row: a row with its own preset uses it, and a row without follows the batch.
+        """
+        return preset_registry.to_request(
+            self.preset_for(row), url=row.url, output_directory=str(self._output_directory)
+        )
+
+    def preset_for(self, row: Row) -> Preset:
+        """`row`'s own preset, or the batch's when it has none (`UX-004`).
+
+        `None` on a row means *inherited*, not "no preset" — the row shows the batch's name so a
+        blank cannot read as an absent choice.
+        """
+        chosen = row.preset
+        return chosen if isinstance(chosen, Preset) else self.selected_preset
 
     # --- closing ------------------------------------------------------------------------
 
     # Qt's override name, hence the camelCase: this is not a project naming choice.
     def done(self, result: int) -> None:
-        """Every exit route funnels through here, so every exit route abandons the batch.
+        """Every exit route funnels through here, so every exit route abandons the staging list.
 
         `T016-R2`: closing used to leave a never-returning worker alive and the pool permanently
         busy. Escape, the window button, `reject()` and `accept()` all reach `done()`, which is why
         the ownership lives here rather than on the Close button.
 
-        **A row that has been committed is not withdrawn.** Its job is the queue's now, and
-        `_admit_when_ready` may have just started it downloading.
+        **Unstaging, not withdrawing** (`T118-R1`). Nothing here was ever written, so there is no
+        `CANCELLED` row to manufacture and no temporary row to delete — the probes are stopped and
+        their processes reaped, and the queue is not told about work it never held. That is what
+        lets this close immediately instead of holding the window open for a durable cancellation.
 
-        **The close that *creates* a withdrawal is refused too** (`T016-R1`). The first correction
-        checked `_withdrawing` on the way in and then, four lines later, retired a started probe —
-        which populates it — and carried straight on. So the dialog went invisible with a
-        cancellation that had not been written: a crash in that window brings the disowned URL back
-        as live work. The check therefore happens **after** the retirement as well as before it.
+        **A commit in flight holds the close** (`T118-R3`). The dialog used to disappear while its
+        rows were still being made durable, which left the outcome of the user's Add with nobody
+        watching. Refused rather than queued: the window stays, `_on_committed` closes it, and a
+        failed write leaves the input intact.
         """
-        if self._withdrawing:
-            self._closing_with = result
-            self.retry_withdrawals()
-            return
-
-        self._resolve_timer.stop()
-        committed = set(self._committed)
-        # **Every job written, not only the unresolvable ones.** A `READY` row nobody committed is
-        # the case that looks like success and is not: closing on it leaves a download in the
-        # queue that the user never added (`UX-003`).
-        for job_id in self._staging.written_job_ids():
-            if job_id not in committed and job_id not in self._withdrawing:
-                row = self._staging.for_job(job_id)
-                self._withdraw(job_id, row.url if row is not None else job_id)
-
-        if self._withdrawing:
-            # Created by the loop above. The dialog stays up until the cancellations are durable
-            # and then finishes this same close by itself — the user asked once.
-            self._closing_with = result
+        if self._saving:
             self._status.setText(
-                f"{WITHDRAW_FAILED_PREFIX} {', '.join(self._withdrawing.values())} is still in "
-                "the queue until its withdrawal is written. This closes as soon as it is."
+                "Still adding to the queue. This closes as soon as the rows are written."
             )
             self._refresh()
             return
 
-        self._thumbnails.cancel()
-        super().done(result)
+        self._resolve_timer.stop()
+        for row in self._staging.rows:
+            if row.job_id is not None:
+                self._manager.unstage(row.job_id)
+                row.job_id = None
 
-    def _finish_closing(self) -> None:
-        """Complete a close that was held open by a withdrawal, now that they have all landed."""
-        result = self._closing_with
-        if result is None or self._withdrawing:
-            return
-        self._closing_with = None
         self._thumbnails.cancel()
         super().done(result)
 
@@ -1080,22 +1031,31 @@ class AddUrlDialog(QDialog):
             self._list.addItem(QListWidgetItem())
         for index, row in enumerate(visible):
             item = self._list.item(index)
-            item.setText(row_text(row))
+            if self._list.itemWidget(item) is None:
+                widget = self._row_preset_widget(index)
+                item.setSizeHint(widget.sizeHint())
+                self._list.setItemWidget(item, widget)
+            self._show_row_preset(index, row)
+            item.setText(row_text(row, self.selected_preset))
             item.setIcon(self._tile_for(row))
             item.setData(Qt.ItemDataRole.UserRole, index)
             # Everything a sighted user reads from the row, for a screen reader (`NFR-005`).
-            item.setData(Qt.ItemDataRole.AccessibleTextRole, row_text(row).replace("\n", ". "))
+            item.setData(
+                Qt.ItemDataRole.AccessibleTextRole,
+                row_text(row, self.selected_preset).replace("\n", ". "),
+            )
         self._list.setUpdatesEnabled(True)
 
-        if not self._status.text().startswith(WITHDRAW_FAILED_PREFIX):
+        if not self._saving:
             self._status.setText(summarise(visible))
 
-        stuck = bool(self._withdrawing)
+        # **`_saving` covers the whole commit, and Add is disabled for all of it** (`T118-R3`).
+        # It used to track only the retarget's *request*, so a second click scheduled a duplicate
+        # commit for rows that were already being written.
         ready = bool(self._staging.committable())
-        self._add_button.setEnabled(ready and not self._saving and not stuck)
-        self._retry_button.setEnabled(
-            bool(self._staging.failed()) and not self._saving and not stuck
-        )
+        self._add_button.setEnabled(ready and not self._saving)
+        self._retry_button.setEnabled(bool(self._staging.failed()) and not self._saving)
+
         # `T-076`: a bitrate applies only to a preset that converts audio. Disabled rather than
         # hidden, so the chain a keyboard walks does not change and the layout does not move.
         is_mp3 = self.selected_preset.audio_codec is AudioCodec.MP3

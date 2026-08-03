@@ -211,8 +211,11 @@ diffable by a user — that is TOML's job. Neither is a good substitute for the 
 ### Core entities
 
 - **Job** — `id` (UUID), `url`, `status`, `request` (serialized `DownloadRequest`), `title`,
-  `output_path`, `bytes_done`, `bytes_total`, `error_kind`, `error_message`, `attempts`,
-  `created_at`, `started_at`, `finished_at`, `queue_position`.
+  `thumbnail_url`, `output_path`, `bytes_done`, `bytes_total`, `error_kind`, `error_message`,
+  `attempts`, `created_at`, `started_at`, `finished_at`, `queue_position`.
+  *(`thumbnail_url` added by `T-117`, schema version 2. `T117-R1`: it was in the model, the
+  migration and the tests while this list — which is current truth for the entity — still omitted
+  it, so the canonical description disagreed with every other statement of the same fact.)*
 - **DownloadRequest** — the resolved intent: format selector, output template, target
   directory, post-processors, subtitle options, network options. Persisted with the job so a
   retry after a settings change reproduces the *original* request, not the current defaults.

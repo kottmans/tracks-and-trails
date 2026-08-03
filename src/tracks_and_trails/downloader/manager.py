@@ -69,6 +69,7 @@ from datetime import datetime
 from functools import partial
 from pathlib import Path
 from typing import Any, Final, Protocol
+from uuid import uuid4
 
 from PySide6.QtCore import QObject, QTimer, Signal
 
@@ -401,6 +402,15 @@ class DownloadManager(QObject):
     #: that reads the repository never sees a state older than the one it was told about.
     job_changed = Signal(str, str)
 
+    #: `(job_id, status)` for a **staging** job, which is not queue work (`T118-R1`).
+    #:
+    #: Separate from `job_changed` because everything listening to that one treats what it hears as
+    #: a row in the queue. Composition watches the first watchable transition it sees and shows its
+    #: progress; the queue model looks the id up in the repository. A staged job is in neither, so
+    #: announcing it on the same channel made the window latch its progress view onto a transient
+    #: id and sit there — the download completed and the view still said "ready".
+    staged_changed = Signal(str, str)
+
     #: `protocol.Progress`, forwarded as-is (`REQ-014`). Not persisted per message: a progress
     #: update every few hundred milliseconds per job is an unbounded write rate for a fact that
     #: is worthless after a crash, and crash recovery re-queues the job anyway (`T-014`).
@@ -503,6 +513,23 @@ class DownloadManager(QObject):
         self._reap_seconds = reap_seconds
         self._user_ytdlp_directory = user_ytdlp_directory
         self._ffmpeg_override = ffmpeg_override
+        #: Jobs that exist only in memory, for the add dialog's staging probes (`T118-R1`).
+        #:
+        #: **`UX-003` says nothing is persisted until Add**, and `T118-R1` is what happens when it
+        #: is anyway: `compose()` admits every durable `QUEUED` or `READY` row at startup, so a
+        #: crash after a probe succeeded left a row the next launch downloaded although the user
+        #: never pressed Add. A staged job is never written, never recovered, and cannot be
+        #: admitted for download — it exists so the session machinery has an id to work in, and
+        #: it is dropped when the dialog is done with it.
+        self._staged: dict[str, Job] = {}
+        #: Staged ids asked to go whose session has not ended yet (`T118-R1`).
+        #:
+        #: The record cannot be dropped when `unstage` is called: cancelling runs a chain of steps
+        #: that each ask `_require` for the job, and a staged job removed early is in neither the
+        #: staging table nor the store — so the chain raises `KeyError` out of a Qt slot. It is
+        #: dropped when the session is released, which is the same rule the durable path uses for
+        #: deleting a removed row.
+        self._unstaging: set[str] = set()
         self._sessions: dict[str, _Session] = {}
         #: Jobs whose starting transition is queued but whose worker does not exist yet.
         self._reserved: dict[str, _PendingStart] = {}
@@ -931,6 +958,60 @@ class DownloadManager(QObject):
         except KeyError as missing:
             self.start_rejected.emit(job_id, f"this job is not in the queue: {missing}")
 
+    def stage(self, request: DownloadRequest) -> str:
+        """Read `request.url` **without creating a queue job** (`T118-R1`, `UX-003`).
+
+        Returns the id the result will arrive under. `media_probed` and `job_failed` report it
+        exactly as they do for a queued job, so a caller listens to one pair of signals whether
+        the job is staged or durable.
+
+        **Nothing here reaches the store.** `UX-003`'s rule is that a job enters the queue only
+        once it has been read, and the first implementation of this dialog persisted a `QUEUED`
+        row in order to *do* the reading — which `compose()` then admitted on the next launch, so
+        a crash mid-paste downloaded a URL nobody had committed to. A staged job is an id and a
+        request, held here, and `unstage` is the whole of its cleanup.
+
+        Admitted rather than started, so a paste of twenty queues behind the probe lane instead of
+        being refused (`T-116`).
+        """
+        staged = Job(
+            id=str(uuid4()),
+            url=request.url,
+            request=request,
+            status=JobStatus.QUEUED,
+            created_at=_now(),
+        )
+        self._staged[staged.id] = staged
+        self.admit(staged.id, SessionKind.PROBE)
+        return staged.id
+
+    def unstage(self, job_id: str) -> None:
+        """Forget a staged job, stopping its session if one is running (`T118-R1`).
+
+        **Idempotent, and safe for an id that was never staged**, because the dialog calls this
+        from close, from edit and from remove and none of them can know which. A durable job is
+        left strictly alone: it belongs to the queue, and `cancel`/`remove` are its verbs.
+
+        No `CANCELLED` row is written and no row is deleted — there is nothing to write or delete,
+        which is the point of the ruling. What the queue never held, it never has to be told about.
+        """
+        if job_id not in self._staged:
+            return
+        self._discard_waiting(job_id)
+        self._retry_at.pop(job_id, None)
+        if job_id in self._sessions or job_id in self._reserved:
+            # **The record outlives the cancel.** Cooperative first, escalating on the manager's
+            # own timer; the staged job stays readable until its session is released, because the
+            # steps that cancel it each ask `_require` for it on the way past.
+            self._unstaging.add(job_id)
+            self.cancel(job_id)
+            return
+        self._staged.pop(job_id, None)
+
+    def is_staged(self, job_id: str) -> bool:
+        """Whether `job_id` is a staging probe rather than a queue job."""
+        return job_id in self._staged
+
     def start(self, job_id: str, kind: SessionKind = SessionKind.DOWNLOAD) -> None:
         """Spawn a worker for `job_id` and move it to the status that says a worker holds it.
 
@@ -959,6 +1040,23 @@ class DownloadManager(QObject):
         """
         if self._shutting_down:
             raise RuntimeError("the manager is shutting down; no new session can be started")
+        if kind is SessionKind.DOWNLOAD and job_id in self._staged:
+            # **A staged job is not queue work** (`T118-R1`, `UX-003`). It has no row, no
+            # `queue_position` and no recovery, so downloading it would produce a file for
+            # something the user never added. Persisting it is Add's job, and Add creates a
+            # different, durable id.
+            raise ValueError(
+                f"{job_id!r} is a staging probe and cannot be downloaded; persist it first"
+            )
+        if self._holds(job_id):
+            # **One session per job, whichever lane it is in** (`T116-R1`). Raised rather than
+            # queued because `start()`'s caller asked for a session *now* on a specific job, and a
+            # job that already has one means their model of it is wrong. `admit()` parks instead.
+            held = self._kind_of(job_id)
+            raise RuntimeError(
+                f"{job_id!r} already has a {held.value if held else 'pending'} session; "
+                "one job holds one session at a time, whichever lane it is in"
+            )
         if not self._has_capacity(kind):
             # **Reservations count against the limit, not just running sessions** (`T016-R3`).
             # `_reserved` holds starts whose transition is still on the writer thread; without
@@ -1188,6 +1286,10 @@ class DownloadManager(QObject):
         reason = f"the worker session could not be started: {error!r}"
         message = f"The download could not be started. {reason}"
         self._reserved.pop(job_id, None)
+        if job_id in self._unstaging and job_id not in self._sessions:
+            # A withdrawn reservation never becomes a session, so nothing else will drop this.
+            self._unstaging.discard(job_id)
+            self._staged.pop(job_id, None)
 
         def unwind() -> None:
             if session is None:
@@ -1449,6 +1551,22 @@ class DownloadManager(QObject):
             write=self._repository.requeue_at_end,
         )
 
+    def _holds(self, job_id: str) -> bool:
+        """Whether this manager already owns a session or a reservation for `job_id` (`T116-R1`).
+
+        **Identity, not capacity.** The two lanes `T-116` created are about how much work may run
+        at once; this is about the same *job* being in both at the same time. `_spawn` assigns
+        `self._sessions[job_id]` unconditionally, so a download admitted for a job whose probe
+        process is still alive replaces the only object that owns and reaps that process — the
+        manager loses the queue, the pump, the job log and the tree.
+
+        The window is real and small: `media_probed` is emitted when the probe's *stream* ends,
+        which is before `_release` has established that its process is gone. A dialog that admits
+        the download from that signal — which is exactly what `UX-003`'s flow does — lands inside
+        it. Hosted Windows saw three worker processes against a download limit of two.
+        """
+        return job_id in self._sessions or job_id in self._reserved
+
     def _pause_blocks(self, kind: SessionKind) -> bool:
         """Whether a paused queue stops a session of `kind` from starting (`UX-001`, `T080-R1`).
 
@@ -1548,6 +1666,10 @@ class DownloadManager(QObject):
 
         def may_start(job_id: str) -> bool:
             kind = self._wants(job_id)
+            if self._holds(job_id):
+                # Its own earlier session has not been released yet (`T116-R1`). `_release` fills
+                # again once it has, so this is a wait rather than a refusal.
+                return False
             return self._has_capacity(kind) and not self._pause_blocks(kind)
 
         startable = [job_id for job_id in self._waiting if may_start(job_id)]
@@ -1594,7 +1716,12 @@ class DownloadManager(QObject):
         """
         if self._shutting_down:
             return
-        if self._pause_blocks(kind) or self._reorders_in_flight or not self._has_capacity(kind):
+        if (
+            self._pause_blocks(kind)
+            or self._reorders_in_flight
+            or self._holds(job_id)
+            or not self._has_capacity(kind)
+        ):
             if job_id not in self._waiting:
                 self._waiting.append(job_id)
             self._intended_kind[job_id] = kind
@@ -1929,6 +2056,14 @@ class DownloadManager(QObject):
         self._close_quietly(session.job_id, session.queue)
         self._close_job_log(session)
         self._sessions.pop(session.job_id, None)
+        if session.job_id in self._unstaging:
+            # Its cancellation has run its course; the staging record can go (`T118-R1`).
+            self._unstaging.discard(session.job_id)
+            self._staged.pop(session.job_id, None)
+        # **This job may have work parked behind its own session** (`T116-R1`). A download admitted
+        # while its probe was still being released waits on `_waiting`; nothing else would start it
+        # until the next tick, and a lane freed here should not cost a job 50 ms of nothing.
+        self._fill_free_slots()
         if session.job_id in self._remove_when_done:
             # **Here rather than in `remove()`, because here is where the process is actually
             # gone** (`T-080`). Deleting the row when the cancel was *asked for* would leave a live
@@ -2359,6 +2494,10 @@ class DownloadManager(QObject):
         )
 
     def _require(self, job_id: str) -> Job:
+        """The job `job_id` names, staged or durable. Staged first — it is never in the store."""
+        staged = self._staged.get(job_id)
+        if staged is not None:
+            return staged
         job = self._repository.get(job_id)
         if job is None:
             raise KeyError(f"no job with id {job_id!r}")
@@ -2473,6 +2612,15 @@ class DownloadManager(QObject):
                 self._step_finished(job_id)
                 return
             assert isinstance(revised, Job)  # narrowed by the two checks above, for mypy
+            if revised.id in self._staged:
+                # **A staged job has nowhere to be written** (`T118-R1`). Its transitions are real
+                # — a probe still moves `QUEUED → PROBING → READY` and the session machinery reads
+                # that — but they live in memory and die with the dialog. Routed through the same
+                # `_settle` so ordering, signals and chain release are identical; what differs is
+                # only that the store is not asked.
+                self._staged[revised.id] = revised
+                self._settle(revised, None, then, otherwise)
+                return
             persist = write if write is not None else self._repository.update
             persist(revised, lambda error: self._settle(revised, error, then, otherwise))
 
@@ -2505,7 +2653,10 @@ class DownloadManager(QObject):
             self.persistence_failed.emit(job.id, error)
             self._step_finished(job.id)
             return
-        self.job_changed.emit(job.id, job.status.value)
+        if job.id in self._staged:
+            self.staged_changed.emit(job.id, job.status.value)
+        else:
+            self.job_changed.emit(job.id, job.status.value)
         if then is not None:
             then()
         self._step_finished(job.id)

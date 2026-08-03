@@ -69,6 +69,7 @@ from tracks_and_trails.downloader.protocol import (
     WorkerFinished,
 )
 from tracks_and_trails.ui.add_dialog import (
+    ROW_PRESET_NAME,
     STATE_TEXT,
     UNKNOWN_TEXT,
     AddUrlDialog,
@@ -667,14 +668,60 @@ def test_a_mixed_batch_commits_only_the_rows_that_were_read(
     type_urls(dialog, f"{fixture_url(SINGLE_ITEM)}\nhttps://no-fixture.invalid/x")
     dialog.resolve()
     assert spin(lambda: states(dialog) == [RowState.READY, RowState.FAILED]), states(dialog)
-    readable = dialog.rows[0].job_id
 
     dialog.add_to_queue()
 
-    assert dialog.queued_job_ids == (readable,), (
+    assert len(dialog.queued_job_ids) == 1, (
         f"the commit was {dialog.queued_job_ids}, not the one row that had been read"
     )
-    assert store.jobs[str(readable)].status is JobStatus.RUNNING
+    committed = dialog.queued_job_ids[0]
+    assert store.jobs[committed].url == fixture_url(SINGLE_ITEM), "the wrong row was committed"
+    assert store.jobs[committed].status is JobStatus.RUNNING
+
+
+def test_every_row_carries_its_own_format_control(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """`UX-004`, `T118-R4`: one control per row, and the request built from it at Add.
+
+    **A real control on every row, which is what the maintainer chose** after the alternative was
+    measured: building the list costs 5 ms at twenty rows and 86 ms at a hundred and fifty against
+    `NFR-001`'s ~100 ms budget. `T-119`'s delegate will make it one reused widget without changing
+    the interaction.
+
+    Asserted end to end — set the control, commit, read the stored request — because a per-row
+    override that is not carried into the durable job is a control that does nothing.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
+    listing = dialog.findChild(QListWidget, "stagingList")
+    assert listing is not None
+
+    found = [
+        listing.itemWidget(listing.item(index)).findChild(QComboBox, ROW_PRESET_NAME)
+        for index in range(listing.count())
+    ]
+    assert len(found) == 2 and all(control is not None for control in found), (
+        "a row was drawn without its format control"
+    )
+    controls: list[QComboBox] = [control for control in found if control is not None]
+    # The first entry means "the batch", spelled out rather than blank.
+    assert controls[0].itemData(0) is None
+    assert controls[0].itemText(0).strip(), "the inherited entry is blank, so it reads as no format"
+
+    controls[1].setCurrentIndex(controls[1].findData("Audio only (MP3)"))
+    dialog.add_to_queue()
+
+    committed = dialog.queued_job_ids
+    assert len(committed) == 2
+    assert store.jobs[committed[0]].request.media_kind is MediaKind.VIDEO, (
+        "the untouched row did not follow the batch preset"
+    )
+    assert store.jobs[committed[1]].request.media_kind is MediaKind.AUDIO, (
+        "the row's own preset was not what got queued"
+    )
 
 
 def test_a_failed_row_keeps_the_extractors_words_and_stays_on_screen(
@@ -781,11 +828,99 @@ def test_the_timer_resolves_what_typing_left_behind(
     """
     manager = managers(entry_point=child_never_returning)
     dialog = dialogs(manager, resolve_delay_ms=0)
+    assert dialog is not None
 
     type_urls(dialog, "https://a.invalid/x")
 
-    assert spin(lambda: bool(sink.submissions)), "the timer never resolved the pasted URL"
-    assert [job.url for job in sink.submissions[0]] == ["https://a.invalid/x"]
+    # Observed on the *staging* probes, not on a write: `T118-R1` means resolving persists nothing.
+    assert spin(lambda: bool(manager._staged)), "the timer never resolved the pasted URL"
+    assert [job.url for job in manager._staged.values()] == ["https://a.invalid/x"]
+    assert sink.submissions == [], "the debounce wrote a job, which UX-003 forbids before Add"
+
+
+def test_resolving_does_not_persist_before_add(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+) -> None:
+    """`UX-003`: resolving is transient; Add is the first durable queue operation.
+
+    A database row is already queue intent in this application: composition admits durable
+    `QUEUED` and `READY` rows on startup. Persisting one merely to obtain a probe id therefore
+    turns a crash or an abandoned dialog into an unattended download.
+    """
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    type_urls(dialog, "https://uncommitted.invalid/video")
+
+    dialog.resolve()
+
+    assert store.jobs == {}, "resolving persisted queue intent before Add was pressed"
+
+
+def test_an_edit_during_pending_resolution_never_probes_the_old_url(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    sink: FakeSink,
+) -> None:
+    """A delayed callback must re-decide ownership against the current editor contents.
+
+    This is the asynchronous form of `T016-R1`: the URL the user replaced must not become the
+    request that runs merely because its earlier write happened to finish later.
+    """
+    sink.defer = True
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    old = "https://old.invalid/video"
+    wanted = "https://wanted.invalid/video"
+    type_urls(dialog, old)
+    dialog.resolve()
+
+    type_urls(dialog, wanted)
+    dialog.resolve()
+    sink.release()
+
+    assert [row.url for row in dialog.rows] == [wanted]
+    # **Restated for the corrected design, and strengthened.** The reviewer's original asserted the
+    # replaced URL was absent from the last *submission*; under `T118-R1` resolving submits nothing
+    # at all, so that assertion had no list to read. The claim is unchanged and now checked at the
+    # two places it can fail: nothing was persisted, and no probe is still running for the URL the
+    # user replaced.
+    assert sink.submissions == [], "resolving persisted a job, which UX-003 forbids before Add"
+    # A staged record outlives its own cancellation — the steps that stop a worker each read the
+    # job on the way past — so the claim is that the replaced URL is *being stopped*, not that it
+    # has already vanished. Asserting absence would be asserting a reap had finished, which is
+    # timing rather than ownership.
+    staged = manager._staged
+    replaced = [job_id for job_id, job in staged.items() if job.url == old]
+    assert replaced, "the old URL was never staged, so this proves nothing about replacing it"
+    assert all(job_id in manager._unstaging for job_id in replaced), (
+        "the replaced URL is still being read"
+    )
+    assert any(
+        job.url == wanted and job_id not in manager._unstaging for job_id, job in staged.items()
+    ), "the URL the user actually wants was never read"
+
+
+def test_closing_during_pending_resolution_cannot_start_abandoned_work(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    sink: FakeSink,
+    store: FakeStore,
+    qapp: QApplication,
+) -> None:
+    """A close owns work whose asynchronous setup has not completed yet (`T016-R1`)."""
+    sink.defer = True
+    manager = managers(entry_point=child_never_returning)
+    dialog = dialogs(manager)
+    type_urls(dialog, "https://abandoned.invalid/video")
+    dialog.resolve()
+
+    dialog.reject()
+    sink.release()
+    qapp.processEvents()
+
+    assert store.jobs == {}, "a callback started work after its dialog had abandoned the paste"
 
 
 # --- 3. T016-R1: a result belongs to a line, not to a job id -----------------------------------
@@ -820,7 +955,9 @@ def test_a_result_arriving_after_its_line_was_removed_is_refused(
     # The late result, delivered by hand: the signal it would have ridden is already queued.
     dialog._on_media_probed(job_id, MediaInfo(url="https://gone.invalid/x", title="Too late"))
     assert row.state is RowState.SUPERSEDED, "a result was accepted for a line nobody is looking at"
-    assert job_id in dialog.withdrawing or job_id not in store.jobs
+    # Nothing to withdraw: the probe was never a queue row (`T118-R1`). What must be true is that
+    # it left no durable trace and its worker was stopped.
+    assert store.jobs == {}, "a staging probe wrote a row"
 
 
 def test_editing_one_line_leaves_the_resolved_rows_alone(
@@ -888,9 +1025,8 @@ def test_the_preset_selected_at_add_is_the_one_that_runs(
 
     dialog.add_to_queue()
 
-    job_id = dialog.rows[0].job_id
-    assert job_id is not None
-    stored = store.jobs[job_id].request
+    assert dialog.queued_job_ids, "nothing was committed"
+    stored = store.jobs[dialog.queued_job_ids[0]].request
     assert stored.media_kind is MediaKind.AUDIO, (
         f"queued {stored.format_selector!r}, which is not what the dialog was showing"
     )
@@ -909,12 +1045,15 @@ def test_the_batch_is_admitted_once_in_entry_order(
     an asynchronous prerequisite does not get to suspend that.
     """
     dialog, manager = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
-    first, second = (row.job_id for row in dialog.rows)
-    assert first is not None and second is not None
+    wanted = [row.url for row in dialog.rows]
 
     dialog.add_to_queue()
 
-    assert dialog.queued_job_ids == (first, second), "the batch was committed out of entry order"
+    committed = dialog.queued_job_ids
+    assert [store.jobs[job_id].url for job_id in committed] == wanted, (
+        "the batch was committed out of entry order"
+    )
+    first, second = committed
     assert store.jobs[first].status is JobStatus.RUNNING, (
         "a later row took the only slot before the head of the queue"
     )
@@ -925,28 +1064,23 @@ def test_the_batch_is_admitted_once_in_entry_order(
 # --- 5. T016-R2: closing abandons, and owns the outcome ----------------------------------------
 
 
-def test_the_batch_is_admitted_once_and_only_after_every_retarget_settles(
+def test_the_batch_is_admitted_only_after_its_rows_are_durable(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
     store: FakeStore,
+    sink: FakeSink,
     spin: Callable[..., bool],
 ) -> None:
-    """`T115-R1`: **one** admission decision, taken after the prerequisite is durable.
+    """`REQ-012`, and what replaced `T115-R1`'s retarget barrier.
 
-    `T-075` requires each row's request to be stored before it may run, and admitting as each
-    retarget lands is what let a later `queue_position` take a slot the head of the queue was
-    still waiting for.
+    The batch used to be written first and *retargeted* to the chosen preset, so admission had to
+    wait for every retarget to settle — `T118-R3` is the race that left behind. Each row is now
+    written once, already carrying its final request, so the only thing to wait for is the write.
 
-    **The writes are deferred**, because with a synchronous store this cannot fail: every retarget
-    settles before the next statement runs, so a barrier and no barrier behave identically. A
-    mutation deleting the barrier survived until the store could hold a write open.
-
-    Asserted on the calls rather than on the resulting statuses: admitting twice is the mutant's
-    signature and the second call is refused by the state machine, so the rows would look right.
+    **The write is deferred**, because with a synchronous sink this cannot fail: everything settles
+    before the next statement runs and a barrier behaves identically to none.
     """
     dialog, manager = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
-    expected = [row.job_id for row in dialog.rows]
-
     admitted: list[str] = []
     original = manager.admit
 
@@ -955,25 +1089,50 @@ def test_the_batch_is_admitted_once_and_only_after_every_retarget_settles(
         original(job_id, kind)
 
     manager.admit = recording  # type: ignore[method-assign]
-    # **The preset has to change**, or there is no barrier to test. `retarget` skips the write
-    # when the stored request already equals the one asked for (`T075-R1`) and calls back
-    # synchronously, so a deferred store defers nothing and the first version of this test
-    # measured an ordering that never happened.
-    choose_preset(dialog, "Audio only (MP3)")
-    store.defer_updates = True
+    sink.defer = True
 
     try:
         dialog.add_to_queue()
-        assert admitted == [], "the batch was admitted before its retargets were durable"
+        assert admitted == [], "the batch was admitted before its rows were durable"
+        assert store.jobs == {}, "rows were in the store before the write completed"
     finally:
-        # In a `finally` so a failure above does not leave the writer holding callbacks the
-        # manager's shutdown is waiting on — the fixture would then fail every later test with a
-        # teardown error that says nothing about what broke.
-        store.release_updates()
+        # In a `finally` so a failure above does not leave the sink holding callbacks the
+        # manager's shutdown is waiting on.
+        sink.release()
 
-    assert admitted == expected, (
-        f"admitted {admitted}, expected each row exactly once in entry order ({expected})"
+    assert admitted == list(dialog.queued_job_ids), (
+        f"admitted {admitted}, expected each committed row exactly once in entry order"
     )
+
+
+def test_the_dialog_stays_open_until_its_commit_settles(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    sink: FakeSink,
+    spin: Callable[..., bool],
+) -> None:
+    """`T118-R3`: the dialog owns the outcome of the Add the user pressed.
+
+    It used to disappear while its rows were still being made durable, leaving nobody watching
+    whether the commit worked — and, when a retarget then failed, a `READY` row in the queue
+    carrying the *old* request for startup to download in the wrong format.
+
+    Add is disabled for the whole commit as well, so a second click cannot schedule a duplicate.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM)
+    sink.defer = True
+
+    try:
+        dialog.add_to_queue()
+
+        assert dialog.is_saving, "the commit is not owned"
+        assert not button(dialog, "addButton").isEnabled(), "a second click would commit twice"
+        dialog.reject()
+        assert dialog.isVisible() or not dialog.result(), "the dialog closed on an unsettled commit"
+    finally:
+        sink.release()
+
+    assert dialog.queued_job_ids, "the commit never completed"
 
 
 def test_closing_withdraws_every_row_it_did_not_commit(
@@ -987,18 +1146,20 @@ def test_closing_withdraws_every_row_it_did_not_commit(
     A row has to be persisted before it can be probed (`REQ-012`), so closing on it silently would
     leave live work a restart picks up — which is exactly `T016-R1`'s Critical consequence.
     """
-    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
+    dialog, manager = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
     job_ids = [row.job_id for row in dialog.rows]
     assert all(job_id is not None for job_id in job_ids)
 
     dialog.reject()
-    assert spin(lambda: not dialog.withdrawing)
 
-    for job_id in job_ids:
-        assert job_id not in store.jobs, (
-            f"{job_id} was left in the queue after the dialog was closed"
-        )
-    assert sorted(store.removals) == sorted(str(job_id) for job_id in job_ids)
+    # **Nothing to withdraw, because nothing was ever written** (`T118-R1`). The earlier version
+    # asserted the rows had been *removed* from the store; the ruling is stronger — they were
+    # never in it, so there is no `CANCELLED` row and no delete.
+    assert store.jobs == {}, f"resolving persisted rows: {sorted(store.jobs)}"
+    assert store.removals == [], "a row was deleted, so one had been written"
+    assert all(not manager.is_staged(str(job_id)) for job_id in job_ids), (
+        "a staging probe outlived the dialog that started it"
+    )
 
 
 def test_a_committed_row_is_not_withdrawn_when_the_dialog_closes(
@@ -1013,39 +1174,41 @@ def test_a_committed_row_is_not_withdrawn_when_the_dialog_closes(
     unresolved would cancel the job it had just started.
     """
     dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM)
-    job_id = dialog.rows[0].job_id
-    assert job_id is not None
 
     dialog.add_to_queue()
     assert spin(lambda: not dialog.isVisible())
 
-    assert store.jobs[job_id].status is not JobStatus.CANCELLED, (
+    # The committed job is a **new, durable** id — the staging probe's id was never a queue row.
+    committed = dialog.queued_job_ids
+    assert len(committed) == 1
+    assert committed[0] in store.jobs, "the committed row is not in the queue"
+    assert store.jobs[committed[0]].status is not JobStatus.CANCELLED, (
         "closing cancelled the download the user had just added"
     )
 
 
-def test_the_dialog_stays_open_until_its_withdrawals_are_durable(
+def test_closing_mid_read_stops_the_probes_without_writing_anything(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
+    store: FakeStore,
     spin: Callable[..., bool],
 ) -> None:
-    """`T016-R1`: until the cancellation is on disk, the row is still work.
+    """`T016-R2` and `T118-R1`: closing abandons the batch, and closing is immediate.
 
-    The check has to happen **after** the withdrawals are created as well as before them. The
-    first correction to this checked on the way in, then created one four lines later, and carried
-    straight on to `super().done()`.
+    The earlier version held the window open until a durable `CANCELLED` had been written for
+    every row. There is nothing to write: a staging probe was never a queue row, so the dialog
+    stops its workers and goes. What the queue never held, it never has to be told about.
     """
     manager = managers(entry_point=child_never_returning)
     dialog = dialogs(manager)
-    type_urls(dialog, "https://never.invalid/x")
+    type_urls(dialog, "https://never.invalid/x\nhttps://never.invalid/y")
     dialog.resolve()
-    assert spin(lambda: bool(dialog.rows) and dialog.rows[0].in_flight)
+    assert spin(lambda: len(dialog.rows) == 2 and all(row.in_flight for row in dialog.rows))
 
     dialog.reject()
 
-    assert dialog.withdrawing, "nothing was withdrawn for a row that had been persisted"
-    assert dialog.isVisible() or dialog.result() == 0
-    assert spin(lambda: not dialog.withdrawing), "the withdrawal never landed"
+    assert store.jobs == {}, "closing left rows in the queue that were never committed"
+    assert spin(lambda: manager.is_idle, timeout=60), "a probe outlived the dialog"
 
 
 # --- 6. NFR-005 and T016-R6: reachable, named, and never interpreted ---------------------------
@@ -1065,8 +1228,13 @@ def test_the_keyboard_order_is_the_declared_one(
 
     reachable = [widget.objectName() for widget in focusable_widgets(dialog)]
 
-    assert sorted(reachable) == sorted(EXPECTED_TAB_ORDER), (
-        f"the focusable set is not the declared one: {sorted(reachable)}"
+    # **The row controls are counted, not named** (`UX-004`). Each row carries its own format
+    # combo, so the focusable set grows with the paste — naming twenty of them would be naming the
+    # paste rather than the dialog. They all share one object name and are asserted per row by
+    # `test_every_row_carries_its_own_format_control`; what this owns is the fixed surface.
+    fixed = [name for name in reachable if name != ROW_PRESET_NAME]
+    assert sorted(fixed) == sorted(EXPECTED_TAB_ORDER), (
+        f"the fixed focusable set is not the declared one: {sorted(fixed)}"
     )
     assert [widget.objectName() for widget in dialog.focus_chain()] == list(EXPECTED_TAB_ORDER)
 
@@ -1230,8 +1398,7 @@ def test_a_large_paste_is_one_write_and_one_repaint(
     dialog.resolve()
     elapsed = time.monotonic() - started
 
-    assert len(sink.submissions) == 1, "a paste of five hundred became more than one write"
-    assert len(sink.submissions[0]) == 500
+    assert sink.submissions == [], "resolving wrote jobs, which UX-003 forbids before Add"
     assert len(dialog.rows) == 500
     assert elapsed < INTERACTION_BUDGET_SECONDS, (
         f"resolving a large paste blocked the GUI thread for {elapsed:.3f}s"

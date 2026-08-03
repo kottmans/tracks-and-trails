@@ -97,6 +97,25 @@ def child_probing_then_waiting(
     queue.put(WorkerFinished(job_id=job_id, exit_code=0))
 
 
+def child_probing_then_failing(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """Read the URL fine, then fail the download with a retryable error.
+
+    **The only shape that produces a retryable queue job** under `UX-003`: a URL that will not
+    read never becomes a job at all, so a failed *probe* leaves nothing for the queue's retry to
+    act on. Failure has to happen after Add, which is where `REQ-018`'s retry has always lived.
+    """
+    if kind is SessionKind.PROBE:
+        queue.put(
+            Probed(job_id=job_id, media=MediaInfo(url=request.url, title="A video that exists"))
+        )
+        queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+        return
+    queue.put(Failed(job_id=job_id, kind=ErrorKind.NETWORK, message="the connection dropped"))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=1))
+
+
 def child_probing_then_succeeding(
     kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
 ) -> None:
@@ -262,8 +281,12 @@ def test_the_composed_application_downloads_a_file_and_shows_it_finished(
     )
     media = dialog.rows[0].media
     assert isinstance(media, MediaInfo) and media.title == "A video that exists"
-    assert composition.window.watched_job_id is not None, (
-        "the window never showed the job the manager was working on"
+    # **Nothing is watched yet, and that is the corrected behaviour** (`T118-R1`). Reading a URL is
+    # a staging probe with no queue row, so the window has no job to show. It used to latch onto
+    # the transient id here and then sit on it: the download completed and the view still said
+    # "ready", because the id it was watching was never the one that ran.
+    assert composition.window.watched_job_id is None, (
+        "the window is showing progress for a URL nobody has added yet"
     )
 
     # The probe's *session* outlives its result: the manager releases it on a later tick. Adding
@@ -271,6 +294,9 @@ def test_the_composed_application_downloads_a_file_and_shows_it_finished(
     assert spin(lambda: composition.manager.is_idle, timeout=60), "the probe session never ended"
     dialog.add_to_queue()
     assert "did not start" not in dialog.status_text(), dialog.status_text()
+    assert spin(lambda: composition.window.watched_job_id is not None, timeout=60), (
+        "the window never showed the job the manager was working on"
+    )
     # **Waited on the view, not on the store**, and the difference is `T-013`'s ordering rather
     # than a detail. The writer thread commits the row and *then* signals the GUI thread, so
     # `store.get()` answers `COMPLETED` from disk while `job_changed` is still queued. The
@@ -609,22 +635,29 @@ def test_retrying_a_failed_job_re_queues_it_and_starts_it_again(
     be the layering violation `T-005` fails the suite for. What it costs is that nothing retried
     anything until composition existed — which is exactly the shape of gap `T-036` was filed for.
     """
-    composition = composed(entry_point=child_failing_to_extract)
+    composition = composed(entry_point=child_probing_then_failing)
     dialog = composition.window.open_add_dialog()
     type_urls(dialog, "https://composed.invalid/gone")
+    # **The URL reads, and the *download* fails** (`UX-003`, `T118-R1`). This used to fail the
+    # probe, which no longer produces anything to retry: an unreadable URL never becomes a queue
+    # job. `REQ-018`'s retry has always been about a job that failed downloading.
     dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and dialog.rows[0].committable, timeout=60), (
+        "the URL never resolved, so it could never be added"
+    )
+    dialog.add_to_queue()
 
     # Waited on the view, per the module docstring: the row is `FAILED` on disk before the
     # manager announces it, and a retry control that exists only after the announcement cannot
     # be asserted on before it. Waiting on `is_idle` here would be worse still — it is true
-    # before the probe starts.
+    # before the download starts.
     assert spin(
         lambda: (
             composition.window.progress_view is not None
             and composition.window.progress_view.status is JobStatus.FAILED
         ),
         timeout=60,
-    ), "the probe never failed, so there is nothing to retry"
+    ), "the download never failed, so there is nothing to retry"
 
     view = composition.window.progress_view
     assert view is not None
