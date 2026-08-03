@@ -137,8 +137,12 @@ and not yet on the runner that found two of them.
   **Replaced 2026-08-03** by three assertions rather than one: an absolute budget at 500 URLs with
   a 24x margin, a runner-invariant scaling ratio, and a structural count of the per-row controls.
   The third is the one that matters — a mutation restoring a widget per row passed *both* timing
-  tests, because an unshown view lays nothing out. **A hosted-Windows measurement at the new
-  absolute bound is owed and has not been taken.**
+  tests, because an unshown view lays nothing out. **One Windows measurement at the new absolute
+  bound is owed and has not been taken** — and it should be taken on `STARBASE` rather than on a
+  hosted runner, because hosted Actions minutes are nearly exhausted (maintainer, 2026-08-03).
+  `ci.yml` already routes the Windows `check` job through `vars.WINDOWS_RUNNER`, so that is a
+  repository variable rather than a workflow change. `STARBASE` is a different machine from the one
+  the flapping was observed on; the substitution is deliberate and is named as one in `TASKS.md`.
 - **Two teardown errors in the staging seam**, both `shutdown() → cancel()` reaching a staged job
   in a state `cancel` cannot express: `KeyError: no job with id …` (seen twice) and
   `IllegalTransitionError: cannot move a job from failed to cancelled`. Neither reproduces on

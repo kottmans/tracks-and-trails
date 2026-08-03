@@ -194,9 +194,15 @@ alone.
 **Its correction batch is complete and awaiting re-review** (2026-08-03). The delegate redesign
 landed with `T-119`'s carried scope, and the three causes of the red board — `T118-R10`'s flapping
 bound and two teardown errors in the staging seam — are addressed. **What stands between here and a
-green board is a hosted-Windows run**: the new absolute bound has been measured on a development
-machine only, and the two teardown fixes have not been re-observed on `STARBASE`. Re-review and
-that run are the remaining steps, in that order.
+green board is one Windows run**: the new absolute bound has been measured on a development machine
+only, and the two teardown fixes have not been re-observed on `STARBASE`. Re-review and that run are
+the remaining steps, in that order.
+
+**That run belongs on `STARBASE`, not on a hosted runner** (maintainer, 2026-08-03): hosted Actions
+minutes are nearly exhausted, and the self-hosted desktop costs none and is the machine both
+teardown errors were found on. `ci.yml`'s Windows `check` job already reads `vars.WINDOWS_RUNNER`,
+so this is a repository variable rather than a workflow change — and `OPS-005` pointed it at hosted
+only *while* `STARBASE` was offline, which stopped being true on 2026-08-03.
 
 **Nothing is blocked on a machine any more, and `STARBASE` is back:** `OPS-005` was amended so
 hosted Windows carries the gate while it was offline; it returned 2026-08-03 and now runs both the

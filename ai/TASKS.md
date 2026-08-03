@@ -305,10 +305,22 @@ distinguish "the machine was fast" from "the design is flat":
 Repaint was measured directly and is **flat in the model**: painting 12 rows costs 3.1 ms median
 whether the model holds 12, 150, 500 or 2000 rows; 40 rows costs 10.2 ms.
 
-**Owed, and not done: a hosted-Windows measurement at the new bound.** `T118-R10` asks for one
-explicitly and this session has no access to that runner, so the figures above are development-
-machine only. The ratio and the structural count are runner-invariant and do not need it; the
-1.0 s absolute budget does. It is recorded here rather than left implied.
+**Owed, and not done: one Windows measurement at the new bound.** `T118-R10` asks for one
+explicitly and this session has no access to a Windows runner, so the figures above are
+development-machine only. The ratio and the structural count are runner-invariant and do not need
+it; the 1.0 s absolute budget does. Recorded here rather than left implied.
+
+**Take it on `STARBASE`, not on hosted Windows** (maintainer, 2026-08-03): hosted Actions minutes
+are nearly exhausted and the self-hosted desktop costs none. `ci.yml`'s Windows `check` job already
+reads `vars.WINDOWS_RUNNER` and falls back to `windows-latest` only when it is unset, so this is a
+repository variable rather than a workflow change — and `OPS-005` pointed it at hosted *while
+`STARBASE` was offline*, which stopped being true on 2026-08-03.
+
+**Stated plainly because the machines are not interchangeable:** the flapping was *observed* on
+hosted Windows, so a green `STARBASE` run is evidence about a different machine. That is the right
+trade here — the replacement bound carries a 24x margin rather than a 4 % one, and the assertion
+that actually holds (the control count) needs no runner at all — but it is a substitution, and the
+re-review should see it named as one rather than discover it.
 
 ##### Mutations run
 
