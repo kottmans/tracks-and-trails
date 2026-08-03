@@ -78,13 +78,27 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # **Hosted runners only**, exactly as the `frozen` job already guards it. On a machine
+      # somebody uses, `setup-python` runs the real installer: it deleted the tool-cache
+      # interpreter and then failed the reinstall (run `30823595744`). `OPS-009` fixed that for
+      # `frozen` and left this behind — which was harmless only while `WINDOWS_RUNNER` was unset,
+      # and became the blocker the moment the Windows leg was pointed at `STARBASE`.
       - uses: actions/setup-python@v7
+        if: runner.environment == 'github-hosted'
         with:
           # ARC-001 / T-002: the pinned baseline. PySide6 ships abi3 wheels, so this is a
           # project choice, not a PySide6 constraint.
           python-version: "3.14"
           cache: pip
           cache-dependency-path: pyproject.toml
+
+      - name: Check the machine's Python
+        # A self-hosted runner must not provision itself as a side effect of running a build, so
+        # it uses the Python already installed and says so if that is the wrong one.
+        if: runner.environment != 'github-hosted'
+        run: |
+          python --version
+          python -c "import sys; assert sys.version_info[:2] == (3, 14), sys.version"
 
       - name: Install Qt runtime libraries
         if: runner.os == 'Linux'
@@ -107,8 +121,18 @@ jobs:
         # in an environment no user has. That a *user* without ffmpeg is refused more than they
         # should be is a separate defect (T-061) with its own gate, and installing ffmpeg here
         # does not paper over it.
+        #
+        # **Installed on hosted runners, recorded on self-hosted ones.** `choco install ffmpeg` on
+        # `STARBASE` would put software on a machine somebody uses, for the same reason
+        # `setup-python` must not. The `windows desktop` job already takes that position and runs
+        # this same default suite there without ffmpeg — so recording is not a weakening, it is
+        # the configuration that job has been proving all along.
         run: |
-          if [ "${{ runner.os }}" = "Linux" ]; then
+          if [ "${{ runner.environment }}" != "github-hosted" ]; then
+            echo "self-hosted: not installing ffmpeg; recording what is present"
+            command -v ffmpeg || echo "ffmpeg: NOT FOUND — this run measured the no-ffmpeg configuration"
+            ffmpeg -version 2>&1 | head -1 || true
+          elif [ "${{ runner.os }}" = "Linux" ]; then
             sudo apt-get install -y --no-install-recommends ffmpeg
           else
             choco install ffmpeg --no-progress -y
