@@ -37,14 +37,18 @@ look one task from exiting when the sign-off it actually needs had not been requ
 - **Approved 2026-08-02:** `T-088` at `9e133a6`, the phase's own proof, once `T088-R4` and
   `T087-R6` were corrected and the suite passed on hosted Windows and Ubuntu.
 - **Approved 2026-08-03:** `T-116` at `253bbce`, after `T116-R1`. `T117-R1` closed.
-- **In review, corrected and awaiting re-review:** `T-118`, carrying `T-119`. `T118-R1`…`R3`
-  remain resolved and survived the rewrite; `UX-004` closes `T118-R5`; `T118-R6` (Critical) was
-  corrected at `446d151`. **`T118-R7` and `R9`…`R11` are corrected by the redesign the review
-  asked for** — `ui/row_delegate.py` draws one row for the staging list and the queue both, with
-  one editor for the row being edited rather than a widget per row. `T-119`'s carried scope
-  (bounded pixmap cache, disk cache under `NFR-004`, no fetch for an unpainted row) landed with
-  it. Only the Reviewer marks any of these Resolved (`AGENTS.md` §10).
-  **One thing is owed:** a hosted-Windows measurement at the replacement bound. See `TASKS.md`.
+- **In review, changes requested a third time and corrected again:** `T-118`, carrying `T-119`.
+  The reviewer marked `T118-R1`…`R3`, `R6`, `R7`, `R9`, `R11` and the `e300b04` teardown fixes
+  **Resolved**, and `UX-004` closes `T118-R5`. Three findings blocked and are now corrected:
+  **`T118-R12`** — the delegate reserved the per-row control's slot and painted nothing in it, so
+  `UX-004` §1's visible control existed only for a user who knew to press F2, and my own
+  structural test demanded *zero* controls, encoding the absence rather than catching it;
+  **`T118-R8`** — the right selector reached the model and was then elided to nothing at a
+  realistic width, which the `DisplayRole` tests could not see; **`T118-R13`** — the thumbnail
+  fetch was asynchronous and the cleanup was not, blocking the GUI thread on disk and for an
+  explicit five seconds on close. `T118-R10`'s design was accepted with verification still open.
+  Only the Reviewer marks any of these Resolved (`AGENTS.md` §10).
+  **One thing is owed:** a Windows measurement at the replacement bound, on the corrected head.
 - **Approved 2026-08-02:** `T-115`, after `T115-R1` (High) — the probed row was retargeted while
   every later queue position was admitted ahead of it, so with a pool of one the second URL
   started and the head of the queue waited. Add now takes one admission decision after the
