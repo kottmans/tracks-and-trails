@@ -537,11 +537,25 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
+      # **Hosted runners only.** `OPS-009` moved the Windows leg onto `STARBASE` and left this
+      # action behind, which repeated the incident the desktop job's own comment records: on a
+      # machine somebody uses, `setup-python` runs the real installer. It deleted the tool-cache
+      # interpreter and then failed the reinstall — run `30823595744`, "Error happened during
+      # Python installation". A self-hosted runner must not provision itself as a side effect of
+      # running a build, so the Windows leg uses the Python already on the machine, exactly as
+      # the desktop job does.
       - uses: actions/setup-python@v7
+        if: runner.environment == 'github-hosted'
         with:
           python-version: "3.14"
           cache: pip
           cache-dependency-path: pyproject.toml
+
+      - name: Check the machine's Python
+        if: runner.environment != 'github-hosted'
+        run: |
+          python --version
+          python -c "import sys; assert sys.version_info[:2] == (3, 14), sys.version"
 
       - name: Install Qt runtime libraries
         if: runner.os == 'Linux'
@@ -603,7 +617,7 @@ jobs:
         if: always()
         run: |
           {
-            echo "platform: ${{ matrix.os }}"
+            echo "platform: ${{ matrix.name }}"
             echo "ref: ${{ github.sha }}"
             du -sk dist/tracks-and-trails | awk '{print "artifact KiB: " $1}'
             find dist/tracks-and-trails -path '*yt_dlp*' -type f \
@@ -657,7 +671,10 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: frozen-evidence-${{ matrix.os }}
+          # `matrix.name`, because `OPS-009` replaced `matrix.os` and left three references to
+          # it behind. Both legs then uploaded to `frozen-evidence-`, so the matrix's two
+          # artifacts became one — run `30823595744` produced a single unnamed-leg artifact.
+          name: frozen-evidence-${{ matrix.name }}
           # The raw probe log is written next to the artifact by frozen_smoke.py, not at the
           # repository root — the previous path silently uploaded nothing (`T029-R3`).
           path: |

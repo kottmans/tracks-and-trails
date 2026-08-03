@@ -4500,15 +4500,33 @@ def test_the_attempt_count_is_bounded_and_the_last_error_survives(
     download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
     try:
         download.start("job-NETWORK")
-        assert spin(
-            lambda: (
-                job_row(repository, "job-NETWORK").attempts >= manager_module.AUTOMATIC_RETRY_LIMIT
-            ),
-            timeout=120,
-        ), "the automatic attempts never reached the bound"
+
+        def the_bound_was_reached_and_settled() -> bool:
+            """The last automatic attempt has been counted **and** has reported its outcome.
+
+            Both halves, read from one snapshot. `attempts` is incremented by the retry that
+            *starts* an attempt (`_perform_due_retries`), so the bound is reached a whole
+            session before that session's failure lands — and waiting on the count alone left
+            the assertions below racing a spawn. That is not academic: a session costs ~0.25 s
+            on this maintainer's Linux box and ~1.07 s on `STARBASE`, so the fixed 1.0 s wait
+            that used to stand here passed on one and failed on the other (runs `30822454998`
+            and `30823595744`, both `PROBING is FAILED`). The manager was not at fault either
+            time.
+            """
+            job = job_row(repository, "job-NETWORK")
+            return (
+                job.attempts >= manager_module.AUTOMATIC_RETRY_LIMIT
+                and job.status is JobStatus.FAILED
+            )
+
+        assert spin(the_bound_was_reached_and_settled, timeout=120), (
+            "the automatic attempts never reached the bound and settled"
+        )
 
         # Well past another backoff: if the bound did not hold, this is where it would show.
-        spin(lambda: False, timeout=1.0)
+        # Derived from the backoff `quick_backoff` installed rather than written as a number,
+        # so "well past" stays true of the delay actually in force.
+        spin(lambda: False, timeout=20 * manager_module.RETRY_BACKOFF_SECONDS[0])
         job = job_row(repository, "job-NETWORK")
 
         assert job.attempts == manager_module.AUTOMATIC_RETRY_LIMIT, (

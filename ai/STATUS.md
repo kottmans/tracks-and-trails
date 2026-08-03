@@ -5,8 +5,8 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-02
-**Last verified against repository:** 2026-08-02
+**Last updated:** 2026-08-03
+**Last verified against repository:** 2026-08-03
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -16,8 +16,10 @@
 Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLAN-R2` at `f858da9`,
 `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
-**Every Phase 2 deliverable is approved except `T-115`, which awaits a re-verdict.** Phase 2 exit
-criterion 6 — every deliverable reviewed — is the only one not met.
+**Every Phase 2 deliverable is approved**, `T-115` included — it was approved 2026-08-02 and this
+line said otherwise until 2026-08-03, which is `COORD-R12`'s class again. Phase 2 exit criterion 6
+— every deliverable reviewed — is met for Phase 2's own tasks; the UI rework's `T-118` is what is
+still open.
 
 - **Approved:** `T-078`, `T-079`, `T-080`, `T-081`, `T-046`, `T-083`, `T-085`, `T-087`, `T-102`,
   plus the supporting `T-053`, `T-099`, `T-101`, `T-103`.
@@ -32,16 +34,18 @@ criterion 6 — every deliverable reviewed — is the only one not met.
   rather than five patches**: one rendered row, one declared keyboard route, one effective request.
   `T118-R6` is Critical — a row overridden to MP3 stores 192 kbps while the visible control says
   320, which is `T-075`'s consequence again.
-- **In review:** `T-115`. Returned **changes requested** for `T115-R1` (High) — the probed row was
-  retargeted while every later queue position was admitted ahead of it, so with a pool of one the
-  second URL started and the head of the queue waited. Corrected 2026-08-02: Add takes one
-  admission decision after the retarget settles, probed id first.
+- **Approved 2026-08-02:** `T-115`, after `T115-R1` (High) — the probed row was retargeted while
+  every later queue position was admitted ahead of it, so with a pool of one the second URL
+  started and the head of the queue waited. Add now takes one admission decision after the
+  retarget settles, probed id first.
 - **Reopened and corrected:** `T-087`'s killed-holder test (`T087-R6`). The guard is unchanged and
   its approval stands; the test was killing a launcher shim and leaving the real holder alive.
-- **Blocked on `STARBASE`, which is offline:** `T-092` and `T-074`. Neither gates the phase.
+- **`T-092` and `T-074` are unblocked and still open.** `STARBASE` came back online 2026-08-03
+  after being unreachable since `OPS-005`'s amendment. Neither gates the phase.
 
 **The UI rework has started.** `UX-003` is accepted — nothing enters the queue unprobed — and
-`T-116` through `T-120` are filed. Two are **in review**:
+`T-116` through `T-120` are filed. `T-116`, `T-117` and `T-120` are **approved**; `T-118` is the
+one still in review:
 
 - **`T-116`** — probes and downloads now draw on separate lanes, so pasting URLs no longer takes
   the slots a running transfer is using. It came first because `UX-003` makes probing mandatory,
@@ -58,6 +62,49 @@ criterion 6 — every deliverable reviewed — is the only one not met.
 **`T-119` is deliberately not started.** It depends on `T-117` and `T-118`, both unreviewed, and
 `T-118` alone found six defects in code it did not write. Maintainer decision, 2026-08-02: take a
 verdict on what exists before building the queue delegate on top of it.
+
+**`T-118` and `T-119` will be corrected as one task**, not two. Maintainer decision, 2026-08-03:
+the reviewer's own disposition asks for *one rendered row, one declared keyboard route, one
+effective request*, and `T-119`'s delegate answers `T118-R7`, `T118-R9` and `T118-R10` together
+because it draws one reusable editor instead of a widget per row. `T118-R6` and `T118-R8` are then
+the request and its display done correctly inside a row the task owns. Patching five findings
+against the widget-per-row approach would be fixing what the review already said to replace.
+
+## Two red gates on `main`, both diagnosed 2026-08-03, neither in `T-116` or `T-118`
+
+Corrected here at the maintainer's instruction. **Neither correction has been reviewed** — they are
+maintainer-directed, not reviewer-verified.
+
+**`test_the_attempt_count_is_bounded_and_the_last_error_survives` was racing a spawn, not catching
+a defect.** It failed on the `windows desktop` job in runs `30822454998` and `30823595744` —
+deterministically, both times `assert <JobStatus.PROBING> is <JobStatus.FAILED>` with `attempts=3`
+and the `NETWORK` message already stored. `attempts` is incremented by the retry that *starts* an
+attempt, so `attempts >= AUTOMATIC_RETRY_LIMIT` is true a whole session before that session
+reports; the test then allowed a fixed **1.0 s** for it to finish. A session costs ~0.25 s on the
+maintainer's Linux box and **~1.07 s on `STARBASE`** — derived from the failing row itself, whose
+`created_at` and final `started_at` are 3.543 s apart across three completed attempts. It waits for
+the count *and* the settled `FAILED` now, and holds past a backoff derived from the one in force
+rather than a literal.
+
+**`T-116`'s barrier was ruled out.** `entering()` recomputes `_ENTRY_STATUS.get(current.status)`
+when the write runs and `FAILED` is not a key, so nothing can write `PROBING` after a terminal
+state; the observed `FAILED → QUEUED` gap is the 50 ms backoff, not a wait for `_release`. The
+`PROBING` row was the last attempt still in flight. **The first completed full-suite run on the
+real desktop is what exposed it** — the prior desktop run never reached that step.
+
+**`OPS-009`'s implementation broke the frozen Windows job in three places.** The ruling stands; the
+workflow did not honour it. Moving the leg to `STARBASE` left `actions/setup-python@v7` in the job,
+which on a machine somebody uses runs the real installer — it deleted the tool-cache interpreter
+and failed the reinstall (`30823595744`). **The desktop job's own comment records this exact
+incident from the first time it happened.** The leg now checks the machine's Python, as that job
+does. `OPS-009` also replaced `matrix.os` and left three references to it: the two frozen artifacts
+collapsed into one `frozen-evidence-` and the size report recorded an empty platform.
+
+**Not fixed, and carried to the `T-118`/`T-119` session:** run `30822454998` also reported
+`ERROR at teardown … KeyError: "no job with id …"` from `shutdown() → cancel() → _require()` — an
+occupant id that is neither staged nor durable. It did not recur in `30823595744` and does not
+reproduce locally, so it is intermittent. It lives in `T-118`'s staging seam, which that session
+rewrites.
 
 ## What `T-118` found in code it did not write
 
