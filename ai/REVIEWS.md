@@ -8347,3 +8347,83 @@ should be reconciled in the same handoff so the next review is not asked to infe
 from contradictory prose. Reviewer production source was not edited. The intentionally failing
 reviewer regression is the only test change in the working tree; this review record is the only
 other change. Nothing was committed or pushed.
+
+## 2026-08-02 — UI rework and T-115 correction: T-115, T-116, T-117, T-118 and T-120
+
+**Reviewer:** Codex (Reviewer)
+**Review boundary:** `6cdf1fc..3bdbbfa`
+**Implementation commits:** `f6dd691` (`T-115`), `bdd6aea` (`T-116`), `af9bfa1`
+(`T-117`), `6c2d1eb` (`T-118`) and `44091a1` (`T-120`); `6a7d07e` is the accepted
+`UX-003`/task decomposition and `3bdbbfa` is the handoff.
+**Exact candidate head:** `3bdbbfadfd79daafc1a98713464e29917ce4f7da`
+**Overall verdict:** **Changes requested for T-116 and T-118.** T-115 and T-120 are approved.
+T-117's implementation is approved with one non-blocking canonical-model follow-up. Phase 2
+must not be declared exited on this head: its exact Windows job is red, and the failure exposed a
+real same-job process-lifecycle race rather than supplying a trustworthy limit verdict.
+
+### Task verdicts
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-115` | **Approved at `f6dd691`** | Add admits a saved batch as one ordered decision after all retargets settle; startup admits durable waiting intent after recovery; the Add-only and restart routes drain without a priming loop; pause and recovery exclusions remain intact. T115-R1, T115-R2 and COORD-R12 are closed. |
+| `T-116` | **Changes requested at `3bdbbfa`** | Separate bounded lanes, a fixed default probe ceiling of four and lane-aware fill/refusal behavior are sound, but T116-R1 allows the download for a just-probed job to overwrite that job's still-live probe session before its process is released. Hosted Windows observed the resulting extra worker. |
+| `T-117` | **Approved with follow-up at `af9bfa1`** | Migration `0002`, frozen historical data, null handling and the one-revision probe write are sound. T117-R1 is a non-blocking current-truth correction: `ARCHITECTURE.md`'s canonical Job field list still omits `thumbnail_url`. |
+| `T-118` | **Changes requested at `6c2d1eb`** | The staging UI and Qt-free row state are substantial, but the implementation contradicts accepted UX-003 by persisting before Add, reproduces two asynchronous ownership races with Critical consequences, omits per-row preset overrides, and implemented a mock divergence before its explicit T-105 dependency. |
+| `T-120` | **Approved at `44091a1`** | The canonical swatches have one source, both themes are independently defined and applied through palette plus inherited selectors, and text/control contrast is exhaustively measured. The reviewer added the missing all-`JobStatus` textual-name assertion; it passes. Dark-theme visual inspection remains honestly unverified, not a mechanical blocker. |
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T116-R1` | **High** | **Yes — T-116** | Same-job lane handoff / process ownership | `media_probed` is emitted by `_on_session_ended()` after the probe stream ends but before `_release()` has established that the probe process is gone (`manager.py:1909-1931`, `2156-2172`). Because download and probe capacity are now separate, the dialog may immediately admit the same READY id. `_spawn()` then assigns the download to `self._sessions[job_id]` unconditionally (`:1100-1129`), replacing the only `_Session` that owns and reaps a still-live probe. The deterministic reviewer child sends a valid final sentinel and lingers: the download starts while **two** worker processes exist for one job. Exact hosted Windows independently observed three workers against a download limit of two after all dialog rows had finished probing. This is not merely a stale assertion: the manager has lost the probe session object and its queue/log/process cleanup. | Treat an existing session for the same job as an admission barrier even when it belongs to the other lane. Release the probe process, pump, queue and job log before starting that id's download, then re-decide its queued admission. Preserve concurrency between probes and downloads for *different* jobs. Keep the deterministic same-id lingering-process regression and make the phase process sample distinguish legitimate cross-job lane work from an overwritten/unreleased session. | **Open** |
+| `T117-R1` | **Low** | No | Canonical data model | `ARCHITECTURE.md:211-219` is current truth for core entities but its Job field list still omits `thumbnail_url`, the durable field T-117 added. The implementation, migration and tests agree; the canonical description does not. | Have the Documentation Maintainer add `thumbnail_url` to the Job entity list as T-117's coordination close. No implementation re-review is needed for that prose-only correction. | **Open, non-blocking follow-up owned by Documentation Maintainer / T-117** |
+| `T118-R1` | **Critical** | **Yes — T-118** | Accepted UX-003 / durable queue intent | Accepted UX-003 says a job enters the queue only after it is probed, a URL that cannot probe never becomes a job, probe state appears only in the dialog, and nothing is persisted until Add (`DECISIONS.md:2505-2530`). `resolve()` instead builds QUEUED `Job`s and submits them before starting probes (`add_dialog.py:517-606`). These are not harmless temporary records: composition admits every durable QUEUED or READY row on startup (`app.py:166-195`). A crash after probe success therefore leaves a READY row that the next launch downloads even though the user never pressed Add. The reviewer regression proves that merely resolving already populates the store. | Give staging probes transient, non-durable identity/request ownership. Persist the resolved rows, their final per-row requests and queue positions only when Add commits them. A dialog close cancels transient probes; there is no durable queue row to remove or cancel. | **Open** |
+| `T118-R2` | **Critical** | **Yes — T-118** | Asynchronous resolve ownership | When an initial batch write is outstanding, `resolve()` returns and claims its callback will resolve again (`add_dialog.py:527-532`), but `_on_rows_saved()` never does (`:562-585`). Replacing URL A with URL B during that write leaves A on screen and starts A's probe when the callback lands. Closing in the same window is worse: the rows have no ids yet, so `done()` closes without withdrawing anything; the callback then persists and starts the abandoned URL. Both deterministic reviewer regressions fail. The consequence is the exact T016-R1 class: wrong or abandoned work runs because an asynchronous completion was accepted against stale UI ownership. | Every asynchronous resolution completion must validate the current input generation and dialog lifetime before starting anything. Superseded work must be cancelled without becoming durable queue intent, and pending work must keep the close owned until cancellation is established. Retain separate edit-during-pending and close-during-pending regressions. | **Open** |
+| `T118-R3` | **Critical** | **Yes — T-118** | Asynchronous Add/retarget ownership | `add_to_queue()` records `_retargets_pending` but `_refresh()` does not treat it as saving (`add_dialog.py:841-897`), so Add remains enabled and a second click schedules duplicate retargets. More seriously, `_committed` makes `done()` exempt those ids from withdrawal (`:967-1009`) even though the chosen request is not durable yet. The dialog can disappear while the retarget is outstanding; if the real write then fails, `_admit_when_ready()` clears `_committed` on a hidden dialog and leaves the durable READY row carrying its old request (`:899-921`). Startup admits that row and silently downloads the wrong format. Reviewer regressions prove both that Add remains enabled and that close abandons an unsettled commit. | Make retarget settlement part of the dialog's owned commit lifecycle: disable Add after the first commit request, refuse/hold close while it is unsettled, and on failure retain visible ownership or durably remove every uncommitted row. Do not expose a READY row with an old request to startup admission. Mutation-check failure, close and double-click variants. | **Open** |
+| `T118-R4` | **High** | **Yes — T-118** | Required per-row format choice | T-118's acceptance criterion says the paste preset is overridable per row and the effective selector shown is what will run (`TASKS.md:167-176`). The implementation has only one batch preset; its row context menu supplies Retry and Remove, with no per-row request/preset model or action. Core user-visible task functionality is absent. | Add a per-row override with an explicit inherited/default state, show the effective selector for each committable row, and build each final request from that row's effective choice at Add. Test a mixed-preset batch through durable retarget and admission. | **Open** |
+| `T118-R5` | **High** | **Yes — T-118** | Unmet dependency / approved mock divergence | T-118 explicitly depends on `T-105`'s `docs/UX_SPEC.md` (`TASKS.md:140-143`), and the Phase-3 trigger requires that document before the phase starts (`IMPLEMENTATION_PLAN.md:335-365`); the file does not exist. The implementation then deliberately replaces the approved mock's visible per-row controls with a context menu. Keyboard reachability is useful evidence but does not authorize changing the approved interaction, and the missing per-row preset action makes the divergence substantive rather than cosmetic. | Complete T-105 and implement the approved anatomy, or obtain and record an explicit maintainer amendment choosing the context menu and defining where the per-row preset override lives. This is a scope/design ruling, not something review can infer from code. | **Open** |
+
+### Review judgments requested in the handoff
+
+**Withdrawal by remove versus cancel is not accepted as the governing choice.** UX-003's accepted
+rule is stronger: before Add, there is no durable job. A transient probe still needs cooperative
+cancellation and process reaping, but closing or editing the staging list must not manufacture a
+`CANCELLED` row *or* delete a temporary queue row. After Add, ordinary queue cancel/remove semantics
+apply unchanged. This avoids adding `FAILED → CANCELLED` to ARC-004 because an uncommitted failed
+probe never entered that state machine as a Job.
+
+**A fixed `DEFAULT_PROBE_CONCURRENCY = 4` is accepted.** REQ-013 is the user-facing download limit,
+not a promise of a second setting. The probe limit is separately constructor-injectable, its own
+capacity/refusal/waiting behavior is tested with non-default values, and four is a bounded internal
+policy that can be revisited if measured. T116-R1 concerns same-id lifetime, not the value four.
+
+**The context-menu divergence is not approved on this record.** It needs T-105 plus either fidelity
+to the approved mock or a maintainer amendment. A context menu may remain as a keyboard-accessible
+secondary route; it cannot silently replace the only visible per-row affordances, particularly
+while one required per-row action is missing entirely.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and tree | `6cdf1fc..3bdbbfa` inspected; `HEAD == origin/main == 3bdbbfadfd79daafc1a98713464e29917ce4f7da` before reviewer tests; implementation tree was clean; `git diff --check 6cdf1fc..3bdbbfa` passed. |
+| Implementer local evidence | Reported **1932 passed / 11 skipped / 2 deselected**, all four mypy gates, ruff/format and **39 mutations killed**. This remains valid local evidence but is not an exact-head Windows pass. |
+| Exact GitHub Actions | Run `30760049031`, exact SHA `3bdbbfadfd79daafc1a98713464e29917ce4f7da`, conclusion **failure**. Ubuntu and both frozen jobs passed; Windows desktop skipped. |
+| Hosted Windows | **1 failed / 1919 passed / 21 skipped / 32 deselected**. `test_the_pool_never_exceeds_the_configured_limit` observed **3 worker processes** with download limit 2 while durable download-row accounting stayed at or below 2. All other selected Windows tests passed. |
+| Frozen pre-T118 slices | T-115 **3 passed**; T-116 **6 passed**; T-117 **8 passed**; focused ruff/format and both source mypy platforms passed against the frozen implementation heads. |
+| Current focused T-116/T-117/T-120 slice | **56 passed / 291 deselected**, including both lane ceilings, lane-aware fill/pause/cancel/shutdown, migration/thumbnail cases, both themes and the reviewer all-status textual-name assertion. |
+| Reviewer T-116 regression | **1 failed as expected:** a valid probe stream lingered after its sentinel and the same job's download started, leaving **2 live workers for one job** and replacing the probe's `_Session`. Teardown then verified the processes ended. |
+| Reviewer T-118 regressions | **5 failed as expected / 1 passed**: persistence before Add; edit during pending resolution; close during pending resolution; Add enabled during pending retarget; close during pending retarget. The passing case is T-120's all-status textual-name assertion. |
+| Reviewer test hygiene | `ruff check`, `ruff format --check` and `git diff --check` pass for the three changed test files. |
+
+### Final disposition
+
+T-115 and T-120 need no further implementation pass. T-117's code and migration need no further
+implementation pass; its documentation owner should close T117-R1. T-116 needs a focused
+same-job-lifecycle correction and exact-head Windows evidence. T-118 needs one correction batch
+covering all five findings, including the maintainer-owned T-105/mock decision; its three Critical
+findings cannot be waived by an agent. T-119 must not build on T-118 until those blockers close.
+
+Reviewer production source was not edited. The working tree contains only the six reviewer
+regressions (five failing T-118 cases and one failing T-116 case), the passing T-120 state-name
+assertion, and this review record. Nothing was committed or pushed.
