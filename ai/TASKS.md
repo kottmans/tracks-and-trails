@@ -99,6 +99,26 @@ Windows measured 150 rows at 0.722 s, seven times `NFR-001`'s target).
 The reviewer's direction is one design rather than five patches: **one rendered row, one declared
 keyboard route, one effective request** — which most naturally means bringing `T-119`'s reusable
 delegate forward instead of installing a widget per row.
+
+**Maintainer decision, 2026-08-03: the correction is taken together with `T-119`, as one task.**
+The delegate answers `T118-R7`, `T118-R9` and `T118-R10` simultaneously because it draws one
+reusable editor rather than a widget per row; `T118-R6` and `T118-R8` are then the request and its
+display done correctly inside a row the task owns. Patching five findings against the widget-per-row
+approach would be correcting what the review has already said to replace.
+
+**`T118-R10`'s bound is marginal, not merely wrong.** The same test measured 0.722 s on hosted
+Windows at `253bbce` (run `30786142921`) and **passed** on `windows-latest` at `4b0fe10`
+(run `30822454998`) with nothing relevant changed between them. So the replacement needs a bound
+with real headroom rather than the largest number one Linux measurement will bear, plus a
+hosted-Windows measurement taken *at* that bound — otherwise the gate flaps, and a flapping gate
+teaches the next reader to dismiss a red run as runner speed, which `T118-R10` explicitly forbids.
+
+**Carried in with it:** `T118-R11`'s cleanup, because it describes the design being replaced; and
+an intermittent `KeyError` from `shutdown() → cancel() → _require()` seen once on the desktop
+runner (run `30822454998`, teardown of
+`test_pasting_a_url_into_the_assembled_application_reaches_the_database`) — an occupant id that is
+neither staged nor durable. It does not reproduce locally and lives in the staging seam this work
+rewrites.
 *(This read "In Review — complete 2026-08-02. Ten mutations run; all ten killed".)* Ten mutations
 were run and killed; It found six defects in code it did not
 write — see the handoff; three were caught by `T-088`'s phase proof or by `mypy --platform win32`
@@ -850,7 +870,11 @@ it.)*
 
 ### T-119 — The queue row: thumbnail, title and progress in one delegate
 
-**Status:** Proposed — **UI rework decomposition, 2026-08-02.**
+**Status:** Proposed — **UI rework decomposition, 2026-08-02. Taken together with `T-118`'s
+correction as one task** (maintainer, 2026-08-03): the delegate is what answers `T118-R7`,
+`T118-R9` and `T118-R10`, so building it separately would mean patching a row anatomy the review
+has already rejected. It is no longer held back by `T-118` being unreviewed — the two are the same
+piece of work now. See `T-118` for the findings it carries and for `T118-R10`'s marginal bound.
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 3
