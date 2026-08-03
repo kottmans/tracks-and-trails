@@ -5,7 +5,7 @@
 **Owner:** Planner
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-01
+**Last updated:** 2026-08-03
 **Last reviewed:** 2026-08-01
 **Update when:** Phase scope, delivery order, dependencies, or exit criteria change.
 **Does not contain:** Individual coding tasks (`TASKS.md`), progress (`STATUS.md`).
@@ -180,15 +180,26 @@ them, which is the argument for having built it.)*
 
 **Prerequisites:** Phase 1 approved. `ARC-002` confirmed sound. **Satisfied 2026-07-29.**
 
-**Status: in progress** (2026-08-01). **Nine of thirteen deliverables are built** — seven approved,
-two awaiting review. Three more are Ready and one is Proposed. **Nothing is blocked on a machine any
-more:** `OPS-005` was amended so hosted Windows carries the gate while `STARBASE` is offline, and
-`17e7ba5` is the first fully green CI run since 2026-07-28.
+**Status: every deliverable is built and approved; the phase has not exited** (2026-08-03).
+**Thirteen of thirteen deliverables are approved**, the last four on 2026-08-01. Exit criteria 1–5
+and 7 are met. **What remains is the exit itself** — an independent exit review (`AGENTS.md` §3),
+which Phase 0 and Phase 1 both required and neither could self-certify.
+
+**`T-118` and `T-119` land before this phase exits.** Maintainer decision, 2026-08-03. They are
+Phase 3 tasks and not Phase 2 deliverables, so this is a sequencing choice rather than a scope
+change — but they are the only thing currently keeping `main` red, and criterion 5 is evidenced by
+CI. An exit submitted against a red board invites rejection on that alone.
+
+**Nothing is blocked on a machine any more, and `STARBASE` is back:** `OPS-005` was amended so
+hosted Windows carries the gate while it was offline; it returned 2026-08-03 and now runs both the
+desktop slice and the frozen Windows build.
 
 *(These counts are transcribed from the table below rather than written beside it. `COORD-R5`
 through `COORD-R11` are seven rounds of a hand-written summary drifting from the thing it
 summarises, and an earlier draft of this line said "five approved, four in review, three not
-started" against a table holding three, four, four and two.)*
+started" against a table holding three, four, four and two. This line itself then read "nine of
+thirteen … two awaiting review" for two days after all thirteen were approved, which is the eighth
+round and the reason the table below is now rebuilt rather than amended.)*
 
 ### The shape of what is left
 
@@ -203,21 +214,25 @@ flowchart LR
     T078["<b>T-078</b><br/>worker pool"]:::approved
     T079["<b>T-079</b><br/>queue view"]:::approved
     T085["<b>T-085</b><br/>history records"]:::approved
+    T080["<b>T-080</b><br/>pause · resume<br/>cancel · retry · remove"]:::approved
+    T081["<b>T-081</b><br/>reorder<br/>clear finished"]:::approved
+    T046["<b>T-046</b><br/>path collision"]:::approved
+    T083["<b>T-083</b><br/>bounded retry"]:::approved
+    T053["<b>T-053</b><br/>log isolation proof"]:::approved
+    T082["<b>T-082</b><br/>crash recovery"]:::approved
+    T084["<b>T-084</b><br/>log capture + view"]:::approved
+    T100["<b>T-100</b><br/>history view"]:::approved
+    T102["<b>T-102</b><br/>settings reports"]:::approved
+    T087["<b>T-087</b><br/>single instance"]:::approved
+    T086["<b>T-086</b><br/>open · reveal file"]:::approved
+    T088["<b>T-088</b><br/>prove the phase"]:::approved
+    T115["<b>T-115</b><br/>the queue drains"]:::approved
 
-    T080["<b>T-080</b><br/>pause · resume<br/>cancel · retry · remove"]:::review
-    T081["<b>T-081</b><br/>reorder<br/>clear finished"]:::review
-    T046["<b>T-046</b><br/>path collision"]:::review
-    T083["<b>T-083</b><br/>bounded retry"]:::review
-    T053["<b>T-053</b><br/>log isolation proof"]:::review
+    T116["<b>T-116</b><br/>probe lane"]:::approved
+    T117["<b>T-117</b><br/>thumbnail_url"]:::approved
+    T120["<b>T-120</b><br/>brand palette"]:::approved
+    T118["<b>T-118 + T-119</b><br/>staging list<br/>+ row delegate"]:::review
 
-    T082["<b>T-082</b><br/>crash recovery"]:::ready
-    T084["<b>T-084</b><br/>log capture + view"]:::ready
-    T100["<b>T-100</b><br/>history view"]:::ready
-    T102["<b>T-102</b><br/>settings reports"]:::ready
-    T087["<b>T-087</b><br/>single instance"]:::ready
-
-    T086["<b>T-086</b><br/>open · reveal file"]:::proposed
-    T088["<b>T-088</b><br/>prove the phase"]:::proposed
     EXIT(["<b>Phase 2 exit</b>"]):::exit
 
     T078 --> T079
@@ -238,12 +253,25 @@ flowchart LR
     T084 --> T088
     T086 --> T088
     T087 --> T088
-    T088 --> EXIT
+    T088 --> T115
+    T115 --> EXIT
+
+    T116 --> T118
+    T117 --> T118
+    T118 -. "sequenced ahead<br/>(maintainer, 2026-08-03)" .-> EXIT
 ```
 
 **Green is approved, amber awaits a verdict, blue is startable now, grey has not started.**
 `T-046`, `T-083` and `T-102` are deliverables that `T-088` does not gate — they are correctness and
 diagnostics rather than queue behaviour the phase proof exercises — so they carry no edge into it.
+
+**`T-115` sits between `T-088` and the exit** because the phase proof is what found it: every
+deliverable was approved and no user could start a queue (criterion 7).
+
+**The dotted edge is a sequencing decision, not a dependency.** `T-116` through `T-120` are the UI
+rework, filed as Phase 3 and listed under that phase below. `T-118`/`T-119` is drawn here only
+because the maintainer chose on 2026-08-03 to land it before the exit; remove that decision and the
+exit does not wait on it. `T-120` and `T-117` carry no edge for the same reason.
 
 ### Decisions taken during this phase
 
@@ -271,10 +299,10 @@ Recorded here because each one changed what a deliverable *is*, not merely how i
 | 6 | Bounded retry with backoff for `NETWORK` failures only (`REQ-018`) | `T-083` | **Approved** 2026-08-01 (`97f96c0`). `UX-002` ratifies 3 attempts at 2s/4s/8s |
 | 7 | History persistence and completed-download records (`REQ-020`) | `T-085`, `T-050`, `T-093` | **Approved** 2026-07-30 |
 | 8 | A corrupt `settings.toml` reports rather than reverting silently (`ARC-008`) | `T-102` | **Approved** 2026-08-01 (`97f96c0`) |
-| 9 | Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`) | `T-082` | **In review** 2026-08-01. The recovery always worked; composition threw the recovered ids away, so nobody was ever told |
-| 10 | Per-job log capture and log view (`REQ-019`) | `T-084` | **In review** 2026-08-01. `T-053`, which gates its approval, is **Approved**. Found that yt-dlp's diagnostics were never captured at all |
-| 11 | History view over those records | `T-100` | **In review** 2026-08-01 |
-| 12 | Open file / reveal in file manager (`REQ-021`), from both views | `T-086` | **In review** 2026-08-01 (`46c1709`) |
+| 9 | Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`) | `T-082` | **Approved** 2026-08-01 (`b1b7cd6`), without follow-up. The recovery always worked; composition threw the recovered ids away, so nobody was ever told |
+| 10 | Per-job log capture and log view (`REQ-019`) | `T-084` | **Approved** 2026-08-01 (`75f1c32`), after `T084-R1` (Critical) and `T084-R2` (High). `T-053`, which gated its approval, is **Approved**. Found that yt-dlp's diagnostics were never captured at all |
+| 11 | History view over those records | `T-100` | **Approved** 2026-08-01 (`c242dd3`), without follow-up |
+| 12 | Open file / reveal in file manager (`REQ-021`), from both views | `T-086` | **Approved** 2026-08-01 (`233c5fd`), after `T086-R1` (High). Windows Open takes the associated-application route rather than the file manager |
 | 13 | Single-instance guard (`A-004`, `ARC-006`) | `T-087` | **Approved** 2026-08-01 (`ea9d752`). Linux and hosted Windows both green, including racing starts |
 
 *(Deliverable 5 was **added 2026-07-31**. `DAT-002` filed `T-046` as a Phase 2 task and this list
@@ -298,7 +326,7 @@ Phase 2 work. None is a deliverable and none gates the exit; they are listed in 
 | 3 | Concurrency limit respected exactly; lowering it drains cleanly, and so does pausing | **Met** | `test_the_pool_never_exceeds_the_configured_limit` samples **both** the rows and the actual process count over a whole run. The lowering and pause halves are `T-078` and `T-080`, both approved |
 | 4 | A second launch attaches to or refuses in favour of the running instance | **Met** | `test_a_second_launch_refuses_in_favour_of_the_running_instance`, against a first instance with a **full pool** — the state a guard built on polling would be likeliest to let through. `T-087`'s three Windows cases passed on `check (windows-latest)` |
 | 5 | No worker process outlives application exit, on both platforms | **Met on Linux and hosted Windows** — measured, not asserted: **all five phase-exit tests passed on `windows-latest`** in run `30712201443`, and the `T-115` case reported `XFAIL` there as designed | `test_no_worker_outlives_a_hard_kill_with_a_full_pool` — the worker set obtained independently of what is killed, the resource tracker excluded by being identified, and asserted non-empty before the kill (`T072-R1`) |
-| 6 | Reviewed and signed off | **Not met** | Four deliverables await review: `T-100`, `T-086`, `T-084`, `T-082` |
+| 6 | Reviewed and signed off | **Not met — but not for the reason this row gave until 2026-08-03.** Every deliverable is reviewed and approved; what is absent is the **phase** sign-off | This row read *"Four deliverables await review: `T-100`, `T-086`, `T-084`, `T-082`"* for two days after all four were approved — `T-082` at `b1b7cd6`, `T-084` at `75f1c32`, `T-086` at `233c5fd`, `T-100` at `c242dd3`, all 2026-08-01. What criterion 6 still wants is what Phase 0 and Phase 1 each needed: an independent exit review over this table, by a reviewer that is not the implementer (`AGENTS.md` §3). Phase 1's found two wrong rows (`P1EXIT-R1`, `P1EXIT-R2`), so the table is expected to be rebuilt against the repository before it is submitted, not merely re-read |
 | 7 | *(Found by `T-088`)* A user can actually start a queue | **Met — `T-115` fixed 2026-08-01** | `DownloadManager.admit()` expresses durable intent where `start()` demanded a session; the add dialog admits every job it persists, and `compose()` admits durable `QUEUED` rows **after** recovery so nothing recovered restarts unattended (`T081-R4`). `test_every_queued_job_eventually_starts_as_slots_free` drives the **Add route alone** — no priming — and passes; `test_a_queue_left_by_a_previous_run_starts_on_the_next_launch` covers restart and `test_a_paused_queue_admits_and_still_starts_nothing` covers `UX-001`. **The gate worked**: it reported `XPASS(strict)` on the first run after the fix and was then inverted |
 
 **What the evidence does *not* cover**, stated because building Phase 1's table is what exposed two
@@ -337,7 +365,11 @@ wrong rows (`P1EXIT-R1`, `P1EXIT-R2`):
 **Goal:** Expose yt-dlp's real capability. This is the phase that separates the app from a
 one-button downloader.
 
-**Prerequisites:** Phase 2 approved.
+**Prerequisites:** Phase 2 approved — **for the deliverables below**. The UI rework `T-116`–`T-120`
+started 2026-08-02 ahead of that, and `T-118`/`T-119` is deliberately sequenced before the Phase 2
+exit (maintainer, 2026-08-03). The prerequisite is not waived so much as scoped: it governs the
+format-and-content work, which does depend on a settled queue, and not five tasks that `UX-003`
+made urgent while Phase 2 was finishing.
 
 **Trigger:** `docs/UX_SPEC.md` is created at the start of this phase (`DOC-002`). **Owned by
 `T-105`** as of 2026-08-01 — it was a scheduled trigger with no task behind it, which is how a
@@ -347,6 +379,19 @@ phase starts without the document it is supposed to start with.
 seven deliverables, so any statement of its size came from prose rather than from work anybody had
 broken down — and Phase 1 listed nine deliverables and produced fifty tasks. Eight is the starting
 point, not the total.
+
+**The UI rework — `T-116` through `T-120` — is also this phase**, filed 2026-08-02 and not among
+the deliverables below, which is why it appeared nowhere in this document until 2026-08-03. It is
+what `UX-003` and `UX-004` produced: nothing enters the queue unprobed, so the add dialog becomes a
+staging list and the queue row becomes a delegate. `T-116` (probe lane), `T-117` (`thumbnail_url`
+and the first migration after the initial schema) and `T-120` (brand palette) are **approved**;
+`T-118`/`T-119` is **in review**.
+
+**Two of them are being taken before Phase 2 exits** (maintainer, 2026-08-03): `T-118` and `T-119`
+are merged into one task, and it lands first. `T-118`'s per-row control path is what currently
+keeps `main` red, and Phase 2's criterion 5 is evidenced by CI. This does not move them into
+Phase 2 — they remain Phase 3 tasks against no Phase 2 deliverable — it changes only what order
+the work happens in.
 
 ### Deliverables
 
