@@ -37,16 +37,13 @@ look one task from exiting when the sign-off it actually needs had not been requ
 - **Approved 2026-08-02:** `T-088` at `9e133a6`, the phase's own proof, once `T088-R4` and
   `T087-R6` were corrected and the suite passed on hosted Windows and Ubuntu.
 - **Approved 2026-08-03:** `T-116` at `253bbce`, after `T116-R1`. `T117-R1` closed.
-- **In review, four rounds and four corrections, all 2026-08-03. `T118-R14` is Resolved and the
-  verdict is Blocked only on exact-head Windows verification** — which has now run, with one
-  failure. `T-118`'s own scaling gate flapped on hosted Windows; the product did not.
-  Run `30859578131` at `53b07ec`: `STARBASE` green on the full Windows suite, hosted
-  `windows-latest` **1 failed / 1971 passed**, everything else green, and **`T-121` did not
-  recur**. The failure is `test_a_four_times_larger_paste…`, reporting a 46.5x ratio — while the
-  absolute-budget test in the *same job* did the same 500-URL resolve under 1.0 s. That
-  contradiction is the diagnosis: a transient stall against a ~30 ms denominator, not a cost that
-  grows with the paste. Details and the recommended fix are in `TASKS.md`; no source change has
-  been made, because the head under verification is the head.
+- **Approved with follow-ups at `53b07ec`:** `T-118`, carrying `T-119` — 2026-08-03, after four
+  rounds of changes requested and four corrections. Exact-head run `30859578131` supplied the
+  Windows evidence the last gate needed: `STARBASE` passed the full suite, and hosted
+  `windows-latest` passed every `T-118` correction test. Two non-blocking follow-ups carry
+  forward — **`T118-R17`/`T-122`**, the paste-scaling ratio oracle that rejects a transient host
+  pause, before the Phase 2 exit review; and `COORD-R21`, this file's own current-truth prose,
+  corrected here.
 - **Approved 2026-08-02:** `T-115`, after `T115-R1` (High) — the probed row was retargeted while
   every later queue position was admitted ahead of it, so with a pool of one the second URL
   started and the head of the queue waited. Add now takes one admission decision after the
@@ -131,11 +128,16 @@ job look green. The teardown errors were disclosed two paragraphs later; the num
 the framing was.)*
 
 **`T-118` is no longer what is red.** All three original causes are addressed and verified on both
-Windows runners. **What is red on `main` now is `T-121`**, filed 2026-08-03: the phase-exit test's
-own localhost clip server aborts a connection on hosted Windows (`ConnectionAbortedError`,
-`WinError 10053`), so one of five downloads fails and a test about *admission* goes red while
-reporting that zero jobs were left queued — which is the behaviour it exists to prove, holding.
-`STARBASE` ran the same test in the same run and passed.
+Windows runners. **What is red on `main` now is `T-122`'s ratio oracle** (`COORD-R21`): in
+exact-head run `30859578131` the single hosted-Windows failure was `T-118`'s own paste-scaling
+gate, which rejects a transient host pause rather than a real regression. The product passed on
+both Windows runners.
+
+**`T-121` did not recur in that run — which is not the same as resolved.** It stays Proposed: the
+phase-exit fixture's localhost clip server aborted a loopback connection in run `30853680183`
+(`ConnectionAbortedError`, `WinError 10053`), failing one of five downloads and reddening a test
+about admission while it reported zero jobs left queued. `STARBASE` passed it both times. Nothing
+fixed the fixture; the second run simply did not trip it.
 
 *(The three `T-118` causes, kept because the history is the argument:)*
 

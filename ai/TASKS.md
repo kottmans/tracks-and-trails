@@ -78,8 +78,10 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**One task awaits a verdict as of 2026-08-03** — `T-118`, returned a second time, now carrying
-`T-119`'s scope as well. It is the only entry in this section; read the section, not this line.)*
+*(**Nothing awaits a verdict as of 2026-08-03.** `T-118` was approved with follow-ups at
+`53b07ec` and moved to `## Complete`; its follow-ups are `T-122` under `## Proposed — Phase 2` and
+`COORD-R21`. Read the sections, not this line — `T-096`'s gate compares each entry's status to the
+section it sits in, and it is what caught this move being owed.)*
 
 *(`COORD-R15`: this note previously said `T-115`, `T-117` and `T-120` were "filed under Complete"
 when the first two were still `In Review` entries in this very section and the third **had no entry
@@ -87,454 +89,6 @@ at all**. That is the ninth round of `COORD-R5`'s class and the first where the 
 filing rather than about status — `T-096`'s gate compares a status to its section, so three tasks
 whose stale status agreed with their stale section passed it. All three are now filed under
 `## Complete` at their approved heads.)*
-
-### T-118 — The add dialog becomes a staging list
-
-**Status:** **In Review — four rounds of changes requested on 2026-08-03, and four corrections.
-Blocked only on exact-head Windows verification, which came back with one failure — in `T-118`'s
-own scaling gate rather than in the product.** See *The exact-head run* below.
-**Resolved by the reviewer:** `T118-R1`…`R3`, `R6`, `R7`, `R8`, `R9`, `R10`, `R11`, `R12`,
-`COORD-R18`, and the `e300b04` teardown fixes. `UX-004` closed `R5`. **Resolved in the third round:** `T118-R13`, `R15`, `R16`.
-
-**`T118-R14` was escalated to Critical and is corrected in the fourth round.** The third round's fix
-was the wrong half: it committed the open editor before the reset, but every index the model
-answered — `rowCount`, `data`, `setData` — still read `Staging.visible`, which reconciliation had
-*already* changed. The index stayed numerically valid and stopped naming the same row. Start with
-A/B/C, edit the box to B/C, open row 1's editor for B and choose MP3, let the debounce fire: the
-new tuple is (B, C), old index 1 is **C**, and the format chosen for B is written to C. Add then
-queues the wrong request for both — `T118-R6`'s consequence, a silently wrong download, reached
-from a new direction. Only the Reviewer marks these Resolved (`AGENTS.md` §10).
-
-**What the second round found is worth stating plainly, because it is one mistake with three
-faces: I optimised away the thing `UX-004` chose, and then wrote tests that agreed with me.**
-`T118-R12` — the delegate reserved the control's slot and painted nothing in it, so the per-row
-format control `UX-004` §1 requires on *every* row existed only for someone who already knew to
-press F2. My own structural test demanded **zero** live controls, which encoded the absence rather
-than catching it. `T118-R8` — the correct selector reached the model and was then right-elided at
-382 px against a 962 px string, and the tests read `DisplayRole` so never saw what was drawn.
-`T118-R13` — the fetch was asynchronous and the *cleanup* was not.
-*(This read "the correction batch is complete and awaiting re-review" between the two rounds, and
-before that "changes requested … this one needs a redesign".)*
-`T118-R1`…`R3` are **resolved** — transient staging, synchronous staging identity, and an owned
-commit that writes each row's final request once — and were preserved through the rewrite.
-`T118-R5` is closed by `UX-004`. What was open was the whole per-row control path: `T118-R6`
-(**Critical** — a row overridden to MP3 stores the registry default 192 kbps while the visible
-control says 320), `T118-R7` (the row widget collides with the item delegate; a 54 px thumbnail is
-clipped into a 25 px row), `T118-R8` (an overridden row never shows the selector that will run),
-`T118-R9` (the row controls are outside the declared focus order and land after Close) and
-`T118-R10` (hosted Windows measured 150 rows at 0.722 s, seven times `NFR-001`'s target).
-
-The reviewer's direction is one design rather than five patches: **one rendered row, one declared
-keyboard route, one effective request** — which most naturally means bringing `T-119`'s reusable
-delegate forward instead of installing a widget per row.
-
-**Maintainer decision, 2026-08-03: the correction is taken together with `T-119`, as one task.**
-The delegate answers `T118-R7`, `T118-R9` and `T118-R10` simultaneously because it draws one
-reusable editor rather than a widget per row; `T118-R6` and `T118-R8` are then the request and its
-display done correctly inside a row the task owns. Patching five findings against the widget-per-row
-approach would be correcting what the review has already said to replace.
-
-**`T118-R10`'s bound is marginal, not merely wrong.** The same test measured 0.722 s on hosted
-Windows at `253bbce` (run `30786142921`) and **passed** on `windows-latest` at `4b0fe10`
-(run `30822454998`) with nothing relevant changed between them. So the replacement needs a bound
-with real headroom rather than the largest number one Linux measurement will bear, plus a
-hosted-Windows measurement taken *at* that bound — otherwise the gate flaps, and a flapping gate
-teaches the next reader to dismiss a red run as runner speed, which `T118-R10` explicitly forbids.
-
-**And the class already has a second member: `T083-R2`** (filed 2026-08-03, open and
-non-blocking, recorded under `T-083`). Its backoff test leaves a 10 % margin and starts measuring
-from a *polled* observation of the failure rather than the failure itself, so poll lag is
-subtracted from the interval being bounded. Whoever sets `T118-R10`'s replacement bound should
-settle both with one rule — measure from an instant the code reports, not from the moment a test
-loop notices — since fixing them separately is how the rule ends up stated twice and differently.
-
-**Carried in with it: `T118-R11`'s cleanup**, because it describes the design being replaced —
-**and two teardown defects the desktop runner found, which are one defect in two costumes.**
-
-`shutdown()` cancels every occupant (`manager.py:1793`), and a staged probe is an occupant. Both
-errors are `cancel()` reaching a staged job in a state it cannot express:
-
-- **`KeyError: no job with id …`** — `_require()` finds the id neither staged nor durable. Seen in
-  runs `30822454998` and `30826638984`, teardown of
-  `test_pasting_a_url_into_the_assembled_application_reaches_the_database`.
-- **`IllegalTransitionError: cannot move a job from failed to cancelled`** — `_persist`'s guard at
-  `manager.py:1441` is `is_terminal(current.status)`, and **`FAILED` is not terminal here because
-  retry exists**, so `_cancelled()` is computed and the state machine refuses it. Seen in run
-  `30826638984`, teardown of `test_add_commits_what_resolved_and_leaves_what_did_not`.
-
-**`cancel()`'s own comment already says this cannot work** (`manager.py:1428-1433`): *"A job
-awaiting an automatic retry is `FAILED`, and `FAILED` allows only `QUEUED` — so cancelling one
-raises out of the state machine and this line could never run."* `T-118` then created a caller that
-reaches exactly that line, through `unstage()`. So the correction batch's claim that *"the
-remove-versus-cancel question disappears … `ARC-004` needs no `FAILED → CANCELLED` edge"* is
-**false as implemented**: a staged probe that fails and is then unstaged needs one, or `unstage`
-needs a verb other than `cancel` for a job with no live work left. Neither error reproduces on
-Linux; both are teardown-only, so the tests they hang off still report as passed.
-*(This read "In Review — complete 2026-08-02. Ten mutations run; all ten killed".)* Ten mutations
-were run and killed; It found six defects in code it did not
-write — see the handoff; three were caught by `T-088`'s phase proof or by `mypy --platform win32`
-rather than by reading the diff.
-*(This read "Proposed — UI rework decomposition, 2026-08-02".)* This is `UX-003` in code.
-**Owner:** Implementer
-**Priority:** High
-**Phase:** Phase 3
-**Depends on:** `T-116` (or Add stalls the downloads already running) and `T-117` (or the thumbnail
-dies with the dialog). **Both are approved, so nothing blocks this task.**
-**`T-105` is not a dependency**, and its removal is deliberate: accepted `UX-004` supplied the
-maintainer decision `T118-R5` needed and explicitly struck `T-105` as this correction's
-prerequisite (`DECISIONS.md:2586`). `T-119` named it too, and **that dependency does not survive
-the merge either** — the same decision governs the delegate, because the delegate is what `UX-004`
-says draws the per-row control. When `T-105` writes `docs/UX_SPEC.md`, it documents what this task
-built rather than the other way round.
-**Relevant context:** `UX-003`, `REQ-001`, `REQ-002`, `REQ-012`, `REQ-018`, `NFR-005`, `NFR-006`,
-`T-016`, `T-075` (the preset is bound at Add, not at probe), `T-115`, `T115-R1`, `T-060`
-**Affected surfaces:** `ui/add_dialog.py`
-**Risk:** **High** — it rewrites the dialog `T-016`, `T-075` and `T-115` all landed corrections in
-
-#### Scope
-
-`UX-003`: the paste resolves before anything is queued. Pasting starts the work — the
-`&Probe first URL` button goes, because there is no second thing to press and no route to queueing
-something unread. Each line becomes a row that resolves in place into title, uploader, duration and
-thumbnail.
-
-**Every prior correction to this dialog is a constraint on the rewrite, not history.** `T-016`: a
-probe belongs to a URL and a generation, not to a job id, and an input that moves on cancels what
-is in flight. `T-075`: the request that runs is the one selected when Add was pressed, retargeted
-before the job may start. `T115-R1`: the batch is **one** admission decision, taken after the
-retarget settles, in durable queue order. A rewrite that loses any of these re-earns its review
-round.
-
-#### Acceptance criteria
-
-- Pasting resolves every line without a second control; no route exists to queue an unresolved URL
-- A line that fails to resolve **stays in the list** with the extractor's message verbatim
-  (`NFR-006`) and its own retry, and is excluded from the commit — asserted on the count the button
-  commits, not only on its label
-- Commit admits in durable `queue_position` order, one decision, after any retarget (`T115-R1`'s
-  regression must still pass against the rewritten dialog)
-- A row that has not resolved yet is **filled, not blank** — the derived placeholder of `UX-003`'s
-  rejected-as-sufficient alternative — and every state is named in words, never signalled by colour
-  alone (`NFR-005`)
-- Cancelling the dialog cancels every outstanding probe, queued or running (`T-116`'s ceiling makes
-  queued ones real)
-- The preset applies to the paste, overridable per row; the effective selector shown stays the one
-  that will run (`T-075`)
-- Focus order is declared per state and excludes hidden rows (`T-060`); a resolving row and a failed
-  row are different states
-- A paste large enough to exceed the probe lane resolves in order and does not freeze the dialog
-  (`NFR-001`)
-
-#### Out of scope
-
-- Playlist expansion beyond showing that a URL **is** one and how many entries it has — choosing
-  entries is `T-110`
-
-*(This read "The queue's own rendering (`T-119`)" until 2026-08-03. It is **in** scope now — the
-merge is precisely that one renderer serves both surfaces. `COORD-R14`: leaving that line while the
-status said the tasks were merged made the task exclude the work it had just absorbed.)*
-
-#### What `T-119` brought in, unchanged
-
-*(Merged 2026-08-03. Reproduced rather than summarised, because `COORD-R14` names losing these
-criteria as the risk the merge runs. The delegate is now this task's to build.)*
-
-**Affected surfaces, added:** `ui/queue_view.py`, a new delegate module, `core/paths.py`
-**Relevant context, added:** `REQ-014`, `NFR-004` (cache location), `ARC-005`, `T-079` (the queue
-table's repaint and ordering rules), `T-081`
-
-The rich row from the accepted mockup: thumbnail, title, uploader, progress and state in one row
-rather than a grid of columns. The staging list guarantees the text is there; the delegate draws
-it — and drawing it once, for both surfaces, is what closes `T118-R7`, `T118-R9` and `T118-R10`
-together rather than one at a time.
-
-**The scale rule is the task, not the drawing.** A public application cannot assume a queue of
-twenty. The policy is: bytes fetched only for rows the view asks to paint plus a small look-ahead,
-a bounded pixmap cache, a disk cache under `NFR-004`'s cache directory swept with the job, and the
-GUI thread never blocking on a fetch or a decode (`ARC-005`).
-
-Acceptance criteria, carried verbatim:
-
-- A row renders every field `REQ-002` names, asserted by value rather than by pixel
-- **No fetch is issued for a row the view never asked to paint** — asserted with a model far larger
-  than the viewport, counting requests
-- The pixmap cache has a stated bound, and a test that exceeds it asserts memory is released rather
-  than that the cache "works"
-- The disk cache lives under `NFR-004`'s directory, is keyed so two jobs for one URL share it, and
-  is removed with the job
-- A failed or missing thumbnail keeps the placeholder and is **not** reported as an error — a
-  missing picture is not a failed download — and does not retry in a loop
-- Repaint cost is bounded with a realistic queue size, in the shape `T-079` already asserts
-- Everything a sighted user reads from the row is available to a screen reader (`NFR-005`), and the
-  derived placeholder is never the only thing distinguishing two rows
-
-**Also out of scope, carried:** history's rendering. If it should match, that is its own task
-against `T-100`.
-
-**Risk, carried:** repaint cost is what regresses, and it regresses at a size no hand-driven test
-reaches — which is the same shape as `T118-R10`, measured on the wrong machine.
-
-#### Correction, 2026-08-03 — `T118-R6` through `R11`, and `T-119`'s carried scope
-
-**One design, not six patches**, which is what the review asked for. `ui/row_delegate.py` is the
-new module: named roles, one painted row, and one editor created for the row being edited.
-`ui/thumbnails.py` is the cache behind it, and `core/paths.py` gained the cache directory.
-
-| Finding | How it is answered |
-|---|---|
-| `T118-R6` | Already corrected at `446d151`, before this batch: the effective preset is derived in one place and the per-row override routes through it. Untouched here. |
-| `T118-R7` | There is no row widget. `ROW_HEIGHT` is **derived** from `THUMBNAIL_SIZE`, and `sizeHint` takes the larger of it and the height three lines need in the view's own font — so a large accessibility font cannot clip the row either. |
-| `T118-R8` | `SELECTOR_ROLE` is the row's third line, carrying the literal selector. `describe_preset` became one line rather than two, since the delegate draws three. |
-| `T118-R9` | `EDIT_KEY` is declared in the delegate and `EditKeyPressed` is set on both views. `AddUrlDialog.edit_row` is the single route the key, the context menu and the tests all take. The editor is **never a tab stop** — it does not exist until asked for — and the row's accessible text carries `EDIT_HINT`, so the control is discoverable to a screen-reader user who cannot see it. |
-| `T118-R10` | See the bound below. |
-| `T118-R11` | `_committing` is gone (written, never read). The module docstring said "a row is persisted before it is probed" — the design `T118-R1` was **Critical** for — and now says the opposite, with the history kept. `unresolved_job_ids()`/`written_job_ids()` split a question that no longer exists and are replaced by `staged_job_ids()`. The list comment claiming "not a widget per row" is true again. |
-
-**`T-119`'s carried criteria, each with the test that fails without it:** every field by value
-(`test_the_drawn_row_carries_every_field_the_columns_do`); no fetch for an unpainted row
-(`test_no_thumbnail_is_fetched_for_a_row_that_is_never_painted` — 500 rows, 12 painted, 12
-requests); a stated cache bound that releases (`test_the_pixmap_cache_releases_what_it_evicts`);
-the disk cache under `NFR-004`, shared by URL and swept when no job names it (three tests); a
-missing picture kept as a placeholder and never retried; repaint cost bounded; and the row spoken
-whole to a screen reader.
-
-**The queue keeps its columns and stops being a grid.** `COLUMN_HEADERS` is `REQ-014` transcribed
-by hand and `_text` still answers each field, because that is what `accessible_text_at` reads and
-what pins the requirement; the *view* became a `QListView` whose delegate composes those same
-answers into one row. Deleting the per-field vocabulary to change a widget would have thrown the
-transcription away.
-
-##### The replacement bound, and what is still owed
-
-`T118-R10`'s gate is replaced by **three** assertions, because the one it replaces could not
-distinguish "the machine was fast" from "the design is flat":
-
-1. **An absolute budget with real headroom.** `SUPPORTED_PASTE` rises from 150 to **500** — the
-   size the ceiling was hiding — and `INTERACTION_BUDGET_SECONDS` is **1.0 s** against a measured
-   **0.042 s** on the development machine. A 24x margin, deliberately not the largest number one
-   Linux measurement will bear.
-2. **A ratio, which does not move with runner speed.** Four times the paste must cost less than
-   six times the time. Measured: 0.020 s at 125, 0.042 s at 500, 0.047 s at 1000.
-3. **A structural count**, which is the one that actually holds. A mutation reintroducing a
-   persistent editor per row **passed both timing tests** — an unshown view lays nothing out, so
-   500 hidden combo boxes are cheap here and ruinous on the platform that measured 0.722 s.
-   `test_a_large_paste_builds_no_control_at_all_until_one_is_asked_for` counts the controls and
-   fails that mutation with `500 per-row controls exist for 500 rows`.
-
-Repaint was measured directly and is **flat in the model**: painting 12 rows costs 3.1 ms median
-whether the model holds 12, 150, 500 or 2000 rows; 40 rows costs 10.2 ms.
-
-**Taken 2026-08-03, on the machine the finding named.** Run `30853680183` at `adc5355` ran the
-correction's nine tests on **hosted `windows-latest`** — the runner where the flap was observed —
-and on `STARBASE`. All nine passed on both, including the paste budget at 500 URLs against the
-1.0 s bound, the scaling ratio and the structural control count. `T118-R10`'s owed measurement is
-therefore satisfied on hosted Windows directly, and the `STARBASE` substitution recorded below was
-not needed after all.
-
-**What the run does not give is a number.** A pass proves the paste came in under 1.0 s; it does
-not say by how much, so the 24x margin remains a development-machine claim. Instrumenting the test
-with `record_property`, as `tests/network/test_real_download.py` already does, would put the figure
-in the junit artifact — filed rather than done here, because it costs a CI run and the gate it
-would inform is already green twice over.
-
-*(This read "Owed, and not done: one Windows measurement at the new bound", with the figures
-development-machine only, until the run above.)* The ratio and the structural count are runner-invariant and did not need
-it; the 1.0 s absolute budget did.
-
-**The standing preference is still `STARBASE`** (maintainer, 2026-08-03): hosted Actions minutes
-are nearly exhausted and the self-hosted desktop costs none. `ci.yml`'s Windows `check` job already
-reads `vars.WINDOWS_RUNNER` and falls back to `windows-latest` only when it is unset, so this is a
-repository variable rather than a workflow change — and `OPS-005` pointed it at hosted *while
-`STARBASE` was offline*, which stopped being true on 2026-08-03.
-
-**Stated plainly because the machines are not interchangeable:** the flapping was *observed* on
-hosted Windows, so a green `STARBASE` run is evidence about a different machine. That is the right
-trade here — the replacement bound carries a 24x margin rather than a 4 % one, and the assertion
-that actually holds (the control count) needs no runner at all — but it is a substitution, and the
-re-review should see it named as one rather than discover it.
-
-#### Correction, 2026-08-03 (second round) — `T118-R8`, `R12`, `R13`
-
-**`T118-R12` — the control is drawn on every row.** `UX-004` §1 is unconditional: every row carries
-a visible *Download as* control showing what that row will download. `UX-004`'s own `T-119`
-sequencing note says the delegate may "draw the control only on the row under the pointer or
-holding focus: one widget reused, **identical interaction**". I took the widget-reuse half and
-dropped the drawing, which is not what it says.
-
-`RowDelegate._paint_control` now draws the control through the platform style — a real
-`QStyleOptionComboBox` and `CC_ComboBox`, so it is the machine's combo box rather than something
-that resembles one here — on every row that has choices, carrying that row's current value. The
-live `QComboBox` still exists only for the row being edited, so `T118-R10`'s cost does not return.
-`RowDelegate.editorEvent` opens that editor on a **direct click** in the control's rectangle:
-`SelectedClicked` alone meant the first click selected the row and did nothing visible, and the
-user had no way to know a second click was needed. One `_control_rect` serves the painted
-affordance, the live editor's geometry and the click target, so the control cannot move under the
-pointer.
-
-**`T118-R8` — the drawn selector wraps at full width, and there is a copyable one.** The line is no
-longer narrowed by the control's slot and no longer elided; it wraps into `SELECTOR_LINES`. And
-because a delegate paints pixels rather than selectable text, `REQ-009`'s promise that a user can
-*learn the syntax and write their own* needed somewhere to take it from: `selectorValue` below the
-list now follows the current row, falling back to the batch when none is current.
-
-**`T118-R13` — the lifecycle is asynchronous, not just the fetch.** `sweep()` resolves the names to
-keep and hands the directory listing, the stats and the unlinks to `_SweepTask` on the pool;
-`swept` reports the count. `close()` marks the store closed, cancels network work and **returns** —
-the `waitForDone(5000)` is gone. Ownership completes at `closed`, emitted when the last counted
-task drains. What the wait protected is still handled: `QThreadPool`'s own destructor waits for its
-runnables, and that runs when the store is destroyed rather than on the interaction.
-
-**Found while fixing it: the cache write was not atomic.** `write_bytes` creates the file and then
-fills it, so a reader — the next launch, or another window sharing the URL — could open a name that
-exists and get a truncated image. Written aside and renamed now. **This one is not covered by a
-test**, deliberately: it is a race whose window no deterministic test can observe, and a test that
-appeared to cover it would be worth less than this sentence. It was found by a test racing its own
-write, which is the only reason it is known about at all.
-
-#### Correction, 2026-08-03 (third round) — `T118-R13` again, `R14`, `R15`, `R16`
-
-**`T118-R13` — I fixed the wait and left the ownership.** The second round moved the block out of
-`close()` and then reasoned, in a docstring, that `QThreadPool`'s destructor "runs when this store
-is destroyed — after its parent has let it go, rather than on the interaction". That is backwards
-and the reviewer proved it: the pool was a **child** of the store, so deleting the store ran the
-destructor **on the GUI thread**, measured at 1.008 s. Worse, every runnable emitted through the
-store, and a Python reference does not keep the wrapped C++ `QObject` alive — `_ReadFromDisk`
-raised `RuntimeError: Signal source has been deleted` for `disk_missed` and `task_done`, which is a
-worker completion lost during shutdown.
-
-Both are fixed at the root rather than by a longer wait. The pool is **module-level and shared**,
-so no store's destruction runs it and the application's two stores share one bound. Tasks emit
-through **`_Sink`**, a parentless `QObject` the runnables themselves keep alive; Qt severs the
-store's connections when the store dies, so a late emission goes nowhere instead of into freed
-memory.
-
-**`T118-R14` — the fix for one finding created another.** Making `refresh()` reset the model for
-every value change orphaned any open row editor: Qt invalidates the live editor's index on reset,
-so committing it reported *"called with an editor that does not belong to this view"*, `setData`
-was never reached, and the user's chosen format was discarded while the control stayed on screen.
-The trigger is ordinary — a sibling row finishing its probe while someone is mid-choice.
-
-`StagingModel.refresh()` now compares row **identity** (`Row` is `eq=False`, so tuple equality is
-object equality) and emits `dataChanged` when only values moved; a reset is reserved for the set of
-rows actually changing, and `commit_open_editor()` closes the editor first, while its index is
-still valid. `_refresh` restores the current row by identity rather than by row number.
-
-**`T118-R16` — the temporary was unique per process, not per write.** Two stores over one cache
-root fetching the same URL opened and truncated the same `.partial`. `tempfile.mkstemp` creates
-exclusively, per write, and its own temporary is removed on failure.
-
-**`T118-R15` — the contract is narrowed rather than the layout rebuilt.** The row's "wraps rather
-than clips" claim held only at the default 9 pt: the reviewer measured the longest built-in needing
-three lines at 12 to 15 pt and five at 18 pt. Sizing the row from the wrapped height would make row
-height depend on content and cost the uniform-row property `T118-R10` turns on. So the row shows as
-much as `SELECTOR_LINES` holds and **`selectorValue` below the list is the guaranteed complete,
-copyable surface** — stated in the constant, and asserted at 18 pt by a test that first proves the
-row cannot fit it.
-
-#### Correction, 2026-08-03 (fourth round) — `T118-R14`, as Critical
-
-**The model now answers for what the view was told, and nothing else.** `_shown` existed but no
-index mapping used it. `rowCount()`, `data()`, `setData()` and the dialog's `_row_at` all read the
-live `Staging.visible`, so between a reconcile and the reset that announces it the model described
-a list the user was not looking at. Every one of them goes through `StagingModel.row_at`, which
-reads `_shown`.
-
-**The ordering point is one line, and it is the whole fix**: `commit_open_editor()` runs *before*
-`_shown` is swapped, so `setData` resolves the editor's index through the tuple the editor was
-opened against. Swap first and the choice lands on the following URL.
-
-**Selection restores by identity too**, for the same reason: a bare row number carried across a
-changing set names whoever moved into that slot.
-
-**The commit path is re-entrancy-safe**, as the review asked — `setData` calls `dialog.refresh()`,
-which without a guard re-enters the reset it is inside. *(The third round claimed this guard: it
-set the flag and never read it. The mutation run found it by failing to locate the branch it was
-trying to delete.)*
-
-##### The exact-head run, and the gate that failed in it
-
-**Run `30859578131` at `53b07ec`** — the head the reviewer asked to verify. `STARBASE` **passed**
-the full Windows suite; hosted `windows-latest` reported **1 failed / 1971 passed / 21 skipped**;
-Ubuntu, `STARBASE coverage` and both frozen jobs passed. **`T-121` did not recur.**
-
-The single failure is `test_a_four_times_larger_paste_does_not_cost_four_times_more_than_linearly`:
-
-```
-500 URLs cost 1.4935s against 0.0321s for 125
-— a factor of 46.5 for four times the input, over 6.0
-```
-
-**It is the gate that is wrong, and the evidence is inside the same job.**
-`test_a_paste_the_design_supports_stays_inside_the_interaction_budget` does the *same* 500-URL
-resolve and **passed**, which means it came in under 1.0 s minutes apart from a measurement that
-reported 1.4935 s. Two identical workloads, one job, one under budget and one three times over it:
-that is a transient stall, not a cost that grows with the paste. `STARBASE` passed the same test in
-the same run, and locally the ratio is 2.6 (0.0143 s at 125, 0.0375 s at 500).
-
-**The design error is mine, and it is `T118-R10`'s own defect class reproduced by the instrument
-built to replace it.** I argued a ratio "does not move with runner speed, because two measurements
-taken moments apart on one machine share it". True of a *sustained* speed difference; false of a
-transient one — and the denominator here is ~30 ms, so any absolute perturbation is amplified
-enormously. A 1.4 s hiccup against a 30 ms baseline is a factor of 46. The ratio gate is therefore
-**more** fragile than the absolute budget it was meant to complement, which is exactly what
-`T118-R10` said a flapping gate does to the next reader.
-
-**Recommended, not applied:** fail only when the absolute budget *and* the ratio are both breached,
-or take a median of several repeats per side. Left undone deliberately — the reviewer's verdict
-requested no further source correction, and changing source now would move the head away from the
-one under verification. It is the reviewer's call.
-
-##### Mutations run
-
-Ten, of which **four initially survived — and each one changed the work rather than the record**.
-That is the value of running them: three of the four exposed a test that could not fail for the
-reason it named, and the fourth exposed two guards that made each other untestable.
-
-| Mutation | Killed by |
-|---|---|
-| The pixmap cache never evicts | the release and LRU tests |
-| The gate forgets what is already running | the fetch-once and shared-file tests |
-| The disk cache is keyed per row rather than per URL | the sharing and relaunch tests |
-| `sweep` deletes everything, live or not | the sweep test |
-| The drawn row drops speed and ETA | the every-field test |
-| Column 0 announces only its own cell | the spoken-whole test |
-| The gate forgets failures | the no-retry tests — **after the two redundant guards became one**. Either guard alone caught it, so removing either left the other and no test could tell whether the rule was enforced. |
-| `peek` starts a fetch, like `pixmap` | the probed-thumbnail test — **after `pending_urls` existed**. The effect is asynchronous, so a fetch *count* cannot see it in the same breath as the call. |
-| An unknown total draws a bar at zero | the indeterminate test — **after it also asserted `PROGRESS_ROLE`**. It checked the text only, so the graphical half could tell the lie the textual half was written to avoid. |
-| A persistent editor per row | the structural count — **after it existed**; the two timing tests both passed it. |
-
-**Second round, six more.** Four killed on the first attempt; **one survived and one is recorded as
-uncovered**:
-
-| Mutation | Killed by |
-|---|---|
-| A click on the drawn control does nothing | the shown-dialog click test |
-| The selector is elided at one line again | the rendered-selector test |
-| The copyable label ignores the current row | the follows-the-current-row test |
-| The sweep runs inline on the GUI thread | the blocked-pool sweep test |
-| `close()` waits for the pool again | the blocked-pool close test, which takes 5.11 s to fail — the wait it is asserting the absence of |
-| **The control's slot is reserved and nothing is painted** | **survived at first.** The test rendered the slot and asserted it was "not blank", which the item background satisfies either way — the same vacuous shape the review was about, produced while fixing it. Rewritten to hold two rows identical apart from `PRESET_CHOICES_ROLE` with empty text, so the only thing that can differ in the compared rectangle is the control. Now killed. |
-| The cache write is not atomic | **nothing.** Recorded above rather than covered: the window is unobservable to a deterministic test. `T118-R16` then found a *second* defect in the same lines that a test could not have caught either, which is the honest cost of that decision. |
-
-**Third round, three more. Two killed; one survived and rewrote the test.**
-
-| Mutation | Killed by |
-|---|---|
-| The model resets on every refresh | the sibling-settles regression, with the reported symptom: *the chosen format never reached the row* |
-| A child `QThreadPool` and a parented sink | the delete-with-blocked-task regression, at 30 s against a 0.5 s budget — **after the test stopped naming the pool it expected** |
-| — the same mutation, first attempt | **survived.** The regression blocked the *module-level* pool by name, so a store handed a private child pool was never blocked and finished instantly. The test now asks the store which pool it uses (`ThumbnailStore.pool`), because a test that assumes the implementation cannot police it. |
-
-**Fourth round, six on the `R14` correction. Four survived the first pass**, and each one was a
-part of the fix that nothing yet exercised:
-
-| Mutation | Killed by |
-|---|---|
-| `setData` resolves against live staging | the debounce regression, with the reported symptom: *B lost the format chosen for it* |
-| The tuple is swapped before the editor is committed | the same |
-| `data()` resolves against live staging | the reset-time probe — **after it sampled `data()` and not only `row_at`** |
-| `rowCount()` resolves against live staging | the same probe — **after it sampled the row count** |
-| Selection restored by number rather than identity | the current-row assertion — **after it existed** |
-| The re-entrancy guard is removed | the one-reconcile-one-reset assertion — **after the guard was actually written**; it had been setting the flag without reading it |
-
 
 ---
 
@@ -901,8 +455,12 @@ restoration of the widget-per-row design; the timing tests did not.
 ### T-121 — The phase-exit clip server aborts connections on hosted Windows
 
 **Status:** **Proposed — found by CI run `30853680183`**, 2026-08-03, by measurement rather than by
-reading. Filed rather than fixed inline (`AGENTS.md` §7): it is not `T-118`'s, and it is the only
-thing red on `main`.
+reading. Filed rather than fixed inline (`AGENTS.md` §7): it is not `T-118`'s.
+**It did not recur in run `30859578131`, which is not the same as resolved** (`COORD-R21`). Nothing
+has touched the fixture or its message; the second run simply did not trip the race. The current
+red on `main` belongs to `T-122`'s ratio oracle.
+*(This read "it is the only thing red on `main`" until 2026-08-03, which stopped being true the
+moment `T-118`'s own scaling gate failed and this test passed.)*
 **Owner:** Implementer
 **Priority:** Medium — a gate that fails for its own fixture's reasons is a gate that will be
 dismissed, which is `T118-R10`'s lesson in a different costume
@@ -2191,6 +1749,460 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-118 — The add dialog becomes a staging list
+
+**Status:** **Complete — Approved with follow-ups at `53b07ec`**, 2026-08-03, after four rounds of
+changes requested and four corrections. Exact-head run `30859578131` supplied the Windows evidence
+the last gate needed: `STARBASE` passed the full suite and hosted `windows-latest` passed every
+`T-118` correction test. **Two follow-ups carry forward, neither blocking:** `T118-R17` — the
+paste-scaling ratio oracle rejects a transient host pause, owned by **`T-122`** before the Phase 2
+exit review — and `COORD-R21`, the current-truth prose corrected in this commit.
+*(This read "In Review — four rounds … Blocked only on exact-head Windows verification" until the
+verdict, and "three rounds" before that.)*
+**Resolved by the reviewer:** `T118-R1`…`R3`, `R6`, `R7`, `R8`, `R9`, `R10`, `R11`, `R12`,
+`COORD-R18`, and the `e300b04` teardown fixes. `UX-004` closed `R5`. **Resolved in the third round:** `T118-R13`, `R15`, `R16`.
+
+**`T118-R14` was escalated to Critical and is corrected in the fourth round.** The third round's fix
+was the wrong half: it committed the open editor before the reset, but every index the model
+answered — `rowCount`, `data`, `setData` — still read `Staging.visible`, which reconciliation had
+*already* changed. The index stayed numerically valid and stopped naming the same row. Start with
+A/B/C, edit the box to B/C, open row 1's editor for B and choose MP3, let the debounce fire: the
+new tuple is (B, C), old index 1 is **C**, and the format chosen for B is written to C. Add then
+queues the wrong request for both — `T118-R6`'s consequence, a silently wrong download, reached
+from a new direction. Only the Reviewer marks these Resolved (`AGENTS.md` §10).
+
+**What the second round found is worth stating plainly, because it is one mistake with three
+faces: I optimised away the thing `UX-004` chose, and then wrote tests that agreed with me.**
+`T118-R12` — the delegate reserved the control's slot and painted nothing in it, so the per-row
+format control `UX-004` §1 requires on *every* row existed only for someone who already knew to
+press F2. My own structural test demanded **zero** live controls, which encoded the absence rather
+than catching it. `T118-R8` — the correct selector reached the model and was then right-elided at
+382 px against a 962 px string, and the tests read `DisplayRole` so never saw what was drawn.
+`T118-R13` — the fetch was asynchronous and the *cleanup* was not.
+*(This read "the correction batch is complete and awaiting re-review" between the two rounds, and
+before that "changes requested … this one needs a redesign".)*
+`T118-R1`…`R3` are **resolved** — transient staging, synchronous staging identity, and an owned
+commit that writes each row's final request once — and were preserved through the rewrite.
+`T118-R5` is closed by `UX-004`. What was open was the whole per-row control path: `T118-R6`
+(**Critical** — a row overridden to MP3 stores the registry default 192 kbps while the visible
+control says 320), `T118-R7` (the row widget collides with the item delegate; a 54 px thumbnail is
+clipped into a 25 px row), `T118-R8` (an overridden row never shows the selector that will run),
+`T118-R9` (the row controls are outside the declared focus order and land after Close) and
+`T118-R10` (hosted Windows measured 150 rows at 0.722 s, seven times `NFR-001`'s target).
+
+The reviewer's direction is one design rather than five patches: **one rendered row, one declared
+keyboard route, one effective request** — which most naturally means bringing `T-119`'s reusable
+delegate forward instead of installing a widget per row.
+
+**Maintainer decision, 2026-08-03: the correction is taken together with `T-119`, as one task.**
+The delegate answers `T118-R7`, `T118-R9` and `T118-R10` simultaneously because it draws one
+reusable editor rather than a widget per row; `T118-R6` and `T118-R8` are then the request and its
+display done correctly inside a row the task owns. Patching five findings against the widget-per-row
+approach would be correcting what the review has already said to replace.
+
+**`T118-R10`'s bound is marginal, not merely wrong.** The same test measured 0.722 s on hosted
+Windows at `253bbce` (run `30786142921`) and **passed** on `windows-latest` at `4b0fe10`
+(run `30822454998`) with nothing relevant changed between them. So the replacement needs a bound
+with real headroom rather than the largest number one Linux measurement will bear, plus a
+hosted-Windows measurement taken *at* that bound — otherwise the gate flaps, and a flapping gate
+teaches the next reader to dismiss a red run as runner speed, which `T118-R10` explicitly forbids.
+
+**And the class already has a second member: `T083-R2`** (filed 2026-08-03, open and
+non-blocking, recorded under `T-083`). Its backoff test leaves a 10 % margin and starts measuring
+from a *polled* observation of the failure rather than the failure itself, so poll lag is
+subtracted from the interval being bounded. Whoever sets `T118-R10`'s replacement bound should
+settle both with one rule — measure from an instant the code reports, not from the moment a test
+loop notices — since fixing them separately is how the rule ends up stated twice and differently.
+
+**Carried in with it: `T118-R11`'s cleanup**, because it describes the design being replaced —
+**and two teardown defects the desktop runner found, which are one defect in two costumes.**
+
+`shutdown()` cancels every occupant (`manager.py:1793`), and a staged probe is an occupant. Both
+errors are `cancel()` reaching a staged job in a state it cannot express:
+
+- **`KeyError: no job with id …`** — `_require()` finds the id neither staged nor durable. Seen in
+  runs `30822454998` and `30826638984`, teardown of
+  `test_pasting_a_url_into_the_assembled_application_reaches_the_database`.
+- **`IllegalTransitionError: cannot move a job from failed to cancelled`** — `_persist`'s guard at
+  `manager.py:1441` is `is_terminal(current.status)`, and **`FAILED` is not terminal here because
+  retry exists**, so `_cancelled()` is computed and the state machine refuses it. Seen in run
+  `30826638984`, teardown of `test_add_commits_what_resolved_and_leaves_what_did_not`.
+
+**`cancel()`'s own comment already says this cannot work** (`manager.py:1428-1433`): *"A job
+awaiting an automatic retry is `FAILED`, and `FAILED` allows only `QUEUED` — so cancelling one
+raises out of the state machine and this line could never run."* `T-118` then created a caller that
+reaches exactly that line, through `unstage()`. So the correction batch's claim that *"the
+remove-versus-cancel question disappears … `ARC-004` needs no `FAILED → CANCELLED` edge"* is
+**false as implemented**: a staged probe that fails and is then unstaged needs one, or `unstage`
+needs a verb other than `cancel` for a job with no live work left. Neither error reproduces on
+Linux; both are teardown-only, so the tests they hang off still report as passed.
+*(This read "In Review — complete 2026-08-02. Ten mutations run; all ten killed".)* Ten mutations
+were run and killed; It found six defects in code it did not
+write — see the handoff; three were caught by `T-088`'s phase proof or by `mypy --platform win32`
+rather than by reading the diff.
+*(This read "Proposed — UI rework decomposition, 2026-08-02".)* This is `UX-003` in code.
+**Owner:** Implementer
+**Priority:** High
+**Phase:** Phase 3
+**Depends on:** `T-116` (or Add stalls the downloads already running) and `T-117` (or the thumbnail
+dies with the dialog). **Both are approved, so nothing blocks this task.**
+**`T-105` is not a dependency**, and its removal is deliberate: accepted `UX-004` supplied the
+maintainer decision `T118-R5` needed and explicitly struck `T-105` as this correction's
+prerequisite (`DECISIONS.md:2586`). `T-119` named it too, and **that dependency does not survive
+the merge either** — the same decision governs the delegate, because the delegate is what `UX-004`
+says draws the per-row control. When `T-105` writes `docs/UX_SPEC.md`, it documents what this task
+built rather than the other way round.
+**Relevant context:** `UX-003`, `REQ-001`, `REQ-002`, `REQ-012`, `REQ-018`, `NFR-005`, `NFR-006`,
+`T-016`, `T-075` (the preset is bound at Add, not at probe), `T-115`, `T115-R1`, `T-060`
+**Affected surfaces:** `ui/add_dialog.py`
+**Risk:** **High** — it rewrites the dialog `T-016`, `T-075` and `T-115` all landed corrections in
+
+#### Scope
+
+`UX-003`: the paste resolves before anything is queued. Pasting starts the work — the
+`&Probe first URL` button goes, because there is no second thing to press and no route to queueing
+something unread. Each line becomes a row that resolves in place into title, uploader, duration and
+thumbnail.
+
+**Every prior correction to this dialog is a constraint on the rewrite, not history.** `T-016`: a
+probe belongs to a URL and a generation, not to a job id, and an input that moves on cancels what
+is in flight. `T-075`: the request that runs is the one selected when Add was pressed, retargeted
+before the job may start. `T115-R1`: the batch is **one** admission decision, taken after the
+retarget settles, in durable queue order. A rewrite that loses any of these re-earns its review
+round.
+
+#### Acceptance criteria
+
+- Pasting resolves every line without a second control; no route exists to queue an unresolved URL
+- A line that fails to resolve **stays in the list** with the extractor's message verbatim
+  (`NFR-006`) and its own retry, and is excluded from the commit — asserted on the count the button
+  commits, not only on its label
+- Commit admits in durable `queue_position` order, one decision, after any retarget (`T115-R1`'s
+  regression must still pass against the rewritten dialog)
+- A row that has not resolved yet is **filled, not blank** — the derived placeholder of `UX-003`'s
+  rejected-as-sufficient alternative — and every state is named in words, never signalled by colour
+  alone (`NFR-005`)
+- Cancelling the dialog cancels every outstanding probe, queued or running (`T-116`'s ceiling makes
+  queued ones real)
+- The preset applies to the paste, overridable per row; the effective selector shown stays the one
+  that will run (`T-075`)
+- Focus order is declared per state and excludes hidden rows (`T-060`); a resolving row and a failed
+  row are different states
+- A paste large enough to exceed the probe lane resolves in order and does not freeze the dialog
+  (`NFR-001`)
+
+#### Out of scope
+
+- Playlist expansion beyond showing that a URL **is** one and how many entries it has — choosing
+  entries is `T-110`
+
+*(This read "The queue's own rendering (`T-119`)" until 2026-08-03. It is **in** scope now — the
+merge is precisely that one renderer serves both surfaces. `COORD-R14`: leaving that line while the
+status said the tasks were merged made the task exclude the work it had just absorbed.)*
+
+#### What `T-119` brought in, unchanged
+
+*(Merged 2026-08-03. Reproduced rather than summarised, because `COORD-R14` names losing these
+criteria as the risk the merge runs. The delegate is now this task's to build.)*
+
+**Affected surfaces, added:** `ui/queue_view.py`, a new delegate module, `core/paths.py`
+**Relevant context, added:** `REQ-014`, `NFR-004` (cache location), `ARC-005`, `T-079` (the queue
+table's repaint and ordering rules), `T-081`
+
+The rich row from the accepted mockup: thumbnail, title, uploader, progress and state in one row
+rather than a grid of columns. The staging list guarantees the text is there; the delegate draws
+it — and drawing it once, for both surfaces, is what closes `T118-R7`, `T118-R9` and `T118-R10`
+together rather than one at a time.
+
+**The scale rule is the task, not the drawing.** A public application cannot assume a queue of
+twenty. The policy is: bytes fetched only for rows the view asks to paint plus a small look-ahead,
+a bounded pixmap cache, a disk cache under `NFR-004`'s cache directory swept with the job, and the
+GUI thread never blocking on a fetch or a decode (`ARC-005`).
+
+Acceptance criteria, carried verbatim:
+
+- A row renders every field `REQ-002` names, asserted by value rather than by pixel
+- **No fetch is issued for a row the view never asked to paint** — asserted with a model far larger
+  than the viewport, counting requests
+- The pixmap cache has a stated bound, and a test that exceeds it asserts memory is released rather
+  than that the cache "works"
+- The disk cache lives under `NFR-004`'s directory, is keyed so two jobs for one URL share it, and
+  is removed with the job
+- A failed or missing thumbnail keeps the placeholder and is **not** reported as an error — a
+  missing picture is not a failed download — and does not retry in a loop
+- Repaint cost is bounded with a realistic queue size, in the shape `T-079` already asserts
+- Everything a sighted user reads from the row is available to a screen reader (`NFR-005`), and the
+  derived placeholder is never the only thing distinguishing two rows
+
+**Also out of scope, carried:** history's rendering. If it should match, that is its own task
+against `T-100`.
+
+**Risk, carried:** repaint cost is what regresses, and it regresses at a size no hand-driven test
+reaches — which is the same shape as `T118-R10`, measured on the wrong machine.
+
+#### Correction, 2026-08-03 — `T118-R6` through `R11`, and `T-119`'s carried scope
+
+**One design, not six patches**, which is what the review asked for. `ui/row_delegate.py` is the
+new module: named roles, one painted row, and one editor created for the row being edited.
+`ui/thumbnails.py` is the cache behind it, and `core/paths.py` gained the cache directory.
+
+| Finding | How it is answered |
+|---|---|
+| `T118-R6` | Already corrected at `446d151`, before this batch: the effective preset is derived in one place and the per-row override routes through it. Untouched here. |
+| `T118-R7` | There is no row widget. `ROW_HEIGHT` is **derived** from `THUMBNAIL_SIZE`, and `sizeHint` takes the larger of it and the height three lines need in the view's own font — so a large accessibility font cannot clip the row either. |
+| `T118-R8` | `SELECTOR_ROLE` is the row's third line, carrying the literal selector. `describe_preset` became one line rather than two, since the delegate draws three. |
+| `T118-R9` | `EDIT_KEY` is declared in the delegate and `EditKeyPressed` is set on both views. `AddUrlDialog.edit_row` is the single route the key, the context menu and the tests all take. The editor is **never a tab stop** — it does not exist until asked for — and the row's accessible text carries `EDIT_HINT`, so the control is discoverable to a screen-reader user who cannot see it. |
+| `T118-R10` | See the bound below. |
+| `T118-R11` | `_committing` is gone (written, never read). The module docstring said "a row is persisted before it is probed" — the design `T118-R1` was **Critical** for — and now says the opposite, with the history kept. `unresolved_job_ids()`/`written_job_ids()` split a question that no longer exists and are replaced by `staged_job_ids()`. The list comment claiming "not a widget per row" is true again. |
+
+**`T-119`'s carried criteria, each with the test that fails without it:** every field by value
+(`test_the_drawn_row_carries_every_field_the_columns_do`); no fetch for an unpainted row
+(`test_no_thumbnail_is_fetched_for_a_row_that_is_never_painted` — 500 rows, 12 painted, 12
+requests); a stated cache bound that releases (`test_the_pixmap_cache_releases_what_it_evicts`);
+the disk cache under `NFR-004`, shared by URL and swept when no job names it (three tests); a
+missing picture kept as a placeholder and never retried; repaint cost bounded; and the row spoken
+whole to a screen reader.
+
+**The queue keeps its columns and stops being a grid.** `COLUMN_HEADERS` is `REQ-014` transcribed
+by hand and `_text` still answers each field, because that is what `accessible_text_at` reads and
+what pins the requirement; the *view* became a `QListView` whose delegate composes those same
+answers into one row. Deleting the per-field vocabulary to change a widget would have thrown the
+transcription away.
+
+##### The replacement bound, and what is still owed
+
+`T118-R10`'s gate is replaced by **three** assertions, because the one it replaces could not
+distinguish "the machine was fast" from "the design is flat":
+
+1. **An absolute budget with real headroom.** `SUPPORTED_PASTE` rises from 150 to **500** — the
+   size the ceiling was hiding — and `INTERACTION_BUDGET_SECONDS` is **1.0 s** against a measured
+   **0.042 s** on the development machine. A 24x margin, deliberately not the largest number one
+   Linux measurement will bear.
+2. **A ratio, which does not move with runner speed.** Four times the paste must cost less than
+   six times the time. Measured: 0.020 s at 125, 0.042 s at 500, 0.047 s at 1000.
+3. **A structural count**, which is the one that actually holds. A mutation reintroducing a
+   persistent editor per row **passed both timing tests** — an unshown view lays nothing out, so
+   500 hidden combo boxes are cheap here and ruinous on the platform that measured 0.722 s.
+   `test_a_large_paste_builds_no_control_at_all_until_one_is_asked_for` counts the controls and
+   fails that mutation with `500 per-row controls exist for 500 rows`.
+
+Repaint was measured directly and is **flat in the model**: painting 12 rows costs 3.1 ms median
+whether the model holds 12, 150, 500 or 2000 rows; 40 rows costs 10.2 ms.
+
+**Taken 2026-08-03, on the machine the finding named.** Run `30853680183` at `adc5355` ran the
+correction's nine tests on **hosted `windows-latest`** — the runner where the flap was observed —
+and on `STARBASE`. All nine passed on both, including the paste budget at 500 URLs against the
+1.0 s bound, the scaling ratio and the structural control count. `T118-R10`'s owed measurement is
+therefore satisfied on hosted Windows directly, and the `STARBASE` substitution recorded below was
+not needed after all.
+
+**What the run does not give is a number.** A pass proves the paste came in under 1.0 s; it does
+not say by how much, so the 24x margin remains a development-machine claim. Instrumenting the test
+with `record_property`, as `tests/network/test_real_download.py` already does, would put the figure
+in the junit artifact — filed rather than done here, because it costs a CI run and the gate it
+would inform is already green twice over.
+
+*(This read "Owed, and not done: one Windows measurement at the new bound", with the figures
+development-machine only, until the run above.)* The ratio and the structural count are runner-invariant and did not need
+it; the 1.0 s absolute budget did.
+
+**The standing preference is still `STARBASE`** (maintainer, 2026-08-03): hosted Actions minutes
+are nearly exhausted and the self-hosted desktop costs none. `ci.yml`'s Windows `check` job already
+reads `vars.WINDOWS_RUNNER` and falls back to `windows-latest` only when it is unset, so this is a
+repository variable rather than a workflow change — and `OPS-005` pointed it at hosted *while
+`STARBASE` was offline*, which stopped being true on 2026-08-03.
+
+**Stated plainly because the machines are not interchangeable:** the flapping was *observed* on
+hosted Windows, so a green `STARBASE` run is evidence about a different machine. That is the right
+trade here — the replacement bound carries a 24x margin rather than a 4 % one, and the assertion
+that actually holds (the control count) needs no runner at all — but it is a substitution, and the
+re-review should see it named as one rather than discover it.
+
+#### Correction, 2026-08-03 (second round) — `T118-R8`, `R12`, `R13`
+
+**`T118-R12` — the control is drawn on every row.** `UX-004` §1 is unconditional: every row carries
+a visible *Download as* control showing what that row will download. `UX-004`'s own `T-119`
+sequencing note says the delegate may "draw the control only on the row under the pointer or
+holding focus: one widget reused, **identical interaction**". I took the widget-reuse half and
+dropped the drawing, which is not what it says.
+
+`RowDelegate._paint_control` now draws the control through the platform style — a real
+`QStyleOptionComboBox` and `CC_ComboBox`, so it is the machine's combo box rather than something
+that resembles one here — on every row that has choices, carrying that row's current value. The
+live `QComboBox` still exists only for the row being edited, so `T118-R10`'s cost does not return.
+`RowDelegate.editorEvent` opens that editor on a **direct click** in the control's rectangle:
+`SelectedClicked` alone meant the first click selected the row and did nothing visible, and the
+user had no way to know a second click was needed. One `_control_rect` serves the painted
+affordance, the live editor's geometry and the click target, so the control cannot move under the
+pointer.
+
+**`T118-R8` — the drawn selector wraps at full width, and there is a copyable one.** The line is no
+longer narrowed by the control's slot and no longer elided; it wraps into `SELECTOR_LINES`. And
+because a delegate paints pixels rather than selectable text, `REQ-009`'s promise that a user can
+*learn the syntax and write their own* needed somewhere to take it from: `selectorValue` below the
+list now follows the current row, falling back to the batch when none is current.
+
+**`T118-R13` — the lifecycle is asynchronous, not just the fetch.** `sweep()` resolves the names to
+keep and hands the directory listing, the stats and the unlinks to `_SweepTask` on the pool;
+`swept` reports the count. `close()` marks the store closed, cancels network work and **returns** —
+the `waitForDone(5000)` is gone. Ownership completes at `closed`, emitted when the last counted
+task drains. What the wait protected is still handled: `QThreadPool`'s own destructor waits for its
+runnables, and that runs when the store is destroyed rather than on the interaction.
+
+**Found while fixing it: the cache write was not atomic.** `write_bytes` creates the file and then
+fills it, so a reader — the next launch, or another window sharing the URL — could open a name that
+exists and get a truncated image. Written aside and renamed now. **This one is not covered by a
+test**, deliberately: it is a race whose window no deterministic test can observe, and a test that
+appeared to cover it would be worth less than this sentence. It was found by a test racing its own
+write, which is the only reason it is known about at all.
+
+#### Correction, 2026-08-03 (third round) — `T118-R13` again, `R14`, `R15`, `R16`
+
+**`T118-R13` — I fixed the wait and left the ownership.** The second round moved the block out of
+`close()` and then reasoned, in a docstring, that `QThreadPool`'s destructor "runs when this store
+is destroyed — after its parent has let it go, rather than on the interaction". That is backwards
+and the reviewer proved it: the pool was a **child** of the store, so deleting the store ran the
+destructor **on the GUI thread**, measured at 1.008 s. Worse, every runnable emitted through the
+store, and a Python reference does not keep the wrapped C++ `QObject` alive — `_ReadFromDisk`
+raised `RuntimeError: Signal source has been deleted` for `disk_missed` and `task_done`, which is a
+worker completion lost during shutdown.
+
+Both are fixed at the root rather than by a longer wait. The pool is **module-level and shared**,
+so no store's destruction runs it and the application's two stores share one bound. Tasks emit
+through **`_Sink`**, a parentless `QObject` the runnables themselves keep alive; Qt severs the
+store's connections when the store dies, so a late emission goes nowhere instead of into freed
+memory.
+
+**`T118-R14` — the fix for one finding created another.** Making `refresh()` reset the model for
+every value change orphaned any open row editor: Qt invalidates the live editor's index on reset,
+so committing it reported *"called with an editor that does not belong to this view"*, `setData`
+was never reached, and the user's chosen format was discarded while the control stayed on screen.
+The trigger is ordinary — a sibling row finishing its probe while someone is mid-choice.
+
+`StagingModel.refresh()` now compares row **identity** (`Row` is `eq=False`, so tuple equality is
+object equality) and emits `dataChanged` when only values moved; a reset is reserved for the set of
+rows actually changing, and `commit_open_editor()` closes the editor first, while its index is
+still valid. `_refresh` restores the current row by identity rather than by row number.
+
+**`T118-R16` — the temporary was unique per process, not per write.** Two stores over one cache
+root fetching the same URL opened and truncated the same `.partial`. `tempfile.mkstemp` creates
+exclusively, per write, and its own temporary is removed on failure.
+
+**`T118-R15` — the contract is narrowed rather than the layout rebuilt.** The row's "wraps rather
+than clips" claim held only at the default 9 pt: the reviewer measured the longest built-in needing
+three lines at 12 to 15 pt and five at 18 pt. Sizing the row from the wrapped height would make row
+height depend on content and cost the uniform-row property `T118-R10` turns on. So the row shows as
+much as `SELECTOR_LINES` holds and **`selectorValue` below the list is the guaranteed complete,
+copyable surface** — stated in the constant, and asserted at 18 pt by a test that first proves the
+row cannot fit it.
+
+#### Correction, 2026-08-03 (fourth round) — `T118-R14`, as Critical
+
+**The model now answers for what the view was told, and nothing else.** `_shown` existed but no
+index mapping used it. `rowCount()`, `data()`, `setData()` and the dialog's `_row_at` all read the
+live `Staging.visible`, so between a reconcile and the reset that announces it the model described
+a list the user was not looking at. Every one of them goes through `StagingModel.row_at`, which
+reads `_shown`.
+
+**The ordering point is one line, and it is the whole fix**: `commit_open_editor()` runs *before*
+`_shown` is swapped, so `setData` resolves the editor's index through the tuple the editor was
+opened against. Swap first and the choice lands on the following URL.
+
+**Selection restores by identity too**, for the same reason: a bare row number carried across a
+changing set names whoever moved into that slot.
+
+**The commit path is re-entrancy-safe**, as the review asked — `setData` calls `dialog.refresh()`,
+which without a guard re-enters the reset it is inside. *(The third round claimed this guard: it
+set the flag and never read it. The mutation run found it by failing to locate the branch it was
+trying to delete.)*
+
+##### The exact-head run, and the gate that failed in it
+
+**Run `30859578131` at `53b07ec`** — the head the reviewer asked to verify. `STARBASE` **passed**
+the full Windows suite; hosted `windows-latest` reported **1 failed / 1971 passed / 21 skipped**;
+Ubuntu, `STARBASE coverage` and both frozen jobs passed. **`T-121` did not recur.**
+
+The single failure is `test_a_four_times_larger_paste_does_not_cost_four_times_more_than_linearly`:
+
+```
+500 URLs cost 1.4935s against 0.0321s for 125
+— a factor of 46.5 for four times the input, over 6.0
+```
+
+**It is the gate that is wrong, and the evidence is inside the same job.**
+`test_a_paste_the_design_supports_stays_inside_the_interaction_budget` does the *same* 500-URL
+resolve and **passed**, which means it came in under 1.0 s minutes apart from a measurement that
+reported 1.4935 s. Two identical workloads, one job, one under budget and one three times over it:
+that is a transient stall, not a cost that grows with the paste. `STARBASE` passed the same test in
+the same run, and locally the ratio is 2.6 (0.0143 s at 125, 0.0375 s at 500).
+
+**The design error is mine, and it is `T118-R10`'s own defect class reproduced by the instrument
+built to replace it.** I argued a ratio "does not move with runner speed, because two measurements
+taken moments apart on one machine share it". True of a *sustained* speed difference; false of a
+transient one — and the denominator here is ~30 ms, so any absolute perturbation is amplified
+enormously. A 1.4 s hiccup against a 30 ms baseline is a factor of 46. The ratio gate is therefore
+**more** fragile than the absolute budget it was meant to complement, which is exactly what
+`T118-R10` said a flapping gate does to the next reader.
+
+**Recommended, not applied:** fail only when the absolute budget *and* the ratio are both breached,
+or take a median of several repeats per side. Left undone deliberately — the reviewer's verdict
+requested no further source correction, and changing source now would move the head away from the
+one under verification. It is the reviewer's call.
+
+##### Mutations run
+
+Ten, of which **four initially survived — and each one changed the work rather than the record**.
+That is the value of running them: three of the four exposed a test that could not fail for the
+reason it named, and the fourth exposed two guards that made each other untestable.
+
+| Mutation | Killed by |
+|---|---|
+| The pixmap cache never evicts | the release and LRU tests |
+| The gate forgets what is already running | the fetch-once and shared-file tests |
+| The disk cache is keyed per row rather than per URL | the sharing and relaunch tests |
+| `sweep` deletes everything, live or not | the sweep test |
+| The drawn row drops speed and ETA | the every-field test |
+| Column 0 announces only its own cell | the spoken-whole test |
+| The gate forgets failures | the no-retry tests — **after the two redundant guards became one**. Either guard alone caught it, so removing either left the other and no test could tell whether the rule was enforced. |
+| `peek` starts a fetch, like `pixmap` | the probed-thumbnail test — **after `pending_urls` existed**. The effect is asynchronous, so a fetch *count* cannot see it in the same breath as the call. |
+| An unknown total draws a bar at zero | the indeterminate test — **after it also asserted `PROGRESS_ROLE`**. It checked the text only, so the graphical half could tell the lie the textual half was written to avoid. |
+| A persistent editor per row | the structural count — **after it existed**; the two timing tests both passed it. |
+
+**Second round, six more.** Four killed on the first attempt; **one survived and one is recorded as
+uncovered**:
+
+| Mutation | Killed by |
+|---|---|
+| A click on the drawn control does nothing | the shown-dialog click test |
+| The selector is elided at one line again | the rendered-selector test |
+| The copyable label ignores the current row | the follows-the-current-row test |
+| The sweep runs inline on the GUI thread | the blocked-pool sweep test |
+| `close()` waits for the pool again | the blocked-pool close test, which takes 5.11 s to fail — the wait it is asserting the absence of |
+| **The control's slot is reserved and nothing is painted** | **survived at first.** The test rendered the slot and asserted it was "not blank", which the item background satisfies either way — the same vacuous shape the review was about, produced while fixing it. Rewritten to hold two rows identical apart from `PRESET_CHOICES_ROLE` with empty text, so the only thing that can differ in the compared rectangle is the control. Now killed. |
+| The cache write is not atomic | **nothing.** Recorded above rather than covered: the window is unobservable to a deterministic test. `T118-R16` then found a *second* defect in the same lines that a test could not have caught either, which is the honest cost of that decision. |
+
+**Third round, three more. Two killed; one survived and rewrote the test.**
+
+| Mutation | Killed by |
+|---|---|
+| The model resets on every refresh | the sibling-settles regression, with the reported symptom: *the chosen format never reached the row* |
+| A child `QThreadPool` and a parented sink | the delete-with-blocked-task regression, at 30 s against a 0.5 s budget — **after the test stopped naming the pool it expected** |
+| — the same mutation, first attempt | **survived.** The regression blocked the *module-level* pool by name, so a store handed a private child pool was never blocked and finished instantly. The test now asks the store which pool it uses (`ThumbnailStore.pool`), because a test that assumes the implementation cannot police it. |
+
+**Fourth round, six on the `R14` correction. Four survived the first pass**, and each one was a
+part of the fix that nothing yet exercised:
+
+| Mutation | Killed by |
+|---|---|
+| `setData` resolves against live staging | the debounce regression, with the reported symptom: *B lost the format chosen for it* |
+| The tuple is swapped before the editor is committed | the same |
+| `data()` resolves against live staging | the reset-time probe — **after it sampled `data()` and not only `row_at`** |
+| `rowCount()` resolves against live staging | the same probe — **after it sampled the row count** |
+| Selection restored by number rather than identity | the current-row assertion — **after it existed** |
+| The re-entrancy guard is removed | the one-reconcile-one-reset assertion — **after the guard was actually written**; it had been setting the flag without reading it |
+
+---
 
 ### T-120 — The brand palette, applied
 

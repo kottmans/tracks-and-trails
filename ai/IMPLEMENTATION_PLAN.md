@@ -185,14 +185,14 @@ them, which is the argument for having built it.)*
 and 7 are met. **What remains is the exit itself** — an independent exit review (`AGENTS.md` §3),
 which Phase 0 and Phase 1 both required and neither could self-certify.
 
-**`T-118` lands before this phase exits**, carrying `T-119`'s scope after the two were merged.
-Maintainer decision, 2026-08-03. It is a Phase 3 task and not a Phase 2 deliverable, so this is a
+**`T-118` landed before this phase exits**, carrying `T-119`'s scope after the two were merged.
+Maintainer decision, 2026-08-03. It is a Phase 3 task and not a Phase 2 deliverable, so this was a
 sequencing choice rather than a scope change — but it was the only thing keeping `main` red, and
 criterion 5 is evidenced by CI. An exit submitted against a red board invites rejection on that
-alone.
+alone. **It is now approved**, so what stands between here and the exit is criterion 6 alone.
 
-**Four correction rounds landed on 2026-08-03, and the fourth is awaiting re-review.** The first
-built the shared delegate and carried `T-119`'s scope. The second answered three blocking findings
+**`T-118` is approved with follow-ups at `53b07ec`** (2026-08-03), after four rounds of changes
+requested and four corrections. The first built the shared delegate and carried `T-119`'s scope. The second answered three blocking findings
 that were one mistake — the per-row control's slot was reserved and painted nothing, the literal
 selector was elided to nothing at a realistic width, and the thumbnail *cleanup* still blocked the
 GUI thread while the fetch did not. The third answered two Highs **the second round created or left
@@ -202,7 +202,8 @@ fourth answers the second of those **escalated to Critical**: the model's index 
 live staging rather than the snapshot the view held, so a format chosen for one row was written to
 the *next* one when a preceding row left the list mid-edit — a silently wrong per-URL download.
 
-*(Resolved so far: `R1`…`R3`, `R6`…`R13`, `R15`, `R16`, `COORD-R18`. The pattern across all four
+*(All findings resolved; `T118-R17` and `COORD-R21` carry forward as non-blocking follow-ups. The
+pattern across all four
 rounds is one thing: a correction verified by a test that agreed with the implementation rather
 than checking it against the finding. The fourth round found the previous round's re-entrancy guard
 setting its flag and never reading it — caught by a mutation that could not find the branch it was
@@ -210,16 +211,24 @@ deleting, not by anybody reading the code.)*
 
 **`T-118` is no longer what is red.** Run `30853680183` ran the correction's nine tests on hosted
 `windows-latest` — the runner where `T118-R10`'s flap was observed — and on `STARBASE`, and all
-nine passed on both. `T118-R10` is **Resolved**. **The exact-head run is in:** `30859578131` at `53b07ec` put every round on Windows at last.
+nine passed on both. `T118-R10` is **Resolved**.
+
+**The exact-head run is in:** `30859578131` at `53b07ec` put every round on Windows at last.
 `STARBASE` passed the full suite; hosted `windows-latest` reported **1 failed / 1971 passed**, and
 the one failure is `T-118`'s own scaling gate rather than the product — the absolute-budget test in
 the same job did the identical 500-URL resolve under its 1.0 s budget. `T-121` did not recur.
 
-**What is red is `T-121`**, filed from that same run: the phase-exit test's own localhost clip
-server aborts a loopback connection on hosted Windows, so one of five downloads fails and a test
-about *admission* goes red while reporting that zero jobs stayed queued — which is the behaviour it
-exists to prove, holding. `STARBASE` passed the same test in the same run. It is test
-infrastructure, not a production defect, and it is Phase 2's gate rather than `T-118`'s.
+**What is red now is `T-122`'s ratio oracle** (`COORD-R21`). In exact-head run `30859578131` the
+one hosted-Windows failure was `T-118`'s own paste-scaling gate, which rejects a transient host
+pause; the product passed. `T-122` owns removing it as a required gate while keeping the 500-row
+absolute budget and the structural control count.
+
+**`T-121` did not recur in that run, which is not the same as resolved.** Its entry stays Proposed:
+the phase-exit test's own localhost clip server aborted a loopback connection on hosted Windows in
+run `30853680183`, so one of five downloads failed and a test about *admission* went red while
+reporting that zero jobs stayed queued — the behaviour it exists to prove, holding. `STARBASE`
+passed it both times. The fixture defect and its misleading message are still there; one green run
+did not fix them, it just did not trigger them.
 
 **The standing preference remains `STARBASE` over hosted runners** (maintainer, 2026-08-03), since
 hosted Actions minutes are nearly exhausted. `ci.yml`'s Windows `check` job already reads
@@ -269,7 +278,7 @@ flowchart LR
     T116["<b>T-116</b><br/>probe lane"]:::approved
     T117["<b>T-117</b><br/>thumbnail_url"]:::approved
     T120["<b>T-120</b><br/>brand palette"]:::approved
-    T118["<b>T-118</b><br/>staging list + row delegate<br/><i>T-119 subsumed · corrected 4x</i>"]:::review
+    T118["<b>T-118</b><br/>staging list + row delegate<br/><i>T-119 subsumed · approved</i>"]:::approved
 
     EXIT(["<b>Phase 2 exit</b>"]):::exit
 
@@ -423,7 +432,7 @@ the deliverables below, which is why it appeared nowhere in this document until 
 what `UX-003` and `UX-004` produced: nothing enters the queue unprobed, so the add dialog becomes a
 staging list and the queue row becomes a delegate. `T-116` (probe lane), `T-117` (`thumbnail_url`
 and the first migration after the initial schema) and `T-120` (brand palette) are **approved**;
-`T-118` is **in review with its correction batch complete**, and `T-119` is **subsumed into it**.
+`T-118` is **approved with follow-ups at `53b07ec`**, and `T-119` is **subsumed into it**.
 
 **One of them is being taken before Phase 2 exits** (maintainer, 2026-08-03). `T-119` is filed
 **Cancelled — subsumed into `T-118`**, with its scope, acceptance criteria and risk carried into
