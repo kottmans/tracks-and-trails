@@ -36,14 +36,17 @@ from pathlib import Path
 from typing import Any, Final
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QEvent, QRect, Qt
+from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter
 from PySide6.QtWidgets import (
+    QAbstractItemDelegate,
     QApplication,
     QComboBox,
     QLabel,
-    QListWidget,
+    QListView,
     QPlainTextEdit,
     QPushButton,
+    QStyleOptionViewItem,
     QWidget,
 )
 
@@ -69,7 +72,6 @@ from tracks_and_trails.downloader.protocol import (
     WorkerFinished,
 )
 from tracks_and_trails.ui.add_dialog import (
-    ROW_PRESET_NAME,
     STATE_TEXT,
     UNKNOWN_TEXT,
     AddUrlDialog,
@@ -77,6 +79,12 @@ from tracks_and_trails.ui.add_dialog import (
     format_duration,
     row_text,
     split_urls,
+)
+from tracks_and_trails.ui.row_delegate import (
+    EDIT_HINT,
+    PADDING,
+    ROW_HEIGHT,
+    ROW_PRESET_NAME,
 )
 from tracks_and_trails.ui.staging import SETTLED, RowState
 
@@ -459,6 +467,11 @@ def dialogs(
     def build(manager: DownloadManager, **overrides: Any) -> AddUrlDialog:
         overrides.setdefault("jobs", sink)
         overrides.setdefault("thumbnail_loader", thumbnails)
+        # **Never the real cache directory.** The store writes fetched thumbnails under
+        # `NFR-004`'s cache root, and a test left on the default would write into the developer's
+        # own — and then read them back on the next run, which is a test that passes because of
+        # what a previous run left behind.
+        overrides.setdefault("cache_root", tmp_path / "cache")
         dialog = AddUrlDialog(manager=manager, output_directory=tmp_path / "downloads", **overrides)
         built.append(dialog)
         return dialog
@@ -530,15 +543,101 @@ def states(dialog: AddUrlDialog) -> list[RowState]:
     return [row.state for row in dialog.rows]
 
 
-def item_texts(dialog: AddUrlDialog) -> list[str]:
-    """What the list actually shows, read from the widget rather than from the model.
+def staging_list(dialog: AddUrlDialog) -> QListView:
+    """The list widget, by the name it is declared under."""
+    listing = dialog.findChild(QListView, "stagingList")
+    assert listing is not None, "the staging list is not present under its declared name"
+    return listing
 
-    The distinction matters: a dialog whose rows resolved and whose list never repainted is the
-    `test_composition.py` failure mode — waiting on the store and asserting the view.
+
+def role_values(dialog: AddUrlDialog, role: int) -> list[Any]:
+    """One role for every row, read **through the view's own model**.
+
+    The distinction the widget-reading version protected still holds: this goes through
+    `listing.model()`, so a dialog whose rows resolved and whose view was never given them fails
+    here — the `test_composition.py` failure mode of waiting on the store and asserting the view.
+    What changed is only that the row's fields are roles now rather than an item's text, which is
+    what lets one delegate draw this list and the queue (`T-119`).
     """
-    listing = dialog.findChild(QListWidget, "stagingList")
-    assert listing is not None
-    return [listing.item(index).text() for index in range(listing.count())]
+    listing = staging_list(dialog)
+    model = listing.model()
+    return [model.data(model.index(index, 0), role) for index in range(model.rowCount())]
+
+
+def item_texts(dialog: AddUrlDialog) -> list[str]:
+    """What each row reads as, whole — headline, detail and state, and what it downloads as."""
+    return [str(value) for value in role_values(dialog, Qt.ItemDataRole.DisplayRole)]
+
+
+def open_row_editor(dialog: AddUrlDialog, index: int) -> QComboBox:
+    """Open one row's format control the way the keyboard route does, and hand it back.
+
+    Through `edit_row`, which is what `EDIT_KEY` and the context menu both reach (`T118-R9`). A
+    test that reached into the delegate would prove the delegate builds a combo box; this proves
+    the dialog offers one *on the row*, which is the finding.
+    """
+    assert dialog.edit_row(index), f"row {index} offered no format control"
+    open_controls = staging_list(dialog).findChildren(QComboBox, ROW_PRESET_NAME)
+    assert len(open_controls) == 1, (
+        f"{len(open_controls)} row controls exist at once; the delegate opens exactly one "
+        "(T118-R10), so this is either a leak or a previous editor that was never reaped"
+    )
+    return open_controls[0]
+
+
+def choose_in_editor(dialog: AddUrlDialog, control: QComboBox, preset_name: str | None) -> None:
+    """Pick an entry and close the editor, so the model takes the choice as Qt would deliver it.
+
+    Draining the queue at the end is not decoration: `closeEditor` retires the widget with
+    `deleteLater`, so without this the *next* `open_row_editor` finds two controls — the new one
+    and a dead one — and `commitData` is then handed an editor the view has already let go of.
+    `DeferredDelete` needs asking for **by name**: plain `processEvents` does not deliver it, which
+    is why the first version of this helper left the editor standing.
+    """
+    control.setCurrentIndex(control.findData(preset_name))
+    listing = staging_list(dialog)
+    listing.commitData(control)
+    listing.closeEditor(control, QAbstractItemDelegate.EndEditHint.NoHint)
+    QApplication.processEvents()
+    QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+
+
+#: The width a row is rendered at in these tests. Wide enough that nothing under test is elided.
+RENDER_WIDTH: Final = 700
+
+
+def render_rows(dialog: AddUrlDialog, *indices: int) -> QImage:
+    """Paint the named rows through the real delegate, and answer what was drawn.
+
+    **This is what "the view asked to paint a row" means**, and the tests about fetching depend on
+    it being the only route: `RowDelegate.paint` is where `ThumbnailStore.pixmap` is called, so a
+    row not named here has genuinely never been painted (`T-119`).
+
+    Rows are drawn stacked, each `ROW_HEIGHT` tall, so one image can carry several.
+    """
+    listing = staging_list(dialog)
+    delegate = listing.itemDelegate()
+    model = listing.model()
+
+    image = QImage(RENDER_WIDTH, ROW_HEIGHT * max(len(indices), 1), QImage.Format.Format_ARGB32)
+    image.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(image)
+    try:
+        for slot, index in enumerate(indices):
+            option = QStyleOptionViewItem()
+            option.rect = QRect(0, slot * ROW_HEIGHT, RENDER_WIDTH, ROW_HEIGHT)
+            option.font = listing.font()
+            option.fontMetrics = QFontMetrics(option.font)
+            option.palette = listing.palette()
+            delegate.paint(painter, option, model.index(index, 0))
+    finally:
+        painter.end()
+    return image
+
+
+def tile_colour(image: QImage, slot: int = 0) -> QColor:
+    """The colour of one drawn row's thumbnail box, sampled inside it."""
+    return QColor(image.pixel(PADDING + 4, slot * ROW_HEIGHT + PADDING + 4))
 
 
 def resolved(
@@ -696,33 +795,37 @@ def test_every_row_carries_its_own_format_control(
     store: FakeStore,
     spin: Callable[..., bool],
 ) -> None:
-    """`UX-004`, `T118-R4`: one control per row, and the request built from it at Add.
+    """`UX-004`, `T118-R4`: every row offers a control, and the request is built from it at Add.
 
-    **A real control on every row, which is what the maintainer chose** after the alternative was
-    measured: building the list costs 5 ms at twenty rows and 86 ms at a hundred and fifty against
-    `NFR-001`'s ~100 ms budget. `T-119`'s delegate will make it one reused widget without changing
-    the interaction.
+    **One editor, opened on the row being edited** (`T118-R10`). The maintainer's choice was a real
+    control on the row, and this is it — what changed is that the control is a delegate editor
+    rather than a widget parked on every row, which is what removed the 0.722 s. *Offers* is
+    therefore the claim: each row is editable, and opening one yields the declared control.
 
-    Asserted end to end — set the control, commit, read the stored request — because a per-row
-    override that is not carried into the durable job is a control that does nothing.
+    Asserted end to end — open the control, choose, commit, read the stored request — because a
+    per-row override that is not carried into the durable job is a control that does nothing.
     """
     dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
-    listing = dialog.findChild(QListWidget, "stagingList")
-    assert listing is not None
+    listing = staging_list(dialog)
+    model = listing.model()
 
-    found = [
-        listing.itemWidget(listing.item(index)).findChild(QComboBox, ROW_PRESET_NAME)
-        for index in range(listing.count())
-    ]
-    assert len(found) == 2 and all(control is not None for control in found), (
-        "a row was drawn without its format control"
-    )
-    controls: list[QComboBox] = [control for control in found if control is not None]
+    assert model.rowCount() == 2
+    for index in range(2):
+        flags = model.flags(model.index(index, 0))
+        assert flags & Qt.ItemFlag.ItemIsEditable, f"row {index} offers no format control"
+
+    first = open_row_editor(dialog, 0)
     # The first entry means "the batch", spelled out rather than blank.
-    assert controls[0].itemData(0) is None
-    assert controls[0].itemText(0).strip(), "the inherited entry is blank, so it reads as no format"
+    assert first.itemData(0) is None
+    assert first.itemText(0).strip(), "the inherited entry is blank, so it reads as no format"
+    choose_in_editor(dialog, first, None)
 
-    controls[1].setCurrentIndex(controls[1].findData("Audio only (MP3)"))
+    assert listing.findChildren(QComboBox, ROW_PRESET_NAME) == [], (
+        "a row control outlived the row being edited, which is the cost T118-R10 was about"
+    )
+
+    second = open_row_editor(dialog, 1)
+    choose_in_editor(dialog, second, "Audio only (MP3)")
     dialog.add_to_queue()
 
     committed = dialog.queued_job_ids
@@ -766,14 +869,10 @@ def test_an_overridden_row_downloads_at_the_bitrate_its_row_displays(
     )
     bitrate.setCurrentIndex(bitrate.findData(wanted))
 
-    listing = dialog.findChild(QListWidget, "stagingList")
-    assert listing is not None
-    control = listing.itemWidget(listing.item(1)).findChild(QComboBox, ROW_PRESET_NAME)
-    assert control is not None
-    control.setCurrentIndex(control.findData("Audio only (MP3)"))
+    choose_in_editor(dialog, open_row_editor(dialog, 1), "Audio only (MP3)")
 
     # What the row promises, before anything is written.
-    shown = listing.item(1).text()
+    shown = item_texts(dialog)[1]
     assert f"{wanted} kbps" in shown, f"the row does not show the bitrate it will use: {shown!r}"
 
     dialog.add_to_queue()
@@ -802,13 +901,9 @@ def test_an_overridden_row_shows_the_selector_that_will_run(
     durable request's `format_selector`, and the two rows must not agree.
     """
     dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM, AUDIO_ONLY)
-    listing = dialog.findChild(QListWidget, "stagingList")
-    assert listing is not None
-    control = listing.itemWidget(listing.item(1)).findChild(QComboBox, ROW_PRESET_NAME)
-    assert control is not None
-    control.setCurrentIndex(control.findData("Audio only (MP3)"))
+    choose_in_editor(dialog, open_row_editor(dialog, 1), "Audio only (MP3)")
 
-    shown = [listing.item(index).text() for index in range(listing.count())]
+    shown = item_texts(dialog)
     dialog.add_to_queue()
     committed = dialog.queued_job_ids
     selectors = [store.jobs[job_id].request.format_selector for job_id in committed]
@@ -1406,14 +1501,16 @@ def test_a_row_carries_its_accessible_text(
 ) -> None:
     """`NFR-005`: everything a sighted user reads from the row is available to a screen reader."""
     dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM)
-    listing = dialog.findChild(QListWidget, "stagingList")
-    assert listing is not None
 
-    spoken = listing.item(0).data(Qt.ItemDataRole.AccessibleTextRole)
+    spoken = role_values(dialog, Qt.ItemDataRole.AccessibleTextRole)[0]
 
     assert isinstance(spoken, str) and spoken
     assert load_info(SINGLE_ITEM)["title"] in spoken
-    assert "\n" not in spoken, "a newline reads as nothing; the two lines must be one sentence"
+    assert "\n" not in spoken, "a newline reads as nothing; the lines must be one sentence"
+    # **The control a sighted user can see, announced to someone who cannot** (`T118-R9`,
+    # `NFR-005`). The editor is not a tab stop, so without this sentence the only route to it is
+    # one a screen-reader user has no way of discovering.
+    assert EDIT_HINT in spoken, "the keyboard route to the row's control is never announced"
 
 
 # --- 7. every row is filled, from the moment it appears ----------------------------------------
@@ -1436,10 +1533,16 @@ def test_a_row_has_a_tile_before_it_has_a_thumbnail(
     dialog.resolve()
     assert spin(lambda: len(dialog.rows) == 2)
 
-    listing = dialog.findChild(QListWidget, "stagingList")
-    assert listing is not None
-    for index in range(2):
-        assert not listing.item(index).icon().isNull(), f"row {index} was drawn as an empty well"
+    drawn = render_rows(dialog, 0, 1)
+    background = QColor(drawn.pixel(RENDER_WIDTH - 1, ROW_HEIGHT - 1))
+    for slot in range(2):
+        assert tile_colour(drawn, slot) != background, f"row {slot} was drawn as an empty well"
+
+    # **And the two tiles are not the same tile** (`NFR-005`): the placeholder is decoration, so
+    # two rows that differ only by it would be two rows a user cannot tell apart.
+    assert tile_colour(drawn, 0) != tile_colour(drawn, 1), (
+        "both rows drew the same derived tile, so it distinguishes nothing"
+    )
 
 
 def test_a_probed_thumbnail_replaces_the_derived_tile(
@@ -1448,11 +1551,21 @@ def test_a_probed_thumbnail_replaces_the_derived_tile(
     thumbnails: RecordingThumbnailLoader,
     spin: Callable[..., bool],
 ) -> None:
-    """The tile is a placeholder, not the answer. Qt decodes the bytes for real."""
+    """The tile is a placeholder, not the answer. Qt decodes the bytes for real.
+
+    **The paint is what starts it** (`T-119`). Resolving alone fetches nothing now, which is the
+    whole of "no fetch for a row the view never asked to paint" — so this renders the row first,
+    then waits for the decode, which happens off the GUI thread (`ARC-005`).
+    """
     dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM)
 
-    assert thumbnails.requested, "no thumbnail was ever fetched for a resolved row"
-    assert dialog.thumbnail_for(dialog.rows[0]) is not None, "the fetched bytes were never decoded"
+    assert not thumbnails.requested, "a thumbnail was fetched before any row was painted"
+
+    render_rows(dialog, 0)
+    assert spin(lambda: dialog.thumbnail_for(dialog.rows[0]) is not None), (
+        "the fetched bytes never became a pixmap"
+    )
+    assert thumbnails.requested, "no thumbnail was ever fetched for a painted row"
 
 
 def test_a_thumbnail_that_will_not_decode_leaves_the_tile_alone(
@@ -1469,16 +1582,30 @@ def test_a_thumbnail_that_will_not_decode_leaves_the_tile_alone(
     is worth reporting as an error beside a row that resolved perfectly well.
     """
     manager = managers(entry_point=child_replaying_a_fixture)
-    dialog = dialogs(manager, thumbnail_loader=RecordingThumbnailLoader(b"not an image"))
+    loader = RecordingThumbnailLoader(b"not an image")
+    dialog = dialogs(manager, thumbnail_loader=loader)
     type_urls(dialog, fixture_url(SINGLE_ITEM))
     dialog.resolve()
     assert spin(lambda: states(dialog) == [RowState.READY])
 
+    drawn = render_rows(dialog, 0)
+    assert spin(lambda: bool(loader.requested)), "the painted row never asked for its picture"
+    qapp.processEvents()
+
     assert dialog.thumbnail_for(dialog.rows[0]) is None
     assert states(dialog) == [RowState.READY], "an undecodable picture failed the row"
-    listing = dialog.findChild(QListWidget, "stagingList")
-    assert listing is not None
-    assert not listing.item(0).icon().isNull(), "the derived tile went with the failed decode"
+    background = QColor(drawn.pixel(RENDER_WIDTH - 1, ROW_HEIGHT - 1))
+    assert tile_colour(drawn) != background, "the derived tile went with the failed decode"
+
+    # **And it is not asked for again** (`T-119`): a row repaints constantly, and retrying a URL
+    # that will not decode on every paint is a request loop nobody asked for.
+    before = len(loader.requested)
+    for _ in range(5):
+        render_rows(dialog, 0)
+        qapp.processEvents()
+    assert len(loader.requested) == before, (
+        f"a failed thumbnail was re-fetched on repaint: {before} then {len(loader.requested)}"
+    )
 
 
 # --- 8. scale: a public application cannot assume twenty ---------------------------------------

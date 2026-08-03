@@ -52,27 +52,40 @@ forbids colour carrying it alone — and every label showing text this applicati
 fresh paste would otherwise be a column of empty wells, which reads as a broken application rather
 than as work in progress. Until real bytes arrive a row carries a tile derived from its URL
 (`staging.placeholder_hue`) — decoration, never the only thing telling two rows apart.
+
+## The list is a model and a delegate, not widgets
+
+**`T118-R7`, `T118-R9` and `T118-R10` were one defect wearing three faces**, and this is the shape
+that answers all three. The list used to be a `QListWidget` carrying a `QWidget` on every row: the
+widget collided with the item delegate and clipped a 54 px thumbnail into a 25 px row, its combo
+box sat outside the declared focus order and landed after *Close*, and building 150 of them cost
+0.722 s on hosted Windows against `NFR-001`'s budget.
+
+`StagingModel` answers `ui/row_delegate.py`'s roles and `RowDelegate` draws them, so there is one
+row anatomy for this dialog and the queue both (`T-119`). The per-row format control is an
+**editor** the delegate opens for the row being edited — one control at a time, reached with
+`EDIT_KEY`, and never in the tab order because it does not exist until it is asked for.
 """
 
 import uuid
 from collections.abc import Callable, Sequence
 from datetime import datetime
-from functools import partial
 from itertools import pairwise
 from pathlib import Path
-from typing import Any, Final, Protocol, cast
+from typing import Any, Final, Protocol
 
-from PySide6.QtCore import QObject, QSize, Qt, QTimer
-from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
+from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt, QTimer
+from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
+from PySide6.QtGui import QAction, QPixmap
 from PySide6.QtWidgets import (
+    QAbstractItemView,
     QComboBox,
     QDialog,
     QDialogButtonBox,
     QGroupBox,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
+    QListView,
     QMenu,
     QPlainTextEdit,
     QPushButton,
@@ -91,11 +104,48 @@ from tracks_and_trails.core.models import (
     Preset,
 )
 from tracks_and_trails.downloader.manager import DownloadManager
+from tracks_and_trails.ui.row_delegate import (
+    DETAIL_ROLE,
+    EDIT_HINT,
+    HEADLINE_ROLE,
+    HUE_ROLE,
+    INHERITED_TEXT,
+    PRESET_CHOICES_ROLE,
+    PRESET_ROLE,
+    ROW_PRESET_NAME,
+    SELECTOR_ROLE,
+    STATE_ROLE,
+    THUMBNAIL_URL_ROLE,
+    RowDelegate,
+)
 from tracks_and_trails.ui.staging import Row, RowState, Staging, placeholder_hue, summarise
+from tracks_and_trails.ui.thumbnails import (
+    THUMBNAIL_SIZE,
+    NetworkThumbnailLoader,
+    ThumbnailLoader,
+    ThumbnailStore,
+)
 
-#: The size a row's thumbnail is drawn at. A fixed box rather than the image's own size, so a
-#: 1920-wide thumbnail does not resize the dialog around it.
-THUMBNAIL_SIZE: Final = (96, 54)
+#: Re-exported so the loader seam keeps its name at this dialog's boundary even though the
+#: implementation moved to `ui/thumbnails.py` with the cache it feeds.
+__all__ = [
+    "INHERITED_TEXT",
+    "ROW_PRESET_NAME",
+    "THUMBNAIL_SIZE",
+    "AddUrlDialog",
+    "NetworkThumbnailLoader",
+    "StagingModel",
+    "ThumbnailLoader",
+]
+
+#: The invalid index, meaning "the root" in Qt's model API. A value rather than state, so one
+#: instance serves every default argument — the same reasoning as `queue_view._ROOT`.
+_ROOT: Final = QModelIndex()
+
+#: The flag that lets a row open its editor. Named once because it is read in two places that must
+#: agree — `flags`, which Qt asks, and the accessible text, which tells a screen-reader user the
+#: control is there (`NFR-005`).
+_EDITABLE: Final = Qt.ItemFlag.ItemIsEditable
 
 #: How long the input box must be quiet before resolving. Long enough that typing a URL by hand is
 #: one resolve rather than forty, short enough that a paste feels immediate.
@@ -126,69 +176,11 @@ STATE_TEXT: Final[dict[RowState, str]] = {
 #: metadata. All are forced to `PlainText` (`T016-R6`).
 UNTRUSTED_TEXT_LABELS: Final = ("statusMessage", "selectorValue")
 
-#: What the per-row control's first entry says (`UX-004`). Named rather than blank: a row that
-#: follows the batch has made a choice — the same one as everything else — and an empty entry
-#: reads as no format at all.
-INHERITED_TEXT: Final = "Same as all"
-
-#: Every row's format control carries this name (`UX-004`). Shared deliberately: they are one
-#: control repeated, and a test asserting the keyboard surface counts them rather than naming
-#: twenty of them.
-ROW_PRESET_NAME: Final = "rowPresetChoice"
-
 
 class JobSink(Protocol):
     """Where new jobs are written. Asynchronous, because `ARC-005` forbids blocking here."""
 
     def submit(self, jobs: Sequence[Job], done: Callable[[str | None], None]) -> None: ...
-
-
-class ThumbnailLoader(Protocol):
-    """Fetches thumbnail bytes without blocking the GUI thread.
-
-    Injected rather than constructed inline so a test can hand over bytes without a network. The
-    real one is `NetworkThumbnailLoader`; nothing in the dialog knows the difference.
-    """
-
-    def load(self, url: str, done: Callable[[bytes | None], None]) -> None: ...
-
-    def cancel(self) -> None: ...
-
-
-class NetworkThumbnailLoader(QObject):
-    """Fetches thumbnails over HTTP, one request at a time per dialog."""
-
-    def __init__(self, parent: QObject | None = None) -> None:
-        super().__init__(parent)
-        from PySide6.QtNetwork import QNetworkAccessManager
-
-        self._network = QNetworkAccessManager(self)
-        self._replies: list[Any] = []
-
-    def load(self, url: str, done: Callable[[bytes | None], None]) -> None:
-        from PySide6.QtCore import QUrl
-        from PySide6.QtNetwork import QNetworkRequest
-
-        reply = self._network.get(QNetworkRequest(QUrl(url)))
-        self._replies.append(reply)
-
-        def finished() -> None:
-            if reply in self._replies:
-                self._replies.remove(reply)
-            data = (
-                bytes(reply.readAll().data())
-                if reply.error() == reply.NetworkError.NoError
-                else None
-            )
-            reply.deleteLater()
-            done(data)
-
-        reply.finished.connect(finished)
-
-    def cancel(self) -> None:
-        for reply in list(self._replies):
-            reply.abort()
-        self._replies.clear()
 
 
 def split_urls(text: str) -> list[str]:
@@ -246,38 +238,169 @@ def describe_preset(row: Row, effective: Preset) -> str:
 
     **Inherited is spelled out too**, not left blank — a blank reads as "no format chosen" rather
     than "the one below" (`T118-R4`).
+
+    **One line**, since `T-119`'s delegate draws a row of three: the name, whose choice it is, and
+    the literal selector, separated rather than stacked.
     """
     source = "this row only" if isinstance(row.preset, Preset) else "following the batch"
     selector = preset_registry.effective_selector(effective)
-    return f"{effective.name} — {source}\nFormat selector: {selector}{describe_quality(effective)}"
+    return f"{effective.name} — {source} · Format selector: {selector}{describe_quality(effective)}"
 
 
-def row_text(row: Row, effective: Preset | None = None) -> str:
-    """What one row reads as: headline, detail, and what it will be downloaded as.
+def headline_text(row: Row) -> str:
+    """The row's first line: the extractor's title once there is one, else the pasted URL.
 
-    A module function rather than a method so the wording is asserted without a `QApplication`,
-    and so the failure case cannot drift from the success case.
+    Never empty. A row nobody can identify is worse than a long URL.
+    """
+    media = row.media
+    return media.title if isinstance(media, MediaInfo) else row.url
+
+
+def detail_text(row: Row) -> str:
+    """The row's second line, without its state — the fields `REQ-002` names.
 
     **A failed row shows the extractor's words unchanged** (`NFR-006`). They are not folded into a
     sentence, because a sentence that contains them is not the same as them.
     """
-    state = STATE_TEXT[row.state]
     if row.state is RowState.FAILED:
-        return f"{row.url}\n{state} — {row.message or 'no reason was given'}"
-
+        return row.message or "no reason was given"
     media = row.media
     if not isinstance(media, MediaInfo):
-        return f"{row.url}\n{state}"
-
-    details = " · ".join(
+        return ""
+    return " · ".join(
         (
             media.uploader or UNKNOWN_TEXT,
             format_duration(media.duration_seconds),
             describe_kind(media),
         )
     )
-    tail = f"\nDownload as: {describe_preset(row, effective)}" if effective is not None else ""
-    return f"{media.title}\n{details} — {state}{tail}"
+
+
+def selector_text(row: Row, effective: Preset | None) -> str:
+    """The row's third line: what it will be downloaded as, spelled out (`T118-R8`, `REQ-009`)."""
+    if effective is None or not isinstance(row.media, MediaInfo):
+        return ""
+    return f"Download as: {describe_preset(row, effective)}"
+
+
+def row_text(row: Row, effective: Preset | None = None) -> str:
+    """What one row reads as, whole: headline, detail and state, and what it downloads as.
+
+    A module function rather than a method so the wording is asserted without a `QApplication`,
+    and so the failure case cannot drift from the success case.
+
+    **Composed from the very pieces the delegate's roles carry** (`T-119`), rather than written a
+    second time beside them. The drawn row and this string are then the same sentence by
+    construction — which is the property the old two-writers arrangement kept losing, most
+    recently as `T118-R8`.
+    """
+    second = " — ".join(part for part in (detail_text(row), STATE_TEXT[row.state]) if part)
+    tail = selector_text(row, effective)
+    return f"{headline_text(row)}\n{second}" + (f"\n{tail}" if tail else "")
+
+
+class StagingModel(QAbstractListModel):
+    """The staging rows, answered through `row_delegate`'s roles (`T118-R7`, `T-119`).
+
+    **It holds no rows of its own.** `Staging` is the state machine and stays the single owner;
+    this reads it. A model with its own copy would be a second place for "what is entered" to be
+    decided, which is the shape `T016-R1` was.
+
+    The dialog is the source of the two things a row cannot answer alone — the effective preset,
+    which depends on the batch's controls, and whether a commit is in flight — so it is held
+    rather than duplicated here.
+    """
+
+    def __init__(self, dialog: AddUrlDialog) -> None:
+        super().__init__(dialog)
+        self._dialog = dialog
+
+    # Qt's override names, hence the camelCase: these are not project naming choices.
+    def rowCount(self, parent: QModelIndex | _PersistentIndex = _ROOT) -> int:
+        return 0 if parent.isValid() else len(self._dialog.rows)
+
+    def data(
+        self, index: QModelIndex | _PersistentIndex, role: int = Qt.ItemDataRole.DisplayRole
+    ) -> Any:
+        rows = self._dialog.rows
+        if not index.isValid() or not 0 <= index.row() < len(rows):
+            return None
+        row = rows[index.row()]
+        effective = self._dialog.preset_for(row)
+
+        if role == HEADLINE_ROLE:
+            return headline_text(row)
+        if role == DETAIL_ROLE:
+            return detail_text(row)
+        if role == STATE_ROLE:
+            return STATE_TEXT[row.state]
+        if role == SELECTOR_ROLE:
+            return selector_text(row, effective)
+        if role == HUE_ROLE:
+            return placeholder_hue(row.url)
+        if role == THUMBNAIL_URL_ROLE:
+            media = row.media
+            return media.thumbnail_url if isinstance(media, MediaInfo) else None
+        if role == PRESET_ROLE:
+            own = row.preset
+            return own.name if isinstance(own, Preset) else None
+        if role == PRESET_CHOICES_ROLE:
+            # **A row that cannot be committed cannot usefully be retargeted either**, and a row
+            # whose commit is already in flight must not change the request being written. An
+            # empty answer is what makes the delegate offer no editor at all.
+            if not row.committable or self._dialog.is_saving:
+                return None
+            return tuple(preset.name for preset in self._dialog.presets)
+        if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole):
+            return row_text(row, effective)
+        if role == Qt.ItemDataRole.AccessibleTextRole:
+            # Everything a sighted user reads from the row, for a screen reader (`NFR-005`), plus
+            # the way to reach the control they can see and a screen-reader user cannot.
+            spoken = row_text(row, effective).replace("\n", ". ")
+            return f"{spoken}. {EDIT_HINT}" if self.flags(index) & _EDITABLE else spoken
+        return None
+
+    def setData(
+        self,
+        index: QModelIndex | _PersistentIndex,
+        value: Any,
+        role: int = Qt.ItemDataRole.EditRole,
+    ) -> bool:
+        """Give one row its own preset, or send it back to following the batch (`UX-004`).
+
+        **Bound to the row, not to a widget's position.** The control this replaces was connected
+        with its list index baked in, so it depended on `_refresh` rebuilding every slot whenever
+        the count changed. An editor is opened against a model index that Qt keeps valid, and the
+        row is looked up when the choice is made rather than when the control was built.
+        """
+        if role != PRESET_ROLE:
+            return False
+        rows = self._dialog.rows
+        if not index.isValid() or not 0 <= index.row() < len(rows):
+            return False
+        name = value if isinstance(value, str) else None
+        rows[index.row()].preset = next(
+            (preset for preset in self._dialog.presets if preset.name == name), None
+        )
+        self.dataChanged.emit(index, index)
+        self._dialog.refresh()
+        return True
+
+    def flags(self, index: QModelIndex | _PersistentIndex) -> Qt.ItemFlag:
+        base = super().flags(index)
+        if index.isValid() and self.data(index, PRESET_CHOICES_ROLE):
+            return base | _EDITABLE
+        return base
+
+    def refresh(self) -> None:
+        """Say the rows changed, however they changed.
+
+        A full reset rather than a diff, for the reason `queue_view.QueueModel.refresh` gives: the
+        set of rows changes when a user edits the box — rarely, and never in a burst — while what
+        changes constantly is each row's state, and that is a value the view re-reads anyway.
+        """
+        self.beginResetModel()
+        self.endResetModel()
 
 
 class AddUrlDialog(QDialog):
@@ -291,6 +414,7 @@ class AddUrlDialog(QDialog):
         output_directory: Path,
         presets: Sequence[Preset] = preset_registry.BUILT_IN_PRESETS,
         thumbnail_loader: ThumbnailLoader | None = None,
+        cache_root: Path | None = None,
         resolve_delay_ms: int = DEFAULT_RESOLVE_DELAY_MS,
         parent: QWidget | None = None,
     ) -> None:
@@ -299,12 +423,14 @@ class AddUrlDialog(QDialog):
         self._jobs = jobs
         self._output_directory = output_directory
         self._presets = tuple(presets)
-        self._thumbnails: ThumbnailLoader = thumbnail_loader or NetworkThumbnailLoader(self)
+        #: Fetches, decodes and caches thumbnails, and is asked for one **only while painting**
+        #: (`T-119`). The dialog no longer holds pixmaps: a row that scrolls out of view has its
+        #: picture released by the cache's own bound, which a dict keyed by job id could not do.
+        self._thumbnails = ThumbnailStore(
+            loader=thumbnail_loader, cache_root=cache_root, parent=self
+        )
 
         self._staging = Staging()
-        #: Decoded thumbnails, by job id. Held here rather than on `Row` so `staging.py` stays
-        #: Qt-free — a pixmap is the one thing in a row that cannot cross that line.
-        self._pixmaps: dict[str, QPixmap] = {}
         #: A batch write is outstanding. Every control that could start a second one is disabled.
         self._saving = False
         #: Jobs committed by `add_to_queue`, in the order they will be admitted.
@@ -317,6 +443,12 @@ class AddUrlDialog(QDialog):
         self._resolve_timer.setSingleShot(True)
         self._resolve_timer.setInterval(max(resolve_delay_ms, 0))
         self._resolve_timer.timeout.connect(self.resolve)
+
+        self._model = StagingModel(self)
+        # A picture arriving is a repaint, not a rebuild: the rows have not changed, only what one
+        # of them can draw. `dataChanged` over the whole list lets the view repaint the part it is
+        # showing and ignore the rest, which is the point of the store being paint-driven.
+        self._thumbnails.ready.connect(self._on_thumbnail_ready)
 
         self.setObjectName("addUrlDialog")
         self.setWindowTitle("Add URLs")
@@ -396,15 +528,28 @@ class AddUrlDialog(QDialog):
         header.addStretch(1)
         layout.addLayout(header)
 
-        self._list = QListWidget(box)
+        self._list = QListView(box)
         self._list.setObjectName("stagingList")
         self._list.setAccessibleName("The URLs you pasted, and what each one is")
-        self._list.setIconSize(QSize(*THUMBNAIL_SIZE))
+        self._list.setAccessibleDescription(
+            "Each line you pasted, with what it turned out to be. " + EDIT_HINT
+        )
+        self._list.setModel(self._model)
+        self._list.setItemDelegate(RowDelegate(thumbnails=self._thumbnails, parent=self._list))
         self._list.setUniformItemSizes(True)
-        # **A plain item list, not a widget per row.** A paste is unbounded — this application is
-        # public and cannot assume twenty — and one `QWidget` per row makes five hundred URLs a
-        # five-hundred-widget layout pass on the GUI thread (`NFR-001`). Items carry an icon and
-        # two lines of text, which is every field `REQ-002` names for a row at this stage.
+        self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # **The declared keyboard route to a row's control** (`T118-R9`). `EditKeyPressed` is
+        # `row_delegate.EDIT_KEY`; `SelectedClicked` is the mouse half. The control is therefore
+        # reached *through the row it belongs to* and is never a tab stop of its own, which is what
+        # left it landing after Close.
+        self._list.setEditTriggers(
+            QAbstractItemView.EditTrigger.EditKeyPressed
+            | QAbstractItemView.EditTrigger.SelectedClicked
+        )
+        # **A model and a delegate, not a widget per row** (`T118-R10`). A paste is unbounded —
+        # this application is public and cannot assume twenty — and one `QWidget` per row made 150
+        # URLs a 150-widget layout pass on the GUI thread, measured at 0.722 s on hosted Windows.
+        # The delegate paints every row and builds one editor, for the row being edited.
         self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._list.customContextMenuRequested.connect(self._show_row_menu)
         layout.addWidget(self._list)
@@ -536,9 +681,36 @@ class AddUrlDialog(QDialog):
     def selected_bitrate(self) -> str:
         return str(self._bitrate_choice.currentData())
 
+    @property
+    def presets(self) -> tuple[Preset, ...]:
+        """The batch's choices, which are also each row's. Read by `StagingModel`."""
+        return self._presets
+
+    @property
+    def model(self) -> StagingModel:
+        """What the list draws from. The surface a test reads a row's fields by value."""
+        return self._model
+
+    @property
+    def thumbnails(self) -> ThumbnailStore:
+        return self._thumbnails
+
     def thumbnail_for(self, row: Row) -> QPixmap | None:
-        """The decoded thumbnail for `row`, or `None` if none has arrived."""
-        return self._pixmaps.get(row.job_id or "")
+        """The decoded thumbnail for `row`, or `None` if none has arrived.
+
+        **`peek`, not `pixmap`**: asking whether a picture exists must not cause it to be fetched,
+        or this method would quietly become a second fetch path and `T-119`'s "no fetch for a row
+        the view never painted" would be false whenever anything asked.
+        """
+        media = row.media
+        url = media.thumbnail_url if isinstance(media, MediaInfo) else None
+        return self._thumbnails.peek(url)
+
+    def _on_thumbnail_ready(self, _url: str) -> None:
+        """A picture arrived, so the rows showing it repaint. Nothing else changed."""
+        count = self._model.rowCount()
+        if count:
+            self._model.dataChanged.emit(self._model.index(0, 0), self._model.index(count - 1, 0))
 
     def _on_urls_changed(self) -> None:
         """Restart the debounce. **Nothing is started from a keystroke.**
@@ -570,7 +742,6 @@ class AddUrlDialog(QDialog):
         for row in self._staging.rows:
             if row.state is RowState.SUPERSEDED and row.job_id is not None:
                 self._manager.unstage(row.job_id)
-                self._pixmaps.pop(row.job_id, None)
                 row.job_id = None
 
         for row in self._staging.pending():
@@ -607,7 +778,6 @@ class AddUrlDialog(QDialog):
         for row in failed:
             if row.job_id is not None:
                 self._manager.unstage(row.job_id)
-                self._pixmaps.pop(row.job_id, None)
             row.job_id = None
             row.message = None
             row.state = RowState.PENDING
@@ -625,7 +795,6 @@ class AddUrlDialog(QDialog):
         row.state = RowState.SUPERSEDED
         if row.job_id is not None:
             self._manager.unstage(row.job_id)
-            self._pixmaps.pop(row.job_id, None)
             row.job_id = None
         # The box is the source of truth for what is entered, so it changes too. Blocked so the
         # edit does not restart the debounce and reconcile against a list already correct.
@@ -634,84 +803,23 @@ class AddUrlDialog(QDialog):
         self._urls.blockSignals(False)
         self._refresh()
 
-    def _row_preset_widget(self, index: int) -> QWidget:
-        """The per-row format control (`UX-004`, `T118-R4`), built once and reused.
+    def edit_row(self, index: int) -> bool:
+        """Open the format control for one row. **The keyboard route, as a method** (`T118-R9`).
 
-        **A real control on the row, which is what the maintainer chose and what the mock drew.**
-        Measured before committing to it: building the list costs 3 ms at ten rows, 5 ms at twenty
-        and 86 ms at a hundred and fifty, against `NFR-001`'s ~100 ms budget — so it is free at any
-        paste a person types and crosses the budget somewhere between 150 and 200 rows. `UX-004`
-        records the numbers and the decision to move to a delegate (`T-119`) rather than to a
-        cheaper interaction.
+        Public because the route has to be assertable: `EditKeyPressed` is a Qt setting, and a
+        test that only pressed the key would prove Qt works rather than that this dialog offers
+        the control on the row where a user expects it. The context menu uses this too, so the
+        mouse and the keyboard reach one editor rather than two lookalikes.
 
-        Created only when a row has no widget yet: `_refresh` runs on every signal, and rebuilding
-        these each time would spend the whole budget redecorating rows nothing had changed.
+        Answers `False` for a row with no editor — one that has not resolved, or one whose commit
+        is already being written — which is the same question `flags` answers Qt.
         """
-        holder = QWidget(self._list)
-        layout = QHBoxLayout(holder)
-        layout.setContentsMargins(2, 0, 2, 0)
-        layout.setSpacing(4)
-
-        caption = QLabel("Download as", holder)
-        caption.setObjectName("rowPresetLabel")
-        layout.addWidget(caption)
-
-        choice = QComboBox(holder)
-        choice.setObjectName(ROW_PRESET_NAME)
-        choice.setAccessibleName("Download preset for this URL")
-        choice.setAccessibleDescription(
-            "Choose a format for this URL alone. The first entry follows the preset chosen for "
-            "the whole paste."
-        )
-        choice.addItem(INHERITED_TEXT, None)
-        for preset in self._presets:
-            choice.addItem(preset.name, preset.name)
-        choice.currentIndexChanged.connect(partial(self._on_row_preset_changed, index))
-        layout.addWidget(choice, 1)
-        return holder
-
-    def _row_preset_control(self, index: int) -> QComboBox | None:
-        """One row's format control, or `None` if that row has no widget yet.
-
-        Qt's stubs type both `itemWidget` and `findChild` as returning the class asked for, so a
-        `None` check on either reads as unreachable — while both really answer `None` for a row
-        whose widget has not been built yet. `cast` states the real contract once, here, rather
-        than putting a suppression at every call site.
-        """
-        widget = cast("QWidget | None", self._list.itemWidget(self._list.item(index)))
-        if widget is None:
-            return None
-        return cast("QComboBox | None", widget.findChild(QComboBox, ROW_PRESET_NAME))
-
-    def _show_row_preset(self, index: int, row: Row) -> None:
-        """Point one row's control at that row's choice, without re-applying it."""
-        choice = self._row_preset_control(index)
-        if choice is None:
-            return
-        own = row.preset
-        wanted = choice.findData(own.name if isinstance(own, Preset) else None)
-        choice.blockSignals(True)
-        choice.setCurrentIndex(max(wanted, 0))
-        # A row that cannot be committed cannot usefully be retargeted either.
-        choice.setEnabled(row.committable and not self._saving)
-        choice.blockSignals(False)
-
-    def _on_row_preset_changed(self, index: int, _selected: int) -> None:
-        """Give one row its own preset, or send it back to following the batch.
-
-        Bound to the row's **position**, which is the only stable handle a widget in a list has:
-        rows are reconciled by identity but the widget belongs to a slot. `_refresh` rebuilds the
-        slots whenever the count changes, so a stale index cannot outlive its row.
-        """
-        visible = self._staging.visible
-        if not 0 <= index < len(visible):
-            return
-        choice = self._row_preset_control(index)
-        if choice is None:
-            return
-        name = choice.currentData()
-        visible[index].preset = next((p for p in self._presets if p.name == name), None)
-        self._refresh()
+        model_index = self._model.index(index, 0)
+        if not model_index.isValid() or not model_index.flags() & _EDITABLE:
+            return False
+        self._list.setCurrentIndex(model_index)
+        self._list.edit(model_index)
+        return True
 
     def _show_row_menu(self, position: Any) -> None:
         """Retry or remove one row. **A context menu, reachable from the keyboard.**
@@ -720,10 +828,8 @@ class AddUrlDialog(QDialog):
         use it: the menu key and Shift+F10 both raise it, so the actions are not mouse-only
         (`NFR-005`).
         """
-        item = self._list.itemAt(position)
-        if item is None:
-            return
-        row = self._row_for_item(item)
+        clicked = self._list.indexAt(position)
+        row = self._row_at(clicked.row()) if clicked.isValid() else None
         if row is None:
             return
 
@@ -732,6 +838,12 @@ class AddUrlDialog(QDialog):
             retry = QAction("Read this URL again", menu)
             retry.triggered.connect(lambda: self._retry_row(row))
             menu.addAction(retry)
+        if clicked.flags() & _EDITABLE:
+            # **The same editor the keyboard reaches** (`T118-R9`), offered here so the route is
+            # discoverable rather than only documented. Both go through `edit_row`.
+            choose = QAction("Choose a format for this URL…", menu)
+            choose.triggered.connect(lambda: self.edit_row(clicked.row()))
+            menu.addAction(choose)
         remove = QAction("Remove this URL", menu)
         remove.triggered.connect(lambda: self.remove_row(row))
         menu.addAction(remove)
@@ -742,18 +854,20 @@ class AddUrlDialog(QDialog):
             return
         if row.job_id is not None:
             self._manager.unstage(row.job_id)
-            self._pixmaps.pop(row.job_id, None)
         row.job_id = None
         row.message = None
         row.state = RowState.PENDING
         self.resolve()
 
-    def _row_for_item(self, item: QListWidgetItem) -> Row | None:
-        index = item.data(Qt.ItemDataRole.UserRole)
+    def _row_at(self, index: int) -> Row | None:
+        """The row a model index describes, or `None` if it describes nothing.
+
+        The list and the model both index into `Staging.visible`, so this is the one place that
+        turns a position into a row — an index carried on the item itself is what went stale when
+        the count changed underneath it.
+        """
         visible = self._staging.visible
-        if not isinstance(index, int) or not 0 <= index < len(visible):
-            return None
-        return visible[index]
+        return visible[index] if 0 <= index < len(visible) else None
 
     # --- manager signals ------------------------------------------------------------------
 
@@ -769,7 +883,9 @@ class AddUrlDialog(QDialog):
             return
         row.media = media
         row.state = RowState.READY
-        self._load_thumbnail(row, media)
+        # **No fetch is started here** (`T-119`). The row now knows a thumbnail URL; whether the
+        # bytes are ever wanted is decided by whether the view paints the row. A probe result for
+        # row four hundred of a paste costs nothing until row four hundred is on screen.
         self._refresh()
 
     def _on_job_failed(self, job_id: str, kind: object, message: str) -> None:
@@ -1004,85 +1120,29 @@ class AddUrlDialog(QDialog):
                 self._manager.unstage(row.job_id)
                 row.job_id = None
 
-        self._thumbnails.cancel()
+        self._thumbnails.close()
         super().done(result)
 
     # --- display ------------------------------------------------------------------------
 
-    def _load_thumbnail(self, row: Row, media: MediaInfo) -> None:
-        """Fetch the picture, if the site named one. The row is already drawn either way."""
-        if not media.thumbnail_url or row.job_id is None:
-            return
-        url = media.thumbnail_url
-        job_id = row.job_id
-
-        def delivered(data: bytes | None) -> None:
-            # Guards a reply that arrives after the row went away: the loader is asked to cancel,
-            # but a fetch already in flight can still land.
-            if data is None or self._staging.for_job(job_id) is not row:
-                return
-            if row.state is RowState.SUPERSEDED:
-                return
-            pixmap = QPixmap()
-            if not pixmap.loadFromData(data):
-                # Undecodable bytes and a failed fetch are the same thing to a user — no picture —
-                # and neither is worth reporting as an error. The derived tile stays.
-                return
-            self._pixmaps[job_id] = pixmap
-            self._refresh()
-
-        self._thumbnails.load(url, delivered)
-
-    def _tile_for(self, row: Row) -> QIcon:
-        """The row's picture, or the tile derived from its URL until one arrives (`UX-003`).
-
-        Never an empty box. A column of empty wells reads as a broken application, and it reads
-        worse the more URLs are pasted — which is the case this design is for.
-        """
-        existing = self._pixmaps.get(row.job_id or "")
-        if existing is not None:
-            return QIcon(existing)
-
-        width, height = THUMBNAIL_SIZE
-        pixmap = QPixmap(width, height)
-        pixmap.fill(QColor.fromHsv(placeholder_hue(row.url), 90, 110))
-        painter = QPainter(pixmap)
-        painter.setPen(QColor.fromHsv(placeholder_hue(row.url), 60, 190))
-        painter.drawRect(0, 0, width - 1, height - 1)
-        painter.end()
-        return QIcon(pixmap)
-
-    def _refresh(self) -> None:
+    def refresh(self) -> None:
         """Redraw the list and re-enable exactly the controls that can do something.
 
-        One method rather than a repaint and a separate enable pass: they read the same state, and
-        two readers of one state is how a button ends up offering something the list says is
-        impossible.
+        Public because `StagingModel` calls it after a row's preset changes, and because it is
+        what the whole dialog means by "something moved". One method rather than a repaint and a
+        separate enable pass: they read the same state, and two readers of one state is how a
+        button ends up offering something the list says is impossible.
+
+        **The rows are not rebuilt here any more** (`T118-R10`). The model says its contents
+        changed and the view repaints the part of them it is showing; what used to happen was a
+        loop over every row building a widget, which is why the cost grew with the paste rather
+        than with the screen.
         """
+        self._refresh()
+
+    def _refresh(self) -> None:
         visible = self._staging.visible
-        # `setUpdatesEnabled` around the rebuild, so a paste of five hundred is one paint rather
-        # than five hundred (`NFR-001`).
-        self._list.setUpdatesEnabled(False)
-        while self._list.count() > len(visible):
-            self._list.takeItem(self._list.count() - 1)
-        while self._list.count() < len(visible):
-            self._list.addItem(QListWidgetItem())
-        for index, row in enumerate(visible):
-            item = self._list.item(index)
-            if self._list.itemWidget(item) is None:
-                widget = self._row_preset_widget(index)
-                item.setSizeHint(widget.sizeHint())
-                self._list.setItemWidget(item, widget)
-            self._show_row_preset(index, row)
-            # **The row's own effective preset, not the batch's** (`T118-R8`). This passed
-            # `selected_preset`, so an overridden row described the batch it was overriding.
-            text = row_text(row, self.preset_for(row))
-            item.setText(text)
-            item.setIcon(self._tile_for(row))
-            item.setData(Qt.ItemDataRole.UserRole, index)
-            # Everything a sighted user reads from the row, for a screen reader (`NFR-005`).
-            item.setData(Qt.ItemDataRole.AccessibleTextRole, text.replace("\n", ". "))
-        self._list.setUpdatesEnabled(True)
+        self._model.refresh()
 
         if not self._saving:
             self._status.setText(summarise(visible))

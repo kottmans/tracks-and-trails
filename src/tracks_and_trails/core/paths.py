@@ -27,6 +27,10 @@ import unicodedata
 from pathlib import Path, PureWindowsPath
 from typing import Final
 
+from platformdirs import user_cache_dir
+
+from tracks_and_trails.downloader.environment import APP_SLUG
+
 #: Characters NTFS forbids outright, plus the path separators of both platforms.
 #:
 #: `/` is included even though it is legal in a Windows *component* — by the time a title
@@ -429,3 +433,51 @@ def _shorten_to(name: str, limit: int) -> str:
             f"no room for {name!r} within {limit} characters while keeping {suffix!r}"
         )
     return f"{stem[:room].rstrip('. ') or _FALLBACK_STEM}{marker}{suffix}"
+
+
+# --- the cache directory (`NFR-004`) ------------------------------------------------------------
+#
+# Here rather than in the module that fetches thumbnails, for the reason the rest of this file
+# exists: *where a path is allowed to be* is a question with one answer per platform, and answering
+# it beside each writer is how an application ends up writing beside itself on one of them.
+
+
+def cache_directory() -> Path:
+    """`user_cache_dir/tracksandtrails` — regenerable data the OS may reclaim (`NFR-004`).
+
+    `appauthor=False` is load-bearing on Windows and a no-op on Linux, exactly as
+    `core/logging.py` and `persistence/db.py` already have it: platformdirs otherwise interposes a
+    vendor directory that none of this project's documented paths contain.
+
+    **Cache, not data.** Everything under here can be deleted between launches with no loss the
+    user would notice — which is the test of whether something belongs in it, and the reason
+    thumbnails do and the queue database does not.
+    """
+    return Path(user_cache_dir(APP_SLUG, appauthor=False))
+
+
+def thumbnail_cache_directory(root: Path | None = None) -> Path:
+    """Where fetched thumbnails are kept between launches.
+
+    `root` overrides the platform directory so a test writes into its own `tmp_path` rather than
+    into the developer's real cache — the same injection point `core/logging.py` takes, and for
+    the same reason: a test that writes to `user_cache_dir` is a test that pollutes the machine
+    running it.
+    """
+    return (root or cache_directory()) / "thumbnails"
+
+
+def thumbnail_cache_path(thumbnail_url: str, root: Path | None = None) -> Path:
+    """The cache file for `thumbnail_url`.
+
+    **Keyed by the URL, not by the job** (`T-119`). Two jobs for one video name the same thumbnail,
+    and keying by job id would fetch and store the same bytes twice — which is the case a queue of
+    a hundred makes ordinary rather than exotic.
+
+    Hashed rather than sanitized: a thumbnail URL carries query strings, percent-escapes and
+    lengths that `sanitize_component` would have to mangle to fit `MAX_COMPONENT_BYTES`, and two
+    URLs that mangle to one name would then share a picture. A digest has no such collisions to
+    reason about, and nothing needs to read the name back.
+    """
+    digest = hashlib.sha256(thumbnail_url.encode("utf-8")).hexdigest()
+    return thumbnail_cache_directory(root) / f"{digest}.img"
