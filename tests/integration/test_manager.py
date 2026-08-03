@@ -5712,6 +5712,58 @@ def test_a_probe_is_released_before_the_same_job_starts_downloading(
         )
 
 
+def test_start_refuses_a_job_that_already_has_a_session(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T116-R1`: one session per job, whichever lane it is in — and `start()` says so.
+
+    `admit()` parks; `start()` raises, because its caller named a job and asked for a session
+    *now*. A mutation deleting this guard survived the whole battery: the reviewer's regression
+    reaches the barrier through `admit`, so the raising path had no test of its own.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+
+    download = DownloadManager(
+        repository, concurrency=3, probe_concurrency=3, entry_point=child_downloading_forever
+    )
+    try:
+        download.start("job-1", SessionKind.PROBE)
+        assert spin(lambda: "job-1" in download._occupant_ids(), timeout=60)
+
+        with pytest.raises(RuntimeError, match="already has a"):
+            download.start("job-1")
+
+        assert download._sessions["job-1"].kind is SessionKind.PROBE, (
+            "the refused download replaced the probe session it was refused for"
+        )
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_staged_job_cannot_be_downloaded(tmp_path: Path, spin: Callable[..., bool]) -> None:
+    """`T118-R1`: a staging probe is not queue work, so it has nothing to download.
+
+    It has no row, no `queue_position` and no recovery. Downloading it would produce a file for
+    something the user never added — `UX-003`'s whole point — and the durable job Add creates is a
+    different id. A mutation deleting this guard survived the battery.
+    """
+    repository = FakeRepository()
+    download = DownloadManager(repository, entry_point=child_downloading_forever)
+    try:
+        staged = download.stage(make_job("unused", "https://example.invalid/x", tmp_path).request)
+        assert download.is_staged(staged)
+
+        with pytest.raises(ValueError, match="staging probe"):
+            download.start(staged)
+
+        assert repository.jobs == {}, "a staging probe reached the store"
+    finally:
+        download.shutdown()
+        assert spin(lambda: download.is_idle, timeout=60)
+
+
 def test_a_saturated_download_lane_no_longer_parks_a_probe(
     tmp_path: Path, spin: Callable[..., bool]
 ) -> None:

@@ -734,7 +734,6 @@ def test_the_pool_never_exceeds_the_configured_limit(
     peak_rows = 0
     peak_probes = 0
     peak_workers = 0
-    peak_download_workers = 0
     try:
         assert wait_until(lambda: running_count(database, job_ids) > 0), "nothing ever started"
         deadline = time.monotonic() + 45
@@ -745,13 +744,7 @@ def test_the_pool_never_exceeds_the_configured_limit(
                 # Between jobs there is briefly no worker, which is not an overshoot.
                 seen = len(the_workers_that_must_die(application_pid))
                 peak_workers = max(peak_workers, seen)
-                # **Sampled while no row is being read**, which is the only moment the download
-                # lane owns every worker. `T116-R1` is why this exists: a worker count taken while
-                # both lanes are busy cannot tell legitimate cross-job lane work from a probe
-                # session that was overwritten and never released, and reporting the second as the
-                # first is how hosted Windows called three workers a limit breach.
-                if probing_count(database, job_ids) == 0:
-                    peak_download_workers = max(peak_download_workers, seen)
+
             if settled(database, job_ids):
                 break
             time.sleep(0.1)
@@ -778,11 +771,19 @@ def test_the_pool_never_exceeds_the_configured_limit(
         f"({POOL_LIMIT} downloads + {DEFAULT_PROBE_CONCURRENCY} probes); the queue's own "
         "accounting agreed with its limits, so this is the pool and not the rows"
     )
-    assert peak_download_workers <= POOL_LIMIT, (
-        f"{peak_download_workers} worker processes existed while no job was being read, against a "
-        f"download limit of {POOL_LIMIT}. With no probe running these are all downloads, so this "
-        "is either the pool exceeding its limit or a session that was replaced and never released"
-    )
+    # **There is deliberately no download-only worker assertion**, and the reason is worth keeping.
+    #
+    # A version of this sampled workers while no row was `PROBING` and held the count against the
+    # download limit alone, reasoning that with no probe *row* every worker must be a download.
+    # That is false, and hosted Ubuntu proved it in one run: a probe's row reaches `READY` before
+    # its process has been reaped, so two downloads plus one probe still being released is three
+    # workers with no probing row — and entirely correct.
+    #
+    # From outside the application a worker cannot be asked which lane it belongs to, so the sum
+    # above is the honest bound here. What `T116-R1` actually breaks is *ownership* — a session
+    # replaced in `_sessions` loses the only object that can reap it — and that is asserted where
+    # the manager's own bookkeeping is visible, by
+    # `test_a_probe_is_released_before_the_same_job_starts_downloading`.
 
 
 # --- criterion 4: a second launch --------------------------------------------------------------
