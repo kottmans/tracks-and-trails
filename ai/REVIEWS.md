@@ -8788,3 +8788,63 @@ non-blocking but need either correction in that batch or a named owner/target be
 
 No production source or tests were edited. This review record is the only reviewer change; nothing
 was committed, pushed or changed in GitHub repository variables.
+
+## 2026-08-03 — T-118 third delegate correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Approval base:** `890fb5d`
+**Focused correction boundary:** `d1d9cbb..05e8b13`
+**Implementation head:** `05e8b13`; `0ace824` is the handoff/plan-only head
+**Overall verdict:** **Changes requested for T-118.** T118-R13, R15 and R16 are resolved. The
+value-only half of T118-R14 is fixed, but its structural path assigns an open editor's choice to a
+different URL when a preceding row leaves the list. That is a silent wrong-format result, so
+T118-R14 remains open and is escalated from High to Critical.
+
+### Finding
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T118-R14` | **Critical** | **Yes — T-118** | Structural model refresh / per-row request identity | `_shown` records the identities the view was told about, but none of the model's index mapping uses it: `rowCount()`, `data()` and `setData()` all read the already-mutated `dialog.rows` (`add_dialog.py:321-338`, `373-397`). `_refresh()` likewise asks `_current_row()` to interpret the old current index through the **new** visible tuple before calling `model.refresh()` (`:1174-1185`). Therefore “commit before reset while the index is valid” is not enough: the index is numerically valid but no longer names the same row. The deterministic user route starts with A/B/C, edits the text to B/C (starting the debounce), opens old row 1's editor for B and selects MP3, then lets `resolve()` reconcile. The new tuple is B/C before the structural refresh; committing the old index 1 writes MP3 into **C**, while B remains inherited. The reviewer regression reproduced exactly that. Pressing Add would durably queue the wrong per-URL request—the same silent wrong-format consequence that made T118-R6 Critical. The submitted test calls `_refresh()` with an unchanged row tuple, so it proves only the value-only branch and cannot reach this shift. | Keep model indices mapped through the old `_shown` snapshot until the reset: commit the editor against that snapshot's row identity, then swap to the new tuple and restore selection by the old identity if it survives. Make the commit path re-entrancy-safe, since `setData()` currently calls `dialog.refresh()` itself. Alternatively, commit before any structural staging mutation, but cover every reconcile/remove route. Preserve the existing sibling-value test and add the actual debounce regression above, asserting both surviving row objects and their durable requests so applying the choice to the following URL cannot pass. | **Open; prior finding not resolved, severity escalated** |
+
+### Prior-finding resolution
+
+| Finding | Result |
+|---|---|
+| `T118-R13` | **Resolved.** The pool is module-level and parentless, so deleting a store no longer runs a pool destructor on the GUI thread. Runnables retain and emit only through a parentless `_Sink`; none touches the store, and Qt disconnects the dead receiver. The blocked-task deletion regression passes. A separate reviewer probe also deleted the C++ store and dropped the last store-wrapper reference while work was queued: the sink remained alive through the task, was released afterward, and no worker exception or GUI wait occurred. Exact-head Windows evidence remains appropriately unclaimed. |
+| `T118-R14` | **Partly corrected, not resolved.** A value-only refresh now emits `dataChanged`, leaves the editor open and carries its eventual choice into the durable request. Structural mutation before refresh still changes what that editor's index names, as recorded above. |
+| `T118-R15` | **Resolved.** The contract is now honest: uniform rows show only `SELECTOR_LINES`, while the wrapping, selectable current-row detail is the guaranteed complete selector. The 18 pt regression first proves the row cannot fit the value, then proves the dedicated surface retains it. |
+| `T118-R16` | **Resolved.** Every cache write gets an exclusively created same-directory temporary from `mkstemp`, closes it before `replace`, and removes its own temporary on a failed write. The two stores no longer share a PID-derived partial pathname. The handoff correctly continues to label the atomic race as not dynamically verified. |
+
+### Review judgments
+
+**Do not spend the Windows run on this head.** The thumbnail ownership change is exactly the part
+that ultimately needs Windows evidence, but the same candidate still has a platform-neutral
+Critical wrong-request defect. Push and run only after R14's structural identity path is corrected;
+then one run measures the implementation that could actually be approved.
+
+**The external roadmap artifact was not reviewable from this environment.** The linked Claude
+artifact rejected automated access. `ai/IMPLEMENTATION_PLAN.md` is the canonical roadmap under
+`AGENTS.md` §5 and was inspected locally; it honestly says the third correction awaits re-review
+and will need another current-truth update for this verdict.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and tree | `d1d9cbb..05e8b13` source/test correction and `05e8b13..0ace824` handoff/plan update inspected; all diff checks clean. Before this review record, `HEAD == 0ace824`, `origin/main == adc5355`, four local commits ahead, working tree clean. |
+| Focused submitted tests | `tests/ui/test_add_dialog.py tests/ui/test_row_delegate.py`: **78 passed in 38.71 s**. The five named R13/R14/R15 tests also pass independently. |
+| Static and ledger gates | `ruff check .`: passed; `ruff format --check .`: **142 files** formatted; all four mypy scopes passed sequentially with `--no-incremental`—host and win32, **43 src files** and **101 unscoped files**; task placement: **14 passed**. |
+| Reviewer structural regression | **Failed as expected.** With visible A/B/C changed to B/C during an open editor on B, C received the MP3 preset and B remained unchanged. The same failure reproduced through the real `type_urls()` → debounce/`resolve()` route, not only by calling `remove_row()`. The temporary probe was removed after recording the result. |
+| Store-wrapper lifetime probe | Passed: delete the store, drop its Python wrapper, release a queued task, process completion; the parentless sink stayed alive until completion and was then collected without a worker exception. The temporary probe was removed. |
+| Implementer evidence | Reported **1983 passed / 11 skipped / 2 deselected**, all static gates, and nineteen mutations across three rounds. No Windows run exists for `05e8b13`, accurately disclosed. |
+
+### Final disposition
+
+T-118 remains in review on T118-R14 alone. Preserve the resolved shared-pool/sink ownership,
+complete-selector surface, unique atomic temporary, visible control and all earlier corrections.
+The next focused correction needs one identity model for both value and structural changes: an
+editor and current selection must keep naming the same `Row` while the visible tuple changes.
+
+Do not push `c7ac845`, `2514d30`, `05e8b13` or `0ace824`, and do not spend the Windows run yet. No
+production source or submitted tests were edited; this review record is the only lasting reviewer
+change. Nothing was committed, pushed or changed in GitHub repository variables.

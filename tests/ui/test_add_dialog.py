@@ -86,6 +86,7 @@ from tracks_and_trails.ui.row_delegate import (
     EDIT_HINT,
     EDITOR_WIDTH,
     GAP,
+    HEADLINE_ROLE,
     INHERITED_TEXT,
     PADDING,
     PRESET_CHOICES_ROLE,
@@ -95,7 +96,7 @@ from tracks_and_trails.ui.row_delegate import (
     SELECTOR_LINES,
     SELECTOR_ROLE,
 )
-from tracks_and_trails.ui.staging import SETTLED, RowState
+from tracks_and_trails.ui.staging import SETTLED, Row, RowState
 from tracks_and_trails.ui.thumbnails import THUMBNAIL_SIZE
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[2]
@@ -1870,6 +1871,107 @@ def test_the_literal_selector_survives_at_a_realistic_width(
         f"({SELECTOR_LINES * metrics.height()}px), so it would be cut off"
     )
     assert drawn.width() <= available.width(), "the selector was measured wider than it is drawn"
+
+
+def test_a_choice_made_during_the_debounce_lands_on_the_row_it_was_made_for(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    qapp: QApplication,
+    spin: Callable[..., bool],
+) -> None:
+    """`T118-R14` as **Critical**: a per-row format assigned to the wrong URL.
+
+    The user route, exactly as the review traced it. Start with A, B, C. Edit the box to B, C —
+    which opens the debounce window and reconciles staging *before* the model is told. Open the
+    editor on what is still row 1 — B — and choose MP3. Let `resolve()` run.
+
+    The old model index 1 named B; the new visible tuple is (B, C), where index 1 is **C**. The
+    index stayed numerically valid and stopped naming the same row, so committing it wrote MP3
+    into C and left B inherited. Add would then durably queue the wrong request for both — the
+    silent wrong-format consequence that made `T118-R6` Critical, reached from a new direction.
+
+    The previous regression called `_refresh()` with an unchanged row tuple, so it exercised only
+    the value-only branch and could never reach this shift. Asserted on **both** surviving rows and
+    on both durable requests, so applying the choice to the following URL cannot pass.
+    """
+    manager = managers(entry_point=child_replaying_a_fixture)
+    dialog = dialogs(manager)
+    dialog.show()
+    try:
+        first, second, third = (
+            fixture_url(SINGLE_ITEM),
+            fixture_url(AUDIO_ONLY),
+            fixture_url(PLAYLIST),
+        )
+        type_urls(dialog, f"{first}\n{second}\n{third}")
+        dialog.resolve()
+        assert spin(lambda: states(dialog) == [RowState.READY] * 3)
+        kept_b, kept_c = dialog.rows[1], dialog.rows[2]
+
+        # The user drops the first line. `type_urls` starts the debounce; nothing has reconciled.
+        type_urls(dialog, f"{second}\n{third}")
+        control = open_row_editor(dialog, 1)
+        assert dialog.model.row_at(1) is kept_b, "row 1 is not B, so this is not the reported case"
+        control.setCurrentIndex(control.findData("Audio only (MP3)"))
+
+        # **The model must still answer for what the view believes** right up to the reset, or the
+        # commit above resolves against a tuple the user never saw. Checked from
+        # `modelAboutToBeReset`, which is the last moment the old indices are still in force —
+        # otherwise this invariant is internal to one call and nothing outside can see it.
+        seen: list[tuple[Row | None, Any, int]] = []
+
+        def sample() -> None:
+            """Both halves of the invariant: which row index 1 names, and what the model *says*
+            about it. `data()` matters as much as `row_at` — a model whose text comes from live
+            staging while its writes go to the snapshot is two different models."""
+            cell = dialog.model.index(1, 0)
+            seen.append(
+                (
+                    dialog.model.row_at(1),
+                    dialog.model.data(cell, HEADLINE_ROLE),
+                    dialog.model.rowCount(),
+                )
+            )
+
+        dialog.model.modelAboutToBeReset.connect(sample)
+
+        # The debounce fires: staging reconciles to (B, C) and the model resets under the editor.
+        dialog.resolve()
+        # **One structural change is one reset** — `setData` calls back into `refresh()`, so
+        # without the re-entrancy guard the reset happens inside itself. Counted here rather than
+        # after the spin, because the debounce timer legitimately produces later ones.
+        assert len(seen) == 1, f"one reconcile produced {len(seen)} resets: {seen!r}"
+        qapp.processEvents()
+        assert spin(lambda: states(dialog) == [RowState.READY, RowState.READY])
+
+        # **The first reset** — the one that swaps A out, which is the one the finding is about.
+        # Later resets legitimately resolve index 1 to C, because by then that is what it means.
+        assert seen and seen[0] == (kept_b, load_info(AUDIO_ONLY)["title"], 3), (
+            "at the reset that removed A, the model resolved row 1 to something other than B, so "
+            f"the editor's index no longer named the row it was opened on: {seen!r}"
+        )
+        # **And the selection follows the row, not the number** — B moved from index 1 to index 0.
+        assert dialog.model.row_at(staging_list(dialog).currentIndex().row()) is kept_b, (
+            "the current row became a different URL when a preceding row left the list"
+        )
+    finally:
+        dialog.hide()
+
+    assert dialog.rows == (kept_b, kept_c), "reconciliation did not leave B and C"
+    assert isinstance(kept_b.preset, Preset), "B lost the format chosen for it"
+    assert kept_b.preset.name == "Audio only (MP3)"
+    assert kept_c.preset is None, "the choice made for B was applied to C"
+
+    dialog.add_to_queue()
+    committed = dialog.queued_job_ids
+    assert len(committed) == 2
+    assert store.jobs[committed[0]].request.media_kind is MediaKind.AUDIO, (
+        "B was queued with the format it did not ask for"
+    )
+    assert store.jobs[committed[1]].request.media_kind is MediaKind.VIDEO, (
+        "C was queued as audio; the choice made for B landed on the following URL"
+    )
 
 
 def test_the_full_selector_survives_a_scaled_font(

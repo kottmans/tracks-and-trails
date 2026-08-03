@@ -327,15 +327,23 @@ class StagingModel(QAbstractListModel):
 
     # Qt's override names, hence the camelCase: these are not project naming choices.
     def rowCount(self, parent: QModelIndex | _PersistentIndex = _ROOT) -> int:
-        return 0 if parent.isValid() else len(self._dialog.rows)
+        return 0 if parent.isValid() else len(self._shown)
+
+    @property
+    def shown(self) -> tuple[Row, ...]:
+        """The rows this model has told the view about. **The only index mapping** (`T118-R14`)."""
+        return self._shown
+
+    def row_at(self, index: int) -> Row | None:
+        """The row a model index names, resolved against what the view believes."""
+        return self._shown[index] if 0 <= index < len(self._shown) else None
 
     def data(
         self, index: QModelIndex | _PersistentIndex, role: int = Qt.ItemDataRole.DisplayRole
     ) -> Any:
-        rows = self._dialog.rows
-        if not index.isValid() or not 0 <= index.row() < len(rows):
+        row = self.row_at(index.row()) if index.isValid() else None
+        if row is None:
             return None
-        row = rows[index.row()]
         effective = self._dialog.preset_for(row)
 
         if role == HEADLINE_ROLE:
@@ -385,13 +393,11 @@ class StagingModel(QAbstractListModel):
         """
         if role != PRESET_ROLE:
             return False
-        rows = self._dialog.rows
-        if not index.isValid() or not 0 <= index.row() < len(rows):
+        row = self.row_at(index.row()) if index.isValid() else None
+        if row is None:
             return False
         name = value if isinstance(value, str) else None
-        rows[index.row()].preset = next(
-            (preset for preset in self._dialog.presets if preset.name == name), None
-        )
+        row.preset = next((preset for preset in self._dialog.presets if preset.name == name), None)
         self.dataChanged.emit(index, index)
         self._dialog.refresh()
         return True
@@ -424,6 +430,13 @@ class StagingModel(QAbstractListModel):
                 self.dataChanged.emit(self.index(0, 0), self.index(len(rows) - 1, 0))
             return
 
+        # **Commit while `_shown` is still the old tuple** (`T118-R14`). This is the whole of the
+        # fix and it is a one-line ordering point: `commit_open_editor` reaches `setData`, which
+        # resolves the editor's index through `row_at` — and `row_at` reads `_shown`. Swap the
+        # tuple first and the editor's row number, still numerically valid, names a *different
+        # URL*: with A/B/C reconciled to B/C, old index 1 meant B and now means C, so the format
+        # the user chose for B is written to C and Add queues the wrong request for both. That is
+        # `T118-R6`'s consequence — a silently wrong download — reached from a new direction.
         self._dialog.commit_open_editor()
         self.beginResetModel()
         self._shown = rows
@@ -460,6 +473,8 @@ class AddUrlDialog(QDialog):
         self._staging = Staging()
         #: A batch write is outstanding. Every control that could start a second one is disabled.
         self._saving = False
+        #: A refresh is running. See `_refresh` — the structural path re-enters through `setData`.
+        self._refreshing = False
         #: Jobs committed by `add_to_queue`, in the order they will be admitted.
         self._committed: tuple[str, ...] = ()
         # `T118-R11`: `_committing` was here too, written and never read. `_saving` is the flag
@@ -893,12 +908,13 @@ class AddUrlDialog(QDialog):
     def _row_at(self, index: int) -> Row | None:
         """The row a model index describes, or `None` if it describes nothing.
 
-        The list and the model both index into `Staging.visible`, so this is the one place that
-        turns a position into a row — an index carried on the item itself is what went stale when
-        the count changed underneath it.
+        **Through the model's own snapshot, never through live staging** (`T118-R14`). Between a
+        reconcile and the reset that announces it, `Staging.visible` has already changed while the
+        view still holds the old indices — so resolving here against staging would answer for a
+        row the user is not looking at, which is how an open editor's choice reached the following
+        URL.
         """
-        visible = self._staging.visible
-        return visible[index] if 0 <= index < len(visible) else None
+        return self._model.row_at(index)
 
     # --- manager signals ------------------------------------------------------------------
 
@@ -1172,6 +1188,22 @@ class AddUrlDialog(QDialog):
         self._refresh()
 
     def _refresh(self) -> None:
+        # **Re-entrancy guard** (`T118-R14`). The structural path commits the open editor from
+        # inside `StagingModel.refresh`, and `setData` calls back here — so without this, one
+        # reconcile re-enters the reset it is in the middle of. The outer call finishes the work,
+        # so returning early loses nothing.
+        #
+        # *(This set the flag and never read it, which is a guard in name only. The mutation run
+        # found it by failing to locate the branch it was trying to delete.)*
+        if self._refreshing:
+            return
+        self._refreshing = True
+        try:
+            self._refresh_once()
+        finally:
+            self._refreshing = False
+
+    def _refresh_once(self) -> None:
         visible = self._staging.visible
         # **By identity, not by row number** (`T118-R14`). A value-only refresh no longer resets
         # the model at all, so nothing needs restoring; a structural one may have moved or removed

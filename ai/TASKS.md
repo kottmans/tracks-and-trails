@@ -92,12 +92,16 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 **Status:** **In Review — three rounds of changes requested on 2026-08-03, and three corrections.**
 **Resolved by the reviewer:** `T118-R1`…`R3`, `R6`, `R7`, `R8`, `R9`, `R10`, `R11`, `R12`,
-`COORD-R18`, and the `e300b04` teardown fixes. `UX-004` closed `R5`. **Open and corrected in the
-third round:** `T118-R13` (High — `close()` returned but *destruction* still waited on a child
-pool, and workers emitted through a store Python could not keep alive), `T118-R14` (High — every
-value refresh reset the model and orphaned an open format editor, discarding the choice silently)
-and the two non-blocking Mediums `T118-R15` and `T118-R16`. Only the Reviewer marks any of these
-Resolved (`AGENTS.md` §10).
+`COORD-R18`, and the `e300b04` teardown fixes. `UX-004` closed `R5`. **Resolved in the third round:** `T118-R13`, `R15`, `R16`.
+
+**`T118-R14` was escalated to Critical and is corrected in the fourth round.** The third round's fix
+was the wrong half: it committed the open editor before the reset, but every index the model
+answered — `rowCount`, `data`, `setData` — still read `Staging.visible`, which reconciliation had
+*already* changed. The index stayed numerically valid and stopped naming the same row. Start with
+A/B/C, edit the box to B/C, open row 1's editor for B and choose MP3, let the debounce fire: the
+new tuple is (B, C), old index 1 is **C**, and the format chosen for B is written to C. Add then
+queues the wrong request for both — `T118-R6`'s consequence, a silently wrong download, reached
+from a new direction. Only the Reviewer marks these Resolved (`AGENTS.md` §10).
 
 **What the second round found is worth stating plainly, because it is one mistake with three
 faces: I optimised away the thing `UX-004` chose, and then wrote tests that agreed with me.**
@@ -424,6 +428,26 @@ much as `SELECTOR_LINES` holds and **`selectorValue` below the list is the guara
 copyable surface** — stated in the constant, and asserted at 18 pt by a test that first proves the
 row cannot fit it.
 
+#### Correction, 2026-08-03 (fourth round) — `T118-R14`, as Critical
+
+**The model now answers for what the view was told, and nothing else.** `_shown` existed but no
+index mapping used it. `rowCount()`, `data()`, `setData()` and the dialog's `_row_at` all read the
+live `Staging.visible`, so between a reconcile and the reset that announces it the model described
+a list the user was not looking at. Every one of them goes through `StagingModel.row_at`, which
+reads `_shown`.
+
+**The ordering point is one line, and it is the whole fix**: `commit_open_editor()` runs *before*
+`_shown` is swapped, so `setData` resolves the editor's index through the tuple the editor was
+opened against. Swap first and the choice lands on the following URL.
+
+**Selection restores by identity too**, for the same reason: a bare row number carried across a
+changing set names whoever moved into that slot.
+
+**The commit path is re-entrancy-safe**, as the review asked — `setData` calls `dialog.refresh()`,
+which without a guard re-enters the reset it is inside. *(The third round claimed this guard: it
+set the flag and never read it. The mutation run found it by failing to locate the branch it was
+trying to delete.)*
+
 ##### Mutations run
 
 Ten, of which **four initially survived — and each one changed the work rather than the record**.
@@ -463,6 +487,18 @@ uncovered**:
 | The model resets on every refresh | the sibling-settles regression, with the reported symptom: *the chosen format never reached the row* |
 | A child `QThreadPool` and a parented sink | the delete-with-blocked-task regression, at 30 s against a 0.5 s budget — **after the test stopped naming the pool it expected** |
 | — the same mutation, first attempt | **survived.** The regression blocked the *module-level* pool by name, so a store handed a private child pool was never blocked and finished instantly. The test now asks the store which pool it uses (`ThumbnailStore.pool`), because a test that assumes the implementation cannot police it. |
+
+**Fourth round, six on the `R14` correction. Four survived the first pass**, and each one was a
+part of the fix that nothing yet exercised:
+
+| Mutation | Killed by |
+|---|---|
+| `setData` resolves against live staging | the debounce regression, with the reported symptom: *B lost the format chosen for it* |
+| The tuple is swapped before the editor is committed | the same |
+| `data()` resolves against live staging | the reset-time probe — **after it sampled `data()` and not only `row_at`** |
+| `rowCount()` resolves against live staging | the same probe — **after it sampled the row count** |
+| Selection restored by number rather than identity | the current-row assertion — **after it existed** |
+| The re-entrancy guard is removed | the one-reconcile-one-reset assertion — **after the guard was actually written**; it had been setting the flag without reading it |
 
 
 ---

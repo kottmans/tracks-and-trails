@@ -37,16 +37,14 @@ look one task from exiting when the sign-off it actually needs had not been requ
 - **Approved 2026-08-02:** `T-088` at `9e133a6`, the phase's own proof, once `T088-R4` and
   `T087-R6` were corrected and the suite passed on hosted Windows and Ubuntu.
 - **Approved 2026-08-03:** `T-116` at `253bbce`, after `T116-R1`. `T117-R1` closed.
-- **In review, three rounds of changes requested and three corrections, all 2026-08-03:** `T-118`,
-  carrying `T-119`. The reviewer has **Resolved** `T118-R1`…`R3`, `R6`…`R12`, `COORD-R18` and the
-  `e300b04` teardown fixes; `UX-004` closed `R5`. `T118-R10`'s Windows evidence is in from run
-  `30853680183`. **The third round corrects two Highs the earlier corrections created:**
-  `T118-R13` — `close()` returned, but the pool was the store's *child*, so **deletion** waited on
-  the GUI thread (1.008 s, measured by the reviewer) and workers emitted through a store Python
-  could not keep alive, raising `RuntimeError: Signal source has been deleted`; and `T118-R14` —
-  resetting the model on every value change orphaned an open format editor and discarded the
-  user's choice silently whenever a sibling row settled. Two non-blocking Mediums (`R15`, `R16`)
-  are closed in the same batch. Only the Reviewer marks any of these Resolved (`AGENTS.md` §10).
+- **In review, four rounds of changes requested and four corrections, all 2026-08-03:** `T-118`,
+  carrying `T-119`. The reviewer has **Resolved** `T118-R1`…`R3`, `R6`…`R13`, `R15`, `R16` and
+  `COORD-R18`; `UX-004` closed `R5`; `R10`'s Windows evidence is in from run `30853680183`.
+  **`T118-R14` was escalated to Critical** and is corrected in the fourth round: the model's index
+  mapping read live staging rather than the snapshot the view had been told about, so a format
+  chosen for one row could be written to the next one when a preceding row left the list during
+  the debounce — a silently wrong per-URL download, which is what made `T118-R6` Critical.
+  It is the last open finding. Only the Reviewer marks it Resolved (`AGENTS.md` §10).
 - **Approved 2026-08-02:** `T-115`, after `T115-R1` (High) — the probed row was retargeted while
   every later queue position was admitted ahead of it, so with a pool of one the second URL
   started and the head of the queue waited. Add now takes one admission decision after the
