@@ -2659,7 +2659,7 @@ behind a document would leave known-broken behaviour on `main` for longer.
 
 ## OPS-009 — Where each CI job runs, now that `STARBASE` is back and minutes are metered
 
-**Status:** **Proposed** — awaiting the maintainer
+**Status:** **Accepted** (2026-08-03) — maintainer decision
 **Date:** 2026-08-03
 **Raised by:** the maintainer, on 2026-08-03: *"we should use STARBASE as much as possible going
 forward because github has limited use and we've burned most of it already"*
@@ -2710,7 +2710,29 @@ some other split. Three considerations, stated so the choice is informed rather 
    Python, PATH and installed tooling. A hosted image proves the project builds somewhere that has
    never seen it — which has caught real defects, including 38 Windows-only failures in one push.
 
-### What I would propose, if asked
+### Decision
+
+**Ruled by the maintainer, 2026-08-03**, on all four points, with one addition of theirs:
+
+1. **Documentation commits no longer trigger CI.** `paths-ignore` covers `ai/REVIEWS.md`,
+   `ai/handoffs/**` and `docs/**` — deliberately *not* all of `ai/`, because
+   `tests/unit/test_task_placement.py` reads `ai/TASKS.md` and a filter written against "docs" as
+   a category would skip a gate.
+2. **A skipped self-hosted job says so.** The `STARBASE coverage` job always runs, costs seconds
+   on Linux, and emits a warning naming what did *not* execute.
+3. **`frozen windows` moves to `STARBASE`; `windows-latest` stays hosted.**
+4. **PowerShell 7 is not required.** Those steps run on 5.1 (`bff9713`).
+
+**And the maintainer's addition:** *"if I run out of tokens to use on GitHub Actions, we'll have
+to use STARBASE for both."* So the hosted Windows leg reads its runner from a **variable**:
+`WINDOWS_RUNNER`, unset meaning `windows-latest`. Exhausting the allowance is then
+
+    gh variable set WINDOWS_RUNNER --body '["self-hosted","windows","desktop"]'
+
+rather than a code change under time pressure — and setting it back is the same command. The
+default encodes the ruling; the variable encodes the fallback.
+
+### The reasoning behind point 3
 
 **Move `frozen windows-latest` to `STARBASE` and leave `windows-latest` hosted.** The frozen job is
 a packaging check whose value is mostly "does the artifact run at all", which a real machine answers

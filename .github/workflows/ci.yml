@@ -24,7 +24,21 @@ name: CI
 
 on:
   push:
+    paths-ignore: &prose
+      # **Prose that no test reads** (`OPS-009`). Every push here used to run the full matrix,
+      # including two Windows jobs at 2x, for files nothing asserts on. It also meant a
+      # documentation push cancelled whatever run was in flight — which happened twice in one
+      # night, discarding a Windows job each time.
+      #
+      # Deliberately **not** all of `ai/`: `tests/unit/test_task_placement.py` reads
+      # `ai/TASKS.md`, so a filter written against "docs" as a category would skip a gate. These
+      # four are read by nothing.
+      - "ai/REVIEWS.md"
+      - "ai/handoffs/**"
+      - "docs/**"
+      - "**/*.md.orig"
   pull_request:
+    paths-ignore: *prose
 
 # A superseded run has no value; cancel it rather than spend Windows runner minutes on it.
 concurrency:
@@ -42,7 +56,11 @@ defaults:
 jobs:
   check:
     name: ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    # `WINDOWS_RUNNER` selects where the Windows leg runs without editing this file (`OPS-009`).
+    # Unset means `windows-latest`, which is the ruling's default: hosted, for clean-machine
+    # evidence. If the hosted allowance runs out, set it to `["self-hosted","windows","desktop"]`
+    # and every Windows job is on `STARBASE` with no push required.
+    runs-on: ${{ matrix.os == 'windows-latest' && fromJSON(vars.WINDOWS_RUNNER || '"windows-latest"') || matrix.os }}
     timeout-minutes: 15
 
     strategy:
@@ -221,6 +239,29 @@ jobs:
   # stays queued for up to **24 hours** before GitHub discards it (RUNNER-R1). Availability of
   # this job is the availability of one desktop machine, with a day-long failure mode, not a
   # 15-minute one.
+  # **Says out loud when the self-hosted work did not run** (`OPS-009`). A skipped job is silent,
+  # and that silence has cost real coverage: `dd9c238` added two `shell: pwsh` steps and `T-084`
+  # added a control to the progress view's focus chain, both while `STARBASE` was unreachable.
+  # Both merged against green CI and both failed on the first run after the machine returned.
+  # This job always runs, costs seconds on Linux, and puts the gap in the run rather than only in
+  # `ai/DECISIONS.md`.
+  starbase-coverage:
+    name: STARBASE coverage
+    runs-on: ubuntu-latest
+    if: always()
+    timeout-minutes: 5
+    steps:
+      - name: Report whether the self-hosted jobs ran
+        shell: bash
+        run: |
+          if [ "${{ vars.STARBASE_AVAILABLE }}" = "true" ]; then
+            echo "::notice::STARBASE is enabled; the desktop slice and the frozen Windows job ran."
+          else
+            echo "::warning::STARBASE_AVAILABLE is not set. The Windows desktop slice did NOT run,"
+            echo "::warning::and neither did the frozen Windows job. Changes to either are merging"
+            echo "::warning::unverified — see OPS-009. Set the variable when the machine is back."
+          fi
+
   windows-desktop:
     name: windows desktop
     runs-on: [self-hosted, windows, desktop]
@@ -468,14 +509,26 @@ jobs:
   # failure it prevents is a recursive application launch — discovering that at Phase 5, with
   # the whole app built on ARC-002, is the outcome this job is here to avoid.
   frozen:
-    name: frozen ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
+    # **The Windows leg runs on `STARBASE`** (`OPS-009`, maintainer ruling 2026-08-03). The
+    # repository is private, Windows meters at 2x, and this job is the cheapest Windows evidence
+    # to give up clean-machine independence for: it mostly answers "does the artifact run at
+    # all", which a real desktop answers as well as a fresh image does. The full-suite Windows job
+    # stays hosted, because that is where clean-machine coverage actually pays.
+    #
+    # `name` is pinned rather than derived from the label set, so the job keeps the same name in
+    # the checks list whichever machine it lands on.
+    name: frozen ${{ matrix.name }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 25
 
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        include:
+          - name: ubuntu-latest
+            runner: ubuntu-latest
+          - name: windows
+            runner: [self-hosted, windows, desktop]
 
     defaults:
       run:
