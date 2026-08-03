@@ -100,11 +100,22 @@ incident from the first time it happened.** The leg now checks the machine's Pyt
 does. `OPS-009` also replaced `matrix.os` and left three references to it: the two frozen artifacts
 collapsed into one `frozen-evidence-` and the size report recorded an empty platform.
 
-**Not fixed, and carried to the `T-118`/`T-119` session:** run `30822454998` also reported
-`ERROR at teardown … KeyError: "no job with id …"` from `shutdown() → cancel() → _require()` — an
-occupant id that is neither staged nor durable. It did not recur in `30823595744` and does not
-reproduce locally, so it is intermittent. It lives in `T-118`'s staging seam, which that session
-rewrites.
+**Both corrections verified on the runner that found them.** Run `30826638984` at `6c38d5f`: the
+`windows desktop` full suite reported **1929 passed, 0 failed**, and **`frozen windows` passed in
+5m18s — the first frozen build `STARBASE` has ever completed**, both prior attempts having died in
+`setup-python` before reaching PyInstaller.
+
+**What is still red is `T-118`, and only `T-118`.**
+
+- **`T118-R10` flapped a third time.** `windows-latest` measured **0.520 s** for 150 URLs against
+  the test's own 0.5 s allowance. Three hosted measurements of one unchanged path now read
+  0.722 s (red), pass, 0.520 s (red) — the bound is marginal, and every red run of it costs a
+  Windows job.
+- **Two teardown errors in the staging seam**, both `shutdown() → cancel()` reaching a staged job
+  in a state `cancel` cannot express: `KeyError: no job with id …` (seen twice) and
+  `IllegalTransitionError: cannot move a job from failed to cancelled`. Neither reproduces on
+  Linux and both are teardown-only, so the tests they hang off still report as passed. Recorded
+  against `T-118` in `TASKS.md`, including why `cancel()`'s own comment predicts the second.
 
 ## What `T-118` found in code it did not write
 

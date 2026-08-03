@@ -113,12 +113,28 @@ with real headroom rather than the largest number one Linux measurement will bea
 hosted-Windows measurement taken *at* that bound — otherwise the gate flaps, and a flapping gate
 teaches the next reader to dismiss a red run as runner speed, which `T118-R10` explicitly forbids.
 
-**Carried in with it:** `T118-R11`'s cleanup, because it describes the design being replaced; and
-an intermittent `KeyError` from `shutdown() → cancel() → _require()` seen once on the desktop
-runner (run `30822454998`, teardown of
-`test_pasting_a_url_into_the_assembled_application_reaches_the_database`) — an occupant id that is
-neither staged nor durable. It does not reproduce locally and lives in the staging seam this work
-rewrites.
+**Carried in with it: `T118-R11`'s cleanup**, because it describes the design being replaced —
+**and two teardown defects the desktop runner found, which are one defect in two costumes.**
+
+`shutdown()` cancels every occupant (`manager.py:1793`), and a staged probe is an occupant. Both
+errors are `cancel()` reaching a staged job in a state it cannot express:
+
+- **`KeyError: no job with id …`** — `_require()` finds the id neither staged nor durable. Seen in
+  runs `30822454998` and `30826638984`, teardown of
+  `test_pasting_a_url_into_the_assembled_application_reaches_the_database`.
+- **`IllegalTransitionError: cannot move a job from failed to cancelled`** — `_persist`'s guard at
+  `manager.py:1441` is `is_terminal(current.status)`, and **`FAILED` is not terminal here because
+  retry exists**, so `_cancelled()` is computed and the state machine refuses it. Seen in run
+  `30826638984`, teardown of `test_add_commits_what_resolved_and_leaves_what_did_not`.
+
+**`cancel()`'s own comment already says this cannot work** (`manager.py:1428-1433`): *"A job
+awaiting an automatic retry is `FAILED`, and `FAILED` allows only `QUEUED` — so cancelling one
+raises out of the state machine and this line could never run."* `T-118` then created a caller that
+reaches exactly that line, through `unstage()`. So the correction batch's claim that *"the
+remove-versus-cancel question disappears … `ARC-004` needs no `FAILED → CANCELLED` edge"* is
+**false as implemented**: a staged probe that fails and is then unstaged needs one, or `unstage`
+needs a verb other than `cancel` for a job with no live work left. Neither error reproduces on
+Linux; both are teardown-only, so the tests they hang off still report as passed.
 *(This read "In Review — complete 2026-08-02. Ten mutations run; all ten killed".)* Ten mutations
 were run and killed; It found six defects in code it did not
 write — see the handoff; three were caught by `T-088`'s phase proof or by `mypy --platform win32`
