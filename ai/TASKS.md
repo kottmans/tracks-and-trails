@@ -860,6 +860,44 @@ agreement on the reduced form before implementation.
 
 ## Proposed — Phase 2
 
+### T-122 — Replace the flaky paste-scaling ratio gate
+
+**Status:** Proposed — `T118-R17`, non-blocking follow-up from T-118's final review
+**Owner:** Implementer
+**Priority:** Medium — it is the only failure in exact-head run `30859578131`, and a gate that
+rejects a transient host pause teaches readers to dismiss a real future regression
+**Phase:** Phase 2 test infrastructure; complete before the Phase 2 exit review
+**Relevant context:** `T118-R10`, `T118-R17`, `NFR-001`, run `30859578131`
+**Affected surfaces:** `tests/ui/test_add_dialog.py`, this task's correction/evidence prose
+**Risk:** Low to production — no product code is implicated; Medium to gate trust while it remains
+
+`test_a_four_times_larger_paste_does_not_cost_four_times_more_than_linearly` takes one 125-row
+sample and one 500-row sample, then assumes their ratio cancels runner speed. It cancels a sustained
+machine-speed difference, not a transient pause. Hosted Windows measured 0.0321 s and 1.4935 s in
+exact-head run `30859578131`, while the separate test performing the same 500-row resolve passed
+under 1.0 s minutes apart and STARBASE passed both. One outlier against a ~32 ms denominator made
+the ratio 46.5x.
+
+The ratio is not the load-bearing T118-R10 proof. The absolute 500-row interaction budget passed on
+both Windows runners, and the structural assertion limiting live controls is the test that killed
+restoration of the widget-per-row design; the timing tests did not.
+
+#### Scope and acceptance criteria
+
+- Remove the one-sample ratio as a required pass/fail gate while preserving the 500-row absolute
+  interaction budget and the structural control-count assertion.
+- Remove current-truth prose claiming a ratio is runner-invariant.
+- If relative scaling is retained, make it diagnostic only or use repeated/interleaved samples
+  with a robust estimator. A deterministic test must show that one outlier cannot fail the gate
+  while a sustained nonlinear sample set can.
+- The next ordinary hosted-Windows run has no failure from a single transient timing sample.
+
+#### Out of scope
+
+- Changing the staging-list implementation or its supported paste size.
+- Weakening the 500-row absolute interaction budget.
+- Reopening T-118, approved with this follow-up at `53b07ec`.
+
 ### T-121 — The phase-exit clip server aborts connections on hosted Windows
 
 **Status:** **Proposed — found by CI run `30853680183`**, 2026-08-03, by measurement rather than by

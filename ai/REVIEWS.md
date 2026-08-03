@@ -8848,3 +8848,77 @@ editor and current selection must keep naming the same `Row` while the visible t
 Do not push `c7ac845`, `2514d30`, `05e8b13` or `0ace824`, and do not spend the Windows run yet. No
 production source or submitted tests were edited; this review record is the only lasting reviewer
 change. Nothing was committed, pushed or changed in GitHub repository variables.
+
+## 2026-08-03 — T-118 fourth delegate correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Approval base:** `890fb5d`
+**Focused correction boundary:** `05e8b13..c724770`
+**Candidate head:** `53b07ec`; `c724770` is the implementation head
+**Overall verdict:** **Blocked pending exact-head Windows verification.** `T118-R14` is resolved:
+the model now keeps every index mapped through the tuple the view was told about until the reset,
+commits the open editor against that tuple, and restores the current row by identity. No source
+correction remains open. The last two correction rounds have not run on Windows, so the candidate
+is ready to push and spend the hosted Ubuntu/Windows run, but is not yet approved.
+
+### Prior-finding resolution
+
+| Finding | Result |
+|---|---|
+| `T118-R14` | **Resolved.** `rowCount`, `data`, `setData` and the dialog's current-row lookup all resolve through `StagingModel._shown`. On a structural refresh, the editor commits before `_shown` is replaced; its `setData` callback re-enters `dialog.refresh()`, where the real `_refreshing` guard returns and lets the outer refresh finish one reset. The exact shown-dialog A/B/C → B/C regression keeps old index 1 bound to B at `modelAboutToBeReset`, restores B at its new position, leaves C inherited, and durably queues B as audio and C as video. The focused test and the complete add-dialog/delegate surface pass independently. |
+
+### Non-blocking findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `COORD-R19` | **Low** | No | Current-truth status | `TASKS.md`'s T-118 status headline still says “three rounds … and three corrections,” immediately before its fourth-round correction. STATUS, the plan and the handoff say four. | Change the headline to four rounds/four corrections in the next coordination update, before the Phase 2 exit review. | **Open, non-blocking; Documentation Maintainer** |
+| `COORD-R20` | **Low** | No | Review boundary hygiene | `c724770` is presented and titled as the implementation correction, but it also stages the complete prior Codex review record into `ai/REVIEWS.md`. The text is the reviewer's unchanged record and the approval boundary remains recoverable, so this does not invalidate the source review; it is another mixed-boundary commit of the class already recorded this session. | Keep the current published/local history intact. On the next round, commit an outstanding reviewer record separately before staging implementation files, and name both SHAs in the handoff. | **Open, non-blocking process follow-up** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and implementation | `05e8b13..c724770` inspected. `_shown` is initialized before the first refresh, `Row` is identity-valued (`eq=False`), every index-to-row consumer uses the model snapshot, and production calls `StagingModel.refresh()` through the guarded dialog refresh. `git diff --check` passed. |
+| Exact regression | `test_a_choice_made_during_the_debounce_lands_on_the_row_it_was_made_for` passed on the real shown-dialog debounce route. The preserved sibling-editor regression passed in the same focused run: **2 passed**. |
+| Focused UI surface | `tests/ui/test_add_dialog.py tests/ui/test_row_delegate.py`: **79 passed in 40.25 s**. |
+| Static gates | `ruff check .`: passed; `ruff format --check .`: **143 files** formatted; `mypy --no-incremental src`: **43 files** passed; bare host and `--platform win32` mypy: **101 files each** passed. The mypy scopes were run sequentially. |
+| Implementer evidence | Reported full suite **1984 passed / 11 skipped / 2 deselected** and twenty-five mutations across four rounds. No exact-head Windows evidence is claimed. |
+
+### Final disposition
+
+Push the six candidate commits through `53b07ec` and spend the normal hosted Ubuntu/Windows run.
+For this review, the useful Windows evidence is execution of the four tests introduced after
+`adc5355`—the two add-dialog editor tests, scaled-selector test and store-deletion ownership test—
+plus the existing T-118 correction surface. The known T-121 phase-exit failure may keep the full
+Windows job red; report the per-test breakdown rather than treating that unrelated expected red as
+a T-118 failure. If those T-118 tests pass on the exact candidate and no new relevant failure
+appears, T-118 can be approved without another source pass.
+
+This review record is uncommitted. No source, submitted test, repository variable, remote ref or CI
+state was changed by the reviewer.
+
+### Exact-head verification and final verdict
+
+**Verified run:** GitHub Actions `30859578131`, SHA
+`53b07ec9b36656664672912af36c653b094a6873`.
+
+**Final verdict:** **Approved with follow-ups at `53b07ec`.** Hosted Windows and the real STARBASE
+desktop both executed the corrected T-118 surface. STARBASE passed the full suite; the hosted job
+finished **1 failed / 1971 passed / 21 skipped / 32 deselected**, with every T-118 correction test
+passing except the independent paste-scaling ratio oracle described below. Ubuntu, both frozen
+jobs and STARBASE coverage passed. The required exact-head Windows evidence is therefore present,
+and no production or T118-R14 blocker remains.
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T118-R17` | **Medium** | No — follow-up `T-122` | Paste-scaling CI oracle | `test_a_four_times_larger_paste_does_not_cost_four_times_more_than_linearly` claims two nearby measurements cancel runner speed, but one sample per size cannot cancel a transient scheduler/host stall. Hosted Windows measured 125 rows at 0.0321 s and 500 at 1.4935 s, producing 46.5x; in the same job, the separate 500-row absolute-budget test passed below 1.0 s, and STARBASE passed both. The ratio test also did not kill restoration of the widget-per-row design in the earlier mutation battery; the structural control-count test did. Thus this failure neither disproves the accepted 500-row interaction bound nor detects the design property on which approval depends. | Remove the ratio as a required gate and retain the 500-row absolute budget plus structural control count. If scaling remains useful as diagnostic evidence, report it as a benchmark, or use repeated/interleaved samples with a robust estimator and separately prove that a single outlier cannot fail the suite while a sustained regression can. Delete the claim that a ratio is runner-invariant. | **Open, non-blocking; Implementer, `T-122`, before the Phase 2 exit review** |
+| `COORD-R21` | **Low** | No | Exact-run current truth | Local docs commit `a610250` correctly records that T-121 did not recur and that the hosted job is red on the T-118 ratio gate, but `IMPLEMENTATION_PLAN.md` immediately continues with “What is red is T-121”; STATUS repeats “What is red on main now is T-121,” and T-121's task entry still calls itself the only red item. | Keep T-121 Proposed because its captured fixture defect remains real, but distinguish “did not recur” from “resolved” and say the exact current red belongs to T-122's ratio oracle. Apply the same wording to the external roadmap artifact. | **Open, non-blocking; Documentation Maintainer, next coordination commit** |
+
+`COORD-R19` is closed in local docs commit `a610250`: the T-118 status headline now says four
+rounds/four corrections. `COORD-R20` remains a non-blocking process follow-up. The docs-only commit
+is outside the approved implementation head and does not alter this verdict.
+
+The reviewer independently queried the Actions run and failed-job log. The run SHA and all six job
+conclusions match the handoff; the hosted failure log contains only the ratio assertion above.
+This addendum and the `T-122` filing are uncommitted. No source, submitted test, repository
+variable, remote ref or CI state was changed by the reviewer.
