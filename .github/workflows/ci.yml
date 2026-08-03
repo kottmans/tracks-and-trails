@@ -248,8 +248,16 @@ jobs:
       - name: Stamp the job start time
         # `T092-R1`: the crash-dump report filters on this, so a dump from an earlier run or an
         # unrelated process cannot be attributed to this one.
+        #
+        # **`powershell`, not `pwsh`.** These two steps were written while `STARBASE` was offline
+        # and assumed PowerShell 7; the machine has Windows PowerShell 5.1 and no `pwsh` on PATH,
+        # so the first run after it came back died here — `pwsh: command not found` — and skipped
+        # the entire desktop slice. Neither script uses anything 5.1 lacks, and 5.1 is on every
+        # Windows by definition, which is the right dependency for a self-hosted runner nobody
+        # wants to re-provision. The `-Encoding utf8` below is what GitHub documents for writing
+        # `GITHUB_ENV` from 5.1.
         if: always()
-        shell: pwsh
+        shell: powershell
         run: |
           "JOB_STARTED_AT=$([datetime]::UtcNow.ToString('o'))" |
             Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
@@ -410,7 +418,7 @@ jobs:
         # on STARBASE for deliberate retrieval by the maintainer. Nothing sensitive leaves the
         # machine, and the causal claim is limited to what the timestamp supports.
         if: always()
-        shell: pwsh
+        shell: powershell
         continue-on-error: true
         run: |
           $folder = "$env:LOCALAPPDATA\CrashDumps\tracks-and-trails"
