@@ -90,7 +90,9 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ### T-118 — The add dialog becomes a staging list
 
-**Status:** **In Review — three rounds of changes requested on 2026-08-03, and three corrections.**
+**Status:** **In Review — four rounds of changes requested on 2026-08-03, and four corrections.
+Blocked only on exact-head Windows verification, which came back with one failure — in `T-118`'s
+own scaling gate rather than in the product.** See *The exact-head run* below.
 **Resolved by the reviewer:** `T118-R1`…`R3`, `R6`, `R7`, `R8`, `R9`, `R10`, `R11`, `R12`,
 `COORD-R18`, and the `e300b04` teardown fixes. `UX-004` closed `R5`. **Resolved in the third round:** `T118-R13`, `R15`, `R16`.
 
@@ -447,6 +449,39 @@ changing set names whoever moved into that slot.
 which without a guard re-enters the reset it is inside. *(The third round claimed this guard: it
 set the flag and never read it. The mutation run found it by failing to locate the branch it was
 trying to delete.)*
+
+##### The exact-head run, and the gate that failed in it
+
+**Run `30859578131` at `53b07ec`** — the head the reviewer asked to verify. `STARBASE` **passed**
+the full Windows suite; hosted `windows-latest` reported **1 failed / 1971 passed / 21 skipped**;
+Ubuntu, `STARBASE coverage` and both frozen jobs passed. **`T-121` did not recur.**
+
+The single failure is `test_a_four_times_larger_paste_does_not_cost_four_times_more_than_linearly`:
+
+```
+500 URLs cost 1.4935s against 0.0321s for 125
+— a factor of 46.5 for four times the input, over 6.0
+```
+
+**It is the gate that is wrong, and the evidence is inside the same job.**
+`test_a_paste_the_design_supports_stays_inside_the_interaction_budget` does the *same* 500-URL
+resolve and **passed**, which means it came in under 1.0 s minutes apart from a measurement that
+reported 1.4935 s. Two identical workloads, one job, one under budget and one three times over it:
+that is a transient stall, not a cost that grows with the paste. `STARBASE` passed the same test in
+the same run, and locally the ratio is 2.6 (0.0143 s at 125, 0.0375 s at 500).
+
+**The design error is mine, and it is `T118-R10`'s own defect class reproduced by the instrument
+built to replace it.** I argued a ratio "does not move with runner speed, because two measurements
+taken moments apart on one machine share it". True of a *sustained* speed difference; false of a
+transient one — and the denominator here is ~30 ms, so any absolute perturbation is amplified
+enormously. A 1.4 s hiccup against a 30 ms baseline is a factor of 46. The ratio gate is therefore
+**more** fragile than the absolute budget it was meant to complement, which is exactly what
+`T118-R10` said a flapping gate does to the next reader.
+
+**Recommended, not applied:** fail only when the absolute budget *and* the ratio are both breached,
+or take a median of several repeats per side. Left undone deliberately — the reviewer's verdict
+requested no further source correction, and changing source now would move the head away from the
+one under verification. It is the reviewer's call.
 
 ##### Mutations run
 

@@ -37,14 +37,16 @@ look one task from exiting when the sign-off it actually needs had not been requ
 - **Approved 2026-08-02:** `T-088` at `9e133a6`, the phase's own proof, once `T088-R4` and
   `T087-R6` were corrected and the suite passed on hosted Windows and Ubuntu.
 - **Approved 2026-08-03:** `T-116` at `253bbce`, after `T116-R1`. `T117-R1` closed.
-- **In review, four rounds of changes requested and four corrections, all 2026-08-03:** `T-118`,
-  carrying `T-119`. The reviewer has **Resolved** `T118-R1`…`R3`, `R6`…`R13`, `R15`, `R16` and
-  `COORD-R18`; `UX-004` closed `R5`; `R10`'s Windows evidence is in from run `30853680183`.
-  **`T118-R14` was escalated to Critical** and is corrected in the fourth round: the model's index
-  mapping read live staging rather than the snapshot the view had been told about, so a format
-  chosen for one row could be written to the next one when a preceding row left the list during
-  the debounce — a silently wrong per-URL download, which is what made `T118-R6` Critical.
-  It is the last open finding. Only the Reviewer marks it Resolved (`AGENTS.md` §10).
+- **In review, four rounds and four corrections, all 2026-08-03. `T118-R14` is Resolved and the
+  verdict is Blocked only on exact-head Windows verification** — which has now run, with one
+  failure. `T-118`'s own scaling gate flapped on hosted Windows; the product did not.
+  Run `30859578131` at `53b07ec`: `STARBASE` green on the full Windows suite, hosted
+  `windows-latest` **1 failed / 1971 passed**, everything else green, and **`T-121` did not
+  recur**. The failure is `test_a_four_times_larger_paste…`, reporting a 46.5x ratio — while the
+  absolute-budget test in the *same job* did the same 500-URL resolve under 1.0 s. That
+  contradiction is the diagnosis: a transient stall against a ~30 ms denominator, not a cost that
+  grows with the paste. Details and the recommended fix are in `TASKS.md`; no source change has
+  been made, because the head under verification is the head.
 - **Approved 2026-08-02:** `T-115`, after `T115-R1` (High) — the probed row was retargeted while
   every later queue position was admitted ahead of it, so with a pool of one the second URL
   started and the head of the queue waited. Add now takes one admission decision after the

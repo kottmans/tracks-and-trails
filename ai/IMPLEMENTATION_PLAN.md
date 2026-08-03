@@ -210,9 +210,10 @@ deleting, not by anybody reading the code.)*
 
 **`T-118` is no longer what is red.** Run `30853680183` ran the correction's nine tests on hosted
 `windows-latest` — the runner where `T118-R10`'s flap was observed — and on `STARBASE`, and all
-nine passed on both. `T118-R10` is **Resolved**. That run covered `adc5355`; the third and fourth
-rounds — thumbnail ownership, and the model's index mapping — have **never run on Windows**, which
-is the gap left in its evidence.
+nine passed on both. `T118-R10` is **Resolved**. **The exact-head run is in:** `30859578131` at `53b07ec` put every round on Windows at last.
+`STARBASE` passed the full suite; hosted `windows-latest` reported **1 failed / 1971 passed**, and
+the one failure is `T-118`'s own scaling gate rather than the product — the absolute-budget test in
+the same job did the identical 500-URL resolve under its 1.0 s budget. `T-121` did not recur.
 
 **What is red is `T-121`**, filed from that same run: the phase-exit test's own localhost clip
 server aborts a loopback connection on hosted Windows, so one of five downloads fails and a test
