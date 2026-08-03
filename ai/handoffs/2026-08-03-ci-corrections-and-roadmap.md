@@ -46,7 +46,7 @@ completed attempts and three retry gaps measured at 0.114 s. Locally the same op
 | Mutation: `_schedule_automatic_retry` returns unconditionally | **killed** by the new wait's own message, `"the automatic attempts never reached the bound and settled"` (120 s) |
 | Source after each mutation | `sha256` byte-identical, checked |
 | `tests/integration/test_manager.py` | 138 passed |
-| Exact-head hosted run `30826638984`, `windows desktop` full suite | **1929 passed, 0 failed** |
+| Exact-head run `30826638984`, **self-hosted** `windows desktop` full suite | **the corrected test passed**; the job ended 1929 passed / 21 skipped / 32 deselected with **two teardown errors, job failed** (`T-118`, §4 below) |
 
 ### The thing I would check hardest
 

@@ -185,10 +185,11 @@ them, which is the argument for having built it.)*
 and 7 are met. **What remains is the exit itself** — an independent exit review (`AGENTS.md` §3),
 which Phase 0 and Phase 1 both required and neither could self-certify.
 
-**`T-118` and `T-119` land before this phase exits.** Maintainer decision, 2026-08-03. They are
-Phase 3 tasks and not Phase 2 deliverables, so this is a sequencing choice rather than a scope
-change — but they are the only thing currently keeping `main` red, and criterion 5 is evidenced by
-CI. An exit submitted against a red board invites rejection on that alone.
+**`T-118` lands before this phase exits**, carrying `T-119`'s scope after the two were merged.
+Maintainer decision, 2026-08-03. It is a Phase 3 task and not a Phase 2 deliverable, so this is a
+sequencing choice rather than a scope change — but it is the only thing currently keeping `main`
+red, and criterion 5 is evidenced by CI. An exit submitted against a red board invites rejection on
+that alone.
 
 **Nothing is blocked on a machine any more, and `STARBASE` is back:** `OPS-005` was amended so
 hosted Windows carries the gate while it was offline; it returned 2026-08-03 and now runs both the
@@ -231,7 +232,7 @@ flowchart LR
     T116["<b>T-116</b><br/>probe lane"]:::approved
     T117["<b>T-117</b><br/>thumbnail_url"]:::approved
     T120["<b>T-120</b><br/>brand palette"]:::approved
-    T118["<b>T-118 + T-119</b><br/>staging list<br/>+ row delegate"]:::review
+    T118["<b>T-118</b><br/>staging list + row delegate<br/><i>T-119 subsumed</i>"]:::review
 
     EXIT(["<b>Phase 2 exit</b>"]):::exit
 
@@ -269,9 +270,9 @@ diagnostics rather than queue behaviour the phase proof exercises — so they ca
 deliverable was approved and no user could start a queue (criterion 7).
 
 **The dotted edge is a sequencing decision, not a dependency.** `T-116` through `T-120` are the UI
-rework, filed as Phase 3 and listed under that phase below. `T-118`/`T-119` is drawn here only
-because the maintainer chose on 2026-08-03 to land it before the exit; remove that decision and the
-exit does not wait on it. `T-120` and `T-117` carry no edge for the same reason.
+rework, filed as Phase 3 and listed under that phase below. `T-118` is drawn here only because the
+maintainer chose on 2026-08-03 to land it before the exit; remove that decision and the exit does
+not wait on it. `T-120` and `T-117` carry no edge for the same reason.
 
 ### Decisions taken during this phase
 
@@ -366,8 +367,8 @@ wrong rows (`P1EXIT-R1`, `P1EXIT-R2`):
 one-button downloader.
 
 **Prerequisites:** Phase 2 approved — **for the deliverables below**. The UI rework `T-116`–`T-120`
-started 2026-08-02 ahead of that, and `T-118`/`T-119` is deliberately sequenced before the Phase 2
-exit (maintainer, 2026-08-03). The prerequisite is not waived so much as scoped: it governs the
+started 2026-08-02 ahead of that, and `T-118` is deliberately sequenced before the Phase 2 exit
+(maintainer, 2026-08-03). The prerequisite is not waived so much as scoped: it governs the
 format-and-content work, which does depend on a settled queue, and not five tasks that `UX-003`
 made urgent while Phase 2 was finishing.
 
@@ -385,13 +386,18 @@ the deliverables below, which is why it appeared nowhere in this document until 
 what `UX-003` and `UX-004` produced: nothing enters the queue unprobed, so the add dialog becomes a
 staging list and the queue row becomes a delegate. `T-116` (probe lane), `T-117` (`thumbnail_url`
 and the first migration after the initial schema) and `T-120` (brand palette) are **approved**;
-`T-118`/`T-119` is **in review**.
+`T-118` is **in review**, and `T-119` is **subsumed into it**.
 
-**Two of them are being taken before Phase 2 exits** (maintainer, 2026-08-03): `T-118` and `T-119`
-are merged into one task, and it lands first. `T-118`'s per-row control path is what currently
-keeps `main` red, and Phase 2's criterion 5 is evidenced by CI. This does not move them into
-Phase 2 — they remain Phase 3 tasks against no Phase 2 deliverable — it changes only what order
-the work happens in.
+**One of them is being taken before Phase 2 exits** (maintainer, 2026-08-03). `T-119` is **filed
+`Cancelled — subsumed into `T-118``**, with its scope, acceptance criteria and risk carried into
+that entry verbatim; `T-118` is therefore the single actionable item, and it lands first. Its
+per-row control path is what currently keeps `main` red, and Phase 2's criterion 5 is evidenced by
+CI. This does not move it into Phase 2 — it remains a Phase 3 task against no Phase 2 deliverable
+— it changes only what order the work happens in.
+
+*(`COORD-R14`: this read "`T-118` and `T-119` are merged into one task" while `TASKS.md` still had
+`T-119` depending on `T-118` and `T-118` excluding the queue's rendering as `T-119`'s. The merged
+work depended on itself. One task is now filed and the other is a tombstone pointing at it.)*
 
 ### Deliverables
 

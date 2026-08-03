@@ -16,10 +16,19 @@
 Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLAN-R2` at `f858da9`,
 `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
 
-**Every Phase 2 deliverable is approved**, `T-115` included — it was approved 2026-08-02 and this
-line said otherwise until 2026-08-03, which is `COORD-R12`'s class again. Phase 2 exit criterion 6
-— every deliverable reviewed — is met for Phase 2's own tasks; the UI rework's `T-118` is what is
-still open.
+**Thirteen of thirteen Phase 2 deliverables are approved**, `T-115` included — approved at
+`f6dd691` on 2026-08-02, though this line said otherwise until 2026-08-03. **Exit criterion 6 is
+not met.** It asks for *"reviewed and signed off"*, and what is absent is the **independent phase
+exit review** that Phase 0 and Phase 1 each required (`AGENTS.md` §3) — not a deliverable review.
+
+**`T-118`/`T-119` precedes that exit review only because the maintainer sequenced it there**
+(2026-08-03). It is a Phase 3 task against no Phase 2 deliverable, so it is not a criterion and
+cannot become one. `IMPLEMENTATION_PLAN.md` is canonical for the exit state; this paragraph follows
+its distinction rather than restating it loosely.
+
+*(`COORD-R13`: this read *"criterion 6 … is met for Phase 2's own tasks; the UI rework's `T-118` is
+what is still open"*, which promoted a sequencing decision into an exit criterion and made the phase
+look one task from exiting when the sign-off it actually needs had not been requested.)*
 
 - **Approved:** `T-078`, `T-079`, `T-080`, `T-081`, `T-046`, `T-083`, `T-085`, `T-087`, `T-102`,
   plus the supporting `T-053`, `T-099`, `T-101`, `T-103`.
@@ -59,9 +68,12 @@ one still in review:
 - **`T-120`** — the brand palette, applied. `ui/theme.py` was one line and nothing imported it, so
   the application had been showing whatever Qt's default style chose since Phase 0.
 
-**`T-119` is deliberately not started.** It depends on `T-117` and `T-118`, both unreviewed, and
-`T-118` alone found six defects in code it did not write. Maintainer decision, 2026-08-02: take a
-verdict on what exists before building the queue delegate on top of it.
+**`T-119`'s hold is discharged, and the task is subsumed.** It was held on 2026-08-02 until
+`T-118` had a verdict; that verdict arrived 2026-08-03, and the maintainer then merged the two.
+`T-119` is filed **Cancelled — subsumed into `T-118`**, with its scope, acceptance criteria and
+risk carried into that entry verbatim rather than summarised.
+*(`COORD-R14`: the hold stood here immediately above the merge decision, so this document said both
+"deliberately not started" and "corrected as one task" about the same work.)*
 
 **`T-118` and `T-119` will be corrected as one task**, not two. Maintainer decision, 2026-08-03:
 the reviewer's own disposition asks for *one rendered row, one declared keyboard route, one
@@ -100,10 +112,15 @@ incident from the first time it happened.** The leg now checks the machine's Pyt
 does. `OPS-009` also replaced `matrix.os` and left three references to it: the two frozen artifacts
 collapsed into one `frozen-evidence-` and the size report recorded an empty platform.
 
-**Both corrections verified on the runner that found them.** Run `30826638984` at `6c38d5f`: the
-`windows desktop` full suite reported **1929 passed, 0 failed**, and **`frozen windows` passed in
-5m18s — the first frozen build `STARBASE` has ever completed**, both prior attempts having died in
-`setup-python` before reaching PyInstaller.
+**Both corrections verified on the runner that found them — and the run as a whole was still red.**
+Run `30826638984` at `6c38d5f` concluded **failure**. Stated narrowly, which is the only honest
+form: **the corrected `T-083` test passed** on the **self-hosted** `windows desktop` job, whose full
+suite ended **1929 passed, 21 skipped, 32 deselected and two teardown errors — job failed**; and
+**`frozen windows` passed** in 5m18s, the first frozen build `STARBASE` has ever completed, both
+prior attempts having died in `setup-python` before reaching PyInstaller.
+*(`COORD-R16`: this read "1929 passed, 0 failed", which is true of the test calls and makes a failed
+job look green. The teardown errors were disclosed two paragraphs later; the number was not wrong,
+the framing was.)*
 
 **What is still red is `T-118`, and only `T-118`.**
 

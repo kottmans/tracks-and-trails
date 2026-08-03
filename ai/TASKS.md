@@ -78,11 +78,15 @@ Phase 0 is formally exited (2026-07-26).
 ---
 
 ## In Review
-*(**One task awaits a verdict as of 2026-08-03** — `T-118`, returned a second time. `T-116`,
-`T-117` and `T-120` are approved and filed under Complete; `T-115` was approved on 2026-08-02.
-This note is rebuilt from the section rather than edited beside it, which is `COORD-R12`'s rule:
-`COORD-R5` through `COORD-R12` are eight rounds of this file contradicting itself, and `T-096`
-gates status against section but cannot see prose that disagrees with both.)*
+*(**One task awaits a verdict as of 2026-08-03** — `T-118`, returned a second time, now carrying
+`T-119`'s scope as well. It is the only entry in this section; read the section, not this line.)*
+
+*(`COORD-R15`: this note previously said `T-115`, `T-117` and `T-120` were "filed under Complete"
+when the first two were still `In Review` entries in this very section and the third **had no entry
+at all**. That is the ninth round of `COORD-R5`'s class and the first where the claim was about
+filing rather than about status — `T-096`'s gate compares a status to its section, so three tasks
+whose stale status agreed with their stale section passed it. All three are now filed under
+`## Complete` at their approved heads.)*
 
 ### T-118 — The add dialog becomes a staging list
 
@@ -143,8 +147,14 @@ rather than by reading the diff.
 **Owner:** Implementer
 **Priority:** High
 **Phase:** Phase 3
-**Depends on:** `T-116` (or Add stalls the downloads already running), `T-117` (or the thumbnail
-dies with the dialog), `T-105`'s UX spec
+**Depends on:** `T-116` (or Add stalls the downloads already running) and `T-117` (or the thumbnail
+dies with the dialog). **Both are approved, so nothing blocks this task.**
+**`T-105` is not a dependency**, and its removal is deliberate: accepted `UX-004` supplied the
+maintainer decision `T118-R5` needed and explicitly struck `T-105` as this correction's
+prerequisite (`DECISIONS.md:2586`). `T-119` named it too, and **that dependency does not survive
+the merge either** — the same decision governs the delegate, because the delegate is what `UX-004`
+says draws the per-row control. When `T-105` writes `docs/UX_SPEC.md`, it documents what this task
+built rather than the other way round.
 **Relevant context:** `UX-003`, `REQ-001`, `REQ-002`, `REQ-012`, `REQ-018`, `NFR-005`, `NFR-006`,
 `T-016`, `T-075` (the preset is bound at Add, not at probe), `T-115`, `T115-R1`, `T-060`
 **Affected surfaces:** `ui/add_dialog.py`
@@ -188,187 +198,51 @@ round.
 
 - Playlist expansion beyond showing that a URL **is** one and how many entries it has — choosing
   entries is `T-110`
-- The queue's own rendering (`T-119`)
 
----
+*(This read "The queue's own rendering (`T-119`)" until 2026-08-03. It is **in** scope now — the
+merge is precisely that one renderer serves both surfaces. `COORD-R14`: leaving that line while the
+status said the tasks were merged made the task exclude the work it had just absorbed.)*
 
-### T-117 — Persist the thumbnail URL so a queued row can show one
+#### What `T-119` brought in, unchanged
 
-**Status:** **In Review — complete 2026-08-02.** Six mutations run; all six killed, two of them
-against the migration itself. The frozen-fixture gate `T014-R4` left behind did its job: adding a
-schema version fails the build until that version's bytes are captured, which is the only moment
-they can be.
-*(This read "Proposed — UI rework decomposition, 2026-08-02".)*
-**Owner:** Implementer
-**Priority:** Medium — small, and `T-118` and `T-119` both need it
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `REQ-002`, `DAT-001`, `core/models.py:314` (`MediaInfo.thumbnail_url`),
-`persistence/migrations/`, `persistence/repositories.py`
-**Affected surfaces:** `core/models.py`, `persistence/` (schema, migration, repository)
-**Risk:** **Medium, and not for its size** — this is the **first migration after the initial
-schema**. The machinery has never run a second one against a database with rows in it
+*(Merged 2026-08-03. Reproduced rather than summarised, because `COORD-R14` names losing these
+criteria as the risk the merge runs. The delegate is now this task's to build.)*
 
-#### Scope
+**Affected surfaces, added:** `ui/queue_view.py`, a new delegate module, `core/paths.py`
+**Relevant context, added:** `REQ-014`, `NFR-004` (cache location), `ARC-005`, `T-079` (the queue
+table's repaint and ordering rules), `T-081`
 
-`MediaInfo` carries `thumbnail_url`; `Job` does not, and neither does the `jobs` table. A probe's
-thumbnail therefore lives exactly as long as the dialog that asked for it. Every row in the queue
-that wants to show a picture needs the URL to have survived the probe.
+The rich row from the accepted mockup: thumbnail, title, uploader, progress and state in one row
+rather than a grid of columns. The staging list guarantees the text is there; the delegate draws
+it — and drawing it once, for both surfaces, is what closes `T118-R7`, `T118-R9` and `T118-R10`
+together rather than one at a time.
 
-`persistence/migrations/` holds `0001_initial.sql` and nothing else. This adds `0002`, which makes
-the migration path itself part of the task rather than an assumption.
+**The scale rule is the task, not the drawing.** A public application cannot assume a queue of
+twenty. The policy is: bytes fetched only for rows the view asks to paint plus a small look-ahead,
+a bounded pixmap cache, a disk cache under `NFR-004`'s cache directory swept with the job, and the
+GUI thread never blocking on a fetch or a decode (`ARC-005`).
 
-#### Acceptance criteria
+Acceptance criteria, carried verbatim:
 
-- `Job` carries an optional thumbnail URL, validated as the other optional text fields are
-- A migration adds the column, and a test **migrates a database populated under `0001`** and asserts
-  every existing row survives with its other columns intact
-- Migrating twice is a no-op (`PRAGMA user_version` already guarantees this; assert it here, where a
-  second migration exists to prove it against)
-- A probe result writes the URL through the same route that writes the rest of its media fields —
-  not a second write that could half-land
-- A job whose probe reported no thumbnail stores `NULL`, and that is distinguishable from a job that
-  has not been probed
-- A database at `0001` opened by this version is migrated on open, not refused
+- A row renders every field `REQ-002` names, asserted by value rather than by pixel
+- **No fetch is issued for a row the view never asked to paint** — asserted with a model far larger
+  than the viewport, counting requests
+- The pixmap cache has a stated bound, and a test that exceeds it asserts memory is released rather
+  than that the cache "works"
+- The disk cache lives under `NFR-004`'s directory, is keyed so two jobs for one URL share it, and
+  is removed with the job
+- A failed or missing thumbnail keeps the placeholder and is **not** reported as an error — a
+  missing picture is not a failed download — and does not retry in a loop
+- Repaint cost is bounded with a realistic queue size, in the shape `T-079` already asserts
+- Everything a sighted user reads from the row is available to a screen reader (`NFR-005`), and the
+  derived placeholder is never the only thing distinguishing two rows
 
-#### Out of scope
+**Also out of scope, carried:** history's rendering. If it should match, that is its own task
+against `T-100`.
 
-- Fetching or caching the bytes (`T-119`)
-- Any history-table column. `T-085`'s records are separate and unchanged
+**Risk, carried:** repaint cost is what regresses, and it regresses at a size no hand-driven test
+reaches — which is the same shape as `T118-R10`, measured on the wrong machine.
 
----
-
-### T-115 — Nothing drains the queue: jobs beyond the limit never start
-
-**Status:** **In Review — `T115-R1` corrected 2026-08-02.** Review returned **changes
-requested**: the probed row was retargeted while every *later* queue position was admitted ahead
-of it, so with a pool of one the second URL started and the head of the queue waited. Add now
-takes **one admission decision** after the retarget settles, probed id first. Three further
-mutations run on the correction; all three killed.
-*(This read "In Review — complete 2026-08-01. Five mutations run; all five killed.")* The strict
-`xfail` that carried this reported **`XPASS(strict)`** the moment the first fix landed — the gate
-firing exactly as promised — and was then inverted.
-*(This read "Proposed — found by `T-088` on 2026-08-01, by measurement".)*
-**Owner:** Implementer
-**Priority:** **High** — `REQ-012` is "a queue", and a queue that never starts is a list
-**Phase:** Phase 2
-**Depends on:** nothing. `T-078`'s pool is what would be driven; it is already approved
-**Relevant context:** `REQ-012`, `REQ-001`, `T-078`, `T-016`, `UX-001`, `ARC-004`
-**Affected surfaces:** `downloader/manager.py` or `app.py` — see *Where it belongs*
-**Risk:** Low to fix, High to leave. The phase cannot honestly exit with it open
-
-#### What was measured
-
-A real composed application, concurrency 3, five URLs queued through the real dialog:
-
-```
-  0.5s  probing  running  probing  queued  queued   (4 child processes)
-  8.0s  completed completed completed queued queued (1)
-  9.5s  completed completed completed queued queued (1)
-```
-
-The three that started ran concurrently and completed — **the pool itself is fine.** The other two
-were still `queued` with an empty pool when the run ended.
-
-#### Why, from the code
-
-- `DownloadManager._fill_free_slots` drains `self._waiting`, an **in-memory** list.
-- `_waiting` is populated only when `_start_or_report` parks a job — the internal path, used by
-  retry and by the pause/reorder guards.
-- The **public** `start()` *raises* `RuntimeError("the pool is full at N")` instead of parking.
-- **Nothing anywhere scans the database for `QUEUED` rows.**
-- `AddUrlDialog.add_to_queue` starts only the **probed** job, and Probe is a manual button covering
-  only the **first** URL.
-
-So a user who pastes five URLs and presses Add gets **zero** downloads started, or one if they
-probed first. The rest are durable, correct, ordered — and inert.
-
-**`add_dialog.py` already assumes otherwise.** A comment there reads *"leaving it durably `QUEUED`,
-where whatever runs the queue next would download the URL"*. There is no "whatever runs the queue
-next", and that comment is the clearest evidence this was believed to exist.
-
-#### Where it belongs — stated as options, not decided
-
-1. **`start()` parks instead of raising when full.** Smallest change, and it makes the public and
-   internal paths agree. Against it: `start()`'s refusal is deliberate and `T016-R3` reasoned about
-   it; callers currently distinguish "queued" from "started" by whether it threw.
-2. **A tick that admits `QUEUED` rows from the repository.** Matches `_next_waiting`'s existing use
-   of `queue_position` as the durable order, and survives a restart — which the in-memory
-   `_waiting` does not. Against it: a database read on the manager's tick (`ARC-005` allows indexed
-   single-row reads; this is an enumeration).
-3. **Composition starts each freshly added job.** Keeps the manager unchanged. Against it: it
-   leaves rows recovered by `T-082`, or added by a previous run, still inert.
-
-Option 2 is the one that also fixes restart, which is why I would start there — but this is a
-design decision and `T-088` is not the place to make it.
-
-#### What was built
-
-**`DownloadManager.admit(job_id)`** — the public counterpart to `start()`. `start()` raises at
-saturation, which is right for a caller that asked for a session *now*; `admit()` expresses durable
-intent instead, so adding five URLs to a pool of three does not make the caller decide which two to
-drop. It routes through `_start_when_free`, which already parked correctly — the primitive existed
-and had no public door.
-
-**Two callers, which is what covers both halves:**
-
-- `AddUrlDialog` admits **every** job it just persisted, not only the probed one. That is the
-  newly-added queue.
-- `compose()` admits every durable `QUEUED` row **after** recovery has run. That is the queue a
-  previous run left behind, and it is the half a dialog-only fix would have missed — `_waiting` is
-  in-memory and dies with the process.
-
-**Nothing recovered is admitted**, and the ordering of those two reads is what guarantees it:
-`recover_interrupted()` moves in-flight rows to `FAILED` before the `QUEUED` list is taken, so a job
-that was *running* when the application died is offered for retry (`T-082`) rather than restarted
-unattended. Starting those was `T081-R4`, and this is the rule that would have resurrected it.
-
-Order stays `queue_position`'s, through `_next_waiting`. Admission is not a start.
-
-#### What it broke, and why that was right
-
-**Ten end-to-end tests failed**, all with `ValueError: … is probing; a session starts from queued or
-ready only (ARC-004)`. Their harness did `add_to_queue()` and then `manager.start(job_id)` — which
-was *necessary* while nothing drained the queue, and is now an error, because Add has already
-admitted the job and `start()` correctly refuses one that is already probing.
-
-That is the shape of a genuine behaviour change rather than a regression: the redundant start is
-gone from the harness and every test passes without it. It is also the clearest measure of what
-`T-115` was: **every end-to-end test in the project had been compensating for it.**
-
-One real defect of my own surfaced with them. `admit()` inherited `start()`'s contract of raising
-when the row is not there — right for `start()`, whose caller asked for a session on a specific job,
-and wrong for `admit()`, which is called from the add dialog's save callback and composition's
-startup loop, where an exception is printed and swallowed and where a row may simply not have landed
-yet. It reports through `start_rejected` now, which is the channel every other refusal uses. Your
-contended-database test caught it.
-
-#### One thing the mutation battery could not show, recorded rather than worked around
-
-**Pause is enforced at three sites** — `_start_when_free`, `start()` and `_fill_free_slots` — and
-each alone is sufficient. So a mutation removing any *one* of them is not observable: the other two
-still stop the queue. That is redundancy in the code, not a gap in the tests, and pretending
-otherwise by inventing a test that could tell them apart would be testing an implementation detail.
-
-The battery therefore mutates the flag all three read, which puts the **property** under test —
-*a paused queue starts nothing* — rather than any one guard. Whether three checks are worth keeping
-is a question for `T-080`'s owner; this task did not add them and does not remove them.
-
-#### Acceptance criteria
-
-- Adding N URLs with a limit of M starts M immediately and the rest as slots free, with no user
-  action beyond Add
-- **The order is `queue_position`**, so it survives a restart and matches what the queue shows
-- A queue paused per `UX-001` still starts nothing, and resuming drains it
-- Jobs left `QUEUED` by a *previous* run start on the next launch — the `T-082` recovery case
-- ~~the strict `xfail` must be inverted~~ — **done**. It reported `XPASS(strict)` on the first run
-  after the fix, reddening the build exactly as the promise said it would, and is now an ordinary
-  passing test. Two more were added for the halves it cannot reach: the restart case and the
-  paused case
-
-#### Out of scope
-
-- Changing the concurrency limit's semantics, which `T-078` owns
 
 ---
 
@@ -883,56 +757,6 @@ seven plan deliverables, so its size was an estimate from prose rather than from
 broken down. Phase 1 listed nine deliverables and produced fifty tasks; these eight are the
 starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
 it.)*
-
-### T-119 — The queue row: thumbnail, title and progress in one delegate
-
-**Status:** Proposed — **UI rework decomposition, 2026-08-02. Taken together with `T-118`'s
-correction as one task** (maintainer, 2026-08-03): the delegate is what answers `T118-R7`,
-`T118-R9` and `T118-R10`, so building it separately would mean patching a row anatomy the review
-has already rejected. It is no longer held back by `T-118` being unreviewed — the two are the same
-piece of work now. See `T-118` for the findings it carries and for `T118-R10`'s marginal bound.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 3
-**Depends on:** `T-117`, `T-118`, `T-105`
-**Relevant context:** `REQ-002`, `REQ-014`, `NFR-001`, `NFR-004` (cache location), `NFR-005`,
-`ARC-005`, `T-079` (the queue table's repaint and ordering rules), `T-081`
-**Affected surfaces:** `ui/queue_view.py`, a new delegate module, `core/paths.py`
-**Risk:** Medium — repaint cost is the thing that regresses, and it regresses at a size no
-hand-driven test reaches
-
-#### Scope
-
-The rich row from the accepted mockup: thumbnail, title, uploader, progress and state in one row
-rather than a grid of columns. `T-118` guarantees the text is there; this draws it.
-
-**The scale rule is the task, not the drawing.** A public application cannot assume a queue of
-twenty. The policy is: bytes fetched only for rows the view asks to paint plus a small look-ahead,
-a bounded pixmap cache, a disk cache under `NFR-004`'s cache directory swept with the job, and the
-GUI thread never blocking on a fetch or a decode (`ARC-005`).
-
-#### Acceptance criteria
-
-- A row renders every field `REQ-002` names, asserted by value rather than by pixel
-- **No fetch is issued for a row the view never asked to paint** — asserted with a model far larger
-  than the viewport, counting requests
-- The pixmap cache has a stated bound, and a test that exceeds it asserts memory is released rather
-  than that the cache "works"
-- The disk cache lives under `NFR-004`'s directory, is keyed so two jobs for one URL share it, and
-  is removed with the job
-- A failed or missing thumbnail keeps the placeholder and is **not** reported as an error — a
-  missing picture is not a failed download — and does not retry in a loop
-- Repaint cost is bounded with a realistic queue size, in the shape `T-079` already asserts
-- Everything a sighted user reads from the row is available to a screen reader (`NFR-005`), and the
-  derived placeholder is never the only thing distinguishing two rows
-
-#### Out of scope
-
-- History's rendering. If it should match, that is its own task against `T-100`
-
----
-
----
 
 ### T-107 — The format table: every stream a probe found
 
@@ -1980,6 +1804,250 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-120 — The brand palette, applied
+
+**Status:** **Complete — Approved at `44091a1`**, 2026-08-02. The canonical swatches have one
+source, both themes are independently defined and applied through the palette plus inherited
+selectors, and text and control contrast are measured exhaustively rather than asserted. The
+reviewer added the missing all-`JobStatus` textual-name assertion and it passes.
+*(**This entry did not exist until 2026-08-03** — `COORD-R15`. The task was filed, built, reviewed
+and approved while this file, the canonical task ledger, never held a row for it. Three documents
+described its outcome and the one that is authoritative for tasks did not.)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `UX-004`, `NFR-005` (contrast), `ui/theme.py`
+**Affected surfaces:** `ui/theme.py`, and every widget that inherits from it
+**Risk:** Low mechanically, and the residue is not mechanical
+
+#### Scope
+
+`ui/theme.py` was one line and nothing imported it, so the application had been showing whatever
+Qt's default style chose since Phase 0. The palette is applied for both themes.
+
+#### Acceptance criteria
+
+1. One source for the canonical swatches; a second definition is a defect, not a variant.
+2. Both themes defined independently rather than one derived from the other.
+3. Text and control contrast measured against `NFR-005` for every pairing the themes produce.
+4. Every `JobStatus` has a textual name in the view, asserted for the whole enum rather than a
+   sample — the reviewer's addition.
+
+#### What is honestly unverified
+
+**The dark theme has never been on a screen.** Its contrast is asserted as arithmetic. That is
+recorded rather than fixed, and it is not a mechanical blocker.
+
+### T-119 — The queue row: thumbnail, title and progress in one delegate
+
+**Status:** **Cancelled — subsumed into `T-118`**, 2026-08-03. Not abandoned: the maintainer ruled
+that the delegate and `T-118`'s row anatomy are one piece of work, so `T-118` now carries this
+task's scope, acceptance criteria and risks. Filed here rather than deleted because `T-118`,
+`ARCHITECTURE.md` and this file's own history all reference the id.
+*(This read "Proposed — UI rework decomposition, 2026-08-02".)*
+**Owner:** Implementer
+**Superseded by:** `T-118`
+**Phase:** Phase 3
+
+The reasoning, kept because it is the argument for the merge rather than a note about it: the
+reviewer's disposition on `T-118` asks for **one rendered row, one declared keyboard route, one
+effective request**. A delegate is what supplies the first and third, and `T118-R10`'s cost ceiling
+is only removable by drawing one reusable editor instead of a widget per row. Delivering `T-118`
+first and this second would mean correcting a row anatomy against findings that the correction
+itself replaces.
+
+
+
+### T-115 — Nothing drains the queue: jobs beyond the limit never start
+
+**Status:** **Complete — Approved at `f6dd691`**, 2026-08-02, after `T115-R1` and `T115-R2`
+were corrected; `COORD-R12` closed with them. Add admits a saved batch as one ordered decision
+after every retarget settles, startup admits durable waiting intent after recovery, and the
+Add-only and restart routes drain with no priming loop.
+*(This read "In Review — `T115-R1` corrected 2026-08-02" until 2026-08-03, one review round
+after the approval: `COORD-R15`.)* Review had returned **changes
+requested**: the probed row was retargeted while every *later* queue position was admitted ahead
+of it, so with a pool of one the second URL started and the head of the queue waited. Add now
+takes **one admission decision** after the retarget settles, probed id first. Three further
+mutations run on the correction; all three killed.
+*(This read "In Review — complete 2026-08-01. Five mutations run; all five killed.")* The strict
+`xfail` that carried this reported **`XPASS(strict)`** the moment the first fix landed — the gate
+firing exactly as promised — and was then inverted.
+*(This read "Proposed — found by `T-088` on 2026-08-01, by measurement".)*
+**Owner:** Implementer
+**Priority:** **High** — `REQ-012` is "a queue", and a queue that never starts is a list
+**Phase:** Phase 2
+**Depends on:** nothing. `T-078`'s pool is what would be driven; it is already approved
+**Relevant context:** `REQ-012`, `REQ-001`, `T-078`, `T-016`, `UX-001`, `ARC-004`
+**Affected surfaces:** `downloader/manager.py` or `app.py` — see *Where it belongs*
+**Risk:** Low to fix, High to leave. The phase cannot honestly exit with it open
+
+#### What was measured
+
+A real composed application, concurrency 3, five URLs queued through the real dialog:
+
+```
+  0.5s  probing  running  probing  queued  queued   (4 child processes)
+  8.0s  completed completed completed queued queued (1)
+  9.5s  completed completed completed queued queued (1)
+```
+
+The three that started ran concurrently and completed — **the pool itself is fine.** The other two
+were still `queued` with an empty pool when the run ended.
+
+#### Why, from the code
+
+- `DownloadManager._fill_free_slots` drains `self._waiting`, an **in-memory** list.
+- `_waiting` is populated only when `_start_or_report` parks a job — the internal path, used by
+  retry and by the pause/reorder guards.
+- The **public** `start()` *raises* `RuntimeError("the pool is full at N")` instead of parking.
+- **Nothing anywhere scans the database for `QUEUED` rows.**
+- `AddUrlDialog.add_to_queue` starts only the **probed** job, and Probe is a manual button covering
+  only the **first** URL.
+
+So a user who pastes five URLs and presses Add gets **zero** downloads started, or one if they
+probed first. The rest are durable, correct, ordered — and inert.
+
+**`add_dialog.py` already assumes otherwise.** A comment there reads *"leaving it durably `QUEUED`,
+where whatever runs the queue next would download the URL"*. There is no "whatever runs the queue
+next", and that comment is the clearest evidence this was believed to exist.
+
+#### Where it belongs — stated as options, not decided
+
+1. **`start()` parks instead of raising when full.** Smallest change, and it makes the public and
+   internal paths agree. Against it: `start()`'s refusal is deliberate and `T016-R3` reasoned about
+   it; callers currently distinguish "queued" from "started" by whether it threw.
+2. **A tick that admits `QUEUED` rows from the repository.** Matches `_next_waiting`'s existing use
+   of `queue_position` as the durable order, and survives a restart — which the in-memory
+   `_waiting` does not. Against it: a database read on the manager's tick (`ARC-005` allows indexed
+   single-row reads; this is an enumeration).
+3. **Composition starts each freshly added job.** Keeps the manager unchanged. Against it: it
+   leaves rows recovered by `T-082`, or added by a previous run, still inert.
+
+Option 2 is the one that also fixes restart, which is why I would start there — but this is a
+design decision and `T-088` is not the place to make it.
+
+#### What was built
+
+**`DownloadManager.admit(job_id)`** — the public counterpart to `start()`. `start()` raises at
+saturation, which is right for a caller that asked for a session *now*; `admit()` expresses durable
+intent instead, so adding five URLs to a pool of three does not make the caller decide which two to
+drop. It routes through `_start_when_free`, which already parked correctly — the primitive existed
+and had no public door.
+
+**Two callers, which is what covers both halves:**
+
+- `AddUrlDialog` admits **every** job it just persisted, not only the probed one. That is the
+  newly-added queue.
+- `compose()` admits every durable `QUEUED` row **after** recovery has run. That is the queue a
+  previous run left behind, and it is the half a dialog-only fix would have missed — `_waiting` is
+  in-memory and dies with the process.
+
+**Nothing recovered is admitted**, and the ordering of those two reads is what guarantees it:
+`recover_interrupted()` moves in-flight rows to `FAILED` before the `QUEUED` list is taken, so a job
+that was *running* when the application died is offered for retry (`T-082`) rather than restarted
+unattended. Starting those was `T081-R4`, and this is the rule that would have resurrected it.
+
+Order stays `queue_position`'s, through `_next_waiting`. Admission is not a start.
+
+#### What it broke, and why that was right
+
+**Ten end-to-end tests failed**, all with `ValueError: … is probing; a session starts from queued or
+ready only (ARC-004)`. Their harness did `add_to_queue()` and then `manager.start(job_id)` — which
+was *necessary* while nothing drained the queue, and is now an error, because Add has already
+admitted the job and `start()` correctly refuses one that is already probing.
+
+That is the shape of a genuine behaviour change rather than a regression: the redundant start is
+gone from the harness and every test passes without it. It is also the clearest measure of what
+`T-115` was: **every end-to-end test in the project had been compensating for it.**
+
+One real defect of my own surfaced with them. `admit()` inherited `start()`'s contract of raising
+when the row is not there — right for `start()`, whose caller asked for a session on a specific job,
+and wrong for `admit()`, which is called from the add dialog's save callback and composition's
+startup loop, where an exception is printed and swallowed and where a row may simply not have landed
+yet. It reports through `start_rejected` now, which is the channel every other refusal uses. Your
+contended-database test caught it.
+
+#### One thing the mutation battery could not show, recorded rather than worked around
+
+**Pause is enforced at three sites** — `_start_when_free`, `start()` and `_fill_free_slots` — and
+each alone is sufficient. So a mutation removing any *one* of them is not observable: the other two
+still stop the queue. That is redundancy in the code, not a gap in the tests, and pretending
+otherwise by inventing a test that could tell them apart would be testing an implementation detail.
+
+The battery therefore mutates the flag all three read, which puts the **property** under test —
+*a paused queue starts nothing* — rather than any one guard. Whether three checks are worth keeping
+is a question for `T-080`'s owner; this task did not add them and does not remove them.
+
+#### Acceptance criteria
+
+- Adding N URLs with a limit of M starts M immediately and the rest as slots free, with no user
+  action beyond Add
+- **The order is `queue_position`**, so it survives a restart and matches what the queue shows
+- A queue paused per `UX-001` still starts nothing, and resuming drains it
+- Jobs left `QUEUED` by a *previous* run start on the next launch — the `T-082` recovery case
+- ~~the strict `xfail` must be inverted~~ — **done**. It reported `XPASS(strict)` on the first run
+  after the fix, reddening the build exactly as the promise said it would, and is now an ordinary
+  passing test. Two more were added for the halves it cannot reach: the restart case and the
+  paused case
+
+#### Out of scope
+
+- Changing the concurrency limit's semantics, which `T-078` owns
+
+---
+
+### T-117 — Persist the thumbnail URL so a queued row can show one
+
+**Status:** **Complete — Approved at `af9bfa1`**, 2026-08-02, with `T117-R1` resolved at
+`5351be7` — `ARCHITECTURE.md`'s canonical Job entity now names `thumbnail_url`. The
+implementation approval was never contingent on it.
+*(This read "In Review — complete 2026-08-02" until 2026-08-03, three review rounds after the
+verdict: `COORD-R15`.)* Six mutations run; all six killed, two of them
+against the migration itself. The frozen-fixture gate `T014-R4` left behind did its job: adding a
+schema version fails the build until that version's bytes are captured, which is the only moment
+they can be.
+*(This read "Proposed — UI rework decomposition, 2026-08-02".)*
+**Owner:** Implementer
+**Priority:** Medium — small, and `T-118` and `T-119` both need it
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `REQ-002`, `DAT-001`, `core/models.py:314` (`MediaInfo.thumbnail_url`),
+`persistence/migrations/`, `persistence/repositories.py`
+**Affected surfaces:** `core/models.py`, `persistence/` (schema, migration, repository)
+**Risk:** **Medium, and not for its size** — this is the **first migration after the initial
+schema**. The machinery has never run a second one against a database with rows in it
+
+#### Scope
+
+`MediaInfo` carries `thumbnail_url`; `Job` does not, and neither does the `jobs` table. A probe's
+thumbnail therefore lives exactly as long as the dialog that asked for it. Every row in the queue
+that wants to show a picture needs the URL to have survived the probe.
+
+`persistence/migrations/` holds `0001_initial.sql` and nothing else. This adds `0002`, which makes
+the migration path itself part of the task rather than an assumption.
+
+#### Acceptance criteria
+
+- `Job` carries an optional thumbnail URL, validated as the other optional text fields are
+- A migration adds the column, and a test **migrates a database populated under `0001`** and asserts
+  every existing row survives with its other columns intact
+- Migrating twice is a no-op (`PRAGMA user_version` already guarantees this; assert it here, where a
+  second migration exists to prove it against)
+- A probe result writes the URL through the same route that writes the rest of its media fields —
+  not a second write that could half-land
+- A job whose probe reported no thumbnail stores `NULL`, and that is distinguishable from a job that
+  has not been probed
+- A database at `0001` opened by this version is migrated on open, not refused
+
+#### Out of scope
+
+- Fetching or caching the bytes (`T-119`)
+- Any history-table column. `T-085`'s records are separate and unchanged
+
+---
 
 ### T-116 — A metadata lane: probing stops competing with downloads
 
