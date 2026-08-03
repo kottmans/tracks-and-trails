@@ -8427,3 +8427,91 @@ findings cannot be waived by an agent. T-119 must not build on T-118 until those
 Reviewer production source was not edited. The working tree contains only the six reviewer
 regressions (five failing T-118 cases and one failing T-116 case), the passing T-120 state-name
 assertion, and this review record. Nothing was committed or pushed.
+
+## 2026-08-03 — T-116 and T-118 focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction boundary:** `3bdbbfa..253bbce`
+**Implementation commits:** `5351be7` (T-116/T-118 corrections, T117-R1 and UX-004) and
+`253bbce` (mutation/CI gaps)
+**Coordination head inspected:** `a4d9ad1`; the later `bff9713` and `a4d9ad1` change only the CI
+workflow and coordination documents, not reviewed source or tests.
+**Overall verdict:** **T-116 is approved. Changes requested for T-118.** The transient-staging and
+commit-lifecycle corrections close T118-R1 through T118-R3, and UX-004 supplies the maintainer
+decision T118-R5 required. The new per-row implementation silently loses MP3 quality, does not
+render a usable row, omits the required effective selector and declared focus order, and fails its
+own cross-platform interaction gate.
+
+### Task verdicts
+
+| Task | Verdict | Reason |
+|---|---|---|
+| `T-116` | **Approved at `253bbce`** | One job cannot occupy both lanes: direct start refuses, admission parks, fill skips the held id, and release re-decides immediately. Different jobs still use the two lanes concurrently. The deterministic lingering-probe regression and focused process-backed checks pass. |
+| `T-118` | **Changes requested at `253bbce`** | Transient staging and atomic final-request persistence are sound, but the correction introduces one Critical wrong-request defect and leaves four High user-visible acceptance failures in the row-control path. |
+| `T-117` follow-up | **T117-R1 resolved at `5351be7`** | `ARCHITECTURE.md` now includes `thumbnail_url` in the canonical Job entity. T-117's prior implementation approval is unchanged. |
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T118-R6` | **Critical** | **Yes — T-118** | Per-row MP3 quality / wrong durable request | A row override stores the raw registry preset at `add_dialog.py:667-682`; only the inherited batch path applies the selected MP3 bitrate at `:497-501`, and `preset_for()` returns the raw row preset at `:927-934`. Deterministic offscreen proof: choose batch **Audio only (MP3)** at **320 kbps**, explicitly choose **Audio only (MP3)** for one row, then build its request. The visible batch selector says `320 kbps MP3`, but the row's durable request carries `audio_quality == "192"`. T-076 explicitly requires the displayed bitrate to be the one that runs and derives the preset to keep display and request in step. This correction splits them again: the application silently downloads at a quality other than the one its visible control says will run. The existing row test checks only `media_kind`, so both bitrates satisfy it. | A row override must derive the complete effective preset, including the currently selected MP3 quality, or expose and persist a row-specific quality choice. Show the effective quality with the row and add a non-default-bitrate end-to-end regression that reads the durable `DownloadRequest`; mutation-check replacing it with `MP3_QUALITY`. | **Open** |
+| `T118-R7` | **High** | **Yes — T-118** | Staging-row rendering | `_refresh()` first lets the item delegate own the thumbnail and two lines of metadata, then installs a `QWidget` over the same item at `add_dialog.py:1024-1046`. That widget contains only `Download as` and the combo (`:605-639`). Offscreen rendering confirms the collision: a 96×54 thumbnail is put in a **25 px-high** row, and the row widget begins at x=102—the exact x where the delegate paints the title—so title/state text and controls overlap while the thumbnail is clipped. `item_texts()` claims to read what is shown but merely returns `QListWidgetItem.text()` (`test_add_dialog.py:533-541`), so the tests pass on obscured model data. This breaks the task's core staging-row anatomy: title, uploader, duration, state and thumbnail are not legibly rendered. | Give one renderer ownership of the complete row. A composite row must include the image and all visible metadata as well as the control; a delegate/editor design must paint them without collision. Gate actual geometry/rendered ownership—not just `item.text()` and `item.icon()`—including a long title and every state. | **Open** |
+| `T118-R8` | **High** | **Yes — T-118** | Required per-row effective selector | T-118 still requires “the effective selector shown stays the one that will run” (`TASKS.md:175-176`). A row override shows only a preset name: the combo is populated from `preset.name` (`add_dialog.py:634-636`) and `describe_preset()` returns the name plus inheritance wording (`:224-234`). The only literal selector/quality display is the batch-level `_selector_value`; selecting an audio override while the batch is video leaves that display describing the video batch. The request may use the row selector, but the required per-row truth is absent. | Show each row's literal effective selector and applicable quality derived from the same `Preset` object passed to `to_request()`. Add a mixed video/audio batch regression asserting the per-row displayed selector equals each durable request's `format_selector`, plus the non-default MP3 case from T118-R6. | **Open** |
+| `T118-R9` | **High** | **Yes — T-118** | Keyboard focus order | The new row combos are created after `_set_tab_order()` and are absent from `focus_chain()` (`add_dialog.py:298-308`, `:438-465`). With two READY rows, Qt's actual focus chain puts both `rowPresetChoice` controls **after Close**, rather than at their rows. The purported independent test creates no rows, filters every `ROW_PRESET_NAME` out of its observation, and never counts or orders them (`test_add_dialog.py:1236-1258`). This repeats the exact vacuity its docstring warns about and leaves T-118's explicit “focus order is declared per state” criterion unmet. | Define where the dynamic row controls belong in keyboard order and rebuild/maintain that order as rows reconcile. Test at least two READY rows and a failed/resolving mix by traversing the actual Qt focus chain; assert the row-control count and positions rather than filtering them out. | **Open** |
+| `T118-R10` | **High** | **Yes — T-118** | Cross-platform responsiveness / exact CI | UX-004's support claim is based on one Linux measurement and says 150 rows cost 85.7 ms. Exact-head run `30786142921` measured the same operation at **0.722 s** on hosted Windows and failed `test_a_paste_the_design_supports_stays_inside_the_interaction_budget`; the job finished **1 failed / 1928 passed / 21 skipped / 32 deselected**. That exceeds even the test's relaxed 0.5 s allowance and is over seven times NFR-001's ~100 ms interaction target. The decision already says the threshold is machine-dependent; naming 150 as the supported paste anyway does not make it cross-platform evidence. | Remove the per-row construction cost from the synchronous path—most naturally by bringing the reusable delegate/editor work forward—or establish and state a genuinely supported cross-platform bound that still exceeds the probe lane. Keep a required hosted-Windows measurement at that bound. Do not weaken or delete the red gate as “runner speed.” | **Open** |
+| `T118-R11` | **Low** | No | Behavioral prose and dead correction residue | Current code says the list is “a plain item list, not a widget per row” (`add_dialog.py:381-389`) while creating one widget per row; `_committing` is assigned and never read (`:295-296`); and `Staging.unresolved_job_ids()` / `written_job_ids()` still describe rows persisted before probing although transient staging removed that design (`staging.py:220-240`). These are behavior claims in current source, not harmless history, and they now point maintenance toward the rejected implementation. | Remove the unused state/helpers or give them a truthful current contract, and reconcile the list comment with the selected UX-004 design. Audit the touched docstrings for pre-T118-R1 durable-staging language. | **Open, non-blocking** |
+
+### Prior-finding resolution
+
+| Prior finding | Result |
+|---|---|
+| `T116-R1` | **Resolved.** `_holds()` covers sessions and reservations across lanes; `start()` refuses while `admit()` parks; `_release()` fills only after process/pump ownership is released. The lingering-probe regression ends with one worker for one job. |
+| `T118-R1` | **Resolved.** `stage()` creates only an in-memory job; staged transitions route through `_settle` without repository writes; `unstage()` cancels and reaps without manufacturing a durable `CANCELLED` row. A staged id cannot be downloaded. |
+| `T118-R2` | **Resolved.** Staging identity is returned synchronously. Edit and close immediately own an id they can unstage, and the deterministic stale-edit/abandoned-close regressions pass without persistence. |
+| `T118-R3` | **Resolved.** Add creates new durable jobs carrying their final requests in one batch write; `_saving` disables duplicate Add and holds close until settlement. The corrected `finished`-signal regression observes the lifecycle rather than a falsy dialog result. |
+| `T118-R4` | **Not resolved.** A per-row preset control now exists and its broad media kind reaches persistence, but T118-R6 and T118-R8 show that the complete effective request is neither preserved nor shown. |
+| `T118-R5` | **Resolved as a maintainer decision.** Accepted UX-004 authorizes visible per-row format controls with Retry/Remove in the context menu and removes T-105 as this task's prerequisite. The implementation still has to satisfy that decision. |
+| `T117-R1` | **Resolved.** The canonical Job field list names `thumbnail_url`. |
+
+### Review judgments
+
+**The transient manager seam is acceptable.** The audited staged paths keep the state-machine and
+session machinery shared while putting the persistence split in `_persist`; queue-only listeners
+receive `job_changed`, and transient listeners receive `staged_changed`. `_require()` serving both
+lifetimes does not itself imply persistence, and the focused edit, close, refusal, cancellation and
+same-job release paths showed no durable staging trace.
+
+**UX-004 is accepted but its measurement does not waive NFR-001.** The decision explicitly records
+that its one-machine threshold moves on slower hardware. Hosted Windows supplied that missing
+measurement and failed even the test's 500 ms allowance. More importantly, the implemented widget
+does not compose with the item renderer at all; the visual collision is not a scale trade-off.
+
+**T118-R6 is not a cosmetic mismatch.** A user-facing 320 kbps choice reaching yt-dlp as 192 kbps
+is a silent wrong download request, the same consequence that made the earlier retarget ownership
+finding Critical. Giving the row a preset name without its derived fields is precisely the split
+`with_audio_quality()` was introduced to prevent.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and branch movement | `3bdbbfa..253bbce` inspected; `git diff --check` passed. During review `main` advanced through `bff9713` and `a4d9ad1`; `git diff 253bbce..a4d9ad1 -- src tests pyproject.toml` is empty, so the reviewed implementation head remains `253bbce`. |
+| Implementer local evidence | Reported **1941 passed / 11 skipped / 2 deselected**, all four mypy gates, ruff/format, and **9/9 mutations killed** with sources restored byte-identically. |
+| Focused reviewer slice | **8 passed in 12.52 s**: same-job lingering release, direct-start refusal, staged-download refusal, transient persistence, stale edit, close during resolve, commit-close ownership and per-row broad media-kind persistence. |
+| Deterministic MP3 probe | Batch selected MP3 at 320; explicit row MP3 override produced `row_quality == request.audio_quality == "192"` while the visible batch selector said `320 kbps MP3`. |
+| Deterministic render/focus probes | One row: thumbnail target 96×54, item/row-widget height 25 px, widget starts at the title's x=102. Two READY rows: actual Tab order reaches both `rowPresetChoice` controls only after `closeButton`; declared `focus_chain()` contains neither. |
+| Exact-head CI | Run `30786142921`, SHA `253bbcea0297cb6fdc3182a3592bd79bf68627a4`, conclusion **failure**. Ubuntu and both frozen jobs passed. Hosted Windows failed only T118-R10. |
+| Windows desktop at candidate | Failed before checkout at “Stamp the job start time” because STARBASE had Windows PowerShell 5.1 but the workflow required `pwsh`; no desktop test executed. `bff9713` changes those two workflow steps only, so its later run may supply additional desktop evidence but cannot change the T-118 source verdict. |
+| Post-candidate desktop evidence | Run `30821625627` at workflow/coordination head `a4d9ad1` reached the real STARBASE desktop after `bff9713`, then finished **2 failed / 28 passed / 1952 deselected**. Both failures are the pre-existing T-084 progress-view focus expectation omitting `diagnosticsBox`, not T-116/T-118 behavior. A concurrent uncommitted test correction appeared while this review was being written; it is outside this boundary and was not reviewed. |
+
+### Final disposition
+
+T-116 is approved at the exact implementation head `253bbce`; its one blocking finding is closed.
+T-118 remains in review and must not be a dependency for T-119 while T118-R6 through T118-R10 are
+open. The next focused correction must preserve the transient/commit ownership fixes and address
+the complete per-row contract as one design: one rendered row, one declared keyboard route, and one
+fully derived preset/request/display source of truth. T118-R11 is non-blocking cleanup but belongs
+in that correction because it describes the rejected design.
+
+No reviewed production source or tests were edited. This review record is the only reviewer change;
+nothing was committed or pushed.
