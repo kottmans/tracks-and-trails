@@ -117,6 +117,13 @@ with real headroom rather than the largest number one Linux measurement will bea
 hosted-Windows measurement taken *at* that bound — otherwise the gate flaps, and a flapping gate
 teaches the next reader to dismiss a red run as runner speed, which `T118-R10` explicitly forbids.
 
+**And the class already has a second member: `T083-R2`** (filed 2026-08-03, open and
+non-blocking, recorded under `T-083`). Its backoff test leaves a 10 % margin and starts measuring
+from a *polled* observation of the failure rather than the failure itself, so poll lag is
+subtracted from the interval being bounded. Whoever sets `T118-R10`'s replacement bound should
+settle both with one rule — measure from an instant the code reports, not from the moment a test
+loop notices — since fixing them separately is how the rule ends up stated twice and differently.
+
 **Carried in with it: `T118-R11`'s cleanup**, because it describes the design being replaced —
 **and two teardown defects the desktop runner found, which are one defect in two costumes.**
 
@@ -3281,10 +3288,13 @@ building the rule to make it pass.
 
 ### T-083 — Bounded retry with backoff, for network failures only
 
-**Status:** **Complete — Approved at `97f96c0`**, 2026-08-01. `T083-R1` is **Resolved** on the
-immediate, deferred/full-pool, PROBE and DOWNLOAD paths. It held only `job_id -> deadline`, so the
-tick had nothing to say *what* to restart and `start`'s default turned a failed metadata **probe**
-into a `DOWNLOAD` — a transient preview failure began writing media nobody had confirmed.
+**Status:** **Complete — Approved at `97f96c0`**, 2026-08-01, and the approval stands. `T083-R1`
+is **Resolved** on the immediate, deferred/full-pool, PROBE and DOWNLOAD paths. It held only
+`job_id -> deadline`, so the tick had nothing to say *what* to restart and `start`'s default turned
+a failed metadata **probe** into a `DOWNLOAD` — a transient preview failure began writing media
+nobody had confirmed.
+**Carrying one open, non-blocking finding: `T083-R2`** (2026-08-03) — a test-only headroom defect,
+recorded below. The production retry path is not implicated.
 
 **The bound and the backoff are no longer provisional.** `UX-002` (2026-08-01) ratifies three
 attempts at 2s, 4s and 8s on `NETWORK` only, and `manager.py` cites it in place of the
@@ -3344,6 +3354,42 @@ backoff. `_start_or_report` reads it rather than defaulting.
 explicitly, so a retry that starts *immediately* keeps it either way; a retry parked behind a full
 pool is restarted by `_fill_free_slots`, which has no kind of its own. Every existing test
 exercised only the immediate path.
+
+#### `T083-R2` — Low, open, non-blocking: the backoff bound measures from a *polled* observation
+
+**Filed 2026-08-03 by inspection, while establishing what `T118-R10` needs from a cost bound.**
+Not found by a red run: it is the same defect class, sitting in an already-approved test, and it is
+recorded now because the next reader to meet it will otherwise meet it as an unexplained flake.
+
+`test_the_backoff_is_waited_rather_than_declared`
+(`tests/integration/test_manager.py:4569-4593`) installs a 1.0 s backoff and asserts
+`waited >= 0.9` — a **10 % margin**. But `failed_at` is not the moment the job failed; it is the
+moment a poll *noticed*:
+
+```
+assert spin(lambda: ... is JobStatus.FAILED, timeout=60)
+failed_at = time.monotonic()
+```
+
+`spin` loops `processEvents()` then `time.sleep(0.005)` (`tests/integration/conftest.py:39-47`),
+so the notice lags the transition by at least one poll and, under load, by however long
+`processEvents()` and GIL contention with the pump thread take. That lag is subtracted from
+`waited` — a late notice makes a correct backoff look short and **fails the test**. The 5 ms floor
+is comfortable; the tail is not bounded at all, and 0.1 s is what it has to fit in.
+
+**This is `T118-R10`'s shape exactly**, which is the reason to fix both against one rule rather
+than separately: a bound whose headroom is set by the largest number one machine happened to bear,
+measuring an interval whose start it does not actually observe.
+
+**Disposition — do not widen the margin.** Raising 0.9 buys runner speed at the cost of the
+assertion: the test exists to prove the delay is *real*, and a loose lower bound stops proving it.
+Take the timestamp from the failure the manager reports rather than from the poll that sees it —
+the durable `FAILED` record, or the signal, carries the true instant — and keep the 10 % margin
+against a start that is then genuinely observed.
+
+**Not scheduled against a task yet.** It belongs with whatever fixes `T118-R10`'s bound, because
+the rule is one rule; if `T-118` lands without touching it, it needs its own entry. It does not
+reopen `T-083`'s approval — the production retry path is untouched by any of this.
 
 ---
 
