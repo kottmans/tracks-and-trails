@@ -414,6 +414,55 @@ agreement on the reduced form before implementation.
 
 ## Proposed — Phase 2
 
+### T-123 — Evaluate running the suite in parallel
+
+**Status:** **Proposed — for evaluation, not yet a commitment**, 2026-08-03. Filed rather than
+attempted: the payoff is large and the hazards are specific, and deciding which applies is the
+work.
+**Owner:** Implementer
+**Priority:** Medium — the suite is the largest single cost in every gate and in local development
+**Phase:** Phase 2 test infrastructure
+**Relevant context:** `T-122`, `NFR-001`, `AGENTS.md` §9, run `30861672178`
+**Affected surfaces:** `pyproject.toml`, `tests/**`, possibly `.github/workflows/ci.yml`
+**Risk:** Medium — the failure mode is *intermittent* tests, which is worse than slow ones
+
+**The measurement.** 1984 tests in **291 s** locally and **573 s** on `STARBASE`. There is no hot
+spot to remove: the twenty slowest tests are 104 s of the 291 s, and the average is 0.15 s. The
+cost is a long tail of integration tests that spawn real worker processes, so the only lever that
+scales is running them at once.
+
+**What to evaluate.** `pytest-xdist` at `-n auto`. Most of these tests are independent and each
+xdist worker is its own process, so a `QApplication` per worker is not a problem.
+
+#### The hazards, which are the actual work
+
+- **Tests that spawn and kill real worker processes.** `AGENTS.md` §9 says to run these "one
+  worktree at a time" because concurrent runs wedge each other. *That instruction names
+  `-m process_tree`, and **no test carries that marker*** — only `network` and `windows_desktop`
+  are registered. So the guidance cannot be followed as written, and the first job here is to find
+  out which tests it meant.
+- **The localhost server fixtures.** `T-121` is already a connection aborting under load on one
+  hosted runner, and the reviewer's sandbox denied sixteen of these outright. Several workers
+  binding servers at once is the same pressure, multiplied.
+- **Shared per-user paths.** Every worker needs its own temp, database and config directory —
+  `AGENTS.md` §9 states this for parallel *agents* and it applies identically here.
+
+#### Acceptance criteria, if it proceeds
+
+- A deterministic demonstration that the parallel run and the serial run collect and pass the same
+  tests, rather than a wall-clock comparison alone.
+- The process-spawning tests identified by name, and either isolated or pinned to one worker with
+  a stated reason.
+- Repeated runs — not one — showing no intermittent failure, because the thing this can buy is
+  speed and the thing it can cost is a suite nobody trusts.
+
+#### Out of scope
+
+- Deleting or skipping tests to make the suite faster. The suite is slow because it exercises real
+  processes, which is what makes it worth having.
+
+---
+
 ### T-122 — Replace the flaky paste-scaling ratio gate
 
 **Status:** Proposed — `T118-R17`, non-blocking follow-up from T-118's final review

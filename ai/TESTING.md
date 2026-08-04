@@ -225,6 +225,33 @@ Do not record a manual item as passed because this job is green. It covers what 
 ## 10. CI
 
 Runs on every push and pull request, on **Linux and Windows matrix runners from Phase 0**.
+
+### What runs on an ordinary push, since 2026-08-03
+
+**Not everything, and that is deliberate.** Three Windows jobs on one self-hosted runner serialise,
+and a ~32 minute gate on every commit became the bottleneck rather than the safety net. Measured in
+run `30861672178`: `windows desktop` 12m56s, the Windows leg of `check` 12m44s, `frozen windows`
+~6m, each starting two seconds after the previous finished.
+
+| Trigger | What runs |
+|---|---|
+| **push** | Linux `check`, `frozen ubuntu-latest`, `frozen windows`, the coverage notice — roughly 7 minutes |
+| **push with `[win]` in the commit message** | the above **plus** the full `windows desktop` suite |
+| **pull request** | everything |
+| **nightly (06:00 UTC) and `workflow_dispatch`** | everything |
+
+Two savings sit behind that, both measured rather than assumed:
+
+- **The Windows leg of `check` is dropped while `WINDOWS_RUNNER` points at `STARBASE`.** Both jobs
+  ran the identical suite — 1972 passed, 21 skipped, 32 deselected, within four seconds of each
+  other — because that variable put them on the same machine. What the leg contributed was
+  *clean-machine* evidence on a fresh hosted image, which is precisely what it stops being when
+  routed to the desktop. Unset the variable and the leg and its meaning both return.
+- **The desktop job's virtualenv persists between runs**, keyed by a hash of `pyproject.toml`.
+  Building it was 111 s of the 13 minutes, on a machine whose disk survives.
+
+**Say `[win]` in the commit message when a change touches Windows behaviour** — `spawn`, paths,
+packaging, Qt platform plugins, process trees. The nightly run is the backstop, not the plan.
 Platform-specific breakage in `spawn` behavior, path handling, and packaging is the expected
 failure mode of this project; discovering it late is the thing CI exists to prevent.
 

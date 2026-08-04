@@ -39,6 +39,14 @@ on:
       - "**/*.md.orig"
   pull_request:
     paths-ignore: *prose
+  # **Windows on demand, and once a night.** See the `windows desktop` job: the full Windows
+  # suite stopped running on every push because it was costing ~13 minutes of a ~32 minute run
+  # and slowing development to the point where the gate was the bottleneck rather than the work.
+  workflow_dispatch:
+  schedule:
+    # 06:00 UTC. Nothing depends on the hour; it exists so a day never passes without the
+    # Windows suite having run against `main` at least once.
+    - cron: "0 6 * * *"
 
 # A superseded run has no value; cancel it rather than spend Windows runner minutes on it.
 concurrency:
@@ -66,7 +74,20 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        # **The Windows leg is dropped when `WINDOWS_RUNNER` points it at `STARBASE`**, because
+        # `windows desktop` already runs the identical suite on that machine — 1972 passed, 21
+        # skipped, 32 deselected in both jobs of run `30861672178`, within four seconds of each
+        # other, back to back on one runner slot.
+        #
+        # What this leg contributed was **clean-machine** evidence on a fresh hosted image, which
+        # is exactly what it stops being when it is routed to the desktop. What is given up is the
+        # offscreen platform plugin *on Windows*: the real plugin on Windows and offscreen on Linux
+        # both remain, and they bracket it. Unset the variable and this leg — and its meaning —
+        # come back with no other change.
+        os: >-
+          ${{ vars.WINDOWS_RUNNER
+              && fromJSON('["ubuntu-latest"]')
+              || fromJSON('["ubuntu-latest","windows-latest"]') }}
 
     env:
       # ai/TESTING.md §2: the UI suite runs headless. tests/ui/conftest.py sets the same value
@@ -276,14 +297,24 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Report whether the self-hosted jobs ran
+        # **Three outcomes, not two.** This said "the desktop slice and the frozen Windows job ran"
+        # whenever the machine was available — which stopped being true the moment the desktop job
+        # came off the push path. A summary that asserts a job ran when it was skipped is the
+        # `COORD-R5` class in a place nobody re-reads, so it now reports which of the three
+        # situations actually applies.
         shell: bash
         run: |
-          if [ "${{ vars.STARBASE_AVAILABLE }}" = "true" ]; then
-            echo "::notice::STARBASE is enabled; the desktop slice and the frozen Windows job ran."
-          else
+          if [ "${{ vars.STARBASE_AVAILABLE }}" != "true" ]; then
             echo "::warning::STARBASE_AVAILABLE is not set. The Windows desktop slice did NOT run,"
             echo "::warning::and neither did the frozen Windows job. Changes to either are merging"
             echo "::warning::unverified — see OPS-009. Set the variable when the machine is back."
+          elif [ "${{ github.event_name }}" = "push" ] \
+            && ! printf '%s' "${{ github.event.head_commit.message }}" | grep -q '\[win\]'; then
+            echo "::notice::Windows desktop suite SKIPPED for this push — it runs nightly, on a"
+            echo "::notice::pull request, on demand, or on a push whose message contains [win]."
+            echo "::notice::The frozen Windows job still ran on STARBASE."
+          else
+            echo "::notice::STARBASE is enabled; the desktop slice and the frozen Windows job ran."
           fi
 
   windows-desktop:
@@ -296,7 +327,18 @@ jobs:
     #
     # An unset variable evaluates false, so the safe default is *skip*. Set the repository variable
     # `STARBASE_AVAILABLE` to `true` when the machine is back and this job returns with it.
-    if: ${{ vars.STARBASE_AVAILABLE == 'true' }}
+    # **Not on every push** — see the `workflow_dispatch`/`schedule` triggers above. This job is
+    # ~13 minutes of a ~32 minute run, and with the Windows legs serialising on one self-hosted
+    # slot it became the reason a commit took half an hour to clear. It now runs nightly, on
+    # demand, on any pull request, and on a push whose commit message says `[win]` — so a change
+    # that actually touches Windows behaviour can still ask for it in the same breath.
+    #
+    # `STARBASE_AVAILABLE` still gates it: an unset variable evaluates false, and a self-hosted
+    # job whose runner is offline queues forever rather than failing (`OPS-005`).
+    if: >-
+      ${{ vars.STARBASE_AVAILABLE == 'true' && (
+            github.event_name != 'push'
+            || contains(github.event.head_commit.message, '[win]')) }}
     # Raised from 15 with T-073: this job now carries the full suite as well as the desktop
     # slice, and 15 was sized for the slice alone. The number bounds how long the job may run
     # once started — it does not bound the queue wait, per RUNNER-R1 below.
@@ -360,19 +402,38 @@ jobs:
       #
       # Adding the venv to GITHUB_PATH rather than calling it by path in every step keeps the
       # commands below identical to the ones `ai/TESTING.md` §4 publishes.
-      - name: Create the virtualenv
+      # **The virtualenv persists between runs on this machine**, because building it is 111 s of
+      # the 13 minutes and this runner's disk survives — measured in run `30861672178`.
+      #
+      # It lives outside the workspace deliberately: `actions/checkout` cleans untracked and
+      # ignored files, so a `.venv` in the workspace is deleted and rebuilt every single run. The
+      # directory is keyed by a hash of `pyproject.toml`, so a dependency change builds a fresh
+      # one rather than reusing a stale set, and the install stays `-e` so source changes need no
+      # reinstall at all.
+      #
+      # **Safe only while this machine runs one job at a time.** It does — a second runner slot
+      # would need a lock here, and that is the first thing to check if one is ever added.
+      - name: Reuse the persistent virtualenv
         run: |
-          python -m venv .venv
-          if [ -d .venv/Scripts ]; then
-            # `shell: bash` on a Windows runner is Git Bash, where $PWD is an MSYS path
-            # (/d/a/repo/repo). GITHUB_PATH is consumed by the runner itself and needs a
-            # native path, so this converts rather than echoing what bash would print.
-            cygpath -w "$PWD/.venv/Scripts" >> "$GITHUB_PATH"
+          want=$(sha256sum pyproject.toml | cut -d' ' -f1)
+          venv="$RUNNER_TOOL_CACHE/tt-venv-$want"
+          if [ ! -x "$venv/Scripts/python.exe" ] && [ ! -x "$venv/bin/python" ]; then
+            echo "no venv for pyproject $want — building one"
+            rm -rf "$RUNNER_TOOL_CACHE"/tt-venv-*
+            python -m venv "$venv"
           else
-            echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
+            echo "reusing the venv for pyproject $want"
+          fi
+          if [ -d "$venv/Scripts" ]; then
+            cygpath -w "$venv/Scripts" >> "$GITHUB_PATH"
+          else
+            echo "$venv/bin" >> "$GITHUB_PATH"
           fi
 
       - name: Install the project
+        # `-e` against this workspace, whose path is stable on a self-hosted runner, so a reused
+        # venv still points at the checkout. pip is a no-op when nothing changed, which is the
+        # whole saving.
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
