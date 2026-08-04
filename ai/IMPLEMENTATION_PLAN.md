@@ -213,8 +213,25 @@ Phase 1's exit review found two wrong rows in the same table; this one found two
 way — by rebuilding the table against the repository rather than reading the claim. **The lesson
 holds a third time: a criteria table is a claim until somebody who did not write it checks it.**
 
-All five findings are answered as of 2026-08-03 and await re-review. `T-124`, `T-125` and `T-126`
-were also sequenced in before the exit by `UX-005`.
+All five findings are answered as of 2026-08-03 and await re-review.
+
+**`UX-005` is implemented in full** as of 2026-08-04 — `T-124`, `T-125` and `T-126`, all three
+sequenced in before the exit by that decision and all three complete and awaiting review. The
+window is two tabs over one list with no detail pane, every verb is on the row, the format control
+appears exactly while `retarget()` would accept it, and history removal exists because `DAT-005`
+now says what removal means. **`REQ-020` is amended** by that decision, which is the first
+requirement change since the phase began.
+
+Three things that came out of doing it, none of which was in the plan:
+
+- **The detail pane was the only route to Cancel and Retry**, so removing it and adding the row's
+  verbs could not be separate commits. A tabs-first commit would have shipped a window where a
+  running download cannot be stopped.
+- **`JobProgressView.detach` had no test outside a composition test about the pane.** `UX-005`
+  defers that widget's fate, so its guarantee was moved to a view-level test *before* the pane's
+  tests were deleted — otherwise the deferral would have been a silent deletion.
+- **`DAT-005` was obtained rather than assumed.** `UX-005` §9 describes a removal control and
+  refuses to specify it; writing the button would have been the decision.
 
 **`T-118` landed before this phase exits**, carrying `T-119`'s scope after the two were merged.
 Maintainer decision, 2026-08-03. It is a Phase 3 task and not a Phase 2 deliverable, so this was a
