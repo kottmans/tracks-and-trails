@@ -224,7 +224,9 @@ Do not record a manual item as passed because this job is green. It covers what 
 
 ## 10. CI
 
-Runs on every push and pull request, on **Linux and Windows matrix runners from Phase 0**.
+Runs on every push and pull request. **What runs is no longer the whole matrix on every push** —
+see the subsection immediately below, which is canonical; this section's older prose describes the
+policy `OPS-009` accepted and is being reconciled under `P2EXIT-R4`.
 
 ### What runs on an ordinary push, since 2026-08-03
 

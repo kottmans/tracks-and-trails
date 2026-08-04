@@ -184,10 +184,12 @@ them, which is the argument for having built it.)*
 (2026-08-03). `T-118` — the Phase 3 task sequenced ahead of this exit — is **approved with
 follow-ups at `53b07ec`**, so criterion 6 is the only thing left, and it has never been requested.
 
-**Before the sign-off is requested, the Blocked list wants re-reading.** Five of its six entries
-are blocked on `STARBASE` or on Windows/frozen evidence, and that machine returned on 2026-08-03
-and now runs every Windows job. `T-039` alone is still plainly blocked, on a Phase 5 installer.
-Nothing has re-checked the rest, and `ai/TASKS.md` is where that belongs.
+**The Blocked list was re-read on 2026-08-03** (`P2EXIT-R5`: this paragraph outlived the work it
+asked for). Only `T-066` was genuinely unblocked — its frozen-artifact evidence now exists — and it
+moved to `## Ready`. `T-092` was never blocked on the machine's availability but on somebody being
+at it; `T-056` already had its `STARBASE` evidence and that is the finding; `T-033` waits on a
+maintainer decision; `T-039` on a Phase 5 installer. `T-068`'s remaining half got *harder*, because
+hosted Windows no longer runs.
 
 **The gate was rebuilt on the way here.** Routing Windows to `STARBASE` to stop spending hosted
 minutes put three Windows jobs on one runner slot, turning a 17-minute run into 32 and making the
@@ -362,9 +364,9 @@ Recorded here because each one changed what a deliverable *is*, not merely how i
 | 7 | History persistence and completed-download records (`REQ-020`) | `T-085`, `T-050`, `T-093` | **Approved** 2026-07-30 |
 | 8 | A corrupt `settings.toml` reports rather than reverting silently (`ARC-008`) | `T-102` | **Approved** 2026-08-01 (`97f96c0`) |
 | 9 | Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`) | `T-082` | **Approved** 2026-08-01 (`b1b7cd6`), without follow-up. The recovery always worked; composition threw the recovered ids away, so nobody was ever told |
-| 10 | Per-job log capture and log view (`REQ-019`) | `T-084` | **Approved** 2026-08-01 (`75f1c32`), after `T084-R1` (Critical) and `T084-R2` (High). `T-053`, which gated its approval, is **Approved**. Found that yt-dlp's diagnostics were never captured at all |
+| 10 | Per-job log capture and log view (`REQ-019`) | `T-084` | **Approved** 2026-08-01, implemented at `75f1c32` and **approved at `2a41c5f`**, after `T084-R1` (Critical) and `T084-R2` (High). `T-053`, which gated its approval, is **Approved**. Found that yt-dlp's diagnostics were never captured at all |
 | 11 | History view over those records | `T-100` | **Approved** 2026-08-01 (`c242dd3`), without follow-up |
-| 12 | Open file / reveal in file manager (`REQ-021`), from both views | `T-086` | **Approved** 2026-08-01 (`233c5fd`), after `T086-R1` (High). Windows Open takes the associated-application route rather than the file manager |
+| 12 | Open file / reveal in file manager (`REQ-021`), from both views | `T-086` | **Approved** 2026-08-01, implemented at `233c5fd` and **approved at `2a41c5f`**, after `T086-R1` (High). Windows Open takes the associated-application route rather than the file manager |
 | 13 | Single-instance guard (`A-004`, `ARC-006`) | `T-087` | **Approved** 2026-08-01 (`ea9d752`). Linux and hosted Windows both green, including racing starts |
 
 *(Deliverable 5 was **added 2026-07-31**. `DAT-002` filed `T-046` as a Phase 2 task and this list
@@ -388,7 +390,7 @@ Phase 2 work. None is a deliverable and none gates the exit; they are listed in 
 | 3 | Concurrency limit respected exactly; lowering it drains cleanly, and so does pausing | **Met** | `test_the_pool_never_exceeds_the_configured_limit` samples **both** the rows and the actual process count over a whole run. The lowering and pause halves are `T-078` and `T-080`, both approved |
 | 4 | A second launch attaches to or refuses in favour of the running instance | **Met** | `test_a_second_launch_refuses_in_favour_of_the_running_instance`, against a first instance with a **full pool** — the state a guard built on polling would be likeliest to let through. `T-087`'s three Windows cases passed on `check (windows-latest)` |
 | 5 | No worker process outlives application exit, on both platforms | **Met on Linux and hosted Windows** — measured, not asserted: **all five phase-exit tests passed on `windows-latest`** in run `30712201443`, and the `T-115` case reported `XFAIL` there as designed | `test_no_worker_outlives_a_hard_kill_with_a_full_pool` — the worker set obtained independently of what is killed, the resource tracker excluded by being identified, and asserted non-empty before the kill (`T072-R1`) |
-| 6 | Reviewed and signed off | **Not met — but not for the reason this row gave until 2026-08-03.** Every deliverable is reviewed and approved; what is absent is the **phase** sign-off | This row read *"Four deliverables await review: `T-100`, `T-086`, `T-084`, `T-082`"* for two days after all four were approved — `T-082` at `b1b7cd6`, `T-084` at `75f1c32`, `T-086` at `233c5fd`, `T-100` at `c242dd3`, all 2026-08-01. What criterion 6 still wants is what Phase 0 and Phase 1 each needed: an independent exit review over this table, by a reviewer that is not the implementer (`AGENTS.md` §3). Phase 1's found two wrong rows (`P1EXIT-R1`, `P1EXIT-R2`), so the table is expected to be rebuilt against the repository before it is submitted, not merely re-read |
+| 6 | Reviewed and signed off | **Not met — but not for the reason this row gave until 2026-08-03.** Every deliverable is reviewed and approved; what is absent is the **phase** sign-off | This row read *"Four deliverables await review: `T-100`, `T-086`, `T-084`, `T-082`"* for two days after all four were approved — `T-082` at `b1b7cd6`, `T-084` and `T-086` at `2a41c5f`, `T-100` at `c242dd3`, all 2026-08-01. What criterion 6 still wants is what Phase 0 and Phase 1 each needed: an independent exit review over this table, by a reviewer that is not the implementer (`AGENTS.md` §3). Phase 1's found two wrong rows (`P1EXIT-R1`, `P1EXIT-R2`), so the table is expected to be rebuilt against the repository before it is submitted, not merely re-read |
 | 7 | *(Found by `T-088`)* A user can actually start a queue | **Met — `T-115` fixed 2026-08-01** | `DownloadManager.admit()` expresses durable intent where `start()` demanded a session; the add dialog admits every job it persists, and `compose()` admits durable `QUEUED` rows **after** recovery so nothing recovered restarts unattended (`T081-R4`). `test_every_queued_job_eventually_starts_as_slots_free` drives the **Add route alone** — no priming — and passes; `test_a_queue_left_by_a_previous_run_starts_on_the_next_launch` covers restart and `test_a_paused_queue_admits_and_still_starts_nothing` covers `UX-001`. **The gate worked**: it reported `XPASS(strict)` on the first run after the fix and was then inverted |
 
 **What the evidence does *not* cover**, stated because building Phase 1's table is what exposed two

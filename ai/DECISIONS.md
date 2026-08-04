@@ -2657,6 +2657,107 @@ behind a document would leave known-broken behaviour on `main` for longer.
 
 ---
 
+## UX-005 — The main window: two tabs, no detail pane, and the verbs on the row
+
+**Status:** **Accepted** (2026-08-03) — maintainer decision
+**Date:** 2026-08-03
+**Amends:** nothing. **Records for the first time** what no document ever held: the shape of the
+main window. **Does not amend** `UX-003`, `UX-004` or `T-119`'s row anatomy, all unchanged.
+
+### Context
+
+**The original mockup is gone, and the repository never recorded what it showed.** Three documents
+refer to "mockups the maintainer reviewed and chose between" — `TASKS.md`, `STATUS.md` and
+`UX-004` itself — and none of them is in the repository. `DECISIONS.md` had no layout entry at all.
+`docs/UX_SPEC.md`, which `T-105` owns and which `UX-004` said "should absorb the chosen design",
+has never been written.
+
+So what actually shipped was decided **in a source comment**. `main_window._build_body` puts the
+history table below the queue in a vertical splitter and argues, in a code comment, that "a tab
+would hide it" — reasoning from `P2PLAN-R8`, which is about *which task owns the history view* and
+says nothing about where it goes. That comment is the only record, it was never ratified, and it
+contradicts the approved design.
+
+The divergence surfaced the first time the application was opened on a screen, on 2026-08-03 —
+after `T-118`, `T-119` and four rounds of review had all interrogated the row's *correctness*
+without anyone checking the window against the mock.
+
+### Decision
+
+**The main window is two tabs over one list, with no detail pane. Every row carries everything.**
+
+1. **`Queue` and `History` are tabs.** Not a splitter, not one above the other. Each shows a count.
+2. **There is no detail pane.** No docked panel, no side panel, no separate window. A row shows
+   what a user needs to know about that job, and selecting one does not open anything.
+3. **Rows are the `T-119` anatomy** — thumbnail, title, uploader and duration, progress and state —
+   in both tabs. History changes what the fields *say*, not what they are: where the queue shows
+   progress and speed, history shows the saved path, size and when.
+4. **Every verb the row's state permits is visible on its last line**, right-aligned, sharing that
+   line with the format control. Running — *Cancel*. Queued — *↑*, *↓*, *Cancel*. Failed —
+   *Retry*, *Remove*. Done — *Open*, *Show in folder*. Plus `⋯` for the rest, which is also the
+   keyboard route.
+   - **On the existing line, not in a gutter.** The third line already exists to say *as Best
+     video*; the buttons sit at its right end. This costs no row height and leaves the title and a
+     verbatim extractor message the **full** width, which `NFR-006` needs and a reserved gutter
+     narrows. The accepted cost is that the buttons shift position as the verbs change.
+5. **Nothing is drawn disabled and nothing is drawn that would be refused.** A row offers only what
+   its state permits — the rule `T081-R3` produced, applied to the row instead of the toolbar.
+6. **The per-row format control appears only while `retarget()` would accept it** (`T-075`):
+   a control on queued and waiting rows, plain text once a download starts.
+7. **There is no per-job pause.** `pause()` is queue-wide, in-flight sessions finish, and `T-080`
+   removed `JobStatus.PAUSED` outright. So *Pause queue* is a toolbar verb that says *queue*; the
+   status bar says what pausing actually does — *"1 download is finishing; nothing new will
+   start"* — and a waiting row reads **Held**, never *Paused*.
+8. **A finished download stays in the Queue tab** with *Open* and *Show in folder* until *Clear
+   finished* moves it on, so the tab in front of you answers "did it work".
+9. **History removal is selection-scoped**, its verb names its own count, and *"files are never
+   deleted"* is carried in the status bar rather than only in a confirmation.
+
+### Rationale
+
+**Tabs, because the splitter's argument was for a different problem.** The code comment worried
+that history would be hard to find. A tab with a count is not hard to find; three panes competing
+for vertical space in a window that is wider than it is tall is a real cost, and it is worse since
+`T-119` made rows ~66 px.
+
+**No detail pane, because the row already answers the question.** Once a row carries progress,
+speed, size and what it will be downloaded as, a second surface repeating that is a second place
+for it to disagree — which is the failure `T-059` and `T017-R2` both record in other forms.
+
+**The verbs on the row rather than a toolbar acting on a selection**, because a toolbar verb has
+to guess which of two tables it means, and `T-086` already had to solve that by attaching file
+actions to each table separately. Putting them on the row removes the question.
+
+**Visible rather than on hover**, because `T118-R12` is exactly that mistake: the per-row format
+control was drawn as an empty slot and reachable only by someone who already knew it was there.
+A control that appears when you find it is not a control.
+
+### Consequences
+
+- **`HistoryView` is wrong as built.** It is a six-column `QTableView` (`T-100`) and its tests
+  assert those columns by name. It becomes a third model behind `ui/row_delegate.py`.
+- **`main_window._build_body` loses the splitter**, and the source comment that decided this is
+  deleted rather than corrected — it was never the right place for the decision.
+- **The job detail view has no home in this layout.** `T-017`'s `JobProgressView` and `REQ-011`'s
+  progress bar need a ruling of their own: retire it, or keep it for a route this window no longer
+  offers. **Not decided here.**
+- **Removing history needs its own decision.** `HistoryRepository` says in its docstring that
+  nothing deletes, and no requirement covers removal — `REQ-020` says maintain, `REQ-021` says open
+  and reveal. What is removable, and whether a file is ever touched, is a `DAT-` entry, not a
+  button.
+- **`T-105` writes `docs/UX_SPEC.md` from this entry**, and this entry is the authority until it
+  does.
+
+### What this does not decide
+
+- Whether there is a whole-queue progress bar. There is none in the accepted design.
+- Whether `T-084`'s log view becomes a third tab.
+- The row's divergences from `UX-004`'s approved mock — the format control's fixed right slot, the
+  fourth line carrying the literal selector, and state as words rather than a badge. Those are
+  `UX-004`'s to answer and are filed separately.
+
+---
+
 ## OPS-009 — Where each CI job runs, now that `STARBASE` is back and minutes are metered
 
 **Status:** **Accepted** (2026-08-03) — maintainer decision

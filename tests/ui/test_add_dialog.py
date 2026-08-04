@@ -2071,17 +2071,22 @@ def superlinear_growth(
 ) -> str | None:
     """Whether `large` grew faster than `headroom` allows. A message if it did, else `None`.
 
-    **A pure function of the samples, which is the whole of `T-122`.** The gate used to be one
-    small sample divided by one large one, so a single host stall decided it — and did, at 46.5x
-    (`T118-R17`). Extracting the decision means the *oracle* can be tested against synthetic
-    sample sets rather than inferred from a clock, and
-    `test_the_scaling_oracle_ignores_one_stall_and_still_catches_real_growth` does exactly that.
+    **Diagnostic, not a gate** (`P2EXIT-R3`). It is reported and never asserted on: the required
+    gates are the 500-row absolute budget and the structural control count, which is what the
+    original review recommended and what I talked myself out of.
 
-    The estimator is the **median of each side**. With `SCALING_PAIRS` samples, one outlier cannot
-    move it at all; a sustained regression moves every sample and therefore moves the median.
+    Why the ratio cannot be a gate here: each sample builds a manager and a dialog backed by
+    `child_never_returning`, and the fixture reaps them only when the test ends. Three pairs plus a
+    warm-up therefore leave up to seven managers and their probe workers alive, with every large
+    sample running under more background load than the small one before it. **A median cannot
+    remove load the harness introduces systematically** — repeating a biased measurement gives a
+    reliable biased answer.
+
+    It is kept because the number is worth printing when someone is looking at paste cost. It is
+    not kept as a pass/fail claim.
     """
-    if not small or not large:
-        return "no samples"
+    if len(small) < 2 or len(large) < 2 or len(small) != len(large):
+        return f"not enough comparable samples: {len(small)} small, {len(large)} large"
     base, grown = statistics.median(small), statistics.median(large)
     if base <= 0:
         return None
@@ -2090,89 +2095,91 @@ def superlinear_growth(
         return None
     return (
         f"{SUPPORTED_PASTE} URLs cost {grown:.4f}s against {base:.4f}s for {SMALL_PASTE} — a "
-        f"factor of {factor:.1f} for four times the input, over {headroom}. "
-        f"Medians of {len(small)} interleaved pairs: small={[round(v, 4) for v in small]}, "
-        f"large={[round(v, 4) for v in large]}"
+        f"factor of {factor:.1f}, over {headroom}. Medians of {len(small)} pairs: "
+        f"small={[round(v, 4) for v in small]}, large={[round(v, 4) for v in large]}"
     )
 
 
-def test_the_scaling_oracle_ignores_one_stall_and_still_catches_real_growth() -> None:
-    """`T-122`'s acceptance criterion, and the only part of the gate that is deterministic.
+def test_the_scaling_oracle_ignores_one_stall_and_refuses_a_thin_sample_set() -> None:
+    """What the diagnostic promises, asserted against fixed samples.
 
-    One transient outlier must not fail the suite; a sustained non-linear sample set must. Both
-    are asserted against the numbers that actually occurred: hosted Windows reported 0.0321 s and
-    1.4935 s in run `30859578131`, and that single pair is what reddened a green product.
-
-    No timing here. Feeding the oracle fixed samples is what makes these two claims provable
-    rather than a matter of how busy the machine was when they ran.
+    Two claims, and the second is new: a single stall must not swing the verdict, **and an
+    insufficient or unequal sample set is refused rather than answered**. `P2EXIT-R3` found the
+    sample-count contract unguarded — dropping `SCALING_PAIRS` from three to one left this test
+    green, because it supplies its own lists and never consulted the constant.
     """
     steady_small = [0.020, 0.021, 0.019]
 
-    # The exact failure that produced T118-R17: one sample forty-six times the others — **placed
-    # at every position in turn.** A first draft put the stall at index 1 only, and a mutation
-    # reading `large[0]` (which is the old one-sample gate exactly) sailed through it. A test that
-    # pins where the outlier sits cannot police an implementation that picks a sample.
     for position in range(3):
         stalled = [0.038, 0.041, 0.039]
         stalled[position] = 1.4935
         assert superlinear_growth(steady_small, stalled) is None, (
-            f"a host stall at position {position} failed the gate; that is the defect T-122 "
-            f"exists to remove: {stalled}"
+            f"a stall at position {position} changed the verdict: {stalled}"
         )
 
-    # A stall on the *small* side deflates the ratio rather than inflating it, and must not turn
-    # a real regression into a pass — again wherever it lands.
-    for position in range(3):
-        stalled = [0.020, 0.021, 0.019]
-        stalled[position] = 1.4935
-        assert superlinear_growth(stalled, [1.40, 1.51, 1.45]) is not None, (
-            f"a stall at position {position} on the small side hid real growth: {stalled}"
-        )
-
-    # Sustained growth: every sample moved, so the median moved.
     verdict = superlinear_growth(steady_small, [1.40, 1.51, 1.45])
     assert verdict is not None and "factor of 7" in verdict, verdict
 
-    # And the boundary is the headroom, not the arithmetic mean of anything.
-    assert superlinear_growth([0.100], [0.599]) is None
-    assert superlinear_growth([0.100], [0.601]) is not None
+    # **The sample set itself is checked**, so one measurement cannot masquerade as a comparison.
+    assert "not enough comparable samples" in (superlinear_growth([0.02], [1.40]) or "")
+    assert "not enough comparable samples" in (superlinear_growth([0.02, 0.02], [1.40]) or "")
+
+    # **And the live sample count is pinned here, independently** (`P2EXIT-R3`). The tests above
+    # supply their own lists, so nothing else in this file notices `SCALING_PAIRS` changing — the
+    # review dropped it from three to one and every test stayed green. A median of two is not a
+    # median; three is the smallest set where one outlier cannot move it.
+    assert SCALING_PAIRS >= 3, (
+        f"SCALING_PAIRS is {SCALING_PAIRS}; a stall cannot be outvoted below three samples"
+    )
 
 
-def test_a_four_times_larger_paste_does_not_cost_four_times_more_than_linearly(
+def test_a_four_times_larger_paste_is_reported_and_not_gated(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """**The claim `T118-R10` is really about**: the design does not grow faster than the paste.
+    """The paste-cost diagnostic. **Nothing here fails the build** (`P2EXIT-R3`).
 
-    That is the property which made a hundred and fifty rows cost 0.722 s, and the property a
-    delegate buys. A widget per row fails it outright — building `SUPPORTED_PASTE` controls dwarfs
-    the fixed cost that dominates `SMALL_PASTE`.
-
-    **Interleaved and repeated** (`T-122`), because a ratio does *not* cancel runner speed: it
-    cancels a sustained difference and amplifies a transient one. `superlinear_growth` holds the
-    decision and is tested above against fixed samples; this supplies the measurements.
+    Each sample is torn down before the next is timed, which removes the systematic bias the
+    review found — but not the shared machine, so the number is evidence to read rather than a
+    verdict. `T118-R10`'s load-bearing gates are elsewhere and are required:
+    `test_a_paste_the_design_supports_stays_inside_the_interaction_budget` and
+    `test_a_large_paste_builds_no_control_at_all_until_one_is_asked_for`.
     """
 
     def cost(count: int) -> float:
-        dialog = dialogs(managers(entry_point=child_never_returning))
+        manager = managers(entry_point=child_never_returning)
+        dialog = dialogs(manager)
         urls = "\n".join(f"https://many.invalid/{n}" for n in range(count))
         started = time.monotonic()
         type_urls(dialog, urls)
         dialog.resolve()
-        return time.monotonic() - started
+        elapsed = time.monotonic() - started
+        # Reaped **inside** the sample loop, not at the end of the test: the review measured seven
+        # managers and up to 28 probe workers alive by the last pair.
+        dialog.close()
+        manager.shutdown()
+        return elapsed
 
-    # One discarded pass first, so one-off import and style warm-up lands outside every
-    # measurement rather than inside the first, where it would flatter the ratio.
     cost(SMALL_PASTE)
-
     small: list[float] = []
     large: list[float] = []
-    for _ in range(SCALING_PAIRS):
-        small.append(cost(SMALL_PASTE))
-        large.append(cost(SUPPORTED_PASTE))
+    for pair in range(SCALING_PAIRS):
+        # Alternated, so neither size systematically follows the other.
+        if pair % 2:
+            large.append(cost(SUPPORTED_PASTE))
+            small.append(cost(SMALL_PASTE))
+        else:
+            small.append(cost(SMALL_PASTE))
+            large.append(cost(SUPPORTED_PASTE))
 
-    verdict = superlinear_growth(small, large)
-    assert verdict is None, verdict
+    assert len(small) == SCALING_PAIRS and len(large) == SCALING_PAIRS, (
+        "the live sample count must follow SCALING_PAIRS; the oracle test cannot police this "
+        "because it supplies its own lists"
+    )
+    reported = superlinear_growth(small, large) or f"within {SCALING_HEADROOM}"
+    with capsys.disabled():
+        print(f"\npaste cost — {reported}")
 
 
 # --- 9. the pure helpers, which the rewrite kept ------------------------------------------------

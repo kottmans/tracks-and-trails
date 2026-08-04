@@ -8922,3 +8922,69 @@ The reviewer independently queried the Actions run and failed-job log. The run S
 conclusions match the handoff; the hosted failure log contains only the ratio assertion above.
 This addendum and the `T-122` filing are uncommitted. No source, submitted test, repository
 variable, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-03 — Phase 2 exit review
+
+**Reviewer:** Codex (Reviewer)
+**Approval base:** `dca3bfa`
+**Submitted implementation head:** `5eb2611`
+**Handoff-only head:** `f8f8638`
+**Overall verdict:** **Changes requested — Phase 2 has not exited.** The cold reconstruction finds
+criteria 1 and 5 unproved by the tests named for them, the `T-122` correction is not yet a sound
+timing gate, and the CI rewrite changes an accepted operations decision without a maintainer
+ruling. Criteria 2, 3, 4 and 7 are met. Criterion 6 is not met while the findings below remain.
+
+### Cold criteria reconstruction
+
+| # | Verdict | Independent reading |
+|---|---|---|
+| 1 | **Not met — `P2EXIT-R2`.** | The real-worker/file and per-row progress evidence is substantive. The only named responsiveness gate, however, also passes when none of its three jobs is started. It therefore does not establish “interactive throughout while three downloads run.” |
+| 2 | **Met.** | The phase test hard-kills a real composed application with in-flight and never-started jobs, starts a new composed application against the killed database, distinguishes the recovered states, and observes the recovery offer. |
+| 3 | **Met.** | The phase test samples both durable in-flight rows and actual worker processes against a non-default limit over the whole run. Approved lowering and pause tests cover draining without over-admission. |
+| 4 | **Met.** | A second real launch refuses while the first owns the guard and a full pool; the Windows acquisition, racing-start and killed-holder cases have prior hosted-Windows evidence. No source governing this behavior changed after that evidence. |
+| 5 | **Not met — `P2EXIT-R1`.** | The N-worker phase test kills the same captured process tree whose survivors it later inspects. It passes with the product's parent-death watchdog removed, so it proves the test helper can reap workers, not that application exit leaves none. |
+| 6 | **Not met.** | This independent phase review requests changes. All thirteen deliverables do have prior reviewer verdicts, subject to the boundary corrections in `P2EXIT-R5`; deliverable approval alone is not phase sign-off. |
+| 7 | **Met.** | The Add-only gate admits every durable job without priming `start()`, drains beyond the pool limit, and is complemented by restart and paused-queue routes. |
+
+### Blocking findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `P2EXIT-R1` | **Medium** | **Yes** | Criterion 5 / orphan-worker gate | `test_no_worker_outlives_a_hard_kill_with_a_full_pool` obtains `workers`, then builds `doomed` from the application's complete tree and passes that tree to `kill_the_application`. On POSIX the helper kills the process group; on Windows it kills every captured process. The later assertion asks whether the same workers are alive. A reviewer mutation deleting `_exit_when_the_parent_does()` from `worker.prepare_this_worker()` left this phase test green: **1 passed in 9.52 s**. The gate therefore survives removal of the mechanism its docstring says it proves and cannot discharge the “no worker outlives application exit” criterion at N=3. | Capture the worker set independently, kill only the actual application process (not its launcher and not its process tree/group), and assert the captured workers exit through their own parent watchdog. Put full-tree cleanup only in `finally`, after the behavioral assertion, so a failed gate still cleans up. Execute this corrected route on Linux and Windows. | **Open; Implementer** |
+| `P2EXIT-R2` | **Medium** | **Yes** | Criterion 1 / responsiveness gate | `test_the_interface_stays_inside_its_budget_while_three_downloads_run` records only the worst `processEvents()` duration. It never requires a job to enter an active state, emit progress, or finish; after its 60-second deadline it asserts only the latency. A reviewer mutation deleting all three `manager.start(job_id)` calls still passed: **1 passed in 60.24 s**. An idle GUI therefore satisfies the test whose name and criterion require three concurrent downloads. | Give the measurement a positive control: hold three workers at a barrier, require all three active and independently producing/queued to produce progress before sampling, measure while that state holds, release them, and require all three to settle. It should fail promptly rather than wait 60 seconds when concurrency was never reached. | **Open; Implementer** |
+| `P2EXIT-R3` | **Medium** | **Yes** | `T-122` / timing-gate correction | Repeating the ratio did not make its live samples comparable. Every `cost()` creates another manager and dialog backed by `child_never_returning`; the fixture shuts them down only after the test. Warm-up plus three small/large pairs can therefore leave seven managers and up to 28 probe workers alive, and every large sample follows its small sample under monotonically increasing background load. A median cannot remove load introduced systematically by the harness. The sample-count contract is also unguarded: changing `SCALING_PAIRS` from 3 to 1 left both the deterministic oracle test and the live gate green (**2 passed**), because the oracle supplies its own three-element lists. `T-122` was explicitly required before this exit review and remains “awaiting review,” so it is not clean evidence yet. | Prefer the original review recommendation: keep the absolute 500-row budget and structural control count as required gates, and make the relative ratio diagnostic. If the ratio remains required, shut down and reap each sample outside the timed region, alternate which size runs first, reject insufficient or unequal sample sets in `superlinear_growth`, and pin the live sample count independently. | **Open; Implementer** |
+| `P2EXIT-R4` | **High** | **Yes** | CI policy / accepted `OPS-009` | Accepted `OPS-009` says the full `windows-latest` suite stays hosted and `WINDOWS_RUNNER` is a fallback that routes it to STARBASE when hosted minutes run out. The new workflow goes further without a later accepted decision: while the variable is set it deletes the Windows matrix leg, and it removes the full Windows desktop suite from ordinary pushes unless the commit says `[win]`. That is a durable coverage-policy change made below the authority of an accepted decision. Its “nightly backstop” is not guaranteed either: global `cancel-in-progress: true` lets an ordinary push cancel the scheduled Windows run, while the replacement push can skip the full Windows suite. | Obtain an explicit maintainer ruling and amend/supersede `OPS-009`, or restore the accepted policy. The ruling should state whether clean hosted-Windows evidence and every-push full Windows coverage are being surrendered, and make the nightly guarantee true (for example, do not let an ordinary push cancel a scheduled full-Windows run). Then align the workflow and canonical testing contract to that ruling. | **Open; Maintainer ruling, then Implementer** |
+| `P2EXIT-R5` | **Medium** | **Yes** | Exit record / current truth | The records being signed off still contradict current evidence. `IMPLEMENTATION_PLAN.md` says the Blocked list “wants re-reading” and `STATUS.md` says nobody re-read it, although `5eb2611` records the completed re-triage. `TESTING.md` opens §10 with “Runs on every push and pull request, on Linux and Windows matrix runners,” then says ordinary pushes omit the full Windows suite. The deliverable and criterion tables also call `75f1c32` and `233c5fd` the T-084/T-086 approval heads; the reviewer record approved both only at `2a41c5f`, after later corrections. These are current-truth documents and approval boundaries, not harmless historical wording. | Reconcile the live plan, status and testing contract after the `P2EXIT-R4` ruling. Record T-084 and T-086's reviewer-approved head as `2a41c5f` (implementation commits can be named separately), and remove the already-discharged Blocked-list warning. | **Open; Planner / Documentation Maintainer** |
+
+### Non-blocking findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `P2EXIT-R6` | **Low** | No | `T-121` diagnostic | `describe_drain_failure()` correctly stops blaming admission when no row remains queued, but it then directs every such failure to the clip server. Its input contains only final statuses; it cannot know whether a failed/cancelled download came from the observed `ConnectionAbortedError`, another worker failure, or test teardown. The new wording replaces one unjustified causal claim with a narrower but still unjustified one. | Report only what the statuses establish—admission drained and one or more jobs failed—then direct the reader to captured stderr for the cause. Name the clip-server abort only when the test observed it. | **Open, non-blocking; fold into Proposed `T-121`** |
+| `P2EXIT-R7` | **Low** | No | Handoff boundary | The handoff says `origin/main` is `53b07ec`, but the reviewed checkout has `origin/main` at `dca3bfa`; it also labels `5eb2611` as the head while `f8f8638` is the handoff-only head. The implementation boundary remains recoverable and no code is hidden, so this does not affect the substantive findings. | In the correction handoff, report both implementation head and handoff head and resolve the remote immediately before writing the boundary. | **Open, non-blocking process follow-up** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Submitted boundary | `dca3bfa..5eb2611` and handoff commit `f8f8638` inspected; working tree was clean before and after reviewer mutation probes. No product source changed in this boundary. |
+| Cold phase suite | `tests/integration/test_phase_2_exit.py`: **13 passed in 47.57 s**. Passing the suite does not resolve `P2EXIT-R1` because the watchdog-removal mutation also passed. |
+| Supporting criterion surface | Focused progress, composition, lowering, pause, graceful-shutdown, parent-kill and grandchild tests: **13 passed in 14.10 s**. Changed T-083/T-121/T-122/task-placement tests: **18 passed in 3.57 s**. |
+| Static gates | `ruff check .` passed; `ruff format --check .`: **144 files**; `mypy --no-incremental src`: **43 files**; bare host and bare `--platform win32` mypy: **101 files each**. |
+| Reviewer mutation: criterion 5 | Removed the worker parent-watchdog call. The named N-worker phase test still passed. Mutation reverted; tree verified clean. |
+| Reviewer mutation: criterion 1 | Removed every `manager.start()` from the named responsiveness test. The idle 60-second loop still passed. Mutation reverted; tree verified clean. |
+| Reviewer mutation: T-122 | Reduced live timing pairs from three to one. The synthetic oracle test and live timing test both passed. Mutation reverted; tree verified clean. |
+| Windows evidence | The last full Windows product evidence remains run `30859578131` at `53b07ec`. Production source has not changed since it. An exact-head Windows run now would not repair the platform-neutral gate defects above; the corrected criterion-5 route itself needs exact Linux and Windows execution before exit. |
+
+### Final disposition
+
+Do **not** spend a Windows run on `f8f8638`. First correct `P2EXIT-R1`, `P2EXIT-R2` and
+`P2EXIT-R3`, obtain the `P2EXIT-R4` maintainer ruling, and reconcile `P2EXIT-R5`. Then push the
+correction head with `[win]` or dispatch the workflow against that exact head. The useful final
+evidence is the corrected N-worker parent-watchdog test on both Windows and Linux, the
+positive-controlled three-download responsiveness measurement, the selected T-122 policy, and a
+workflow whose observed jobs match the newly accepted policy.
+
+No source, submitted test, repository variable, remote ref or CI state was changed by the
+reviewer. The three temporary mutations above were reverted and the working tree was clean before
+this review record was appended.

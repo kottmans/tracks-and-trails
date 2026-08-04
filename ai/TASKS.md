@@ -560,6 +560,181 @@ agreement on the reduced form before implementation.
 
 ## Proposed — Phase 2
 
+### T-127 — The two phase-proof gates that pass without their subject (`P2EXIT-R1`, `P2EXIT-R2`)
+
+**Status:** **Proposed — blocking the Phase 2 exit**, 2026-08-03. Found by the exit review's cold
+reconstruction, each with a mutation.
+**Owner:** Implementer
+**Priority:** **High** — these are the named evidence for exit criteria 1 and 5, and neither
+establishes its criterion
+**Phase:** Phase 2
+**Relevant context:** `T-088`, `P2EXIT-R1`, `P2EXIT-R2`, `ai/TESTING.md` §13, exit criteria 1 and 5
+**Affected surfaces:** `tests/integration/test_phase_2_exit.py`
+**Risk:** Low to the product — **nothing here suggests a defect in the application.** Both are
+tests that cannot fail for the reason they name.
+
+**`P2EXIT-R1` — criterion 5.** `test_no_worker_outlives_a_hard_kill_with_a_full_pool` captures the
+workers, then builds `doomed` from the application's *whole tree* and hands that tree to
+`kill_the_application` — which kills the process group on POSIX and every captured process on
+Windows. It then asks whether those same workers are alive. Deleting
+`_exit_when_the_parent_does()` from `worker.prepare_this_worker()` left it green: **1 passed in
+9.52 s**. So it proves the test helper can reap workers, not that application exit leaves none.
+
+**`P2EXIT-R2` — criterion 1.** `test_the_interface_stays_inside_its_budget_while_three_downloads_run`
+records the worst `processEvents()` duration and never requires a job to become active, emit
+progress or finish. Deleting all three `manager.start()` calls left it green: **1 passed in
+60.24 s**. An idle GUI satisfies the test whose name requires three concurrent downloads.
+
+#### Scope
+
+- **`R1`:** capture the worker set independently; kill **only the application process** — not its
+  launcher, not its group or tree; assert the captured workers exit through their own parent
+  watchdog. Full-tree cleanup moves to `finally`, *after* the behavioural assertion, so a failed
+  gate still cleans up.
+- **`R2`:** give the measurement a positive control. Hold three workers at a barrier, require all
+  three active and producing progress **before** sampling, measure while that holds, release, and
+  require all three to settle. It must fail promptly when concurrency was never reached rather
+  than spend sixty seconds proving an idle window is responsive.
+
+#### Acceptance criteria
+
+- **The reviewer's two mutations both fail.** Removing `_exit_when_the_parent_does()` fails `R1`;
+  removing the three `start()` calls fails `R2`. Anything less is the same test with better prose.
+- `R2` fails in seconds, not at a sixty-second deadline, when three downloads never run
+- The corrected `R1` route runs on **Linux and Windows** — it is a criterion-5 gate and the
+  criterion says both platforms
+
+#### Out of scope
+
+- Changing `worker.prepare_this_worker()` or the watchdog. The mechanism is not implicated; the
+  evidence for it is.
+
+---
+
+### T-124 — The main window becomes two tabs over one list (`UX-005`)
+
+**Status:** **Proposed — maintainer decision `UX-005`**, 2026-08-03, and sequenced **before the
+Phase 2 exit** by the same decision. It is Phase 3 work taken early for the reason `T-118` was: the
+window is what every later feature is added to, so its shape should be settled once rather than
+renegotiated by the format table, the stream chooser and the playlist picker.
+**Owner:** Implementer
+**Priority:** High — the shipped window contradicts an approved design, and it was found by opening
+the application rather than by any gate
+**Phase:** Phase 3, taken before the Phase 2 exit
+**Depends on:** nothing. `T-118`'s delegate is what makes it affordable.
+**Relevant context:** **`UX-005`** (authority), `T-119`, `T-100`, `T-086`, `REQ-021`, `NFR-005`,
+`NFR-006`, `T081-R3`
+**Affected surfaces:** `ui/main_window.py`, `ui/history_view.py`, `ui/queue_view.py`,
+`ui/row_delegate.py`, `tests/ui/**`
+**Risk:** **Medium** — it deletes a surface (`HistoryView`'s columns) that has approved tests
+asserting it, and it removes the detail pane that `T-017` built
+
+#### Scope
+
+`UX-005` in code. Read that entry rather than this list; the points below are what it costs.
+
+- **A tab widget replaces the vertical splitter**, with `Queue` and `History` and a count on each.
+- **The detail pane goes.** `_build_body`'s splitter and the source comment that decided the layout
+  are removed rather than corrected.
+- **`HistoryView` becomes a third model behind `row_delegate`**, not a six-column table. Its
+  columns are `REQ-020`'s fields and they survive as *what the row says*, not as columns.
+- **Every applicable verb is drawn on the row's last line**, right-aligned, sharing it with the
+  format control, with `⋯` carrying the rest and the keyboard route.
+- **Nothing disabled, nothing refused.** A row offers only what its state permits.
+
+#### Acceptance criteria
+
+- The window has exactly two tabs and no splitter, asserted by object name and by there being no
+  `QSplitter` in the body
+- Selecting a row opens nothing; every field `REQ-014` and `REQ-020` name is readable from the row
+  itself, asserted by value
+- A row in each state offers exactly the verbs `UX-005` lists for it — and **a mutation adding a
+  verb its state forbids fails**, which is the half `T081-R3` says is easy to lose
+- The verbs are reachable without hovering and without a pointer (`NFR-005`), and `⋯` is the
+  declared keyboard route
+- A failed row shows the extractor's message in full at a realistic width (`NFR-006`) — the reason
+  the verbs share a line rather than take a gutter
+- File actions still work from both tabs (`REQ-021`, `T-086`)
+
+#### Out of scope
+
+- **Removing history**, which is `T-125`.
+- **The per-job format control on queue rows**, which is `T-126`.
+- **What becomes of `JobProgressView`.** `UX-005` records that the detail view has no home in this
+  layout and deliberately does not rule on it; that needs its own decision before anything deletes
+  `T-017`'s work.
+
+---
+
+### T-125 — Remove downloads from the history
+
+**Status:** **Proposed — needs a decision before it needs a button**, 2026-08-03. Found by using
+the application: there is no way to clear history at any layer.
+**Owner:** Planner first, then Implementer
+**Priority:** Medium — a record the user cannot remove is a privacy question as much as a feature
+**Phase:** Phase 3
+**Depends on:** a `DAT-` decision. **`T-124` is not a dependency** — the control's placement is in
+`UX-005`, but what removal *means* is not.
+**Relevant context:** `REQ-020`, `REQ-021`, `REQ-026`, `DAT-001`, `UX-005`, `HistoryRepository`
+**Affected surfaces:** `ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, `persistence/repositories.py`,
+`ui/`
+**Risk:** **Medium** — the obvious implementation deletes the wrong thing
+
+**Nothing deletes today, deliberately.** `HistoryRepository`'s own docstring says so: *"Append-mostly
+and read-only to the rest of the application: nothing here deletes."* And no requirement asks for
+removal — `REQ-020` says maintain a history, `REQ-021` says open and reveal from it. So this is a
+gap rather than an unimplemented requirement, and adding a delete path to a deliberately
+append-only store is a data decision first.
+
+#### What the decision has to say
+
+- **What is removable** — selected entries, everything, everything older than a date.
+- **Whether a file is ever touched.** `UX-005` says no and says it in the status bar permanently,
+  because a history entry names a file on disk and "clear history" is ambiguous in exactly the way
+  that loses somebody's downloads. That belongs in the decision, not only in a mockup.
+- **Whether removal is recoverable**, and if not, what the confirmation must say.
+- **Whether `REQ-020` is amended** to admit removal, or a new requirement covers it.
+
+#### Acceptance criteria
+
+- The decision exists and is Accepted before any code is written
+- Removal is selection-scoped, and the verb names its own count
+- **A test proves no file is touched** — the promise is the feature
+- The empty history still says so rather than presenting a blank surface (`T-100`'s rule)
+
+---
+
+### T-126 — Change a queued job's format from the queue row
+
+**Status:** **Proposed — `UX-005` point 6**, 2026-08-03. The original mockup offered this and the
+shipped queue does not.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 3
+**Depends on:** `T-124` for where the control sits. The manager side already exists.
+**Relevant context:** `UX-005`, **`T-075`** and `manager.retarget()`, `UX-004`, `T-119`
+**Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, `tests/ui/`
+**Risk:** Low — the plumbing is built and reviewed
+
+**`retarget()` already does this** (`T-075`): it replaces a not-yet-started job's request and
+refuses one that has started. So the work is the surface, and the surface's rule falls out of the
+manager's: **the control appears exactly while `retarget()` would accept it.**
+
+The delegate needs nothing new. `StagingModel` already answers `PRESET_CHOICES_ROLE` only for rows
+that can be committed and the delegate draws no control when that is empty; `QueueModel` answers it
+only for jobs that have not started.
+
+#### Acceptance criteria
+
+- A queued row offers the control; a running row shows plain text
+- Choosing a format retargets the job, and the **durable request changes** — asserted on the stored
+  request, not on the label, which is what `T118-R6` was about
+- **A mutation offering the control on a running row fails**, because a control the manager would
+  refuse is `T081-R3`'s defect in a new place
+- The row's effective format and its durable request cannot disagree (`T118-R6`, `T118-R8`)
+
+---
+
 ### T-121 — The phase-exit clip server aborts connections on hosted Windows
 
 **Status:** **Proposed — narrowed 2026-08-03, and still open.** Two of its three parts are struck
@@ -2806,7 +2981,7 @@ for one job to reach `RUNNING`, and asserts recovery against the same set the re
 
 ### T-086 — Open a completed file, or reveal it in the file manager
 
-**Status:** **Complete — Approved at `233c5fd`**, 2026-08-01, after `T086-R1` (High) was corrected. Windows Open no longer
+**Status:** **Complete — implemented at `233c5fd`, approved at `2a41c5f`**, 2026-08-01, after `T086-R1` (High) was corrected. Windows Open no longer
 runs the file manager; it takes the associated-application route the platform documents.
 *(This read "In Review — complete 2026-08-01. Sixteen mutations run; all sixteen killed.")* Two
 survived the first pass: one was a defective mutation, and one was a **real gap** — nothing asserted
@@ -2892,7 +3067,7 @@ Two decisions worth a reviewer's disagreement:
 
 ### T-084 — Per-job log capture and a log view
 
-**Status:** **Complete — Approved at `75f1c32`**, 2026-08-01, after `T084-R1` (Critical) and
+**Status:** **Complete — implemented at `75f1c32`, approved at `2a41c5f`**, 2026-08-01, after `T084-R1` (Critical) and
 `T084-R2` (High) were corrected.
 Fourteen further mutations across the corrections; all fourteen killed. **The contradictory
 acceptance criterion was amended by maintainer ruling on 2026-08-01 — `DAT-003` wins — and every
