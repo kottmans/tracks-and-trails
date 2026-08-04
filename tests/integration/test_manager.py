@@ -4583,18 +4583,38 @@ def test_the_backoff_is_waited_rather_than_declared(
     repository = FakeRepository()
     repository.add(make_job("job-NETWORK", "https://example.invalid/clip", tmp_path))
     download = DownloadManager(repository, entry_point=child_failing_with_the_kind_its_job_id_names)
+
+    # **Both instants come from the manager, not from a poll** (`T083-R2`).
+    #
+    # This measured `failed_at` immediately after a `spin` loop *noticed* the failure — so the lag
+    # between the transition and the poll that saw it was subtracted from the interval being
+    # bounded, and a correct one-second backoff could read as short. `spin` sleeps 5 ms between
+    # turns and pumps events in between, so under load that lag is not bounded at all, against a
+    # margin of 0.1 s. Same defect class as `T118-R10`: an interval whose start is an observation.
+    #
+    # A signal fires on the thread that made the transition, at the moment it was made.
+    failed_at: list[float] = []
+    restarted_at: list[float] = []
+    download.job_failed.connect(lambda *_: failed_at.append(time.monotonic()))
+    download.job_changed.connect(
+        lambda _job_id, status: (
+            restarted_at.append(time.monotonic())
+            if status == JobStatus.QUEUED.value and failed_at
+            else None
+        )
+    )
+
     try:
         download.start("job-NETWORK")
-        assert spin(
-            lambda: job_row(repository, "job-NETWORK").status is JobStatus.FAILED, timeout=60
-        )
-        failed_at = time.monotonic()
+        assert spin(lambda: bool(failed_at), timeout=60), "the job never reported a failure"
+        assert spin(lambda: bool(restarted_at), timeout=60), "the retry never re-queued the job"
 
-        assert spin(lambda: job_row(repository, "job-NETWORK").attempts >= 1, timeout=60)
-        waited = time.monotonic() - failed_at
+        waited = restarted_at[0] - failed_at[0]
 
         assert waited >= 0.9, (
-            f"the retry fired {waited:.2f}s after the failure, inside its one-second backoff"
+            f"the retry fired {waited:.2f}s after the failure, inside its one-second backoff. "
+            f"Both instants are the manager's own (`T083-R2`), so this is the delay itself rather "
+            f"than the delay minus however long a poll took to notice."
         )
     finally:
         download.shutdown()

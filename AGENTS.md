@@ -213,8 +213,15 @@ had entered the shared tree. The primary checkout stays on `main` for coordinati
   `PYTHONPATH=$PWD/src /path/to/primary/.venv/bin/python -m pytest` (and the same for `mypy`),
   then verify once with
   `python -c "import tracks_and_trails; print(tracks_and_trails.__file__)"`.
-- `-m process_tree` tests spawn and kill real worker processes. Run them in one worktree at a
-  time; concurrent runs wedge each other.
+- **The integration tests that spawn and kill real worker processes** contend with each other:
+  run them in one worktree at a time. They live in `tests/integration/` — `test_manager.py`,
+  `test_crash_kill.py`, `test_single_instance.py`, `test_phase_2_exit.py`, `test_composition.py`
+  and `test_worker.py`.
+  *(This said "`-m process_tree` tests", and **no test carries that marker**: it was retired when
+  `T-019` made cancellation reap the whole process group. So the instruction selected nothing and
+  could not be followed. Naming the files is worse than a marker and better than a marker that
+  does not exist; `T-123` owns identifying them properly, because parallelising the suite needs
+  exactly that list.)*
 - Qt tests need `QT_QPA_PLATFORM=offscreen`. Every worker's tests must use their own temp,
   database, and config paths — never a shared per-user application directory.
 
