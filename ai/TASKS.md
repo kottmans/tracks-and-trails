@@ -94,6 +94,189 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ## Ready
 
+### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
+
+**Status:** **Ready — the decision landed as `REL-002` (2026-08-04), so the blocker is gone.**
+`collect_submodules` stays, as insurance against a pin we do not have yet. What remains is
+implementation: **extend the frozen probe** so it loads the built-in solver through yt-dlp's real
+`vendor.load_script` path and verifies its hash — after which removing `collect_data_files` must
+*fail*, which today it does not.
+*(This read "Blocked on `T033-R4` — a maintainer decision, not a machine", 2026-07-29;
+re-triaged 2026-08-03.)* The external Windows build half is available: `frozen windows` runs on
+`STARBASE` and passes. What remains is the probe extension and the separate-submodule decision,
+which no runner supplies. The Linux
+positive *and* negative builds are complete, and the negative is what reopened this: removing
+`collect_data_files("yt_dlp")` strips all three YouTube solver assets and **the probe still
+passes**, so the frozen gate is blind to package-data loss. That needs a probe extension and a
+maintainer decision on the separate submodule line. Code corrections were
+verified 2026-07-26 (`T033-R2` resolved, the version-against-pin half of `T033-R1` verified).
+**The Linux half is no longer externally blocked and has now been produced** — see **Linux
+evidence** below. `T033-R1` stays **Open** for the Windows frozen result and the
+collection-removal negative run; it is deliberately *not* closed by the commit that lands this
+work.
+
+*(This said the evidence was something "this repository cannot produce locally", on the belief
+that PyInstaller was absent from the working venv. It is present at 6.21.0 and has been; the
+reviewer flagged the claim as stale and the local build proves it. What is genuinely external is
+Windows, and the two `frozen` jobs being GitHub-hosted.)*
+
+#### Linux evidence, 2026-07-29 — produced locally
+
+`python -m PyInstaller packaging/tracks-and-trails.spec` on Fedora, Python 3.14.6, PyInstaller
+6.21.0. Build exit 0.
+
+| Measure | Result |
+|---|---|
+| Artifact size | **194 260 KiB** |
+| Files matching `*yt_dlp*` | 3 |
+| `yt_dlp` bytes on disk | 24 KiB — the package is inside the archive, not loose, which is why the count is small |
+| `--ytdlp-probe` | **OK.** version `2026.07.04`, source *bundled baseline*, pin `2026.7.4`, **1751 extractors**, resolved `youtube` from `yt_dlp.extractor.youtube` |
+| `packaging/frozen_smoke.py` | **OK** in 3 s — spawned a child, exchanged one message, reaped it, **one** top-level application start (`pid=66180 frozen=True argv=['--spawn-probe']`), no orphan |
+
+That is the version-against-pin assertion, the extractor resolution through the lazy machinery,
+the size record, and `T-020`'s spawn proof, all on Linux and none of it waiting on anything.
+
+#### The collection-removal negative was run, and **both mutations survived** — 2026-07-29
+
+`T033-R3` was right that this was producible locally. Running it says something worse than the
+finding assumed.
+
+| Build | Artifact | `--ytdlp-probe` |
+|---|---|---|
+| Baseline | 194 260 KiB | OK — 1751 extractors, `youtube` resolved |
+| `collect_submodules("yt_dlp")` → `[]` | 192 300 KiB | **OK — 1751 extractors, `youtube` resolved** |
+| `collect_data_files("yt_dlp")` removed | 194 212 KiB | **OK — 1751 extractors, `youtube` resolved** |
+
+The builds genuinely differed in size, so both mutations applied.
+
+**The two survivals mean opposite things, and reading them as one was wrong** (`T033-R4`). The
+first version of this section concluded "neither collection line is necessary". That does not
+follow, and the difference matters:
+
+- **`collect_submodules("yt_dlp")` really is redundant for this pin.** `_extractors.py` carries
+  **928 static `from .` imports**, so PyInstaller's module graph follows them unaided. The comment
+  above it — "972 of 1046 modules are extractors resolved by name at runtime", so "static analysis
+  collects the core and misses essentially every site" — does not hold for the pinned version.
+- **`collect_data_files("yt_dlp")` is load-bearing, and its mutant survived for the worst possible
+  reason.** Removing it deletes **all three** YouTube solver assets the baseline ships —
+  `yt.solver.core.js`, `yt.solver.deno.lib.js`, `yt.solver.bun.lib.js`, under
+  `yt_dlp/extractor/youtube/jsc/_builtin/vendor/`. Verified directly: the baseline artifact has
+  three, the data mutant has **zero**, and the probe still reported OK. yt-dlp loads them with
+  `importlib.resources` through `vendor.load_script`; `EJSBaseJCP._builtin_source` uses the core
+  one and the Deno/Bun providers use the others. **The probe never touches them** — it
+  instantiates `YoutubeIE` and checks a URL predicate. So the survival proves the frozen gate is
+  **blind to package-data loss**, not that the line is dead.
+
+**A claim in the first version was also simply false.** It said there is no `yt_dlp` hook, on the
+strength of checking `pyinstaller-hooks-contrib`. yt-dlp ships **its own**:
+`yt_dlp/__pyinstaller/hook-yt_dlp.py`, registered through the `pyinstaller40` entry point
+`hook-dirs -> yt_dlp.__pyinstaller:get_hook_dirs`, and PyInstaller processes it. It does not
+collect those three assets, so it does not rescue the data mutant — but the check that produced
+the claim looked in one place and reported a conclusion about all of them.
+
+**So the shape of the defect is the reverse of what was written.** The gate is not merely unable
+to notice its own removal; it is unable to notice a *real regression* — an artifact shipping
+without the solver assets would pass this probe and fail for users on the sites that need them.
+
+**Still owed. Only one of the two remaining items is external:**
+
+- **Extend the probe so the data collection is actually gated** (`T033-R4`). It must load at
+  least the built-in core solver through yt-dlp's real `vendor.load_script` path and check what it
+  got — after which removing `collect_data_files("yt_dlp")` **must** fail. Today that removal is
+  invisible, which is a live blind spot rather than a bookkeeping one.
+- **`collect_data_files("yt_dlp")` stays** regardless of that work. It is load-bearing now.
+- **A maintainer decision on `collect_submodules("yt_dlp")`**: keep it as explicit insurance
+  against a pin that returns to lazy resolution, or remove it as redundant for this one. This is
+  the only genuinely open question of the two, and it wants re-asking whenever the pin moves.
+- **Replace the acceptance criterion.** "The negative run fails" cannot be met as one blanket
+  claim, because the two lines behave differently. It becomes two: the data collection has a
+  failing negative once the probe is extended, and the submodule collection has a recorded
+  decision.
+- **The Windows frozen run is external.** Both `frozen` jobs are GitHub-hosted.
+
+*(This paragraph called the collection-removal mutation "genuinely external" in the same breath as
+proving the local build works. It is the second time in two days this task has claimed something
+was unproducible locally on the strength of a belief about the environment rather than a check.)*
+**What landed.** `collect_submodules("yt_dlp")` + `collect_data_files("yt_dlp")` in
+`packaging/tracks-and-trails.spec`; `run_ytdlp_probe()` in `_freeze_probe.py` behind a
+`--ytdlp-probe` flag; a CI step in the `frozen` job on both platforms.
+
+**The probe resolves an extractor by name rather than importing yt-dlp.** `import yt_dlp`
+succeeds against the core alone — which is exactly what makes this failure look like site
+breakage — so the probe goes through the lazy machinery PyInstaller's static analysis cannot
+see. Resolution runs through `downloader.worker`, so it exercises the real `OPS-002` path
+inside the artifact instead of a parallel one, and stays within `ARCHITECTURE.md` §6.
+
+**Defect found by mutation-checking the probe itself.** `get_info_extractor` *raises* `KeyError`
+for an unknown name; it does not return `None`. The `matched is None` branch was therefore dead
+code and the failure escaped as a bare traceback. The job still went red, so the gate worked —
+but under `OPS-003` a Windows failure is diagnosed from this log and nothing else, and
+`KeyError: 'YoutubeIE'` does not say the artifact shipped without its extractors.
+
+**Verified locally:** 1751 extractors, `youtube` resolved, exit 0. Both probe mutations
+(threshold above reality; unresolvable name) exit non-zero, so the gate is wired to the exit
+code and not vacuous.
+
+*(This paragraph ended "Frozen-artifact evidence on both platforms is pending CI — the local run
+is source-mode and deliberately claims nothing about the frozen build." That was true when
+written and is not now: **the Linux frozen evidence is complete**, produced against a real
+artifact on 2026-07-29 and independently re-verified by the reviewer. See **Linux evidence**
+above. Windows remains pending. `T033-R3`.)*
+
+**Owner:** Implementer
+**Priority:** High — blocks any usable release, and fails in a way that looks like a site bug
+**Phase:** lands with `T-012`; verified by `T-020`'s CI job; gates Phase 5
+**Depends on:** `T-012` (the worker is the first thing to import `yt_dlp`)
+**Relevant context:** `OPS-002`, `REL-001`, `ARCHITECTURE.md` §6 and §12, `NFR-008`, `C-002`
+**Affected surfaces:** `packaging/tracks-and-trails.spec`, `packaging/frozen_smoke.py`,
+`.github/workflows/ci.yml`
+**Risk:** **High** — the failure mode is silent at build time and total at run time
+
+#### Scope
+
+`OPS-002` says every release bundles a pinned yt-dlp baseline. The frozen artifact currently
+contains **none of it**: a search of the built `dist/tracks-and-trails` for `yt_dlp` returns
+zero files. That is correct today — nothing imports it, because `worker.py` and
+`ytdlp_adapter.py` are still stubs — but it will not self-correct when `T-012` lands.
+
+PyInstaller's analysis follows *static* imports. yt-dlp resolves its extractors dynamically:
+1046 package files, **972 of them extractor modules**, reached through `lazy_extractors`
+rather than by direct import. Static analysis will therefore collect the yt-dlp core and miss
+essentially every extractor.
+
+The resulting failure is the dangerous kind: the artifact **builds and launches normally**,
+`import yt_dlp` succeeds, and then every real URL fails to find an extractor — which reads
+exactly like the site-breakage `C-002` teaches everyone to expect, so it will be misdiagnosed.
+
+Collect the package explicitly in the spec, and prove it from inside the artifact.
+
+#### Acceptance criteria
+
+- The frozen artifact contains the yt-dlp package, and the bundled version **equals the pin in
+  `pyproject.toml`** — asserted, not eyeballed, so a stale build cannot pass
+- A probe **inside the frozen artifact** imports `yt_dlp` and resolves a named extractor for a
+  stable URL pattern, without network access
+- Removing the collection from the spec makes that probe fail — the mutation is exercised once
+  and reverted, as `T-020`'s negative proof was
+- The `OPS-002` resolution order is honoured: with a directory present at
+  `user_data_dir/tracksandtrails/ytdlp/`, the worker reports **that** version; with it absent
+  or unimportable, it reports the baseline and says why
+- Both the Linux and Windows frozen jobs stay green, and the artifact-size change is recorded
+
+#### Out of scope
+
+- The in-app update action itself (`OPS-002`, Phase 4) — this task bundles the baseline and
+  proves the resolution order; downloading and extracting a wheel is separate
+- Trimming the bundle. 972 extractor modules is a size cost worth measuring, but excluding
+  extractors to save space would re-create this defect deliberately
+- Any change to the pin
+
+**Note:** `ai/TESTING.md` §8's release gate re-checks that yt-dlp is still pure Python. This
+task is the other half — that the pure-Python package actually *ships*. Purity without
+inclusion still yields an application that cannot download anything.
+
+---
+
 ### T-123 — Evaluate running the suite in parallel
 
 **Status:** **Ready — measured 2026-08-04, and the answer is yes.** `-n auto` runs the
@@ -1756,184 +1939,6 @@ green.
 here, so approval needs the `windows desktop` job to run the corrected helper and the third
 mutation against it. Same shape as `T-033`'s blocker: the code is done, the evidence is not
 producible locally.
-
----
-
-### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
-
-**Status:** **Blocked on `T033-R4` — a maintainer decision, not a machine**, 2026-07-29;
-re-triaged 2026-08-03. The external Windows build half is available: `frozen windows` runs on
-`STARBASE` and passes. What remains is the probe extension and the separate-submodule decision,
-which no runner supplies. The Linux
-positive *and* negative builds are complete, and the negative is what reopened this: removing
-`collect_data_files("yt_dlp")` strips all three YouTube solver assets and **the probe still
-passes**, so the frozen gate is blind to package-data loss. That needs a probe extension and a
-maintainer decision on the separate submodule line. Code corrections were
-verified 2026-07-26 (`T033-R2` resolved, the version-against-pin half of `T033-R1` verified).
-**The Linux half is no longer externally blocked and has now been produced** — see **Linux
-evidence** below. `T033-R1` stays **Open** for the Windows frozen result and the
-collection-removal negative run; it is deliberately *not* closed by the commit that lands this
-work.
-
-*(This said the evidence was something "this repository cannot produce locally", on the belief
-that PyInstaller was absent from the working venv. It is present at 6.21.0 and has been; the
-reviewer flagged the claim as stale and the local build proves it. What is genuinely external is
-Windows, and the two `frozen` jobs being GitHub-hosted.)*
-
-#### Linux evidence, 2026-07-29 — produced locally
-
-`python -m PyInstaller packaging/tracks-and-trails.spec` on Fedora, Python 3.14.6, PyInstaller
-6.21.0. Build exit 0.
-
-| Measure | Result |
-|---|---|
-| Artifact size | **194 260 KiB** |
-| Files matching `*yt_dlp*` | 3 |
-| `yt_dlp` bytes on disk | 24 KiB — the package is inside the archive, not loose, which is why the count is small |
-| `--ytdlp-probe` | **OK.** version `2026.07.04`, source *bundled baseline*, pin `2026.7.4`, **1751 extractors**, resolved `youtube` from `yt_dlp.extractor.youtube` |
-| `packaging/frozen_smoke.py` | **OK** in 3 s — spawned a child, exchanged one message, reaped it, **one** top-level application start (`pid=66180 frozen=True argv=['--spawn-probe']`), no orphan |
-
-That is the version-against-pin assertion, the extractor resolution through the lazy machinery,
-the size record, and `T-020`'s spawn proof, all on Linux and none of it waiting on anything.
-
-#### The collection-removal negative was run, and **both mutations survived** — 2026-07-29
-
-`T033-R3` was right that this was producible locally. Running it says something worse than the
-finding assumed.
-
-| Build | Artifact | `--ytdlp-probe` |
-|---|---|---|
-| Baseline | 194 260 KiB | OK — 1751 extractors, `youtube` resolved |
-| `collect_submodules("yt_dlp")` → `[]` | 192 300 KiB | **OK — 1751 extractors, `youtube` resolved** |
-| `collect_data_files("yt_dlp")` removed | 194 212 KiB | **OK — 1751 extractors, `youtube` resolved** |
-
-The builds genuinely differed in size, so both mutations applied.
-
-**The two survivals mean opposite things, and reading them as one was wrong** (`T033-R4`). The
-first version of this section concluded "neither collection line is necessary". That does not
-follow, and the difference matters:
-
-- **`collect_submodules("yt_dlp")` really is redundant for this pin.** `_extractors.py` carries
-  **928 static `from .` imports**, so PyInstaller's module graph follows them unaided. The comment
-  above it — "972 of 1046 modules are extractors resolved by name at runtime", so "static analysis
-  collects the core and misses essentially every site" — does not hold for the pinned version.
-- **`collect_data_files("yt_dlp")` is load-bearing, and its mutant survived for the worst possible
-  reason.** Removing it deletes **all three** YouTube solver assets the baseline ships —
-  `yt.solver.core.js`, `yt.solver.deno.lib.js`, `yt.solver.bun.lib.js`, under
-  `yt_dlp/extractor/youtube/jsc/_builtin/vendor/`. Verified directly: the baseline artifact has
-  three, the data mutant has **zero**, and the probe still reported OK. yt-dlp loads them with
-  `importlib.resources` through `vendor.load_script`; `EJSBaseJCP._builtin_source` uses the core
-  one and the Deno/Bun providers use the others. **The probe never touches them** — it
-  instantiates `YoutubeIE` and checks a URL predicate. So the survival proves the frozen gate is
-  **blind to package-data loss**, not that the line is dead.
-
-**A claim in the first version was also simply false.** It said there is no `yt_dlp` hook, on the
-strength of checking `pyinstaller-hooks-contrib`. yt-dlp ships **its own**:
-`yt_dlp/__pyinstaller/hook-yt_dlp.py`, registered through the `pyinstaller40` entry point
-`hook-dirs -> yt_dlp.__pyinstaller:get_hook_dirs`, and PyInstaller processes it. It does not
-collect those three assets, so it does not rescue the data mutant — but the check that produced
-the claim looked in one place and reported a conclusion about all of them.
-
-**So the shape of the defect is the reverse of what was written.** The gate is not merely unable
-to notice its own removal; it is unable to notice a *real regression* — an artifact shipping
-without the solver assets would pass this probe and fail for users on the sites that need them.
-
-**Still owed. Only one of the two remaining items is external:**
-
-- **Extend the probe so the data collection is actually gated** (`T033-R4`). It must load at
-  least the built-in core solver through yt-dlp's real `vendor.load_script` path and check what it
-  got — after which removing `collect_data_files("yt_dlp")` **must** fail. Today that removal is
-  invisible, which is a live blind spot rather than a bookkeeping one.
-- **`collect_data_files("yt_dlp")` stays** regardless of that work. It is load-bearing now.
-- **A maintainer decision on `collect_submodules("yt_dlp")`**: keep it as explicit insurance
-  against a pin that returns to lazy resolution, or remove it as redundant for this one. This is
-  the only genuinely open question of the two, and it wants re-asking whenever the pin moves.
-- **Replace the acceptance criterion.** "The negative run fails" cannot be met as one blanket
-  claim, because the two lines behave differently. It becomes two: the data collection has a
-  failing negative once the probe is extended, and the submodule collection has a recorded
-  decision.
-- **The Windows frozen run is external.** Both `frozen` jobs are GitHub-hosted.
-
-*(This paragraph called the collection-removal mutation "genuinely external" in the same breath as
-proving the local build works. It is the second time in two days this task has claimed something
-was unproducible locally on the strength of a belief about the environment rather than a check.)*
-**What landed.** `collect_submodules("yt_dlp")` + `collect_data_files("yt_dlp")` in
-`packaging/tracks-and-trails.spec`; `run_ytdlp_probe()` in `_freeze_probe.py` behind a
-`--ytdlp-probe` flag; a CI step in the `frozen` job on both platforms.
-
-**The probe resolves an extractor by name rather than importing yt-dlp.** `import yt_dlp`
-succeeds against the core alone — which is exactly what makes this failure look like site
-breakage — so the probe goes through the lazy machinery PyInstaller's static analysis cannot
-see. Resolution runs through `downloader.worker`, so it exercises the real `OPS-002` path
-inside the artifact instead of a parallel one, and stays within `ARCHITECTURE.md` §6.
-
-**Defect found by mutation-checking the probe itself.** `get_info_extractor` *raises* `KeyError`
-for an unknown name; it does not return `None`. The `matched is None` branch was therefore dead
-code and the failure escaped as a bare traceback. The job still went red, so the gate worked —
-but under `OPS-003` a Windows failure is diagnosed from this log and nothing else, and
-`KeyError: 'YoutubeIE'` does not say the artifact shipped without its extractors.
-
-**Verified locally:** 1751 extractors, `youtube` resolved, exit 0. Both probe mutations
-(threshold above reality; unresolvable name) exit non-zero, so the gate is wired to the exit
-code and not vacuous.
-
-*(This paragraph ended "Frozen-artifact evidence on both platforms is pending CI — the local run
-is source-mode and deliberately claims nothing about the frozen build." That was true when
-written and is not now: **the Linux frozen evidence is complete**, produced against a real
-artifact on 2026-07-29 and independently re-verified by the reviewer. See **Linux evidence**
-above. Windows remains pending. `T033-R3`.)*
-
-**Owner:** Implementer
-**Priority:** High — blocks any usable release, and fails in a way that looks like a site bug
-**Phase:** lands with `T-012`; verified by `T-020`'s CI job; gates Phase 5
-**Depends on:** `T-012` (the worker is the first thing to import `yt_dlp`)
-**Relevant context:** `OPS-002`, `REL-001`, `ARCHITECTURE.md` §6 and §12, `NFR-008`, `C-002`
-**Affected surfaces:** `packaging/tracks-and-trails.spec`, `packaging/frozen_smoke.py`,
-`.github/workflows/ci.yml`
-**Risk:** **High** — the failure mode is silent at build time and total at run time
-
-#### Scope
-
-`OPS-002` says every release bundles a pinned yt-dlp baseline. The frozen artifact currently
-contains **none of it**: a search of the built `dist/tracks-and-trails` for `yt_dlp` returns
-zero files. That is correct today — nothing imports it, because `worker.py` and
-`ytdlp_adapter.py` are still stubs — but it will not self-correct when `T-012` lands.
-
-PyInstaller's analysis follows *static* imports. yt-dlp resolves its extractors dynamically:
-1046 package files, **972 of them extractor modules**, reached through `lazy_extractors`
-rather than by direct import. Static analysis will therefore collect the yt-dlp core and miss
-essentially every extractor.
-
-The resulting failure is the dangerous kind: the artifact **builds and launches normally**,
-`import yt_dlp` succeeds, and then every real URL fails to find an extractor — which reads
-exactly like the site-breakage `C-002` teaches everyone to expect, so it will be misdiagnosed.
-
-Collect the package explicitly in the spec, and prove it from inside the artifact.
-
-#### Acceptance criteria
-
-- The frozen artifact contains the yt-dlp package, and the bundled version **equals the pin in
-  `pyproject.toml`** — asserted, not eyeballed, so a stale build cannot pass
-- A probe **inside the frozen artifact** imports `yt_dlp` and resolves a named extractor for a
-  stable URL pattern, without network access
-- Removing the collection from the spec makes that probe fail — the mutation is exercised once
-  and reverted, as `T-020`'s negative proof was
-- The `OPS-002` resolution order is honoured: with a directory present at
-  `user_data_dir/tracksandtrails/ytdlp/`, the worker reports **that** version; with it absent
-  or unimportable, it reports the baseline and says why
-- Both the Linux and Windows frozen jobs stay green, and the artifact-size change is recorded
-
-#### Out of scope
-
-- The in-app update action itself (`OPS-002`, Phase 4) — this task bundles the baseline and
-  proves the resolution order; downloading and extracting a wheel is separate
-- Trimming the bundle. 972 extractor modules is a size cost worth measuring, but excluding
-  extractors to save space would re-create this defect deliberately
-- Any change to the pin
-
-**Note:** `ai/TESTING.md` §8's release gate re-checks that yt-dlp is still pure Python. This
-task is the other half — that the pure-Python package actually *ships*. Purity without
-inclusion still yields an application that cannot download anything.
 
 ---
 

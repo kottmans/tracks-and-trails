@@ -419,6 +419,52 @@ every report is unactionable.
 
 ---
 
+## REL-002 — `collect_submodules("yt_dlp")` stays, as insurance against a pin we do not have yet
+
+**Status:** **Accepted** (2026-08-04) — maintainer decision, answering `T033-R4`
+**Date:** 2026-08-04
+**Extends:** `REL-001`, which chose frozen self-contained artifacts. This is one line inside that
+choice. **Unblocks:** `T-033`.
+
+### Context
+
+`T033-R4` asked for two collection lines to be decided **separately**, because the evidence for
+them is not the same and treating them together produced a wrong conclusion once already.
+
+- **`collect_data_files("yt_dlp")` is not in question.** Removing it produced a *passing* probe
+  while deleting all three yt-dlp YouTube solver assets — `yt.solver.core.js`,
+  `yt.solver.deno.lib.js`, `yt.solver.bun.lib.js`. That survival proved **the frozen gate is blind
+  to package-data loss**, not that the line is dead. It stays, and extending the probe to load the
+  built-in solver through yt-dlp's real `vendor.load_script` path is `T-033`'s remaining work.
+- **`collect_submodules("yt_dlp")` is genuinely redundant *for this pin*.** A build with it
+  returning `[]` passed, and the pinned `_extractors.py` contains 928 static relative imports, so
+  PyInstaller's analysis finds the extractors without help.
+
+### Decision
+
+**It stays.** The evidence establishes that it is unnecessary for the *current* pin, which is a
+fact about this version of yt-dlp rather than about yt-dlp. Extractor discovery is exactly the kind
+of thing an upstream refactor moves to dynamic imports, and the failure mode if that happens is
+**silent**: a frozen build that has quietly lost extractors, passing a probe that only instantiates
+`YoutubeIE` and checks a URL predicate.
+
+The trade is one line, some build time and some artifact size, against a class of failure the gate
+cannot currently see. That is not a close call while the probe is blind.
+
+### Consequences
+
+- **This is re-evaluated whenever the yt-dlp pin changes**, which `T033-R4` asked for. A pin bump
+  is the moment the redundancy evidence expires, and the evidence is a *negative build* — cheap to
+  repeat, so repeat it rather than assuming.
+- **It is not a substitute for the probe extension.** Keeping this line does nothing about the data
+  blindness `T033-R4` found; the two were separated precisely so that one could not be read as
+  covering the other.
+- **The reason is written here rather than in the spec file.** A comment saying "belt and braces"
+  is what gets deleted by the next person who measures the artifact and finds the line does
+  nothing.
+
+---
+
 ## REL-001 — Ship frozen, self-contained artifacts: no Python required on the user's machine
 
 **Status:** Accepted
