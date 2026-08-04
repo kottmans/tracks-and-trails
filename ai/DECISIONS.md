@@ -2969,6 +2969,35 @@ A control that appears when you find it is not a control.
 - **`T-105` writes `docs/UX_SPEC.md` from this entry**, and this entry is the authority until it
   does.
 
+### Amendment, 2026-08-04 — the toolbar, the state badge, and the selection (`T-130`)
+
+**Status:** **Accepted** (2026-08-04) — maintainer ruling on `T-130`.
+
+**Why this amendment exists at all.** `T-130` compared the shipped window against the **B1-b**
+mockup and found five differences. None was a violation of this entry, because this entry never
+named the toolbar's contents or the row's state chip — which is the *same* gap that produced
+`UX-005` in the first place, when the window's layout lived only in a source comment. So the
+differences were gaps between a mockup and a decision, and the fix is to make the decision say
+what the mockup showed.
+
+**The mockup is now in the repository**, at `docs/mockups/2026-08-03-main-window-b1.html`. This
+entry opens by recording that the previous mockup was lost and that three documents referred to
+one nobody could produce; `T-130` was only findable because that page still existed as a published
+artifact. It will not depend on that again.
+
+| # | Mockup | Ruling |
+|---|---|---|
+| 1 | **`+ Add URLs` first on the toolbar**, as the primary action | **Adopted.** It is the application's primary action and it was reachable only through the File menu. |
+| 2 | *(absent)* — the shipped toolbar also carries `Concurrent downloads:` | **Kept, and recorded here** rather than treated as drift. `ARC-007` put it there deliberately and says Phase 4's settings dialog replaces it; the mockup simply predates that question. |
+| 3 | A **state chip** on the title line — `Done`, `Queued`, `62%`, `Failed` | **Adopted for the Queue tab only.** History is excluded on purpose: every history row is finished, so a chip reading *Done* on all of them is noise rather than information. The chip carries **words**, never colour alone (`NFR-005`). |
+| 4 | Selection as a **light tint plus an inset bar** | **Adopted.** The shipped full-saturation fill passes contrast at 7.64:1, so this is weight rather than legibility — but on a list of finished downloads it dominates every row it touches. |
+| 5 | A status bar carrying **counts and the download folder** | **Declined.** The status bar already has three claimants: `REQ-024`'s environment summary, `NFR-006`'s transient messages, and §9's permanent *"files are never deleted"* promise while History is showing. A fourth, permanent, would crowd the one that is about somebody's files. |
+
+**What this does not change.** Everything in §1–§9 above stands. The row anatomy, the verbs, the
+format control's window, the absence of a per-job pause and of a detail pane are all untouched —
+this amendment adds the toolbar's contents and the state chip to what is recorded, and settles the
+selection's weight.
+
 ### What this does not decide
 
 - Whether there is a whole-queue progress bar. There is none in the accepted design.

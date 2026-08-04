@@ -49,6 +49,18 @@ def themed(qapp: QApplication) -> Iterator[QApplication]:
     qapp.setStyleSheet(previous)
 
 
+@pytest.fixture(params=sorted(theme.THEMES), ids=sorted(theme.THEMES))
+def chosen(request: pytest.FixtureRequest) -> theme.Theme:
+    """Each theme in turn.
+
+    Supplied for `test_lightening_a_row_does_not_make_selected_text_invisible`, which arrived from
+    the reviewer without it and so errored at setup rather than running. Parametrized over both
+    themes because `T130-R1` measured both — 1.14:1 light and 1.33:1 dark — and a palette claim
+    that held in one and not the other would be exactly the half-fix that finding is about.
+    """
+    return theme.THEMES[request.param]
+
+
 def _group_box_rects(box: QGroupBox) -> tuple[QRect, QRect]:
     """Where the style puts this group box's title, and where it puts its contents."""
     option = QStyleOptionGroupBox()
@@ -214,3 +226,101 @@ def test_a_themed_menu_highlights_the_selected_item_in_the_brand_primary(
         )
     finally:
         menu.close()
+
+
+# --- T-130: what the maintainer's 2026-08-04 ruling on UX-005 adopted --------------------------
+
+
+def test_the_row_tint_is_scoped_to_lists_and_the_editor_keeps_a_visible_selection(
+    themed: QApplication,
+) -> None:
+    """`UX-005`'s 2026-08-04 amendment row 4, and `T130-R1`'s correction to how I applied it.
+
+    The ruling wanted a quiet row: a tint plus an inset bar. **I applied it through
+    `QPalette.Highlight`, which is application-wide** — and a row can afford a subtle tint only
+    because it also gets the bar. Selected *text* has no second signal, so a selected URL in the
+    log view came out at **1.14:1** against its own surface: invisible rather than quiet.
+
+    The correction is scope. The sheet tints `QListView, QTreeView, QTableView` and Qt propagates
+    that into those widgets' palettes, so the delegate still reads the tint's pair from
+    `option.palette`; the application palette keeps the brand highlight for everything else.
+
+    *(The first version of this test asserted the **global** palette held the tint — it encoded the
+    defect, which is why it kept passing while a selected URL was unreadable.)*
+    """
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QListView, QPlainTextEdit
+
+    previous = QPalette(themed.palette())
+    view: QListView | None = None
+    editor: QPlainTextEdit | None = None
+    try:
+        theme.apply(themed, theme.LIGHT)
+        view = QListView()
+        editor = QPlainTextEdit()
+        view.show()
+        editor.show()
+        QApplication.processEvents()
+
+        row_fill = view.palette().color(QPalette.ColorRole.Highlight).name()
+        row_text = view.palette().color(QPalette.ColorRole.HighlightedText).name()
+        assert row_fill == theme.LIGHT.selection.lower(), (
+            f"a selected list row fills {row_fill}, not the tint the ruling adopted"
+        )
+        assert theme.contrast_ratio(row_text, row_fill) >= theme.MINIMUM_CONTRAST, (
+            "the delegate reads this pair from option.palette; a selected title must stay legible"
+        )
+
+        selection = editor.palette().color(QPalette.ColorRole.Highlight).name()
+        base = editor.palette().color(QPalette.ColorRole.Base).name()
+        assert theme.contrast_ratio(selection, base) >= theme.MINIMUM_CONTROL_CONTRAST, (
+            f"selected text uses {selection} on {base} — the row's tint escaped into the "
+            "application palette, where there is no inset bar to carry it"
+        )
+    finally:
+        if view is not None:
+            view.close()
+        if editor is not None:
+            editor.close()
+        themed.setPalette(previous)
+
+
+def test_lightening_a_row_does_not_make_selected_text_invisible(
+    qapp: QApplication, chosen: theme.Theme
+) -> None:
+    """Reviewer regression: the application palette also governs text selection.
+
+    T-130 wants a quiet row tint plus an inset bar. A text editor has no inset bar, so exporting
+    that tint through the application-wide ``QPalette.Highlight`` makes a selected URL or log span
+    indistinguishable from the editor surface. Drive the real palette on a real copyable widget:
+    this is the route a user takes before Copy, not arithmetic about a role nothing consumes.
+    """
+    from PySide6.QtGui import QPalette
+    from PySide6.QtWidgets import QPlainTextEdit
+
+    previous_palette = QPalette(qapp.palette())
+    previous_sheet = qapp.styleSheet()
+    editor: QPlainTextEdit | None = None
+    try:
+        theme.apply(qapp, chosen)
+        # `app.py` applies the theme before constructing any widget. Building this first would
+        # retain Qt's original blue highlight and test an ordering the application never takes.
+        editor = QPlainTextEdit()
+        editor.setPlainText("https://example.invalid/a-selected-url")
+        editor.selectAll()
+
+        selected = editor.palette().color(QPalette.ColorRole.Highlight).name()
+        surface = editor.palette().color(QPalette.ColorRole.Base).name()
+        ratio = theme.contrast_ratio(selected, surface)
+
+        assert editor.textCursor().hasSelection(), "the probe has no selected text"
+        assert ratio >= theme.MINIMUM_CONTROL_CONTRAST, (
+            f"{chosen.name}: selected text uses {selected} on {surface}, only {ratio:.2f}:1. "
+            "The row has an inset bar to carry its subtle tint; selected text has no second "
+            "signal, so the application palette must keep that selection visible"
+        )
+    finally:
+        if editor is not None:
+            editor.close()
+        qapp.setPalette(previous_palette)
+        qapp.setStyleSheet(previous_sheet)

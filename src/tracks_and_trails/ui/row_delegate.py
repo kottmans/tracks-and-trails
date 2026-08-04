@@ -103,6 +103,30 @@ PRESET_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 7
 #: which is how the queue uses this delegate without acquiring a control it has no use for.
 PRESET_CHOICES_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 8
 
+#: The **text of the chip on the title line**, or nothing for a surface that draws no chip
+#: (`T-130`, `T130-R3`).
+#:
+#: The queue draws one: `UX-005`'s 2026-08-04 amendment adopts the mockup's chip, because a queue is
+#: a list of rows in *different* states and the state is what the eye is looking for. **History does
+#: not**, and that is the ruling rather than an omission: every history row is finished, so a chip
+#: reading *Done* on all of them is furniture. Absent means no, which is how `HistoryModel` gets the
+#: right answer without knowing the role exists.
+#:
+#: **The text, not a flag** (`T130-R3`). It was a `bool`, and the delegate derived the word itself:
+#: `PROGRESS_ROLE` when there was a fraction, `STATE_ROLE` otherwise. Both halves were wrong, and
+#: neither was fixable here. `UX-005` names the chip's vocabulary — `Done`, `Queued`, `62%`,
+#: `Failed` — and it is *not* the status vocabulary: `STATUS_TEXT` says `Completed`, and a
+#: completed job also reports a fraction of exactly 1.0, so the chip read `100%` on every finished
+#: row. Only the model knows the `JobStatus` that separates "running, so show progress" from
+#: "finished, so show the word", and only the model can spell that word compactly enough for a chip.
+#: So the model says what the chip reads and the delegate only draws it.
+STATE_CHIP_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 13
+
+#: Padding inside the state chip, and its corner radius. Small: it shares the title's line and must
+#: not compete with the title for height.
+CHIP_PADDING: Final = 5
+CHIP_RADIUS: Final = 3
+
 #: Whether this surface **has** a group default a row can defer to (`T126-R4`).
 #:
 #: The staging list does: `UX-004` gives a paste one format and lets a row override it, so *"same
@@ -500,17 +524,47 @@ class RowDelegate(QStyledItemDelegate):
         metrics = painter.fontMetrics()
         line = metrics.height()
 
+        state = _text(index, STATE_ROLE)
+        # **The chip's words are the model's, not this delegate's** (`T-130`, `T130-R3`). Drawn
+        # first so the headline knows how much width is left, and right-aligned on the title's own
+        # line, which is where the mockup puts it and where the eye already is. See
+        # `STATE_CHIP_ROLE` for why deriving the text here could not be made correct.
+        chip_text = index.data(STATE_CHIP_ROLE)
+        chipped = isinstance(chip_text, str) and bool(chip_text)
+        headline_width = area.width()
+        if chipped:
+            chip_width = metrics.horizontalAdvance(chip_text) + 2 * CHIP_PADDING
+            chip = QRect(
+                max(area.right() - chip_width, area.left()),
+                area.top() + (line - metrics.height()) // 2,
+                min(chip_width, area.width()),
+                metrics.height(),
+            )
+            painter.setPen(muted)
+            painter.drawRoundedRect(chip.adjusted(0, 0, -1, -1), CHIP_RADIUS, CHIP_RADIUS)
+            painter.drawText(chip, int(Qt.AlignmentFlag.AlignCenter), chip_text)
+            headline_width = max(chip.left() - GAP - area.left(), 0)
+
         headline = _text(index, HEADLINE_ROLE)
         painter.setPen(primary)
         painter.drawText(
-            QRect(area.left(), area.top(), area.width(), line),
+            QRect(area.left(), area.top(), headline_width, line),
             int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
-            metrics.elidedText(headline, Qt.TextElideMode.ElideRight, area.width()),
+            metrics.elidedText(headline, Qt.TextElideMode.ElideRight, headline_width),
         )
 
-        state = _text(index, STATE_ROLE)
         detail = _text(index, DETAIL_ROLE)
-        second = " — ".join(part for part in (detail, state) if part)
+        # **Dropped from here only when the chip already says exactly it** (`T130-R3`).
+        #
+        # The chip used to take the state off this line unconditionally, on the reasoning that the
+        # same word twice on one row is waste and `NFR-006` wants this width for the extractor's
+        # message. That reasoning holds for `Queued`, where the chip and this line would say the
+        # one word — and it silently stopped holding the moment the chip started reading `62%`,
+        # because then the chip and the stage are *different facts* and dropping the state deleted
+        # `Downloading video` and `Post-processing` from the row altogether. So the test is the one
+        # the original reasoning actually meant: identical text, not merely both present.
+        parts = (detail,) if chipped and state == chip_text else (detail, state)
+        second = " — ".join(part for part in parts if part)
         painter.setPen(muted)
         painter.drawText(
             QRect(area.left(), area.top() + line, area.width(), line),

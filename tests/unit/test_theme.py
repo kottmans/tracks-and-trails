@@ -39,6 +39,10 @@ TEXT_PAIRS = (
     ("muted", "surface"),
     ("muted", "sunken"),
     ("on_primary", "primary"),
+    # A selected row, since `T-130` made it a tint rather than the brand fill. The pair has to be
+    # here for the same reason every other one is: the fill it replaced passed at 7.64:1, and a
+    # lighter background is exactly where a text colour quietly stops clearing the floor.
+    ("on_selection", "selection"),
     ("accent", "surface"),
     ("ok", "surface"),
     ("warn", "surface"),

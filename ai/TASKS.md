@@ -1140,44 +1140,6 @@ beats designing it against an imagined one.
 
 ## Proposed — Phase 3
 
-### T-130 — The shipped window diverges from the mockup that was chosen
-
-**Status:** **Proposed**, 2026-08-04. Found by opening the application beside `UX-005`'s own
-mockup — the third time this session that looking at the screen found what no gate did.
-**Owner:** Planner, then Implementer
-**Priority:** Medium — none of it is a defect in the sense `T-129` is; the application works. It is
-a difference between what was chosen and what shipped, and that difference was never recorded.
-**Phase:** Phase 3
-**Relevant context:** `UX-005` (authority), the **B1-b** mockup, `ARC-007`, `T-124`, `NFR-005`
-**Affected surfaces:** `ui/main_window.py`, `ui/queue_view.py`, `ui/history_view.py`, `ui/theme.py`
-**Risk:** Medium — some of it changes what `T-124` delivered, so it needs a ruling before code
-
-**Compared against B1-b, the option the maintainer chose.** Each row is a difference, not yet a
-decision:
-
-| Mockup | Shipped | Note |
-|---|---|---|
-| **`+ Add URLs` as the primary toolbar button, left-aligned** | absent — only File → Add URLs… | **The largest gap.** The application's primary action is not on its toolbar |
-| — | `Concurrent downloads:` spin box | `ARC-007` put it there; the mockup never showed it. Not wrong, but the toolbar was never designed with it |
-| A state badge on the title line — `Done`, `Queued`, `62%`, `Failed` | no badge | The row says its state in `STATE_ROLE` text; the mock made it a chip at the line's right |
-| Selection as a ~9% tint plus an inset bar | full-saturation `primary` fill | Passes contrast at **7.64:1**, so this is weight rather than legibility |
-| Status bar: `1 running · 1 queued · 1 failed · 1 done` … `~/Downloads` | environment summary only | The counts and the download directory are not shown |
-
-**What this task must not do is assume.** `UX-005` is the authority and it does not name the
-toolbar's contents, so the missing *Add URLs* button is a gap between the mockup and the decision
-rather than a violation of the decision. **The ruling wanted first:** which of these five are
-adopted, and does `UX-005` gain a section recording the toolbar and the row's state badge — the
-same gap that produced `UX-005` in the first place, when the layout lived only in a source comment.
-
-#### Acceptance criteria
-
-- A maintainer ruling exists for each of the five rows above, recorded in `UX-005` or a new
-  `UX-` entry rather than in a commit message
-- Whatever is adopted is asserted by a test, not by a screenshot
-- The mockup is preserved in the repository this time, so the next comparison is possible at all
-
----
-
 *(**UI rework filed 2026-08-02** — `T-116` through `T-120`, from mockups the maintainer reviewed
 and chose between. They precede `T-107`: Phase 3 and 4 add a format table, a stream chooser, a
 playlist picker and a preset editor **to the queue that exists**, so settling what a row is first
@@ -1961,6 +1923,115 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-130 — The shipped window diverges from the mockup that was chosen
+
+**Status:** **Complete — corrected 2026-08-04, awaiting re-review.** Three findings, all closed.
+
+**`T130-R1` (High) — I applied the ruling through the wrong scope.** A *row* can afford a quiet
+tint because it also gets an inset bar; **selected text has no second signal**. Setting
+`QPalette.Highlight` to the tint is application-wide, so a selected URL in the log view measured
+**1.14:1** light and 1.33:1 dark — invisible rather than quiet. *Corrected:* the sheet tints
+`QListView, QTreeView, QTableView` and Qt propagates that into those widgets' palettes, so the
+delegate still reads the tint's pair from `option.palette` (**15.55:1**) while the application
+palette keeps the brand highlight (**7.64:1**, floor 3.0). **My own test asserted the global
+palette held the tint** — it encoded the defect, which is why it passed while a selected URL was
+unreadable; rewritten to assert the scoping in both directions.
+
+**`T130-R3` (Medium) — the running chip showed the worker stage.** The adopted mock reads `62%`
+there. *My first correction derived the chip from `PROGRESS_ROLE` in the delegate, and broke two
+things doing it* — a **second** `T130-R3` in the third pass, authorized by the maintainer on
+2026-08-04 under §10's exhausted-budget rule:
+
+- It **deleted the worker stage from the row.** The chip already took the state off the second
+  line, on the reasoning that one word twice is waste; the moment the chip read `62%` instead of
+  the state, that reasoning stopped holding and `Downloading video` appeared nowhere at all.
+- Every **completed** row read `100%`, because `_fraction` answers exactly 1.0 for `COMPLETED`,
+  where `UX-005` adopted `Done`.
+
+*Corrected at the model.* `STATE_CHIP_ROLE` now carries the chip's **text**, and `QueueModel`
+computes it: a percentage while the status is `RUNNING`, otherwise the compact word from
+`CHIP_TEXT`. The delegate only draws what it is given. This is not where the code started because
+the delegate cannot be made right — `UX-005` names a vocabulary (`Done`, `Queued`, `62%`, `Failed`)
+that is **not** `STATUS_TEXT`'s (`Completed`, `Ready to download`), and only the model knows the
+`JobStatus` that separates "running, so show progress" from "finished, so show the word". The
+second line now drops the state only when the chip says *exactly* it, which is what the original
+reasoning meant. Verified per status against a real model: `RUNNING` chips `62%` and keeps
+`Downloading` on line 2; `COMPLETED` chips `Done`; `QUEUED` and `FAILED` chip their word once.
+
+**The reviewer's two replacement regressions passed vacuously** against the corrected code — they
+supply `STATE_CHIP_ROLE: True`, and with the role carrying text the delegate drew no chip, so the
+compared crops matched because nothing was in them. Amended on the maintainer's instruction to
+supply the chip text, which is what restores their claims; a model-level test now holds the
+vocabulary. *Recorded rather than done quietly, for the same reason as `T130-R2`.*
+
+**`T130-R2` (Medium) — the toolbar's label.** *Corrected via `iconText`*, so one `QAction` reads
+**"+ Add URLs"** on the toolbar and **"Add URLs..."** in the File menu — `T-016` chose that suffix
+for the Windows "opens a dialog" convention, and the amendment adopted a *toolbar* button, not a
+menu label. Measured: the rendered label **and** the accessible name both read "+ Add URLs".
+**The reviewer's assertion read `QAction.text()`**, which is not what `QToolButton` renders; it was
+amended on the maintainer's instruction (2026-08-04) to read the rendered label, and it now pins
+the announced name as well. *Recorded rather than done quietly: rewriting a reviewer's regression
+to pass is not the implementer's to decide, and this one was decided.*
+
+*(The ruling landed as `UX-005`'s
+2026-08-04 amendment; three of the five rows were adopted, one kept-and-recorded, one declined.
+**Adopted:** `+ Add URLs` first on the toolbar (the same `QAction` the File menu holds, not a
+copy); the state chip on the title line **for the Queue tab only**; and a selection that is a tint
+of `primary` over `surface` plus an inset bar rather than the full brand fill.
+**Kept and recorded:** the `Concurrent downloads:` spin box, which `ARC-007` put there and Phase 4
+replaces — the mockup simply predates it.
+**Declined:** status-bar counts. The status bar already carries `REQ-024`'s environment summary,
+`NFR-006`'s transient messages and `DAT-005` §3's permanent file promise; a fourth permanent
+claimant would crowd the one that is about somebody's files.
+**And the mockup is in the repository**, at `docs/mockups/2026-08-03-main-window-b1.html` — the
+third acceptance criterion, and the thing `UX-005` records having lost last time.
+*(This read "Proposed", 2026-08-04. Found by opening the application beside `UX-005`'s own
+mockup — the third time in one session that looking at the screen found what no gate did.)*
+**Owner:** Planner, then Implementer
+**Priority:** Medium — none of it is a defect in the sense `T-129` is; the application works. It is
+a difference between what was chosen and what shipped, and that difference was never recorded.
+**Phase:** Phase 3
+**Relevant context:** `UX-005` (authority), the **B1-b** mockup, `ARC-007`, `T-124`, `NFR-005`
+**Affected surfaces:** `ui/main_window.py`, `ui/queue_view.py`, `ui/history_view.py`, `ui/theme.py`
+**Risk:** Medium — some of it changes what `T-124` delivered, so it needs a ruling before code
+
+**Compared against B1-b, the option the maintainer chose.** Each row is a difference, not yet a
+decision:
+
+| Mockup | Shipped | Note |
+|---|---|---|
+| **`+ Add URLs` as the primary toolbar button, left-aligned** | absent — only File → Add URLs… | **The largest gap.** The application's primary action is not on its toolbar |
+| — | `Concurrent downloads:` spin box | `ARC-007` put it there; the mockup never showed it. Not wrong, but the toolbar was never designed with it |
+| A state badge on the title line — `Done`, `Queued`, `62%`, `Failed` | no badge | The row says its state in `STATE_ROLE` text; the mock made it a chip at the line's right |
+| Selection as a ~9% tint plus an inset bar | full-saturation `primary` fill | Passes contrast at **7.64:1**, so this is weight rather than legibility |
+| Status bar: `1 running · 1 queued · 1 failed · 1 done` … `~/Downloads` | environment summary only | The counts and the download directory are not shown |
+
+**What this task must not do is assume.** `UX-005` is the authority and it does not name the
+toolbar's contents, so the missing *Add URLs* button is a gap between the mockup and the decision
+rather than a violation of the decision. **The ruling wanted first:** which of these five are
+adopted, and does `UX-005` gain a section recording the toolbar and the row's state badge — the
+same gap that produced `UX-005` in the first place, when the layout lived only in a source comment.
+
+#### Acceptance criteria
+
+- A maintainer ruling exists for each of the five rows above, recorded in `UX-005` or a new
+  `UX-` entry rather than in a commit message — **met**, `UX-005`'s 2026-08-04 amendment, and it
+  records the declined row and the reason as well as the adopted ones
+- Whatever is adopted is asserted by a test, not by a screenshot — **met**: four tests, four
+  mutations killed. The toolbar one asserts *first*, not merely present, because the ruling is
+  about primacy and an Add button after *Clear finished* would pass a weaker assertion
+- The mockup is preserved in the repository this time — **met**
+
+#### What the chip did not take from the mockup, and why
+
+The mock colours the chip per state — gold for running, red for failed. **Not adopted.** The
+delegate has the state's *words* and not its status, so a colour would need a second role carrying
+semantics into the one place `NFR-005` is hardest to police. The chip is drawn in the row's muted
+colour with a border, and the words are what distinguish the states. If the colour is wanted it is
+a deliberate follow-on, not something to acquire by accident.
+
+---
 
 ### T-131 — The launch test used the developer's real database, log and instance lock
 

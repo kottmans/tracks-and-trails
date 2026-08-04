@@ -66,6 +66,12 @@ APP_SLUG: Final = "tracksandtrails"
 QUEUE_TAB: Final = "Queue"
 HISTORY_TAB: Final = "History"
 
+#: What the toolbar's primary action reads (`UX-005`'s 2026-08-04 amendment, `T-130`).
+#:
+#: The B1-b mockup names it exactly this. It is the action's `iconText`, not its `text`: the File
+#: menu keeps *"Add URLs..."*, where a leading `+` would be a convention nobody uses.
+ADD_URLS_BUTTON: Final = "+ Add URLs"
+
 #: `DAT-005` §3, in one place so the status bar and the confirmation cannot come to disagree.
 HISTORY_KEEPS_FILES: Final = "Files are never deleted — this list is a record, not your downloads."
 
@@ -307,6 +313,8 @@ class MainWindow(QMainWindow):
         #: What is left is queue-*wide* and unambiguous whichever tab is showing.
         self._pause: QAction | None = None
         self._clear: QAction | None = None
+        #: The toolbar's copy of File → Add URLs…, or `None` on a window with no control bar.
+        self._add_urls_button: QAction | None = None
         if concurrency is not None:
             self._build_concurrency_control(concurrency)
         self._environment = QLabel(self)
@@ -747,6 +755,24 @@ class MainWindow(QMainWindow):
         bar = QToolBar("Queue", self)
         bar.setObjectName("queueToolBar")
         bar.setMovable(False)
+        # **The primary action comes first** (`UX-005`'s 2026-08-04 amendment, `T-130`). The B1-b
+        # mockup opens the toolbar with it and the shipped window had it only under File — so the
+        # one thing this application exists to do was the one thing not on its toolbar. The action
+        # object is the menu's, not a copy: `T-016`'s enabled state and its status tip are the
+        # reasons it is disabled when composition supplied no manager, and two actions would be two
+        # places for that to be got right.
+        self._add_urls_button = self._add_action
+        if self._add_urls_button is not None:
+            # **The mockup's label, without putting a `+` in the File menu** (`T130-R2`).
+            # `QToolButton` renders `iconText()` in preference to `text()`, so one `QAction` can
+            # read *"+ Add URLs"* on the toolbar and *"Add URLs..."* in the menu — which is what
+            # the amendment adopted and what the menu convention wants, and it keeps the single
+            # action the enabled state depends on. The style is stated rather than inherited,
+            # because a default that changed would silently take the label with it.
+            self._add_urls_button.setIconText(ADD_URLS_BUTTON)
+            bar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
+            bar.addAction(self._add_urls_button)
+            bar.addSeparator()
         # Not closable: a control the user can hide and then not find is worse than a control
         # they ignore, and this is the only way to change the limit until Phase 4's dialog.
         bar.toggleViewAction().setVisible(False)
@@ -899,6 +925,16 @@ class MainWindow(QMainWindow):
             self._on_clear_requested()
 
     @property
+    def add_urls_action(self) -> QAction | None:
+        """The toolbar's *Add URLs…*, if this window was given a control bar (`T-130`).
+
+        **The same `QAction` the File menu holds**, not a second one. `T-016` disables it, and says
+        why in a status tip, when composition supplied no manager — and two actions would be two
+        places for that to stay true.
+        """
+        return self._add_urls_button
+
+    @property
     def pause_action(self) -> QAction | None:
         """The queue's pause toggle, if this window was given a control bar."""
         return self._pause
@@ -967,6 +1003,8 @@ class MainWindow(QMainWindow):
         )
         add_action.triggered.connect(self.open_add_dialog)
         file_menu.addAction(add_action)
+        #: Held so the toolbar can show the *same* action rather than a second one (`T-130`).
+        self._add_action = add_action
         file_menu.addSeparator()
 
         quit_action = QAction("&Quit", self)

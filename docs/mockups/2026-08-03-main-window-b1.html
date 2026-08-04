@@ -1,0 +1,396 @@
+<!--
+  The main window mockup, round four — B1-a / B1-b / B1-c, and the decision.
+
+  PRESERVED IN THE REPOSITORY DELIBERATELY (`T-130`, acceptance criterion 3).
+
+  `UX-005` exists because the window's layout once lived only in a source comment, and it opens by
+  recording that "the original mockup is gone and the repository never recorded what it showed" —
+  three documents referred to mockups the maintainer had reviewed and chosen between, and none of
+  them was in the repository. `T-130` was then found by comparing the shipped window against *this*
+  page, which at that point existed only as a published artifact. A second loss would have made the
+  same comparison impossible a second time.
+
+  So this is the authored source of that page, byte-for-byte apart from the publishing runtime that
+  wrapped it. **B1-b is the option that was chosen**, on 2026-08-03; the other two are kept because
+  the decision at the end argues against them by name, and an argument with its alternatives
+  removed is not a record of a decision.
+
+  Open it in any browser. It needs nothing.
+
+  Divergences between this and what shipped are `T-130`'s table, and the maintainer's ruling on
+  each is recorded in `UX-005`'s 2026-08-04 amendment — not here. This file is the artefact, not
+  the authority.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tracks &amp; Trails — the main window: finishing B</title>
+
+<style>
+  :root{
+    --page:#EDF1EC; --ink:#101A14; --ink-soft:#3D4C43; --ink-mute:#5A6A60; --hair:#D5DED7;
+    --good:#14503C; --bad:#8C3D29; --warn:#7A5410;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --page:#06100C;--ink:#E7EFE9;--ink-soft:#B4C4BA;--ink-mute:#7F9187;--hair:#21382E;
+    --good:#7FC7A6;--bad:#E09480;--warn:#D9A24C;}}
+  :root[data-theme="dark"]{--page:#06100C;--ink:#E7EFE9;--ink-soft:#B4C4BA;--ink-mute:#7F9187;
+    --hair:#21382E;--good:#7FC7A6;--bad:#E09480;--warn:#D9A24C;}
+  :root[data-theme="light"]{--page:#EDF1EC;--ink:#101A14;--ink-soft:#3D4C43;--ink-mute:#5A6A60;
+    --hair:#D5DED7;--good:#14503C;--bad:#8C3D29;--warn:#7A5410;}
+
+  .app{
+    --w:#F5F7F4; --s:#FFFFFF; --k:#EAEFE9; --t:#101A14; --m:#5A6A60;
+    --r:#D5DED7; --b:#748A7E; --p:#1E5E47; --op:#FFFFFF; --a:#8A6412;
+    background:var(--w); color:var(--t); border:1px solid var(--b); border-radius:6px;
+    overflow:hidden; font-size:12px; line-height:1.4;
+  }
+
+  body{margin:0;background:var(--page);color:var(--ink);font-family:var(--sans);font-size:16px;
+       line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  .page{max-width:1240px;margin:0 auto;padding:clamp(1.5rem,4vw,3.5rem) clamp(1rem,4vw,2rem) 5rem;
+        display:flex;flex-direction:column;gap:clamp(2rem,4vw,3rem)}
+  h1{font-size:clamp(1.6rem,4vw,2.3rem);line-height:1.1;letter-spacing:-.02em;font-weight:650;
+     margin:0;text-wrap:balance}
+  h2{font-size:clamp(1rem,2.2vw,1.25rem);letter-spacing:-.01em;font-weight:650;margin:0}
+  h3{font-size:.88rem;font-weight:650;margin:0}
+  p{margin:0;max-width:68ch}
+  .lede{color:var(--ink-soft);font-size:1.02rem}
+  .eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;
+           color:var(--ink-mute);margin:0}
+  code{font-family:var(--mono);font-size:.87em}
+  section{display:flex;flex-direction:column;gap:1rem}
+  .head{display:flex;flex-direction:column;gap:.3rem}
+  .note{font-size:.87rem;color:var(--ink-mute);border-left:2px solid var(--hair);
+        padding-left:.85rem;max-width:68ch}
+
+  .opt{display:flex;flex-direction:column;gap:.55rem}
+
+  .titlebar{padding:.38rem .6rem;background:var(--k);border-bottom:1px solid var(--r);
+            font-weight:600;font-size:11px;display:flex;align-items:center;gap:.4rem}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--p);flex:none}
+  .toolbar{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;padding:.35rem .5rem;
+           background:var(--s);border-bottom:1px solid var(--r)}
+  .tabs{display:flex;gap:.15rem;padding:.3rem .5rem 0;background:var(--k);
+        border-bottom:1px solid var(--r)}
+  .tab{padding:.26rem .7rem;font-size:10.5px;border:1px solid var(--r);border-bottom:none;
+       border-radius:4px 4px 0 0;background:var(--k);color:var(--m);position:relative;top:1px}
+  .tab.on{background:var(--s);color:var(--t);font-weight:650;border-bottom:1px solid var(--s)}
+  .tab .count{font-family:var(--mono);font-size:9px;color:var(--m);margin-left:.3rem}
+  .tab.on .count{color:var(--p)}
+
+  .t{border-radius:3px;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}
+  .t.r1{background:linear-gradient(140deg,#1d3f63,#3f7ea8)}
+  .t.r2{background:linear-gradient(140deg,#4a3b1f,#a5793a)}
+  .t.r3{background:linear-gradient(140deg,#26402c,#5c8a52)}
+  .t.r4{background:linear-gradient(140deg,#3d2436,#8a5675)}
+  .t.lg{width:56px;height:32px}
+
+  .title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sub{color:var(--m);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .state{font-size:8.5px;font-family:var(--mono);letter-spacing:.04em;text-transform:uppercase;
+         padding:.03rem .28rem;border-radius:3px;border:1px solid var(--p);color:var(--p);flex:none}
+  .state.run{border-color:var(--a);color:var(--a)}
+  .state.err{border-color:#8C3D29;color:#8C3D29}
+  .state.done{border-color:var(--p);color:var(--p);background:color-mix(in srgb,#1E5E47 10%,transparent)}
+  .pick{display:inline-flex;align-items:center;gap:.24rem;border:1px solid var(--b);
+        border-radius:3px;padding:.07rem .3rem;background:var(--s);color:var(--t);font-size:10px;
+        white-space:nowrap}
+  .pick.own{border-color:var(--a);color:var(--a);font-weight:600}
+  .pick .caret{font-size:6.5px;color:var(--m)}
+  .asText{font-size:10px;color:var(--m)}
+  .asText b{color:var(--t);font-weight:600}
+
+  .prog{height:3px;background:color-mix(in srgb,var(--t) 12%,transparent);border-radius:2px;
+        overflow:hidden}
+  .prog i{display:block;height:100%;background:var(--p)}
+  .prog.tall{height:5px;border-radius:3px}
+
+  .rowB{display:flex;gap:.6rem;padding:.5rem .55rem;border-bottom:1px solid var(--r);
+        background:var(--s);align-items:flex-start;position:relative}
+  .rowB:last-of-type{border-bottom:none}
+  .rowB .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:.2rem}
+  .rowB .line{display:flex;align-items:baseline;gap:.4rem}
+
+  .btn{display:inline-flex;align-items:center;padding:.2rem .45rem;border:1px solid var(--b);
+       border-radius:4px;font-size:10.5px;background:var(--s);color:var(--t);white-space:nowrap}
+  .btn.primary{background:var(--p);border-color:var(--p);color:var(--op);font-weight:600}
+  .btn.icon{padding:.16rem .34rem}
+  .spacer{flex:1 1 auto}
+  .statusbar{padding:.3rem .6rem;background:var(--k);border-top:1px solid var(--r);
+             font-size:10px;color:var(--m);font-family:var(--mono);display:flex;gap:.8rem}
+
+  .table-card{border:1px solid var(--hair);border-radius:5px;overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:.87rem;min-width:640px}
+  th,td{text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--hair);vertical-align:top}
+  thead th{font-size:.67rem;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-mute);
+           background:color-mix(in srgb,var(--ink) 5%,transparent)}
+  tbody tr:last-child td{border-bottom:none}
+  .ok{color:var(--good);font-weight:600} .no{color:var(--bad);font-weight:600}
+  .warnv{color:var(--warn);font-weight:600}
+
+  .callout{border:1px solid var(--hair);border-left:3px solid var(--accent,var(--warn));
+           border-radius:4px;padding:.9rem 1.05rem;display:flex;flex-direction:column;gap:.5rem;
+           background:color-mix(in srgb,var(--ink) 3%,transparent)}
+  .callout h3{color:var(--accent,var(--warn))}
+  .callout ul{margin:0;padding-left:1.1rem;display:flex;flex-direction:column;gap:.3rem;
+              font-size:.92rem;color:var(--ink-soft)}
+
+  footer{border-top:1px solid var(--hair);padding-top:1rem;font-family:var(--mono);font-size:.72rem;
+         color:var(--ink-mute);display:flex;flex-wrap:wrap;gap:.3rem 1.2rem}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+
+  .gut{display:flex;gap:.25rem;align-self:center;justify-content:flex-end}
+  .gut.fixed{width:7.2rem}
+  .gut.icons{width:5.4rem}
+  .actline{display:flex;align-items:center;gap:.35rem;width:100%}
+  .actline .sp{flex:1 1 auto}
+</style>
+</head>
+<body>
+
+<div class="page">
+
+  <header class="head">
+    <p class="eyebrow">Tracks &amp; Trails · the main window · round four · deciding</p>
+    <h1>B1, three ways — and a recommendation</h1>
+    <p class="lede">Settled: <strong>tabs</strong>, <strong>no detail pane</strong>, a comfortable
+      row, <strong>every applicable verb visible without hovering</strong>, the format control only
+      while it can still change, and <strong>no per-job pause</strong>. What is left is where the
+      buttons sit — which is B1's one weak spot, because the number of verbs changes with the row's
+      state and the gutter changes width with it.</p>
+  </header>
+
+  <section>
+    <div class="head">
+      <h2>B1-a · icon gutter, fixed width</h2>
+      <p class="lede">Same verbs, drawn as icons. The gutter is one width for every state, so the
+        titles line up down the list.</p>
+    </div>
+    <div class="opt">
+      <div class="app">
+        <div class="titlebar"><span class="dot"></span>Tracks &amp; Trails</div>
+        <div class="toolbar"><span class="btn primary">+ Add URLs</span><span class="spacer"></span><span class="btn">⏸ Pause queue</span><span class="btn">Clear finished</span></div>
+        <div class="tabs"><span class="tab on">Queue <span class="count">4</span></span><span class="tab">History <span class="count">128</span></span></div>
+        <div class="rowB">
+          <span class="t lg r1"></span>
+          <span class="body">
+            <span class="line"><span class="title" style="flex:1">Cairngorms trail run</span><span class="state run">62%</span></span>
+            <span class="sub">Hill &amp; Bothy · 12:04 · <b>8.4 MB</b> of 13.5 MB · 2.1 MB/s · 3 s left</span>
+            <span class="prog tall"><i style="width:62%"></i></span>
+            <span class="asText">as <b>Best video</b></span>
+          </span>
+          <span class="gut icons"><span class="btn icon">✕</span><span class="btn icon">⋯</span></span>
+        </div>
+        <div class="rowB">
+          <span class="t lg r3"></span>
+          <span class="body">
+            <span class="line"><span class="title" style="flex:1">Winter skills: ice axe</span><span class="state">Queued</span></span>
+            <span class="sub">Cairn &amp; Compass · 31:20 · 2nd in line</span>
+            <span><span class="asText">as </span><span class="pick own">Audio (MP3) <span class="caret">▼</span></span></span>
+          </span>
+          <span class="gut icons"><span class="btn icon">↑</span><span class="btn icon">↓</span><span class="btn icon">✕</span><span class="btn icon">⋯</span></span>
+        </div>
+        <div class="rowB">
+          <span class="t lg r4"></span>
+          <span class="body">
+            <span class="line"><span class="title" style="flex:1">Wild camping gear 2026</span><span class="state err">Failed</span></span>
+            <span class="sub" style="color:#8C3D29;white-space:normal">Video unavailable. This video is private.</span>
+            <span><span class="asText">as </span><span class="pick">Best video <span class="caret">▼</span></span></span>
+          </span>
+          <span class="gut icons"><span class="btn icon">↻</span><span class="btn icon">🗑</span><span class="btn icon">⋯</span></span>
+        </div>
+        <div class="rowB">
+          <span class="t lg r2"></span>
+          <span class="body">
+            <span class="line"><span class="title" style="flex:1">Packing for the WHW</span><span class="state done">Done</span></span>
+            <span class="sub">~/Downloads/Packing for the WHW.mp4 · 10.2 MB</span>
+            <span class="asText">as <b>Best video</b> · 137+140</span>
+          </span>
+          <span class="gut icons"><span class="btn icon">▶</span><span class="btn icon">📂</span><span class="btn icon">⋯</span></span>
+        </div>
+        <div class="statusbar"><span>1 running · 1 queued · 1 failed · 1 done</span><span class="spacer"></span><span>~/Downloads</span></div>
+      </div>
+      <p class="note"><strong>Compact and aligned</strong>, and the one that asks the most of the
+        user: an icon is a guess until you hover it. Every one needs an accessible name for
+        <code>NFR-005</code> anyway, so a tooltip is free — but a tooltip is not a label.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>B1-b · the verbs share the format line <em>— CHOSEN</em></h2>
+      <p class="lede">No gutter at all. The third line already exists to say <em>as Best video</em>;
+        the buttons sit at its right end. The title gets the full row width.</p>
+    </div>
+    <div class="opt">
+      <div class="app">
+        <div class="titlebar"><span class="dot"></span>Tracks &amp; Trails</div>
+        <div class="toolbar"><span class="btn primary">+ Add URLs</span><span class="spacer"></span><span class="btn">⏸ Pause queue</span><span class="btn">Clear finished</span></div>
+        <div class="tabs"><span class="tab on">Queue <span class="count">4</span></span><span class="tab">History <span class="count">128</span></span></div>
+        <div class="rowB">
+          <span class="t lg r1"></span>
+          <span class="body">
+            <span class="line"><span class="title" style="flex:1">Cairngorms trail run</span><span class="state run">62%</span></span>
+            <span class="sub">Hill &amp; Bothy · 12:04 · <b>8.4 MB</b> of 13.5 MB · 2.1 MB/s · 3 s left</span>
+            <span class="prog tall"><i style="width:62%"></i></span>
+            <span class="actline"><span class="asText">as <b>Best video</b></span><span class="sp"></span>
+              <span class="btn">Cancel</span><span class="btn icon">⋯</span></span>
+          </span>
+        </div>
+        <div class="rowB">
+          <span class="t lg r3"></span>
+          <span class="body">
+            <span class="line"><span class="title" style="flex:1">Winter skills: ice axe</span><span class="state">Queued</span></span>
+            <span class="sub">Cairn &amp; Compass · 31:20 · 2nd in line</span>
+            <span class="actline"><span class="asText">as </span><span class="pick own">Audio (MP3) <span class="caret">▼</span></span><span class="sp"></span>
+              <span class="btn icon">↑</span><span class="btn icon">↓</span><span class="btn">Cancel</span><span class="btn icon">⋯</span></span>
+          </span>
+        </div>
+        <div class="rowB">
+          <span class="t lg r4"></span>
+          <span class="body">
+            <span class="line"><span class="title" style="flex:1">Wild camping gear 2026</span><span class="state err">Failed</span></span>
+            <span class="sub" style="color:#8C3D29;white-space:normal">Video unavailable. This video is private and cannot be downloaded without an account.</span>
+            <span class="actline"><span class="asText">as </span><span class="pick">Best video <span class="caret">▼</span></span><span class="sp"></span>
+              <span class="btn">Retry</span><span class="btn">Remove</span><span class="btn icon">⋯</span></span>
+          </span>
+        </div>
+        <div class="rowB">
+          <span class="t lg r2"></span>
+          <span class="body">
+            <span class="line"><span class="title" style="flex:1">Packing for the WHW</span><span class="state done">Done</span></span>
+            <span class="sub">~/Downloads/Packing for the WHW.mp4 · 10.2 MB</span>
+            <span class="actline"><span class="asText">as <b>Best video</b> · 137+140</span><span class="sp"></span>
+              <span class="btn">Open</span><span class="btn">Show in folder</span><span class="btn icon">⋯</span></span>
+          </span>
+        </div>
+        <div class="statusbar"><span>1 running · 1 queued · 1 failed · 1 done</span><span class="spacer"></span><span>~/Downloads</span></div>
+      </div>
+      <p class="note"><strong>Nothing was added to fit the buttons.</strong> The row is the same
+        height as B1 and the title never competes with a gutter — so a long name gets the whole
+        width, and the failed row wraps the extractor's own words in full, which is what
+        <code>NFR-006</code> asks for. The verbs move left and right as they change, which is the
+        trade against B1-a's fixed column.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="head">
+      <h2>B1-c · labelled gutter, reserved to one width</h2>
+      <p class="lede">B1 exactly as you saw it, with the gutter padded to the widest state so it
+        stops moving. Words on every button.</p>
+    </div>
+    <div class="opt">
+      <div class="app">
+        <div class="titlebar"><span class="dot"></span>Tracks &amp; Trails</div>
+        <div class="toolbar"><span class="btn primary">+ Add URLs</span><span class="spacer"></span><span class="btn">⏸ Pause queue</span><span class="btn">Clear finished</span></div>
+        <div class="tabs"><span class="tab on">Queue <span class="count">4</span></span><span class="tab">History <span class="count">128</span></span></div>
+        <div class="rowB">
+          <span class="t lg r1"></span>
+          <span class="body">
+            <span class="line"><span class="title" style="flex:1">Cairngorms trail run</span><span class="state run">62%</span></span>
+            <span class="sub">Hill &amp; Bothy · 12:04 · <b>8.4 MB</b> of 13.5 MB · 2.1 MB/s</span>
+            <span class="prog tall"><i style="width:62%"></i></span>
+            <span class="asText">as <b>Best video</b></span>
+          </span>
+          <span class="gut fixed"><span class="btn">Cancel</span><span class="btn icon">⋯</span></span>
+        </div>
+        <div class="rowB">
+          <span class="t lg r3"></span>
+          <span class="body">
+            <span class="line"><span class="title" style="flex:1">Winter skills: ice axe</span><span class="state">Queued</span></span>
+            <span class="sub">Cairn &amp; Compass · 31:20 · 2nd in line</span>
+            <span><span class="asText">as </span><span class="pick own">Audio (MP3) <span class="caret">▼</span></span></span>
+          </span>
+          <span class="gut fixed"><span class="btn icon">↑</span><span class="btn icon">↓</span><span class="btn">Cancel</span><span class="btn icon">⋯</span></span>
+        </div>
+        <div class="rowB">
+          <span class="t lg r4"></span>
+          <span class="body">
+            <span class="line"><span class="title" style="flex:1">Wild camping gear 2026</span><span class="state err">Failed</span></span>
+            <span class="sub" style="color:#8C3D29;white-space:normal">Video unavailable. This video is private.</span>
+            <span><span class="asText">as </span><span class="pick">Best video <span class="caret">▼</span></span></span>
+          </span>
+          <span class="gut fixed"><span class="btn">Retry</span><span class="btn icon">⋯</span></span>
+        </div>
+        <div class="rowB">
+          <span class="t lg r2"></span>
+          <span class="body">
+            <span class="line"><span class="title" style="flex:1">Packing for the WHW</span><span class="state done">Done</span></span>
+            <span class="sub">~/Downloads/Packing for the WHW.mp4 · 10.2 MB</span>
+            <span class="asText">as <b>Best video</b> · 137+140</span>
+          </span>
+          <span class="gut fixed"><span class="btn">Open</span><span class="btn icon">⋯</span></span>
+        </div>
+        <div class="statusbar"><span>1 running · 1 queued · 1 failed · 1 done</span><span class="spacer"></span><span>~/Downloads</span></div>
+      </div>
+      <p class="note"><strong>Steady, and it costs width permanently.</strong> Reserving the gutter
+        means the widest state — the queued row's four controls — sets it for every row, so a
+        running row pays for buttons it does not have. Secondary verbs move into ⋯ to keep that
+        reservation affordable.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="head"><h2>Side by side</h2></div>
+    <div class="table-card">
+      <table>
+        <thead><tr><th style="width:30%"></th><th>a · icons</th><th>b · on the format line</th><th>c · reserved gutter</th></tr></thead>
+        <tbody>
+          <tr><th>Row height</th><td class="ok">~74 px</td><td class="ok">~74 px</td><td class="ok">~74 px</td></tr>
+          <tr><th>Width left for the title</th><td class="warnv">−5.4 rem</td><td class="ok">full</td><td class="no">−7.2 rem</td></tr>
+          <tr><th>Verbatim error in full</th><td class="warnv">wraps, narrowed</td><td class="ok">wraps, full width</td><td class="warnv">wraps, narrowed</td></tr>
+          <tr><th>Buttons in the same place every row</th><td class="ok">yes</td><td class="no">they shift</td><td class="ok">yes</td></tr>
+          <tr><th>Readable without hovering</th><td class="no">icons only</td><td class="ok">words</td><td class="ok">words</td></tr>
+          <tr><th>Narrow window</th><td class="ok">fine</td><td class="warnv">buttons wrap under</td><td class="no">gutter dominates</td></tr>
+          <tr><th>History reuses it</th><td class="ok">yes</td><td class="ok">yes</td><td class="ok">yes</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="head"><h2>The decision</h2></div>
+    <p><strong>B1-b — the verbs share the format line.</strong> It is the only one of the three that
+      costs nothing: same row height, full width for the title, and the failed row can show the
+      extractor's message in full, which <code>NFR-006</code> requires and the other two narrow.
+      The buttons shifting position between states is a real cost and the smaller one — they are
+      always at the right end of a line the eye is already on, and they are words rather than
+      glyphs.</p>
+    <p>If the shifting bothers you in practice, <strong>B1-c</strong> is the fallback and needs no
+      redesign: reserve the gutter, move secondary verbs into ⋯. <strong>B1-a</strong> I would not
+      take — icons for <em>Retry</em> and <em>Remove</em> sitting next to each other is a mistake
+      waiting to happen, and no tooltip prevents it.</p>
+    <div class="callout" style="--accent:var(--good)">
+      <h3>What this settles, if you agree</h3>
+      <ul>
+        <li><strong>Queue and History are tabs</strong>; there is no detail pane; rows carry everything.</li>
+        <li><strong>Every applicable verb is visible</strong> on the row's last line, with ⋯ for the rest. Nothing is drawn disabled and nothing is drawn that would be refused.</li>
+        <li><strong>The format control appears only while <code>retarget()</code> would accept it</strong> — queued and waiting rows, plain text once running.</li>
+        <li><strong>There is no per-job pause.</strong> <em>Pause queue</em> is a toolbar verb; the status bar says what pausing actually does; a waiting row reads <em>Held</em>, never <em>Paused</em>.</li>
+        <li><strong>History rows are the same rows</strong>, and removal is selection-scoped with <em>files are never deleted</em> carried in the status bar.</li>
+      </ul>
+    </div>
+    <p class="note"><strong>One thing I have flipped once and want confirmed:</strong> a finished
+      download <em>stays</em> in the Queue tab, with Open and Show in folder, until <em>Clear
+      finished</em> moves it on. It is drawn that way above. The alternative — leaving for History
+      the moment it completes — is defensible, and it means the tab you are looking at stops
+      answering "did it work".</p>
+  </section>
+
+  <footer>
+    <span>Row anatomy: T-119, UX-004 option C</span>
+    <span>Pause semantics: UX-001, T-080</span>
+    <span>Retarget: T-075</span>
+    <span>Nothing here is built yet</span>
+    <span>2026-08-03</span>
+  </footer>
+</div>
+
+</body>
+</html>

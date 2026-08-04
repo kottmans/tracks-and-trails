@@ -19,7 +19,7 @@ from typing import Any
 
 import pytest
 from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QContextMenuEvent, QFontMetrics
+from PySide6.QtGui import QAccessible, QContextMenuEvent, QFontMetrics
 from PySide6.QtWidgets import QApplication, QComboBox, QMenu, QMessageBox
 
 from tracks_and_trails.core import presets
@@ -42,6 +42,7 @@ from tracks_and_trails.ui.row_delegate import (
     PRESET_ROLE,
     ROW_PRESET_NAME,
     SELECTOR_ROLE,
+    STATE_CHIP_ROLE,
     RowDelegate,
 )
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
@@ -1450,4 +1451,145 @@ def test_a_queue_editor_does_not_offer_an_inapplicable_group_default(
     assert editor.findText(INHERITED_TEXT) == -1, (
         f"the queue offers {INHERITED_TEXT!r}, but it has no group default to restore and its "
         "model refuses the entry's value"
+    )
+
+
+# --- T-130: the mockup divergences the maintainer adopted --------------------------------------
+
+
+def test_add_urls_is_the_first_thing_on_the_toolbar(qapp: QApplication, tmp_path: Path) -> None:
+    """`UX-005`'s 2026-08-04 amendment, row 1 (`T-130`).
+
+    The B1-b mockup opens the toolbar with `+ Add URLs` as the primary action. The shipped window
+    had it under File and nowhere else — so the one thing this application exists to do was the one
+    thing not on its toolbar.
+
+    **Asserted as the first action**, not merely as present: the ruling is about primacy, and an
+    Add button appended after *Clear finished* would satisfy "it is on the toolbar" while missing
+    what the mockup was showing.
+    """
+    from PySide6.QtWidgets import QToolBar, QToolButton
+
+    window = _window_over([_job("job-1", 0)], tmp_path)
+    bar = window.findChild(QToolBar, "queueToolBar")
+    assert bar is not None
+
+    named = [action.objectName() for action in bar.actions() if action.objectName()]
+    assert named and named[0] == "actionAddUrls", (
+        f"the toolbar starts with {named[:1]}; UX-005's amendment puts the primary action first"
+    )
+    # **Read what the toolbar renders, not `QAction.text()`** (`T130-R2`, amended 2026-08-04 on
+    # the maintainer's instruction). `QToolButton` draws `iconText()` in preference to `text()`,
+    # which is how one `QAction` reads *"+ Add URLs"* here and *"Add URLs..."* in the File menu —
+    # `T-016` chose that suffix for the Windows "opens a dialog" convention, and the amendment
+    # adopted a *toolbar* button rather than a menu label. `text()` is a proxy for what the user
+    # sees; the rendered label and the accessible name are the thing itself, and both read
+    # "+ Add URLs" (measured).
+    button = bar.widgetForAction(bar.actions()[0])
+    # `widgetForAction` is typed as `QWidget`; a toolbar renders an action as a `QToolButton`, and
+    # narrowing here is what lets the label be read rather than assumed.
+    assert isinstance(button, QToolButton)
+    visible = button.text().replace("&", "")
+    assert visible.startswith("+ Add URLs"), (
+        f"the primary toolbar button reads {visible!r}; the adopted mock and UX-005 amendment "
+        "name it '+ Add URLs', not merely an Add action in the first slot"
+    )
+    announced = QAccessible.queryAccessibleInterface(button)
+    assert announced.text(QAccessible.Text.Name).startswith("+ Add URLs"), (
+        "the button is announced as something other than what it draws, which is the split "
+        "`NFR-005` exists to prevent"
+    )
+    assert window.add_urls_action is not None
+
+
+def test_the_toolbar_and_the_menu_share_one_add_action(qapp: QApplication, tmp_path: Path) -> None:
+    """One `QAction`, two places it appears — not two actions (`T-130`).
+
+    `T-016` disables this action, and explains why in a status tip, when composition supplied no
+    manager. A second action would be a second place for that to keep being true, and the first
+    time they differed a user would get a button that opens a dialog with nothing behind it.
+    """
+    window = _window_over([_job("job-1", 0)], tmp_path)
+    from PySide6.QtGui import QAction
+
+    menu_actions = [
+        action for action in window.findChildren(QAction) if action.objectName() == "actionAddUrls"
+    ]
+    assert len(menu_actions) == 1, (
+        f"{len(menu_actions)} Add URLs actions exist; the toolbar must show the menu's, not a copy"
+    )
+    assert window.add_urls_action is menu_actions[0]
+
+
+def test_a_queue_row_asks_for_a_state_chip_and_a_history_row_does_not(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`UX-005`'s 2026-08-04 amendment, row 3 (`T-130`) — adopted for the Queue tab **only**.
+
+    A queue is a list of rows in different states, and the state is what the eye hunts for. Every
+    history row is finished, so the same chip there would read *Done* on all of them and become
+    furniture. That asymmetry is the ruling, so it is asserted on both surfaces rather than one.
+
+    Through the role the shared delegate reads, because that is what decides the drawing — and
+    `HistoryModel` answers nothing at all, which is how a model gets the right answer without
+    knowing the role exists.
+    """
+    window = _window_over([_job("job-1", 0)], tmp_path, history=_OneRecordHistory())
+    queue = window.queue_view
+    history = window.history_view
+    assert queue is not None and history is not None
+
+    chip = queue.model.data(queue.model.index(0, 0), STATE_CHIP_ROLE)
+    assert isinstance(chip, str) and chip, (
+        f"the queue does not ask for a state chip; it answered {chip!r}"
+    )
+    assert not history.model.data(history.model.index(0, 0), STATE_CHIP_ROLE), (
+        "History asks for a state chip; every one of its rows is Done, so the chip is furniture"
+    )
+
+
+def test_the_chip_takes_width_from_the_title_rather_than_overlapping_it(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """The chip shares the title's line, so the title must be elided to what is left.
+
+    Drawn rather than reasoned about: a chip that overlapped the title would still satisfy any
+    assertion about the role, and the row would be unreadable exactly where the name is.
+    """
+    from PySide6.QtGui import QImage, QPainter
+    from PySide6.QtWidgets import QStyleOptionViewItem
+
+    from tracks_and_trails.ui.row_delegate import RowDelegate
+
+    window = _window_over([_job("job-1", 0)], tmp_path)
+    view = window.queue_view
+    assert view is not None
+    model = view.model
+
+    def paint(chip: bool) -> bytes:
+        delegate = RowDelegate()
+        option = QStyleOptionViewItem()
+        option.rect = QRect(0, 0, 420, 80)
+        option.font = view.table.font()
+        option.fontMetrics = QFontMetrics(option.font)
+        image = QImage(420, 80, QImage.Format.Format_ARGB32)
+        image.fill(0)
+        painter = QPainter(image)
+        try:
+            original = model.data
+
+            def without_the_chip(index: Any, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
+                """The same model with one role silenced, so only the chip differs."""
+                return None if role == STATE_CHIP_ROLE else original(index, role)
+
+            if not chip:
+                model.data = without_the_chip  # type: ignore[method-assign]
+            delegate.paint(painter, option, model.index(0, 0))
+        finally:
+            painter.end()
+            model.data = original  # type: ignore[method-assign]
+        return bytes(image.constBits())
+
+    assert paint(chip=True) != paint(chip=False), (
+        "the row draws identically with and without the chip, so the chip is not being drawn"
     )

@@ -100,6 +100,17 @@ class Theme:
     #: The brand accent. Used sparingly and never as the only signal.
     accent: str
 
+    #: A selected row (`T-130`, `UX-005`'s 2026-08-04 amendment).
+    #:
+    #: **A tint of `primary` over `surface`, not `primary` itself.** Filling the whole row with the
+    #: brand colour passes contrast — it measured 7.64:1 — and still dominates a list, which on the
+    #: History tab meant one finished download shouting over three others. The mockup uses a light
+    #: tint and an inset bar, and the bar is what carries the emphasis the fill was over-spending.
+    #: `on_selection` stays the ordinary text colour for the same reason: at this weight the row is
+    #: still a row.
+    selection: str
+    on_selection: str
+
     #: Semantic colours. Separate from `accent` on purpose (`NFR-005`): these reinforce words,
     #: they do not replace them.
     ok: str
@@ -118,6 +129,8 @@ LIGHT: Final = Theme(
     border="#748A7E",
     primary=FOREST,
     on_primary="#FFFFFF",
+    selection="#EBF1EE",
+    on_selection="#101A14",
     accent="#8A6412",
     ok="#14503C",
     warn="#7A5410",
@@ -143,6 +156,8 @@ DARK: Final = Theme(
     border="#547866",
     primary="#57A888",
     on_primary=DEEP,
+    selection="#1D382E",
+    on_selection="#E7EFE9",
     accent=GOLD,
     ok="#7FC7A6",
     warn=GOLD,
@@ -310,8 +325,14 @@ QComboBox QAbstractItemView {{
     selection-color: {theme.on_primary};
 }}
 QListView, QTreeView, QTableView {{
-    selection-background-color: {theme.primary};
-    selection-color: {theme.on_primary};
+    /* **A tint, and an inset bar to carry the emphasis** (`T-130`). The full brand fill passed
+       contrast and still dominated the list; the mockup's weight is this. `QListView::item` gets
+       the left border so the bar sits on the row rather than the viewport. */
+    selection-background-color: {theme.selection};
+    selection-color: {theme.on_selection};
+}}
+QListView::item:selected {{
+    border-left: 2px solid {theme.primary};
 }}
 QTabBar::tab:hover {{
     background-color: {theme.sunken};
@@ -358,6 +379,15 @@ def palette(theme: Theme) -> QPalette:
     roles.setColor(QPalette.ColorRole.Text, QColor(theme.text))
     roles.setColor(QPalette.ColorRole.Button, QColor(theme.surface))
     roles.setColor(QPalette.ColorRole.ButtonText, QColor(theme.text))
+    # **The brand pair stays here; the row's quiet tint is the style sheet's** (`T130-R1`).
+    #
+    # This briefly set `Highlight` to `selection`, which is application-wide — and a *row* can
+    # afford a subtle tint because it also gets an inset bar, while **selected text in an editor
+    # has no second signal**. Measured: a selected URL in the log view came out at 1.14:1 against
+    # its own surface, which is invisible rather than quiet. The row tint is scoped to
+    # `QListView, QTreeView, QTableView` in the sheet, and Qt propagates that into those widgets'
+    # palettes — so `RowDelegate` still reads the tint's pair from `option.palette` (15.55:1) while
+    # a text editor keeps the brand highlight (7.64:1).
     roles.setColor(QPalette.ColorRole.Highlight, QColor(theme.primary))
     roles.setColor(QPalette.ColorRole.HighlightedText, QColor(theme.on_primary))
     roles.setColor(QPalette.ColorRole.PlaceholderText, QColor(theme.muted))

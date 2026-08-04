@@ -103,6 +103,7 @@ from tracks_and_trails.ui.row_delegate import (
     PRESET_ROLE,
     PROGRESS_ROLE,
     SELECTOR_ROLE,
+    STATE_CHIP_ROLE,
     STATE_ROLE,
     THUMBNAIL_URL_ROLE,
     VERBS_ROLE,
@@ -117,6 +118,25 @@ from tracks_and_trails.ui.thumbnails import ThumbnailLoader, ThumbnailStore
 #: generated from a field list, so a renamed attribute cannot quietly change what is on screen
 #: (`ai/TESTING.md` §13).
 COLUMN_HEADERS: Final = ("Job", "Status", "Progress", "Size", "Speed", "ETA")
+
+#: What the **title-line chip** reads for each status (`T-130`, `T130-R3`, `UX-005` 2026-08-04).
+#:
+#: **Deliberately not `STATUS_TEXT`.** The amendment names the chip's vocabulary — `Done`, `Queued`,
+#: `62%`, `Failed` — and a chip is a glance at the end of a title, so it is a word wide, not a
+#: sentence: `Ready to download` becomes `Ready`, `Completed` becomes the adopted `Done`. The status
+#: column keeps `STATUS_TEXT` and says the longer thing, which is why both spellings can be right.
+#:
+#: `RUNNING` is absent on purpose — a running row's chip is its percentage, and `_chip` falls back
+#: to `STATUS_TEXT` for the case where a running job has no honest fraction yet.
+CHIP_TEXT: Final[dict[JobStatus, str]] = {
+    JobStatus.QUEUED: "Queued",
+    JobStatus.PROBING: "Probing",
+    JobStatus.READY: "Ready",
+    JobStatus.POST_PROCESSING: "Processing",
+    JobStatus.COMPLETED: "Done",
+    JobStatus.FAILED: "Failed",
+    JobStatus.CANCELLED: "Cancelled",
+}
 
 JOB_COLUMN: Final = 0
 STATUS_COLUMN: Final = 1
@@ -419,6 +439,13 @@ class QueueModel(QAbstractTableModel):
             return self._text(row, JOB_COLUMN)
         if role == STATE_ROLE:
             return self._text(row, STATUS_COLUMN)
+        if role == STATE_CHIP_ROLE:
+            # **The queue draws its state as a chip; History does not** (`T-130`, `UX-005`'s
+            # 2026-08-04 amendment). A queue is a list of rows in different states and the state is
+            # what the eye is hunting for. Every history row is finished, so the same chip there
+            # would read *Done* on all of them and be furniture — which is why this is a role the
+            # model answers rather than something the shared delegate decides for both.
+            return self._chip(row)
         if role == DETAIL_ROLE:
             return self._detail(row)
         if role == HUE_ROLE:
@@ -599,6 +626,23 @@ class QueueModel(QAbstractTableModel):
         if drawn_format:
             spoken.append(str(drawn_format))
         return ". ".join(spoken)
+
+    def _chip(self, row: _Row) -> str:
+        """What the title-line chip reads: a running row's percentage, or its status in a word.
+
+        **Percentage only while the job is actually running** (`T130-R3`). The chip derived itself
+        from `_fraction` alone, and `_fraction` returns exactly 1.0 for a completed job — so every
+        finished row read `100%` where `UX-005` adopted `Done`. A fraction says how far along the
+        bytes are; it does not say whether the work is still happening, and only the status does.
+
+        Rounded from `_fraction`, so the chip and the bar under it are one number seen twice rather
+        than two numbers that can disagree.
+        """
+        if row.job.status is JobStatus.RUNNING:
+            fraction = self._fraction(row)
+            if fraction is not None:
+                return f"{round(fraction * 100)}%"
+        return CHIP_TEXT.get(row.job.status, STATUS_TEXT[row.job.status])
 
     def _fraction(self, row: _Row) -> float | None:
         """Completion from 0 to 1, or `None` when there is nothing honest to draw.

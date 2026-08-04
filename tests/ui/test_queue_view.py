@@ -51,6 +51,7 @@ from tracks_and_trails.ui.row_delegate import (
     HEADLINE_ROLE,
     HUE_ROLE,
     PROGRESS_ROLE,
+    STATE_CHIP_ROLE,
     STATE_ROLE,
     THUMBNAIL_URL_ROLE,
 )
@@ -353,6 +354,45 @@ def test_a_row_opened_onto_a_finished_job_renders_its_ending(
     assert size is not None and size != UNKNOWN_TEXT, (
         "a row opened onto a finished job reported no size at all; the durable row knows one, "
         "and nothing watched this download so there is nothing closer to prefer (T-059)"
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "expected_chip"),
+    [
+        (JobStatus.RUNNING, "62%"),
+        (JobStatus.COMPLETED, "Done"),
+        (JobStatus.FAILED, "Failed"),
+        (JobStatus.QUEUED, "Queued"),
+    ],
+)
+def test_the_state_chip_reads_progress_only_while_a_job_is_actually_running(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    status: JobStatus,
+    expected_chip: str,
+) -> None:
+    """`T130-R3`: `UX-005`'s chip vocabulary is `Done`, `Queued`, `62%`, `Failed`.
+
+    **Every row here carries the same bytes**, and that is the whole design of the case. The chip
+    used to be derived from the fraction alone, and `_fraction` answers exactly 1.0 for a completed
+    job — so completion rendered as `100%` on every finished row in the queue. Holding the bytes
+    still and moving only the status is what separates "how far along the bytes are" from "whether
+    the work is still happening", which is the distinction the defect collapsed.
+
+    `Done` is asserted as a literal rather than through `CHIP_TEXT`, because the word is the
+    ruling: read from the map, this would keep passing if the map were changed to `Completed`.
+    """
+    queue.add(make_job("job-1", tmp_path, status=status, bytes_done=620, bytes_total=1000))
+    manager = managers()
+    view = views(jobs=queue, manager=manager)
+
+    chip = view.model.data(view.model.index(0, 0), STATE_CHIP_ROLE)
+    assert chip == expected_chip, (
+        f"a {status.name} row chips {chip!r} rather than {expected_chip!r}; UX-005 gives the chip "
+        "its own compact vocabulary, and a percentage is a running-progress shape only"
     )
 
 

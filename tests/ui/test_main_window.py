@@ -310,19 +310,29 @@ def test_the_toolbar_holds_nothing_that_acts_on_a_selection(qapp: QApplication) 
     assert bar is not None
 
     names = {action.objectName() for action in bar.actions() if action.objectName()}
-    assert names == {"pauseQueueAction", "clearCompletedAction"}, (
+    assert names == {"actionAddUrls", "pauseQueueAction", "clearCompletedAction"}, (
         f"the toolbar holds {sorted(names)}; UX-005 §4 leaves it queue-wide Pause and "
-        "Clear-finished, and puts every per-row verb on the row"
+        "Clear-finished, its 2026-08-04 amendment adds Add URLs as the primary action, and every "
+        "per-row verb belongs on the row"
     )
 
+    # **Selection is the property under test, not enablement in general.** `actionAddUrls` is
+    # legitimately disabled here — `T-016` disables it when composition supplied no job sink or
+    # output directory, which `_window_over` does not — and that has nothing to do with which row
+    # is selected. So the claim is asserted as *unchanged by* selection, which is what `UX-005`
+    # rejected a selection-driven toolbar over (`T124-R3`).
     assert window.queue_view is not None
+    before = {a.objectName(): a.isEnabled() for a in bar.actions() if a.objectName()}
+    window.queue_view.select("a")
+    with_selection = {a.objectName(): a.isEnabled() for a in bar.actions() if a.objectName()}
     window.queue_view.table.clearSelection()
-    for action in bar.actions():
-        if action.objectName():
-            assert action.isEnabled(), (
-                f"{action.objectName()} needs a selection, so it is a per-row action on a toolbar "
-                "that serves two tabs"
-            )
+    without = {a.objectName(): a.isEnabled() for a in bar.actions() if a.objectName()}
+
+    assert before == with_selection == without, (
+        f"a toolbar action changed with the selection: {before} -> {with_selection} -> {without}. "
+        "UX-005 chose row verbs over a toolbar acting on a selection because with two tabs that "
+        "toolbar has to guess which list it means"
+    )
 
 
 def test_pausing_reports_once_and_says_which_way(qapp: QApplication) -> None:

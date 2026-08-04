@@ -43,6 +43,7 @@ from tracks_and_trails.ui.row_delegate import (
     PRESET_ROLE,
     PROGRESS_ROLE,
     ROW_HEIGHT,
+    STATE_CHIP_ROLE,
     STATE_ROLE,
     TEXT_LINES,
     THUMBNAIL_URL_ROLE,
@@ -252,6 +253,81 @@ def test_every_row_is_the_same_height_whatever_it_holds(qapp: QApplication) -> N
     heights = {delegate.sizeHint(option, model.index(i, 0)).height() for i in range(3)}
 
     assert len(heights) == 1, f"rows differ in height: {heights}"
+
+
+def test_a_running_chip_carries_progress_without_erasing_the_worker_stage(
+    qapp: QApplication,
+) -> None:
+    """Reviewer regression for T-130's ``62%`` chip and the existing stage line.
+
+    The chip is the compact progress value the accepted amendment names. That stops it duplicating
+    the longer worker stage; it does not make the stage expendable. Compare two stages under one
+    fraction: the title-line chip must be identical, while the whole rows must differ because the
+    second line still says which work the worker is doing.
+    """
+    # `STATE_CHIP_ROLE` carries the chip's *text* since `T130-R3`; it was a flag when this
+    # regression was written, and with a flag the delegate now draws no chip at all and both
+    # assertions below pass without measuring anything. Amended on the maintainer's instruction of
+    # 2026-08-04 to supply the text the model computes, which is what puts the claims back.
+    common: dict[int, Any] = {
+        HEADLINE_ROLE: "Cairngorms trail run",
+        DETAIL_ROLE: "Hill & Bothy · 12:04",
+        STATE_CHIP_ROLE: "62%",
+        PROGRESS_ROLE: 0.62,
+        HUE_ROLE: 0,
+    }
+    downloading = RowsModel([{**common, STATE_ROLE: "Downloading video"}])
+    postprocessing = RowsModel([{**common, STATE_ROLE: "Post-processing"}])
+    delegate = RowDelegate()
+    first = paint_rows(downloading, delegate, 0)
+    second = paint_rows(postprocessing, delegate, 0)
+
+    # A generous crop around the chip. Both rows have one PROGRESS_ROLE, so changing STATE_ROLE
+    # must not alter anything here; the old implementation put the worker stage in this rectangle.
+    chip_line = QRect(RENDER_WIDTH - 180, 0, 180, PADDING + QFontMetrics(qapp.font()).height())
+    assert first.copy(chip_line) == second.copy(chip_line), (
+        "changing the worker stage changed the title-line chip, so it is not derived from the "
+        "shared 62% progress value"
+    )
+
+    assert first != second, (
+        "changing 'Downloading video' to 'Post-processing' changed no drawn pixel; the 62% chip "
+        "replaced the worker stage instead of leaving it on the second line"
+    )
+
+
+def test_a_completed_chip_says_done_instead_of_turning_completion_into_progress(
+    qapp: QApplication,
+) -> None:
+    """The adopted terminal chip is ``Done``; 100% is only a running-progress shape.
+
+    **Which word is the model's half of this finding, so it is asserted at the model** — see
+    ``test_a_completed_queue_row_chips_done_rather_than_100_percent``. What is left here is the
+    delegate's half, and it is the half that caused the defect: the chip used to be derived from
+    ``PROGRESS_ROLE``, and a completed job reports a fraction of exactly 1.0, so completion was
+    rendered as progress. So: **one chip text, two fractions.** The drawn chip must not move.
+
+    Amended on the maintainer's instruction of 2026-08-04, with the role now carrying text.
+    Against the derived implementation this fails, drawing ``100%`` beside ``Done``.
+    """
+    common: dict[int, Any] = {
+        HEADLINE_ROLE: "Packing for the WHW",
+        DETAIL_ROLE: "10.2 MB",
+        STATE_CHIP_ROLE: "Done",
+        STATE_ROLE: "Completed",
+        HUE_ROLE: 0,
+    }
+    finished = RowsModel([{**common, PROGRESS_ROLE: 1.0}])
+    without_a_fraction = RowsModel([{**common, PROGRESS_ROLE: None}])
+    delegate = RowDelegate()
+    current_image = paint_rows(finished, delegate, 0)
+    adopted_image = paint_rows(without_a_fraction, delegate, 0)
+
+    chip_line = QRect(RENDER_WIDTH - 180, 0, 180, PADDING + QFontMetrics(qapp.font()).height())
+    assert current_image.copy(chip_line) == adopted_image.copy(chip_line), (
+        "a completed row draws '100%' where UX-005 adopted the terminal chip 'Done'; the chip is "
+        "reading PROGRESS_ROLE instead of the text the model supplies"
+    )
 
 
 def test_a_row_with_choices_draws_a_control_and_one_without_does_not(
