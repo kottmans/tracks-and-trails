@@ -414,93 +414,6 @@ agreement on the reduced form before implementation.
 
 ## Proposed — Phase 2
 
-### T-123 — Evaluate running the suite in parallel
-
-**Status:** **Proposed — for evaluation, not yet a commitment**, 2026-08-03. Filed rather than
-attempted: the payoff is large and the hazards are specific, and deciding which applies is the
-work.
-**Owner:** Implementer
-**Priority:** Medium — the suite is the largest single cost in every gate and in local development
-**Phase:** Phase 2 test infrastructure
-**Relevant context:** `T-122`, `NFR-001`, `AGENTS.md` §9, run `30861672178`
-**Affected surfaces:** `pyproject.toml`, `tests/**`, possibly `.github/workflows/ci.yml`
-**Risk:** Medium — the failure mode is *intermittent* tests, which is worse than slow ones
-
-**The measurement.** 1984 tests in **291 s** locally and **573 s** on `STARBASE`. There is no hot
-spot to remove: the twenty slowest tests are 104 s of the 291 s, and the average is 0.15 s. The
-cost is a long tail of integration tests that spawn real worker processes, so the only lever that
-scales is running them at once.
-
-**What to evaluate.** `pytest-xdist` at `-n auto`. Most of these tests are independent and each
-xdist worker is its own process, so a `QApplication` per worker is not a problem.
-
-#### The hazards, which are the actual work
-
-- **Tests that spawn and kill real worker processes.** `AGENTS.md` §9 says to run these "one
-  worktree at a time" because concurrent runs wedge each other. *That instruction names
-  `-m process_tree`, and **no test carries that marker*** — only `network` and `windows_desktop`
-  are registered. So the guidance cannot be followed as written, and the first job here is to find
-  out which tests it meant.
-- **The localhost server fixtures.** `T-121` is already a connection aborting under load on one
-  hosted runner, and the reviewer's sandbox denied sixteen of these outright. Several workers
-  binding servers at once is the same pressure, multiplied.
-- **Shared per-user paths.** Every worker needs its own temp, database and config directory —
-  `AGENTS.md` §9 states this for parallel *agents* and it applies identically here.
-
-#### Acceptance criteria, if it proceeds
-
-- A deterministic demonstration that the parallel run and the serial run collect and pass the same
-  tests, rather than a wall-clock comparison alone.
-- The process-spawning tests identified by name, and either isolated or pinned to one worker with
-  a stated reason.
-- Repeated runs — not one — showing no intermittent failure, because the thing this can buy is
-  speed and the thing it can cost is a suite nobody trusts.
-
-#### Out of scope
-
-- Deleting or skipping tests to make the suite faster. The suite is slow because it exercises real
-  processes, which is what makes it worth having.
-
----
-
-### T-122 — Replace the flaky paste-scaling ratio gate
-
-**Status:** Proposed — `T118-R17`, non-blocking follow-up from T-118's final review
-**Owner:** Implementer
-**Priority:** Medium — it is the only failure in exact-head run `30859578131`, and a gate that
-rejects a transient host pause teaches readers to dismiss a real future regression
-**Phase:** Phase 2 test infrastructure; complete before the Phase 2 exit review
-**Relevant context:** `T118-R10`, `T118-R17`, `NFR-001`, run `30859578131`
-**Affected surfaces:** `tests/ui/test_add_dialog.py`, this task's correction/evidence prose
-**Risk:** Low to production — no product code is implicated; Medium to gate trust while it remains
-
-`test_a_four_times_larger_paste_does_not_cost_four_times_more_than_linearly` takes one 125-row
-sample and one 500-row sample, then assumes their ratio cancels runner speed. It cancels a sustained
-machine-speed difference, not a transient pause. Hosted Windows measured 0.0321 s and 1.4935 s in
-exact-head run `30859578131`, while the separate test performing the same 500-row resolve passed
-under 1.0 s minutes apart and STARBASE passed both. One outlier against a ~32 ms denominator made
-the ratio 46.5x.
-
-The ratio is not the load-bearing T118-R10 proof. The absolute 500-row interaction budget passed on
-both Windows runners, and the structural assertion limiting live controls is the test that killed
-restoration of the widget-per-row design; the timing tests did not.
-
-#### Scope and acceptance criteria
-
-- Remove the one-sample ratio as a required pass/fail gate while preserving the 500-row absolute
-  interaction budget and the structural control-count assertion.
-- Remove current-truth prose claiming a ratio is runner-invariant.
-- If relative scaling is retained, make it diagnostic only or use repeated/interleaved samples
-  with a robust estimator. A deterministic test must show that one outlier cannot fail the gate
-  while a sustained nonlinear sample set can.
-- The next ordinary hosted-Windows run has no failure from a single transient timing sample.
-
-#### Out of scope
-
-- Changing the staging-list implementation or its supported paste size.
-- Weakening the 500-row absolute interaction budget.
-- Reopening T-118, approved with this follow-up at `53b07ec`.
-
 ### T-121 — The phase-exit clip server aborts connections on hosted Windows
 
 **Status:** **Proposed — found by CI run `30853680183`**, 2026-08-03, by measurement rather than by
@@ -560,6 +473,56 @@ it prints is zero. A reader who trusts the prose over the dict diagnoses the sch
   worker does when a server drops the connection.
 
 ---
+
+### T-123 — Evaluate running the suite in parallel
+
+**Status:** **Proposed — for evaluation, not yet a commitment**, 2026-08-03. Filed rather than
+attempted: the payoff is large and the hazards are specific, and deciding which applies is the
+work.
+**Owner:** Implementer
+**Priority:** Medium — the suite is the largest single cost in every gate and in local development
+**Phase:** Phase 2 test infrastructure
+**Relevant context:** `T-122`, `NFR-001`, `AGENTS.md` §9, run `30861672178`
+**Affected surfaces:** `pyproject.toml`, `tests/**`, possibly `.github/workflows/ci.yml`
+**Risk:** Medium — the failure mode is *intermittent* tests, which is worse than slow ones
+
+**The measurement.** 1984 tests in **291 s** locally and **573 s** on `STARBASE`. There is no hot
+spot to remove: the twenty slowest tests are 104 s of the 291 s, and the average is 0.15 s. The
+cost is a long tail of integration tests that spawn real worker processes, so the only lever that
+scales is running them at once.
+
+**What to evaluate.** `pytest-xdist` at `-n auto`. Most of these tests are independent and each
+xdist worker is its own process, so a `QApplication` per worker is not a problem.
+
+#### The hazards, which are the actual work
+
+- **Tests that spawn and kill real worker processes.** `AGENTS.md` §9 says to run these "one
+  worktree at a time" because concurrent runs wedge each other. *That instruction names
+  `-m process_tree`, and **no test carries that marker*** — only `network` and `windows_desktop`
+  are registered. So the guidance cannot be followed as written, and the first job here is to find
+  out which tests it meant.
+- **The localhost server fixtures.** `T-121` is already a connection aborting under load on one
+  hosted runner, and the reviewer's sandbox denied sixteen of these outright. Several workers
+  binding servers at once is the same pressure, multiplied.
+- **Shared per-user paths.** Every worker needs its own temp, database and config directory —
+  `AGENTS.md` §9 states this for parallel *agents* and it applies identically here.
+
+#### Acceptance criteria, if it proceeds
+
+- A deterministic demonstration that the parallel run and the serial run collect and pass the same
+  tests, rather than a wall-clock comparison alone.
+- The process-spawning tests identified by name, and either isolated or pinned to one worker with
+  a stated reason.
+- Repeated runs — not one — showing no intermittent failure, because the thing this can buy is
+  speed and the thing it can cost is a suite nobody trusts.
+
+#### Out of scope
+
+- Deleting or skipping tests to make the suite faster. The suite is slow because it exercises real
+  processes, which is what makes it worth having.
+
+---
+
 
 
 *(`T-078`…`T-088` are the phase's own deliverables, written 2026-07-29 from
@@ -1799,6 +1762,82 @@ Assert, on `windows-latest`:
 
 ## Complete
 
+### T-122 — Replace the flaky paste-scaling ratio gate
+
+**Status:** **Complete — corrected 2026-08-03, awaiting review.** The one-sample ratio is gone; the
+decision is a pure function over interleaved repeated samples, and the function is what the
+deterministic test exercises. The 500-row absolute budget and the structural control count are
+untouched.
+*(This read "Proposed — `T118-R17`, non-blocking follow-up from T-118's final review".)*
+**Owner:** Implementer
+**Priority:** Medium — it is the only failure in exact-head run `30859578131`, and a gate that
+rejects a transient host pause teaches readers to dismiss a real future regression
+**Phase:** Phase 2 test infrastructure; complete before the Phase 2 exit review
+**Relevant context:** `T118-R10`, `T118-R17`, `NFR-001`, run `30859578131`
+**Affected surfaces:** `tests/ui/test_add_dialog.py`, this task's correction/evidence prose
+**Risk:** Low to production — no product code is implicated; Medium to gate trust while it remains
+
+`test_a_four_times_larger_paste_does_not_cost_four_times_more_than_linearly` takes one 125-row
+sample and one 500-row sample, then assumes their ratio cancels runner speed. It cancels a sustained
+machine-speed difference, not a transient pause. Hosted Windows measured 0.0321 s and 1.4935 s in
+exact-head run `30859578131`, while the separate test performing the same 500-row resolve passed
+under 1.0 s minutes apart and STARBASE passed both. One outlier against a ~32 ms denominator made
+the ratio 46.5x.
+
+The ratio is not the load-bearing T118-R10 proof. The absolute 500-row interaction budget passed on
+both Windows runners, and the structural assertion limiting live controls is the test that killed
+restoration of the widget-per-row design; the timing tests did not.
+
+#### Scope and acceptance criteria
+
+- Remove the one-sample ratio as a required pass/fail gate while preserving the 500-row absolute
+  interaction budget and the structural control-count assertion.
+- Remove current-truth prose claiming a ratio is runner-invariant.
+- If relative scaling is retained, make it diagnostic only or use repeated/interleaved samples
+  with a robust estimator. A deterministic test must show that one outlier cannot fail the gate
+  while a sustained nonlinear sample set can.
+- The next ordinary hosted-Windows run has no failure from a single transient timing sample.
+
+#### Out of scope
+
+- Changing the staging-list implementation or its supported paste size.
+- Weakening the 500-row absolute interaction budget.
+- Reopening T-118, approved with this follow-up at `53b07ec`.
+
+#### Correction, 2026-08-03
+
+**The decision is now a pure function, `superlinear_growth(small, large)`.** That is the whole
+change: the gate used to be one division between two measurements, so a single host stall decided
+it and did. Extracting the decision means the *oracle* is testable against fixed samples instead of
+inferred from a clock.
+
+**The estimator is the median of `SCALING_PAIRS` interleaved samples.** Interleaving matters as
+much as repeating: measuring three small and then three large lets a stall beginning midway land
+wholly on one side, which is the shape that produced 46.5x. With three samples one outlier cannot
+move a median at all.
+
+**`test_the_scaling_oracle_ignores_one_stall_and_still_catches_real_growth` is the acceptance
+criterion**, and it uses the real numbers — 0.0321 s and 1.4935 s from run `30859578131`. It
+asserts that a stall **at every position in turn** passes, that a stall on the small side cannot
+hide real growth, that a sustained non-linear set fails, and where the boundary is.
+
+**The prose claiming a ratio is runner-invariant is gone**, from `SCALING_HEADROOM` and from this
+file. It cancels a *sustained* speed difference and amplifies a *transient* one.
+
+| Mutation | Killed by |
+|---|---|
+| The first sample instead of the median — the old gate exactly | the oracle test, **after the stall was placed at every position** |
+| The last sample instead of the median | the same |
+| `min`/`max` instead of the median | the same |
+| The mean instead of the median | the same |
+| The headroom comparison removed | the boundary assertions |
+
+**One survived first, and it was the same defect this task exists to fix.** The initial oracle test
+put the stall at index 1, so a mutation reading `large[0]` — which *is* the one-sample gate —
+passed it. A test that pins where the outlier sits cannot police an implementation that picks a
+sample.
+
+
 ### T-118 — The add dialog becomes a staging list
 
 **Status:** **Complete — Approved with follow-ups at `53b07ec`**, 2026-08-03, after four rounds of
@@ -2028,8 +2067,11 @@ distinguish "the machine was fast" from "the design is flat":
    size the ceiling was hiding — and `INTERACTION_BUDGET_SECONDS` is **1.0 s** against a measured
    **0.042 s** on the development machine. A 24x margin, deliberately not the largest number one
    Linux measurement will bear.
-2. **A ratio, which does not move with runner speed.** Four times the paste must cost less than
-   six times the time. Measured: 0.020 s at 125, 0.042 s at 500, 0.047 s at 1000.
+2. **A ratio over interleaved repeated samples.** Four times the paste must cost less than six
+   times the time. Measured: 0.020 s at 125, 0.042 s at 500, 0.047 s at 1000. *(This read "a
+   ratio, which does not move with runner speed" until `T118-R17`: it cancels a sustained speed
+   difference and amplifies a transient one. `T-122` replaced the one-sample division with a
+   median over interleaved pairs.)*
 3. **A structural count**, which is the one that actually holds. A mutation reintroducing a
    persistent editor per row **passed both timing tests** — an unshown view lays nothing out, so
    500 hidden combo boxes are cheap here and ruinous on the platform that measured 0.722 s.

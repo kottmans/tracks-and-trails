@@ -29,6 +29,7 @@ The dialog is driven through its **object names** rather than accessors added fo
 """
 
 import json
+import statistics
 import time
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
@@ -138,10 +139,25 @@ SMALL_PASTE: Final = SUPPORTED_PASTE // 4
 #: it to be somewhat worse than linear while still failing hard on the quadratic-ish growth a
 #: widget per row produces.
 #:
-#: **A ratio, on purpose.** Two measurements taken moments apart on one machine share its speed, so
-#: a slow runner slows both sides and cancels out — which is the term that made `T118-R10`'s gate
-#: flap, and the same defect `T083-R2` records elsewhere in this repository.
+#: **A ratio does not cancel runner speed** (`T118-R17`, `T-122`). The previous version of this
+#: constant claimed it did — "two measurements taken moments apart on one machine share its speed,
+#: so a slow runner slows both sides and cancels out". That is true of a *sustained* speed
+#: difference and false of a *transient* one, and the denominator here is tens of milliseconds, so
+#: any absolute perturbation is amplified enormously. Hosted Windows measured 0.0321 s and
+#: 1.4935 s in run `30859578131` — a factor of 46.5 — while the separate absolute-budget test did
+#: the identical 500-row resolve *under* 1.0 s minutes apart, and `STARBASE` passed both.
+#:
+#: What makes the comparison usable is the estimator, not the arithmetic: see `SCALING_PAIRS` and
+#: `superlinear_growth`.
 SCALING_HEADROOM: Final = 6.0
+
+#: How many interleaved small/large pairs the scaling gate measures.
+#:
+#: **Three, and interleaved, so one stall cannot decide the outcome.** A stall lands in one sample;
+#: the median of three ignores it entirely. Interleaving matters as much as repeating — measuring
+#: all the small ones first and all the large ones second lets a stall that begins midway through
+#: land wholly on one side, which is precisely the shape that produced the 46.5.
+SCALING_PAIRS: Final = 3
 
 SINGLE_ITEM: Final = "archive_org_big_buck_bunny"
 PLAYLIST: Final = "archive_org_art_of_war_playlist"
@@ -2050,20 +2066,91 @@ def test_the_copyable_selector_follows_the_current_row(
     assert first != second, "the label showed the same selector for two differently-targeted rows"
 
 
+def superlinear_growth(
+    small: Sequence[float], large: Sequence[float], *, headroom: float = SCALING_HEADROOM
+) -> str | None:
+    """Whether `large` grew faster than `headroom` allows. A message if it did, else `None`.
+
+    **A pure function of the samples, which is the whole of `T-122`.** The gate used to be one
+    small sample divided by one large one, so a single host stall decided it — and did, at 46.5x
+    (`T118-R17`). Extracting the decision means the *oracle* can be tested against synthetic
+    sample sets rather than inferred from a clock, and
+    `test_the_scaling_oracle_ignores_one_stall_and_still_catches_real_growth` does exactly that.
+
+    The estimator is the **median of each side**. With `SCALING_PAIRS` samples, one outlier cannot
+    move it at all; a sustained regression moves every sample and therefore moves the median.
+    """
+    if not small or not large:
+        return "no samples"
+    base, grown = statistics.median(small), statistics.median(large)
+    if base <= 0:
+        return None
+    factor = grown / base
+    if factor <= headroom:
+        return None
+    return (
+        f"{SUPPORTED_PASTE} URLs cost {grown:.4f}s against {base:.4f}s for {SMALL_PASTE} — a "
+        f"factor of {factor:.1f} for four times the input, over {headroom}. "
+        f"Medians of {len(small)} interleaved pairs: small={[round(v, 4) for v in small]}, "
+        f"large={[round(v, 4) for v in large]}"
+    )
+
+
+def test_the_scaling_oracle_ignores_one_stall_and_still_catches_real_growth() -> None:
+    """`T-122`'s acceptance criterion, and the only part of the gate that is deterministic.
+
+    One transient outlier must not fail the suite; a sustained non-linear sample set must. Both
+    are asserted against the numbers that actually occurred: hosted Windows reported 0.0321 s and
+    1.4935 s in run `30859578131`, and that single pair is what reddened a green product.
+
+    No timing here. Feeding the oracle fixed samples is what makes these two claims provable
+    rather than a matter of how busy the machine was when they ran.
+    """
+    steady_small = [0.020, 0.021, 0.019]
+
+    # The exact failure that produced T118-R17: one sample forty-six times the others — **placed
+    # at every position in turn.** A first draft put the stall at index 1 only, and a mutation
+    # reading `large[0]` (which is the old one-sample gate exactly) sailed through it. A test that
+    # pins where the outlier sits cannot police an implementation that picks a sample.
+    for position in range(3):
+        stalled = [0.038, 0.041, 0.039]
+        stalled[position] = 1.4935
+        assert superlinear_growth(steady_small, stalled) is None, (
+            f"a host stall at position {position} failed the gate; that is the defect T-122 "
+            f"exists to remove: {stalled}"
+        )
+
+    # A stall on the *small* side deflates the ratio rather than inflating it, and must not turn
+    # a real regression into a pass — again wherever it lands.
+    for position in range(3):
+        stalled = [0.020, 0.021, 0.019]
+        stalled[position] = 1.4935
+        assert superlinear_growth(stalled, [1.40, 1.51, 1.45]) is not None, (
+            f"a stall at position {position} on the small side hid real growth: {stalled}"
+        )
+
+    # Sustained growth: every sample moved, so the median moved.
+    verdict = superlinear_growth(steady_small, [1.40, 1.51, 1.45])
+    assert verdict is not None and "factor of 7" in verdict, verdict
+
+    # And the boundary is the headroom, not the arithmetic mean of anything.
+    assert superlinear_growth([0.100], [0.599]) is None
+    assert superlinear_growth([0.100], [0.601]) is not None
+
+
 def test_a_four_times_larger_paste_does_not_cost_four_times_more_than_linearly(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
 ) -> None:
-    """**The claim `T118-R10` is really about**, stated as a ratio rather than a clock reading.
+    """**The claim `T118-R10` is really about**: the design does not grow faster than the paste.
 
-    A wall-clock budget says the machine was fast enough. This says the *design* does not grow
-    faster than the paste — which is the property that made a hundred and fifty rows cost 0.722 s,
-    and the property a delegate buys. Comparing two pastes measured moments apart on one machine
-    also removes the runner-speed term, so unlike the bound it replaces this cannot flap between
-    two runs of unchanged code.
+    That is the property which made a hundred and fifty rows cost 0.722 s, and the property a
+    delegate buys. A widget per row fails it outright — building `SUPPORTED_PASTE` controls dwarfs
+    the fixed cost that dominates `SMALL_PASTE`.
 
-    A widget per row fails this outright: the cost of building `SUPPORTED_PASTE` controls dwarfs
-    the fixed cost that dominates `SMALL_PASTE`, so the ratio runs far past `SCALING_HEADROOM`.
+    **Interleaved and repeated** (`T-122`), because a ratio does *not* cancel runner speed: it
+    cancels a sustained difference and amplifies a transient one. `superlinear_growth` holds the
+    decision and is tested above against fixed samples; this supplies the measurements.
     """
 
     def cost(count: int) -> float:
@@ -2074,16 +2161,18 @@ def test_a_four_times_larger_paste_does_not_cost_four_times_more_than_linearly(
         dialog.resolve()
         return time.monotonic() - started
 
-    # The small paste first and again, so one-off import and style warm-up lands outside both
-    # measurements rather than inside the smaller one, where it would flatter the ratio.
+    # One discarded pass first, so one-off import and style warm-up lands outside every
+    # measurement rather than inside the first, where it would flatter the ratio.
     cost(SMALL_PASTE)
-    small = cost(SMALL_PASTE)
-    large = cost(SUPPORTED_PASTE)
 
-    assert large < small * SCALING_HEADROOM, (
-        f"{SUPPORTED_PASTE} URLs cost {large:.4f}s against {small:.4f}s for {SMALL_PASTE} — a "
-        f"factor of {large / small:.1f} for four times the input, over {SCALING_HEADROOM}"
-    )
+    small: list[float] = []
+    large: list[float] = []
+    for _ in range(SCALING_PAIRS):
+        small.append(cost(SMALL_PASTE))
+        large.append(cost(SUPPORTED_PASTE))
+
+    verdict = superlinear_growth(small, large)
+    assert verdict is None, verdict
 
 
 # --- 9. the pure helpers, which the rewrite kept ------------------------------------------------
