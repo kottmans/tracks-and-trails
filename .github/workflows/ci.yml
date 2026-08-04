@@ -415,7 +415,13 @@ jobs:
       # would need a lock here, and that is the first thing to check if one is ever added.
       - name: Reuse the persistent virtualenv
         run: |
-          want=$(sha256sum pyproject.toml | cut -d' ' -f1)
+          # **Twelve characters of the hash, not sixty-four.** The full digest pushed
+          # `…\site-packages\PySide6\qml\Qt\labs\assetdownloader\…\qrc_…_init.cpp.obj`
+          # past Windows' 260-character `MAX_PATH` and pip failed with `[Errno 2] No such file or
+          # directory`. This project already knows that limit — `core/paths.py` budgets against it
+          # — and the CI config walked into it anyway. Twelve hex characters is 2^48 of collision
+          # space for a cache key whose worst case is one unnecessary rebuild.
+          want=$(sha256sum pyproject.toml | cut -c1-12)
           venv="$RUNNER_TOOL_CACHE/tt-venv-$want"
           if [ ! -x "$venv/Scripts/python.exe" ] && [ ! -x "$venv/bin/python" ]; then
             echo "no venv for pyproject $want — building one"
