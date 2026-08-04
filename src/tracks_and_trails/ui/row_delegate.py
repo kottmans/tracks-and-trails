@@ -103,9 +103,21 @@ PRESET_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 7
 #: which is how the queue uses this delegate without acquiring a control it has no use for.
 PRESET_CHOICES_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 8
 
-#: What the editor's first entry says (`UX-004`). Named rather than blank: a row that follows the
-#: batch has made a choice — the same one as everything else — and a blank reads as no format at
-#: all rather than as the one below it (`T118-R4`).
+#: Whether this surface **has** a group default a row can defer to (`T126-R4`).
+#:
+#: The staging list does: `UX-004` gives a paste one format and lets a row override it, so *"same
+#: as all"* names a real state the model can store and restore. **A durable queue row does not.**
+#: Each job carries its own request and nothing else; the batch it was added with is neither
+#: persisted nor reachable, so the entry was a visible control that silently did nothing —
+#: `QueueModel.setData` refuses its `None`, and the words were false besides, because there is no
+#: "all" on that surface to be the same as. `UX-005` §5: nothing is offered that would be refused.
+#:
+#: Absent means no, which is how a model that never heard of this role gets the honest answer.
+PRESET_INHERITABLE_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 12
+
+#: What the editor's inherited entry says, where there is one (`UX-004`). Named rather than blank:
+#: a row that follows the batch has made a choice — the same one as everything else — and a blank
+#: reads as no format at all rather than as the one below it (`T118-R4`).
 INHERITED_TEXT: Final = "Same as all"
 
 #: The editor's object name. Shared by every row deliberately: they are one control reused, and a
@@ -201,6 +213,12 @@ class RowDelegate(QStyledItemDelegate):
         #: The live editor itself, so it can be committed and closed **before** a model reset
         #: invalidates its index (`T118-R14`).
         self._editor: QWidget | None = None
+        #: **Which row that is, by identity rather than by position** (`T126-R1`). A row number
+        #: survives a reset as a number and stops naming the same job the moment the queue
+        #: reorders, so a caller reopening the editor after a rebuild has to ask for the *job*.
+        #: `None` on a surface whose model answers no `JOB_ID_ROLE` — the staging list, whose rows
+        #: have no job behind them yet — which is why nothing here requires one.
+        self._editing_job_id: str | None = None
 
     # --- size and drawing -----------------------------------------------------------------
 
@@ -407,9 +425,19 @@ class RowDelegate(QStyledItemDelegate):
         user is expected to recognise has to be the platform's combo box, not something that
         resembles one on the machine it was drawn on. It also themes itself, which a rectangle
         would have to be told how to do twice.
+
+        **The empty label is a surface with no inherited state** (`T126-R4`). `PRESET_ROLE`
+        answering `None` means two different things: on the staging list it means *follows the
+        batch*, and on the queue it means *no built-in describes this request* — a custom selector
+        (`REQ-009`). Drawing `INHERITED_TEXT` for both told a queue row it was the same as an "all"
+        that does not exist. The row still says what it is: `QueueModel` answers `SELECTOR_ROLE`
+        with the literal selector exactly when the control cannot name it.
         """
         chosen = index.data(PRESET_ROLE)
-        label = chosen if isinstance(chosen, str) else INHERITED_TEXT
+        if isinstance(chosen, str):
+            label = chosen
+        else:
+            label = INHERITED_TEXT if index.data(PRESET_INHERITABLE_ROLE) else ""
 
         box = QStyleOptionComboBox()
         box.rect = self._control_rect(body)
@@ -491,6 +519,7 @@ class RowDelegate(QStyledItemDelegate):
         )
 
         selector = _text(index, SELECTOR_ROLE)
+        selector_lines = 0
         if selector:
             # **Not elided, and not narrowed by the control's slot** (`T118-R8`, `REQ-009`).
             #
@@ -508,13 +537,13 @@ class RowDelegate(QStyledItemDelegate):
             # second line — which is the history row's shape exactly, since the saved path is
             # long. A row with no verbs keeps both lines, which is the add dialog's case and the
             # one `T118-R15` sized `SELECTOR_LINES` for.
-            selector_lines = SELECTOR_LINES - (0 if verbs_left is None else 1)
+            selector_lines = max(SELECTOR_LINES - (0 if verbs_left is None else 1), 1)
             painter.drawText(
                 QRect(
                     area.left(),
                     area.top() + 2 * line,
                     max((body.right() if verbs_left is None else verbs_left) - area.left(), 0),
-                    max(selector_lines, 1) * line,
+                    selector_lines * line,
                 ),
                 int(
                     Qt.AlignmentFlag.AlignLeft
@@ -525,18 +554,22 @@ class RowDelegate(QStyledItemDelegate):
             )
 
         fraction = index.data(PROGRESS_ROLE)
-        if selector or not isinstance(fraction, float | int) or isinstance(fraction, bool):
-            # The third line belongs to whichever of the two the surface actually has. No model
-            # answers both — the staging list has a format to spell out and no progress; the queue
-            # has progress and no per-row format — and the bar is the one that yields, because
-            # `DETAIL_ROLE` already carries the same number in words (`NFR-005`).
+        if not isinstance(fraction, float | int) or isinstance(fraction, bool):
             return
+        # **The bar goes under the selector rather than instead of it** (`T126-R2`). This used to
+        # return outright when a selector was present, on the reading that no model answers both
+        # roles — true until `T126-R2` made a started download say what format it is running as,
+        # which is `UX-005` §6's "plain format text once a download starts". A row that dropped its
+        # progress bar the moment it acquired that text would trade one half of `UX-005` §3's
+        # anatomy for the other. `sizeHint` already reserves `TEXT_LINES`, and the guards below
+        # drop the bar rather than draw it outside the row when a large font leaves no room.
+        #
         # **Stops where the verbs start** (`UX-005` §4). The bar and the buttons share the last
         # line; a bar drawn the full width would run underneath them, which is the same defect as
         # a control drawn where nobody clicks, seen from the paint side.
         bar = QRect(
             area.left(),
-            area.top() + 2 * line + 2,
+            area.top() + (2 + selector_lines) * line + 2,
             max((area.right() if verbs_left is None else verbs_left) - area.left(), 0),
             BAR_HEIGHT,
         )
@@ -619,8 +652,21 @@ class RowDelegate(QStyledItemDelegate):
         Qt creates this when a row enters edit mode and destroys it when the row leaves, so the
         cost is one control regardless of how many rows exist. The design this replaces built one
         per row up front, which is the whole of the 0.722 s.
+
+        **The inherited entry is the model's to offer** (`T126-R4`). It used to be prepended
+        unconditionally, which is correct on the staging list — `UX-004` gives a paste one format
+        and a row may defer to it — and false on the queue, where a job holds only its own durable
+        request and the batch it arrived with is neither stored nor reachable. So the queue drew a
+        first entry that `QueueModel.setData` then refused, naming a group that does not exist:
+        a control which silently does nothing, which is what `UX-005` §5 forbids.
+
+        The accessible description follows the same fact, rather than describing a paste to
+        somebody looking at a queue.
         """
         self._editing_row = index.row()
+        job_id = index.data(JOB_ID_ROLE)
+        self._editing_job_id = job_id if isinstance(job_id, str) and job_id else None
+        inheritable = bool(index.data(PRESET_INHERITABLE_ROLE))
         choice = QComboBox(parent)
         self._editor = choice
         choice.setObjectName(ROW_PRESET_NAME)
@@ -628,8 +674,11 @@ class RowDelegate(QStyledItemDelegate):
         choice.setAccessibleDescription(
             "Choose a format for this URL alone. The first entry follows the format chosen for "
             "the whole paste."
+            if inheritable
+            else "Choose the format this download will use."
         )
-        choice.addItem(INHERITED_TEXT, None)
+        if inheritable:
+            choice.addItem(INHERITED_TEXT, None)
         for name in index.data(PRESET_CHOICES_ROLE) or ():
             choice.addItem(str(name), str(name))
         return choice
@@ -639,7 +688,19 @@ class RowDelegate(QStyledItemDelegate):
         if self._editing_row == index.row():
             self._editing_row = None
             self._editor = None
+            self._editing_job_id = None
         super().destroyEditor(editor, index)
+
+    @property
+    def editing_job_id(self) -> str | None:
+        """Which job the open editor belongs to, or `None` if none is open (`T126-R1`).
+
+        Read **before** `commit_and_close_editor`, by a surface that means to reopen the editor on
+        the same job once the model has been rebuilt. By id and not by row: the whole reason the
+        commit has to happen first is that a structural reset can move the row, and a restore that
+        used the old number would reopen the editor on whatever job now occupies it.
+        """
+        return self._editing_job_id
 
     def commit_and_close_editor(self) -> bool:
         """Commit the open editor and close it. `True` if there was one (`T118-R14`).
@@ -649,6 +710,13 @@ class RowDelegate(QStyledItemDelegate):
         does not belong to this view"*, `setData` is never reached, and the user's chosen format is
         discarded silently while the orphaned combo box stays on screen. The window for that is not
         teardown — it is any sibling row finishing its probe while someone is choosing a format.
+
+        **The queue resets on remove, reorder and clear, so it needs this too** (`T126-R1`). The
+        add dialog was given the lifecycle and the queue was given the same delegate without it,
+        so choosing MP3 for a row and then reordering the queue discarded the choice in silence and
+        left the download running as whatever it was before. `QueueView` now calls this from
+        `modelAboutToBeReset`, which is emitted while the model still holds the rows the editor's
+        index was resolved against.
         """
         view = cast("QAbstractItemView | None", self.parent())
         editor = self._editor
@@ -656,16 +724,29 @@ class RowDelegate(QStyledItemDelegate):
             return False
         self._editor = None
         self._editing_row = None
+        self._editing_job_id = None
         view.commitData(editor)
         view.closeEditor(editor, QAbstractItemDelegate.EndEditHint.NoHint)
         return True
 
     def setEditorData(self, editor: QWidget, index: QModelIndex | _PersistentIndex) -> None:
+        """Show what the row's request already is — **or nothing** (`T126-R4`).
+
+        `max(wanted, 0)` was the old fallback, and dropping the inherited entry turned it into a
+        lie: a queue row whose durable request is a custom selector (`REQ-009`) answers `None` for
+        `PRESET_ROLE`, `findData` misses, and index `0` is then the *first built-in* — so a row
+        downloading `bestvideo[height<=720]+bestaudio` would have opened its control reading
+        "Best video available", and closing it unchanged would have said so to the manager.
+
+        `-1` instead: the control shows no selection, which is the honest rendering of *"no
+        built-in describes this"*, and `QueueModel` puts the literal selector on the row's own line
+        for exactly that case. A miss on the staging list cannot happen — its `None` is the
+        inherited entry, which is present there.
+        """
         if not isinstance(editor, QComboBox):
             return
         current = index.data(PRESET_ROLE)
-        wanted = editor.findData(current if isinstance(current, str) else None)
-        editor.setCurrentIndex(max(wanted, 0))
+        editor.setCurrentIndex(editor.findData(current if isinstance(current, str) else None))
 
     def setModelData(
         self,

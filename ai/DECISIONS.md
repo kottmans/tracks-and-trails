@@ -1695,13 +1695,14 @@ passed on either."* The risk is accepted with its name written down, not waved a
 
 ## OPS-007 — `T-074`'s unreproduced access violation is accepted as residual risk
 
-**Status:** **Accepted** (2026-07-29) — maintainer decision. **Its premise changed on 2026-08-04**
-and the decision has not been revisited: this entry accepts a residual *because* 361 attempts
-produced zero events, and `T-128` records something in the same subsystem reproducing at roughly
-2 in 39 on Linux. That is a candidate, not an identity — see `T-128` for why the two are filed
-separately — but the number this decision was made on is no longer the only number available. A
-maintainer may well accept it again; what would be wrong is leaving the original reasoning standing
-as though nothing had been learned.
+**Status:** **Accepted** (2026-07-29) — maintainer decision — and **amended 2026-08-04**, when its
+premise turned out to be gone. This entry accepts a residual *because* 361 attempts produced zero
+events; `T-128` records something in the same subsystem reproducing at roughly 2 in 39 on Linux.
+That is a candidate and not an identity — see `T-128` for why the two are filed separately — but
+the reopening clause turns on recurrence rather than on identity. **The amendment at the end of
+this entry is what is now in force for the phase exit**: the risk stands as risk, and `T-128` must
+diagnose before Phase 2 exits. The original reasoning below is kept as written rather than edited,
+because what changed is the evidence under it.
 **Date:** 2026-07-29
 **Supersedes:** `OPS-006`'s Consequences sentence *"The Windows suite exits with an access
 violation roughly one run in four."* That figure was the anecdote's denominator, not a
@@ -1800,6 +1801,50 @@ an unbounded hunt into a bounded one: the next occurrence is diagnostic rather t
   named as the disposition of the residual.
 - **This decision reopens** if the access violation recurs anywhere — at which point `T-092`'s dump
   should supply criterion 2 — or if any user-reachable defect is ever traced to `result_pump.py`.
+
+### Amendment, 2026-08-04 — the reopening clause fired, and the residual no longer clears the exit
+
+**Status of the amendment:** **Accepted** (2026-08-04) — maintainer ruling on `P2EXIT-R9`.
+**Raised by:** the Phase 2 exit re-review, which refused to re-use the original premise silently.
+
+**What changed.** The acceptance above is bought with one number — *361 attempts with zero events*
+— and the entry's own last bullet says it reopens if the fault recurs anywhere. `T-128` records **2
+Linux `SIGSEGV`s in 39 serial full-suite runs**, both at the same completed-test position with a
+live `ResultPump`. `T-128` is careful, and correctly so, that this is a **candidate and not an
+identity**: it is a different platform and a different signal, and product-versus-harness is as
+unresolved for it as it was for `T-074`. But the clause does not turn on identity. It turns on a
+recurrence in this subsystem, and the zero-event premise is gone whether or not the two are one bug.
+
+**Ruled: `T-128` must diagnose before Phase 2 exits.** The residual stands as *risk*, and it stops
+being something a phase exits over. Three options were on the table — re-accept at the measured
+rate, require the diagnosis, or file the Linux reproduction as its own separate risk — and the
+maintainer took the second.
+
+**Why this one.** The original acceptance was not a judgement that the fault is tolerable; it was a
+judgement that **reproduction was exhausted**, argued explicitly on cost — *"a rate low enough to
+survive 51 deliberate full-suite runs would need days of continuous `STARBASE` time"*. That
+argument is now false. A fault reproducing at roughly 1 in 20 on Linux is reachable in an afternoon
+on hardware that is not the one machine Windows verification depends on. The cheaper instrument the
+*Alternatives considered* section named as the condition for reopening — *"it reopens the moment
+there is a cheaper instrument than repetition"* — has arrived, and it is a reproduction rather than
+a tool. Accepting the risk a second time would be re-using an argument whose premise the evidence
+has removed, which is the specific thing `P2EXIT-R9` says the reviewer may not do silently and
+which the maintainer may not do accidentally.
+
+**What this does not decide.** It does not merge `T-074` and `T-128`, and it does not assert the
+crash is in the product. `T-128` owns identity and product-versus-harness, and it should answer
+`T-074`'s second criterion — *a stack is not a cause* — on whichever platform it can.
+
+**Consequences of the amendment.**
+
+- **Phase 2 exit criterion 6 now also waits on `T-128`.** It was already unmet for want of the
+  independent exit review; this adds a second, separately-tracked reason.
+- **`T-074` is unchanged**: still open at Medium, criteria still unmet, still not established as
+  the same fault. Nothing here re-raises it on the strength of a Linux crash.
+- **`T-092`'s dump trap is no longer the only instrument.** It stays armed for the Windows
+  occurrence, but a Linux reproduction at 2-in-39 is a faster route to a faulting frame.
+- **Phase 1's exit is not disturbed.** It exited on this decision's original form, and re-reading a
+  closed phase against evidence gathered a week later is not what the reopening clause is for.
 
 ---
 

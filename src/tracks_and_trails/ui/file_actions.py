@@ -76,6 +76,7 @@ class FileActions(QObject):
         run: Spawner | None = None,
         start: Starter | None = None,
         platform: str = sys.platform,
+        context_menu: bool = True,
         parent: QObject | None = None,
     ) -> None:
         super().__init__(parent)
@@ -107,8 +108,16 @@ class FileActions(QObject):
         self._reveal.setStatusTip("Show the selected download in your file manager")
         self._reveal.triggered.connect(self.reveal_selected)
 
-        table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        table.customContextMenuRequested.connect(self._show_menu)
+        # **Only when nothing else owns that channel** (`T124-R1`). A table has one
+        # `customContextMenuRequested`, and `UX-005` §4 gives it to the row's `⋯` menu — which
+        # already carries *Open* and *Show in folder* for the rows that have a file, through these
+        # very actions, and carries the rest of the row's verbs besides. Connecting both popped two
+        # menus on one gesture. The shell therefore passes `context_menu=False` and builds one
+        # menu; anything constructing `FileActions` over a table of its own keeps the default and
+        # keeps a keyboard-reachable menu.
+        if context_menu:
+            table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+            table.customContextMenuRequested.connect(self._show_menu)
         table.doubleClicked.connect(self.open_selected)
         selection = table.selectionModel()
         if selection is not None:

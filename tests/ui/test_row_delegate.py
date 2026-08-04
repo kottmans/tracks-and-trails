@@ -788,9 +788,16 @@ def test_painting_a_viewport_costs_the_same_whatever_the_model_holds(
     """The claim `T118-R10` is really about, asserted as a **ratio** rather than as a clock reading.
 
     A wall-clock budget says the machine was fast enough; this says the design does not grow with
-    the queue, which is the property that made 150 rows cost 0.722 s. Comparing two measurements
-    taken moments apart on one machine also removes the runner-speed term that made that gate flap
-    — a slow runner slows both sides.
+    the queue, which is the property that made 150 rows cost 0.722 s.
+
+    **A ratio does not cancel runner speed** (`T-122`, `T118-R17`). This said comparing two
+    measurements taken moments apart *"removes the runner-speed term that made that gate flap"*,
+    which is the same false claim `T-122` exists to retire one file over: it cancels a **sustained**
+    speed difference and not a **transient** pause, and a stall landing in one of two samples moves
+    the ratio arbitrarily. What keeps this one usable — and is why it stays a gate where
+    `test_add_dialog`'s became a diagnostic — is that both sides are in-process paint loops of five
+    iterations each, on a synthetic model, with an absolute `+ 0.05` floor that dominates at these
+    magnitudes. That is a narrower claim than the sentence it replaces, and it is the true one.
     """
     store = stores(loader=FakeLoader(None))
     delegate = RowDelegate(thumbnails=store)

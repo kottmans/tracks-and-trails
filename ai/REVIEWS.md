@@ -8988,3 +8988,300 @@ workflow whose observed jobs match the newly accepted policy.
 No source, submitted test, repository variable, remote ref or CI state was changed by the
 reviewer. The three temporary mutations above were reverted and the working tree was clean before
 this review record was appended.
+
+## 2026-08-04 — Indexed Phase 2 / UX-005 review
+
+**Reviewer:** Codex (Reviewer)
+**Index handoff:** `d2ff1a9` (`ai/handoffs/2026-08-04-review-index.md`)
+**Prior Phase 2 exit submission:** `5eb2611`
+**Reviewed implementation head:** `47299aa`
+**Last CI-backed coordination head:** `8d1b01c`
+**Checkout while recording:** `b7d0200` — later commits are coordination-only
+**Overall verdict:** **Changes requested for `T-122` and UX-005 (`T-124`/`T-125`/`T-126`).
+`T-127` is approved with one non-blocking follow-up, and `DAT-005` is approved. Phase 2 is
+blocked pending those corrections and a maintainer reconsideration of `OPS-007`.**
+
+The review followed the index order. Findings are grouped by the item whose verdict they control;
+`UX-005` was submitted and requested as one review.
+
+### `T-127` — Approved with follow-up
+
+`P2EXIT-R1` and `P2EXIT-R2` are **Resolved**. The N-worker orphan gate captures the workers
+independently, kills exactly the application PID, bounds observation below the clip's own lifetime,
+and cleans the tree only afterwards. The responsiveness gate proves three reservations, requires
+all three jobs `RUNNING` together, observes per-job progress inside the measured window, and
+requires all three to finish after release.
+
+The reviewer's original mutations now fail for the stated reasons: removing
+`_exit_when_the_parent_does()` leaves all three workers alive past the five-second grace; removing
+the three `start()` calls fails in 0.54 seconds. The unmutated pair passed locally, and the exact
+implementation subsequently ran in the green `8d1b01c` Windows desktop job.
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T127-R1` | **Medium** | No | Process-test cleanup | `reap_the_captured_tree()` catches every `psutil.Error` while killing, excludes the direct `Popen` child from `wait_procs`, suppresses `TimeoutExpired` from `process.wait()`, and returns only survivors from the remaining list. A refused kill or stuck launcher can leak while `assert not leaked` passes. This occurs after the behavioral assertion and does not weaken the watchdog proof. | Tolerate only normal `NoSuchProcess`/`ProcessLookupError` races, make wait timeouts visible, and include every survivor without replacing an earlier behavioral failure. | **Open, non-blocking; process-test hardening follow-up** |
+
+### `T-122` — Changes requested
+
+The core correction is sound: relative scaling is no longer asserted; the 500-row absolute budget
+and structural one-editor bound remain required; and `superlinear_growth()` refuses thin or
+unequal samples. `P2EXIT-R3`'s defective required ratio gate is therefore **Resolved**.
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T122-R1` | **Medium** | **Yes — T-122** | Required current-truth correction | The task requires removal of prose claiming a ratio is runner-invariant. `tests/ui/test_add_dialog.py:121-123` still calls the ratio the “finer claim” and says it “does not move with runner speed at all,” immediately before the later comment correctly explains the opposite. This is the exact false claim T-122 exists to retire. | Remove or rewrite the stale sentence so the module has one current rule: this ratio is diagnostic and transient load can move it. | **Open** |
+| `T122-R2` | **Low** | No | Diagnostic isolation | `cost()` says every manager is “reaped inside the sample loop,” but `DownloadManager.shutdown()` explicitly begins asynchronous teardown and returns. Managers are pumped to idle only at fixture teardown, so later samples can overlap earlier probe workers. This no longer weakens a gate because the result is printed only. | Wait outside the timed region until each manager is idle, or describe this as a coarse non-isolated diagnostic. | **Open, non-blocking** |
+
+### `UX-005`, `T-124`, `T-125`, `T-126` — Changes requested
+
+The two-tab/no-splitter structure, state-to-verb table, shared rendering, file-action containment,
+history confirmation and status-bar file guarantee are present. These findings block the grouped
+UX verdict:
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T126-R1` | **Critical** | **Yes — T-126 / UX-005** | Open editor across queue reset | Queue rows reuse the delegate editor but not T118-R14's reset lifecycle. `QueueModel.refresh()` fully resets on remove/reorder/clear, while QueueView never commits the open editor first or restores identity. In a shown reviewer probe, choosing MP3 for job B and emitting `queue_reordered` produced no `preset_chosen` request (`asked == []`). The visible choice is silently discarded, so the download can run the old format. Existing coverage calls `model.setData()` directly and cannot see this route. | Commit the delegate editor before every structural reset while its index still names the shown job, then restore by identity. Add a shown-view reorder/remove regression asserted through the durable request. | **Open** |
+| `T125-R1` | **High** | **Yes — T-125 / UX-005** | History deletion transaction | `HistoryRepository.remove()` executes `DELETE` without a transaction context or commit. Unit tests read through that same connection and see the uncommitted deletion. Production reports success, refreshes through a separate read connection where the row still exists, and later closes the writer connection, rolling the deletion back. A reviewer probe reported `removed 1`, `same_connection_has_row False`, `other_connection_has_row True`, and `after_writer_close_has_row True`. | Commit atomically like the other repository writes. Test through the real writer/read connection boundary and after writer shutdown/reopen. | **Open** |
+| `T124-R1` | **High** | **Yes — T-124 / T-125** | Keyboard and overflow | UX-005 declares `⋯` as the no-pointer route. `RowDelegate.editorEvent()` handles only left-button mouse events; neither list installs a keyboard/context-menu route. Queue tests invoke `_show_row_menu()` directly. Pressing the Menu key in a shown reviewer probe produced no `rowVerbsMenu`. History is worse: its drawn `⋯` emits `verb=None`, which `HistoryView._on_verb()` ignores, so that visible control does nothing even with a pointer. History removal consequently has no keyboard route. | Give both lists a real focused-row keyboard/context-menu activation through the pointer action path. Drive the actual key in shown-view tests, including History removal selection. | **Open** |
+| `T124-R2` | **High** | **Yes — T-124** | Live tab counts | MainWindow refreshes labels only from explicit shell refresh helpers. QueueModel also resets itself on `job_removed`, `queue_reordered` and `queue_cleared`, but `modelReset` is not connected to `_refresh_tab_labels()`. A probe removed one backing job and emitted `job_removed`: the model fell to one row while the tab stayed `Queue (2)`. The committed test calls `window.refresh_queue()` directly. | Refresh labels from each model's structural-change signal and test manager-driven remove/clear. | **Open** |
+| `T126-R2` | **High** | **Yes — T-126 / UX-005** | Format after admission | UX-005 §6 and T-126 require a control before start and plain format text afterwards. QueueModel answers `PRESET_ROLE` and `PRESET_CHOICES_ROLE` but never `SELECTOR_ROLE`; after a job leaves `RETARGETABLE`, the control disappears and no format text is drawn. The status matrix checks choices only. | Supply effective format/selector text after the retarget window closes, including custom selectors, and assert it against the durable request. | **Open** |
+| `T124-R3` | **High** | **Yes — T-124 / UX-005** | Rejected toolbar design remains | UX-005 chooses row verbs “rather than a toolbar acting on a selection,” because two tabs make that toolbar guess its target. MainWindow still creates selection-based **Remove**, **Move up**, and **Move down** actions tied to the hidden queue selection even while History is frontmost. The chosen row route was added without removing the rejected route. | Keep queue-wide Pause and Clear-finished, but remove the per-row toolbar actions or obtain an explicit amendment retaining them. | **Open** |
+| `T124-R4` | **High** | **Yes — T-124 / UX-005** | Accepted row anatomy | UX-005 §3 requires thumbnail, title, uploader and duration, progress and state. `Job` persists title and thumbnail URL but has no uploader or duration, so QueueModel cannot render them. T-124's task text weakens this to the older REQ-014 fields, but a task cannot narrow an accepted decision. | Carry probed uploader/duration into the durable row and render them, or amend UX-005 if §3 was intended as visual anatomy rather than named data. Test after the add dialog closes. | **Open** |
+
+`DAT-005` itself is **Approved**. Selected-record scope, permanent and confirmation-time file
+guarantees, irreversible counted confirmation, refusal to touch files, and the REQ-020 amendment
+form one coherent decision preserving UX-001. `T125-R1` is an implementation failure, not a defect
+in that decision.
+
+### Phase 2 exit re-review — Blocked
+
+| # | Verdict | Independent reading |
+|---|---|---|
+| 1 | **Met, subject to T-127's approved gate.** | Three workers overlap; each advances progress inside the measured responsive window; all complete after release. The start-removal mutation fails promptly. |
+| 2 | **Met.** | A real composed application restarts against the killed database, preserves never-started rows, recovers in-flight rows and shows the offer. |
+| 3 | **Met.** | Real worker and durable-state counts stay within the limit, with approved lowering/pause evidence. |
+| 4 | **Met.** | The single-instance route retains its approved Linux/Windows evidence. |
+| 5 | **Behavior met by T-127; table evidence stale.** | The corrected test kills one application PID and fails without the watchdog. It passed on Linux and Windows desktop at `8d1b01c`; the plan still cites the old vacuous gate's run. |
+| 6 | **Not met.** | This review requests changes for the sequenced UX batch and T-122, and the crash-class risk needs the maintainer ruling below. |
+| 7 | **Met.** | Add-only admission, restart and paused-queue routes remain substantive and approved. |
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `P2EXIT-R8` | **Medium** | **Yes** | Criterion-5 current truth | The exit table still cites hosted-Windows run `30712201443`, which predates T-127 and exercised the gate proven to pass with the watchdog removed. Correct Windows evidence exists at `8d1b01c`, while the T-127 task still says Windows is pending. | Cite the corrected Linux and Windows executions and remove the stale pending sentence. Keep behavioral evidence distinct from generic “all phase tests passed.” | **Open; Documentation Maintainer** |
+| `P2EXIT-R9` | **Medium** | **Yes — maintainer decision** | `OPS-007` / result-pump crash | `OPS-007` accepted T-074 because 361 attempts produced no recurrence and explicitly said recurrence reopens the decision. T-128 now records 2 Linux SIGSEGVs in 39 serial full-suite runs, both at the same completed-test position with a live `ResultPump`. T-128 correctly preserves uncertainty about identity and product versus harness, but that uncertainty does not preserve the zero-event premise. | Reconsider `OPS-007` explicitly: re-accept the measured risk, require T-128 diagnosis before exit, or classify the reproduction separately once evidence supports it. The reviewer cannot silently reuse the old premise. | **Open; Maintainer** |
+
+`P2EXIT-R4` is **Resolved** by accepted `OPS-010`: Windows desktop runs on every push, the duplicate
+matrix leg is conditionally absent when it would use the same runner, and scheduled runs have a
+separate non-cancelling concurrency policy. P2EXIT-R5's broader reconciliation is resolved except
+for P2EXIT-R8.
+
+`T-123` and `T-128` are correctly separate. The xdist measurement found its predicted
+process-contention hazard and should not be adopted until that class is serialized. The Linux
+segfault resembles T-074 but does not establish identity; a separate task preserves uncertainty.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | Reviewed `5eb2611..47299aa`, both detailed handoffs, the index at `d2ff1a9`, and coordination through `8d1b01c`. Later commits through `b7d0200` alter coordination only. `git diff --check 5eb2611..47299aa` passed. |
+| T-127 unmutated | Orphan-worker and responsiveness gates: **2 passed in 6.12 s**. |
+| T-127 mutations | Removing the watchdog failed with **3/3 workers alive**; removing all starts failed in **0.54 s**. Mutations were restored and the tree verified clean. |
+| Submitted focused UI | Existing row-verbs, wiring, history, queue, main-window and T-122-focused tests: **75 passed / 123 deselected in 7.93 s**. They bypass the missing user routes above. |
+| UX probes | Shown F2 route: no editor. Shown Menu-key route: no menu. Manager-driven removal: one model row while tab stayed `Queue (2)`. Open job-B editor plus reorder/reset: no retarget request. Temporary probes were removed. |
+| T-125 probe | Same connection saw deletion; a second connection and reopen both retained the row. Exact booleans: `False`, `True`, `True` for row present on same, other, reopened connections. |
+| CI | `8d1b01c` is green on all five jobs, including Windows desktop, and contains source head `47299aa`. Green CI does not exercise these keyboard/reset and cross-connection routes. |
+
+### Final disposition
+
+Approve `T-127` with T127-R1 as a non-blocking follow-up and approve `DAT-005`. Correct T122-R1
+before completing T-122; T122-R2 may remain a follow-up. `T-124`, `T-125` and `T-126` need one
+correction batch, with the Critical editor/reset path independently mutation-checked and history
+deletion tested across the real writer/read boundary.
+
+Phase 2 remains blocked until that UX correction is approved, T-122's required prose is reconciled,
+P2EXIT-R8 cites corrected platform evidence, and the maintainer answers the reopened `OPS-007`
+premise. No reviewed source, submitted test, workflow, decision, task state, remote ref or CI state
+was changed. This review record is the only reviewer edit; nothing was committed or pushed.
+
+## 2026-08-04 — Indexed Phase 2 / UX-005 correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `b7d0200`
+**Submitted state:** bounded uncommitted diff over that base; no implementation commit or Windows
+run yet
+**Overall verdict:** **Changes requested.** Nine original corrections are sound, the maintainer's
+`OPS-007` ruling is coherent, and `T122-R1`, `T124-R1`–`R4`, `T125-R1`, `T126-R2`, `T127-R1`
+and `P2EXIT-R8` are resolved. The `T126-R1` correction introduces a new Critical refresh loop.
+`T122-R2` also retains one non-blocking timeout hole. Phase 2 remains blocked by this correction,
+the accepted `T-128` prerequisite, and the absent Windows execution of the final correction head.
+
+### Blocking finding
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T126-R3` | **Critical** | **Yes — T-126 / UX-005** | Editor restore / retarget success refresh | `QueueView` commits the editor on every reset and reopens it afterwards. If the retarget write becomes visible before the reorder reset rereads the queue, the reopened editor already contains the new preset. `retarget()` then runs its success-side `refresh_queue`; that reset commits the redisplayed, unchanged value as another user choice. `DownloadManager` recognizes `UNCHANGED` and calls the same success callback synchronously, forming `refresh → commit → retarget(UNCHANGED) → refresh` until `RecursionError`. The submitted regression replaces `retarget()` with a list append and never updates its reader, so the reopened editor contains the inherited value and cannot enter this path despite describing its assertion as durable. A deterministic reviewer regression updates the backing reader before invoking the success refresh and receives the same MP3 request twice; an uncapped composed probe reached `RecursionError` inside the Qt event loop. | Distinguish a user edit from lifecycle commit of an unchanged editor. Viable shapes include making the model refuse `setData` when the selected preset already describes the durable request, or suppressing the success refresh's lifecycle commit without losing a real in-progress choice. Preserve commit-before-reset and reopen-by-id, then make the reviewer regression pass and add a real composed/durable route that cannot recurse. | **Open** |
+
+The deterministic regression is
+`test_a_fast_retarget_does_not_turn_the_success_refresh_into_a_loop` in
+`tests/ui/test_row_verb_wiring.py`. It is intentionally red on the submitted implementation:
+
+```text
+asked = [('job-b', 'bestaudio/best'), ('job-b', 'bestaudio/best')]
+```
+
+### Non-blocking residual
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T122-R2` | **Low** | No | Diagnostic isolation | `cost()` now pumps each manager outside the timed region, which fixes the ordinary overlap. But the 30-second deadline falls through without asserting `manager.is_idle`; a stuck teardown therefore resumes sampling under the old manager after exactly 30 seconds and prints a contaminated diagnostic as though isolation succeeded. | Assert idle after the bounded wait, or fail with a diagnostic naming the manager that did not settle. | **Open, non-blocking residual** |
+
+### Corrections accepted on source review
+
+- **`T127-R1` is Resolved.** Only real disappearance races are ignored while killing; refused
+  kills and a direct-child wait timeout enter the returned survivor set. The exact orphan-worker
+  phase gate passed locally.
+- **`T122-R1` is Resolved.** The stale runner-invariance claim is gone. The ratio is consistently
+  described as diagnostic and the absolute 500-row budget remains the gate.
+- **`T124-R1`–`R4` are Resolved.** Both lists own one context-menu route with current-row fallback;
+  History's drawn overflow reaches the shell; FileActions no longer installs a competing menu;
+  tab labels follow model resets; selection-scoped toolbar verbs are gone; and migration 0003
+  carries uploader plus fractional duration from the probe into the durable queue row and its
+  accessible text.
+- **`T125-R1` is Resolved.** History deletion now owns a transaction, and the regression observes
+  it through another connection and after the writer connection closes.
+- **`T126-R2` is Resolved.** Once retargeting is no longer legal, the row derives plain effective
+  format text from the durable request and the delegate no longer drops the progress bar merely
+  because that text is present.
+- **`P2EXIT-R8` is Resolved.** Criterion 5 now cites the corrected N-worker watchdog gate at
+  `8d1b01c`, not the earlier vacuous run.
+- **`P2EXIT-R9` has the required maintainer ruling.** The `OPS-007` amendment does not claim that
+  T-074 and T-128 are identical; it correctly says the zero-recurrence premise fired and makes
+  T-128 diagnosis a Phase 2 exit prerequisite.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary and whitespace | Inspected the complete uncommitted diff over `b7d0200`; `git diff --check b7d0200` passed. |
+| Submitted focused set | Queue/history/UI, model, persistence, composition and non-network end-to-end selection: **325 passed / 1 skipped** before ten localhost-server cases were denied by this sandbox (`PermissionError` at socket creation, not product assertions). |
+| T-127 exact gate | `test_no_worker_outlives_a_hard_kill_with_a_full_pool`: **1 passed in 2.70 s** with localhost/process permission. |
+| T-122 focused | Scaling oracle, reported ratio diagnostic and absolute supported-paste budget: **3 passed / 58 deselected**. |
+| Reviewer regression | **1 failed**, deterministically observing two identical retarget requests. The earlier uncapped composed probe reached `RecursionError`; it was removed in favour of the bounded regression. |
+| Reviewer test hygiene | `ruff check` and `ruff format --check` pass for the touched test files; `git diff --check` passes. |
+| Windows | **Not run.** Migration 0003, Qt reset/editor behavior and the keyboard routes remain owed on the exact corrected head. |
+
+### Final disposition
+
+Do not commit this batch as approved and do not spend the final Windows verification run on the
+current source. Correct `T126-R3`, keep the red reviewer regression, and rerun the focused reset
+tests plus a composed durable-request regression. `T122-R2` remains non-blocking but is a one-line
+hardening worth closing in the same pass. Then run the full Linux gates and the exact correction
+head on Windows; Phase 2 still cannot exit until `T-128` satisfies the accepted `OPS-007`
+amendment.
+
+The reviewer changed only this review record and the one failing reviewer regression in
+`tests/ui/test_row_verb_wiring.py`. No production source, submitted correction test, decision,
+task state, remote ref, commit or CI state was changed.
+
+## 2026-08-04 — `T126-R3` / `T122-R2` second correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** still the bounded uncommitted diff over `b7d0200`
+**Verdict:** **The two submitted corrections are approved, but UX-005 / T-126 still needs one
+High correction.** `T126-R3` and `T122-R2` are Resolved. A shared-editor option that is meaningful
+in staging remains visible and inert in the durable queue.
+
+### Submitted residuals
+
+- **`T126-R3` is Resolved.** `QueueModel.setData()` now compares the submitted preset name with
+  `_preset_name_for(job)` before emitting. That is the right boundary: it answers from durable
+  value rather than reset-call provenance, preserves the commit-before-reset ordering, and also
+  removes ordinary unchanged manager round trips. The reviewer's fast-write regression passes.
+  The new `_WritableStore` tests exercise the real `DownloadManager.retarget()` both ways: an
+  unchanged lifecycle commit never reaches it, while a genuine MP3 choice reaches job B's stored
+  request and not the row that inherited its old position.
+- **`T122-R2` is Resolved.** The bounded pump is followed by an explicit `manager.is_idle`
+  assertion naming the sample size. A teardown that misses the deadline can no longer contaminate
+  later samples while returning a plausible number.
+
+### New finding
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T126-R4` | **High** | **Yes — T-126 / UX-005** | Queue format editor | `RowDelegate.createEditor()` unconditionally prepends **Same as all**, which is valid in the staging dialog because a whole-paste format exists there. A durable queue row has only its own stored request: the former group choice is neither persisted nor exposed. Selecting this entry supplies `None`, and `QueueModel.setData()` rejects `None`, so the queue displays an option which silently does nothing. The text is also false on this surface—there is no “all” to match. This violates UX-005 §5's “nothing offered that would be refused” rule. No submitted test selects the first entry. | Make the inherited entry model/surface-specific: retain it for staging, but do not offer it on queue rows unless the queue gains a real, specified group default. Ensure a custom durable selector still has an honest current representation rather than falling onto a misleading first built-in. | **Open** |
+
+The failing reviewer regression is
+`test_a_queue_editor_does_not_offer_an_inapplicable_group_default`. Current result:
+
+```text
+editor.findText("Same as all") == 0
+expected -1
+```
+
+### Verification
+
+| Check | Result |
+|---|---|
+| T126-R3 focused routes | **7 passed / 43 deselected**: original reset pair, restore-by-id, fast-write regression, real-manager unchanged and changed controls. |
+| Complete row-wiring file | **50 passed / 1 failed**; the sole failure is the new reviewer regression above. |
+| T122-R2 diagnostic | **1 passed / 110 deselected**, reporting paste cost within the diagnostic headroom. |
+| Static hygiene touched paths | `ruff check`, `ruff format --check`, and `git diff --check b7d0200` pass. The implementer's four mypy gates are reported green; the full suite was still running at submission. |
+| Windows | Still not run, correctly deferred until a reviewable source head exists. |
+
+### Disposition
+
+Correct `T126-R4` before completing T-126 or UX-005. Keep the staging dialog's inherited choice;
+the finding is that the shared delegate silently exports it to a surface with no corresponding
+state. After the reviewer regression passes, finish the Linux suite and spend Windows verification
+on that exact head. Phase 2 remains independently blocked on the accepted `T-128` prerequisite.
+
+This second pass changed only this review record and the new failing reviewer regression in
+`tests/ui/test_row_verb_wiring.py`. No production source, submitted test, decision, task state,
+commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-04 — `T126-R4` focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** bounded uncommitted diff over `b7d0200`
+**Verdict:** **`T126-R4` Resolved. The corrected UX-005 / T-126 source is approved pending the
+submitted full-suite result and exact-head Windows evidence.** Phase 2 remains separately blocked
+by the accepted `T-128` prerequisite.
+
+The inheritance decision now belongs to the model through `PRESET_INHERITABLE_ROLE`. Staging
+answers true because its whole-paste choice is real; QueueModel and models unaware of the role
+answer false by absence. `RowDelegate` uses that one fact for the live editor's entries, its
+accessible description and the painted inherited label, so the option cannot survive on one of
+those surfaces after disappearing from another.
+
+The custom-selector consequence is also handled correctly rather than hidden by deleting the
+entry. On a queue row where no built-in describes the durable request:
+
+- `setEditorData()` leaves the combo with no selected built-in rather than coercing the miss to
+  index zero;
+- the painted combo carries no false inherited label;
+- `SELECTOR_ROLE` supplies the literal durable selector even while the row remains editable; and
+- `_whole_row()` consumes that same role, so screen-reader text follows the drawn condition rather
+  than maintaining a second status/preset test.
+
+That preserves all three honest states: staging inheritance, a named queue built-in, and an
+editable queue custom selector.
+
+### Verification
+
+| Check | Result |
+|---|---|
+| T126-R4 plus reset/accessible controls | **8 passed / 105 deselected**. |
+| Complete row-wiring file | **52 passed**. |
+| Full UI suite in reviewer sandbox | **405 passed / 2 skipped / 2 failed**. Both failures are launch subprocesses trying to open `/home/sean/.cache/tracksandtrails/tracks-and-trails.log`, which this sandbox mounts read-only; they fail before application behavior and are not source regressions. The implementer reports the same suite outside this restriction as **407 passed / 2 skipped**. |
+| Static hygiene on affected paths | `ruff check`, `ruff format --check`, and `git diff --check b7d0200` pass. The implementer reports all four mypy gates clean. |
+| Full suite | Running at submission; the last baseline before R4 was **2061 passed**. |
+| Windows | Not run; still owed on the committed exact correction head. |
+
+No further source correction is requested. Once the full Linux suite reports, commit the bounded
+batch, preserve the reviewer regressions, and run Windows against that exact head. A green Windows
+run closes the platform-evidence condition for this UX correction; it does not waive the
+independent `T-128` exit prerequisite accepted in the `OPS-007` amendment.
+
+This pass changed only this review record. The previously added reviewer regression remains in
+`tests/ui/test_row_verb_wiring.py`. No production source, submitted test, decision, task state,
+commit, remote ref or CI state was changed by the reviewer.

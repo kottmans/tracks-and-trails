@@ -477,6 +477,7 @@ def test_required_text_fields_raise_type_error_for_the_wrong_type(
     [
         (Job, "title"),
         (Job, "thumbnail_url"),
+        (Job, "uploader"),
         (Job, "output_path"),
         (Job, "error_message"),
         (MediaInfo, "thumbnail_url"),

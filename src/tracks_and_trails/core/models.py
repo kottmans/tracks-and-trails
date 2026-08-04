@@ -516,6 +516,21 @@ class Job:
     #: offered no thumbnail. Neither is an error, and neither should be drawn as one.
     thumbnail_url: str | None = None
 
+    #: Who published it, and how long it is (`UX-005` §3, `T124-R4`, `REQ-002`).
+    #:
+    #: **The same shape and the same reasoning as `thumbnail_url`**, and they were left out of the
+    #: same commit: `MediaInfo` has carried both since `T-016`, the add dialog draws both on the
+    #: staging row, and neither had anywhere to live once that dialog closed — so `UX-005` §3's
+    #: row anatomy could be drawn while a URL was being staged and not afterwards, on the tab the
+    #: user actually watches. `T-124` narrowed §3 to `REQ-014`'s older field list rather than
+    #: carrying them, and a task cannot narrow an accepted decision.
+    #:
+    #: `None` means the same two things it means for the thumbnail, told apart by `status`: not
+    #: probed yet, or probed and the extractor named none. yt-dlp genuinely omits an uploader for
+    #: some sites and a duration for a live stream, so neither absence is an error.
+    uploader: str | None = None
+    duration_seconds: float | None = None
+
     #: Failure is stored as two fields rather than a `FailureDetail`, mirroring the columns in
     #: `ARCHITECTURE.md` §5 so the persistence layer (`T-014`) is a direct mapping. The
     #: verbatim message requirement (`NFR-006`) applies here just as strongly.
@@ -540,6 +555,8 @@ class Job:
         _require_optional_enum("Job", "error_kind", self.error_kind, ErrorKind)
         _require_optional_text("Job", "title", self.title)
         _require_optional_text("Job", "thumbnail_url", self.thumbnail_url)
+        _require_optional_text("Job", "uploader", self.uploader)
+        _require_optional_duration("Job", "duration_seconds", self.duration_seconds)
         _require_optional_text("Job", "output_path", self.output_path)
         _require_optional_text("Job", "error_message", self.error_message)
         _require_optional_count("Job", "queue_position", self.queue_position)

@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QRect
 from PySide6.QtGui import QAction, QGuiApplication
-from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox
+from PySide6.QtWidgets import QApplication, QMainWindow, QMenu, QMessageBox, QToolBar
 
 from tracks_and_trails import __version__
 from tracks_and_trails.core.job_state import JobStatus
@@ -29,6 +29,7 @@ from tracks_and_trails.ui.main_window import (
     moved_onto_a_screen,
     save_geometry,
 )
+from tracks_and_trails.ui.row_verbs import Verb
 
 
 @pytest.fixture
@@ -285,11 +286,43 @@ def test_the_queue_actions_exist_only_with_the_control_bar(qapp: QApplication) -
     """
     bare = MainWindow()
     assert bare.pause_action is None
-    assert bare.remove_action is None
+    assert bare.clear_completed_action is None
 
     equipped = MainWindow(concurrency=3)
     assert equipped.pause_action is not None
-    assert equipped.remove_action is not None
+    assert equipped.clear_completed_action is not None
+
+
+def test_the_toolbar_holds_nothing_that_acts_on_a_selection(qapp: QApplication) -> None:
+    """`UX-005` chose row verbs **"rather than a toolbar acting on a selection"** (`T124-R3`).
+
+    The row route was added and the rejected one was left in place, so *Remove*, *Move up* and
+    *Move down* were still on the toolbar, still enabled from the queue's selection, and still
+    live while the History tab was in front — the exact ambiguity the decision exists to remove.
+
+    Asserted **by object name over the real toolbar**, not by the absence of a property: a property
+    can be deleted while the action goes on being built and added, which leaves the defect and
+    passes the test. Every surviving action is then required to be enabled with nothing selected,
+    which is what "acts on the queue" means operationally.
+    """
+    window = _window_over([_job("a", 0), _job("b", 1)], on_remove_requested=lambda _: None)
+    bar = window.findChild(QToolBar, "queueToolBar")
+    assert bar is not None
+
+    names = {action.objectName() for action in bar.actions() if action.objectName()}
+    assert names == {"pauseQueueAction", "clearCompletedAction"}, (
+        f"the toolbar holds {sorted(names)}; UX-005 §4 leaves it queue-wide Pause and "
+        "Clear-finished, and puts every per-row verb on the row"
+    )
+
+    assert window.queue_view is not None
+    window.queue_view.table.clearSelection()
+    for action in bar.actions():
+        if action.objectName():
+            assert action.isEnabled(), (
+                f"{action.objectName()} needs a selection, so it is a per-row action on a toolbar "
+                "that serves two tabs"
+            )
 
 
 def test_pausing_reports_once_and_says_which_way(qapp: QApplication) -> None:
@@ -340,29 +373,27 @@ def test_showing_the_pause_state_does_not_report_it_back(qapp: QApplication) -> 
     assert reported == []
 
 
-def test_remove_is_offered_only_when_something_is_selected(qapp: QApplication) -> None:
-    """An action that needs a selection starts disabled, and a press with none does nothing.
+def test_a_rows_remove_names_its_own_job(qapp: QApplication) -> None:
+    """Removal is the row's verb now, and it carries the job rather than reading a selection.
 
-    Both halves, because they fail differently: the enabled state is what the user sees, and the
-    handler's own guard is what a keyboard shortcut would otherwise walk straight past.
+    This replaces `test_remove_is_offered_only_when_something_is_selected` (`T124-R3`). That test
+    was about the toolbar action's enabled state, which existed because the toolbar had to guess
+    what it was acting on. The row cannot guess: it names the job it is drawn on, and the
+    assertion is that the named job is the one that reaches composition **while a different row is
+    selected**, which is the case a selection-reading implementation gets wrong.
     """
     asked: list[str] = []
-    window = MainWindow(concurrency=3, on_remove_requested=asked.append)
-    action = window.remove_action
-    assert action is not None
+    window = _window_over(
+        [_job("a", 0), _job("b", 1)],
+        on_remove_requested=asked.append,
+    )
+    assert window.queue_view is not None
+    window.queue_view.select("a")
 
-    assert not action.isEnabled(), "Remove was offered with nothing selected"
+    window.queue_view.trigger_verb("b", Verb.REMOVE)
 
-    # **Enabled first, deliberately.** `QAction.trigger()` on a disabled action is a no-op, so
-    # triggering it while disabled asserts Qt's behaviour and not this window's — the first
-    # version of this test did exactly that and survived a mutation removing the handler's own
-    # guard. Enabling it reproduces the state the guard exists for: the action's enabled state and
-    # the table's selection disagreeing, which is one stale signal or one shortcut away.
-    action.setEnabled(True)
-    action.trigger()
-    assert asked == [], (
-        "Remove acted with nothing selected. The enabled state is what the user sees; the "
-        "handler's own check is what a keyboard shortcut walks past"
+    assert asked == ["b"], (
+        f"asked to remove {asked}; the row's verb names its own job, and `a` was selected"
     )
 
 
@@ -430,10 +461,8 @@ def test_moving_a_job_sends_the_whole_new_order(qapp: QApplication) -> None:
         on_reorder_requested=asked.append,
     )
     assert window.queue_view is not None
-    window.queue_view.select("c")
 
-    assert window.move_up_action is not None
-    window.move_up_action.trigger()
+    window.queue_view.trigger_verb("c", Verb.MOVE_UP)
 
     assert asked == [["a", "c", "b"]], (
         f"sent {asked}; moving `c` up swaps it with `b` and leaves `a` where it was"
@@ -454,10 +483,8 @@ def test_moving_across_a_running_job_moves_the_pending_pair(qapp: QApplication) 
         on_reorder_requested=asked.append,
     )
     assert window.queue_view is not None
-    window.queue_view.select("c")
 
-    assert window.move_up_action is not None
-    window.move_up_action.trigger()
+    window.queue_view.trigger_verb("c", Verb.MOVE_UP)
 
     assert asked == [["c", "a"]], (
         f"sent {asked}; the running job must not be named, and `c` moving up past it means `c` "
@@ -465,45 +492,34 @@ def test_moving_across_a_running_job_moves_the_pending_pair(qapp: QApplication) 
     )
 
 
-def test_the_move_actions_are_not_offered_for_a_running_job(qapp: QApplication) -> None:
-    """An action that is offered and then refuses is a UI that lies about what its buttons do.
+def test_a_running_row_offers_only_cancel(qapp: QApplication) -> None:
+    """`UX-005` §4's table, read off the row the user is looking at.
 
-    Remove stays available — a running job can be removed, which cancels it first (`T-080`). The
-    two differ, and asserting both is what stops the enabling rule collapsing into one flag.
+    Nothing is drawn that would be refused (§5), so a running job offers neither move — the
+    repository would reject it — and no *Remove*: `UX-005` §4 gives a download in flight exactly
+    one verb, because §7 removed the per-job pause and cancelling is the only thing left to say
+    about it.
+
+    **And the move is refused even when driven anyway** (`T124-R3`), which is the half that
+    matters now that the route is a signal rather than a disabled button: `_move_job` asks
+    `_is_movable` rather than trusting that a row drew the verb.
     """
-    window = _window_over([_job("busy", 0, JobStatus.RUNNING)], on_reorder_requested=lambda _: None)
-    assert window.queue_view is not None
-    window.queue_view.select("busy")
-
-    assert window.move_up_action is not None
-    assert window.move_down_action is not None
-    assert window.remove_action is not None
-    assert not window.move_up_action.isEnabled(), "a running job was offered a move"
-    assert not window.move_down_action.isEnabled()
-    assert window.remove_action.isEnabled(), (
-        "a running job must still be removable; T-080 cancels it first"
-    )
-
-
-def test_clearing_the_selection_disables_every_per_job_action(qapp: QApplication) -> None:
-    """A refresh or explicit deselection must not leave actions offered for no selected row."""
+    asked: list[list[str]] = []
     window = _window_over(
-        [_job("a", 0), _job("b", 1)],
-        on_remove_requested=lambda _: None,
-        on_reorder_requested=lambda _: None,
+        [_job("busy", 0, JobStatus.RUNNING), _job("next", 1)],
+        on_reorder_requested=asked.append,
     )
     assert window.queue_view is not None
-    window.queue_view.select("a")
 
-    assert window.remove_action is not None and window.remove_action.isEnabled()
-    assert window.move_up_action is not None and window.move_up_action.isEnabled()
-    assert window.move_down_action is not None and window.move_down_action.isEnabled()
+    assert window.queue_view.verbs_of("busy") == (Verb.CANCEL,), (
+        f"a running row offered {window.queue_view.verbs_of('busy')}"
+    )
 
-    window.queue_view.table.clearSelection()
-
-    assert not window.remove_action.isEnabled(), "Remove stayed enabled with no selected row"
-    assert not window.move_up_action.isEnabled(), "Move up stayed enabled with no selected row"
-    assert not window.move_down_action.isEnabled(), "Move down stayed enabled with no selected row"
+    window.queue_view.trigger_verb("busy", Verb.MOVE_DOWN)
+    assert asked == [], (
+        "a running job was reordered; the row must not be the only thing that decides, because "
+        "the model's answer is a moment old and the repository refuses this move"
+    )
 
 
 def test_moving_past_either_end_asks_for_nothing(qapp: QApplication) -> None:
@@ -512,13 +528,8 @@ def test_moving_past_either_end_asks_for_nothing(qapp: QApplication) -> None:
     window = _window_over([_job("a", 0), _job("b", 1)], on_reorder_requested=asked.append)
     assert window.queue_view is not None
 
-    window.queue_view.select("a")
-    assert window.move_up_action is not None
-    window.move_up_action.trigger()
-
-    window.queue_view.select("b")
-    assert window.move_down_action is not None
-    window.move_down_action.trigger()
+    window.queue_view.trigger_verb("a", Verb.MOVE_UP)
+    window.queue_view.trigger_verb("b", Verb.MOVE_DOWN)
 
     assert asked == [], f"sent {asked}; moving past an end must ask for no reordering at all"
 

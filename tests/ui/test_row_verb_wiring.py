@@ -10,27 +10,38 @@ two routes to one effect is how one of them ends up with a guard the other lacks
 below asserts the destination, not the signal.
 """
 
+import sys
+from collections.abc import Callable
+from dataclasses import replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 import pytest
-from PySide6.QtCore import QRect
-from PySide6.QtGui import QFontMetrics
-from PySide6.QtWidgets import QApplication, QMenu, QMessageBox
+from PySide6.QtCore import QPoint, QRect, Qt
+from PySide6.QtGui import QContextMenuEvent, QFontMetrics
+from PySide6.QtWidgets import QApplication, QComboBox, QMenu, QMessageBox
 
 from tracks_and_trails.core import presets
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
+from tracks_and_trails.persistence.repositories import HistoryEntry
+from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT
 from tracks_and_trails.ui.main_window import (
     HISTORY_KEEPS_FILES,
     MainWindow,
     removal_question,
 )
+from tracks_and_trails.ui.queue_view import FORMAT_PREFIX, PROGRESS_COLUMN
 from tracks_and_trails.ui.row_delegate import (
+    DETAIL_ROLE,
+    INHERITED_TEXT,
     PADDING,
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
+    ROW_PRESET_NAME,
+    SELECTOR_ROLE,
     RowDelegate,
 )
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
@@ -622,3 +633,821 @@ class _FakeHistory:
 
     def all_entries(self) -> list[object]:
         return []
+
+
+# --- the corrections this file's review asked for (T124, T126) --------------------------------
+
+
+class _MutableQueue:
+    """A `QueueReader` whose set of jobs can change, so a reset can be provoked.
+
+    `_FakeQueue` above is deliberately fixed: every test before this one is about one arrangement.
+    The `T126-R1` and `T124-R2` regressions are about what happens **when the arrangement
+    changes**, which a fixed reader cannot express — and the reviewer's probe found exactly the
+    defects that only appear on that path.
+    """
+
+    def __init__(self, jobs: list[Job]) -> None:
+        self.jobs = list(jobs)
+
+    def get(self, job_id: str) -> Job | None:
+        return next((job for job in self.jobs if job.id == job_id), None)
+
+    def all_jobs(self) -> list[Job]:
+        return list(self.jobs)
+
+    def swap_positions(self) -> None:
+        """Exchange the two jobs' `queue_position`, which is what a reorder actually writes.
+
+        Reversing the list would prove nothing: `QueueModel` sorts by `queue_position` and not by
+        the reader's order, so a fake that only reversed itself would leave the table looking
+        exactly as it did and the identity claim below would pass without a reorder happening.
+        """
+        first, second = self.jobs[0], self.jobs[1]
+        self.jobs = [
+            replace(first, queue_position=second.queue_position),
+            replace(second, queue_position=first.queue_position),
+        ]
+
+
+def _shown_window(queue: _MutableQueue, tmp_path: Path, **handlers: Any) -> MainWindow:
+    """A real window, **shown**, over a reader whose contents can change.
+
+    Shown matters and is not ceremony: an unshown view lays nothing out, opens no editor and
+    delivers no key events, so every route this section is about is unobservable without it —
+    which is precisely why the committed tests called `_show_row_menu()` and `model.setData()`
+    directly and could not see that neither had a user route into it (`T124-R1`, `T126-R1`).
+    """
+    manager = DownloadManager(_EmptyJobStore(), concurrency=1)  # type: ignore[arg-type]
+    window = MainWindow(
+        geometry_file=tmp_path / "window.toml",
+        concurrency=1,
+        manager=manager,
+        queue=queue,
+        **handlers,
+    )
+    window.show()
+    QApplication.processEvents()
+    return window
+
+
+def _open_the_format_editor(view: Any, job_id: str) -> QComboBox:
+    """Open a row's format control the way `EDIT_KEY` does, and return the live editor."""
+    row = view.model.row_of(job_id)
+    assert row is not None, f"{job_id} is not in the queue"
+    index = view.model.index(row, 0)
+    view.table.setCurrentIndex(index)
+    view.table.edit(index)
+    QApplication.processEvents()
+    editor = view.table.findChild(QComboBox, ROW_PRESET_NAME)
+    assert isinstance(editor, QComboBox), "no editor opened on the row"
+    return editor
+
+
+@pytest.mark.parametrize("disturbance", ["reorder", "remove"])
+def test_a_format_chosen_survives_the_queue_changing_underneath_it(
+    qapp: QApplication, tmp_path: Path, disturbance: str
+) -> None:
+    """**`T126-R1`, the Critical.** A structural reset must not swallow an open choice.
+
+    `QueueModel.refresh()` fully resets on remove, reorder and clear. Qt invalidates a live
+    editor's index on reset and then disowns the widget, so a commit attempted afterwards is
+    refused: `setData` is never reached and the visible choice is discarded **in silence** while
+    the download goes on running as whatever it was. The add dialog was given this lifecycle by
+    `T118-R14`; the queue was given the same delegate without it.
+
+    The reviewer's probe is reproduced here: choose MP3 for job B in a **shown** view, then let
+    the queue change under it. The committed coverage called `model.setData()` directly and so
+    could never see this route at all.
+
+    **Asserted through the durable request**, not through the signal: `retarget` is what the
+    worker would read, and a `preset_chosen` that reached nothing would satisfy a weaker test.
+
+    Mutation: deleting the `modelAboutToBeReset` → `_commit_open_editor` connection fails both
+    parametrizations, and committing *after* the reset instead of before fails them too — Qt
+    warns and `retarget` is never asked.
+    """
+    queue = _MutableQueue([_job("job-a", 0), _job("job-b", 1)])
+    window = _shown_window(queue, tmp_path)
+    view = window.queue_view
+    assert view is not None
+    asked: list[tuple[str, str]] = []
+    assert window._manager is not None
+    window._manager.retarget = (  # type: ignore[method-assign]
+        lambda job_id, request, **_: asked.append((job_id, request.format_selector))
+    )
+
+    editor = _open_the_format_editor(view, "job-b")
+    editor.setCurrentIndex(editor.findData("Audio only (MP3)"))
+
+    if disturbance == "reorder":
+        queue.swap_positions()
+        window._manager.queue_reordered.emit(["job-b", "job-a"])
+    else:
+        queue.jobs = [job for job in queue.jobs if job.id != "job-a"]
+        window._manager.job_removed.emit("job-a")
+    QApplication.processEvents()
+
+    assert asked == [("job-b", presets.by_name("Audio only (MP3)").format_selector)], (
+        f"a {disturbance} produced {asked}. The user chose MP3 for job-b and the queue changed "
+        "underneath the open control; the choice must reach retarget for the job it was made "
+        "for, or the download runs as the format the user replaced"
+    )
+
+
+def test_the_editor_comes_back_on_the_same_job_after_a_reorder(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """The other half of `T126-R1`: restored **by identity**, not by row number.
+
+    A reorder is one of the three things that resets the model, so the row number the editor had
+    is precisely what cannot be trusted afterwards. Reopening on the old number would put the
+    control back on whichever job now occupies it — which is `T118-R14`'s defect exactly, moved
+    one surface over.
+    """
+    queue = _MutableQueue([_job("job-a", 0), _job("job-b", 1)])
+    window = _shown_window(queue, tmp_path)
+    view = window.queue_view
+    assert view is not None
+
+    _open_the_format_editor(view, "job-b")
+    assert view.model.row_of("job-b") == 1
+    manager = window._manager
+    assert manager is not None
+
+    queue.swap_positions()
+    manager.queue_reordered.emit(["job-b", "job-a"])
+    QApplication.processEvents()
+
+    assert view.model.row_of("job-b") == 0, "the fake did not actually reorder"
+    assert view.table.currentIndex().row() == 0, (
+        "the editor was restored onto row 1, which is now job-a — an index that outlived the row "
+        "it named, which is the whole of T118-R14"
+    )
+    assert view.table.findChild(QComboBox, ROW_PRESET_NAME) is not None, (
+        "no editor came back at all, so a reorder elsewhere in the queue closes the control the "
+        "user is in the middle of using"
+    )
+
+
+def test_a_fast_retarget_does_not_turn_the_success_refresh_into_a_loop(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """Reviewer regression: reopening must not report the redisplayed value as a new choice.
+
+    If the retarget write settles before the reorder refresh rereads the queue, the restored
+    editor already shows the newly durable preset.  The success callback then refreshes once
+    more.  Committing the restored editor during that refresh emits the same choice again;
+    DownloadManager's ``UNCHANGED`` path invokes the success callback synchronously, producing
+    an unbounded refresh/retarget recursion.  Updating the backing reader in the fake is what the
+    submitted list-append fake omitted and what makes this ordering observable.
+    """
+    queue = _MutableQueue([_job("job-a", 0), _job("job-b", 1)])
+    window = _shown_window(queue, tmp_path)
+    view = window.queue_view
+    assert view is not None
+    manager = window._manager
+    assert manager is not None
+    asked: list[tuple[str, str]] = []
+    settled: list[Any] = []
+
+    def retarget(job_id: str, request: DownloadRequest, **callbacks: Any) -> None:
+        asked.append((job_id, request.format_selector))
+        queue.jobs = [
+            replace(job, request=request) if job.id == job_id else job for job in queue.jobs
+        ]
+        then = callbacks.get("then")
+        if len(asked) == 1 and callable(then):
+            settled.append(then)
+
+    manager.retarget = retarget  # type: ignore[method-assign]
+    editor = _open_the_format_editor(view, "job-b")
+    editor.setCurrentIndex(editor.findData("Audio only (MP3)"))
+
+    queue.swap_positions()
+    manager.queue_reordered.emit(["job-b", "job-a"])
+    QApplication.processEvents()
+    assert len(settled) == 1, "the first retarget did not expose its success refresh"
+    settled.pop()()
+    QApplication.processEvents()
+
+    assert asked == [("job-b", presets.by_name("Audio only (MP3)").format_selector)], (
+        f"redisplaying the durable choice reported it as another user choice: {asked}"
+    )
+
+
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [
+        (JobStatus.QUEUED, ""),
+        (JobStatus.READY, ""),
+        (JobStatus.RUNNING, "Download as: Best video available"),
+        (JobStatus.POST_PROCESSING, "Download as: Best video available"),
+        (JobStatus.COMPLETED, "Download as: Best video available"),
+        (JobStatus.FAILED, "Download as: Best video available"),
+    ],
+)
+def test_a_row_says_its_format_once_the_control_is_gone(
+    qapp: QApplication, tmp_path: Path, status: JobStatus, expected: str
+) -> None:
+    """`UX-005` §6 has two halves and only the first was built (`T126-R2`).
+
+    *"A control on queued and waiting rows, plain text once a download starts."* The control
+    disappeared when the job left `RETARGETABLE` and **nothing replaced it**, so a running
+    download said nothing anywhere about what format it was running as — on the one surface
+    `UX-005` removed the detail pane from.
+
+    Read from the durable request, which is what the worker was handed: a rendering derived from
+    anything else is a second opinion about the download in flight.
+    """
+    preset = presets.by_name("Best video available")
+    request = presets.to_request(preset, url="https://example.invalid/clip", output_directory="/d")
+    job = Job(id="job-1", url=request.url, request=request, status=status, queue_position=0)
+    window = _window_over([job], tmp_path)
+    view = window.queue_view
+    assert view is not None
+
+    drawn = view.model.data(view.model.index(0, 0), SELECTOR_ROLE)
+
+    assert drawn == expected, (
+        f"a {status.value} row draws {drawn!r} where UX-005 §6 wants {expected!r} — the control "
+        "and the text are the two halves of one rule, and exactly one of them belongs on any row"
+    )
+
+
+def test_a_custom_selector_is_spelled_out_rather_than_left_blank(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`REQ-009` allows a selector no built-in describes, and the row must still say what it is.
+
+    Deriving the text from the preset list alone leaves this row silent — the case
+    `_preset_name_for` answers `None` for — which is the same "says nothing about its format"
+    defect `T126-R2` found, surviving in the shape a name-only fix would leave behind.
+    """
+    request = DownloadRequest(
+        url="https://example.invalid/clip",
+        output_directory="/downloads",
+        format_selector="bestvideo[height<=720]+bestaudio",
+        output_template="%(title)s.%(ext)s",
+    )
+    job = Job(
+        id="job-1",
+        url=request.url,
+        request=request,
+        status=JobStatus.RUNNING,
+        queue_position=0,
+    )
+    window = _window_over([job], tmp_path)
+    view = window.queue_view
+    assert view is not None
+
+    assert view.model.data(view.model.index(0, 0), SELECTOR_ROLE) == (
+        "Download as: bestvideo[height<=720]+bestaudio"
+    ), "a custom selector left the row with nothing to say about its own format"
+
+
+def _bring_to_front(window: MainWindow, view: Any) -> None:
+    """Show `view`'s tab, so the list is laid out and its rows have real rectangles."""
+    from PySide6.QtWidgets import QTabWidget
+
+    body = window.centralWidget()
+    assert isinstance(body, QTabWidget)
+    index = body.indexOf(view)
+    assert index >= 0, "the window never added a tab for this view"
+    body.setCurrentIndex(index)
+    QApplication.processEvents()
+
+
+def _press_the_menu_key(table: Any) -> None:
+    """Deliver what the Menu key delivers: a keyboard-reason context-menu event, off any row.
+
+    **`QTest.keyClick(Key_Menu)` cannot be used, and that was measured rather than assumed.** The
+    Menu-key and Shift+F10 translation into `QEvent::ContextMenu` is done by the platform plugin,
+    not by `QWidget`, so under `offscreen` — which is every Qt test this project runs (`NFR-005`,
+    `ai/TESTING.md`) — the key press arrives as a plain key press and no context menu is ever
+    generated. Probed both ways before writing this: through the widget and through its window
+    handle, with `contextMenuEvent` instrumented, and neither produced one.
+
+    So this sends the object the platform sends. Everything under test is still exercised: Qt's
+    own `CustomContextMenu` dispatch, the emitted `customContextMenuRequested`, the handler, and
+    the shell that builds the menu. What is *not* covered is the plugin's own translation, which
+    is Qt's and which `contextMenuPolicy` is asserted for separately below.
+
+    **The position is deliberately off every row**, which is the keyboard case: a position derived
+    from the widget rather than from a row is what made `indexAt` answer "no row" for every
+    keyboard request, and a handler that only resolves through `indexAt` fails here and passes a
+    mouse-shaped test.
+    """
+    viewport = table.viewport()
+    model = table.model()
+    last = table.visualRect(model.index(model.rowCount() - 1, 0))
+    off_any_row = QPoint(1, max(last.bottom() + 2, viewport.height() + 2))
+    assert not table.indexAt(off_any_row).isValid(), (
+        "the probe position landed on a row, so this asserts the mouse route rather than the "
+        "keyboard one"
+    )
+    QApplication.sendEvent(
+        viewport,
+        QContextMenuEvent(
+            QContextMenuEvent.Reason.Keyboard, off_any_row, viewport.mapToGlobal(off_any_row)
+        ),
+    )
+    QApplication.processEvents()
+
+
+@pytest.mark.parametrize("route", ["queue", "history"])
+def test_the_menu_key_raises_the_rows_overflow(
+    qapp: QApplication, tmp_path: Path, route: str
+) -> None:
+    """`UX-005` §4 declares `⋯` the keyboard route, and neither list had one (`T124-R1`).
+
+    `RowDelegate.editorEvent` answers **left-button mouse events only**, and nothing installed a
+    keyboard or context-menu route on either view — so the declared no-pointer route did not
+    exist, and the committed tests called `_show_row_menu()` directly and could not tell.
+
+    Driven on a **shown** view, from the focused row, through the event the Menu key produces —
+    see `_press_the_menu_key` for why the literal key press cannot be sent under `offscreen`.
+    """
+    queue = _MutableQueue([_job("job-1", 0, JobStatus.FAILED)])
+    window = _shown_window(queue, tmp_path, retry=lambda _: None, history=_OneRecordHistory())
+    view = window.queue_view if route == "queue" else window.history_view
+    assert view is not None
+    row_id = "job-1" if route == "queue" else "entry-1"
+    _bring_to_front(window, view)
+    assert view.select(row_id)
+    view.table.setFocus()
+
+    assert view.table.contextMenuPolicy() == Qt.ContextMenuPolicy.CustomContextMenu, (
+        "without this policy the platform routes the Menu key to a default menu instead of to "
+        "this application, and the row's verbs stay pointer-only"
+    )
+    _press_the_menu_key(view.table)
+
+    menu = next(
+        (child for child in window.findChildren(QMenu) if child.objectName() == "rowVerbsMenu"),
+        None,
+    )
+    assert menu is not None, (
+        f"the Menu key on the {route} list raised no overflow menu, so every verb the row could "
+        "not fit is unreachable without a pointer"
+    )
+    try:
+        assert [action.text() for action in menu.actions()] == [
+            LABELS[verb] for verb in view.verbs_of(row_id)
+        ], "the menu the keyboard raised does not hold what the row offers"
+    finally:
+        menu.close()
+
+
+def test_history_removal_has_a_keyboard_route(qapp: QApplication, tmp_path: Path) -> None:
+    """The half `T124-R1` calls worse: History's drawn `⋯` emitted `None` and was ignored.
+
+    `HistoryView._on_verb` tested `verb is not None` last, so the one control every history row
+    draws did nothing at all — with a pointer as well as without one — and `DAT-005`'s removal
+    had no keyboard route whatsoever. Driven end to end: the key, the menu, the verb, and the
+    selection-scoped request `DAT-005` §1 defines.
+    """
+    asked: list[list[str]] = []
+    window = _shown_window(
+        _MutableQueue([]),
+        tmp_path,
+        history=_OneRecordHistory(),
+        on_history_removal_requested=asked.append,
+    )
+    history = window.history_view
+    assert history is not None
+    _bring_to_front(window, history)
+    assert history.select("entry-1")
+    history.table.setFocus()
+
+    _press_the_menu_key(history.table)
+    menu = next(
+        (child for child in window.findChildren(QMenu) if child.objectName() == "rowVerbsMenu"),
+        None,
+    )
+    assert menu is not None, "History's rows have no keyboard route to their verbs"
+    remove = next(
+        (action for action in menu.actions() if action.objectName() == "rowVerb_remove"), None
+    )
+    assert remove is not None, f"the menu offers {[a.text() for a in menu.actions()]}, not Remove"
+
+    confirm = None
+    try:
+        remove.trigger()
+        QApplication.processEvents()
+        confirm = window.findChild(QMessageBox, "historyRemovalConfirm")
+        assert confirm is not None, "removing from the keyboard skipped DAT-005's confirmation"
+        confirm.button(QMessageBox.StandardButton.Yes).click()
+    finally:
+        menu.close()
+        if confirm is not None:
+            confirm.close()
+
+    assert asked == [["entry-1"]], (
+        f"the keyboard route asked for {asked}; DAT-005 §1 scopes removal to the selection, and "
+        "this is the route a user without a pointer has to it"
+    )
+
+
+def test_the_tab_counts_follow_a_manager_driven_change(qapp: QApplication, tmp_path: Path) -> None:
+    """`T124-R2`: the count is what makes a tab not a hiding place, so it must not go stale.
+
+    Labels were rebuilt only from `refresh_queue()`/`refresh_history()`, which composition calls
+    for the changes *it* makes. `QueueModel` resets itself on `job_removed`, `queue_reordered` and
+    `queue_cleared` — so a removal driven by the manager left the list one row shorter under a tab
+    still reading `Queue (2)`. Driven through the manager's own signal, which is what the
+    committed test bypassed by calling `window.refresh_queue()` directly.
+    """
+    from PySide6.QtWidgets import QTabWidget
+
+    queue = _MutableQueue([_job("job-1", 0), _job("job-2", 1)])
+    window = _shown_window(queue, tmp_path)
+    body = window.centralWidget()
+    assert isinstance(body, QTabWidget)
+    view = window.queue_view
+    assert view is not None
+    assert body.tabText(body.indexOf(view)) == "Queue (2)"
+
+    queue.jobs = [job for job in queue.jobs if job.id != "job-1"]
+    assert window._manager is not None
+    window._manager.job_removed.emit("job-1")
+    QApplication.processEvents()
+
+    assert view.model.rowCount() == 1, "the model did not follow the removal, so nothing is proven"
+    assert body.tabText(body.indexOf(view)) == "Queue (1)", (
+        f"the tab reads {body.tabText(body.indexOf(view))!r} over a list of one row"
+    )
+
+    queue.jobs = []
+    window._manager.queue_cleared.emit()
+    QApplication.processEvents()
+
+    assert body.tabText(body.indexOf(view)) == "Queue (0)", (
+        f"clearing left the tab reading {body.tabText(body.indexOf(view))!r}"
+    )
+
+
+class _OneRecordHistory:
+    """A `HistoryReader` holding one real record, so its row has verbs to offer."""
+
+    def all_entries(self) -> list[HistoryEntry]:
+        return [
+            HistoryEntry(
+                id="entry-1",
+                url="https://example.invalid/clip",
+                completed_at=datetime(2026, 8, 4, 12, 0, tzinfo=UTC),
+                title="A finished download",
+                output_path="/downloads/clip.mp4",
+                format_used="best",
+                bytes_total=1024,
+            )
+        ]
+
+
+def test_a_queue_row_draws_the_uploader_and_the_duration(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`UX-005` §3's row anatomy, on the tab the user watches (`T124-R4`).
+
+    Read through `DETAIL_ROLE` — the role the delegate actually paints — rather than off the job,
+    which would assert that a field this test set is the field this test set. Both are absent from
+    `REQ-014`'s columns on purpose: they are what identifies the thing rather than its progress,
+    so they lead the line and the columns follow.
+    """
+    job = replace(
+        _job("job-1", 0, JobStatus.RUNNING),
+        uploader="Someone Who Publishes",
+        duration_seconds=212.5,
+    )
+    window = _window_over([job], tmp_path)
+    view = window.queue_view
+    assert view is not None
+
+    detail = view.model.data(view.model.index(0, 0), DETAIL_ROLE)
+
+    assert detail.startswith("Someone Who Publishes · 3:32"), (
+        f"the row's second line reads {detail!r}; UX-005 §3 names uploader and duration, and a "
+        "queue that shows neither is the accepted anatomy holding only until Add is pressed"
+    )
+
+
+def test_a_row_the_probe_learned_nothing_about_draws_no_empty_fields(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`None` is not a value to render (`T124-R4`).
+
+    An unprobed row must not gain a stray separator or an em dash where the uploader would be —
+    `format_duration` renders `None` as `UNKNOWN_TEXT` for the add dialog's own layout, and that
+    placeholder between a title and a percentage says less than nothing.
+    """
+    window = _window_over([_job("job-1", 0, JobStatus.RUNNING)], tmp_path)
+    view = window.queue_view
+    assert view is not None
+
+    detail = view.model.data(view.model.index(0, 0), DETAIL_ROLE)
+
+    assert detail.split(" · ")[0] == view.model.text_at("job-1", PROGRESS_COLUMN), (
+        f"the row's second line reads {detail!r}; with neither field learned it must open on the "
+        f"progress, not on a placeholder or on the gap two absent fields left. "
+        f"({UNKNOWN_TEXT!r} is what format_duration renders None as, and it belongs in the add "
+        "dialog's fixed layout rather than in this joined line.)"
+    )
+
+
+def test_a_screen_reader_hears_every_field_the_row_draws(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`NFR-005`: the drawn row and the spoken row are one set of fields (`T124-R4`, `T126-R2`).
+
+    `_whole_row` was built from `COLUMN_HEADERS` alone, which is `REQ-014`'s six. The row draws two
+    things that are not among them — the uploader and duration `UX-005` §3 names, and the format
+    text a started download shows since `T126-R2` — so a sighted user and a screen-reader user were
+    being told different things about one download. That is `T017-R2`, which this project has
+    already paid for once.
+
+    Each is **named**, not read as a bare value, for the reason `_accessible_text` gives about
+    `47%`: a number with no field name says nothing about which field is being heard.
+    """
+    preset = presets.by_name("Best video available")
+    request = presets.to_request(preset, url="https://example.invalid/clip", output_directory="/d")
+    job = Job(
+        id="job-1",
+        url=request.url,
+        request=request,
+        status=JobStatus.RUNNING,
+        queue_position=0,
+        uploader="Someone Who Publishes",
+        duration_seconds=212.5,
+    )
+    window = _window_over([job], tmp_path)
+    view = window.queue_view
+    assert view is not None
+
+    spoken = view.model.data(view.model.index(0, 0), Qt.ItemDataRole.AccessibleTextRole)
+
+    for field in ("Uploader: Someone Who Publishes", "Duration: 3:32", "Download as: Best video"):
+        assert field in spoken, (
+            f"the row draws {field!r} and a screen reader hears {spoken!r} — one download, two "
+            "descriptions, which is T017-R2"
+        )
+
+
+def test_a_screen_reader_is_told_nothing_the_row_does_not_draw(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """The mirror, and it is the half a placeholder would pass.
+
+    An unprobed row draws no uploader and no duration; speaking `Uploader:` with nothing after it
+    would be describing a row that is not there.
+
+    **And no format line while the control can name the format.** The row's request here is a
+    built-in, so the control reads "Best video available" and the line would be the same fact
+    twice, in two places that can disagree.
+
+    *(This used `_job()`'s own request, whose `format_selector="best"` matches no built-in — so
+    after `T126-R4` that row is a custom-selector row and correctly *does* speak its format. The
+    test's premise was "retargetable means silent", which was true until the control stopped being
+    able to say it for every row. The condition is now status **and** whether a built-in describes
+    the request, and this case is the one where both hold.)*
+    """
+    preset = presets.by_name("Best video available")
+    request = presets.to_request(preset, url="https://example.invalid/clip", output_directory="/d")
+    job = Job(
+        id="job-1", url=request.url, request=request, status=JobStatus.QUEUED, queue_position=0
+    )
+    window = _window_over([job], tmp_path)
+    view = window.queue_view
+    assert view is not None
+
+    spoken = view.model.data(view.model.index(0, 0), Qt.ItemDataRole.AccessibleTextRole)
+
+    for absent in ("Uploader:", "Duration:", FORMAT_PREFIX):
+        assert absent not in spoken, (
+            f"a screen reader hears {absent!r} on a row that draws no such field: {spoken!r}"
+        )
+
+
+def test_a_queue_row_with_a_custom_selector_says_so_while_it_is_still_editable(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T126-R4`'s other half: dropping the inherited entry must not make a row silent.
+
+    The control offers built-ins, so a request no built-in describes leaves it showing nothing.
+    Before `T126-R4` that row read **Same as all** — naming a batch the queue does not have — and
+    simply deleting the entry would have replaced a false statement with no statement, which is
+    `T126-R2`'s defect arriving from the other side. So the row's own line speaks exactly when the
+    control cannot, and a screen reader hears it for the same reason.
+    """
+    request = DownloadRequest(
+        url="https://example.invalid/clip",
+        output_directory="/downloads",
+        format_selector="bestvideo[height<=720]+bestaudio",
+        output_template="%(title)s.%(ext)s",
+    )
+    job = Job(
+        id="job-1", url=request.url, request=request, status=JobStatus.QUEUED, queue_position=0
+    )
+    window = _window_over([job], tmp_path)
+    view = window.queue_view
+    assert view is not None
+    cell = view.model.index(0, 0)
+
+    assert view.model.data(cell, PRESET_CHOICES_ROLE), (
+        "a queued row must still offer the control; this test is about what it says beside it"
+    )
+    assert view.model.data(cell, SELECTOR_ROLE) == (
+        "Download as: bestvideo[height<=720]+bestaudio"
+    ), "a retargetable row whose format the control cannot name said nothing about it"
+    assert FORMAT_PREFIX in view.model.data(cell, Qt.ItemDataRole.AccessibleTextRole), (
+        "the line is drawn and not spoken, which is the T017-R2 split"
+    )
+
+
+class _WritableStore:
+    """A `JobStore` **and** a `QueueReader` over one dictionary (`T126-R3`).
+
+    `_EmptyJobStore` answers `None` to everything, and `_MutableQueue` is read-only — so neither
+    can carry a *real* `DownloadManager.retarget` through to its `UNCHANGED` branch, which is the
+    engine of the loop `T126-R3` found. This one applies the write and answers `get` from the same
+    dictionary, which is exactly the obligation `JobStore` documents: *`get` reflects a queued
+    `update` immediately*.
+
+    `update` calls back synchronously. The real `PersistentJobStore` does not, and that difference
+    is stated rather than glossed: it means this fake reaches `_settle` on the same stack, which is
+    the shape the `UNCHANGED` branch already has unconditionally — that branch calls `then()`
+    inline whether or not any store is involved, and it is the branch `T126-R3` turns on.
+    """
+
+    def __init__(self, jobs: list[Job]) -> None:
+        self.jobs: dict[str, Job] = {job.id: job for job in jobs}
+
+    def get(self, job_id: str) -> Job | None:
+        return self.jobs.get(job_id)
+
+    def all_jobs(self) -> list[Job]:
+        return list(self.jobs.values())
+
+    def update(self, job: Job, done: Callable[[str | None], None]) -> None:
+        self.jobs[job.id] = job
+        done(None)
+
+    def complete(self, job: Job, _format_used: str | None, done: Any) -> None:
+        self.update(job, done)
+
+    def requeue_at_end(self, job: Job, done: Any) -> None:
+        self.update(job, done)
+
+    def remove(self, job_id: str, done: Callable[[str | None], None]) -> None:
+        self.jobs.pop(job_id, None)
+        done(None)
+
+    def reorder(self, job_ids: Any, done: Callable[[str | None], None]) -> None:
+        done(None)
+
+    def clear_completed(self, done: Callable[[str | None], None]) -> None:
+        done(None)
+
+
+def test_a_lifecycle_commit_of_an_unchanged_editor_never_reaches_the_manager(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """**`T126-R3`, with the real manager and its real `UNCHANGED` branch.**
+
+    The reviewer's regression above proves the ordering with `retarget` replaced by a recorder.
+    This one leaves `DownloadManager.retarget` in place over a store that really writes, so the
+    engine that makes the loop unbounded actually runs: `_persist` computes the revision, finds
+    the durable request already equal to the one asked for, answers `UNCHANGED`, and calls `then`
+    — `refresh_queue` — **inline, on the same stack**, with no store and no event loop between.
+
+    **The state is arranged, not stumbled into.** `job-b`'s durable request is already MP3 before
+    the editor opens, so `setEditorData` fills the control with the value the request already
+    holds. That is precisely what a reopened editor holds after a retarget lands, and arranging it
+    directly makes the claim deterministic instead of dependent on how two writes interleave.
+
+    Then the queue changes underneath the open control, which commits it. The assertion is that
+    **the manager is never asked at all**: a lifecycle commit of a value nothing chose is not a
+    user edit, and every hop of the loop began with one that was allowed through. `retarget` is
+    wrapped rather than replaced, so the real call still happens when it should.
+
+    **`sys.setrecursionlimit` is lowered** so that if the loop ever returns, this fails in a few
+    hundred frames rather than spending the default thousand inside a Qt slot. Restored in a
+    `finally`, whatever happened.
+    """
+    mp3 = presets.by_name("Audio only (MP3)")
+    already = presets.to_request(mp3, url="https://example.invalid/clip", output_directory="/d")
+    store = _WritableStore(
+        [_job("job-a", 0), replace(_job("job-b", 1), request=already, url=already.url)]
+    )
+    manager = DownloadManager(store, concurrency=1)
+    window = MainWindow(
+        geometry_file=tmp_path / "window.toml",
+        concurrency=1,
+        manager=manager,
+        queue=store,
+    )
+    window.show()
+    QApplication.processEvents()
+    view = window.queue_view
+    assert view is not None
+
+    asked: list[str] = []
+    real = manager.retarget
+
+    def watched(job_id: str, request: DownloadRequest, **callbacks: Any) -> None:
+        asked.append(job_id)
+        real(job_id, request, **callbacks)
+
+    manager.retarget = watched  # type: ignore[method-assign]
+
+    editor = _open_the_format_editor(view, "job-b")
+    assert editor.currentData() == mp3.name, (
+        f"the editor opened on {editor.currentData()!r}; this test needs it showing the value the "
+        "request already holds, which is what a reopened editor shows after a retarget lands"
+    )
+
+    previous = sys.getrecursionlimit()
+    sys.setrecursionlimit(300)
+    try:
+        store.jobs = {
+            job_id: replace(job, queue_position=1 - (job.queue_position or 0))
+            for job_id, job in store.jobs.items()
+        }
+        manager.queue_reordered.emit(["job-b", "job-a"])
+        QApplication.processEvents()
+    finally:
+        sys.setrecursionlimit(previous)
+
+    assert asked == [], (
+        f"a lifecycle commit reported the redisplayed value as a user choice and reached the "
+        f"manager {len(asked)} time(s): {asked}. retarget() answers UNCHANGED and calls its "
+        "success refresh inline, so each one of these is a hop of an unbounded loop"
+    )
+    assert store.jobs["job-b"].request == already, "the durable request was rewritten by a no-op"
+    assert view.model.data(view.model.index(view.model.row_of("job-b") or 0, 0), PRESET_ROLE) == (
+        mp3.name
+    ), "the row stopped showing the format that is durable"
+
+
+def test_a_real_choice_still_reaches_the_durable_request_through_the_manager(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """The guard above must not cost the thing `T126-R1` exists to deliver.
+
+    A refusal keyed on "the request already says this" is one comparison away from refusing
+    everything, and a test that only asserts nothing happened would not notice. So: a genuine
+    change, through the real `DownloadManager.retarget` and a store that really writes, with the
+    queue reordering underneath the open control — the `T126-R1` case, end to end.
+    """
+    store = _WritableStore([_job("job-a", 0), _job("job-b", 1)])
+    manager = DownloadManager(store, concurrency=1)
+    window = MainWindow(
+        geometry_file=tmp_path / "window.toml",
+        concurrency=1,
+        manager=manager,
+        queue=store,
+    )
+    window.show()
+    QApplication.processEvents()
+    view = window.queue_view
+    assert view is not None
+
+    editor = _open_the_format_editor(view, "job-b")
+    editor.setCurrentIndex(editor.findData("Audio only (MP3)"))
+
+    store.jobs = {
+        job_id: replace(job, queue_position=1 - (job.queue_position or 0))
+        for job_id, job in store.jobs.items()
+    }
+    manager.queue_reordered.emit(["job-b", "job-a"])
+    QApplication.processEvents()
+
+    wanted = presets.by_name("Audio only (MP3)")
+    assert store.jobs["job-b"].request.format_selector == wanted.format_selector, (
+        "the user's choice did not reach the durable request through the real manager"
+    )
+    assert store.jobs["job-a"].request.format_selector == "best", (
+        "the choice made on job-b was written to job-a; the editor's index outlived its row"
+    )
+
+
+def test_a_queue_editor_does_not_offer_an_inapplicable_group_default(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """Reviewer regression: a durable queue row has no “all” whose format it can inherit.
+
+    ``RowDelegate`` is shared with the staging dialog, where the first entry really does mean
+    “use the format selected for the whole paste.”  The queue has only each job's durable request;
+    it neither stores nor exposes that former group choice.  Nevertheless the shared editor adds
+    ``Same as all`` unconditionally, and QueueModel rejects its ``None`` value.  That leaves a
+    visible choice which silently does nothing, contrary to UX-005 section 5.
+    """
+    window = _shown_window(_MutableQueue([_job("job-1", 0)]), tmp_path)
+    view = window.queue_view
+    assert view is not None
+
+    editor = _open_the_format_editor(view, "job-1")
+
+    assert editor.findText(INHERITED_TEXT) == -1, (
+        f"the queue offers {INHERITED_TEXT!r}, but it has no group default to restore and its "
+        "model refuses the entry's value"
+    )

@@ -1057,16 +1057,23 @@ def test_the_composed_move_control_updates_the_store_and_the_table(
     spin: Callable[..., bool],
     tmp_path: Path,
 ) -> None:
-    """`T-081`: action, composition, manager, writer, and queue view form one reorder path."""
+    """`T-081`: the row's verb, composition, manager, writer, and queue view form one reorder path.
+
+    Driven through the **row** since `T124-R3` removed the toolbar's *Move up*: `UX-005` §4 chose
+    row verbs rather than a toolbar acting on a selection, because with two tabs that toolbar has
+    to guess which list it means. Everything below the verb is the path this test is about and is
+    unchanged — `trigger_verb` is the route a click takes.
+    """
     composition = composed()
     queue_three(composition, spin, tmp_path / "downloads")
     table = composition.window.queue_view
-    action = composition.window.move_up_action
-    assert table is not None and action is not None
+    assert table is not None
     table.refresh()
-    assert table.select("job-2") and action.isEnabled()
+    assert Verb.MOVE_UP in table.verbs_of("job-2"), (
+        "the row offers no Move up, so this test would prove nothing about the reorder path"
+    )
 
-    action.trigger()
+    table.trigger_verb("job-2", Verb.MOVE_UP)
 
     assert spin(
         lambda: (
@@ -1084,16 +1091,21 @@ def test_the_composed_remove_control_updates_the_store_and_the_table(
     spin: Callable[..., bool],
     tmp_path: Path,
 ) -> None:
-    """`T-080`: a durable removal must disappear from the assembled queue view."""
+    """`T-080`: a durable removal must disappear from the assembled queue view.
+
+    Through the row's own *Remove* since `T124-R3` — see the reorder test above for why the
+    toolbar action it used to drive is gone.
+    """
     composition = composed()
     queue_three(composition, spin, tmp_path / "downloads")
     table = composition.window.queue_view
-    action = composition.window.remove_action
-    assert table is not None and action is not None
+    assert table is not None
     table.refresh()
-    assert table.select("job-2") and action.isEnabled()
+    assert Verb.REMOVE in table.verbs_of("job-2") or Verb.CANCEL in table.verbs_of("job-2"), (
+        f"a queued row offers {table.verbs_of('job-2')}, none of which removes it"
+    )
 
-    action.trigger()
+    table.trigger_verb("job-2", Verb.REMOVE)
 
     assert spin(lambda: composition.store.get("job-2") is None, timeout=60), (
         "the composed Remove action never reached the durable queue"

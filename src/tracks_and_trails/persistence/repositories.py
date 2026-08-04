@@ -65,6 +65,8 @@ _JOB_COLUMNS: Final = (
     "request",
     "title",
     "thumbnail_url",
+    "uploader",
+    "duration_seconds",
     "output_path",
     "bytes_done",
     "bytes_total",
@@ -125,6 +127,8 @@ def _row_to_job(row: sqlite3.Row) -> JobModel:
         status=JobStatus(row["status"]),
         title=row["title"],
         thumbnail_url=row["thumbnail_url"],
+        uploader=row["uploader"],
+        duration_seconds=row["duration_seconds"],
         output_path=row["output_path"],
         bytes_done=row["bytes_done"],
         bytes_total=row["bytes_total"],
@@ -154,6 +158,8 @@ def _job_to_values(job: JobModel) -> dict[str, Any]:
         "request": _serialize_request(job.request),
         "title": job.title,
         "thumbnail_url": job.thumbnail_url,
+        "uploader": job.uploader,
+        "duration_seconds": job.duration_seconds,
         "output_path": job.output_path,
         "bytes_done": job.bytes_done,
         "bytes_total": job.bytes_total,
@@ -664,15 +670,25 @@ class HistoryRepository:
         A future reader finding this mutation survives should not conclude the line is dead
         (`ai/TESTING.md` §13: default to "a test is missing", and prove redundancy before acting —
         this is the proof).
+
+        **Committed, like every other write here** (`T125-R1`). The first version executed the
+        `DELETE` bare, on the implicit transaction `sqlite3` opens for a DML statement and never
+        closes by itself. Every test read back through the *same* connection, which sees its own
+        uncommitted work, so the deletion looked durable and was not: a second connection still
+        found the row, and closing the writer rolled the delete back. The user was told a record
+        was gone, the History tab reads through a different connection, and the record came back.
+        `with self._connection` is the same guarantee `record` and `JobRepository` already give —
+        `NFR-003`, no half-applied write and nothing that survives only until the process exits.
         """
         if not entry_ids:
             return 0
         placeholders = ", ".join("?" for _ in entry_ids)
-        cursor = self._connection.execute(
-            f"DELETE FROM history WHERE id IN ({placeholders})",  # noqa: S608
-            tuple(entry_ids),
-        )
-        return int(cursor.rowcount)
+        with self._connection:
+            cursor = self._connection.execute(
+                f"DELETE FROM history WHERE id IN ({placeholders})",  # noqa: S608
+                tuple(entry_ids),
+            )
+            return int(cursor.rowcount)
 
     def all_entries(self) -> list[HistoryEntry]:
         """Every entry, most recently completed first.

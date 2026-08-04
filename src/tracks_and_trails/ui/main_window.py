@@ -54,7 +54,7 @@ from tracks_and_trails.ui.file_actions import MESSAGE_TIMEOUT_MS, FileActions
 from tracks_and_trails.ui.history_view import HistoryReader, HistoryView, build_history_view
 from tracks_and_trails.ui.job_detail import JobReader
 from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
-from tracks_and_trails.ui.row_verbs import LABELS
+from tracks_and_trails.ui.row_verbs import LABELS, Verb
 
 APP_NAME: Final = "Tracks & Trails"
 
@@ -298,10 +298,14 @@ class MainWindow(QMainWindow):
         #: `T-080`'s queue actions. Built with the control bar, so a window given no `concurrency`
         #: has no toolbar and therefore neither of them — the same all-or-nothing rule the add-URL
         #: action follows, and the reason `T-007`'s bare-window tests keep working.
+        #:
+        #: **Two, since `T124-R3`.** *Remove*, *Move up* and *Move down* were here too, acting on
+        #: the queue's selection, and `UX-005` chose row verbs *"rather than a toolbar acting on a
+        #: selection"* — because with two tabs that toolbar has to guess which list it means, and
+        #: it guessed wrong: they stayed enabled and aimed at the hidden queue's selection while
+        #: History was in front. The row route was added without the rejected one being removed.
+        #: What is left is queue-*wide* and unambiguous whichever tab is showing.
         self._pause: QAction | None = None
-        self._remove: QAction | None = None
-        self._move_up: QAction | None = None
-        self._move_down: QAction | None = None
         self._clear: QAction | None = None
         if concurrency is not None:
             self._build_concurrency_control(concurrency)
@@ -346,10 +350,6 @@ class MainWindow(QMainWindow):
         # `T-017`'s `JobProgressView` is deferred by `UX-005` rather than decided, so nothing here
         # deletes its collaborators.
         self._queue = build_queue_view(queue, self._manager, None)
-        # Remove acts on the selection, so it follows the selection rather than being enabled once
-        # and left that way. Connected here rather than where the action is built, because the
-        # table is built after the toolbar and the action has to exist before it can be enabled.
-        self._queue.job_selected.connect(self._selection_changed)
         self._connect_row_verbs(self._queue)
         self._body.addTab(self._queue, QUEUE_TAB)
 
@@ -364,11 +364,27 @@ class MainWindow(QMainWindow):
                 lambda entry_id: self._history_file_verb(entry_id, reveal=True)
             )
             self._history_view.removal_requested.connect(self._remove_history)
+            self._history_view.more_requested.connect(self._show_history_row_menu)
             self._body.addTab(self._history_view, HISTORY_TAB)
             # **The guarantee is carried while the tab is showing**, not only in the confirmation
             # (`DAT-005` §3). A promise that appears in a dialog is a promise only the people who
             # read dialogs have, and this one is about somebody's files.
             self._body.currentChanged.connect(self._say_what_history_does_not_do)
+
+        # **The counts follow the models, not the refresh helpers** (`T124-R2`, `UX-005` §1).
+        #
+        # They were rebuilt only from `refresh_queue()` and `refresh_history()`, which composition
+        # calls for the changes *it* makes. Every other structural change reaches the model
+        # directly — `QueueModel` resets itself on `job_removed`, `queue_reordered` and
+        # `queue_cleared`, which is `T080-R2`'s correction — so a job removed through the row's own
+        # verb left the list one row shorter under a tab still reading `Queue (2)`. A count that is
+        # wrong is worse than no count, because `UX-005` §1 is what makes a tab not a hiding place.
+        #
+        # `modelReset` is the one signal both models emit for every structural change, and it is
+        # emitted after the rebuild, so reading `rowCount()` from it reads the new set.
+        for view in (self._queue, self._history_view):
+            if view is not None:
+                view.table.model().modelReset.connect(self._refresh_tab_labels)
 
         self._refresh_tab_labels()
         self._attach_file_actions()
@@ -527,15 +543,38 @@ class MainWindow(QMainWindow):
         """
         if self._queue is None:
             return None
-        offered = self._queue.verbs_of(job_id)
+        return self._row_menu(self._queue, job_id, self._queue.verbs_of(job_id))
+
+    def _show_history_row_menu(self, entry_id: str) -> QMenu | None:
+        """The history row's `⋯`, and its keyboard route (`T124-R1`, `UX-005` §4, `DAT-005`).
+
+        **The same menu the queue gets**, built by the same function from the row's own verbs — so
+        *Remove* reaches `HistoryView.trigger_verb` and therefore `_on_verb`, which is where
+        `DAT-005` §1's selection scoping lives. A menu that emitted `removal_requested` itself
+        would have been a second implementation of that scoping, and the count in the confirmation
+        would have been the thing to go wrong.
+        """
+        if self._history_view is None:
+            return None
+        return self._row_menu(self._history_view, entry_id, self._history_view.verbs_of(entry_id))
+
+    def _row_menu(
+        self, view: QueueView | HistoryView, row_id: str, offered: Sequence[Verb]
+    ) -> QMenu | None:
+        """One overflow menu, for whichever list asked (`T124-R1`).
+
+        Both tabs draw the same row anatomy (`UX-005` §3), so they get the same overflow rather
+        than two that drift. `trigger_verb` is the shared entry point each view already exposes,
+        and it is what makes the menu take *the route a click takes* instead of reimplementing it.
+        """
         if not offered:
             return None
-        menu = QMenu(self._queue)
+        menu = QMenu(view)
         menu.setObjectName("rowVerbsMenu")
         for verb in offered:
             action = menu.addAction(LABELS[verb])
             action.setObjectName(f"rowVerb_{verb.value}")
-            action.triggered.connect(partial(self._queue.trigger_verb, job_id, verb))
+            action.triggered.connect(partial(view.trigger_verb, row_id, verb))
         menu.popup(QCursor.pos())
         return menu
 
@@ -580,6 +619,12 @@ class MainWindow(QMainWindow):
                     # one. `_output_directory` is not `None` here — the guard above returned.
                     output_directory=lambda: cast("Path", self._output_directory),
                     report=self._report_transiently,
+                    # **The row's `⋯` owns the context menu on these two lists** (`T124-R1`,
+                    # `UX-005` §4). A table has one `customContextMenuRequested`, and the row menu
+                    # already carries *Open* and *Show in folder* — through these very actions, for
+                    # the rows that have a file — plus everything else the row's state permits.
+                    # Leaving both connected popped two menus on one right-click or Menu key.
+                    context_menu=False,
                     parent=self,
                 )
             )
@@ -734,14 +779,20 @@ class MainWindow(QMainWindow):
         self._concurrency = box
 
     def _build_queue_actions(self, bar: QToolBar) -> None:
-        """Pause/Resume for the queue, Remove for the selected job (`UX-001`, `T-080`).
+        """Pause/Resume and Clear finished — the two verbs that act on the **queue** (`UX-001`).
 
-        **They share a toolbar and not a granularity**, which is the distinction `P2PLAN-R1` found
-        the task's own description getting wrong. Pause and resume act on the queue and are always
-        available; remove acts on whichever row is selected and is disabled when none is. Putting
-        remove on the queue toolbar rather than in the detail pane is deliberate — a user removing
-        several finished jobs is working in the table, and making them open each one first would be
-        a per-job gesture for a queue-level chore.
+        **Everything per-row went to the row** (`UX-005` §4, `T124-R3`). This built *Remove*,
+        *Move up* and *Move down* as well, each acting on `QueueView`'s selection and each enabled
+        from `job_selected`. `UX-005` chose the row verbs *"rather than a toolbar acting on a
+        selection"*, and the reason is visible in what the code did: with the window on the History
+        tab those three actions were still live, still aimed at whatever the hidden queue happened
+        to have selected, and a user pressing *Remove* while looking at their history removed a
+        download from the queue. The row's own *Remove*, *↑* and *↓* reach the same
+        implementations — `_remove_job` and `_move_job` — and cannot be ambiguous about their
+        target, because the target is the row they are drawn on.
+
+        *(`P2PLAN-R1`'s distinction is preserved and is now the whole rule rather than half of it:
+        what is on this toolbar acts on the queue. Nothing here acts on a selection.)*
 
         **The pause control is one checkable action, not two buttons.** Pause and Resume are the
         two states of one thing; a pair of buttons would spend the whole session with one of them
@@ -764,46 +815,11 @@ class MainWindow(QMainWindow):
         bar.addAction(pause)
         self._pause = pause
 
-        remove = QAction("&Remove", self)
-        remove.setObjectName("removeJobAction")
-        remove.setStatusTip("Take the selected job out of the queue; files are left alone")
-        # The second sentence is `UX-001`'s promise, and it belongs where the user reads it rather
-        # than only in the decision that made it. Tooltip for `pause`'s reason.
-        remove.setToolTip(
-            "Take the selected download out of the queue. Anything already downloaded stays on "
-            "disk; nothing is deleted."
-        )
-        remove.setEnabled(False)
-        remove.triggered.connect(self._remove_selected)
-        bar.addAction(remove)
-        self._remove = remove
-
-        # `REQ-016` is "reordering", not a gesture (`T-081`'s Out of scope). Two actions rather
-        # than drag-and-drop: they are keyboard-reachable, which drag is not, and `NFR-005` makes
-        # that the requirement rather than the nicety. Drag can be added later over the same call.
-        move_up = QAction("Move &up", self)
-        move_up.setObjectName("moveJobUpAction")
-        move_up.setStatusTip("Move the selected job earlier in the queue")
-        move_up.setToolTip(
-            "Move the selected download earlier in the queue. Downloads already running keep "
-            "their place — the pool has started them."
-        )
-        move_up.setEnabled(False)
-        move_up.triggered.connect(lambda: self._move_selected(-1))
-        bar.addAction(move_up)
-        self._move_up = move_up
-
-        move_down = QAction("Move &down", self)
-        move_down.setObjectName("moveJobDownAction")
-        move_down.setStatusTip("Move the selected job later in the queue")
-        move_down.setToolTip(
-            "Move the selected download later in the queue. Downloads already running keep their "
-            "place — the pool has started them."
-        )
-        move_down.setEnabled(False)
-        move_down.triggered.connect(lambda: self._move_selected(1))
-        bar.addAction(move_down)
-        self._move_down = move_down
+        # *(`REQ-016`'s reordering is still two named actions rather than a drag gesture, for
+        # `T-081`'s reason — they are keyboard-reachable and drag is not, which `NFR-005` makes the
+        # requirement rather than the nicety. They live on the row now, as *↑* and *↓*, and the
+        # keyboard reaches them through the row's `⋯` (`T124-R1`). What changed is where they are,
+        # not whether a keyboard can get to them.)*
 
         clear = QAction("&Clear finished", self)
         clear.setObjectName("clearCompletedAction")
@@ -828,28 +844,14 @@ class MainWindow(QMainWindow):
         if self._on_pause_changed is not None:
             self._on_pause_changed(paused)
 
-    def _remove_selected(self) -> None:
-        """Remove whichever job the table has selected, or nothing if it has none.
-
-        The guard is not defensive clutter: the action is disabled with no selection, and an
-        enabled-state check that the handler does not repeat is one keyboard shortcut away from
-        being wrong.
-        """
-        if self._queue is None:
-            return
-        job_id = self._queue.selected_job_id()
-        if job_id is not None:
-            self._remove_job(job_id)
-
     def _remove_job(self, job_id: str) -> None:
-        """Remove one named job. **The single implementation**, so the toolbar action and the
-        row's *Remove* cannot drift apart — two routes to one effect is how one of them ends up
-        with a guard the other lacks."""
+        """Remove one named job. **The single implementation**, so every route to a removal — the
+        row's *Remove* and its `⋯` menu — cannot drift apart."""
         if self._on_remove_requested is not None:
             self._on_remove_requested(job_id)
 
-    def _move_selected(self, offset: int) -> None:
-        """Move the selected job `offset` places, and hand the whole new order over (`T-081`).
+    def _move_job(self, job_id: str, offset: int) -> None:
+        """Move one named job `offset` places, and hand the whole new order over (`T-081`).
 
         **The whole order, not "move this one".** `JobRepository.reorder` redeals the positions the
         named jobs hold, and the caller that knows what the *user* sees is this one — the table's
@@ -860,20 +862,10 @@ class MainWindow(QMainWindow):
         `index ± 1` in the table. A running job sits in the table between two pending ones, and
         swapping across it must move the pending pair past each other rather than asking the
         repository to move the running one — which it refuses, by design.
-        """
-        if self._queue is None:
-            return
-        selected = self._queue.selected_job_id()
-        if selected is not None:
-            self._move_job(selected, offset)
 
-    def _move_job(self, job_id: str, offset: int) -> None:
-        """Move one named job, by the route `_move_selected` documents above.
-
-        The single implementation, for `_remove_job`'s reason. The row's *↑* and *↓* are the same
-        rearrangement the toolbar performs, and `_is_movable` is asked here rather than assumed
-        from the fact that the row drew the verb — the row's answer came from the model a moment
-        ago, and the reorder is what actually has to hold.
+        `_is_movable` is asked here rather than assumed from the fact that the row drew the verb:
+        the row's answer came from the model a moment ago, and the reorder is what actually has to
+        hold.
         """
         if self._on_reorder_requested is None or self._queue is None:
             return
@@ -906,40 +898,10 @@ class MainWindow(QMainWindow):
         if self._on_clear_requested is not None:
             self._on_clear_requested()
 
-    def _selection_changed(self, job_id: str) -> None:
-        """Enable the per-job actions once there is something for them to act on.
-
-        Remove takes any row; the move actions take only a row the user may rearrange, so a
-        selected running download offers Remove and not Move. An action that is offered and then
-        refuses is a UI that lies about what its buttons do (`can_transition`'s note, one layer up).
-        """
-        if self._remove is not None:
-            self._remove.setEnabled(bool(job_id))
-        movable = bool(job_id) and self._is_movable(job_id)
-        if self._move_up is not None:
-            self._move_up.setEnabled(movable)
-        if self._move_down is not None:
-            self._move_down.setEnabled(movable)
-
     @property
     def pause_action(self) -> QAction | None:
         """The queue's pause toggle, if this window was given a control bar."""
         return self._pause
-
-    @property
-    def remove_action(self) -> QAction | None:
-        """The selected job's remove action, if this window was given a control bar."""
-        return self._remove
-
-    @property
-    def move_up_action(self) -> QAction | None:
-        """The selected job's move-earlier action, if this window was given a control bar."""
-        return self._move_up
-
-    @property
-    def move_down_action(self) -> QAction | None:
-        """The selected job's move-later action, if this window was given a control bar."""
-        return self._move_down
 
     @property
     def clear_completed_action(self) -> QAction | None:

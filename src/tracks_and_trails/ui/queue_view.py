@@ -66,7 +66,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any, Final, Protocol
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QPoint, Qt, QTimer, Signal
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -102,6 +102,7 @@ from tracks_and_trails.ui.row_delegate import (
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
     PROGRESS_ROLE,
+    SELECTOR_ROLE,
     STATE_ROLE,
     THUMBNAIL_URL_ROLE,
     VERBS_ROLE,
@@ -240,6 +241,47 @@ def _preset_name_for(job: Job) -> str | None:
         ):
             return preset.name
     return None
+
+
+#: How a row states the format it is running as, once the control is gone (`UX-005` §6).
+#:
+#: The same three words the add dialog's row uses, so one download is described the same way in
+#: the dialog that queued it and in the queue that runs it.
+FORMAT_PREFIX: Final = "Download as: "
+
+
+def _duration_text(seconds: float | None) -> str:
+    """A clip's length, or nothing at all when the probe learned none (`T124-R4`).
+
+    **The same formatter the add dialog and the detail view use** — imported at call time for
+    `job_detail.format_eta`'s reason, which is that `add_dialog` imports this module's delegate
+    roles and a module-level import would close the cycle. Two independently written clock
+    formatters drift, and the queue row is meant to read as the staging row it replaced.
+
+    Empty rather than `UNKNOWN_TEXT` for `None`: this joins a line of optional parts, and an em
+    dash between the title and the percentage says less than nothing.
+    """
+    from tracks_and_trails.ui.add_dialog import format_duration
+
+    return "" if seconds is None else format_duration(seconds)
+
+
+def _effective_format_text(job: Job) -> str:
+    """What this job will be — or is being — downloaded as, in words (`T126-R2`, `REQ-009`).
+
+    **The built-in's name when one describes the request, and the literal selector otherwise.**
+    `REQ-009` allows a custom selector and `retarget` is not the only thing that can set one, so a
+    row whose request no built-in matches must still say what it is rather than falling silent —
+    which is what "including custom selectors" costs if the text is derived from the preset list
+    alone. The literal is what a user can read the syntax out of, which is `REQ-009`'s own reason
+    for showing it.
+
+    Read from `job.request`, never from the chosen preset: the request is what the worker is
+    given, and a rendering derived from anything else is a second opinion about the download in
+    flight (`T118-R8` is this mistake in the add dialog).
+    """
+    name = _preset_name_for(job)
+    return f"{FORMAT_PREFIX}{name or job.request.format_selector}"
 
 
 class QueueModel(QAbstractTableModel):
@@ -402,6 +444,26 @@ class QueueModel(QAbstractTableModel):
             # means no built-in describes it — a custom selector, which the row still shows as
             # text on its last line rather than pretending it is one of the choices.
             return _preset_name_for(row.job)
+        if role == SELECTOR_ROLE:
+            # **What the download is actually running as, once nothing can change it** (`UX-005`
+            # §6, `T126-R2`). §6 asks for *a control before start and plain format text
+            # afterwards*, and the second half was missing: the control simply vanished when the
+            # job left `RETARGETABLE` and nothing took its place, so a running download said
+            # nothing at all about its format — on the one surface `UX-005` removed the detail
+            # pane from, so there was nowhere else to look.
+            #
+            # Empty while the control is there **and can say it** — drawing both would put one
+            # fact on the row twice, in two places that can disagree.
+            #
+            # **A custom selector is the case where the control cannot** (`T126-R4`, `REQ-009`).
+            # The control offers built-ins, so a request no built-in describes leaves it showing
+            # no selection; it used to read `INHERITED_TEXT`, which named a batch the queue does
+            # not have. With that gone the row would have said nothing at all about its format
+            # while still being retargetable, which is `T126-R2`'s defect arriving from the other
+            # side. So the line speaks exactly when the control is silent.
+            if row.job.status in Job.RETARGETABLE and _preset_name_for(row.job) is not None:
+                return ""
+            return _effective_format_text(row.job)
         if role == VERBS_ROLE:
             # **`is_retryable` is asked, not assumed** (`REQ-018`, `UX-005` §5). `job_detail`
             # already asks it before offering its own Retry; the row has to ask the same question
@@ -437,6 +499,31 @@ class QueueModel(QAbstractTableModel):
         **The row is looked up when the choice is made**, not when the editor was built. That is
         `T118-R14`: an index that outlived the row it named wrote a format chosen for one URL onto
         the next one, and the queue reorders.
+
+        **A choice that changes nothing is not a choice** (`T126-R3`, Critical). `T126-R1` gave
+        this view a commit-before-reset lifecycle, and a lifecycle commit arrives here looking
+        exactly like a click: `setEditorData` refills the reopened editor from `PRESET_ROLE`, so
+        once a retarget has landed the redisplayed value *is* the durable request. Reporting it
+        was a closed loop with no exit —
+
+            `refresh` → commit → `preset_chosen` → `retarget(the request it already has)` →
+            `revise` answers `UNCHANGED` → `then()` is called **synchronously** by `_persist` →
+            `then` is `refresh_queue` → `refresh` …
+
+        — which ends in `RecursionError` inside the Qt event loop. The window for it is not
+        exotic: any reorder, removal or clear arriving between a retarget's write and its success
+        refresh, which is one queued job finishing while somebody picks a format.
+
+        **The guard is on the value, not on the caller.** Knowing *how* `setData` was reached
+        would be state about the call rather than about the download, and it would have to be
+        right at every future call site; "the request already says this" is true or false on its
+        own. It also fixes the quieter case the loop was hiding — opening the editor, changing
+        nothing and closing it used to spend a manager round trip to write what was already there.
+
+        `_preset_name_for` is the same function `PRESET_ROLE` answers with, so this compares the
+        editor's redisplayed value against the very thing that produced it — and it compares on
+        **every field a preset owns**, not the selector alone, which is what keeps two presets
+        sharing a selector distinguishable here (`T015-R1`).
         """
         if role != PRESET_ROLE or not index.isValid():
             return False
@@ -445,7 +532,10 @@ class QueueModel(QAbstractTableModel):
         name = value if isinstance(value, str) else None
         if name is None:
             return False
-        self.preset_chosen.emit(self._rows[index.row()].job.id, name)
+        job = self._rows[index.row()].job
+        if name == _preset_name_for(job):
+            return False
+        self.preset_chosen.emit(job.id, name)
         return True
 
     def flags(self, index: QModelIndex | _PersistentIndex) -> Qt.ItemFlag:
@@ -456,12 +546,21 @@ class QueueModel(QAbstractTableModel):
         return base
 
     def _detail(self, row: _Row) -> str:
-        """The row's second line: percent, size, speed and ETA, in one sentence.
+        """The row's second line: who and how long, then percent, size, speed and ETA.
 
         Built from the columns rather than beside them, so the rich row and the per-field
         accessible text cannot say different things about one download.
+
+        **The uploader and the duration lead it** (`UX-005` §3, `T124-R4`), because they are what
+        identifies the thing rather than its progress, and because that is the order the add
+        dialog's row puts them in — the queue row is meant to read as the same row after the
+        dialog closes. Either is omitted when the probe did not learn it; neither is invented,
+        and `UNKNOWN_TEXT` is not shown for them for the reason `format_duration` gives — a field
+        the extractor never named is quieter as nothing than as an em dash.
         """
         parts = [
+            row.job.uploader or "",
+            _duration_text(row.job.duration_seconds),
             self._text(row, PROGRESS_COLUMN),
             self._text(row, SIZE_COLUMN),
             self._text(row, SPEED_COLUMN),
@@ -470,8 +569,35 @@ class QueueModel(QAbstractTableModel):
         return " · ".join(part for part in parts if part and part != UNKNOWN_TEXT)
 
     def _whole_row(self, row: _Row) -> str:
-        """Everything a sighted user reads from the drawn row, for a screen reader (`NFR-005`)."""
+        """Everything a sighted user reads from the drawn row, for a screen reader (`NFR-005`).
+
+        **`COLUMN_HEADERS` is not the whole row any more, and this is where that shows.**
+        `REQ-014`'s six columns are still the spine, but the drawn row carries two more things —
+        and a field a sighted user reads and a screen-reader user does not is the `T017-R2` split,
+        which is one download described differently to two people.
+
+        - **Uploader and duration** (`UX-005` §3, `T124-R4`), named rather than read as bare values
+          for the reason `_accessible_text` gives: `47%` without saying what it is 47% of is the
+          shape this file already refuses. Absent fields are absent, not spoken as placeholders.
+        - **The format line** (`T126-R2`), and it matters more than most: once the control
+          disappears this text is the only statement anywhere of what is being downloaded.
+          **Read from `SELECTOR_ROLE` rather than recomputed** (`T126-R4`): whether the line is
+          there at all now depends on two things — the status *and* whether a built-in describes
+          the request — and a second copy of that condition is a second place for it to drift from
+          what is drawn, which is the whole of `T017-R2`.
+        """
         spoken = [self._accessible_text(row, column) for column in range(len(COLUMN_HEADERS))]
+        extra = [
+            f"Uploader: {row.job.uploader}" if row.job.uploader else "",
+            f"Duration: {duration}"
+            if (duration := _duration_text(row.job.duration_seconds))
+            else "",
+        ]
+        spoken[1:1] = [part for part in extra if part]
+        index = self._index_of.get(row.job.id)
+        drawn_format = "" if index is None else self.data(self.index(index, 0), SELECTOR_ROLE)
+        if drawn_format:
+            spoken.append(str(drawn_format))
         return ". ".join(spoken)
 
     def _fraction(self, row: _Row) -> float | None:
@@ -747,6 +873,8 @@ class QueueView(QWidget):
         self._model = QueueModel(
             jobs=jobs, manager=manager, parent=self, repaint_interval_ms=repaint_interval_ms
         )
+        #: The job whose editor was open when a reset began, carried across it (`T126-R1`).
+        self._reopen_for: str | None = None
         self._thumbnails = ThumbnailStore(
             loader=thumbnail_loader, cache_root=cache_root, parent=self
         )
@@ -777,14 +905,36 @@ class QueueView(QWidget):
         self._delegate.verb_triggered.connect(self._on_verb)
         self._list.setUniformItemSizes(True)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        # Rows are not editable and never will be: `T-081`'s reorder moves a row, it does not type
-        # into one. An editable view also puts a text cursor into the keyboard order, which
-        # `focus_chain` would then be wrong about. The delegate offers no editor here anyway —
-        # this model answers no `PRESET_CHOICES_ROLE` — but the trigger is stated rather than
-        # inherited, because that is the whole lesson of `T118-R9`.
-        self._list.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        # **`EDIT_KEY` is the declared keyboard route to the row's format control** (`T118-R9`,
+        # `T124-R1`, `UX-005` §6). `EditKeyPressed` *is* `row_delegate.EDIT_KEY`, and it is stated
+        # here rather than inherited from a Qt default, which is that finding's whole point.
+        #
+        # *(This said "rows are not editable and never will be… this model answers no
+        # `PRESET_CHOICES_ROLE`". `T-126` gave it one, and the comment stayed — so the queue drew
+        # a format control that only a pointer could reach, and `NFR-005`'s keyboard parity was
+        # false on the surface that declared it. Corrected here rather than deleted, because the
+        # sentence is the record of how the route went missing.)*
+        #
+        # **No `SelectedClicked`.** The add dialog needs it; here the delegate's own hit test on
+        # `_control_rect` is the mouse route, and it is narrower — clicking anywhere on an already
+        # selected row would otherwise open a format editor the user did not ask for.
+        self._list.setEditTriggers(QAbstractItemView.EditTrigger.EditKeyPressed)
+        # **The overflow's keyboard route** (`UX-005` §4, `T124-R1`). `CustomContextMenu` for
+        # `FileActions`' reason: Qt raises `customContextMenuRequested` for the Menu key and
+        # Shift+F10 as well as for the mouse, so `⋯` is reachable without a pointer through one
+        # code path rather than two. The shell builds the menu, because what belongs in it is a
+        # shell question — this only says which row was asked about.
+        self._list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._list.customContextMenuRequested.connect(self._row_menu_asked_for)
         self._list.selectionModel().selectionChanged.connect(self._announce_selection)
         layout.addWidget(self._list)
+
+        # **The editor is committed before every structural reset and reopened after it**
+        # (`T126-R1`, `T118-R14`). `modelAboutToBeReset` is emitted from `beginResetModel()`,
+        # which `refresh()` calls *before* it replaces `_rows` — so the open editor's index still
+        # resolves to the job the user is choosing a format for. After the reset the row number
+        # may name a different job, or no job, which is why the restore is by id.
+        self._model.modelAboutToBeReset.connect(self._commit_open_editor)
 
         # A picture arriving repaints the rows showing it; nothing about the queue changed.
         self._thumbnails.ready.connect(self._on_thumbnail_ready)
@@ -798,6 +948,10 @@ class QueueView(QWidget):
         # (`T081-R3`). Removal and clearing both reset the model now, so this is the path a
         # user actually takes to end up with nothing selected — not an edge case.
         self._model.modelReset.connect(self._announce_selection)
+        # **Last of the reset slots**, so the editor is reopened onto a list that has already been
+        # shown or hidden by `_show_the_right_thing`. Reopening onto a hidden view would lay out a
+        # control nobody can see and then destroy it at the next reset.
+        self._model.modelReset.connect(self._reopen_editor)
         self._show_the_right_thing()
 
     def _on_verb(self, job_id: str, verb: object) -> None:
@@ -833,6 +987,63 @@ class QueueView(QWidget):
             self.reveal_requested.emit(job_id)
         else:
             raise AssertionError(f"the row offered {verb.value} and nothing routes it")
+
+    def _row_menu_asked_for(self, position: QPoint) -> None:
+        """The Menu key, Shift+F10 or a right-click asked for a row's overflow (`T124-R1`).
+
+        **The current row when the position names none**, which is the keyboard case: Qt raises
+        this signal for the Menu key with a position derived from the widget rather than from a
+        row, so resolving through `indexAt` alone answered "no row" for every keyboard request and
+        the declared route silently did nothing. `NFR-005` asks that the keyboard reach what the
+        pointer reaches; a route that only a pointer can aim is not that.
+
+        Routed through `more_requested` — the same signal `⋯` emits — so the shell builds one menu
+        for both, and a guard added to one cannot be missing from the other (`trigger_verb`'s
+        reasoning, one step earlier in the same path).
+        """
+        at = self._list.indexAt(position)
+        index = at if at.isValid() else self._list.currentIndex()
+        if not index.isValid():
+            return
+        job_id = self._model.data(index, JOB_ID_ROLE)
+        if isinstance(job_id, str) and job_id:
+            self.more_requested.emit(job_id)
+
+    def _commit_open_editor(self) -> None:
+        """Write the open editor's choice through **before** the rows are replaced (`T126-R1`).
+
+        The whole correction is the ordering. `QueueModel.refresh()` calls `beginResetModel()` —
+        which is what emits the signal this is connected to — and only then rebuilds `_rows`, so
+        `setData` still resolves the editor's row number to the job the user was choosing for.
+        Committing after the reset reaches Qt's own guard instead: the view no longer owns the
+        editor, `commitData` warns and returns, `setData` is never called, and the visible choice
+        is discarded without a word while the download runs as whatever it was.
+
+        The job is remembered first, because committing forgets it.
+        """
+        self._reopen_for = self._delegate.editing_job_id
+        self._delegate.commit_and_close_editor()
+
+    def _reopen_editor(self) -> None:
+        """Put the editor back on the same **job** after a rebuild (`T126-R1`).
+
+        By id, never by row number: a reorder is one of the three things that causes the reset, so
+        the number the editor had is precisely what cannot be trusted. A job that was removed, or
+        that a worker has taken since — leaving it outside `Job.RETARGETABLE` and so no longer
+        editable — gets no editor back, which is `UX-005` §5: nothing is offered that would be
+        refused.
+        """
+        job_id, self._reopen_for = self._reopen_for, None
+        if job_id is None:
+            return
+        row = self._model.row_of(job_id)
+        if row is None:
+            return
+        index = self._model.index(row, JOB_COLUMN)
+        if not self._model.flags(index) & Qt.ItemFlag.ItemIsEditable:
+            return
+        self._list.setCurrentIndex(index)
+        self._list.edit(index)
 
     def trigger_verb(self, job_id: str, verb: Verb) -> None:
         """Activate a verb from somewhere other than the row — the overflow menu, or a key.
@@ -962,11 +1173,17 @@ class QueueView(QWidget):
         """Report the selected job, or **the empty string when nothing is selected** (`T081-R3`).
 
         Deselection used to emit nothing at all, on the reading that there was no job to announce.
-        But this signal is the only thing that updates the per-job actions, so "no job" was exactly
-        the news the toolbar needed and never got: clearing the selection — with the keyboard, by
-        clicking empty space, or through the model reset a removal now causes — left Remove, Move
-        up and Move down enabled with no row to act on. Their handlers then did nothing, which is a
-        control that lies about what it does.
+        It was the toolbar's per-job actions that made "no job" the news that mattered: clearing the
+        selection — with the keyboard, by clicking empty space, or through the model reset a removal
+        causes — left Remove, Move up and Move down enabled with no row to act on, and their
+        handlers then did nothing, which is a control that lies about what it does.
+
+        **Those three actions are gone** (`T124-R3`, `UX-005` §4): nothing on the toolbar reads a
+        selection any more, so the shell no longer connects to this. The signal stays, and stays
+        total, because it is this widget's report of *what is selected now* rather than a private
+        arrangement with one consumer — `build_queue_view` takes an `on_selected` for whoever wants
+        it next. A signal that announced only non-empty selections would be the same trap set for
+        that caller.
 
         The empty string rather than a separate `selection_cleared` signal: one signal carrying
         "what is selected now" cannot get out of order with itself, where two can arrive in either

@@ -256,21 +256,43 @@ def reap_the_captured_tree(
 
     **Returns survivors rather than asserting on them.** This runs in a `finally`, so raising here
     would replace the failure the test actually found with a teardown error about its consequence.
+    That is also why it stays a *return*: `T127-R1` asks for every survivor to be reported without
+    displacing an earlier behavioral failure, and a list the caller asserts on last does both.
+
+    **Only the ordinary races are tolerated** (`T127-R1`). This caught every `psutil.Error` while
+    killing and `TimeoutExpired` while waiting, and returned only what `wait_procs` reported — so
+    a refused kill (`AccessDenied`) and a stuck direct child were both swallowed, and
+    `assert not leaked` passed over a genuine leak. A process that has already exited is a real
+    race and is nothing; a process this test may not kill, or one that will not go, is a leak the
+    next test would be blamed for.
     """
+    refused: list[psutil.Process] = []
     for victim in doomed:
         try:
             victim.kill()
+        except psutil.NoSuchProcess, ProcessLookupError:
+            continue  # it beat us to it; the wait below is the real check
         except psutil.Error:
-            continue  # already gone, or never ours to kill; the wait below is the real check
+            # `AccessDenied`, or anything else that means the kill did not happen. Not "already
+            # gone" — recorded, and confirmed against `is_running` below rather than assumed.
+            refused.append(victim)
 
     # **Our own direct child is excluded from the wait**, for `kill_the_application`'s reason: it
     # is a zombie until reaped, and reaping it here would steal the exit status `process.wait()`
     # is about to collect.
     others = [victim for victim in doomed if victim.pid != process.pid]
     alive: list[psutil.Process] = psutil.wait_procs(others, timeout=30)[1]
-    with contextlib.suppress(subprocess.TimeoutExpired):
+    try:
         process.wait(timeout=30)
-    return alive
+    except subprocess.TimeoutExpired:
+        # **The one survivor the wait above structurally cannot report.** It is excluded from
+        # `wait_procs` so its exit status survives, which also means a child that never dies left
+        # no trace at all — suppressed, and the launcher went on holding whatever it holds.
+        with contextlib.suppress(psutil.Error):
+            alive.append(psutil.Process(process.pid))
+
+    survivors = {victim.pid: victim for victim in (*alive, *refused) if victim.is_running()}
+    return list(survivors.values())
 
 
 #: Big enough that the download is still running when the test kills it, small enough that the

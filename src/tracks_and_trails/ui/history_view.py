@@ -22,10 +22,17 @@ returns, so it is imported under `TYPE_CHECKING`: the annotation is complete and
 from `ui/` to `persistence/` is created**. `app.py` supplies the concrete repository, as it does for
 every other reader.
 
-## Read-only, and deliberately so
+## It reports; it still writes nothing itself
 
-Nothing here removes a record. `REQ-020` is a record of what was obtained, and pruning it is not in
-any phase. `T-086` adds open-and-reveal *onto* this view; that is the only thing meant to grow here.
+This said *"Read-only, and deliberately so: nothing here removes a record"*, and that stopped being
+true at `DAT-005` (2026-08-04), which admits removal of **selected records** and never a file.
+`T-125` implements it, and the sentence is corrected here rather than left standing as a comment
+that used to be right (`T124-R1` found the drawn `⋯` inert while this paragraph said removal did
+not exist at all).
+
+What is unchanged is where the write happens: this view **reports** a removal through
+`removal_requested` and composition performs it, exactly as the queue reports its own verbs
+(`ARCHITECTURE.md` §7). `T-086`'s open-and-reveal is reported the same way.
 
 ## No live signals, unlike the queue
 
@@ -38,7 +45,7 @@ is cleared, which are the only two moments the set of rows can differ.
 
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, Signal
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QPoint, Qt, Signal
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -315,6 +322,12 @@ class HistoryView(QWidget):
         # editable view would also put a text cursor into the keyboard order.
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._table.setUniformItemSizes(True)
+        # **The overflow's keyboard route** (`UX-005` §4, `T124-R1`). Qt raises
+        # `customContextMenuRequested` for the Menu key and Shift+F10 as well as for the mouse, so
+        # one connection makes `⋯` reachable both ways. `FileActions` is told not to install its
+        # own menu on this table, because two menus on one gesture is worse than either.
+        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._row_menu_asked_for)
         self._delegate = RowDelegate(parent=self._table)
         self._table.setItemDelegate(self._delegate)
         # No thumbnail store: a history record carries no thumbnail URL, so every row draws the
@@ -337,8 +350,26 @@ class HistoryView(QWidget):
     #: decoration.
     removal_requested = Signal(list)
 
+    #: `(entry_id)` — the row's `⋯` was activated, by pointer or by keyboard (`T124-R1`).
+    #: The queue's signal of the same name, for the same reason: what belongs in the overflow is a
+    #: shell question, and the shell builds one menu for both tabs.
+    more_requested = Signal(str)
+
     def _on_verb(self, entry_id: str, verb: object) -> None:
-        """Route a history row's verb. Only two exist; anything else is a programming error."""
+        """Route a history row's verb, or its overflow. An unrouted verb is a programming error.
+
+        Three verbs and the `⋯`, which the delegate reports as `None`. *(This said "only two
+        exist" — written when it was true, and still there after `DAT-005` added *Remove*, in the
+        method whose missing `None` branch made the `⋯` inert.)*
+        """
+        if verb is None:
+            # **The drawn `⋯` did nothing at all until `T124-R1`.** The delegate emits `None` for
+            # the overflow and this method's final branch tested `verb is not None`, so the one
+            # control every history row draws was inert — with a pointer as well as without one.
+            # `QueueView._on_verb` had the branch; this is the same route, added where it was
+            # missing rather than a second one beside it.
+            self.more_requested.emit(entry_id)
+            return
         if verb is Verb.OPEN:
             self.open_requested.emit(entry_id)
         elif verb is Verb.REVEAL:
@@ -349,12 +380,41 @@ class HistoryView(QWidget):
             # clicks Remove on one of them means the three (`DAT-005` §1).
             selected = self.selected_entry_ids()
             self.removal_requested.emit(list(selected) if entry_id in selected else [entry_id])
-        elif verb is not None:
+        else:
             raise AssertionError(f"a history row offered {verb!r} and nothing routes it")
 
     def trigger_verb(self, entry_id: str, verb: Verb) -> None:
         """Activate a verb from the overflow or a key, by the route a click takes."""
         self._on_verb(entry_id, verb)
+
+    def verbs_of(self, entry_id: str) -> tuple[Verb, ...]:
+        """What the row for `entry_id` offers, asked of the model the delegate asks (`T124-R1`).
+
+        **Read through the role rather than recomputed**, for `QueueView.verbs_of`'s reason: the
+        overflow exists to hold what the row could not fit, so a menu that disagreed with the row
+        would be worse than no menu. Empty for a record this view does not hold.
+        """
+        ids = self._model.entry_ids()
+        if entry_id not in ids:
+            return ()
+        offered = self._model.data(self._model.index(ids.index(entry_id), 0), VERBS_ROLE)
+        return tuple(offered or ())
+
+    def _row_menu_asked_for(self, position: QPoint) -> None:
+        """The Menu key, Shift+F10 or a right-click asked for a row's overflow (`T124-R1`).
+
+        `QueueView._row_menu_asked_for` is the same method for the same reason, including the
+        fall back to the current row when the position names none — which is the keyboard case,
+        and which is what makes **history removal keyboard-reachable at all**. Before this the
+        only route to *Remove* was a pointer on a control that did nothing.
+        """
+        at = self._table.indexAt(position)
+        index = at if at.isValid() else self._table.currentIndex()
+        if not index.isValid():
+            return
+        entry_id = self._model.data(index, JOB_ID_ROLE)
+        if isinstance(entry_id, str) and entry_id:
+            self.more_requested.emit(entry_id)
 
     @property
     def model(self) -> HistoryModel:

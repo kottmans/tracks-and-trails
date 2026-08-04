@@ -432,7 +432,12 @@ def test_a_job_written_before_the_column_existed_reads_as_having_no_thumbnail(
 
     connection = db.connect(database)
 
-    assert all(job.thumbnail_url is None for job in JobRepository(connection).all_jobs())
+    stored = JobRepository(connection).all_jobs()
+    assert all(job.thumbnail_url is None for job in stored)
+    # `T124-R4`'s two columns arrived at v3 with no backfill, for `0002`'s reason: a v1 row was
+    # never asked for either, and inventing a value would be a claim no probe made.
+    assert all(job.uploader is None for job in stored)
+    assert all(job.duration_seconds is None for job in stored)
     connection.close()
 
 
@@ -448,6 +453,25 @@ def test_a_thumbnail_url_round_trips_through_the_database(repository: JobReposit
     repository.add(without)
 
     assert repository.get(with_picture.id) == with_picture
+    assert repository.get("second") == without
+
+
+def test_the_uploader_and_duration_round_trip_through_the_database(
+    repository: JobRepository,
+) -> None:
+    """`T124-R4`, `UX-005` §3: the row anatomy needs both, so both have to survive a restart.
+
+    Both states again, for the reason above — and the duration is **fractional**, which is what
+    tells a REAL column from an INTEGER one. yt-dlp reports fractional durations, and a mapping
+    that silently truncated would leave the queue and the add dialog disagreeing about the same
+    clip by up to a second.
+    """
+    probed = a_job(title="Has both", uploader="Someone Who Publishes", duration_seconds=212.5)
+    without = a_job("second", title="Has neither")
+    repository.add(probed)
+    repository.add(without)
+
+    assert repository.get(probed.id) == probed
     assert repository.get("second") == without
 
 
@@ -1341,3 +1365,49 @@ def test_removal_touches_no_file(history: HistoryRepository, tmp_path: Path) -> 
         "never does that, and DAT-005 refuses even an opt-in for it"
     )
     assert downloaded.read_bytes() == b"bytes the user asked for", "the file was modified"
+
+
+def test_a_removal_is_committed_and_survives_the_writer_closing(tmp_path: Path) -> None:
+    """**The removal is durable, asserted from outside the connection that made it** (`T125-R1`).
+
+    Every other test in this section reads back through the *same* connection, and a connection
+    sees its own uncommitted work — so an uncommitted `DELETE` passes all of them. The running
+    application does not have that shape: `writer.py` deletes on its own connection inside the
+    writer thread (`ARC-005`) and `HistoryView` reads through the connection `compose()` opened,
+    so an uncommitted delete is invisible to the surface that reports it.
+
+    Three observations, which is what the review's probe measured and what this pins:
+
+    1. the writer's own connection no longer has the row — true even uncommitted, so it proves
+       nothing on its own and is here to show the delete really ran;
+    2. **a second connection opened against the same file** no longer has it;
+    3. **a connection opened after the writer is closed** no longer has it — the case that
+       distinguishes a commit from a transaction rolled back at close.
+
+    Deleting `with self._connection` in `HistoryRepository.remove` leaves (1) passing and fails
+    (2) and (3), which is the mutation this test exists to kill.
+    """
+    database = tmp_path / "library.sqlite3"
+    writer_connection = db.connect(database)
+    writer = HistoryRepository(writer_connection)
+    writer.record(_entry("job-1"))
+    writer.record(_entry("job-2"))
+
+    assert writer.remove(["job-1"]) == 1
+
+    assert writer.get("job-1") is None, "the delete did not run on the writer's own connection"
+
+    reader = HistoryRepository(db.connect(database))
+    assert reader.get("job-1") is None, (
+        "another connection still sees the removed record, so the delete was never committed — "
+        "which is exactly what the History tab reads through"
+    )
+    assert reader.get("job-2") is not None, "the wrong record went, or the commit took too much"
+
+    writer_connection.close()
+    reopened = HistoryRepository(db.connect(database))
+    assert reopened.get("job-1") is None, (
+        "the record came back when the writer connection closed: the DELETE was sitting in an "
+        "implicit transaction and was rolled back"
+    )
+    assert reopened.get("job-2") is not None

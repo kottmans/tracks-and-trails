@@ -5,8 +5,8 @@
 **Owner:** Planner / Implementer
 **Maintainer:** Sean Kottman
 **Status:** Active
-**Last updated:** 2026-08-03
-**Last verified against repository:** 2026-08-03
+**Last updated:** 2026-08-04
+**Last verified against repository:** 2026-08-04
 **Update when:** A meaningful work session ends, a phase changes, a blocker appears or clears, or the next task changes.
 **Does not contain:** Task detail (`TASKS.md`), review history (`REVIEWS.md`), decision rationale (`DECISIONS.md`).
 
@@ -15,6 +15,67 @@
 **Current phase:** **Phase 2 — Queue and concurrency.** **Phase 1 formally exited 2026-07-29**;
 Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLAN-R2` at `f858da9`,
 `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
+
+## The 2026-08-04 review, and where its findings stand
+
+**`T-127` and `DAT-005` are approved.** `T-122` and the `UX-005` batch (`T-124`, `T-125`, `T-126`)
+came back **Changes requested** — one Critical, five High, two Medium, one Low. The details live
+in each task entry; this is a pointer rather than a second copy of them.
+
+**The re-review found the correction's own Critical, and it is the entry worth reading.**
+`T126-R3`: fixing `T126-R1` by committing the open editor on every reset made a *lifecycle* commit
+look exactly like a click, so once a retarget landed the redisplayed value was reported as a fresh
+choice — `refresh → commit → retarget(UNCHANGED) → then() inline → refresh`, to `RecursionError`.
+**My own regression could not see it**, because its fake `retarget` never updated the reader it
+was standing in for, so the reopened editor never held the durable value. That is the recurring
+shape in this project stated precisely: *a fake that does not model the write cannot exercise the
+ordering the write creates*, and the test said "durable" while proving nothing of the sort.
+Corrected, and both the reviewer's regression and a new composed one over the real manager now
+fail when the guard is removed.
+
+**A third pass then found `T126-R4`, and it is the same lesson at the level of a widget.**
+`RowDelegate` is shared between the staging list and the queue, and it prepended *"Same as all"*
+unconditionally — meaningful in a paste, which has a group format, and inert on a queue row, which
+has only its own request. The queue drew a control entry its own model refuses. What made the fix
+more than a deletion is that `PRESET_ROLE`'s `None` **means two different things** on those two
+surfaces — *follows the batch* on one, *no built-in describes this* on the other — so removing the
+entry naively would have made a custom-selector row open its control reading the first built-in.
+The role is now surface-declared and the row speaks whenever the control cannot.
+
+**Twelve findings are corrected and awaiting re-review.**
+
+- **`T126-R1` was the Critical**, and it is the class this project keeps finding: `T118-R14` gave
+  the add dialog a commit-before-reset lifecycle for its shared row editor, and the queue was given
+  the same delegate **without it**. A reorder, a removal or a clear while someone was choosing a
+  format discarded that choice in silence and let the download run as the format they had replaced.
+  The committed tests called `model.setData()` directly, so no route the user takes was covered.
+- **Five High findings were all the same shape**: an accepted decision implemented on the surface
+  and not underneath it. The declared `⋯` keyboard route existed as drawing and not as a route,
+  History's `⋯` did nothing at all, the tab counts followed only the paths composition drives, a
+  started download said nothing about its format, and `UX-005`'s *rejected* selection toolbar was
+  still on screen beside the row verbs that replaced it.
+- **`T124-R4` cost a schema migration.** `UX-005` §3's row anatomy names uploader and duration;
+  `Job` never carried either, and `T-124`'s own task text had narrowed the decision to `REQ-014`'s
+  older field list to fit. A task cannot narrow an accepted decision, so the data was carried
+  instead: migration `0003`, and `v3.sql` frozen for `T014-R4`'s gate.
+- **`P2EXIT-R8`** was two documents citing hosted run `30712201443` for exit criterion 5 — a run
+  that predates `T-127` and exercised the gate the same review proved passes with the watchdog
+  removed. `IMPLEMENTATION_PLAN.md` and `T-127` now cite the corrected gate's Linux and Windows
+  executions at `8d1b01c`.
+
+**Phase 2 stays blocked**, and now on two things rather than on the corrections: the re-review of
+this batch, and `T-128`'s diagnosis.
+
+**`OPS-007` is amended, and `T-128` now gates the exit** (`P2EXIT-R9`, maintainer ruling
+2026-08-04). `OPS-007` accepted `T-074`'s unreproduced access violation as residual risk because
+**361 attempts produced no event**, and said in as many words that a recurrence reopens it. `T-128`
+records **2 Linux `SIGSEGV`s in 39 serial full-suite runs**, both at the same completed-test
+position with a live `ResultPump`. The ruling: **`T-128` must diagnose before Phase 2 exits.** Not
+because the risk got worse, but because the acceptance rested on *reproduction being exhausted* and
+argued it on `STARBASE` time — and a fault reproducing at roughly 1 in 20 on Linux is reachable in
+an afternoon on a machine Windows verification does not depend on. The reasoning is in `OPS-007`'s
+2026-08-04 amendment. **`T-074` is unchanged**: still open at Medium, still not established as the
+same fault.
 
 **Thirteen of thirteen Phase 2 deliverables are approved**, `T-115` included — approved at
 `f6dd691` on 2026-08-02, though this line said otherwise until 2026-08-03. **Exit criterion 6 is

@@ -118,6 +118,7 @@ from tracks_and_trails.ui.row_delegate import (
     HUE_ROLE,
     INHERITED_TEXT,
     PRESET_CHOICES_ROLE,
+    PRESET_INHERITABLE_ROLE,
     PRESET_ROLE,
     ROW_PRESET_NAME,
     SELECTOR_ROLE,
@@ -369,6 +370,13 @@ class StagingModel(QAbstractListModel):
             if not row.committable or self._dialog.is_saving:
                 return None
             return tuple(preset.name for preset in self._dialog.presets)
+        if role == PRESET_INHERITABLE_ROLE:
+            # **This surface has an "all" to be the same as** (`UX-004`, `T126-R4`): the paste
+            # carries one format and a row may defer to it, which is what `PRESET_ROLE`'s `None`
+            # means here. The delegate offers its inherited entry only where a model says this,
+            # because the queue reuses the same delegate and has no group format at all — there,
+            # the entry was a control that silently did nothing.
+            return True
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole):
             return row_text(row, effective)
         if role == Qt.ItemDataRole.AccessibleTextRole:
@@ -1096,15 +1104,25 @@ class AddUrlDialog(QDialog):
         the download session to rediscover (`T-117`): the row on screen already knows them, and a
         queue that showed a URL until its download started would be `UX-003` undone at the moment
         of committing.
+
+        **`uploader` and `duration_seconds` come across for the same reason** (`T124-R4`,
+        `UX-005` §3). They were the two fields this method knew and dropped: the staging row draws
+        them, `Add` closed the dialog, and the queue row that replaced it could not — so the
+        accepted row anatomy held while a URL was being staged and stopped holding the moment it
+        was committed. The whole set the probe learned now crosses together, which is also why
+        adding the next one is a schema change and not a second omission.
         """
         media = row.media
+        probed = media if isinstance(media, MediaInfo) else None
         return Job(
             id=str(uuid.uuid4()),
             url=row.url,
             request=self._request_for(row),
-            status=JobStatus.READY if isinstance(media, MediaInfo) else JobStatus.QUEUED,
-            title=media.title if isinstance(media, MediaInfo) else None,
-            thumbnail_url=media.thumbnail_url if isinstance(media, MediaInfo) else None,
+            status=JobStatus.READY if probed is not None else JobStatus.QUEUED,
+            title=probed.title if probed is not None else None,
+            thumbnail_url=probed.thumbnail_url if probed is not None else None,
+            uploader=probed.uploader if probed is not None else None,
+            duration_seconds=probed.duration_seconds if probed is not None else None,
             created_at=datetime.now().astimezone(),
         )
 

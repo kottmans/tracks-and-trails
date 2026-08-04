@@ -119,8 +119,10 @@ THUMBNAIL_SOURCE: Final = (
 #: Windows run and fail on another with nothing changed between them.
 #:
 #: The property this can still catch is a return to cost that grows with the paste: the design it
-#: replaced would spend seconds here, not milliseconds. The *finer* claim — that cost stays linear
-#: — is `SCALING_HEADROOM`'s, which is a ratio and so does not move with runner speed at all.
+#: replaced would spend seconds here, not milliseconds. **This absolute bound is the gate**, and it
+#: is the only timing claim in this module that a runner is asked to hold. `SCALING_HEADROOM`'s
+#: ratio is *diagnostic*: transient load moves it, for the reasons recorded on that constant
+#: (`T118-R17`, `T-122`), so it reports rather than gates.
 INTERACTION_BUDGET_SECONDS: Final = 1.0
 
 #: The paste size the design supports, and the size the budget is asserted at.
@@ -2136,6 +2138,7 @@ def test_the_scaling_oracle_ignores_one_stall_and_refuses_a_thin_sample_set() ->
 def test_a_four_times_larger_paste_is_reported_and_not_gated(
     dialogs: Callable[..., AddUrlDialog],
     managers: Callable[..., DownloadManager],
+    qapp: QApplication,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     """The paste-cost diagnostic. **Nothing here fails the build** (`P2EXIT-R3`).
@@ -2155,10 +2158,29 @@ def test_a_four_times_larger_paste_is_reported_and_not_gated(
         type_urls(dialog, urls)
         dialog.resolve()
         elapsed = time.monotonic() - started
-        # Reaped **inside** the sample loop, not at the end of the test: the review measured seven
-        # managers and up to 28 probe workers alive by the last pair.
+        # **Torn down inside the sample loop, and waited for** (`T122-R2`). Calling `shutdown()`
+        # was not enough: it *begins* teardown and returns by design (`T013-R2`), so the previous
+        # version resumed timing while the sample it had just finished was still killing four
+        # probe workers — and every large sample ran under more of that than the small one before
+        # it, which is the systematic bias this loop exists to remove. The wait is outside the
+        # timed region, so it costs the diagnostic nothing but wall clock.
         dialog.close()
         manager.shutdown()
+        deadline = time.monotonic() + 30
+        while time.monotonic() < deadline and not manager.is_idle:
+            qapp.processEvents()
+            time.sleep(0.005)
+        # **The bound is asserted, not merely waited out** (`T122-R2`, second pass). Falling
+        # through at 30 s resumed sampling under a manager that had not settled and printed the
+        # result as though isolation had held — which is the same defect this loop was added to
+        # remove, moved from "no wait" to "a wait that gives up quietly". A stalled teardown is
+        # worth failing over: it is not a slow machine, it is `shutdown()` not completing, and
+        # the number this function returns afterwards would describe neither sample.
+        assert manager.is_idle, (
+            f"a manager was still shutting down 30 s after being asked, while sampling {count} "
+            "URLs. Every later sample would run under its surviving probe workers, and the "
+            "diagnostic would report that contamination as paste cost"
+        )
         return elapsed
 
     cost(SMALL_PASTE)
@@ -2245,4 +2267,74 @@ def test_describe_kind_distinguishes_unknown_length_from_empty() -> None:
             MediaInfo(url="https://a.invalid/p", title="P", is_playlist=True, entry_count=42)
         )
         == "Playlist (42 items)"
+    )
+
+
+def test_the_probes_uploader_and_duration_reach_the_durable_row(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """**`T124-R4`.** `UX-005` §3's row anatomy has to hold after the dialog closes.
+
+    §3 names *thumbnail, title, uploader and duration, progress and state* in both tabs. The
+    staging row drew all of it; `Job` carried the title and the thumbnail and nothing else, so
+    everything the probe had learned about *who* and *how long* died with the dialog — and the
+    queue, which is the surface the user actually watches, could not render two of the six.
+    `T-124`'s task text answered that by narrowing §3 to `REQ-014`'s older field list, which a
+    task may not do to an accepted decision.
+
+    Asserted **after `add_to_queue`**, against the row the store actually holds and against the
+    recorded fixture rather than against `MediaInfo` — reading the value back out of the probe
+    result would compare the pipeline with itself.
+    """
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM)
+    info = load_info(SINGLE_ITEM)
+    assert info.get("uploader") and info.get("duration"), (
+        f"{SINGLE_ITEM} carries no uploader or duration, so it cannot prove they are carried"
+    )
+
+    dialog.add_to_queue()
+    assert spin(lambda: not dialog.isVisible())
+
+    committed = dialog.queued_job_ids
+    assert len(committed) == 1
+    stored = store.jobs[committed[0]]
+
+    assert stored.uploader == info["uploader"], (
+        f"the durable row says uploader={stored.uploader!r}; the probe read "
+        f"{info['uploader']!r} and UX-005 §3 puts it on the queue row"
+    )
+    assert stored.duration_seconds == pytest.approx(float(info["duration"])), (
+        f"the durable row says duration_seconds={stored.duration_seconds!r}; the probe read "
+        f"{info['duration']!r}"
+    )
+
+
+def test_an_unprobed_row_carries_neither_rather_than_a_guess(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    store: FakeStore,
+    spin: Callable[..., bool],
+) -> None:
+    """The other state of `T124-R4`'s pair, and it is the one a default would hide.
+
+    A row the probe learned nothing about must store `None` for both, not `""` and not `0`: a
+    zero duration reads as an empty clip and an empty uploader reads as a publisher with no name.
+    `MediaInfo` refuses both at construction, and the durable row has to make the same refusal
+    rather than filling in for it.
+    """
+    media = MediaInfo(url=fixture_url(SINGLE_ITEM), title="Nothing else was learned")
+    dialog, _ = resolved(dialogs, managers, spin, SINGLE_ITEM)
+    dialog.rows[0].media = media
+
+    dialog.add_to_queue()
+    assert spin(lambda: not dialog.isVisible())
+
+    stored = store.jobs[dialog.queued_job_ids[0]]
+    assert stored.uploader is None, f"an unprobed field was stored as {stored.uploader!r}"
+    assert stored.duration_seconds is None, (
+        f"an unprobed duration was stored as {stored.duration_seconds!r}, which the row would "
+        "draw as a real length"
     )

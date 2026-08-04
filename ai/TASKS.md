@@ -94,6 +94,105 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ## Ready
 
+### T-128 — The result-pump segfault reproduces on **Linux**, at ~5% of full-suite runs
+
+**Status:** **Ready — and it gates the Phase 2 exit**, by maintainer ruling of 2026-08-04 on
+`P2EXIT-R9`. The first reproduction of anything in this class; found by an overnight soak, not by
+a gate.
+**What the ruling changed.** `OPS-007` accepted `T-074`'s access violation because reproduction was
+*exhausted* — 361 attempts, zero events — and argued the cost in `STARBASE` hours. This task is
+that argument's premise failing: roughly 1 in 20 on Linux, on a machine Windows verification does
+not depend on. So the residual stands as risk and stops being something a phase exits over, and
+`OPS-007` carries a 2026-08-04 amendment saying so. **This does not merge `T-128` with `T-074`**
+and does not assert the crash is in the product; identity and product-versus-harness are exactly
+what this task owns.
+*(This read "Proposed — the first reproduction of anything in this class".)*
+**Owner:** Implementer
+**Priority:** **High** — not because it is new, but because it is *reproducible*. `T-074` has been
+undiagnosed since 2026-07-29 for exactly one reason: **361 attempts, zero events**. This is 2
+events in 39.
+**Phase:** Phase 2
+**Relevant context:** **`T-074`** (candidate same defect — see below), `OPS-007`, `T-092`, `T-090`,
+`ARC-002`, `T-019`
+**Affected surfaces:** unknown — that is the task. `downloader/manager.py`'s result pump and
+`ui/` Qt event handling are where the stack points.
+**Evidence:** `ai/evidence/SOAK-FAILED-13.txt` and `-19.txt` — the two full crash logs, kept
+because they came from 39 runs and reproducing one takes hours.
+**Risk:** **Medium to the product.** A segfault in a GUI application loses the user's session. It
+has never been observed outside a test run, which is a fact about where we look rather than a
+reassurance.
+
+#### What was observed
+
+An unattended soak ran the full suite **39 times** on Linux (2026-08-04, head `8d1b01c`). **37 were
+green; 2 died** with:
+
+```
+Fatal Python error: Segmentation fault
+Current thread's C stack trace (most recent call first):
+  ... libQt6Core.so.6, at QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+```
+
+Both crashes had a live thread named **`ResultPump`** and a `Thread-193 (_mo…)` beside it.
+
+**Both died at exactly 97 completed tests.** Not approximately — the same count in both logs, which
+is the opposite of what a random memory fault looks like and the most useful fact here. By
+execution order that puts the fault in or immediately around
+`tests/integration/test_manager.py::test_a_probe_session_is_refused_for_a_ready_job`, with
+`test_a_ready_job_starts_a_download_at_running` immediately before it.
+
+**That identification is derived from a position, not observed.** It assumes collection order equals
+execution order, which holds here (no randomising plugin is installed) but was not verified against
+a `-v` run — the crash is 5% and a `-v` reproduction had not been obtained when this was filed.
+**Confirming the exact test is the first item of scope**, not an assumption to build on.
+
+#### Its relationship to `T-074`, stated carefully
+
+`T-074` is *"The Windows suite segfaults intermittently while the result pump is delivering."* This
+is a segfault while a thread named `ResultPump` is alive. That is a strong resemblance and it is
+**not** an identity:
+
+- Windows produced an **access violation**; this is a **SIGSEGV** on Linux. The same underlying bug
+  would present as both, and so would two different bugs in one subsystem.
+- `T-074`'s faulting object was never determined, so there is nothing to compare against. **A stack
+  is not a cause** — `T-074`'s own words, and they apply to this stack too.
+- `OPS-007` accepted `T-074` as residual risk **on the strength of 361 clean attempts**. This does
+  not refute that decision; it changes the premise underneath it, which is a different thing and is
+  the maintainer's to weigh.
+
+So this is filed as its own task rather than as a comment on `T-074`, and the two are cross-linked.
+If they turn out to be one defect, merging them later costs nothing; assuming it now would put a
+Windows label on a Linux reproduction and send the next person to the wrong platform.
+
+#### Scope
+
+- **Confirm the failing test by observation**, not by arithmetic: loop `test_manager.py` under `-v`
+  until it recurs, and record what was running.
+- **Establish a cheaper reproduction** than a 6-minute full-suite run. The deterministic position
+  suggests a specific interaction rather than random corruption, so a subset may reproduce it — and
+  if a subset *cannot*, that is itself a finding about ordering or accumulated state.
+- **Determine product versus harness** (`ai/TESTING.md` §4). A crash inside `processEvents` with a
+  worker-result thread live could be either the application's threading or the test's stand-in
+  worker, and the answer decides who owns it.
+- Arm a core dump (`T-092` does this for Windows; Linux needs `ulimit -c` and a pattern) so a
+  recurrence yields a faulting object rather than another anecdote.
+
+#### Out of scope
+
+- **Fixing `T-074`.** If a cause is found here and it explains Windows too, that is a finding to
+  report, not a licence to close a task on another platform from this evidence.
+- **Making the suite pass by retrying.** A retry would hide the only reproduction anyone has.
+
+#### Acceptance criteria
+
+- The failing test is named from an observed run, not inferred from a count
+- A reproduction exists that is cheaper than the full suite, **or** it is recorded that none was
+  found and what was tried
+- Product-versus-harness is answered with evidence
+- `T-074` and `OPS-007` are updated with whatever this establishes — including "nothing"
+
+---
+
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
 **Status:** **Ready — the decision landed as `REL-002` (2026-08-04), so the blocker is gone.**
@@ -952,96 +1051,6 @@ own.
 noise; the connection still died mid-stream and that is what failed the job. Both changes are
 improvements a reader can verify without Windows, which is exactly why they were worth doing
 separately from the part that needs it.
-
----
-
-### T-128 — The result-pump segfault reproduces on **Linux**, at ~5% of full-suite runs
-
-**Status:** **Proposed — the first reproduction of anything in this class**, 2026-08-04. Found by
-an overnight soak, not by a gate.
-**Owner:** Implementer
-**Priority:** **High** — not because it is new, but because it is *reproducible*. `T-074` has been
-undiagnosed since 2026-07-29 for exactly one reason: **361 attempts, zero events**. This is 2
-events in 39.
-**Phase:** Phase 2
-**Relevant context:** **`T-074`** (candidate same defect — see below), `OPS-007`, `T-092`, `T-090`,
-`ARC-002`, `T-019`
-**Affected surfaces:** unknown — that is the task. `downloader/manager.py`'s result pump and
-`ui/` Qt event handling are where the stack points.
-**Evidence:** `ai/evidence/SOAK-FAILED-13.txt` and `-19.txt` — the two full crash logs, kept
-because they came from 39 runs and reproducing one takes hours.
-**Risk:** **Medium to the product.** A segfault in a GUI application loses the user's session. It
-has never been observed outside a test run, which is a fact about where we look rather than a
-reassurance.
-
-#### What was observed
-
-An unattended soak ran the full suite **39 times** on Linux (2026-08-04, head `8d1b01c`). **37 were
-green; 2 died** with:
-
-```
-Fatal Python error: Segmentation fault
-Current thread's C stack trace (most recent call first):
-  ... libQt6Core.so.6, at QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
-```
-
-Both crashes had a live thread named **`ResultPump`** and a `Thread-193 (_mo…)` beside it.
-
-**Both died at exactly 97 completed tests.** Not approximately — the same count in both logs, which
-is the opposite of what a random memory fault looks like and the most useful fact here. By
-execution order that puts the fault in or immediately around
-`tests/integration/test_manager.py::test_a_probe_session_is_refused_for_a_ready_job`, with
-`test_a_ready_job_starts_a_download_at_running` immediately before it.
-
-**That identification is derived from a position, not observed.** It assumes collection order equals
-execution order, which holds here (no randomising plugin is installed) but was not verified against
-a `-v` run — the crash is 5% and a `-v` reproduction had not been obtained when this was filed.
-**Confirming the exact test is the first item of scope**, not an assumption to build on.
-
-#### Its relationship to `T-074`, stated carefully
-
-`T-074` is *"The Windows suite segfaults intermittently while the result pump is delivering."* This
-is a segfault while a thread named `ResultPump` is alive. That is a strong resemblance and it is
-**not** an identity:
-
-- Windows produced an **access violation**; this is a **SIGSEGV** on Linux. The same underlying bug
-  would present as both, and so would two different bugs in one subsystem.
-- `T-074`'s faulting object was never determined, so there is nothing to compare against. **A stack
-  is not a cause** — `T-074`'s own words, and they apply to this stack too.
-- `OPS-007` accepted `T-074` as residual risk **on the strength of 361 clean attempts**. This does
-  not refute that decision; it changes the premise underneath it, which is a different thing and is
-  the maintainer's to weigh.
-
-So this is filed as its own task rather than as a comment on `T-074`, and the two are cross-linked.
-If they turn out to be one defect, merging them later costs nothing; assuming it now would put a
-Windows label on a Linux reproduction and send the next person to the wrong platform.
-
-#### Scope
-
-- **Confirm the failing test by observation**, not by arithmetic: loop `test_manager.py` under `-v`
-  until it recurs, and record what was running.
-- **Establish a cheaper reproduction** than a 6-minute full-suite run. The deterministic position
-  suggests a specific interaction rather than random corruption, so a subset may reproduce it — and
-  if a subset *cannot*, that is itself a finding about ordering or accumulated state.
-- **Determine product versus harness** (`ai/TESTING.md` §4). A crash inside `processEvents` with a
-  worker-result thread live could be either the application's threading or the test's stand-in
-  worker, and the answer decides who owns it.
-- Arm a core dump (`T-092` does this for Windows; Linux needs `ulimit -c` and a pattern) so a
-  recurrence yields a faulting object rather than another anecdote.
-
-#### Out of scope
-
-- **Fixing `T-074`.** If a cause is found here and it explains Windows too, that is a finding to
-  report, not a licence to close a task on another platform from this evidence.
-- **Making the suite pass by retrying.** A retry would hide the only reproduction anyone has.
-
-#### Acceptance criteria
-
-- The failing test is named from an observed run, not inferred from a count
-- A reproduction exists that is cheaper than the full suite, **or** it is recorded that none was
-  found and what was tried
-- Product-versus-harness is answered with evidence
-- `T-074` and `OPS-007` are updated with whatever this establishes — including "nothing"
 
 ---
 
@@ -2002,9 +2011,21 @@ Assert, on `windows-latest`:
 
 ### T-125 — Remove downloads from the history
 
-**Status:** **Complete — 2026-08-04, awaiting review.** `DAT-005` answered all four questions this
-entry said it had to, and the code follows it.
-*(This read "Ready — `DAT-005` is Accepted, so the blocker is gone".)*
+**Status:** **Complete — corrected 2026-08-04, awaiting re-review.** `DAT-005` is **Approved**; the review
+found one High in the implementation and it is fixed.
+**`T125-R1` (High).** `HistoryRepository.remove()` executed its `DELETE` with no transaction and no
+commit. Every test read back through the *same* connection, which sees its own uncommitted work, so
+the deletion looked durable and was not — the reviewer's probe reported `removed 1`,
+`same_connection_has_row False`, `other_connection_has_row True`, `after_writer_close_has_row
+True`. The running application has exactly that shape: the writer thread deletes on its own
+connection (`ARC-005`) and `HistoryView` reads through the one `compose()` opened, so the user was
+told a record was gone, the tab still showed it, and closing the application rolled the delete
+back. Now committed with `with self._connection`, like every other write here (`NFR-003`), and
+tested across the real writer/read boundary **and after the writer closes and the file is
+reopened** — the three observations the probe made. Mutation: removing the `with` leaves the
+same-connection read passing and fails the other two.
+*(This read "Complete — 2026-08-04, awaiting review", then "Ready — `DAT-005` is Accepted, so the
+blocker is gone".)*
 *(This read "Proposed — needs a decision before it needs a button", 2026-08-03. Found by using the
 application: there is no way to clear history at any layer.)*
 **Owner:** Implementer
@@ -2084,9 +2105,84 @@ reads them back afterwards.
 
 ### T-126 — Change a queued job's format from the queue row
 
-**Status:** **Complete — 2026-08-03, awaiting review.** The control appears exactly on
-`Job.RETARGETABLE` rows, the choice goes through `manager.retarget()`, and the durable request is
-what the test reads back.
+**Status:** **Complete — corrected three times on 2026-08-04, awaiting re-review.** The control appears
+exactly on `Job.RETARGETABLE` rows, the choice goes through `manager.retarget()`, and the durable request is
+what the test reads back. Two findings, one of them the batch's only Critical.
+
+**`T126-R1` (Critical).** Queue rows reuse `RowDelegate`'s editor and did **not** reuse
+`T118-R14`'s reset lifecycle. `QueueModel.refresh()` fully resets on remove, reorder and clear;
+`QueueView` never committed the open editor first. Qt invalidates a live editor's index on reset
+and then disowns the widget, so the commit is refused, `setData` is never reached, and the user's
+visible format choice is discarded **in silence** while the download runs as whatever it was — the
+`AGENTS.md` §10 Critical row exactly, reached from a new direction. In the reviewer's shown probe,
+choosing MP3 for job B and emitting `queue_reordered` produced no request at all (`asked == []`);
+the committed coverage called `model.setData()` directly and could not reach this route.
+*Corrected:* `modelAboutToBeReset` — emitted from `beginResetModel()`, while `_rows` still holds
+the old rows — commits and closes the editor, and `modelReset` reopens it **by job id**, never by
+row number, since a reorder is one of the three things that caused the reset. Three mutations
+killed: no commit at all, commit after the reset instead of before, and restore by row number.
+
+**`T126-R3` (Critical) — the `T126-R1` correction's own defect, found on re-review.** Committing
+the editor on *every* reset made a lifecycle commit indistinguishable from a click. Once a
+retarget lands, `setEditorData` refills the reopened editor from `PRESET_ROLE`, so the redisplayed
+value **is** the durable request — and reporting it closed a loop with no exit: `refresh` → commit
+→ `preset_chosen` → `retarget(the request it already has)` → `revise` answers `UNCHANGED` →
+`_persist` calls `then()` **inline** → `then` is `refresh_queue` → `refresh`, ending in
+`RecursionError` inside the Qt event loop. The reviewer's deterministic regression observed the
+first hop as two identical MP3 requests; an uncapped composed probe reached the recursion. My
+submitted regression could not: its fake `retarget` appended to a list and never updated the
+backing reader, so the reopened editor held the inherited value and the ordering was unreachable —
+a fake that did not model the write is why a test described as durable was not.
+*Corrected:* `QueueModel.setData` refuses a name that already equals `_preset_name_for(job)`. The
+guard is on the **value**, not on the caller: knowing *how* `setData` was reached would be state
+about the call rather than about the download, and would have to be kept right at every future
+call site. It also closes the quieter case the loop was hiding — opening the editor, changing
+nothing and closing it used to spend a manager round trip writing what was already there. Three
+mutations: removing the guard fails both the reviewer's regression and a new composed one; making
+it refuse everything fails six tests including `T126-R1`'s own and `test_composition`'s durable
+route, so the guard is bounded in both directions.
+
+**`T126-R4` (High) — a staging affordance exported to a surface with no such state.**
+`RowDelegate` is shared, and `createEditor` prepended **Same as all** unconditionally. On the
+staging list that entry names something real: `UX-004` gives a paste one format and a row may
+defer to it, which is what `PRESET_ROLE`'s `None` means there. **A durable queue row has no group
+default** — it carries its own request and the batch it arrived with is neither stored nor
+reachable — so the queue drew a first entry whose `None` `QueueModel.setData` then refused: a
+visible control that silently did nothing, and words that were false besides, since there is no
+"all" on that surface to be the same as. `UX-005` §5 forbids exactly this.
+*Corrected:* a new `PRESET_INHERITABLE_ROLE` makes the entry the **model's** to offer. Staging
+answers `True`; the queue does not answer it at all, and absent means no — which is how a model
+that never heard of the role gets the honest answer. The editor's accessible description follows
+the same fact instead of describing a paste to somebody looking at a queue.
+
+**The removal would have created a second lie, and that half is the reason the fix is not one
+line.** `PRESET_ROLE`'s `None` means *two different things* across these surfaces, and that
+ambiguity is the finding's root: on the queue it means **no built-in describes this request** — a
+custom selector (`REQ-009`). With the inherited entry gone, `setEditorData`'s `max(wanted, 0)`
+would have selected the *first built-in*, so a row downloading
+`bestvideo[height<=720]+bestaudio` would open its control reading "Best video available" and
+closing it unchanged would have reported that to the manager. So `setEditorData` now selects
+nothing on a miss, `_paint_control` draws an empty label rather than `INHERITED_TEXT`, and
+`QueueModel` answers `SELECTOR_ROLE` **whenever the control cannot name the format** rather than
+only after the job leaves `RETARGETABLE` — the row speaks exactly when the control is silent. That
+condition is now read from the role by `_whole_row` rather than recomputed, because it has two
+terms and a second copy is a second place for it to drift from what is drawn (`T017-R2`).
+Four mutations, all killed and each by the test that should catch it: restoring the unconditional
+entry fails the reviewer's regression; **removing it from staging too** fails staging's own
+control test, which is what proves the fix is surface-specific rather than a blanket deletion;
+restoring the `max(…, 0)` fallback fails the editor-restore and fast-retarget regressions; and
+making the custom-selector row silent again fails the new one.
+
+**`T126-R2` (High).** `QueueModel` answered `PRESET_CHOICES_ROLE` and `PRESET_ROLE` but never
+`SELECTOR_ROLE`, so when a job left `RETARGETABLE` the control disappeared and **nothing replaced
+it** — a running download said nothing anywhere about its format, on the one surface `UX-005`
+removed the detail pane from. §6 has two halves and only the first was built. *Corrected:* the row
+answers the effective format once the control is gone — the built-in's name, or the literal
+selector when no built-in describes the request (`REQ-009`), read from `job.request` — and the
+delegate now draws the progress bar *under* the selector rather than yielding to it, so a row does
+not trade one half of `UX-005` §3's anatomy for the other. The accessible whole-row text carries it
+too (`NFR-005`). Two mutations killed.
+*(This read "Complete — 2026-08-03, awaiting review".)*
 *(This read "Proposed — `UX-005` point 6". The original mockup offered this and the shipped queue
 did not.)*
 **Owner:** Implementer
@@ -2146,9 +2242,53 @@ more than the mutations that worked:
 
 ### T-124 — The main window becomes two tabs over one list (`UX-005`)
 
-**Status:** **Complete — 2026-08-03, awaiting review.** The tab widget, the removal of the detail
-pane, every verb `UX-005` §4 names and `HistoryView` as a `row_delegate` list are implemented,
-wired and mutation-checked.
+**Status:** **Complete — corrected 2026-08-04, awaiting re-review.** The tab widget, the removal of the
+detail pane, every verb `UX-005` §4 names and `HistoryView` as a `row_delegate` list are
+implemented, wired and mutation-checked. The review found four High findings; all four are fixed.
+
+**`T124-R1` (High) — the declared keyboard route did not exist.** `RowDelegate.editorEvent()`
+handles left-button mouse events only, and neither list installed a keyboard or context-menu
+route, so `UX-005` §4's *"`⋯` … which is also the keyboard route"* was true of the drawing and
+false of the application. History was worse: its drawn `⋯` emits `verb=None` and `_on_verb` tested
+`verb is not None` last, so **that visible control did nothing at all**, pointer included — and
+`DAT-005`'s removal therefore had no keyboard route whatsoever. *Corrected:* both lists take
+`CustomContextMenu`, which Qt raises for the Menu key and Shift+F10 as well as for the mouse, and
+resolve the row through `indexAt` **falling back to the current row** — the keyboard case, where
+the position is derived from the widget rather than from a row. History's `⋯` emits
+`more_requested`, the shell builds one menu for both tabs from each view's own `verbs_of`, and the
+queue list takes `EditKeyPressed` so `EDIT_KEY` reaches the format control. `FileActions` gains a
+`context_menu=False` for these two tables: a table has one `customContextMenuRequested`, the row
+menu already carries *Open* and *Show in folder* through those very actions, and leaving both
+connected popped two menus on one gesture. Three mutations killed.
+
+**`T124-R2` (High) — the tab counts went stale.** Labels were rebuilt only from `refresh_queue()`
+and `refresh_history()`, which composition calls for the changes *it* makes; `QueueModel` also
+resets itself on `job_removed`, `queue_reordered` and `queue_cleared` (`T080-R2`), and none of
+those reached `_refresh_tab_labels`. A probe removed one backing job and the model fell to one row
+under a tab still reading `Queue (2)`. *Corrected:* the labels follow each model's `modelReset`,
+which is the one signal both emit for every structural change and is emitted after the rebuild.
+Tested through the manager's own signals, not through the refresh helper.
+
+**`T124-R3` (High) — the rejected design was still there.** `UX-005` chose row verbs *"rather than
+a toolbar acting on a selection"*, and `MainWindow` went on building selection-based **Remove**,
+**Move up** and **Move down**, tied to the hidden queue's selection and live while History was
+frontmost. The row route was added without the rejected route being removed. *Corrected:* the
+toolbar keeps queue-wide *Pause* and *Clear finished* only; `_remove_job` and `_move_job` — the
+implementations both routes already shared — stay. The regression asserts the toolbar's contents
+**by object name over the real toolbar** and requires every surviving action to be enabled with
+nothing selected, because a property can be deleted while the action goes on being built.
+
+**`T124-R4` (High) — the accepted row anatomy was not persisted.** `UX-005` §3 names *thumbnail,
+title, uploader and duration*; `Job` carried the first two, so `QueueModel` could not render the
+rest, and this task's own text narrowed §3 to `REQ-014`'s older field list — which a task may not
+do to an accepted decision. *Corrected by carrying the data*, which is the disposition that does
+not need an amendment: **migration `0003`** adds `jobs.uploader` and `jobs.duration_seconds`
+(nullable, no backfill, `REAL` for the duration because yt-dlp reports fractions), `Job` validates
+them exactly as `thumbnail_url` is validated, `_durable_job` carries them across when the dialog
+commits, and the queue row draws them at the head of its second line — the order the staging row
+uses, so the queue row reads as the same row after Add. `v3.sql` is frozen for `T014-R4`'s gate,
+captured while v3 is current and seeding **both** states of the pair. Two mutations killed.
+*(This read "Complete — 2026-08-03, awaiting review".)*
 *(This read "Proposed — maintainer decision `UX-005`", then briefly "In Progress" with
 `HistoryView` outstanding — the maintainer ruled that the whole of `UX-005` is reviewed at once,
 so the split commit was abandoned.)* Sequenced **before the
@@ -2263,12 +2403,17 @@ that composition test is deleted, or `UX-005`'s deferral quietly becomes a delet
 
 ### T-127 — The two phase-proof gates that pass without their subject (`P2EXIT-R1`, `P2EXIT-R2`)
 
-**Status:** **Complete — 2026-08-03, awaiting review.** Both gates now fail when their subject is
-removed, verified with the reviewer's own two mutations plus two more. **Windows evidence is
-pending**, which the acceptance criteria require for `R1`; the corrected head is pushed and the
-`windows desktop` job runs it.
-*(This read "Proposed — blocking the Phase 2 exit", found by the exit review's cold
-reconstruction, each with a mutation.)*
+**Status:** **Complete — Approved with follow-up, 2026-08-04** (Codex, over `47299aa`). Both gates
+fail when their subject is removed, verified with the reviewer's own two mutations plus two more,
+and re-verified independently by the reviewer: removing the watchdog leaves **3/3 workers alive**,
+removing the three starts fails in **0.54 s**.
+**Windows evidence has landed.** `8d1b01c` is green on all five jobs including `windows desktop`,
+and it contains source head `47299aa` — so the corrected `R1` route has run on Linux and Windows,
+which is the third acceptance criterion.
+*(This said "**Windows evidence is pending**" after that run was green — `P2EXIT-R8`. It also read
+"Proposed — blocking the Phase 2 exit" before the exit review's cold reconstruction found the two
+gates, each with a mutation.)*
+**Open follow-up:** `T127-R1` (Medium, non-blocking) — corrected 2026-08-04, see below.
 **Owner:** Implementer
 **Priority:** **High** — these are the named evidence for exit criteria 1 and 5, and neither
 establishes its criterion
@@ -2364,17 +2509,52 @@ The measurement is now recorded rather than only judged, following `cold_start_s
 `worst_event_loop_pass_ms` **1.4** against a 100 ms budget, over **296** progress updates
 delivered in a 2 s window. A pass no longer hides a shrinking margin.
 
-**Not yet done:** the Windows half of `R1`'s third acceptance criterion. Linux is above; the
-`windows desktop` job on the pushed head is the other platform.
+**The Windows half of `R1`'s third acceptance criterion is met.** Run at `8d1b01c` is green on all
+five jobs, `windows desktop` included, and that commit carries source head `47299aa` — the
+corrected route, unmodified since. *(This paragraph read "**Not yet done**" after that run was
+green; `P2EXIT-R8` found it, together with the same staleness in
+`IMPLEMENTATION_PLAN.md`'s criterion-5 row. Both are corrected 2026-08-04.)*
+
+#### `T127-R1` — corrected 2026-08-04, awaiting re-review
+
+**Medium, non-blocking.** `reap_the_captured_tree()` caught every `psutil.Error` while killing,
+suppressed `TimeoutExpired` from `process.wait()`, and returned only what `wait_procs` reported —
+which excludes the direct `Popen` child by design. So a **refused** kill and a **stuck launcher**
+were both invisible, and `assert not leaked` passed over a genuine leak that the next test in the
+run would be blamed for.
+
+Now: only `NoSuchProcess`/`ProcessLookupError` are tolerated while killing — those are the real
+race, a process that beat us to it — and anything else is recorded. A `process.wait()` timeout adds
+the direct child to the survivors instead of being swallowed. Every survivor is returned, still
+confirmed against `is_running()` so a process that exited between the refusal and the wait is not
+reported, and still **returned rather than raised**, because this runs in a `finally` and must not
+displace the behavioural failure the test actually found.
 
 ---
 
 ### T-122 — Replace the flaky paste-scaling ratio gate
 
-**Status:** **Complete — corrected 2026-08-03, awaiting review.** The one-sample ratio is gone; the
+**Status:** **Complete — corrected 2026-08-04, awaiting re-review.** The one-sample ratio is gone; the
 decision is a pure function over interleaved repeated samples, and the function is what the
 deterministic test exercises. The 500-row absolute budget and the structural control count are
-untouched.
+untouched. `P2EXIT-R3` is **Resolved**; two findings from the 2026-08-04 review are fixed.
+
+**`T122-R1` (Medium, blocking).** This task exists to retire the claim that the ratio is
+runner-invariant, and `INTERACTION_BUDGET_SECONDS`' own comment still called it *"the finer
+claim"* that *"does not move with runner speed at all"* — immediately above the comment that
+correctly explains the opposite. The module said both things at once. *Corrected:* the absolute
+bound is named as the only timing claim a runner is asked to hold, and the ratio is named
+diagnostic in both places.
+
+**`T122-R2` (Low, non-blocking) — corrected twice.** `cost()` said each manager is *"reaped inside
+the sample loop"* and called `shutdown()`, which by design **begins** teardown and returns
+(`T013-R2`) — so timing resumed while the previous sample was still killing four probe workers,
+and every large sample ran under more of that than the small one before it. That is the systematic
+bias the loop exists to remove, restated one layer down. *First correction:* pump to `is_idle`
+**outside** the timed region. *Second correction, on re-review:* that wait fell through at 30 s
+without asserting anything, so a stalled teardown resumed sampling under the old manager and
+printed the contamination as paste cost — the same defect moved from "no wait" to "a wait that
+gives up quietly". The bound is now asserted, naming the sample size that did not settle.
 *(This read "Proposed — `T118-R17`, non-blocking follow-up from T-118's final review".)*
 **Owner:** Implementer
 **Priority:** Medium — it is the only failure in exact-head run `30859578131`, and a gate that
