@@ -184,6 +184,11 @@ them, which is the argument for having built it.)*
 (2026-08-03). `T-118` — the Phase 3 task sequenced ahead of this exit — is **approved with
 follow-ups at `53b07ec`**, so criterion 6 is the only thing left, and it has never been requested.
 
+**Before the sign-off is requested, the Blocked list wants re-reading.** Five of its six entries
+are blocked on `STARBASE` or on Windows/frozen evidence, and that machine returned on 2026-08-03
+and now runs every Windows job. `T-039` alone is still plainly blocked, on a Phase 5 installer.
+Nothing has re-checked the rest, and `ai/TASKS.md` is where that belongs.
+
 **The gate was rebuilt on the way here.** Routing Windows to `STARBASE` to stop spending hosted
 minutes put three Windows jobs on one runner slot, turning a 17-minute run into 32 and making the
 gate the bottleneck rather than the safety net. Measured in run `30861672178` and acted on: the

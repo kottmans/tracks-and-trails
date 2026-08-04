@@ -133,6 +133,13 @@ exact-head run `30859578131` the single hosted-Windows failure was `T-118`'s own
 gate, which rejects a transient host pause rather than a real regression. The product passed on
 both Windows runners.
 
+**The Blocked section's premise changed on 2026-08-03 and nobody has re-read it.** Five of its six
+entries are blocked on `STARBASE` or on Windows/frozen evidence — `T-092` says "blocked on
+`STARBASE`" in as many words — and that machine returned and now runs *every* Windows job. Only
+`T-039` is still plainly blocked, on a Phase 5 installer that does not exist. This is not a claim
+that the others are unblocked; it is a claim that nothing has checked, and an exit review submitted
+behind a stale Blocked list is how Phase 1's review found two wrong rows.
+
 **`T-121` did not recur in that run — which is not the same as resolved.** It stays Proposed: the
 phase-exit fixture's localhost clip server aborted a loopback connection in run `30853680183`
 (`ConnectionAbortedError`, `WinError 10053`), failing one of five downloads and reddening a test
