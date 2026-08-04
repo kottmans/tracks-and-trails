@@ -94,6 +94,53 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ## Ready
 
+### T-125 — Remove downloads from the history
+
+**Status:** **Ready — `DAT-005` is Accepted (2026-08-04), so the blocker is gone.** The decision
+answers all four questions this entry said it had to; what remains is the code.
+*(This read "Proposed — needs a decision before it needs a button", 2026-08-03. Found by using the
+application: there is no way to clear history at any layer.)*
+**Owner:** Implementer
+**Priority:** Medium — a record the user cannot remove is a privacy question as much as a feature
+**Phase:** Phase 3
+**Depends on:** **`DAT-005`, now Accepted.** `T-124` is not a dependency — the control's placement
+is in `UX-005`, but what removal *means* was not, and that is what `DAT-005` settles: selected
+entries only, no file ever touched, irreversible with a counted confirmation, `REQ-020` amended.
+**Relevant context:** `REQ-020`, `REQ-021`, `REQ-026`, `DAT-001`, `UX-005`, `HistoryRepository`
+**Affected surfaces:** `ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, `persistence/repositories.py`,
+`ui/`
+**Risk:** **Medium** — the obvious implementation deletes the wrong thing
+
+**Nothing deletes today, deliberately.** `HistoryRepository`'s own docstring says so: *"Append-mostly
+and read-only to the rest of the application: nothing here deletes."* And no requirement asks for
+removal — `REQ-020` says maintain a history, `REQ-021` says open and reveal from it. So this is a
+gap rather than an unimplemented requirement, and adding a delete path to a deliberately
+append-only store is a data decision first.
+
+#### What the decision has to say
+
+- **What is removable** — selected entries, everything, everything older than a date.
+- **Whether a file is ever touched.** `UX-005` says no and says it in the status bar permanently,
+  because a history entry names a file on disk and "clear history" is ambiguous in exactly the way
+  that loses somebody's downloads. That belongs in the decision, not only in a mockup.
+- **Whether removal is recoverable**, and if not, what the confirmation must say.
+- **Whether `REQ-020` is amended** to admit removal, or a new requirement covers it.
+
+#### Acceptance criteria
+
+- ~~The decision exists and is Accepted before any code is written~~ — **`DAT-005`, 2026-08-04**
+- The verb names its own count, and a mutation making it say a bare *Remove* fails
+- **No filesystem call is reachable from the removal path**, asserted by the absence rather than by
+  a test that watches one not happen — `DAT-005`'s whole subject is that a record is not a file
+- "Files are never deleted" is in the status bar while History is showing, not only in the
+  confirmation
+- `REQ-020` is amended in the same change, so the requirement and the code never disagree
+- Removal is selection-scoped, and the verb names its own count
+- **A test proves no file is touched** — the promise is the feature
+- The empty history still says so rather than presenting a blank surface (`T-100`'s rule)
+
+---
+
 ### T-066 — CI installs the project differently from how the documentation says to
 
 **Status:** **Ready — unblocked 2026-08-03.** Its stated blocker was that "both `frozen` jobs are
@@ -559,130 +606,6 @@ agreement on the reduced form before implementation.
 ## Proposed — Phase 1
 
 ## Proposed — Phase 2
-
-### T-124 — The main window becomes two tabs over one list (`UX-005`)
-
-**Status:** **Proposed — maintainer decision `UX-005`**, 2026-08-03, and sequenced **before the
-Phase 2 exit** by the same decision. It is Phase 3 work taken early for the reason `T-118` was: the
-window is what every later feature is added to, so its shape should be settled once rather than
-renegotiated by the format table, the stream chooser and the playlist picker.
-**Owner:** Implementer
-**Priority:** High — the shipped window contradicts an approved design, and it was found by opening
-the application rather than by any gate
-**Phase:** Phase 3, taken before the Phase 2 exit
-**Depends on:** nothing. `T-118`'s delegate is what makes it affordable.
-**Relevant context:** **`UX-005`** (authority), `T-119`, `T-100`, `T-086`, `REQ-021`, `NFR-005`,
-`NFR-006`, `T081-R3`
-**Affected surfaces:** `ui/main_window.py`, `ui/history_view.py`, `ui/queue_view.py`,
-`ui/row_delegate.py`, `tests/ui/**`
-**Risk:** **Medium** — it deletes a surface (`HistoryView`'s columns) that has approved tests
-asserting it, and it removes the detail pane that `T-017` built
-
-#### Scope
-
-`UX-005` in code. Read that entry rather than this list; the points below are what it costs.
-
-- **A tab widget replaces the vertical splitter**, with `Queue` and `History` and a count on each.
-- **The detail pane goes.** `_build_body`'s splitter and the source comment that decided the layout
-  are removed rather than corrected.
-- **`HistoryView` becomes a third model behind `row_delegate`**, not a six-column table. Its
-  columns are `REQ-020`'s fields and they survive as *what the row says*, not as columns.
-- **Every applicable verb is drawn on the row's last line**, right-aligned, sharing it with the
-  format control, with `⋯` carrying the rest and the keyboard route.
-- **Nothing disabled, nothing refused.** A row offers only what its state permits.
-
-#### Acceptance criteria
-
-- The window has exactly two tabs and no splitter, asserted by object name and by there being no
-  `QSplitter` in the body
-- Selecting a row opens nothing; every field `REQ-014` and `REQ-020` name is readable from the row
-  itself, asserted by value
-- A row in each state offers exactly the verbs `UX-005` lists for it — and **a mutation adding a
-  verb its state forbids fails**, which is the half `T081-R3` says is easy to lose
-- The verbs are reachable without hovering and without a pointer (`NFR-005`), and `⋯` is the
-  declared keyboard route
-- A failed row shows the extractor's message in full at a realistic width (`NFR-006`) — the reason
-  the verbs share a line rather than take a gutter
-- File actions still work from both tabs (`REQ-021`, `T-086`)
-
-#### Out of scope
-
-- **Removing history**, which is `T-125`.
-- **The per-job format control on queue rows**, which is `T-126`.
-- **What becomes of `JobProgressView`.** `UX-005` records that the detail view has no home in this
-  layout and deliberately does not rule on it; that needs its own decision before anything deletes
-  `T-017`'s work.
-
----
-
-### T-125 — Remove downloads from the history
-
-**Status:** **Proposed — needs a decision before it needs a button**, 2026-08-03. Found by using
-the application: there is no way to clear history at any layer.
-**Owner:** Planner first, then Implementer
-**Priority:** Medium — a record the user cannot remove is a privacy question as much as a feature
-**Phase:** Phase 3
-**Depends on:** a `DAT-` decision. **`T-124` is not a dependency** — the control's placement is in
-`UX-005`, but what removal *means* is not.
-**Relevant context:** `REQ-020`, `REQ-021`, `REQ-026`, `DAT-001`, `UX-005`, `HistoryRepository`
-**Affected surfaces:** `ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, `persistence/repositories.py`,
-`ui/`
-**Risk:** **Medium** — the obvious implementation deletes the wrong thing
-
-**Nothing deletes today, deliberately.** `HistoryRepository`'s own docstring says so: *"Append-mostly
-and read-only to the rest of the application: nothing here deletes."* And no requirement asks for
-removal — `REQ-020` says maintain a history, `REQ-021` says open and reveal from it. So this is a
-gap rather than an unimplemented requirement, and adding a delete path to a deliberately
-append-only store is a data decision first.
-
-#### What the decision has to say
-
-- **What is removable** — selected entries, everything, everything older than a date.
-- **Whether a file is ever touched.** `UX-005` says no and says it in the status bar permanently,
-  because a history entry names a file on disk and "clear history" is ambiguous in exactly the way
-  that loses somebody's downloads. That belongs in the decision, not only in a mockup.
-- **Whether removal is recoverable**, and if not, what the confirmation must say.
-- **Whether `REQ-020` is amended** to admit removal, or a new requirement covers it.
-
-#### Acceptance criteria
-
-- The decision exists and is Accepted before any code is written
-- Removal is selection-scoped, and the verb names its own count
-- **A test proves no file is touched** — the promise is the feature
-- The empty history still says so rather than presenting a blank surface (`T-100`'s rule)
-
----
-
-### T-126 — Change a queued job's format from the queue row
-
-**Status:** **Proposed — `UX-005` point 6**, 2026-08-03. The original mockup offered this and the
-shipped queue does not.
-**Owner:** Implementer
-**Priority:** Medium
-**Phase:** Phase 3
-**Depends on:** `T-124` for where the control sits. The manager side already exists.
-**Relevant context:** `UX-005`, **`T-075`** and `manager.retarget()`, `UX-004`, `T-119`
-**Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, `tests/ui/`
-**Risk:** Low — the plumbing is built and reviewed
-
-**`retarget()` already does this** (`T-075`): it replaces a not-yet-started job's request and
-refuses one that has started. So the work is the surface, and the surface's rule falls out of the
-manager's: **the control appears exactly while `retarget()` would accept it.**
-
-The delegate needs nothing new. `StagingModel` already answers `PRESET_CHOICES_ROLE` only for rows
-that can be committed and the delegate draws no control when that is empty; `QueueModel` answers it
-only for jobs that have not started.
-
-#### Acceptance criteria
-
-- A queued row offers the control; a running row shows plain text
-- Choosing a format retargets the job, and the **durable request changes** — asserted on the stored
-  request, not on the label, which is what `T118-R6` was about
-- **A mutation offering the control on a running row fails**, because a control the manager would
-  refuse is `T081-R3`'s defect in a new place
-- The row's effective format and its durable request cannot disagree (`T118-R6`, `T118-R8`)
-
----
 
 ### T-121 — The phase-exit clip server aborts connections on hosted Windows
 
@@ -1933,6 +1856,185 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-126 — Change a queued job's format from the queue row
+
+**Status:** **Complete — 2026-08-03, awaiting review.** The control appears exactly on
+`Job.RETARGETABLE` rows, the choice goes through `manager.retarget()`, and the durable request is
+what the test reads back.
+*(This read "Proposed — `UX-005` point 6". The original mockup offered this and the shipped queue
+did not.)*
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 3
+**Depends on:** `T-124` for where the control sits. The manager side already exists.
+**Relevant context:** `UX-005`, **`T-075`** and `manager.retarget()`, `UX-004`, `T-119`
+**Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, `tests/ui/`
+**Risk:** Low — the plumbing is built and reviewed
+
+**`retarget()` already does this** (`T-075`): it replaces a not-yet-started job's request and
+refuses one that has started. So the work is the surface, and the surface's rule falls out of the
+manager's: **the control appears exactly while `retarget()` would accept it.**
+
+The delegate needs nothing new. `StagingModel` already answers `PRESET_CHOICES_ROLE` only for rows
+that can be committed and the delegate draws no control when that is empty; `QueueModel` answers it
+only for jobs that have not started.
+
+#### Acceptance criteria
+
+- A queued row offers the control; a running row shows plain text
+- Choosing a format retargets the job, and the **durable request changes** — asserted on the stored
+  request, not on the label, which is what `T118-R6` was about
+- **A mutation offering the control on a running row fails**, because a control the manager would
+  refuse is `T081-R3`'s defect in a new place
+- The row's effective format and its durable request cannot disagree (`T118-R6`, `T118-R8`)
+
+#### Evidence, 2026-08-03
+
+`QueueModel` answers `PRESET_CHOICES_ROLE` only for `Job.RETARGETABLE`, and `flags()` derives
+editability from that same answer so the two cannot disagree. `setData` **reports** rather than
+writes: `main_window._retarget_job` asks `manager.retarget()`, which is `T036-R1`'s rule — a
+request written straight through the store announces nothing and the row goes on showing a format
+it no longer has. `retarget`'s refusal reaches the status bar rather than a dialog, because a job
+that started a moment ago is an ordinary outcome.
+
+| Mutation | Result |
+|---|---|
+| the control offered on every row, `RETARGETABLE` guard deleted | **6 failed** — one per status that must not offer it |
+| the request built from the wrong preset | **1 failed** |
+| the shell refreshes the row and never calls `retarget` | **1 failed** (the durable-request test) |
+
+**One mutation survived twice and both times for a reason that was not the code**, which is worth
+more than the mutations that worked:
+
+1. Matching a request to its preset on `format_selector` alone **passed**. Four of the five
+   built-ins share a selector with another — `Audio only (MP3)` and `Audio only (original)` are
+   both `bestaudio/best` — so selector-only matching returns whichever is defined *first*, and the
+   test had used the first one. Using the second killed it immediately. The comparison is over
+   `PRESET_OWNED_FIELDS`, derived from the two dataclasses (`T015-R1`), because two presets
+   differing only in container or template are different downloads.
+2. The re-run **also** passed — because `ruff format` had reflowed the target expression onto one
+   line and the `str.replace` matched nothing. Two identical false survivors before anyone
+   checked. Mutation scripts now assert the edit applied; `ai/TESTING.md` §13 records both.
+
+---
+
+### T-124 — The main window becomes two tabs over one list (`UX-005`)
+
+**Status:** **Complete — 2026-08-03, awaiting review.** The tab widget, the removal of the detail
+pane, every verb `UX-005` §4 names and `HistoryView` as a `row_delegate` list are implemented,
+wired and mutation-checked.
+*(This read "Proposed — maintainer decision `UX-005`", then briefly "In Progress" with
+`HistoryView` outstanding — the maintainer ruled that the whole of `UX-005` is reviewed at once,
+so the split commit was abandoned.)* Sequenced **before the
+Phase 2 exit** by the same decision. It is Phase 3 work taken early for the reason `T-118` was: the
+window is what every later feature is added to, so its shape should be settled once rather than
+renegotiated by the format table, the stream chooser and the playlist picker.
+**Owner:** Implementer
+**Priority:** High — the shipped window contradicts an approved design, and it was found by opening
+the application rather than by any gate
+**Phase:** Phase 3, taken before the Phase 2 exit
+**Depends on:** nothing. `T-118`'s delegate is what makes it affordable.
+**Relevant context:** **`UX-005`** (authority), `T-119`, `T-100`, `T-086`, `REQ-021`, `NFR-005`,
+`NFR-006`, `T081-R3`
+**Affected surfaces:** `ui/main_window.py`, `ui/history_view.py`, `ui/queue_view.py`,
+`ui/row_delegate.py`, `tests/ui/**`
+**Risk:** **Medium** — it deletes a surface (`HistoryView`'s columns) that has approved tests
+asserting it, and it removes the detail pane that `T-017` built
+
+#### Scope
+
+`UX-005` in code. Read that entry rather than this list; the points below are what it costs.
+
+- **A tab widget replaces the vertical splitter**, with `Queue` and `History` and a count on each.
+- **The detail pane goes.** `_build_body`'s splitter and the source comment that decided the layout
+  are removed rather than corrected.
+- **`HistoryView` becomes a third model behind `row_delegate`**, not a six-column table. Its
+  columns are `REQ-020`'s fields and they survive as *what the row says*, not as columns.
+- **Every applicable verb is drawn on the row's last line**, right-aligned, sharing it with the
+  format control, with `⋯` carrying the rest and the keyboard route.
+- **Nothing disabled, nothing refused.** A row offers only what its state permits.
+
+#### Acceptance criteria
+
+- The window has exactly two tabs and no splitter, asserted by object name and by there being no
+  `QSplitter` in the body
+- Selecting a row opens nothing; every field `REQ-014` and `REQ-020` name is readable from the row
+  itself, asserted by value
+- A row in each state offers exactly the verbs `UX-005` lists for it — and **a mutation adding a
+  verb its state forbids fails**, which is the half `T081-R3` says is easy to lose
+- The verbs are reachable without hovering and without a pointer (`NFR-005`), and `⋯` is the
+  declared keyboard route
+- A failed row shows the extractor's message in full at a realistic width (`NFR-006`) — the reason
+  the verbs share a line rather than take a gutter
+- File actions still work from both tabs (`REQ-021`, `T-086`)
+
+#### What landed, and what is left (2026-08-03)
+
+**Landed:**
+
+- `QTabWidget` (`shellTabs`) with `Queue (n)` and `History (n)`; counts rebuilt from the model
+  rather than tracked beside it.
+- The detail pane is gone from the window: `watch`, `_watch_if_possible`, `watched_job_id` and
+  `progress_view` are removed and `app.py` no longer follows `job_changed` into it. `job_detail.py`
+  is untouched — `UX-005` defers its fate, so this is a disconnection.
+- `ui/row_verbs.py`: the state → verbs table, transcribed from `UX-005` §4.
+- `row_delegate.py`: `VERBS_ROLE`, `JOB_ID_ROLE`, verbs painted right-aligned on the last line
+  through the platform's button style, one `_verb_rects` shared by paint and hit test, and a
+  `verb_triggered` signal carrying the **job id** rather than a row index.
+- `queue_view.py` supplies both roles, asks `is_retryable` rather than assuming it, performs
+  `Cancel` itself and reports the rest; an unrouted verb raises.
+- `main_window.py` routes every verb to the implementation that already existed —
+  `_remove_job`, `_move_job`, the `retry` callback, and `FileActions` for the file verbs so
+  `SEC-001`'s containment is not reimplemented. `⋯` opens a menu built from `verbs_of`.
+
+**`HistoryView` is converted.** It is a `QListView` behind `RowDelegate`: headline the title,
+detail the size and when, the saved path on its own last line, and the two file verbs. The six
+columns survive as *what the row says* — `_text` and `COLUMN_HEADERS` are still the single source
+of every string, which is what keeps `REQ-020`'s fields named in one place — and
+`AccessibleTextRole` now speaks all of them, because naming one column is meaningless when there
+is one column. Its tests moved with it, and the two that asserted per-column behaviour were
+rewritten rather than deleted: one asserts the row speaks every field, the other that the tooltip
+still carries the whole URL and path.
+
+**Nothing here is left.** `T-125` and `T-126` are separate tasks that `UX-005` also spawned; see
+their entries.
+
+#### Sequencing, found while implementing (2026-08-03)
+
+**The pane's removal and the row's verbs cannot be split into separate commits.**
+`JobProgressView` is the *only* UI route to **Cancel** and **Retry** — `queue_view.py` has
+neither, and the toolbar has Pause, Remove, Move up/down and Clear, none of which stops a
+download in flight. A commit that removed the pane before the verbs existed would leave a user
+unable to cancel a running download or act on `REQ-018`'s retry.
+
+So the order inside this task is: **verbs on the queue row first**, while the pane still exists
+and both routes work; then the tab widget, the pane's removal and the history conversion. Two
+assertions are deliberately parked at the boundary and must be honoured by the verb work rather
+than dropped — `test_end_to_end` no longer asserts that a finished job offers no *Cancel* or that
+a recovered job offers *Retry*, and both say so in place.
+
+**Three composition tests lose their subject** with the pane: `test_replacing_the_watched_job_leaves_no_second_listener`,
+`test_watching_the_same_job_twice_does_not_rebuild_the_view` and
+`test_a_second_job_starting_does_not_take_the_detail_pane_from_the_first`. They test a window API
+that will not exist. Before deleting any of them, check `tests/ui/test_job_detail.py` covers
+`detach` at the view level — `UX-005` defers `JobProgressView`'s fate, so its own guarantees must
+not be deleted along with the window's route to it.
+
+**Checked, and it does not**: `detach` appears **zero** times in `tests/ui/test_job_detail.py`.
+`test_replacing_the_watched_job_leaves_no_second_listener` is its only test anywhere. So a
+view-level test — a detached view stops answering manager signals — has to be written *before*
+that composition test is deleted, or `UX-005`'s deferral quietly becomes a deletion.
+
+#### Out of scope
+
+- **Removing history**, which is `T-125`.
+- **The per-job format control on queue rows**, which is `T-126`.
+- **What becomes of `JobProgressView`.** `UX-005` records that the detail view has no home in this
+  layout and deliberately does not rule on it; that needs its own decision before anything deletes
+  `T-017`'s work.
+
+---
 
 ### T-127 — The two phase-proof gates that pass without their subject (`P2EXIT-R1`, `P2EXIT-R2`)
 

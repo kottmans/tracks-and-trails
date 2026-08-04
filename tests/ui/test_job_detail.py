@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any, Final
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QMetaMethod, QObject, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QProgressBar, QPushButton, QWidget
 
@@ -1456,3 +1456,73 @@ def test_the_diagnostics_box_is_closed_until_asked_and_re_reads_when_opened(
     qapp.processEvents()
 
     assert reads, "expanding the box showed whatever it had read at construction time"
+
+
+def test_a_detached_view_stops_answering_the_manager(
+    store: FakeStore,
+    managers: Callable[..., DownloadManager],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """`detach()` severs the connections, at the view rather than through a window (`T-124`).
+
+    **Written because the only test of `detach` anywhere was a composition test about the detail
+    pane**, and `UX-005` removes that pane. `UX-005` explicitly defers what becomes of
+    `JobProgressView` rather than deciding it, so deleting its window route must not delete its
+    guarantees with it — that would turn a deferral into a deletion nobody voted for.
+
+    The guarantee is not "it eventually stops". `deleteLater` is asynchronous, so a replaced view
+    goes on answering signals for however many event-loop turns it takes to die; `detach` is what
+    makes replacement deterministic. Asserted by **counting Qt's own connections** rather than by
+    watching for a stale render — a render-based test would pass whenever the timing happened to
+    be kind, which is the class of test this file exists to avoid.
+    """
+    store.add(make_job("job-1", tmp_path, status=JobStatus.RUNNING))
+    manager = managers()
+    before = _connections_to(manager, "progress")
+
+    view = build_progress_view(manager, store, "job-1", None)
+    try:
+        assert _connections_to(manager, "progress") == before + 1, (
+            "the view was built and never listened to the manager, so this test would pass "
+            "against a detach that did nothing"
+        )
+
+        view.detach()
+
+        assert _connections_to(manager, "progress") == before, (
+            "a detached view is still connected to progress; with the view replaced but not yet "
+            "destroyed, one job's messages reach two listeners"
+        )
+        # **Twice is not an error.** Every close route reaches `detach`, and a disconnect of
+        # something already disconnected raises — being asked twice to stop listening is not
+        # worth propagating out of a slot.
+        view.detach()
+        assert _connections_to(manager, "progress") == before
+    finally:
+        view.close()
+        view.deleteLater()
+        qapp.processEvents()
+
+
+def _connections_to(sender: QObject, signal_name: str) -> int:
+    """How many slots are connected to `signal_name`, asked of Qt rather than of our own count.
+
+    `ai/TESTING.md` §13: a count this code kept would agree with this code.
+
+    **The `"2"` prefix is not decoration.** `receivers()` takes a `SIGNAL()`-encoded signature, and
+    that macro's encoding is the digit 2 in front of the signature the meta-object gives. Without
+    it Qt matches nothing and returns 0 — which reads exactly like "no connections" and would have
+    made the built-view assertion below fail rather than the detach assertion, so the mistake is
+    at least loud. It cost one run here to find.
+    """
+    meta = sender.metaObject()
+    for index in range(meta.methodCount()):
+        method = meta.method(index)
+        if (
+            method.methodType() == QMetaMethod.MethodType.Signal
+            and bytes(method.name().data()).decode("ascii") == signal_name
+        ):
+            signature = bytes(method.methodSignature().data()).decode("ascii")
+            return int(sender.receivers("2" + signature))
+    raise LookupError(f"{type(sender).__name__} has no signal named {signal_name!r}")

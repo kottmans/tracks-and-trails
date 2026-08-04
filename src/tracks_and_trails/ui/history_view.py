@@ -38,18 +38,29 @@ is cleared, which are the only two moments the set of rows can differ.
 
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt
+from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, Qt, Signal
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QHeaderView,
     QLabel,
-    QTableView,
+    QListView,
     QVBoxLayout,
     QWidget,
 )
 
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT, format_bytes
+from tracks_and_trails.ui.row_delegate import (
+    DETAIL_ROLE,
+    HEADLINE_ROLE,
+    HUE_ROLE,
+    JOB_ID_ROLE,
+    SELECTOR_ROLE,
+    STATE_ROLE,
+    VERBS_ROLE,
+    RowDelegate,
+)
+from tracks_and_trails.ui.row_verbs import Verb
+from tracks_and_trails.ui.staging import placeholder_hue
 
 if TYPE_CHECKING:
     from tracks_and_trails.persistence.repositories import HistoryEntry
@@ -131,7 +142,13 @@ class HistoryModel(QAbstractTableModel):
         return 0 if parent.isValid() else len(self._entries)
 
     def columnCount(self, parent: QModelIndex | _PersistentIndex = _ROOT) -> int:
-        return 0 if parent.isValid() else len(COLUMN_HEADERS)
+        """**One**, since `UX-005` (`T-124`).
+
+        The six columns are gone from the *view* and survive as what the row says — `_text` and
+        `COLUMN_HEADERS` are still the source of every string above, which is what keeps
+        `REQ-020`'s fields named in one place. A list draws column 0, so the model offers one.
+        """
+        return 0 if parent.isValid() else 1
 
     def headerData(
         self,
@@ -151,17 +168,60 @@ class HistoryModel(QAbstractTableModel):
         if not index.isValid() or not 0 <= index.row() < len(self._entries):
             return None
         entry = self._entries[index.row()]
+
+        # **The delegate's roles, composed from the very cells `_text` answers** (`UX-005` §3,
+        # `T-124`). History changes what the fields *say*, not what they are: where the queue row
+        # shows progress and speed, this shows the saved path, the size and when. Each branch is
+        # built from `_text` rather than from the record directly, so the row and a screen reader
+        # cannot come to disagree — `QueueModel` states the same reasoning for the same reason.
+        if role == HEADLINE_ROLE:
+            return self._text(entry, TITLE_COLUMN)
+        if role == DETAIL_ROLE:
+            return " — ".join((self._text(entry, SIZE_COLUMN), self._text(entry, COMPLETED_COLUMN)))
+        if role == STATE_ROLE:
+            return self._text(entry, FORMAT_COLUMN)
+        if role == SELECTOR_ROLE:
+            # The saved path, on the row's own last line. `UX-005` §3 names it as one of the three
+            # things history says, and it is the one a person copies into a bug report.
+            return self._text(entry, PATH_COLUMN)
+        if role == HUE_ROLE:
+            return placeholder_hue(entry.url)
+        if role == JOB_ID_ROLE:
+            return entry.id
+        if role == VERBS_ROLE:
+            # **Not `verbs_for`**, which answers for a `JobStatus`, and a history record has none:
+            # it is not a job in a pipeline, it is what happened. `REQ-021` names the two things a
+            # user does with a finished download and there is no third — removing one is `T-125`
+            # and needs a `DAT-` decision before a button exists for it (`UX-005`).
+            return (Verb.OPEN, Verb.REVEAL)
+
         if role == Qt.ItemDataRole.DisplayRole:
             return self._text(entry, index.column())
         if role == Qt.ItemDataRole.AccessibleTextRole:
-            # `NFR-005`: a screen reader reads the cell, and a bare value with no column name is
-            # not usable in a six-column table.
-            return f"{COLUMN_HEADERS[index.column()]}: {self._text(entry, index.column())}"
-        if role == Qt.ItemDataRole.ToolTipRole and index.column() in (URL_COLUMN, PATH_COLUMN):
-            # Both are routinely wider than their column. The tooltip is the whole value, which is
-            # also what somebody copying a path into a bug report needs.
-            return self._text(entry, index.column())
+            # **The whole row**, since `UX-005` made this a list (`T-124`). It used to name the
+            # column — "Format: 137+140" — because a bare value out of six columns says nothing
+            # about which field is being heard. There is one column now, and the equivalent of
+            # naming the field is reading every field `REQ-020` names, in one sentence.
+            # `QueueModel._whole_row` does the same thing for the same reason.
+            return self._whole_row(entry)
+        if role == Qt.ItemDataRole.ToolTipRole:
+            # **The URL and the path in full**, which is what somebody copying either into a bug
+            # report needs. They were per-column tooltips because both are routinely wider than
+            # their column; on a row, the path is drawn on the last line and clipped when it is
+            # long, so the need is unchanged and the tooltip is where it is met.
+            return "\n".join((self._text(entry, URL_COLUMN), self._text(entry, PATH_COLUMN)))
         return None
+
+    def _whole_row(self, entry: HistoryEntry) -> str:
+        """Every field `REQ-020` names, in the order the row shows them.
+
+        Built from `_text` and `COLUMN_HEADERS`, so the spoken row and the drawn row are two
+        renderings of one set of cells rather than two descriptions that can drift.
+        """
+        return ", ".join(
+            f"{COLUMN_HEADERS[column]}: {self._text(entry, column)}"
+            for column in range(len(COLUMN_HEADERS))
+        )
 
     def _text(self, entry: HistoryEntry, column: int) -> str:
         """One cell, from the record rather than from anything live.
@@ -233,7 +293,11 @@ class HistoryView(QWidget):
         self._empty.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self._empty)
 
-        self._table = QTableView(self)
+        # **A list behind `RowDelegate`, not a six-column table** (`UX-005` §3, `T-124`). The
+        # columns were `T-100`'s and they were right for a table; `UX-005` makes both tabs the
+        # same row anatomy, so a user reads one shape rather than two. The fields `REQ-020` names
+        # all survive — `_text` still produces every one of them — as *what the row says*.
+        self._table = QListView(self)
         self._table.setObjectName("historyTable")
         self._table.setAccessibleName("Download history")
         self._table.setAccessibleDescription(
@@ -241,26 +305,46 @@ class HistoryView(QWidget):
             "in this list."
         )
         self._table.setModel(self._model)
-        self._table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         # Read-only, and not merely unedited: `REQ-020` is a record of what happened, and an
         # editable view would also put a text cursor into the keyboard order.
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
-        self._table.verticalHeader().setVisible(False)
-        self._table.horizontalHeader().setSectionResizeMode(
-            TITLE_COLUMN, QHeaderView.ResizeMode.Stretch
-        )
+        self._table.setUniformItemSizes(True)
+        self._delegate = RowDelegate(parent=self._table)
+        self._table.setItemDelegate(self._delegate)
+        # No thumbnail store: a history record carries no thumbnail URL, so every row draws the
+        # derived tile (`UX-003`) — which is what the store would fall back to anyway, without
+        # the thread pool and the cache directory that nothing here would use.
+        self._delegate.verb_triggered.connect(self._on_verb)
         layout.addWidget(self._table)
 
         self._model.modelReset.connect(self._show_the_right_thing)
         self._show_the_right_thing()
+
+    #: `(entry_id)` — a row's file verb was activated. Reported rather than performed, because
+    #: `FileActions` owns containment (`SEC-001`) and the shell owns `FileActions`.
+    open_requested = Signal(str)
+    reveal_requested = Signal(str)
+
+    def _on_verb(self, entry_id: str, verb: object) -> None:
+        """Route a history row's verb. Only two exist; anything else is a programming error."""
+        if verb is Verb.OPEN:
+            self.open_requested.emit(entry_id)
+        elif verb is Verb.REVEAL:
+            self.reveal_requested.emit(entry_id)
+        elif verb is not None:
+            raise AssertionError(f"a history row offered {verb!r} and nothing routes it")
+
+    def trigger_verb(self, entry_id: str, verb: Verb) -> None:
+        """Activate a verb from the overflow or a key, by the route a click takes."""
+        self._on_verb(entry_id, verb)
 
     @property
     def model(self) -> HistoryModel:
         return self._model
 
     @property
-    def table(self) -> QTableView:
+    def table(self) -> QListView:
         return self._table
 
     @property
@@ -274,11 +358,23 @@ class HistoryView(QWidget):
         self._model.refresh()
 
     def selected_entry_id(self) -> str | None:
-        """Which record is selected, or `None`. **`T-086` is what this exists for.**"""
-        rows = self._table.selectionModel().selectedRows()
-        if not rows:
+        """Which record is selected, or `None`. **`T-086` is what this exists for.**
+
+        `selectedIndexes` rather than `selectedRows`: a `QListView` has one column, and
+        `selectedRows` is a table-shaped question that returns nothing here.
+        """
+        indexes = self._table.selectionModel().selectedIndexes()
+        if not indexes:
             return None
-        return self._model.entry_ids()[rows[0].row()]
+        return self._model.entry_ids()[indexes[0].row()]
+
+    def select(self, entry_id: str) -> bool:
+        """Select the row for `entry_id`, so a named verb can act through the selection."""
+        ids = self._model.entry_ids()
+        if entry_id not in ids:
+            return False
+        self._table.setCurrentIndex(self._model.index(ids.index(entry_id), 0))
+        return True
 
     def selected_path(self) -> str | None:
         """The selected record's file, or `None`. **`T-086`'s one question of this view.**"""

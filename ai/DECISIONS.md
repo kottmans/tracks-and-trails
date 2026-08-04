@@ -2346,6 +2346,64 @@ policy here is about *when*, not *where*.
 
 ---
 
+## DAT-005 — Removing a history entry removes a record, never a file
+
+**Status:** **Accepted** (2026-08-04) — maintainer decision, answering `UX-005` §9's deferral
+**Date:** 2026-08-04
+**Amends:** `REQ-020`, which said *maintain* a history and did not admit removal.
+**Unblocks:** `T-125`. **Does not amend** `DAT-001`'s storage choices or `UX-001`'s promise, which
+this entry is an application of rather than an exception to.
+
+### Context
+
+`UX-005` §9 describes a removal control and then **refuses to specify it**: *"What is removable,
+and whether a file is ever touched, is a `DAT-` entry, not a button."* That refusal was right.
+`HistoryRepository`'s own docstring says *"Append-mostly and read-only to the rest of the
+application: nothing here deletes"*, and no requirement asks for removal — `REQ-020` says maintain,
+`REQ-021` says open and reveal. So this is a gap rather than an unimplemented requirement, and
+adding a delete path to a deliberately append-only store is a data decision before it is a widget.
+
+The risk is specific and it is not abstract: **a history entry names a file on disk.** "Clear
+history" is ambiguous in exactly the way that loses somebody's downloads, and the obvious
+implementation deletes the wrong thing.
+
+### Decision
+
+1. **Selected entries only.** Removal is scoped to what the user selected, and the verb names its
+   own count — *Remove 3 downloads from history*, not *Remove*. No *Clear all* and no
+   older-than-a-date: both can be added on this foundation once removal itself is proven, and
+   neither is what a person reaches for first. *Clear all* is also the phrasing most likely to be
+   read as deleting downloads.
+2. **No file is ever touched.** Not as an option, not behind a second checkbox. `UX-001` already
+   promises that nothing in this application deletes the user's files, and an "also delete the
+   file" affordance would make that promise conditional — which is the same as not having it. A
+   user who wants the file gone has a file manager.
+3. **The guarantee is carried permanently, not only at the moment of asking.** *"Files are never
+   deleted"* sits in the status bar while the History tab is showing, as well as in the
+   confirmation. A promise that appears only in a dialog is a promise only the people who read
+   dialogs have.
+4. **Removal is irreversible, and confirmed with its count.** *"Remove 3 downloads from history?
+   The files stay on your disk."* — the count and the file guarantee in one breath. No soft delete:
+   a `deleted_at` column would change every history query and amend `DAT-001` to protect a record
+   whose loss costs a user very little, given the files are untouched.
+5. **`REQ-020` is amended** to admit removal, rather than a new requirement being added. One
+   requirement describes one surface; the data reasoning lives here.
+
+### Consequences
+
+- **`HistoryRepository` gains its first delete path**, and its docstring's "nothing here deletes"
+  becomes false and must be rewritten rather than left as a comment that used to be true. The
+  method takes ids, never a predicate, so the scoping decision above cannot be widened at a call
+  site.
+- **`UX-005` §9 is now implementable**; `T-125` is unblocked.
+- **`REQ-026`** (whatever a user can erase about themselves) is *not* settled here. This is one
+  list. A user asking to remove their traces would also mean logs and the queue, and that is a
+  larger question this entry deliberately does not answer.
+- **The confirmation is not optional**, even though the loss is small. It is what carries the file
+  guarantee to the one person who is about to act on it.
+
+---
+
 ## DAT-004 — Log redaction is provenance-aware: exact values always, shape rules only on our own lines
 
 **Status:** **WITHDRAWN** (2026-08-01) — see the withdrawal at the end of this entry. It was

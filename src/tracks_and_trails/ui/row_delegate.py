@@ -39,9 +39,10 @@ from PySide6.QtCore import (
     QRect,
     QSize,
     Qt,
+    Signal,
 )
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
-from PySide6.QtGui import QColor, QMouseEvent, QPainter, QPixmap
+from PySide6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QAbstractItemView,
@@ -49,11 +50,13 @@ from PySide6.QtWidgets import (
     QComboBox,
     QStyle,
     QStyledItemDelegate,
+    QStyleOptionButton,
     QStyleOptionComboBox,
     QStyleOptionViewItem,
     QWidget,
 )
 
+from tracks_and_trails.ui.row_verbs import LABELS, MORE_LABEL, Verb
 from tracks_and_trails.ui.thumbnails import THUMBNAIL_SIZE, ThumbnailStore
 
 #: The headline: a title once something has read one, else the URL the user pasted. Never empty —
@@ -84,6 +87,14 @@ PROGRESS_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 6
 #: eliding intact — a truncated format selector is a format selector the user cannot copy, and
 #: `REQ-009`'s promise is that they can learn the syntax from it.
 SELECTOR_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 9
+#: The verbs this row offers, as `Verb` values. Supplied by the model, because *which* verbs a
+#: state permits is `row_verbs.verbs_for`'s answer and the model is what knows the job's status —
+#: a delegate that derived them from the drawn state text would be reading its own output
+#: (`ai/TESTING.md` §13). Absent on a surface with no verbs, which draws none.
+VERBS_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 10
+#: The job this row is about, carried so a verb click can name it. A row index is not an identity:
+#: the queue reorders, and `T118-R14` is the record of what an index that outlived its row costs.
+JOB_ID_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 11
 
 #: The row's own choice, as a preset name, or `None` for "follows the batch" (`UX-004`).
 PRESET_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 7
@@ -140,6 +151,13 @@ EDITOR_WIDTH: Final = 190
 #: The height of the painted progress bar.
 BAR_HEIGHT: Final = 4
 
+#: Padding inside a verb button, each side. Small: they share the last line with the progress bar
+#: and `NFR-006` wants the message above them at full width.
+VERB_PADDING: Final = 8
+
+#: The gap between adjacent verb buttons.
+VERB_GAP: Final = 4
+
 #: How tall the row's format control is drawn. A combo box's own height, near enough, and bounded
 #: by the row so a large font cannot push it outside its own row.
 CONTROL_HEIGHT: Final = 26
@@ -162,6 +180,11 @@ class RowDelegate(QStyledItemDelegate):
     The store is optional: a surface with no thumbnails to draw passes none and gets the derived
     tile for every row, which is exactly what an unresolved staging row wants anyway.
     """
+
+    #: A row's verb was activated. Carries the job id rather than a row index — the queue
+    #: reorders, and `T118-R14` is this project's record of what an index outliving its row costs.
+    #: `None` for the verb means the overflow was asked for.
+    verb_triggered = Signal(str, object)
 
     def __init__(
         self,
@@ -251,7 +274,8 @@ class RowDelegate(QStyledItemDelegate):
                 # otherwise the painted affordance shows through the real control's edges.
                 self._paint_control(painter, body, option, index)
 
-        self._paint_text(painter, text_area, body, index, primary, muted)
+        verbs_left = self._paint_verbs(painter, text_area, body, option, index)
+        self._paint_text(painter, text_area, body, index, primary, muted, verbs_left)
         painter.restore()
 
     def _control_rect(self, body: QRect) -> QRect:
@@ -264,6 +288,103 @@ class RowDelegate(QStyledItemDelegate):
             min(EDITOR_WIDTH, body.width()),
             height,
         )
+
+    def _verbs_of(self, index: QModelIndex | _PersistentIndex) -> tuple[Verb, ...]:
+        """What the model says this row offers. Empty on a surface that offers nothing."""
+        offered = index.data(VERBS_ROLE)
+        if not offered:
+            return ()
+        return tuple(Verb(value) for value in offered)
+
+    def _verb_rects(
+        self,
+        metrics: QFontMetrics,
+        area: QRect,
+        body: QRect,
+        index: QModelIndex | _PersistentIndex,
+    ) -> list[tuple[Verb | None, QRect]]:
+        """Where each verb sits on the row's last line, right-aligned (`UX-005` §4).
+
+        **One definition, shared by the paint and the click**, for `_control_rect`'s reason: a
+        button drawn in one place and hit-tested in another is a control that works where nobody
+        clicks. `T118-R12` is the same lesson from the other direction.
+
+        Laid out right to left from the end of `area` — which is already narrowed by the format
+        control's slot when the row has one, so the verbs and the control cannot overlap. The
+        overflow is rightmost because it is the one button whose position must not move as the
+        state changes: it is the keyboard route, and a route that relocates is not a route.
+
+        Returns rightmost-first, which is also the order a hit test wants: verbs are laid out
+        without gaps between their hit rects, so first match wins and it should be the one drawn
+        on top if they ever did overlap.
+        """
+        offered = self._verbs_of(index)
+        if not offered:
+            # **No verbs means nothing at all, not a lone overflow.** The add dialog's staging
+            # rows have no job behind them and nothing to act on; drawing `⋯` there would offer a
+            # menu of nothing, and it moved the row's text depending on whether the row happened
+            # to have a format control — which is `T118-R8` again.
+            return []
+
+        line = metrics.height()
+        top = area.top() + (TEXT_LINES - 1) * line
+        height = min(line, max(body.bottom() - top, 0))
+        if height <= 0:
+            return []
+
+        placed: list[tuple[Verb | None, QRect]] = []
+        right = area.right()
+        for verb in (None, *reversed(offered)):
+            label = MORE_LABEL if verb is None else LABELS[verb]
+            width = metrics.horizontalAdvance(label) + 2 * VERB_PADDING
+            left = right - width
+            if left < area.left():
+                # **Silently dropped rather than drawn overlapping the message.** `NFR-006` gives
+                # the extractor's message the full width above; a verb that will not fit is what
+                # the overflow is for, and the overflow is placed first so it always survives.
+                break
+            placed.append((verb, QRect(left, top, width, height)))
+            right = left - VERB_GAP
+        return placed
+
+    def _paint_verbs(
+        self,
+        painter: QPainter,
+        area: QRect,
+        body: QRect,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | _PersistentIndex,
+    ) -> int | None:
+        """Draw the row's verbs and return the x the rest of the last line must stop at.
+
+        **`None` when nothing was drawn**, and that is not a detail: a row with no verbs must
+        leave the last line exactly as it was before they existed. Returning `area.right()`
+        instead regressed `T118-R8` — the selector would have been narrowed by the format
+        control's slot again, which is the specific defect that finding exists for, and the row
+        without a control and the row with one would have drawn different text.
+
+        **Through the real style, as `QStyleOptionButton`**, for the reason `_paint_control` gives:
+        a control the user is expected to recognise has to be the platform's button rather than
+        something that resembled one on the machine it was drawn on, and it themes itself.
+
+        **Nothing is drawn disabled** (`UX-005` §5). A verb absent from the model's list is absent
+        from the row; there is no greyed state, because a greyed *Retry* says the application
+        considered retrying and declined.
+        """
+        rects = self._verb_rects(painter.fontMetrics(), area, body, index)
+        if not rects:
+            return None
+
+        widget = cast("QWidget | None", option.widget)
+        style = widget.style() if widget is not None else QApplication.style()
+        for verb, rect in rects:
+            button = QStyleOptionButton()
+            button.rect = rect
+            button.palette = option.palette
+            button.text = MORE_LABEL if verb is None else LABELS[verb]
+            button.state = QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_Raised
+            style.drawControl(QStyle.ControlElement.CE_PushButton, button, painter, widget)
+        return min(rect.left() for _, rect in rects) - VERB_GAP
 
     def _is_being_edited(self, index: QModelIndex | _PersistentIndex) -> bool:
         """Whether the live editor is currently open on this row.
@@ -344,6 +465,7 @@ class RowDelegate(QStyledItemDelegate):
         index: QModelIndex | _PersistentIndex,
         primary: QColor,
         muted: QColor,
+        verbs_left: int | None,
     ) -> None:
         if area.width() <= 0:
             return
@@ -381,12 +503,18 @@ class RowDelegate(QStyledItemDelegate):
             # beside the first two lines, and nothing needs the third line's right-hand end.
             # `SELECTOR_LINES` of room, which holds every built-in at the default font and is
             # explicitly *not* a promise at larger ones — see that constant, and `T118-R15`.
+            # **The verbs own the last line, so the selector gives it up** (`UX-005` §4). Without
+            # this the selector wraps across lines 2 and 3 and the buttons are drawn over its
+            # second line — which is the history row's shape exactly, since the saved path is
+            # long. A row with no verbs keeps both lines, which is the add dialog's case and the
+            # one `T118-R15` sized `SELECTOR_LINES` for.
+            selector_lines = SELECTOR_LINES - (0 if verbs_left is None else 1)
             painter.drawText(
                 QRect(
                     area.left(),
                     area.top() + 2 * line,
-                    max(body.right() - area.left(), 0),
-                    SELECTOR_LINES * line,
+                    max((body.right() if verbs_left is None else verbs_left) - area.left(), 0),
+                    max(selector_lines, 1) * line,
                 ),
                 int(
                     Qt.AlignmentFlag.AlignLeft
@@ -403,7 +531,17 @@ class RowDelegate(QStyledItemDelegate):
             # has progress and no per-row format — and the bar is the one that yields, because
             # `DETAIL_ROLE` already carries the same number in words (`NFR-005`).
             return
-        bar = QRect(area.left(), area.top() + 2 * line + 2, area.width(), BAR_HEIGHT)
+        # **Stops where the verbs start** (`UX-005` §4). The bar and the buttons share the last
+        # line; a bar drawn the full width would run underneath them, which is the same defect as
+        # a control drawn where nobody clicks, seen from the paint side.
+        bar = QRect(
+            area.left(),
+            area.top() + 2 * line + 2,
+            max((area.right() if verbs_left is None else verbs_left) - area.left(), 0),
+            BAR_HEIGHT,
+        )
+        if bar.width() <= 0:
+            return
         if bar.bottom() > area.bottom():
             return
         track = QColor(muted)
@@ -437,10 +575,31 @@ class RowDelegate(QStyledItemDelegate):
         """
         if not isinstance(event, QMouseEvent) or event.type() != QEvent.Type.MouseButtonRelease:
             return False
-        if event.button() != Qt.MouseButton.LeftButton or not self._editable(index):
+        if event.button() != Qt.MouseButton.LeftButton:
             return False
         body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
-        if not self._control_rect(body).contains(event.position().toPoint()):
+        where = event.position().toPoint()
+
+        # **The verbs are tested first**, because they sit inside the text area and the control
+        # sits beside it: an ambiguity would mean one of them is drawn where the other is clicked.
+        # Tested from the same `_verb_rects` the paint used, so the two cannot disagree.
+        text_left = body.left() + THUMBNAIL_SIZE[0] + GAP
+        text_area = QRect(text_left, body.top(), max(body.right() - text_left, 0), body.height())
+        if self._editable(index):
+            text_area.setWidth(max(text_area.width() - EDITOR_WIDTH - GAP, 0))
+        for verb, rect in self._verb_rects(QFontMetrics(option.font), text_area, body, index):
+            if rect.contains(where):
+                job_id = index.data(JOB_ID_ROLE)
+                if not isinstance(job_id, str) or not job_id:
+                    # A row that offers a verb and cannot say which job it is about would send the
+                    # action to whatever the receiver guessed. Refuse rather than guess.
+                    return False
+                self.verb_triggered.emit(job_id, verb)
+                return True
+
+        if not self._editable(index):
+            return False
+        if not self._control_rect(body).contains(where):
             return False
         view = cast("QAbstractItemView | None", self.parent())
         if view is None:

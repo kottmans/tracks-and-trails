@@ -19,37 +19,52 @@ state at all; see `T-007`'s record, where that gap is reported rather than decid
 
 import tomllib
 from collections.abc import Callable, Sequence
+from functools import partial
 from pathlib import Path
 from typing import Final, cast
 
 from platformdirs import user_config_dir
 from PySide6.QtCore import QRect, QSize, Qt, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QGuiApplication, QIcon, QKeySequence
+from PySide6.QtGui import (
+    QAction,
+    QCloseEvent,
+    QCursor,
+    QGuiApplication,
+    QIcon,
+    QKeySequence,
+)
 from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
+    QMenu,
     QMessageBox,
     QSpinBox,
-    QSplitter,
+    QTabWidget,
     QToolBar,
     QWidget,
 )
 
 from tracks_and_trails import __version__
-from tracks_and_trails.core import settings
+from tracks_and_trails.core import presets, settings
 from tracks_and_trails.core.job_state import REORDERABLE
 from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
 from tracks_and_trails.ui.file_actions import MESSAGE_TIMEOUT_MS, FileActions
 from tracks_and_trails.ui.history_view import HistoryReader, HistoryView, build_history_view
-from tracks_and_trails.ui.job_detail import JobProgressView, JobReader, build_progress_view
+from tracks_and_trails.ui.job_detail import JobReader
 from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
+from tracks_and_trails.ui.row_verbs import LABELS
 
 APP_NAME: Final = "Tracks & Trails"
 
 #: platformdirs slug, matching the paths in `ARCHITECTURE.md` §5.
 APP_SLUG: Final = "tracksandtrails"
+
+#: The two tabs `UX-005` names. The count is appended at runtime, so these are the stems rather
+#: than what is displayed — a test asserting on the visible text must expect "Queue (3)".
+QUEUE_TAB: Final = "Queue"
+HISTORY_TAB: Final = "History"
 
 #: Used when no geometry has been stored yet, and when what was stored is unusable.
 DEFAULT_SIZE: Final = QSize(960, 640)
@@ -240,7 +255,6 @@ class MainWindow(QMainWindow):
         self._geometry_file = geometry_file
         self._job_reader = job_reader
         self._retry = retry
-        self._view: JobProgressView | None = None
         self._queue: QueueView | None = None
         self._history_view: HistoryView | None = None
         #: `T-086`'s open/reveal, one set per table. Held so they outlive `_build_body` — a
@@ -280,47 +294,198 @@ class MainWindow(QMainWindow):
         self._restore_geometry()
 
     def _build_body(self, queue: QueueReader | None, history: HistoryReader | None = None) -> None:
-        """The queue above, the selected job's detail below (`T-079`).
+        """`Queue` and `History` as tabs, each with a count, and nothing else (`UX-005`).
 
-        **A splitter rather than one or the other**, because the two answer different questions:
-        the table says what the queue is doing — all of it, which is the whole point of a pool of
-        N — and the detail panel says everything about one job. Phase 1 could put the detail view
-        straight into the central widget because there was only ever one job to show.
+        **Tabs, not a splitter, and no detail pane.** What this replaced put the history table
+        below the queue and the selected job's detail below that, and argued for it *in a source
+        comment* — reasoning from `P2PLAN-R8`, which is about which task owns the history view and
+        says nothing about where it goes. That comment was the only record of the layout, it was
+        never ratified, and it contradicted the approved design. `UX-005` records the design and
+        deletes the comment rather than correcting it: a source comment was never the right place
+        for the decision, which is the part worth keeping.
 
-        The table is built only when composition supplies something to read jobs from, exactly as
-        the add action is enabled only when it has all three of its collaborators. A window
-        without one still works and still shows detail: `T-007`'s tests construct this window with
-        no arguments at all, and a shell that required a repository to open would have made that
-        impossible.
+        The tab's own argument was that a tab would hide history. A tab **with a count on it** is
+        not hidden, and three panes competing for vertical space in a window wider than it is tall
+        is a real cost — worse since `T-119` made rows ~66 px.
+
+        Each view is built only when composition supplies something for it to read, exactly as the
+        add action is enabled only when it has all three of its collaborators. `T-007`'s tests
+        construct this window with no arguments at all, so an empty tab widget is a valid window.
         """
-        self._body = QSplitter(Qt.Orientation.Vertical, self)
-        self._body.setObjectName("shellSplitter")
-        self._body.setChildrenCollapsible(False)
+        self._body = QTabWidget(self)
+        self._body.setObjectName("shellTabs")
+        # `NFR-005`: the tab bar is the only route between the two lists, so it has to answer to a
+        # screen reader as something other than "tab widget".
+        self._body.setAccessibleName("Queue and history")
         self.setCentralWidget(self._body)
         if queue is None or self._manager is None:
             return
-        # Selecting a row shows that job — the table reports, the shell decides. `watch` needs a
-        # job reader, so a window given a queue and no reader simply shows no detail rather than
-        # raising out of a selection handler.
-        self._queue = build_queue_view(
-            queue, self._manager, self._watch_if_possible if self._job_reader is not None else None
-        )
+        # **No selection callback.** Selecting a row opened the detail pane; `UX-005` removes the
+        # pane, so selecting a row now opens nothing and the row itself carries what a user needs
+        # to know (`T-119`'s anatomy). The manager and reader are still held: what becomes of
+        # `T-017`'s `JobProgressView` is deferred by `UX-005` rather than decided, so nothing here
+        # deletes its collaborators.
+        self._queue = build_queue_view(queue, self._manager, None)
         # Remove acts on the selection, so it follows the selection rather than being enabled once
         # and left that way. Connected here rather than where the action is built, because the
         # table is built after the toolbar and the action has to exist before it can be enabled.
         self._queue.job_selected.connect(self._selection_changed)
-        self._body.addWidget(self._queue)
+        self._connect_row_verbs(self._queue)
+        self._body.addTab(self._queue, QUEUE_TAB)
 
-        # **Below the queue, in the same splitter** (`T-100`). A tab would hide it, and the whole
-        # reason it exists is that a user who cleared their completed jobs cannot otherwise find
-        # what they downloaded (`P2PLAN-R8`) — a surface you have to go looking for does not solve
-        # that. Built only when composition supplies something to read history from, exactly as the
-        # queue is.
         if history is not None:
             self._history_view = build_history_view(history)
-            self._body.addWidget(self._history_view)
+            # The history row's two verbs, through the same `FileActions` route the queue's use —
+            # `SEC-001`'s containment lives there and is not reimplemented per surface.
+            self._history_view.open_requested.connect(
+                lambda entry_id: self._history_file_verb(entry_id, reveal=False)
+            )
+            self._history_view.reveal_requested.connect(
+                lambda entry_id: self._history_file_verb(entry_id, reveal=True)
+            )
+            self._body.addTab(self._history_view, HISTORY_TAB)
 
+        self._refresh_tab_labels()
         self._attach_file_actions()
+
+    def _connect_row_verbs(self, view: QueueView) -> None:
+        """Give the row's verbs the same destinations the toolbar's have (`UX-005` §4, `T-124`).
+
+        **Every one lands on an implementation that already existed.** The row is a second route
+        to the same effects, not a second implementation of them — a *Remove* on the row that did
+        not go through `_remove_job` would be one guard away from behaving differently from the
+        toolbar's, and nobody would find out until the two disagreed in front of a user.
+
+        `Cancel` is absent here on purpose: `QueueView` performs it, because asking the manager to
+        stop a session it owns is not a write and does not need composition (`ARCHITECTURE.md`
+        §7). Every other verb is a write, or opens a file, and both belong to the shell.
+        """
+        view.retry_requested.connect(self._retry_each_of)
+        view.remove_requested.connect(self._remove_job)
+        view.move_requested.connect(self._move_job)
+        view.open_requested.connect(lambda job_id: self._file_verb(job_id, reveal=False))
+        view.reveal_requested.connect(lambda job_id: self._file_verb(job_id, reveal=True))
+        view.more_requested.connect(self._show_row_menu)
+        view.model.preset_chosen.connect(self._retarget_job)
+
+    def _retry_each_of(self, job_id: str) -> None:
+        """One row's *Retry*, through the same callback the interrupted-jobs offer uses."""
+        if self._retry is not None:
+            self._retry(job_id)
+
+    def _file_verb(self, job_id: str, *, reveal: bool) -> None:
+        """Open or reveal a named job's file, **through `FileActions`** (`REQ-021`, `SEC-001`).
+
+        The row selects itself and then triggers the existing action rather than resolving a path
+        of its own. Containment — that the path is inside the download directory — lives in
+        `FileActions` and is what makes opening a file safe at all; a second route that resolved
+        its own path would be a second place for that check to be missing, which is the shape of
+        `SEC-001` failures rather than a style preference.
+        """
+        if self._queue is None:
+            return
+        actions = next(
+            (each for each in self._file_actions if each.table is self._queue.table), None
+        )
+        if actions is None:
+            return
+        self._queue.select(job_id)
+        if reveal:
+            actions.reveal_selected()
+        else:
+            actions.open_selected()
+
+    def _retarget_job(self, job_id: str, preset_name: str) -> None:
+        """A queue row chose a different format (`UX-005` §6, `T-126`, `REQ-009`).
+
+        **Through `retarget()`**, which is the manager's for `T036-R1`'s reason: a request written
+        straight through the store announces nothing, and a row would go on showing the format it
+        no longer has. `retarget` also refuses a job past `Job.RETARGETABLE` rather than raising —
+        the row only offers the control while it is retargetable, but a worker can take the job
+        between the click and the write, and that is an ordinary outcome rather than a fault.
+
+        The refusal is reported in the status bar rather than a dialog: the download the user
+        already has is fine, and a modal for "you were a moment too late" is how people learn to
+        dismiss dialogs unread (`NFR-006`).
+        """
+        if self._manager is None or self._queue is None:
+            return
+        job = self._queue.model.job_for(job_id)
+        if job is None:
+            return
+        try:
+            preset = presets.by_name(preset_name)
+        except KeyError:
+            # A name this build does not have. `by_name` raises rather than substituting, because
+            # quietly falling back to "best video" would download something nobody asked for.
+            self._report_transiently(f"{preset_name} is not a format this version offers")
+            return
+        self._manager.retarget(
+            job_id,
+            presets.to_request(
+                preset,
+                url=job.request.url,
+                output_directory=job.request.output_directory,
+            ),
+            then=self.refresh_queue,
+            otherwise=self._report_transiently,
+        )
+
+    def _history_file_verb(self, entry_id: str, *, reveal: bool) -> None:
+        """`_file_verb`, for the other tab. Same route, different table (`REQ-021`, `T-086`)."""
+        if self._history_view is None:
+            return
+        actions = next(
+            (each for each in self._file_actions if each.table is self._history_view.table), None
+        )
+        if actions is None:
+            return
+        self._history_view.select(entry_id)
+        if reveal:
+            actions.reveal_selected()
+        else:
+            actions.open_selected()
+
+    def _show_row_menu(self, job_id: str) -> QMenu | None:
+        """The row's `⋯` — everything its state permits, and the declared keyboard route.
+
+        **Built from `verbs_of` rather than from a second table**, so the menu holds exactly what
+        the row holds. The overflow exists because verbs are dropped when they will not fit
+        (`NFR-006` keeps the message at full width), and a menu that disagreed with the row about
+        what is available would be worse than no menu at all.
+
+        Returned rather than only shown, and `popup` rather than `exec`, for the reason
+        `FileActions._show_menu` gives: `exec` starts a nested event loop a test cannot leave.
+        """
+        if self._queue is None:
+            return None
+        offered = self._queue.verbs_of(job_id)
+        if not offered:
+            return None
+        menu = QMenu(self._queue)
+        menu.setObjectName("rowVerbsMenu")
+        for verb in offered:
+            action = menu.addAction(LABELS[verb])
+            action.setObjectName(f"rowVerb_{verb.value}")
+            action.triggered.connect(partial(self._queue.trigger_verb, job_id, verb))
+        menu.popup(QCursor.pos())
+        return menu
+
+    def _refresh_tab_labels(self) -> None:
+        """Put each tab's row count on its tab (`UX-005`).
+
+        **The count is what makes a tab not a hiding place**, which is the whole answer to the
+        objection the splitter was built on — so it is not decoration and it is rebuilt from the
+        model rather than tracked alongside it. A hand-maintained count drifts from the list it
+        describes, reliably and in the direction that flatters.
+        """
+        for view, label in ((self._queue, QUEUE_TAB), (self._history_view, HISTORY_TAB)):
+            if view is None:
+                continue
+            index = self._body.indexOf(view)
+            if index < 0:  # never added, because composition gave it nothing to read
+                continue
+            self._body.setTabText(index, f"{label} ({view.table.model().rowCount()})")
 
     def _attach_file_actions(self) -> None:
         """Open and Show-in-folder on both tables (`T-086`, `REQ-021`).
@@ -366,56 +531,6 @@ class MainWindow(QMainWindow):
         return list(self._file_actions)
 
     @property
-    def watched_job_id(self) -> str | None:
-        """The job the progress view is showing, if a view is installed."""
-        return self._view.job_id if self._view is not None else None
-
-    @property
-    def progress_view(self) -> JobProgressView | None:
-        return self._view
-
-    def watch(self, job_id: str) -> JobProgressView:
-        """Show `job_id`'s progress, replacing whatever was shown before (`T-036`, `REQ-014`).
-
-        **The old view is detached, not merely dropped.** `deleteLater` is asynchronous, so a
-        replaced view would answer manager signals for however many event loop turns it took to
-        die — a second listener rather than a leak, and a second listener is how one job becomes
-        two of everything the UI derives from a signal.
-        """
-        if self._job_reader is None:
-            raise RuntimeError(
-                "this window has no job reader, so it cannot show progress; composition "
-                "supplies one (T-036)"
-            )
-        if self._view is not None:
-            if self._view.job_id == job_id:
-                return self._view
-            self._view.detach()
-            self._view.setParent(None)
-            self._view.deleteLater()
-        assert self._manager is not None
-        self._view = build_progress_view(self._manager, self._job_reader, job_id, self._retry)
-        # Into the splitter's lower pane rather than over the whole window (`T-079`): replacing
-        # the central widget here would take the queue table off screen every time a job changed.
-        self._body.addWidget(self._view)
-        return self._view
-
-    def _watch_if_possible(self, job_id: str) -> None:
-        """Selection handler. Separate from `watch` because a signal must not raise.
-
-        `watch` refuses without a job reader, and that refusal is right for a caller that asked
-        for a view; a selection is the user clicking a row, and an exception out of a Qt slot is
-        printed and swallowed rather than handled.
-
-        **An empty id means nothing is selected** (`T081-R3`), and there is no job to show. The
-        detail pane keeps whatever it was showing rather than being torn down: a user who cleared
-        the selection did not ask to stop looking at what they had open, and `T-079` already
-        established that the pane belongs to the user once claimed.
-        """
-        if job_id and self._job_reader is not None:
-            self.watch(job_id)
-
-    @property
     def history_view(self) -> HistoryView | None:
         """The history table, if this window was given something to read history from."""
         return self._history_view
@@ -429,6 +544,7 @@ class MainWindow(QMainWindow):
         """
         if self._history_view is not None:
             self._history_view.refresh()
+            self._refresh_tab_labels()
 
     @property
     def queue_view(self) -> QueueView | None:
@@ -439,6 +555,7 @@ class MainWindow(QMainWindow):
         """Re-read the queue. Called when jobs are added, which no manager signal announces."""
         if self._queue is not None:
             self._queue.refresh()
+            self._refresh_tab_labels()
 
     def report_environment(self, summary: str) -> None:
         """State what this installation can and cannot do, on screen (`REQ-024`).
@@ -642,10 +759,17 @@ class MainWindow(QMainWindow):
         enabled-state check that the handler does not repeat is one keyboard shortcut away from
         being wrong.
         """
-        if self._on_remove_requested is None or self._queue is None:
+        if self._queue is None:
             return
         job_id = self._queue.selected_job_id()
         if job_id is not None:
+            self._remove_job(job_id)
+
+    def _remove_job(self, job_id: str) -> None:
+        """Remove one named job. **The single implementation**, so the toolbar action and the
+        row's *Remove* cannot drift apart — two routes to one effect is how one of them ends up
+        with a guard the other lacks."""
+        if self._on_remove_requested is not None:
             self._on_remove_requested(job_id)
 
     def _move_selected(self, offset: int) -> None:
@@ -661,15 +785,28 @@ class MainWindow(QMainWindow):
         swapping across it must move the pending pair past each other rather than asking the
         repository to move the running one — which it refuses, by design.
         """
-        if self._on_reorder_requested is None or self._queue is None:
+        if self._queue is None:
             return
         selected = self._queue.selected_job_id()
-        if selected is None:
+        if selected is not None:
+            self._move_job(selected, offset)
+
+    def _move_job(self, job_id: str, offset: int) -> None:
+        """Move one named job, by the route `_move_selected` documents above.
+
+        The single implementation, for `_remove_job`'s reason. The row's *↑* and *↓* are the same
+        rearrangement the toolbar performs, and `_is_movable` is asked here rather than assumed
+        from the fact that the row drew the verb — the row's answer came from the model a moment
+        ago, and the reorder is what actually has to hold.
+        """
+        if self._on_reorder_requested is None or self._queue is None:
             return
-        movable = [job_id for job_id in self._queue.model.job_ids() if self._is_movable(job_id)]
-        if selected not in movable:
+        movable = [
+            candidate for candidate in self._queue.model.job_ids() if self._is_movable(candidate)
+        ]
+        if job_id not in movable:
             return
-        index = movable.index(selected)
+        index = movable.index(job_id)
         target = index + offset
         if not 0 <= target < len(movable):
             return

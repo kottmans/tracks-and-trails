@@ -36,6 +36,7 @@ from PySide6.QtCore import QMetaMethod, QObject
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from tracks_and_trails import app as application
+from tracks_and_trails.core import presets
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, MediaInfo
@@ -51,6 +52,8 @@ from tracks_and_trails.downloader.protocol import (
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import JobRepository
 from tracks_and_trails.ui.queue_view import PROGRESS_COLUMN, SIZE_COLUMN
+from tracks_and_trails.ui.row_delegate import PRESET_ROLE
+from tracks_and_trails.ui.row_verbs import Verb
 from tracks_and_trails.ui.staging import RowState
 
 # --- children the composed application spawns -------------------------------------------------
@@ -193,6 +196,21 @@ def composed(
         )
 
 
+def shown_status(composition: application.Composition, job_id: str) -> JobStatus | None:
+    """What the queue **row** says about `job_id`.
+
+    `UX-005` removed the detail pane, so the row is the application's answer now. Still the row
+    and not `composition.store`, for the reason the pane was watched before it: `T-013`'s ordering
+    means the writer thread commits and *then* signals the GUI thread, so a store-based wait can
+    pass in the gap before anything on screen has changed.
+    """
+    view = composition.window.queue_view
+    if view is None:
+        return None
+    job = view.model.job_for(job_id)
+    return job.status if job is not None else None
+
+
 def connection_count(sender: QObject, signal_name: str) -> int:
     """How many slots are connected to `signal_name` on `sender`.
 
@@ -281,12 +299,15 @@ def test_the_composed_application_downloads_a_file_and_shows_it_finished(
     )
     media = dialog.rows[0].media
     assert isinstance(media, MediaInfo) and media.title == "A video that exists"
-    # **Nothing is watched yet, and that is the corrected behaviour** (`T118-R1`). Reading a URL is
-    # a staging probe with no queue row, so the window has no job to show. It used to latch onto
-    # the transient id here and then sit on it: the download completed and the view still said
-    # "ready", because the id it was watching was never the one that ran.
-    assert composition.window.watched_job_id is None, (
-        "the window is showing progress for a URL nobody has added yet"
+    # **Nothing is in the queue yet, and that is the corrected behaviour** (`T118-R1`, `UX-005`).
+    # Reading a URL is a staging probe with no queue row. The window used to latch its detail pane
+    # onto the transient probe id and sit on it — the download completed and the pane still said
+    # "ready", because the id it watched was never the one that ran. With no pane, the equivalent
+    # claim is that the *queue* has nothing in it, which is the surface a user would be misled by.
+    queue = composition.window.queue_view
+    assert queue is not None and queue.model.job_ids() == (), (
+        f"the queue is showing {queue.model.job_ids() if queue else '?'} for a URL nobody has "
+        "added yet"
     )
 
     # The probe's *session* outlives its result: the manager releases it on a later tick. Adding
@@ -294,7 +315,14 @@ def test_the_composed_application_downloads_a_file_and_shows_it_finished(
     assert spin(lambda: composition.manager.is_idle, timeout=60), "the probe session never ended"
     dialog.add_to_queue()
     assert "did not start" not in dialog.status_text(), dialog.status_text()
-    assert spin(lambda: composition.window.watched_job_id is not None, timeout=60), (
+    # **Waited for, not read straight after `add_to_queue()`.** Adding goes through the writer
+    # thread, so the ids arrive on a later turn of the event loop; indexing immediately raises
+    # `IndexError` from a line that looks like bookkeeping.
+    assert spin(lambda: bool(dialog.queued_job_ids), timeout=60), (
+        f"nothing was ever queued: {dialog.status_text()}"
+    )
+    job_id = dialog.queued_job_ids[0]
+    assert spin(lambda: shown_status(composition, job_id) is not None, timeout=60), (
         "the window never showed the job the manager was working on"
     )
     # **Waited on the view, not on the store**, and the difference is `T-013`'s ordering rather
@@ -302,19 +330,25 @@ def test_the_composed_application_downloads_a_file_and_shows_it_finished(
     # `store.get()` answers `COMPLETED` from disk while `job_changed` is still queued. The
     # database leading the UI is exactly the guarantee; a test that polled the store would be
     # asserting on the window in the gap between the two, and this one did.
-    view = composition.window.progress_view
-    assert view is not None
-    assert spin(lambda: view.status is JobStatus.COMPLETED, timeout=60), (
-        f"the download never completed; the view says {view.status.value}"
+    assert spin(lambda: shown_status(composition, job_id) is JobStatus.COMPLETED, timeout=60), (
+        f"the download never completed; the row says {shown_status(composition, job_id)}"
     )
 
-    job_id = dialog.queued_job_ids[0]
     job = composition.store.get(job_id)
     assert job is not None and job.output_path is not None
     assert Path(job.output_path).exists(), "the file the queue claims to have downloaded is absent"
 
-    assert view.job_id == job_id
-    assert not view.can_cancel, "a finished job still offers to be cancelled"
+    # **The finished row is still in the Queue tab** (`UX-005` §8), which is what makes that tab
+    # answer "did it work", and it offers the two file verbs rather than a Cancel. The forbidden
+    # half is `tests/ui/test_row_verbs.py`'s; this is the assembled application agreeing with it.
+    queue = composition.window.queue_view
+    assert queue is not None
+    assert job_id in queue.model.job_ids(), (
+        "a completed download left the Queue tab before anyone cleared finished jobs"
+    )
+    assert set(queue.verbs_of(job_id)) == {Verb.OPEN, Verb.REVEAL}, (
+        f"a finished row offers {[v.value for v in queue.verbs_of(job_id)]}"
+    )
 
 
 # --- 2. the wiring itself ---------------------------------------------------------------------
@@ -348,19 +382,24 @@ def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
     composition = composed()
     manager = composition.manager
 
-    # **Two, and each is named.** Composition connects `on_job_changed` to claim the detail pane;
-    # the queue table's model connects its own to keep rows current (`T-079`). The number went
-    # from one to two when the table arrived, and it is written here rather than counted so that
-    # a *third* — the shape this test exists for — is still a failure.
-    assert connection_count(manager, "job_changed") == 2, (
-        "job_changed should have exactly composition's listener and the queue model's; a third "
-        "is how one queued job becomes two of everything downstream"
+    # **One, and it is named** (`UX-005`, `T-124`). It was two: composition also connected
+    # `on_job_changed` to claim the detail pane for the first watchable transition (`T-079`). The
+    # pane is gone, so that listener is gone with it, and the queue table's model — which keeps
+    # the rows current — is the only one left.
+    #
+    # **The number is written down rather than counted**, which is the whole point: this test
+    # exists to fail when a listener appears that nobody meant, and a count derived from the
+    # application would agree with the application by construction (`ai/TESTING.md` §13). It has
+    # gone one → two → one, and each move was a decision recorded here.
+    assert connection_count(manager, "job_changed") == 1, (
+        "job_changed should have exactly the queue model's listener now that the detail pane is "
+        "gone; a second is how one queued job becomes two of everything downstream"
     )
-    # The queue model is the only thing listening to progress until a detail view is built. It
-    # was zero before `T-079`, which is why this line is new: a table that draws progress is a
-    # second consumer of the stream that `T-017`'s repaint budget is about.
+    # The queue model is the only thing listening to progress. It was zero before `T-079` and
+    # briefly shared the signal with a detail view; a table that draws progress is the consumer
+    # `T-017`'s repaint budget is about.
     assert connection_count(manager, "progress") == 1, (
-        "the queue model should be the only progress listener before any detail view exists"
+        "the queue model should be the only progress listener"
     )
     for name in ("queue_paused", "job_removed", "queue_reordered"):
         assert connection_count(manager, name) == 1, (
@@ -381,13 +420,14 @@ def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
 
     dialog = composition.window.open_add_dialog()
     # The dialog adds its own four. Named individually rather than counted in bulk, so a signal
-    # gaining a second listener is reported as itself.
+    # gaining a second listener is reported as itself. `job_changed` is **two** here — the queue
+    # model's and the dialog's — where it was three before `UX-005` removed the detail pane's.
     for name, expected in (
         ("media_probed", 1),
         ("job_failed", 1),
         ("persistence_failed", 1),
         ("start_rejected", 1),
-        ("job_changed", 3),
+        ("job_changed", 2),
     ):
         assert connection_count(manager, name) == expected, (
             f"{name} has {connection_count(manager, name)} connections, expected {expected}"
@@ -395,41 +435,19 @@ def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
     dialog.close()
 
 
-def test_replacing_the_watched_job_leaves_no_second_listener(
-    composed: Callable[..., application.Composition],
-) -> None:
-    """`deleteLater` is asynchronous, so a replaced view answers signals until it dies.
-
-    With a pool of one that is not a leak; it is a second listener, and a second listener is
-    exactly what the criterion above forbids. `JobProgressView.detach` is what makes replacement
-    deterministic rather than dependent on how many event-loop turns happen to pass.
-    """
-    composition = composed()
-    manager = composition.manager
-    before = connection_count(manager, "progress")
-
-    composition.window.watch("job-a")
-    with_one = connection_count(manager, "progress")
-    assert with_one == before + 1
-
-    composition.window.watch("job-b")
-    assert connection_count(manager, "progress") == with_one, (
-        "the replaced view is still listening; two views would render one job twice"
-    )
-    assert composition.window.watched_job_id == "job-b"
-
-
-def test_watching_the_same_job_twice_does_not_rebuild_the_view(
-    composed: Callable[..., application.Composition],
-) -> None:
-    """`job_changed` fires per transition, and a job passes through several."""
-    composition = composed()
-
-    first = composition.window.watch("job-a")
-    assert composition.window.watch("job-a") is first, (
-        "each transition of one job rebuilt its view, discarding what it was showing"
-    )
-
+# **Three tests about the detail pane were removed here** (`UX-005`, `T-124`).
+#
+# `test_replacing_the_watched_job_leaves_no_second_listener`,
+# `test_watching_the_same_job_twice_does_not_rebuild_the_view` and
+# `test_a_second_job_starting_does_not_take_the_detail_pane_from_the_first` all drove
+# `window.watch()`, which no longer exists: the row carries progress and state, and selecting one
+# opens nothing.
+#
+# **The first of those was the only test of `JobProgressView.detach` anywhere**, and `UX-005`
+# defers what becomes of that widget rather than deciding it — so its guarantee moved to
+# `tests/ui/test_job_detail.py::test_a_detached_view_stops_answering_the_manager` *before* this
+# deletion, and was mutation-checked there. Deleting it here without that would have turned a
+# deferral into a silent deletion.
 
 # --- 3. the environment (`REQ-024`) -----------------------------------------------------------
 
@@ -651,26 +669,32 @@ def test_retrying_a_failed_job_re_queues_it_and_starts_it_again(
     # manager announces it, and a retry control that exists only after the announcement cannot
     # be asserted on before it. Waiting on `is_idle` here would be worse still — it is true
     # before the download starts.
-    assert spin(
-        lambda: (
-            composition.window.progress_view is not None
-            and composition.window.progress_view.status is JobStatus.FAILED
-        ),
-        timeout=60,
-    ), "the download never failed, so there is nothing to retry"
+    # **Waited for, not read straight after `add_to_queue()`.** Adding goes through the writer
+    # thread, so the ids arrive on a later turn of the event loop; indexing immediately raises
+    # `IndexError` from a line that looks like bookkeeping.
+    assert spin(lambda: bool(dialog.queued_job_ids), timeout=60), (
+        f"nothing was ever queued: {dialog.status_text()}"
+    )
+    failed_id = dialog.queued_job_ids[0]
+    assert spin(lambda: shown_status(composition, failed_id) is JobStatus.FAILED, timeout=60), (
+        "the download never failed, so there is nothing to retry"
+    )
 
-    view = composition.window.progress_view
+    view = composition.window.queue_view
     assert view is not None
-    failed_id = view.job_id
-    assert view.can_retry, (
-        f"a network failure is retryable and the control is absent: failure={view.failure}"
+    assert Verb.RETRY in view.verbs_of(failed_id), (
+        f"a network failure is retryable and the row does not offer it: "
+        f"{[v.value for v in view.verbs_of(failed_id)]}"
     )
     failed = composition.store.get(failed_id)
     assert failed is not None and failed.status is JobStatus.FAILED
     transitions: list[str] = []
     composition.manager.job_changed.connect(lambda job_id, status: transitions.append(status))
 
-    view.retry_requested.emit(failed_id)
+    # **Through the row's own verb**, which is the route a user has since `UX-005`. Emitting the
+    # signal directly would assert on composition's wiring while skipping the thing that reaches
+    # it, and `T-124`'s whole risk is a second route that quietly does something else.
+    view.trigger_verb(failed_id, Verb.RETRY)
 
     # **A retry that leaves an inert queued row is not a retry** (`T036-R1`). The previous version
     # of this test asserted only that the job left `FAILED`, and a comment here argued that
@@ -685,10 +709,10 @@ def test_retrying_a_failed_job_re_queues_it_and_starts_it_again(
         f"the retry re-queued the job and never started it: {transitions}"
     )
 
-    # The view stops showing the old failure, because the manager announced the transition. When
+    # The row stops showing the old failure, because the manager announced the transition. When
     # composition wrote it through the store instead, nothing did.
-    assert spin(lambda: view.status is not JobStatus.FAILED, timeout=60), (
-        "the progress view still shows the failure this retry replaced"
+    assert spin(lambda: shown_status(composition, failed_id) is not JobStatus.FAILED, timeout=60), (
+        "the queue row still shows the failure this retry replaced"
     )
 
 
@@ -1286,55 +1310,6 @@ def test_the_interface_stays_inside_its_budget_while_three_downloads_run(
     ), f"the workers were released and the jobs never completed: {statuses_of(composition)}"
 
 
-def test_a_second_job_starting_does_not_take_the_detail_pane_from_the_first(
-    composed: Callable[..., application.Composition],
-    spin: Callable[..., bool],
-    tmp_path: Path,
-) -> None:
-    """`T-079` changed what composition does with `job_changed`, and this is why.
-
-    With a pool of one, following every watchable transition was right: there was one job and the
-    pane was the only place to see it. With three running it means they take turns evicting each
-    other several times a second, and a user who selected a row loses it to whichever worker last
-    changed state.
-
-    So the pane is claimed once and then belongs to the user. The table is what shows all three.
-    """
-    composition = composed(entry_point=child_probing_then_waiting)
-    queue_three(composition, spin, tmp_path / "downloads")
-
-    composition.manager.start("job-1")
-    assert spin(lambda: composition.window.watched_job_id == "job-1", timeout=60), (
-        "the first job never claimed the empty detail pane"
-    )
-
-    # **Wait for the signal that would steal the pane, rather than for a fixed interval.**
-    # Measured: with a one-second sleep here, the mutation that removes the guard *survived* —
-    # the assertion could run before job-2's transition was delivered, so the test passed by
-    # being early rather than by the guard working.
-    #
-    # This recorder is connected after composition's own handler, so by the time it sees a
-    # watchable status for job-2, the handler that would have called `watch` has already run.
-    seen: list[tuple[str, str]] = []
-    composition.manager.job_changed.connect(lambda job_id, status: seen.append((job_id, status)))
-    watchable = ("probing", "ready", "running", "post_processing")
-    composition.manager.start("job-2")
-    assert spin(
-        lambda: any(job_id == "job-2" and status in watchable for job_id, status in seen),
-        timeout=60,
-    ), f"job-2 never reached a status that would claim the pane: {seen}"
-
-    assert composition.window.watched_job_id == "job-1", (
-        "a second job starting took the detail pane from the job already shown there; with a "
-        "pool of N that is three workers evicting each other several times a second"
-    )
-    table = composition.window.queue_view
-    assert table is not None
-    assert table.select("job-2") and composition.window.watched_job_id == "job-2", (
-        "selecting a row is what changes the detail pane, and it did not"
-    )
-
-
 # --- T-102 / ARC-008: the corrupt-settings report, through the assembled application -------
 
 
@@ -1496,3 +1471,59 @@ def test_interrupted_jobs_are_recovered_and_offered_by_the_composed_application(
         assert job is not None
         assert job.status is JobStatus.FAILED
     dialog.close()
+
+
+def test_choosing_a_format_on_a_queued_row_changes_the_durable_request(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """`UX-005` §6 / `T-126`, asserted on **the stored request** rather than on the label.
+
+    That distinction is `T118-R6`: the add dialog once updated the displayed selector and nothing
+    else, so it showed one format and queued another — `AGENTS.md` §10's `Critical` row,
+    downloading something other than what the user chose, silently. A row control that changed only
+    what the row says would be the same defect in a new place, and a test reading the row back
+    would agree with it.
+
+    So this drives the model the way an editor does, then reads the job out of the **store**.
+    """
+    composition = composed(entry_point=child_probing_then_waiting)
+    queue_three(composition, spin, tmp_path / "downloads")
+    # **Refreshed explicitly**, because `queue_three` writes through the store rather than through
+    # the add dialog — and adding is the one queue change nothing announces, which is why the
+    # dialog's `finished` signal calls this in the real application.
+    composition.window.refresh_queue()
+    view = composition.window.queue_view
+    assert view is not None
+    assert spin(lambda: "job-1" in view.model.job_ids(), timeout=60), "the row never appeared"
+
+    before = composition.store.get("job-1")
+    assert before is not None
+    chosen = presets.by_name("Audio only (original)")
+    assert before.request.format_selector != chosen.format_selector, (
+        "the row already has the format this test is about to choose, so it would pass without "
+        "anything changing"
+    )
+
+    row = view.model.row_of("job-1")
+    assert row is not None
+    assert view.model.setData(view.model.index(row, 0), chosen.name, PRESET_ROLE)
+
+    assert spin(
+        lambda: (
+            (job := composition.store.get("job-1")) is not None
+            and job.request.format_selector == chosen.format_selector
+            and job.request.output_template == chosen.output_template
+        ),
+        timeout=60,
+    ), (
+        "the format chosen on the row never reached the stored request: "
+        f"{stored.request if (stored := composition.store.get('job-1')) is not None else None}"
+    )
+
+    # And the row agrees with what is stored, which is the other half of `T118-R6` — the two
+    # disagreeing is the defect, and either one alone is half the claim.
+    assert spin(
+        lambda: view.model.data(view.model.index(row, 0), PRESET_ROLE) == chosen.name, timeout=60
+    ), "the stored request changed and the row still reports the old format"

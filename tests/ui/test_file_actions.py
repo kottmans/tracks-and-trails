@@ -91,7 +91,12 @@ class Attached:
             assert self.started == [], "the Windows start route ran on a POSIX platform"
 
     def select_row(self, row: int) -> None:
-        self.view.table.selectRow(row)
+        """Select by index rather than by row.
+
+        `selectRow` is a `QTableView` method, and `UX-005` §3 made history a `QListView` behind
+        the shared row delegate — one column, so "select the row" is "make its index current".
+        """
+        self.view.table.setCurrentIndex(self.view.model.index(row, 0))
 
 
 def test_the_actions_are_offered_only_once_a_row_with_a_path_is_selected(
@@ -253,7 +258,7 @@ def test_the_output_directory_is_read_at_the_moment_of_use(
         # unpinned it takes the Windows start route on the Windows job and launches for real.
         platform="linux",
     )
-    view.table.selectRow(0)
+    view.table.setCurrentIndex(view.model.index(0, 0))
 
     refusal = actions.open_selected()
     assert refusal is not None, "opened a file outside the folder in force"
@@ -353,7 +358,7 @@ def test_the_history_view_reports_a_missing_path_as_absent_not_as_the_placeholde
     report that a file named "—" is missing — a true sentence about the wrong thing.
     """
     view = build_history_view(FakeHistory([an_entry("a", None)]))
-    view.table.selectRow(0)
+    view.table.setCurrentIndex(view.model.index(0, 0))
 
     assert view.selected_path() is None
     assert view.model.path_for("a") is None

@@ -260,7 +260,6 @@ def compose(
     """
     from tracks_and_trails.core import settings as app_settings
     from tracks_and_trails.core.instance_lock import InstanceLock
-    from tracks_and_trails.core.job_state import JobStatus
     from tracks_and_trails.downloader import worker
     from tracks_and_trails.downloader.environment import find_ffmpeg
     from tracks_and_trails.downloader.manager import DownloadManager
@@ -449,12 +448,6 @@ def compose(
         )
     logging.getLogger("tracksandtrails.app").info("environment: %s", ffmpeg.summary())
 
-    #: The statuses that mean a worker holds the job, so the window shows its progress. Not
-    #: derived from `_STAGE_STATUS` or the pipeline: this is a *presentation* choice about what
-    #: is worth watching, and deriving it from the manager's internals would make the two agree
-    #: unconditionally (`ai/TESTING.md` §13).
-    watchable = (JobStatus.PROBING, JobStatus.READY, JobStatus.RUNNING, JobStatus.POST_PROCESSING)
-
     def refresh_history_if_the_set_changed(*_: object) -> None:
         """Re-read history when a completion or a clear can have changed which records exist.
 
@@ -468,22 +461,12 @@ def compose(
     manager.job_succeeded.connect(refresh_history_if_the_set_changed)
     manager.queue_cleared.connect(refresh_history_if_the_set_changed)
 
-    def on_job_changed(job_id: str, status: str) -> None:
-        """Show a starting job **only when the detail pane is empty** (`T-079`).
-
-        With a pool of one, following every watchable transition was right: there was one job, and
-        the pane was the only place to see it. With a pool of N it means three running downloads
-        take turns evicting each other from the pane several times a second, and a user who
-        selected a row in the queue table loses it to whichever worker last changed state.
-
-        So the pane is claimed once and then belongs to the user: the table shows all N (that is
-        what it is for), and selecting a row is what changes the detail. `watched_job_id` is the
-        question "is anything shown", asked of the window rather than tracked here.
-        """
-        if JobStatus(status) in watchable and window.watched_job_id is None:
-            window.watch(job_id)
-
-    manager.job_changed.connect(on_job_changed)
+    # **Nothing follows `job_changed` into a detail pane any more** (`UX-005`). There was a rule
+    # here — claim the pane for the first watchable transition and then leave it to the user, so
+    # three running downloads did not evict each other several times a second (`T-079`). The pane
+    # is gone, the row carries progress and state itself, and a rule about which job owns a
+    # surface that does not exist is worse than no rule. What becomes of `JobProgressView` is
+    # deferred by `UX-005`, so this is a disconnection rather than a deletion.
 
     shutdown = OrderlyShutdown(app, manager, writer, connection, instance)
     window.closing.connect(shutdown.begin)

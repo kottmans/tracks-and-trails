@@ -116,6 +116,17 @@ class FileActions(QObject):
         self._selection_changed()
 
     @property
+    def table(self) -> QAbstractItemView:
+        """The view these actions belong to.
+
+        Exposed because the shell holds one set **per table** (`REQ-021` names both views and both
+        are reachable), so a caller acting on a named row has to find the set that owns that row's
+        table. Asking the object which table it serves is `T118-R13`'s lesson: a caller that
+        matched by position or by name would be right until the order changed.
+        """
+        return self._table
+
+    @property
     def open_action(self) -> QAction:
         return self._open
 

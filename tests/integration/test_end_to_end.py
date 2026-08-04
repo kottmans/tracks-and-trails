@@ -353,6 +353,23 @@ def media_url() -> Iterator[Callable[..., str]]:
 END_TO_END_PRESET = "Best video available"
 
 
+def shown_status(composition: application.Composition, job_id: str) -> JobStatus | None:
+    """What the queue **row** says about `job_id` — the application's answer, not the database's.
+
+    `UX-005` removed the detail pane, so the row is now the only place the application reports a
+    job's state and it is what these tests observe. Reading `composition.store` instead would be
+    asserting on the *database*, and `T-013`'s ordering guarantee is precisely that the database
+    leads the UI: the writer thread commits and *then* signals the GUI thread, so a store-based
+    wait can pass in the gap before the row is redrawn. The row is the later of the two, which is
+    what makes it the honest thing to wait on.
+    """
+    view = composition.window.queue_view
+    if view is None:
+        return None
+    job = view.model.job_for(job_id)
+    return job.status if job is not None else None
+
+
 def why(composition: application.Composition, job_id: str) -> str:
     """Everything a failure on a machine nobody can reach needs to say (`T-062`).
 
@@ -362,11 +379,11 @@ def why(composition: application.Composition, job_id: str) -> str:
     it should have taken reading the assertion.
     """
     job = composition.store.get(job_id)
-    view = composition.window.progress_view
+    shown = shown_status(composition, job_id)
     return (
         f"job={job.status.value if job else 'missing'} "
         f"kind={job.error_kind.value if job and job.error_kind else 'none'} "
-        f"view={view.status.value if view else 'none'} "
+        f"row={shown.value if shown else 'none'} "
         f"ffmpeg={'yes' if composition.ffmpeg.available else 'NO — ' + composition.ffmpeg.source} "
         f"error={(job.error_message if job else None) or 'none'}"
     )
@@ -688,10 +705,7 @@ def test_each_preset_produces_the_file_it_promises(
     try:
         job_id = queue_one(composition, hls_media_url(), preset=preset, bitrate=bitrate)
         assert spin(
-            lambda: (
-                composition.window.progress_view is not None
-                and composition.window.progress_view.status is JobStatus.COMPLETED
-            ),
+            lambda: shown_status(composition, job_id) is JobStatus.COMPLETED,
             timeout=180,
         ), f"{preset} never completed — {why(composition, job_id)}"
 
@@ -877,16 +891,10 @@ def test_a_url_becomes_a_file_with_the_bytes_it_reported(
     try:
         job_id = queue_one(composition, media_url(total_bytes=CLIP_BYTES, chunk_delay=0.0))
 
-        view = composition.window.progress_view
         assert spin(
-            lambda: (
-                composition.window.progress_view is not None
-                and composition.window.progress_view.status is JobStatus.COMPLETED
-            ),
+            lambda: shown_status(composition, job_id) is JobStatus.COMPLETED,
             timeout=120,
         ), f"the download never completed — {why(composition, job_id)}"
-        view = composition.window.progress_view
-        assert view is not None
 
         job = composition.store.get(job_id)
         assert job is not None
@@ -922,9 +930,15 @@ def test_a_url_becomes_a_file_with_the_bytes_it_reported(
 
         # **The UI and the repository agree.** Disagreement is the defect; either alone is only
         # half the claim (`T-036` found three tests that watched one and asserted on the other).
-        assert view.status is JobStatus.COMPLETED
-        assert view.job_id == job_id
-        assert not view.can_cancel
+        # Since `UX-005` the UI's answer is the queue row rather than a detail pane.
+        assert shown_status(composition, job_id) is JobStatus.COMPLETED
+        view = composition.window.queue_view
+        assert view is not None and view.model.job_for(job_id) is not None, (
+            f"{job_id} completed and the queue has no row for it, so the tab in front of the "
+            "user does not answer 'did it work' (UX-005)"
+        )
+        # *That a finished row offers no Cancel* was `view.can_cancel` and is now a property of
+        # the row's verbs, asserted where they are drawn (`T-124`) rather than dropped here.
     finally:
         composition.shutdown.begin()
         assert spin(lambda: composition.shutdown.finished, timeout=60)
@@ -961,10 +975,7 @@ def test_a_progressive_download_completes_with_no_ffmpeg_at_all(
         job_id = queue_one(composition, media_url(total_bytes=CLIP_BYTES, chunk_delay=0.0))
 
         assert spin(
-            lambda: (
-                composition.window.progress_view is not None
-                and composition.window.progress_view.status is JobStatus.COMPLETED
-            ),
+            lambda: shown_status(composition, job_id) is JobStatus.COMPLETED,
             timeout=120,
         ), "a download needing no merge was refused for want of ffmpeg — " + why(
             composition, job_id
@@ -1173,10 +1184,13 @@ def test_a_job_killed_mid_download_is_recovered_by_the_next_start(
         assert recovered.request == stored_before.request
         assert recovered.url == stored_before.url
 
-        # Visible, and offering the retry its kind allows (`REQ-018`).
-        view = composition.window.watch(job_id)
-        assert view.status is JobStatus.FAILED
-        assert view.can_retry, "a recovered job has to be restartable from the UI"
+        # **Visible** (`REQ-018`), in the queue row, which since `UX-005` is where a job reports
+        # itself. The other half of `REQ-018` — that the row *offers* the retry its kind allows —
+        # has no home until `T-124` draws the row's verbs, and is asserted there rather than
+        # dropped. `is_retryable` above is the kind; this is the application saying so.
+        assert shown_status(composition, job_id) is JobStatus.FAILED, (
+            "a recovered job the queue does not show as failed is a job nobody knows to retry"
+        )
         assert recovered.error_message, "recovery that says nothing is recovery nobody can act on"
     finally:
         composition.shutdown.begin()

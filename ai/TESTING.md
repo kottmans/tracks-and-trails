@@ -543,6 +543,17 @@ Four things that have bitten here:
   weakening named by the acceptance criterion, change nothing else, and run the unmodified test.
   `T093-R1` split one transaction into two, but the claimed mutation also inserted its own
   `os._exit` between them; that exit—not the test—did the discriminating.
+- **Assert that your mutation applied.** A scripted `str.replace` that matches nothing edits
+  nothing and the suite passes — reported as a survivor, indistinguishable from a real one. This
+  happened in `T-126`: `ruff format` had reflowed the target expression onto one line, so two
+  successive "survivors" were the same non-edit. `assert new != original` before writing the file,
+  every time. The `T-013` note below is the same failure through a different mechanism.
+- **A test can pass by coincidence rather than by checking.** Also `T-126`: matching a request to
+  its preset on `format_selector` alone survived, because the test used `Audio only (MP3)` — and
+  four of the five built-ins share a selector with another, so selector-only matching returns
+  whichever is defined *first*. Using the second of a colliding pair killed the mutation
+  immediately. **When a lookup can collide, test with the case that collides**; the first entry is
+  the one value that cannot tell the two implementations apart.
 - **A size-preserving mutation may not run at all** (`T-013`). Python validates a cached `.pyc`
   against the source's *size* and its mtime **in whole seconds**. Swapping two adjacent lines —
   the natural mutation for "is this written before that?" — changes neither, so a batch that

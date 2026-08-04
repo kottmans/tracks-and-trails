@@ -76,8 +76,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tracks_and_trails.core.errors import is_retryable
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import Job
+from tracks_and_trails.core.presets import BUILT_IN_PRESETS, PRESET_OWNED_FIELDS
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import Progress
 from tracks_and_trails.ui.job_detail import (
@@ -96,11 +98,16 @@ from tracks_and_trails.ui.row_delegate import (
     DETAIL_ROLE,
     HEADLINE_ROLE,
     HUE_ROLE,
+    JOB_ID_ROLE,
+    PRESET_CHOICES_ROLE,
+    PRESET_ROLE,
     PROGRESS_ROLE,
     STATE_ROLE,
     THUMBNAIL_URL_ROLE,
+    VERBS_ROLE,
     RowDelegate,
 )
+from tracks_and_trails.ui.row_verbs import Verb, verbs_for
 from tracks_and_trails.ui.staging import placeholder_hue
 from tracks_and_trails.ui.thumbnails import ThumbnailLoader, ThumbnailStore
 
@@ -215,8 +222,32 @@ def _order(job: Job) -> tuple[int, str]:
     return (position if position is not None else _UNPLACED, job.id)
 
 
+def _preset_name_for(job: Job) -> str | None:
+    """Which built-in preset describes this job's request, if any.
+
+    Matched on **every field a preset owns**, not on the format selector alone: two presets can
+    share a selector and differ in the container or the output template, and naming the wrong one
+    would tell the user their download is something it is not. `PRESET_OWNED_FIELDS` is derived
+    from the two dataclasses, so a field added to `Preset` is compared the day it appears
+    (`T015-R1`).
+
+    `None` for a request no built-in describes — a custom selector (`REQ-009`). The row still says
+    what it is in words; what it does not do is claim to be one of the choices.
+    """
+    for preset in BUILT_IN_PRESETS:
+        if all(
+            getattr(preset, field) == getattr(job.request, field) for field in PRESET_OWNED_FIELDS
+        ):
+            return preset.name
+    return None
+
+
 class QueueModel(QAbstractTableModel):
     """Every job, one row each, coalescing a stream of progress into a bounded repaint rate."""
+
+    #: `(job_id, preset_name)` — a row chose a format. **Reported, never written here**: the
+    #: manager owns `retarget()` and is what announces the change (`T036-R1`).
+    preset_chosen = Signal(str, str)
 
     def __init__(
         self,
@@ -354,6 +385,31 @@ class QueueModel(QAbstractTableModel):
             return row.job.thumbnail_url
         if role == PROGRESS_ROLE:
             return self._fraction(row)
+        if role == JOB_ID_ROLE:
+            return row.job.id
+        if role == PRESET_CHOICES_ROLE:
+            # **`Job.RETARGETABLE`, asked of the model rather than restated** (`UX-005` §6,
+            # `T-126`). The control appears only while `retarget()` would accept the change; once
+            # a worker holds the job the request it is reading is fixed, and a control that
+            # accepted a choice the manager would refuse is `UX-005` §5's defect exactly — worse
+            # here than elsewhere, because the refusal would be silent and the user would believe
+            # the format changed.
+            if row.job.status not in Job.RETARGETABLE:
+                return None
+            return tuple(preset.name for preset in BUILT_IN_PRESETS)
+        if role == PRESET_ROLE:
+            # What this row's request currently *is*, matched back to a preset by selector. `None`
+            # means no built-in describes it — a custom selector, which the row still shows as
+            # text on its last line rather than pretending it is one of the choices.
+            return _preset_name_for(row.job)
+        if role == VERBS_ROLE:
+            # **`is_retryable` is asked, not assumed** (`REQ-018`, `UX-005` §5). `job_detail`
+            # already asks it before offering its own Retry; the row has to ask the same question
+            # or it will offer a workaround that does not exist. A job with no recorded kind is
+            # treated as retryable, which is what `job_detail` does and what a failure nobody
+            # classified deserves.
+            retryable = row.job.error_kind is None or is_retryable(row.job.error_kind)
+            return verbs_for(row.job.status, retryable=retryable)
 
         if role in (Qt.ItemDataRole.DisplayRole, Qt.ItemDataRole.ToolTipRole):
             return self._text(row, index.column())
@@ -364,6 +420,40 @@ class QueueModel(QAbstractTableModel):
                 return self._whole_row(row)
             return self._accessible_text(row, index.column())
         return None
+
+    def setData(
+        self,
+        index: QModelIndex | _PersistentIndex,
+        value: Any,
+        role: int = Qt.ItemDataRole.EditRole,
+    ) -> bool:
+        """Report the chosen preset. **This model does not write** (`T-126`, `ARCHITECTURE.md` §7).
+
+        `retarget()` is the manager's, and it has to be: `T036-R1` cost a review round because
+        composition wrote a status change through the store directly, so nothing announced it and
+        a view went on showing a state the row no longer held. A request change has the same
+        shape, so it takes the same route — this reports, and the shell asks the manager.
+
+        **The row is looked up when the choice is made**, not when the editor was built. That is
+        `T118-R14`: an index that outlived the row it named wrote a format chosen for one URL onto
+        the next one, and the queue reorders.
+        """
+        if role != PRESET_ROLE or not index.isValid():
+            return False
+        if not 0 <= index.row() < len(self._rows):
+            return False
+        name = value if isinstance(value, str) else None
+        if name is None:
+            return False
+        self.preset_chosen.emit(self._rows[index.row()].job.id, name)
+        return True
+
+    def flags(self, index: QModelIndex | _PersistentIndex) -> Qt.ItemFlag:
+        """Editable exactly while the row offers choices, so the two cannot disagree."""
+        base = super().flags(index)
+        if index.isValid() and self.data(index, PRESET_CHOICES_ROLE):
+            return base | Qt.ItemFlag.ItemIsEditable
+        return base
 
     def _detail(self, row: _Row) -> str:
         """The row's second line: percent, size, speed and ETA, in one sentence.
@@ -616,6 +706,28 @@ class QueueView(QWidget):
     #: business; this widget reports and never reaches for the detail view itself.
     job_selected = Signal(str)
 
+    #: `(job_id)` — a row's **Retry** was activated (`REQ-018`, `UX-005` §4). Reported rather
+    #: than performed for `job_detail`'s reason: re-queueing is a *write*, `ui/` holds no writer,
+    #: and composition is what performs it. This is the same seam `retry_requested` was, moved
+    #: from the detail pane to the row that replaced it.
+    retry_requested = Signal(str)
+
+    #: `(job_id)` — a row's **Remove** was activated. A write for the same reason.
+    remove_requested = Signal(str)
+
+    #: `(job_id, delta)` — a row asked to move, `-1` up and `+1` down. Reordering is durable
+    #: (`T-081`), so it is composition's to perform.
+    move_requested = Signal(str, int)
+
+    #: `(job_id)` — a row's file verb was activated. `FileActions` owns containment (`SEC-001`)
+    #: and the shell owns `FileActions`, so the row asks rather than opening anything itself.
+    open_requested = Signal(str)
+    reveal_requested = Signal(str)
+
+    #: `(job_id)` — the row's `⋯` was activated, by pointer or by keyboard. The overflow menu is
+    #: the shell's, because what belongs in it is a shell question.
+    more_requested = Signal(str)
+
     def __init__(
         self,
         *,
@@ -628,6 +740,10 @@ class QueueView(QWidget):
     ) -> None:
         super().__init__(parent)
         self.setObjectName("queueView")
+        #: Held so a row's **Cancel** can reach it. Cancelling is not a write — it asks the
+        #: manager to stop a session it already owns — so it is the one verb this widget performs
+        #: rather than reports (`ARCHITECTURE.md` §7).
+        self._manager = manager
         self._model = QueueModel(
             jobs=jobs, manager=manager, parent=self, repaint_interval_ms=repaint_interval_ms
         )
@@ -652,7 +768,13 @@ class QueueView(QWidget):
         self._list.setObjectName("queueTable")
         self._list.setAccessibleName("Download queue")
         self._list.setModel(self._model)
-        self._list.setItemDelegate(RowDelegate(thumbnails=self._thumbnails, parent=self._list))
+        self._delegate = RowDelegate(thumbnails=self._thumbnails, parent=self._list)
+        self._list.setItemDelegate(self._delegate)
+        # **Cancel is performed here; everything else is reported.** The split is `ui/`'s writer
+        # rule (`ARCHITECTURE.md` §7): cancelling is asking the manager to stop a session it owns,
+        # which this widget already holds, while re-queueing, reordering and removing are writes
+        # and belong to composition. `job_detail` drew the same line for the same reason.
+        self._delegate.verb_triggered.connect(self._on_verb)
         self._list.setUniformItemSizes(True)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         # Rows are not editable and never will be: `T-081`'s reorder moves a row, it does not type
@@ -677,6 +799,65 @@ class QueueView(QWidget):
         # user actually takes to end up with nothing selected — not an edge case.
         self._model.modelReset.connect(self._announce_selection)
         self._show_the_right_thing()
+
+    def _on_verb(self, job_id: str, verb: object) -> None:
+        """Route a row's verb, and refuse anything this widget does not recognise.
+
+        **The unknown case raises rather than passing silently.** A verb added to `row_verbs` and
+        forgotten here would draw a button that does nothing, which is precisely the failure
+        `T-016` records — an action that appears to work and quietly does not. The row only offers
+        what `verbs_for` returned, so an unroutable verb is a programming error and should read
+        like one.
+        """
+        if verb is None:
+            self.more_requested.emit(job_id)
+            return
+        # The signal carries `object` because Qt has no `Verb` type; narrowing here is where the
+        # contract is checked rather than assumed. A value that is not a verb is the same class of
+        # programming error as an unrouted one, and raises for the same reason.
+        if not isinstance(verb, Verb):
+            raise TypeError(f"a row reported {verb!r}, which is not one of its verbs")
+        if verb is Verb.CANCEL:
+            self._manager.cancel(job_id)
+        elif verb is Verb.RETRY:
+            self.retry_requested.emit(job_id)
+        elif verb is Verb.REMOVE:
+            self.remove_requested.emit(job_id)
+        elif verb is Verb.MOVE_UP:
+            self.move_requested.emit(job_id, -1)
+        elif verb is Verb.MOVE_DOWN:
+            self.move_requested.emit(job_id, 1)
+        elif verb is Verb.OPEN:
+            self.open_requested.emit(job_id)
+        elif verb is Verb.REVEAL:
+            self.reveal_requested.emit(job_id)
+        else:
+            raise AssertionError(f"the row offered {verb.value} and nothing routes it")
+
+    def trigger_verb(self, job_id: str, verb: Verb) -> None:
+        """Activate a verb from somewhere other than the row — the overflow menu, or a key.
+
+        **The same route a click takes.** The menu could have emitted the shell's signals itself,
+        and then the pointer route and the keyboard route would be two implementations of one
+        action, differing the first time one of them gained a guard. `NFR-005` asks for the
+        keyboard to reach what the pointer reaches; that is only true if it reaches it *the same
+        way*.
+        """
+        self._on_verb(job_id, verb)
+
+    def verbs_of(self, job_id: str) -> tuple[Verb, ...]:
+        """What the row for `job_id` offers, asked of the model the delegate asks.
+
+        **Read through the role rather than recomputed.** A second call to `verbs_for` here would
+        be a second opinion about what a row offers, and the overflow menu exists to hold exactly
+        what the row could not fit — so a menu that disagreed with the row would be worse than no
+        menu. Empty for a job the queue does not hold.
+        """
+        row = self._model.row_of(job_id)
+        if row is None:
+            return ()
+        offered = self._model.data(self._model.index(row, 0), VERBS_ROLE)
+        return tuple(offered or ())
 
     @property
     def model(self) -> QueueModel:

@@ -86,10 +86,15 @@ def test_one_real_url_downloads_end_to_end(
 
         started = time.monotonic()
         composition.manager.start(job_id)
+        # The queue **row**, since `UX-005` removed the detail pane. Still the UI rather than the
+        # store, for the reason the pane was watched before it: the database leads the UI, so a
+        # store-based wait passes in the gap before anything on screen has changed.
+        queue = composition.window.queue_view
+        assert queue is not None
         assert spin(
             lambda: (
-                composition.window.progress_view is not None
-                and composition.window.progress_view.status is JobStatus.COMPLETED
+                (job := queue.model.job_for(job_id)) is not None
+                and job.status is JobStatus.COMPLETED
             ),
             timeout=600,
         ), (

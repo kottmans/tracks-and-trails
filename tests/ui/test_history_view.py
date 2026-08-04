@@ -17,6 +17,7 @@ from tracks_and_trails.persistence.repositories import HistoryEntry, HistoryRepo
 from tracks_and_trails.ui.history_view import (
     COLUMN_HEADERS,
     COMPLETED_COLUMN,
+    COMPLETED_FORMAT,
     EMPTY_TEXT,
     FORMAT_COLUMN,
     PATH_COLUMN,
@@ -26,7 +27,15 @@ from tracks_and_trails.ui.history_view import (
     HistoryView,
     build_history_view,
 )
-from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT
+from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT, format_bytes
+from tracks_and_trails.ui.row_delegate import (
+    DETAIL_ROLE,
+    HEADLINE_ROLE,
+    PROGRESS_ROLE,
+    SELECTOR_ROLE,
+    VERBS_ROLE,
+)
+from tracks_and_trails.ui.row_verbs import Verb
 
 
 class FakeHistory:
@@ -200,11 +209,16 @@ def test_the_url_is_never_absent(qapp: QApplication) -> None:
         an_entry(url="")
 
 
-def test_the_table_and_its_columns_carry_accessible_names(qapp: QApplication) -> None:
-    """`NFR-005`, following `ui/job_detail.py`'s pattern.
+def test_a_row_speaks_every_field_it_shows(qapp: QApplication) -> None:
+    """`NFR-005`. **The whole row**, since `UX-005` §3 made this a list rather than six columns.
 
-    The per-cell accessible text names its column: a bare value read out of a six-column table
-    tells a screen-reader user nothing about which field they are hearing.
+    It used to name the column — "Format: 137+140" — because a bare value out of six columns says
+    nothing about which field is being heard. There is one column now, so the equivalent claim is
+    that a screen reader hears every field `REQ-020` names rather than only the one that happens
+    to be drawn largest.
+
+    **Asserted field by field**, not as one string: an equality against the whole sentence would
+    fail on punctuation and pass on a missing field, which is the wrong way round.
     """
     entry = an_entry()
     view = view_over([entry])
@@ -214,22 +228,32 @@ def test_the_table_and_its_columns_carry_accessible_names(qapp: QApplication) ->
     assert view.table.accessibleName() == "Download history"
     assert view.table.accessibleDescription()
 
-    index = view.model.index(0, FORMAT_COLUMN)
-    spoken = view.model.data(index, Qt.ItemDataRole.AccessibleTextRole)
-    assert spoken == "Format: 137+140", f"a screen reader hears {spoken!r}"
+    spoken = view.model.data(view.model.index(0, 0), Qt.ItemDataRole.AccessibleTextRole)
+    assert isinstance(spoken, str)
+    for header in COLUMN_HEADERS:
+        assert f"{header}:" in spoken, (
+            f"a screen reader hears {spoken!r}, which never says {header!r} — REQ-020 names that "
+            "field and a row that does not speak it is unusable without sight"
+        )
+    assert "137+140" in spoken, f"the values are missing from {spoken!r}"
 
 
 def test_a_long_url_and_path_carry_their_whole_value_as_a_tooltip(qapp: QApplication) -> None:
-    """Both are routinely wider than their column, and a truncated path cannot be acted on."""
+    """A truncated path cannot be acted on, and the row draws it on one line (`UX-005` §3).
+
+    The need did not change when the columns did: both values are routinely wider than the space
+    they get, and somebody copying a path into a bug report needs all of it. Asserted as
+    *containment* rather than equality, because the tooltip now carries both values and the exact
+    joining is presentation.
+    """
     entry = an_entry()
     view = view_over([entry])
 
-    for column, expected in (
-        (URL_COLUMN, entry.url),
-        (PATH_COLUMN, entry.output_path),
-    ):
-        index = view.model.index(0, column)
-        assert view.model.data(index, Qt.ItemDataRole.ToolTipRole) == expected
+    tip = view.model.data(view.model.index(0, 0), Qt.ItemDataRole.ToolTipRole)
+    assert isinstance(tip, str)
+    assert entry.url in tip, f"the URL is not in the tooltip: {tip!r}"
+    assert entry.output_path is not None
+    assert entry.output_path in tip, f"the saved path is not in the tooltip: {tip!r}"
 
 
 def test_refresh_picks_up_a_download_that_finished_after_the_view_was_built(
@@ -249,3 +273,72 @@ def test_refresh_picks_up_a_download_that_finished_after_the_view_was_built(
 
     assert view.model.entry_ids() == ("job-2",)
     assert not view.shows_empty_notice, "the notice outlived the empty history it describes"
+
+
+# --- UX-005 §3: the same row anatomy, saying different things -------------------------------
+
+
+def test_a_history_row_is_the_shared_anatomy(qapp: QApplication) -> None:
+    """`UX-005` §3: both tabs draw the `T-119` row; history changes what the fields **say**.
+
+    "Where the queue shows progress and speed, history shows the saved path, size and when."
+    Asserted through the delegate's own roles, by value, because that is the contract between the
+    model and the one renderer both tabs share — a row that looked right while answering the
+    wrong roles would draw as a blank row the moment the delegate consulted them.
+    """
+    entry = an_entry()
+    view = view_over([entry])
+    index = view.model.index(0, 0)
+
+    assert view.model.data(index, HEADLINE_ROLE) == entry.title, (
+        "the row's headline is not the title of what was downloaded"
+    )
+    detail = view.model.data(index, DETAIL_ROLE)
+    assert isinstance(detail, str)
+    assert format_bytes(entry.bytes_total) in detail, f"the size is missing from {detail!r}"
+    assert entry.completed_at.strftime(COMPLETED_FORMAT) in detail, (
+        f"when it finished is missing from {detail!r}"
+    )
+    assert view.model.data(index, SELECTOR_ROLE) == entry.output_path, (
+        "the row does not carry the saved path, which UX-005 §3 names and which is the thing a "
+        "person copies into a bug report"
+    )
+    # **No progress role**, which is the half that says history is not a queue: the delegate draws
+    # a progress bar for anything that answers it, and a finished record has no progress to show.
+    assert view.model.data(index, PROGRESS_ROLE) is None, (
+        "a history row answers PROGRESS_ROLE, so the delegate would draw a progress bar on a "
+        "download that finished"
+    )
+
+
+def test_a_history_row_offers_only_the_two_file_verbs(qapp: QApplication) -> None:
+    """`REQ-021`, and `UX-005` §5 applied to the other tab.
+
+    Open and Show in folder are the two things a user does with a finished download. **Removing
+    one is not offered**, and that is deliberate rather than unfinished: `HistoryRepository`'s
+    docstring says nothing deletes, no requirement covers removal, and `UX-005` sends the question
+    to a `DAT-` entry (`T-125`). A button that appeared before that decision would be the decision.
+    """
+    view = view_over([an_entry()])
+    offered = view.model.data(view.model.index(0, 0), VERBS_ROLE)
+
+    assert tuple(offered) == (Verb.OPEN, Verb.REVEAL), (
+        f"a history row offers {[v.value for v in offered]}"
+    )
+
+
+def test_a_history_rows_open_reports_rather_than_opening(qapp: QApplication) -> None:
+    """`SEC-001`: containment lives in `FileActions`, so the view reports and the shell acts.
+
+    The same split the queue row makes. A view that resolved its own path would be a second place
+    the containment check could be missing, and the check is the only reason opening a file from a
+    list of recorded paths is safe at all.
+    """
+    entry = an_entry()
+    view = view_over([entry])
+    asked: list[str] = []
+    view.open_requested.connect(asked.append)
+
+    view.trigger_verb(entry.id, Verb.OPEN)
+
+    assert asked == [entry.id], "the history row's Open reached nothing"
