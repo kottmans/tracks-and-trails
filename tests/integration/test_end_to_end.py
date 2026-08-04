@@ -219,6 +219,60 @@ def capture_the_doomed_tree(
     return doomed
 
 
+def kill_only_the_application(application_pid: int) -> None:
+    """Kill **exactly one process** — the application — and nothing beneath it (`P2EXIT-R1`).
+
+    This is the opposite of `kill_the_application`, and the difference is the whole point. That
+    helper reaps the *tree*, because the tests that use it are about a database being safely
+    reopened. A test about **orphans** cannot use it: if the kill reaches the workers, the workers
+    dying proves the kill worked, not that anything in the product did. A reviewer's mutation
+    deleting `_exit_when_the_parent_does()` from `worker.prepare_this_worker()` left the N-worker
+    phase gate green in 9.52 s for precisely that reason.
+
+    Killing one pid leaves each worker to notice on its own, which is the mechanism `T-072`
+    identified and `ARC-002` requires: `multiprocessing.parent_process().join()` returns when the
+    parent's sentinel closes, and the worker then kills its own group.
+
+    **No platform split, deliberately** — unlike everything else in this file. `Process.kill()` is
+    `SIGKILL` to one pid on POSIX and `TerminateProcess` on one handle on Windows; neither reaches
+    a child. The launcher is left alive on purpose: it is the application's *parent*, not the
+    workers', so killing it would prove nothing extra and would confuse what died of what.
+
+    Nothing unwinds and no handler runs, on either platform, which is what makes this a crash
+    rather than a shutdown.
+    """
+    psutil.Process(application_pid).kill()
+
+
+def reap_the_captured_tree(
+    process: subprocess.Popen[str], doomed: list[psutil.Process]
+) -> list[psutil.Process]:
+    """Clean up after a test that killed only part of a tree, from a set captured beforehand.
+
+    `reap_application` walks from the application's pid, which is the right thing when the
+    application is still there — and finds nothing once it is not, because its children have been
+    reparented. A test that kills the application *on purpose* and then asks what survived has to
+    hand over the walk it took while the tree was intact.
+
+    **Returns survivors rather than asserting on them.** This runs in a `finally`, so raising here
+    would replace the failure the test actually found with a teardown error about its consequence.
+    """
+    for victim in doomed:
+        try:
+            victim.kill()
+        except psutil.Error:
+            continue  # already gone, or never ours to kill; the wait below is the real check
+
+    # **Our own direct child is excluded from the wait**, for `kill_the_application`'s reason: it
+    # is a zombie until reaped, and reaping it here would steal the exit status `process.wait()`
+    # is about to collect.
+    others = [victim for victim in doomed if victim.pid != process.pid]
+    alive: list[psutil.Process] = psutil.wait_procs(others, timeout=30)[1]
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=30)
+    return alive
+
+
 #: Big enough that the download is still running when the test kills it, small enough that the
 #: success case finishes quickly. Paced by the handler rather than by its size, so neither
 #: property depends on how fast the machine is.

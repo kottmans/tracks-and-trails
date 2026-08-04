@@ -480,9 +480,10 @@ Tracked honestly; each should become a task or be accepted deliberately.
 ## 13. Test validity: does the test actually test anything?
 
 A passing test proves nothing until you know it can fail. This section exists because the
-project has now produced **six** tests that passed while the thing they protected was removed
+project has now produced **eight** tests that passed while the thing they protected was removed
 — each written deliberately, each believed to be the strong version, each wrong in a different
-way.
+way. The last two were the *named evidence for two phase exit criteria*, which is worth sitting
+with: they were the most-read tests in the project and nobody had watched either one fail.
 
 **The rule: derive the expectation from the specification, never from the code under test.**
 
@@ -490,7 +491,7 @@ way.
 like Microsoft's file-naming rules — transcribe from those by hand. The moment a test asks
 production what to expect, it stops being a test and becomes a mirror.
 
-### The six, and what each one teaches
+### The eight, and what each one teaches
 
 | # | Test | What it did | Why it passed anyway |
 |---|---|---|---|
@@ -499,6 +500,8 @@ production what to expect, it stops being a test and becomes a mirror.
 | `T041-R6` | Hostile-payload sweep including `None` | Asserted `not isinstance(stored, dict \| list)` | `None` is neither, so the case passed unconditionally. The sweep grew a column that could never fail. |
 | `T034-R4` | Reserved device names | Asserted the sanitized stem was not in production's `_RESERVED_NAMES` | Shrinking the production set shrank the expectation with it. |
 | `T035-R3` | Reviewed public API | Filtered runtime attributes by `value.__module__` | A constant has no `__module__`, so it was dropped before comparison. Inspected values where it needed definitions. |
+| `P2EXIT-R1` | No worker outlives application exit, at N=3 | Handed the application's whole process **tree** to the kill, then asked whether the workers in that tree were alive | The kill had just killed them. Removing the worker's own parent watchdog left it green — it proved the test helper reaps a tree, which was never in question. **Kill only the thing whose loss the product must notice.** |
+| `P2EXIT-R2` | The UI stays inside its budget while three downloads run | Recorded the worst `processEvents()` pass and asserted only the latency | Deleting all three `start()` calls left it green: an idle event loop is very fast. A latency gate needs a **positive control** — proof the load it names was present while it measured. |
 | `T093-R1` | Completion/history crash atomicity | Exited after the completion callback, then claimed a split mutation was killed by adding a second exit inside the mutation | The mutation supplied the event that distinguished the two shapes; splitting the transaction alone left the committed test passing. |
 
 ### What to do instead
@@ -515,6 +518,17 @@ production what to expect, it stops being a test and becomes a mirror.
   `class` and an assignment; `vars()` sees objects whose metadata varies by type.
 - **Prefer equalities to subsets** where the specification is finite. A subset check stays green
   when something is deleted, duplicated, or mis-typed.
+- **A "this did not happen" timeout must be shorter than how long the subject would live anyway**
+  (`P2EXIT-R1`). Waiting sixty seconds for three orphaned workers to die let them **finish their
+  eight-second download and exit**, and reported that as correctly reaped. `wait_procs` and
+  friends return as soon as the condition holds, so a generous timeout costs nothing when the
+  product works and is the entire defect when it does not. Size the wait against the *subject's*
+  lifetime, not against how slow the runner might be.
+- **Give a load measurement a positive control** (`P2EXIT-R2`). Any gate of the form "X stays under
+  a budget while Y is happening" needs a separate assertion that Y was happening — and one taken
+  *inside* the measured window, not before it. Prefer a control that fails **synchronously**: a
+  reservation the API creates before its worker thread runs catches a missing start in
+  milliseconds, where waiting for a state to appear catches it at a deadline.
 
 ### Mutation is the evidence, and it has a trap
 

@@ -29,7 +29,7 @@ import sys
 import time
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 import pytest
 from PySide6.QtCore import QMetaMethod, QObject
@@ -896,6 +896,86 @@ def child_streaming_its_own_size(
     queue.put(WorkerFinished(job_id=job_id, exit_code=0))
 
 
+#: `NFR-001`'s interaction budget, in seconds. One pass of the event loop longer than this is a
+#: visible stall to somebody holding the mouse button down.
+BUDGET: Final = 0.1
+
+#: How long the latency above is sampled for, once three downloads are confirmed running.
+#:
+#: Long enough that every worker delivers many updates inside it — at ~50 a second each, this is
+#: over a hundred per job — and short enough that the gate does not dominate the suite. It is not
+#: a deadline: nothing is waited *for* here, the loop simply measures for this long.
+SAMPLE_WINDOW: Final = 2.0
+
+#: The file `child_streaming_until_released` watches for. Written by the test when it has finished
+#: measuring, so the workers stop only after the sampling window closes.
+RELEASE_MARKER: Final = "release-the-workers"
+
+#: The three jobs `queue_three` writes. Named once because several tests assert over exactly this
+#: set, and a gate that iterated a *subset* would report full concurrency having watched two.
+THREE_JOBS: Final = ("job-1", "job-2", "job-3")
+
+
+def statuses_of(composition: application.Composition) -> dict[str, str | None]:
+    """What the store says about each of `THREE_JOBS`, for a failure message.
+
+    A gate that says "three jobs never ran at once" and stops there sends the next reader to the
+    manager; one that says two were `completed` and one `queued` sends them to the pool limit.
+    """
+    return {
+        job_id: job.status.value if (job := composition.store.get(job_id)) is not None else None
+        for job_id in THREE_JOBS
+    }
+
+
+def child_streaming_until_released(
+    kind: SessionKind, job_id: str, request: DownloadRequest, queue: Any, **_: Any
+) -> None:
+    """A download that streams progress **until the test says stop** (`P2EXIT-R2`).
+
+    `child_streaming_its_own_size` sends two messages and exits, which is right for a routing
+    test and wrong for a measurement: three workers that each live a third of a second may barely
+    overlap, so a gate that wants to sample *while three downloads run* has no state to sample.
+    This one holds the state open, so the sampling window is chosen by the test rather than by
+    how fast three interpreters happen to start.
+
+    The release signal is a file rather than an `Event` because the entry point is spawned: a file
+    under the job's own output directory needs nothing shared across the process boundary.
+
+    Sizes still differ per job (`child_streaming_its_own_size`'s reason): three identical streams
+    are what a table routing every message into one row looks like from outside.
+    """
+    if kind is SessionKind.PROBE:
+        from tracks_and_trails.core.models import MediaInfo
+
+        queue.put(Probed(job_id=job_id, media=MediaInfo(url=request.url, title=f"Video {job_id}")))
+        queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+        return
+
+    total = 1024 * int(job_id.rsplit("-", 1)[1])
+    release = Path(request.output_directory) / RELEASE_MARKER
+    sent = 0
+    while not release.exists():
+        sent += 1
+        queue.put(
+            Progress(
+                job_id=job_id,
+                stage=Stage.DOWNLOADING_VIDEO,
+                downloaded_bytes=min(total, sent * 64),
+                total_bytes=total,
+            )
+        )
+        # ~50 updates a second per worker, so three of them put a real, sustained load through
+        # the same queue and table the criterion is about. Slower than this and the gate measures
+        # an idle event loop with occasional work in it.
+        time.sleep(0.02)
+
+    output = Path(request.output_directory) / f"{job_id}.mp4"
+    output.write_bytes(b"x" * total)
+    queue.put(Succeeded(job_id=job_id, output_path=str(output), total_bytes=total))
+    queue.put(WorkerFinished(job_id=job_id, exit_code=0))
+
+
 def queue_three(
     composition: application.Composition, spin: Callable[..., bool], where: Path
 ) -> None:
@@ -1101,6 +1181,7 @@ def test_the_interface_stays_inside_its_budget_while_three_downloads_run(
     spin: Callable[..., bool],
     tmp_path: Path,
     qapp: QApplication,
+    record_property: Callable[[str, object], None],
 ) -> None:
     """The other half of the criterion: **interactive throughout**, measured (`NFR-001`).
 
@@ -1109,29 +1190,100 @@ def test_the_interface_stays_inside_its_budget_while_three_downloads_run(
 
     This is the measurement `T-017`'s single-job budget test cannot make, because the cost that
     matters here is three streams arriving at once rather than one.
+
+    ## The measurement needs a positive control (`P2EXIT-R2`)
+
+    An earlier version recorded only the worst `processEvents()` pass and asserted only the
+    latency. A reviewer's mutation deleting all three `manager.start()` calls **passed in 60.24
+    s**: an idle event loop is very fast, so the gate was satisfied by the absence of the thing it
+    was named for. Three separate controls now stand between that and a pass:
+
+    - **`active_job_ids` immediately after the starts** catches a start that never happened, and
+      catches it *synchronously*: `start()` reserves the job before the writer thread runs, so the
+      deleted-starts mutation now fails in milliseconds instead of after a minute.
+    - **Every job seen `RUNNING` at one moment** catches three workers that took turns rather than
+      overlapping.
+    - **Every job advancing its own update count inside the sampling window** catches a
+      measurement taken while the queue was quiet.
+
+    The workers are held open by `child_streaming_until_released` rather than allowed to finish,
+    so the window is chosen here instead of by three interpreters' start-up times — and then
+    released, because a criterion about three downloads running has to end with three downloads
+    that ran.
     """
-    composition = composed(entry_point=child_streaming_its_own_size)
-    queue_three(composition, spin, tmp_path / "downloads")
-    for job_id in ("job-1", "job-2", "job-3"):
-        composition.manager.start(job_id)
+    downloads = tmp_path / "downloads"
+    composition = composed(entry_point=child_streaming_until_released)
+    queue_three(composition, spin, downloads)
 
-    worst = 0.0
-    deadline = time.monotonic() + 60
-    while time.monotonic() < deadline:
-        started = time.perf_counter()
-        qapp.processEvents()
-        worst = max(worst, time.perf_counter() - started)
-        if all(
-            (job := composition.store.get(job_id)) is not None and job.status is JobStatus.COMPLETED
-            for job_id in ("job-1", "job-2", "job-3")
-        ):
-            break
-        time.sleep(0.001)
-
-    assert worst < 0.1, (
-        f"one pass of the event loop took {worst * 1000:.1f} ms while three downloads were "
-        "running, against NFR-001's ~100 ms interaction budget"
+    # Recorded before the starts, and per job: `Progress` carries the count the table draws, and
+    # the store's row does not, so the stream itself is the only place to see three of them.
+    seen: dict[str, int] = dict.fromkeys(THREE_JOBS, 0)
+    composition.manager.progress.connect(
+        lambda message: seen.__setitem__(message.job_id, seen.get(message.job_id, 0) + 1)
     )
+
+    for job_id in THREE_JOBS:
+        composition.manager.start(job_id)
+    held = composition.manager.active_job_ids()
+    assert set(held) == set(THREE_JOBS), (
+        f"the manager is holding {held} rather than the three jobs just started, so nothing "
+        "below measures an application with three downloads in it"
+    )
+
+    assert spin(
+        lambda: all(
+            (job := composition.store.get(job_id)) is not None and job.status is JobStatus.RUNNING
+            for job_id in THREE_JOBS
+        ),
+        timeout=120,
+    ), (
+        "three jobs never ran at the same moment, so there was no concurrency to measure: "
+        f"{statuses_of(composition)}"
+    )
+
+    try:
+        before = dict(seen)
+        worst = 0.0
+        passes = 0
+        window = time.monotonic() + SAMPLE_WINDOW
+        while time.monotonic() < window:
+            started = time.perf_counter()
+            qapp.processEvents()
+            worst = max(worst, time.perf_counter() - started)
+            passes += 1
+            time.sleep(0.001)
+
+        advanced = {job_id: seen[job_id] - before[job_id] for job_id in THREE_JOBS}
+    finally:
+        # Released even if an assertion above fired: three workers spinning on a file that never
+        # arrives would outlive the test.
+        (downloads / RELEASE_MARKER).write_text("stop", encoding="utf-8")
+
+    assert all(advanced.values()), (
+        f"the {SAMPLE_WINDOW} s of latency measured above was not taken while three downloads "
+        f"were streaming — updates received per job during it: {advanced}"
+    )
+    assert passes, "the event loop was never sampled"
+    # **The number, not just the verdict.** A pass says the margin was positive and nothing else;
+    # three runs of this in the junit XML say whether it is shrinking. `cold_start_seconds` and
+    # the network download record theirs for the same reason.
+    record_property("worst_event_loop_pass_ms", round(worst * 1000, 1))
+    record_property("progress_updates_delivered", sum(advanced.values()))
+    assert worst < BUDGET, (
+        f"one pass of the event loop took {worst * 1000:.1f} ms while three downloads were "
+        f"running, against NFR-001's ~{BUDGET * 1000:.0f} ms interaction budget "
+        f"({passes} passes sampled, {sum(advanced.values())} updates delivered)"
+    )
+
+    # And they finish, because a criterion about downloads running is not met by downloads that
+    # only started.
+    assert spin(
+        lambda: all(
+            (job := composition.store.get(job_id)) is not None and job.status is JobStatus.COMPLETED
+            for job_id in THREE_JOBS
+        ),
+        timeout=120,
+    ), f"the workers were released and the jobs never completed: {statuses_of(composition)}"
 
 
 def test_a_second_job_starting_does_not_take_the_detail_pane_from_the_first(

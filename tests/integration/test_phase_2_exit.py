@@ -56,8 +56,10 @@ from tests.integration.test_end_to_end import (
     REPO_ROOT,
     capture_the_doomed_tree,
     isolate_the_application,
+    kill_only_the_application,
     kill_the_application,
     media_handler,
+    reap_the_captured_tree,
     the_workers_that_must_die,
 )
 from tracks_and_trails.core.job_state import JobStatus
@@ -105,6 +107,31 @@ POOL_LIMIT = 2
 #: application is killed or shut down. Criterion 5 is about workers that were never launched as
 #: much as about ones that were.
 QUEUED_BEYOND_LIMIT = 2
+
+#: How long a worker may go on living after the application that spawned it dies.
+#:
+#: **Short on purpose.** `psutil.wait_procs` returns the moment everything is gone, so this number
+#: only ever costs time when something survived — and that is exactly when a generous value does
+#: damage. `CLIP_BYTES` paced at `chunk_delay=0.5` is roughly eight seconds of download; a
+#: thirty- or sixty-second grace period lets an orphan **finish**, exit of its own accord, and be
+#: recorded as correctly reaped. `test_end_to_end` reaches the same number for the same reason at
+#: one worker.
+#:
+#: It is not a performance budget. `multiprocessing.parent_process().join()` returns as soon as
+#: the parent's sentinel closes, so a healthy worker is gone in milliseconds and five seconds is
+#: three orders of magnitude of headroom.
+ORPHAN_GRACE = 5.0
+
+
+def describe(worker: psutil.Process) -> str:
+    """A survivor's command line, short enough to read in a failure message.
+
+    Separate from the assertion because it has to run *before* cleanup kills the process, and a
+    dead process cannot answer.
+    """
+    with suppress(psutil.Error):
+        return " ".join(worker.cmdline()[:3])
+    return "<exited before it could be described>"
 
 
 #: **Add URLs and then do nothing.** Every phase test drives the application this way, because
@@ -667,8 +694,30 @@ def test_no_worker_outlives_a_hard_kill_with_a_full_pool(
     The worker set is obtained **independently of what is killed**, and asserted non-empty before
     the kill: `T072-R1`'s two failed versions both looked exactly like checks.
 
-    *Does not cover:* an `ffmpeg` grandchild, which these presets do not spawn; and Windows, where
-    the same test runs on the hosted job under a different `kill_the_application`.
+    ## Only the application is killed (`P2EXIT-R1`)
+
+    This gate previously handed the captured *tree* to `kill_the_application`, then asked whether
+    the workers in that tree were alive. They were not, because it had just killed them. A
+    reviewer's mutation deleting `_exit_when_the_parent_does()` from `worker.prepare_this_worker()`
+    left it green — **1 passed in 9.52 s** — so it proved the test helper can reap a tree, which
+    was never in doubt and is not what criterion 5 says.
+
+    `kill_only_the_application` reaches one pid on both platforms. Each worker then has to notice
+    the loss itself, which is the mechanism the criterion is about and the only one there is: the
+    application never calls `process_tree.contain_this_process()`, so nothing on the parent side
+    kills a worker, and the test harness's `start_new_session` group is not signalled either.
+
+    ## The timeout is short on purpose
+
+    Five seconds, not sixty. `wait_procs` returns as soon as everything is gone, so a generous
+    timeout costs nothing when the product works — and when it does not, it is the whole defect:
+    `CLIP_BYTES` at `chunk_delay=0.5` is about eight seconds of paced download, so a sixty-second
+    wait lets an orphaned worker **finish its download and exit**, and reports that as correctly
+    reaped. `test_end_to_end` records the same reasoning for the single-worker case.
+
+    *Does not cover:* an `ffmpeg` grandchild, which these presets do not spawn; and whether the
+    workers exited with `ORPHAN_EXIT_CODE`, which is unobservable from here — they are not our
+    children, so only their disappearance is.
     """
     database = tmp_path / "queue.db"
     urls = [media_url(total_bytes=CLIP_BYTES, chunk_delay=0.5) for _ in range(CONCURRENT)]
@@ -680,19 +729,28 @@ def test_no_worker_outlives_a_hard_kill_with_a_full_pool(
         concurrency=CONCURRENT,
         urls=urls,
     )
+    workers = wait_for_workers(application_pid, CONCURRENT)
+    # Captured while the tree is intact, and used **only for cleanup**: after the kill below the
+    # workers are reparented and a walk from `application_pid` finds nothing at all.
+    doomed = capture_the_doomed_tree(process, application_pid)
     try:
-        workers = wait_for_workers(application_pid, CONCURRENT)
-        doomed = capture_the_doomed_tree(process, application_pid)
+        kill_only_the_application(application_pid)
 
-        kill_the_application(process, doomed)
-
-        _, alive = psutil.wait_procs(workers, timeout=60)
-        assert not alive, (
-            f"{len(alive)} of {len(workers)} worker(s) outlived the application: "
-            f"{[(p.pid, ' '.join(p.cmdline()[:3])) for p in alive]}"
-        )
+        _, alive = psutil.wait_procs(workers, timeout=ORPHAN_GRACE)
+        # Read before the reap kills them; afterwards there is nothing left to describe.
+        survivors = [(worker.pid, describe(worker)) for worker in alive]
     finally:
-        reap_application(process, application_pid)
+        leaked = reap_the_captured_tree(process, doomed)
+
+    assert not survivors, (
+        f"{len(survivors)} of {len(workers)} worker(s) outlived the application by more than "
+        f"{ORPHAN_GRACE} s and went on downloading to the user's disk with no interface able to "
+        f"stop them: {survivors}"
+    )
+    assert not leaked, (
+        f"the test could not clean up after itself: {[victim.pid for victim in leaked]} survived "
+        f"a direct kill, and will be counted as leaked processes by whatever runs next"
+    )
 
 
 # --- criterion 3: the limit is respected exactly ----------------------------------------------

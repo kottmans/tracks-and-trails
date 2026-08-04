@@ -202,9 +202,19 @@ The full suite runs on every push on both platforms again. What changed is that 
 ~7 minutes and Windows answers later**, asynchronously, and work continues while it does.
 `ai/TESTING.md` §10 is canonical for what runs when. No test was deleted or skipped; `T-123` is
 filed to evaluate whether the suite can run in parallel.
-**Thirteen of thirteen deliverables are approved**, the last four on 2026-08-01. Exit criteria 1–5
-and 7 are met. **What remains is the exit itself** — an independent exit review (`AGENTS.md` §3),
-which Phase 0 and Phase 1 both required and neither could self-certify.
+**Thirteen of thirteen deliverables are approved**, the last four on 2026-08-01. **The exit review
+happened on 2026-08-03 and Phase 2 did not exit** (`ai/REVIEWS.md`, submitted head `5eb2611`).
+Criteria 2, 3, 4 and 7 met; **1 and 5 not met**, because the tests named as their evidence pass
+with their subject removed (`P2EXIT-R1`, `P2EXIT-R2`, now `T-127`); 6 not met while any finding is
+open. Two more findings were procedural: `T-122` was not yet a sound timing gate (`P2EXIT-R3`) and
+the CI rewrite changed an accepted decision without a ruling (`P2EXIT-R4`, now `OPS-010`).
+
+Phase 1's exit review found two wrong rows in the same table; this one found two more, in the same
+way — by rebuilding the table against the repository rather than reading the claim. **The lesson
+holds a third time: a criteria table is a claim until somebody who did not write it checks it.**
+
+All five findings are answered as of 2026-08-03 and await re-review. `T-124`, `T-125` and `T-126`
+were also sequenced in before the exit by `UX-005`.
 
 **`T-118` landed before this phase exits**, carrying `T-119`'s scope after the two were merged.
 Maintainer decision, 2026-08-03. It is a Phase 3 task and not a Phase 2 deliverable, so this was a

@@ -560,57 +560,6 @@ agreement on the reduced form before implementation.
 
 ## Proposed — Phase 2
 
-### T-127 — The two phase-proof gates that pass without their subject (`P2EXIT-R1`, `P2EXIT-R2`)
-
-**Status:** **Proposed — blocking the Phase 2 exit**, 2026-08-03. Found by the exit review's cold
-reconstruction, each with a mutation.
-**Owner:** Implementer
-**Priority:** **High** — these are the named evidence for exit criteria 1 and 5, and neither
-establishes its criterion
-**Phase:** Phase 2
-**Relevant context:** `T-088`, `P2EXIT-R1`, `P2EXIT-R2`, `ai/TESTING.md` §13, exit criteria 1 and 5
-**Affected surfaces:** `tests/integration/test_phase_2_exit.py`
-**Risk:** Low to the product — **nothing here suggests a defect in the application.** Both are
-tests that cannot fail for the reason they name.
-
-**`P2EXIT-R1` — criterion 5.** `test_no_worker_outlives_a_hard_kill_with_a_full_pool` captures the
-workers, then builds `doomed` from the application's *whole tree* and hands that tree to
-`kill_the_application` — which kills the process group on POSIX and every captured process on
-Windows. It then asks whether those same workers are alive. Deleting
-`_exit_when_the_parent_does()` from `worker.prepare_this_worker()` left it green: **1 passed in
-9.52 s**. So it proves the test helper can reap workers, not that application exit leaves none.
-
-**`P2EXIT-R2` — criterion 1.** `test_the_interface_stays_inside_its_budget_while_three_downloads_run`
-records the worst `processEvents()` duration and never requires a job to become active, emit
-progress or finish. Deleting all three `manager.start()` calls left it green: **1 passed in
-60.24 s**. An idle GUI satisfies the test whose name requires three concurrent downloads.
-
-#### Scope
-
-- **`R1`:** capture the worker set independently; kill **only the application process** — not its
-  launcher, not its group or tree; assert the captured workers exit through their own parent
-  watchdog. Full-tree cleanup moves to `finally`, *after* the behavioural assertion, so a failed
-  gate still cleans up.
-- **`R2`:** give the measurement a positive control. Hold three workers at a barrier, require all
-  three active and producing progress **before** sampling, measure while that holds, release, and
-  require all three to settle. It must fail promptly when concurrency was never reached rather
-  than spend sixty seconds proving an idle window is responsive.
-
-#### Acceptance criteria
-
-- **The reviewer's two mutations both fail.** Removing `_exit_when_the_parent_does()` fails `R1`;
-  removing the three `start()` calls fails `R2`. Anything less is the same test with better prose.
-- `R2` fails in seconds, not at a sixty-second deadline, when three downloads never run
-- The corrected `R1` route runs on **Linux and Windows** — it is a criterion-5 gate and the
-  criterion says both platforms
-
-#### Out of scope
-
-- Changing `worker.prepare_this_worker()` or the watchdog. The mechanism is not implicated; the
-  evidence for it is.
-
----
-
 ### T-124 — The main window becomes two tabs over one list (`UX-005`)
 
 **Status:** **Proposed — maintainer decision `UX-005`**, 2026-08-03, and sequenced **before the
@@ -1984,6 +1933,114 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-127 — The two phase-proof gates that pass without their subject (`P2EXIT-R1`, `P2EXIT-R2`)
+
+**Status:** **Complete — 2026-08-03, awaiting review.** Both gates now fail when their subject is
+removed, verified with the reviewer's own two mutations plus two more. **Windows evidence is
+pending**, which the acceptance criteria require for `R1`; the corrected head is pushed and the
+`windows desktop` job runs it.
+*(This read "Proposed — blocking the Phase 2 exit", found by the exit review's cold
+reconstruction, each with a mutation.)*
+**Owner:** Implementer
+**Priority:** **High** — these are the named evidence for exit criteria 1 and 5, and neither
+establishes its criterion
+**Phase:** Phase 2
+**Relevant context:** `T-088`, `P2EXIT-R1`, `P2EXIT-R2`, `ai/TESTING.md` §13, exit criteria 1 and 5
+**Affected surfaces:** `tests/integration/test_phase_2_exit.py`,
+`tests/integration/test_end_to_end.py` (the kill and reap helpers both gates share),
+`tests/integration/test_composition.py`
+**Risk:** Low to the product — **nothing here suggests a defect in the application.** Both are
+tests that cannot fail for the reason they name.
+
+**`P2EXIT-R1` — criterion 5.** `test_no_worker_outlives_a_hard_kill_with_a_full_pool` captures the
+workers, then builds `doomed` from the application's *whole tree* and hands that tree to
+`kill_the_application` — which kills the process group on POSIX and every captured process on
+Windows. It then asks whether those same workers are alive. Deleting
+`_exit_when_the_parent_does()` from `worker.prepare_this_worker()` left it green: **1 passed in
+9.52 s**. So it proves the test helper can reap workers, not that application exit leaves none.
+
+**`P2EXIT-R2` — criterion 1.** `test_the_interface_stays_inside_its_budget_while_three_downloads_run`
+records the worst `processEvents()` duration and never requires a job to become active, emit
+progress or finish. Deleting all three `manager.start()` calls left it green: **1 passed in
+60.24 s**. An idle GUI satisfies the test whose name requires three concurrent downloads.
+
+#### Scope
+
+- **`R1`:** capture the worker set independently; kill **only the application process** — not its
+  launcher, not its group or tree; assert the captured workers exit through their own parent
+  watchdog. Full-tree cleanup moves to `finally`, *after* the behavioural assertion, so a failed
+  gate still cleans up.
+- **`R2`:** give the measurement a positive control. Hold three workers at a barrier, require all
+  three active and producing progress **before** sampling, measure while that holds, release, and
+  require all three to settle. It must fail promptly when concurrency was never reached rather
+  than spend sixty seconds proving an idle window is responsive.
+
+#### Acceptance criteria
+
+- **The reviewer's two mutations both fail.** Removing `_exit_when_the_parent_does()` fails `R1`;
+  removing the three `start()` calls fails `R2`. Anything less is the same test with better prose.
+- `R2` fails in seconds, not at a sixty-second deadline, when three downloads never run
+- The corrected `R1` route runs on **Linux and Windows** — it is a criterion-5 gate and the
+  criterion says both platforms
+
+#### Out of scope
+
+- Changing `worker.prepare_this_worker()` or the watchdog. The mechanism is not implicated; the
+  evidence for it is.
+
+#### Evidence, 2026-08-03
+
+**`R1`.** `kill_only_the_application()` kills one pid — `Process.kill()`, which is `SIGKILL` to a
+single process on POSIX and `TerminateProcess` on a single handle on Windows, so no platform split
+is needed and none reaches a child. Cleanup moved to `reap_the_captured_tree()` in a `finally`,
+working from a tree captured before the kill, and it **returns** survivors rather than asserting
+on them so a teardown problem cannot replace the finding.
+
+Checked first that the watchdog is the *only* mechanism, because a redundant guard would have made
+the corrected gate untestable too: `process_tree.contain_this_process()` is called from
+`worker.prepare_this_worker()` and nowhere else, so no job object on the parent side reaps a
+worker on Windows, and the harness's `start_new_session` group is never signalled on POSIX.
+
+| Mutation | Before | After |
+|---|---|---|
+| `_exit_when_the_parent_does()` deleted from `prepare_this_worker()` | 1 passed in 9.52 s | **1 failed in 7.76 s** — "3 of 3 worker(s) outlived the application" |
+| unmutated | 1 passed | 1 passed in **2.75 s** (was 9.52 s) |
+
+**A second defect, not in the review and found by mutating the correction.** The old gate waited
+**60 s** for the workers to die. `CLIP_BYTES` at `chunk_delay=0.5` is about eight seconds of paced
+download, so an orphan simply *finished its download and exited* inside that window and was
+recorded as correctly reaped. With the watchdog removed and the grace period restored to 60 s the
+corrected gate **passes in 11.71 s** — so `ORPHAN_GRACE = 5.0` is load-bearing, and the timeout was
+an independent second reason this gate could not fire. `test_end_to_end` had already written this
+reasoning down for the single-worker case; the phase gate did not inherit it.
+
+**`R2`.** Three controls, and the first is synchronous: `active_job_ids()` includes reservations,
+which `start()` creates before the writer thread runs, so a missing start is caught immediately
+rather than at a deadline. Then all three jobs must be `RUNNING` at one moment, and each must
+advance its own update count *inside* the sampling window. `child_streaming_until_released` holds
+the workers open on a file marker so the window is chosen by the test rather than by three
+interpreters' start-up times, and they are released in a `finally`.
+
+| Mutation | Before | After |
+|---|---|---|
+| all three `manager.start()` calls deleted | 1 passed in 60.24 s | **1 failed in 0.54 s** |
+| worker reverted to `child_streaming_its_own_size` | — | **1 failed in 3.29 s** — updates per job during the window: `{'job-1': 0, 'job-2': 0, 'job-3': 2}` |
+| unmutated | 1 passed | 1 passed in **3.31 s** (was ~60 s) |
+
+That second row is the more interesting one. It says the *old* test's own workers barely
+overlapped: two of the three had finished before any sampling began. So the gate was not merely
+missing a control — for most of its sixty seconds it was measuring an idle event loop, which is
+why an idle event loop satisfied it.
+
+The measurement is now recorded rather than only judged, following `cold_start_seconds`:
+`worst_event_loop_pass_ms` **1.4** against a 100 ms budget, over **296** progress updates
+delivered in a 2 s window. A pass no longer hides a shrinking margin.
+
+**Not yet done:** the Windows half of `R1`'s third acceptance criterion. Linux is above; the
+`windows desktop` job on the pushed head is the other platform.
+
+---
 
 ### T-122 — Replace the flaky paste-scaling ratio gate
 
