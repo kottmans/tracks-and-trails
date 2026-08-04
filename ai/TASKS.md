@@ -416,11 +416,19 @@ agreement on the reduced form before implementation.
 
 ### T-121 — The phase-exit clip server aborts connections on hosted Windows
 
-**Status:** **Proposed — found by CI run `30853680183`**, 2026-08-03, by measurement rather than by
-reading. Filed rather than fixed inline (`AGENTS.md` §7): it is not `T-118`'s.
-**It did not recur in run `30859578131`, which is not the same as resolved** (`COORD-R21`). Nothing
-has touched the fixture or its message; the second run simply did not trip the race. The current
-red on `main` belongs to `T-122`'s ratio oracle.
+**Status:** **Proposed — narrowed 2026-08-03, and still open.** Two of its three parts are struck
+off: the misleading assertion and the missing `ConnectionAbortedError`. What remains is the part
+nothing here can reproduce — **why the loopback connection aborts under load on hosted Windows.**
+Filed rather than fixed inline (`AGENTS.md` §7): it is not `T-118`'s.
+
+**It is now latent for two independent reasons, and only one of them is about the defect.** It did
+not recur in run `30859578131` — which is not the same as resolved (`COORD-R21`) — **and the
+configuration it appeared in is no longer exercised at all.** It only ever failed on hosted
+`windows-latest`, and that job does not run while `WINDOWS_RUNNER` points at `STARBASE`
+(`ai/TESTING.md` §10). *Not running the job that found a defect is not evidence about the defect*,
+and in six weeks the silence will read as resolution unless this paragraph is here.
+
+The current red on `main` belongs to nothing: `T-122`'s ratio oracle is corrected.
 *(This read "it is the only thing red on `main`" until 2026-08-03, which stopped being true the
 moment `T-118`'s own scaling gate failed and this test passed.)*
 **Owner:** Implementer
@@ -471,6 +479,27 @@ it prints is zero. A reader who trusts the prose over the dict diagnoses the sch
 
 - The download path itself. Nothing here suggests a production defect: the worker did what a
   worker does when a server drops the connection.
+
+#### Corrected 2026-08-03 — the two parts that could be fixed without reproducing it
+
+**The assertion named the wrong defect.** It printed the `QUEUED` count and then concluded
+"nothing admits durable queued intent" *whatever that count was*, so a run where every job started
+and one download failed reported "0 of 5 still QUEUED" and blamed admission — the one part that was
+working. It now branches: a stalled queue says so, and a queue that drained with a failed download
+says **that**, and points at the clip server.
+
+**`ConnectionAbortedError` was missing from the handler.** `media_handler` already caught
+`BrokenPipeError` and `ConnectionResetError` with the comment *"the expected end of a killed
+download: the worker went away mid-stream"* — and `ConnectionAbortedError` is that same condition
+on Windows. Its absence is why the abort escaped to `socketserver`, which printed a traceback for a
+state two lines of the fixture already called expected. Added in **both** copies: the shared
+`media_handler` in `test_end_to_end.py` that `test_phase_2_exit.py` imports, and `test_manager.py`'s
+own.
+
+**Neither makes the download succeed**, and neither is claimed to. Swallowing the abort stops the
+noise; the connection still died mid-stream and that is what failed the job. Both changes are
+improvements a reader can verify without Windows, which is exactly why they were worth doing
+separately from the part that needs it.
 
 ---
 

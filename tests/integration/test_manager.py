@@ -315,8 +315,13 @@ def media_handler(total_bytes: int, chunk_delay: float) -> type[BaseHTTPRequestH
                     self.wfile.write(chunk[: min(len(chunk), total_bytes - sent)])
                     sent += len(chunk)
                     time.sleep(chunk_delay)
-            except BrokenPipeError, ConnectionResetError:
+            except BrokenPipeError, ConnectionResetError, ConnectionAbortedError:
                 # The expected end of a cancelled download: the worker went away mid-stream.
+                #
+                # **`ConnectionAbortedError` is the Windows spelling of exactly that** (`T-121`),
+                # and it was missing — so on Windows the abort escaped this handler entirely and
+                # `socketserver` printed a traceback for a condition the line above already calls
+                # expected. `WinError 10053`, seen in run `30853680183`.
                 pass
 
     return Handler

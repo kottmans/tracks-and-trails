@@ -936,6 +936,51 @@ def test_three_real_workers_each_write_their_whole_file(
 # --- what proving the phase found: the queue does not drain -----------------------------------
 
 
+def describe_drain_failure(final: dict[str, JobStatus]) -> str:
+    """Name **which** defect a failed drain is, rather than assuming (`T-121`).
+
+    The message this replaces printed the `QUEUED` count and then concluded "nothing admits
+    durable queued intent" *whatever that count was*. So a run where every job started and one
+    download failed reported "0 of 5 still QUEUED" and blamed admission — the one part that was
+    working — and sent the next reader after the scheduler.
+
+    **A function, not a branch inside the assertion**, because an assertion's message only runs
+    when the assertion fails: the wrong sentence above shipped precisely because nothing ever
+    executed it. `test_a_failed_drain_says_which_defect_it_is` executes both branches against
+    synthetic states, which is the only way either is ever seen before it is needed.
+    """
+    stalled = sum(1 for status in final.values() if status is JobStatus.QUEUED)
+    failed = sum(1 for status in final.values() if status is JobStatus.FAILED)
+    shown = {job_id[:6]: status.value for job_id, status in final.items()}
+    if stalled:
+        return (
+            f"{stalled} of {len(final)} jobs were still QUEUED after Add with nothing else done "
+            f"— nothing admits durable queued intent, which is what this gate exists to catch. "
+            f"Final: {shown}"
+        )
+    return (
+        f"no job was left QUEUED, so admission worked — {failed} of {len(final)} then failed to "
+        f"download. **This is not the admission defect this test is named for.** Check the "
+        f"captured stderr for the clip server: a connection aborted mid-stream fails a download "
+        f"without anything being wrong in the queue (`T-121`). Final: {shown}"
+    )
+
+
+def test_a_failed_drain_says_which_defect_it_is() -> None:
+    """`T-121`: the two failures are different defects and must not share a sentence."""
+    stalled = {"aaaaaa11": JobStatus.QUEUED, "bbbbbb22": JobStatus.COMPLETED}
+    assert "nothing admits durable queued intent" in describe_drain_failure(stalled)
+
+    # The shape that actually occurred in run 30853680183: admission worked, a download did not.
+    downloaded = {"aaaaaa11": JobStatus.COMPLETED, "bbbbbb22": JobStatus.FAILED}
+    message = describe_drain_failure(downloaded)
+    assert "admission worked" in message
+    assert "nothing admits durable queued intent" not in message, (
+        "a drained queue with a failed download still blamed admission"
+    )
+    assert "clip server" in message, "the message does not point at what actually failed"
+
+
 def test_every_queued_job_eventually_starts_as_slots_free(
     qapp: QApplication, tmp_path: Path, media_url: Callable[..., str]
 ) -> None:
@@ -995,12 +1040,7 @@ def test_every_queued_job_eventually_starts_as_slots_free(
     finally:
         reap_application(process, application_pid)
 
-    assert drained, (
-        f"{sum(1 for s in final.values() if s is JobStatus.QUEUED)} of {len(job_ids)} jobs were "
-        f"still QUEUED after Add with nothing else done — nothing admits durable queued intent. "
-        f"Final: "
-        f"{ {k[:6]: v.value for k, v in final.items()} }"
-    )
+    assert drained, describe_drain_failure(final)
 
 
 def test_a_queue_left_by_a_previous_run_starts_on_the_next_launch(
