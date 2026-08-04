@@ -193,7 +193,10 @@ class HistoryModel(QAbstractTableModel):
             # it is not a job in a pipeline, it is what happened. `REQ-021` names the two things a
             # user does with a finished download and there is no third — removing one is `T-125`
             # and needs a `DAT-` decision before a button exists for it (`UX-005`).
-            return (Verb.OPEN, Verb.REVEAL)
+            # `DAT-005` unblocked the third (2026-08-04). Before it, offering `Remove` would have
+            # *been* the decision about what removal means — which is why `UX-005` §9 described the
+            # control and refused to specify it.
+            return (Verb.OPEN, Verb.REVEAL, Verb.REMOVE)
 
         if role == Qt.ItemDataRole.DisplayRole:
             return self._text(entry, index.column())
@@ -305,7 +308,9 @@ class HistoryView(QWidget):
             "in this list."
         )
         self._table.setModel(self._model)
-        self._table.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # **Extended, since `DAT-005`**: removal is selection-scoped and its verb names its own
+        # count, and a count is decoration if only one row can ever be selected.
+        self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         # Read-only, and not merely unedited: `REQ-020` is a record of what happened, and an
         # editable view would also put a text cursor into the keyboard order.
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -326,12 +331,24 @@ class HistoryView(QWidget):
     open_requested = Signal(str)
     reveal_requested = Signal(str)
 
+    #: `(entry_ids)` — the user asked to remove what they selected (`DAT-005`, `UX-005` §9).
+    #: **The whole selection**, not the row the verb was drawn on: `DAT-005` scopes removal to the
+    #: selection and makes the verb name its own count, so sending one id would make the count a
+    #: decoration.
+    removal_requested = Signal(list)
+
     def _on_verb(self, entry_id: str, verb: object) -> None:
         """Route a history row's verb. Only two exist; anything else is a programming error."""
         if verb is Verb.OPEN:
             self.open_requested.emit(entry_id)
         elif verb is Verb.REVEAL:
             self.reveal_requested.emit(entry_id)
+        elif verb is Verb.REMOVE:
+            # **The selection, and the row that was clicked if it is not in it.** A user who
+            # clicks Remove on an unselected row means that row; one who has three selected and
+            # clicks Remove on one of them means the three (`DAT-005` §1).
+            selected = self.selected_entry_ids()
+            self.removal_requested.emit(list(selected) if entry_id in selected else [entry_id])
         elif verb is not None:
             raise AssertionError(f"a history row offered {verb!r} and nothing routes it")
 
@@ -367,6 +384,17 @@ class HistoryView(QWidget):
         if not indexes:
             return None
         return self._model.entry_ids()[indexes[0].row()]
+
+    def selected_entry_ids(self) -> tuple[str, ...]:
+        """Every selected record, in the order the list shows them.
+
+        `DAT-005` §1 scopes removal to the selection, so this is what the verb acts on and what
+        its count counts. Ordered by row rather than by click, because a confirmation naming three
+        downloads should list them the way they are on screen.
+        """
+        ids = self._model.entry_ids()
+        rows = sorted(index.row() for index in self._table.selectionModel().selectedIndexes())
+        return tuple(ids[row] for row in rows if 0 <= row < len(ids))
 
     def select(self, entry_id: str) -> bool:
         """Select the row for `entry_id`, so a named verb can act through the selection."""

@@ -46,6 +46,7 @@ from PySide6.QtCore import QObject, QThread, Signal, Slot
 from tracks_and_trails.core.models import Job
 from tracks_and_trails.persistence.repositories import (
     HistoryEntry,
+    HistoryRepository,
     JobRepository,
     complete_job,
 )
@@ -134,6 +135,17 @@ class _Worker(QObject):
         self._perform(token, lambda connection: JobRepository(connection).remove(job_id))
 
     @Slot(int, object)
+    def remove_history(self, token: int, entry_ids: Sequence[str]) -> None:
+        """Delete the named history records, then report (`DAT-005`, `T-125`).
+
+        On this thread for `ARC-005`'s reason, unqualified: it is a write. It also has to be
+        ordered against `complete()`, which writes a history row in the same transaction as a job's
+        completion — a removal asked for while a completion is still in flight must land behind it,
+        or the record comes back.
+        """
+        self._perform(token, lambda connection: HistoryRepository(connection).remove(entry_ids))
+
+    @Slot(int, object)
     def complete(self, token: int, payload: tuple[Job, HistoryEntry]) -> None:
         """Store a completed job **and** its history record in one transaction (`T050-R1`).
 
@@ -220,6 +232,9 @@ class QueueWriter(QObject):
     #: Internal: asks the worker to clear every finished job (`T-081`).
     _clear = Signal(int, object)
 
+    #: `DAT-005`: the one delete path history has. Carries a list of ids, never a predicate.
+    _remove_history = Signal(int, object)
+
     #: The writer thread has finished and its connection is closed. **Shutdown is a lifecycle,
     #: not a call** — the same rule `T013-R2` established for the manager, and for the same
     #: reason: `close()` used to `QThread.wait(5000)` on the GUI thread, which a contended write
@@ -240,6 +255,7 @@ class QueueWriter(QObject):
         self._remove.connect(self._worker.remove)
         self._reorder.connect(self._worker.reorder)
         self._clear.connect(self._worker.clear_completed)
+        self._remove_history.connect(self._worker.remove_history)
         self._shutdown.connect(self._worker.close)
         self._thread.finished.connect(self.closed)
         self._pending: dict[int, Callable[[str | None], None]] = {}
@@ -314,6 +330,20 @@ class QueueWriter(QObject):
             done("the queue writer is shutting down; nothing was saved")
             return
         self._remove.emit(self._track(done), job_id)
+
+    def remove_history(self, entry_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
+        """Delete the named history records. **Returns immediately** (`DAT-005`, `T-125`).
+
+        `list()` for `reorder`'s reason: the sequence crosses a thread boundary, and a caller that
+        mutated its own list afterwards would be editing a set already being deleted.
+
+        Refused through the callback after `close()`, like every other write — a caller waiting to
+        hear whether a removal landed must not wait forever because shutdown got there first.
+        """
+        if self._closed:
+            done("the queue writer is shutting down; nothing was saved")
+            return
+        self._remove_history.emit(self._track(done), list(entry_ids))
 
     def reorder(self, job_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
         """Rearrange the queue into `job_ids`' order. **Returns immediately.**

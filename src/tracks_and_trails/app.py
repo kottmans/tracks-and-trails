@@ -391,6 +391,28 @@ def compose(
         """Route a clear-finished to the manager (`REQ-016`, `T-081`)."""
         manager.clear_completed()
 
+    def remove_history(entry_ids: list[str]) -> None:
+        """Delete history records the user selected (`DAT-005`, `T-125`, `REQ-020`).
+
+        **Through the store rather than the manager**, which is the opposite of `remove_job` and
+        for that entry's own reason: removing a *job* can mean stopping a session, so the manager
+        has to own it. A history record is a record of something already finished — there is no
+        session, nothing to cancel, and nothing for the manager to know. Routing it through the
+        manager would be asking an object about a thing it has no relationship with.
+
+        The view refreshes from the callback rather than optimistically, which is `T-013`'s
+        persist-then-announce rule: a row removed on screen before the delete landed is a row that
+        comes back on the next refresh if the write failed.
+        """
+
+        def settle(error: str | None) -> None:
+            if error is not None:
+                window.report_transiently(f"the history records were not removed: {error}")
+                return
+            window.refresh_history()
+
+        store.remove_history(entry_ids, settle)
+
     window = MainWindow(
         geometry_file,
         manager=manager,
@@ -404,6 +426,7 @@ def compose(
         on_remove_requested=remove_job,
         on_reorder_requested=reorder_queue,
         on_clear_requested=clear_finished,
+        on_history_removal_requested=remove_history,
         # The same store, through a second protocol: `JobReader` is one job, `QueueReader` is all
         # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
         # a single row cannot accidentally enumerate the queue.

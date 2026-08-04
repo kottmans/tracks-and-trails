@@ -66,6 +66,24 @@ APP_SLUG: Final = "tracksandtrails"
 QUEUE_TAB: Final = "Queue"
 HISTORY_TAB: Final = "History"
 
+#: `DAT-005` §3, in one place so the status bar and the confirmation cannot come to disagree.
+HISTORY_KEEPS_FILES: Final = "Files are never deleted — this list is a record, not your downloads."
+
+
+def removal_question(count: int) -> str:
+    """The confirmation's question, naming its own count (`DAT-005` §4, `UX-005` §9).
+
+    A bare *Remove* does not say how much is about to go, and a user who selected more than they
+    meant to has nothing to notice it by. Singular and plural are both written out: "1 downloads"
+    is the tell that a message was assembled rather than composed.
+    """
+    return (
+        "Remove this download from history?"
+        if count == 1
+        else f"Remove these {count} downloads from history?"
+    )
+
+
 #: Used when no geometry has been stored yet, and when what was stored is unusable.
 DEFAULT_SIZE: Final = QSize(960, 640)
 
@@ -248,6 +266,7 @@ class MainWindow(QMainWindow):
         on_remove_requested: Callable[[str], None] | None = None,
         on_reorder_requested: Callable[[list[str]], None] | None = None,
         on_clear_requested: Callable[[], None] | None = None,
+        on_history_removal_requested: Callable[[list[str]], None] | None = None,
         queue: QueueReader | None = None,
         history: HistoryReader | None = None,
     ) -> None:
@@ -273,6 +292,7 @@ class MainWindow(QMainWindow):
         self._on_remove_requested = on_remove_requested
         self._on_reorder_requested = on_reorder_requested
         self._on_clear_requested = on_clear_requested
+        self._on_history_removal_requested = on_history_removal_requested
         self._build_menus()
         self._concurrency: QSpinBox | None = None
         #: `T-080`'s queue actions. Built with the control bar, so a window given no `concurrency`
@@ -343,7 +363,12 @@ class MainWindow(QMainWindow):
             self._history_view.reveal_requested.connect(
                 lambda entry_id: self._history_file_verb(entry_id, reveal=True)
             )
+            self._history_view.removal_requested.connect(self._remove_history)
             self._body.addTab(self._history_view, HISTORY_TAB)
+            # **The guarantee is carried while the tab is showing**, not only in the confirmation
+            # (`DAT-005` §3). A promise that appears in a dialog is a promise only the people who
+            # read dialogs have, and this one is about somebody's files.
+            self._body.currentChanged.connect(self._say_what_history_does_not_do)
 
         self._refresh_tab_labels()
         self._attach_file_actions()
@@ -446,6 +471,49 @@ class MainWindow(QMainWindow):
         else:
             actions.open_selected()
 
+    def _say_what_history_does_not_do(self, index: int) -> None:
+        """Put `DAT-005`'s promise in the status bar while History is in front (`UX-005` §9)."""
+        if self._history_view is None:
+            return
+        if self._body.widget(index) is self._history_view:
+            self.statusBar().showMessage(HISTORY_KEEPS_FILES)
+        else:
+            self.statusBar().clearMessage()
+
+    def _remove_history(self, entry_ids: list[str]) -> QMessageBox | None:
+        """Confirm, then ask composition to remove the selected records (`DAT-005`, `T-125`).
+
+        **The count and the file guarantee in one breath**, which is `DAT-005` §4: a user reading
+        "Remove 3 downloads from history?" needs to know in the same sentence that the files are
+        not going anywhere, because "remove download" is ambiguous in exactly the way that loses
+        somebody's files.
+
+        Returned rather than only shown, and `open()` rather than `exec()`, for
+        `open_add_dialog`'s reason: `exec` starts a nested event loop a test cannot leave.
+        """
+        if not entry_ids or self._on_history_removal_requested is None:
+            return None
+        confirm = QMessageBox(self)
+        confirm.setObjectName("historyRemovalConfirm")
+        confirm.setIcon(QMessageBox.Icon.Question)
+        confirm.setWindowTitle("Remove from history")
+        confirm.setText(removal_question(len(entry_ids)))
+        confirm.setInformativeText(HISTORY_KEEPS_FILES)
+        confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        confirm.setDefaultButton(QMessageBox.StandardButton.No)
+        # **Irreversible, so the safe button is the default** (`DAT-005` §4). There is no undo:
+        # a soft delete would change every history query to protect a record whose loss costs
+        # little, given the files are untouched.
+        chosen = self._on_history_removal_requested
+
+        def act(button: object) -> None:
+            if confirm.standardButton(button) == QMessageBox.StandardButton.Yes:  # type: ignore[arg-type]
+                chosen(list(entry_ids))
+
+        confirm.buttonClicked.connect(act)
+        confirm.open()
+        return confirm
+
     def _show_row_menu(self, job_id: str) -> QMenu | None:
         """The row's `⋯` — everything its state permits, and the declared keyboard route.
 
@@ -515,6 +583,14 @@ class MainWindow(QMainWindow):
                     parent=self,
                 )
             )
+
+    def report_transiently(self, message: str) -> None:
+        """Say something in the status bar. Public, so composition can report too (`T-125`).
+
+        Composition performs the writes `ui/` is not allowed to, so it is also where their
+        failures surface — and a failure a user cannot see is the same as one that did not happen.
+        """
+        self._report_transiently(message)
 
     def _report_transiently(self, message: str) -> None:
         """Say something in the status bar, without a dialog (`NFR-006`).

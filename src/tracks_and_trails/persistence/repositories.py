@@ -593,11 +593,12 @@ def complete_job(connection: sqlite3.Connection, job: JobModel, entry: HistoryEn
 
 
 class HistoryRepository:
-    """The completed-download record (`REQ-020`, `T-050`).
+    """The completed-download record (`REQ-020`, `T-050`, `DAT-005`).
 
-    Append-mostly and read-only to the rest of the application: nothing here deletes, because
-    pruning and retention are out of `T-050`'s scope and `REQ-020` is a record of what was
-    obtained.
+    **Append-mostly, and it deletes in exactly one way.** This said "nothing here deletes" until
+    `DAT-005` (2026-08-04), and that sentence was load-bearing rather than descriptive — it is why
+    `T-125` had to be a decision before it could be a button. What changed is narrow and stated
+    there: a user may remove **records they selected**, and **no file is ever touched**.
     """
 
     def __init__(self, connection: sqlite3.Connection) -> None:
@@ -637,6 +638,41 @@ class HistoryRepository:
     def get(self, entry_id: str) -> HistoryEntry | None:
         row = self._connection.execute("SELECT * FROM history WHERE id = ?", (entry_id,)).fetchone()
         return _row_to_history(row) if row is not None else None
+
+    def remove(self, entry_ids: Sequence[str]) -> int:
+        """Delete the named records, and **only** records (`DAT-005`, `REQ-020`, `T-125`).
+
+        **Nothing on this path touches the filesystem, and that is the guarantee rather than an
+        omission.** A history entry names a file on disk, and `UX-001` promises this application
+        never deletes the user's files. `DAT-005` §2 refuses even an opt-in for it.
+
+        **Ids, never a predicate.** `DAT-005` scopes removal to what the user selected; a method
+        taking a `WHERE` fragment or a cutoff date would move that decision to whichever caller was
+        written next, which is exactly how a scoping decision stops being one.
+
+        Returns how many rows were actually deleted, which is not always `len(entry_ids)`: a record
+        can already be gone, and the caller reports what happened rather than what was asked for.
+
+        An empty sequence deletes nothing and says so, rather than becoming an accidental
+        `DELETE FROM history` — the failure this signature exists to make impossible.
+
+        **The empty-sequence guard cannot be tested away, and that is recorded rather than fixed.**
+        Deleting it leaves the suite green, because SQLite accepts `IN ()` as the empty set and
+        deletes nothing — measured, not assumed. That is a SQLite *extension*; standard SQL rejects
+        the syntax outright. So the guard is redundant against this backend and load-bearing
+        against the next one, and it states the intent that an empty selection removes nothing.
+        A future reader finding this mutation survives should not conclude the line is dead
+        (`ai/TESTING.md` §13: default to "a test is missing", and prove redundancy before acting —
+        this is the proof).
+        """
+        if not entry_ids:
+            return 0
+        placeholders = ", ".join("?" for _ in entry_ids)
+        cursor = self._connection.execute(
+            f"DELETE FROM history WHERE id IN ({placeholders})",  # noqa: S608
+            tuple(entry_ids),
+        )
+        return int(cursor.rowcount)
 
     def all_entries(self) -> list[HistoryEntry]:
         """Every entry, most recently completed first.

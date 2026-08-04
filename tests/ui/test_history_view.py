@@ -9,7 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QItemSelectionModel, Qt
 from PySide6.QtWidgets import QApplication
 
 from tracks_and_trails.persistence import db
@@ -311,18 +311,22 @@ def test_a_history_row_is_the_shared_anatomy(qapp: QApplication) -> None:
     )
 
 
-def test_a_history_row_offers_only_the_two_file_verbs(qapp: QApplication) -> None:
-    """`REQ-021`, and `UX-005` §5 applied to the other tab.
+def test_a_history_row_offers_the_two_file_verbs_and_remove(qapp: QApplication) -> None:
+    """`REQ-021` and `DAT-005`, and `UX-005` §5 applied to the other tab.
 
-    Open and Show in folder are the two things a user does with a finished download. **Removing
-    one is not offered**, and that is deliberate rather than unfinished: `HistoryRepository`'s
-    docstring says nothing deletes, no requirement covers removal, and `UX-005` sends the question
-    to a `DAT-` entry (`T-125`). A button that appeared before that decision would be the decision.
+    Open and Show in folder are the two things a user does with a finished download; `DAT-005`
+    (2026-08-04) added the third. **Until that decision existed this asserted exactly two**, and
+    the reason is worth keeping: `HistoryRepository` said nothing deletes, no requirement covered
+    removal, and `UX-005` §9 described the control while refusing to specify it. A button that
+    appeared before the decision would *have been* the decision.
+
+    Equality, not containment: a fourth verb on a history row is a surface nobody decided on, and
+    this is where that would be caught.
     """
     view = view_over([an_entry()])
     offered = view.model.data(view.model.index(0, 0), VERBS_ROLE)
 
-    assert tuple(offered) == (Verb.OPEN, Verb.REVEAL), (
+    assert tuple(offered) == (Verb.OPEN, Verb.REVEAL, Verb.REMOVE), (
         f"a history row offers {[v.value for v in offered]}"
     )
 
@@ -342,3 +346,44 @@ def test_a_history_rows_open_reports_rather_than_opening(qapp: QApplication) -> 
     view.trigger_verb(entry.id, Verb.OPEN)
 
     assert asked == [entry.id], "the history row's Open reached nothing"
+
+
+# --- DAT-005 / T-125: removing records, never files -----------------------------------------
+
+
+def test_remove_acts_on_the_whole_selection(qapp: QApplication) -> None:
+    """`DAT-005` §1: removal is selection-scoped, so the verb carries the selection.
+
+    Sending only the clicked row would make the count in the confirmation a decoration — it would
+    always say one — and a user who selected three and confirmed "3 downloads" would lose one.
+    """
+    entries = [an_entry(entry_id=f"job-{n}") for n in range(3)]
+    view = view_over(entries)
+    asked: list[list[str]] = []
+    view.removal_requested.connect(asked.append)
+
+    assert view.select("job-0")
+    view.table.selectionModel().select(
+        view.model.index(1, 0), QItemSelectionModel.SelectionFlag.Select
+    )
+
+    view.trigger_verb("job-0", Verb.REMOVE)
+
+    assert asked == [["job-0", "job-1"]], f"Remove asked for {asked}"
+
+
+def test_remove_on_an_unselected_row_means_that_row(qapp: QApplication) -> None:
+    """The other half. Clicking Remove on a row outside the selection means *that* row.
+
+    A user who has one row selected and clicks Remove on a different one has not asked to remove
+    the selection — reading it as the selection would delete something they never pointed at.
+    """
+    entries = [an_entry(entry_id=f"job-{n}") for n in range(3)]
+    view = view_over(entries)
+    asked: list[list[str]] = []
+    view.removal_requested.connect(asked.append)
+    assert view.select("job-0")
+
+    view.trigger_verb("job-2", Verb.REMOVE)
+
+    assert asked == [["job-2"]], f"Remove asked for {asked}"

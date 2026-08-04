@@ -1270,3 +1270,74 @@ def test_clear_completed_touches_no_file(repository: JobRepository, tmp_path: Pa
 
     assert obtained.exists(), "clearing completed jobs deleted the file one of them produced"
     assert obtained.read_bytes() == b"the user's file"
+
+
+# --- DAT-005 / T-125: removal takes ids, and only records ------------------------------------
+
+
+def test_removing_records_leaves_the_others(history: HistoryRepository) -> None:
+    """`DAT-005` §1: what the user selected, and nothing else.
+
+    Asserted as the surviving set rather than as "two rows were deleted": a count is satisfied by
+    deleting the wrong two, and the whole of `DAT-005` §1 is *which* records go.
+    """
+    for entry_id in ("job-1", "job-2", "job-3"):
+        history.record(_entry(entry_id))
+
+    removed = history.remove(["job-1", "job-3"])
+
+    assert removed == 2
+    assert [entry.id for entry in history.all_entries()] == ["job-2"], (
+        "removal did not leave exactly the records the user kept"
+    )
+
+
+def test_removing_nothing_removes_nothing(history: HistoryRepository) -> None:
+    """An empty selection must not become `DELETE FROM history`.
+
+    This is the failure the signature exists to make impossible, and it is the one that would be
+    catastrophic and silent: a user with nothing selected, a verb that fired anyway, and a history
+    that is simply gone. Worth a test of its own rather than trusting the guard to stay.
+    """
+    history.record(_entry("job-1"))
+
+    assert history.remove([]) == 0
+    assert [entry.id for entry in history.all_entries()] == ["job-1"]
+
+
+def test_removing_a_record_that_is_already_gone_is_not_an_error(
+    history: HistoryRepository,
+) -> None:
+    """Reported as what happened, not as what was asked for.
+
+    Two windows on one library can both remove the same record. The caller says how many rows it
+    actually deleted so a report can be honest, rather than raising at a user who did nothing
+    wrong.
+    """
+    history.record(_entry("job-1"))
+
+    assert history.remove(["job-1", "never-existed"]) == 1
+    assert history.all_entries() == []
+
+
+def test_removal_touches_no_file(history: HistoryRepository, tmp_path: Path) -> None:
+    """**`DAT-005` §2, which is the entire reason this needed a decision.**
+
+    A history entry names a file on disk, and `UX-001` promises this application never deletes the
+    user's files. So: a real file at the recorded path, removed from history, and **still there**.
+
+    The file is real rather than a mock. A test asserting that no `os.remove` was called would
+    pass against a deletion performed some other way — through `Path.unlink`, through `shutil`,
+    through a subprocess — and the claim is about the file, not about which API was avoided.
+    """
+    downloaded = tmp_path / "a real download.mp4"
+    downloaded.write_bytes(b"bytes the user asked for")
+    history.record(_entry("job-1", output_path=str(downloaded)))
+
+    history.remove(["job-1"])
+
+    assert downloaded.exists(), (
+        "removing a history record deleted the user's file — UX-001 promises this application "
+        "never does that, and DAT-005 refuses even an opt-in for it"
+    )
+    assert downloaded.read_bytes() == b"bytes the user asked for", "the file was modified"

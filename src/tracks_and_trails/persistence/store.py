@@ -268,6 +268,21 @@ class PersistentJobStore(QObject):
         """
         self._writer.clear_completed(done)
 
+    def remove_history(self, entry_ids: Sequence[str], done: Callable[[str | None], None]) -> None:
+        """Delete the named history records. **Returns immediately** (`DAT-005`, `T-125`).
+
+        **Nothing is recorded in memory**, for `remove`'s reason: `_pending` holds newest revisions
+        of a *job*, and a history record is neither a job nor a revision of one. Between this call
+        and its callback the records are still readable, because they are still there — the view
+        refreshes from the callback, which is `T-013`'s persist-then-announce rule rather than an
+        exception to it.
+
+        **No file is touched**, which is `HistoryRepository.remove`'s guarantee and `DAT-005`'s
+        whole subject. Restated here because this is the method composition calls, and a promise
+        that lives only one layer down is one a caller has to go looking for.
+        """
+        self._writer.remove_history(entry_ids, done)
+
     def submit(self, jobs: Sequence[Job], done: Callable[[str | None], None]) -> None:
         """Append `jobs` in one transaction. **Returns immediately** (`ARC-005`).
 

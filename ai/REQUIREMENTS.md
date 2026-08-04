@@ -109,7 +109,7 @@ residue and blocks the first public release.
 
 ### Library and results
 
-- **REQ-020** — Maintain a history of completed downloads with source URL, title, resolved output path, format used, size, and completion time.
+- **REQ-020** — Maintain a history of completed downloads with source URL, title, resolved output path, format used, size, and completion time. A user may **remove records they have selected**; removing a record never deletes the file it names (`DAT-005`).
 - **REQ-021** — Open a completed file, or reveal it in the system file manager, from the history and queue views.
 - **REQ-022** — Detect that a URL has been downloaded before and warn before re-downloading, with an override.
 

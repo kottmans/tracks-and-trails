@@ -16,13 +16,17 @@ from typing import Any
 import pytest
 from PySide6.QtCore import QRect
 from PySide6.QtGui import QFontMetrics
-from PySide6.QtWidgets import QApplication, QMenu
+from PySide6.QtWidgets import QApplication, QMenu, QMessageBox
 
 from tracks_and_trails.core import presets
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
-from tracks_and_trails.ui.main_window import MainWindow
+from tracks_and_trails.ui.main_window import (
+    HISTORY_KEEPS_FILES,
+    MainWindow,
+    removal_question,
+)
 from tracks_and_trails.ui.row_delegate import (
     PADDING,
     PRESET_CHOICES_ROLE,
@@ -529,3 +533,92 @@ def test_a_custom_selector_claims_to_be_no_preset(qapp: QApplication, tmp_path: 
         "a request no built-in describes reported itself as a preset, so the control would show "
         "a format this download is not using"
     )
+
+
+# --- DAT-005 / T-125: the confirmation, and the promise it carries ---------------------------
+
+
+def test_the_confirmation_names_its_own_count(qapp: QApplication, tmp_path: Path) -> None:
+    """`DAT-005` §4: the count and the file guarantee in one breath.
+
+    "Remove" does not say how much is about to go, and a user who selected more than they meant to
+    has nothing to notice it by. Singular is written separately because "1 downloads" is the tell
+    that a message was assembled rather than composed.
+    """
+    assert removal_question(1) == "Remove this download from history?"
+    assert removal_question(3) == "Remove these 3 downloads from history?"
+    assert "downloads" not in removal_question(1), (
+        "the singular case reads as a plural, which is how a user learns the message is generated "
+        "and stops reading it"
+    )
+
+
+def test_confirming_removes_and_refusing_does_not(qapp: QApplication, tmp_path: Path) -> None:
+    """The confirmation is not decoration: **No must do nothing** (`DAT-005` §4).
+
+    Removal is irreversible — there is no soft delete — so the half worth testing is the half that
+    protects the user. A dialog whose No branch removed anyway is worse than no dialog, because it
+    taught them the click was safe.
+    """
+    asked: list[list[str]] = []
+    window = _window_over([], tmp_path, on_history_removal_requested=asked.append)
+
+    for button, expected in (
+        (QMessageBox.StandardButton.No, []),
+        (QMessageBox.StandardButton.Yes, [["job-1", "job-2"]]),
+    ):
+        confirm = window._remove_history(["job-1", "job-2"])
+        assert isinstance(confirm, QMessageBox)
+        try:
+            assert "2 downloads" in confirm.text(), f"the question reads {confirm.text()!r}"
+            assert confirm.informativeText() == HISTORY_KEEPS_FILES, (
+                "the confirmation does not say the files are safe, which is the one thing a user "
+                "about to remove a download needs to know"
+            )
+            assert confirm.defaultButton() == confirm.button(QMessageBox.StandardButton.No), (
+                "the default button removes; an irreversible action's default should be the one "
+                "that does nothing"
+            )
+            confirm.button(button).click()
+        finally:
+            confirm.close()
+        assert asked == expected, f"{button} produced {asked}"
+
+
+def test_history_says_the_files_are_safe_while_it_is_showing(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`DAT-005` §3: carried permanently, not only in the confirmation.
+
+    A promise that appears in a dialog is a promise only the people who read dialogs have, and
+    this one is about somebody's files. Asserted on the *status bar* while the History tab is in
+    front, and asserted absent on Queue — a message that never changes is wallpaper.
+    """
+    from PySide6.QtWidgets import QTabWidget
+
+    window = _window_over([_job("job-1", 0)], tmp_path, history=_FakeHistory())
+    body = window.centralWidget()
+    assert isinstance(body, QTabWidget)
+    history = window.history_view
+    assert history is not None, "the window was given a history reader and built no History tab"
+    history_tab = body.indexOf(history)
+    assert history_tab >= 0, "the window has no History tab to show the promise on"
+
+    body.setCurrentIndex(history_tab)
+    assert window.statusBar().currentMessage() == HISTORY_KEEPS_FILES, (
+        f"the History tab says {window.statusBar().currentMessage()!r}"
+    )
+
+    queue = window.queue_view
+    assert queue is not None
+    body.setCurrentIndex(body.indexOf(queue))
+    assert window.statusBar().currentMessage() != HISTORY_KEEPS_FILES, (
+        "the queue carries history's promise too, so it says nothing about history"
+    )
+
+
+class _FakeHistory:
+    """A `HistoryReader` over nothing. The promise does not depend on there being records."""
+
+    def all_entries(self) -> list[object]:
+        return []

@@ -94,53 +94,6 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ## Ready
 
-### T-125 — Remove downloads from the history
-
-**Status:** **Ready — `DAT-005` is Accepted (2026-08-04), so the blocker is gone.** The decision
-answers all four questions this entry said it had to; what remains is the code.
-*(This read "Proposed — needs a decision before it needs a button", 2026-08-03. Found by using the
-application: there is no way to clear history at any layer.)*
-**Owner:** Implementer
-**Priority:** Medium — a record the user cannot remove is a privacy question as much as a feature
-**Phase:** Phase 3
-**Depends on:** **`DAT-005`, now Accepted.** `T-124` is not a dependency — the control's placement
-is in `UX-005`, but what removal *means* was not, and that is what `DAT-005` settles: selected
-entries only, no file ever touched, irreversible with a counted confirmation, `REQ-020` amended.
-**Relevant context:** `REQ-020`, `REQ-021`, `REQ-026`, `DAT-001`, `UX-005`, `HistoryRepository`
-**Affected surfaces:** `ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, `persistence/repositories.py`,
-`ui/`
-**Risk:** **Medium** — the obvious implementation deletes the wrong thing
-
-**Nothing deletes today, deliberately.** `HistoryRepository`'s own docstring says so: *"Append-mostly
-and read-only to the rest of the application: nothing here deletes."* And no requirement asks for
-removal — `REQ-020` says maintain a history, `REQ-021` says open and reveal from it. So this is a
-gap rather than an unimplemented requirement, and adding a delete path to a deliberately
-append-only store is a data decision first.
-
-#### What the decision has to say
-
-- **What is removable** — selected entries, everything, everything older than a date.
-- **Whether a file is ever touched.** `UX-005` says no and says it in the status bar permanently,
-  because a history entry names a file on disk and "clear history" is ambiguous in exactly the way
-  that loses somebody's downloads. That belongs in the decision, not only in a mockup.
-- **Whether removal is recoverable**, and if not, what the confirmation must say.
-- **Whether `REQ-020` is amended** to admit removal, or a new requirement covers it.
-
-#### Acceptance criteria
-
-- ~~The decision exists and is Accepted before any code is written~~ — **`DAT-005`, 2026-08-04**
-- The verb names its own count, and a mutation making it say a bare *Remove* fails
-- **No filesystem call is reachable from the removal path**, asserted by the absence rather than by
-  a test that watches one not happen — `DAT-005`'s whole subject is that a record is not a file
-- "Files are never deleted" is in the status bar while History is showing, not only in the
-  confirmation
-- `REQ-020` is amended in the same change, so the requirement and the code never disagree
-- Removal is selection-scoped, and the verb names its own count
-- **A test proves no file is touched** — the promise is the feature
-- The empty history still says so rather than presenting a blank surface (`T-100`'s rule)
-
----
-
 ### T-066 — CI installs the project differently from how the documentation says to
 
 **Status:** **Ready — unblocked 2026-08-03.** Its stated blocker was that "both `frozen` jobs are
@@ -1856,6 +1809,88 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-125 — Remove downloads from the history
+
+**Status:** **Complete — 2026-08-04, awaiting review.** `DAT-005` answered all four questions this
+entry said it had to, and the code follows it.
+*(This read "Ready — `DAT-005` is Accepted, so the blocker is gone".)*
+*(This read "Proposed — needs a decision before it needs a button", 2026-08-03. Found by using the
+application: there is no way to clear history at any layer.)*
+**Owner:** Implementer
+**Priority:** Medium — a record the user cannot remove is a privacy question as much as a feature
+**Phase:** Phase 3
+**Depends on:** **`DAT-005`, now Accepted.** `T-124` is not a dependency — the control's placement
+is in `UX-005`, but what removal *means* was not, and that is what `DAT-005` settles: selected
+entries only, no file ever touched, irreversible with a counted confirmation, `REQ-020` amended.
+**Relevant context:** `REQ-020`, `REQ-021`, `REQ-026`, `DAT-001`, `UX-005`, `HistoryRepository`
+**Affected surfaces:** `ai/DECISIONS.md`, `ai/REQUIREMENTS.md`, `persistence/repositories.py`,
+`ui/`
+**Risk:** **Medium** — the obvious implementation deletes the wrong thing
+
+**Nothing deletes today, deliberately.** `HistoryRepository`'s own docstring says so: *"Append-mostly
+and read-only to the rest of the application: nothing here deletes."* And no requirement asks for
+removal — `REQ-020` says maintain a history, `REQ-021` says open and reveal from it. So this is a
+gap rather than an unimplemented requirement, and adding a delete path to a deliberately
+append-only store is a data decision first.
+
+#### What the decision has to say
+
+- **What is removable** — selected entries, everything, everything older than a date.
+- **Whether a file is ever touched.** `UX-005` says no and says it in the status bar permanently,
+  because a history entry names a file on disk and "clear history" is ambiguous in exactly the way
+  that loses somebody's downloads. That belongs in the decision, not only in a mockup.
+- **Whether removal is recoverable**, and if not, what the confirmation must say.
+- **Whether `REQ-020` is amended** to admit removal, or a new requirement covers it.
+
+#### Acceptance criteria
+
+- ~~The decision exists and is Accepted before any code is written~~ — **`DAT-005`, 2026-08-04**
+- The verb names its own count, and a mutation making it say a bare *Remove* fails
+- **No filesystem call is reachable from the removal path**, asserted by the absence rather than by
+  a test that watches one not happen — `DAT-005`'s whole subject is that a record is not a file
+- "Files are never deleted" is in the status bar while History is showing, not only in the
+  confirmation
+- `REQ-020` is amended in the same change, so the requirement and the code never disagree
+
+#### Evidence, 2026-08-04
+
+`HistoryRepository.remove(entry_ids)` takes **ids and nothing else** — a predicate or a cutoff
+would move `DAT-005`'s scoping decision to whichever caller was written next. It goes through the
+writer thread like every other write (`ARC-005`), and it has to: `complete()` writes a history row
+in the same transaction as a job's completion, so a removal racing one would let the record come
+back. Composition routes it through the **store**, not the manager — the opposite of `remove_job`,
+because a history record has no session to stop and the manager has no relationship with it.
+
+The row's *Remove* acts on the **selection** when the clicked row is in it and on that row when it
+is not; a user with one row selected who clicks Remove on another has not asked for the selection.
+`HistoryView` became `ExtendedSelection`, because a count is decoration if only one row can be
+selected.
+
+| Mutation | Result |
+|---|---|
+| the confirmation's **No** removes anyway | 1 failed |
+| the verb ignores the selection and sends one id | 1 failed |
+| the question loses its count | 2 failed |
+| the empty-sequence guard deleted | **survived — see below** |
+
+**The survivor is real and the guard stays.** Removing `if not entry_ids: return 0` leaves the
+suite green because **SQLite accepts `IN ()` as the empty set** and deletes nothing — measured, not
+assumed. That is a SQLite extension; standard SQL rejects the syntax. So the guard is redundant
+against this backend and load-bearing against any other, and it states the intent that an empty
+selection removes nothing. `ai/TESTING.md` §13 says default to "a test is missing" and prove
+redundancy before acting; this is the proof, and it is written into the method's docstring so the
+next person to run this mutation does not delete the line on the strength of a green suite.
+
+**`DAT-005` §2 is asserted against a real file**, not against a mocked `os.remove`: a test watching
+one API pass would be satisfied by a deletion performed through `Path.unlink`, `shutil`, or a
+subprocess. The claim is about the file, so the test writes real bytes to the recorded path and
+reads them back afterwards.
+- Removal is selection-scoped, and the verb names its own count
+- **A test proves no file is touched** — the promise is the feature
+- The empty history still says so rather than presenting a blank surface (`T-100`'s rule)
+
+---
 
 ### T-126 — Change a queued job's format from the queue row
 
