@@ -180,7 +180,17 @@ them, which is the argument for having built it.)*
 
 **Prerequisites:** Phase 1 approved. `ARC-002` confirmed sound. **Satisfied 2026-07-29.**
 
-**Status: every deliverable is built and approved; the phase has not exited** (2026-08-03).
+**Status: everything buildable is built and approved; what remains is the exit itself**
+(2026-08-03). `T-118` — the Phase 3 task sequenced ahead of this exit — is **approved with
+follow-ups at `53b07ec`**, so criterion 6 is the only thing left, and it has never been requested.
+
+**The gate was rebuilt on the way here.** Routing Windows to `STARBASE` to stop spending hosted
+minutes put three Windows jobs on one runner slot, turning a 17-minute run into 32 and making the
+gate the bottleneck rather than the safety net. Measured in run `30861672178` and acted on: the
+duplicate Windows suite dropped while `WINDOWS_RUNNER` is set, the desktop virtualenv persisted
+between runs, and the Windows suite moved off the push path to nightly/on-demand/`[win]`. An
+ordinary push is now ~7 minutes. `ai/TESTING.md` §10 is canonical for what runs when. No test was
+deleted or skipped; `T-123` is filed to evaluate whether the suite can run in parallel.
 **Thirteen of thirteen deliverables are approved**, the last four on 2026-08-01. Exit criteria 1–5
 and 7 are met. **What remains is the exit itself** — an independent exit review (`AGENTS.md` §3),
 which Phase 0 and Phase 1 both required and neither could self-certify.
