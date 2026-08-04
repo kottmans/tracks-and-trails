@@ -125,6 +125,13 @@ matters: a parallel run whose duration varied wildly would be contending for som
 **One test failed under `-n auto` and never serially:**
 `tests/integration/test_manager.py::test_the_survival_check_can_tell_a_live_process_from_a_dead_one`.
 
+**The direction matters and was nearly missed.** The assertion was *"a running process was reported
+dead"* — `still_running([alive.pid])` returned `[]` for a process that was alive. That is worth
+stating because `T-056` is the **opposite**: a *reaped* process reported **alive**, on Windows. The
+two look like the same finding at a glance and are not, and `T-056` now records that this candidate
+was checked and rejected. What this does establish is that `still_running` has a **second failure
+mode**, a false negative under parallel load, which nobody had seen.
+
 That is not a random flake, it is **the predicted hazard arriving on schedule** — a test whose
 subject is whether a *real process* is alive, run beside other tests that spawn and kill real
 processes. It is the first item in every list of what breaks under `xdist`, and finding exactly it
@@ -1379,7 +1386,18 @@ because the file was deleted, is an ordinary thing to want.
 
 ### T-092 — Arm `STARBASE` so the next access violation leaves a cause, not a stack
 
-**Status:** **Blocked — prepared 2026-08-01, on *somebody at* `STARBASE`.** Re-triaged 2026-08-03:
+**Status:** **Blocked — prepared 2026-08-01, on *somebody at* `STARBASE`.**
+
+**Re-triaged 2026-08-04: still blocked, but it may no longer be the only route.** This task exists
+because the faulting object of `T-074`'s access violation is unknown and a Windows crash dump was
+the only way to get one. `T-128` records something in the same subsystem crashing on **Linux** at
+roughly 2 in 39 — where a core dump needs `ulimit -c` and a pattern, not a person at a machine and
+consent to write dumps on it. **That does not unblock this**, which is specifically about Windows,
+and the two crashes are not established as one defect. It does mean the *cause* may become
+obtainable without this task, which is worth knowing before anyone spends a trip to the desktop on
+it.
+
+Re-triaged 2026-08-03:
 the machine came back that day and now runs every Windows job, so "blocked on `STARBASE`" no longer
 says what it means. The three remaining criteria need a person to arm dumps, crash a process on
 purpose and open the result — none of which a CI job does. **Availability was never the blocker.** The reviewer classified it
@@ -1520,7 +1538,12 @@ launched.
 ### T-068 — Qt writes a font warning to stderr on a real Windows machine
 
 **Status:** **Blocked — on the runner question, which just got harder**, 2026-07-28; re-triaged
-2026-08-03. The frozen half is now obtainable: `frozen windows` runs on `STARBASE`. The other half
+2026-08-03 and **again 2026-08-04, unchanged and verified**. `OPS-010` restored the Windows suite
+to every push, which sounds like it would help and does not: it restored the **`STARBASE` desktop**
+job, while `check`'s hosted Windows leg stays dropped. `vars.WINDOWS_RUNNER` is set, so hosted
+Windows still does not run at all. The cost of answering this is now explicit — unsetting that
+variable for one run spends hosted Windows minutes at a 2x multiplier, against a nearly exhausted
+quota. The frozen half is now obtainable: `frozen windows` runs on `STARBASE`. The other half
 asks *why the hosted runners never showed the fault*, and hosted Windows **no longer runs at all**
 while `WINDOWS_RUNNER` points at the desktop (`ai/TESTING.md` §10). Answering it now needs that
 variable unset deliberately for a run. A consequence of the gate rebuild, recorded rather than
@@ -1615,6 +1638,19 @@ ignored, which is the expected case — expected, not verified.
 ### T-056 — `still_running` reports a reaped Windows process as alive, intermittently
 
 **Status:** **Blocked — on a reproduction, not on a machine**, 2026-07-28 at `9c92c32`.
+
+**Re-triaged 2026-08-04, and a candidate reproduction was checked and rejected.** The overnight
+`-n auto` run failed exactly this task's subject —
+`test_the_survival_check_can_tell_a_live_process_from_a_dead_one`, `still_running`'s own test — on
+Linux, which looked like the reproduction this task has waited for since July. **It is not.** The
+assertion was *"a running process was reported dead"*: `still_running([alive.pid])` returned `[]`
+for a live process. This task is the **opposite** symptom — a *reaped* process reported **alive**.
+Same helper, inverted direction, and a false negative under parallel load is a different defect
+from a false positive on Windows.
+
+Recorded rather than left for somebody else to find and re-check. What it does say is that
+`still_running` has a second failure mode nobody had seen, which `T-123` carries.
+
 Re-triaged 2026-08-03: `STARBASE`'s return does **not** help. This task already had its Windows
 evidence and that is the finding — reverting the fix passes 20/20 there, so the defect does not
 reproduce on the machine we have. More runs of the same machine cannot close it. The reviewer
