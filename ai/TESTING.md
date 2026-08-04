@@ -224,38 +224,48 @@ Do not record a manual item as passed because this job is green. It covers what 
 
 ## 10. CI
 
-Runs on every push and pull request. **What runs is no longer the whole matrix on every push** —
-see the subsection immediately below, which is canonical; this section's older prose describes the
-policy `OPS-009` accepted and is being reconciled under `P2EXIT-R4`.
+Runs on every push and pull request. **Every test runs on every push, on both platforms** — what
+changed on 2026-08-03 is *where* Windows runs and *when its answer arrives*, not what is covered.
+`OPS-010` is the governing decision; the subsection below states it operationally.
 
-### What runs on an ordinary push, since 2026-08-03
-
-**Not everything, and that is deliberate.** Three Windows jobs on one self-hosted runner serialise,
-and a ~32 minute gate on every commit became the bottleneck rather than the safety net. Measured in
-run `30861672178`: `windows desktop` 12m56s, the Windows leg of `check` 12m44s, `frozen windows`
-~6m, each starting two seconds after the previous finished.
+### What runs on an ordinary push, since 2026-08-03 (`OPS-010`)
 
 | Trigger | What runs |
 |---|---|
-| **push** | Linux `check`, `frozen ubuntu-latest`, `frozen windows`, the coverage notice — roughly 7 minutes |
-| **push with `[win]` in the commit message** | the above **plus** the full `windows desktop` suite |
-| **pull request** | everything |
-| **nightly (06:00 UTC) and `workflow_dispatch`** | everything |
+| **push and pull request** | everything: Linux `check`, the full `windows desktop` suite, `frozen ubuntu-latest`, `frozen windows`, the coverage notice |
+| **nightly (06:00 UTC) and `workflow_dispatch`** | the same, plus it cannot be cancelled by a push |
 
-Two savings sit behind that, both measured rather than assumed:
+**Linux lands in ~7 minutes; Windows arrives later, and you do not wait for it.** Three Windows
+jobs serialise on the one self-hosted slot — measured in run `30861672178`: `windows desktop`
+12m56s, `frozen windows` ~6m, each starting two seconds after the previous finished. `OPS-010`
+makes that explicit: **Windows evidence is required before a task is reviewed, not before work
+continues.** Carry on against the Linux gate while it runs.
+
+For a brief period the desktop suite was `[win]`-gated on pushes. `P2EXIT-R4` reversed that: it
+was removed for wall-clock and defended with the hosted-minute constraint, which does not apply to
+a job running on hardware the maintainer owns. **There is no opt-in marker any more** — a commit
+message containing `[win]` means nothing.
+
+One saving remains, and it is the one quota actually forces:
 
 - **The Windows leg of `check` is dropped while `WINDOWS_RUNNER` points at `STARBASE`.** Both jobs
   ran the identical suite — 1972 passed, 21 skipped, 32 deselected, within four seconds of each
   other — because that variable put them on the same machine. What the leg contributed was
   *clean-machine* evidence on a fresh hosted image, which is precisely what it stops being when
-  routed to the desktop. Unset the variable and the leg and its meaning both return.
-- **The desktop job's virtualenv persists between runs**, keyed by a hash of `pyproject.toml`.
-  Building it was 111 s of the 13 minutes, on a machine whose disk survives.
+  routed to the desktop. **What is surrendered with it is the offscreen platform plugin on
+  Windows**, that cell existing nowhere else. Unset the variable and both return.
 
-**Say `[win]` in the commit message when a change touches Windows behaviour** — `spawn`, paths,
-packaging, Qt platform plugins, process trees. The nightly run is the backstop, not the plan.
+Plus one that costs nothing:
+
+- **The desktop job's virtualenv persists between runs**, keyed by a hash of `pyproject.toml`.
+  Building it was 111 s of the 13 minutes, on a machine whose disk survives. It lives under
+  `RUNNER_TOOL_CACHE`, outside the workspace, because checkout cleans ignored files — and the
+  directory name is truncated to 12 hash characters so PySide6's QML paths clear Windows'
+  260-character `MAX_PATH`.
+
 Platform-specific breakage in `spawn` behavior, path handling, and packaging is the expected
-failure mode of this project; discovering it late is the thing CI exists to prevent.
+failure mode of this project; discovering it late is the thing CI exists to prevent. That is the
+reason the coverage came back.
 
 CI runs lint, format check, types, and the default suite. Network tests do not run in CI.
 A red CI run blocks merge.

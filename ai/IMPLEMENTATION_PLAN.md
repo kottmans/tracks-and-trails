@@ -194,10 +194,14 @@ hosted Windows no longer runs.
 **The gate was rebuilt on the way here.** Routing Windows to `STARBASE` to stop spending hosted
 minutes put three Windows jobs on one runner slot, turning a 17-minute run into 32 and making the
 gate the bottleneck rather than the safety net. Measured in run `30861672178` and acted on: the
-duplicate Windows suite dropped while `WINDOWS_RUNNER` is set, the desktop virtualenv persisted
-between runs, and the Windows suite moved off the push path to nightly/on-demand/`[win]`. An
-ordinary push is now ~7 minutes. `ai/TESTING.md` §10 is canonical for what runs when. No test was
-deleted or skipped; `T-123` is filed to evaluate whether the suite can run in parallel.
+duplicate Windows suite dropped while `WINDOWS_RUNNER` is set, and the desktop virtualenv persisted
+between runs. A third change — moving the Windows suite off the push path — **was reversed the same
+day** by `P2EXIT-R4` and `OPS-010`: it was made for wall-clock and then justified with the
+hosted-minute constraint, which does not apply to a job running on the maintainer's own machine.
+The full suite runs on every push on both platforms again. What changed is that **Linux answers in
+~7 minutes and Windows answers later**, asynchronously, and work continues while it does.
+`ai/TESTING.md` §10 is canonical for what runs when. No test was deleted or skipped; `T-123` is
+filed to evaluate whether the suite can run in parallel.
 **Thirteen of thirteen deliverables are approved**, the last four on 2026-08-01. Exit criteria 1–5
 and 7 are met. **What remains is the exit itself** — an independent exit review (`AGENTS.md` §3),
 which Phase 0 and Phase 1 both required and neither could self-certify.

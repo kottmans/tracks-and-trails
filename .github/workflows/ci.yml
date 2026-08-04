@@ -44,14 +44,23 @@ on:
   # and slowing development to the point where the gate was the bottleneck rather than the work.
   workflow_dispatch:
   schedule:
-    # 06:00 UTC. Nothing depends on the hour; it exists so a day never passes without the
-    # Windows suite having run against `main` at least once.
+    # 06:00 UTC. Nothing depends on the hour. Since `OPS-010` every push runs the full matrix,
+    # so this is no longer standing in for missing coverage — it catches what *no* commit causes:
+    # a re-resolved dependency, a runner OS update, the desktop machine drifting. It also means a
+    # quiet week still produces evidence.
     - cron: "0 6 * * *"
 
-# A superseded run has no value; cancel it rather than spend Windows runner minutes on it.
+# A superseded push run has no value; cancel it. **A scheduled run is not superseded by a push**
+# (`P2EXIT-R4`): it answers a different question — whether the environment drifted, not whether a
+# commit is sound — and a global `cancel-in-progress` let any push destroy that answer. The
+# guarantee read as true until somebody checked. Scheduled runs get their own group *and* are not
+# cancelled.
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  # The **separate group** is the load-bearing half: `cancel-in-progress` is read from the *arriving*
+  # run, so a push arriving into a shared group would cancel a running nightly no matter what the
+  # nightly asked for. The `false` below then stops two scheduled runs from cancelling each other.
+  group: ci-${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'schedule' && 'nightly' || 'ondemand' }}
+  cancel-in-progress: ${{ github.event_name != 'schedule' }}
 
 permissions:
   contents: read
@@ -307,14 +316,13 @@ jobs:
           if [ "${{ vars.STARBASE_AVAILABLE }}" != "true" ]; then
             echo "::warning::STARBASE_AVAILABLE is not set. The Windows desktop slice did NOT run,"
             echo "::warning::and neither did the frozen Windows job. Changes to either are merging"
-            echo "::warning::unverified — see OPS-009. Set the variable when the machine is back."
-          elif [ "${{ github.event_name }}" = "push" ] \
-            && ! printf '%s' "${{ github.event.head_commit.message }}" | grep -q '\[win\]'; then
-            echo "::notice::Windows desktop suite SKIPPED for this push — it runs nightly, on a"
-            echo "::notice::pull request, on demand, or on a push whose message contains [win]."
-            echo "::notice::The frozen Windows job still ran on STARBASE."
+            echo "::warning::unverified — see OPS-010. Set the variable when the machine is back."
           else
             echo "::notice::STARBASE is enabled; the desktop slice and the frozen Windows job ran."
+            if [ -n "${{ vars.WINDOWS_RUNNER }}" ]; then
+              echo "::notice::WINDOWS_RUNNER is set, so the hosted Windows leg of check did NOT run"
+              echo "::notice::and offscreen-on-Windows is not covered (OPS-010, surrendered)."
+            fi
           fi
 
   windows-desktop:
@@ -327,18 +335,20 @@ jobs:
     #
     # An unset variable evaluates false, so the safe default is *skip*. Set the repository variable
     # `STARBASE_AVAILABLE` to `true` when the machine is back and this job returns with it.
-    # **Not on every push** — see the `workflow_dispatch`/`schedule` triggers above. This job is
-    # ~13 minutes of a ~32 minute run, and with the Windows legs serialising on one self-hosted
-    # slot it became the reason a commit took half an hour to clear. It now runs nightly, on
-    # demand, on any pull request, and on a push whose commit message says `[win]` — so a change
-    # that actually touches Windows behaviour can still ask for it in the same breath.
+    # **On every push again** (`OPS-010`, after `P2EXIT-R4`). This briefly ran only nightly, on
+    # demand, or on a `[win]` commit — removed for wall-clock, then justified with the hosted-minute
+    # constraint, which does not apply to it: this job runs on `STARBASE` and costs nothing.
+    # Quota justified *routing* Windows here; it never justified dropping the coverage. The
+    # duplicate that genuinely cost money — the Windows leg of `check`, running the identical suite
+    # on this same machine — is the thing that stays dropped.
+    #
+    # It runs in parallel with the hosted Linux gate, so Linux feedback still lands in ~7 minutes
+    # and this arrives when it arrives. `OPS-010` states that Windows evidence is asynchronous:
+    # required before review, not a barrier to carrying on working.
     #
     # `STARBASE_AVAILABLE` still gates it: an unset variable evaluates false, and a self-hosted
     # job whose runner is offline queues forever rather than failing (`OPS-005`).
-    if: >-
-      ${{ vars.STARBASE_AVAILABLE == 'true' && (
-            github.event_name != 'push'
-            || contains(github.event.head_commit.message, '[win]')) }}
+    if: ${{ vars.STARBASE_AVAILABLE == 'true' }}
     # Raised from 15 with T-073: this job now carries the full suite as well as the desktop
     # slice, and 15 was sized for the slice alone. The number bounds how long the job may run
     # once started — it does not bound the queue wait, per RUNNER-R1 below.

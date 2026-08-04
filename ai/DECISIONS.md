@@ -2758,9 +2758,77 @@ A control that appears when you find it is not a control.
 
 ---
 
+## OPS-010 — Windows runs on `STARBASE`, on every push, and asynchronously
+
+**Status:** **Accepted** (2026-08-03) — maintainer ruling on `P2EXIT-R4`
+**Date:** 2026-08-03
+**Supersedes:** `OPS-009`'s runner placement. **Does not amend** `OPS-005`'s definition of what
+"Windows" means for verification, which is unchanged.
+
+### Context
+
+Hosted Actions minutes are nearly exhausted, so `WINDOWS_RUNNER` was set to `STARBASE` — which
+`OPS-009` explicitly anticipates as the fallback when the allowance runs out. Two consequences
+followed, and **only one of them was authorised by that reasoning**:
+
+1. The Windows leg of `check` and the `windows desktop` job then ran the **identical suite on the
+   same machine** — 1972 passed, 21 skipped, 32 deselected in both, four seconds apart, serialised
+   on one runner slot (run `30861672178`).
+2. The full Windows desktop suite was then also removed from ordinary pushes, behind a `[win]`
+   commit-message opt-in.
+
+`P2EXIT-R4` found the second to be a durable coverage change made below the authority of an
+accepted decision, and it was right. **The quota argument justifies the routing; it never justified
+the removal** — the desktop job runs on hardware the maintainer owns and costs nothing. It was
+removed for wall-clock and then defended with an argument about money that did not apply to it.
+
+The review also found that the "nightly backstop" offered in its place **was not guaranteed**: a
+global `cancel-in-progress: true` let any ordinary push cancel a scheduled run, and the replacing
+push could skip Windows entirely.
+
+### Decision
+
+1. **Windows work runs on `STARBASE`** while `vars.WINDOWS_RUNNER` names it. This part of `OPS-009`
+   stands, and its fallback condition — the hosted allowance running out — has been met.
+2. **The Windows leg of `check` is dropped while that variable is set.** It duplicates the
+   `windows desktop` job on the same machine, and the *clean-machine* evidence that justified it
+   is precisely what routing to a desktop destroys. Unset the variable and the leg returns.
+3. **The full Windows desktop suite runs on every push**, restored. Not nightly-only, not
+   `[win]`-gated.
+4. **Windows evidence is asynchronous.** It runs in parallel with the hosted Linux gate, which
+   lands in ~7 minutes; the Windows result arrives when it arrives. **Work continues while it
+   runs.** It is required before a task or phase is reviewed — not a barrier to carrying on.
+5. **A scheduled run cannot be cancelled by a push.** Scheduled runs take their own concurrency
+   group and set `cancel-in-progress: false`.
+
+### What is surrendered, in writing
+
+Both of these go with the routing and would return if `WINDOWS_RUNNER` were unset:
+
+- **Clean-machine Windows evidence.** A fresh hosted image proves the application works somewhere
+  nobody has been. `STARBASE` is a machine somebody uses, with a history.
+- **The offscreen platform plugin on Windows.** The real `windows` plugin on Windows and
+  `offscreen` on Linux both remain, and they bracket it — but the cell itself is not covered.
+
+**Neither is a hidden cost.** They are stated here so that the next person to read a green board
+knows what green does and does not mean, which is what `OPS-009` was for and what a workflow
+comment could not carry.
+
+### Consequences
+
+- `ai/TESTING.md` §10 is the canonical statement of what runs when, and follows this entry.
+- The `STARBASE coverage` job says when the hosted Windows leg did not run, so the surrender is
+  visible in the run rather than only here.
+- **Three Windows jobs serialise on one runner slot**, so a push takes roughly 19 minutes to
+  produce Windows evidence against ~7 for Linux. If that becomes the constraint, `T-123` — running
+  the suite in parallel — is the lever, **not** removing coverage. That is the trade this decision
+  exists to refuse a second time.
+
+---
+
 ## OPS-009 — Where each CI job runs, now that `STARBASE` is back and minutes are metered
 
-**Status:** **Accepted** (2026-08-03) — maintainer decision
+**Status:** **Superseded by `OPS-010`** (2026-08-03) for runner placement; **Accepted** (2026-08-03) — maintainer decision
 **Date:** 2026-08-03
 **Raised by:** the maintainer, on 2026-08-03: *"we should use STARBASE as much as possible going
 forward because github has limited use and we've burned most of it already"*
