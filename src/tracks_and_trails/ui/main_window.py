@@ -38,6 +38,7 @@ from PySide6.QtWidgets import (
     QMainWindow,
     QMenu,
     QMessageBox,
+    QSizePolicy,
     QSpinBox,
     QTabWidget,
     QToolBar,
@@ -72,8 +73,34 @@ HISTORY_TAB: Final = "History"
 #: menu keeps *"Add URLs..."*, where a leading `+` would be a convention nobody uses.
 ADD_URLS_BUTTON: Final = "+ Add URLs"
 
+#: The dynamic property the style sheet fills a toolbar's primary button against (`T-132`).
+#:
+#: **A role, not a name.** `theme.py` must style by class so a widget nobody remembered still gets
+#: themed — `test_the_sheet_styles_by_class_so_a_new_widget_inherits_it` — and an object-name
+#: selector would have made a second primary action somewhere else silently draw flat. Named here
+#: rather than written into both the widget and the sheet, because a selector that stops matching
+#: fails silently: the button just goes back to looking like the other three.
+PRIMARY_ACTION_PROPERTY: Final = "primaryAction"
+
+#: The dynamic property marking the toolbar's expanding spacer, so the sheet can stop it
+#: painting over the toolbar (`T-132`). A role, not a name — same reason as above.
+TOOLBAR_SPACER_PROPERTY: Final = "toolbarSpacer"
+
 #: `DAT-005` §3, in one place so the status bar and the confirmation cannot come to disagree.
 HISTORY_KEEPS_FILES: Final = "Files are never deleted — this list is a record, not your downloads."
+
+
+def _verbs(carried: object) -> tuple[Verb, ...]:
+    """Narrow a `more_requested` payload to verbs (`T-135`).
+
+    The signal carries `object` because Qt has no `Verb` type, so this is where the contract is
+    checked rather than assumed — the same place and the same reason as `QueueView._on_verb`.
+    Anything else is a programming error and is dropped to an empty menu rather than raised,
+    because a shell that crashed on a right-click would be a worse failure than a missing menu.
+    """
+    if not isinstance(carried, tuple | list):
+        return ()
+    return tuple(verb for verb in carried if isinstance(verb, Verb))
 
 
 def removal_question(count: int) -> str:
@@ -538,22 +565,22 @@ class MainWindow(QMainWindow):
         confirm.open()
         return confirm
 
-    def _show_row_menu(self, job_id: str) -> QMenu | None:
-        """The row's `⋯` — everything its state permits, and the declared keyboard route.
+    def _show_row_menu(self, job_id: str, verbs: object) -> QMenu | None:
+        """The queue row's menu, holding whatever the view said to hold.
 
-        **Built from `verbs_of` rather than from a second table**, so the menu holds exactly what
-        the row holds. The overflow exists because verbs are dropped when they will not fit
-        (`NFR-006` keeps the message at full width), and a menu that disagreed with the row about
-        what is available would be worse than no menu at all.
+        **The contents arrive with the request** (`T-135`). This used to call `verbs_of` itself and
+        so gave both routes the same menu — which meant the `⋯` on a wide row offered the three
+        actions the row was already showing. The view is the only thing that knows which route
+        asked and how much the row could draw; deciding here would be deciding without that.
 
         Returned rather than only shown, and `popup` rather than `exec`, for the reason
         `FileActions._show_menu` gives: `exec` starts a nested event loop a test cannot leave.
         """
         if self._queue is None:
             return None
-        return self._row_menu(self._queue, job_id, self._queue.verbs_of(job_id))
+        return self._row_menu(self._queue, job_id, _verbs(verbs))
 
-    def _show_history_row_menu(self, entry_id: str) -> QMenu | None:
+    def _show_history_row_menu(self, entry_id: str, verbs: object) -> QMenu | None:
         """The history row's `⋯`, and its keyboard route (`T124-R1`, `UX-005` §4, `DAT-005`).
 
         **The same menu the queue gets**, built by the same function from the row's own verbs — so
@@ -564,7 +591,7 @@ class MainWindow(QMainWindow):
         """
         if self._history_view is None:
             return None
-        return self._row_menu(self._history_view, entry_id, self._history_view.verbs_of(entry_id))
+        return self._row_menu(self._history_view, entry_id, _verbs(verbs))
 
     def _row_menu(
         self, view: QueueView | HistoryView, row_id: str, offered: Sequence[Verb]
@@ -772,6 +799,16 @@ class MainWindow(QMainWindow):
             self._add_urls_button.setIconText(ADD_URLS_BUTTON)
             bar.setToolButtonStyle(Qt.ToolButtonStyle.ToolButtonTextOnly)
             bar.addAction(self._add_urls_button)
+            # **The role the style sheet fills against** (`T-132`). The mockup draws this one as a
+            # filled brand button and the other three as plain ones, so the rule has to reach this
+            # button alone — `QToolBar QToolButton` would fill `Pause queue` and `Clear finished`
+            # too and put the toolbar back to four equals. `widgetForAction` is the only handle on
+            # the button a toolbar builds for an action. The object name is kept for tests and
+            # accessibility tooling to find it by; the *styling* hangs off the property.
+            rendered = bar.widgetForAction(self._add_urls_button)
+            if rendered is not None:
+                rendered.setObjectName("addUrlsButton")
+                rendered.setProperty(PRIMARY_ACTION_PROPERTY, True)
             bar.addSeparator()
         # Not closable: a control the user can hide and then not find is worse than a control
         # they ignore, and this is the only way to change the limit until Phase 4's dialog.
@@ -798,7 +835,18 @@ class MainWindow(QMainWindow):
         box.valueChanged.connect(self._concurrency_chosen)
         bar.addWidget(box)
 
-        bar.addSeparator()
+        # **The mockup's `.spacer{{flex:1 1 auto}}`** (`T-132`, `UX-005` row 7). What *adds* work
+        # and what *acts on work already queued* are different kinds of verb; packed left, the
+        # toolbar ran `Clear finished` straight up against the concurrency spinner with nothing
+        # between them. A separator here would only draw a line — the ruling is that the queue
+        # verbs sit at the far edge, which needs a widget that takes the leftover width.
+        spacer = QWidget(bar)
+        spacer.setObjectName("toolBarSpacer")
+        spacer.setProperty(TOOLBAR_SPACER_PROPERTY, True)
+        spacer.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        # It is furniture, so it must not be a stop on the way to the queue verbs (`NFR-005`).
+        spacer.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        bar.addWidget(spacer)
         self._build_queue_actions(bar)
 
         self.addToolBar(bar)

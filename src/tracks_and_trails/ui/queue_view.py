@@ -896,7 +896,14 @@ class QueueView(QWidget):
 
     #: `(job_id)` — the row's `⋯` was activated, by pointer or by keyboard. The overflow menu is
     #: the shell's, because what belongs in it is a shell question.
-    more_requested = Signal(str)
+    #: A row asked for its menu: the row's id, and **what the menu should hold** (`T-135`).
+    #:
+    #: The contents travel with the request because the two routes want different things and only
+    #: this widget can tell them apart. The `⋯` button holds what the row could not draw — that is
+    #: what it is for, and listing everything there offered the same actions twice on any row wide
+    #: enough to show them. The Menu key, Shift+F10 and a right-click hold **everything the state
+    #: permits**, because they are not asking about the row's width.
+    more_requested = Signal(str, object)
 
     def __init__(
         self,
@@ -946,6 +953,10 @@ class QueueView(QWidget):
         # rule (`ARCHITECTURE.md` §7): cancelling is asking the manager to stop a session it owns,
         # which this widget already holds, while re-queueing, reordering and removing are writes
         # and belong to composition. `job_detail` drew the same line for the same reason.
+        # **The pointer is watched so the row's verbs can react to it** (`T-134`). Not a
+        # default: a viewport's mouse tracking is off, so without this Qt reports the
+        # pointer only while a button is held.
+        self._delegate.watch_hover(self._list)
         self._delegate.verb_triggered.connect(self._on_verb)
         self._list.setUniformItemSizes(True)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
@@ -985,6 +996,10 @@ class QueueView(QWidget):
         # **The disk cache is swept with the job** (`T-119`), and only then: a file is kept while
         # any remaining job names the same thumbnail URL, which is what "two jobs for one URL
         # share it" requires. `sweep` takes what is still live rather than what just left.
+        # **The paint-time overflow record does not survive a reset** (`T-135`). A job that
+        # left the queue would otherwise keep an entry keyed by its id, and rows that
+        # scroll out of view are never repainted to correct it.
+        self._model.modelReset.connect(self._delegate.forget_dropped)
         self._model.modelReset.connect(self._sweep_thumbnails)
 
         self._model.modelReset.connect(self._show_the_right_thing)
@@ -1008,7 +1023,8 @@ class QueueView(QWidget):
         like one.
         """
         if verb is None:
-            self.more_requested.emit(job_id)
+            # The `⋯` is drawn only when something was dropped, so this is never empty (`T-135`).
+            self.more_requested.emit(job_id, self._delegate.overflowing(job_id))
             return
         # The signal carries `object` because Qt has no `Verb` type; narrowing here is where the
         # contract is checked rather than assumed. A value that is not a verb is the same class of
@@ -1051,7 +1067,9 @@ class QueueView(QWidget):
             return
         job_id = self._model.data(index, JOB_ID_ROLE)
         if isinstance(job_id, str) and job_id:
-            self.more_requested.emit(job_id)
+            # **Everything, not the overflow.** A keyboard route whose contents changed with the
+            # window's width would be a different menu on a maximised window (`NFR-005`, `T-135`).
+            self.more_requested.emit(job_id, self.verbs_of(job_id))
 
     def _commit_open_editor(self) -> None:
         """Write the open editor's choice through **before** the rows are replaced (`T126-R1`).

@@ -333,9 +333,16 @@ class HistoryView(QWidget):
         # No thumbnail store: a history record carries no thumbnail URL, so every row draws the
         # derived tile (`UX-003`) — which is what the store would fall back to anyway, without
         # the thread pool and the cache directory that nothing here would use.
+        # **The pointer is watched so the row's verbs can react to it** (`T-134`). Not a
+        # default: a viewport's mouse tracking is off, so without this Qt reports the
+        # pointer only while a button is held.
         self._delegate.verb_triggered.connect(self._on_verb)
         layout.addWidget(self._table)
 
+        # **The paint-time overflow record does not survive a reset** (`T-135`). A job that
+        # left the queue would otherwise keep an entry keyed by its id, and rows that
+        # scroll out of view are never repainted to correct it.
+        self._model.modelReset.connect(self._delegate.forget_dropped)
         self._model.modelReset.connect(self._show_the_right_thing)
         self._show_the_right_thing()
 
@@ -353,7 +360,14 @@ class HistoryView(QWidget):
     #: `(entry_id)` — the row's `⋯` was activated, by pointer or by keyboard (`T124-R1`).
     #: The queue's signal of the same name, for the same reason: what belongs in the overflow is a
     #: shell question, and the shell builds one menu for both tabs.
-    more_requested = Signal(str)
+    #: A row asked for its menu: the row's id, and **what the menu should hold** (`T-135`).
+    #:
+    #: The contents travel with the request because the two routes want different things and only
+    #: this widget can tell them apart. The `⋯` button holds what the row could not draw — that is
+    #: what it is for, and listing everything there offered the same actions twice on any row wide
+    #: enough to show them. The Menu key, Shift+F10 and a right-click hold **everything the state
+    #: permits**, because they are not asking about the row's width.
+    more_requested = Signal(str, object)
 
     def _on_verb(self, entry_id: str, verb: object) -> None:
         """Route a history row's verb, or its overflow. An unrouted verb is a programming error.
@@ -368,7 +382,7 @@ class HistoryView(QWidget):
             # control every history row draws was inert — with a pointer as well as without one.
             # `QueueView._on_verb` had the branch; this is the same route, added where it was
             # missing rather than a second one beside it.
-            self.more_requested.emit(entry_id)
+            self.more_requested.emit(entry_id, self._delegate.overflowing(entry_id))
             return
         if verb is Verb.OPEN:
             self.open_requested.emit(entry_id)
@@ -414,7 +428,8 @@ class HistoryView(QWidget):
             return
         entry_id = self._model.data(index, JOB_ID_ROLE)
         if isinstance(entry_id, str) and entry_id:
-            self.more_requested.emit(entry_id)
+            # Everything: see `QueueView`'s twin. A keyboard route must not depend on the width.
+            self.more_requested.emit(entry_id, self.verbs_of(entry_id))
 
     @property
     def model(self) -> HistoryModel:

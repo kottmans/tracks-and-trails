@@ -19,14 +19,23 @@ from typing import Any
 
 import pytest
 from PySide6.QtCore import QPoint, QRect, Qt
-from PySide6.QtGui import QAccessible, QContextMenuEvent, QFontMetrics
-from PySide6.QtWidgets import QApplication, QComboBox, QMenu, QMessageBox
+from PySide6.QtGui import QAccessible, QContextMenuEvent, QFontMetrics, QImage, QPainter
+from PySide6.QtWidgets import (
+    QApplication,
+    QComboBox,
+    QMenu,
+    QMessageBox,
+    QSpinBox,
+    QStyleOptionViewItem,
+    QToolBar,
+)
 
 from tracks_and_trails.core import presets
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.persistence.repositories import HistoryEntry
+from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT
 from tracks_and_trails.ui.main_window import (
     HISTORY_KEEPS_FILES,
@@ -195,15 +204,21 @@ def test_a_rows_file_verb_goes_through_file_actions(qapp: QApplication, tmp_path
 def test_the_overflow_menu_holds_exactly_what_the_row_offers(
     qapp: QApplication, tmp_path: Path
 ) -> None:
-    """`UX-005` §4. The menu is the overflow, so it must not disagree with the row.
+    """`UX-005` §4. The **keyboard** menu holds everything the state permits.
 
-    Verbs are dropped from the row when they will not fit — `NFR-006` keeps the extractor's
-    message at full width — and the menu is where they go. A menu built from its own table would
-    be a second opinion about what a row offers, and the first time the two differed the user
-    would be offered something the row had already decided against.
+    A menu built from its own table would be a second opinion about what a row offers, and the
+    first time the two differed the user would be offered something the row had already decided
+    against.
+
+    **This is the Menu-key and right-click route specifically** (`T-135`). It was the only route
+    when this was written, and the `⋯` now holds the narrower set — what the row could not draw.
+    What must not vary with the window's width is *this* one: a keyboard menu that offered less on
+    a maximised window would make the declared route depend on the pointer's world.
     """
     window = _window_over([_job("job-1", 0, JobStatus.FAILED)], tmp_path, retry=lambda _: None)
-    menu = window._show_row_menu("job-1")
+    queue = window.queue_view
+    assert queue is not None
+    menu = window._show_row_menu("job-1", queue.verbs_of("job-1"))
     assert isinstance(menu, QMenu)
     try:
         labels = [action.text() for action in menu.actions()]
@@ -229,7 +244,9 @@ def test_the_overflow_takes_the_same_route_a_click_takes(
     """
     asked: list[str] = []
     window = _window_over([_job("job-1", 0, JobStatus.FAILED)], tmp_path, retry=asked.append)
-    menu = window._show_row_menu("job-1")
+    queue = window.queue_view
+    assert queue is not None
+    menu = window._show_row_menu("job-1", queue.verbs_of("job-1"))
     assert isinstance(menu, QMenu)
     try:
         retry = next(a for a in menu.actions() if a.objectName() == f"rowVerb_{Verb.RETRY.value}")
@@ -247,7 +264,9 @@ def test_a_row_the_queue_does_not_hold_offers_no_menu(qapp: QApplication, tmp_pa
     broken control rather than as "this row is gone".
     """
     window = _window_over([_job("job-1", 0)], tmp_path)
-    assert window._show_row_menu("job-missing") is None
+    queue = window.queue_view
+    assert queue is not None
+    assert window._show_row_menu("job-missing", queue.verbs_of("job-missing")) is None
 
 
 def test_the_drawn_verbs_are_where_the_click_is_tested(qapp: QApplication, tmp_path: Path) -> None:
@@ -288,10 +307,15 @@ def test_the_drawn_verbs_are_where_the_click_is_tested(qapp: QApplication, tmp_p
 def test_the_overflow_keeps_its_place_as_the_state_changes(
     qapp: QApplication, tmp_path: Path
 ) -> None:
-    """`UX-005` §4 accepts that the buttons shift; the **route** must not.
+    """`UX-005` §4 accepts that the buttons shift; the `⋯` must not.
 
-    `⋯` is the declared keyboard route, and a route that relocates as a download progresses is not
-    a route. It is laid out first — rightmost — so every other verb moves around it.
+    It is laid out first — rightmost — so every other verb moves around it, and a control that
+    relocated as a download progressed would be one the user has to re-find on every repaint.
+
+    **Measured at a width narrow enough for the `⋯` to exist** (`T-135`). It used to be drawn
+    unconditionally, and this test took a 700px row and simply expected one; under `UX-005` row 8
+    the button appears only when the row could not show everything, so a wide row now legitimately
+    has none and `next(...)` raised `StopIteration` rather than failing an assertion.
     """
     window = _window_over(
         [_job("job-1", 0, JobStatus.QUEUED), _job("job-2", 1, JobStatus.RUNNING)], tmp_path
@@ -302,13 +326,25 @@ def test_the_overflow_keeps_its_place_as_the_state_changes(
     assert isinstance(delegate, RowDelegate)
     metrics = QFontMetrics(view.table.font())
     body = QRect(0, 0, 700, 66).adjusted(PADDING, PADDING, -PADDING, -PADDING)
-    area = QRect(body.left() + 100, body.top(), body.width() - 100, body.height())
 
-    places = []
-    for row in (0, 1):
+    def overflow_at(width: int, row: int) -> QRect | None:
+        area = QRect(body.left(), body.top(), width, body.height())
         placed = delegate._verb_rects(metrics, area, body, view.model.index(row, 0))
-        overflow = next(rect for verb, rect in placed if verb is None)
-        places.append(overflow)
+        return next((rect for verb, rect in placed if verb is None), None)
+
+    # **The width is searched for rather than written down.** A queued row offers three verbs and
+    # a running one offers a single Cancel, so the band where *both* drop something is narrow and
+    # moves with the font — a literal here would be a number that passed on this machine.
+    places: list[QRect] = []
+    for width in range(24, 200, 2):
+        found = [overflow_at(width, row) for row in (0, 1)]
+        if all(rect is not None for rect in found):
+            places = [rect for rect in found if rect is not None]
+            break
+    assert len(places) == 2, (
+        "no width between 24 and 200 gave both a queued and a running row an overflow, so this "
+        "measures nothing; the layout or the verb sets have changed shape"
+    )
 
     assert places[0] == places[1], (
         f"the overflow sat at {places[0]} on a queued row and {places[1]} on a running one; it "
@@ -1592,4 +1628,218 @@ def test_the_chip_takes_width_from_the_title_rather_than_overlapping_it(
 
     assert paint(chip=True) != paint(chip=False), (
         "the row draws identically with and without the chip, so the chip is not being drawn"
+    )
+
+
+# --- T-132, T-134, T-135: the second sitting at the window -----------------------------------
+
+
+def test_the_queue_verbs_sit_at_the_far_end_of_the_toolbar(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`UX-005` row 7 (`T-132`): the mockup's `.spacer{flex:1 1 auto}`.
+
+    What *adds* work and what *acts on work already queued* are different kinds of verb. Packed
+    left, `Clear finished` ran straight up against the concurrency spinner.
+
+    **Asserted by geometry, not by insertion order.** A separator inserted in the right place
+    would satisfy an order check and still leave everything bunched at the left.
+    """
+    window = _window_over([_job("job-1", 0)], tmp_path)
+    window.resize(900, 500)
+    window.show()
+    qapp.processEvents()
+    bar = window.findChild(QToolBar, "queueToolBar")
+    assert bar is not None
+
+    spinner = bar.findChild(QSpinBox, "concurrencyChoice")
+    assert spinner is not None
+    queue_verbs = [
+        widget
+        for action in bar.actions()
+        if action.objectName() in {"pauseQueueAction", "clearCompletedAction"}
+        and (widget := bar.widgetForAction(action)) is not None
+    ]
+    assert len(queue_verbs) == 2, "the toolbar no longer holds both queue verbs"
+
+    gap = min(widget.x() for widget in queue_verbs) - (spinner.x() + spinner.width())
+    assert gap > bar.width() // 3, (
+        f"only {gap}px separates the concurrency control from the queue verbs on a {bar.width()}px "
+        "toolbar, so they are packed together rather than at opposite ends"
+    )
+
+
+def test_the_verb_under_the_pointer_is_drawn_differently(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T-134`: a painted button that never reacts is a picture of a control.
+
+    `T118-R12` established that a reserved slot with nothing drawn in it is an affordance only for
+    someone who already knows it is there. A button that looks pressable and answers nothing on
+    contact is that defect one step later.
+
+    Two paints of **the same row**, differing only in where the pointer is.
+    """
+    window = _window_over([_job("job-1", 0, JobStatus.QUEUED)], tmp_path)
+    view = window.queue_view
+    assert view is not None
+    delegate = view.table.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+    index = view.model.index(0, 0)
+
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, 700, 90)
+    option.font = view.table.font()
+    option.fontMetrics = QFontMetrics(option.font)
+
+    def painted() -> bytes:
+        image = QImage(700, 90, QImage.Format.Format_ARGB32)
+        image.fill(0)
+        painter = QPainter(image)
+        try:
+            delegate.paint(painter, option, index)
+        finally:
+            painter.end()
+        return bytes(image.constBits())
+
+    delegate.forget_hover()
+    cold = painted()
+
+    body, area = delegate._verb_area(option, index)
+    rects = delegate._verb_rects(QFontMetrics(option.font), area, body, index)
+    assert rects, "the row drew no verbs, so there is nothing to hover"
+    delegate._hovered = (0, rects[0][0])
+    warm = painted()
+
+    assert cold != warm, (
+        "the row drew identically with and without a verb under the pointer; the buttons do not "
+        "acknowledge the pointer at all"
+    )
+
+    delegate.forget_hover()
+    assert painted() == cold, (
+        "clearing the hover did not restore the row, so the highlight outlives the pointer"
+    )
+
+
+def test_a_row_that_showed_every_verb_draws_no_overflow(qapp: QApplication, tmp_path: Path) -> None:
+    """`UX-005` row 8 (`T-135`): the `⋯` is for what did not fit.
+
+    It used to be drawn unconditionally and given the whole verb list, so a wide row offered the
+    same three actions twice — once as buttons and once in a menu.
+
+    Both directions in one test, because "no overflow" alone would pass if the overflow were
+    removed outright and the menu with it.
+    """
+    window = _window_over([_job("job-1", 0, JobStatus.QUEUED)], tmp_path)
+    view = window.queue_view
+    assert view is not None
+    delegate = view.table.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+    index = view.model.index(0, 0)
+    metrics = QFontMetrics(view.table.font())
+    body = QRect(0, 0, 900, 90).adjusted(PADDING, PADDING, -PADDING, -PADDING)
+
+    roomy = QRect(body.left(), body.top(), 600, body.height())
+    placed = delegate._verb_rects(metrics, roomy, body, index)
+    offered = view.verbs_of("job-1")
+    # `_verb_rects` answers rightmost-first, which is the order a hit test wants — so the row's
+    # reading order is its reverse. Compared as a sequence rather than a set, because "the same
+    # verbs in some order" would pass with the row drawing Cancel where Move up belongs.
+    assert [verb for verb, _ in placed] == list(reversed(offered)), (
+        f"a 600px row placed {[v for v, _ in placed]} for the {len(offered)} verbs it offers"
+    )
+    assert all(verb is not None for verb, _ in placed), (
+        "a row with room for every verb still drew the overflow, so the menu behind it repeats "
+        "buttons the user can already see"
+    )
+
+    cramped = QRect(body.left(), body.top(), 90, body.height())
+    tight = delegate._verb_rects(metrics, cramped, body, index)
+    assert any(verb is None for verb, _ in tight), (
+        "a 90px row dropped verbs and drew no overflow, so they are unreachable by pointer"
+    )
+
+
+def test_the_overflow_menu_holds_what_the_row_dropped_and_not_what_it_showed(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T-135`, through the record the paint actually wrote.
+
+    The menu's contents come from what the last paint could not fit, so this paints a deliberately
+    narrow row and then asks — the same order the user's click takes.
+    """
+    window = _window_over([_job("job-1", 0, JobStatus.QUEUED)], tmp_path)
+    view = window.queue_view
+    assert view is not None
+    delegate = view.table.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+    index = view.model.index(0, 0)
+
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, 260, 90)
+    option.font = view.table.font()
+    option.fontMetrics = QFontMetrics(option.font)
+    image = QImage(260, 90, QImage.Format.Format_ARGB32)
+    image.fill(0)
+    painter = QPainter(image)
+    try:
+        delegate.paint(painter, option, index)
+    finally:
+        painter.end()
+
+    dropped = delegate.overflowing("job-1")
+    body, area = delegate._verb_area(option, index)
+    drawn = {verb for verb, _ in delegate._verb_rects(QFontMetrics(option.font), area, body, index)}
+    assert dropped, "a 260px row fitted every verb, so this measures nothing; narrow it further"
+    assert not (set(dropped) & drawn), (
+        f"the overflow offers {dropped} while the row is showing {drawn & set(dropped)}"
+    )
+    assert set(dropped) | (drawn - {None}) == set(view.verbs_of("job-1")), (
+        "the drawn verbs and the overflow together are not what the row offers, so one of them is "
+        "unreachable"
+    )
+
+
+def test_the_toolbars_own_background_runs_behind_its_buttons(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T-132`, corrected: the tint must not stop where the buttons start.
+
+    The platform toolbar paints a **vertical gradient** — measured `#FEFFFD` at the top through
+    `#F9FBF9` at mid-height — and the sheet's `QWidget` rule gives every widget a flat `window`
+    fill. So each tool button stamped a flat `#F5F7F4` rectangle across the gradient and the tint
+    appeared to end before `Pause queue`.
+
+    **Measured on the real window, at one y, across the bar.** My first attempt at this built a
+    bare `QToolBar` and compared the spacer against the bar — both `window`, since a standalone
+    toolbar paints no gradient — so it passed with the fix removed and proved nothing. The gradient
+    only exists on a toolbar the platform is actually drawing.
+    """
+    theme.apply(qapp, theme.LIGHT)
+    window = _window_over([_job("job-1", 0)], tmp_path)
+    window.resize(900, 500)
+    window.show()
+    qapp.processEvents()
+    bar = window.findChild(QToolBar, "queueToolBar")
+    assert bar is not None
+
+    image = bar.grab().toImage()
+    y = bar.height() // 2
+    spinner = bar.findChild(QSpinBox, "concurrencyChoice")
+    assert spinner is not None
+    verbs = [
+        widget
+        for action in bar.actions()
+        if action.objectName() in {"pauseQueueAction", "clearCompletedAction"}
+        and (widget := bar.widgetForAction(action)) is not None
+    ]
+    assert verbs, "the toolbar holds no queue verbs, so this samples nothing"
+
+    # Just inside a verb button's left edge, clear of its label, against the bar past the last one.
+    inside = image.pixel(verbs[0].x() + 2, y)
+    beside = image.pixel(bar.width() - 3, y)
+    assert inside == beside, (
+        f"the toolbar reads #{beside & 0xFFFFFF:06X} beside its buttons and "
+        f"#{inside & 0xFFFFFF:06X} behind one, so the buttons paint over its background"
     )

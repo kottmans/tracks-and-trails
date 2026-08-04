@@ -337,11 +337,73 @@ QListView::item:selected {{
 QTabBar::tab:hover {{
     background-color: {theme.sunken};
 }}
-QComboBox, QSpinBox, QLineEdit {{
+/* **`QSpinBox` is deliberately absent from the rule above** (`T-133`, corrected).
+   Styling the box at all switches it to `QStyleSheetStyle` and its up and down arrows stop being
+   drawn — measured at **3 distinct colours in the button strip against 42 native**. The first fix
+   declared the sub-controls here and drew the arrows with the CSS border-triangle trick, which
+   Qt renders as a **solid block**: measured per-scanline ink widths of `8,8,8,8,8` where a
+   triangle gives `2,4,6`. The maintainer saw two dots.
+   The alternative was to ship arrow images, which `NFR-004` and `T-033` would then have to carry
+   through the frozen artifact for the sake of a triangle. Letting the platform draw its own
+   control costs this one widget a themed border and is the smaller commitment by far. */
+QToolBar QToolButton {{
+    /* **A toolbar paints its own background and its buttons must let it through** (`T-132`,
+       corrected). `QWidget` above sets a flat `window` fill, and the platform toolbar draws a
+       subtle vertical gradient — measured `#FEFFFD` at the top through `#F9FBF9` at mid-height —
+       so every tool button stamped a flat `#F5F7F4` rectangle across it and the tint appeared to
+       stop where the buttons began. The primary action below deliberately overrides this: it is
+       the one button that *should* be a shape rather than a label. */
+    background: transparent;
+}}
+QToolBar QWidget[toolbarSpacer="true"] {{
+    /* **The spacer is furniture and must not be seen** (`T-132`, corrected). `QWidget` above sets
+       a `window` background, and the toolbar's own is `surface` — so the widget that pushes the
+       queue verbs to the right end painted a `#F5F7F4` band across a `#FFFFFF` toolbar, measured
+       from x=319 to x=715 on a 900px window. A role rather than an object name, for the reason
+       `[primaryAction]` above gives. */
+    background: transparent;
+}}
+QComboBox, QLineEdit {{
     background-color: {theme.surface};
     border: 1px solid {theme.border};
     border-radius: 4px;
     padding: 3px 6px;
+}}
+QToolBar QToolButton[primaryAction="true"] {{
+    /* **The mockup's `.btn.primary`** (`T-132`, `UX-005`'s second 2026-08-04 amendment). The first
+       amendment put the application's primary action first on the toolbar and left it drawn as a
+       flat label, indistinguishable from `Clear finished` — where the mockup fills it with the
+       brand and the whole point of the row is that one of the four is not like the others.
+       Addressed by a **dynamic property** rather than by `QToolBar QToolButton`, which would take
+       `Pause queue` and `Clear finished` with it and leave four equals again — and rather than by
+       object name, which `test_the_sheet_styles_by_class_so_a_new_widget_inherits_it` forbids for
+       a reason this rule would have proved: a second primary action would have had to be
+       remembered here, and would silently have been drawn flat. `primaryAction` is a role, so
+       anything that declares itself one is themed. */
+    background-color: {theme.primary};
+    color: {theme.on_primary};
+    border: 1px solid {theme.primary};
+    border-radius: 4px;
+    padding: 4px 12px;
+    font-weight: 600;
+}}
+QToolBar QToolButton[primaryAction="true"]:hover {{
+    /* Keeps its fill and deepens its edge, exactly as `QPushButton:default:hover` does — falling
+       back to a neutral hover would make the primary appear to lose emphasis on contact. */
+    border-color: {theme.accent};
+}}
+QToolBar QToolButton[primaryAction="true"]:pressed {{
+    border-color: {theme.accent};
+    padding-top: 5px;
+    padding-bottom: 3px;
+}}
+QToolBar QToolButton[primaryAction="true"]:disabled {{
+    /* **Part of the ruling, not a detail.** `T-016` disables this when composition supplied no job
+       sink or output directory, and a brand fill that stayed vivid while inert would be a worse
+       lie than the flat label it replaced: the more emphatic the control, the more it promises. */
+    background-color: {theme.sunken};
+    color: {theme.muted};
+    border-color: {theme.border};
 }}
 QProgressBar {{
     background-color: {theme.sunken};

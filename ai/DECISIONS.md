@@ -2998,6 +2998,66 @@ format control's window, the absence of a per-job pause and of a detail pane are
 this amendment adds the toolbar's contents and the state chip to what is recorded, and settles the
 selection's weight.
 
+## Amended 2026-08-04, third — a playlist is many rows, in one folder
+
+> **Row 9 was ruled twice on 2026-08-04 and this is the second ruling.** The first was *one job
+> per entry*; the maintainer then asked for a third shape, it was mocked up as
+> `docs/mockups/2026-08-04-playlist-rows.html`, and **that is what was chosen** — P1/P2, with the
+> segmented bar and the count. The first ruling is kept below the table rather than deleted,
+> because a decision record that loses the option it argued against is the failure `UX-005` exists
+> to prevent.
+
+Not a mockup question, but a `UX-005` one: it decides what a queue row *is*. Ruled by the
+maintainer after a real 16-item playlist downloaded a single file and said nothing about it
+(`T-137`).
+
+| # | What | Ruling |
+|---|---|---|
+| 9 | **One pasted playlist becomes one queue row that opens into its entries** | **Adopted**, to the mockup exactly. Closed it costs one row, so a sixteen-item paste survives beside ordinary downloads; open, the entries sit under it and each carries its own state and its own verbs. It is the only shape where the connection between the files is *visible* rather than remembered, and the only one where a failed entry has somewhere to be reported |
+| 9a | **The group's chip counts, it does not measure** — `4 of 16` | **Adopted.** Sixteen files whose sizes arrive one at a time give a denominator that changes as it runs, so a percentage goes *backwards* when a later entry reports a total above its estimate. `Job.progress` already refuses to invent a percentage from an unknown total; this refuses to reintroduce one a level up. A count only goes up |
+| 9b | **The group's bar is segmented — one block per entry** | **Adopted.** It draws what the group actually knows, and it gives a **failed** entry somewhere to be seen. Under one continuous bar a playlist that quietly skipped a track looks identical to one that got everything, which is the specific way this feature would lie |
+| 9c | **A child row is shorter, not merely indented** | **Adopted.** It drops the format line — every entry inherits the group's — and its thumbnail shrinks, so the indent buys back the width it costs. `UX-005` §3's anatomy is not forked: it is the same row with two lines instead of four |
+| 9d | **`Clear finished` clears a group as a unit, when all of it is done** | **Adopted.** A part-done group stays. An entry vanishing from underneath a list the user opened specifically to watch is the opposite of what opening it was for |
+| 10 | **Playlist items are written to `<download directory>/<playlist title>/`**, as a fixed rule | **Adopted.** Items that arrived together stay together. *Deliberately not a setting yet:* `T-112`'s output-template editor is where a user-shaped version belongs, and a rule that editor must later be able to express is a smaller commitment than a setting shipped before its editor |
+
+**The rejected shapes, kept because the argument is the record.** *One job per entry* — ruled first
+and then reopened — is honest and unreadable: sixteen rows from one paste, with nothing saying they
+belong together. *One row reporting `item 4 of 16` and nothing else* is readable and hides fifteen
+downloads the user cannot act on; per-item retry and cancel have nowhere to live in it.
+
+**What this costs, ruled with the cost known rather than discovered.** `setUniformItemSizes(True)`
+comes off the queue list — it is a promise every row is the same height, and a two-line child beside
+a four-line group breaks it. `T118-R10` is the record of what per-row cost buys, so **a paste of 150
+with groups open must be measured**, not assumed; that number is the first thing owed, and the one
+result that would justify reopening this. The tree is **flattened in the model** rather than the
+view becoming a `QTreeView`, which would replace the list, the delegate and the geometry four
+findings have already been spent on.
+
+**What this does not decide.** The tab's count. `Queue (2)` for a playlist and one download is
+proposed — rows as shown, with the group's own `4 of 16` carrying the detail — because counting
+entries makes the number jump when a group is opened. Proposed, not ruled.
+
+## Amended 2026-08-04, again — the toolbar's *appearance*, and what the `⋯` carries
+
+The window was opened a second time, on the build that carried the amendment above. **Adopting
+where a control goes is not the same as adopting how it looks**, and the first amendment only did
+the former. Four things came out of that sitting; two were defects with a right answer and are
+tasks rather than decisions (`T-133`, the spin box with no arrows; `T-134`, painted verbs that do
+not react to the pointer). The two below are choices, so they are recorded here.
+
+| # | What | Ruling |
+|---|---|---|
+| 6 | **`+ Add URLs` is drawn as the mockup's filled brand button** — `primary` fill, `on_primary` text, weight 600 | **Adopted** (`T-132`). The mockup's markup is `<span class="btn primary">`, and the shipped button was a flat toolbar label indistinguishable from `Clear finished`. Amendment 1 put the primary action first and left it looking like one of four equals, which is half a decision. Its **disabled** state is part of the ruling: `T-016` disables it when composition supplied no manager, and a brand fill that stays vivid while inert is worse than the flat label it replaces |
+| 7 | **`Pause queue` and `Clear finished` sit at the right edge**, separated from the left group by an expanding spacer | **Adopted** (`T-132`). The mockup's `.spacer{flex:1 1 auto}`. What adds work and what acts on work already queued are different kinds of verb, and packing them together put `Clear finished` next to the concurrency spinner with nothing between them. **`Concurrent downloads:` stays in the left group** — the mockup never had to place it (row 2 above), so the spacer's position against it is this ruling's own choice, not a transcription |
+| 8 | **The row's `⋯` carries only the verbs the row could not show**, and is absent when it showed them all | **Adopted** (`T-135`). It listed every verb regardless, so a wide row offered the same three actions twice. The layout already drops verbs that will not fit and already places `⋯` first so it survives — only the menu was never told. *Declined in the same breath:* giving `⋯` menu-only actions (*Copy URL*, *Open details*) to justify its permanent presence. None are built, and inventing actions to keep a button is the wrong order |
+
+**Row 8 corrects a stated reason, not just a behaviour.** `_verb_rects` says the overflow "is the
+keyboard route, and a route that relocates is not a route" — which was true when it was written and
+stopped being true at `T124-R1`, when both lists took `CustomContextMenu`. Qt raises
+`customContextMenuRequested` for the Menu key and Shift+F10, so **the keyboard route is the context
+menu** and does not depend on the `⋯` existing. Had that comment still been accurate, row 8 would
+have been declined: removing the only keyboard route to a verb is not a presentation change.
+
 ### What this does not decide
 
 - Whether there is a whole-queue progress bar. There is none in the accepted design.

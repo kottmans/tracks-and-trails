@@ -286,6 +286,18 @@
   }
   .pill.ghost { background: none; color: var(--ink-mute); border: 1px solid var(--rule); }
 
+  /* One live thing on the page, so it is allowed to breathe. */
+  .pill.live::before {
+    content: ""; display: inline-block; width: .4em; height: .4em;
+    margin-right: .45em; vertical-align: .06em;
+    border-radius: 50%; background: #fff;
+    animation: live-dot 1.9s ease-in-out infinite;
+  }
+  @keyframes live-dot { 0%, 100% { opacity: 1 } 50% { opacity: .28 } }
+  @media (prefers-reduced-motion: reduce) {
+    .pill.live::before { animation: none }
+  }
+
   .measured {
     font: 500 0.78rem/1.65 ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
     background: var(--ground);
@@ -379,14 +391,14 @@
     <div class="titles">
       <p class="eyebrow">Tracks &amp; Trails · implementation plan</p>
       <h1>Phase 2 — Queue and concurrency</h1>
-      <p class="lede">Turn one download into a managed queue. <strong>Everything left is evidence, not code.</strong> The <code>UX-005</code> batch is committed at <code>05ad990</code>, green on all five CI jobs. The overnight segfault is <strong>diagnosed — it was the test harness, not the product</strong>, and its correction is approved. Then the application was opened on a screen and produced <strong>three more tasks in one sitting</strong>, which is the fourth time that has out-performed the gates. What remains is a soak, a Windows run, and a signature.</p>
+      <p class="lede">Turn one download into a managed queue. <strong>Everything left is evidence, not code.</strong> Every deliverable is approved, the overnight segfault is <strong>diagnosed — it was the test harness, not the product</strong>, and the three tasks that came from sitting in front of the running application are all approved and committed at <code>3dff8d2</code>. <strong>Two things stand between here and the exit</strong>: a soak that nobody has to watch, and a signature from someone who did not write the code.</p>
       <p class="phase-line">
         <span><strong>Phase 1</strong> exited 2026-07-29</span>
         <span><strong>Phase 0</strong> exited 2026-07-26</span>
-        <span>head <code>05ad990</code> + an approved uncommitted batch</span>
-        <span>CI <strong>5 of 5 green</strong> at that head</span>
+        <span>head <code>3dff8d2</code>, pushed</span>
+        <span>Windows evidence <strong>in flight</strong> on that head</span>
         <span>Linux gate <strong>~5 min</strong></span>
-        <span><strong>2068</strong> tests</span>
+        <span><strong>2083</strong> tests</span>
         <span>updated <strong>2026-08-04</strong></span>
       </p>
     </div>
@@ -394,18 +406,18 @@
     <p class="eyebrow">Where the exit actually stands</p>
     <ul class="tally">
       <li style="--chip: var(--st-approved)"><span class="n">13</span><span class="k">Deliverables approved</span></li>
-      <li style="--chip: var(--st-approved)"><span class="n">14</span><span class="k">Review findings closed</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">17</span><span class="k">Review findings closed</span></li>
       <li style="--chip: var(--st-approved)"><span class="n">6</span><span class="k">Criteria met</span></li>
-      <li style="--chip: var(--st-review)"><span class="n">3</span><span class="k">Evidence gates left</span></li>
+      <li style="--chip: var(--st-review)"><span class="n">2</span><span class="k">Gates left to exit</span></li>
       <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Open blocking findings</span></li>
-      <li style="--chip: var(--st-idle)"><span class="n">3</span><span class="k">Tasks from one sitting</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">3</span><span class="k">Tasks from one sitting, all closed</span></li>
     </ul>
   </header>
 
   <section>
     <div class="section-head">
       <h2>What is left</h2>
-      <p class="lede">Everything green is approved. The amber nodes are what the exit is waiting for, and they are all <strong>evidence rather than code</strong> — the two grey ones are deliberately off the path.</p>
+      <p class="lede">Everything green is approved and pushed. <strong>Two amber nodes are the whole of what the exit waits on</strong>, and both are evidence rather than code. The blue one is running as this was written and is <em>not</em> a phase criterion — it is the Windows evidence <code>T-130</code> owes. The grey ones are deliberately off the path.</p>
     </div>
 
     <div class="chart-frame fit" id="chart">
@@ -422,42 +434,45 @@ flowchart TB
     classDef gate  fill:#B07C1F,stroke:#6E4C0F,stroke-width:3px,color:#ffffff
     classDef exit  fill:#083122,stroke:#D9A24C,stroke-width:3px,color:#D9A24C
     classDef watch fill:#6E7E75,stroke:#44534B,stroke-width:2px,color:#ffffff
+    classDef flight fill:#31688E,stroke:#173A50,stroke-width:3px,color:#ffffff
 
     DELIV["13 deliverables approved"]:::done
-    UX["UX-005 batch, committed 05ad990"]:::done
+    UX["UX-005 batch and T-122"]:::done
     T128["T-128 segfault: the harness"]:::done
     T129["T-129 style sheet metrics and states"]:::done
     T131["T-131 launch test isolation"]:::done
+    T130["T-130 mockup gaps - approved"]:::done
 
-    COMMIT["Commit the approved batch"]:::gate
+    COMMIT["Committed and pushed - 3dff8d2"]:::head
 
-    SOAK["60 clean Linux soak runs"]:::gate
-    WIN["Windows run at that exact head"]:::gate
+    WIN["Windows CI on 3dff8d2 - running, not a criterion"]:::flight
+    SOAK["60 clean Linux soak runs - not started"]:::gate
     REVIEW["Criterion 6 - independent exit review"]:::gate
     EXIT(["PHASE 2 EXIT"]):::exit
 
-    T130["T-130 mockup gaps - needs a ruling"]:::watch
     T074["T-074 - Windows watch, not a gate"]:::watch
+    UXSPEC["T-105 UX_SPEC - a Phase 3 entry gate"]:::watch
 
     DELIV --> COMMIT
     UX --> COMMIT
     T128 --> COMMIT
     T129 --> COMMIT
     T131 --> COMMIT
-    COMMIT --> SOAK
+    T130 --> COMMIT
     COMMIT --> WIN
+    COMMIT --> SOAK
     COMMIT --> REVIEW
     SOAK --> EXIT
-    WIN --> EXIT
     REVIEW --> EXIT
+    EXIT -. next phase, not this one .-> UXSPEC
     T128 -. best lead it has ever had .-> T074
-    T129 -. same sitting, not the same defect .-> T130
 </pre>
       </div>
 
       <div class="legend">
         <span><i style="--sw: var(--st-approved)"></i> Approved</span>
         <span><i style="--sw: var(--st-review)"></i> Outstanding gate</span>
+        <span><i style="--sw: var(--st-ready)"></i> Running now</span>
         <span><i style="--sw: var(--st-idle)"></i> Off the path</span>
         <span><i class="dashed"></i> Not a dependency</span>
       </div>
@@ -468,7 +483,7 @@ flowchart TB
 
   <section>
     <div class="section-head">
-      <h2>Three tasks from one sitting at the screen</h2>
+      <h2>Three tasks from one sitting at the screen, all now closed</h2>
       <p class="lede">The application was opened to look at <code>UX-005</code>. It produced more findings in an afternoon than the gates had in a week — which is now the fourth time that has happened, and worth counting rather than repeating.</p>
     </div>
 
@@ -490,7 +505,7 @@ flowchart TB
           <tr>
             <td><code>T-130</code></td>
             <td>The shipped window diverges from the mockup that was chosen</td>
-            <td><span class="state unmet">Proposed</span><span class="state-note">Five differences against <strong>B1-b</strong>, the option the maintainer picked. The largest: <strong><code>+ Add URLs</code> is not on the toolbar</strong> — the application's primary action, which the mockup puts first. <em>Not filed as defects</em>: <code>UX-005</code> does not name the toolbar's contents, so these are gaps between mockup and decision and want a ruling before code</span></td>
+            <td><span class="state met">Approved</span><span class="state-note">Five differences against <strong>B1-b</strong>, the option the maintainer picked. The largest: <strong><code>+ Add URLs</code> is not on the toolbar</strong> — the application's primary action, which the mockup puts first. <em>Not filed as defects</em>: <code>UX-005</code> does not name the toolbar's contents, so these are gaps between mockup and decision and want a ruling before code</span></td>
           </tr>
         </tbody>
       </table>
@@ -507,7 +522,7 @@ flowchart TB
   <section>
     <div class="section-head">
       <h2>The gates that are left</h2>
-      <p class="lede">Two are machines running unattended. The third needs a person who did not write the code. None of them is development work.</p>
+      <p class="lede">One is a machine running unattended for five hours. The other needs a person who did not write the code. Neither is development work, and <strong>nothing depends on the order</strong> — the commit they both needed exists.</p>
     </div>
 
     <ol class="queue">
@@ -525,19 +540,19 @@ P(0 crashes | unchanged)   39 runs   0.128
         <p class="q-why"><code>tools/soak.sh</code> is the instrument. It separates a <strong>process death</strong> — exit 139, which is what <code>T-128</code> was — from a test failure, because collapsing the two would hide whichever is rarer. Roughly five hours at ~6 minutes a run.</p>
       </li>
 
-      <li style="--edge: var(--st-review)">
+      <li style="--edge: var(--st-ready)">
         <div class="q-head">
-          <span class="id">Gate 2</span>
-          <span class="name">A Windows run at the exact committed head</span>
-          <span class="pill">Not started</span>
+          <span class="id">Not a gate</span>
+          <span class="name">Windows evidence on <code>3dff8d2</code></span>
+          <span class="pill live">Running now</span>
         </div>
         <p class="q-why"><code>OPS-010</code> puts the full Windows suite on <code>STARBASE</code> for every push, so this costs a commit rather than a decision. It is owed because <code>T-129</code> changes how <em>Qt</em> renders, and the style that renders it is platform-specific — the group-box metric in particular has only ever been measured on Linux.</p>
-        <p class="q-why"><strong>It cannot be gathered before the batch is committed</strong>, because Windows evidence has to name a head. That is the one ordering constraint among the three.</p>
+        <p class="q-why"><strong>The ordering constraint is spent.</strong> Windows evidence has to name a head, which is why this waited on a commit; <code>3dff8d2</code> is pushed and run <a href="https://github.com/kottmans/tracks-and-trails/actions/runs/30954720566">30954720566</a> is executing against it, with the Windows leg on <code>STARBASE</code> rather than hosted minutes.</p><p class="q-why"><strong>It is listed here but it is not a phase criterion.</strong> <code>T-130</code> is a Phase 3 task; the evidence is owed to <em>it</em>. Criterion 5 — no worker outliving exit, on both platforms — was met separately by the corrected gate at <code>8d1b01c</code>.</p>
       </li>
 
       <li style="--edge: var(--st-ready)">
         <div class="q-head">
-          <span class="id">Gate 3</span>
+          <span class="id">Gate 2</span>
           <span class="name">Criterion 6 — an independent phase exit review</span>
           <span class="pill ghost">Not requested</span>
         </div>
@@ -653,7 +668,7 @@ P(0 crashes | unchanged)   39 runs   0.128
           <tr>
             <td class="n">6</td>
             <td>Reviewed and signed off</td>
-            <td><span class="state unmet">Not met — two counts</span><span class="state-note"><strong>(a)</strong> the phase sign-off has not been requested; <strong>(b)</strong> a clean 60-run Linux soak is owed, by the 2026-08-04 ruling on <code>OPS-007</code>; <strong>(c)</strong> the approved <code>T-128</code>/<code>T-129</code>/<code>T-131</code> batch is uncommitted, so no Windows run can name its head. <em>This row read “four deliverables await review” for two days after all four were approved, then “only a sign-off is missing” right up until the sign-off found two criteria unproved</em></span></td>
+            <td><span class="state unmet">Not met — two counts</span><span class="state-note"><strong>(a)</strong> the phase sign-off has not been requested; <strong>(b)</strong> a clean 60-run Linux soak is owed, by the 2026-08-04 ruling on <code>OPS-007</code>. <em>The third count — that the approved batch was uncommitted, so no Windows run could name its head — is discharged: <code>3dff8d2</code> is committed and pushed, and CI is running against it.</em> <em>This row read “four deliverables await review” for two days after all four were approved, then “only a sign-off is missing” right up until the sign-off found two criteria unproved</em></span></td>
           </tr>
           <tr>
             <td class="n">7</td>
@@ -682,8 +697,8 @@ P(0 crashes | unchanged)   39 runs   0.128
   <footer>
     <span>Transcribed from ai/IMPLEMENTATION_PLAN.md, ai/TASKS.md, ai/DECISIONS.md, ai/REVIEWS.md</span>
     <span>Counts read from the tables, not written beside them</span>
-    <span>Head 05ad990 + an approved uncommitted batch · suite 2068 passed, 11 skipped</span>
-    <span>CI run 30933605887 · five of five green</span>
+    <span>Head 3dff8d2 · suite 2083 passed, 11 skipped, 2 deselected</span>
+    <span>CI run 30954720566 · in flight when this was written</span>
     <span>2026-08-04</span>
   </footer>
 

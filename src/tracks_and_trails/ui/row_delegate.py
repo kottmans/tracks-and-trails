@@ -30,12 +30,15 @@ colour never carries meaning alone, applied to the one graphical element here. I
 a painted rectangle is not a widget and costs nothing per row.
 """
 
+from collections.abc import Sequence
+from enum import StrEnum
 from typing import Any, Final, cast
 
 from PySide6.QtCore import (
     QAbstractItemModel,
     QEvent,
     QModelIndex,
+    QPoint,
     QRect,
     QSize,
     Qt,
@@ -58,6 +61,21 @@ from PySide6.QtWidgets import (
 
 from tracks_and_trails.ui.row_verbs import LABELS, MORE_LABEL, Verb
 from tracks_and_trails.ui.thumbnails import THUMBNAIL_SIZE, ThumbnailStore
+
+
+class SegmentState(StrEnum):
+    """What one block of a group's segmented bar says about its entry (`T-140`).
+
+    **Words, not colours** (`NFR-005`). The bar is drawn from these and so is the group's
+    accessible text, so the thing a sighted user sees and the thing a screen reader is told come
+    from one source rather than two that can drift.
+    """
+
+    DONE = "done"
+    RUNNING = "running"
+    FAILED = "failed"
+    WAITING = "waiting"
+
 
 #: The headline: a title once something has read one, else the URL the user pasted. Never empty —
 #: a row nobody can identify is worse than a long URL.
@@ -121,6 +139,30 @@ PRESET_CHOICES_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 8
 #: "finished, so show the word", and only the model can spell that word compactly enough for a chip.
 #: So the model says what the chip reads and the delegate only draws it.
 STATE_CHIP_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 13
+
+#: How deep this row sits: `0` for a top-level row, `1` for a playlist's entry (`T-140`).
+#:
+#: **A depth, not an "is a child" flag**, because the delegate indents by it arithmetically and a
+#: boolean would have to be re-read as a number the first time anything nested twice. Absent means
+#: zero, which is how every surface that has never heard of groups keeps working unchanged.
+DEPTH_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 14
+
+#: Whether this row is a **group** and whether it is open: `True`, `False`, or absent (`T-140`).
+#:
+#: Absent is the answer for an ordinary row and it is not the same as `False` — `False` means "a
+#: playlist, closed", which draws a disclosure triangle, and absent means "not a playlist", which
+#: draws none. The same three-valued shape `PRESET_INHERITABLE_ROLE` established at `T126-R4`.
+EXPANDED_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 15
+
+#: One entry of `SegmentState` per playlist entry, for the group's segmented bar (`T-140`,
+#: `UX-005` row 9b).
+#:
+#: **Segments rather than a fraction, and that is the ruling rather than a rendering choice.** The
+#: entries' byte totals arrive one at a time, so a percentage across them has a denominator that
+#: grows while it runs and a bar that goes *backwards*. A count of blocks only goes up. It also
+#: gives a **failed** entry somewhere to be seen: under one continuous bar a playlist that skipped
+#: a track looks exactly like one that got everything, which is this feature's characteristic lie.
+SEGMENTS_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 16
 
 #: Padding inside the state chip, and its corner radius. Small: it shares the title's line and must
 #: not compete with the title for height.
@@ -187,6 +229,18 @@ EDITOR_WIDTH: Final = 190
 #: The height of the painted progress bar.
 BAR_HEIGHT: Final = 4
 
+#: How far one level of nesting indents a row, and the width reserved for the disclosure
+#: triangle (`T-140`). The triangle sits in the indent a group's own children get, so a group and
+#: its entries line up on the same left edge rather than stepping twice.
+INDENT: Final = 22
+TWISTY_WIDTH: Final = 14
+
+#: A child row's thumbnail, and the lines it draws. **Shorter, not merely indented** (`UX-005`
+#: row 9c): an entry inherits the group's format, so the third and fourth lines have nothing to
+#: say, and a smaller tile buys back the width the indent costs.
+CHILD_THUMBNAIL: Final = (38, 22)
+CHILD_TEXT_LINES: Final = 2
+
 #: Padding inside a verb button, each side. Small: they share the last line with the progress bar
 #: and `NFR-006` wants the message above them at full width.
 VERB_PADDING: Final = 8
@@ -208,6 +262,30 @@ EDIT_KEY: Final = Qt.Key.Key_F2
 #: What that route is called on screen and to a screen reader. One sentence, in one place, so the
 #: dialog's help text and the delegate's accessible description cannot drift apart.
 EDIT_HINT: Final = "Press F2 to choose a format for this row."
+
+
+def _depth(index: QModelIndex | _PersistentIndex) -> int:
+    """How deep a row sits, treating an absent role as top level (`T-140`)."""
+    depth = index.data(DEPTH_ROLE)
+    if isinstance(depth, bool) or not isinstance(depth, int) or depth < 0:
+        return 0
+    return depth
+
+
+def _segments(index: QModelIndex | _PersistentIndex) -> tuple[SegmentState, ...]:
+    """The group's per-entry states, or empty for a row that is not a group (`T-140`)."""
+    raw = index.data(SEGMENTS_ROLE)
+    if not raw:
+        return ()
+    states: list[SegmentState] = []
+    for value in raw:
+        try:
+            states.append(SegmentState(value))
+        except ValueError:
+            # A state this delegate does not know is drawn as waiting rather than dropped: a bar
+            # with fewer blocks than the playlist has entries would misreport the size of the work.
+            states.append(SegmentState.WAITING)
+    return tuple(states)
 
 
 class RowDelegate(QStyledItemDelegate):
@@ -234,6 +312,16 @@ class RowDelegate(QStyledItemDelegate):
         #: of `T118-R10`'s correction, and `_paint_control` reads it to avoid drawing the
         #: affordance underneath the real control.
         self._editing_row: int | None = None
+        #: The verb under the pointer, as `(row, verb)`, or `None` (`T-134`).
+        #:
+        #: **By row number rather than by job id, and that is deliberate here** even though
+        #: `T126-R1` made the editor's identity a job id. A hover is recomputed on the next mouse
+        #: move and discarded on a reset; it never has to survive anything. The staging list has no
+        #: job ids at all, and the verbs are drawn there too.
+        self._hovered: tuple[int, Verb | None] | None = None
+        #: What each row's last paint could **not** fit, by job id (`T-135`). The `⋯` menu's
+        #: contents; see `overflowing` for why this is a record rather than a recomputation.
+        self._dropped: dict[str, tuple[Verb, ...]] = {}
         #: The live editor itself, so it can be committed and closed **before** a model reset
         #: invalidates its index (`T118-R14`).
         self._editor: QWidget | None = None
@@ -250,13 +338,22 @@ class RowDelegate(QStyledItemDelegate):
     def sizeHint(
         self, option: QStyleOptionViewItem, index: QModelIndex | _PersistentIndex
     ) -> QSize:
-        """A fixed height, which is what makes a long list cheap to lay out.
+        """How tall a row is: one height for ordinary rows, a shorter one for a playlist's entry.
 
-        Uniform rows let the view compute the visible range arithmetically instead of measuring
-        every row — the same reason `setUniformItemSizes` existed on the list this replaces, kept
-        rather than lost in the move to a delegate. It is uniform because it does not consult
-        `index`: every row is the same height whatever it holds.
+        **It used to be genuinely uniform, and that was worth something** — uniform rows let the
+        view compute the visible range arithmetically instead of measuring every one, which is the
+        same reason `setUniformItemSizes` existed on the list this delegate replaced, and
+        `T118-R10` is the record of what per-row cost buys when it goes wrong.
+
+        `UX-005` row 9c spends it deliberately. An entry inherits its group's format, so its third
+        and fourth lines have nothing to say; drawing it at full height to keep the promise would
+        waste a third of the list on blank space in exactly the case — a sixteen-item playlist —
+        where there is least room to waste. **The measurement that justifies the trade is
+        `T-140`'s own acceptance criterion**, not an assumption made here.
         """
+        if _depth(index) > 0:
+            text = CHILD_TEXT_LINES * option.fontMetrics.height() + 2 * PADDING
+            return QSize(option.rect.width(), max(CHILD_THUMBNAIL[1] + 2 * PADDING, text))
         text = TEXT_LINES * option.fontMetrics.height() + 2 * PADDING
         return QSize(option.rect.width(), max(ROW_HEIGHT, text))
 
@@ -352,9 +449,16 @@ class RowDelegate(QStyledItemDelegate):
         clicks. `T118-R12` is the same lesson from the other direction.
 
         Laid out right to left from the end of `area` — which is already narrowed by the format
-        control's slot when the row has one, so the verbs and the control cannot overlap. The
-        overflow is rightmost because it is the one button whose position must not move as the
-        state changes: it is the keyboard route, and a route that relocates is not a route.
+        control's slot when the row has one, so the verbs and the control cannot overlap. When the
+        overflow is needed it is rightmost, so its position does not move as the state changes.
+
+        **`⋯` appears only when the row could not show everything** (`T-135`, `UX-005` row 8). It
+        used to be unconditional, on the reasoning that it was the keyboard route and a route that
+        relocates is not a route — which was true when it was written and stopped being true at
+        `T124-R1`, when both lists took `CustomContextMenu`. Qt raises `customContextMenuRequested`
+        for the Menu key and Shift+F10, so the keyboard route is the context menu and does not
+        depend on this button existing. What the unconditional `⋯` did instead was offer a menu of
+        the same three actions the row was already showing.
 
         Returns rightmost-first, which is also the order a hit test wants: verbs are laid out
         without gaps between their hit rects, so first match wins and it should be the one drawn
@@ -374,9 +478,32 @@ class RowDelegate(QStyledItemDelegate):
         if height <= 0:
             return []
 
+        # **Tried twice, because reserving the overflow costs width that might be what made it
+        # necessary.** Laying out with `⋯` always present would drop the leftmost verb on a row
+        # where all of them would have fitted without it — the button would then be needed only
+        # because it was there.
+        whole = self._lay_out(offered, metrics, area, top, height, overflow=False)
+        if len(whole) == len(offered):
+            return whole
+        return self._lay_out(offered, metrics, area, top, height, overflow=True)
+
+    def _lay_out(
+        self,
+        offered: Sequence[Verb],
+        metrics: QFontMetrics,
+        area: QRect,
+        top: int,
+        height: int,
+        *,
+        overflow: bool,
+    ) -> list[tuple[Verb | None, QRect]]:
+        """Place as many verbs as fit, right to left, optionally reserving the overflow first."""
         placed: list[tuple[Verb | None, QRect]] = []
         right = area.right()
-        for verb in (None, *reversed(offered)):
+        wanted: tuple[Verb | None, ...] = (
+            (None, *reversed(offered)) if overflow else tuple(reversed(offered))
+        )
+        for verb in wanted:
             label = MORE_LABEL if verb is None else LABELS[verb]
             width = metrics.horizontalAdvance(label) + 2 * VERB_PADDING
             left = right - width
@@ -388,6 +515,33 @@ class RowDelegate(QStyledItemDelegate):
             placed.append((verb, QRect(left, top, width, height)))
             right = left - VERB_GAP
         return placed
+
+    def overflowing(self, row_id: str) -> tuple[Verb, ...]:
+        """The verbs the row for `row_id` offers but had no room to draw.
+
+        **What the last paint actually dropped, not a second opinion about what it would drop**
+        (`T-135`). Recomputing the layout here would need this method to reproduce the row's width,
+        its font and whether it carries a format control — three chances to disagree with the row
+        the user is looking at, and a menu that disagrees with the row is the thing `_show_row_menu`
+        already says would be worse than no menu.
+
+        Reading a paint-time record is sound because the `⋯` cannot be clicked before it is drawn:
+        every route into this method runs after the paint that filled it.
+        """
+        return self._dropped.get(row_id, ())
+
+    def forget_dropped(self) -> None:
+        """Discard the paint-time record (`T-135`).
+
+        Clears the hovered verb too: it is keyed by row number, and a reset is exactly when a row
+        number stops naming what it named.
+
+        Called when the model resets, so a job that has left the queue cannot keep an entry here.
+        The record is small and self-correcting — the next paint rewrites every visible row — but
+        "self-correcting" is not "correct", and rows that scroll out of view are never repainted.
+        """
+        self._dropped.clear()
+        self._hovered = None
 
     def _paint_verbs(
         self,
@@ -414,6 +568,14 @@ class RowDelegate(QStyledItemDelegate):
         considered retrying and declined.
         """
         rects = self._verb_rects(painter.fontMetrics(), area, body, index)
+        # **Recorded here because here is where it is decided** (`T-135`). The `⋯` menu holds what
+        # the row could not show, and this is the only place that knows what that was.
+        row_id = index.data(JOB_ID_ROLE)
+        if isinstance(row_id, str) and row_id:
+            drawn = {verb for verb, _ in rects}
+            self._dropped[row_id] = tuple(
+                verb for verb in self._verbs_of(index) if verb not in drawn
+            )
         if not rects:
             return None
 
@@ -425,6 +587,12 @@ class RowDelegate(QStyledItemDelegate):
             button.palette = option.palette
             button.text = MORE_LABEL if verb is None else LABELS[verb]
             button.state = QStyle.StateFlag.State_Enabled | QStyle.StateFlag.State_Raised
+            # **The one signal that says this is a control and not a picture of one** (`T-134`).
+            # `T118-R12` won the argument that a reserved slot with nothing painted in it is an
+            # affordance only for someone who already knows it is there; a painted button that
+            # never reacts to the pointer is that same defect one step later.
+            if self._hovered == (index.row(), verb):
+                button.state |= QStyle.StateFlag.State_MouseOver
             style.drawControl(QStyle.ControlElement.CE_PushButton, button, painter, widget)
         return min(rect.left() for _, rect in rects) - VERB_GAP
 
@@ -644,6 +812,73 @@ class RowDelegate(QStyledItemDelegate):
         choices = index.data(PRESET_CHOICES_ROLE)
         return bool(choices)
 
+    def _verb_area(
+        self, option: QStyleOptionViewItem, index: QModelIndex | _PersistentIndex
+    ) -> tuple[QRect, QRect]:
+        """The row's body and the area the verbs are laid out in — one definition, three readers.
+
+        Extracted at `T-134`, when hover became the third thing that had to agree with the paint
+        and the click about where the buttons are. Two copies of this arithmetic were already one
+        more than `_verb_rects`' own rule allows.
+        """
+        body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
+        text_left = body.left() + THUMBNAIL_SIZE[0] + GAP
+        text_area = QRect(text_left, body.top(), max(body.right() - text_left, 0), body.height())
+        if self._editable(index):
+            text_area.setWidth(max(text_area.width() - EDITOR_WIDTH - GAP, 0))
+        return body, text_area
+
+    def watch_hover(self, view: QAbstractItemView) -> None:
+        """Let this delegate see the pointer move over `view` (`T-134`).
+
+        **Two things, and neither is a default.** A viewport's mouse tracking is off, so Qt
+        delivers `MouseMove` only while a button is held — measured, not assumed — and without the
+        filter nothing tells the delegate the pointer left the widget, so the last hovered button
+        would stay lit over an empty list.
+        """
+        viewport = view.viewport()
+        viewport.setMouseTracking(True)
+        viewport.installEventFilter(self)
+
+    def eventFilter(self, watched: Any, event: Any) -> bool:
+        """Drop the hover when the pointer leaves the viewport (`T-134`)."""
+        if isinstance(event, QEvent) and event.type() == QEvent.Type.Leave:
+            self.forget_hover()
+        return bool(super().eventFilter(watched, event))
+
+    def forget_hover(self) -> None:
+        """Clear the hovered verb and repaint if that changed anything (`T-134`)."""
+        if self._hovered is None:
+            return
+        self._hovered = None
+        self._repaint()
+
+    def _hover_at(
+        self,
+        option: QStyleOptionViewItem,
+        index: QModelIndex | _PersistentIndex,
+        where: QPoint,
+    ) -> None:
+        """Record which verb the pointer is over, repainting only when the answer changes."""
+        body, text_area = self._verb_area(option, index)
+        found: tuple[int, Verb | None] | None = None
+        for verb, rect in self._verb_rects(QFontMetrics(option.font), text_area, body, index):
+            if rect.contains(where):
+                found = (index.row(), verb)
+                break
+        if found == self._hovered:
+            # **Moving within one button repaints nothing.** A repaint per mouse move over a list
+            # of rows is the cost `T118-R10` spent a finding on in the other direction.
+            return
+        self._hovered = found
+        self._repaint()
+
+    def _repaint(self) -> None:
+        view = cast("QAbstractItemView | None", self.parent())
+        if view is None:
+            return
+        view.viewport().update()
+
     def editorEvent(
         self,
         event: Any,
@@ -660,20 +895,24 @@ class RowDelegate(QStyledItemDelegate):
 
         Returns `False` for everything else, so the view keeps its ordinary selection behaviour.
         """
-        if not isinstance(event, QMouseEvent) or event.type() != QEvent.Type.MouseButtonRelease:
+        if not isinstance(event, QMouseEvent):
+            return False
+        if event.type() == QEvent.Type.MouseMove:
+            # **Hover is tracked here because here is where the rects are** (`T-134`). Requires
+            # `watch_hover` to have turned the viewport's mouse tracking on: without it Qt sends
+            # `MouseMove` only while a button is held, so the highlight would appear on drag.
+            self._hover_at(option, index, event.position().toPoint())
+            return False
+        if event.type() != QEvent.Type.MouseButtonRelease:
             return False
         if event.button() != Qt.MouseButton.LeftButton:
             return False
-        body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
+        body, text_area = self._verb_area(option, index)
         where = event.position().toPoint()
 
         # **The verbs are tested first**, because they sit inside the text area and the control
         # sits beside it: an ambiguity would mean one of them is drawn where the other is clicked.
         # Tested from the same `_verb_rects` the paint used, so the two cannot disagree.
-        text_left = body.left() + THUMBNAIL_SIZE[0] + GAP
-        text_area = QRect(text_left, body.top(), max(body.right() - text_left, 0), body.height())
-        if self._editable(index):
-            text_area.setWidth(max(text_area.width() - EDITOR_WIDTH - GAP, 0))
         for verb, rect in self._verb_rects(QFontMetrics(option.font), text_area, body, index):
             if rect.contains(where):
                 job_id = index.data(JOB_ID_ROLE)

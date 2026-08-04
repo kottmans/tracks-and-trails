@@ -1153,6 +1153,512 @@ broken down. Phase 1 listed nine deliverables and produced fifty tasks; these ei
 starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
 it.)*
 
+### T-132 — The toolbar is not the mockup's toolbar: no primary button, no alignment
+
+**Status:** Proposed — **found by the maintainer at the running window, 2026-08-04.** The second
+sitting in two days to out-perform the gates.
+**Owner:** Implementer
+**Priority:** Medium — `UX-005` §1's primary action, and the first thing on the window
+**Phase:** Phase 3 (a `UX-005` correction, against no Phase 2 deliverable)
+**Depends on:** a maintainer ruling — this is a design question, not a defect with a right answer
+**Relevant context:** `UX-005` and its 2026-08-04 amendment, `T-130`,
+`docs/mockups/2026-08-03-main-window-b1.html` line 177, `ui/main_window.py`, `ui/theme.py`
+**Affected surfaces:** `ui/main_window.py`, `ui/theme.py`
+**Risk:** Low — presentation only; no action, signal or enabled state moves
+
+#### Scope
+
+`T-130` put `+ Add URLs` first on the toolbar. It did **not** make it look like the mockup's
+button, and the mockup's toolbar is one line of markup that says two things this window does not:
+
+```html
+<div class="toolbar"><span class="btn primary">+ Add URLs</span><span class="spacer"></span>
+     <span class="btn">⏸ Pause queue</span><span class="btn">Clear finished</span></div>
+```
+
+1. **`.btn.primary` is a filled brand button** — `background: var(--p)`, `color: var(--op)`,
+   `font-weight: 600`. The shipped button is a flat toolbar label, indistinguishable from
+   `Clear finished`. The application's primary action reads as one of four equals.
+2. **`.spacer{flex:1 1 auto}` pushes `Pause queue` and `Clear finished` to the right edge.** The
+   shipped toolbar packs everything left, so the queue verbs sit against the concurrency spinner
+   with nothing separating what *adds work* from what *acts on work already there*.
+
+**The concurrency control is why this is a ruling rather than a fix.** The mockup has no
+`Concurrent downloads:` — `ARC-007` added it and `T-130` recorded that as a deliberate difference.
+So a spacer has to be placed against a control the mockup never had to place. Left group with
+`+ Add URLs` is the reading this task proposes; it is not the only one.
+
+#### Acceptance criteria
+
+- The toolbar's `Add URLs` button is filled with `primary` and drawn in `on_primary`, asserted
+  **from the rendered widget** rather than from the sheet's text — `T130-R1` and `T-129` are both
+  cases where a style sheet's text and what Qt drew disagreed
+- Its **disabled** state is asserted too. `T-016` disables it when composition supplied no manager,
+  and a filled brand button that stays vivid while inert is worse than a flat one
+- `Pause queue` and `Clear finished` end to the right of the concurrency control, asserted by
+  geometry rather than by insertion order
+- Hover and pressed are declared, per `T-129`: styling the button at all takes both away
+- The `primary` / `on_primary` pair stays in the contrast gate
+- One `QAction` still, shared with the File menu (`T130-R2`)
+
+#### Out of scope
+
+- Whether `Concurrent downloads:` belongs on the toolbar at all — `T-130` settled that it stays
+- The mockup's `⏸` glyph on `Pause queue`: `NFR-005` and `T-068`'s font warning both bear on
+  shipping a symbol, and nobody has ruled on it
+
+
+*Corrected the same day, both found by the maintainer running the build.* The spacer and every
+tool button painted a flat `window` fill over the toolbar's own vertical gradient — measured
+`#F9FBF9` on the bar against `#F5F7F4` inside a button — so the tint appeared to stop where the
+buttons began. `QToolBar QToolButton` is transparent now and the primary action overrides it
+deliberately. **My first test for this built a bare `QToolBar` and compared the spacer against the
+bar; both are `window` there, because a standalone toolbar paints no gradient, so it passed with
+the fix removed.** Replaced with a measurement on the real window.
+---
+
+### T-133 — The concurrency spin box has no arrows
+
+**Status:** Proposed — **found by the maintainer at the running window, 2026-08-04.** Measured
+before filing.
+**Owner:** Implementer
+**Priority:** Medium — `NFR-005`: a control whose only affordance is invisible
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `T-129` (the same cause, third occurrence), `ui/theme.py`, `NFR-005`
+**Affected surfaces:** `ui/theme.py`
+**Risk:** Low, with one trap — see below
+
+#### Scope
+
+**Measured, not reported:** rendering a `QSpinBox` and counting distinct colours in the up/down
+strip gives **33 native, 3 themed**. There is no arrow. The user gets a number they can type in
+and two invisible click targets.
+
+**This is `T-129`'s cause for the third time.** The sheet styles `QWidget`, so every widget
+switches to `QStyleSheetStyle`, and anything the platform style used to draw must be declared or it
+is gone. `T-129` found it in group-box margins and button hover; `T130-R1` found the same shape in
+the palette. The class is now well enough established that the fix should come with something that
+*fails* when the next sub-control goes missing, not just this one.
+
+**The trap:** the obvious fix is `image: url(...)`, which needs an asset, and `NFR-004` keeps the
+frozen artifact honest about what it ships. A border-triangle draws the arrow in the sheet itself
+with no file. Whichever is chosen, it must survive the frozen build, so `T-033`'s bundling and
+`tests/ui/test_resources.py` are the check — not the developer's checkout.
+
+#### Acceptance criteria
+
+- Both arrows are drawn, asserted by **rendering the widget and finding arrow pixels**, in both
+  themes — the same measurement that produced the 33-versus-3 above, so the test and the report
+  are the same instrument
+- The arrows contrast against their button background at the `NFR-005` floor
+- Hover and pressed on the two sub-controls are declared, per `T-129`
+- The spin box still steps on click, asserted through the widget rather than by calling `stepUp`
+- If an asset is used, it is asserted present **in the frozen artifact**, not only in the tree
+
+#### Out of scope
+
+- Auditing every remaining sub-control the sheet may have silenced. Worth doing and too big for
+  this; if the fix suggests a general assertion, file it rather than widening here
+
+
+*Corrected the same day.* The first fix declared the sub-controls in the sheet and drew the arrows
+with the CSS border-triangle trick. **Qt renders that as a solid block** — per-scanline ink widths
+`8,8,8,8,8` where a triangle gives `2,4,6` — and the maintainer saw two dots. `QSpinBox` is now
+absent from the styled-box rule entirely, so the platform draws its own arrows: **42 distinct
+colours in the strip against 3.** The cost is that this one widget keeps a native frame rather than
+the themed one; the alternative was shipping arrow images through `NFR-004` and `T-033` for the
+sake of a triangle. **My test asserted that arrow-coloured pixels existed, which a block
+satisfies** — it now asserts the wedge grows.
+---
+
+### T-134 — The row's verb buttons do not respond to the pointer
+
+**Status:** Proposed — **found by the maintainer at the running window, 2026-08-04.**
+**Owner:** Implementer
+**Priority:** Medium — `UX-004` §1's whole argument is that a painted control must behave like one
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `T118-R12` (painted affordance versus picture of one), `UX-005` §4,
+`ui/row_delegate.py`, `NFR-005`
+**Affected surfaces:** `ui/row_delegate.py`, possibly `ui/queue_view.py` and `ui/history_view.py`
+**Risk:** Medium — this is the first hover state the delegate has ever tracked, and stale
+highlight is the failure mode
+
+#### Scope
+
+`Open`, `Show in folder`, `Remove` and `⋯` are **painted**, not widgets:
+`_paint_verbs` calls `style.drawControl(CE_PushButton, …)` with a hard-coded
+`State_Enabled | State_Raised`. There is no `State_MouseOver` anywhere in the delegate, so the
+buttons cannot respond to the pointer — not because hover was styled away, but because nothing
+ever asks for it.
+
+**This is exactly the argument `T118-R12` won.** That finding said a reserved slot with nothing
+painted in it was an affordance only for a user who already knew it was there. A painted button
+that never reacts is the same defect one step later: it looks like a control, and the one cheap
+signal that would confirm it is a control is missing.
+
+**The failure mode is a stale highlight, not a missing one.** A hover tracked in the delegate and
+repainted by the view will keep the last hovered button lit when the pointer leaves the viewport,
+or when the model resets underneath it, unless both are handled. `T-124`'s row-identity work is the
+precedent: index-keyed state goes wrong the moment rows move.
+
+#### Acceptance criteria
+
+- A verb under the pointer draws with `State_MouseOver` and one not under it does not, asserted by
+  **rendering two rows that differ only in where the pointer is**
+- The highlight clears when the pointer leaves the viewport, and when the model resets — each
+  asserted separately, because they are different bugs with the same symptom
+- Hover is tracked by rect from the **same `_verb_rects` the paint and the click both use**, so the
+  three cannot disagree (`editorEvent` already does this for clicks)
+- No repaint storm: moving the pointer within one button repaints nothing
+- Keyboard users lose nothing — this adds a pointer affordance and must not become the only one
+  (`NFR-005`)
+
+#### Out of scope
+
+- Making the verbs real widgets. `UX-004` and `T-119` settled on painting them; this is a hover
+  state, not a rebuild
+- A hover state for the **row**, which the view already owns
+
+---
+
+### T-135 — The row's overflow menu repeats the buttons already on the row
+
+**Status:** Proposed — **found by the maintainer at the running window, 2026-08-04**, and ruled the
+same day.
+**Owner:** Implementer
+**Priority:** Medium — `UX-005` §4, and the redundancy is visible on every wide row
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `UX-005` §4 and its second 2026-08-04 amendment, `T124-R1` (one menu for both
+lists), `ui/row_delegate.py` `_verb_rects`, `ui/main_window.py` `_row_menu`
+**Affected surfaces:** `ui/row_delegate.py`, `ui/queue_view.py`, `ui/history_view.py`,
+`ui/main_window.py`
+**Risk:** Medium — the menu and the row must agree about what was dropped, and they are computed in
+different places
+
+#### Scope
+
+**The design is already right; the wiring is not.** `_verb_rects` lays the verbs out right to left
+and `break`s when one will not fit, placing the overflow first so it survives — so on a narrow row
+the `⋯` reaches verbs that are genuinely unreachable. But `_show_row_menu` passes
+`view.verbs_of(row_id)`, the **whole** list, so on a row wide enough for every button the menu
+repeats every button.
+
+**And the `⋯` is not the keyboard route, though `_verb_rects` says it is.** Both lists set
+`CustomContextMenu`, and Qt raises `customContextMenuRequested` for the Menu key and Shift+F10 as
+well as for the mouse. The keyboard route is the context menu and has been since `T124-R1`. That
+comment should be corrected in the same change, because it is the stated reason the `⋯` must always
+be present, and it is not true.
+
+*Ruled 2026-08-04:* the overflow carries **only what the row could not show**, and disappears when
+the row showed everything.
+
+#### Acceptance criteria
+
+- The menu's contents are **derived from what the delegate actually placed**, not recomputed from
+  the model — one definition, the same rule `_verb_rects` already establishes for paint and click
+- A row wide enough for every verb draws **no `⋯`**, asserted by rendering
+- A row too narrow draws `⋯`, and the menu holds **exactly** the dropped verbs — asserted against a
+  width chosen so the set is non-empty and not the whole list
+- Shift+F10 still opens the full menu at both widths, on both lists — the keyboard route must not
+  become width-dependent, which is the risk this change introduces
+- `_verb_rects`' "it is the keyboard route" comment is corrected
+
+#### Out of scope
+
+- Menu-only actions such as *Copy URL* or *Open details*. Considered and declined for now: they
+  would give the `⋯` its own reason to exist, but none of them are built, and inventing actions to
+  justify a button is the wrong order
+
+---
+
+### T-136 — The staged row's format line runs underneath its format control
+
+**Status:** Proposed — **found by the maintainer in the running Add URLs dialog, 2026-08-04**, with
+a screenshot. Measured before filing.
+**Owner:** Implementer
+**Priority:** Medium — `REQ-009`'s promise is that the selector can be read and copied off the row
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `T118-R8`, `T118-R15`, `UX-004`, `REQ-009`, `ui/row_delegate.py`
+(`_control_rect`, `_paint_text`)
+**Affected surfaces:** `ui/row_delegate.py`
+**Risk:** Medium — the two claims in conflict were each made deliberately, so one has to give
+
+#### Scope
+
+The third line — `Download as: … · Format selector: bestaudio/best · 320 kbps MP3` — is drawn
+**under** the *Same as all* combo, and the tail of it is unreadable.
+
+**Two deliberate decisions collided.** `_paint_text` runs the selector at the *full* body width, and
+says why: *"the control sits beside the first two lines, and nothing needs the third line's
+right-hand end."* `_control_rect` places the control **vertically centred in the body** —
+`body.top() + (body.height() - height) // 2`. On a three-line row, centred is not beside lines one
+and two; it is across line three. Neither comment is wrong about its own half, and the premise the
+first one rests on was never asserted.
+
+Measured on a 96px row at the default font:
+
+| | |
+|---|---|
+| control | `QRect(563, 35, 190, 26)` |
+| selector | `QRect(112, 57, 642, 34)` — full body width |
+| intersection | `QRect(563, 57, 190, 4)`, **not empty** |
+
+The screenshot is worse than 4px because the real row is taller and the selector wraps to a second
+line, so more of it passes behind the control.
+
+**Which one gives is the question this task has to answer, not assume.** Narrowing the selector
+line restores `T118-R8` exactly — the defect where `REQ-009`'s selector was elided into
+uselessness by the control's slot — so it cannot simply be re-narrowed. Moving the control to sit
+beside the first two lines makes the existing comment true, and is the direction this task
+proposes; `T118-R15` sized `SELECTOR_LINES` and should be re-read first.
+
+#### Acceptance criteria
+
+- **The control's rect and the selector's rect do not intersect**, asserted as geometry at more
+  than one row height and font size — the collision is height-dependent, which is why one width
+  and one font would have missed it
+- The selector still runs the full width where the control does not reach it (`T118-R8`), and is
+  still not elided (`REQ-009`)
+- The comment in `_paint_text` and the behaviour of `_control_rect` agree afterwards, whichever
+  way the conflict is resolved
+- Asserted on a real staged row with a **wrapping** selector, since that is the case in the report
+
+#### Out of scope
+
+- The control's width or the choice to reuse one editor (`T118-R10`)
+
+---
+
+### T-137 — A playlist downloads one item, silently, and reports nothing about it
+
+**Status:** Proposed — **found by the maintainer, 2026-08-04**, downloading a real 16-item
+playlist. **The shape is ruled** (below); the work is not started.
+**Owner:** Implementer
+**Priority:** **High** — the row says *Playlist (16 items)* and then does not download 16 items
+**Phase:** Phase 3
+**Depends on:** a maintainer ruling; overlaps `T-110` and `T-112`
+**Relevant context:** `T-110` (probe the entries, choose which to enqueue), `T-112` (output
+template), `REQ-002`, `downloader/ytdlp_adapter.py` `build_options`, `core/models.py` `MediaInfo`
+**Affected surfaces:** `downloader/`, `core/models.py`, `ui/`, probably `persistence/`
+**Risk:** High — this is the first feature where one queue row stops meaning one file
+
+#### Scope
+
+**`build_options` sets `"noplaylist": True`** (`ytdlp_adapter.py`). The probe reports
+`is_playlist=True, entry_count=16` and the staged row says so — and then the download takes the
+single entry the URL resolves to. One row, one file, no statement anywhere that the other fifteen
+were never attempted. A separate report from the same sitting says the download then failed
+outright; **that is not yet diagnosed and may or may not be the same defect.**
+
+`MULTI_ITEM_TYPES` and `_entry_count` already exist and say in as many words that projecting the
+entries "is Phase 3's" — so the *probe* half was deliberately deferred, and `noplaylist` is the
+matching deferral on the download side. What was not decided is that the UI would keep announcing
+a playlist it does not download.
+
+**Three things the maintainer asked for**, recorded here as requirements to rule on rather than as
+a design:
+
+1. **An overall progress bar** for the playlist as a whole.
+2. **More information** while it runs — which entry, how many are left.
+3. **Its own folder** at the download location, so the items stay together.
+
+Under the ruling below, 1 and 2 are largely answered by the row-per-entry shape — sixteen rows each
+with their own bar *is* the information — but "how many are left" is a claim about the **group**,
+and nothing in the queue currently knows that a group exists. That is the part the ruling does not
+hand to you for free, and the part to design.
+
+**Ruled by the maintainer, 2026-08-04, twice — and the second ruling stands.** A playlist is
+**one queue row that opens into its entries**, drawn exactly as
+`docs/mockups/2026-08-04-playlist-rows.html` shows (published:
+https://claude.ai/code/artifact/dc4a35f3-28c5-4b36-95a3-5a4cad47ecfc): the segmented bar, the
+`4 of 16` count, and the shorter child row. `UX-005` rows 9–9d carry it. The folder rule, row 10,
+was never in question.
+
+**Decomposed, because it is three changes that fail differently.** This task keeps the part that
+made it *High* — a playlist downloading one file and saying nothing — and the queue's shape is
+`T-140`:
+
+| | | |
+|---|---|---|
+| `T-137` | A playlist enumerates its entries, they all download, and they land in one folder | this task |
+| `T-140` | The queue draws a group row that opens, per the mockup | filed |
+
+They are separable because the model contract between them is a role, not a call: `T-140` draws
+whatever answers the group roles, and `T-137` is what makes anything answer them. Either can be
+reviewed without the other in the tree.
+
+*The superseded-but-not-deleted first ruling follows, because the argument against the alternatives
+is the record:*
+
+Probing a playlist expands it into one job per entry. Every row then gets a real progress bar, the
+concurrency limit and the existing verbs **for free** — there is no second progress model, and
+`UX-005`'s row anatomy is drawn once rather than twice. The cost is accepted deliberately: one
+paste becomes sixteen rows, and *Clear finished*, *Remove* and the tab count all have to mean
+something sensible across a group that arrived together.
+
+Files land in `<download directory>/<playlist title>/` as a **fixed rule**, not a setting. The
+alternative was to expose it through `T-112`'s output template; declined for now, because a rule
+the template editor must later be able to express is a smaller commitment than a setting shipped
+before the editor that would own it.
+
+*(The competing shape — one row for the playlist, reporting "item 4 of 16" — was rejected. It
+keeps the row count honest and needs a second progress model underneath the row, and per-item
+retry and cancel have nowhere obvious to live.)*
+
+#### Acceptance criteria
+
+- Sixteen items enqueued from a sixteen-item playlist **actually download**, asserted against a
+  recorded fixture rather than a network
+- Whatever the row means, **the row does not claim more than it does** — the failure this task
+  exists for
+- Progress is reported for the whole, with the per-item detail the ruling settles on
+- Files land together in a folder named from the playlist, asserted on the produced paths
+- A playlist that cannot be enumerated still behaves — `_entry_count` already returns `None` for
+  that case and the UI must not read it as zero
+
+#### Out of scope
+
+- Choosing *which* entries to enqueue, which is `T-110`'s own scope
+
+---
+
+### T-138 — History rows lose the thumbnail the queue row had
+
+**Status:** Proposed — **found by the maintainer, 2026-08-04.** The same download shows a picture
+in the queue and a placeholder tile in History.
+**Owner:** Implementer
+**Priority:** Medium — `UX-005` §3 gives both tabs the same row anatomy
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `UX-005` §3, `DAT-005`, `T124-R4` (the last time a row's anatomy needed a
+column), `persistence/repositories.py`, `ui/history_view.py`
+**Affected surfaces:** `persistence/` (a migration), `ui/history_view.py`
+**Risk:** Medium — it needs a schema migration, and `T014-R4` freezes a fixture per version
+
+#### Scope
+
+**Neither half exists**, which is why nothing was merely mis-wired:
+
+- `HistoryEntry` has **no `thumbnail_url` field**, and the `history` table has no column for one.
+  The `jobs` table does persist it — that is the queue's copy, and removing a job takes it.
+- `ui/history_view.py` never mentions `THUMBNAIL_URL_ROLE` and builds its `RowDelegate` **without
+  a `ThumbnailStore`**, so even given the data it would draw the derived tile.
+
+So this is `T124-R4` again in a different column: `UX-005` §3 says both tabs draw the same row, and
+the data the row needs was never carried. Migration `0004`, plus `v4.sql` frozen for `T014-R4`'s
+gate.
+
+#### Acceptance criteria
+
+- A completed download shows the **same** picture in History as it did in the queue, asserted
+  across the move rather than by checking the two surfaces separately
+- The migration is forward-only and `v4.sql` is frozen (`T014-R4`)
+- A history row whose entry predates the column, or whose picture cannot be fetched, draws the
+  derived tile rather than an empty space — the existing placeholder path
+- History's `RowDelegate` gets a store, and the store's cache is not duplicated per tab
+
+---
+
+### T-139 — The bitrate control stays live when bitrate does not apply
+
+**Status:** Proposed — **found by the maintainer, 2026-08-04**, with *Best video up to 1080p (MP4)*
+selected and *192 kbps* still offered beside it.
+**Owner:** Implementer
+**Priority:** Low — it misleads rather than misbehaves
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `UX-004`, `UX-005` §5 (a control that accepts a choice nothing acts on),
+`ui/add_dialog.py`, `ui/presets.py`
+**Affected surfaces:** `ui/add_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+**The words already know; the widget does not.** `add_dialog.py` builds the summary line and
+deliberately *omits* the bitrate for a video download — its own comment says "omitted rather than
+shown as `n/a`: a bitrate beside a video download would put a number on" something it does not
+govern. The `audioBitrateChoice` combo beside it stays enabled and settable, so the user can pick
+192 kbps for an MP4 and watch the format selector ignore it.
+
+That is `UX-005` §5's rule exactly — a control that accepts a choice nothing acts on — applied to
+a control the same file already reasons about correctly one line away.
+
+**Disabled or hidden is the open question.** Disabled keeps the layout still and says the control
+exists for other presets; hidden is quieter but makes the panel change height as the preset
+changes. `UX-005` §5 does not settle it.
+
+#### Acceptance criteria
+
+- With a video preset chosen the bitrate control **cannot be changed**, asserted through the widget
+- With an audio preset chosen it can, so the test cannot pass by disabling it always
+- Whichever of disabled or hidden is chosen, `NFR-005` is met for it — a disabled control needs a
+  reason a screen reader can read
+- The summary line and the control agree, asserted together: they are the two halves that
+  disagreed
+
+---
+
+### T-140 — The queue draws a playlist as a row that opens
+
+**Status:** Proposed — **ruled 2026-08-04** against `docs/mockups/2026-08-04-playlist-rows.html`,
+which is the specification. Split from `T-137`.
+**Owner:** Implementer
+**Priority:** High — it is half of what makes `T-137` usable
+**Phase:** Phase 3
+**Depends on:** nothing in the tree; `T-137` is what will eventually feed it
+**Relevant context:** `UX-005` rows 9–9d, `T118-R10` (per-row cost), `T118-R7` (row widget versus
+delegate), `ui/queue_view.py`, `ui/row_delegate.py`, `ui/row_verbs.py`
+**Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, `ui/row_verbs.py`
+**Risk:** Medium-High — it removes a performance promise the queue currently makes
+
+#### Scope
+
+The mockup is the specification and the ruling is transcribed in `UX-005` rows 9–9d. In short: a
+group row with a disclosure triangle, a **segmented** bar of one block per entry, a `4 of 16`
+count chip, and — when open — **shorter** child rows on a connecting rail, each with its own state
+and verbs.
+
+**The model flattens; the view stays a `QListView`.** A `QTreeView` would replace the list, the
+delegate and the geometry `T118-R7`, `T118-R8`, `T118-R12` and `T118-R15` were each spent on. A
+flat model that emits a group row and, when it is open, its entries — with a depth role the
+delegate indents by — keeps all of them.
+
+**`setUniformItemSizes(True)` has to come off**, and that is the risk rather than a detail. It is
+the promise that lets the list size itself without asking every row, and a two-line child beside a
+four-line group breaks it. `T118-R10` is the record of what per-row cost buys: a paste of 150 cost
+0.722 s on hosted Windows and a delegate fixed it.
+
+#### Acceptance criteria
+
+- **A paste of 150 with every group open is measured**, on Linux and on Windows, against the
+  `T118-R10` bound. `UX-005`'s ruling says in as many words that this number is owed and that a bad
+  one justifies reopening the shape — so it is a criterion, not a follow-up
+- Closed, a playlist is exactly **one** row; open, it is one plus its entries — asserted by row
+  count, not by pixels
+- The group's chip reads `4 of 16` and **never a percentage**, asserted with entries whose totals
+  are unknown, which is the case that made a percentage wrong
+- The segmented bar shows a **failed** entry distinctly from a queued one — the specific lie row 9b
+  exists to prevent
+- A child row draws **no format line** and a smaller thumbnail (row 9c), asserted against the group
+  row rather than in isolation
+- Group verbs are named as the mockup names them: `Pause all`, `Cancel all`, `Retry failed` only
+  when something failed, `Show in folder` with no `Open`. Entry verbs are the ordinary ones
+- `Remove` on a group names its own count in the confirmation (`DAT-005` §4)
+- Expanding and collapsing are **keyboard reachable**, and the open state survives the model reset
+  a refresh performs (`T126-R1`'s lesson: identity, not row number)
+- `Clear finished` clears a group only when all of it is done (row 9d)
+
+#### Out of scope
+
+- Anything that produces a group: probing, downloading, persisting (`T-137`)
+- The tab's count, which `UX-005` leaves proposed rather than ruled
+
+---
+
 ### T-107 — The format table: every stream a probe found
 
 **Status:** Proposed — **Phase 3 decomposition, 2026-08-01.** Blocked on Phase 2's exit and on

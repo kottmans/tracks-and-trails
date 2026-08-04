@@ -1,0 +1,459 @@
+<!--
+  The playlist row mockup — P1 closed / P2 open, and a recommendation.
+
+  PRESERVED IN THE REPOSITORY DELIBERATELY, for the reason the B1 mockup beside it gives: `UX-005`
+  opens by recording that "the original mockup is gone and the repository never recorded what it
+  showed", and `T-130` was found by comparing the shipped window against a page that at that point
+  existed only as a published artifact.
+
+  This is the authored source of that page. The maintainer asked for a third shape after ruling for
+  one-job-per-entry earlier the same day; this argues for the third and says what it costs. The
+  ruling it produces belongs in `UX-005`, not here — this file is the artefact, not the authority.
+
+  Published at https://claude.ai/code/artifact/dc4a35f3-28c5-4b36-95a3-5a4cad47ecfc
+
+  Open it in any browser. It needs nothing.
+-->
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tracks &amp; Trails — a playlist as one row that opens</title>
+
+<style>
+  :root{
+    --page:#EDF1EC; --ink:#101A14; --ink-soft:#3D4C43; --ink-mute:#5A6A60; --hair:#D5DED7;
+    --good:#14503C; --bad:#8C3D29; --warn:#7A5410;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+    --mono:ui-monospace,"SF Mono","JetBrains Mono","Cascadia Mono",Menlo,Consolas,monospace;
+  }
+  @media (prefers-color-scheme:dark){:root{
+    --page:#06100C;--ink:#E7EFE9;--ink-soft:#B4C4BA;--ink-mute:#7F9187;--hair:#21382E;
+    --good:#7FC7A6;--bad:#E09480;--warn:#D9A24C;}}
+  :root[data-theme="dark"]{--page:#06100C;--ink:#E7EFE9;--ink-soft:#B4C4BA;--ink-mute:#7F9187;
+    --hair:#21382E;--good:#7FC7A6;--bad:#E09480;--warn:#D9A24C;}
+  :root[data-theme="light"]{--page:#EDF1EC;--ink:#101A14;--ink-soft:#3D4C43;--ink-mute:#5A6A60;
+    --hair:#D5DED7;--good:#14503C;--bad:#8C3D29;--warn:#7A5410;}
+
+  .app{
+    --w:#F5F7F4; --s:#FFFFFF; --k:#EAEFE9; --t:#101A14; --m:#5A6A60;
+    --r:#D5DED7; --b:#748A7E; --p:#1E5E47; --op:#FFFFFF; --a:#8A6412;
+    background:var(--w); color:var(--t); border:1px solid var(--b); border-radius:6px;
+    overflow:hidden; font-size:12px; line-height:1.4;
+  }
+
+  body{margin:0;background:var(--page);color:var(--ink);font-family:var(--sans);font-size:16px;
+       line-height:1.6;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  .page{max-width:1240px;margin:0 auto;padding:clamp(1.5rem,4vw,3.5rem) clamp(1rem,4vw,2rem) 5rem;
+        display:flex;flex-direction:column;gap:clamp(2rem,4vw,3rem)}
+  h1{font-size:clamp(1.6rem,4vw,2.3rem);line-height:1.1;letter-spacing:-.02em;font-weight:650;
+     margin:0;text-wrap:balance}
+  h2{font-size:clamp(1rem,2.2vw,1.25rem);letter-spacing:-.01em;font-weight:650;margin:0}
+  h3{font-size:.88rem;font-weight:650;margin:0}
+  p{margin:0;max-width:68ch}
+  .lede{color:var(--ink-soft);font-size:1.02rem}
+  .eyebrow{font-family:var(--mono);font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;
+           color:var(--ink-mute);margin:0}
+  code{font-family:var(--mono);font-size:.87em}
+  section{display:flex;flex-direction:column;gap:1rem}
+  .head{display:flex;flex-direction:column;gap:.3rem}
+  .note{font-size:.87rem;color:var(--ink-mute);border-left:2px solid var(--hair);
+        padding-left:.85rem;max-width:68ch}
+  .opt{display:flex;flex-direction:column;gap:.55rem}
+  .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(430px,1fr));gap:1.4rem}
+
+  .titlebar{padding:.38rem .6rem;background:var(--k);border-bottom:1px solid var(--r);
+            font-weight:600;font-size:11px;display:flex;align-items:center;gap:.4rem}
+  .dot{width:7px;height:7px;border-radius:50%;background:var(--p);flex:none}
+  .toolbar{display:flex;align-items:center;gap:.3rem;flex-wrap:wrap;padding:.35rem .5rem;
+           background:var(--s);border-bottom:1px solid var(--r)}
+  .tabs{display:flex;gap:.15rem;padding:.3rem .5rem 0;background:var(--k);
+        border-bottom:1px solid var(--r)}
+  .tab{padding:.26rem .7rem;font-size:10.5px;border:1px solid var(--r);border-bottom:none;
+       border-radius:4px 4px 0 0;background:var(--k);color:var(--m);position:relative;top:1px}
+  .tab.on{background:var(--s);color:var(--t);font-weight:650;border-bottom:1px solid var(--s)}
+  .tab .count{font-family:var(--mono);font-size:9px;color:var(--m);margin-left:.3rem}
+  .tab.on .count{color:var(--p)}
+
+  .t{border-radius:3px;flex:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.18)}
+  .t.r1{background:linear-gradient(140deg,#1d3f63,#3f7ea8)}
+  .t.r2{background:linear-gradient(140deg,#4a3b1f,#a5793a)}
+  .t.r3{background:linear-gradient(140deg,#26402c,#5c8a52)}
+  .t.r4{background:linear-gradient(140deg,#3d2436,#8a5675)}
+  .t.r5{background:linear-gradient(140deg,#402032,#8a4a63)}
+  .t.lg{width:56px;height:32px}
+  .t.sm{width:38px;height:22px}
+
+  .title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sub{color:var(--m);font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .state{font-size:8.5px;font-family:var(--mono);letter-spacing:.04em;text-transform:uppercase;
+         padding:.03rem .28rem;border-radius:3px;border:1px solid var(--p);color:var(--p);flex:none}
+  .state.run{border-color:var(--a);color:var(--a)}
+  .state.err{border-color:#8C3D29;color:#8C3D29}
+  .state.done{border-color:var(--p);color:var(--p);background:color-mix(in srgb,#1E5E47 10%,transparent)}
+  .state.idle{border-color:var(--m);color:var(--m)}
+  .asText{font-size:10px;color:var(--m)}
+  .asText b{color:var(--t);font-weight:600}
+
+  .prog{height:3px;background:color-mix(in srgb,var(--t) 12%,transparent);border-radius:2px;
+        overflow:hidden}
+  .prog i{display:block;height:100%;background:var(--p)}
+  .prog.tall{height:5px;border-radius:3px}
+  .prog.seg{display:flex;gap:1px;background:none;height:5px}
+  .prog.seg span{flex:1;background:color-mix(in srgb,var(--t) 12%,transparent);border-radius:1px}
+  .prog.seg span.done{background:var(--p)}
+  .prog.seg span.run{background:var(--a)}
+  .prog.seg span.err{background:#8C3D29}
+
+  .rowB{display:flex;gap:.6rem;padding:.5rem .55rem;border-bottom:1px solid var(--r);
+        background:var(--s);align-items:flex-start;position:relative}
+  .rowB:last-of-type{border-bottom:none}
+  .rowB .body{flex:1;min-width:0;display:flex;flex-direction:column;gap:.2rem}
+  .rowB .line{display:flex;align-items:baseline;gap:.4rem}
+
+  /* the disclosure control and the child rail — the only new furniture */
+  .tw{flex:none;width:14px;align-self:flex-start;margin-top:.15rem;color:var(--m);
+      font-size:9px;text-align:center;line-height:1.6}
+  .rowB.group{background:color-mix(in srgb,#1E5E47 4%,var(--s))}
+  .rowB.child{padding-left:1.9rem;background:var(--s)}
+  .rowB.child::before{content:"";position:absolute;left:1.05rem;top:0;bottom:0;
+                      border-left:1px solid color-mix(in srgb,#1E5E47 35%,transparent)}
+  .rowB.child.last::before{bottom:50%}
+  .rowB.child::after{content:"";position:absolute;left:1.05rem;top:50%;width:.5rem;
+                     border-top:1px solid color-mix(in srgb,#1E5E47 35%,transparent)}
+
+  .btn{display:inline-flex;align-items:center;padding:.2rem .45rem;border:1px solid var(--b);
+       border-radius:4px;font-size:10.5px;background:var(--s);color:var(--t);white-space:nowrap}
+  .btn.primary{background:var(--p);border-color:var(--p);color:var(--op);font-weight:600}
+  .btn.icon{padding:.16rem .34rem}
+  .spacer{flex:1 1 auto}
+  .statusbar{padding:.3rem .6rem;background:var(--k);border-top:1px solid var(--r);
+             font-size:10px;color:var(--m);font-family:var(--mono);display:flex;gap:.8rem}
+  .gut{display:flex;gap:.25rem;align-self:center;justify-content:flex-end}
+  .actline{display:flex;align-items:center;gap:.35rem;width:100%}
+
+  .table-card{border:1px solid var(--hair);border-radius:5px;overflow-x:auto}
+  table{width:100%;border-collapse:collapse;font-size:.87rem;min-width:640px}
+  th,td{text-align:left;padding:.5rem .7rem;border-bottom:1px solid var(--hair);vertical-align:top}
+  thead th{font-size:.67rem;letter-spacing:.09em;text-transform:uppercase;color:var(--ink-mute);
+           background:color-mix(in srgb,var(--ink) 5%,transparent)}
+  tbody tr:last-child td{border-bottom:none}
+  .ok{color:var(--good);font-weight:600} .no{color:var(--bad);font-weight:600}
+  .warnv{color:var(--warn);font-weight:600}
+
+  .callout{border:1px solid var(--hair);border-left:3px solid var(--accent,var(--warn));
+           border-radius:4px;padding:.9rem 1.05rem;display:flex;flex-direction:column;gap:.5rem;
+           background:color-mix(in srgb,var(--ink) 3%,transparent)}
+  .callout h3{color:var(--accent,var(--warn))}
+  .callout ul{margin:0;padding-left:1.1rem;display:flex;flex-direction:column;gap:.3rem;
+              font-size:.92rem;color:var(--ink-soft)}
+
+  footer{border-top:1px solid var(--hair);padding-top:1rem;font-family:var(--mono);font-size:.72rem;
+         color:var(--ink-mute);display:flex;flex-wrap:wrap;gap:.3rem 1.2rem}
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="page">
+
+  <header class="head">
+    <p class="eyebrow">Tracks &amp; Trails · the queue · playlists · deciding</p>
+    <h1>A playlist as one row that opens</h1>
+    <p class="lede">Sixteen rows from one paste is honest and unreadable. One row reporting
+      <em>item 4 of 16</em> is readable and hides fifteen downloads you cannot act on. This is the
+      third option: <strong>one row that is a real row, and opens into the fifteen underneath
+      it</strong> — so the connection between them is visible rather than remembered.</p>
+    <p class="note">Filed against <code>T-137</code>. <strong>This supersedes nothing yet.</strong>
+      <code>UX-005</code> rows 9 and 10 currently record <em>one job per entry</em>, ruled earlier
+      today; that entry is marked as under revision and will be rewritten to whatever is chosen
+      here rather than quietly replaced.</p>
+  </header>
+
+  <!-- ============================================================ the shape -->
+  <section>
+    <div class="head">
+      <p class="eyebrow">The shape</p>
+      <h2>Closed, then open</h2>
+      <p class="lede">The same queue, one triangle apart. Closed, a playlist costs exactly one row
+        — which is what makes a sixteen-item paste survivable next to ordinary downloads.</p>
+    </div>
+
+    <div class="two">
+      <div class="opt">
+        <h3>P1 — closed</h3>
+        <div class="app">
+          <div class="titlebar"><span class="dot"></span> Tracks &amp; Trails</div>
+          <div class="toolbar">
+            <span class="btn primary">+ Add URLs</span>
+            <span class="asText" style="margin-left:.5rem">Concurrent downloads: <b>3</b></span>
+            <span class="spacer"></span>
+            <span class="btn">Pause queue</span><span class="btn">Clear finished</span>
+          </div>
+          <div class="tabs">
+            <span class="tab on">Queue <span class="count">(2)</span></span>
+            <span class="tab">History <span class="count">(2)</span></span>
+          </div>
+
+          <div class="rowB group">
+            <span class="tw">▸</span>
+            <span class="t lg r5"></span>
+            <span class="body">
+              <span class="line">
+                <span class="title">Zelda Cinematica: A Symphonic Tribute</span>
+                <span class="spacer"></span>
+                <span class="state run">4 of 16</span>
+              </span>
+              <span class="sub">Playlist · 3 done, 1 running, 12 queued · 218 MB of 640 MB · 2.1 MB/s</span>
+              <span class="prog seg">
+                <span class="done"></span><span class="done"></span><span class="done"></span>
+                <span class="run"></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span>
+              </span>
+              <span class="actline">
+                <span class="asText">Download as: <b>Audio only (MP3)</b> · into <b>Zelda Cinematica/</b></span>
+                <span class="spacer"></span>
+                <span class="btn">Pause all</span><span class="btn">Cancel all</span><span class="btn icon">⋯</span>
+              </span>
+            </span>
+          </div>
+
+          <div class="rowB">
+            <span class="tw"></span>
+            <span class="t lg r3"></span>
+            <span class="body">
+              <span class="line">
+                <span class="title">A Light Within Shadow</span>
+                <span class="spacer"></span>
+                <span class="state run">62%</span>
+              </span>
+              <span class="sub">Hill &amp; Bothy · 12:04 · 8.4 MB of 13.5 MB · 2.1 MB/s · 3 s left</span>
+              <span class="prog"><i style="width:62%"></i></span>
+              <span class="actline">
+                <span class="asText">Download as: <b>Best video up to 1080p</b></span>
+                <span class="spacer"></span>
+                <span class="btn">Cancel</span><span class="btn icon">⋯</span>
+              </span>
+            </span>
+          </div>
+          <div class="statusbar"><span>ffmpeg found; all post-processing features are available.</span></div>
+        </div>
+        <p class="note">The count reads <strong>4 of 16</strong>, not a percentage. Bytes across
+          sixteen files of unknown size make a percentage that jumps backwards when the seventh
+          reports its real total; a count only ever goes up.</p>
+      </div>
+
+      <div class="opt">
+        <h3>P2 — open</h3>
+        <div class="app">
+          <div class="titlebar"><span class="dot"></span> Tracks &amp; Trails</div>
+          <div class="tabs">
+            <span class="tab on">Queue <span class="count">(2)</span></span>
+            <span class="tab">History <span class="count">(2)</span></span>
+          </div>
+
+          <div class="rowB group">
+            <span class="tw">▾</span>
+            <span class="t lg r5"></span>
+            <span class="body">
+              <span class="line">
+                <span class="title">Zelda Cinematica: A Symphonic Tribute</span>
+                <span class="spacer"></span>
+                <span class="state run">4 of 16</span>
+              </span>
+              <span class="sub">Playlist · 3 done, 1 running, 12 queued · 218 MB of 640 MB</span>
+              <span class="prog seg">
+                <span class="done"></span><span class="done"></span><span class="done"></span>
+                <span class="run"></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span><span></span><span></span><span></span><span></span>
+                <span></span><span></span>
+              </span>
+              <span class="actline">
+                <span class="asText">into <b>Zelda Cinematica/</b></span>
+                <span class="spacer"></span>
+                <span class="btn">Pause all</span><span class="btn">Cancel all</span><span class="btn icon">⋯</span>
+              </span>
+            </span>
+          </div>
+
+          <div class="rowB child">
+            <span class="t sm r1"></span>
+            <span class="body">
+              <span class="line"><span class="title">01 · Prelude of Light</span>
+                <span class="spacer"></span><span class="state done">Done</span></span>
+              <span class="sub">4:12 · 9.8 MB</span>
+            </span>
+            <span class="gut"><span class="btn">Open</span><span class="btn icon">⋯</span></span>
+          </div>
+
+          <div class="rowB child">
+            <span class="t sm r2"></span>
+            <span class="body">
+              <span class="line"><span class="title">02 · Hyrule Field</span>
+                <span class="spacer"></span><span class="state done">Done</span></span>
+              <span class="sub">6:38 · 15.2 MB</span>
+            </span>
+            <span class="gut"><span class="btn">Open</span><span class="btn icon">⋯</span></span>
+          </div>
+
+          <div class="rowB child">
+            <span class="t sm r4"></span>
+            <span class="body">
+              <span class="line"><span class="title">03 · Lost Woods</span>
+                <span class="spacer"></span><span class="state err">Failed</span></span>
+              <span class="sub" style="color:#8C3D29">Video unavailable — the uploader removed it</span>
+            </span>
+            <span class="gut"><span class="btn">Retry</span><span class="btn icon">⋯</span></span>
+          </div>
+
+          <div class="rowB child">
+            <span class="t sm r3"></span>
+            <span class="body">
+              <span class="line"><span class="title">04 · Gerudo Valley</span>
+                <span class="spacer"></span><span class="state run">71%</span></span>
+              <span class="sub">3:55 · 6.1 MB of 8.6 MB · 1.9 MB/s</span>
+              <span class="prog"><i style="width:71%"></i></span>
+            </span>
+            <span class="gut"><span class="btn">Cancel</span><span class="btn icon">⋯</span></span>
+          </div>
+
+          <div class="rowB child last">
+            <span class="t sm r1"></span>
+            <span class="body">
+              <span class="line"><span class="title">05 · Song of Storms</span>
+                <span class="spacer"></span><span class="state idle">Queued</span></span>
+              <span class="sub">2:41</span>
+            </span>
+            <span class="gut"><span class="btn">Cancel</span><span class="btn icon">⋯</span></span>
+          </div>
+
+          <div class="statusbar"><span>11 more · scroll</span></div>
+        </div>
+        <p class="note"><strong>A child is a shorter row on purpose.</strong> It drops the format
+          line — every entry inherits the group's — and the thumbnail shrinks, so the indent buys
+          its width back instead of costing it. <code>UX-005</code> §3's anatomy is intact; this is
+          the same row with two lines instead of four.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ the segmented bar -->
+  <section>
+    <div class="head">
+      <p class="eyebrow">The group's own progress</p>
+      <h2>Sixteen segments, not one bar</h2>
+      <p class="lede">The bar under a playlist is the thing most likely to lie, so it is drawn as
+        what it actually knows: one segment per entry, filled as each finishes.</p>
+    </div>
+
+    <div class="two">
+      <div class="opt">
+        <h3>Segmented — proposed</h3>
+        <div class="app" style="padding:.7rem .6rem">
+          <div class="prog seg" style="height:7px">
+            <span class="done"></span><span class="done"></span><span class="done"></span>
+            <span class="run"></span><span class="err"></span><span></span><span></span><span></span>
+            <span></span><span></span><span></span><span></span><span></span><span></span>
+            <span></span><span></span>
+          </div>
+          <div class="sub" style="margin-top:.4rem">3 done · 1 running · 1 failed · 11 queued</div>
+        </div>
+        <p class="note">A failed entry is <span class="no">visible in the bar</span> rather than
+          folded into "not done yet". With one continuous bar there is nowhere to put it, and a
+          playlist that quietly skipped a track would look identical to one that got everything.</p>
+      </div>
+      <div class="opt">
+        <h3>Continuous — rejected</h3>
+        <div class="app" style="padding:.7rem .6rem">
+          <div class="prog tall" style="height:7px"><i style="width:34%"></i></div>
+          <div class="sub" style="margin-top:.4rem">34%</div>
+        </div>
+        <p class="note">34% of what? Sixteen files whose sizes arrive one at a time, so the
+          denominator changes as it runs — the bar goes <em>backwards</em> when entry seven reports
+          a total larger than the estimate. <code>Job.progress</code> already refuses to invent a
+          percentage from an unknown total; this would reintroduce it at the group level.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================ verbs -->
+  <section>
+    <div class="head">
+      <p class="eyebrow">What the verbs mean now</p>
+      <h2>Two levels, and no verb that means both</h2>
+    </div>
+    <div class="table-card">
+      <table>
+        <thead><tr><th>Verb</th><th>On the playlist row</th><th>On an entry</th></tr></thead>
+        <tbody>
+          <tr><td><code>Cancel</code></td><td><strong>Cancel all</strong> — stops what is running and drops what is queued. Named differently on purpose: a button reading <em>Cancel</em> on a row covering sixteen files is the one most likely to be clicked by mistake</td><td><strong>Cancel</strong> — that entry only. The others carry on</td></tr>
+          <tr><td><code>Pause</code></td><td><strong>Pause all</strong> — holds the group without touching the rest of the queue</td><td>Absent. <code>UX-001</code> has no per-job pause and this does not add one</td></tr>
+          <tr><td><code>Retry</code></td><td><strong>Retry failed</strong>, in the <code>⋯</code>, and only when at least one failed</td><td><strong>Retry</strong> — the ordinary one</td></tr>
+          <tr><td><code>Open</code> / <code>Show in folder</code></td><td><strong>Show in folder</strong> opens the playlist's own folder. <em>Open</em> is absent — there is no one file to open</td><td>Both, once done</td></tr>
+          <tr><td><code>Remove</code></td><td>Removes the group <strong>and its entries</strong>, with the count in the confirmation — <code>DAT-005</code> §4's rule already says the question must name its own number</td><td>Removes that entry from the group</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note"><strong>Clear finished is the one that changes meaning.</strong> A playlist with
+      three done and thirteen running is not finished, so it stays — but should the three vanish
+      from underneath it? Proposed: <strong>no.</strong> A group is cleared as a unit when the whole
+      of it is done, because an entry disappearing from a list the user opened specifically to watch
+      is the opposite of what opening it was for.</p>
+  </section>
+
+  <!-- ============================================================ cost -->
+  <section>
+    <div class="head">
+      <p class="eyebrow">What it costs to build</p>
+      <h2>Three things this breaks, stated before they are discovered</h2>
+    </div>
+    <div class="callout" style="--accent:var(--warn)">
+      <h3>Known, and none of them fatal</h3>
+      <ul>
+        <li><strong><code>setUniformItemSizes(True)</code> comes off.</strong> The queue sets it for
+          speed, and it is a promise every row is the same height — which a two-line child and a
+          four-line group break. <code>T118-R10</code> is the record of what row cost buys, so this
+          wants measuring on a paste of 150, not assuming.</li>
+        <li><strong>The model flattens, rather than the view becoming a tree.</strong> A
+          <code>QTreeView</code> would replace the list, the delegate and the geometry that four
+          findings have already been spent on. A flat model that emits group rows and — when open —
+          their entries, with an indent role, keeps every one of them.</li>
+        <li><strong>The tab count needs a rule.</strong> <em>Queue (2)</em> above counts the
+          playlist as one. Counting entries would read <em>Queue (17)</em> and make the number jump
+          when a group is opened, which is worse; but "2" understates the work. Proposed: count
+          <strong>rows as shown</strong>, and let the group's own <em>4 of 16</em> carry the detail.</li>
+      </ul>
+    </div>
+    <p class="note">Not listed because it is not new: entries must be <strong>durable</strong>, so
+      the group survives a restart with its children and their states — the same
+      <code>REQ-020</code> promise every queue row already makes, applied to a row that owns
+      others. That is a schema change, and on this project a schema change means a migration and a
+      frozen fixture (<code>T014-R4</code>).</p>
+  </section>
+
+  <!-- ============================================================ recommendation -->
+  <section>
+    <div class="head">
+      <p class="eyebrow">Recommendation</p>
+      <h2>P1/P2, with the segmented bar and the count</h2>
+    </div>
+    <p class="lede">It is the only one of the three shapes where <em>the connection between the
+      files is visible</em>, which is what was asked for, and where a failed entry has somewhere to
+      be reported. It costs a flattened tree in the model and the uniform-height promise; it does
+      not cost a second row anatomy, a second progress model, or a new view class.</p>
+    <p class="note"><strong>What would change my mind:</strong> if a paste of 150 with groups open
+      measures badly once <code>setUniformItemSizes</code> is off. That is a number nobody has, and
+      it is the first thing <code>T-137</code> should get.</p>
+  </section>
+
+  <footer>
+    <span>Mockup for T-137</span>
+    <span>Supersedes nothing until UX-005 rows 9–10 are rewritten</span>
+    <span>2026-08-04</span>
+  </footer>
+
+</div>
+
+</body>
+</html>

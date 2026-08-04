@@ -14,25 +14,29 @@ Rendering comparisons rather than a search for rule text: asserting that the she
 mutation. What a user notices is that the pixels change, so that is what is measured.
 """
 
+from collections import Counter
 from collections.abc import Iterator
 
 import pytest
 from PySide6.QtCore import QRect
-from PySide6.QtGui import QImage, QPainter
+from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtWidgets import (
     QApplication,
     QGroupBox,
     QLabel,
     QMenu,
     QPushButton,
+    QSpinBox,
     QStyle,
     QStyleOptionButton,
     QStyleOptionGroupBox,
     QStyleOptionMenuItem,
+    QToolBar,
+    QToolButton,
     QVBoxLayout,
 )
 
-from tracks_and_trails.ui import theme
+from tracks_and_trails.ui import main_window, theme
 
 
 @pytest.fixture
@@ -59,6 +63,12 @@ def chosen(request: pytest.FixtureRequest) -> theme.Theme:
     that held in one and not the other would be exactly the half-fix that finding is about.
     """
     return theme.THEMES[request.param]
+
+
+def _sampled(widget: QToolButton) -> str:
+    """The widget's fill, sampled clear of its own text (`T-132`)."""
+    image = widget.grab().toImage()
+    return f"#{image.pixel(widget.width() // 2, 4) & 0xFFFFFF:06X}"
 
 
 def _group_box_rects(box: QGroupBox) -> tuple[QRect, QRect]:
@@ -324,3 +334,111 @@ def test_lightening_a_row_does_not_make_selected_text_invisible(
             editor.close()
         qapp.setPalette(previous_palette)
         qapp.setStyleSheet(previous_sheet)
+
+
+# --- T-132 and T-133: what the sheet must draw, measured on the widget ---------------------
+
+
+def test_the_toolbars_primary_button_is_filled_with_the_brand(
+    themed: QApplication, chosen: theme.Theme
+) -> None:
+    """`UX-005` row 6 (`T-132`): the mockup's `.btn.primary`, not a fourth flat label.
+
+    **Sampled near the top edge rather than at the centre**, which is where the label's glyphs
+    are — the first version of this measurement read an antialiased letter and reported a colour
+    that was in neither theme.
+
+    Both states, because the disabled one is part of the ruling: `T-016` disables this action when
+    composition supplied no manager, and a brand fill that stayed vivid while inert promises more
+    than the flat label it replaced.
+    """
+    theme.apply(themed, chosen)
+    bar = QToolBar()
+    button = QToolButton(bar)
+    button.setProperty(main_window.PRIMARY_ACTION_PROPERTY, True)
+    button.setText(main_window.ADD_URLS_BUTTON)
+    button.resize(120, 30)
+
+    button.setEnabled(True)
+    themed.processEvents()
+    enabled = _sampled(button)
+    button.setEnabled(False)
+    themed.processEvents()
+    disabled = _sampled(button)
+
+    assert enabled == chosen.primary.upper(), (
+        f"the toolbar's primary action fills with {enabled} rather than the brand "
+        f"{chosen.primary}; it is drawn as one of four equals"
+    )
+    assert disabled != chosen.primary.upper(), (
+        "a disabled Add URLs keeps the brand fill, so a button that does nothing looks like the "
+        "most important thing on the window"
+    )
+    assert disabled == chosen.sunken.upper(), (
+        f"a disabled Add URLs fills with {disabled} rather than {chosen.sunken}"
+    )
+
+
+def _ink_widths(widget: QSpinBox, top: int, bottom: int) -> list[int]:
+    """How many pixels per scanline differ from the background, in the arrow's area.
+
+    **A shape, not a presence.** This is the measurement the first version of this test lacked: it
+    counted arrow-coloured pixels and asserted "more than zero", which a solid block satisfies —
+    and a solid block is exactly what shipped.
+
+    **Against the background rather than against the darkest pixel**, because the dark theme draws
+    a light arrow on a dark ground: keying on "darkest" found the *background* there and reported
+    the arrow's shape inverted. The background is taken as the most common colour in the sampled
+    area, which is true in both themes and needs no colour named in advance.
+    """
+    image = widget.grab().toImage()
+    area = [(x, y) for y in range(top, bottom) for x in range(64, 86)]
+
+    def luminance(pixel: int) -> int:
+        colour = QColor(pixel)
+        return (colour.red() * 299 + colour.green() * 587 + colour.blue() * 114) // 1000
+
+    ground = Counter(image.pixel(x, y) for x, y in area).most_common(1)[0][0]
+    level = luminance(ground)
+    return [
+        sum(1 for x in range(64, 86) if abs(luminance(image.pixel(x, y)) - level) > 40)
+        for y in range(top, bottom)
+    ]
+
+
+def test_a_themed_spin_box_draws_arrows_that_are_arrow_shaped(
+    themed: QApplication, chosen: theme.Theme
+) -> None:
+    """`T-133`, corrected — and the correction is the point of the test.
+
+    Styling `QSpinBox` at all switches it to `QStyleSheetStyle` and its arrows stop being drawn:
+    **3 distinct colours in the button strip against 42 native.** The first fix declared the
+    sub-controls in the sheet and drew the arrows with the CSS border-triangle trick. Qt renders
+    that as a **solid block** — per-scanline ink widths `8,8,8,8,8` where a triangle gives
+    `2,4,6` — and the maintainer saw two dots. The test passed throughout, because it asserted
+    only that arrow-coloured pixels existed.
+
+    So the claim here is **triangular**: the widths must not all be equal, and they must grow. A
+    block fails it, an absent arrow fails it, and only a wedge passes.
+    """
+    theme.apply(themed, chosen)
+    box = QSpinBox()
+    box.setRange(1, 8)
+    box.setValue(3)
+    box.resize(90, 30)
+    themed.processEvents()
+
+    widths = _ink_widths(box, 3, 14)
+    # The frame runs down the sampled area on every line, so the modal width is the frame rather
+    # than the arrow. The wedge is what rises above it.
+    frame = Counter(widths).most_common(1)[0][0]
+    wedge = [width for width in widths if width > frame]
+
+    assert len(wedge) >= 2, (
+        f"the arrow area's ink widths are {widths}, which is flat — either nothing is drawn there "
+        "or it is a block. The CSS border-triangle trick renders as a rectangle in Qt, and that "
+        "is what shipped"
+    )
+    assert wedge == sorted(wedge) and len(set(wedge)) == len(wedge), (
+        f"the arrow's ink widths {wedge} do not grow strictly, so what is drawn is not a wedge"
+    )
