@@ -94,6 +94,112 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ## Ready
 
+### T-123 — Evaluate running the suite in parallel
+
+**Status:** **Ready — measured 2026-08-04, and the answer is yes.** `-n auto` runs the
+suite in **58 s** against **~400 s** serial — a **7x** reduction — with one hazard identified by
+name rather than guessed at. The measurement is below; the adoption has not been done.
+*(This read "Proposed — for evaluation, not yet a commitment", 2026-08-03. Filed rather than
+attempted: the payoff is large and the hazards are specific, and deciding which applies is the
+work. That was the right call — the evaluation found the hazard on its second run.)*
+**Owner:** Implementer
+**Priority:** Medium — the suite is the largest single cost in every gate and in local development
+**Phase:** Phase 2 test infrastructure
+**Relevant context:** `T-122`, `NFR-001`, `AGENTS.md` §9, run `30861672178`
+**Affected surfaces:** `pyproject.toml`, `tests/**`, possibly `.github/workflows/ci.yml`
+**Risk:** Medium — the failure mode is *intermittent* tests, which is worse than slow ones
+
+#### The overnight measurement, 2026-08-04
+
+Ten runs at head `8d1b01c`, on the maintainer's laptop (20 cores), each the **full** suite:
+
+| Mode | Wall clock | Result |
+|---|---|---|
+| serial (39 soak passes) | ~400 s | 37 green, **2 segfaults** — see `T-128`, unrelated to parallelism |
+| `-n auto` | 58 s, 59 s, 58 s | **2 of 3 green** |
+| `-n 4` | 127 s, 125 s, 127 s | **3 of 3 green** |
+
+**`-n auto` is ~7x and `-n 4` is ~3x.** The times are strikingly stable within each mode, which
+matters: a parallel run whose duration varied wildly would be contending for something.
+
+**One test failed under `-n auto` and never serially:**
+`tests/integration/test_manager.py::test_the_survival_check_can_tell_a_live_process_from_a_dead_one`.
+
+That is not a random flake, it is **the predicted hazard arriving on schedule** — a test whose
+subject is whether a *real process* is alive, run beside other tests that spawn and kill real
+processes. It is the first item in every list of what breaks under `xdist`, and finding exactly it
+is the strongest possible argument that the hazard analysis is the work rather than the tuning.
+
+**What the run did not do:** it did not test `-n auto` more than three times. One failure in three
+bounds nothing usefully — the rate could be 10% or 90%. Before adoption, that test's behaviour
+under load needs a proper sample, not three runs.
+
+#### The recommendation
+
+**Adopt `-n`, and pin the process-contending tests rather than tuning the worker count down.**
+`-n 4` looks safer only because it happened to be green three times; it has the same hazard with a
+lower probability of hitting it, which is the worst of both — a gate that fails rarely is one
+people re-run.
+
+The hazards to handle, in order:
+
+- **Real processes.** `tests/integration/test_manager.py`, `test_phase_2_exit.py` and
+  `test_end_to_end.py` spawn, kill and enumerate processes. Anything asking "is this process alive"
+  or "how many workers exist" must not run beside another test doing the same. Pin them to one
+  worker (`xdist_group`), do not try to isolate them by luck.
+- **The single-instance lock.** `tests/ui/test_app_launch.py` is about a lock that is global to the
+  user. Two workers running it concurrently test each other.
+- **Per-user paths.** Temp, cache, config and the SQLite library each need to be per-worker, and
+  `PYTEST_XDIST_WORKER` is how.
+
+**Do not adopt on CI first.** Land it locally, run the soak again under `-n`, and only then change
+the workflow — `OPS-010` already records that a green board must mean what it says.
+
+**The measurement.** 1984 tests in **291 s** locally and **573 s** on `STARBASE`. There is no hot
+spot to remove: the twenty slowest tests are 104 s of the 291 s, and the average is 0.15 s. The
+cost is a long tail of integration tests that spawn real worker processes, so the only lever that
+scales is running them at once.
+
+**What to evaluate.** `pytest-xdist` at `-n auto`. Most of these tests are independent and each
+xdist worker is its own process, so a `QApplication` per worker is not a problem.
+
+#### The hazards, which are the actual work
+
+- **Tests that spawn and kill real worker processes.** `AGENTS.md` §9 says to run these "one
+  worktree at a time" because concurrent runs wedge each other. *That instruction names
+  `-m process_tree`, and **no test carries that marker*** — only `network` and `windows_desktop`
+  are registered. So the guidance cannot be followed as written, and the first job here is to find
+  out which tests it meant.
+- **The localhost server fixtures.** `T-121` is already a connection aborting under load on one
+  hosted runner, and the reviewer's sandbox denied sixteen of these outright. Several workers
+  binding servers at once is the same pressure, multiplied.
+- **Shared per-user paths.** Every worker needs its own temp, database and config directory —
+  `AGENTS.md` §9 states this for parallel *agents* and it applies identically here.
+
+#### Acceptance criteria, if it proceeds
+
+- A deterministic demonstration that the parallel run and the serial run collect and pass the same
+  tests, rather than a wall-clock comparison alone.
+- The process-spawning tests identified by name, and either isolated or pinned to one worker with
+  a stated reason.
+- Repeated runs — not one — showing no intermittent failure, because the thing this can buy is
+  speed and the thing it can cost is a suite nobody trusts.
+
+#### Out of scope
+
+- Deleting or skipping tests to make the suite faster. The suite is slow because it exercises real
+  processes, which is what makes it worth having.
+
+---
+
+
+
+*(`T-078`…`T-088` are the phase's own deliverables, written 2026-07-29 from
+`ai/IMPLEMENTATION_PLAN.md` §Phase 2. `T-097` is a planning-review follow-up; the entries after the
+deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are follow-ups carried out
+of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
+prerequisite is Phase 1 approved.)*
+
 ### T-066 — CI installs the project differently from how the documentation says to
 
 **Status:** **Ready — unblocked 2026-08-03.** Its stated blocker was that "both `frozen` jobs are
@@ -256,6 +362,16 @@ recorded **0 in 36** deliberate full-suite runs, plus **0/15 at `35fc7ec`** (run
 post-`T-090`) — **51 full-suite runs** in total, with 60 clean runs of the crashing test and 250
 clean in-process iterations beside them. **361 attempts, zero events**, across three shapes and two
 heads.
+
+**A candidate reproduction exists as of 2026-08-04, on Linux** (`T-128`). An overnight soak crashed
+**2 runs in 39** with a segfault inside `QEventDispatcherGlib::processEvents` and a live
+`ResultPump` thread — the subsystem this task is named for. **It is not established as the same
+defect**: Windows produced an access violation and this is a SIGSEGV, this task's faulting object
+was never determined so there is nothing to compare against, and a stack is not a cause — this
+task's own words, which apply to that stack too. What it changes is the premise `OPS-007` rests
+on: *"361 attempts, zero events"* was the reason to accept the residual, and something in this
+class now reproduces at ~5% on a platform anyone can run. `T-128` owns finding out; nothing here is
+rewritten on the strength of a resemblance.
 
 **The four acceptance criteria below stay unmet, deliberately not rewritten.** All four presuppose
 a deliberate reproduction, which is the one thing no instrument has produced, so `OPS-007` accepts
@@ -649,62 +765,95 @@ separately from the part that needs it.
 
 ---
 
-### T-123 — Evaluate running the suite in parallel
+### T-128 — The result-pump segfault reproduces on **Linux**, at ~5% of full-suite runs
 
-**Status:** **Proposed — for evaluation, not yet a commitment**, 2026-08-03. Filed rather than
-attempted: the payoff is large and the hazards are specific, and deciding which applies is the
-work.
+**Status:** **Proposed — the first reproduction of anything in this class**, 2026-08-04. Found by
+an overnight soak, not by a gate.
 **Owner:** Implementer
-**Priority:** Medium — the suite is the largest single cost in every gate and in local development
-**Phase:** Phase 2 test infrastructure
-**Relevant context:** `T-122`, `NFR-001`, `AGENTS.md` §9, run `30861672178`
-**Affected surfaces:** `pyproject.toml`, `tests/**`, possibly `.github/workflows/ci.yml`
-**Risk:** Medium — the failure mode is *intermittent* tests, which is worse than slow ones
+**Priority:** **High** — not because it is new, but because it is *reproducible*. `T-074` has been
+undiagnosed since 2026-07-29 for exactly one reason: **361 attempts, zero events**. This is 2
+events in 39.
+**Phase:** Phase 2
+**Relevant context:** **`T-074`** (candidate same defect — see below), `OPS-007`, `T-092`, `T-090`,
+`ARC-002`, `T-019`
+**Affected surfaces:** unknown — that is the task. `downloader/manager.py`'s result pump and
+`ui/` Qt event handling are where the stack points.
+**Evidence:** `ai/evidence/SOAK-FAILED-13.txt` and `-19.txt` — the two full crash logs, kept
+because they came from 39 runs and reproducing one takes hours.
+**Risk:** **Medium to the product.** A segfault in a GUI application loses the user's session. It
+has never been observed outside a test run, which is a fact about where we look rather than a
+reassurance.
 
-**The measurement.** 1984 tests in **291 s** locally and **573 s** on `STARBASE`. There is no hot
-spot to remove: the twenty slowest tests are 104 s of the 291 s, and the average is 0.15 s. The
-cost is a long tail of integration tests that spawn real worker processes, so the only lever that
-scales is running them at once.
+#### What was observed
 
-**What to evaluate.** `pytest-xdist` at `-n auto`. Most of these tests are independent and each
-xdist worker is its own process, so a `QApplication` per worker is not a problem.
+An unattended soak ran the full suite **39 times** on Linux (2026-08-04, head `8d1b01c`). **37 were
+green; 2 died** with:
 
-#### The hazards, which are the actual work
+```
+Fatal Python error: Segmentation fault
+Current thread's C stack trace (most recent call first):
+  ... libQt6Core.so.6, at QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+```
 
-- **Tests that spawn and kill real worker processes.** `AGENTS.md` §9 says to run these "one
-  worktree at a time" because concurrent runs wedge each other. *That instruction names
-  `-m process_tree`, and **no test carries that marker*** — only `network` and `windows_desktop`
-  are registered. So the guidance cannot be followed as written, and the first job here is to find
-  out which tests it meant.
-- **The localhost server fixtures.** `T-121` is already a connection aborting under load on one
-  hosted runner, and the reviewer's sandbox denied sixteen of these outright. Several workers
-  binding servers at once is the same pressure, multiplied.
-- **Shared per-user paths.** Every worker needs its own temp, database and config directory —
-  `AGENTS.md` §9 states this for parallel *agents* and it applies identically here.
+Both crashes had a live thread named **`ResultPump`** and a `Thread-193 (_mo…)` beside it.
 
-#### Acceptance criteria, if it proceeds
+**Both died at exactly 97 completed tests.** Not approximately — the same count in both logs, which
+is the opposite of what a random memory fault looks like and the most useful fact here. By
+execution order that puts the fault in or immediately around
+`tests/integration/test_manager.py::test_a_probe_session_is_refused_for_a_ready_job`, with
+`test_a_ready_job_starts_a_download_at_running` immediately before it.
 
-- A deterministic demonstration that the parallel run and the serial run collect and pass the same
-  tests, rather than a wall-clock comparison alone.
-- The process-spawning tests identified by name, and either isolated or pinned to one worker with
-  a stated reason.
-- Repeated runs — not one — showing no intermittent failure, because the thing this can buy is
-  speed and the thing it can cost is a suite nobody trusts.
+**That identification is derived from a position, not observed.** It assumes collection order equals
+execution order, which holds here (no randomising plugin is installed) but was not verified against
+a `-v` run — the crash is 5% and a `-v` reproduction had not been obtained when this was filed.
+**Confirming the exact test is the first item of scope**, not an assumption to build on.
+
+#### Its relationship to `T-074`, stated carefully
+
+`T-074` is *"The Windows suite segfaults intermittently while the result pump is delivering."* This
+is a segfault while a thread named `ResultPump` is alive. That is a strong resemblance and it is
+**not** an identity:
+
+- Windows produced an **access violation**; this is a **SIGSEGV** on Linux. The same underlying bug
+  would present as both, and so would two different bugs in one subsystem.
+- `T-074`'s faulting object was never determined, so there is nothing to compare against. **A stack
+  is not a cause** — `T-074`'s own words, and they apply to this stack too.
+- `OPS-007` accepted `T-074` as residual risk **on the strength of 361 clean attempts**. This does
+  not refute that decision; it changes the premise underneath it, which is a different thing and is
+  the maintainer's to weigh.
+
+So this is filed as its own task rather than as a comment on `T-074`, and the two are cross-linked.
+If they turn out to be one defect, merging them later costs nothing; assuming it now would put a
+Windows label on a Linux reproduction and send the next person to the wrong platform.
+
+#### Scope
+
+- **Confirm the failing test by observation**, not by arithmetic: loop `test_manager.py` under `-v`
+  until it recurs, and record what was running.
+- **Establish a cheaper reproduction** than a 6-minute full-suite run. The deterministic position
+  suggests a specific interaction rather than random corruption, so a subset may reproduce it — and
+  if a subset *cannot*, that is itself a finding about ordering or accumulated state.
+- **Determine product versus harness** (`ai/TESTING.md` §4). A crash inside `processEvents` with a
+  worker-result thread live could be either the application's threading or the test's stand-in
+  worker, and the answer decides who owns it.
+- Arm a core dump (`T-092` does this for Windows; Linux needs `ulimit -c` and a pattern) so a
+  recurrence yields a faulting object rather than another anecdote.
 
 #### Out of scope
 
-- Deleting or skipping tests to make the suite faster. The suite is slow because it exercises real
-  processes, which is what makes it worth having.
+- **Fixing `T-074`.** If a cause is found here and it explains Windows too, that is a finding to
+  report, not a licence to close a task on another platform from this evidence.
+- **Making the suite pass by retrying.** A retry would hide the only reproduction anyone has.
+
+#### Acceptance criteria
+
+- The failing test is named from an observed run, not inferred from a count
+- A reproduction exists that is cheaper than the full suite, **or** it is recorded that none was
+  found and what was tried
+- Product-versus-harness is answered with evidence
+- `T-074` and `OPS-007` are updated with whatever this establishes — including "nothing"
 
 ---
-
-
-
-*(`T-078`…`T-088` are the phase's own deliverables, written 2026-07-29 from
-`ai/IMPLEMENTATION_PLAN.md` §Phase 2. `T-097` is a planning-review follow-up; the entries after the
-deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are follow-ups carried out
-of Phase 1 that land in this phase, and they were here first. Nothing below is scheduled: Phase 2's
-prerequisite is Phase 1 approved.)*
 
 ### T-105 — Write `docs/UX_SPEC.md` before Phase 3 starts
 

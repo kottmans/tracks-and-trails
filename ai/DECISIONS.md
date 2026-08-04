@@ -1649,7 +1649,13 @@ passed on either."* The risk is accepted with its name written down, not waved a
 
 ## OPS-007 — `T-074`'s unreproduced access violation is accepted as residual risk
 
-**Status:** **Accepted** (2026-07-29) — maintainer decision
+**Status:** **Accepted** (2026-07-29) — maintainer decision. **Its premise changed on 2026-08-04**
+and the decision has not been revisited: this entry accepts a residual *because* 361 attempts
+produced zero events, and `T-128` records something in the same subsystem reproducing at roughly
+2 in 39 on Linux. That is a candidate, not an identity — see `T-128` for why the two are filed
+separately — but the number this decision was made on is no longer the only number available. A
+maintainer may well accept it again; what would be wrong is leaving the original reasoning standing
+as though nothing had been learned.
 **Date:** 2026-07-29
 **Supersedes:** `OPS-006`'s Consequences sentence *"The Windows suite exits with an access
 violation roughly one run in four."* That figure was the anecdote's denominator, not a

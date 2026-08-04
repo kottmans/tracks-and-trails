@@ -1,0 +1,93 @@
+........................................................................ [  3%]
+.........................Fatal Python error: Segmentation fault
+
+Thread 0x00007fb2309fa6c0 [ResultPump] (most recent call first):
+  File "/usr/lib64/python3.14/selectors.py", line 398 in select
+  File "/usr/lib64/python3.14/multiprocessing/connection.py", line 1190 in wait
+  File "/usr/lib64/python3.14/multiprocessing/connection.py", line 461 in _poll
+  File "/usr/lib64/python3.14/multiprocessing/connection.py", line 267 in poll
+  File "/usr/lib64/python3.14/multiprocessing/queues.py", line 111 in get
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/src/tracks_and_trails/downloader/result_pump.py", line 174 in run
+
+Thread 0x00007fb2311fb6c0 [Thread-193 (_mo] (most recent call first):
+  File "/usr/lib64/python3.14/multiprocessing/connection.py", line 416 in _recv
+  File "/usr/lib64/python3.14/multiprocessing/connection.py", line 451 in _recv_bytes
+  File "/usr/lib64/python3.14/multiprocessing/connection.py", line 226 in recv_bytes
+  File "/usr/lib64/python3.14/multiprocessing/queues.py", line 101 in get
+  File "/usr/lib64/python3.14/logging/handlers.py", line 1559 in dequeue
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/src/tracks_and_trails/core/logging.py", line 694 in dequeue
+  File "/usr/lib64/python3.14/logging/handlers.py", line 1613 in _monitor
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/src/tracks_and_trails/core/logging.py", line 722 in _monitor
+  File "/usr/lib64/python3.14/threading.py", line 1024 in run
+  File "/usr/lib64/python3.14/threading.py", line 1082 in _bootstrap_inner
+  File "/usr/lib64/python3.14/threading.py", line 1044 in _bootstrap
+
+Current thread 0x00007fb276762bc0 [python] (most recent call first):
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/tests/integration/test_manager.py", line 276 in manager
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/fixtures.py", line 1014 in _teardown_yield_fixture
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/fixtures.py", line 1156 in finish
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/runner.py", line 568 in teardown_exact
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/runner.py", line 199 in pytest_runtest_teardown
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/pluggy/_callers.py", line 121 in _multicall
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/pluggy/_manager.py", line 120 in _hookexec
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/pluggy/_hooks.py", line 512 in __call__
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/runner.py", line 250 in <lambda>
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/runner.py", line 361 in from_call
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/runner.py", line 249 in call_and_report
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/runner.py", line 144 in runtestprotocol
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/runner.py", line 118 in pytest_runtest_protocol
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/pluggy/_callers.py", line 121 in _multicall
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/pluggy/_manager.py", line 120 in _hookexec
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/pluggy/_hooks.py", line 512 in __call__
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/main.py", line 408 in pytest_runtestloop
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/pluggy/_callers.py", line 121 in _multicall
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/pluggy/_manager.py", line 120 in _hookexec
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/pluggy/_hooks.py", line 512 in __call__
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/main.py", line 384 in _main
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/main.py", line 330 in wrap_session
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/main.py", line 377 in pytest_cmdline_main
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/pluggy/_callers.py", line 121 in _multicall
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/pluggy/_manager.py", line 120 in _hookexec
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/pluggy/_hooks.py", line 512 in __call__
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/config/__init__.py", line 229 in _main
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/_pytest/config/__init__.py", line 253 in _console_main
+  File "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/pytest/__main__.py", line 9 in <module>
+  File "<frozen runpy>", line 88 in _run_code
+  File "<frozen runpy>", line 203 in _run_module_as_main
+
+Current thread's C stack trace (most recent call first):
+  Binary file "/lib64/libpython3.14.so.1.0", at _Py_DumpStack+0x4c [0x7fb2761406b2]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x14ad86 [0x7fb27614ad86]
+  Binary file "/lib64/libc.so.6", at +0x19fb0 [0x7fb275e20fb0]
+  Binary file "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/PySide6/Qt/lib/libQt6Core.so.6", at _ZN16QCoreApplication15notifyInternal2EP7QObjectP6QEvent+0x32 [0x7fb265b8c062]
+  Binary file "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/PySide6/Qt/lib/libQt6Core.so.6", at _ZN14QTimerInfoList14activateTimersEv+0x59a [0x7fb265d5a46a]
+  Binary file "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/PySide6/Qt/lib/libQt6Core.so.6", at +0x49849c [0x7fb265e9849c]
+  Binary file "/lib64/libglib-2.0.so.0", at +0x43f24 [0x7fb2654e1f24]
+  Binary file "/lib64/libglib-2.0.so.0", at +0x48038 [0x7fb2654e6038]
+  Binary file "/lib64/libglib-2.0.so.0", at g_main_context_iteration+0x33 [0x7fb2654e61e3]
+  Binary file "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/PySide6/Qt/lib/libQt6Core.so.6", at _ZN20QEventDispatcherGlib13processEventsE6QFlagsIN10QEventLoop17ProcessEventsFlagEE+0xcc [0x7fb265e986fc]
+  Binary file "/mnt/storage/software_projects/tracks-and-trails/tracks-and-trails/.venv/lib64/python3.14/site-packages/PySide6/QtCore.abi3.so", at +0x2570f8 [0x7fb2664570f8]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x1b52aa [0x7fb2761b52aa]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x182c2b [0x7fb276182c2b]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x2ff89 [0x7fb27602ff89]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x22f00c [0x7fb27622f00c]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x24517 [0x7fb276024517]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x23038b [0x7fb27623038b]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x24963 [0x7fb276024963]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x1c3044 [0x7fb2761c3044]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x214edf [0x7fb276214edf]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x1dd49d [0x7fb2761dd49d]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x2fcb72 [0x7fb2762fcb72]
+  Binary file "/lib64/libpython3.14.so.1.0", at _PyObject_MakeTpCall+0x89 [0x7fb276182fe9]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x2fdc7 [0x7fb27602fdc7]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x1c3044 [0x7fb2761c3044]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x3061a7 [0x7fb2763061a7]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x1dd3e0 [0x7fb2761dd3e0]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x28d1a [0x7fb276028d1a]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x1c3044 [0x7fb2761c3044]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x3061a7 [0x7fb2763061a7]
+  Binary file "/lib64/libpython3.14.so.1.0", at _PyObject_MakeTpCall+0x89 [0x7fb276182fe9]
+  Binary file "/lib64/libpython3.14.so.1.0", at +0x2f5f1 [0x7fb27602f5f1]
+  <truncated rest of calls>
+
+Extension modules: shiboken6.Shiboken, PySide6.QtCore, PySide6.QtGui, PySide6.QtWidgets, PySide6.QtTest, psutil._psutil_linux, PySide6.QtNetwork (total: 7)
