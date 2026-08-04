@@ -391,14 +391,14 @@
     <div class="titles">
       <p class="eyebrow">Tracks &amp; Trails · implementation plan</p>
       <h1>Phase 2 — Queue and concurrency</h1>
-      <p class="lede">Turn one download into a managed queue. <strong>Everything left is evidence, not code.</strong> Every deliverable is approved, the overnight segfault is <strong>diagnosed — it was the test harness, not the product</strong>, and the three tasks that came from sitting in front of the running application are all approved and committed at <code>3dff8d2</code>. <strong>Two things stand between here and the exit</strong>: a soak that nobody has to watch, and a signature from someone who did not write the code.</p>
+      <p class="lede">Turn one download into a managed queue. <strong>Phase 2 still needs exactly two things, and neither is code</strong>: a soak nobody has to watch, and a signature from someone who did not write it. What changed since the last update is on the other side of the line — <strong>the maintainer ran the application and it produced nine tasks in an afternoon</strong>, four of them fixed and committed at <code>7311180</code>. Those are Phase 3. They are on this page because pretending the board is empty while a window sits there with invisible arrows on it would be the kind of tidy record this project keeps finding and correcting.</p>
       <p class="phase-line">
         <span><strong>Phase 1</strong> exited 2026-07-29</span>
         <span><strong>Phase 0</strong> exited 2026-07-26</span>
-        <span>head <code>3dff8d2</code>, pushed</span>
-        <span>Windows evidence <strong>in flight</strong> on that head</span>
+        <span>head <code>7311180</code>, pushed</span>
+        <span>Windows <strong>green</strong> on <code>3dff8d2</code>; running on <code>7311180</code></span>
         <span>Linux gate <strong>~5 min</strong></span>
-        <span><strong>2083</strong> tests</span>
+        <span><strong>2092</strong> tests</span>
         <span>updated <strong>2026-08-04</strong></span>
       </p>
     </div>
@@ -407,17 +407,18 @@
     <ul class="tally">
       <li style="--chip: var(--st-approved)"><span class="n">13</span><span class="k">Deliverables approved</span></li>
       <li style="--chip: var(--st-approved)"><span class="n">17</span><span class="k">Review findings closed</span></li>
+      <li style="--chip: var(--st-review)"><span class="n">5</span><span class="k">Phase 3 tasks open, from one afternoon</span></li>
       <li style="--chip: var(--st-approved)"><span class="n">6</span><span class="k">Criteria met</span></li>
       <li style="--chip: var(--st-review)"><span class="n">2</span><span class="k">Gates left to exit</span></li>
       <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Open blocking findings</span></li>
-      <li style="--chip: var(--st-approved)"><span class="n">3</span><span class="k">Tasks from one sitting, all closed</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">9</span><span class="k">Tasks the running app produced</span></li>
     </ul>
   </header>
 
   <section>
     <div class="section-head">
       <h2>What is left</h2>
-      <p class="lede">Everything green is approved and pushed. <strong>Two amber nodes are the whole of what the exit waits on</strong>, and both are evidence rather than code. The blue one is running as this was written and is <em>not</em> a phase criterion — it is the Windows evidence <code>T-130</code> owes. The grey ones are deliberately off the path.</p>
+      <p class="lede">Everything green is approved and pushed. <strong>Two amber nodes are the whole of what the exit waits on</strong>, and both are evidence rather than code. The grey ones are deliberately off the path — including the five open Phase 3 tasks, which are real work and are <em>not</em> a Phase 2 criterion.</p>
     </div>
 
     <div class="chart-frame fit" id="chart">
@@ -434,7 +435,6 @@ flowchart TB
     classDef gate  fill:#B07C1F,stroke:#6E4C0F,stroke-width:3px,color:#ffffff
     classDef exit  fill:#083122,stroke:#D9A24C,stroke-width:3px,color:#D9A24C
     classDef watch fill:#6E7E75,stroke:#44534B,stroke-width:2px,color:#ffffff
-    classDef flight fill:#31688E,stroke:#173A50,stroke-width:3px,color:#ffffff
 
     DELIV["13 deliverables approved"]:::done
     UX["UX-005 batch and T-122"]:::done
@@ -443,15 +443,17 @@ flowchart TB
     T131["T-131 launch test isolation"]:::done
     T130["T-130 mockup gaps - approved"]:::done
 
-    COMMIT["Committed and pushed - 3dff8d2"]:::head
+    COMMIT["Committed and pushed - 7311180"]:::head
 
-    WIN["Windows CI on 3dff8d2 - running, not a criterion"]:::flight
+    WIN["Windows green on 3dff8d2"]:::done
     SOAK["60 clean Linux soak runs - not started"]:::gate
     REVIEW["Criterion 6 - independent exit review"]:::gate
     EXIT(["PHASE 2 EXIT"]):::exit
 
     T074["T-074 - Windows watch, not a gate"]:::watch
     UXSPEC["T-105 UX_SPEC - a Phase 3 entry gate"]:::watch
+    FOUND["9 tasks from running the app"]:::done
+    OPEN["T-136 T-137 T-138 T-139 T-140 - open, Phase 3"]:::watch
 
     DELIV --> COMMIT
     UX --> COMMIT
@@ -465,6 +467,9 @@ flowchart TB
     SOAK --> EXIT
     REVIEW --> EXIT
     EXIT -. next phase, not this one .-> UXSPEC
+    COMMIT --> FOUND
+    FOUND --> OPEN
+    OPEN -. does not gate the exit .-> EXIT
     T128 -. best lead it has ever had .-> T074
 </pre>
       </div>
@@ -472,7 +477,6 @@ flowchart TB
       <div class="legend">
         <span><i style="--sw: var(--st-approved)"></i> Approved</span>
         <span><i style="--sw: var(--st-review)"></i> Outstanding gate</span>
-        <span><i style="--sw: var(--st-ready)"></i> Running now</span>
         <span><i style="--sw: var(--st-idle)"></i> Off the path</span>
         <span><i class="dashed"></i> Not a dependency</span>
       </div>
@@ -519,6 +523,46 @@ flowchart TB
     <p class="note"><strong>And one correction of my own, recorded because the record is the point.</strong> <code>T-129</code>'s first hover tests drew through <code>QApplication.style()</code> with no widget, which never consults the style sheet — so they measured the <em>platform</em> style's hover, found a difference, and passed. Both mutations survived. Caught in the mutation battery, not by the tests themselves.</p>
   </section>
 
+
+  <section>
+    <div class="section-head">
+      <h2>Nine tasks from one afternoon at the window</h2>
+      <p class="lede">Every one was found by <strong>opening the application and using it</strong>,
+        not by a gate. That is now the fifth time, and it is the most productive defect-finding
+        method this project has.</p>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <caption>Filed 2026-08-04. None of them by a test</caption>
+        <thead><tr><th>Task</th><th>What it is</th><th>State</th></tr></thead>
+        <tbody>
+          <tr><td><code>T-132</code></td><td>The toolbar's primary action drawn as a flat label, and the queue verbs packed left</td><td><span class="state met">Fixed</span></td></tr>
+          <tr><td><code>T-133</code></td><td>The concurrency spin box had no arrows at all — 3 distinct colours in the strip against 42</td><td><span class="state met">Fixed</span></td></tr>
+          <tr><td><code>T-134</code></td><td>The row's verb buttons never reacted to the pointer</td><td><span class="state met">Fixed</span></td></tr>
+          <tr><td><code>T-135</code></td><td>The <code>⋯</code> repeated the three buttons already on the row</td><td><span class="state met">Fixed</span></td></tr>
+          <tr><td><code>T-137</code></td><td><strong>A playlist downloads one item of sixteen, silently.</strong> <code>build_options</code> sets <code>noplaylist</code>, and the row still says <em>Playlist (16 items)</em></td><td><span class="state unmet">Open — High</span></td></tr>
+          <tr><td><code>T-140</code></td><td>The queue draws a playlist as a row that opens, per the mockup ruled today</td><td><span class="state unmet">Open — roles landed</span></td></tr>
+          <tr><td><code>T-138</code></td><td>History loses the thumbnail the queue row had. <code>HistoryEntry</code> has no such field and the view never asks</td><td><span class="state unmet">Open — needs a migration</span></td></tr>
+          <tr><td><code>T-136</code></td><td>The staged row's format line runs underneath its own format control</td><td><span class="state unmet">Open</span></td></tr>
+          <tr><td><code>T-139</code></td><td>The bitrate control stays live for a video preset the summary line already knows it does not govern</td><td><span class="state unmet">Open — Low</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout" style="--accent:var(--st-block)">
+      <h3>Five assertions this session measured a proxy rather than the property</h3>
+      <ul>
+        <li>A hover test drew through <code>QApplication.style()</code> with no widget, so it measured the <em>platform</em> style.</li>
+        <li>A palette test asserted the <em>global</em> palette held the row tint — it encoded the defect it was written for.</li>
+        <li>The chip's terminal test compared two rows that drew no chip at all, so both crops matched because nothing was in them.</li>
+        <li>The spin box test asserted arrow-coloured pixels <em>existed</em>. A solid block satisfies that, and a solid block is what shipped.</li>
+        <li>The toolbar test built a bare <code>QToolBar</code>, which paints no gradient, and compared <code>window</code> against <code>window</code>.</li>
+      </ul>
+      <p class="note" style="border:none;padding:0">Four were mine and <strong>three passed while the defect was on screen</strong>. <code>ai/TESTING.md</code> §13 already forbids a test that passes for a reason other than the one it names; what these share is narrower and worth naming — <strong>they asserted that <em>something</em> was drawn rather than <em>what</em> was drawn</strong>. Presence is not shape, and a mutation is what tells them apart.</p>
+    </div>
+  </section>
+
   <section>
     <div class="section-head">
       <h2>The gates that are left</h2>
@@ -542,12 +586,12 @@ P(0 crashes | unchanged)   39 runs   0.128
 
       <li style="--edge: var(--st-ready)">
         <div class="q-head">
-          <span class="id">Not a gate</span>
+          <span class="id">Discharged</span>
           <span class="name">Windows evidence on <code>3dff8d2</code></span>
-          <span class="pill live">Running now</span>
+          <span class="pill">Done</span>
         </div>
         <p class="q-why"><code>OPS-010</code> puts the full Windows suite on <code>STARBASE</code> for every push, so this costs a commit rather than a decision. It is owed because <code>T-129</code> changes how <em>Qt</em> renders, and the style that renders it is platform-specific — the group-box metric in particular has only ever been measured on Linux.</p>
-        <p class="q-why"><strong>The ordering constraint is spent.</strong> Windows evidence has to name a head, which is why this waited on a commit; <code>3dff8d2</code> is pushed and run <a href="https://github.com/kottmans/tracks-and-trails/actions/runs/30954720566">30954720566</a> is executing against it, with the Windows leg on <code>STARBASE</code> rather than hosted minutes.</p><p class="q-why"><strong>It is listed here but it is not a phase criterion.</strong> <code>T-130</code> is a Phase 3 task; the evidence is owed to <em>it</em>. Criterion 5 — no worker outliving exit, on both platforms — was met separately by the corrected gate at <code>8d1b01c</code>.</p>
+        <p class="q-why"><strong>The ordering constraint is spent.</strong> Windows evidence has to name a head, which is why this waited on a commit; <code>3dff8d2</code> is pushed and run <a href="https://github.com/kottmans/tracks-and-trails/actions/runs/30954720566">30954720566</a> passed <strong>all five jobs</strong> against it, <code>windows desktop</code> and <code>frozen windows</code> included, with the Windows leg on <code>STARBASE</code> rather than hosted minutes.</p><p class="q-why"><strong>It is listed here but it is not a phase criterion.</strong> <code>T-130</code> is a Phase 3 task; the evidence is owed to <em>it</em>. Criterion 5 — no worker outliving exit, on both platforms — was met separately by the corrected gate at <code>8d1b01c</code>.</p>
       </li>
 
       <li style="--edge: var(--st-ready)">
@@ -697,8 +741,8 @@ P(0 crashes | unchanged)   39 runs   0.128
   <footer>
     <span>Transcribed from ai/IMPLEMENTATION_PLAN.md, ai/TASKS.md, ai/DECISIONS.md, ai/REVIEWS.md</span>
     <span>Counts read from the tables, not written beside them</span>
-    <span>Head 3dff8d2 · suite 2083 passed, 11 skipped, 2 deselected</span>
-    <span>CI run 30954720566 · in flight when this was written</span>
+    <span>Head 7311180 · suite 2092 passed, 11 skipped, 2 deselected</span>
+    <span>CI 30954720566 green on 3dff8d2; 30961205097 running on 7311180</span>
     <span>2026-08-04</span>
   </footer>
 

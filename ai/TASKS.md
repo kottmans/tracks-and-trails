@@ -1153,227 +1153,6 @@ broken down. Phase 1 listed nine deliverables and produced fifty tasks; these ei
 starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
 it.)*
 
-### T-132 — The toolbar is not the mockup's toolbar: no primary button, no alignment
-
-**Status:** Proposed — **found by the maintainer at the running window, 2026-08-04.** The second
-sitting in two days to out-perform the gates.
-**Owner:** Implementer
-**Priority:** Medium — `UX-005` §1's primary action, and the first thing on the window
-**Phase:** Phase 3 (a `UX-005` correction, against no Phase 2 deliverable)
-**Depends on:** a maintainer ruling — this is a design question, not a defect with a right answer
-**Relevant context:** `UX-005` and its 2026-08-04 amendment, `T-130`,
-`docs/mockups/2026-08-03-main-window-b1.html` line 177, `ui/main_window.py`, `ui/theme.py`
-**Affected surfaces:** `ui/main_window.py`, `ui/theme.py`
-**Risk:** Low — presentation only; no action, signal or enabled state moves
-
-#### Scope
-
-`T-130` put `+ Add URLs` first on the toolbar. It did **not** make it look like the mockup's
-button, and the mockup's toolbar is one line of markup that says two things this window does not:
-
-```html
-<div class="toolbar"><span class="btn primary">+ Add URLs</span><span class="spacer"></span>
-     <span class="btn">⏸ Pause queue</span><span class="btn">Clear finished</span></div>
-```
-
-1. **`.btn.primary` is a filled brand button** — `background: var(--p)`, `color: var(--op)`,
-   `font-weight: 600`. The shipped button is a flat toolbar label, indistinguishable from
-   `Clear finished`. The application's primary action reads as one of four equals.
-2. **`.spacer{flex:1 1 auto}` pushes `Pause queue` and `Clear finished` to the right edge.** The
-   shipped toolbar packs everything left, so the queue verbs sit against the concurrency spinner
-   with nothing separating what *adds work* from what *acts on work already there*.
-
-**The concurrency control is why this is a ruling rather than a fix.** The mockup has no
-`Concurrent downloads:` — `ARC-007` added it and `T-130` recorded that as a deliberate difference.
-So a spacer has to be placed against a control the mockup never had to place. Left group with
-`+ Add URLs` is the reading this task proposes; it is not the only one.
-
-#### Acceptance criteria
-
-- The toolbar's `Add URLs` button is filled with `primary` and drawn in `on_primary`, asserted
-  **from the rendered widget** rather than from the sheet's text — `T130-R1` and `T-129` are both
-  cases where a style sheet's text and what Qt drew disagreed
-- Its **disabled** state is asserted too. `T-016` disables it when composition supplied no manager,
-  and a filled brand button that stays vivid while inert is worse than a flat one
-- `Pause queue` and `Clear finished` end to the right of the concurrency control, asserted by
-  geometry rather than by insertion order
-- Hover and pressed are declared, per `T-129`: styling the button at all takes both away
-- The `primary` / `on_primary` pair stays in the contrast gate
-- One `QAction` still, shared with the File menu (`T130-R2`)
-
-#### Out of scope
-
-- Whether `Concurrent downloads:` belongs on the toolbar at all — `T-130` settled that it stays
-- The mockup's `⏸` glyph on `Pause queue`: `NFR-005` and `T-068`'s font warning both bear on
-  shipping a symbol, and nobody has ruled on it
-
-
-*Corrected the same day, both found by the maintainer running the build.* The spacer and every
-tool button painted a flat `window` fill over the toolbar's own vertical gradient — measured
-`#F9FBF9` on the bar against `#F5F7F4` inside a button — so the tint appeared to stop where the
-buttons began. `QToolBar QToolButton` is transparent now and the primary action overrides it
-deliberately. **My first test for this built a bare `QToolBar` and compared the spacer against the
-bar; both are `window` there, because a standalone toolbar paints no gradient, so it passed with
-the fix removed.** Replaced with a measurement on the real window.
----
-
-### T-133 — The concurrency spin box has no arrows
-
-**Status:** Proposed — **found by the maintainer at the running window, 2026-08-04.** Measured
-before filing.
-**Owner:** Implementer
-**Priority:** Medium — `NFR-005`: a control whose only affordance is invisible
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `T-129` (the same cause, third occurrence), `ui/theme.py`, `NFR-005`
-**Affected surfaces:** `ui/theme.py`
-**Risk:** Low, with one trap — see below
-
-#### Scope
-
-**Measured, not reported:** rendering a `QSpinBox` and counting distinct colours in the up/down
-strip gives **33 native, 3 themed**. There is no arrow. The user gets a number they can type in
-and two invisible click targets.
-
-**This is `T-129`'s cause for the third time.** The sheet styles `QWidget`, so every widget
-switches to `QStyleSheetStyle`, and anything the platform style used to draw must be declared or it
-is gone. `T-129` found it in group-box margins and button hover; `T130-R1` found the same shape in
-the palette. The class is now well enough established that the fix should come with something that
-*fails* when the next sub-control goes missing, not just this one.
-
-**The trap:** the obvious fix is `image: url(...)`, which needs an asset, and `NFR-004` keeps the
-frozen artifact honest about what it ships. A border-triangle draws the arrow in the sheet itself
-with no file. Whichever is chosen, it must survive the frozen build, so `T-033`'s bundling and
-`tests/ui/test_resources.py` are the check — not the developer's checkout.
-
-#### Acceptance criteria
-
-- Both arrows are drawn, asserted by **rendering the widget and finding arrow pixels**, in both
-  themes — the same measurement that produced the 33-versus-3 above, so the test and the report
-  are the same instrument
-- The arrows contrast against their button background at the `NFR-005` floor
-- Hover and pressed on the two sub-controls are declared, per `T-129`
-- The spin box still steps on click, asserted through the widget rather than by calling `stepUp`
-- If an asset is used, it is asserted present **in the frozen artifact**, not only in the tree
-
-#### Out of scope
-
-- Auditing every remaining sub-control the sheet may have silenced. Worth doing and too big for
-  this; if the fix suggests a general assertion, file it rather than widening here
-
-
-*Corrected the same day.* The first fix declared the sub-controls in the sheet and drew the arrows
-with the CSS border-triangle trick. **Qt renders that as a solid block** — per-scanline ink widths
-`8,8,8,8,8` where a triangle gives `2,4,6` — and the maintainer saw two dots. `QSpinBox` is now
-absent from the styled-box rule entirely, so the platform draws its own arrows: **42 distinct
-colours in the strip against 3.** The cost is that this one widget keeps a native frame rather than
-the themed one; the alternative was shipping arrow images through `NFR-004` and `T-033` for the
-sake of a triangle. **My test asserted that arrow-coloured pixels existed, which a block
-satisfies** — it now asserts the wedge grows.
----
-
-### T-134 — The row's verb buttons do not respond to the pointer
-
-**Status:** Proposed — **found by the maintainer at the running window, 2026-08-04.**
-**Owner:** Implementer
-**Priority:** Medium — `UX-004` §1's whole argument is that a painted control must behave like one
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `T118-R12` (painted affordance versus picture of one), `UX-005` §4,
-`ui/row_delegate.py`, `NFR-005`
-**Affected surfaces:** `ui/row_delegate.py`, possibly `ui/queue_view.py` and `ui/history_view.py`
-**Risk:** Medium — this is the first hover state the delegate has ever tracked, and stale
-highlight is the failure mode
-
-#### Scope
-
-`Open`, `Show in folder`, `Remove` and `⋯` are **painted**, not widgets:
-`_paint_verbs` calls `style.drawControl(CE_PushButton, …)` with a hard-coded
-`State_Enabled | State_Raised`. There is no `State_MouseOver` anywhere in the delegate, so the
-buttons cannot respond to the pointer — not because hover was styled away, but because nothing
-ever asks for it.
-
-**This is exactly the argument `T118-R12` won.** That finding said a reserved slot with nothing
-painted in it was an affordance only for a user who already knew it was there. A painted button
-that never reacts is the same defect one step later: it looks like a control, and the one cheap
-signal that would confirm it is a control is missing.
-
-**The failure mode is a stale highlight, not a missing one.** A hover tracked in the delegate and
-repainted by the view will keep the last hovered button lit when the pointer leaves the viewport,
-or when the model resets underneath it, unless both are handled. `T-124`'s row-identity work is the
-precedent: index-keyed state goes wrong the moment rows move.
-
-#### Acceptance criteria
-
-- A verb under the pointer draws with `State_MouseOver` and one not under it does not, asserted by
-  **rendering two rows that differ only in where the pointer is**
-- The highlight clears when the pointer leaves the viewport, and when the model resets — each
-  asserted separately, because they are different bugs with the same symptom
-- Hover is tracked by rect from the **same `_verb_rects` the paint and the click both use**, so the
-  three cannot disagree (`editorEvent` already does this for clicks)
-- No repaint storm: moving the pointer within one button repaints nothing
-- Keyboard users lose nothing — this adds a pointer affordance and must not become the only one
-  (`NFR-005`)
-
-#### Out of scope
-
-- Making the verbs real widgets. `UX-004` and `T-119` settled on painting them; this is a hover
-  state, not a rebuild
-- A hover state for the **row**, which the view already owns
-
----
-
-### T-135 — The row's overflow menu repeats the buttons already on the row
-
-**Status:** Proposed — **found by the maintainer at the running window, 2026-08-04**, and ruled the
-same day.
-**Owner:** Implementer
-**Priority:** Medium — `UX-005` §4, and the redundancy is visible on every wide row
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `UX-005` §4 and its second 2026-08-04 amendment, `T124-R1` (one menu for both
-lists), `ui/row_delegate.py` `_verb_rects`, `ui/main_window.py` `_row_menu`
-**Affected surfaces:** `ui/row_delegate.py`, `ui/queue_view.py`, `ui/history_view.py`,
-`ui/main_window.py`
-**Risk:** Medium — the menu and the row must agree about what was dropped, and they are computed in
-different places
-
-#### Scope
-
-**The design is already right; the wiring is not.** `_verb_rects` lays the verbs out right to left
-and `break`s when one will not fit, placing the overflow first so it survives — so on a narrow row
-the `⋯` reaches verbs that are genuinely unreachable. But `_show_row_menu` passes
-`view.verbs_of(row_id)`, the **whole** list, so on a row wide enough for every button the menu
-repeats every button.
-
-**And the `⋯` is not the keyboard route, though `_verb_rects` says it is.** Both lists set
-`CustomContextMenu`, and Qt raises `customContextMenuRequested` for the Menu key and Shift+F10 as
-well as for the mouse. The keyboard route is the context menu and has been since `T124-R1`. That
-comment should be corrected in the same change, because it is the stated reason the `⋯` must always
-be present, and it is not true.
-
-*Ruled 2026-08-04:* the overflow carries **only what the row could not show**, and disappears when
-the row showed everything.
-
-#### Acceptance criteria
-
-- The menu's contents are **derived from what the delegate actually placed**, not recomputed from
-  the model — one definition, the same rule `_verb_rects` already establishes for paint and click
-- A row wide enough for every verb draws **no `⋯`**, asserted by rendering
-- A row too narrow draws `⋯`, and the menu holds **exactly** the dropped verbs — asserted against a
-  width chosen so the set is non-empty and not the whole list
-- Shift+F10 still opens the full menu at both widths, on both lists — the keyboard route must not
-  become width-dependent, which is the risk this change introduces
-- `_verb_rects`' "it is the keyboard route" comment is corrected
-
-#### Out of scope
-
-- Menu-only actions such as *Copy URL* or *Open details*. Considered and declined for now: they
-  would give the `⋯` its own reason to exist, but none of them are built, and inventing actions to
-  justify a button is the wrong order
-
----
-
 ### T-136 — The staged row's format line runs underneath its format control
 
 **Status:** Proposed — **found by the maintainer in the running Add URLs dialog, 2026-08-04**, with
@@ -1614,6 +1393,15 @@ which is the specification. Split from `T-137`.
 delegate), `ui/queue_view.py`, `ui/row_delegate.py`, `ui/row_verbs.py`
 **Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, `ui/row_verbs.py`
 **Risk:** Medium-High — it removes a performance promise the queue currently makes
+
+**Part of this landed in `7311180`, whose message does not name it.** The roles
+(`DEPTH_ROLE`, `EXPANDED_ROLE`, `SEGMENTS_ROLE`), the `SegmentState` vocabulary, the child-row
+metrics and the depth-aware `sizeHint` were written before that commit was made and were swept into
+it with the `T-132`–`T-135` batch. **Nothing reads them yet** — no model answers a group role, so
+every row still takes the `depth == 0` path and the behaviour is unchanged — but the commit
+message claims four tasks and carries five, and a reviewer reading that message would not expect
+`row_delegate.py` to have grown three roles. Recorded here rather than corrected by rewriting a
+pushed commit.
 
 #### Scope
 
@@ -2429,6 +2217,228 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-132 — The toolbar is not the mockup's toolbar: no primary button, no alignment
+
+**Status:** **Complete — 2026-08-04, committed at `7311180`.** Adopted as `UX-005` rows 6 and 7, then corrected the same day after the maintainer saw the toolbar's tint stop at the buttons.
+
+**Owner:** Implementer
+**Priority:** Medium — `UX-005` §1's primary action, and the first thing on the window
+**Phase:** Phase 3 (a `UX-005` correction, against no Phase 2 deliverable)
+**Depends on:** a maintainer ruling — this is a design question, not a defect with a right answer
+**Relevant context:** `UX-005` and its 2026-08-04 amendment, `T-130`,
+`docs/mockups/2026-08-03-main-window-b1.html` line 177, `ui/main_window.py`, `ui/theme.py`
+**Affected surfaces:** `ui/main_window.py`, `ui/theme.py`
+**Risk:** Low — presentation only; no action, signal or enabled state moves
+
+#### Scope
+
+`T-130` put `+ Add URLs` first on the toolbar. It did **not** make it look like the mockup's
+button, and the mockup's toolbar is one line of markup that says two things this window does not:
+
+```html
+<div class="toolbar"><span class="btn primary">+ Add URLs</span><span class="spacer"></span>
+     <span class="btn">⏸ Pause queue</span><span class="btn">Clear finished</span></div>
+```
+
+1. **`.btn.primary` is a filled brand button** — `background: var(--p)`, `color: var(--op)`,
+   `font-weight: 600`. The shipped button is a flat toolbar label, indistinguishable from
+   `Clear finished`. The application's primary action reads as one of four equals.
+2. **`.spacer{flex:1 1 auto}` pushes `Pause queue` and `Clear finished` to the right edge.** The
+   shipped toolbar packs everything left, so the queue verbs sit against the concurrency spinner
+   with nothing separating what *adds work* from what *acts on work already there*.
+
+**The concurrency control is why this is a ruling rather than a fix.** The mockup has no
+`Concurrent downloads:` — `ARC-007` added it and `T-130` recorded that as a deliberate difference.
+So a spacer has to be placed against a control the mockup never had to place. Left group with
+`+ Add URLs` is the reading this task proposes; it is not the only one.
+
+#### Acceptance criteria
+
+- The toolbar's `Add URLs` button is filled with `primary` and drawn in `on_primary`, asserted
+  **from the rendered widget** rather than from the sheet's text — `T130-R1` and `T-129` are both
+  cases where a style sheet's text and what Qt drew disagreed
+- Its **disabled** state is asserted too. `T-016` disables it when composition supplied no manager,
+  and a filled brand button that stays vivid while inert is worse than a flat one
+- `Pause queue` and `Clear finished` end to the right of the concurrency control, asserted by
+  geometry rather than by insertion order
+- Hover and pressed are declared, per `T-129`: styling the button at all takes both away
+- The `primary` / `on_primary` pair stays in the contrast gate
+- One `QAction` still, shared with the File menu (`T130-R2`)
+
+#### Out of scope
+
+- Whether `Concurrent downloads:` belongs on the toolbar at all — `T-130` settled that it stays
+- The mockup's `⏸` glyph on `Pause queue`: `NFR-005` and `T-068`'s font warning both bear on
+  shipping a symbol, and nobody has ruled on it
+
+
+*Corrected the same day, both found by the maintainer running the build.* The spacer and every
+tool button painted a flat `window` fill over the toolbar's own vertical gradient — measured
+`#F9FBF9` on the bar against `#F5F7F4` inside a button — so the tint appeared to stop where the
+buttons began. `QToolBar QToolButton` is transparent now and the primary action overrides it
+deliberately. **My first test for this built a bare `QToolBar` and compared the spacer against the
+bar; both are `window` there, because a standalone toolbar paints no gradient, so it passed with
+the fix removed.** Replaced with a measurement on the real window.
+---
+
+### T-133 — The concurrency spin box has no arrows
+
+**Status:** **Complete — 2026-08-04, committed at `7311180`.** Corrected once: the first fix drew blocks, not arrows.
+
+**Owner:** Implementer
+**Priority:** Medium — `NFR-005`: a control whose only affordance is invisible
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `T-129` (the same cause, third occurrence), `ui/theme.py`, `NFR-005`
+**Affected surfaces:** `ui/theme.py`
+**Risk:** Low, with one trap — see below
+
+#### Scope
+
+**Measured, not reported:** rendering a `QSpinBox` and counting distinct colours in the up/down
+strip gives **33 native, 3 themed**. There is no arrow. The user gets a number they can type in
+and two invisible click targets.
+
+**This is `T-129`'s cause for the third time.** The sheet styles `QWidget`, so every widget
+switches to `QStyleSheetStyle`, and anything the platform style used to draw must be declared or it
+is gone. `T-129` found it in group-box margins and button hover; `T130-R1` found the same shape in
+the palette. The class is now well enough established that the fix should come with something that
+*fails* when the next sub-control goes missing, not just this one.
+
+**The trap:** the obvious fix is `image: url(...)`, which needs an asset, and `NFR-004` keeps the
+frozen artifact honest about what it ships. A border-triangle draws the arrow in the sheet itself
+with no file. Whichever is chosen, it must survive the frozen build, so `T-033`'s bundling and
+`tests/ui/test_resources.py` are the check — not the developer's checkout.
+
+#### Acceptance criteria
+
+- Both arrows are drawn, asserted by **rendering the widget and finding arrow pixels**, in both
+  themes — the same measurement that produced the 33-versus-3 above, so the test and the report
+  are the same instrument
+- The arrows contrast against their button background at the `NFR-005` floor
+- Hover and pressed on the two sub-controls are declared, per `T-129`
+- The spin box still steps on click, asserted through the widget rather than by calling `stepUp`
+- If an asset is used, it is asserted present **in the frozen artifact**, not only in the tree
+
+#### Out of scope
+
+- Auditing every remaining sub-control the sheet may have silenced. Worth doing and too big for
+  this; if the fix suggests a general assertion, file it rather than widening here
+
+
+*Corrected the same day.* The first fix declared the sub-controls in the sheet and drew the arrows
+with the CSS border-triangle trick. **Qt renders that as a solid block** — per-scanline ink widths
+`8,8,8,8,8` where a triangle gives `2,4,6` — and the maintainer saw two dots. `QSpinBox` is now
+absent from the styled-box rule entirely, so the platform draws its own arrows: **42 distinct
+colours in the strip against 3.** The cost is that this one widget keeps a native frame rather than
+the themed one; the alternative was shipping arrow images through `NFR-004` and `T-033` for the
+sake of a triangle. **My test asserted that arrow-coloured pixels existed, which a block
+satisfies** — it now asserts the wedge grows.
+---
+
+### T-134 — The row's verb buttons do not respond to the pointer
+
+**Status:** **Complete — 2026-08-04, committed at `7311180`.**
+
+**Owner:** Implementer
+**Priority:** Medium — `UX-004` §1's whole argument is that a painted control must behave like one
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `T118-R12` (painted affordance versus picture of one), `UX-005` §4,
+`ui/row_delegate.py`, `NFR-005`
+**Affected surfaces:** `ui/row_delegate.py`, possibly `ui/queue_view.py` and `ui/history_view.py`
+**Risk:** Medium — this is the first hover state the delegate has ever tracked, and stale
+highlight is the failure mode
+
+#### Scope
+
+`Open`, `Show in folder`, `Remove` and `⋯` are **painted**, not widgets:
+`_paint_verbs` calls `style.drawControl(CE_PushButton, …)` with a hard-coded
+`State_Enabled | State_Raised`. There is no `State_MouseOver` anywhere in the delegate, so the
+buttons cannot respond to the pointer — not because hover was styled away, but because nothing
+ever asks for it.
+
+**This is exactly the argument `T118-R12` won.** That finding said a reserved slot with nothing
+painted in it was an affordance only for a user who already knew it was there. A painted button
+that never reacts is the same defect one step later: it looks like a control, and the one cheap
+signal that would confirm it is a control is missing.
+
+**The failure mode is a stale highlight, not a missing one.** A hover tracked in the delegate and
+repainted by the view will keep the last hovered button lit when the pointer leaves the viewport,
+or when the model resets underneath it, unless both are handled. `T-124`'s row-identity work is the
+precedent: index-keyed state goes wrong the moment rows move.
+
+#### Acceptance criteria
+
+- A verb under the pointer draws with `State_MouseOver` and one not under it does not, asserted by
+  **rendering two rows that differ only in where the pointer is**
+- The highlight clears when the pointer leaves the viewport, and when the model resets — each
+  asserted separately, because they are different bugs with the same symptom
+- Hover is tracked by rect from the **same `_verb_rects` the paint and the click both use**, so the
+  three cannot disagree (`editorEvent` already does this for clicks)
+- No repaint storm: moving the pointer within one button repaints nothing
+- Keyboard users lose nothing — this adds a pointer affordance and must not become the only one
+  (`NFR-005`)
+
+#### Out of scope
+
+- Making the verbs real widgets. `UX-004` and `T-119` settled on painting them; this is a hover
+  state, not a rebuild
+- A hover state for the **row**, which the view already owns
+
+---
+
+### T-135 — The row's overflow menu repeats the buttons already on the row
+
+**Status:** **Complete — 2026-08-04, committed at `7311180`.** Adopted as `UX-005` row 8.
+
+**Owner:** Implementer
+**Priority:** Medium — `UX-005` §4, and the redundancy is visible on every wide row
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `UX-005` §4 and its second 2026-08-04 amendment, `T124-R1` (one menu for both
+lists), `ui/row_delegate.py` `_verb_rects`, `ui/main_window.py` `_row_menu`
+**Affected surfaces:** `ui/row_delegate.py`, `ui/queue_view.py`, `ui/history_view.py`,
+`ui/main_window.py`
+**Risk:** Medium — the menu and the row must agree about what was dropped, and they are computed in
+different places
+
+#### Scope
+
+**The design is already right; the wiring is not.** `_verb_rects` lays the verbs out right to left
+and `break`s when one will not fit, placing the overflow first so it survives — so on a narrow row
+the `⋯` reaches verbs that are genuinely unreachable. But `_show_row_menu` passes
+`view.verbs_of(row_id)`, the **whole** list, so on a row wide enough for every button the menu
+repeats every button.
+
+**And the `⋯` is not the keyboard route, though `_verb_rects` says it is.** Both lists set
+`CustomContextMenu`, and Qt raises `customContextMenuRequested` for the Menu key and Shift+F10 as
+well as for the mouse. The keyboard route is the context menu and has been since `T124-R1`. That
+comment should be corrected in the same change, because it is the stated reason the `⋯` must always
+be present, and it is not true.
+
+*Ruled 2026-08-04:* the overflow carries **only what the row could not show**, and disappears when
+the row showed everything.
+
+#### Acceptance criteria
+
+- The menu's contents are **derived from what the delegate actually placed**, not recomputed from
+  the model — one definition, the same rule `_verb_rects` already establishes for paint and click
+- A row wide enough for every verb draws **no `⋯`**, asserted by rendering
+- A row too narrow draws `⋯`, and the menu holds **exactly** the dropped verbs — asserted against a
+  width chosen so the set is non-empty and not the whole list
+- Shift+F10 still opens the full menu at both widths, on both lists — the keyboard route must not
+  become width-dependent, which is the risk this change introduces
+- `_verb_rects`' "it is the keyboard route" comment is corrected
+
+#### Out of scope
+
+- Menu-only actions such as *Copy URL* or *Open details*. Considered and declined for now: they
+  would give the `⋯` its own reason to exist, but none of them are built, and inventing actions to
+  justify a button is the wrong order
+
+---
 
 ### T-130 — The shipped window diverges from the mockup that was chosen
 
