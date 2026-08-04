@@ -1,0 +1,707 @@
+<title>Tracks &amp; Trails — Phase 2 roadmap</title>
+
+<style>
+  :root {
+    /* The project's adopted canonical swatches — ARCHITECTURE.md §8. */
+    --forest: #1E5E47;
+    --gold:   #D9A24C;
+    --deep:   #083122;
+
+    --st-approved: #1E5E47;
+    --st-review:   #B07C1F;
+    --st-ready:    #31688E;
+    --st-block:    #A6432B;
+    --st-idle:     #6E7E75;
+    --st-blocked:  #A6432B;
+
+    /* Neutrals biased green so they read as chosen rather than inherited. */
+    --ground:   #F6F8F5;
+    --raised:   #FFFFFF;
+    --sunken:   #EDF1EC;
+    --ink:      #101B15;
+    --ink-soft: #3C4B43;
+    --ink-mute: #66766C;
+    --rule:     #D6DFD8;
+    --rule-soft:#E5EBE5;
+
+    --shadow: 0 1px 2px rgba(8, 49, 34, .05), 0 8px 24px -12px rgba(8, 49, 34, .14);
+
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", "Cascadia Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+
+    --measure: 68ch;
+    --page: 1120px;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --st-approved: #3E9E70;
+      --st-review:   #D9A24C;
+      --st-ready:    #6BA3CC;
+      --st-block:    #D97757;
+      --st-idle:     #8C9C93;
+      --st-blocked:  #D2694A;
+      --ground:   #071612;
+      --raised:   #0E241C;
+      --sunken:   #0A1D17;
+      --ink:      #E8F0EA;
+      --ink-soft: #B8C7BE;
+      --ink-mute: #84978B;
+      --rule:     #1E3B31;
+      --rule-soft:#173029;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --st-approved: #3E9E70;
+    --st-review:   #D9A24C;
+    --st-ready:    #6BA3CC;
+    --st-block:    #D97757;
+    --st-idle:     #8C9C93;
+    --st-blocked:  #D2694A;
+    --ground:   #071612;
+    --raised:   #0E241C;
+    --sunken:   #0A1D17;
+    --ink:      #E8F0EA;
+    --ink-soft: #B8C7BE;
+    --ink-mute: #84978B;
+    --rule:     #1E3B31;
+    --rule-soft:#173029;
+    --shadow: 0 1px 2px rgba(0,0,0,.4), 0 10px 28px -14px rgba(0,0,0,.7);
+  }
+  :root[data-theme="light"] {
+    --st-approved: #1E5E47;
+    --st-review:   #B07C1F;
+    --st-ready:    #31688E;
+    --st-block:    #A6432B;
+    --st-idle:     #6E7E75;
+    --st-blocked:  #A6432B;
+    --ground:   #F6F8F5;
+    --raised:   #FFFFFF;
+    --sunken:   #EDF1EC;
+    --ink:      #101B15;
+    --ink-soft: #3C4B43;
+    --ink-mute: #66766C;
+    --rule:     #D6DFD8;
+    --rule-soft:#E5EBE5;
+    --shadow: 0 1px 2px rgba(8, 49, 34, .05), 0 8px 24px -12px rgba(8, 49, 34, .14);
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16.5px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  .page {
+    max-width: var(--page);
+    margin: 0 auto;
+    padding: clamp(1.75rem, 5vw, 4rem) clamp(1rem, 4vw, 2.5rem) 4.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: clamp(2.5rem, 5vw, 3.75rem);
+  }
+
+  /* --- type ------------------------------------------------------------------ */
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: .72rem;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--ink-mute);
+    margin: 0;
+  }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(1.75rem, 4.4vw, 2.9rem);
+    line-height: 1.08;
+    letter-spacing: -.025em;
+    font-weight: 600;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h2 {
+    font-family: var(--mono);
+    font-size: clamp(1.1rem, 2.4vw, 1.38rem);
+    letter-spacing: -.012em;
+    font-weight: 600;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h3 { font-family: var(--mono); font-size: 1rem; font-weight: 600; margin: 0; }
+
+  p { margin: 0; max-width: var(--measure); }
+  .lede { font-size: 1.05rem; color: var(--ink-soft); }
+
+  code, .id { font-family: var(--mono); font-size: .92em; font-variant-ligatures: none; }
+
+  a { color: inherit; text-decoration-color: var(--st-ready); text-underline-offset: .18em; }
+  a:focus-visible { outline: 2px solid var(--st-ready); outline-offset: 3px; border-radius: 3px; }
+
+  section { display: flex; flex-direction: column; gap: 1.1rem; }
+  .section-head { display: flex; flex-direction: column; gap: .3rem; }
+
+  header.masthead { display: flex; flex-direction: column; gap: 1.4rem; }
+  .titles { display: flex; flex-direction: column; gap: .5rem; }
+
+  .phase-line {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: .45rem .9rem;
+    font-family: var(--mono); font-size: .8rem; color: var(--ink-mute);
+    max-width: none;
+  }
+  .phase-line strong { color: var(--ink-soft); font-weight: 600; }
+
+  /* --- count chips ------------------------------------------------------------ */
+
+  .tally {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+    gap: .6rem;
+    list-style: none; padding: 0; margin: 0;
+  }
+  .tally li {
+    background: var(--raised);
+    border: 1px solid var(--rule-soft);
+    border-top: 3px solid var(--chip, var(--ink-mute));
+    border-radius: 3px;
+    padding: .7rem .8rem .75rem;
+    display: flex; flex-direction: column; gap: .1rem;
+    box-shadow: var(--shadow);
+  }
+  .tally .n {
+    font-family: var(--mono); font-size: 1.7rem; font-weight: 600; line-height: 1;
+    font-variant-numeric: tabular-nums; color: var(--chip);
+  }
+  .tally .k {
+    font-family: var(--mono); font-size: .68rem; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--ink-mute);
+  }
+
+  /* --- the dependency chart ---------------------------------------------------
+     `TB` with short labels, so the whole graph fits the page without its own
+     scrollbar: in `TB` the width is the widest *rank* rather than the depth of
+     the longest chain, and the widest rank here is seven. Rendered at natural
+     size (`useMaxWidth: false`) and scaled down by the `.fit` class, which is on
+     by default — that leaves the toggle able to switch to true full size, which
+     an inline `max-width` from `useMaxWidth: true` would have overridden.
+     **No `<br/>` in any label**: that splits the text into tspans and drops the
+     spaces between words. */
+
+  .chart-frame {
+    background: var(--raised);
+    border: 1px solid var(--rule);
+    border-radius: 4px;
+    box-shadow: var(--shadow);
+    padding: clamp(.75rem, 2.5vw, 1.25rem);
+    max-width: 100%;
+    display: flex; flex-direction: column; gap: .8rem;
+  }
+
+  .chart-bar {
+    display: flex; flex-wrap: wrap; align-items: center;
+    justify-content: space-between; gap: .6rem 1rem;
+  }
+  .chart-hint {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-mute); margin: 0; max-width: none;
+  }
+  .chart-toggle {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--ink-soft);
+    background: var(--sunken); border: 1px solid var(--rule);
+    border-radius: 999px; padding: .34rem .85rem; cursor: pointer;
+  }
+  .chart-toggle:hover { border-color: var(--st-ready); color: var(--ink); }
+  .chart-toggle:focus-visible { outline: 2px solid var(--st-ready); outline-offset: 2px; }
+
+  .chart-scroll { overflow-x: auto; overflow-y: hidden; }
+  .chart-scroll pre.mermaid { margin: 0; background: none; }
+
+  /* Two classes deep so these beat the mermaid runtime's own
+     `.mermaid-diagram svg { max-width: 100% }`, which is appended after this
+     stylesheet and would otherwise shrink the diagram straight back down. */
+  .chart-scroll .mermaid-diagram svg,
+  .chart-scroll pre.mermaid svg {
+    max-width: none;
+    height: auto;
+  }
+  .chart-frame.fit .chart-scroll .mermaid-diagram svg,
+  .chart-frame.fit .chart-scroll pre.mermaid svg {
+    max-width: 100%;
+  }
+
+  .legend {
+    display: flex; flex-wrap: wrap; gap: .4rem 1.2rem;
+    font-family: var(--mono); font-size: .74rem; color: var(--ink-mute);
+  }
+  .legend span { display: inline-flex; align-items: center; gap: .4rem; }
+  .legend i {
+    width: .72rem; height: .72rem; border-radius: 2px;
+    background: var(--sw); display: inline-block;
+  }
+  .legend i.dashed { background: none; border: 1.5px dashed var(--ink-mute); }
+
+  /* --- ranked next tasks ------------------------------------------------------ */
+
+  ol.queue {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: .7rem; counter-reset: q;
+  }
+  ol.queue > li {
+    counter-increment: q;
+    background: var(--raised);
+    border: 1px solid var(--rule-soft);
+    border-left: 4px solid var(--edge, var(--st-idle));
+    border-radius: 3px;
+    padding: .9rem 1.05rem 1rem;
+    display: grid;
+    grid-template-columns: 2.2rem 1fr;
+    gap: .2rem .9rem;
+    box-shadow: var(--shadow);
+  }
+  ol.queue > li::before {
+    content: counter(q);
+    grid-row: 1 / span 2;
+    font-family: var(--mono); font-size: 1.4rem; font-weight: 600;
+    font-variant-numeric: tabular-nums; color: var(--edge); line-height: 1.15;
+  }
+  .q-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: .4rem .65rem; }
+  .q-head .id { font-size: 1rem; font-weight: 600; }
+  .q-head .name { font-weight: 600; }
+  .q-why { color: var(--ink-soft); font-size: .94rem; grid-column: 2; max-width: var(--measure); }
+
+  .pill {
+    font-family: var(--mono); font-size: .64rem; letter-spacing: .1em;
+    text-transform: uppercase; padding: .18rem .48rem .22rem; border-radius: 999px;
+    color: #fff; background: var(--edge, var(--ink-mute)); white-space: nowrap;
+  }
+  .pill.ghost { background: none; color: var(--ink-mute); border: 1px solid var(--rule); }
+
+  .measured {
+    font: 500 0.78rem/1.65 ui-monospace, "SF Mono", "Cascadia Mono", Menlo, monospace;
+    background: var(--ground);
+    border: 1px solid var(--rule);
+    border-left: 3px solid var(--st-blocked);
+    border-radius: 6px;
+    padding: 0.7rem 0.9rem;
+    margin: 0.55rem 0;
+    overflow-x: auto;
+    color: var(--ink-soft);
+    white-space: pre;
+    font-variant-numeric: tabular-nums;
+  }
+  /* Same block, reporting a measurement that now holds rather than one that flapped. */
+  .measured.settled { border-left-color: var(--st-approved); }
+
+  /* --- tables ----------------------------------------------------------------- */
+
+  .table-card {
+    border: 1px solid var(--rule); border-radius: 4px; background: var(--raised);
+    box-shadow: var(--shadow); overflow: hidden;
+  }
+  table { border-collapse: collapse; width: 100%; font-size: .93rem; }
+  caption {
+    text-align: left; padding: .85rem 1rem .1rem; color: var(--ink-mute);
+    font-family: var(--mono); font-size: .72rem; letter-spacing: .1em; text-transform: uppercase;
+  }
+  th, td { text-align: left; padding: .68rem 1rem; vertical-align: top; border-bottom: 1px solid var(--rule-soft); }
+  thead th {
+    font-family: var(--mono); font-size: .7rem; letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-mute); font-weight: 600; background: var(--sunken);
+    border-bottom: 1px solid var(--rule);
+  }
+  tbody tr:last-child td { border-bottom: none; }
+  td.n { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink-mute); width: 2.6rem; }
+  .state { font-family: var(--mono); font-size: .78rem; font-weight: 600; display: block; }
+  .state.met { color: var(--st-approved); }
+  .state.part { color: var(--st-review); }
+  .state.unmet { color: var(--ink-mute); }
+  .state.blocked { color: var(--st-block); }
+  .state-note { color: var(--ink-mute); font-size: .86rem; }
+
+  @media (max-width: 640px) {
+    table, thead, tbody, tr, th, td { display: block; width: 100%; }
+    thead { position: absolute; left: -9999px; }
+    tbody tr { border-bottom: 1px solid var(--rule); padding: .3rem 0; }
+    tbody tr:last-child { border-bottom: none; }
+    td { border-bottom: none; padding: .3rem 1rem; }
+    td.n { padding-top: .7rem; }
+  }
+
+  /* --- callouts ---------------------------------------------------------------- */
+
+  .callout {
+    background: var(--raised);
+    border: 1px solid var(--rule);
+    border-left: 4px solid var(--accent, var(--st-block));
+    border-radius: 3px;
+    padding: 1.05rem 1.2rem 1.15rem;
+    display: flex; flex-direction: column; gap: .6rem;
+    box-shadow: var(--shadow);
+  }
+  .callout h3 { color: var(--accent, var(--st-block)); }
+  .callout ul {
+    margin: 0; padding-left: 1.1rem;
+    display: flex; flex-direction: column; gap: .35rem;
+    color: var(--ink-soft); font-size: .94rem;
+  }
+  .callout ul li { max-width: var(--measure); }
+
+  .note {
+    font-size: .88rem; color: var(--ink-mute);
+    border-left: 2px solid var(--rule); padding-left: .85rem; max-width: var(--measure);
+  }
+
+  footer {
+    border-top: 1px solid var(--rule); padding-top: 1.3rem;
+    font-family: var(--mono); font-size: .73rem; color: var(--ink-mute);
+    display: flex; flex-wrap: wrap; gap: .3rem 1.4rem;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+
+<div class="page">
+
+  <header class="masthead">
+    <div class="titles">
+      <p class="eyebrow">Tracks &amp; Trails · implementation plan</p>
+      <h1>Phase 2 — Queue and concurrency</h1>
+      <p class="lede">Turn one download into a managed queue. <strong>Everything left is evidence, not code.</strong> The <code>UX-005</code> batch is committed at <code>05ad990</code>, green on all five CI jobs. The overnight segfault is <strong>diagnosed — it was the test harness, not the product</strong>, and its correction is approved. Then the application was opened on a screen and produced <strong>three more tasks in one sitting</strong>, which is the fourth time that has out-performed the gates. What remains is a soak, a Windows run, and a signature.</p>
+      <p class="phase-line">
+        <span><strong>Phase 1</strong> exited 2026-07-29</span>
+        <span><strong>Phase 0</strong> exited 2026-07-26</span>
+        <span>head <code>05ad990</code> + an approved uncommitted batch</span>
+        <span>CI <strong>5 of 5 green</strong> at that head</span>
+        <span>Linux gate <strong>~5 min</strong></span>
+        <span><strong>2068</strong> tests</span>
+        <span>updated <strong>2026-08-04</strong></span>
+      </p>
+    </div>
+
+    <p class="eyebrow">Where the exit actually stands</p>
+    <ul class="tally">
+      <li style="--chip: var(--st-approved)"><span class="n">13</span><span class="k">Deliverables approved</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">14</span><span class="k">Review findings closed</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">6</span><span class="k">Criteria met</span></li>
+      <li style="--chip: var(--st-review)"><span class="n">3</span><span class="k">Evidence gates left</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Open blocking findings</span></li>
+      <li style="--chip: var(--st-idle)"><span class="n">3</span><span class="k">Tasks from one sitting</span></li>
+    </ul>
+  </header>
+
+  <section>
+    <div class="section-head">
+      <h2>What is left</h2>
+      <p class="lede">Everything green is approved. The amber nodes are what the exit is waiting for, and they are all <strong>evidence rather than code</strong> — the two grey ones are deliberately off the path.</p>
+    </div>
+
+    <div class="chart-frame fit" id="chart">
+      <div class="chart-bar">
+        <p class="chart-hint">Whole graph, fitted to the page</p>
+        <button type="button" class="chart-toggle" id="chart-toggle" aria-pressed="true">Full size</button>
+      </div>
+      <div class="chart-scroll">
+<pre class="mermaid">
+%%{init: {"theme":"base","themeVariables":{"fontSize":"16px","lineColor":"#8AA095","primaryTextColor":"#ffffff"},"flowchart":{"useMaxWidth":false,"nodeSpacing":24,"rankSpacing":52,"padding":8}}}%%
+flowchart TB
+    classDef done  fill:#1E5E47,stroke:#083122,stroke-width:2px,color:#ffffff
+    classDef head  fill:#0E4433,stroke:#D9A24C,stroke-width:3px,color:#ffffff
+    classDef gate  fill:#B07C1F,stroke:#6E4C0F,stroke-width:3px,color:#ffffff
+    classDef exit  fill:#083122,stroke:#D9A24C,stroke-width:3px,color:#D9A24C
+    classDef watch fill:#6E7E75,stroke:#44534B,stroke-width:2px,color:#ffffff
+
+    DELIV["13 deliverables approved"]:::done
+    UX["UX-005 batch, committed 05ad990"]:::done
+    T128["T-128 segfault: the harness"]:::done
+    T129["T-129 style sheet metrics and states"]:::done
+    T131["T-131 launch test isolation"]:::done
+
+    COMMIT["Commit the approved batch"]:::gate
+
+    SOAK["60 clean Linux soak runs"]:::gate
+    WIN["Windows run at that exact head"]:::gate
+    REVIEW["Criterion 6 - independent exit review"]:::gate
+    EXIT(["PHASE 2 EXIT"]):::exit
+
+    T130["T-130 mockup gaps - needs a ruling"]:::watch
+    T074["T-074 - Windows watch, not a gate"]:::watch
+
+    DELIV --> COMMIT
+    UX --> COMMIT
+    T128 --> COMMIT
+    T129 --> COMMIT
+    T131 --> COMMIT
+    COMMIT --> SOAK
+    COMMIT --> WIN
+    COMMIT --> REVIEW
+    SOAK --> EXIT
+    WIN --> EXIT
+    REVIEW --> EXIT
+    T128 -. best lead it has ever had .-> T074
+    T129 -. same sitting, not the same defect .-> T130
+</pre>
+      </div>
+
+      <div class="legend">
+        <span><i style="--sw: var(--st-approved)"></i> Approved</span>
+        <span><i style="--sw: var(--st-review)"></i> Outstanding gate</span>
+        <span><i style="--sw: var(--st-idle)"></i> Off the path</span>
+        <span><i class="dashed"></i> Not a dependency</span>
+      </div>
+    </div>
+
+    <p class="note"><strong><code>T-074</code> is on the chart to say that it is <em>not</em> on the path.</strong> Its four acceptance criteria are still unmet and <code>OPS-007</code> still accepts it as residual risk. It is drawn because <code>T-128</code> gave it the best lead it has ever had — the recorded Windows crash is in the same file and the same fixture — and a reader should be able to see that the lead exists without mistaking it for a blocker.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Three tasks from one sitting at the screen</h2>
+      <p class="lede">The application was opened to look at <code>UX-005</code>. It produced more findings in an afternoon than the gates had in a week — which is now the fourth time that has happened, and worth counting rather than repeating.</p>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <caption>Filed 2026-08-04, none of them by a test</caption>
+        <thead><tr><th>Task</th><th>What it is</th><th>State</th></tr></thead>
+        <tbody>
+          <tr>
+            <td><code>T-129</code></td>
+            <td>The style sheet took the native style's metrics and states away</td>
+            <td><span class="state met">Approved</span><span class="state-note">One cause, two symptoms: styling a widget class switches it to <code>QStyleSheetStyle</code>, so anything the platform style supplied must come from the sheet or not at all. <code>T-120</code> supplied colours — the group-box title metric and every hover state went missing. Titles overlapped their contents by <strong>15 px</strong>; buttons and menu items rendered identically whether or not they were the one about to be activated</span></td>
+          </tr>
+          <tr>
+            <td><code>T-131</code></td>
+            <td>The launch test used the developer's real database and instance lock</td>
+            <td><span class="state met">Approved</span><span class="state-note">It redirected <code>XDG_CONFIG_HOME</code> only, and the application uses three roots — config, <strong>data</strong> (the queue database), and cache (the log). So it opened the real database and took the real single-instance lock. <strong>With the application running the launch never completes.</strong> Before: 2 tests fail at 120 s each. After: <strong>4 passed in 0.71 s</strong>, application still open</span></td>
+          </tr>
+          <tr>
+            <td><code>T-130</code></td>
+            <td>The shipped window diverges from the mockup that was chosen</td>
+            <td><span class="state unmet">Proposed</span><span class="state-note">Five differences against <strong>B1-b</strong>, the option the maintainer picked. The largest: <strong><code>+ Add URLs</code> is not on the toolbar</strong> — the application's primary action, which the mockup puts first. <em>Not filed as defects</em>: <code>UX-005</code> does not name the toolbar's contents, so these are gaps between mockup and decision and want a ruling before code</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <p><strong>Two of the three could not have been caught by any gate this project has</strong>, and that is the useful part rather than a complaint. A style sheet that renders a control inert has no failing assertion attached to it; a test that quietly uses the developer's own database passes on every machine where nobody has the application open — including every CI runner, forever.</p>
+      <p><code>T-129</code> now has four tests and three killed mutations, and <code>T-131</code>'s fix is measured with the application deliberately left running. Both were written so the <em>next</em> occurrence is a gate rather than another afternoon.</p>
+    </div>
+
+    <p class="note"><strong>And one correction of my own, recorded because the record is the point.</strong> <code>T-129</code>'s first hover tests drew through <code>QApplication.style()</code> with no widget, which never consults the style sheet — so they measured the <em>platform</em> style's hover, found a difference, and passed. Both mutations survived. Caught in the mutation battery, not by the tests themselves.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The gates that are left</h2>
+      <p class="lede">Two are machines running unattended. The third needs a person who did not write the code. None of them is development work.</p>
+    </div>
+
+    <ol class="queue">
+      <li style="--edge: var(--st-review)">
+        <div class="q-head">
+          <span class="id">Gate 1</span>
+          <span class="name">A clean 60-run Linux soak</span>
+          <span class="pill">Not started</span>
+        </div>
+        <p class="q-why"><code>T-128</code>'s crash reproduced at <strong>2 in 39</strong> full-suite runs. The corrected teardown has to be shown to have removed it, and the number is sized against that baseline rather than picked: if nothing had changed, a clean sixty has probability <strong>0.042</strong>. Thirty-nine only reaches 0.128 — which is why re-running the original soak at its own size would not clear the bar it set.</p>
+        <div class="measured settled">baseline   2 / 39 runs  =  5.1%
+P(0 crashes | unchanged)   39 runs   0.128
+                           60 runs   0.042   &lt;- the bar
+                           90 runs   0.009</div>
+        <p class="q-why"><code>tools/soak.sh</code> is the instrument. It separates a <strong>process death</strong> — exit 139, which is what <code>T-128</code> was — from a test failure, because collapsing the two would hide whichever is rarer. Roughly five hours at ~6 minutes a run.</p>
+      </li>
+
+      <li style="--edge: var(--st-review)">
+        <div class="q-head">
+          <span class="id">Gate 2</span>
+          <span class="name">A Windows run at the exact committed head</span>
+          <span class="pill">Not started</span>
+        </div>
+        <p class="q-why"><code>OPS-010</code> puts the full Windows suite on <code>STARBASE</code> for every push, so this costs a commit rather than a decision. It is owed because <code>T-129</code> changes how <em>Qt</em> renders, and the style that renders it is platform-specific — the group-box metric in particular has only ever been measured on Linux.</p>
+        <p class="q-why"><strong>It cannot be gathered before the batch is committed</strong>, because Windows evidence has to name a head. That is the one ordering constraint among the three.</p>
+      </li>
+
+      <li style="--edge: var(--st-ready)">
+        <div class="q-head">
+          <span class="id">Gate 3</span>
+          <span class="name">Criterion 6 — an independent phase exit review</span>
+          <span class="pill ghost">Not requested</span>
+        </div>
+        <p class="q-why">Every deliverable is approved and every review finding is closed. What is absent is the <strong>phase</strong> sign-off, which Phase 0 and Phase 1 each required and neither could self-certify: <code>AGENTS.md</code> §3 puts it with a reviewer who is not the implementer.</p>
+        <p class="q-why"><strong>Expect the table to move.</strong> Phase 1's exit review found two wrong rows; Phase 2's first attempt found two more — both times by rebuilding the table against the repository rather than reading the claim. This table is rebuilt before it is submitted, not re-read.</p>
+      </li>
+    </ol>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The correction batch: three rounds, thirteen findings, one Critical of my own making</h2>
+      <p class="lede">The <code>UX-005</code> work was reviewed, corrected, re-reviewed twice more, and approved. Two of the three rounds found defects in the corrections rather than in the original work.</p>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <caption>What each round found</caption>
+        <thead><tr><th class="n">#</th><th>Round</th><th>What it found</th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="n">1</td>
+            <td>The <code>UX-005</code> batch</td>
+            <td><span class="state blocked">1 Critical · 5 High</span><span class="state-note">A queue reorder discarded an open format choice in silence. The declared <code>⋯</code> keyboard route existed as drawing and not as a route; History's did nothing at all. Tab counts went stale. A started download said nothing about its format. And <code>UX-005</code>'s <em>rejected</em> selection toolbar was still on screen beside the row verbs meant to replace it</span></td>
+          </tr>
+          <tr>
+            <td class="n">2</td>
+            <td><code>T126-R3</code></td>
+            <td><span class="state blocked">Critical — mine</span><span class="state-note">Fixing round 1 by committing the editor on every reset made a <em>lifecycle</em> commit indistinguishable from a click, so a landed retarget was reported back as a fresh choice: <code>refresh → commit → retarget(UNCHANGED) → refresh</code>, inline, to <code>RecursionError</code>. <strong>My own regression could not see it</strong> — its fake never updated the reader it stood in for</span></td>
+          </tr>
+          <tr>
+            <td class="n">3</td>
+            <td><code>T126-R4</code></td>
+            <td><span class="state part">High</span><span class="state-note">The shared delegate exported the staging list's <em>Same as all</em> to the queue, which has no batch to be the same as — a control the model then refused. Removing it alone would have opened a custom selector on the first built-in, so the row now speaks whenever the control cannot</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <p><strong>Both of my own defects had one cause, and it is worth naming precisely:</strong> a fake that did not model the write it stood in for, so no test could reach the ordering that write creates. The <code>T126-R3</code> regression described its assertion as durable while its <code>retarget</code> appended to a list and never touched the reader.</p>
+      <p>What replaced it is a store that really writes and satisfies <code>JobStore</code> structurally — no <code>type: ignore</code> — so the real <code>UNCHANGED</code> branch runs. Twenty mutations across the three rounds, all killed, each by the test that should catch it.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>The overnight segfault, diagnosed</h2>
+      <p class="lede">Two runs in thirty-nine died. The answer came from the core dumps, which were still on the machine.</p>
+    </div>
+
+    <div class="callout" style="--accent: var(--st-approved)">
+      <h3>A timer fired into a QObject that had already been freed</h3>
+      <p><code>systemd-coredump</code> had kept both crashes. <code>gdb</code> gives what a stack could not: the faulting instruction is <code>receiver-&gt;d_ptr-&gt;threadData</code>, and the receiver's memory was already recycled — its vtable slot held a value that is not even 8-aligned. <strong>A use-after-free, not corruption</strong>, which is why both runs died at the same test count.</p>
+      <div class="measured">0x556292ed2c90:  0x00005567c4c40522   &lt;- vtable slot, not 8-aligned
+0x556292ed2c98:  0xf40d334f663faf5d   &lt;- d_ptr, noise</div>
+      <p><strong>The failing test, named from the traceback rather than the dot count.</strong> The Python stack points at a <em>fixture teardown</em>, which runs after pytest prints the progress character — so 97 dots means test <strong>#97</strong>, <code>test_a_ready_job_starts_a_download_at_running</code>, not #98 as the task had inferred. It is the one test in that file with a live worker, a live <code>ResultPump</code> and a live log thread: exactly the thread set both logs show.</p>
+      <p><strong>The precondition, reproduced deterministically.</strong> <code>is_idle</code> answers a question about <em>work</em> — it says nothing about the manager's own poll timer, which stops on a later tick. Five teardowns polled it and dropped the manager inside that window.</p>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <thead><tr><th>Question</th><th>Answer</th></tr></thead>
+        <tbody>
+          <tr><td>Product or harness?</td><td><span class="state met">Harness</span><span class="state-note">nothing in <code>src/</code> reads <code>is_idle</code>; <code>app.py</code> waits for the <code>idle</code> <em>signal</em>, emitted only after the timer stops. The application holds one manager for the life of the process and never drops one</span></td></tr>
+          <tr><td>A cheaper reproduction?</td><td><span class="state met">Sub-second, 3 of 3</span><span class="state-note">against a six-minute soak at 5% — and <code>gdb</code> shows a byte-identical signature</span></td></tr>
+          <tr><td>Which mechanism killed the soak?</td><td><span class="state unmet">Not established</span><span class="state-note">two produce this signature; three full runs showed zero cross-thread warnings, so the likelier one is the cycle collector freeing the object mid-dispatch, which emits nothing. <strong>Recorded as unresolved rather than guessed</strong> — the correction does not depend on the answer</span></td></tr>
+          <tr><td>Does it close <code>T-074</code>?</td><td><span class="state part">No — but it is a lead</span><span class="state-note">the Windows crash is in the same file and the same fixture. Different platform, different signal, faulting object still unknown. <em>A stack is not a cause</em> — that task's own standard, applied to its own resemblance</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note">The correction is a shared <code>drain()</code> that waits for the timer as well as the work, at all five sites, plus a detector that turns Qt's cross-thread timer warning into a test failure naming the test that caused it. The detector has <strong>never fired in this suite</strong> — it guards the mechanism that would otherwise surface as a segfault several tests later.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>Exit criteria</h2>
+      <p class="lede">Seven, the last of which nobody had written down until the phase proof found it.</p>
+    </div>
+    <div class="table-card">
+      <table>
+        <caption>Six met · one open, on three counts</caption>
+        <thead>
+          <tr><th class="n">#</th><th>Criterion</th><th>State</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="n">1</td>
+            <td>Three concurrent downloads show independent accurate progress, UI interactive throughout</td>
+            <td><span class="state met">Met</span><span class="state-note">the gate now proves three reservations, requires all three <code>RUNNING</code> together, observes per-job progress inside the measured window, and fails in <strong>0.54 s</strong> when the starts are removed — against 60.24 s passing before</span></td>
+          </tr>
+          <tr>
+            <td class="n">2</td>
+            <td>Hard-killing the app mid-queue and restarting restores the queue with correct states</td>
+            <td><span class="state met">Met</span><span class="state-note"><code>SIGKILL</code> with three workers downloading and two never started, then a <em>real composed application</em> against the killed database</span></td>
+          </tr>
+          <tr>
+            <td class="n">3</td>
+            <td>Concurrency limit respected exactly; lowering it drains cleanly, and so does pausing</td>
+            <td><span class="state met">Met</span><span class="state-note">the pool test samples both the rows and the actual process count across a whole run, not one instant</span></td>
+          </tr>
+          <tr>
+            <td class="n">4</td>
+            <td>A second launch attaches to or refuses in favour of the running instance</td>
+            <td><span class="state met">Met</span><span class="state-note">tested against a first instance with a <em>full pool</em> — the state a guard built on polling would be likeliest to let through</span></td>
+          </tr>
+          <tr>
+            <td class="n">5</td>
+            <td>No worker process outlives application exit, on both platforms</td>
+            <td><span class="state met">Met</span><span class="state-note">the corrected N-worker gate kills <strong>one pid</strong> and leaves each worker to its own watchdog. Removing that watchdog leaves <strong>3 of 3</strong> workers alive. Ran on Linux and on <code>STARBASE</code>; the row cited a pre-<code>T-127</code> hosted run until <code>P2EXIT-R8</code></span></td>
+          </tr>
+          <tr>
+            <td class="n">6</td>
+            <td>Reviewed and signed off</td>
+            <td><span class="state unmet">Not met — two counts</span><span class="state-note"><strong>(a)</strong> the phase sign-off has not been requested; <strong>(b)</strong> a clean 60-run Linux soak is owed, by the 2026-08-04 ruling on <code>OPS-007</code>; <strong>(c)</strong> the approved <code>T-128</code>/<code>T-129</code>/<code>T-131</code> batch is uncommitted, so no Windows run can name its head. <em>This row read “four deliverables await review” for two days after all four were approved, then “only a sign-off is missing” right up until the sign-off found two criteria unproved</em></span></td>
+          </tr>
+          <tr>
+            <td class="n">7</td>
+            <td><strong>A user can actually start a queue</strong> — found by the phase proof, not previously written down</td>
+            <td><span class="state met">Met</span><span class="state-note"><code>T-115</code>. Recorded first as a strict <code>xfail</code>, which reported <code>XPASS(strict)</code> the moment the fix landed — the gate firing exactly as promised — and was then inverted</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note">Criterion 7 is the phase's best argument for its own proof: every deliverable was approved and no user could start a queue. Fixing it broke <em>ten</em> end-to-end tests, each of which had been calling <code>manager.start()</code> by hand after Add — the suite had been working around the defect, which is why a green suite never showed it.</p>
+  </section>
+
+  <section>
+    <div class="section-head">
+      <h2>What <code>OPS-007</code> now says, and why it was re-ruled twice in one day</h2>
+      <p class="lede">A risk acceptance is only as good as the measurement under it. This one's measurement changed, then changed back.</p>
+    </div>
+
+    <div class="callout" style="--accent: var(--st-ready)">
+      <p><strong>Morning.</strong> <code>OPS-007</code> accepted <code>T-074</code>'s access violation because <strong>361 attempts produced zero events</strong>, and said in as many words that a recurrence reopens it. <code>T-128</code> reproduced something in the same subsystem at 2 in 39, so the premise fell and the exit was made to wait on diagnosing it.</p>
+      <p><strong>Afternoon.</strong> The diagnosis says those two crashes were <em>not</em> recurrences of <code>T-074</code>'s fault — they were the harness dropping a Qt object incorrectly. So the premise is arguably intact rather than broken, and the prerequisite was replaced with the narrower thing that can actually be measured.</p>
+      <p><strong>One correction to the recommendation that produced this ruling.</strong> It first proposed confirming on <em>Windows</em> that the corrected teardown ends <code>T-074</code>'s recurrences — but there are <strong>no recurrences on Windows to end</strong>, and more green runs there would only re-accumulate the very evidence that produced <code>OPS-007</code>. The confirmation is on Linux, where there is a baseline. Windows is a passive watch, and its value is asymmetric: a recurrence would rule the harness fix out as <code>T-074</code>'s cause, while continued silence adds nothing.</p>
+    </div>
+  </section>
+
+  <footer>
+    <span>Transcribed from ai/IMPLEMENTATION_PLAN.md, ai/TASKS.md, ai/DECISIONS.md, ai/REVIEWS.md</span>
+    <span>Counts read from the tables, not written beside them</span>
+    <span>Head 05ad990 + an approved uncommitted batch · suite 2068 passed, 11 skipped</span>
+    <span>CI run 30933605887 · five of five green</span>
+    <span>2026-08-04</span>
+  </footer>
+
+</div>
+
+<script>
+  (function () {
+    var frame = document.getElementById("chart");
+    var button = document.getElementById("chart-toggle");
+    if (!frame || !button) return;
+    var hint = frame.querySelector(".chart-hint");
+    button.addEventListener("click", function () {
+      var fitted = frame.classList.toggle("fit");
+      button.setAttribute("aria-pressed", String(fitted));
+      button.textContent = fitted ? "Full size" : "Fit to page";
+      hint.textContent = fitted
+        ? "Whole graph, fitted to the page"
+        : "Drawn full size — scroll sideways inside this frame";
+    });
+  })();
+</script>

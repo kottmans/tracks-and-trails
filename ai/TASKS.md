@@ -94,105 +94,6 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ## Ready
 
-### T-128 — The result-pump segfault reproduces on **Linux**, at ~5% of full-suite runs
-
-**Status:** **Ready — and it gates the Phase 2 exit**, by maintainer ruling of 2026-08-04 on
-`P2EXIT-R9`. The first reproduction of anything in this class; found by an overnight soak, not by
-a gate.
-**What the ruling changed.** `OPS-007` accepted `T-074`'s access violation because reproduction was
-*exhausted* — 361 attempts, zero events — and argued the cost in `STARBASE` hours. This task is
-that argument's premise failing: roughly 1 in 20 on Linux, on a machine Windows verification does
-not depend on. So the residual stands as risk and stops being something a phase exits over, and
-`OPS-007` carries a 2026-08-04 amendment saying so. **This does not merge `T-128` with `T-074`**
-and does not assert the crash is in the product; identity and product-versus-harness are exactly
-what this task owns.
-*(This read "Proposed — the first reproduction of anything in this class".)*
-**Owner:** Implementer
-**Priority:** **High** — not because it is new, but because it is *reproducible*. `T-074` has been
-undiagnosed since 2026-07-29 for exactly one reason: **361 attempts, zero events**. This is 2
-events in 39.
-**Phase:** Phase 2
-**Relevant context:** **`T-074`** (candidate same defect — see below), `OPS-007`, `T-092`, `T-090`,
-`ARC-002`, `T-019`
-**Affected surfaces:** unknown — that is the task. `downloader/manager.py`'s result pump and
-`ui/` Qt event handling are where the stack points.
-**Evidence:** `ai/evidence/SOAK-FAILED-13.txt` and `-19.txt` — the two full crash logs, kept
-because they came from 39 runs and reproducing one takes hours.
-**Risk:** **Medium to the product.** A segfault in a GUI application loses the user's session. It
-has never been observed outside a test run, which is a fact about where we look rather than a
-reassurance.
-
-#### What was observed
-
-An unattended soak ran the full suite **39 times** on Linux (2026-08-04, head `8d1b01c`). **37 were
-green; 2 died** with:
-
-```
-Fatal Python error: Segmentation fault
-Current thread's C stack trace (most recent call first):
-  ... libQt6Core.so.6, at QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
-```
-
-Both crashes had a live thread named **`ResultPump`** and a `Thread-193 (_mo…)` beside it.
-
-**Both died at exactly 97 completed tests.** Not approximately — the same count in both logs, which
-is the opposite of what a random memory fault looks like and the most useful fact here. By
-execution order that puts the fault in or immediately around
-`tests/integration/test_manager.py::test_a_probe_session_is_refused_for_a_ready_job`, with
-`test_a_ready_job_starts_a_download_at_running` immediately before it.
-
-**That identification is derived from a position, not observed.** It assumes collection order equals
-execution order, which holds here (no randomising plugin is installed) but was not verified against
-a `-v` run — the crash is 5% and a `-v` reproduction had not been obtained when this was filed.
-**Confirming the exact test is the first item of scope**, not an assumption to build on.
-
-#### Its relationship to `T-074`, stated carefully
-
-`T-074` is *"The Windows suite segfaults intermittently while the result pump is delivering."* This
-is a segfault while a thread named `ResultPump` is alive. That is a strong resemblance and it is
-**not** an identity:
-
-- Windows produced an **access violation**; this is a **SIGSEGV** on Linux. The same underlying bug
-  would present as both, and so would two different bugs in one subsystem.
-- `T-074`'s faulting object was never determined, so there is nothing to compare against. **A stack
-  is not a cause** — `T-074`'s own words, and they apply to this stack too.
-- `OPS-007` accepted `T-074` as residual risk **on the strength of 361 clean attempts**. This does
-  not refute that decision; it changes the premise underneath it, which is a different thing and is
-  the maintainer's to weigh.
-
-So this is filed as its own task rather than as a comment on `T-074`, and the two are cross-linked.
-If they turn out to be one defect, merging them later costs nothing; assuming it now would put a
-Windows label on a Linux reproduction and send the next person to the wrong platform.
-
-#### Scope
-
-- **Confirm the failing test by observation**, not by arithmetic: loop `test_manager.py` under `-v`
-  until it recurs, and record what was running.
-- **Establish a cheaper reproduction** than a 6-minute full-suite run. The deterministic position
-  suggests a specific interaction rather than random corruption, so a subset may reproduce it — and
-  if a subset *cannot*, that is itself a finding about ordering or accumulated state.
-- **Determine product versus harness** (`ai/TESTING.md` §4). A crash inside `processEvents` with a
-  worker-result thread live could be either the application's threading or the test's stand-in
-  worker, and the answer decides who owns it.
-- Arm a core dump (`T-092` does this for Windows; Linux needs `ulimit -c` and a pattern) so a
-  recurrence yields a faulting object rather than another anecdote.
-
-#### Out of scope
-
-- **Fixing `T-074`.** If a cause is found here and it explains Windows too, that is a finding to
-  report, not a licence to close a task on another platform from this evidence.
-- **Making the suite pass by retrying.** A retry would hide the only reproduction anyone has.
-
-#### Acceptance criteria
-
-- The failing test is named from an observed run, not inferred from a count
-- A reproduction exists that is cheaper than the full suite, **or** it is recorded that none was
-  found and what was tried
-- Product-versus-harness is answered with evidence
-- `T-074` and `OPS-007` are updated with whatever this establishes — including "nothing"
-
----
-
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
 **Status:** **Ready — the decision landed as `REL-002` (2026-08-04), so the blocker is gone.**
@@ -652,15 +553,29 @@ post-`T-090`) — **51 full-suite runs** in total, with 60 clean runs of the cra
 clean in-process iterations beside them. **361 attempts, zero events**, across three shapes and two
 heads.
 
-**A candidate reproduction exists as of 2026-08-04, on Linux** (`T-128`). An overnight soak crashed
-**2 runs in 39** with a segfault inside `QEventDispatcherGlib::processEvents` and a live
-`ResultPump` thread — the subsystem this task is named for. **It is not established as the same
-defect**: Windows produced an access violation and this is a SIGSEGV, this task's faulting object
-was never determined so there is nothing to compare against, and a stack is not a cause — this
-task's own words, which apply to that stack too. What it changes is the premise `OPS-007` rests
-on: *"361 attempts, zero events"* was the reason to accept the residual, and something in this
-class now reproduces at ~5% on a platform anyone can run. `T-128` owns finding out; nothing here is
-rewritten on the strength of a resemblance.
+**`T-128` is diagnosed as of 2026-08-04, and it was a *harness* defect** — a fixture teardown
+dropping a `QObject` that still owned a running `QTimer`, so the dispatcher followed a pointer into
+freed memory. Two core dumps and a sub-second reproduction establish it; `src/` is not implicated,
+because nothing there reads `is_idle` and the application holds one manager for the life of the
+process.
+
+**That is a lead here, and it is the strongest one this task has ever had.** The Windows crash
+recorded above happened in
+`test_a_worker_that_ignores_cancellation_is_killed_inside_the_budget` — **the same file and the
+same `manager` fixture** whose teardown `T-128` found at fault, with the same `ResultPump` thread
+alive in the traceback. The corrected teardown is now on both platforms.
+
+**It is still not established as the same defect, and the bar has not moved.** Windows produced an
+access violation and `T-128` a SIGSEGV; this task's faulting object was never determined, so there
+is still nothing to compare against; and *a stack is not a cause* — this task's own words, which
+apply to the resemblance as much as to the stack. What can be done now is cheap and was not before:
+**`STARBASE` runs the full suite on every push (`OPS-010`), so repeated green Windows runs against
+the corrected teardown are evidence that costs nothing extra to gather.** If the crash stops
+recurring there over a meaningful number of runs, that is the first positive evidence this task has
+had; if it recurs, the harness fix is ruled out as its cause and that is worth just as much.
+
+*(This block read "A candidate reproduction exists … `T-128` owns finding out". `T-128` has now
+found out, and what it found does not implicate the product.)*
 
 **The four acceptance criteria below stay unmet, deliberately not rewritten.** All four presuppose
 a deliberate reproduction, which is the one thing no instrument has produced, so `OPS-007` accepts
@@ -1224,6 +1139,44 @@ beats designing it against an imagined one.
 ---
 
 ## Proposed — Phase 3
+
+### T-130 — The shipped window diverges from the mockup that was chosen
+
+**Status:** **Proposed**, 2026-08-04. Found by opening the application beside `UX-005`'s own
+mockup — the third time this session that looking at the screen found what no gate did.
+**Owner:** Planner, then Implementer
+**Priority:** Medium — none of it is a defect in the sense `T-129` is; the application works. It is
+a difference between what was chosen and what shipped, and that difference was never recorded.
+**Phase:** Phase 3
+**Relevant context:** `UX-005` (authority), the **B1-b** mockup, `ARC-007`, `T-124`, `NFR-005`
+**Affected surfaces:** `ui/main_window.py`, `ui/queue_view.py`, `ui/history_view.py`, `ui/theme.py`
+**Risk:** Medium — some of it changes what `T-124` delivered, so it needs a ruling before code
+
+**Compared against B1-b, the option the maintainer chose.** Each row is a difference, not yet a
+decision:
+
+| Mockup | Shipped | Note |
+|---|---|---|
+| **`+ Add URLs` as the primary toolbar button, left-aligned** | absent — only File → Add URLs… | **The largest gap.** The application's primary action is not on its toolbar |
+| — | `Concurrent downloads:` spin box | `ARC-007` put it there; the mockup never showed it. Not wrong, but the toolbar was never designed with it |
+| A state badge on the title line — `Done`, `Queued`, `62%`, `Failed` | no badge | The row says its state in `STATE_ROLE` text; the mock made it a chip at the line's right |
+| Selection as a ~9% tint plus an inset bar | full-saturation `primary` fill | Passes contrast at **7.64:1**, so this is weight rather than legibility |
+| Status bar: `1 running · 1 queued · 1 failed · 1 done` … `~/Downloads` | environment summary only | The counts and the download directory are not shown |
+
+**What this task must not do is assume.** `UX-005` is the authority and it does not name the
+toolbar's contents, so the missing *Add URLs* button is a gap between the mockup and the decision
+rather than a violation of the decision. **The ruling wanted first:** which of these five are
+adopted, and does `UX-005` gain a section recording the toolbar and the row's state badge — the
+same gap that produced `UX-005` in the first place, when the layout lived only in a source comment.
+
+#### Acceptance criteria
+
+- A maintainer ruling exists for each of the five rows above, recorded in `UX-005` or a new
+  `UX-` entry rather than in a commit message
+- Whatever is adopted is asserted by a test, not by a screenshot
+- The mockup is preserved in the repository this time, so the next comparison is possible at all
+
+---
 
 *(**UI rework filed 2026-08-02** — `T-116` through `T-120`, from mockups the maintainer reviewed
 and chose between. They precede `T-107`: Phase 3 and 4 add a format table, a stream chooser, a
@@ -2008,6 +1961,315 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-131 — The launch test used the developer's real database, log and instance lock
+
+**Status:** **Complete — corrected 2026-08-04, awaiting review.** Found while validating `T-129`:
+two launch tests failed, and the cause was neither the change under test nor the machine.
+**Owner:** Implementer
+**Priority:** **High** — it is a test-isolation defect that makes the suite red for a reason
+unrelated to whatever is being validated, and it writes to the developer's own files
+**Phase:** Phase 2 test infrastructure
+**Relevant context:** `T-087` (the single-instance lock), `NFR-004`, `ai/TESTING.md` §4,
+`ARCHITECTURE.md` §5
+**Affected surfaces:** `tests/ui/test_app_launch.py`
+**Risk:** None to the product — no `src/` change
+
+`run_headless` redirected **`XDG_CONFIG_HOME` only**. The application uses three roots:
+
+| Root | Holds | Was it isolated? |
+|---|---|---|
+| `user_config_dir` | `settings.toml`, `window.toml` | yes |
+| `user_data_dir` | **the queue database**, the user-managed yt-dlp copy | **no** |
+| `user_cache_dir` | the application log, the thumbnail cache | **no** |
+
+So every launch test opened the developer's real `library.sqlite3` and took the real
+single-instance lock. **With the application running, the lock is held and the launch never
+completes** — the test then fails at its own 120 s timeout with no window shown, which reads as an
+infrastructure hang rather than as what it is.
+
+**Measured.** With the application open: two tests fail at 120 s each. With `XDG_DATA_HOME` and
+`XDG_CACHE_HOME` also redirected, and the application still open: **4 passed in 0.71 s.**
+
+**The Windows half was already right, which is the part worth keeping.** `WIN_PD_OVERRIDE_APPDATA`
+and `WIN_PD_OVERRIDE_LOCAL_APPDATA` are the complete pair for that platform, added when this test
+passed on Linux and failed on Windows. The POSIX side was never revisited, so the platform that
+had once been wrong ended up more thoroughly covered than the one that had always looked right.
+
+#### Acceptance criteria
+
+- The launch tests pass while a real instance of the application is running — met, measured above
+- No test writes to `user_data_dir` or `user_cache_dir` for the real user — met
+- The reason is recorded where the next reader will be, which is the env block itself — met
+
+#### Out of scope
+
+- Auditing every other test for the same gap. Worth doing and it is not this: `tests/ui/` and
+  `tests/integration/` fixtures mostly take `tmp_path` explicitly, and the ones that do not should
+  be found deliberately rather than by whoever next has the application open.
+
+---
+
+### T-129 — The style sheet took the native style's metrics and states away
+
+**Status:** **Complete — corrected 2026-08-04, awaiting review.** Found by opening the
+application, not by any gate. Three rules added, three mutations killed.
+**Owner:** Implementer
+**Priority:** **High** — the add-URL dialog's group titles were unreadable, and every button and
+menu item in the application was inert under the pointer. `NFR-005` is about being able to tell
+what a control will do.
+**Phase:** Phase 3 (`UX-005` follow-on), taken immediately because it is a defect rather than work
+**Relevant context:** `T-120` (applied the palette), `UX-005`, `NFR-005`, `ai/TESTING.md` §13
+**Affected surfaces:** `ui/theme.py`, `tests/ui/test_theme_metrics.py`
+**Risk:** Low — additive style-sheet rules; no product logic changes
+
+**One cause, two symptoms.** Styling a widget class at all switches that widget from the platform
+style to `QStyleSheetStyle`. **Everything the platform style was supplying then has to come from
+the sheet or not at all** — and `T-120` supplied colours, which is what it was about, so the two
+things that are *not* colours went missing:
+
+- **A layout metric.** `QGroupBox::title` used `subcontrol-origin: margin` with no `margin-top`,
+  so there was no margin band and Qt drew the title at `y = 0` — through the frame's own border
+  and across the first control. Measured: the title's bottom sat **15 px below** the contents'
+  top, where Qt's own style leaves 5 px of clearance. After: **6 px**, and the title is back above
+  the frame.
+- **Interaction states.** The sheet declared `QPushButton:disabled` and `*:focus`, and nothing
+  else. No `:hover`, no `:pressed`, and — because `QWidget {{ … }}` is a universal selector that
+  catches `QMenu` — no `QMenu::item:selected` either. So every row button and every overflow-menu
+  entry rendered identically whether or not it was the one about to be activated. On the keyboard
+  route `UX-005` §4 declares, the highlight *is* the only indication of what Enter does.
+
+Added: `QGroupBox` margin/padding, `QPushButton:hover`/`:pressed`/`:default:hover`, a full `QMenu`
+block, `QComboBox QAbstractItemView` selection colours (a drop-down is its own view and inherits
+none of `QMenu`'s rules), item-view selection colours, and `QTabBar::tab:hover`.
+
+#### The first version of the test passed for the wrong reason
+
+Worth recording, because it is `ai/TESTING.md` §13 exactly. The hover tests first drew through
+`QApplication.style().drawControl(...)` **with no widget** — which never consults the sheet, since
+a sheet is applied by `QStyleSheetStyle` wrapping the *widget's* style. They compared two
+renderings, found them different, and passed: they were measuring the **platform** style's hover,
+which was never at fault. Both mutations survived.
+
+Corrected to draw through the widget and to assert **a colour the theme names** rather than "the
+two differ" — the platform style differs under hover too, so mere difference proves nothing about
+whether our sheet produced it. Measured with the rule deleted: the hover fill stays `surface`,
+identical to idle.
+
+#### Acceptance criteria
+
+- A themed `QGroupBox`'s title rect clears its contents rect — met, and mutation-killed
+- A themed button's hover fill is the theme's `sunken`, and its idle fill `surface` — met
+- A themed menu's selected item fills with the brand primary — met
+- A positive control proves the platform style was not already colliding — met
+
+#### Out of scope
+
+- The dark theme on a real screen. Still never displayed; its contrast remains asserted as
+  arithmetic (`T-120`'s standing residual).
+- The mockup divergences found in the same session — `T-130`.
+
+---
+
+### T-128 — The result-pump segfault reproduces on **Linux**, at ~5% of full-suite runs
+
+**Status:** **Complete — corrected twice on 2026-08-04, awaiting re-review.**
+**`T128-R1` (Medium, blocking) — the detector was blind, and it was my bug.** Qt keeps exactly one
+message handler; both Qt conftests install one, so in a full run the second replaced the first. But
+`fail_on_orphaned_timers` gave **each call its own recorder** and `assert_no_orphaned_timers` read
+`_orphaned[0]` — so the live handler wrote to a list nothing inspected, and the detector could not
+produce the failure it exists to produce. *Corrected:* one flat module-level recorder, written by
+whichever handler Qt currently holds and read by every assertion. Not made idempotent, deliberately:
+a flag would have to survive `pytest-qt` replacing and restoring the handler around every test call,
+and a shared recorder makes the question moot. Mutation: restoring the per-call recorders fails
+the reviewer's regression.
+
+**What is in the tree, stated exactly** (`T128-R2`, non-blocking). The committed regression is
+**synthetic**: it injects `CROSS_THREAD_TIMER` into the live handler. The real cross-thread
+destruction — a `QObject` owning a running `QTimer`, collected on a worker thread, emitting Qt's
+own `qWarning` — was run as a **scratchpad probe**, and an earlier note here described it as though
+it were committed. It is not, and it **should not be**: the probe works by deliberately leaving an
+orphaned timer registered against freed memory, which arms a use-after-free *in the test process*.
+Running it inside the suite would put the next `processEvents()` at risk of the very segfault this
+task exists to remove, and the autouse detector would then fail every test after it. A probe is the
+right home for it; the claim, not the coverage, was wrong.
+*(This read "Complete — diagnosed and corrected 2026-08-04, awaiting review".)* It gates the
+Phase 2 exit by maintainer ruling on `P2EXIT-R9`; **that ruling should be revisited now that the
+answer is in**, because what this found is a defect in the *test harness* and not in the product.
+See "What it turned out to be" below and the note to the maintainer at the end.
+*(This read "Ready — and it gates the Phase 2 exit". Before that, "Proposed — the first
+reproduction of anything in this class"; found by an overnight soak, not by a gate.)*
+**What the ruling changed.** `OPS-007` accepted `T-074`'s access violation because reproduction was
+*exhausted* — 361 attempts, zero events — and argued the cost in `STARBASE` hours. This task is
+that argument's premise failing: roughly 1 in 20 on Linux, on a machine Windows verification does
+not depend on. So the residual stands as risk and stops being something a phase exits over, and
+`OPS-007` carries a 2026-08-04 amendment saying so. **This does not merge `T-128` with `T-074`**
+and does not assert the crash is in the product; identity and product-versus-harness are exactly
+what this task owns.
+*(This read "Proposed — the first reproduction of anything in this class".)*
+**Owner:** Implementer
+**Priority:** **High** — not because it is new, but because it is *reproducible*. `T-074` has been
+undiagnosed since 2026-07-29 for exactly one reason: **361 attempts, zero events**. This is 2
+events in 39.
+**Phase:** Phase 2
+**Relevant context:** **`T-074`** (candidate same defect — see below), `OPS-007`, `T-092`, `T-090`,
+`ARC-002`, `T-019`
+**Affected surfaces:** unknown — that is the task. `downloader/manager.py`'s result pump and
+`ui/` Qt event handling are where the stack points.
+**Evidence:** `ai/evidence/SOAK-FAILED-13.txt` and `-19.txt` — the two full crash logs, kept
+because they came from 39 runs and reproducing one takes hours.
+**Risk:** **Medium to the product.** A segfault in a GUI application loses the user's session. It
+has never been observed outside a test run, which is a fact about where we look rather than a
+reassurance.
+
+#### What was observed
+
+An unattended soak ran the full suite **39 times** on Linux (2026-08-04, head `8d1b01c`). **37 were
+green; 2 died** with:
+
+```
+Fatal Python error: Segmentation fault
+Current thread's C stack trace (most recent call first):
+  ... libQt6Core.so.6, at QEventDispatcherGlib::processEvents(QFlags<QEventLoop::ProcessEventsFlag>)
+```
+
+Both crashes had a live thread named **`ResultPump`** and a `Thread-193 (_mo…)` beside it.
+
+**Both died at exactly 97 completed tests.** Not approximately — the same count in both logs, which
+is the opposite of what a random memory fault looks like and the most useful fact here. By
+execution order that puts the fault in or immediately around
+`tests/integration/test_manager.py::test_a_probe_session_is_refused_for_a_ready_job`, with
+`test_a_ready_job_starts_a_download_at_running` immediately before it.
+
+**That identification is derived from a position, not observed.** It assumes collection order equals
+execution order, which holds here (no randomising plugin is installed) but was not verified against
+a `-v` run — the crash is 5% and a `-v` reproduction had not been obtained when this was filed.
+**Confirming the exact test is the first item of scope**, not an assumption to build on.
+
+#### Its relationship to `T-074`, stated carefully
+
+`T-074` is *"The Windows suite segfaults intermittently while the result pump is delivering."* This
+is a segfault while a thread named `ResultPump` is alive. That is a strong resemblance and it is
+**not** an identity:
+
+- Windows produced an **access violation**; this is a **SIGSEGV** on Linux. The same underlying bug
+  would present as both, and so would two different bugs in one subsystem.
+- `T-074`'s faulting object was never determined, so there is nothing to compare against. **A stack
+  is not a cause** — `T-074`'s own words, and they apply to this stack too.
+- `OPS-007` accepted `T-074` as residual risk **on the strength of 361 clean attempts**. This does
+  not refute that decision; it changes the premise underneath it, which is a different thing and is
+  the maintainer's to weigh.
+
+So this is filed as its own task rather than as a comment on `T-074`, and the two are cross-linked.
+If they turn out to be one defect, merging them later costs nothing; assuming it now would put a
+Windows label on a Linux reproduction and send the next person to the wrong platform.
+
+#### What it turned out to be
+
+**A test fixture dropped a `QObject` that still owned a running `QTimer`.** The dispatcher kept an
+entry pointing at it; Python then freed it; a later tick followed the pointer into freed memory.
+
+**The failing test, observed rather than counted.** The Python traceback in both logs names
+`tests/integration/test_manager.py:276 in manager` — the fixture's **teardown**, not a test body.
+Teardown runs *after* pytest prints the progress character, so 97 dots means the crash is in the
+teardown of test **#97**, `test_a_ready_job_starts_a_download_at_running` — not #98 as this entry's
+arithmetic assumed. That test is the one case in the file using `child_downloading_forever`, so its
+teardown kills a live worker with a live `ResultPump` and a live log-listener thread: exactly the
+thread set both logs show.
+
+**The cores were still on this machine.** `systemd-coredump` had kept both (2026-08-04 01:46 and
+02:12, 23 MB each); no `ulimit` change was needed and none is proposed. `gdb` gives what a stack
+could not:
+
+| | |
+|---|---|
+| Faulting instruction | `mov 0x8(%rdi),%rax` then `mov 0x58(%rax),%rbx` — `receiver->d_ptr->threadData` |
+| Receiver's vtable slot | `0x00005567c4c40522` — **not 8-aligned**, so not a vtable |
+| Receiver's `d_ptr` slot | `0xf40d334f663faf5d` — noise |
+
+The receiver was **freed and its memory already recycled** while its timer was still registered.
+That is a use-after-free, not memory corruption, and it is why both runs died at the same count.
+
+**The precondition, reproduced deterministically.** `DownloadManager.is_idle` answers a question
+about *work* — no sessions, reservations, waiting jobs or pending retries. It says nothing about
+the manager's own poll timer, which `_tick` stops on a later tick and only once shutdown has also
+finished with the log listener. Replaying test #97's teardown verbatim:
+
+```
+is_idle: True    timer active: True    shutting down: True
+```
+
+So the fixture returned inside that window and dropped the manager. **Five teardowns had this
+shape**, not one — `test_manager.py`, `test_queue_view.py`, `test_job_detail.py`,
+`test_add_dialog.py`'s fixture, and the `cost()` sample loop `T122-R2` had just touched.
+
+**A reproduction ~400x cheaper than the soak.** `QObject` + running `QTimer`, collected on a thread
+that does not own the timer: **3/3 crashes, sub-second**, and `gdb` shows a byte-identical
+signature — same `notifyInternal2+0x32`, same `activateTimers+0x59a`, same glib frames. Qt names
+the cause itself: `QObject::~QObject: Timers cannot be stopped from another thread`.
+
+#### Product or harness: **harness**, with evidence
+
+- **Nothing in `src/` reads `is_idle`.** `app.py:556` connects to the `idle` **signal**, which
+  `_tick` emits only *after* `self._timer.stop()`. The application waits for the right thing.
+- The application holds one manager for the life of the process, so it never drops one at all.
+- `is_idle` is a public property whose name invites the misreading, and five teardowns took it.
+  **It is not being changed**: it is correct about work, the product depends on the signal, and
+  altering a public property to suit a fixture is the tail wagging the dog.
+
+#### Which of the two mechanisms killed the soak is **not** established
+
+Two mechanisms produce this exact signature from the same precondition:
+
+1. **Cross-thread destruction** — Qt refuses to unregister and warns. Proven to reproduce it, 3/3.
+2. **Destruction during `activateTimers()`** by Python's cycle collector — the timer *is*
+   unregistered, but the in-progress iteration already holds the pointer. **Emits no warning.**
+
+Three full-suite runs with capture disabled produced **zero** cross-thread warnings, so (1) is not
+evidenced in this suite and (2) is the likelier cause of the two soak crashes. **This is recorded
+as unresolved rather than guessed**, because the correction does not depend on it: both start with
+a live timer on an object about to become garbage, and that is what is now prevented.
+
+#### The correction
+
+- **`tests/qt_lifecycle.py`** — `has_settled` asks the question a teardown actually needs (idle
+  **and** not polling), through `findChildren(QTimer)`, which is public Qt API rather than a reach
+  into `_timer`. `drain` is the shared teardown loop, and it **asserts** rather than falling
+  through its deadline.
+- All five teardowns use it. Replaying test #97's teardown now reports `timer active: False`.
+- **A detector, installed once per Qt suite and checked after every test**: Qt's cross-thread
+  timer warning becomes a test failure naming the test that caused it. It has never fired in this
+  suite — it guards mechanism (1), which is exactly the one that would otherwise surface as a
+  segfault several tests later, and `ai/TESTING.md` §13 wants the signal at the cause.
+
+#### Scope
+
+- **Confirm the failing test by observation**, not by arithmetic: loop `test_manager.py` under `-v`
+  until it recurs, and record what was running.
+- **Establish a cheaper reproduction** than a 6-minute full-suite run. The deterministic position
+  suggests a specific interaction rather than random corruption, so a subset may reproduce it — and
+  if a subset *cannot*, that is itself a finding about ordering or accumulated state.
+- **Determine product versus harness** (`ai/TESTING.md` §4). A crash inside `processEvents` with a
+  worker-result thread live could be either the application's threading or the test's stand-in
+  worker, and the answer decides who owns it.
+- Arm a core dump (`T-092` does this for Windows; Linux needs `ulimit -c` and a pattern) so a
+  recurrence yields a faulting object rather than another anecdote.
+
+#### Out of scope
+
+- **Fixing `T-074`.** If a cause is found here and it explains Windows too, that is a finding to
+  report, not a licence to close a task on another platform from this evidence.
+- **Making the suite pass by retrying.** A retry would hide the only reproduction anyone has.
+
+#### Acceptance criteria
+
+- The failing test is named from an observed run, not inferred from a count
+- A reproduction exists that is cheaper than the full suite, **or** it is recorded that none was
+  found and what was tried
+- Product-versus-harness is answered with evidence
+- `T-074` and `OPS-007` are updated with whatever this establishes — including "nothing"
+
+---
 
 ### T-125 — Remove downloads from the history
 

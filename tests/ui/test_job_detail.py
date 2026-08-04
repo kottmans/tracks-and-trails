@@ -22,6 +22,7 @@ from PySide6.QtCore import QMetaMethod, QObject, Qt
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QLabel, QProgressBar, QPushButton, QWidget
 
+from tests.qt_lifecycle import drain
 from tracks_and_trails.core.errors import ErrorKind, is_retryable
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
@@ -234,11 +235,8 @@ def managers(store: FakeStore, qapp: QApplication) -> Iterator[Callable[..., Dow
 
     for manager in built:
         manager.shutdown()
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline and not all(m.is_idle for m in built):
-        qapp.processEvents()
-        time.sleep(0.005)
-    assert all(m.is_idle for m in built), "a manager never finished shutting down"
+    # Waits for the poll timer as well as the work — see `tests/qt_lifecycle.py` and `T-128`.
+    drain(qapp, built)
 
 
 @pytest.fixture

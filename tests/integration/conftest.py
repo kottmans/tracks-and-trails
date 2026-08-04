@@ -14,10 +14,12 @@ leaves that pin alone.
 
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
 import pytest
 from PySide6.QtCore import QCoreApplication
+
+from tests import qt_lifecycle
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
@@ -47,3 +49,21 @@ def spin(app: QCoreApplication) -> Callable[..., bool]:
         return condition()
 
     return wait_for
+
+
+# --- `T-128`: an orphaned timer fails at its cause, not at the crash it becomes ----------------
+#
+# Qt warns when a QObject owning a live timer is destroyed from a thread that does not own it, and
+# then carries on — the dispatcher keeps a pointer to freed memory and follows it on some later
+# tick, which presents as a segfault with no connection to whatever caused it. Two of those cost an
+# overnight soak and two core dumps to attribute (`ai/evidence/SOAK-FAILED-13.txt`).
+#
+# Installed once per session and checked after every test, so the failure names the test that did
+# it. `ai/TESTING.md` §13: the useful signal is the one at the cause.
+qt_lifecycle.fail_on_orphaned_timers()
+
+
+@pytest.fixture(autouse=True)
+def _no_orphaned_timers() -> Iterator[None]:
+    yield
+    qt_lifecycle.assert_no_orphaned_timers()

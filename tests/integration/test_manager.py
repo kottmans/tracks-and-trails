@@ -38,6 +38,7 @@ import psutil
 import pytest
 from PySide6.QtCore import QCoreApplication
 
+from tests.qt_lifecycle import drain
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus, can_transition
 from tracks_and_trails.core.models import DownloadRequest, Job
@@ -271,11 +272,12 @@ def manager(
     # destroy a live QThread — which aborts the interpreter, taking the whole run with it.
     for manager in built:
         manager.shutdown()
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline and not all(m.is_idle for m in built):
-        app.processEvents()
-        time.sleep(0.005)
-    assert all(m.is_idle for m in built), "a manager never finished shutting down"
+    # **`drain` waits for the timer as well as the work** (`T-128`). This polled `is_idle` alone,
+    # which answers a question about the *queue* — no sessions, no reservations, nothing waiting —
+    # and goes true up to one poll interval before the tick that stops the manager's own timer. So
+    # this loop returned, `built` died, and a QObject with a registered timer became garbage. Two
+    # full-suite runs in 39 then died in `activateTimers()` on freed memory.
+    drain(app, built)
 
 
 # --- a site that is not a site ------------------------------------------------------------

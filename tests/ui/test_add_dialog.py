@@ -52,6 +52,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tests.qt_lifecycle import drain
 from tracks_and_trails.core import presets as preset_registry
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
@@ -488,11 +489,8 @@ def managers(store: FakeStore, qapp: QApplication) -> Iterator[Callable[..., Dow
 
     for manager in built:
         manager.shutdown()
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline and not all(m.is_idle for m in built):
-        qapp.processEvents()
-        time.sleep(0.005)
-    assert all(m.is_idle for m in built), "a manager never finished shutting down"
+    # Waits for the poll timer as well as the work — see `tests/qt_lifecycle.py` and `T-128`.
+    drain(qapp, built)
 
 
 @pytest.fixture
@@ -2166,20 +2164,16 @@ def test_a_four_times_larger_paste_is_reported_and_not_gated(
         # timed region, so it costs the diagnostic nothing but wall clock.
         dialog.close()
         manager.shutdown()
-        deadline = time.monotonic() + 30
-        while time.monotonic() < deadline and not manager.is_idle:
-            qapp.processEvents()
-            time.sleep(0.005)
-        # **The bound is asserted, not merely waited out** (`T122-R2`, second pass). Falling
-        # through at 30 s resumed sampling under a manager that had not settled and printed the
-        # result as though isolation had held — which is the same defect this loop was added to
-        # remove, moved from "no wait" to "a wait that gives up quietly". A stalled teardown is
-        # worth failing over: it is not a slow machine, it is `shutdown()` not completing, and
-        # the number this function returns afterwards would describe neither sample.
-        assert manager.is_idle, (
-            f"a manager was still shutting down 30 s after being asked, while sampling {count} "
-            "URLs. Every later sample would run under its surviving probe workers, and the "
-            "diagnostic would report that contamination as paste cost"
+        # **The bound is asserted, not merely waited out** (`T122-R2`, second pass), and it waits
+        # for the poll timer as well as the work (`T-128`) — `drain` carries both rules, so this
+        # sample loop and the fixtures cannot drift about what "finished" means.
+        drain(
+            qapp,
+            [manager],
+            describe=lambda: (
+                f"This was the {count}-URL sample; every later one would run under its surviving "
+                "probe workers, and the diagnostic would report that contamination as paste cost."
+            ),
         )
         return elapsed
 

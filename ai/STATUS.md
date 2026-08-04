@@ -66,7 +66,37 @@ The role is now surface-declared and the row speaks whenever the control cannot.
 **Phase 2 stays blocked**, and now on two things rather than on the corrections: the re-review of
 this batch, and `T-128`'s diagnosis.
 
-**`OPS-007` is amended, and `T-128` now gates the exit** (`P2EXIT-R9`, maintainer ruling
+**`T-128` is diagnosed, and it was the harness** (2026-08-04). A fixture teardown dropped a
+`QObject` that still owned a running `QTimer`; the dispatcher followed the pointer into freed
+memory. Both soak cores were still on the machine and `gdb` shows the receiver already recycled —
+a use-after-free, not corruption, which is why both runs died at the same test count. The failing
+test is **#97**, `test_a_ready_job_starts_a_download_at_running`, named from the traceback's
+fixture-teardown frame rather than inferred from the dot count. **Five teardowns had the same
+shape** and all now use `tests/qt_lifecycle.drain`, which waits for the poll timer as well as the
+work. A reproduction of the mechanism runs in **under a second** against a 6-minute soak at 5%.
+
+**No production code is implicated**: nothing in `src/` reads `is_idle`, and `app.py` waits for the
+`idle` *signal*, emitted only after `_timer.stop()`. **Which of two mechanisms killed the soak is
+recorded as unresolved** — three full runs produced zero cross-thread warnings, so the likelier one
+is the cycle collector freeing the object during `activateTimers()`, which emits nothing. The
+correction does not depend on the answer; both start with a live timer on an object about to become
+garbage.
+
+**Ruled 2026-08-04: the `T-128` prerequisite is satisfied, and a measurement replaces it.** The two
+crashes were not recurrences of `T-074`'s fault, so the premise `OPS-007` was originally made on is
+intact rather than broken. **Phase 2's exit now waits on a clean 60-run Linux soak** against the
+corrected teardown — sized against the measured 2-in-39 baseline, where an unchanged rate gives a
+clean sixty a probability of 0.042. `tools/soak.sh` is the instrument.
+
+*(The recommendation this ruling adopted first said "confirm on Windows that the corrected teardown
+ends `T-074`'s recurrences". That is not measurable: `OPS-007` records **361 attempts, zero
+events** on Windows, so there are no recurrences there to end, and more green runs would only
+re-accumulate the evidence that produced the decision. The confirmation is on Linux, where there is
+a baseline to compare against; Windows is a passive watch whose value is **asymmetric** — a
+recurrence would rule the harness fix out as `T-074`'s cause, while continued silence adds
+nothing.)*
+
+**`OPS-007` is amended, and `T-128` gated the exit** (`P2EXIT-R9`, maintainer ruling
 2026-08-04). `OPS-007` accepted `T-074`'s unreproduced access violation as residual risk because
 **361 attempts produced no event**, and said in as many words that a recurrence reopens it. `T-128`
 records **2 Linux `SIGSEGV`s in 39 serial full-suite runs**, both at the same completed-test

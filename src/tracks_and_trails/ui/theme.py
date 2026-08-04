@@ -222,9 +222,19 @@ QGroupBox, QListWidget, QTableView, QTreeView, QPlainTextEdit, QTextEdit {{
 QTableView {{
     gridline-color: {theme.rule};
 }}
+QGroupBox {{
+    /* **Room for the title, which `subcontrol-origin: margin` puts in the margin** (`T-129`).
+       Without a margin there is no margin band, so Qt drew the title at y=0 — through the frame's
+       own top border and across the first control. Measured before the fix: the title's bottom
+       sat 15 px *below* the contents' top, where Qt's own style leaves 5 px of clearance. This is
+       the metric the native style supplied and a style sheet has to restore. */
+    margin-top: 0.9em;
+    padding-top: 6px;
+}}
 QGroupBox::title {{
     color: {theme.muted};
     subcontrol-origin: margin;
+    subcontrol-position: top left;
     left: 8px;
     padding: 0 4px;
 }}
@@ -247,8 +257,64 @@ QPushButton:default {{
     color: {theme.on_primary};
     font-weight: 600;
 }}
+QPushButton:hover {{
+    /* **The states a style sheet takes away** (`T-129`). Styling `QPushButton` at all switches it
+       to style-sheet rendering, and Qt then draws hover and pressed exactly like normal unless
+       they are declared — so every button on the row looked inert under the pointer. */
+    background-color: {theme.sunken};
+    border-color: {theme.primary};
+}}
+QPushButton:pressed {{
+    background-color: {theme.rule};
+}}
+QPushButton:default:hover {{
+    /* The primary keeps its fill and deepens its edge, rather than falling back to the neutral
+       hover above and appearing to lose its emphasis on contact. */
+    background-color: {theme.primary};
+    border-color: {theme.accent};
+}}
 QPushButton:disabled {{
     color: {theme.muted};
+}}
+QMenu {{
+    /* **`QWidget` above catches `QMenu`**, which is what dropped the native highlight: a menu is a
+       widget, so the universal rule switched it to style-sheet rendering with nothing declared for
+       the selected item. Every entry then looked identical to the one under the cursor, on the
+       overflow menu `UX-005` §4 makes the keyboard route. */
+    background-color: {theme.surface};
+    border: 1px solid {theme.border};
+    padding: 4px;
+}}
+QMenu::item {{
+    padding: 4px 22px 4px 12px;
+    border-radius: 3px;
+}}
+QMenu::item:selected {{
+    background-color: {theme.primary};
+    color: {theme.on_primary};
+}}
+QMenu::item:disabled {{
+    color: {theme.muted};
+}}
+QMenu::separator {{
+    height: 1px;
+    background: {theme.rule};
+    margin: 4px 6px;
+}}
+QComboBox QAbstractItemView {{
+    /* The drop-down list is its own view and does not inherit `QMenu`'s rules. Same defect,
+       same remedy: without this, the row's format control highlights nothing as you move. */
+    background-color: {theme.surface};
+    border: 1px solid {theme.border};
+    selection-background-color: {theme.primary};
+    selection-color: {theme.on_primary};
+}}
+QListView, QTreeView, QTableView {{
+    selection-background-color: {theme.primary};
+    selection-color: {theme.on_primary};
+}}
+QTabBar::tab:hover {{
+    background-color: {theme.sunken};
 }}
 QComboBox, QSpinBox, QLineEdit {{
     background-color: {theme.surface};

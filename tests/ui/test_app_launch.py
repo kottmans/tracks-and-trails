@@ -66,14 +66,26 @@ def run_headless(source: str, tmp_home: str) -> subprocess.CompletedProcess[str]
     env = {
         **os.environ,
         "QT_QPA_PLATFORM": "offscreen",
-        # Redirect platformdirs so a test never writes to the real config directory and never
-        # reads a window position the user set by hand.
+        # Redirect platformdirs so a test never writes to the real directories and never reads a
+        # window position, a queue or a log the user has of their own.
+        #
+        # **All three roots, not just config** (`T-131`). This set `XDG_CONFIG_HOME` alone, and the
+        # application uses three: `user_config_dir` for `settings.toml` and `window.toml`,
+        # `user_data_dir` for **the queue database** and the user-managed yt-dlp copy, and
+        # `user_cache_dir` for the application log and the thumbnail cache. So a launch test
+        # opened the developer's real database, took the real single-instance lock (`T-087`), and
+        # wrote their real log. With the application open the lock is held and the launch hangs
+        # until this timeout — which is how it was found, and it would fail the same way on any
+        # machine where somebody had the app running.
         #
         # Windows needs its own mechanism: platformdirs resolves folders through
         # SHGetKnownFolderPath via ctypes, so setting APPDATA does nothing there. Its
         # documented escape hatch is WIN_PD_OVERRIDE_*. Setting only the POSIX variable is
-        # why this test passed on Linux and failed on the Windows runner.
+        # why this test passed on Linux and failed on the Windows runner — and, as it turns out,
+        # the Windows overrides were the *complete* pair while the POSIX side was one of three.
         "XDG_CONFIG_HOME": tmp_home,
+        "XDG_DATA_HOME": tmp_home,
+        "XDG_CACHE_HOME": tmp_home,
         "WIN_PD_OVERRIDE_APPDATA": tmp_home,
         "WIN_PD_OVERRIDE_LOCAL_APPDATA": tmp_home,
     }

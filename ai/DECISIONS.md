@@ -1846,6 +1846,72 @@ crash is in the product. `T-128` owns identity and product-versus-harness, and i
 - **Phase 1's exit is not disturbed.** It exited on this decision's original form, and re-reading a
   closed phase against evidence gathered a week later is not what the reopening clause is for.
 
+### What `T-128` found, 2026-08-04 — and why this amendment needs the maintainer again
+
+**`T-128` is diagnosed, and it is a defect in the test harness, not in the product.** A fixture
+teardown polled `DownloadManager.is_idle` — which answers a question about *work* — and then
+dropped the manager while its own poll timer was still registered with the event dispatcher.
+Python freed the object; a later tick followed the pointer into freed memory. Two `systemd`-kept
+core dumps show the receiver's vtable slot holding a value that is not even 8-aligned. A
+sub-second reproduction of the mechanism exists, against a ~6-minute soak at 5%.
+
+**Nothing in `src/` is implicated.** No production code reads `is_idle`; `app.py` waits for the
+`idle` **signal**, emitted only after `_timer.stop()`. The application holds one manager for the
+life of the process and never drops one.
+
+**This bears directly on the ruling above, and the implementer is not the one to re-take it.**
+The amendment made `T-128` a Phase 2 exit prerequisite because a reproducible crash in the
+result-pump subsystem removed this entry's zero-recurrence premise. On the evidence, those two
+crashes were **not** recurrences of `T-074`'s fault at all — they were the harness dropping a Qt
+object incorrectly — so the premise this decision was originally made on (*361 attempts, zero
+events* against the **product**) is arguably intact rather than broken.
+
+Three things follow, and the maintainer should choose among them rather than have an agent assume:
+
+1. **The prerequisite is satisfied** — `T-128` diagnosed, corrected, and shown to be harness-only —
+   so the Phase 2 exit stops waiting on it.
+2. **The prerequisite is satisfied but a new one replaces it**: confirm on Windows that the
+   corrected teardown ends `T-074`'s recurrences too, which `OPS-010` makes nearly free since
+   `STARBASE` runs the full suite on every push.
+3. **The prerequisite stands** — on the view that until `T-074`'s faulting object is named on
+   Windows, a Linux harness diagnosis says nothing about it.
+
+**The implementer's recommendation is (2)**, because the strongest new fact is that `T-074`'s
+recorded crash happened in *the same file and the same fixture* `T-128` found at fault. That is a
+lead worth spending free evidence on, and it is the only route that can retire `T-074` rather than
+keep accepting it.
+
+### Ruled 2026-08-04: (2), with the confirmation made measurable
+
+**Maintainer decision.** The `T-128` prerequisite is **satisfied**; a new and narrower one replaces
+it. The Phase 2 exit no longer waits on diagnosing the segfault — it waits on evidence that the
+correction actually removed it.
+
+**The confirmation is on Linux, and the recommendation as first written was imprecise about that.**
+It said *"confirm on Windows that the corrected teardown ends `T-074`'s recurrences"* — but this
+entry records **361 attempts with zero events** on Windows, so there are no recurrences there to
+end, and green Windows runs would only re-accumulate the evidence that produced this decision in
+the first place. The measurable claim is the one with a measured baseline:
+
+- **`T-128` reproduced at 2 in 39 full-suite runs on Linux** (≈5.1%). Re-running that soak against
+  the corrected teardown is a real before-and-after, and it is the gate.
+- **Sizing, so the number is not arbitrary.** If the rate were unchanged, the chance of a clean
+  soak is 0.128 at 39 runs, **0.042 at 60**, and 0.009 at 90. **Sixty is the bar** — a clean run of
+  sixty puts the "nothing changed" reading below 5%, and it fits one overnight window at ~5
+  minutes a run.
+- **Windows becomes a passive watch, not a gate.** `OPS-010` already runs the full suite on
+  `STARBASE` on every push, so it costs nothing. Its value is asymmetric and worth stating: a
+  recurrence of the access violation *after* the harness fix would **rule the fix out** as
+  `T-074`'s cause, which is informative; continued silence adds nothing to 361 clean attempts and
+  must not be reported as though it did.
+
+**What this does not do.** It does not close `T-074`, whose four acceptance criteria stay unmet and
+whose faulting object is still unknown. It does not assert the two are one defect. A clean soak
+establishes that the *reproducible* crash is gone — nothing more.
+
+*(What is **not** claimed: that `T-074` is this defect. Its faulting object was never determined,
+its platform and signal differ, and `a stack is not a cause` — this entry's own standard.)*
+
 ---
 
 ## UX-001 — Pause is a queue-level drain; remove never deletes a file
