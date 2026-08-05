@@ -1142,6 +1142,68 @@ beats designing it against an imagined one.
 
 ---
 
+### T-150 — The add dialog opens narrower than the rows it holds
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, running the built application.
+**New scope, so Phase 3 by the closed-list rule** — nothing in `T-132`–`T-141` or either adopted
+mockup specifies this dialog's size.
+**Owner:** Implementer
+**Priority:** Medium — it costs nothing to fix and it degrades the surface `UX-003` made central
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `UX-003`, `T-118`, `T-135`, `T-136`, `NFR-001`, `ui/add_dialog.py`,
+`ui/row_delegate.py` (`ROW_HEIGHT`, `THUMBNAIL_SIZE`, `_control_rect`)
+**Affected surfaces:** `ui/add_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+**The dialog sets no size at all.** `ui/add_dialog.py` calls no `resize`, declares no minimum
+width and overrides no size hint, so Qt gives it whatever its layout's hints add up to.
+`MainWindow` by contrast declares `DEFAULT_SIZE = QSize(960, 640)` and persists what the user
+chooses. The difference is not a decision anybody took — it is the absence of one.
+
+**Width is functional here, not cosmetic, and two existing findings say so.** `T-118` made this
+dialog a staging list drawing the full row anatomy through `RowDelegate`: a thumbnail, a headline,
+a detail line, a format control and a selector line. Both of the row's known width failures live in
+that anatomy:
+
+- **`T-136`** — the selector running underneath the format control. Fixed by giving the control its
+  own slot, which *costs* width; the narrower the dialog, the less room the selector keeps.
+- **`T-135`** — verbs dropping into `⋯` when the row cannot hold them. Correct behaviour, but a
+  dialog that opens too narrow makes the overflow the normal case rather than the exception.
+
+So a dialog sized by accident is one where the row anatomy is squeezed by accident.
+
+**What "wide enough" means should be derived, not picked.** `ROW_HEIGHT` is already computed from
+`THUMBNAIL_SIZE` rather than chosen, *"so changing `THUMBNAIL_SIZE` cannot leave a 54 px picture in
+a 25 px row again"*. The same reasoning applies across: a minimum width that the delegate's own
+metrics imply will survive a change to those metrics, and a number typed here will not.
+
+#### Acceptance criteria
+
+- The dialog opens wide enough that a staged row with a **realistic** title and a wrapping selector
+  draws its format control and its selector without collision — the `T-136` case, asserted at the
+  opened size rather than at an arbitrary one
+- The minimum width is **derived from the delegate's metrics**, not a literal, and a test fails if
+  the two stop agreeing
+- A row at the opened width drops **no verbs** into `⋯` for the common case, so the overflow stays
+  the exception `T-135` designed it to be
+- The dialog is still **resizable smaller** without breaking: `T-135` and `T-136` both hold at
+  narrow widths and must keep holding
+- No regression to the `T118-R10` paste-scaling budget (`NFR-001`)
+
+#### Out of scope
+
+- **Persisting the dialog's size between runs.** The main window does this via `window.toml`;
+  whether a dialog should is a separate question, and `ARC-007` deliberately keeps window geometry
+  out of the settings layer
+- The main window's own default size, which nobody has reported
+- Any change to the row anatomy itself. This is about giving the existing anatomy the room it was
+  designed for
+
+---
+
 ### T-149 — A paused queue looks exactly like a running one
 
 **Status:** Proposed — **found by the maintainer, 2026-08-05**, running the built application
