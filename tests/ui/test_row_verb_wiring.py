@@ -2146,3 +2146,44 @@ def test_a_paused_queue_looks_different_from_a_running_one(
             window.close()
         qapp.setPalette(previous_palette)
         qapp.setStyleSheet(previous_sheet)
+
+
+def test_the_keyboard_route_works_before_anything_has_been_clicked(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T-152`: the declared keyboard route must not require a pointer first.
+
+    `_row_menu_asked_for` resolves `indexAt(position)` and falls back to `currentIndex()` —
+    `T124-R1`'s own fix, because Qt derives a keyboard request's position from the widget rather
+    than from a row. It then returns when that index is invalid, and **nothing set one**, so the
+    route did nothing until a click had selected a row. A keyboard route that needs a mouse is a
+    mouse route with a shortcut (`NFR-005`).
+
+    **This test deliberately never calls `setCurrentIndex`.** The existing coverage does, one line
+    before pressing the key, which is why it proved the fallback works *given* a current row and
+    could say nothing about a window where none was ever set — every window a user opens. That is
+    the shape `T126-R3` and `T140-R1` are, at a third layer.
+    """
+    window = _window_over([_job("job-1", 0, JobStatus.RUNNING)], tmp_path)
+    view = window.queue_view
+    assert view is not None
+    _bring_to_front(window, view)
+    view.table.setFocus()
+
+    assert view.table.currentIndex().isValid(), (
+        "the list has rows and no current one, so the keyboard route has nothing to act on and "
+        "returns silently"
+    )
+
+    _press_the_menu_key(view.table)
+
+    menu = next(
+        (child for child in window.findChildren(QMenu) if child.objectName() == "rowVerbsMenu"),
+        None,
+    )
+    assert menu is not None, (
+        "the Menu key raised nothing on a window where no row had been clicked, so the declared "
+        "keyboard route is reachable only after using a pointer"
+    )
+    menu.close()
+    window.close()

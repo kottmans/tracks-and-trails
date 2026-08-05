@@ -70,6 +70,7 @@ from typing import Any, Final, Protocol
 from PySide6.QtCore import (
     QAbstractTableModel,
     QEvent,
+    QItemSelectionModel,
     QModelIndex,
     QObject,
     QPoint,
@@ -1347,6 +1348,13 @@ class QueueView(QWidget):
         self._model.modelReset.connect(self._sweep_thumbnails)
 
         self._model.modelReset.connect(self._show_the_right_thing)
+        # **Something is always current once there are rows** (`T140-R5`'s sibling, `T-152`).
+        # `_row_menu_asked_for` falls back to `currentIndex()` for the keyboard route — `T124-R1`
+        # gave it that fallback because Qt derives the position from the widget rather than from a
+        # row — and then returns when the index is invalid. Nothing set one, so the declared
+        # keyboard route did nothing until a *pointer* had selected a row, which is not a keyboard
+        # route at all (`NFR-005`).
+        self._model.modelReset.connect(self._ensure_a_current_row)
         # A reset drops the selection, and the per-job actions have to hear about it
         # (`T081-R3`). Removal and clearing both reset the model now, so this is the path a
         # user actually takes to end up with nothing selected — not an edge case.
@@ -1356,6 +1364,11 @@ class QueueView(QWidget):
         # control nobody can see and then destroy it at the next reset.
         self._model.modelReset.connect(self._reopen_editor)
         self._show_the_right_thing()
+        # **And once at construction** (`T-152`). The signal above covers every later reset; the
+        # rows this view is built with arrive before anything is connected to hear about them, so
+        # a window that is opened and never refreshed would have no current row at all — which is
+        # exactly the window a user opens.
+        self._ensure_a_current_row()
 
     def _on_verb(self, job_id: str, verb: object) -> None:
         """Route a row's verb, and refuse anything this widget does not recognise.
@@ -1436,6 +1449,25 @@ class QueueView(QWidget):
                 self.reveal_requested.emit(done.id)
         elif verb is Verb.REMOVE:
             self.group_remove_requested.emit(playlist_id, [job.id for job in jobs])
+
+    def _ensure_a_current_row(self) -> None:
+        """Point the list at its first row when nothing is current, and leave it alone otherwise.
+
+        **Current, not selected.** Selection is a statement about what the user chose; a current
+        index is where the keyboard is. Selecting the first row on every refresh would repeatedly
+        answer a question nobody asked — and `T081-R3` is about the per-job actions following
+        selection, which must keep following the user rather than this.
+
+        Only ever fills a *hole*: once anything is current this does nothing, so a refresh cannot
+        move the keyboard out from under someone mid-list.
+        """
+        if self._model.rowCount() and not self._list.currentIndex().isValid():
+            # **`NoUpdate`, so this is current and not selected.** `setCurrentIndex` on
+            # the view selects as well, which would offer the per-row file actions for a
+            # row nobody chose — `T-086`'s rule is that they follow a *selection*.
+            self._list.selectionModel().setCurrentIndex(
+                self._model.index(0, JOB_COLUMN), QItemSelectionModel.SelectionFlag.NoUpdate
+            )
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         """`Right` opens the focused playlist and `Left` closes it (`T140-R5`, `NFR-005`).

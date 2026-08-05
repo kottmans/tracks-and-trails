@@ -46,7 +46,15 @@ is cleared, which are the only two moments the set of rows can differ.
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QPoint, Qt, Signal
+from PySide6.QtCore import (
+    QAbstractTableModel,
+    QItemSelectionModel,
+    QModelIndex,
+    QObject,
+    QPoint,
+    Qt,
+    Signal,
+)
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -375,7 +383,11 @@ class HistoryView(QWidget):
         # scroll out of view are never repainted to correct it.
         self._model.modelReset.connect(self._delegate.forget_dropped)
         self._model.modelReset.connect(self._show_the_right_thing)
+        # **The same keyboard route, so the same hole to fill** (`T-152`). History declares the
+        # `⋯` route too, and a view with no current index answers it with nothing.
+        self._model.modelReset.connect(self._ensure_a_current_row)
         self._show_the_right_thing()
+        self._ensure_a_current_row()
 
     #: `(entry_id)` — a row's file verb was activated. Reported rather than performed, because
     #: `FileActions` owns containment (`SEC-001`) and the shell owns `FileActions`.
@@ -533,6 +545,20 @@ class HistoryView(QWidget):
         exactly what `T-060` found the queue doing.
         """
         return [self._table] if self._model.rowCount() else []
+
+    def _ensure_a_current_row(self) -> None:
+        """Point the table at its first row when nothing is current (`T-152`, `NFR-005`).
+
+        Current, not selected — the keyboard's position rather than a statement about what the user
+        chose. Fills a hole only, so a refresh cannot move the keyboard out from under someone.
+        """
+        if self._model.rowCount() and not self._table.currentIndex().isValid():
+            # **`NoUpdate`, so this is current and not selected.** `setCurrentIndex` on
+            # the view selects as well, which would offer the per-row file actions for a
+            # row nobody chose — `T-086`'s rule is that they follow a *selection*.
+            self._table.selectionModel().setCurrentIndex(
+                self._model.index(0, TITLE_COLUMN), QItemSelectionModel.SelectionFlag.NoUpdate
+            )
 
     def _show_the_right_thing(self) -> None:
         """The table when there are rows, the notice when there are none. Never both."""
