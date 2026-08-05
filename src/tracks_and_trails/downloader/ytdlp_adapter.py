@@ -24,7 +24,7 @@ listed explicitly rather than quietly absent, so a reader can tell "not applicab
 "forgotten".
 """
 
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any, Final
 
@@ -263,12 +263,65 @@ def project_format(entry: Mapping[str, Any]) -> FormatInfo:
     )
 
 
-def project_media(info: Mapping[str, Any]) -> MediaInfo:
+#: How long a thumbnail reachability probe waits (`T-161`). Short because it runs inside a
+#: probe the user is watching, and a slow answer is worth less than the next candidate.
+_THUMBNAIL_PROBE_SECONDS: Final = 4.0
+
+
+def _thumbnail_candidates(item: Mapping[str, Any]) -> list[str]:
+    """Every thumbnail address yt-dlp offered, **best first** (`T-161`).
+
+    Reversed on the way out because yt-dlp orders by *increasing* preference and every caller here
+    wants the best one first.
+    """
+    listed = item.get("thumbnails")
+    if isinstance(listed, str | bytes) or not isinstance(listed, Sequence):
+        return []
+    urls = [
+        url
+        for candidate in listed
+        if isinstance(candidate, Mapping) and (url := _as_optional_str(candidate.get("url")))
+    ]
+    urls.reverse()
+    return urls
+
+
+def _url_answers(url: str) -> bool:
+    """Whether `url` responds to a `HEAD` (`T-161`).
+
+    **Any exception is "no".** A timeout, a refused connection, a redirect loop and a 404 all mean
+    the same thing to the caller — this address will not produce a picture — and distinguishing
+    them here would only invent failure kinds nothing acts on. `core/errors.py` classifies failures
+    a *user* is told about; this one is a private choice between two addresses.
+
+    Short timeout on purpose: this runs inside a probe the user is waiting on, and a slow answer is
+    worth less than the next candidate.
+    """
+    import urllib.error
+    import urllib.request
+
+    request = urllib.request.Request(url, method="HEAD")  # noqa: S310 — http(s) from yt-dlp
+    try:
+        with urllib.request.urlopen(request, timeout=_THUMBNAIL_PROBE_SECONDS) as answer:  # noqa: S310
+            return bool(200 <= answer.status < 300)
+    except urllib.error.URLError, OSError, ValueError:
+        return False
+
+
+def project_media(
+    info: Mapping[str, Any], *, reachable: Callable[[str], bool] = _url_answers
+) -> MediaInfo:
     """Project a yt-dlp `info_dict` into a declared `MediaInfo`.
 
     **This is the boundary `ARC-002` exists to protect.** Past this point the raw dict does not
     travel: `downloader/protocol.py` refuses to carry one, and `core/models.py` refuses to hold
     a list of them.
+
+    **`reachable` is threaded from here rather than defaulted deeper** (`T-161`). Choosing a
+    thumbnail now asks the network whether an address answers, and a default buried in a private
+    helper is one a caller cannot replace — so every unit test projecting a two-candidate list
+    would make real DNS lookups and pass by happening to fail fast. A seam that stops short of the
+    boundary is not a seam.
 
     A missing title becomes the URL rather than an empty string, because `MediaInfo` requires a
     displayable title and inventing "Untitled" would be worse than showing what the user pasted.
@@ -314,15 +367,17 @@ def project_media(info: Mapping[str, Any]) -> MediaInfo:
         # `thumbnails`, a list, and no singular `thumbnail`. Reading only the singular here is why
         # a playlist drew the derived tile while every one of its entries drew a picture — the
         # `T-137` correction reached the children and not the parent.
-        thumbnail_url=_entry_thumbnail(info),
+        thumbnail_url=_entry_thumbnail(info, reachable=reachable),
         is_live=bool(info.get("is_live")),
         is_playlist=is_playlist,
         entry_count=_entry_count(info) if is_playlist else None,
-        entries=_entries(info) if is_playlist else (),
+        entries=_entries(info, reachable=reachable) if is_playlist else (),
     )
 
 
-def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
+def _entries(
+    info: Mapping[str, Any], *, reachable: Callable[[str], bool] = _url_answers
+) -> tuple[PlaylistEntry, ...]:
     """The playlist's items, projected flatly and in order (`T-137`).
 
     **A generator is not consumed.** A lazily paginated playlist supplies one, and walking it here
@@ -360,7 +415,7 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
                 url=url,
                 title=title,
                 duration_seconds=_as_optional_float(item.get("duration")),
-                thumbnail_url=_entry_thumbnail(item),
+                thumbnail_url=_entry_thumbnail(item, reachable=reachable),
             )
         )
     return tuple(projected)
@@ -387,7 +442,9 @@ def _entry_count(info: Mapping[str, Any]) -> int | None:
     return len(entries)
 
 
-def _entry_thumbnail(item: Mapping[str, Any]) -> str | None:
+def _entry_thumbnail(
+    item: Mapping[str, Any], *, reachable: Callable[[str], bool] = _url_answers
+) -> str | None:
     """A picture from either shape yt-dlp uses (`T-137`, corrected; `T-153`, widened).
 
     **Named for entries and used by the playlist too.** The name is kept because that is where the
@@ -399,22 +456,46 @@ def _entry_thumbnail(item: Mapping[str, Any]) -> str | None:
     derived tile while a directly pasted URL drew its picture. The full extraction a single video
     gets does supply `thumbnail`, which is why this looked like it worked.
 
-    The **last** entry of the list, because yt-dlp orders thumbnails by increasing preference; a
-    row is 38px wide at most and the store scales, so the better source costs nothing to prefer.
+    **The best candidate that actually resolves** (`T-161`, `P2EXIT-R12`). This took the *last*
+    entry, because yt-dlp orders thumbnails by increasing preference — and yt-dlp lists addresses
+    it has **not** verified. Measured on the maintainer's playlist:
+
+    ```
+    180x180    200   .../mqdefault.jpg?sqp=...      signed, resolved
+    640x640    200   .../sddefault.jpg?sqp=...      signed, resolved
+    1200x1200  404   .../maxresdefault.jpg          bare path, does not exist
+    ```
+
+    So *"the last one"* selected an address that 404s, and `T-119`'s give-up-on-failure rule made
+    the resulting blank permanent. `T-153`'s accepted criterion is that the row **shows** a
+    picture; selecting an address is not that, which is what `P2EXIT-R12` found its regression
+    unable to prove.
+
+    **Asking is the only thing that answers it.** No property of the list separates a resolved
+    address from a guessed one without encoding one site's habits here — the query signature is
+    YouTube's, not the web's. So the candidates are walked best-first and the first that responds
+    is taken. **In the worker process, where network calls already live**, rather than in the
+    store: the store fetches on paint, so a fallback there would spend the user's scroll on
+    retries and would still have nothing durable to hand a restart.
+
+    **`thumbnail` is trusted without asking.** It is yt-dlp's own resolved pick from a full
+    extraction and it has always worked; a request to confirm it would be spent on every ordinary
+    download to fix a case that only arises for flat playlist extractions.
+
+    A single candidate is returned unasked — there is nothing to choose between, and a probe could
+    only turn a picture that might work into no picture at all. If nothing answers, the best guess
+    is returned anyway, so this is never worse than what it replaced.
     """
     single = _as_optional_str(item.get("thumbnail"))
     if single:
         return single
-    listed = item.get("thumbnails")
-    if isinstance(listed, str | bytes) or not isinstance(listed, Sequence):
-        return None
-    for candidate in reversed(listed):
-        if not isinstance(candidate, Mapping):
-            continue
-        url = _as_optional_str(candidate.get("url"))
-        if url:
+    candidates = _thumbnail_candidates(item)
+    if len(candidates) <= 1:
+        return candidates[0] if candidates else None
+    for url in candidates:
+        if reachable(url):
             return url
-    return None
+    return candidates[0]
 
 
 def build_options(

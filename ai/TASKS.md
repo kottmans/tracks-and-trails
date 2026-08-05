@@ -94,100 +94,6 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ## Ready
 
-### T-161 — The best thumbnail yt-dlp offers is sometimes one that does not exist
-
-**Status:** Ready — **reclassified Phase 2 on 2026-08-05 by `P2EXIT-R12`**, as `T-153`'s unfinished half rather than new scope. `T-153`'s accepted criterion is that the staged playlist row **shows** its own picture; its regression proves an address is *selected* and cannot prove the address yields an image, and in the built window it does not. **Checklist row 3.15 fails, and criterion 8 is Not met until this is corrected.** **Carries a design choice for the maintainer — see below.**
-**Owner:** Implementer
-**Priority:** Medium-High — every playlist on the site the project exists for draws a placeholder
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `T-153`, `T-137`, `T-119`, `UX-003`, `downloader/ytdlp_adapter.py`
-(`_entry_thumbnail`), `ui/thumbnails.py` (`ThumbnailStore`)
-**Affected surfaces:** `downloader/ytdlp_adapter.py`, `core/models.py` and `ui/thumbnails.py` if a
-fallback needs more than one candidate carried
-**Risk:** Medium — the honest fix changes what a `MediaInfo` carries
-
-#### Scope
-
-**`_entry_thumbnail` takes the last of `thumbnails` because yt-dlp orders them worst-first.** That
-reasoning is sound and the outcome is not: yt-dlp lists a `maxresdefault` candidate it has never
-verified. Measured against a real playlist on 2026-08-05:
-
-| # | Size | Result | URL |
-|---|---|---|---|
-| 0 | 180x180 | **200** | `…/mqdefault.jpg?sqp=…` |
-| 1 | 640x640 | **200** | `…/sddefault.jpg?sqp=…` |
-| 2 | 1200x1200 | **404** | `…/maxresdefault.jpg` — **no query signature at all** |
-
-So the row asks for the one picture in the list that does not exist, the fetch fails, and
-`ThumbnailStore` correctly gives up — `T-119`'s *"a thumbnail that will not fetch is never asked
-for again"* is working exactly as designed and makes the failure permanent for that row.
-
-**The tell is in the data**: the two that work carry a `sqp` signature and the one that fails does
-not. Whether that is a reliable signal or a coincidence of this extractor is the question this task
-has to answer rather than assume — `NFR-008` keeps yt-dlp's shape behind the adapter, and a rule
-inferred from one playlist is exactly the kind of thing that belongs in a recorded fixture first.
-
-**A single `thumbnail_url` may be the wrong shape.** `MediaInfo` carries one, so there is nothing to
-fall back to. The alternatives, none free:
-
-- **Choose better** — prefer the largest candidate that carries a signature, or the largest that is
-  not `maxresdefault`. Cheapest, and it encodes a guess about one site inside the adapter.
-- **Carry the candidates** and let `ThumbnailStore` try the next on a 404. Honest and general, and
-  it changes a model type plus the store's fetch loop.
-- **Verify at probe time.** Correct and unacceptable: a HEAD request per entry during an add is the
-  cost `project_media` has refused since `T-016`.
-
-#### The choice this needs, because one option changes the schema
-
-The measured cause: yt-dlp lists thumbnails worst-first and `_entry_thumbnail` takes the **last**
-as *best*. For this playlist the last is a `maxresdefault` yt-dlp never verified.
-
-```
-180x180    200   mqdefault.jpg?sqp=...      <- signed, resolved
-640x640    200   sddefault.jpg?sqp=...      <- signed, resolved
-1200x1200  404   maxresdefault.jpg          <- bare path, does not exist
-```
-
-**a. Try the candidates in order until one loads.** The only option that makes *"shows a picture"*
-true rather than *"selected an address"* — which is precisely what `P2EXIT-R12` says the current
-regression cannot prove. It also retires `T-119`'s give-up-permanently rule for the multi-candidate
-case. **Cost: `thumbnail_url` is a single persisted column in two tables**, so the candidate list
-has to survive to the store, and that is a schema change at an exit gate.
-
-**b. Choose a candidate more likely to resolve.** No schema change. Every rule available is a
-heuristic — *prefer the largest whose URL carries a query*, say — and it encodes one site's
-behaviour in a generic adapter. It would fix this playlist without establishing that any playlist
-shows a picture, which leaves row 3.15 passing by luck.
-
-**c. Amend what `T-153` promises**, to selecting an address rather than showing a picture. The
-reviewer named this as a legitimate route. It makes the criterion honest and gives the user
-nothing.
-
-**Not chosen by the implementer.** (a) is the right engineering answer and (b) is the cheap one;
-the difference between them is a persisted schema, and `AGENTS.md` §7 makes that a maintainer's
-call rather than an implementation detail.
-
-#### Acceptance criteria
-
-- A playlist whose best-listed thumbnail 404s **still shows a picture**, asserted against a recorded
-  fixture carrying the measured shape above — three candidates, the largest unusable
-- A playlist whose largest candidate *does* work still uses it, so the fix is not "always take a
-  small one"
-- Whatever rule is chosen is **stated in the adapter and transcribed into a fixture**, not inferred
-  at runtime from a pattern in a URL nobody wrote down
-- No probe-time network request per entry (`T-016`, `NFR-001`)
-- `T-119`'s give-up-on-failure behaviour is unchanged for a URL that genuinely cannot be fetched
-
-#### Out of scope
-
-- The derived placeholder tile, which is correct and is what a row with no picture should show
-- Entry thumbnails, which do resolve today — though the same rule governs them, so a fix here
-  should make both true rather than one
-
----
-
-
 ### T-164 — A sixteen-block bar is unreadable in a narrow window
 
 **Status:** Ready — **ruled 2026-08-05**. The maintainer chose **merge to a fixed block count,
@@ -2862,6 +2768,101 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-161 — The best thumbnail yt-dlp offers is sometimes one that does not exist
+
+**Status:** **Complete — 2026-08-05.** The candidates are walked best-first and the first that answers is taken, in the worker process where network calls already live. **The maintainer chose *try candidates until one loads*** over a likelier-looking guess or an amendment to what `T-153` promises. They were told it would cost a schema change, because `thumbnail_url` is a persisted column in two tables — **it did not**: asking at probe time, where one address is chosen once, delivers the same guarantee without the candidate list ever needing to survive persistence. Reported rather than quietly banked, since the cost was part of what they were deciding on.
+**Owner:** Implementer
+**Priority:** Medium-High — every playlist on the site the project exists for draws a placeholder
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `T-153`, `T-137`, `T-119`, `UX-003`, `downloader/ytdlp_adapter.py`
+(`_entry_thumbnail`), `ui/thumbnails.py` (`ThumbnailStore`)
+**Affected surfaces:** `downloader/ytdlp_adapter.py`, `core/models.py` and `ui/thumbnails.py` if a
+fallback needs more than one candidate carried
+**Risk:** Medium — the honest fix changes what a `MediaInfo` carries
+
+#### Scope
+
+**`_entry_thumbnail` takes the last of `thumbnails` because yt-dlp orders them worst-first.** That
+reasoning is sound and the outcome is not: yt-dlp lists a `maxresdefault` candidate it has never
+verified. Measured against a real playlist on 2026-08-05:
+
+| # | Size | Result | URL |
+|---|---|---|---|
+| 0 | 180x180 | **200** | `…/mqdefault.jpg?sqp=…` |
+| 1 | 640x640 | **200** | `…/sddefault.jpg?sqp=…` |
+| 2 | 1200x1200 | **404** | `…/maxresdefault.jpg` — **no query signature at all** |
+
+So the row asks for the one picture in the list that does not exist, the fetch fails, and
+`ThumbnailStore` correctly gives up — `T-119`'s *"a thumbnail that will not fetch is never asked
+for again"* is working exactly as designed and makes the failure permanent for that row.
+
+**The tell is in the data**: the two that work carry a `sqp` signature and the one that fails does
+not. Whether that is a reliable signal or a coincidence of this extractor is the question this task
+has to answer rather than assume — `NFR-008` keeps yt-dlp's shape behind the adapter, and a rule
+inferred from one playlist is exactly the kind of thing that belongs in a recorded fixture first.
+
+**A single `thumbnail_url` may be the wrong shape.** `MediaInfo` carries one, so there is nothing to
+fall back to. The alternatives, none free:
+
+- **Choose better** — prefer the largest candidate that carries a signature, or the largest that is
+  not `maxresdefault`. Cheapest, and it encodes a guess about one site inside the adapter.
+- **Carry the candidates** and let `ThumbnailStore` try the next on a 404. Honest and general, and
+  it changes a model type plus the store's fetch loop.
+- **Verify at probe time.** Correct and unacceptable: a HEAD request per entry during an add is the
+  cost `project_media` has refused since `T-016`.
+
+#### The choice this needs, because one option changes the schema
+
+The measured cause: yt-dlp lists thumbnails worst-first and `_entry_thumbnail` takes the **last**
+as *best*. For this playlist the last is a `maxresdefault` yt-dlp never verified.
+
+```
+180x180    200   mqdefault.jpg?sqp=...      <- signed, resolved
+640x640    200   sddefault.jpg?sqp=...      <- signed, resolved
+1200x1200  404   maxresdefault.jpg          <- bare path, does not exist
+```
+
+**a. Try the candidates in order until one loads.** The only option that makes *"shows a picture"*
+true rather than *"selected an address"* — which is precisely what `P2EXIT-R12` says the current
+regression cannot prove. It also retires `T-119`'s give-up-permanently rule for the multi-candidate
+case. **Cost: `thumbnail_url` is a single persisted column in two tables**, so the candidate list
+has to survive to the store, and that is a schema change at an exit gate.
+
+**b. Choose a candidate more likely to resolve.** No schema change. Every rule available is a
+heuristic — *prefer the largest whose URL carries a query*, say — and it encodes one site's
+behaviour in a generic adapter. It would fix this playlist without establishing that any playlist
+shows a picture, which leaves row 3.15 passing by luck.
+
+**c. Amend what `T-153` promises**, to selecting an address rather than showing a picture. The
+reviewer named this as a legitimate route. It makes the criterion honest and gives the user
+nothing.
+
+**Not chosen by the implementer.** (a) is the right engineering answer and (b) is the cheap one;
+the difference between them is a persisted schema, and `AGENTS.md` §7 makes that a maintainer's
+call rather than an implementation detail.
+
+#### Acceptance criteria
+
+- A playlist whose best-listed thumbnail 404s **still shows a picture**, asserted against a recorded
+  fixture carrying the measured shape above — three candidates, the largest unusable
+- A playlist whose largest candidate *does* work still uses it, so the fix is not "always take a
+  small one"
+- Whatever rule is chosen is **stated in the adapter and transcribed into a fixture**, not inferred
+  at runtime from a pattern in a URL nobody wrote down
+- No probe-time network request per entry (`T-016`, `NFR-001`)
+- `T-119`'s give-up-on-failure behaviour is unchanged for a URL that genuinely cannot be fetched
+
+#### Out of scope
+
+- The derived placeholder tile, which is correct and is what a row with no picture should show
+- Entry thumbnails, which do resolve today — though the same rule governs them, so a fix here
+  should make both true rather than one
+
+---
+
+
 
 ### T-162 — A probed entry keeps saying "Probing" after its probe has finished
 

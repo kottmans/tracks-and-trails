@@ -53,6 +53,17 @@ selected and cannot prove the address yields an image, so the accepted property 
 the built window. `T-161` is therefore reclassified as `T-153`'s unfinished half rather than new
 scope.
 
+### Where the two failed rows stand now
+
+- **Row 3.15 — `T-161` is fixed.** The thumbnail candidates are walked best-first and the first
+  that answers is taken, so the address chosen is one that yields a picture. **This row is not
+  passed until somebody runs it**; a fix is not an observation, and recording one as the other is
+  what this correction exists for.
+- **Row 2.7 — `T-160` is open**, so the row still fails. It needs either the defect fixed or the
+  row amended by the maintainer. **The row was added on 2026-08-05 to describe a known Phase 3
+  defect**, which guaranteed the checklist would fail while that defect lived — writing a row that
+  cannot pass is a checklist authoring error, and it is mine.
+
 **Rows recorded from here on must distinguish three outcomes** — passed, failed, and failed-with-an-
 accepted-owner — because collapsing the last two into the first is what produced this.
 

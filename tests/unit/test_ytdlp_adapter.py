@@ -77,6 +77,17 @@ def _http_error(status: int) -> Any:
 # --- the fixture is a contract, not a sample -------------------------------------------------
 
 
+def _nothing_answers(_url: str) -> bool:
+    """A reachability probe that never answers, so no test reaches the network (`T-161`).
+
+    **Returning `False` is the honest default for a test, not a convenience.** `_entry_thumbnail`
+    falls back to the best guess when nothing answers, so every assertion written before `T-161`
+    keeps its meaning: they are about the *ordering*, and ordering is what the fallback preserves.
+    A probe that answered `True` would silently make them about the first candidate instead.
+    """
+    return False
+
+
 def test_the_fixture_records_its_provenance() -> None:
     """`ai/TESTING.md` §5: each fixture records the yt-dlp version and capture date.
 
@@ -116,9 +127,9 @@ def test_removing_a_projected_key_changes_the_projection(key: str) -> None:
     happens to parse.
     """
     info = load_fixture()
-    baseline = adapter.project_media(info)
+    baseline = adapter.project_media(info, reachable=_nothing_answers)
     del info[key]
-    assert adapter.project_media(info) != baseline
+    assert adapter.project_media(info, reachable=_nothing_answers) != baseline
 
 
 def test_probe_projects_every_declared_field() -> None:
@@ -128,7 +139,7 @@ def test_probe_projects_every_declared_field() -> None:
     against the fixture's own values proves the data made the journey.
     """
     info = load_fixture()
-    media = adapter.project_media(info)
+    media = adapter.project_media(info, reachable=_nothing_answers)
 
     assert isinstance(media, MediaInfo)
     assert media.title == info["title"]
@@ -142,7 +153,7 @@ def test_probe_projects_every_declared_field() -> None:
 
 def test_projected_formats_carry_their_declared_fields() -> None:
     info = load_fixture()
-    media = adapter.project_media(info)
+    media = adapter.project_media(info, reachable=_nothing_answers)
 
     for projected, raw in zip(media.formats, info["formats"], strict=True):
         assert isinstance(projected, FormatInfo)
@@ -171,18 +182,21 @@ def test_the_url_falls_back_through_yt_dlps_aliases() -> None:
     info = load_fixture()
     expected = info["webpage_url"]
     del info["webpage_url"]
-    assert adapter.project_media(info).url == expected  # original_url carries the same value
+    # `original_url` carries the same value
+    assert adapter.project_media(info, reachable=_nothing_answers).url == expected
 
     info["original_url"] = ""
     info["url"] = "https://fallback.example/x"
-    assert adapter.project_media(info).url == "https://fallback.example/x"
+    assert (
+        adapter.project_media(info, reachable=_nothing_answers).url == "https://fallback.example/x"
+    )
 
 
 def test_a_missing_title_falls_back_to_the_url_not_to_a_placeholder() -> None:
     """`MediaInfo` requires a displayable title; inventing "Untitled" would be worse."""
     info = load_fixture()
     info["title"] = ""
-    assert adapter.project_media(info).title == info["webpage_url"]
+    assert adapter.project_media(info, reachable=_nothing_answers).title == info["webpage_url"]
 
 
 def test_yt_dlp_none_codecs_become_none_not_the_string() -> None:
@@ -223,7 +237,10 @@ def test_a_format_without_an_id_is_dropped_rather_than_projected_empty() -> None
     """`FormatInfo` requires a format_id — it is how a format is selected."""
     info = load_fixture()
     info["formats"] = [*info["formats"], {"ext": "mp4"}]
-    assert len(adapter.project_media(info).formats) == len(info["formats"]) - 1
+    assert (
+        len(adapter.project_media(info, reachable=_nothing_answers).formats)
+        == len(info["formats"]) - 1
+    )
 
 
 # --- classification (ARCHITECTURE.md §7) -----------------------------------------------------
@@ -904,7 +921,7 @@ def test_a_playlist_projects_its_entries_in_order() -> None:
         ],
     }
 
-    media = adapter.project_media(info)
+    media = adapter.project_media(info, reachable=_nothing_answers)
 
     assert [entry.title for entry in media.entries] == ["One", "Two", "Three"], (
         "the entries are not projected in the order the playlist gave them, so a queue built "
@@ -932,7 +949,7 @@ def test_an_unreadable_entry_is_dropped_but_still_counted() -> None:
         "entries": [{"url": "https://example.invalid/a", "title": "One"}, None, {}],
     }
 
-    media = adapter.project_media(info)
+    media = adapter.project_media(info, reachable=_nothing_answers)
 
     assert len(media.entries) == 1, f"an unreadable entry became a job: {media.entries}"
     assert media.entry_count == 3, (
@@ -961,7 +978,7 @@ def test_a_lazily_paginated_playlist_is_not_consumed_while_probing() -> None:
         "entries": entries(),
     }
 
-    media = adapter.project_media(info)
+    media = adapter.project_media(info, reachable=_nothing_answers)
 
     assert not consumed, "probing walked a lazy playlist, fetching every page of it"
     assert media.entries == ()
@@ -1031,7 +1048,7 @@ def test_a_flat_entry_takes_its_picture_from_the_thumbnails_list() -> None:
         ],
     }
 
-    entries = adapter.project_media(info).entries
+    entries = adapter.project_media(info, reachable=_nothing_answers).entries
 
     assert entries[0].thumbnail_url == "https://img.invalid/large.jpg", (
         "an entry carrying `thumbnails` got no picture, so every row of a playlist draws the "
@@ -1074,6 +1091,120 @@ def test_a_flat_entry_keeps_an_address_a_new_extraction_can_open() -> None:
     )
 
 
+def test_a_playlist_skips_a_thumbnail_address_that_does_not_answer() -> None:
+    """`T-161`, `P2EXIT-R12`: `T-153`'s criterion is that the row **shows** a picture.
+
+    yt-dlp orders thumbnails worst-first and lists addresses it has **not** verified, so taking the
+    last selected a `maxresdefault` that 404s — and `T-119`'s give-up-on-failure rule made the
+    blank permanent. Measured on the maintainer's playlist: the 180px and 640px addresses answer
+    200 with a signature, the 1200px bare path answers 404.
+
+    **The old regression could not have caught this and passed throughout.** It asserted the
+    *last* address was selected, which is exactly the behaviour that produced a blank tile —
+    `P2EXIT-R12`'s point that proving an address is chosen is not proving a picture appears.
+
+    Asserted through `project_media`, not the private helper, because the seam has to reach the
+    boundary a caller actually uses.
+    """
+    answered = "https://img.invalid/works.jpg"
+    flat = {
+        "_type": "playlist",
+        "id": "pl-1",
+        "title": "Trail Sounds",
+        "webpage_url": "https://example.invalid/list",
+        "thumbnails": [
+            {"url": "https://img.invalid/small.jpg"},
+            {"url": answered},
+            {"url": "https://img.invalid/guessed-maxres.jpg"},
+        ],
+        "entries": [],
+    }
+
+    media = adapter.project_media(flat, reachable=lambda url: url == answered)
+
+    assert media.thumbnail_url == answered, (
+        f"the playlist chose {media.thumbnail_url!r}; the best address that answers is "
+        f"{answered!r}, and choosing one that does not leaves every playlist drawing a blank tile"
+    )
+
+
+def test_the_best_address_wins_when_more_than_one_answers() -> None:
+    """`T-161`: reachability is a filter on the existing order, not a replacement for it.
+
+    A fix that returned the first *answering* candidate in yt-dlp's own worst-first order would
+    pass the test above and quietly give every row the 180px thumbnail. The converse has to hold:
+    among addresses that answer, the best still wins.
+    """
+    flat = {
+        "_type": "playlist",
+        "id": "pl-1",
+        "title": "Trail Sounds",
+        "webpage_url": "https://example.invalid/list",
+        "thumbnails": [
+            {"url": "https://img.invalid/small.jpg"},
+            {"url": "https://img.invalid/large.jpg"},
+        ],
+        "entries": [],
+    }
+
+    media = adapter.project_media(flat, reachable=lambda _url: True)
+
+    assert media.thumbnail_url == "https://img.invalid/large.jpg", (
+        f"every address answered and the playlist chose {media.thumbnail_url!r}; yt-dlp orders "
+        "worst-first, so the best is the last"
+    )
+
+
+def test_a_lone_thumbnail_address_is_never_probed() -> None:
+    """`T-161`: with nothing to choose between, a request can only make things worse.
+
+    A probe against a single candidate spends a round trip inside a probe the user is waiting on,
+    and its only possible effect is turning a picture that might have worked into no picture.
+    """
+
+    def _explode(_url: str) -> bool:
+        raise AssertionError("a lone candidate was probed; there was nothing to choose between")
+
+    flat = {
+        "_type": "playlist",
+        "id": "pl-1",
+        "title": "Trail Sounds",
+        "webpage_url": "https://example.invalid/list",
+        "thumbnails": [{"url": "https://img.invalid/only.jpg"}],
+        "entries": [],
+    }
+
+    assert adapter.project_media(flat, reachable=_explode).thumbnail_url == (
+        "https://img.invalid/only.jpg"
+    )
+
+
+def test_nothing_answering_still_yields_the_best_guess() -> None:
+    """`T-161`: never worse than what it replaced.
+
+    Offline, or against a site that refuses `HEAD`, every candidate looks unreachable. Returning
+    `None` there would take pictures away from users who had them for a rule meant to add some.
+    """
+    flat = {
+        "_type": "playlist",
+        "id": "pl-1",
+        "title": "Trail Sounds",
+        "webpage_url": "https://example.invalid/list",
+        "thumbnails": [
+            {"url": "https://img.invalid/small.jpg"},
+            {"url": "https://img.invalid/large.jpg"},
+        ],
+        "entries": [],
+    }
+
+    media = adapter.project_media(flat, reachable=lambda _url: False)
+
+    assert media.thumbnail_url == "https://img.invalid/large.jpg", (
+        f"nothing answered and the playlist chose {media.thumbnail_url!r}; the best guess is still "
+        "better than no picture at all"
+    )
+
+
 def test_a_playlist_takes_its_own_picture_from_the_thumbnails_list() -> None:
     """`T-153`: the `T-137` correction reached the entries and not the playlist itself.
 
@@ -1096,7 +1227,10 @@ def test_a_playlist_takes_its_own_picture_from_the_thumbnails_list() -> None:
         "entries": [{"url": "https://example.invalid/a", "title": "Listed"}],
     }
 
-    assert adapter.project_media(flat).thumbnail_url == "https://img.invalid/list-large.jpg", (
+    assert (
+        adapter.project_media(flat, reachable=_nothing_answers).thumbnail_url
+        == "https://img.invalid/list-large.jpg"
+    ), (
         "the playlist itself got no picture, so its staged row draws the derived tile while its "
         "entries draw theirs — the correction reached the children and not the parent"
     )

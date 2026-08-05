@@ -1384,7 +1384,7 @@ are Not met.**
 | Finding | What | State |
 |---|---|---|
 | `P2EXIT-R11` | High. A finished probe's `Probing` outlived it against a `Ready` chip, so criterion 1's accurate-progress promise failed on the durable playlist route | **Fixed.** Stage precedence is gated by whether the stage can still be live in the current status |
-| `P2EXIT-R12` | High. The second-run record said *"pass, all 41 rows"* while listing failures of rows 2.7 and 3.15 | **Record corrected; `T-161` is Phase 2 and open** |
+| `P2EXIT-R12` | High. The second-run record said *"pass, all 41 rows"* while listing failures of rows 2.7 and 3.15 | **Record corrected. `T-161` fixed** — row 3.15's defect is gone but the row is unrun. **Row 2.7 still fails** on open `T-160` |
 | `P2EXIT-R13` | Medium. The `T-152` focus correction fired on every model reset from either view, taking the keyboard off toolbar controls | **Fixed.** First rows only, in the visible view |
 | `P2EXIT-R14` | High. Plan and status carried incompatible live criterion-8 verdicts | **Fixed by this sweep** |
 
@@ -1394,3 +1394,14 @@ are both a claim stated over the top of contradicting evidence I had already wri
 listed its own failures underneath a *pass*. `P2EXIT-R14` is the third instance: one occurrence
 updated and the siblings left behind. `P2EXIT-R10` and `COORD-R5` are the same class, and this is
 the second exit submission it has blocked.
+
+### What criterion 8 still needs
+
+**Row 2.7 cannot pass while `T-160` is open**, and the reviewer is explicit that a Phase 3 owner
+does not turn a failing row into a passing one. **That row was added on 2026-08-05 to describe a
+known Phase 3 defect** — authoring a row that cannot pass while its defect lives is an error in the
+checklist, and it is mine. Two ways out, and both are the maintainer's: fix `T-160`, or amend
+row 2.7 to describe what the window should do rather than the defect it currently has.
+
+**Row 3.15's defect is fixed and the row is unrun.** A fix is not an observation. Criterion 8 is
+Not met until the checklist is re-run and records passed rows separately from failed ones.
