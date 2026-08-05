@@ -924,10 +924,22 @@ class QueueModel(QAbstractTableModel):
             # format nowhere at all. Derived from the members rather than stored: they are built
             # from one preset, so agreement is the normal case and disagreement is worth saying
             # out loud rather than hiding behind the first member's answer.
-            selectors = {row.job.request.format_selector for row in group.members}
-            if len(selectors) == 1:
-                return f"{FORMAT_PREFIX}{selectors.pop()}"
-            return f"{FORMAT_PREFIX}mixed across {len(selectors)} formats"
+            #
+            # **Rendered through `_effective_format_text`, not built beside it** (`T140-R3`, second
+            # round). Comparing raw `format_selector` values and printing the winner showed
+            # `bestvideo+bestaudio/best` on a header whose own editor offers *Best video available*
+            # — the group naming a request in syntax while the control names the same request in
+            # words, one row apart. An ordinary row has solved this since `T126-R2`; the group now
+            # asks the same function rather than keeping a second opinion.
+            #
+            # Agreement is judged on the **rendered text** for the same reason. Two members can
+            # differ in a preset-owned field while sharing a selector, or share a preset while
+            # differing in syntax; what the user is told is one line, so that line is what has to
+            # agree before the header claims they match.
+            texts = {_effective_format_text(row.job) for row in group.members}
+            if len(texts) == 1:
+                return texts.pop()
+            return f"{FORMAT_PREFIX}mixed across {len(texts)} formats"
         if role == PRESET_CHOICES_ROLE:
             # **Retargeting moves to the group** (`UX-005` row 13, `T140-R3`). Taking the child
             # editors away established only that members cannot diverge; a read-only header then

@@ -1488,6 +1488,52 @@ def test_choosing_on_the_group_retargets_every_member_that_can_still_move(
     )
 
 
+def test_re_choosing_the_group_s_current_preset_emits_nothing(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """The same-value half of `setData`'s group guard (`T126-R3` at the group level).
+
+    Previously disclosed as untestable, because `FakeQueue` does not apply a retarget — so with
+    members built from `make_job`'s default request, every name is a real change and the guard
+    could never be reached.  Building them from a **built-in preset** removes that: the group's
+    current value is then a name the editor also offers, so re-selecting it is genuinely the
+    no-op the guard exists for.
+
+    It matters because a lifecycle commit re-sends the displayed value.  If that counted as a
+    choice, the reset it causes would re-enter `setData` — which is exactly what `T126-R3` cost a
+    round.
+    """
+    for job in _playlist_jobs(tmp_path, 3):
+        queue.add(
+            replace(
+                job,
+                request=to_request(BEST_VIDEO, url=job.url, output_directory=str(tmp_path)),
+            )
+        )
+    view = views(jobs=queue, manager=managers())
+    header = view.model.index(0, JOB_COLUMN)
+
+    chosen: list[str] = []
+    view.model.preset_chosen.connect(lambda job_id, _name: chosen.append(job_id))
+
+    assert view.model.data(header, PRESET_ROLE) == BEST_VIDEO.name
+
+    assert view.model.setData(header, BEST_VIDEO.name, PRESET_ROLE) is False
+    assert chosen == [], "re-choosing the group's current preset emitted a retarget"
+
+    # And the guard is not simply refusing everything: a different preset still moves the members
+    # that can take it. Without this the test would pass against a `setData` that always returns
+    # `False`, which is the shape of guard that silently disables a control.
+    other = next(
+        name for name in view.model.data(header, PRESET_CHOICES_ROLE) if name != BEST_VIDEO.name
+    )
+    assert view.model.setData(header, other, PRESET_ROLE) is True
+    assert chosen == ["entry-1", "entry-2"]
+
+
 def test_a_finished_playlist_refuses_a_group_retarget(
     queue: FakeQueue,
     managers: Callable[..., DownloadManager],
