@@ -112,6 +112,17 @@ same fault.
 not met.** It asks for *"reviewed and signed off"*, and what is absent is the **independent phase
 exit review** that Phase 0 and Phase 1 each required (`AGENTS.md` §3) — not a deliverable review.
 
+**Criterion 8 was added on 2026-08-04: the window must catch up with the features behind it.**
+The maintainer ruled it after running the application and producing nine tasks in one afternoon,
+`T-132` through `T-141`. Nine of ten are complete and Windows-green; **`T-140`'s model half is
+outstanding**, so a playlist still draws as unrelated rows.
+
+*Read the distinction below rather than around it.* This is an **amendment to the criteria**, made
+deliberately and recorded in `IMPLEMENTATION_PLAN.md`, which stays canonical. It is not the mistake
+`COORD-R13` corrected — that was a Phase 3 task being *described* as what a criterion waited on,
+with no ruling behind it. The list is also **closed as of 2026-08-04**: without an edge, "the UI is
+caught up" could never be met, because the next sitting at the window would find a tenth task.
+
 **`T-118`/`T-119` precedes that exit review only because the maintainer sequenced it there**
 (2026-08-03). It is a Phase 3 task against no Phase 2 deliverable, so it is not a criterion and
 cannot become one. `IMPLEMENTATION_PLAN.md` is canonical for the exit state; this paragraph follows
