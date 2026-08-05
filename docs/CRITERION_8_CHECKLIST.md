@@ -62,6 +62,7 @@ checks, which need one real playlist URL.
 | 2.4 | **Narrow the window** until verbs drop. `⋯` appears, and its menu holds **exactly the dropped ones** — not a repeat of what is still on the row | `T-135` |
 | 2.5 | **Shift+F10** opens the full menu at both widths — **try it before clicking any row**, which is the case that fails today (`T-152`), then again after clicking one | `T-135`, `T-152`, `NFR-005` |
 | 2.6 | In the add dialog, a staged row's **format line does not run underneath its format control** — check with a long selector that wraps | `T-136` |
+| 2.7 | **At the dialog's default size**, the format control must not be drawn over the row's thumbnail (`T-160`). Narrow the dialog further and it must still not | `T-160` |
 
 ## 3 · A playlist (`T-137`, `T-140`)
 

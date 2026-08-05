@@ -1142,6 +1142,63 @@ beats designing it against an imagined one.
 
 ---
 
+### T-160 — The format control is drawn over the thumbnail on a narrow row
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, at the add dialog's default size.
+**Phase 3**, and the sibling of `T-150`: that one is about the size the dialog *opens* at, this is
+about what the row does at any narrow width, including one a user chooses.
+**Owner:** Implementer
+**Priority:** Medium-High — it is visible at the size the dialog opens at today, so every user sees
+it before they see anything else
+**Phase:** Phase 3
+**Depends on:** nothing. Fixing `T-150` hides it at the default size without fixing it
+**Relevant context:** `T-136`, `T118-R8`, `T118-R12`, `UX-004` §1, `ui/row_delegate.py`
+(`_control_rect`, `_paint_tile`, `EDITOR_WIDTH`)
+**Affected surfaces:** `ui/row_delegate.py`
+**Risk:** Low
+
+#### Scope
+
+**The control is anchored to the right edge and clamped to the row's left**, with nothing between
+it and the picture:
+
+```python
+QRect(max(body.right() - EDITOR_WIDTH, body.left()), ...)
+```
+
+`EDITOR_WIDTH` is 190 and the tile is 96 wide plus a 10px gap, so a row narrower than roughly 300px
+has the control's left edge clamp to `body.left()` — which is where `_paint_tile` draws the
+thumbnail. *Same as all* is then drawn across the picture.
+
+**This is `T-136`'s family, one collision over.** That finding was the control overlapping the
+*selector text*, and its fix moved the control to sit beside the first two lines. Both halves
+assume there is room; neither says what happens when there is not. The row already knows how to
+answer that question for its **verbs** — they drop into `⋯` — and does not for its control.
+
+**`T-150` is not a fix for this.** Opening the dialog wider hides it at the default size and leaves
+it for anyone who narrows the window, which is exactly what the checklist asks a person to do.
+
+#### Acceptance criteria
+
+- The control's rect and the tile's rect **do not intersect**, asserted as geometry across a swept
+  range of widths — one width is what let `T-155` through
+- Where there is not room for both, the row degrades deliberately rather than by clamping:
+  narrowing the control to what is left, or withholding it as the verbs are withheld. Whichever is
+  chosen is stated, since a control that silently shrinks and one that silently vanishes are
+  different promises
+- The selector line still does not run under the control (`T-136`), so fixing one collision does
+  not reopen the other
+- Asserted on the **staging row**, which is where the tile, the control and the selector are all
+  present at once
+
+#### Out of scope
+
+- The dialog's opening width, which is `T-150`
+- `EDITOR_WIDTH` itself. It was sized for the longest built-in preset name and that reasoning is
+  unchanged
+
+---
+
 ### T-158 — A refused Open is reported where nobody is looking
 
 **Status:** Proposed — **found by the maintainer, 2026-08-05**, pressing *Open* on a download whose
