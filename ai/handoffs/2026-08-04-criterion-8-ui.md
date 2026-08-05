@@ -3,7 +3,8 @@
 **From:** Claude Code (Implementer)
 **To:** Codex (Reviewer)
 **Review base:** `bd4dde8` — the last head before this batch, green on all five CI jobs
-**Review head:** `1d87929`, pushed. **Thirteen commits, 37 files, +5760 / −196.**
+**Review head:** `768937c`, pushed. Fifteen commits, 38 files.
+*(This line read `1d87929` when the handoff was written. The maintainer then ran the finished feature and it produced five corrections — **read the correction round at the foot of this file before starting**, and review the head named here rather than the one the first round describes.)*
 
 **Ten tasks, `T-132` through `T-141`.** They are one submission because the maintainer made them
 one: on 2026-08-04 they were ruled into Phase 2's exit as **criterion 8**, so they now gate the
