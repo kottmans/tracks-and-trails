@@ -242,9 +242,17 @@ decisions; the subsections below state them operationally.
 
 | Leg | Runs on | Selected by |
 |---|---|---|
-| Linux `check`, `frozen ubuntu-latest`, `prose` | the maintainer's Fedora desktop/laptop | `vars.LINUX_RUNNER` |
+| `linux`, `frozen linux`, `prose` | the maintainer's Fedora desktop/laptop | `vars.LINUX_RUNNER` |
 | `windows desktop`, `frozen windows` | `STARBASE` | `vars.WINDOWS_RUNNER` |
 | `STARBASE coverage` | hosted `ubuntu-latest` — **the only hosted job left** | fixed |
+
+**The Linux jobs are named `linux`, not after a distribution**, as of 2026-08-05. They were
+`ubuntu-latest`, which stopped being true the moment `LINUX_RUNNER` pointed them at Fedora — and a
+green board naming a platform nothing ran on is a claim, not a label. `fedora-latest` would be
+wrong the other way, since unsetting the variable restores the hosted Ubuntu image. The name states
+the cell being covered; the runner name in each run says which machine took it. **Citations of
+`check (ubuntu-latest)` and `frozen ubuntu-latest` in older records stay as written** — those runs
+did happen on Ubuntu, and `AGENTS.md` §6 separates the historical record from current truth.
 
 **Self-hosted Linux is faster than hosted, not merely cheaper**: the full suite is 4m29s on the
 desktop against 7m36s for the whole hosted `check` job, measured 2026-08-05. Unset `LINUX_RUNNER`
