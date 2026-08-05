@@ -9961,3 +9961,35 @@ an interchangeable shorthand.
 
 No new regression was needed for a prose-only finding. This review appends this record only. No
 source, test, decision, task state, commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — `P2EXIT-R10` final records re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `c920446`
+**Approved at:** `431bb47` (`814ee93` carries the preceding review record; `431bb47` is the final
+plan/status correction)
+**Verdict:** **Approved.** `P2EXIT-R10` is resolved. This approves the truth of the criterion-8
+records; it does **not** mark criterion 8 or Phase 2 met. The exact-candidate checklist and platform
+evidence they now name remain to be performed.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `P2EXIT-R10` | High | No | The outstanding-work row now preserves all three owed steps: run the built application on the exact candidate against a written checklist derived from T-132–T-141 and the adopted mockups; obtain Windows and Fedora evidence on that same candidate; and complete re-review. It explicitly states that automation cannot replace the checklist because visible defects escaped the gates. STATUS carries the same manual obligation and now limits `083fbe4` to the four implementation findings rather than claiming every finding resolved there. Together with `c920446`'s coherent T-140/T-142 rewrites, the current-truth documents no longer call built work outstanding or omit an accepted evidence gate. | **Resolved at `431bb47`** |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check c920446..431bb47`: **pass**. `814ee93` changes only the reviewer record; `431bb47` changes only `ai/IMPLEMENTATION_PLAN.md` and `ai/STATUS.md`. |
+| Checklist authority | Both plan and status name the built application, a written T-132–T-141/adopted-mockup checklist, and the exact candidate head; both say automated evidence is insufficient. |
+| Resolution attribution | STATUS names only `T140-R6`, `T137-R2`, `T137-R3` and `T140-R5` as implementation findings resolved at `083fbe4`, and explicitly excludes P2EXIT-R10 from that claim. |
+| Stale/weakening sweep | No current-truth criterion-8 record retains the old “nine open,” unfinished-implementation, or all-findings-at-`083fbe4` claim. The manual checklist is present in both places it is owed. |
+| Placement gate | `tests/unit/test_task_placement.py`: **14 passed**. |
+
+No test or source change was needed for this docs-only re-review. This review appends the approval
+record only. The next coordination update may mark T-140 Complete at its reviewed head and replace
+“awaits re-review” with this approval; criterion 8 remains Not met until its checklist and
+exact-head Windows/Fedora evidence pass. No source, test, decision, task state, commit, remote ref
+or CI state was changed by the reviewer.
