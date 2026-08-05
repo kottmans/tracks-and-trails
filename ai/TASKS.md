@@ -1203,6 +1203,119 @@ beats designing it against an imagined one.
 
 ---
 
+### T-166 — The group's verbs erase the line above them
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, narrowing the window at a playlist
+header.
+**Owner:** Implementer
+**Priority:** Medium — the line it erases is the one saying what the whole playlist will download as
+**Phase:** Phase 3
+**Depends on:** nothing. `T-163` is the same line running out of room against the *progress bar*;
+`T-160` is the format control against the *thumbnail*. Three pairs, one cause
+**Relevant context:** `T-136`, `T118-R8`, `UX-005` rows 9 and 13, `ui/row_delegate.py`
+(`_verb_rects`, `_paint_text`, `_paint_verbs`)
+**Affected surfaces:** `ui/row_delegate.py`
+**Risk:** Low
+
+#### Scope
+
+**`Download as: Best video` becomes `Download` and the buttons take the rest of the line.** The
+verbs are laid out against the row's width without regard to what is already drawn there, so as the
+window narrows they advance leftward across the format line until it is a stump.
+
+`T-136` fixed this exact collision on a staged row — the format line ran underneath the format
+control — and `T118-R8` is the lesson it produced: **the selector is the half that could not
+give**, because a truncated format is a format the user cannot read or copy. That ruling was made
+about one pair of things sharing a line. The same argument applies here and was not applied.
+
+The verbs are the half that *can* give: `T-135` built the `⋯` overflow precisely so a verb can be
+dropped and still be reachable, by pointer and by keyboard. A truncated format line has no
+equivalent — there is no overflow menu for a sentence.
+
+#### Acceptance criteria
+
+- The verbs occupy only what the format line does not need, and drop into `⋯` before overlapping it
+- The format line keeps at least a stated minimum before any verb is drawn beside it — named in
+  source, per `T118-R8`'s rule that the *number* is the decision
+- Asserted across a **swept** range of widths (`T-155`), and on a **group header**, which is where
+  the format line and the group verbs coexist
+- `⋯` still holds exactly what was dropped, and the keyboard route still reaches it
+
+#### Out of scope
+
+- The progress bar's share of the same line, which is `T-163`
+- The format control against the thumbnail, which is `T-160`
+
+---
+
+### T-167 — The playlist bar changes shape twice as the window narrows
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**. **Carries a question for the
+maintainer**: it may amend the `T-164` ruling made hours earlier. See below.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 3
+**Depends on:** `T-164`, which decides *what* the narrow rendering is. This decides *when*, and
+that the answer must be stable
+**Relevant context:** `UX-005` rows 9b and 9b-i, `T-155`, `T-135`, `ui/row_delegate.py`
+(`_paint_segments`, `_verb_rects`)
+**Affected surfaces:** `ui/row_delegate.py`, possibly `UX-005`
+**Risk:** Low to fix, Medium if it reopens 9b-i
+
+#### Scope
+
+**Narrowing the window merges the blocks, and narrowing it further un-merges them.** Reported as
+*"goes from multiple bars to a single bar, but then goes back to multiple bars after a button is
+removed for spacing reasons."*
+
+The cause is that the bar's rendering is decided from **the space left over after the verbs**:
+
+```python
+gap = 1 if len(states) < area.width() // 2 else 0
+```
+
+`area` is the leftover, and the verbs' width is **not monotonic** in the window's width — at the
+moment a verb drops into `⋯` (`T-135`), the leftover *grows*. So the bar's appearance is not a
+monotonic function of the window size, and a user dragging one edge steadily sees the bar change,
+change back, and change again.
+
+**The input is wrong, not the threshold.** A rendering decided from leftover space inherits every
+discontinuity of everything else sharing the line. Decided from the row's own width — which only
+ever moves one way as the user drags — the same threshold becomes stable by construction.
+
+#### The question for the maintainer
+
+`UX-005` row 9b-i was adopted earlier today: below a stated width, **merge to a fixed block count**,
+each block taking the worst state inside it. That ruling was made against the alternative of one
+solid bar, and the reason it won was that a solid bar cannot show a failed entry.
+
+The report here asks for *"a single progress bar"* that stays single. **If that is meant literally
+it reverses 9b-i**, and reintroduces what row 9b exists to prevent: a playlist that skipped a track
+looking exactly like one that got everything. It may instead be a description of the current
+accidental behaviour rather than a new preference — the blocks already collapse into what looks
+like one bar when the gap reaches zero.
+
+Not resolved here. **The stability requirement below holds whichever way it goes**; only the
+endpoint is in question.
+
+#### Acceptance criteria
+
+- The narrow rendering is chosen from an input that **moves monotonically** with the window — the
+  row's width, not the bar's leftover — so no drag direction can reverse it
+- Once merged, it stays merged as the window narrows further, and un-merges only on the way back
+  **at the same width it merged at** — a threshold that is one number, not two
+- Asserted as a **sweep across widths in both directions** (`T-155`'s lesson), with the assertion
+  being that the rendering changes **at most once**
+- The threshold is stated where a reader can find it, and derived from a minimum legible block
+  width rather than tuned
+
+#### Out of scope
+
+- What the merged rendering looks like, which is `T-164` and `UX-005` row 9b-i
+- The verbs' own drop threshold, which is `T-163` and `T-166`
+
+---
+
 ### T-163 — The verbs hold their ground until the progress bar has none
 
 **Status:** Proposed — **found by the maintainer, 2026-08-05**, narrowing the window.
