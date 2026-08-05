@@ -92,6 +92,102 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ---
 
+### T-140 — The queue draws a playlist as a row that opens
+
+**Status:** **In Review — reopened 2026-08-05** by `T140-R5`, on the maintainer's ruling.
+Ruled against `docs/mockups/2026-08-04-playlist-rows.html`, which is the specification.
+
+*It was marked Complete on 2026-08-04 while three of its own accepted criteria were unbuilt, and
+`T-142` was filed to hold them. The review's ruling stands: a closed criterion list may exclude
+genuinely later work, but it cannot make accepted work complete by moving that work outside the
+list. **What remains here:** group verbs, removal that names its own count (`DAT-005` §4), and a
+**keyboard-reachable disclosure** — `NFR-005`, and the only route in source is a left-button
+release. `T-142` is to be re-scoped to whatever is genuinely new once these land.*
+
+*`T140-R3`'s group-retargeting half landed 2026-08-05: the header offers the choices while **any**
+member can still take them, and one choice retargets every member that can. Offering it only while
+*all* could would make the control vanish the moment the first track finished.*
+**Owner:** Implementer
+**Priority:** High — it is half of what makes `T-137` usable
+**Phase:** Phase 3
+**Depends on:** nothing in the tree; `T-137` is what will eventually feed it
+**Relevant context:** `UX-005` rows 9–9d, `T118-R10` (per-row cost), `T118-R7` (row widget versus
+delegate), `ui/queue_view.py`, `ui/row_delegate.py`, `ui/row_verbs.py`
+**Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, `ui/row_verbs.py`
+**Risk:** Medium-High — it removes a performance promise the queue currently makes
+
+**Complete — 2026-08-04.** Both halves are in: the drawing at `bc1a3d4`, the model here.
+
+- `QueueModel` **flattens** a group and its entries into the list the table shows. A tree view
+  would have replaced the list, the delegate and the geometry `T118-R7`, `T118-R8`, `T118-R12` and
+  `T118-R15` were each spent on; a flat list of headers-and-indices keeps every one of them.
+- A header takes the position of its **first member**, so a queue the user reordered still reads
+  the way they left it.
+- Expansion is held **by playlist id**, for `T126-R1`'s reason: progress causes refreshes
+  constantly, and holding it by row would close a group under the user's hands.
+- The chip **counts** (`1 of 4`) and the bar's segments come from each member's own status, so a
+  failed entry is its own block rather than folded into "not done yet".
+- A job inside a closed group reports **no row**: a caller building an index from a hidden job
+  would address whatever is drawn at that number, which is `T118-R14` in a new place.
+- **A group of one is dissolved.** A playlist whose other entries were removed would otherwise
+  leave a heading over a single row.
+
+**The measurement `UX-005` said could reopen the shape.** 150 entries across ten playlists, every
+group open: **opening 0.002 s, `sizeHint` over 160 rows 0.019 s, painting a viewport 0.022 s**,
+against a 0.5 s budget. `setUniformItemSizes` is off and it costs nothing measurable here. *An
+earlier version of this test timed `repaint()` on an offscreen widget and reported `0.000s` — a
+number that cannot fail, from a call that may not have painted at all — so it measures `sizeHint`
+per row and a real delegate paint instead, and asserts the row heights actually differ.*
+
+**Not done, and deliberately out of this task's scope:** the group's own verbs. `UX-005` row 9
+names `Pause all`, `Cancel all`, `Retry failed` and `Show in folder`, and the header currently
+offers none — every entry still carries its own. Filed as `T-142` rather than bolted on here,
+because each needs manager wiring and a confirmation that names its own count (`DAT-005` §4).
+
+#### Scope
+
+The mockup is the specification and the ruling is transcribed in `UX-005` rows 9–9d. In short: a
+group row with a disclosure triangle, a **segmented** bar of one block per entry, a `4 of 16`
+count chip, and — when open — **shorter** child rows on a connecting rail, each with its own state
+and verbs.
+
+**The model flattens; the view stays a `QListView`.** A `QTreeView` would replace the list, the
+delegate and the geometry `T118-R7`, `T118-R8`, `T118-R12` and `T118-R15` were each spent on. A
+flat model that emits a group row and, when it is open, its entries — with a depth role the
+delegate indents by — keeps all of them.
+
+**`setUniformItemSizes(True)` has to come off**, and that is the risk rather than a detail. It is
+the promise that lets the list size itself without asking every row, and a two-line child beside a
+four-line group breaks it. `T118-R10` is the record of what per-row cost buys: a paste of 150 cost
+0.722 s on hosted Windows and a delegate fixed it.
+
+#### Acceptance criteria
+
+- **A paste of 150 with every group open is measured**, on Linux and on Windows, against the
+  `T118-R10` bound. `UX-005`'s ruling says in as many words that this number is owed and that a bad
+  one justifies reopening the shape — so it is a criterion, not a follow-up
+- Closed, a playlist is exactly **one** row; open, it is one plus its entries — asserted by row
+  count, not by pixels
+- The group's chip reads `4 of 16` and **never a percentage**, asserted with entries whose totals
+  are unknown, which is the case that made a percentage wrong
+- The segmented bar shows a **failed** entry distinctly from a queued one — the specific lie row 9b
+  exists to prevent
+- A child row draws **no format line** and a smaller thumbnail (row 9c), asserted against the group
+  row rather than in isolation
+- Group verbs are named as the mockup names them: `Pause all`, `Cancel all`, `Retry failed` only
+  when something failed, `Show in folder` with no `Open`. Entry verbs are the ordinary ones
+- `Remove` on a group names its own count in the confirmation (`DAT-005` §4)
+- Expanding and collapsing are **keyboard reachable**, and the open state survives the model reset
+  a refresh performs (`T126-R1`'s lesson: identity, not row number)
+- `Clear finished` clears a group only when all of it is done (row 9d)
+
+#### Out of scope
+
+- Anything that produces a group: probing, downloading, persisting (`T-137`)
+- The tab's count, which `UX-005` leaves proposed rather than ruled
+
+---
+
 ## Ready
 
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
@@ -2161,88 +2257,43 @@ Assert, on `windows-latest`:
 
 ## Complete
 
-### T-140 — The queue draws a playlist as a row that opens
+### T-146 — The primary action's hover ring reads as a smudge
 
-**Status:** **Complete — 2026-08-04.** Ruled against `docs/mockups/2026-08-04-playlist-rows.html`,
-which is the specification. Split from `T-137`.
+**Status:** **Complete — 2026-08-05.** Reported by the maintainer while running the window.
 **Owner:** Implementer
-**Priority:** High — it is half of what makes `T-137` usable
+**Priority:** Low — presentation, on the application's most-used control
 **Phase:** Phase 3
-**Depends on:** nothing in the tree; `T-137` is what will eventually feed it
-**Relevant context:** `UX-005` rows 9–9d, `T118-R10` (per-row cost), `T118-R7` (row widget versus
-delegate), `ui/queue_view.py`, `ui/row_delegate.py`, `ui/row_verbs.py`
-**Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, `ui/row_verbs.py`
-**Risk:** Medium-High — it removes a performance promise the queue currently makes
+**Depends on:** nothing
+**Relevant context:** `UX-005` row 6, `T130-R1`, `ui/theme.py`
+**Affected surfaces:** `ui/theme.py`
+**Risk:** Low
 
-**Complete — 2026-08-04.** Both halves are in: the drawing at `bc1a3d4`, the model here.
-
-- `QueueModel` **flattens** a group and its entries into the list the table shows. A tree view
-  would have replaced the list, the delegate and the geometry `T118-R7`, `T118-R8`, `T118-R12` and
-  `T118-R15` were each spent on; a flat list of headers-and-indices keeps every one of them.
-- A header takes the position of its **first member**, so a queue the user reordered still reads
-  the way they left it.
-- Expansion is held **by playlist id**, for `T126-R1`'s reason: progress causes refreshes
-  constantly, and holding it by row would close a group under the user's hands.
-- The chip **counts** (`1 of 4`) and the bar's segments come from each member's own status, so a
-  failed entry is its own block rather than folded into "not done yet".
-- A job inside a closed group reports **no row**: a caller building an index from a hidden job
-  would address whatever is drawn at that number, which is `T118-R14` in a new place.
-- **A group of one is dissolved.** A playlist whose other entries were removed would otherwise
-  leave a heading over a single row.
-
-**The measurement `UX-005` said could reopen the shape.** 150 entries across ten playlists, every
-group open: **opening 0.002 s, `sizeHint` over 160 rows 0.019 s, painting a viewport 0.022 s**,
-against a 0.5 s budget. `setUniformItemSizes` is off and it costs nothing measurable here. *An
-earlier version of this test timed `repaint()` on an offscreen widget and reported `0.000s` — a
-number that cannot fail, from a call that may not have painted at all — so it measures `sizeHint`
-per row and a real delegate paint instead, and asserts the row heights actually differ.*
-
-**Not done, and deliberately out of this task's scope:** the group's own verbs. `UX-005` row 9
-names `Pause all`, `Cancel all`, `Retry failed` and `Show in folder`, and the header currently
-offers none — every entry still carries its own. Filed as `T-142` rather than bolted on here,
-because each needs manager wiring and a confirmation that names its own count (`DAT-005` §4).
+*Filed retrospectively on 2026-08-05.* The work was written and committed while the code cited a
+`T-146` that did not exist, and `COORD-R22` found it inside a commit about six review findings that
+did not mention it. **Recorded here rather than back-dated**: a task filed after its own
+implementation is worth less than one filed before it, and saying so is the point.
 
 #### Scope
 
-The mockup is the specification and the ruling is transcribed in `UX-005` rows 9–9d. In short: a
-group row with a disclosure triangle, a **segmented** bar of one block per entry, a `4 of 16`
-count chip, and — when open — **shorter** child rows on a connecting rail, each with its own state
-and verbs.
+A filled button hovered kept its fill and took an `accent` border. Measured against its own fill,
+that border is **1.42:1 in light and 1.25:1 in dark** — too low to read as gold, so it read as a
+smudge, reported as "a red outline".
 
-**The model flattens; the view stays a `QListView`.** A `QTreeView` would replace the list, the
-delegate and the geometry `T118-R7`, `T118-R8`, `T118-R12` and `T118-R15` were each spent on. A
-flat model that emits a group row and, when it is open, its entries — with a depth role the
-delegate indents by — keeps all of them.
+**Brightening the accent would have fixed one theme only.** `#D9A24C` is 3.36:1 on the light
+theme's forest and **1.25:1** on the dark theme's already-light green — `T130-R1`'s shape exactly, a
+change that looks right in the context it was chosen in.
 
-**`setUniformItemSizes(True)` has to come off**, and that is the risk rather than a detail. It is
-the promise that lets the list size itself without asking every row, and a two-line child beside a
-four-line group breaks it. `T118-R10` is the record of what per-row cost buys: a paste of 150 cost
-0.722 s on hosted Windows and a delegate fixed it.
+*Corrected by lifting the fill instead*, which moves with whichever primary it is given. New
+`Theme.primary_hover`; `on_primary` stays legible on it and the pair is in the contrast gate,
+because lightening far enough to be *felt* is exactly far enough to drop white text below the
+floor — +25% measured 4.15:1, so the shade is +18%.
 
 #### Acceptance criteria
 
-- **A paste of 150 with every group open is measured**, on Linux and on Windows, against the
-  `T118-R10` bound. `UX-005`'s ruling says in as many words that this number is owed and that a bad
-  one justifies reopening the shape — so it is a criterion, not a follow-up
-- Closed, a playlist is exactly **one** row; open, it is one plus its entries — asserted by row
-  count, not by pixels
-- The group's chip reads `4 of 16` and **never a percentage**, asserted with entries whose totals
-  are unknown, which is the case that made a percentage wrong
-- The segmented bar shows a **failed** entry distinctly from a queued one — the specific lie row 9b
-  exists to prevent
-- A child row draws **no format line** and a smaller thumbnail (row 9c), asserted against the group
-  row rather than in isolation
-- Group verbs are named as the mockup names them: `Pause all`, `Cancel all`, `Retry failed` only
-  when something failed, `Show in folder` with no `Open`. Entry verbs are the ordinary ones
-- `Remove` on a group names its own count in the confirmation (`DAT-005` §4)
-- Expanding and collapsing are **keyboard reachable**, and the open state survives the model reset
-  a refresh performs (`T126-R1`'s lesson: identity, not row number)
-- `Clear finished` clears a group only when all of it is done (row 9d)
-
-#### Out of scope
-
-- Anything that produces a group: probing, downloading, persisting (`T-137`)
-- The tab's count, which `UX-005` leaves proposed rather than ruled
+- Hovering the primary action changes its **fill**, in both themes, asserted from the rendered
+  widget
+- `on_primary` against `primary_hover` is in `TEXT_PAIRS` and clears the text floor
+- The same lift applies to `QPushButton:default`, which had the identical ring
 
 ---
 

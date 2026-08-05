@@ -113,10 +113,12 @@ not met.** It asks for *"reviewed and signed off"*, and what is absent is the **
 exit review** that Phase 0 and Phase 1 each required (`AGENTS.md` §3) — not a deliverable review.
 
 **Criterion 8 was added on 2026-08-04: the window must catch up with the features behind it.**
-The maintainer ruled it after running the application and producing nine tasks in one afternoon,
-`T-132` through `T-141`. **All ten are complete**, and the measurement `UX-005` said could reopen the playlist
-shape came back clear — 150 entries across ten open playlists cost 0.002 s to open and 0.022 s to
-paint a viewport, against a 0.5 s budget.
+The maintainer ruled it after running the application and producing ten tasks in one afternoon,
+`T-132` through `T-141`. **Not met** — reset on 2026-08-04 by `P2EXIT-R10` and still open. `T-140` is reopened for the
+accepted criteria it did not build (`T140-R5`), and the 2026-08-05 re-review left `T137-R2`,
+`T140-R3`'s group-retargeting half and `T140-R5` outstanding. *(The measurement `UX-005` said
+could reopen the playlist shape did come back clear — 150 entries across ten open playlists cost 0.002 s to open and 0.022 s to
+paint a viewport, against a 0.5 s budget — the shape stands; its implementation is not finished.)*
 
 *Read the distinction below rather than around it.* This is an **amendment to the criteria**, made
 deliberately and recorded in `IMPLEMENTATION_PLAN.md`, which stays canonical. It is not the mistake
