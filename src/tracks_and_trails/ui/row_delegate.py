@@ -241,6 +241,26 @@ EDITOR_WIDTH: Final = 190
 #: The height of the painted progress bar.
 BAR_HEIGHT: Final = 4
 
+#: The gap between two blocks of a group's segmented bar (`T-155`, `T-167`).
+#:
+#: **Uniform at every width, and a constant rather than a calculation.** It used to collapse to
+#: zero on a narrow bar, and sixteen blocks touching are one bar to the eye — which is what the
+#: maintainer reported as the bar "becoming a single bar" as the window narrowed. `T-155` was
+#: blocks merging *by accident*; `UX-005` row 9b-i's constraint is that a bar which merges on
+#: purpose must not be mistakable for that defect returning, so the gap does not vary.
+SEGMENT_GAP: Final = 1
+
+#: The narrowest a block may be drawn and still read as an entry rather than as noise (`T-164`).
+#:
+#: **The number is the decision** (`T118-R8`), so it is stated here rather than tuned by eye. It
+#: is anchored to the measurement that opened `T-164`: sixteen blocks in a 200 px bar are twelve
+#: pixels each, and at that size the segmentation "reads as noise rather than as information". So
+#: the floor sits above twelve rather than at it.
+#:
+#: Everything the last line decides is derived from this one number — when the blocks merge
+#: (`T-164`), and how much of the line the bar keeps from the verbs (`T-163`).
+MIN_BLOCK_WIDTH: Final = 16
+
 #: How far one level of nesting indents a row, and the width reserved for the disclosure
 #: triangle (`T-140`). The triangle sits in the indent a group's own children get, so a group and
 #: its entries line up on the same left edge rather than stepping twice.
@@ -298,6 +318,16 @@ def _segments(index: QModelIndex | _PersistentIndex) -> tuple[SegmentState, ...]
             # with fewer blocks than the playlist has entries would misreport the size of the work.
             states.append(SegmentState.WAITING)
     return tuple(states)
+
+
+def segment_span(blocks: int) -> int:
+    """The narrowest a bar of `blocks` blocks may be drawn (`T-164`, `T-167`).
+
+    One arithmetic, so the width the bar asks the verbs for and the width its rendering is chosen
+    against cannot disagree — the same rule `_control_rect` and `_verb_rects` follow about a thing
+    drawn in one place and measured in another.
+    """
+    return max(blocks, 0) * MIN_BLOCK_WIDTH + max(blocks - 1, 0) * SEGMENT_GAP
 
 
 class RowDelegate(QStyledItemDelegate):
@@ -679,6 +709,8 @@ class RowDelegate(QStyledItemDelegate):
         states: Sequence[SegmentState],
         muted: QColor,
         palette: QPalette,
+        *,
+        line_width: int,
     ) -> None:
         """One block per entry, filled by what that entry has done (`UX-005` row 9b, `T-140`).
 
@@ -687,10 +719,18 @@ class RowDelegate(QStyledItemDelegate):
         while it runs and a bar that goes *backwards*. It also gives a **failed** entry somewhere
         to be seen: under one continuous bar a playlist that quietly skipped a track looks exactly
         like one that got everything.
+
+        **`line_width` is the row's own line, not `area`** (`T-167`). What the bar looks like used
+        to be decided from `area`, which is the space left over *after* the verbs — and the verbs'
+        width is not monotonic in the window's: at the moment one drops into `⋯` (`T-135`) the
+        leftover grows. So dragging one edge steadily made the bar change, change back and change
+        again. A rendering decided from leftover space inherits every discontinuity of everything
+        else sharing the line. The line's own width moves one way only, so the same threshold is
+        stable by construction, and the bar is still *drawn* into whatever `area` it was given.
         """
         if not states or area.width() <= 0:
             return
-        gap = 1 if len(states) < area.width() // 2 else 0
+        gap = SEGMENT_GAP if segment_span(len(states)) <= line_width else 0
         span = (area.width() - gap * (len(states) - 1)) / len(states)
         if span < 1:
             return
@@ -1053,7 +1093,12 @@ class RowDelegate(QStyledItemDelegate):
         if bar.bottom() > area.bottom():
             return
         if segments:
-            self._paint_segments(painter, bar, segments, muted, palette)
+            # **The line's width, not the bar's** (`T-167`). `area` is the row's text line, which
+            # differs from the row's own width by the padding, the indent, the tile and the
+            # control's slot — all fixed for a given row, so it moves one way as the user drags.
+            # `bar` is what the verbs left of it, and that is exactly the input whose reversals
+            # made the bar change shape twice on one drag.
+            self._paint_segments(painter, bar, segments, muted, palette, line_width=area.width())
             return
         track = QColor(muted)
         track.setAlpha(60)

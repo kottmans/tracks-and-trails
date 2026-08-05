@@ -22,6 +22,7 @@ window size that CI does not have.
 import threading
 import time
 from collections.abc import Callable, Iterator
+from itertools import pairwise
 from pathlib import Path
 from typing import Any, Final
 
@@ -34,6 +35,7 @@ from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 from tracks_and_trails.core.paths import thumbnail_cache_directory, thumbnail_cache_path
 from tracks_and_trails.ui import row_delegate
 from tracks_and_trails.ui.row_delegate import (
+    BAR_HEIGHT,
     CHILD_THUMBNAIL,
     DEPTH_ROLE,
     DETAIL_ROLE,
@@ -43,6 +45,7 @@ from tracks_and_trails.ui.row_delegate import (
     HEADLINE_ROLE,
     HUE_ROLE,
     INDENT,
+    JOB_ID_ROLE,
     PADDING,
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
@@ -55,9 +58,12 @@ from tracks_and_trails.ui.row_delegate import (
     STATE_ROLE,
     TEXT_LINES,
     THUMBNAIL_URL_ROLE,
+    TWISTY_WIDTH,
+    VERBS_ROLE,
     RowDelegate,
     SegmentState,
 )
+from tracks_and_trails.ui.row_verbs import Verb
 from tracks_and_trails.ui.thumbnails import THUMBNAIL_SIZE, ThumbnailStore
 
 REPO_ROOT: Final = Path(__file__).resolve().parents[2]
@@ -68,6 +74,19 @@ IMAGE_SOURCE: Final = REPO_ROOT / "src" / "tracks_and_trails" / "resources" / "i
 
 #: The width a row is rendered at here. Wide enough that nothing under test is elided.
 RENDER_WIDTH: Final = 700
+
+#: The widths every layout claim is swept across, one pixel at a time (`T-155`, `T-167`).
+#:
+#: **Swept rather than sampled, and that is `T-155`'s lesson rather than a preference.** Its blocks
+#: merged at most widths and not at 800 px, so a test rendering one width drew the defect correctly
+#: and would have passed. Every collision on this row — the verbs against the bar, the verbs
+#: against the format line, the control against the tile — appears over a *range* and disappears
+#: again, so a range is what has to be asserted.
+#:
+#: The low end is where the row still draws a last line at all today. Narrower than that the format
+#: control takes the whole width beside the tile and there is nothing left to measure, which is
+#: `T-160`'s defect rather than this range's business.
+SWEEP_WIDTHS: Final = range(380, 1201)
 
 #: `NFR-001` budgets ~100 ms for an interaction. Half a second here for the same reason the add
 #: dialog's tests use that figure: the property is that the call **does not wait**, which a
@@ -1245,7 +1264,14 @@ def test_a_groups_bar_keeps_every_gap_at_every_width(qapp: QApplication) -> None
         painter = QPainter(image)
         try:
             RowDelegate()._paint_segments(
-                painter, QRect(0, 0, width, 8), states, QColor("#666666"), QPalette()
+                painter,
+                QRect(0, 0, width, 8),
+                states,
+                QColor("#666666"),
+                QPalette(),
+                # Every width here is above the merge threshold, so this stays a claim about the
+                # one-block-per-entry rendering `T-155` fixed rather than about `T-164`'s.
+                line_width=width,
             )
         finally:
             painter.end()
@@ -1256,6 +1282,89 @@ def test_a_groups_bar_keeps_every_gap_at_every_width(qapp: QApplication) -> None
             f"at {width}px the bar draws {gaps} gaps between blocks; sixteen entries need fifteen, "
             "and blocks that merge under-report a playlist to the user"
         )
+
+
+def a_playlist(**extra: Any) -> dict[int, Any]:
+    """A group header carrying everything that competes for its last line (`T-163`, `T-167`).
+
+    Verbs, a segmented bar and a format control at once, because the collisions this sweeps for
+    only exist when all three are on the row — a group with no verbs cannot have them take the
+    bar's width.
+    """
+    row: dict[int, Any] = {
+        HEADLINE_ROLE: "Trail Sounds",
+        EXPANDED_ROLE: False,
+        HUE_ROLE: 0,
+        JOB_ID_ROLE: "playlist-1",
+        VERBS_ROLE: [Verb.CANCEL_ALL, Verb.RETRY_FAILED],
+        PRESET_CHOICES_ROLE: ["Best video available", "Audio only (MP3)"],
+        SEGMENTS_ROLE: [SegmentState.DONE] * 4
+        + [SegmentState.FAILED]
+        + [SegmentState.WAITING] * 11,
+    }
+    row.update(extra)
+    return row
+
+
+def bar_blocks(row: dict[int, Any], width: int) -> int:
+    """How many blocks the row's bar draws at `width`, counted off the pixels it painted.
+
+    `0` means no bar was drawn at all, which is a real thing this row does at some widths and is
+    `T-163`'s defect rather than a measurement failure.
+
+    **Read from the drawn row rather than from the delegate's arithmetic**, because the claim is
+    about what a user sees as they drag the window edge. The scanline is the bar's own, and the
+    count starts at the text line's left edge because the tile shares that scanline.
+    """
+    image = paint_rows(RowsModel([row]), RowDelegate(), 0, width=width)
+    # Held rather than inlined: a temporary `QStyleOptionViewItem` takes its `font` with it, and
+    # `QFontMetrics` then reads a deleted C++ object.
+    option = QStyleOptionViewItem()
+    line = QFontMetrics(option.font).height()
+    scanline = PADDING + 2 * line + 2 + BAR_HEIGHT // 2
+    first = PADDING + TWISTY_WIDTH + THUMBNAIL_SIZE[0] + GAP
+    inked = [image.pixelColor(x, scanline).alpha() > 0 for x in range(first, width)]
+    return sum(1 for x in range(len(inked)) if inked[x] and not (x and inked[x - 1]))
+
+
+def test_the_bar_changes_shape_at_most_once_across_a_drag(qapp: QApplication) -> None:
+    """`T-167`: narrowing the window merged the blocks, and narrowing it further un-merged them.
+
+    **The input was wrong, not the threshold.** The rendering was chosen from the space left over
+    after the verbs, and the verbs' width is not monotonic in the window's — at the moment one
+    drops into `⋯` (`T-135`) the leftover *grows*. Measured on this row before the fix, the bar's
+    own width ran 76 px at a 440 px window, 12 px at 460, 32 px at 480 and 9 px at 500, so the
+    rendering reversed twice while the user dragged one edge one way.
+
+    **Swept one pixel at a time, and in both directions by construction.** The rendering is a pure
+    function of the width — nothing about it is carried between paints — so a single transition
+    across the sweep is exactly the property that no drag direction can reverse it, and that it
+    un-merges at the width it merged at rather than at a second one.
+
+    **Widths where the row draws no bar at all are left out, and that is deliberate.** They exist:
+    the verbs take their full width and can leave the bar nothing, which is `T-163`, a different
+    defect with its own criterion and its own test. Asserting it here would make this test fail for
+    a reason it is not about. The guard below is what stops that exclusion from emptying the sweep.
+    """
+    row = a_playlist()
+    measured = [(width, bar_blocks(row, width)) for width in SWEEP_WIDTHS]
+    drawn = [(width, blocks) for width, blocks in measured if blocks]
+
+    assert len(drawn) > len(SWEEP_WIDTHS) // 2, (
+        f"the row drew a bar at only {len(drawn)} of {len(SWEEP_WIDTHS)} widths, so this sweep is "
+        "not measuring a rendering often enough to say anything about how often it changes"
+    )
+
+    changes = [
+        (width, before, after) for (_, before), (width, after) in pairwise(drawn) if before != after
+    ]
+
+    assert len(changes) <= 1, (
+        f"the bar takes {len({blocks for _, blocks in drawn})} shapes across "
+        f"{SWEEP_WIDTHS[0]}-{SWEEP_WIDTHS[-1]}px, changing at "
+        f"{[width for width, _, _ in changes]}; a user dragging one edge steadily sees it change, "
+        "change back and change again"
+    )
 
 
 def test_an_abandoned_block_is_not_drawn_like_a_finished_one(qapp: QApplication) -> None:
@@ -1297,7 +1406,12 @@ def test_an_abandoned_block_is_not_drawn_like_a_finished_one(qapp: QApplication)
             painter = QPainter(image)
             try:
                 RowDelegate()._paint_segments(
-                    painter, QRect(0, 0, 40, 8), [state], QColor(dressing.muted), palette
+                    painter,
+                    QRect(0, 0, 40, 8),
+                    [state],
+                    QColor(dressing.muted),
+                    palette,
+                    line_width=40,
                 )
             finally:
                 painter.end()

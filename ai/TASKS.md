@@ -1250,10 +1250,13 @@ equivalent — there is no overflow menu for a sentence.
 
 ### T-167 — The playlist bar changes shape twice as the window narrows
 
-**Status:** Proposed — **found by the maintainer, 2026-08-05**. The question it carried is
-**answered**: asked directly whether a narrow bar should become fewer-but-bigger blocks or one
-plain bar, the maintainer chose **fewer, bigger blocks**. `UX-005` row 9b-i stands unamended, and
-this task is only about *when* the change happens and that it happens once.
+**Status:** **Complete — 2026-08-05.** The rendering is decided from the row's own text line, whose
+width differs from the window's by fixed furniture only, rather than from the space the verbs left
+over. Swept one pixel at a time across 380-1200 px: five reversals before, one transition after.
+`UX-005` row 9b-i stands unamended. *(Was: Proposed — **found by the maintainer, 2026-08-05**. The
+question it carried is **answered**: asked directly whether a narrow bar should become
+fewer-but-bigger blocks or one plain bar, the maintainer chose **fewer, bigger blocks**, and this
+task is only about *when* the change happens and that it happens once.)*
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 3
