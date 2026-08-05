@@ -2354,6 +2354,48 @@ Assert, on `windows-latest`:
 
 ## Complete
 
+### T-148 — The soak does not record which tree it exercised
+
+**Status:** **Complete — 2026-08-05.** Found while recording the first clean 60-run soak.
+**Owner:** Implementer
+**Priority:** Medium — it is the evidence for a phase-exit gate
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `OPS-007`, `T-128`, `ai/TESTING.md` §7, `tools/soak.sh`
+**Affected surfaces:** `tools/soak.sh`
+**Risk:** Low
+
+#### Scope
+
+`tools/soak.sh` printed a run count, two timestamps and a verdict, and **never the commit**. So the
+most expensive evidence this project produces — sixty full-suite runs, about five and a half hours
+— did not say which tree it was evidence about.
+
+**Found the way these things are always found: by needing it.** The first clean soak came back
+`60 passed, 0 process deaths` at `2144 passed, 11 skipped, 2 deselected`, and **two commits gated
+at exactly that count** — the pre-merge local head and the merged one. The head had to be inferred
+from when the run finished, and inferring the subject of a phase-exit gate is the class of mistake
+`P1EXIT-R1`, `P2EXIT-R8` and `COORD-R13` are each a record of.
+
+*The output now carries `soak: head <sha>`, and marks a dirty tree `+dirty`* — a soak of
+uncommitted work is still useful and is **not** the same claim as a soak of a commit, so the two
+must not print the same way. The closing line repeats the head, because that is the line anybody
+quotes.
+
+#### Acceptance criteria
+
+- The head appears in the output at the start **and** in the closing line
+- An uncommitted tree is marked, so the two claims cannot be confused
+- A checkout with no git available still runs, reporting `unknown` rather than failing — the soak
+  is a diagnostic and must not acquire a new way to not start
+
+#### Out of scope
+
+- Writing an evidence file. `ai/evidence/` holds what a task decided to keep, and a soak's logs are
+  already written to a directory the run names
+
+---
+
 ### T-147 — The primary action's hover ring reads as a smudge
 
 **Status:** **Complete — 2026-08-05.** Reported by the maintainer while running the window.

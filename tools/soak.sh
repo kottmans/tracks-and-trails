@@ -22,7 +22,18 @@ RUNS="${1:-60}"
 OUT="${2:-$(mktemp -d -t soak-XXXXXX)}"
 mkdir -p "$OUT"
 
+# **What the run is evidence about** (`T-148`). This printed a count and a verdict and never the
+# commit, so the most expensive evidence this project produces — five and a half hours — did not
+# say which tree it exercised. The first clean soak had to have its head *inferred* from a test
+# count that two candidate commits shared. A dirty tree is stated too: a soak of uncommitted work
+# is still useful and is not the same claim as a soak of a commit.
+HEAD_SHA="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
+if [ -n "$(git status --porcelain 2>/dev/null)" ]; then
+    HEAD_SHA="$HEAD_SHA+dirty"
+fi
+
 echo "soak: $RUNS runs, logs in $OUT"
+echo "soak: head $HEAD_SHA"
 echo "soak: started $(date -Is)"
 
 crashed=0
@@ -49,4 +60,5 @@ if [ "$crashed" -gt 0 ] || [ "$failed" -gt 0 ]; then
     echo "soak: logs for the runs that did not pass are in $OUT"
     exit 1
 fi
-echo "soak: clean. Against the 2-in-39 baseline, P(this | rate unchanged) is 0.042 at 60 runs."
+echo "soak: clean at $HEAD_SHA. Against the 2-in-39 baseline, P(this | rate unchanged) is 0.042"
+echo "soak: at 60 runs. Quote the head with the result; the number alone does not identify a tree."
