@@ -158,14 +158,14 @@ in the room when they were filed.
 |---|---|---|
 | `T-163` | Narrow the window and `Open` / `Show in folder` keep their full width while the **progress bar is squeezed to a stub**. What decides whether a verb fits never counted the bar | Phase 3 |
 | `T-164` | Sixteen blocks in a narrow bar read as noise. **Ruled, not yet built**: `UX-005` row 9b-i merges them to a fixed count below a stated width | Phase 3, ready |
+| `T-166` | The group's verbs advance across the `Download as:` line until it is a stump | Phase 3 |
+| `T-167` | The bar changes shape twice as one window edge is dragged | Phase 3 |
 
 *(`T-161` and `T-162` were on this list and are **not** any more: both were reclassified Phase 2
 by the exit review — `T-161` because `T-153`'s accepted criterion is that the row *shows* a
 picture, `T-162` because a stale stage defeats criterion 1 — and both are fixed. `T-160` stays
 Phase 3 and no longer has a row here; see above.)*
 
-| `T-166` | The group's verbs advance across the `Download as:` line until it is a stump | Phase 3 |
-| `T-167` | The bar changes shape twice as one window edge is dragged | Phase 3 |
 
 **A paused queue that probes is not one of these.** Paste a playlist while paused and every entry
 probes, reports `Ready`, and starts nothing. That is `ARC-009` and `UX-001` working as decided —

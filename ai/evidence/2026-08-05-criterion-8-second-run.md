@@ -59,10 +59,15 @@ scope.
   that answers is taken, so the address chosen is one that yields a picture. **This row is not
   passed until somebody runs it**; a fix is not an observation, and recording one as the other is
   what this correction exists for.
-- **Row 2.7 — `T-160` is open**, so the row still fails. It needs either the defect fixed or the
-  row amended by the maintainer. **The row was added on 2026-08-05 to describe a known Phase 3
-  defect**, which guaranteed the checklist would fail while that defect lived — writing a row that
-  cannot pass is a checklist authoring error, and it is mine.
+- **Row 2.7 — removed from the checklist**, by the reviewer's disposition in `T161-R1`. It had
+  been added on 2026-08-05, *after* the closed list, to describe `T-160` — so it could never pass
+  while that defect lived, and keeping it made a Phase 3 task into a Phase 2 exit gate. Writing a
+  row that cannot pass is a checklist authoring error and it is mine. `T-160` stays Phase 3 and the
+  behaviour the row asked for is unweakened: it moved to that task's acceptance evidence.
+
+**The result above is not recomputed.** This run observed 39 of 41, and it says so. A row removed
+afterwards does not retroactively pass, and rewriting the count to 39 of 40 would make the record
+flatter than the day it describes. Later runs measure the 40 rows that remain.
 
 **Rows recorded from here on must distinguish three outcomes** — passed, failed, and failed-with-an-
 accepted-owner — because collapsing the last two into the first is what produced this.

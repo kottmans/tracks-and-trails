@@ -130,11 +130,11 @@ that day's amendment to `UX-005`, since holding one group has no mechanism once 
 was green throughout. `ai/evidence/2026-08-05-criterion-8-checklist-run.md` records it. Seven
 are inside criterion 8 and four are Phase 3, **ruled 2026-08-05** — and **all seven are now
 Complete**, `T-157` against a `UX-005` amendment recorded before it was built. **Rows 3.6 and §5 have since been run** on `kirk` — 3.6 caught a
-completed playlist drawing blank blocks, fixed at `6bae7ec`. That run recorded **39 of 41**:
-**row 2.7** fails (`T-160`) and **row 3.15** fails (`T-161`, every playlist drawing a blank parent
-picture). What criterion 8 owes now is `T-161` corrected — it is `T-153`'s unfinished half and so
-Phase 2, per `P2EXIT-R12` — then a re-run recording passed rows separately from failed ones, then
-Windows and Fedora evidence. The ruling's line was: a defect where accepted work
+completed playlist drawing blank blocks, fixed at `6bae7ec`. That run recorded **39 of 41** — the historical result, kept as
+observed: **row 2.7** failed (`T-160`) and **row 3.15** failed (`T-161`). **Both are now
+dispositioned.** `T-161` is corrected; row 2.7 is removed from the checklist by `T161-R1`, its
+property moved to `T-160` unweakened. What criterion 8 owes is **a re-run over the remaining 40
+rows**, recording passed rows separately from failed ones, then Windows and Fedora evidence. The ruling's line was: a defect where accepted work
 is *unreachable or drawn wrong* contradicts what the criterion asserts, while one asking for
 something *new* does not. The closed list stays closed — `T-149`, `T-151`, `T-152`, `T-153`,
 `T-154`, `T-155` and `T-157` are **findings against** `T-132`–`T-141`, not additions to it.
@@ -1342,9 +1342,11 @@ first one keeps.
 
 ## Criterion 8, second run — 2026-08-05
 
-**39 of 41 rows passed, on `kirk`** — first recorded as a clean pass, corrected by
-`P2EXIT-R12`: **row 2.7** (`T-160`) and **row 3.15** (`T-161`) both fail, and writing *pass*
-beside a defect already filed is a verdict stated over its own evidence. The record is
+**39 of 41 rows passed, on `kirk`** — the historical result, first recorded as a clean pass and
+corrected by `P2EXIT-R12`: **row 2.7** (`T-160`) and **row 3.15** (`T-161`) failed, and writing
+*pass* beside a defect already filed is a verdict stated over its own evidence. **Both are since
+dispositioned** — `T-161` corrected and approved, row 2.7 removed by `T161-R1` — so the next run
+covers 40 rows. The record is
 `ai/evidence/2026-08-05-criterion-8-second-run.md`, which states the head as the range
 `6bae7ec..541b484` rather than a single sha: the maintainer did not record which was checked out,
 and `git diff --stat` across it is `ai/TASKS.md` alone. A range a reader can verify is worth more
@@ -1384,9 +1386,9 @@ are Not met.**
 | Finding | What | State |
 |---|---|---|
 | `P2EXIT-R11` | High. A finished probe's `Probing` outlived it against a `Ready` chip, so criterion 1's accurate-progress promise failed on the durable playlist route | **Fixed.** Stage precedence is gated by whether the stage can still be live in the current status |
-| `P2EXIT-R12` | High. The second-run record said *"pass, all 41 rows"* while listing failures of rows 2.7 and 3.15 | **Record corrected. `T-161` fixed** — row 3.15's defect is gone but the row is unrun. **Row 2.7 still fails** on open `T-160` |
+| `P2EXIT-R12` | High. The second-run record said *"pass, all 41 rows"* while listing failures of rows 2.7 and 3.15 | **Open.** Record corrected and `T-161` fixed and approved; row 2.7 removed by `T161-R1`. **Closes on the 40-row re-run** — row 3.15's defect is gone but nobody has observed it since |
 | `P2EXIT-R13` | Medium. The `T-152` focus correction fired on every model reset from either view, taking the keyboard off toolbar controls | **Fixed.** First rows only, in the visible view |
-| `P2EXIT-R14` | High. Plan and status carried incompatible live criterion-8 verdicts | **Fixed by this sweep** |
+| `P2EXIT-R14` | High. Plan and status carried incompatible live criterion-8 verdicts | **Open across three sweeps.** Each one corrected the occurrence it was looking at and left siblings behind — which is the finding, reproduced twice by its own corrections |
 
 **The pattern in three of the four is mine and it is one pattern.** `P2EXIT-R11` and `P2EXIT-R12`
 are both a claim stated over the top of contradicting evidence I had already written down —
