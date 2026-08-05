@@ -74,8 +74,8 @@ Paste one real playlist URL. This is the sequence that produced criterion 8 in t
 | 3.3 | Closed, the playlist is **exactly one row**; opened, it is one plus its entries | `T-140` |
 | 3.4 | **`Right` opens it and `Left` closes it** with the header focused — the keyboard route | `T-140`, `NFR-005` |
 | 3.5 | The chip reads **`4 of 16`, never a percentage** | `T-140` |
-| 3.6 | The segmented bar shows a **failed** entry differently from a queued one, and finished segments are **brand-coloured, not muted** | `T-140` |
-| 3.7 | A child row draws **no format line** and a smaller thumbnail, and is not clipped | `T-140` |
+| 3.6 | The segmented bar shows a **failed** entry differently from a queued one, and finished segments are **brand-coloured, not muted**. **Count the blocks — sixteen entries means sixteen, at every window width** (`T-155`) | `T-140`, `T-155` |
+| 3.7 | A child row draws **no format line** and a smaller thumbnail, and is not clipped. **Its picture must stay inside its slot** and not cover the title (`T-154`) | `T-140`, `T-154` |
 | 3.8 | The header shows **`Download as: Best video available`** — a preset *name*, never raw yt-dlp syntax like `bestvideo+bestaudio/best` | `T140-R3` |
 | 3.9 | Changing the format **on the header** changes it for every entry that can still take one | `T140-R3` |
 | 3.10 | The header offers **`Cancel all`**, **`Show in folder`**, and **`Remove`** — and **no `Open`**. `Pause all` is **deliberately absent**, deferred to `REQ-017` | `T-140` |

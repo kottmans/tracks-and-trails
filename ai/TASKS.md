@@ -1142,6 +1142,117 @@ beats designing it against an imagined one.
 
 ---
 
+### T-154 — A child row's picture is drawn at full size and covers its own text
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, opening a sixteen-item playlist.
+**Recommended as a finding against `T-140`** (`UX-005` row 9c).
+**Owner:** Implementer
+**Priority:** **High** — it makes an opened playlist's entries hard to read, which is the shape's
+whole purpose
+**Phase:** **Undecided**, for `T-151`'s reason
+**Depends on:** nothing
+**Relevant context:** `UX-005` row 9c, `T-140`, `T-119`, `ui/row_delegate.py` (`_paint_tile`),
+`ui/thumbnails.py` (`ThumbnailStore`)
+**Affected surfaces:** `ui/row_delegate.py`, possibly `ui/thumbnails.py`
+**Risk:** Low
+
+#### Scope
+
+**An entry's thumbnail spills out of its slot and over the row's text.** The delegate already sizes
+the slot by depth — `tile = CHILD_THUMBNAIL if depth else THUMBNAIL_SIZE`, 38x22 against the
+parent's full tile — and then draws the picture at the **pixmap's** size rather than the slot's:
+
+```python
+target = QRect(tile)
+target.setSize(pixmap.size())    # the picture's size, not the box's
+target.moveCenter(tile.center())
+painter.drawPixmap(target, pixmap)
+```
+
+`ThumbnailStore` caches one pixmap per URL at `THUMBNAIL_SIZE`, so a child asking for the small
+slot is handed the large picture and draws it centred on a 38x22 box — overflowing in every
+direction, including over the headline.
+
+**The comment above that code says the opposite of what it does**: *"Centred inside the fixed box:
+the picture keeps its aspect ratio, so … a wide one does not overflow the row."* That is true only
+while the pixmap is no larger than the tile, which holds for every parent row and no child row.
+`T-140` introduced the smaller child tile; nothing then checked what the painter did with it.
+
+#### Acceptance criteria
+
+- A child row's picture is **inside** its slot, asserted as geometry — the drawn rect against the
+  tile rect — rather than by eye
+- Aspect ratio is still preserved: a square picture does not stretch, which is what the current
+  code was reaching for and should keep
+- A **parent** row is unchanged, so the fix cannot pass by shrinking everything
+- Asserted with a pixmap **larger than the child slot**, which is the only case that fails today and
+  the case the store always produces
+- Whether the store gains a second cached size or the painter scales on draw is the implementer's,
+  but `T-119`'s cache-cost reasoning applies to the first option
+
+#### Out of scope
+
+- The child tile's dimensions. `UX-005` row 9c settles that a child's picture is smaller
+- Any change to `ThumbnailStore`'s eviction or disk cache (`T-119`)
+
+---
+
+### T-155 — The playlist bar's blocks merge at most widths
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**: *"sometimes render correctly, other
+times they appear mashed together."* **Recommended as a finding against `T-140`** (`UX-005` row 9b).
+**Owner:** Implementer
+**Priority:** Medium — the bar is the group's only per-entry progress, and merged blocks under-report
+**Phase:** **Undecided**, for `T-151`'s reason
+**Depends on:** nothing
+**Relevant context:** `UX-005` row 9b, `T-140`, `ui/row_delegate.py` (`_paint_segments`)
+**Affected surfaces:** `ui/row_delegate.py`
+**Risk:** Low
+
+#### Scope
+
+**It is cumulative rounding, which is why it looks intermittent.** Each block takes its left edge
+from a rounded running position and its width from a separately rounded span:
+
+```python
+span  = (area.width() - gap * (n - 1)) / n     # fractional
+left  = area.left() + round(position * (span + gap))
+block = QRect(left, area.top(), max(round(span), 1), area.height())
+```
+
+`round(span)` is the same for every block while the step between blocks is not, so wherever the
+rounded width exceeds the real step the block runs into its neighbour and the 1px gap disappears.
+Which gaps survive depends on the fractional part, so it changes with the bar's width — measured
+for sixteen entries:
+
+| Bar width | Span | Gaps lost, of 15 |
+|---|---|---|
+| 600 px | 36.56 | **7** |
+| 617 px | 37.63 | 6 |
+| 733 px | 44.88 | 2 |
+| 800 px | 49.06 | 0 |
+
+So it is deterministic per width and looks random to a user resizing a window. **It under-reports**:
+sixteen entries can read as nine blocks, and `UX-005` row 9b exists precisely so a skipped track has
+somewhere to be seen.
+
+#### Acceptance criteria
+
+- Every block's right edge is derived from the **next** block's left edge, so cumulative rounding
+  cannot accumulate — one arithmetic, not two
+- For a group of sixteen, **fifteen gaps are present at every width** across a swept range, asserted
+  by measuring the drawn rects rather than by rendering one width and looking
+- A group whose entries cannot each get a pixel still degrades honestly — `span < 1` returns today,
+  and whatever replaces it must not draw a lie
+- The `FAILED` block stays visually distinct, which is the row's whole reason (`UX-005` row 9b)
+
+#### Out of scope
+
+- The colours, settled by `T-140`'s correction and `T130-R1`
+- Showing per-entry progress *within* a block. The ruling is one block per entry, not a fraction
+
+---
+
 ### T-153 — A playlist's own picture is never read, only its entries'
 
 **Status:** Proposed — **found by the maintainer, 2026-08-05**, pasting a playlist and seeing the
