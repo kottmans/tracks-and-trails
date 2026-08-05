@@ -1250,8 +1250,10 @@ equivalent — there is no overflow menu for a sentence.
 
 ### T-167 — The playlist bar changes shape twice as the window narrows
 
-**Status:** Proposed — **found by the maintainer, 2026-08-05**. **Carries a question for the
-maintainer**: it may amend the `T-164` ruling made hours earlier. See below.
+**Status:** Proposed — **found by the maintainer, 2026-08-05**. The question it carried is
+**answered**: asked directly whether a narrow bar should become fewer-but-bigger blocks or one
+plain bar, the maintainer chose **fewer, bigger blocks**. `UX-005` row 9b-i stands unamended, and
+this task is only about *when* the change happens and that it happens once.
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 3
@@ -1283,20 +1285,19 @@ change back, and change again.
 discontinuity of everything else sharing the line. Decided from the row's own width — which only
 ever moves one way as the user drags — the same threshold becomes stable by construction.
 
-#### The question for the maintainer
+#### The question this carried, and how it was settled
 
-`UX-005` row 9b-i was adopted earlier today: below a stated width, **merge to a fixed block count**,
-each block taking the worst state inside it. That ruling was made against the alternative of one
-solid bar, and the reason it won was that a solid bar cannot show a failed entry.
+The report asked for *"a single progress bar"* that stays single, which would have reversed
+`UX-005` row 9b-i — adopted the same day for **merged blocks**, chosen over a solid bar precisely
+because a solid bar cannot show a failed entry.
 
-The report here asks for *"a single progress bar"* that stays single. **If that is meant literally
-it reverses 9b-i**, and reintroduces what row 9b exists to prevent: a playlist that skipped a track
-looking exactly like one that got everything. It may instead be a description of the current
-accidental behaviour rather than a new preference — the blocks already collapse into what looks
-like one bar when the gap reaches zero.
+**It was a description of the symptom, not a new preference.** Sixteen blocks with the gap at zero
+already look like one bar, which is what was on screen. Put the two renderings side by side and
+asked which the narrow window should show, the maintainer chose the merged blocks again.
 
-Not resolved here. **The stability requirement below holds whichever way it goes**; only the
-endpoint is in question.
+Worth recording because the wording pointed one way and the intent the other: *"it should become a
+single progress bar"* read as a request to change the ruling, and asking rather than implementing
+is what kept row 9b intact.
 
 #### Acceptance criteria
 
