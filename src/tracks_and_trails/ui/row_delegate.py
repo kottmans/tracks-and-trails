@@ -694,11 +694,20 @@ class RowDelegate(QStyledItemDelegate):
         span = (area.width() - gap * (len(states) - 1)) / len(states)
         if span < 1:
             return
-        # **A finished entry is the brand** (`T-140`, corrected). Every segment was drawn in
+        # **A finished entry is the brand** (`T-140`, corrected twice). Every segment was drawn in
         # `muted`, so sixteen completed downloads looked exactly like sixteen waiting ones — the
-        # bar reported nothing while reporting something. `Highlight` is the theme's `primary`
-        # (`T130-R1` kept it there deliberately), which is the colour the mockup fills a done
-        # block with.
+        # bar reported nothing while reporting something.
+        #
+        # **The first correction read `palette.highlight()`, and said in a comment that
+        # `T130-R1` kept `primary` there deliberately. `T130-R1` says the opposite.** It scopes
+        # `selection-background-color: {theme.selection}` to `QListView, QTreeView, QTableView`
+        # precisely so a *row* gets the quiet tint instead of the brand fill — and Qt propagates a
+        # style sheet's selection colours into those widgets' palettes. `theme.py` documents that
+        # propagation as the point of the arrangement. So this delegate reads the one palette in
+        # the application where `Highlight` is **not** the brand: measured on the built window,
+        # the application palette answers `#1e5e47` and the list's answers `#ebf1ee`, a near-white
+        # tint that against a white row is no fill at all. A completed playlist drew sixteen blank
+        # blocks.
         #
         # **Colour is never the only signal** (`NFR-005`): the chip beside this says `16 of 16`
         # and the second line says `16 done`, in words. This reinforces them.
@@ -711,7 +720,7 @@ class RowDelegate(QStyledItemDelegate):
         # from the theme rather than the palette because Qt has no role for "this one failed", and
         # a hardcoded hex would be right in one theme and wrong in the other.
         active = theme.applied()
-        done = palette.highlight().color()
+        done = QColor(active.primary)
         running = QColor(done)
         running.setAlpha(140)
         failed = QColor(active.stop)

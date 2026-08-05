@@ -1273,12 +1273,23 @@ def test_an_abandoned_block_is_not_drawn_like_a_finished_one(qapp: QApplication)
 
     Sampled from the middle of each block, one state per render, so nothing here depends on how
     the blocks are laid out — that is `T-155`'s question and it has its own test.
+
+    **The palette here is a list's, not the application's, and that is the point.** This test first
+    built `theme.palette(dressing)` and passed — while the window drew a completed playlist as
+    sixteen blank blocks. A style sheet's `selection-background-color` is propagated by Qt into the
+    styled widget's palette, and `T130-R1` scopes the quiet tint to `QListView` deliberately, so
+    the palette a `RowDelegate` is handed answers `#ebf1ee` for `Highlight` where the application's
+    answers `#1e5e47`. Building the palette from the theme skipped the one step that made the
+    colour wrong. Measured on the built window and reproduced here, so *done* must now come from
+    somewhere a selection tint cannot reach.
     """
     from tracks_and_trails.ui import theme
 
     for dressing in (theme.LIGHT, theme.DARK):
         theme.apply(qapp, dressing)
         palette = theme.palette(dressing)
+        palette.setColor(QPalette.ColorRole.Highlight, QColor(dressing.selection))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor(dressing.on_selection))
         drawn: dict[SegmentState, str] = {}
         for state in SegmentState:
             image = QImage(40, 8, QImage.Format.Format_ARGB32)
@@ -1292,6 +1303,16 @@ def test_an_abandoned_block_is_not_drawn_like_a_finished_one(qapp: QApplication)
                 painter.end()
             drawn[state] = image.pixelColor(20, 4).name()
 
+        assert drawn[SegmentState.DONE] == QColor(dressing.primary).name(), (
+            f"on the {dressing.name} theme a finished block draws {drawn[SegmentState.DONE]}, not "
+            f"the brand {dressing.primary}. A list's palette carries the selection tint in "
+            "Highlight, so reading the brand from there draws the tint — which on the light theme "
+            "is a near-white fill against a white row, and no fill at all to a user"
+        )
+        assert drawn[SegmentState.DONE] != drawn[SegmentState.WAITING], (
+            f"on the {dressing.name} theme a finished block and a waiting one both draw "
+            f"{drawn[SegmentState.DONE]}, which is what `T-140` was corrected for"
+        )
         assert drawn[SegmentState.DONE] != drawn[SegmentState.FAILED], (
             f"on the {dressing.name} theme a failed block is {drawn[SegmentState.FAILED]} and a "
             f"finished one is {drawn[SegmentState.DONE]}"

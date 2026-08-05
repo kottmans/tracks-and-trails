@@ -3339,9 +3339,37 @@ Whichever way it goes should be recorded there rather than decided here:
 
 ### T-140 — The queue draws a playlist as a row that opens
 
-**Status:** **Complete — approved at `431bb47`, 2026-08-05.** Reopened by `T140-R5` for three
-accepted criteria it had not built; all three landed, and `Pause all` is deferred to `REQ-017`
-by that day's amendment to `UX-005`.
+**Status:** **Complete — approved at `431bb47`, 2026-08-05**, with a **second colour correction
+on 2026-08-05** recorded below. Reopened by `T140-R5` for three accepted criteria it had not built;
+all three landed, and `Pause all` is deferred to `REQ-017` by that day's amendment to `UX-005`.
+
+#### The colour correction, corrected — a checklist row 3.6 failure
+
+**A completed playlist drew blank blocks.** The first correction made a finished entry
+`palette.highlight()` and justified it in a comment: *"`T130-R1` kept `primary` there
+deliberately."* **`T130-R1` says the opposite.** It scopes `selection-background-color:
+{theme.selection}` to `QListView, QTreeView, QTableView` so that a *row* gets the quiet tint rather
+than the brand fill — and `theme.py` documents that Qt propagates a style sheet's selection colours
+into those widgets' palettes, calling that propagation the point of the arrangement.
+
+So the delegate reads the one palette in the application where `Highlight` is **not** the brand.
+Measured on the built window:
+
+| Palette | `Highlight` |
+|---|---|
+| the application's | `#1e5e47` — the brand |
+| the list's, which the delegate is handed | `#ebf1ee` — a near-white tint |
+
+Against a white row that is no fill at all, which is what the maintainer saw: `6 done` and sixteen
+blank blocks. *Done* now comes from `theme.applied().primary`, the same source as *failed* and
+*cancelled*, where a selection tint cannot reach it.
+
+**The regression I wrote for `T-165` could not catch this**, and that is the part worth keeping. It
+built its palette with `theme.palette(dressing)` — the application's — so it skipped the single
+step that made the colour wrong, and passed against a window drawing blanks. It now sets `Highlight`
+to the selection tint first, reproducing what a real list carries. **This is the project's recurring
+shape once more: a test that arranges conditions the defect is not about.** `T-152`'s second round
+was the same failure four commits earlier.
 Ruled against `docs/mockups/2026-08-04-playlist-rows.html`, which is the specification.
 
 *It was marked Complete on 2026-08-04 while three of its own accepted criteria were unbuilt, and
