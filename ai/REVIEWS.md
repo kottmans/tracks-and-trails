@@ -9916,3 +9916,48 @@ reviewed T-137 or T-140 source is requested, and the accepted `Pause all` amendm
 This review adds one passing mixed-safety regression to `tests/ui/test_queue_view.py` and appends
 this record. The temporary DRM mutation was fully reverted. No submitted source, decision, task
 state, commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — `P2EXIT-R10` records focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `083fbe4`
+**Correction head:** `c920446` (`422c545` carries the preceding review record and mixed-safety
+regression; `c920446` is the three-document correction)
+**Verdict:** **Changes requested.** The four contradictory surfaces named by the prior pass are
+corrected, including a coherent end-to-end T-142 rewrite. `P2EXIT-R10` remains open because the
+rewrite drops one of the finding's required criterion-8 gates: an exact-candidate built-window
+checklist. `STATUS.md` also replaces its stale implementation claim with an overbroad exact-head
+claim that includes this still-open finding.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `P2EXIT-R10` | High | **Yes — Phase 2 exit truth** | The live outstanding-work row no longer says “nine open” or calls built T-140 work outstanding. T-140's introduction now says the work landed. T-142 is genuinely rewritten around a History playlist header, depends on T-145, names History surfaces, derives a distinct terminal-record verb set, and no longer assigns its own subject away. STATUS no longer says the implementation is unfinished. However, the original finding also requires the built application to be run on the exact candidate against a written checklist derived from T-132–T-141 and the adopted mockups, precisely because automated gates missed visible defects. The rewritten outstanding row names exact-head Windows and Fedora evidence but omits that checklist, and no current-truth document carries it. STATUS then says **every finding** from the round and its correction passes was resolved at `083fbe4`; P2EXIT-R10 itself was not, and its record correction is `c920446`. | **Open — the stale scope is repaired; the owed evidence list and exact-head attribution are not** |
+
+### Required correction
+
+Restore the exact-candidate **built-window checklist** to criterion 8's outstanding evidence. It
+must cover the closed T-132–T-141 list and adopted mockups; Fedora/Windows automated evidence does
+not substitute for it because `P2EXIT-R10` recorded that five visible defects escaped those gates.
+The checklist need not be run before this document correction lands: criterion 8 should remain
+Not met and say the checklist is owed, then record its result against the candidate when performed.
+
+Qualify STATUS's head claim as the **implementation** findings being resolved at `083fbe4`, and
+name `c920446` (plus this re-review when carried) for P2EXIT-R10's record correction. Exact review
+boundaries are the subject of these repairs, so “every finding resolved at the source head” is not
+an interchangeable shorthand.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check 083fbe4..c920446`: **pass**. The range contains the prior review/test carry plus the three current-truth documents corrected at `c920446`. |
+| Stale-claim sweep | No remaining `nine open`, `implementation is not finished`, `What remains here`, or equivalent old T-140 group-verb claim outside `ai/REVIEWS.md`. |
+| T-142 coherence | Title, status, priority, dependency, relevant context, affected surfaces, Scope, acceptance criteria and Out of scope now consistently describe History-header verbs after T-145. |
+| Missing-gate sweep | No current-truth document mentions the required built-window/written checklist for T-132–T-141 or the exact candidate. |
+| Placement gate | `tests/unit/test_task_placement.py`: **14 passed**. |
+| Carried mixed-safety regression | **1 passed** at `c920446`. |
+
+No new regression was needed for a prose-only finding. This review appends this record only. No
+source, test, decision, task state, commit, remote ref or CI state was changed by the reviewer.
