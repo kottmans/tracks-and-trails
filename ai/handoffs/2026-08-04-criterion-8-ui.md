@@ -214,3 +214,97 @@ its Windows leg genuinely matters — treat that as owed rather than as covered.
 - **Windows on `1d87929`**, per the note above.
 - **The 60-run Linux soak**, which wants a settled head — this batch is why it has not run yet.
 - **The independent Phase 2 exit review**, over a table that now has eight criteria.
+
+---
+
+# Correction round — the batch was run, and it produced five more
+
+**Review head is now `6b354f0`**, two commits past the one this handoff was written against.
+`a884035` carries the corrections; `6b354f0` is the roadmap. **Do not review `c0710dc`** — the
+maintainer ran the finished feature between the handoff and now, and everything below came out of
+that sitting.
+
+**The playlist itself was fine.** Sixteen of sixteen, grouped, with the disclosure, the count and
+the indented entries. `T-137` and `T-140` did what they claimed. Every correction below is
+something the *rest* of the window got wrong around a working feature.
+
+## Six reports, and what each actually was
+
+| Reported as | What it was |
+|---|---|
+| *Pause queue and Clear finished are no longer buttons* | **Mine, and my own test asserted it** — see below. Making tool buttons transparent fixed a flat patch over the toolbar's gradient and destroyed the buttons |
+| *The progress bar didn't update — I'd expect green* | It did. Every segment drew in `muted`, so **sixteen done looked exactly like sixteen waiting**: the bar reported nothing while appearing to report something |
+| *The data under each video is cut off* | `UX-005` row 9c says a child row drops the format line. It was **sized** for two lines and the painter still drew three, so the third was clipped |
+| *The queue shows 17 for a 16-video playlist* | The tab counted **rows**: 17 open, 2 closed. The number moved when a group was opened, without the queue changing |
+| *No thumbnails for any of the playlist* | A flat extraction carries **`thumbnails`, a list — not `thumbnail`**. Reading only the singular is why a pasted URL showed its picture and none of the entries did |
+| *A paused queue should still probe* | **It already does** (`T080-R1`, and the manager says so outright). The real gap is that a playlist's entries are **never probed at all** |
+
+## What changed in the record
+
+- **`UX-005` row 12** — the tab's count is of *downloads, not lines*. The first amendment left this
+  *proposed* ("count rows as shown"); running it settled it, because the number moved when a user
+  opened a group.
+- **`T-143` filed** — a playlist's entries are never probed. Two of the reports above are one gap,
+  and it is **not** the one it looked like: pause is not the problem, and `UX-003`'s "a queued job
+  is a probed one" is the requirement in tension. The task names that tension rather than resolving
+  it, because moving the probe after admission is a design choice with a cost.
+- **`T-142`** — the playlist header still has no verbs of its own.
+
+Both are **outside criterion 8** on purpose. The list closed on 2026-08-04 so that finding more
+work cannot reopen the phase.
+
+## The thing to weigh, and it is about process rather than code
+
+**Criterion 8 was called met and then corrected five times within the hour.** That is the most
+reviewable fact in this submission, and it cuts two ways:
+
+- The closed list did its job — none of this reopened the phase, and the follow-ons are filed as
+  Phase 3.
+- But "met" was claimed on a batch that had five visible defects in it, and **the thing that found
+  them was a person opening the window**, for the sixth time in this project's history. If you
+  think criterion 8 should not be called met until someone has run the built application against a
+  written checklist, that is a finding worth making and I would not argue with it.
+
+## A tenth test, and it is a different kind
+
+The handoff above lists nine assertions that measured a proxy. There is now a tenth, and it does
+not belong in that list:
+
+> `test_the_toolbars_own_background_runs_behind_its_buttons` asserted that the toolbar's buttons
+> were **indistinguishable from the bar**. It was correct, precise, and mutation-proof — the code
+> did exactly what the test said. What it asserted was the wrong choice, and the maintainer
+> reported the result as *"no longer buttons"*.
+
+So there are two shapes, and separating them is worth more than the count:
+
+- **Measured a proxy** (eight): two things compared that differ for a reason other than the one
+  claimed. **A mutation catches these.**
+- **Encoded the defect** (two — the palette test at `T130-R1`, and this): the test faithfully
+  asserts a decision that was itself wrong. **No mutation catches these. Only running the
+  application does.**
+
+The mockup is the check that would have caught this one: it says `.btn` is
+`border: 1px solid var(--b); background: var(--s)`, and I made them transparent without going back
+to it. **Worth checking whether anything else in this batch diverges from
+`docs/mockups/2026-08-03-main-window-b1.html` in the same way** — that is the highest-value thing
+you could do with this submission.
+
+## Checks, restated for the new head
+
+| Gate | Result |
+|---|---|
+| Full suite, Linux | **2132 passed, 11 skipped, 2 deselected** |
+| `ruff check .` / `ruff format --check .` | pass, 158 files |
+| `mypy src`, `mypy`, both `--platform win32` | pass |
+| Mutations | five more killed for the corrections above |
+| CI | green on all five jobs at **`1d87929`**, which contains `006b152` |
+
+**Windows evidence stops at `1d87929`.** `a884035` — which changes the style sheet and the
+delegate — and `6b354f0` have none: `a884035`'s run was cancelled when `6b354f0` superseded it.
+Treat that as owed.
+
+## Unchanged from the first round
+
+The dark theme still has not been seen; the playlist failure the maintainer originally reported is
+still undiagnosed; no recorded fixture exercises playlist expansion; and the six pre-existing tests
+rewritten in place are listed above and still want your eyes.
