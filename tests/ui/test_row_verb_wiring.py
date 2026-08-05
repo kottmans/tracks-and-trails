@@ -2187,3 +2187,61 @@ def test_the_keyboard_route_works_before_anything_has_been_clicked(
     )
     menu.close()
     window.close()
+
+
+@pytest.mark.parametrize("route", ["queue", "history"])
+def test_a_long_title_elides_rather_than_widening_the_list(
+    qapp: QApplication, tmp_path: Path, route: str
+) -> None:
+    """`T-151`: a row must never be wider than the viewport, or its verbs leave the window.
+
+    A long title grew a horizontal scrollbar in the built window, pushing the verbs and `⋯` outside
+    the viewport — where no pointer can reach them, and where `T-135`'s overflow never fires because
+    a row that widens never runs out of room.
+
+    Asserted on the **scrollbar's range**, which is what "the content is wider than the viewport"
+    means to Qt, rather than on the policy flag — a flag says what was asked for and a range says
+    what happened.
+
+    **This does not kill its mutant, and says so.** Removing both view settings leaves it green:
+    `offscreen`, which every test here runs on, never produces the scrollbar — tried with 40 rows,
+    a visible vertical scrollbar and a shown window, where `sizeHintForColumn` answers 0. So this
+    guards the property on every platform and reproduces the reported failure on none of them. The
+    same limitation as `T-154`, and for the same reason: a defect visible on a real desktop and
+    invisible to a headless one.
+    """
+    long_title = "Snezhnaya Live Symphony Performance | Genshin Impact " * 4
+    job = replace(_job("job-1", 0, JobStatus.COMPLETED), title=long_title)
+
+    class _OneLongRow:
+        """A `HistoryReader` holding one record with the same over-long title."""
+
+        def all_entries(self) -> list[HistoryEntry]:
+            return [
+                HistoryEntry(
+                    id="job-1",
+                    url="https://example.invalid/clip",
+                    title=long_title,
+                    output_path=str(tmp_path / "clip.mp3"),
+                    format_used="251",
+                    bytes_total=1024,
+                    completed_at=datetime.now(UTC),
+                )
+            ]
+
+    window = _window_over([job], tmp_path, history=_OneLongRow())
+    view = window.queue_view if route == "queue" else window.history_view
+    assert view is not None, (
+        f"the window built no {route} view, so this asserts nothing — a skip here would read as a "
+        "pass"
+    )
+    _bring_to_front(window, view)
+    window.resize(700, 500)
+    qapp.processEvents()
+
+    bar = view.table.horizontalScrollBar()
+    assert bar.maximum() == 0, (
+        f"the {route} list scrolls {bar.maximum()}px sideways for a long title, so the row's verbs "
+        "are drawn outside the viewport and the overflow menu never appears"
+    )
+    window.close()

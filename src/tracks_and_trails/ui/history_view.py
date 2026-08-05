@@ -337,6 +337,12 @@ class HistoryView(QWidget):
         # all survive — `_text` still produces every one of them — as *what the row says*.
         self._table = QListView(self)
         self._table.setObjectName("historyTable")
+        # **As wide as the viewport, never wider** (`T-151`). See `queue_view` for the mechanism:
+        # `QListView` sizes its content from `DisplayRole`, this model answers that with the whole
+        # row's text, and the delegate draws something else elided to the rect it is given. History
+        # draws the same anatomy through the same delegate, so it had the same defect.
+        self._table.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._table.setResizeMode(QListView.ResizeMode.Adjust)
         self._table.setAccessibleName("Download history")
         self._table.setAccessibleDescription(
             "Completed downloads, most recent first. Files are not removed from disk by anything "

@@ -1305,6 +1305,20 @@ class QueueView(QWidget):
         # the list on blank space in exactly the case with least room to waste.
         self._list.setUniformItemSizes(False)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        # **The row is as wide as the viewport, never wider** (`T-151`). A long title grew a
+        # horizontal scrollbar in the built window, and the verbs and `⋯` were then drawn beyond
+        # the viewport where no pointer could reach them — `T-135`'s overflow never fired either,
+        # because a row that widens never runs out of room.
+        #
+        # **Stated as a constraint rather than as a diagnosis, deliberately.** `sizeHint` already
+        # returns the width it is handed, so a row asking for more is a contradiction whatever
+        # produced it; this makes the contradiction unrepresentable. What *did* produce it is not
+        # established: the `offscreen` platform every test here runs on never reproduces the
+        # scrollbar — 40 rows, a visible vertical scrollbar, and `sizeHintForColumn` answering 0 —
+        # so the mechanism was not reproduced and is not asserted. `T132-R2` is the finding about
+        # justifying source behaviour with a mechanism nobody demonstrated.
+        self._list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self._list.setResizeMode(QListView.ResizeMode.Adjust)
         # **`EDIT_KEY` is the declared keyboard route to the row's format control** (`T118-R9`,
         # `T124-R1`, `UX-005` §6). `EditKeyPressed` *is* `row_delegate.EDIT_KEY`, and it is stated
         # here rather than inherited from a Qt default, which is that finding's whole point.
