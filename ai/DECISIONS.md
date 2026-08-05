@@ -2978,6 +2978,31 @@ behind a document would leave known-broken behaviour on `main` for longer.
 
 ## UX-005 — The main window: two tabs, no detail pane, and the verbs on the row
 
+### Amended 2026-08-05 — `Pause all` is deferred to `REQ-017`
+
+**Raised by:** `T140-R5`, on the reviewer's recommendation. **Maintainer ruling, 2026-08-05.**
+
+Row 9 names four verbs for a playlist header, and `T-140`'s acceptance criteria transcribe them.
+Three are built. **`Pause all` cannot be**, and the reason is another accepted decision rather than
+an implementation difficulty: `UX-001` made pause a queue-level drain, and `T-080` deleted
+`JobStatus.PAUSED` outright once its edges were unreachable. There is no mechanism for holding one
+group without touching the rest of the queue, and inventing one is reopening `UX-001`.
+
+**The verb is therefore deferred, not dropped.** `REQ-017` — cross-restart resume, Phase 3 — is
+already the named condition under which the `PAUSED` edges may be wanted back, and a group hold is
+the same question. Whoever answers `REQ-017` answers this.
+
+Until then **the header offers three verbs**, and `row_verbs.group_verbs()` records the absence in
+source so it cannot read as an oversight. A button with nothing behind it would be `T-016`'s
+failure — an action that appears to work and quietly does not — which is a worse outcome than a
+verb the mockup names and the window does not yet have.
+
+**`T-140`'s criterion is amended to match**, so the task can be complete without the window and the
+mockup disagreeing about it. That is the whole point of amending rather than leaving the criterion
+unmet: an accepted criterion that cannot be built without reopening a decision is a criterion that
+needs a ruling, not an implementer's silence.
+
+
 **Status:** **Accepted** (2026-08-03) — maintainer decision
 **Date:** 2026-08-03
 **Amends:** nothing. **Records for the first time** what no document ever held: the shape of the

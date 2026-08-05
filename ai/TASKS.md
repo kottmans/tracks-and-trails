@@ -139,10 +139,14 @@ earlier version of this test timed `repaint()` on an offscreen widget and report
 number that cannot fail, from a call that may not have painted at all — so it measures `sizeHint`
 per row and a real delegate paint instead, and asserts the row heights actually differ.*
 
-**Not done, and deliberately out of this task's scope:** the group's own verbs. `UX-005` row 9
-names `Pause all`, `Cancel all`, `Retry failed` and `Show in folder`, and the header currently
-offers none — every entry still carries its own. Filed as `T-142` rather than bolted on here,
-because each needs manager wiring and a confirmation that names its own count (`DAT-005` §4).
+**Built 2026-08-05, after `T140-R5` refused the deferral.** This paragraph said the group's verbs
+were *"deliberately out of this task's scope"* and filed them as `T-142`. The review's ruling was
+that a closed criterion list may exclude genuinely later work but **cannot make accepted work
+complete by moving it outside the list** — and group verbs, count-bearing removal and keyboard
+disclosure are all in this task's own acceptance criteria. They are implemented here.
+`T-142` keeps what was genuinely later: the History group header and the scope its own
+*Out of scope* names. **`Pause all` is deferred to `REQ-017`** by the 2026-08-05 amendment to
+`UX-005`.
 
 #### Scope
 
@@ -174,8 +178,13 @@ four-line group breaks it. `T118-R10` is the record of what per-row cost buys: a
   exists to prevent
 - A child row draws **no format line** and a smaller thumbnail (row 9c), asserted against the group
   row rather than in isolation
-- Group verbs are named as the mockup names them: `Pause all`, `Cancel all`, `Retry failed` only
-  when something failed, `Show in folder` with no `Open`. Entry verbs are the ordinary ones
+- Group verbs are named as the mockup names them: `Cancel all`, `Retry failed` only when something
+  failed **and can be retried** (`SEC-001` — `T140-R6` was a group offering retry for DRM),
+  `Show in folder` with no `Open`. Entry verbs are the ordinary ones.
+  **`Pause all` is deferred to `REQ-017`** by the 2026-08-05 amendment to `UX-005`: holding one
+  group has no mechanism, because `UX-001` made pause a queue-level drain and `T-080` deleted
+  `JobStatus.PAUSED`. Building it reopens an accepted decision; the criterion is amended rather
+  than left unmet
 - `Remove` on a group names its own count in the confirmation (`DAT-005` §4)
 - Expanding and collapsing are **keyboard reachable**, and the open state survives the model reset
   a refresh performs (`T126-R1`'s lesson: identity, not row number)
@@ -1334,7 +1343,11 @@ it.)*
 
 ### T-142 — A playlist header offers no verbs of its own
 
-**Status:** Proposed — split out of `T-140`, 2026-08-04.
+**Status:** Proposed — **narrowed 2026-08-05.** `T140-R5` ruled that `T-140`'s own accepted
+criteria could not be moved here, so the header's verbs, its count-bearing removal and the
+keyboard disclosure are **built in `T-140`**. What remains is the genuinely later scope in the
+*Out of scope* section below — chiefly the History group header, which waits on `T-145` deciding
+what a history group is.
 **Owner:** Implementer
 **Priority:** Medium — `UX-005` row 9 names four verbs the header does not have
 **Phase:** Phase 3
@@ -1351,10 +1364,10 @@ a playlist can only be acted on one entry at a time. The mockup's table names fo
 
 | Verb | On the header |
 |---|---|
-| `Pause all` | holds the group without touching the rest of the queue |
-| `Cancel all` | named differently from `Cancel` on purpose — a button reading *Cancel* on a row covering sixteen files is the one most likely to be clicked by mistake |
-| `Retry failed` | in the `⋯`, and **only when at least one failed** |
-| `Show in folder` | opens the playlist's own folder. *Open* is absent: there is no one file to open |
+| ~~`Pause all`~~ | **deferred to `REQ-017`** (`UX-005` amended 2026-08-05). Holding one group has no mechanism: `UX-001` made pause a queue-level drain and `T-080` deleted `JobStatus.PAUSED` |
+| ~~`Cancel all`~~ | **built in `T-140`**, 2026-08-05. Named differently from `Cancel` on purpose — a button reading *Cancel* on a row covering sixteen files is the one most likely to be clicked by mistake |
+| ~~`Retry failed`~~ | **built in `T-140`**, and only when at least one failed **and can be retried** — `T140-R6` was this offering retry for DRM, against `SEC-001` |
+| ~~`Show in folder`~~ | **built in `T-140`**. Opens the playlist's own folder; *Open* is absent because there is no one file to open |
 
 **`Remove` is the one to be careful with.** It removes the group *and* its entries, and
 `DAT-005` §4 already requires the confirmation to name its own count — "Remove these 16 downloads?"
