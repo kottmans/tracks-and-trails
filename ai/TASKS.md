@@ -1268,7 +1268,9 @@ regular user."* Correct — `251` is yt-dlp's format id for YouTube's Opus audio
 #### Scope
 
 **History prints `entry.format_used` verbatim**, and that field means *"what yt-dlp reported"* — an
-id like `251`, not a description. A user reading their own download history is told a number with
+id like `251`, not a description. **A merged download is worse: `399+140`**, which is two ids joined
+by yt-dlp's own selector syntax — video 399 with audio 140. So the field a user reads to answer
+*what did I get* answers with an internal join expression. A user reading their own download history is told a number with
 no explanation available anywhere in the window.
 
 **This is `T140-R3` on a third surface.** That finding was the queue header showing
