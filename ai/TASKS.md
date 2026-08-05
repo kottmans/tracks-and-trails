@@ -1142,6 +1142,113 @@ beats designing it against an imagined one.
 
 ---
 
+### T-158 — A refused Open is reported where nobody is looking
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, pressing *Open* on a download whose
+file had moved and reporting that **nothing happened at all**.
+**Owner:** Implementer
+**Priority:** Medium — nothing is lost, but the user cannot tell that
+**Phase:** Phase 3. A defect in `T-086`'s route (`REQ-021`), which is an approved Phase 2
+deliverable rather than one of criterion 8's ten
+**Depends on:** nothing
+**Relevant context:** `REQ-021`, `NFR-006`, `T-086`, `UX-001`, `ui/reveal.py`
+(`_refuse_unless_usable`), `ui/file_actions.py`, `ui/main_window.py` (`_report_transiently`)
+**Affected surfaces:** `ui/main_window.py`, possibly `ui/file_actions.py`
+**Risk:** Low
+
+#### Scope
+
+**It is not silent, and that is the interesting part.** The whole chain works:
+`_refuse_unless_usable` returns a `Refusal` carrying a written sentence — *"…is no longer
+there…"* — `FileActions._act` passes it to its `report` callback, `MainWindow` wires that to
+`_report_transiently`, and a test asserts the whole path
+(`test_a_refusal_reaches_the_user_rather_than_the_console`).
+
+**The message goes to the status bar, briefly, and was not seen.** The maintainer pressed *Open*,
+watched the row, and reported nothing happening — which is the only test of feedback that counts.
+
+**The design decision is deliberate and should not simply be reversed.** `_report_transiently`
+documents it: *"A file that has been moved is the ordinary case — `UX-001` promises nothing here
+deletes the user's files, so they are free to move them — and a modal dialog for an ordinary case
+trains people to dismiss dialogs unread."* That reasoning is sound. **The gap is not
+dialog-versus-status-bar; it is distance.** The status bar sits at the bottom of a tall window,
+already carrying a persistent ffmpeg line, while the user's attention is on a row they just
+clicked — several hundred pixels away.
+
+#### Acceptance criteria
+
+- Pressing *Open* on a missing file produces feedback the user **perceives at the row they acted
+  on**, without a modal dialog for an ordinary case
+- The existing sentence is reused, not rewritten — `Refusal.reason` already says the right thing,
+  and a second wording is a second thing to keep true
+- Both surfaces behave the same: the queue's completed row and History's, since both route through
+  `FileActions`
+- The transient status-bar report **stays**, or its removal is deliberate. It is the record for a
+  user who looked away
+- `NFR-005`: whatever carries it is announced, not colour or motion alone
+
+#### Out of scope
+
+- What happens to the history record for a file that has moved. `DAT-005` settles that a record is
+  not a file, and `UX-001` that nothing here deletes anything
+- Re-locating a moved file, or offering to. That is a feature, not this defect
+
+---
+
+### T-159 — History reports the format as a yt-dlp id
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**: *"the (251) here is useless to a
+regular user."* Correct — `251` is yt-dlp's format id for YouTube's Opus audio stream.
+**Owner:** Implementer
+**Priority:** Medium — it is the third surface to make the same mistake, and the first two are fixed
+**Phase:** Phase 3
+**Depends on:** nothing. Overlaps `T-156`, which asks the MP3 preset to state its bitrate
+**Relevant context:** `REQ-009`, `REQ-020`, `T140-R3`, `T126-R2`, `ui/history_view.py`
+(`FORMAT_COLUMN`), `ui/queue_view.py` (`_effective_format_text`)
+**Affected surfaces:** `ui/history_view.py`, possibly `core/models.py`
+**Risk:** Low to display; medium if the record has to carry more than it does
+
+#### Scope
+
+**History prints `entry.format_used` verbatim**, and that field means *"what yt-dlp reported"* — an
+id like `251`, not a description. A user reading their own download history is told a number with
+no explanation available anywhere in the window.
+
+**This is `T140-R3` on a third surface.** That finding was the queue header showing
+`bestvideo+bestaudio/best` where its own control offered *Best video available*; the fix routed it
+through `_effective_format_text`, which prefers a preset's name and falls back to the literal.
+`T126-R2` did the same for an ordinary row. **History was not changed**, so the project has now
+fixed this defect twice and still ships it once.
+
+**What a user actually wants is not the id.** The maintainer named it: **the file type and the
+bitrate** — `MP3, 192 kbps` — which is what they chose in the first place. The extension is
+inferable from the path shown beside it, and inference is not a field.
+
+**The record may not carry enough**, and that is the part to establish first. `format_used` is what
+the worker reported. Whether the *request* is recoverable from the history row — and so whether the
+preset name can be recovered rather than re-derived — is a `T-085` question this task must answer
+before it decides what to display.
+
+#### Acceptance criteria
+
+- A history row states the format in the same vocabulary the rest of the window uses — the preset's
+  name where one describes the download, per `_effective_format_text`'s rule, not a yt-dlp id
+- Where the download was a conversion, the row says **what it converted to**, including the bitrate
+  for MP3 — the pairing `T-156` asks for on the queue side, so the two surfaces agree
+- The raw `format_used` is still **available** — a tooltip, the detail view, somewhere — because
+  `REQ-020` records what happened and an id is what happened
+- A record that predates whatever field this needs still renders honestly, per `_text_or_absent`'s
+  existing rule
+- The queue, History and the add dialog are asserted **together** for one download, as `T140-R3`
+  required, so a fourth surface cannot drift
+
+#### Out of scope
+
+- Changing what the worker reports. `format_used` is yt-dlp's answer and stays that
+- A migration, unless the answer to the question above needs one — decide, then file it
+
+---
+
 ### T-157 — A part-done playlist that is retargeted can no longer say what anything is
 
 **Status:** Proposed — **found by the maintainer, 2026-08-05**, retargeting a playlist with four
