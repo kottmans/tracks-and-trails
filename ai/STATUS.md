@@ -125,7 +125,13 @@ did not build (`T140-R5`); **all three are built** as of 2026-08-05, and the tas
 **Complete** — group verbs, removal that names
 its own count, and a keyboard-reachable disclosure — with **`Pause all` deferred to `REQ-017`** by
 that day's amendment to `UX-005`, since holding one group has no mechanism once `T-080` deleted
-`JobStatus.PAUSED`. **Every finding is now resolved.** The implementation findings — `T140-R6`, `T137-R2`, `T137-R3`
+`JobStatus.PAUSED`. **The built-window checklist was run on 2026-08-05 at `f2ec6b7`, and found eleven defects** —
+`T-149` through `T-159`, none of them reported by any gate, against a suite of 2153 tests that
+was green throughout. `ai/evidence/2026-08-05-criterion-8-checklist-run.md` records it. Seven
+belong to the closed list and four are new scope; **which is which is a maintainer ruling, and
+criterion 8 now waits on that** rather than on more work being found.
+
+**Every finding of the review round is resolved.** The implementation findings — `T140-R6`, `T137-R2`, `T137-R3`
 and `T140-R5` — closed at `083fbe4`; `P2EXIT-R10`, the record finding, closed at `431bb47`, and
 `T-140` moved to **Complete** on that approval. **The criterion is still Not met**, and what it
 waits on is evidence rather than work: the built application run against a **written checklist**
