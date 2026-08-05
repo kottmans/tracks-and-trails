@@ -9700,3 +9700,47 @@ to exercise Fedora and Windows rather than spending those runs on another interm
 This re-review appended this record and added one failing reviewer regression to
 `tests/ui/test_queue_view.py`. The temporary T132 mutation was fully reverted. No submitted source,
 decision, task state, commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — `T132-R2` focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `6ad7ce9`
+**Correction head:** `ff95990` (`d7af554` is the submitted source/test head; `ff95990` adds the
+committed handoff)
+**Verdict:** **Changes requested for the round; `T132-R2` resolved.** This submission contains one
+finding only. `T137-R2`, `T140-R3` and `T140-R5` remain open and were not re-reviewed here.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `T132-R2` | Medium | No | The unnecessary `unpolish()` / `polish()` pair is removed from the product, and the source comment, regression docstring and failure message no longer state `T132-R1`'s disproved mechanism as fact. They identify `T132-R1` as withdrawn reviewer error and describe the enabled composition route accurately. The retained regression is appropriately scoped: T-132 explicitly requires the brand fill to be sampled from the rendered widget, and this remains the only assertion against an enabled `MainWindow` composed through the product route. It need not mutation-prove a repolish that no longer exists; it can still fail if the composed action loses its primary property, discoverable object name, enabled state or UX-005 row 6 fill. | **Resolved** |
+
+### Boundary and submitted uncertainty
+
+The complete reviewed range is `6ad7ce9..ff95990`: `7d66726` changes only `AGENTS.md`,
+`ai/TESTING.md` and `docs/DEVELOPMENT.md`; `d7af554` contains the T132-R2 source and regression
+correction; `ff95990` commits the handoff. The unrelated one-worker-per-machine prose is disclosed
+and has no source or test effect. `ai/REVIEWS.md`, `ai/TASKS.md` and `ai/STATUS.md` are untouched in
+the submitted range. This focused pass does not adjudicate `COORD-R22` or any other open finding.
+
+The submitted uncertainty is resolved in favor of keeping the regression. Its old explanation was
+wrong, but its observable contract is not: an enabled Add URLs action in the real window must draw
+the adopted brand fill. The isolated theme test does not exercise that composition route.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check 6ad7ce9..ff95990`: **pass**. Six files are changed: three disclosed prose files, the submitted source and test, and the committed handoff. |
+| T-132 product/style routes | **7 passed / 73 deselected** across the targeted `test_row_verb_wiring.py` and `test_theme_metrics.py` cases, including the enabled real-window fill. |
+| Lint | `.venv/bin/python -m ruff check .`: **pass**. |
+| Format | `.venv/bin/python -m ruff format --check .`: **pass**, 161 files already formatted. |
+| Source types | `.venv/bin/python -m mypy src`: **pass**, 44 source files. |
+| Test-inclusive types | `.venv/bin/python -m mypy`: **pass**, 107 source files. |
+| Windows type route | `.venv/bin/python -m mypy --platform win32`: **pass**, 107 source files. |
+| Environment disclosure | Confirmed: `.venv/bin/mypy` and `.venv/bin/pytest` name `/mnt/projects/software_projects/tracks-and-trails/.venv/bin/python` in their shebangs, one directory above this checkout. `.venv/bin/python -m ...` resolves this checkout's `src/tracks_and_trails`. This is machine state, not a defect in the submitted repository range. |
+
+No reviewer regression was added: the retained test already asserts the accepted product behavior.
+This review appended this record only. No submitted source, test meaning, decision, task state,
+commit, remote ref or CI state was changed by the reviewer.
