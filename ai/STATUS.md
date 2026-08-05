@@ -143,10 +143,12 @@ something *new* does not. The closed list stays closed — `T-149`, `T-151`, `T-
 
 **Every finding of the review round is resolved.** The implementation findings — `T140-R6`, `T137-R2`, `T137-R3`
 and `T140-R5` — closed at `083fbe4`; `P2EXIT-R10`, the record finding, closed at `431bb47`, and
-`T-140` moved to **Complete** on that approval. **The criterion is still Not met**, and what it
-waits on is evidence rather than work: the built application run against a **written checklist**
-derived from `T-132`–`T-141` and the adopted mockups **on the exact candidate head**, then
-Windows and Fedora evidence on that same candidate. `P2EXIT-R10` requires the checklist because
+`T-140` moved to **Complete** on that approval. **The criterion waited on evidence rather than work**, and
+that evidence now exists: the built application run against a **written checklist** derived from
+`T-132`–`T-141` and the adopted mockups **on the exact candidate head**, plus Windows and Fedora
+evidence on that same candidate. Three runs — eleven defects, then 39 of 41, then **40 of 40** on
+`kirk` (`ai/evidence/2026-08-05-criterion-8-third-run.md`) — and CI green on the candidate.
+**Met on the maintainer's evidence; the exit review judges whether it carries the criterion.** `P2EXIT-R10` requires the checklist because
 automated checks are not sufficient evidence for a criterion about what the window looks like, and
 that automation does not replace it. *(The measurement `UX-005` said could reopen the playlist shape did come back clear —
 150 entries across ten open playlists cost 0.002 s to open and 0.022 s to paint a viewport, against
@@ -1379,9 +1381,12 @@ runners, so it cost no quota.
 before the review answered, and `P2EXIT-R11` then found criterion 1 broken by a change made after
 its proof. Superseded — the current verdict is directly below.)*
 
-**Current truth, 2026-08-05.** Criteria **1–5 and 7 are met**. **Criterion 6 is Not met**: the
-independent exit review is in progress and has requested changes. **Criterion 8 is Not met**: it
-awaits the 40-row built-window run.
+**Current truth, 2026-08-05.** Criteria **1–5, 7 and 8 are met**. **Criterion 6 is Not met**: the
+independent exit review is in progress. Criterion 8's evidence is the **40-row run**, a pass on
+`kirk`, recorded in `ai/evidence/2026-08-05-criterion-8-third-run.md` — *met on the maintainer's
+evidence, with the exit review to judge whether that evidence carries it.* This row has been claimed
+met twice and reset twice, so its limits sit inside the claim: one platform, one runner who also
+accepted the mockups, and four known Phase 3 defects present during the run.
 
 ---
 
@@ -1395,7 +1400,7 @@ line said *"criteria 1, 6 and 8 are Not met"* after that, which is the finding i
 | Finding | What | State |
 |---|---|---|
 | `P2EXIT-R11` | High. A finished probe's `Probing` outlived it against a `Ready` chip, so criterion 1's accurate-progress promise failed on the durable playlist route | **Fixed.** Stage precedence is gated by whether the stage can still be live in the current status |
-| `P2EXIT-R12` | High. The second-run record said *"pass, all 41 rows"* while listing failures of rows 2.7 and 3.15 | **Open.** Record corrected and `T-161` fixed and approved; row 2.7 removed by `T161-R1`. **Closes on the 40-row re-run** — row 3.15's defect is gone but nobody has observed it since |
+| `P2EXIT-R12` | High. The second-run record said *"pass, all 41 rows"* while listing failures of rows 2.7 and 3.15 | **Answered.** Record corrected, `T-161` fixed and approved, row 2.7 removed by `T161-R1`, and **the 40-row run is a pass** — row 3.15 is observed rather than inferred, which was the finding's whole point |
 | `P2EXIT-R13` | Medium. The `T-152` focus correction fired on every model reset from either view, taking the keyboard off toolbar controls | **Fixed.** First rows only, in the visible view |
 | `P2EXIT-R14` | High. Plan and status carried incompatible live criterion-8 verdicts | **Open across three sweeps.** Each one corrected the occurrence it was looking at and left siblings behind — which is the finding, reproduced twice by its own corrections |
 
@@ -1418,3 +1423,15 @@ was observed rather than being recomputed. Forty rows remain.
 
 **Row 3.15's defect is fixed and the row is unrun.** A fix is not an observation. Criterion 8 is
 Not met until the checklist is re-run and records passed rows separately from failed ones.
+
+## The 40-row run — 2026-08-05
+
+**Pass, 40 of 40, on `kirk`**, across `376407f..165b6e4`: no file under `src/` or `tests/` differs
+across that range, so it is one build. `ai/evidence/2026-08-05-criterion-8-third-run.md`.
+
+**Row 3.15 is why it existed.** `T-161` was fixed and had never been *observed* fixed, and
+`P2EXIT-R12`'s point was that a fix is not an observation. The three runs are a sequence rather than
+a repetition: eleven defects found, then 39 of 41 with two named failures, then 40 of 40 — and the
+count changed because row 2.7 was **removed** by `T161-R1`, not because a failure was rewritten.
+
+**Criterion 6 is the last one open, and it is not the implementer's to close.**
