@@ -1147,6 +1147,89 @@ means the anatomy is decided once rather than renegotiated by each feature. `T-1
 `docs/UX_SPEC.md` should absorb the chosen design; `UX-003` records the rule the add flow now
 follows.)*
 
+---
+
+### T-146 — A Settings menu, and the screen behind it
+
+**Status:** Proposed — **requested by the maintainer, 2026-08-05.** Filed against `REQ-023`, which
+already names every setting asked for. **The phase is an open question — see below.**
+**Owner:** Implementer
+**Priority:** Medium — nothing is blocked by its absence, and two of its settings are the ones a
+user reaches for first
+**Phase:** **Phase 4 as the plan stands.** `ARC-007` deferred the full dialog there deliberately,
+and moving it is a maintainer call rather than this task's to make
+**Depends on:** `T-105` (`docs/UX_SPEC.md`) for the screen's layout, if it lands after that task
+**Relevant context:** `REQ-023`, `ARC-007`, `ARC-008`, `DAT-001`, `ARCHITECTURE.md` §5 and §8,
+`core/settings.py`, `ui/theme.py`, `ui/main_window.py`, `app.default_output_directory`
+**Affected surfaces:** `core/settings.py`, `ui/main_window.py`, a new settings dialog module,
+`ui/theme.py`'s selection path, `app.py`
+**Risk:** Medium — it adds persisted state, and `ARC-008` governs what a bad value does
+
+#### Scope
+
+**No requirement changes, and that is the first thing to establish.** `REQ-023` already reads:
+
+> Provide a settings screen covering: default download directory, default preset, concurrency
+> limit, output template, ffmpeg location, network options (rate limit, proxy, retries), cookie
+> source, and **theme**.
+
+Both settings named in the request — the download directory and light/dark — are in that list
+verbatim. What `REQ-023` does **not** say is *how the screen is reached*, and that is the genuinely
+new decision: a **`Settings` menu in the menu bar**, between `&File` (`main_window.py:1106`) and
+`&Help` (`main_window.py:1139`).
+
+**Three things already exist, so this is smaller than it looks.**
+
+- **Both palettes are built.** `ui/theme.py` ships `LIGHT` and `DARK` as complete `Theme` values
+  with `THEMES` keyed by name, and `T130-R1` already fought the contrast problems in both. What is
+  missing is a *selector*: `theme.apply()` defaults to `LIGHT` and nothing ever passes `DARK`.
+- **The download directory is explicitly a placeholder.** `app.default_output_directory`'s own
+  docstring says *"Where downloads go until `core/settings.py` lets the user say otherwise."* This
+  task is the "otherwise".
+- **The settings layer exists.** `ARC-007` landed `core/settings.py` in Phase 2 with exactly one
+  key, `concurrency`, and one main-window control.
+
+**Two accepted decisions constrain this and must not be quietly widened.**
+
+- **`ARC-007` excluded every other `REQ-023` setting on purpose** — it put the layer in place and
+  said only the concurrency key lands in Phase 2. Adding keys is this task's job, not a Phase 2
+  follow-up's.
+- **`ARC-008` requires a `settings.toml` that exists and cannot be used to *report*** rather than
+  revert silently. Every key added here inherits that, and a new key with a lenient coercion path
+  would be the first exception — so each needs its own decision about what a bad value does.
+  `concurrency` clamps out-of-range integers and rejects non-integers; a *path* has no equivalent
+  clamp, which is the substantive design question in this task.
+
+**The phase question, stated rather than assumed.** `ARC-007` and `IMPLEMENTATION_PLAN.md` §Phase 4
+both put the full dialog in Phase 4, after Phase 3. The request did not ask to re-phase it and this
+entry does not do so. **If the maintainer wants the theme toggle and the download directory sooner,
+that is a plan amendment** of the same kind as criterion 8 — recorded in `IMPLEMENTATION_PLAN.md`
+with the ruling named, not inferred from a task being filed. A defensible middle option exists: the
+menu plus those two settings early, with the remaining six staying in Phase 4.
+
+#### Acceptance criteria
+
+- A `Settings` menu sits between `File` and `Help`, opens the screen, and is reachable by keyboard
+  with a mnemonic that does not collide with the existing two
+- The screen sets the **default download directory**; a chosen directory survives a restart and is
+  what a new job actually uses — asserted against a real job, not against the stored value
+- The screen switches **light and dark**; the change applies to the running window without a
+  restart, and survives one
+- A directory that has been deleted, is not writable, or is not a directory **reports** under
+  `ARC-008` rather than silently reverting, and the application still starts
+- `docs/DEVELOPMENT.md` or the UX spec records which `REQ-023` settings are implemented and which
+  remain, so the screen never claims coverage it does not have
+- The concurrency control that `ARC-007` put in the main window is either moved here or
+  deliberately kept in both places, with the choice recorded
+
+#### Out of scope
+
+- The other five `REQ-023` settings — default preset, output template, ffmpeg location, network
+  options, cookie source. Each has its own Phase 3 or Phase 4 owner
+- **Following the OS theme automatically.** Worth wanting and not requested; it is a third state
+  beyond light and dark and needs its own decision
+- Window geometry, which `ARC-007` deliberately keeps out of this layer (`window.toml`)
+
 *(**Decomposed 2026-08-01.** Phase 3 had **zero** tasks against
 seven plan deliverables, so its size was an estimate from prose rather than from work anybody had
 broken down. Phase 1 listed nine deliverables and produced fifty tasks; these eight are the
@@ -1189,6 +1272,20 @@ rather than a bare *Remove*.
 - A verb on the header does not act on rows outside the group, asserted with an unrelated download
   in the queue beside it
 - Entry verbs are unchanged — this adds a level, it does not move one
+
+#### Out of scope
+
+*(Added 2026-08-05. This entry was the only one of the thirteen Phase 3 tasks with no
+`Out of scope`, which is how a task about four verbs acquires a fifth.)*
+
+- **A group header in History.** The same argument applies there and it is `T-145`'s, which has to
+  decide what a history group *is* before anything can be done to one
+- **Selecting several groups and acting on all of them.** One header acting on its own members is
+  this task; multi-group selection is the shape `T-144` is working out for History
+- **`Open` on a header.** Deliberately absent above rather than forgotten — there is no one file to
+  open, and inventing one would be a decision, not an implementation
+- **Reordering a group as a unit**, or moving entries between groups. `REQ-016`'s reordering
+  predates grouping and does not say what either means
 
 ---
 
