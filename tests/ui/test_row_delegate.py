@@ -46,6 +46,7 @@ from tracks_and_trails.ui.row_delegate import (
     HUE_ROLE,
     INDENT,
     JOB_ID_ROLE,
+    MERGED_BLOCKS,
     PADDING,
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
@@ -62,6 +63,9 @@ from tracks_and_trails.ui.row_delegate import (
     VERBS_ROLE,
     RowDelegate,
     SegmentState,
+    _merge,
+    segment_blocks,
+    segment_span,
 )
 from tracks_and_trails.ui.row_verbs import Verb
 from tracks_and_trails.ui.thumbnails import THUMBNAIL_SIZE, ThumbnailStore
@@ -1284,12 +1288,15 @@ def test_a_groups_bar_keeps_every_gap_at_every_width(qapp: QApplication) -> None
         )
 
 
-def a_playlist(**extra: Any) -> dict[int, Any]:
+def a_playlist(extra: dict[int, Any] | None = None) -> dict[int, Any]:
     """A group header carrying everything that competes for its last line (`T-163`, `T-167`).
 
     Verbs, a segmented bar and a format control at once, because the collisions this sweeps for
     only exist when all three are on the row — a group with no verbs cannot have them take the
     bar's width.
+
+    `extra` is a dict for `a_row`'s reason: the roles are integers, and `**{ROLE: value}` is a
+    `TypeError`.
     """
     row: dict[int, Any] = {
         HEADLINE_ROLE: "Trail Sounds",
@@ -1302,7 +1309,7 @@ def a_playlist(**extra: Any) -> dict[int, Any]:
         + [SegmentState.FAILED]
         + [SegmentState.WAITING] * 11,
     }
-    row.update(extra)
+    row.update(extra or {})
     return row
 
 
@@ -1364,6 +1371,125 @@ def test_the_bar_changes_shape_at_most_once_across_a_drag(qapp: QApplication) ->
         f"{SWEEP_WIDTHS[0]}-{SWEEP_WIDTHS[-1]}px, changing at "
         f"{[width for width, _, _ in changes]}; a user dragging one edge steadily sees it change, "
         "change back and change again"
+    )
+
+
+def test_a_narrow_bar_merges_to_a_fixed_count_rather_than_thinner_blocks(
+    qapp: QApplication,
+) -> None:
+    """`T-164` and `UX-005` row 9b-i: what the bar draws once its entries no longer each fit.
+
+    Sixteen blocks in a 200 px bar are twelve pixels each and read as noise. The maintainer's first
+    suggestion — one solid *done of total* bar — was **rejected**, because a solid bar cannot show
+    that one of the four finished entries failed, which is the whole of row 9b. So the entries
+    merge into a fixed count instead, and the two renderings are the only two there are.
+    """
+    row = a_playlist()
+    drawn = [(width, bar_blocks(row, width)) for width in SWEEP_WIDTHS]
+    drawn = [(width, blocks) for width, blocks in drawn if blocks]
+
+    assert {blocks for _, blocks in drawn} == {MERGED_BLOCKS, 16}, (
+        f"the bar draws {sorted({blocks for _, blocks in drawn})} blocks across the sweep; row "
+        f"9b-i has exactly two renderings, one per entry and a merged {MERGED_BLOCKS}"
+    )
+    narrow = [width for width, blocks in drawn if blocks == MERGED_BLOCKS]
+    wide = [width for width, blocks in drawn if blocks == 16]
+    assert max(narrow) < min(wide), (
+        "the merged rendering is not confined to the narrow end, so it is not the narrow window "
+        "that decides it"
+    )
+
+
+def test_the_merge_threshold_is_the_stated_block_minimum(qapp: QApplication) -> None:
+    """`T-164`: the threshold is derived from a minimum legible block width, not tuned by eye.
+
+    **Asserted at its own boundary rather than sampled either side of it.** One pixel decides it,
+    and a test that checked 400 px and 900 px would pass for a threshold anywhere between them.
+    """
+    assert segment_blocks(16, segment_span(16)) == 16, (
+        "a line exactly wide enough for sixteen legible blocks does not draw them, so the "
+        "threshold is not the one MIN_BLOCK_WIDTH states"
+    )
+    assert segment_blocks(16, segment_span(16) - 1) == MERGED_BLOCKS, (
+        "one pixel below the stated minimum the bar still draws one block per entry, which is the "
+        "twelve-pixel noise T-164 exists to stop"
+    )
+    assert segment_blocks(MERGED_BLOCKS, 0) == MERGED_BLOCKS, (
+        "a playlist with no more entries than the merged count invents blocks by merging"
+    )
+
+
+def test_a_failed_entry_stays_visible_at_every_width(qapp: QApplication) -> None:
+    """`UX-005` row 9b's guarantee, which is what merging had to keep (`T-164`).
+
+    **A covered failure must not be outvoted by three successes.** Two playlists identical but for
+    one entry — waiting in the first, failed in the second — must never draw the same row. Under a
+    merged block that covers two entries, taking the *worst* is what keeps them apart; taking the
+    commonest or the first would collapse them at exactly the widths the merge exists for.
+
+    **The failed entry is deliberately not the first of its merged block.** Written with it at
+    index 4 this test passed against a fold that took each block's *first* state, because that
+    happened to be the failure — the rule was never exercised. At index 5 the block covers a
+    waiting entry and then the failure, so only taking the worst keeps the two rows apart.
+    `test_a_merged_block_takes_the_worst_state_it_covers` checks the remaining positions directly,
+    which is cheaper than sweeping sixteen of these.
+
+    Widths drawing no bar at all are excluded for `T-163`'s reason, and the guard is that they are
+    the minority.
+    """
+    healthy = a_playlist({SEGMENTS_ROLE: [SegmentState.DONE] * 4 + [SegmentState.WAITING] * 12})
+    broken = a_playlist(
+        {
+            SEGMENTS_ROLE: [SegmentState.DONE] * 4
+            + [SegmentState.WAITING]
+            + [SegmentState.FAILED]
+            + [SegmentState.WAITING] * 10
+        }
+    )
+
+    compared = 0
+    for width in SWEEP_WIDTHS:
+        if not bar_blocks(healthy, width):
+            continue
+        compared += 1
+        fine = paint_rows(RowsModel([healthy]), RowDelegate(), 0, width=width)
+        failed = paint_rows(RowsModel([broken]), RowDelegate(), 0, width=width)
+        assert fine != failed, (
+            f"at {width}px a playlist that skipped a track draws exactly like one that got "
+            "everything, which is the lie row 9b exists to prevent"
+        )
+
+    assert compared > len(SWEEP_WIDTHS) // 2, (
+        f"only {compared} of {len(SWEEP_WIDTHS)} widths drew a bar to compare"
+    )
+
+
+def test_a_merged_block_takes_the_worst_state_it_covers() -> None:
+    """`UX-005` row 9b-i, at every position a failure can occupy.
+
+    The swept test above can only afford one position; this covers the rest, and it is the one
+    that fails when the fold takes a block's first, commonest or last state instead of its worst.
+
+    **Below the two endings the order is least-advanced first**, so a block never claims more
+    progress than the slowest entry under it. Over-reporting is the lie a merged bar is most able
+    to tell: a block covering one finished entry and one still queued that read *done* would let a
+    half-finished playlist draw itself complete.
+    """
+    for position in range(16):
+        states = [SegmentState.DONE] * 16
+        states[position] = SegmentState.FAILED
+        assert SegmentState.FAILED in _merge(states, MERGED_BLOCKS), (
+            f"a failure at entry {position} vanishes when the bar merges, so a playlist that "
+            "skipped a track draws like one that got everything"
+        )
+
+    assert _merge([SegmentState.DONE, SegmentState.WAITING], 1) == (SegmentState.WAITING,), (
+        "a block covering a finished entry and a queued one reports the finished one, so a "
+        "half-done playlist can draw itself as complete"
+    )
+    assert _merge([SegmentState.CANCELLED, SegmentState.FAILED], 1) == (SegmentState.FAILED,), (
+        "a failure is outranked by an abandonment, so the entry a user must act on is the one "
+        "that disappears"
     )
 
 

@@ -96,11 +96,13 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ### T-164 — A sixteen-block bar is unreadable in a narrow window
 
-**Status:** Ready — **ruled 2026-08-05**. The maintainer chose **merge to a fixed block count,
-each block taking the worst state inside it**, recorded as `UX-005` row 9b-i. Their first
-suggestion — one solid *done of total* bar — was put to them with what it costs and **rejected**:
-it moves the failure out of the drawing and into the text, which is the shape 9b was adopted
-against. Filed as a ruling rather than built, per `T126-R4`.
+**Status:** **Complete — 2026-08-05.** Below the threshold the sixteen entries fold into
+`MERGED_BLOCKS`, each taking the worst state it covers; above it nothing changed. The gap no
+longer varies, so the deliberate merge cannot be mistaken for `T-155`'s accidental one. *(Ruled
+2026-08-05: the maintainer chose **merge to a fixed block count, each block taking the worst state
+inside it**, recorded as `UX-005` row 9b-i. Their first suggestion — one solid *done of total* bar
+— was put to them with what it costs and **rejected**: it moves the failure out of the drawing and
+into the text, which is the shape 9b was adopted against.)*
 **Owner:** Implementer
 **Priority:** Medium
 **Phase:** Phase 3

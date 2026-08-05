@@ -261,6 +261,30 @@ SEGMENT_GAP: Final = 1
 #: (`T-164`), and how much of the line the bar keeps from the verbs (`T-163`).
 MIN_BLOCK_WIDTH: Final = 16
 
+#: How many blocks a bar draws once its entries no longer each fit (`UX-005` row 9b-i, `T-164`).
+#:
+#: **What this gives up is stated rather than glossed: a block stops meaning an entry.** The
+#: maintainer's first suggestion was one solid *done of total* bar and was **rejected**, because it
+#: moves the failure out of the drawing and into the text — which is the shape row 9b was adopted
+#: against. Merging keeps the failure visible and spends the weaker guarantee instead, and it is
+#: only affordable because the count is carried exactly elsewhere: the chip reads `4 of 16`
+#: (row 9a) and the second line names each ending.
+MERGED_BLOCKS: Final = 8
+
+#: Which state a merged block takes when it covers several entries, worst first (`T-164`).
+#:
+#: **A covered failure must not be outvoted by three successes** — that is row 9b's whole
+#: guarantee and it does not bend at a narrow window. Below the two endings, the order is
+#: least-advanced first, so a block never claims more progress than the slowest entry it covers:
+#: over-reporting is the lie a merged bar is most able to tell.
+_WORST_FIRST: Final = (
+    SegmentState.FAILED,
+    SegmentState.CANCELLED,
+    SegmentState.WAITING,
+    SegmentState.RUNNING,
+    SegmentState.DONE,
+)
+
 #: How far one level of nesting indents a row, and the width reserved for the disclosure
 #: triangle (`T-140`). The triangle sits in the indent a group's own children get, so a group and
 #: its entries line up on the same left edge rather than stepping twice.
@@ -328,6 +352,36 @@ def segment_span(blocks: int) -> int:
     drawn in one place and measured in another.
     """
     return max(blocks, 0) * MIN_BLOCK_WIDTH + max(blocks - 1, 0) * SEGMENT_GAP
+
+
+def segment_blocks(entries: int, line_width: int) -> int:
+    """How many blocks a bar of `entries` entries draws on a line this wide (`T-164`, `T-167`).
+
+    **One threshold, one number, and the input moves one way.** Below it the entries merge into
+    `MERGED_BLOCKS`; above it there is one block per entry, which is what `T-155` guards. Merging
+    is skipped where it would not help — a playlist of six drawing eight blocks would invent two.
+    """
+    if entries <= MERGED_BLOCKS or segment_span(entries) <= line_width:
+        return entries
+    return MERGED_BLOCKS
+
+
+def _merge(states: Sequence[SegmentState], blocks: int) -> tuple[SegmentState, ...]:
+    """Fold `states` into `blocks`, each taking the worst state it covers (`UX-005` row 9b-i).
+
+    **Each block ends where the next begins**, the same arithmetic `_paint_segments` uses on the
+    pixels and for the same reason: two independent roundings would let one entry be covered twice
+    or by nothing, and an entry no block covers is a failure with nowhere to be seen.
+    """
+    if blocks >= len(states) or blocks <= 0:
+        return tuple(states)
+    return tuple(
+        min(
+            states[position * len(states) // blocks : (position + 1) * len(states) // blocks],
+            key=_WORST_FIRST.index,
+        )
+        for position in range(blocks)
+    )
 
 
 class RowDelegate(QStyledItemDelegate):
@@ -727,11 +781,18 @@ class RowDelegate(QStyledItemDelegate):
         again. A rendering decided from leftover space inherits every discontinuity of everything
         else sharing the line. The line's own width moves one way only, so the same threshold is
         stable by construction, and the bar is still *drawn* into whatever `area` it was given.
+
+        **Below the threshold the entries merge into `MERGED_BLOCKS`** (`UX-005` row 9b-i,
+        `T-164`), each block taking the worst state it covers. The gap does not vary with it: the
+        previous narrow rendering dropped the gap to zero, and sixteen touching blocks are one bar
+        to the eye — indistinguishable from `T-155`, where blocks merged *by accident*. Row 9b-i's
+        constraint is that a deliberate merge must not look like that defect returning, so what
+        changes at the threshold is the block count and nothing else.
         """
         if not states or area.width() <= 0:
             return
-        gap = SEGMENT_GAP if segment_span(len(states)) <= line_width else 0
-        span = (area.width() - gap * (len(states) - 1)) / len(states)
+        states = _merge(states, segment_blocks(len(states), line_width))
+        span = (area.width() - SEGMENT_GAP * (len(states) - 1)) / len(states)
         if span < 1:
             return
         # **A finished entry is the brand** (`T-140`, corrected twice). Every segment was drawn in
@@ -783,8 +844,8 @@ class RowDelegate(QStyledItemDelegate):
         # lost at 600 px, 6 at 617, 2 at 733, none at 800 — deterministic per width, which is why
         # it looked intermittent to somebody resizing a window.
         for position, state in enumerate(states):
-            left = area.left() + round(position * (span + gap))
-            right = area.left() + round((position + 1) * (span + gap)) - gap
+            left = area.left() + round(position * (span + SEGMENT_GAP))
+            right = area.left() + round((position + 1) * (span + SEGMENT_GAP)) - SEGMENT_GAP
             block = QRect(left, area.top(), max(right - left, 1), area.height())
             painter.setBrush(QColor(colours[state]))
             painter.drawRect(block)
