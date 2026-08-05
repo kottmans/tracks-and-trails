@@ -1615,6 +1615,96 @@ def test_a_groups_segments_come_from_its_members(
     )
 
 
+def test_a_cancelled_playlist_is_not_described_as_a_failed_one(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`T-165`. **Cancelled is not a kind of failure, and the header said it was.**
+
+    One enum feeds the drawing and the words, so folding `CANCELLED` in beside `FAILED` made the
+    group report `3 items · 3 failed` about downloads the user stopped on purpose — sending
+    somebody to look for an error that does not exist.
+
+    Asserted on the **words**, because that is the surface the claim is made on. The block state
+    is checked beside it so the two cannot drift apart.
+    """
+    queue.add(
+        make_job(
+            "entry-0",
+            tmp_path,
+            status=JobStatus.CANCELLED,
+            queue_position=0,
+            playlist_id="pl-1",
+            playlist_index=0,
+            playlist_title="Trail Sounds",
+        )
+    )
+    queue.add(
+        make_job(
+            "entry-1",
+            tmp_path,
+            status=JobStatus.FAILED,
+            queue_position=1,
+            playlist_id="pl-1",
+            playlist_index=1,
+            playlist_title="Trail Sounds",
+        )
+    )
+    view = views(jobs=queue, manager=managers())
+    header = view.model.index(0, 0)
+
+    detail = view.model.data(header, DETAIL_ROLE)
+    segments = view.model.data(header, SEGMENTS_ROLE)
+
+    assert "cancelled" in detail, (
+        f"the header says {detail!r}; one entry was cancelled and the line must say so"
+    )
+    assert "2 failed" not in detail, (
+        f"the header says {detail!r}; only one entry failed, and calling the cancelled one a "
+        "failure reports an error that never happened"
+    )
+    assert segments == [SegmentState.CANCELLED, SegmentState.FAILED], (
+        f"the blocks are {segments}; cancelled and failed are different endings"
+    )
+
+
+def test_every_status_has_a_block_state(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`T-165`, and `row_verbs`' rule about tables.
+
+    The mapping used to end in an `else` that swept every unnamed status into *waiting*, which is
+    where `CANCELLED` hid: it was never decided, only defaulted. Transcribed here from
+    `JobStatus` rather than read back from the table, so adding a status without deciding what its
+    block says fails this rather than quietly drawing it as *waiting*.
+    """
+    for index, status in enumerate(JobStatus):
+        queue.add(
+            make_job(
+                f"entry-{index}",
+                tmp_path,
+                status=status,
+                queue_position=index,
+                playlist_id="pl-1",
+                playlist_index=index,
+                playlist_title="Trail Sounds",
+            )
+        )
+    view = views(jobs=queue, manager=managers())
+
+    segments = view.model.data(view.model.index(0, 0), SEGMENTS_ROLE)
+
+    assert len(segments) == len(list(JobStatus)), (
+        f"{len(segments)} blocks for {len(list(JobStatus))} statuses — every status must map"
+    )
+    assert all(isinstance(each, SegmentState) for each in segments), segments
+
+
 def test_an_open_playlist_stays_open_across_a_refresh(
     queue: FakeQueue,
     managers: Callable[..., DownloadManager],

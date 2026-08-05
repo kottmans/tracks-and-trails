@@ -2189,6 +2189,139 @@ def test_the_keyboard_route_works_before_anything_has_been_clicked(
     window.close()
 
 
+def test_the_rows_hold_the_keyboard_when_the_window_opens(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T-152`, second round. **A current row was necessary and not sufficient.**
+
+    `Shift+F10` is delivered to the *focused* widget, and nothing ever focused a view. Measured on
+    a freshly opened window before the fix: `QSpinBox concurrencyChoice`, the toolbar's stepper. So
+    the list's `customContextMenuRequested` could not fire however valid its current index was, and
+    the maintainer saw no change from the first round.
+
+    **This test calls no `setFocus`.** The round-one regression above does, one line before
+    pressing the key — arranging the very condition the second defect is about, which is why the
+    suite went on passing while the route stayed dead. Asserting the focused widget rather than
+    synthesising the key is deliberate and disclosed: `offscreen` does not translate `Shift+F10`
+    (`ai/TESTING.md`), so this proves the key would be **delivered to the list**, and the round-one
+    test proves what the list does with it. Neither is an end-to-end proof and neither pretends to
+    be.
+    """
+    window = _window_over([_job("job-1", 0, JobStatus.RUNNING)], tmp_path)
+    window.show()
+    QApplication.processEvents()
+    view = window.queue_view
+    assert view is not None
+
+    focused = qapp.focusWidget()
+    try:
+        assert view.table.hasFocus(), (
+            "the queue's rows do not hold the keyboard on a freshly opened window, so Shift+F10 "
+            f"goes to {focused.objectName() if focused else None!r} instead and the row menu "
+            "never opens"
+        )
+    finally:
+        window.close()
+
+
+def test_the_keyboard_follows_the_tab_the_user_switched_to(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T-152`, second round. Both tabs declare the route, so both must receive the key.
+
+    **Qt provides this one, and the test is kept anyway.** Measured: removing the
+    `currentChanged` connection changed nothing, because Qt moves focus off a widget it hides and
+    the list is what it lands on. So the connection was dropped as code that looked like it did
+    something — and this stayed, because the *guarantee* is ours even when the mechanism is not.
+    It is a characterisation test and says so, rather than claiming to prove production code it
+    cannot fail against.
+    """
+    window = _window_over(
+        [_job("job-1", 0, JobStatus.RUNNING)],
+        tmp_path,
+        history=_OneRecordHistory(),
+    )
+    window.show()
+    QApplication.processEvents()
+    history = window.history_view
+    assert history is not None
+
+    try:
+        _bring_to_front(window, history)
+        assert history.table.hasFocus(), (
+            "switching to History left the keyboard on the queue's list, so the route History "
+            "declares reaches nothing"
+        )
+    finally:
+        window.close()
+
+
+def test_the_first_rows_of_a_first_run_take_the_keyboard(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T-152`, second round, and the case construction alone cannot reach.
+
+    An **empty** view hides its list, and a hidden widget cannot hold focus — so a first run has
+    nothing to focus at construction and would start with the declared route dead until the user
+    clicked something. That is the original defect, surviving in the one state a new user is
+    guaranteed to be in.
+
+    `modelReset` is the signal every structural change already goes through (`T080-R2`,
+    `T124-R2`), so the keyboard is placed the moment there is somewhere to put it.
+    """
+    jobs: list[Job] = []
+    manager = DownloadManager(_EmptyJobStore(), concurrency=1)  # type: ignore[arg-type]
+    window = MainWindow(
+        geometry_file=tmp_path / "window.toml",
+        concurrency=1,
+        manager=manager,
+        queue=_FakeQueue(jobs),
+    )
+    window.show()
+    QApplication.processEvents()
+    view = window.queue_view
+    assert view is not None
+
+    try:
+        assert not view.table.hasFocus(), "the empty state must not focus its hidden list"
+
+        jobs.append(_job("job-1", 0, JobStatus.RUNNING))
+        window.refresh_queue()
+        QApplication.processEvents()
+
+        assert view.table.hasFocus(), (
+            "the queue gained its first row and the keyboard stayed on the toolbar, so a first "
+            "run reaches the row menu only after using a pointer — the defect this task is about"
+        )
+    finally:
+        window.close()
+
+
+def test_an_empty_queue_claims_no_keyboard_it_cannot_use(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T-152`, second round, and `T-060`'s rule about focus chains.
+
+    An empty view hides its list and answers an empty `focus_chain()`, so there is nothing to
+    focus. Taking focus anyway would point the keyboard at a hidden widget and quietly swallow the
+    key — worse than leaving it on a control the user can see.
+    """
+    window = _window_over([], tmp_path)
+    window.show()
+    QApplication.processEvents()
+    view = window.queue_view
+    assert view is not None
+
+    try:
+        assert view.shows_empty_notice, "this test needs the empty state to mean anything"
+        assert not view.table.hasFocus(), (
+            "the empty queue's hidden list took the keyboard, so every key goes to a widget "
+            "nobody can see"
+        )
+    finally:
+        window.close()
+
+
 @pytest.mark.parametrize("route", ["queue", "history"])
 def test_a_long_title_elides_rather_than_widening_the_list(
     qapp: QApplication, tmp_path: Path, route: str

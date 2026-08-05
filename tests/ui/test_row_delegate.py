@@ -1258,6 +1258,57 @@ def test_a_groups_bar_keeps_every_gap_at_every_width(qapp: QApplication) -> None
         )
 
 
+def test_an_abandoned_block_is_not_drawn_like_a_finished_one(qapp: QApplication) -> None:
+    """`T-165`, in **both** themes.
+
+    Done was the brand green and failed was the ink at alpha 170 — two solid dark fills, so a
+    playlist where every entry was cancelled drew a bar that looked exactly as full as one where
+    every entry succeeded, and *full* is the shape the eye reads as finished. Checklist row 3.6
+    only ever asked that failed differ from **queued**, and those did differ, by opacity; the pair
+    a user confuses is finished against abandoned.
+
+    **Both themes, because the fix reads a semantic colour** rather than nudging an alpha. A hex
+    that separates the three on the light theme can collapse two of them on the dark one, and the
+    dark theme is the one nobody has looked at yet (`docs/CRITERION_8_CHECKLIST.md` §5).
+
+    Sampled from the middle of each block, one state per render, so nothing here depends on how
+    the blocks are laid out — that is `T-155`'s question and it has its own test.
+    """
+    from tracks_and_trails.ui import theme
+
+    for dressing in (theme.LIGHT, theme.DARK):
+        theme.apply(qapp, dressing)
+        palette = theme.palette(dressing)
+        drawn: dict[SegmentState, str] = {}
+        for state in SegmentState:
+            image = QImage(40, 8, QImage.Format.Format_ARGB32)
+            image.fill(Qt.GlobalColor.white)
+            painter = QPainter(image)
+            try:
+                RowDelegate()._paint_segments(
+                    painter, QRect(0, 0, 40, 8), [state], QColor(dressing.muted), palette
+                )
+            finally:
+                painter.end()
+            drawn[state] = image.pixelColor(20, 4).name()
+
+        assert drawn[SegmentState.DONE] != drawn[SegmentState.FAILED], (
+            f"on the {dressing.name} theme a failed block is {drawn[SegmentState.FAILED]} and a "
+            f"finished one is {drawn[SegmentState.DONE]}"
+        )
+        assert drawn[SegmentState.DONE] != drawn[SegmentState.CANCELLED], (
+            f"on the {dressing.name} theme a cancelled block is "
+            f"{drawn[SegmentState.CANCELLED]} and a finished one is {drawn[SegmentState.DONE]}; "
+            "a wholly cancelled playlist must not draw the bar a wholly finished one draws"
+        )
+        assert drawn[SegmentState.CANCELLED] != drawn[SegmentState.FAILED], (
+            f"on the {dressing.name} theme cancelled and failed both draw "
+            f"{drawn[SegmentState.CANCELLED]}; the words separate them and the bar must too"
+        )
+
+    theme.apply(qapp, theme.LIGHT)
+
+
 def test_a_child_rows_picture_stays_inside_its_smaller_slot(
     qapp: QApplication, stores: Callable[..., ThumbnailStore]
 ) -> None:

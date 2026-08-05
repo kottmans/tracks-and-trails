@@ -451,6 +451,48 @@ class MainWindow(QMainWindow):
         self._refresh_tab_labels()
         self._attach_file_actions()
 
+        # **The declared keyboard route needs the key, not only a row** (`T-152`, second round,
+        # `NFR-005`). The first fix gave both views a current index, which is what
+        # `_row_menu_asked_for` falls back to — and `Shift+F10` still did nothing, because Qt
+        # delivers it to the *focused* widget and nothing here ever focused a view. Measured on a
+        # freshly opened window: `QSpinBox concurrencyChoice`, the toolbar's stepper. The list's
+        # `customContextMenuRequested` cannot fire for a key the list never receives.
+        #
+        # **Nothing is connected to `currentChanged`.** Switching tabs was measured first: Qt
+        # hides the old page, and focus on a hidden widget moves to the next focusable one in the
+        # new page, which is the list. A connection here changed no outcome in either direction,
+        # so it is left out rather than kept as code that looks like it does something.
+        for view in (self._queue, self._history_view):
+            if view is not None:
+                # **Rows arriving is the other moment the key can be placed.** An empty view hides
+                # its list, so it cannot hold focus at construction; a first run therefore starts
+                # with no view focusable at all. Disclosed rather than hidden: this can move focus
+                # off a toolbar control somebody was using at the instant a first row lands. The
+                # alternative is a route `NFR-005` declares and a first-run window does not have.
+                view.table.model().modelReset.connect(self._give_the_rows_the_keyboard)
+        self._give_the_rows_the_keyboard()
+
+    def _give_the_rows_the_keyboard(self, *_ignored: object) -> None:
+        """Focus the visible tab's rows, so the keyboard route reaches them (`T-152`, `NFR-005`).
+
+        **Through `focus_chain()` rather than at the list directly.** That method is already the
+        views' declaration of what is focusable in the state they are in, and it answers empty
+        when there are no rows — so this asks the existing authority instead of becoming a second
+        opinion that could disagree with it (`T-060`).
+
+        Does nothing when the chain is empty, and nothing when the view already holds the
+        keyboard — so a refresh cannot move the keyboard out from under somebody reading rows.
+        It **can** take focus from a toolbar control at the moment a first row arrives; that seam
+        is stated at the connection above rather than papered over here.
+        """
+        view = self._body.currentWidget()
+        if not isinstance(view, QueueView | HistoryView):
+            return
+        chain = view.focus_chain()
+        if not chain or any(each.hasFocus() for each in chain):
+            return
+        chain[0].setFocus(Qt.FocusReason.OtherFocusReason)
+
     def _connect_row_verbs(self, view: QueueView) -> None:
         """Give the row's verbs the same destinations the toolbar's have (`UX-005` §4, `T-124`).
 

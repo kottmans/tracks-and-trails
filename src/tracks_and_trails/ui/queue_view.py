@@ -166,6 +166,24 @@ ETA_COLUMN: Final = 5
 #: the kind `Job.progress` already refuses to tell, and the accessible text says so in words.
 INDETERMINATE_TEXT: Final = "—"
 
+#: One block per status (`UX-005` row 9b, `T-165`). **A table rather than a chain of `if`s**, for
+#: `row_verbs`' reason: every status is named, so an unmapped one raises instead of falling
+#: quietly through to *waiting*. That fall-through is how `CANCELLED` came to be drawn and
+#: described as a failure — it was folded in beside `FAILED` where no reader would look for it.
+#:
+#: `PROBING` waits rather than runs, deliberately and unchanged: the bar counts downloads, and a
+#: probed entry has not downloaded anything yet.
+_SEGMENT_BY_STATUS: Final[dict[JobStatus, SegmentState]] = {
+    JobStatus.QUEUED: SegmentState.WAITING,
+    JobStatus.READY: SegmentState.WAITING,
+    JobStatus.PROBING: SegmentState.WAITING,
+    JobStatus.RUNNING: SegmentState.RUNNING,
+    JobStatus.POST_PROCESSING: SegmentState.RUNNING,
+    JobStatus.FAILED: SegmentState.FAILED,
+    JobStatus.CANCELLED: SegmentState.CANCELLED,
+    JobStatus.COMPLETED: SegmentState.DONE,
+}
+
 #: What an empty queue says. A blank table and a table that failed to load look identical, and
 #: `REQ-012`'s promise that a queued job is visible is a claim about the empty case too.
 EMPTY_TEXT: Final = "Nothing queued. Use File > Add URLs... to add a download."
@@ -919,19 +937,8 @@ class QueueModel(QAbstractTableModel):
         self.endResetModel()
 
     def _group_segments(self, group: _Group) -> list[SegmentState]:
-        """One block per entry, from each member's own status (`UX-005` row 9b)."""
-        states: list[SegmentState] = []
-        for row in group.members:
-            status = row.job.status
-            if status is JobStatus.COMPLETED:
-                states.append(SegmentState.DONE)
-            elif status in (JobStatus.RUNNING, JobStatus.POST_PROCESSING):
-                states.append(SegmentState.RUNNING)
-            elif status in (JobStatus.FAILED, JobStatus.CANCELLED):
-                states.append(SegmentState.FAILED)
-            else:
-                states.append(SegmentState.WAITING)
-        return states
+        """One block per entry, from each member's own status (`UX-005` row 9b, `T-165`)."""
+        return [_SEGMENT_BY_STATUS[row.job.status] for row in group.members]
 
     def _group_data(self, group: _Group, role: int) -> Any:
         """What a playlist's header row answers (`T-140`, `UX-005` rows 9a-9c)."""
@@ -964,6 +971,7 @@ class QueueModel(QAbstractTableModel):
                 (SegmentState.DONE, "done"),
                 (SegmentState.RUNNING, "running"),
                 (SegmentState.FAILED, "failed"),
+                (SegmentState.CANCELLED, "cancelled"),
                 (SegmentState.WAITING, "queued"),
             ):
                 if counted[state]:

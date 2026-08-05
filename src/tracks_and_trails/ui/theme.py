@@ -560,6 +560,21 @@ def palette(theme: Theme) -> QPalette:
     return roles
 
 
+#: **The theme `apply` last dressed the application in** (`T-165`). A `QPalette` carries the
+#: colours Qt has roles for, and the semantic ones — `stop` for a failure, `muted` for something
+#: abandoned — have no role to live in. A delegate needing them either hardcodes a hex, which
+#: fixes one theme and breaks the other, or asks here.
+#:
+#: `LIGHT` until `apply` runs, so a widget built in a test without a themed application still
+#: gets a coherent set rather than `None`.
+_applied: Theme = LIGHT
+
+
+def applied() -> Theme:
+    """The theme in force. See `_applied` for why this exists rather than a wider palette."""
+    return _applied
+
+
 def apply(application: object, theme: Theme = LIGHT) -> None:
     """Dress `application` in `theme`. **The one call that themes anything.**
 
@@ -571,6 +586,8 @@ def apply(application: object, theme: Theme = LIGHT) -> None:
     with `setPalette` and `setStyleSheet` satisfies it, which is also how a test drives it without
     a display.
     """
+    global _applied
+    _applied = theme
     setter = getattr(application, "setPalette", None)
     if setter is not None:
         setter(palette(theme))

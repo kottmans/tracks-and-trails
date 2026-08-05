@@ -59,6 +59,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.row_verbs import LABELS, MORE_LABEL, Verb
 from tracks_and_trails.ui.thumbnails import THUMBNAIL_SIZE, ThumbnailStore
 
@@ -74,6 +75,12 @@ class SegmentState(StrEnum):
     DONE = "done"
     RUNNING = "running"
     FAILED = "failed"
+    #: **Not a kind of failure** (`T-165`). Both were one state, and because this enum is the
+    #: single source for the drawing *and* the words, the collapse showed twice: a playlist the
+    #: user cancelled reported itself as `16 failed`, sending somebody to look for an error that
+    #: does not exist. Separating them here separates both surfaces at once, which is the whole
+    #: reason the enum is shared rather than duplicated.
+    CANCELLED = "cancelled"
     WAITING = "waiting"
 
 
@@ -695,15 +702,27 @@ class RowDelegate(QStyledItemDelegate):
         #
         # **Colour is never the only signal** (`NFR-005`): the chip beside this says `16 of 16`
         # and the second line says `16 done`, in words. This reinforces them.
+        #
+        # **Hue, not opacity, once the ending matters** (`T-165`). Done and failed were a brand
+        # green and the ink at alpha 170 — two solid dark fills, so a wholly cancelled playlist
+        # drew a wholly *filled* bar and filled is the shape the eye reads as finished. Row 3.6
+        # only ever asked that failed differ from *queued*, and those did differ, by opacity; the
+        # pair a user actually confuses is finished against abandoned. The semantic colours come
+        # from the theme rather than the palette because Qt has no role for "this one failed", and
+        # a hardcoded hex would be right in one theme and wrong in the other.
+        active = theme.applied()
         done = palette.highlight().color()
         running = QColor(done)
         running.setAlpha(140)
+        failed = QColor(active.stop)
+        cancelled = QColor(active.muted)
         waiting = QColor(muted)
         waiting.setAlpha(60)
         colours = {
             SegmentState.DONE: done,
             SegmentState.RUNNING: running,
-            SegmentState.FAILED: muted,
+            SegmentState.FAILED: failed,
+            SegmentState.CANCELLED: cancelled,
             SegmentState.WAITING: waiting,
         }
         painter.save()
