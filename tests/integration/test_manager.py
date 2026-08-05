@@ -3904,6 +3904,7 @@ def _job_with_every_field(tmp_path: Path) -> Job:
         job = job.with_status(status)
     return replace(
         job,
+        thumbnail_url="https://img.example.com/abc.jpg",
         title="A Clip With A Title",
         output_path=str(tmp_path / "A Clip With A Title.mp4"),
         bytes_total=4096,
@@ -3939,6 +3940,7 @@ def test_a_completion_records_every_field_req_020_names(tmp_path: Path) -> None:
     assert entry == HistoryEntry(
         id="job-full",
         url="https://example.com/watch?v=abc",
+        thumbnail_url="https://img.example.com/abc.jpg",
         title="A Clip With A Title",
         output_path=str(tmp_path / "A Clip With A Title.mp4"),
         format_used="137+140",

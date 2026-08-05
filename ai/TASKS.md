@@ -1212,43 +1212,6 @@ proposes; `T118-R15` sized `SELECTOR_LINES` and should be re-read first.
 
 ---
 
-### T-138 — History rows lose the thumbnail the queue row had
-
-**Status:** Proposed — **found by the maintainer, 2026-08-04.** The same download shows a picture
-in the queue and a placeholder tile in History.
-**Owner:** Implementer
-**Priority:** Medium — `UX-005` §3 gives both tabs the same row anatomy
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `UX-005` §3, `DAT-005`, `T124-R4` (the last time a row's anatomy needed a
-column), `persistence/repositories.py`, `ui/history_view.py`
-**Affected surfaces:** `persistence/` (a migration), `ui/history_view.py`
-**Risk:** Medium — it needs a schema migration, and `T014-R4` freezes a fixture per version
-
-#### Scope
-
-**Neither half exists**, which is why nothing was merely mis-wired:
-
-- `HistoryEntry` has **no `thumbnail_url` field**, and the `history` table has no column for one.
-  The `jobs` table does persist it — that is the queue's copy, and removing a job takes it.
-- `ui/history_view.py` never mentions `THUMBNAIL_URL_ROLE` and builds its `RowDelegate` **without
-  a `ThumbnailStore`**, so even given the data it would draw the derived tile.
-
-So this is `T124-R4` again in a different column: `UX-005` §3 says both tabs draw the same row, and
-the data the row needs was never carried. Migration `0004`, plus `v4.sql` frozen for `T014-R4`'s
-gate.
-
-#### Acceptance criteria
-
-- A completed download shows the **same** picture in History as it did in the queue, asserted
-  across the move rather than by checking the two surfaces separately
-- The migration is forward-only and `v4.sql` is frozen (`T014-R4`)
-- A history row whose entry predates the column, or whose picture cannot be fetched, draws the
-  derived tile rather than an empty space — the existing placeholder path
-- History's `RowDelegate` gets a store, and the store's cache is not duplicated per tab
-
----
-
 ### T-139 — The bitrate control stays live when bitrate does not apply
 
 **Status:** Proposed — **found by the maintainer, 2026-08-04**, with *Best video up to 1080p (MP4)*
@@ -2136,6 +2099,67 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-138 — History rows lose the thumbnail the queue row had
+
+**Status:** **Complete — 2026-08-04.** A finished download keeps the picture it had in the queue.
+
+**Neither half existed**, which is why nothing was merely mis-wired: `HistoryEntry` had no such
+field and the `history` table no column, while `history_view.py` built its `RowDelegate` with **no
+thumbnail store** and said so in a comment — *"a history record carries no thumbnail URL"*. Given
+the data it would still have drawn the derived tile.
+
+- Migration `0005` adds `history.thumbnail_url`, with `v5.sql` frozen from a live v5 database
+  (`T014-R4`). Nullable and un-backfilled: `NULL` is what every pre-`0005` row carries and it
+  renders the derived tile, which is what every history row did before this — the absent case is
+  the old behaviour, not a degraded one.
+- `PersistentJobStore.complete` carries the address across **at the moment it stops being
+  reachable**: `jobs.thumbnail_url` dies with the job, so History needs its own copy.
+- `HistoryModel` answers `THUMBNAIL_URL_ROLE`, and `HistoryView` builds a `ThumbnailStore`. Its
+  own rather than the queue's — the two views are built independently — and the *disk* cache is
+  shared anyway, since `thumbnail_cache_path` keys by URL.
+
+**Three assertions, because there were three ways to keep failing:** the model answers the role,
+the view has a store at all, and the picture survives the move. The third lives in
+`test_a_completion_records_every_field_req_020_names`, which already pinned the projected field
+set — the right place for it, and it fails when the field is dropped in transit.
+
+*This is the third column `UX-005` §3's row anatomy has needed and not had, after `0002`'s
+thumbnail and `0003`'s uploader and duration. Each was a field `MediaInfo` already carried and the
+staging row already drew.*
+
+**Owner:** Implementer
+**Priority:** Medium — `UX-005` §3 gives both tabs the same row anatomy
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `UX-005` §3, `DAT-005`, `T124-R4` (the last time a row's anatomy needed a
+column), `persistence/repositories.py`, `ui/history_view.py`
+**Affected surfaces:** `persistence/` (a migration), `ui/history_view.py`
+**Risk:** Medium — it needs a schema migration, and `T014-R4` freezes a fixture per version
+
+#### Scope
+
+**Neither half exists**, which is why nothing was merely mis-wired:
+
+- `HistoryEntry` has **no `thumbnail_url` field**, and the `history` table has no column for one.
+  The `jobs` table does persist it — that is the queue's copy, and removing a job takes it.
+- `ui/history_view.py` never mentions `THUMBNAIL_URL_ROLE` and builds its `RowDelegate` **without
+  a `ThumbnailStore`**, so even given the data it would draw the derived tile.
+
+So this is `T124-R4` again in a different column: `UX-005` §3 says both tabs draw the same row, and
+the data the row needs was never carried. Migration `0004`, plus `v4.sql` frozen for `T014-R4`'s
+gate.
+
+#### Acceptance criteria
+
+- A completed download shows the **same** picture in History as it did in the queue, asserted
+  across the move rather than by checking the two surfaces separately
+- The migration is forward-only and `v4.sql` is frozen (`T014-R4`)
+- A history row whose entry predates the column, or whose picture cannot be fetched, draws the
+  derived tile rather than an empty space — the existing placeholder path
+- History's `RowDelegate` gets a store, and the store's cache is not duplicated per tab
+
+---
 
 ### T-137 — A playlist downloads one item, silently, and reports nothing about it
 

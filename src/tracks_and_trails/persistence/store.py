@@ -193,6 +193,9 @@ class PersistentJobStore(QObject):
                 output_path=job.output_path,
                 format_used=format_used,
                 bytes_total=job.bytes_total,
+                # **Carried across at the moment it stops being reachable** (`T-138`). The queue's
+                # copy dies with the job; this is the record's own.
+                thumbnail_url=job.thumbnail_url,
                 completed_at=job.finished_at if job.finished_at is not None else _now(),
             ),
             settle,

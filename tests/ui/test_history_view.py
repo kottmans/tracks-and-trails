@@ -33,7 +33,9 @@ from tracks_and_trails.ui.row_delegate import (
     HEADLINE_ROLE,
     PROGRESS_ROLE,
     SELECTOR_ROLE,
+    THUMBNAIL_URL_ROLE,
     VERBS_ROLE,
+    RowDelegate,
 )
 from tracks_and_trails.ui.row_verbs import Verb
 
@@ -387,3 +389,55 @@ def test_remove_on_an_unselected_row_means_that_row(qapp: QApplication) -> None:
     view.trigger_verb("job-2", Verb.REMOVE)
 
     assert asked == [["job-2"]], f"Remove asked for {asked}"
+
+
+def test_a_history_row_keeps_the_picture_its_queue_row_had(qapp: QApplication) -> None:
+    """`T-138`, `UX-005` §3: both tabs draw the same row anatomy.
+
+    **Asserted through the role the shared delegate reads**, because that is what decides the
+    drawing — and asserted on a record that *has* a picture and one that does not, since `None` is
+    what every row written before migration `0005` carries and it must still render.
+
+    The defect was structural rather than a mis-wiring: `HistoryEntry` had no such field and the
+    view built its delegate with no thumbnail store, so the same download drew a picture in the
+    queue and a derived tile here, one row apart.
+    """
+    pictured = HistoryEntry(
+        id="h-1",
+        url="https://example.invalid/one",
+        title="A finished download",
+        thumbnail_url="https://img.invalid/one.jpg",
+        completed_at=datetime(2026, 8, 4, 20, 0, tzinfo=UTC),
+    )
+    bare = HistoryEntry(
+        id="h-2",
+        url="https://example.invalid/two",
+        completed_at=datetime(2026, 8, 4, 20, 5, tzinfo=UTC),
+    )
+    view = HistoryView(history=FakeHistory([pictured, bare]))
+    model = view.model
+
+    assert model.data(model.index(0, 0), THUMBNAIL_URL_ROLE) == "https://img.invalid/one.jpg", (
+        "a history row answers no thumbnail, so it draws the derived tile for a download whose "
+        "picture the queue was showing a moment earlier"
+    )
+    assert model.data(model.index(1, 0), THUMBNAIL_URL_ROLE) is None, (
+        "a record written before the column existed invented a picture"
+    )
+
+
+def test_the_history_view_can_fetch_a_picture_at_all(qapp: QApplication) -> None:
+    """The role is half of it; a store to answer it is the other half (`T-138`).
+
+    The view built its delegate **without** a `ThumbnailStore`, so even given the URL every row
+    would still have drawn the derived tile. A test asserting only the role would have passed
+    against exactly the application the maintainer reported.
+    """
+    view = HistoryView(history=FakeHistory([]))
+    delegate = view.table.itemDelegate()
+
+    assert isinstance(delegate, RowDelegate)
+    assert delegate._thumbnails is not None, (
+        "the history view's delegate has no thumbnail store, so no history row can ever draw a "
+        "picture whatever the model answers"
+    )

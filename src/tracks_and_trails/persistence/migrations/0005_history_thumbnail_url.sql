@@ -1,0 +1,21 @@
+-- 0005 — the picture a history row draws (`T-138`, `UX-005` §3).
+--
+-- `UX-005` §3 gives **both tabs the same row anatomy**, and History drew a derived tile where the
+-- queue had drawn the real thumbnail — the same download, one picture, lost at the moment it
+-- finished. `jobs.thumbnail_url` does persist it, but that is the queue's copy and removing a
+-- job takes it; a history row has to carry its own or it has nothing after the queue is cleared.
+--
+-- This is `0002`'s case for the second time, and `0003`'s reasoning verbatim: the address was
+-- known, drawn while the job was live, and had nowhere to live afterwards. It is also the third
+-- column the accepted row anatomy has needed and not had, which is worth noticing rather than
+-- fixing quietly — each has been a field `MediaInfo` already carried.
+--
+-- Nullable, no default, no backfill. A row written before this ran was never asked for a
+-- thumbnail, and inventing one would be a claim nothing made; `NULL` is honest for both "recorded
+-- before this column existed" and "the extractor offered no picture", and the row renders the
+-- derived tile for either — which is what it did for every row until now, so the un-backfilled
+-- case is not a degraded one.
+--
+-- Forward-only. One `ALTER TABLE ... ADD COLUMN`, which SQLite applies without rewriting.
+
+ALTER TABLE history ADD COLUMN thumbnail_url TEXT;

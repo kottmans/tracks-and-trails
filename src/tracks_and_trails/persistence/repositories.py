@@ -501,6 +501,7 @@ _HISTORY_COLUMNS: Final = (
     "output_path",
     "format_used",
     "bytes_total",
+    "thumbnail_url",
     "completed_at",
 )
 
@@ -532,6 +533,17 @@ class HistoryEntry:
     format_used: str | None = None
     bytes_total: int | None = None
 
+    #: Where the site said the picture was (`T-138`, `UX-005` §3).
+    #:
+    #: **Its own copy, not the job's.** `jobs.thumbnail_url` holds the same address while the job
+    #: exists, and removing the job takes it — so a history row reading through to the queue would
+    #: lose its picture exactly when History becomes the only place the download is recorded.
+    #:
+    #: `None` means "recorded before this column existed" or "the extractor named no picture", and
+    #: the row draws the derived tile for either. That is what every history row did until this
+    #: existed, so the absent case is the old behaviour rather than a degraded one.
+    thumbnail_url: str | None = None
+
     def __post_init__(self) -> None:
         if not self.url:
             raise ValueError(
@@ -552,6 +564,7 @@ def _history_to_values(entry: HistoryEntry) -> dict[str, Any]:
         "output_path": entry.output_path,
         "format_used": entry.format_used,
         "bytes_total": entry.bytes_total,
+        "thumbnail_url": entry.thumbnail_url,
         "completed_at": entry.completed_at.isoformat(),
     }
 
@@ -564,6 +577,7 @@ def _row_to_history(row: sqlite3.Row) -> HistoryEntry:
         output_path=row["output_path"],
         format_used=row["format_used"],
         bytes_total=row["bytes_total"],
+        thumbnail_url=row["thumbnail_url"],
         completed_at=datetime.fromisoformat(row["completed_at"]),
     )
 

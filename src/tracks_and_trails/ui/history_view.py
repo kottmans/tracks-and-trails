@@ -43,6 +43,7 @@ subscription and nothing to detach. Composition refreshes it when a job complete
 is cleared, which are the only two moments the set of rows can differ.
 """
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QPoint, Qt, Signal
@@ -63,11 +64,13 @@ from tracks_and_trails.ui.row_delegate import (
     JOB_ID_ROLE,
     SELECTOR_ROLE,
     STATE_ROLE,
+    THUMBNAIL_URL_ROLE,
     VERBS_ROLE,
     RowDelegate,
 )
 from tracks_and_trails.ui.row_verbs import Verb
 from tracks_and_trails.ui.staging import placeholder_hue
+from tracks_and_trails.ui.thumbnails import ThumbnailLoader, ThumbnailStore
 
 if TYPE_CHECKING:
     from tracks_and_trails.persistence.repositories import HistoryEntry
@@ -191,6 +194,12 @@ class HistoryModel(QAbstractTableModel):
             # The saved path, on the row's own last line. `UX-005` §3 names it as one of the three
             # things history says, and it is the one a person copies into a bug report.
             return self._text(entry, PATH_COLUMN)
+        if role == THUMBNAIL_URL_ROLE:
+            # **History carries its own** (`T-138`, `UX-005` §3). It used to answer nothing, on
+            # the recorded premise that "a history record carries no thumbnail URL" — true until
+            # migration `0005` gave it one, and the reason the same download drew a picture in the
+            # queue and a derived tile here the moment it finished.
+            return self._entries[index.row()].thumbnail_url
         if role == HUE_ROLE:
             return placeholder_hue(entry.url)
         if role == JOB_ID_ROLE:
@@ -288,7 +297,14 @@ class HistoryModel(QAbstractTableModel):
 class HistoryView(QWidget):
     """The table, plus the notice that stands in for it when there is nothing to show."""
 
-    def __init__(self, *, history: HistoryReader, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        history: HistoryReader,
+        parent: QWidget | None = None,
+        thumbnail_loader: ThumbnailLoader | None = None,
+        cache_root: Path | None = None,
+    ) -> None:
         super().__init__(parent)
         self.setObjectName("historyView")
         self._model = HistoryModel(history=history, parent=self)
@@ -328,11 +344,21 @@ class HistoryView(QWidget):
         # own menu on this table, because two menus on one gesture is worse than either.
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._row_menu_asked_for)
-        self._delegate = RowDelegate(parent=self._table)
+        # **A store of its own** (`T-138`). This said "no thumbnail store: a history record
+        # carries no thumbnail URL", which migration `0005` made false — and until it did, the
+        # same download drew its picture in the queue and a derived tile here, one row apart.
+        #
+        # Its own rather than the queue's: the two views are built independently and neither owns
+        # the other, and the **disk** cache is shared anyway — `thumbnail_cache_path` keys by URL,
+        # so a picture fetched for a queue row is already on disk when History asks for it. What
+        # is duplicated is an in-memory cache and a thread pool, which is what `T-119` sized per
+        # view.
+        self._thumbnails = ThumbnailStore(
+            loader=thumbnail_loader, cache_root=cache_root, parent=self
+        )
+        self._delegate = RowDelegate(thumbnails=self._thumbnails, parent=self._table)
         self._table.setItemDelegate(self._delegate)
-        # No thumbnail store: a history record carries no thumbnail URL, so every row draws the
-        # derived tile (`UX-003`) — which is what the store would fall back to anyway, without
-        # the thread pool and the cache directory that nothing here would use.
+        self._thumbnails.ready.connect(self._on_thumbnail_ready)
         # **The pointer is watched so the row's verbs can react to it** (`T-134`). Not a
         # default: a viewport's mouse tracking is off, so without this Qt reports the
         # pointer only while a button is held.
@@ -413,6 +439,17 @@ class HistoryView(QWidget):
             return ()
         offered = self._model.data(self._model.index(ids.index(entry_id), 0), VERBS_ROLE)
         return tuple(offered or ())
+
+    def _on_thumbnail_ready(self, _url: str) -> None:
+        """A picture arrived, so the rows showing it repaint (`T-138`).
+
+        The same shape as `QueueView._on_thumbnail_ready`: the *history* did not change, so this
+        repaints rather than refreshing — a reset here would discard the selection a user made
+        while a picture was still loading.
+        """
+        count = self._model.rowCount()
+        if count:
+            self._model.dataChanged.emit(self._model.index(0, 0), self._model.index(count - 1, 0))
 
     def _row_menu_asked_for(self, position: QPoint) -> None:
         """The Menu key, Shift+F10 or a right-click asked for a row's overflow (`T124-R1`).
@@ -499,10 +536,15 @@ class HistoryView(QWidget):
         self._empty.setVisible(not has_rows)
 
 
-def build_history_view(history: HistoryReader) -> HistoryView:
+def build_history_view(
+    history: HistoryReader,
+    *,
+    thumbnail_loader: ThumbnailLoader | None = None,
+    cache_root: Path | None = None,
+) -> HistoryView:
     """Construct the view. A named function for `build_queue_view`'s reason.
 
     There is nothing to wire yet — `T-086` adds open-and-reveal, and this is where that wiring
     decision will live rather than being buried in composition.
     """
-    return HistoryView(history=history)
+    return HistoryView(history=history, thumbnail_loader=thumbnail_loader, cache_root=cache_root)
