@@ -47,6 +47,8 @@ from tracks_and_trails.ui.row_delegate import (
     INDENT,
     JOB_ID_ROLE,
     MERGED_BLOCKS,
+    MIN_BLOCK_WIDTH,
+    MIN_FRACTION_BAR,
     PADDING,
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
@@ -1313,25 +1315,58 @@ def a_playlist(extra: dict[int, Any] | None = None) -> dict[int, Any]:
     return row
 
 
-def bar_blocks(row: dict[int, Any], width: int) -> int:
-    """How many blocks the row's bar draws at `width`, counted off the pixels it painted.
+def a_download(extra: dict[int, Any] | None = None) -> dict[int, Any]:
+    """A running queue row: a plain fraction bar, and the verbs that were crowding it (`T-163`).
 
-    `0` means no bar was drawn at all, which is a real thing this row does at some widths and is
-    `T-163`'s defect rather than a measurement failure.
+    `Open` and `Show in folder` are the pair the maintainer reported keeping their full width while
+    the bar was squeezed to a stub, so they are the ones swept here.
+    """
+    row: dict[int, Any] = {
+        HEADLINE_ROLE: "Ridgeline in 4K",
+        DETAIL_ROLE: "412 MB of 640 MB",
+        HUE_ROLE: 0,
+        JOB_ID_ROLE: "job-1",
+        PROGRESS_ROLE: 0.62,
+        VERBS_ROLE: [Verb.OPEN, Verb.REVEAL, Verb.REMOVE],
+        PRESET_CHOICES_ROLE: ["Best video available", "Audio only (MP3)"],
+    }
+    row.update(extra or {})
+    return row
+
+
+def bar_runs(row: dict[int, Any], width: int, delegate: RowDelegate | None = None) -> list[int]:
+    """The widths of the ink runs on the row's progress bar, left to right.
+
+    One run per block for a segmented bar, one run for a plain one, and `[]` when no bar was drawn
+    at all — a real thing a narrow row does, and `T-163`'s defect rather than a measurement
+    failure.
 
     **Read from the drawn row rather than from the delegate's arithmetic**, because the claim is
     about what a user sees as they drag the window edge. The scanline is the bar's own, and the
     count starts at the text line's left edge because the tile shares that scanline.
     """
-    image = paint_rows(RowsModel([row]), RowDelegate(), 0, width=width)
+    image = paint_rows(RowsModel([row]), delegate or RowDelegate(), 0, width=width)
     # Held rather than inlined: a temporary `QStyleOptionViewItem` takes its `font` with it, and
     # `QFontMetrics` then reads a deleted C++ object.
     option = QStyleOptionViewItem()
     line = QFontMetrics(option.font).height()
     scanline = PADDING + 2 * line + 2 + BAR_HEIGHT // 2
-    first = PADDING + TWISTY_WIDTH + THUMBNAIL_SIZE[0] + GAP
-    inked = [image.pixelColor(x, scanline).alpha() > 0 for x in range(first, width)]
-    return sum(1 for x in range(len(inked)) if inked[x] and not (x and inked[x - 1]))
+    indent = TWISTY_WIDTH if EXPANDED_ROLE in row else 0
+    first = PADDING + indent + THUMBNAIL_SIZE[0] + GAP
+    runs: list[int] = []
+    for x in range(first, width):
+        if image.pixelColor(x, scanline).alpha() <= 0:
+            continue
+        if runs and image.pixelColor(x - 1, scanline).alpha() > 0:
+            runs[-1] += 1
+        else:
+            runs.append(1)
+    return runs
+
+
+def bar_blocks(row: dict[int, Any], width: int) -> int:
+    """How many blocks the row's bar draws at `width`. `0` when it drew none."""
+    return len(bar_runs(row, width))
 
 
 def test_the_bar_changes_shape_at_most_once_across_a_drag(qapp: QApplication) -> None:
@@ -1461,6 +1496,99 @@ def test_a_failed_entry_stays_visible_at_every_width(qapp: QApplication) -> None
 
     assert compared > len(SWEEP_WIDTHS) // 2, (
         f"only {compared} of {len(SWEEP_WIDTHS)} widths drew a bar to compare"
+    )
+
+
+def test_a_playlists_blocks_keep_their_width_and_the_verbs_give_way(
+    qapp: QApplication,
+) -> None:
+    """`T-163`: the verbs held their ground until the progress bar had none.
+
+    What decided "fit" was the verbs' own width against the space left over, and the bar was not in
+    that calculation — so the verbs took what they needed and the bar took the remainder, which at
+    a narrow window was a stub. `T-135` already built the mechanism for the other answer: a dropped
+    verb is still reachable through `⋯` and through the context menu, and there is no overflow menu
+    for *progress*.
+
+    **The stated floor, and where it stops applying.** Blocks stay at `MIN_BLOCK_WIDTH` until the
+    line cannot hold even the merged bar beside the `⋯`. Past that the button wins, because a row
+    that kept its bar and dropped the button would leave the pointer no route to its verbs at all —
+    so the assertion is the rule, not an absolute: a bar under its minimum is only allowed on a row
+    that has already given up every verb it has.
+    """
+    row = a_playlist()
+    for width in SWEEP_WIDTHS:
+        delegate = RowDelegate()
+        runs = bar_runs(row, width, delegate)
+        assert runs, (
+            f"at {width}px the verbs took the whole line and the row draws no progress at all, "
+            "which is the row's only answer to how far along a playlist is"
+        )
+        if min(runs) < MIN_BLOCK_WIDTH:
+            assert set(delegate.overflowing("playlist-1")) == set(row[VERBS_ROLE]), (
+                f"at {width}px a block is {min(runs)}px while a verb is still drawn beside it; "
+                "the verbs are the half that can give and they have not given"
+            )
+
+
+def test_a_downloads_bar_keeps_its_minimum_and_the_verbs_give_way(
+    qapp: QApplication,
+) -> None:
+    """`T-163` on a plain fraction bar, which is the row the maintainer reported.
+
+    `Open` and `Show in folder` kept their full width while the bar was squeezed to nothing. Its
+    minimum is smaller than a sixteen-entry bar's, because it has one position to show rather than
+    sixteen endings — that difference is the criterion's "derived from what it has to show".
+    """
+    row = a_download()
+    for width in SWEEP_WIDTHS:
+        delegate = RowDelegate()
+        runs = bar_runs(row, width, delegate)
+        assert runs, f"at {width}px the verbs took the whole line and the bar was not drawn"
+        if sum(runs) < MIN_FRACTION_BAR:
+            assert set(delegate.overflowing("job-1")) == set(row[VERBS_ROLE]), (
+                f"at {width}px the bar is {sum(runs)}px, under the stated {MIN_FRACTION_BAR}, "
+                "while a verb is still drawn beside it"
+            )
+
+
+def test_the_overflow_still_holds_exactly_what_the_row_dropped(qapp: QApplication) -> None:
+    """`T-135`, re-asserted because `T-163` changed what makes a verb drop.
+
+    A verb is now dropped for crowding the bar as well as for running off the row. The menu must
+    still hold exactly what the row could not show — not one fewer, and nothing it did show.
+    """
+    row = a_download()
+    dropped_somewhere = False
+    for width in SWEEP_WIDTHS:
+        delegate = RowDelegate()
+        option = QStyleOptionViewItem()
+        option.rect = QRect(0, 0, width, ROW_HEIGHT)
+        option.fontMetrics = QFontMetrics(option.font)
+        model = RowsModel([row])
+        paint_rows(model, delegate, 0, width=width)
+
+        body, area = delegate._verb_area(option, model.index(0, 0))
+        drawn = {
+            verb
+            for verb, _ in delegate._verb_rects(
+                QFontMetrics(option.font), area, body, model.index(0, 0)
+            )
+            if verb is not None
+        }
+        dropped = set(delegate.overflowing("job-1"))
+        dropped_somewhere = dropped_somewhere or bool(dropped)
+
+        assert drawn | dropped == set(row[VERBS_ROLE]), (
+            f"at {width}px the row shows {sorted(drawn)} and the menu offers {sorted(dropped)}, "
+            f"which is not the {sorted(row[VERBS_ROLE])} the model offered"
+        )
+        assert not drawn & dropped, (
+            f"at {width}px the menu repeats {sorted(drawn & dropped)}, which the row already shows"
+        )
+
+    assert dropped_somewhere, (
+        "no width in the sweep dropped a verb, so this proves nothing about the overflow"
     )
 
 

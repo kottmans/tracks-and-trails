@@ -1324,7 +1324,13 @@ is what kept row 9b intact.
 
 ### T-163 — The verbs hold their ground until the progress bar has none
 
-**Status:** Proposed — **found by the maintainer, 2026-08-05**, narrowing the window.
+**Status:** **Complete — 2026-08-05.** The bar's share of the last line is taken out before the
+verbs are laid out, so a verb drops into `⋯` rather than shaving the bar. The floor is derived from
+`MIN_BLOCK_WIDTH` — `segment_span` for a playlist, a quarter of that per quarter-reading for a
+fraction. **One stated exception:** on a line too narrow for the merged bar *and* the `⋯`, the
+button wins and the bar goes under its minimum, because a row that kept its bar and dropped the
+button would leave the pointer no route to its verbs at all. *(Was: Proposed — **found by the
+maintainer, 2026-08-05**, narrowing the window.)*
 **Owner:** Implementer
 **Priority:** Medium — the bar is the row's only answer to *how far along is this*
 **Phase:** Phase 3

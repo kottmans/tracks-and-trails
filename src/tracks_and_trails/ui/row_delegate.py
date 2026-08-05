@@ -271,6 +271,13 @@ MIN_BLOCK_WIDTH: Final = 16
 #: (row 9a) and the second line names each ending.
 MERGED_BLOCKS: Final = 8
 
+#: The narrowest a plain fraction bar may be drawn (`T-163`).
+#:
+#: **Less than a segmented bar needs, because it has less to show** — one position along its length
+#: rather than sixteen endings. Derived rather than picked: a quarter is the coarsest reading
+#: anybody takes off a progress bar, and a quarter of this is one legible block.
+MIN_FRACTION_BAR: Final = 4 * MIN_BLOCK_WIDTH
+
 #: Which state a merged block takes when it covers several entries, worst first (`T-164`).
 #:
 #: **A covered failure must not be outvoted by three successes** — that is row 9b's whole
@@ -364,6 +371,19 @@ def segment_blocks(entries: int, line_width: int) -> int:
     if entries <= MERGED_BLOCKS or segment_span(entries) <= line_width:
         return entries
     return MERGED_BLOCKS
+
+
+def _fraction(index: QModelIndex | _PersistentIndex) -> float | None:
+    """The row's completion, or `None` when there is nothing honest to draw.
+
+    `None` is not zero: an unknown total is not "0%", which is a confident lie `Job.progress`
+    already refuses. `bool` is excluded because it is an `int` in Python and `True` would draw a
+    full bar.
+    """
+    value = index.data(PROGRESS_ROLE)
+    if isinstance(value, bool) or not isinstance(value, float | int):
+        return None
+    return float(value)
 
 
 def _merge(states: Sequence[SegmentState], blocks: int) -> tuple[SegmentState, ...]:
@@ -635,14 +655,84 @@ class RowDelegate(QStyledItemDelegate):
         if height <= 0:
             return []
 
+        # **The bar's share of the line is taken out first** (`T-163`). The verbs used to be laid
+        # out against the whole of `area` and the bar took whatever was left, which at a narrow
+        # window was a stub — `Open` and `Show in folder` at full width above a bar of nine pixels.
+        #
+        # The gap is part of the limit rather than of the reserve: `_paint_verbs` stops the bar
+        # `VERB_GAP` short of the leftmost button, so a limit without it hands the bar four pixels
+        # less than it asked for and its blocks come out one under `MIN_BLOCK_WIDTH`. Measured at
+        # a 758 px window before this was added — sixteen blocks, three of them 15 px.
+        reserve = self._bar_reserve(metrics, area, index)
+        limit = area.left() + reserve + (VERB_GAP if reserve else 0)
+        whole = self._lay_out(offered, metrics, area, top, height, limit, overflow=False)
         # **Tried twice, because reserving the overflow costs width that might be what made it
         # necessary.** Laying out with `⋯` always present would drop the leftmost verb on a row
         # where all of them would have fitted without it — the button would then be needed only
         # because it was there.
-        whole = self._lay_out(offered, metrics, area, top, height, overflow=False)
         if len(whole) == len(offered):
             return whole
-        return self._lay_out(offered, metrics, area, top, height, overflow=True)
+        return self._lay_out(offered, metrics, area, top, height, limit, overflow=True)
+
+    def _bar_reserve(
+        self,
+        metrics: QFontMetrics,
+        area: QRect,
+        index: QModelIndex | _PersistentIndex,
+    ) -> int:
+        """How much of the last line the progress bar keeps from the verbs (`T-163`).
+
+        **The verbs are the half that can give, and `T-135` already built the mechanism.** A
+        dropped verb is still reachable through `⋯` and through the context menu, so nothing is
+        lost by dropping one sooner. A squeezed bar has no equivalent: there is no overflow menu
+        for *progress*, and `T126-R2` already ruled that a row must not stop saying one true thing
+        in order to say another.
+
+        **What the bar needs depends on what it has to show** — a segmented bar for sixteen
+        entries needs more than a single fraction does — so the figure comes from the same
+        `MIN_BLOCK_WIDTH` the merge threshold does rather than from a second number.
+
+        **The `⋯` outranks the reserve, and that is the one place the bar gives way.** On a line
+        too narrow for both, a row that kept its bar and dropped the button would leave the
+        pointer no route to its verbs at all. So the bar takes what is left under that, honestly
+        below its minimum, rather than the row losing the only thing that can restore the rest.
+
+        Measured off `area`, which is the row's whole text line, so this answer does not depend on
+        what happened to fit — `_verb_rects` and `_paint_text` both ask it and must agree.
+        """
+        room = self._bar_line(metrics, area, index)
+        entries = len(_segments(index))
+        if entries:
+            keep = segment_span(segment_blocks(entries, room))
+        elif _fraction(index) is not None:
+            keep = MIN_FRACTION_BAR
+        else:
+            return 0
+        return min(keep, room)
+
+    def _bar_line(
+        self,
+        metrics: QFontMetrics,
+        area: QRect,
+        index: QModelIndex | _PersistentIndex,
+    ) -> int:
+        """The most of the last line the bar can be given, and so what it decides its shape from.
+
+        **One number for both, because two would let them disagree** (`T-163`, `T-167`). The
+        rendering used to be chosen against the whole text line while the bar was only ever handed
+        what remained under the `⋯`, so at a 631 px window the row decided on sixteen blocks and
+        then drew them 15 px wide — the merge threshold reasoning about space the bar never had.
+
+        Monotonic in the window's width, which is `T-167`'s requirement: everything subtracted here
+        is fixed for a given row rather than a function of what fit on this paint.
+        """
+        room = max(area.width(), 0)
+        if self._verbs_of(index):
+            overflow = metrics.horizontalAdvance(MORE_LABEL) + 2 * VERB_PADDING
+            # `-1` because `area.right()` is the last pixel rather than one past it, and the gap
+            # because the bar stops `VERB_GAP` short of the leftmost button.
+            room = max(room - overflow - VERB_GAP - 1, 0)
+        return room
 
     def _lay_out(
         self,
@@ -651,10 +741,11 @@ class RowDelegate(QStyledItemDelegate):
         area: QRect,
         top: int,
         height: int,
+        limit: int,
         *,
         overflow: bool,
     ) -> list[tuple[Verb | None, QRect]]:
-        """Place as many verbs as fit, right to left, optionally reserving the overflow first."""
+        """Place as many verbs as fit right of `limit`, right to left, `⋯` first when asked."""
         placed: list[tuple[Verb | None, QRect]] = []
         right = area.right()
         wanted: tuple[Verb | None, ...] = (
@@ -664,10 +755,13 @@ class RowDelegate(QStyledItemDelegate):
             label = MORE_LABEL if verb is None else LABELS[verb]
             width = metrics.horizontalAdvance(label) + 2 * VERB_PADDING
             left = right - width
-            if left < area.left():
+            if left < limit:
                 # **Silently dropped rather than drawn overlapping the message.** `NFR-006` gives
                 # the extractor's message the full width above; a verb that will not fit is what
                 # the overflow is for, and the overflow is placed first so it always survives.
+                #
+                # `limit` is the row's left edge plus whatever the progress bar keeps (`T-163`),
+                # so a verb is now dropped for crowding the bar as well as for running off the row.
                 break
             placed.append((verb, QRect(left, top, width, height)))
             right = left - VERB_GAP
@@ -1129,8 +1223,8 @@ class RowDelegate(QStyledItemDelegate):
         # Tested before `PROGRESS_ROLE` because a group answers no fraction at all — there is no
         # honest one to answer, which is the finding row 9b records.
         segments = _segments(index)
-        fraction = index.data(PROGRESS_ROLE)
-        if not segments and (not isinstance(fraction, float | int) or isinstance(fraction, bool)):
+        fraction = _fraction(index)
+        if not segments and fraction is None:
             return
         # **The bar goes under the selector rather than instead of it** (`T126-R2`). This used to
         # return outright when a selector was present, on the reading that no model answers both
@@ -1154,19 +1248,27 @@ class RowDelegate(QStyledItemDelegate):
         if bar.bottom() > area.bottom():
             return
         if segments:
-            # **The line's width, not the bar's** (`T-167`). `area` is the row's text line, which
-            # differs from the row's own width by the padding, the indent, the tile and the
-            # control's slot — all fixed for a given row, so it moves one way as the user drags.
-            # `bar` is what the verbs left of it, and that is exactly the input whose reversals
-            # made the bar change shape twice on one drag.
-            self._paint_segments(painter, bar, segments, muted, palette, line_width=area.width())
-            return
-        track = QColor(muted)
-        track.setAlpha(60)
-        painter.fillRect(bar, track)
-        done = QRect(bar)
-        done.setWidth(int(bar.width() * min(max(float(fraction), 0.0), 1.0)))
-        painter.fillRect(done, muted)
+            # **The line's width, not the bar's** (`T-167`). `_bar_line` differs from the row's own
+            # width by the padding, the indent, the tile, the control's slot and the overflow
+            # button — all fixed for a given row, so it moves one way as the user drags. `bar` is
+            # what the verbs left of it, and that is exactly the input whose reversals made the
+            # bar change shape twice on one drag. The same call decides the reserve `_verb_rects`
+            # laid the buttons out against, so the two cannot disagree about the block count.
+            self._paint_segments(
+                painter,
+                bar,
+                segments,
+                muted,
+                palette,
+                line_width=self._bar_line(metrics, area, index),
+            )
+        elif fraction is not None:
+            track = QColor(muted)
+            track.setAlpha(60)
+            painter.fillRect(bar, track)
+            done = QRect(bar)
+            done.setWidth(int(bar.width() * min(max(fraction, 0.0), 1.0)))
+            painter.fillRect(done, muted)
 
     # --- the one editor -------------------------------------------------------------------
 
