@@ -83,7 +83,8 @@ Paste one real playlist URL. This is the sequence that produced criterion 8 in t
 | 3.12 | `Remove` on the header asks **"Remove these 16 downloads from the queue?"** — naming its count, with **No** as the default button | `T-140`, `DAT-005` §4 |
 | 3.13 | The **tab count counts downloads, not rows** — opening a group must not change it | `T-137` |
 | 3.14 | Every entry shows **its own thumbnail**, not a derived placeholder tile | `T-137` |
-| 3.15 | `Clear finished` on a **part-done** playlist leaves the group intact rather than dissolving it | `T-140` |
+| 3.15 | **The playlist's own staged row shows a picture too**, in the add dialog — not just its entries. *(Added 2026-08-05: `T-153`. The flat-extraction fix reached the children and not the parent.)* | `T-153` |
+| 3.16 | `Clear finished` on a **part-done** playlist leaves the group intact rather than dissolving it | `T-140` |
 
 ## 4 · History and the add dialog (`T-138`, `T-139`)
 

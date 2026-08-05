@@ -1142,6 +1142,62 @@ beats designing it against an imagined one.
 
 ---
 
+### T-153 — A playlist's own picture is never read, only its entries'
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, pasting a playlist and seeing the
+staged row draw a placeholder tile. **Recommended as a finding against `T-137`.**
+**Owner:** Implementer
+**Priority:** Medium — cosmetic in the queue, but it is the first thing a user sees after pasting
+**Phase:** **Undecided**, for `T-151`'s reason
+**Depends on:** nothing
+**Relevant context:** `T-137` and its 2026-08-04 correction, `UX-003`, `REQ-002`,
+`downloader/ytdlp_adapter.py` (`_media_from`, `_entry_thumbnail`)
+**Affected surfaces:** `downloader/ytdlp_adapter.py`
+**Risk:** Low — the helper it needs already exists and is already tested
+
+#### Scope
+
+**The staged row for a playlist draws the derived placeholder, never a picture.** Its entries draw
+theirs correctly, which is what makes this look like a different defect from the one already fixed.
+
+**It is the same defect, one level up.** `T-137`'s correction found that a *flat* extraction carries
+`thumbnails` — a list, worst first — and not the singular `thumbnail` the full extraction of a
+single video supplies. `_entry_thumbnail()` was written to read both shapes, and its docstring
+states the reasoning. **`_media_from` was not changed:**
+
+```python
+thumbnail_url=_as_optional_str(info.get("thumbnail")),   # the parent, singular only
+...
+thumbnail_url=_entry_thumbnail(item),                    # each child, both shapes
+```
+
+A playlist is probed with `extract_flat`, so the **top-level** dict is the same flat shape as its
+entries. The parent therefore has no `thumbnail` key, and the row falls back to the tile.
+
+**The correction fixed the children and not the parent**, which is a recognisable shape: a fix
+applied where the symptom was observed rather than everywhere the cause reaches. The `T-137`
+correction was reviewed and approved with the entry half tested, because the entry half was what
+had been reported.
+
+#### Acceptance criteria
+
+- A staged playlist row shows the playlist's own picture, asserted against a **recorded flat
+  fixture** whose top level carries `thumbnails` and no `thumbnail` — the shape that made this fail
+- A single video still shows its picture, so the change cannot pass by preferring the list blindly
+- A playlist whose top level carries **neither** shape still draws the placeholder without error
+- `_entry_thumbnail` is **reused rather than reimplemented**; two functions choosing a picture is
+  how the two levels came to disagree in the first place. Rename it if it is no longer entry-only
+
+#### Out of scope
+
+- **The `Unknown · Unknown` on that row.** A playlist has no single duration, so *Unknown* is
+  honest there; whether the uploader should read the channel is `REQ-002`'s question and a separate
+  observation, not this one
+- Fetching a picture for a playlist that has none of its own, by falling back to its first entry's.
+  That is a product decision about what the row *means*, not a extraction fix
+
+---
+
 ### T-152 — The declared keyboard route needs a mouse click before it works
 
 **Status:** Proposed — **found by the maintainer, 2026-08-05**, pressing `Shift+F10` at the built
