@@ -91,6 +91,7 @@ same moment. A bar with nothing failed cannot answer the question row 9b exists 
 | 3.7 | A child row draws **no format line** and a smaller thumbnail, and is not clipped. **Its picture must stay inside its slot** and not cover the title (`T-154`) | `T-140`, `T-154` |
 | 3.8 | The header shows **`Download as: Best video available`** — a preset *name*, never raw yt-dlp syntax like `bestvideo+bestaudio/best` | `T140-R3` |
 | 3.9 | Changing the format **on the header** changes it for every entry that can still take one | `T140-R3` |
+| 3.9a | **Do it once some entries have finished.** The formats then diverge by design — check the window can still say which rows got which, and that the header's control is not blank (`T-157`) | `T-157` |
 | 3.10 | The header offers **`Cancel all`**, **`Show in folder`**, and **`Remove`** — and **no `Open`**. `Pause all` is **deliberately absent**, deferred to `REQ-017` | `T-140` |
 | 3.11 | **`Retry failed` appears only when something failed.** With nothing failed it must not be there | `T-140` |
 | 3.12 | `Remove` on the header asks **"Remove these 16 downloads from the queue?"** — naming its count, with **No** as the default button | `T-140`, `DAT-005` §4 |

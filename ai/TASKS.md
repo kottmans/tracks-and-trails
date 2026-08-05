@@ -1142,6 +1142,74 @@ beats designing it against an imagined one.
 
 ---
 
+### T-157 — A part-done playlist that is retargeted can no longer say what anything is
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, retargeting a playlist with four
+entries already downloaded. **Recommended as a finding against `T-140` / `T140-R3`**, because the
+correction that made group retargeting work is what makes this state reachable.
+**Owner:** Implementer
+**Priority:** **High** — the download is correct; what the window says about it is not, and
+`REQ-009` is about exactly that
+**Phase:** **Undecided**, for `T-151`'s reason
+**Depends on:** nothing
+**Relevant context:** `UX-005` rows 9c and 13, `T140-R3`, `REQ-009`, `Job.RETARGETABLE`,
+`ui/queue_view.py` (`_group_data`), `ui/row_delegate.py` (`CHILD_TEXT_LINES`)
+**Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, possibly `UX-005`
+**Risk:** Medium — the fix is presentational, but which presentation is a `UX-005` question
+
+#### Scope
+
+**Retargeting a part-done playlist necessarily splits its formats, and nothing can then report
+them.** `T140-R3` made one choice on the header move *"every member that can still take one"* —
+correctly, because a finished track cannot be un-downloaded. So four completed entries keep the old
+format and twelve queued ones take the new. **Divergence is not an edge case here; it is the
+guaranteed outcome of using the control on a playlist that has started.**
+
+Three surfaces then disagree or go silent, all at once:
+
+1. **The header's format line** reads `Download as: mixed across 2 formats`. Honest, and useless —
+   it names neither format.
+2. **The header's control is blank.** `_group_data` answers `PRESET_ROLE` with
+   `names.pop() if len(names) == 1 else None`, so a divergent group has no current value and the
+   dropdown draws empty. A blank control reads as *unset* or *broken*, not as *they differ*.
+3. **No child says anything.** `UX-005` row 9c gives an entry two lines and no format line, on the
+   stated reasoning that *"an entry inherits its group's format, so its third and fourth lines have
+   nothing to say."* **That premise is now false** for exactly the playlists a user has touched.
+
+So a user who retargets mid-flight — which the control invites — ends with sixteen rows, two
+formats, and no way to learn which row got which. The downloads are right; the report is not.
+
+#### The tension to resolve, which is `UX-005`'s
+
+Row 9c's economy was bought with an assumption of uniformity, and row 13's retarget breaks it.
+Whichever way it goes should be recorded there rather than decided here:
+
+- **A child says its format when it differs from the group's**, and stays silent when it agrees.
+  Keeps row 9c's economy for the common case and spends a line only where there is something to
+  say. Costs a variable row height, which `T-140` already spends deliberately.
+- **The header names both** — *"12 as Audio only (MP3), 4 as Audio only (original)"* — and children
+  stay silent. Cheaper, and stops scaling once a playlist has three formats.
+- **The control shows the majority value** rather than blank, with the divergence in the text.
+  Solves symptom 2 alone and leaves a user unable to act on one entry.
+
+#### Acceptance criteria
+
+- With a part-done playlist retargeted, **the window states both formats and which rows have
+  which**, by whichever route `UX-005` rules — asserted end to end, not per widget
+- The header's control is **never blank while the group has members**; whatever it shows, a user
+  can tell the difference between *they differ* and *nothing is set*
+- A **uniform** playlist is unchanged — row 9c's economy is not spent on the common case
+- The chosen behaviour is recorded in `UX-005` **before** it is implemented, per `T126-R4`'s
+  lesson: the same role meaning two things on two surfaces is what that finding was
+
+#### Out of scope
+
+- Changing which members a group retarget reaches. `T140-R3` settled that, and a finished track
+  cannot be re-downloaded by changing a dropdown
+- Per-entry retargeting from a child row. `T140-R3` deliberately took the child editors away
+
+---
+
 ### T-156 — The MP3 preset does not say which bitrate it means
 
 **Status:** Proposed — **found by the maintainer, 2026-08-05**, reading the queue row's format
