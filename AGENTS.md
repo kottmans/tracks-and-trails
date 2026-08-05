@@ -206,6 +206,26 @@ switching a branch or editing the same file destroys the other's uncommitted wor
 already happened here — a reviewer fell back to `git archive` mid-review because unrelated work
 had entered the shared tree. The primary checkout stays on `main` for coordination.
 
+**One worker per machine.** Separate worktrees are not enough either: **do not run concurrent
+workers on one host**, even with disjoint write sets. A wave gets its parallelism by putting one
+workstream on each machine, each with its own clone. Three reasons specific to this repository:
+
+- **The integration tests that spawn and kill real worker processes contend** — the files are
+  listed under *Runtime isolation* below. Two of those suites on one machine produce intermittent
+  failures that look like defects in the code under test.
+- **`.venv` is an editable install pointing at the primary checkout's `src`**, so a second worktree
+  silently tests the *other* agent's code unless every command overrides `PYTHONPATH`. One worker
+  per machine removes the trap rather than relying on remembering it.
+- **A machine running a measurement is fully committed.** The `T-128` soak (`tools/soak.sh`) runs
+  the whole suite sixty times and measures timing; any second workload invalidates it. So does a CI
+  job — **a machine registered as a self-hosted runner is not idle**, and its runner service must be
+  stopped for the duration or the contention recorded.
+
+**Record which machine produced a measurement** in `ai/STATUS.md` or the evidence artifact:
+reproducing a timing-dependent result requires knowing the host, and a baseline taken on one
+machine does not transfer to another. Host names do not belong in a task entry's durable fields,
+for the same reason worktree paths do not.
+
 **Runtime isolation, specific to this repository.**
 
 - `.venv` holds an **editable** install pointing at the primary checkout's `src`, so a second

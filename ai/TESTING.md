@@ -275,6 +275,29 @@ older distro; `REL-001`'s Phase 5 release build must revisit that. `OPS-012` rec
 not bound that — it caps how long a job may run once picked up. Both machines asleep means CI
 appears to hang rather than to fail.
 
+### A machine running a measurement must not also take CI jobs
+
+`tools/soak.sh` runs the full suite sixty times and measures how often the process *dies*. That is
+a measurement of the machine as much as of the code, so **any second workload invalidates it** — a
+CI job landing mid-soak changes exactly the timing the result depends on. Stop the runner service
+on that host first:
+
+```bash
+sudo systemctl stop actions.runner.kottmans-tracks-and-trails.<host>.service
+```
+
+The same applies to any timing-sensitive reproduction, and to `T-074`'s intermittent access
+violation if it is ever hunted deliberately.
+
+**Which machine ran it is part of the result.** `T-128`'s baseline — 2 process deaths in 39 full
+runs, ~400 s per run — was measured on the maintainer's laptop. The desktop runs the same suite in
+269 s and has no established baseline of its own, so a clean sixty there would not support
+`OPS-007`'s 0.042 figure: it would be a different experiment reported under the same name. Record
+the host with any soak result, and treat a baseline as belonging to the machine that produced it.
+
+`AGENTS.md` §9 states the general rule — one worker per machine, and a machine performing a
+measurement is fully committed for the duration.
+
 ### Prose runs no CI, on either platform (`OPS-011`, 2026-08-05)
 
 A push that changes only documentation triggers **no `ci.yml` run at all** — not the Linux gate

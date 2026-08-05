@@ -164,6 +164,20 @@ gh variable set LINUX_RUNNER --body '["self-hosted","Linux","fedora"]'
 **Do not install the runner into this checkout.** It keeps its own workspace under
 `~/actions-runner/_work`; a runner sharing your working tree would check out over your edits.
 
+**Stop the runner before running a soak or any timing measurement on that machine.** A CI job
+landing mid-run changes the timing the measurement depends on, and the machine is a runner from the
+moment this service starts:
+
+```bash
+sudo systemctl stop actions.runner.kottmans-tracks-and-trails.<host>.service
+# ... measurement ...
+sudo systemctl start actions.runner.kottmans-tracks-and-trails.<host>.service
+```
+
+On a laptop, wrap a long unattended run in `systemd-inhibit --what=sleep:idle:handle-lid-switch`
+so a closed lid does not end it six hours in, and leave it on mains power — an inhibitor does not
+stop a flat battery.
+
 Two things to know once it is live. A self-hosted job with **no online runner queues for up to 24
 hours** before GitHub discards it — `timeout-minutes` does not bound that, so both machines asleep
 makes CI look hung rather than failed. And no CI job now runs on a machine nobody uses, on either
