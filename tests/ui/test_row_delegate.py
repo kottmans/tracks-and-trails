@@ -33,8 +33,10 @@ from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
 from tracks_and_trails.core.paths import thumbnail_cache_directory, thumbnail_cache_path
 from tracks_and_trails.ui.row_delegate import (
+    DEPTH_ROLE,
     DETAIL_ROLE,
     EDITOR_WIDTH,
+    EXPANDED_ROLE,
     GAP,
     HEADLINE_ROLE,
     HUE_ROLE,
@@ -43,11 +45,13 @@ from tracks_and_trails.ui.row_delegate import (
     PRESET_ROLE,
     PROGRESS_ROLE,
     ROW_HEIGHT,
+    SEGMENTS_ROLE,
     STATE_CHIP_ROLE,
     STATE_ROLE,
     TEXT_LINES,
     THUMBNAIL_URL_ROLE,
     RowDelegate,
+    SegmentState,
 )
 from tracks_and_trails.ui.thumbnails import THUMBNAIL_SIZE, ThumbnailStore
 
@@ -919,3 +923,147 @@ def test_progress_is_drawn_only_when_there_is_an_honest_fraction(
     without = paint_rows(unknown, delegate, 0)
 
     assert with_bar != without, "a row with a known fraction drew the same as one without"
+
+
+# --- T-140: a playlist as a row that opens ----------------------------------------------------
+
+
+def test_a_group_row_draws_a_disclosure_and_an_ordinary_row_does_not(qapp: QApplication) -> None:
+    """`UX-005` row 9: the triangle is what says this row opens.
+
+    **Three states, because absent and closed are different answers.** `EXPANDED_ROLE` is `True`,
+    `False` or missing, and missing means "not a playlist" — the same three-valued shape
+    `PRESET_INHERITABLE_ROLE` established at `T126-R4`. A test comparing only open against closed
+    would pass with every row growing a triangle.
+    """
+    common: dict[int, Any] = {HEADLINE_ROLE: "Trail Sounds", DETAIL_ROLE: "16 items", HUE_ROLE: 0}
+    plain = paint_rows(RowsModel([common]), RowDelegate(), 0)
+    closed = paint_rows(RowsModel([{**common, EXPANDED_ROLE: False}]), RowDelegate(), 0)
+    opened = paint_rows(RowsModel([{**common, EXPANDED_ROLE: True}]), RowDelegate(), 0)
+
+    assert plain != closed, "a playlist row draws no disclosure, so nothing says it opens"
+    assert closed != opened, (
+        "the disclosure looks identical open and closed, so it reports no state"
+    )
+
+
+def test_a_child_row_is_shorter_than_the_group_above_it(qapp: QApplication) -> None:
+    """`UX-005` row 9c: shorter, not merely indented.
+
+    An entry inherits its group's format, so its third and fourth lines have nothing to say.
+    Drawing it at full height to keep `sizeHint` uniform would waste a third of the list on blank
+    space in exactly the case — a sixteen-item playlist — with least room to waste.
+    """
+    delegate = RowDelegate()
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, RENDER_WIDTH, 200)
+    option.font = qapp.font()
+    option.fontMetrics = QFontMetrics(option.font)
+    model = RowsModel(
+        [
+            {HEADLINE_ROLE: "Trail Sounds", EXPANDED_ROLE: True, HUE_ROLE: 0},
+            {HEADLINE_ROLE: "01 Prelude", DEPTH_ROLE: 1, HUE_ROLE: 0},
+        ]
+    )
+
+    group = delegate.sizeHint(option, model.index(0, 0))
+    child = delegate.sizeHint(option, model.index(1, 0))
+
+    assert child.height() < group.height(), (
+        f"a child row is {child.height()}px against the group's {group.height()}px, so the indent "
+        "costs width and buys nothing back"
+    )
+
+
+def test_a_child_row_is_indented_and_railed_under_its_group(qapp: QApplication) -> None:
+    """The rail **and** the indent are what make an entry read as *belonging* (`T-140`).
+
+    **Two claims, asserted separately**, because the first version of this compared whole rows and
+    passed with the rail removed — an indent alone changes enough pixels to satisfy "the rows
+    differ". A test that survives the mutation of half its own docstring is a test that measures
+    one thing and claims two.
+    """
+    row: dict[int, Any] = {HEADLINE_ROLE: "01 Prelude of Light", DETAIL_ROLE: "4:12", HUE_ROLE: 0}
+    top = paint_rows(RowsModel([row]), RowDelegate(), 0)
+    nested = paint_rows(RowsModel([{**row, DEPTH_ROLE: 1}]), RowDelegate(), 0)
+
+    def first_opaque(image: QImage) -> int | None:
+        """Where the row's tile starts: the leftmost fully-drawn column.
+
+        **Opacity, not any ink.** The rail is drawn at alpha 90 and sits *left* of the tile, so
+        "first non-transparent column" answered with the rail on a nested row and with the tile on
+        a top-level one — comparing two different things and calling the difference an indent.
+        """
+        for x in range(image.width()):
+            if any(image.pixelColor(x, y).alpha() == 255 for y in range(image.height())):
+                return x
+        return None
+
+    def has_ink(image: QImage, columns: range) -> bool:
+        return any(image.pixel(x, y) != 0 for x in columns for y in range(image.height()))
+
+    top_edge = first_opaque(top)
+    nested_edge = first_opaque(nested)
+    assert top_edge is not None and nested_edge is not None, "a row drew no tile at all"
+    assert nested_edge > top_edge, (
+        f"a nested row's tile starts at x={nested_edge} and a top-level one's at x={top_edge}, "
+        "so the entry is not indented under its group"
+    )
+
+    # And the space the indent opened is not empty: the rail runs down it.
+    assert has_ink(nested, range(top_edge, nested_edge)), (
+        "the indent opened a blank gap, so an entry reads as merely shifted rather than as joined "
+        "to the group above it"
+    )
+
+
+def test_a_groups_bar_is_segmented_and_shows_a_failure(qapp: QApplication) -> None:
+    """`UX-005` row 9b, and the specific lie it exists to prevent.
+
+    Under one continuous bar a playlist that quietly skipped a track looks exactly like one that
+    got everything. **Same number of done entries, one of them failed instead of waiting** — a bar
+    that reported only "how many finished" would draw these two identically.
+    """
+    common: dict[int, Any] = {HEADLINE_ROLE: "Trail Sounds", EXPANDED_ROLE: False, HUE_ROLE: 0}
+    healthy = [SegmentState.DONE, SegmentState.DONE, SegmentState.WAITING, SegmentState.WAITING]
+    broken = [SegmentState.DONE, SegmentState.DONE, SegmentState.FAILED, SegmentState.WAITING]
+
+    fine = paint_rows(RowsModel([{**common, SEGMENTS_ROLE: healthy}]), RowDelegate(), 0)
+    failed = paint_rows(RowsModel([{**common, SEGMENTS_ROLE: broken}]), RowDelegate(), 0)
+
+    assert fine != failed, (
+        "a failed entry draws the same as one still waiting, so a playlist that skipped a track "
+        "looks like one that got everything"
+    )
+
+
+def test_a_group_needs_no_fraction_to_draw_its_progress(qapp: QApplication) -> None:
+    """A group answers no `PROGRESS_ROLE`, and that is the point (`UX-005` row 9a).
+
+    Sixteen files whose sizes arrive one at a time give a denominator that grows while it runs, so
+    a fraction across them goes *backwards*. The segments must draw without one.
+    """
+    blank = paint_rows(
+        RowsModel([{HEADLINE_ROLE: "Trail Sounds", EXPANDED_ROLE: False, HUE_ROLE: 0}]),
+        RowDelegate(),
+        0,
+    )
+    segmented = paint_rows(
+        RowsModel(
+            [
+                {
+                    HEADLINE_ROLE: "Trail Sounds",
+                    EXPANDED_ROLE: False,
+                    HUE_ROLE: 0,
+                    SEGMENTS_ROLE: [SegmentState.DONE, SegmentState.WAITING],
+                }
+            ]
+        ),
+        RowDelegate(),
+        0,
+    )
+
+    assert blank != segmented, (
+        "the segmented bar was not drawn without a PROGRESS_ROLE, so a group can only show "
+        "progress by inventing the fraction row 9a refuses"
+    )

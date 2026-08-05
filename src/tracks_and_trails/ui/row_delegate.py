@@ -300,6 +300,15 @@ class RowDelegate(QStyledItemDelegate):
     #: `None` for the verb means the overflow was asked for.
     verb_triggered = Signal(str, object)
 
+    #: A group row's disclosure was operated (`T-140`). Carries the row's id, because a row number
+    #: stops naming the same thing the moment the queue reorders — `T126-R1`'s lesson, and the
+    #: reason `JOB_ID_ROLE` exists at all.
+    #:
+    #: **The delegate reports, it does not decide.** Which rows are visible is the model's, and a
+    #: delegate that expanded a group by editing the list it draws would be two places deciding
+    #: what a row is.
+    disclosure_toggled = Signal(str)
+
     def __init__(
         self,
         *,
@@ -393,9 +402,35 @@ class RowDelegate(QStyledItemDelegate):
         muted.setAlpha(170)
 
         body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
-        self._paint_tile(painter, body, index)
 
-        text_left = body.left() + THUMBNAIL_SIZE[0] + GAP
+        # **A playlist and its entries** (`T-140`, `UX-005` rows 9 and 9c). The disclosure sits in
+        # the same indent the children get, so a group and its entries share a left edge instead
+        # of stepping twice; and a child's tile is smaller, because an entry inherits its group's
+        # format and has two lines to say rather than four.
+        depth = _depth(index)
+        expanded = index.data(EXPANDED_ROLE)
+        if isinstance(expanded, bool):
+            self._paint_twisty(painter, body, muted, opened=expanded)
+        if depth:
+            self._paint_rail(painter, option.rect, muted)
+            body = QRect(
+                body.left() + depth * INDENT,
+                body.top(),
+                max(body.width() - depth * INDENT, 0),
+                body.height(),
+            )
+        elif isinstance(expanded, bool):
+            body = QRect(
+                body.left() + TWISTY_WIDTH,
+                body.top(),
+                max(body.width() - TWISTY_WIDTH, 0),
+                body.height(),
+            )
+
+        tile = CHILD_THUMBNAIL if depth else THUMBNAIL_SIZE
+        self._paint_tile(painter, body, index, size=tile)
+
+        text_left = body.left() + tile[0] + GAP
         text_area = QRect(text_left, body.top(), max(body.right() - text_left, 0), body.height())
 
         # **The control is drawn on every row that has one** (`UX-004` §1, `T118-R12`). Reserving
@@ -543,6 +578,99 @@ class RowDelegate(QStyledItemDelegate):
         self._dropped.clear()
         self._hovered = None
 
+    def _twisty_rect(self, option: QStyleOptionViewItem) -> QRect:
+        """Where the disclosure is, for the paint and the click alike (`T-140`).
+
+        One definition, for `_verb_rects`' reason: a control drawn in one place and hit-tested in
+        another works where nobody clicks. Generous by design — the wedge is 9px and the target is
+        the full indent, because a 9px click target is not one.
+        """
+        body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
+        return QRect(body.left(), body.top(), TWISTY_WIDTH + PADDING, min(24, body.height()))
+
+    def _paint_twisty(
+        self, painter: QPainter, body: QRect, colour: QColor, *, opened: bool
+    ) -> None:
+        """The disclosure triangle on a group row (`T-140`).
+
+        **Drawn as a filled wedge rather than a text glyph.** `T-133` is the record of what a
+        style sheet does to a sub-control it was not told about, and a `▸` in a label is at the
+        mercy of whichever font the platform resolves — `T-068` is the record of that. Three
+        points cannot be un-drawn or substituted.
+        """
+        middle = body.top() + min(TWISTY_WIDTH, body.height()) // 2 + 2
+        left = body.left() + 2
+        size = 4
+        if opened:
+            points = (
+                QPoint(left, middle - size // 2),
+                QPoint(left + 2 * size, middle - size // 2),
+                QPoint(left + size, middle + size),
+            )
+        else:
+            points = (
+                QPoint(left + 1, middle - size),
+                QPoint(left + 1 + size, middle),
+                QPoint(left + 1, middle + size),
+            )
+        painter.save()
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing, True)
+        painter.setPen(Qt.PenStyle.NoPen)
+        painter.setBrush(colour)
+        painter.drawPolygon(points)
+        painter.restore()
+
+    def _paint_rail(self, painter: QPainter, rect: QRect, colour: QColor) -> None:
+        """The line joining a group's entries to it (`T-140`).
+
+        It is what makes an indented row read as *belonging* rather than as merely indented, which
+        is the whole reason `UX-005` row 9 chose an opening row over sixteen loose ones.
+        """
+        rail = QColor(colour)
+        rail.setAlpha(90)
+        x = rect.left() + PADDING + TWISTY_WIDTH // 2
+        painter.save()
+        painter.setPen(rail)
+        painter.drawLine(x, rect.top(), x, rect.bottom())
+        painter.restore()
+
+    def _paint_segments(
+        self, painter: QPainter, area: QRect, states: Sequence[SegmentState], muted: QColor
+    ) -> None:
+        """One block per entry, filled by what that entry has done (`UX-005` row 9b, `T-140`).
+
+        **Not a percentage, and that is the ruling rather than a rendering choice.** The entries'
+        byte totals arrive one at a time, so a fraction across them has a denominator that grows
+        while it runs and a bar that goes *backwards*. It also gives a **failed** entry somewhere
+        to be seen: under one continuous bar a playlist that quietly skipped a track looks exactly
+        like one that got everything.
+        """
+        if not states or area.width() <= 0:
+            return
+        gap = 1 if len(states) < area.width() // 2 else 0
+        span = (area.width() - gap * (len(states) - 1)) / len(states)
+        if span < 1:
+            return
+        waiting = QColor(muted)
+        waiting.setAlpha(60)
+        colours = {
+            SegmentState.DONE: muted,
+            SegmentState.RUNNING: muted,
+            SegmentState.FAILED: muted,
+            SegmentState.WAITING: waiting,
+        }
+        painter.save()
+        painter.setPen(Qt.PenStyle.NoPen)
+        for position, state in enumerate(states):
+            left = area.left() + round(position * (span + gap))
+            block = QRect(left, area.top(), max(round(span), 1), area.height())
+            colour = QColor(colours[state])
+            if state is SegmentState.RUNNING:
+                colour.setAlpha(150)
+            painter.setBrush(colour)
+            painter.drawRect(block)
+        painter.restore()
+
     def _paint_verbs(
         self,
         painter: QPainter,
@@ -647,14 +775,19 @@ class RowDelegate(QStyledItemDelegate):
         style.drawControl(QStyle.ControlElement.CE_ComboBoxLabel, box, painter, widget)
 
     def _paint_tile(
-        self, painter: QPainter, body: QRect, index: QModelIndex | _PersistentIndex
+        self,
+        painter: QPainter,
+        body: QRect,
+        index: QModelIndex | _PersistentIndex,
+        *,
+        size: tuple[int, int] = THUMBNAIL_SIZE,
     ) -> None:
         """The picture if there is one, the derived tile until then (`UX-003`).
 
         **Never an empty box.** A column of empty wells reads as a broken application, and it reads
         worse the more rows there are — which is the case this design exists for.
         """
-        width, height = THUMBNAIL_SIZE
+        width, height = size
         tile = QRect(body.left(), body.top(), width, height)
 
         pixmap: QPixmap | None = None
@@ -775,8 +908,12 @@ class RowDelegate(QStyledItemDelegate):
                 selector,
             )
 
+        # **A group's bar is its entries, not a fraction of them** (`UX-005` row 9b, `T-140`).
+        # Tested before `PROGRESS_ROLE` because a group answers no fraction at all — there is no
+        # honest one to answer, which is the finding row 9b records.
+        segments = _segments(index)
         fraction = index.data(PROGRESS_ROLE)
-        if not isinstance(fraction, float | int) or isinstance(fraction, bool):
+        if not segments and (not isinstance(fraction, float | int) or isinstance(fraction, bool)):
             return
         # **The bar goes under the selector rather than instead of it** (`T126-R2`). This used to
         # return outright when a selector was present, on the reading that no model answers both
@@ -798,6 +935,9 @@ class RowDelegate(QStyledItemDelegate):
         if bar.width() <= 0:
             return
         if bar.bottom() > area.bottom():
+            return
+        if segments:
+            self._paint_segments(painter, bar, segments, muted)
             return
         track = QColor(muted)
         track.setAlpha(60)
@@ -909,6 +1049,17 @@ class RowDelegate(QStyledItemDelegate):
             return False
         body, text_area = self._verb_area(option, index)
         where = event.position().toPoint()
+
+        # **The disclosure is tested first**, because it sits left of everything else and a click
+        # that reached the row's selection instead would open nothing and look broken.
+        if isinstance(index.data(EXPANDED_ROLE), bool) and self._twisty_rect(option).contains(
+            where
+        ):
+            row_id = index.data(JOB_ID_ROLE)
+            if isinstance(row_id, str) and row_id:
+                self.disclosure_toggled.emit(row_id)
+                return True
+            return False
 
         # **The verbs are tested first**, because they sit inside the text area and the control
         # sits beside it: an ambiguity would mean one of them is drawn where the other is clicked.

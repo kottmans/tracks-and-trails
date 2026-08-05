@@ -1301,6 +1301,18 @@ delegate), `ui/queue_view.py`, `ui/row_delegate.py`, `ui/row_verbs.py`
 **Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, `ui/row_verbs.py`
 **Risk:** Medium-High — it removes a performance promise the queue currently makes
 
+**Split across commits, and this is where it stands.** The **drawing** is done: the disclosure
+triangle, the indent and its rail, the shorter child row, and the segmented bar — each with a
+regression that dies against its own mutation. `disclosure_toggled` reports a click on the
+triangle. **Nothing answers the roles yet**, so no group row appears in the running application:
+`QueueModel` still emits one row per job and knows nothing about `playlist_id`, which `T-137`
+now writes. That is the remaining half.
+
+*Two tests here were weak before they were right, and the record is the point:* the indent test
+compared whole rows and survived deleting the rail, and its ink probe used
+`QColor(pixel).alpha()`, which is 255 for every pixel whatever the image held. Both now measure
+the tile by opacity and the rail separately, and each half dies against its own mutation.
+
 **Part of this landed in `7311180`, whose message does not name it.** The roles
 (`DEPTH_ROLE`, `EXPANDED_ROLE`, `SEGMENTS_ROLE`), the `SegmentState` vocabulary, the child-row
 metrics and the depth-aware `sizeHint` were written before that commit was made and were swept into
