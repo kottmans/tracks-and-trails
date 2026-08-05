@@ -116,13 +116,19 @@ same fault.
 
 **Thirteen of thirteen Phase 2 deliverables are approved**, `T-115` included — approved at
 `f6dd691` on 2026-08-02, though this line said otherwise until 2026-08-03. **Exit criterion 6 is
-not met.** It asks for *"reviewed and signed off"*, and what is absent is the **independent phase
+not met.** It asks for *"reviewed and signed off"*, and what it needs is the **independent phase
 exit review** that Phase 0 and Phase 1 each required (`AGENTS.md` §3) — not a deliverable review.
+**It is no longer absent: requested 2026-08-05 and in progress**, having returned verdicts
+`P2EXIT-R11`–`R15` and `T161-R1`. **It is the only live gate.**
 
 **Criterion 8 was added on 2026-08-04: the window must catch up with the features behind it.**
 The maintainer ruled it after running the application and producing ten tasks in one afternoon,
-`T-132` through `T-141`. **Not met** — reset on 2026-08-04 by `P2EXIT-R10`, and what it now waits
-on is *evidence* rather than work or a verdict. `T-140` was reopened for the accepted criteria it
+`T-132` through `T-141`. **Met on the maintainer's evidence**, 2026-08-05 — reset on 2026-08-04 by `P2EXIT-R10` and
+again by `P2EXIT-R12`, both times for a verdict stated over its own evidence, so it is offered to
+the exit review rather than asserted past it. What it waited on was *evidence* rather than work,
+and three runs supplied it: eleven defects found, then 39 of 41, then **40 of 40** on `kirk`
+(`ai/evidence/2026-08-05-criterion-8-third-run.md`), with CI green on the candidate and the
+one-platform residual a recorded maintainer ruling. `T-140` was reopened for the accepted criteria it
 did not build (`T140-R5`); **all three are built** as of 2026-08-05, and the task is
 **Complete** — group verbs, removal that names
 its own count, and a keyboard-reachable disclosure — with **`Pause all` deferred to `REQ-017`** by
@@ -1402,7 +1408,8 @@ line said *"criteria 1, 6 and 8 are Not met"* after that, which is the finding i
 | `P2EXIT-R11` | High. A finished probe's `Probing` outlived it against a `Ready` chip, so criterion 1's accurate-progress promise failed on the durable playlist route | **Fixed.** Stage precedence is gated by whether the stage can still be live in the current status |
 | `P2EXIT-R12` | High. The second-run record said *"pass, all 41 rows"* while listing failures of rows 2.7 and 3.15 | **Answered.** Record corrected, `T-161` fixed and approved, row 2.7 removed by `T161-R1`, and **the 40-row run is a pass** — row 3.15 is observed rather than inferred, which was the finding's whole point |
 | `P2EXIT-R13` | Medium. The `T-152` focus correction fired on every model reset from either view, taking the keyboard off toolbar controls | **Fixed.** First rows only, in the visible view |
-| `P2EXIT-R14` | High. Plan and status carried incompatible live criterion-8 verdicts | **Open across three sweeps.** Each one corrected the occurrence it was looking at and left siblings behind — which is the finding, reproduced twice by its own corrections |
+| `P2EXIT-R14` | High. Plan and status carried incompatible live criterion-8 verdicts | **Resolved at `e94b412`**, after five sweeps. Each earlier one corrected the occurrence it was looking at and left siblings behind — the finding, reproduced by its own corrections |
+| `P2EXIT-R15` | High. Passages written before the 40-row run still said criterion 8 awaited it, `P2EXIT-R14` was open, and row 3.15 was unrun | **Open — this sweep.** The same shape a sixth time, and the first five were about *stale* claims while this one is about claims that were **true when written** and were overtaken |
 
 **The pattern in three of the four is mine and it is one pattern.** `P2EXIT-R11` and `P2EXIT-R12`
 are both a claim stated over the top of contradicting evidence I had already written down —
@@ -1421,8 +1428,9 @@ repeats `P2EXIT-R12`, and requiring `T-160` for exit expands the closed list. Th
 unweakened — it now lives in `T-160`'s acceptance evidence — and the 39/41 record stands as what
 was observed rather than being recomputed. Forty rows remain.
 
-**Row 3.15's defect is fixed and the row is unrun.** A fix is not an observation. Criterion 8 is
-Not met until the checklist is re-run and records passed rows separately from failed ones.
+*(This said **"row 3.15's defect is fixed and the row is unrun"**, and it was true when written.
+The 40-row run of 2026-08-05 observed it: `ai/evidence/2026-08-05-criterion-8-third-run.md`.
+Superseded, and kept because it is the sentence `P2EXIT-R12` was answered by.)*
 
 ## The 40-row run — 2026-08-05
 
@@ -1447,3 +1455,11 @@ that catches, so the residual is accepted rather than argued away.
 coverage`, `linux`, `frozen linux`, `windows desktop`, `frozen windows`.
 
 **Criterion 6 is the last one open, and it is not the implementer's to close.**
+
+**`P2EXIT-R15` is a different failure from the five before it, and the difference is the lesson.**
+`P2EXIT-R14` was about claims that had gone *stale* — corrected, then found again one scope out,
+five times. `R15` is about claims that were **true when written** and were overtaken by an event:
+the 40-row run turned *"criterion 8 awaits the run"* from accurate into false in one moment, across
+every passage that said it. **Searching for wrong-looking sentences cannot find these**, because
+they were not wrong. The check that works is the opposite direction: after an event changes a
+criterion's state, sweep every passage that *mentions that criterion*, whatever it says.

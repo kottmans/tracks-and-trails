@@ -10303,3 +10303,73 @@ P2EXIT-R12 verification and the criterion-6 sign-off. The historical second run 
 
 No source or test correction was needed. The reviewer appends this record only; no submitted
 document, task state, commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — Phase 2 exit review, third submission
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `e94b412`
+**Evidence head:** `165b6e4`
+**Submission head:** `b4aae67` (`9aa3a43` records the 40-row run, `229dbbb` submits it, and
+`b4aae67` marks the first handoff superseded)
+**Verdict:** **Changes requested.** P2EXIT-R12 is resolved and criterion 8 is met on the accepted
+maintainer evidence. Criteria 1–5, 7 and 8 are met. Criterion 6 remains Not met because the evidence
+commit reproduced P2EXIT-R14's claim-over-sibling shape in current STATUS and one live plan summary:
+the same records now both accept the 40-row pass and say it has not happened.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Review result | Status |
+|---|---|---:|---|---|
+| `P2EXIT-R12` | High | No | The third built-window run records **40 of 40 passed** across the 40 live checklist rows, including the two letter-suffixed rows 2.5a and 3.9a. It explicitly observes row 3.15's playlist parent picture rather than inferring it from T-161's source fix. Row 2.7 remains removed with its property intact in T-160, and the earlier run remains the historical 39/41 result. The evidence states its one-platform and one-runner limits inside the claim. The maintainer's Linux-only visual ruling is accepted; Windows automated coverage remains green but is not misdescribed as a person inspecting the window. | **Resolved on the evidence at `9aa3a43`** |
+| `P2EXIT-R14` | High | No | Its reviewed state at `e94b412` remains resolved. The new contradiction below was introduced by the later evidence/current-truth update and does not rewrite that exact-head approval. | **Resolved at `e94b412`** |
+| `P2EXIT-R15` | **High** | **Yes — Phase 2 exit truth / criterion 6** | The third-run update advances later plan/STATUS claims to criterion 8 met but leaves earlier live siblings behind. Plan line 185 still says criterion 8 is Not met awaiting the 40-row run. STATUS lines 69–72 name that run as a current blocker; lines 118–120 say the exit review is absent; lines 122–139 call criterion 8 Not met and the rerun owed. Its findings table still calls P2EXIT-R14 open at line 1405, and lines 1414–1425 say row 3.15 is unrun and criterion 8 Not met immediately before lines 1427–1435 record the 40/40 pass. This is the same claim stated over contradicting evidence that R12 caught and the same sibling-update class R14 resolved, recreated by the evidence commit. | **Open** |
+
+### Exit-criterion reconstruction
+
+| Criterion | Review result |
+|---|---|
+| 1 | **Met.** P2EXIT-R11 is resolved; the durable probe no longer leaves a READY job displaying a live Probing stage, and the accepted concurrency/progress/UI evidence remains unchanged. |
+| 2 | **Met.** No persistence, recovery or restart source changed after its accepted hard-kill proof. |
+| 3 | **Met.** Pool-limit, lowering and queue-pause mechanics are unchanged from their accepted evidence. |
+| 4 | **Met.** The single-instance implementation and its platform evidence are unchanged. |
+| 5 | **Met.** The corrected N-worker orphan gate remains accepted. GitHub run `31051896815` independently verifies the candidate build on all five jobs, including `windows desktop`. |
+| 6 | **Not met.** The soak half remains met, but this independent exit review requests a current-truth correction for P2EXIT-R15. |
+| 7 | **Met.** The Add/admission/restart routes are unchanged from their accepted proof. |
+| 8 | **Met on the maintainer's accepted evidence.** The live checklist contains exactly 40 rows; all 40 are recorded passed on kirk, including the requested row 3.15 observation. The maintainer explicitly accepts Linux-only human inspection for this criterion and the evidence preserves the Windows visual residual. |
+
+All thirteen deliverables remain approved. The ten named Phase 3 findings remain outside the closed
+criterion-8 list; none contradicts a live checklist row under the recorded dispositions.
+
+### Required correction
+
+Reconcile the post-evidence siblings without changing the evidence:
+
+- In the plan's Phase 2 status summary, replace the still-owed 40-row run with criterion 8 met on
+  the evidence offered to review; criterion 6 is the remaining live gate.
+- In STATUS's top Phase 2 account, replace the current 40-row blocker and absent-review claims with
+  the completed run and review in progress. Update the earlier criterion-8 paragraph through the
+  third run instead of leaving it at the second.
+- In STATUS's review section, mark P2EXIT-R14 resolved at `e94b412`, remove or supersede the
+  “row 3.15 is unrun” verdict, and make the current state only criterion 6 / P2EXIT-R15.
+
+Keep the second run at 39/41, the third at 40/40, and the Linux-only ruling unchanged. No new source,
+test, checklist run or CI dispatch is requested. Run `31051896815` is sufficient for this submission:
+`165b6e4..b4aae67` changes records only, and `376407f..b4aae67` changes no source, tests,
+`pyproject.toml` or workflow configuration.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check e94b412..b4aae67`: **pass**. The range changes only plan/status/review/evidence/handoff records. |
+| Candidate identity | `git diff 376407f..b4aae67 -- src tests pyproject.toml .github`: **empty**. The checklist and CI describe the same executable/test/build configuration through submission head. |
+| Checklist cardinality | **40 live rows**, counted directly: 1.1–1.8, 2.1–2.6 including 2.5a, 3.1–3.18 including 3.9a, 4.1–4.5 and 5.1. |
+| P2EXIT-R12 evidence | Third-run artifact: **PASS — 40 of 40**; row 3.15 explicitly named as the observation the run existed to obtain. The evidence retains the historical 39/41 result and does not convert removed row 2.7 into a pass. |
+| CI | GitHub Actions run `31051896815`, head `165b6e4f935f0459fed742d2c93978cb3ec16250`: **completed / success**. `STARBASE coverage`, `linux`, `frozen linux`, `windows desktop` and `frozen windows` all succeeded. |
+| Current-truth negative audit | Plan line 185 and STATUS lines 72, 118–139, 1405 and 1424–1425 contradict the accepted third-run/current verdict elsewhere in those files. |
+| Placement gate | `tests/unit/test_task_placement.py`: **14 passed**. |
+| Submitted broader gates | Implementer reports unit/UI **1884 passed, 11 skipped**, integration **307 passed**, ruff, format and mypy clean. The reviewer verified the external CI result rather than rerunning these complete suites locally. |
+
+No new test was needed for this records-only finding. The reviewer appends this record only; no
+submitted document, source, test, task state, commit, remote ref or CI state was changed by the
+reviewer.
