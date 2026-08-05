@@ -1207,8 +1207,19 @@ beats designing it against an imagined one.
 
 ### T-166 — The group's verbs erase the line above them
 
-**Status:** Proposed — **found by the maintainer, 2026-08-05**, narrowing the window at a playlist
-header.
+**Status:** **Complete — 2026-08-05.** **The premise this was filed on turned out to be wrong in a
+way that made the fix smaller, not larger.** The verbs and the format line do not share a line: the
+verbs are drawn on the last line and `_paint_text` already gives it to them by dropping the
+selector to one line above. It then *also* stopped the selector's width at the leftmost button — a
+line below — so the same width was spent twice and the buttons advanced across a line they do not
+occupy. The format line now runs the full body width whatever the verbs are doing.
+
+**So the criterion asking for a stated minimum before a verb is drawn beside it has no number**,
+because no verb is ever beside it. The property it was protecting — the format line is not
+narrowed by the verbs — is asserted directly instead: the same row with and without verbs must
+draw that line identically at every swept width. `T-163` is where the verbs give way to the thing
+they *do* share a line with. *(Was: Proposed — **found by the maintainer, 2026-08-05**, narrowing
+the window at a playlist header.)*
 **Owner:** Implementer
 **Priority:** Medium — the line it erases is the one saying what the whole playlist will download as
 **Phase:** Phase 3

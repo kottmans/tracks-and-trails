@@ -218,20 +218,29 @@ def holds(store: ThumbnailStore, url: str) -> Callable[[], bool]:
 
 
 def paint_rows(
-    model: RowsModel, delegate: RowDelegate, *indices: int, width: int = RENDER_WIDTH
+    model: RowsModel,
+    delegate: RowDelegate,
+    *indices: int,
+    width: int = RENDER_WIDTH,
+    height: int = ROW_HEIGHT,
 ) -> QImage:
     """Paint the named rows exactly as a view paints its visible ones.
 
     **The only route to a thumbnail**, which is what makes "row 900 was never painted" a statement
     about this call list rather than about a scroll position.
+
+    `height` is `ROW_HEIGHT` by default, which is what a row with nothing on its third line gets.
+    A row that draws a format line needs what `sizeHint` would give it — see `FULL_ROW_HEIGHT`,
+    and note that painting such a row at `ROW_HEIGHT` silently squeezes the last line to a couple
+    of pixels rather than failing.
     """
-    image = QImage(width, ROW_HEIGHT * max(len(indices), 1), QImage.Format.Format_ARGB32)
+    image = QImage(width, height * max(len(indices), 1), QImage.Format.Format_ARGB32)
     image.fill(Qt.GlobalColor.transparent)
     painter = QPainter(image)
     try:
         for slot, index in enumerate(indices):
             option = QStyleOptionViewItem()
-            option.rect = QRect(0, slot * ROW_HEIGHT, width, ROW_HEIGHT)
+            option.rect = QRect(0, slot * height, width, height)
             option.fontMetrics = QFontMetrics(option.font)
             delegate.paint(painter, option, model.index(index, 0))
     finally:
@@ -1589,6 +1598,65 @@ def test_the_overflow_still_holds_exactly_what_the_row_dropped(qapp: QApplicatio
 
     assert dropped_somewhere, (
         "no width in the sweep dropped a verb, so this proves nothing about the overflow"
+    )
+
+
+#: What a playlist header says it will download as (`UX-005` row 13). Long enough that a narrowed
+#: line loses words rather than a character — the maintainer saw this drawn as `Download`.
+FORMAT_LINE: Final = "Download as: Best video available"
+
+
+def format_line(row: dict[int, Any], width: int) -> QImage:
+    """Just the row's format line, cropped out of the painted row (`T-166`).
+
+    The band is line three of four, which is where `_paint_text` puts the selector and is a whole
+    line above the verbs. Cropping rather than scanning because the claim is that the line is drawn
+    *identically*, and comparing images says that exactly.
+    """
+    option = QStyleOptionViewItem()
+    line = QFontMetrics(option.font).height()
+    # **What `sizeHint` gives a row that draws all four of its lines.** Painted at `ROW_HEIGHT`
+    # instead, the last line is squeezed into whatever pixels remain — a fair rendering of a row
+    # with nothing on line three and a misleading one of a row carrying a format line.
+    height = TEXT_LINES * line + 2 * PADDING
+    image = paint_rows(RowsModel([row]), RowDelegate(), 0, width=width, height=height)
+    return image.copy(QRect(0, PADDING + 2 * line, width, line))
+
+
+def test_the_verbs_do_not_narrow_the_format_line_above_them(qapp: QApplication) -> None:
+    """`T-166`: `Download as: Best video available` became `Download` as the window narrowed.
+
+    **The verbs were spending the same width twice.** They are laid out on the last line, and
+    `_paint_text` already gives them that line by dropping the selector to a single line above it —
+    and then it also stopped the selector's *width* at the leftmost button, which sits a whole line
+    below. So as the window narrowed the buttons advanced leftward across a line they do not
+    occupy, until the format line was a stump.
+
+    **Asserted as: the verbs change nothing about the line above them.** The same row with and
+    without verbs must draw that line identically at every width. That is stronger than measuring
+    how much of it survives, and it cannot pass by both rows being equally truncated — the row
+    without verbs is not narrowed by anything.
+
+    `T118-R8` is the rule underneath: the selector is the half that cannot give, because a
+    truncated format is one the user can neither read nor copy, and there is no overflow menu for a
+    sentence. The verbs have one, and `T-163` is where they use it.
+    """
+    with_verbs = a_playlist({SELECTOR_ROLE: FORMAT_LINE})
+    without_verbs = a_playlist({SELECTOR_ROLE: FORMAT_LINE, VERBS_ROLE: []})
+
+    inked = 0
+    for width in SWEEP_WIDTHS:
+        crowded = format_line(with_verbs, width)
+        alone = format_line(without_verbs, width)
+        inked += crowded != format_line(a_playlist({VERBS_ROLE: []}), width)
+        assert crowded == alone, (
+            f"at {width}px the format line is drawn differently once the row has verbs, so the "
+            "buttons on the line below are taking width from the line above them"
+        )
+
+    assert inked > len(SWEEP_WIDTHS) // 2, (
+        f"the format line drew nothing at {len(SWEEP_WIDTHS) - inked} of {len(SWEEP_WIDTHS)} "
+        "widths, so comparing it proves little"
     )
 
 

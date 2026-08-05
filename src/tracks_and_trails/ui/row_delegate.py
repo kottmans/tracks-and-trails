@@ -1198,17 +1198,26 @@ class RowDelegate(QStyledItemDelegate):
             # beside the first two lines, and nothing needs the third line's right-hand end.
             # `SELECTOR_LINES` of room, which holds every built-in at the default font and is
             # explicitly *not* a promise at larger ones — see that constant, and `T118-R15`.
-            # **The verbs own the last line, so the selector gives it up** (`UX-005` §4). Without
-            # this the selector wraps across lines 2 and 3 and the buttons are drawn over its
-            # second line — which is the history row's shape exactly, since the saved path is
+            # **The verbs own the last line, so the selector gives up that line** (`UX-005` §4).
+            # Without this the selector wraps across lines 2 and 3 and the buttons are drawn over
+            # its second line — which is the history row's shape exactly, since the saved path is
             # long. A row with no verbs keeps both lines, which is the add dialog's case and the
             # one `T118-R15` sized `SELECTOR_LINES` for.
             selector_lines = max(SELECTOR_LINES - (0 if verbs_left is None else 1), 1)
+            # **The line it keeps is at the full width, whatever the verbs are doing** (`T-166`).
+            # This used to stop at `verbs_left` as well, and the verbs are on the line *below*: the
+            # height above already gave them their line, so narrowing this one as well spent the
+            # same width twice. As the window narrowed the buttons advanced leftward across a line
+            # they do not occupy, and `Download as: Best video available` was drawn as `Download`.
+            #
+            # **The format line is the half that cannot give** (`T118-R8`): a truncated selector is
+            # one the user can neither read nor copy, and there is no overflow menu for a sentence.
+            # The verbs have one, and `T-163` is where they give way.
             painter.drawText(
                 QRect(
                     area.left(),
                     area.top() + 2 * line,
-                    max((body.right() if verbs_left is None else verbs_left) - area.left(), 0),
+                    max(body.right() - area.left(), 0),
                     selector_lines * line,
                 ),
                 int(
