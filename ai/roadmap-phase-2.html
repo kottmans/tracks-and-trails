@@ -391,14 +391,14 @@
     <div class="titles">
       <p class="eyebrow">Tracks &amp; Trails · implementation plan</p>
       <h1>Phase 2 — Queue and concurrency</h1>
-      <p class="lede">Turn one download into a managed queue. <strong>Phase 2 still needs exactly two things, and neither is code</strong>: a soak nobody has to watch, and a signature from someone who did not write it. What changed since the last update is on the other side of the line — <strong>the maintainer ran the application and it produced nine tasks in an afternoon</strong>, four of them fixed and committed at <code>7311180</code>. Those are Phase 3. They are on this page because pretending the board is empty while a window sits there with invisible arrows on it would be the kind of tidy record this project keeps finding and correcting.</p>
+      <p class="lede">Turn one download into a managed queue. The board changed shape on 2026-08-04: the maintainer ran the application, it produced <strong>ten tasks in an afternoon</strong>, and rather than carry them into Phase 3 they were <strong>ruled into the exit as criterion 8</strong> — the window has to match the features behind it. <strong>All ten are done.</strong> What is left is what was always left: a soak nobody has to watch, and a signature from someone who did not write the code.</p>
       <p class="phase-line">
         <span><strong>Phase 1</strong> exited 2026-07-29</span>
         <span><strong>Phase 0</strong> exited 2026-07-26</span>
-        <span>head <code>7311180</code>, pushed</span>
-        <span>Windows <strong>green</strong> on <code>3dff8d2</code>; running on <code>7311180</code></span>
+        <span>head <code>006b152</code>, pushed</span>
+        <span>Windows <strong>green</strong> through <code>d54db67</code></span>
         <span>Linux gate <strong>~5 min</strong></span>
-        <span><strong>2092</strong> tests</span>
+        <span><strong>2129</strong> tests</span>
         <span>updated <strong>2026-08-04</strong></span>
       </p>
     </div>
@@ -407,11 +407,11 @@
     <ul class="tally">
       <li style="--chip: var(--st-approved)"><span class="n">13</span><span class="k">Deliverables approved</span></li>
       <li style="--chip: var(--st-approved)"><span class="n">17</span><span class="k">Review findings closed</span></li>
-      <li style="--chip: var(--st-review)"><span class="n">5</span><span class="k">Phase 3 tasks open, from one afternoon</span></li>
-      <li style="--chip: var(--st-approved)"><span class="n">6</span><span class="k">Criteria met</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">10</span><span class="k">Criterion 8 tasks, all done</span></li>
+      <li style="--chip: var(--st-approved)"><span class="n">7</span><span class="k">Criteria met, of 8</span></li>
       <li style="--chip: var(--st-review)"><span class="n">2</span><span class="k">Gates left to exit</span></li>
       <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Open blocking findings</span></li>
-      <li style="--chip: var(--st-approved)"><span class="n">9</span><span class="k">Tasks the running app produced</span></li>
+      <li style="--chip: var(--st-block)"><span class="n">9</span><span class="k">Assertions that measured a proxy</span></li>
     </ul>
   </header>
 
@@ -443,17 +443,17 @@ flowchart TB
     T131["T-131 launch test isolation"]:::done
     T130["T-130 mockup gaps - approved"]:::done
 
-    COMMIT["Committed and pushed - 7311180"]:::head
+    COMMIT["Committed and pushed - 006b152"]:::head
 
-    WIN["Windows green on 3dff8d2"]:::done
+    WIN["Windows green through d54db67"]:::done
     SOAK["60 clean Linux soak runs - not started"]:::gate
     REVIEW["Criterion 6 - independent exit review"]:::gate
     EXIT(["PHASE 2 EXIT"]):::exit
 
     T074["T-074 - Windows watch, not a gate"]:::watch
     UXSPEC["T-105 UX_SPEC - a Phase 3 entry gate"]:::watch
-    FOUND["9 tasks from running the app"]:::done
-    OPEN["T-136 T-137 T-138 T-139 T-140 - open, Phase 3"]:::watch
+    FOUND["Criterion 8 - the window catches up"]:::done
+    OPEN["T-142 group verbs - Phase 3, not a criterion"]:::watch
 
     DELIV --> COMMIT
     UX --> COMMIT
@@ -469,7 +469,7 @@ flowchart TB
     EXIT -. next phase, not this one .-> UXSPEC
     COMMIT --> FOUND
     FOUND --> OPEN
-    OPEN -. does not gate the exit .-> EXIT
+    OPEN -. deliberately outside the closed list .-> EXIT
     T128 -. best lead it has ever had .-> T074
 </pre>
       </div>
@@ -526,47 +526,81 @@ flowchart TB
 
   <section>
     <div class="section-head">
-      <h2>Nine tasks from one afternoon at the window</h2>
-      <p class="lede">Every one was found by <strong>opening the application and using it</strong>,
-        not by a gate. That is now the fifth time, and it is the most productive defect-finding
-        method this project has.</p>
+      <h2>Criterion 8 — the window catches up</h2>
+      <p class="lede">Every one of these was found by <strong>opening the application and using
+        it</strong>, not by a gate. That is now the fifth time, and it is the most productive
+        defect-finding method this project has. The maintainer ruled on 2026-08-04 that they gate
+        the exit, and <strong>the list was closed the same day</strong> — otherwise the next sitting
+        finds an eleventh and the phase can never end.</p>
     </div>
 
     <div class="table-card">
       <table>
-        <caption>Filed 2026-08-04. None of them by a test</caption>
-        <thead><tr><th>Task</th><th>What it is</th><th>State</th></tr></thead>
+        <caption>All ten complete. Windows-green through <code>d54db67</code></caption>
+        <thead><tr><th>Task</th><th>What it was</th><th>State</th></tr></thead>
         <tbody>
-          <tr><td><code>T-132</code></td><td>The toolbar's primary action drawn as a flat label, and the queue verbs packed left</td><td><span class="state met">Fixed</span></td></tr>
-          <tr><td><code>T-133</code></td><td>The concurrency spin box had no arrows at all — 3 distinct colours in the strip against 42</td><td><span class="state met">Fixed</span></td></tr>
-          <tr><td><code>T-134</code></td><td>The row's verb buttons never reacted to the pointer</td><td><span class="state met">Fixed</span></td></tr>
-          <tr><td><code>T-135</code></td><td>The <code>⋯</code> repeated the three buttons already on the row</td><td><span class="state met">Fixed</span></td></tr>
-          <tr><td><code>T-137</code></td><td><strong>A playlist downloads one item of sixteen, silently.</strong> <code>build_options</code> sets <code>noplaylist</code>, and the row still says <em>Playlist (16 items)</em></td><td><span class="state unmet">Open — High</span></td></tr>
-          <tr><td><code>T-140</code></td><td>The queue draws a playlist as a row that opens, per the mockup ruled today</td><td><span class="state unmet">Open — roles landed</span></td></tr>
-          <tr><td><code>T-138</code></td><td>History loses the thumbnail the queue row had. <code>HistoryEntry</code> has no such field and the view never asks</td><td><span class="state unmet">Open — needs a migration</span></td></tr>
-          <tr><td><code>T-136</code></td><td>The staged row's format line runs underneath its own format control</td><td><span class="state unmet">Open</span></td></tr>
-          <tr><td><code>T-139</code></td><td>The bitrate control stays live for a video preset the summary line already knows it does not govern</td><td><span class="state unmet">Open — Low</span></td></tr>
+          <tr><td><code>T-137</code></td><td><strong>A playlist downloaded one file of sixteen, silently</strong>, while the row read <em>Playlist (16 items)</em>. Migration <code>0004</code></td><td><span class="state met">Done</span></td></tr>
+          <tr><td><code>T-140</code></td><td>The queue draws a playlist as one row that opens into its entries, with a segmented bar and a count</td><td><span class="state met">Done</span></td></tr>
+          <tr><td><code>T-138</code></td><td>History lost the picture the queue row had. Migration <code>0005</code></td><td><span class="state met">Done</span></td></tr>
+          <tr><td><code>T-136</code></td><td>The staged row's format line ran underneath its own format control</td><td><span class="state met">Done</span></td></tr>
+          <tr><td><code>T-132</code></td><td>The toolbar's primary action drawn as a flat label; the queue verbs packed left</td><td><span class="state met">Done</span></td></tr>
+          <tr><td><code>T-133</code></td><td>The concurrency spin box had no arrows — 3 distinct colours in the strip against 42</td><td><span class="state met">Done</span></td></tr>
+          <tr><td><code>T-134</code></td><td>The row's verb buttons never reacted to the pointer</td><td><span class="state met">Done</span></td></tr>
+          <tr><td><code>T-135</code></td><td>The <code>⋯</code> repeated the three buttons already on the row</td><td><span class="state met">Done</span></td></tr>
+          <tr><td><code>T-139</code></td><td>A disabled control drew <strong>pixel-identically</strong> to a settable one, so the bitrate box still invited a choice</td><td><span class="state met">Done</span></td></tr>
+          <tr><td><code>T-141</code></td><td>The concurrency control steps with labelled buttons, after its arrows were reported missing twice</td><td><span class="state met">Done</span></td></tr>
         </tbody>
       </table>
     </div>
 
+    <p class="note"><strong><code>T-142</code> is deliberately outside the list.</strong> A playlist
+      header has a count, a bar and a disclosure but no verbs of its own — <code>UX-005</code> row 9
+      names four. It was split out of <code>T-140</code> rather than rushed into it, and it is
+      Phase 3 work: the closed list is what gives criterion 8 an edge.</p>
+
+    <div class="callout" style="--accent:var(--st-approved)">
+      <h3>The measurement that could have reopened the shape, and did not</h3>
+      <p class="note" style="border:none;padding:0"><code>UX-005</code> row 9 says in as many words
+        that a bad paste-of-150 number justifies reopening the playlist shape rather than absorbing
+        the cost — because <code>setUniformItemSizes</code> came off to let a child row be shorter
+        than its group, and <code>T118-R10</code> is the record of what per-row cost buys when it
+        goes wrong.</p>
+      <div class="measured settled">150 entries across 10 open playlists
+  open ten groups        0.002 s
+  sizeHint, 160 rows     0.019 s
+  paint a viewport       0.022 s
+  budget                 0.500 s</div>
+      <p class="note" style="border:none;padding:0">The shape stands. <em>An earlier version of that
+        test timed <code>repaint()</code> on an offscreen widget and reported <code>0.000s</code> — a
+        number that cannot fail, from a call that may not have painted at all.</em></p>
+    </div>
+
     <div class="callout" style="--accent:var(--st-block)">
-      <h3>Five assertions this session measured a proxy rather than the property</h3>
+      <h3>Nine assertions measured a proxy rather than the property</h3>
       <ul>
         <li>A hover test drew through <code>QApplication.style()</code> with no widget, so it measured the <em>platform</em> style.</li>
         <li>A palette test asserted the <em>global</em> palette held the row tint — it encoded the defect it was written for.</li>
         <li>The chip's terminal test compared two rows that drew no chip at all, so both crops matched because nothing was in them.</li>
         <li>The spin box test asserted arrow-coloured pixels <em>existed</em>. A solid block satisfies that, and a solid block is what shipped.</li>
         <li>The toolbar test built a bare <code>QToolBar</code>, which paints no gradient, and compared <code>window</code> against <code>window</code>.</li>
+        <li>An indent test compared whole rows and survived deleting the rail its docstring claimed.</li>
+        <li>Its ink probe used <code>QColor(pixel).alpha()</code>, which is 255 for every pixel whatever the image holds.</li>
+        <li>A cost test timed <code>repaint()</code> on an offscreen widget: <code>0.000s</code>.</li>
+        <li>A stepper test compared a pixel inside a button against the toolbar <em>at a different height</em>, across a gradient.</li>
       </ul>
-      <p class="note" style="border:none;padding:0">Four were mine and <strong>three passed while the defect was on screen</strong>. <code>ai/TESTING.md</code> §13 already forbids a test that passes for a reason other than the one it names; what these share is narrower and worth naming — <strong>they asserted that <em>something</em> was drawn rather than <em>what</em> was drawn</strong>. Presence is not shape, and a mutation is what tells them apart.</p>
+      <p class="note" style="border:none;padding:0">Most were mine, and several <strong>passed while
+        the defect was on screen</strong>. The shape is consistent enough to name: <strong>two things
+        are compared that differ for a reason other than the one being claimed.</strong>
+        <code>ai/TESTING.md</code> §13 already forbids a test that passes for the wrong reason; what
+        these add is that a mutation is the only thing that reliably tells them apart. The last two
+        were caught before shipping rather than after.</p>
     </div>
   </section>
 
   <section>
     <div class="section-head">
       <h2>The gates that are left</h2>
-      <p class="lede">One is a machine running unattended for five hours. The other needs a person who did not write the code. Neither is development work, and <strong>nothing depends on the order</strong> — the commit they both needed exists.</p>
+      <p class="lede">One is a machine running unattended for five hours. The other needs a person who did not write the code. Neither is development work. <strong>Criterion 8 is now met</strong>, so these two are the whole of what remains — and the soak wants a settled head, which is why the UI work went first rather than beside it.</p>
     </div>
 
     <ol class="queue">
@@ -715,6 +749,11 @@ P(0 crashes | unchanged)   39 runs   0.128
             <td><span class="state unmet">Not met — two counts</span><span class="state-note"><strong>(a)</strong> the phase sign-off has not been requested; <strong>(b)</strong> a clean 60-run Linux soak is owed, by the 2026-08-04 ruling on <code>OPS-007</code>. <em>The third count — that the approved batch was uncommitted, so no Windows run could name its head — is discharged: <code>3dff8d2</code> is committed and pushed, and CI is running against it.</em> <em>This row read “four deliverables await review” for two days after all four were approved, then “only a sign-off is missing” right up until the sign-off found two criteria unproved</em></span></td>
           </tr>
           <tr>
+            <td class="n">8</td>
+            <td><strong>The window matches the features behind it</strong> — added 2026-08-04 by maintainer ruling</td>
+            <td><span class="state met">Met</span><span class="state-note"><code>T-132</code>–<code>T-141</code>, all complete and Windows-green through <code>d54db67</code>. <strong>Recorded as an amendment rather than left to inference</strong>: <code>COORD-R13</code> corrected exactly that shape once, when a Phase 3 task was <em>described</em> as what criterion 6 waited on with no ruling behind it. The list is closed at 2026-08-04, because "the UI is caught up" is unfalsifiable and a tenth sitting would find an eleventh task</span></td>
+          </tr>
+          <tr>
             <td class="n">7</td>
             <td><strong>A user can actually start a queue</strong> — found by the phase proof, not previously written down</td>
             <td><span class="state met">Met</span><span class="state-note"><code>T-115</code>. Recorded first as a strict <code>xfail</code>, which reported <code>XPASS(strict)</code> the moment the fix landed — the gate firing exactly as promised — and was then inverted</span></td>
@@ -741,8 +780,8 @@ P(0 crashes | unchanged)   39 runs   0.128
   <footer>
     <span>Transcribed from ai/IMPLEMENTATION_PLAN.md, ai/TASKS.md, ai/DECISIONS.md, ai/REVIEWS.md</span>
     <span>Counts read from the tables, not written beside them</span>
-    <span>Head 7311180 · suite 2092 passed, 11 skipped, 2 deselected</span>
-    <span>CI 30954720566 green on 3dff8d2; 30961205097 running on 7311180</span>
+    <span>Head 006b152 · suite 2129 passed, 11 skipped, 2 deselected</span>
+    <span>CI green on all five jobs through d54db67</span>
     <span>2026-08-04</span>
   </footer>
 
