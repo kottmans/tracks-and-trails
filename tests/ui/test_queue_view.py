@@ -27,6 +27,7 @@ from tests.qt_lifecycle import drain
 from tests.ui.test_row_delegate import REPAINT_BUDGET_SECONDS, VIEWPORT_ROWS
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
+from tracks_and_trails.core.presets import BEST_VIDEO, to_request
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import (
     Progress,
@@ -1388,6 +1389,39 @@ def test_a_closed_playlist_says_which_format_its_entries_inherit(
     assert isinstance(shown, str) and shown, (
         "the closed playlist says no format while every hidden child drops its own format line; "
         "the adopted mock puts 'Download as' on the group precisely because children inherit it"
+    )
+
+
+def test_a_closed_playlist_names_its_common_builtin_rather_than_its_selector(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`T140-R3`: the group displays the preset name that its editor offers.
+
+    A nonempty selector is not sufficient evidence.  Built-ins are offered and selected by name,
+    and the ordinary row's `_effective_format_text()` deliberately shows that name instead of
+    exposing yt-dlp syntax.  The playlist header must describe the same request the same way.
+    """
+    for job in _playlist_jobs(tmp_path, 3):
+        queue.add(
+            replace(
+                job,
+                request=to_request(
+                    BEST_VIDEO,
+                    url=job.url,
+                    output_directory=str(tmp_path),
+                ),
+            )
+        )
+    view = views(jobs=queue, manager=managers())
+
+    shown = view.model.data(view.model.index(0, JOB_COLUMN), SELECTOR_ROLE)
+
+    assert shown == f"Download as: {BEST_VIDEO.name}", (
+        f"the playlist names its common built-in as {shown!r}; the format editor offers "
+        f"{BEST_VIDEO.name!r}, not that preset's raw yt-dlp selector"
     )
 
 

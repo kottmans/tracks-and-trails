@@ -9744,3 +9744,53 @@ the adopted brand fill. The isolated theme test does not exercise that compositi
 No reviewer regression was added: the retained test already asserts the accepted product behavior.
 This review appended this record only. No submitted source, test meaning, decision, task state,
 commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — `T140-R3` focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `5b8ebfa`
+**Correction head:** `9de7204` (`2e0837e` adds the committed handoff)
+**Verdict:** **Changes requested.** The group editor and inheritance effect were already implemented
+and the submitted proof is sound, but one part of the original High finding remains: a common
+built-in is displayed on the playlist header as raw yt-dlp selector syntax rather than by the
+preset name offered by that header's editor. `T137-R2` and `T140-R5` remain outside this pass.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `T140-R3` | High | **Yes — accepted UX-005 row 13** | The handoff is right that the finding's status lagged part of the tree: `f74de02`, now an ancestor of the submitted base, added `PRESET_CHOICES_ROLE`, editable group flags, and `_Group` handling in `setData()`. The two submitted tests prove that one group choice emits the same preset for every retargetable member, excludes a completed member, and refuses a write when no member can move. However, the original re-review also recorded that `_group_data(SELECTOR_ROLE)` renders a common built-in as its raw selector instead of `_effective_format_text()`'s preset name. That code is unchanged: members using `Best video available` produce `Download as: bestvideo+bestaudio/best`. The earlier regression asserted only a nonempty string and could not catch this. | **Open — inheritance effect proved; display half remains** |
+
+### Submitted uncertainties and merge audit
+
+- **`not movable`: equivalent redundancy confirmed.** For an empty `movable`, `all(...)` is true,
+  so deleting the explicit empty check does not change the result. Leaving the simplification out
+  of this correction is appropriate.
+- **Same-value guard: not a blocker for this submitted proof, but testable without teaching
+  `FakeQueue` to apply writes.** Members can be constructed with one built-in request before the
+  view is built, then `setData()` can be called with that already-current preset name. Existing
+  individual-row lifecycle coverage proves the underlying `T126-R3` recursion class; the group
+  branch should gain the direct no-emission case when this finding returns with its display fix.
+- **Merge audit confirmed.** `f74de02` is an ancestor of the submitted base. Of its ten touched
+  files, only `ai/DECISIONS.md`, `tests/ui/test_queue_view.py` and
+  `tests/ui/test_row_verb_wiring.py` differ at the reviewed head, and each contains later work.
+  The other seven are byte-identical. `main_window.py` was not part of `f74de02`; the repolish came
+  from `d929d98` on the other merge line, so the corrected attribution in the handoff is accurate.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Submitted boundary | `5b8ebfa..9de7204` changes only `tests/ui/test_queue_view.py`; `git diff --check`: **pass**. |
+| Submitted T140-R3 tests | **2 passed** after restoring the mutation probe. |
+| RETARGETABLE mutation | Replaced the filtered member list with all group members: **2 failed**, one by emitting for completed `entry-0`, one by accepting a fully finished playlist. The source diff was empty after restoration. |
+| Queue-view test file with reviewer regression | **49 passed, 1 failed**. The sole failure is the common built-in display: actual `Download as: bestvideo+bestaudio/best`, expected `Download as: Best video available`. |
+| Lint | `.venv/bin/python -m ruff check .`: **pass**. |
+| Format | `.venv/bin/python -m ruff format --check .`: **pass**, 162 files already formatted. |
+| Source types | `.venv/bin/python -m mypy src`: **pass**, 44 source files. |
+| Test-inclusive types | `.venv/bin/python -m mypy`: **pass**, 107 source files. |
+| Windows type route | `.venv/bin/python -m mypy --platform win32`: **pass**, 107 source files. |
+
+This review added one failing regression to `tests/ui/test_queue_view.py` and appended this record.
+The temporary source mutation was fully reverted. No submitted source, submitted test meaning,
+decision, task state, commit, remote ref or CI state was changed by the reviewer.
