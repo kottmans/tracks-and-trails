@@ -1434,4 +1434,16 @@ across that range, so it is one build. `ai/evidence/2026-08-05-criterion-8-third
 a repetition: eleven defects found, then 39 of 41 with two named failures, then 40 of 40 — and the
 count changed because row 2.7 was **removed** by `T161-R1`, not because a failure was rewritten.
 
+**The one-platform limit is a maintainer ruling.** Asked whether criterion 8 could rest on
+Fedora alone, the maintainer answered on 2026-08-05: *"I'm okay with criterion 8 resting on one
+platform (linux) for now."* Recorded as a ruling rather than left as a gap, because an implementer
+who **could not** get Windows evidence and one who was **told it was not required** look identical
+in a record that does not say which. CI runs the suite on Windows and `windows desktop` is green on
+the candidate; what is deliberately unevidenced is a *person looking at the window* there — and
+`T-134`'s hover defect and `T-149`'s missing `:checked` state are exactly the kind of thing only
+that catches, so the residual is accepted rather than argued away.
+
+**CI is green on the candidate**: run `31051896815` on `165b6e4`, all five jobs — `STARBASE
+coverage`, `linux`, `frozen linux`, `windows desktop`, `frozen windows`.
+
 **Criterion 6 is the last one open, and it is not the implementer's to close.**

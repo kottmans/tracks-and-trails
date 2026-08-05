@@ -53,9 +53,13 @@ widget whose palette carries the selection tint) and passes here against the cor
 `P2EXIT-R12` reset this criterion for stating a verdict over the top of its own evidence. The
 limits are therefore inside the claim:
 
-- **One platform.** Fedora, on `kirk`. CI runs the suite on Windows; **no person has looked at the
-  window on Windows.** If the exit review judges criterion 8 to require that, this run does not
-  supply it.
+- **One platform, and it is a ruling rather than a gap.** Fedora, on `kirk`. CI runs the suite on
+  Windows and `windows desktop` is green on the candidate; what is unevidenced is **a person
+  looking at the window** there. **The maintainer ruled this acceptable on 2026-08-05** — *"I'm
+  okay with criterion 8 resting on one platform (linux) for now."* Written as a ruling because a
+  reader cannot otherwise tell a limit that was **chosen** from one that was merely **hit**, and
+  the residual is real: `T-134`'s hover defect and `T-149`'s missing `:checked` state are the kind
+  of thing only a person at the window catches.
 - **One runner, who is also the person who accepted the mockups.** `AGENTS.md` §3 locates the
   independent judgement in the exit review, not here. This is the maintainer checking that the
   built window matches what they accepted.
