@@ -369,6 +369,19 @@ QComboBox, QLineEdit {{
     border-radius: 4px;
     padding: 3px 6px;
 }}
+QComboBox:disabled, QLineEdit:disabled {{
+    /* **A control that does nothing must not look like one that does** (`T-139`, and `T-129`'s
+       cause for the fourth time). Styling `QComboBox` at all switches it to `QStyleSheetStyle`,
+       and the platform's disabled rendering goes with it unless declared — measured, a disabled
+       combo drew **pixel-identically** to an enabled one.
+       `T-076` has disabled the bitrate for a video preset since it was written, and `UX-005` §5
+       forbids a control that accepts a choice nothing acts on. Both were satisfied in behaviour
+       and neither was visible: the box still looked settable, so the only way to learn it was
+       inert was to try it. */
+    background-color: {theme.sunken};
+    color: {theme.muted};
+    border-color: {theme.rule};
+}}
 QToolBar QToolButton[primaryAction="true"] {{
     /* **The mockup's `.btn.primary`** (`T-132`, `UX-005`'s second 2026-08-04 amendment). The first
        amendment put the application's primary action first on the toolbar and left it drawn as a

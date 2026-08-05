@@ -22,6 +22,7 @@ from PySide6.QtCore import QRect
 from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QGroupBox,
     QLabel,
     QMenu,
@@ -441,4 +442,36 @@ def test_a_themed_spin_box_draws_arrows_that_are_arrow_shaped(
     )
     assert wedge == sorted(wedge) and len(set(wedge)) == len(wedge), (
         f"the arrow's ink widths {wedge} do not grow strictly, so what is drawn is not a wedge"
+    )
+
+
+def test_a_disabled_control_does_not_look_like_a_settable_one(
+    themed: QApplication, chosen: theme.Theme
+) -> None:
+    """`T-139`, and `T-129`'s cause for the fourth time.
+
+    **The behaviour was never the defect.** `T-076` has disabled the bitrate for a video preset
+    since it was written, and `UX-005` §5 forbids a control that accepts a choice nothing acts on
+    — both were satisfied. Styling `QComboBox` at all switches it to `QStyleSheetStyle`, and the
+    platform's disabled rendering goes with it unless declared, so a disabled combo drew
+    **pixel-identically** to an enabled one. The only way to learn it was inert was to try it.
+
+    Both themes, and the whole widget rather than one sampled pixel: the difference could
+    legitimately be in the text, the background or the border, and pinning which one would pin a
+    styling choice rather than the property.
+    """
+    theme.apply(themed, chosen)
+    box = QComboBox()
+    box.addItem("192 kbps")
+    box.resize(160, 28)
+    themed.processEvents()
+
+    box.setEnabled(True)
+    enabled = box.grab().toImage()
+    box.setEnabled(False)
+    disabled = box.grab().toImage()
+
+    assert enabled != disabled, (
+        "a disabled combo box draws exactly like a settable one, so a control that does nothing "
+        "still invites a choice"
     )

@@ -1153,45 +1153,6 @@ broken down. Phase 1 listed nine deliverables and produced fifty tasks; these ei
 starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
 it.)*
 
-### T-139 — The bitrate control stays live when bitrate does not apply
-
-**Status:** Proposed — **found by the maintainer, 2026-08-04**, with *Best video up to 1080p (MP4)*
-selected and *192 kbps* still offered beside it.
-**Owner:** Implementer
-**Priority:** Low — it misleads rather than misbehaves
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `UX-004`, `UX-005` §5 (a control that accepts a choice nothing acts on),
-`ui/add_dialog.py`, `ui/presets.py`
-**Affected surfaces:** `ui/add_dialog.py`
-**Risk:** Low
-
-#### Scope
-
-**The words already know; the widget does not.** `add_dialog.py` builds the summary line and
-deliberately *omits* the bitrate for a video download — its own comment says "omitted rather than
-shown as `n/a`: a bitrate beside a video download would put a number on" something it does not
-govern. The `audioBitrateChoice` combo beside it stays enabled and settable, so the user can pick
-192 kbps for an MP4 and watch the format selector ignore it.
-
-That is `UX-005` §5's rule exactly — a control that accepts a choice nothing acts on — applied to
-a control the same file already reasons about correctly one line away.
-
-**Disabled or hidden is the open question.** Disabled keeps the layout still and says the control
-exists for other presets; hidden is quieter but makes the panel change height as the preset
-changes. `UX-005` §5 does not settle it.
-
-#### Acceptance criteria
-
-- With a video preset chosen the bitrate control **cannot be changed**, asserted through the widget
-- With an audio preset chosen it can, so the test cannot pass by disabling it always
-- Whichever of disabled or hidden is chosen, `NFR-005` is met for it — a disabled control needs a
-  reason a screen reader can read
-- The summary line and the control agree, asserted together: they are the two halves that
-  disagreed
-
----
-
 ### T-140 — The queue draws a playlist as a row that opens
 
 **Status:** Proposed — **ruled 2026-08-04** against `docs/mockups/2026-08-04-playlist-rows.html`,
@@ -2040,6 +2001,67 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-139 — The bitrate control stays live when bitrate does not apply
+
+**Status:** **Complete — 2026-08-04, and the premise was wrong.** Measurement moved the finding.
+
+**The control was never live.** `_refresh` has called
+`self._bitrate_choice.setEnabled(is_mp3 and not self._saving)` since `T-076`, with the reasoning
+this task was going to have to invent already recorded beside it: *"disabled rather than hidden, so
+the chain a keyboard walks does not change and the layout does not move."* `UX-005` §5 was
+satisfied and so was the summary line's omission.
+
+**What was wrong is that a disabled control drew pixel-identically to a settable one.** Styling
+`QComboBox` at all switches it to `QStyleSheetStyle`, and the platform's disabled rendering goes
+with it unless the sheet declares one — measured, enabled and disabled grabs of the same widget
+compared equal in every pixel, in both themes. So the box still *invited* a choice, and the only
+way to learn it was inert was to try it. **`T-129`'s cause for the fourth time**, after the
+group-box metrics, the button hover, and `T-133`'s spin arrows.
+
+*Corrected in the sheet rather than in the dialog*, and deliberately for `QComboBox` **and**
+`QLineEdit` rather than for the one control that was reported: nothing about the cause was specific
+to the bitrate, and a fix scoped to the reporter's example would leave every other disabled control
+in the application lying in the same way.
+
+**This is why the acceptance criteria asked for the widget and not the preset.** Had this been
+asserted as "with a video preset chosen, `isEnabled()` is `False`", it would have passed against
+exactly the application the maintainer was looking at.
+
+**Owner:** Implementer
+**Priority:** Low — it misleads rather than misbehaves
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `UX-004`, `UX-005` §5 (a control that accepts a choice nothing acts on),
+`ui/add_dialog.py`, `ui/presets.py`
+**Affected surfaces:** `ui/add_dialog.py`
+**Risk:** Low
+
+#### Scope
+
+**The words already know; the widget does not.** `add_dialog.py` builds the summary line and
+deliberately *omits* the bitrate for a video download — its own comment says "omitted rather than
+shown as `n/a`: a bitrate beside a video download would put a number on" something it does not
+govern. The `audioBitrateChoice` combo beside it stays enabled and settable, so the user can pick
+192 kbps for an MP4 and watch the format selector ignore it.
+
+That is `UX-005` §5's rule exactly — a control that accepts a choice nothing acts on — applied to
+a control the same file already reasons about correctly one line away.
+
+**Disabled or hidden is the open question.** Disabled keeps the layout still and says the control
+exists for other presets; hidden is quieter but makes the panel change height as the preset
+changes. `UX-005` §5 does not settle it.
+
+#### Acceptance criteria
+
+- With a video preset chosen the bitrate control **cannot be changed**, asserted through the widget
+- With an audio preset chosen it can, so the test cannot pass by disabling it always
+- Whichever of disabled or hidden is chosen, `NFR-005` is met for it — a disabled control needs a
+  reason a screen reader can read
+- The summary line and the control agree, asserted together: they are the two halves that
+  disagreed
+
+---
 
 ### T-136 — The staged row's format line runs underneath its format control
 
