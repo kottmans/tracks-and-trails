@@ -3188,13 +3188,35 @@ Stated because `OPS-010` stating its own surrenders is what let this entry weigh
   project differently from how the documentation says to — is exactly the class this used to
   catch.
 - **The frozen Linux artifact is now built against Fedora's glibc.** Symbol versioning means a
-  Fedora-built binary may not run on an older distro, so `frozen ubuntu-latest` stops being
+  Fedora-built binary may not run on an older distro, so `frozen linux` stops being
   evidence that the artifact runs anywhere but here. **`REL-001`'s release build is Phase 5 and
   must revisit where Linux artifacts are produced** — a release built on a developer's desktop is
   a different question from a smoke test run there, and this entry does not settle it.
 - **Availability becomes two more machines' availability.** A self-hosted job with no matching
   online runner **queues for up to 24 hours** before GitHub discards it; `timeout-minutes` does not
   bound that, as the `windows desktop` job's comment already records.
+
+### Amended 2026-08-05 — the Linux jobs are named `linux`, not after a distribution
+
+**Raised by:** the maintainer, on first reading a green board after the routing landed.
+
+`check`'s Linux leg was named `ubuntu-latest` and `frozen`'s was `frozen ubuntu-latest`, taken
+from the runner image. The moment `LINUX_RUNNER` pointed them at Fedora those names stopped being
+true, and **a green check naming a platform nothing ran on is a claim rather than a label** — the
+same shape as a test that passes with its subject removed.
+
+`fedora-latest` was considered and rejected: it is wrong in the other direction. Unsetting
+`LINUX_RUNNER` restores the hosted Ubuntu image, which is the documented fallback and what a fork
+gets, so a distribution in the name is guaranteed to be false under one of the two routings. The
+job is therefore named for the **cell it covers** — `linux` and `frozen linux` — while *which
+machine took it* is recorded per-run by the runner name, where it is always accurate.
+
+The Windows leg keeps `windows-latest`, which stays true: it is dropped entirely rather than
+rerouted when `WINDOWS_RUNNER` is set.
+
+**Older citations of `check (ubuntu-latest)` and `frozen ubuntu-latest` stay as written.** Those
+runs did happen on Ubuntu; rewriting them would falsify the historical record to tidy a name
+(`AGENTS.md` §6). Only forward-looking references were changed.
 
 ### Consequences
 

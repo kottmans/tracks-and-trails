@@ -102,7 +102,13 @@ defaults:
 
 jobs:
   check:
-    name: ${{ matrix.os }}
+    # **The Linux leg is called `linux`, not after a distribution** (`OPS-012`). It was
+    # `ubuntu-latest`, which stopped being true the moment `LINUX_RUNNER` pointed it at Fedora — a
+    # green board naming a platform nothing ran on is the class of claim this project keeps
+    # finding. `fedora-latest` would be wrong in the other direction, because unsetting the
+    # variable restores the hosted Ubuntu image and that is what a fork gets. The name states the
+    # *cell being covered*; which machine took it is recorded per-run by the runner name.
+    name: ${{ matrix.os == 'windows-latest' && 'windows-latest' || 'linux' }}
     # `WINDOWS_RUNNER` selects where the Windows leg runs without editing this file (`OPS-009`).
     # Unset means `windows-latest`, which is the ruling's default: hosted, for clean-machine
     # evidence. If the hosted allowance runs out, set it to `["self-hosted","windows","desktop"]`
@@ -323,7 +329,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v7
         with:
-          name: evidence-${{ matrix.os }}
+          name: evidence-${{ matrix.os == 'windows-latest' && 'windows-latest' || 'linux' }}
           path: reports/
           retention-days: 30
           if-no-files-found: warn
@@ -704,13 +710,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # `name` stays `ubuntu-latest` even when `LINUX_RUNNER` sends this to Fedora, because it
-          # is the job's identity in the checks list and renaming it per-machine would break every
-          # citation in `ai/` that names a job. **What the job now measures is in `OPS-012`**: a
-          # Fedora-built artifact links Fedora's glibc, so this stops being evidence that the
-          # frozen build runs on an older distro. `REL-001`'s release build is Phase 5 and must
-          # revisit where Linux artifacts are produced.
-          - name: ubuntu-latest
+          # `linux` rather than a distribution name, matching `check` — see its comment. The name
+          # has to stay true under both routings, and `LINUX_RUNNER` decides which is in force.
+          # **What the job now measures is in `OPS-012`**: a Fedora-built artifact links Fedora's
+          # glibc, so this stops being evidence that the frozen build runs on an older distro.
+          # `REL-001`'s release build is Phase 5 and must revisit where Linux artifacts are
+          # produced. Historical citations of `frozen ubuntu-latest` in `ai/` stay as written —
+          # those runs did happen on Ubuntu (`AGENTS.md` §6).
+          - name: linux
             runner: ${{ fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
           - name: windows
             runner: [self-hosted, windows, desktop]

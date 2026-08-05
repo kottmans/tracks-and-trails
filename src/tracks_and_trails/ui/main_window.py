@@ -828,6 +828,13 @@ class MainWindow(QMainWindow):
             if rendered is not None:
                 rendered.setObjectName("addUrlsButton")
                 rendered.setProperty(PRIMARY_ACTION_PROPERTY, True)
+                # **A property set after the first polish changes nothing** (`T132-R1`). The
+                # toolbar creates this button and styles it, and only then does the property
+                # arrive — so the sheet had already decided, and the real window's primary action
+                # rendered neutral while an isolated test that set the property *before* styling
+                # its own button reported it filled. Qt re-evaluates the sheet only when asked.
+                rendered.style().unpolish(rendered)
+                rendered.style().polish(rendered)
             bar.addSeparator()
         # Not closable: a control the user can hide and then not find is worse than a control
         # they ignore, and this is the only way to change the limit until Phase 4's dialog.

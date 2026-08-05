@@ -100,7 +100,7 @@ class Theme:
     #: The brand accent. Used sparingly and never as the only signal.
     accent: str
 
-    #: `primary` **under the pointer** (`T-146`).
+    #: `primary` **under the pointer** (`T-147`).
     #:
     #: **A lighter fill, not a coloured ring.** A filled button hovered used to keep its fill and
     #: take an `accent` border, which measured **1.42:1 against the fill in light and 1.25:1 in
@@ -298,7 +298,7 @@ QPushButton:pressed {{
     background-color: {theme.rule};
 }}
 QPushButton:default:hover {{
-    /* **The same lift as the toolbar's primary** (`T-146`), and it had the same defect: an
+    /* **The same lift as the toolbar's primary** (`T-147`), and it had the same defect: an
        `accent` ring at 1.42:1 against its own fill. One hover for one kind of button. */
     background-color: {theme.primary_hover};
     border-color: {theme.primary_hover};
@@ -464,7 +464,7 @@ QToolBar QToolButton[primaryAction="true"] {{
     font-weight: 600;
 }}
 QToolBar QToolButton[primaryAction="true"]:hover {{
-    /* **The fill lifts; there is no ring** (`T-146`). It took an `accent` border, at 1.42:1
+    /* **The fill lifts; there is no ring** (`T-147`). It took an `accent` border, at 1.42:1
        against its own fill in light and 1.25:1 in dark — too low to read as gold and reported as
        a red smudge. See `Theme.primary_hover` for why brightening the accent was not the fix. */
     background-color: {theme.primary_hover};
