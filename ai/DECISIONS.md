@@ -2978,6 +2978,42 @@ behind a document would leave known-broken behaviour on `main` for longer.
 
 ## UX-005 — The main window: two tabs, no detail pane, and the verbs on the row
 
+### Amended 2026-08-05 — a divergent playlist says which row got which
+
+**Raised by:** `T-157`, found by running the built window. **Maintainer ruling, 2026-08-05.**
+
+**Rows 9c and 13 contradict each other, and neither is wrong about its own half.** Row 9c gives a
+child no format line because *"an entry inherits its group's format, so its third and fourth lines
+have nothing to say."* Row 13 puts retargeting on the group — and `T140-R3` correctly made it move
+only the members that can still move, because a finished track cannot be un-downloaded.
+
+So **retargeting a part-done playlist guarantees divergence**, and row 9c's premise becomes false
+for exactly the playlists a user has touched. They were written apart and met in the built window.
+
+**1. A child draws its format line only when its format differs from the group's**, and stays
+silent when it agrees. Row 9c's economy is kept for the common case — a uniform playlist still
+draws no format lines — and a line is spent only where there is something to say. It is the only
+option that answers *which row got which*, and it scales: three formats, and each divergent child
+names its own. The variable child height this costs is one `T-140` already spends deliberately.
+
+**2. The group's format control shows explicit `Mixed` text and is never blank.** A blank combo
+reads as *unset* or *broken* rather than *they differ*. The placeholder names the count —
+`Mixed — 2 formats` — with the real choices below it; choosing one still retargets every member
+that can move, which is `T140-R3`'s behaviour unchanged.
+
+**The header's format line is unchanged.** `mixed across 2 formats` is already honest, and once the
+children speak it stops being the only thing said.
+
+### Rejected, and why
+
+- **The header names both counts** — *"12 as MP3, 4 as original"*. Cheaper, and it does not say
+  *which row* is which, which is the question a user has. It also stops scaling at three formats.
+- **The control shows the majority value.** Actively misleading: an editable control reading `MP3`
+  implies choosing `MP3` is a no-op, when it would retarget the twelve that are not.
+
+**Recorded before implementation**, per `T126-R4` — the finding about one role meaning two things
+on two surfaces, which is this shape exactly.
+
 ### Amended 2026-08-05 — `Pause all` is deferred to `REQ-017`
 
 **Raised by:** `T140-R5`, on the reviewer's recommendation. **Maintainer ruling, 2026-08-05.**
