@@ -224,16 +224,72 @@ Do not record a manual item as passed because this job is green. It covers what 
 
 ## 10. CI
 
-Runs on every push and pull request. **Every test runs on every push, on both platforms** — what
-changed on 2026-08-03 is *where* Windows runs and *when its answer arrives*, not what is covered.
-`OPS-010` is the governing decision; the subsection below states it operationally.
+Runs on every push and pull request **that changes anything a test reads**. Within that,
+**every test runs on every push, on both platforms** — what changed on 2026-08-03 is *where*
+Windows runs and *when its answer arrives*, not what is covered; what changed on 2026-08-05 is
+that prose-only pushes stopped triggering a run at all. `OPS-010` and `OPS-011` are the governing
+decisions; the subsections below state them operationally.
 
 ### What runs on an ordinary push, since 2026-08-03 (`OPS-010`)
 
 | Trigger | What runs |
 |---|---|
-| **push and pull request** | everything: Linux `check`, the full `windows desktop` suite, `frozen ubuntu-latest`, `frozen windows`, the coverage notice |
-| **nightly (06:00 UTC) and `workflow_dispatch`** | the same, plus it cannot be cancelled by a push |
+| **push and pull request touching anything a test reads** | everything: Linux `check`, the full `windows desktop` suite, `frozen ubuntu-latest`, `frozen windows`, the coverage notice |
+| **push and pull request touching prose only** | **nothing** (`OPS-011`), except `prose.yml` when `ai/TASKS.md` changed |
+| **nightly (06:00 UTC) and `workflow_dispatch`** | the same as the first row, plus it cannot be cancelled by a push |
+
+### Where each platform runs (`OPS-012`, 2026-08-05)
+
+| Leg | Runs on | Selected by |
+|---|---|---|
+| Linux `check`, `frozen ubuntu-latest`, `prose` | the maintainer's Fedora desktop/laptop | `vars.LINUX_RUNNER` |
+| `windows desktop`, `frozen windows` | `STARBASE` | `vars.WINDOWS_RUNNER` |
+| `STARBASE coverage` | hosted `ubuntu-latest` — **the only hosted job left** | fixed |
+
+**Self-hosted Linux is faster than hosted, not merely cheaper**: the full suite is 4m29s on the
+desktop against 7m36s for the whole hosted `check` job, measured 2026-08-05. Unset `LINUX_RUNNER`
+and everything returns to `ubuntu-latest` with no other change.
+
+**System packages are installed on hosted images and *verified* on self-hosted ones.** `apt-get`
+does not exist on Fedora, and a job must not provision a machine somebody uses. The Qt-library
+step checks each `.so` with `ldconfig` and fails with the `dnf` command to fix it — it does not
+skip quietly, because a missing library otherwise appears as a confusing `QApplication` failure
+much later.
+
+**What this costs, and it is not nothing.** Ubuntu is no longer a tested platform; Linux
+verification means Fedora 44, and the `apt`-based install path is exercised nowhere. No CI job now
+runs on a machine nobody uses, on either platform — `T-066`, where CI installed the project
+differently from the documented way, is the class that used to catch. And the frozen Linux
+artifact is built against Fedora's glibc, so it is no longer evidence that the binary runs on an
+older distro; `REL-001`'s Phase 5 release build must revisit that. `OPS-012` records all of it.
+
+**A self-hosted job with no online runner queues for up to 24 hours**, and `timeout-minutes` does
+not bound that — it caps how long a job may run once picked up. Both machines asleep means CI
+appears to hang rather than to fail.
+
+### Prose runs no CI, on either platform (`OPS-011`, 2026-08-05)
+
+A push that changes only documentation triggers **no `ci.yml` run at all** — not the Linux gate
+and not the Windows one. The exemption is symmetric because no argument for Linux fails to hold
+for Windows. `ci.yml`'s `paths-ignore` enumerates the exempt paths; adding one is a coverage
+decision, not tidying.
+
+**One gate read prose, and it moved rather than died.**
+`tests/unit/test_task_placement.py` (`T-096`) reads `ai/TASKS.md` — the only prose file the suite
+opens. It now runs in `.github/workflows/prose.yml`, alone, on `ubuntu-latest`, with `pytest` as
+its whole environment: no package install, no Qt, no Windows, seconds rather than ~19 minutes.
+Coverage unchanged; cost changed. If that test ever gains a dependency on the package, this
+arrangement stops being sufficient and `prose.yml` must say so rather than quietly widen.
+
+**What this costs you when reading the board:** a documentation-only head shows no run, so *"the
+last green run"* means the last run **over source**. Citing a phase gate requires a run against a
+head that changed code — which `P2EXIT-R8` is the finding for, where a cited run predated the
+thing it was supposed to evidence.
+
+The measurement that forced this: on 2026-08-05 four consecutive pushes produced three
+cancellations and no Windows evidence, none of the cancelled runs carrying a source change.
+Windows needs ~19 uninterrupted minutes on the one `STARBASE` slot; prose commits were landing
+every ~2 minutes. `OPS-011` records the runs.
 
 **Linux lands in ~7 minutes; Windows arrives later, and you do not wait for it.** Three Windows
 jobs serialise on the one self-hosted slot — measured in run `30861672178`: `windows desktop`

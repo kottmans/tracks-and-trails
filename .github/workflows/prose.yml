@@ -1,0 +1,90 @@
+# Prose gate — `OPS-011`.
+#
+# **This file exists so that exempting prose from CI did not delete a gate.**
+#
+# `ci.yml`'s `paths-ignore` now covers every prose file in the repository, `ai/TASKS.md`
+# included. That file is the one piece of prose the test suite actually reads:
+# `tests/unit/test_task_placement.py` (`T-096`) checks that every task entry opens with a status
+# from `TASKS.md`'s own declared vocabulary and sits under the section that status names. Dropping
+# it into `paths-ignore` and stopping there would have been a durable coverage loss made as a side
+# effect of a wall-clock change — exactly the shape `P2EXIT-R4` found and reversed.
+#
+# So the gate moved here rather than going away. What changed is its cost, not its coverage:
+#
+#   - **No Windows.** The placement test is `re` and `pathlib` over a text file. It has no
+#     platform dimension, and `OPS-005`'s reasoning about Windows verification does not reach it.
+#   - **No package install and no Qt.** The test imports `re`, `pathlib` and `pytest` and nothing
+#     else — checked, not assumed. `pip install pytest` is the whole environment.
+#   - **Seconds, not ~19 minutes.** The cost that made this necessary was three Windows jobs
+#     serialising on the one `STARBASE` slot while prose commits cancelled the run in flight.
+#
+# If `tests/unit/test_task_placement.py` ever grows a dependency on the package, this workflow
+# stops being sufficient and the honest fix is to say so here rather than quietly widen it.
+
+name: Prose
+
+on:
+  push:
+    paths:
+      - "ai/TASKS.md"
+      - "tests/unit/test_task_placement.py"
+      - ".github/workflows/prose.yml"
+  pull_request:
+    paths:
+      - "ai/TASKS.md"
+      - "tests/unit/test_task_placement.py"
+      - ".github/workflows/prose.yml"
+
+# Its own group, so a prose push never cancels a `CI` run and a `CI` push never cancels this.
+# Sharing `ci.yml`'s group would reintroduce the collision this whole change exists to remove.
+concurrency:
+  group: prose-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  placement:
+    name: task placement
+    # Follows `LINUX_RUNNER` like everything else Linux (`OPS-012`). Unset means hosted.
+    runs-on: ${{ fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # **Hosted only**, matching `ci.yml`. On a self-hosted runner — a machine somebody uses —
+      # `setup-python` runs the real installer and rearranges the system Python; it deleted the
+      # tool-cache once already at run `30823595744`. A job must never provision its own host.
+      - uses: actions/setup-python@v7
+        if: runner.environment == 'github-hosted'
+        with:
+          python-version: "3.14"
+
+      - name: Check the machine's Python
+        if: runner.environment != 'github-hosted'
+        run: python3 --version
+
+      # A virtualenv even for one dependency, so this never writes into the host's site-packages.
+      # Not `-e ".[dev]"`: the project install pulls PySide6, ~250 MB of wheels, for a test that
+      # reads a Markdown file. Installing only what the test imports keeps this in seconds.
+      - name: Install pytest into a virtualenv
+        run: |
+          python3 -m venv .venv-prose
+          .venv-prose/bin/python -m pip install --upgrade pip pytest
+
+      - name: Check that TASKS.md agrees with itself
+        run: |
+          mkdir -p reports
+          .venv-prose/bin/python -m pytest tests/unit/test_task_placement.py -v \
+            --junitxml=reports/junit-placement.xml 2>&1 | tee reports/placement.txt
+
+      # Matches `ci.yml`'s standing rule: every job leaves its evidence behind, pass or fail.
+      - name: Upload evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: evidence-prose
+          path: reports/
+          retention-days: 30

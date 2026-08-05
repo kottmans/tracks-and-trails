@@ -3104,6 +3104,186 @@ have been declined: removing the only keyboard route to a verb is not a presenta
 
 ---
 
+## OPS-012 — Linux runs on the maintainer's Fedora machines, because it is faster as well as free
+
+**Status:** **Accepted** (2026-08-05) — maintainer ruling
+**Date:** 2026-08-05
+**Extends:** `OPS-009`'s runner-selection mechanism to Linux. **Does not amend** `OPS-010`, which
+governs Windows placement, nor `OPS-005`, which defines what "Windows" means for verification.
+
+### Context
+
+Hosted Actions consumption reached **~90% of the monthly allowance in the first four days** of
+August. `OPS-010` had already moved Windows to `STARBASE`, so what remained on the meter was
+Linux: roughly 9 billed minutes per push across `check (ubuntu-latest)`, `frozen ubuntu-latest`
+and the coverage notice.
+
+The obvious reading is that this is a cost decision. **It is not, and the measurement is why.**
+Taken 2026-08-05:
+
+| Environment | Full suite | Note |
+|---|---|---|
+| Hosted `ubuntu-latest` | **7m36s** | the whole `check` job, install included |
+| Maintainer's desktop, i7-14700K | **4m29s** | serial, 2132 passed / 11 skipped |
+| Maintainer's laptop, `-n auto` | **58s** | `T-123`, 7x — adoption not done |
+
+The self-hosted machines are **faster than the hosted image**, so this buys development speed and
+stops the metering as a side effect rather than the other way round.
+
+### A `STARBASE` Linux VM was considered and rejected
+
+The maintainer proposed hosting Linux in a VM on `STARBASE`, making one machine the testing point
+for both platforms. `STARBASE` has the hardware for it — 2x Xeon E5-2650, 16 cores / 32 threads,
+32 GB, Windows 10 Pro. It was rejected on three grounds, the first of which is specific to this
+project and decisive:
+
+1. **It would invalidate the Windows baseline.** `OPS-007` accepted `T-074`'s unreproduced access
+   violation as residual risk on the strength of **361 attempts, zero events** — collected on bare
+   metal. Enabling Hyper-V converts the Windows host into a root partition running *on* the
+   hypervisor, with different scheduling and different timing. Putting a hypervisor underneath the
+   one machine that carries Windows verification, while an intermittent Windows crash is open and
+   a Linux segfault was diagnosed the previous day, is a confounder that would have to be chosen
+   deliberately and then re-baselined.
+2. **It would make the fast half slow.** The E5-2650 is 2012 silicon at 2.0 GHz; the suite there
+   is an estimated 13–16 minutes serial against 7m36s hosted and 4m29s on the desktop. `OPS-010`
+   explicitly relies on Linux answering in ~7 minutes while Windows runs long.
+3. **It would be a single point of failure.** `STARBASE` was offline on 2026-08-03 and `OPS-005`
+   needed an amendment to move the Windows gate. With Linux there too, one machine offline is no
+   CI at all, on either platform.
+
+The measured soak cost decided the margin: 60 runs for criterion 6(b) is **~4.5 hours** on the
+desktop against an estimated 13–16 hours on a contended VM — and an intermittent timing fault is
+badly served by a host contending with Windows CI.
+
+### Decision
+
+1. **`vars.LINUX_RUNNER` selects where Linux runs**, exactly as `WINDOWS_RUNNER` does for Windows.
+   Unset means `ubuntu-latest`, so a fresh clone and any fork still run hosted and this file's
+   default behaviour is unchanged. It governs `check`, `frozen`, and `prose.yml`.
+2. **Both the desktop and the laptop register with the same labels**, so a job lands on whichever
+   is free. Two runners also mean one machine being asleep does not stop CI.
+3. **System packages are installed on hosted images and verified on self-hosted ones.** `apt-get`
+   does not exist on Fedora, and a job must not provision a machine somebody uses — run
+   `30823595744` is what that costs. The Qt-library step now checks each `.so` with `ldconfig` and
+   **fails with the `dnf` command to fix it** rather than skipping silently. Verification, not
+   omission: a missing library otherwise surfaces as a puzzling `QApplication` failure hundreds of
+   lines later, or as a PyInstaller build failure.
+4. **`STARBASE coverage` stays hosted, and is now the only job that is.** It reports when
+   self-hosted work did not happen; running it self-hosted would delete the report in precisely
+   the case it exists to announce. One billed minute per run is the price of the guarantee, and it
+   now reports on Linux placement as well as Windows.
+
+### What is surrendered, in writing
+
+Stated because `OPS-010` stating its own surrenders is what let this entry weigh them.
+
+- **Ubuntu, as a tested platform.** Linux verification becomes Fedora 44. The project's README
+  claims "Linux (x86-64)" generally, and `apt`-based installation is no longer exercised anywhere.
+  **This is the surrender most likely to produce a user-visible defect**, and the cheapest way to
+  reopen it is to leave the nightly hosted.
+- **Clean-machine evidence, now on both platforms.** `OPS-010` gave it up for Windows; this gives
+  it up for Linux. Nothing in CI now runs on a machine nobody uses. `T-066` — CI installing the
+  project differently from how the documentation says to — is exactly the class this used to
+  catch.
+- **The frozen Linux artifact is now built against Fedora's glibc.** Symbol versioning means a
+  Fedora-built binary may not run on an older distro, so `frozen ubuntu-latest` stops being
+  evidence that the artifact runs anywhere but here. **`REL-001`'s release build is Phase 5 and
+  must revisit where Linux artifacts are produced** — a release built on a developer's desktop is
+  a different question from a smoke test run there, and this entry does not settle it.
+- **Availability becomes two more machines' availability.** A self-hosted job with no matching
+  online runner **queues for up to 24 hours** before GitHub discards it; `timeout-minutes` does not
+  bound that, as the `windows desktop` job's comment already records.
+
+### Consequences
+
+- `ai/TESTING.md` §10 is canonical for what runs where and follows this entry.
+- `docs/DEVELOPMENT.md` gains the runner-registration procedure; the labels are part of the
+  contract, since `LINUX_RUNNER` names them.
+- Unsetting `LINUX_RUNNER` restores hosted Linux with no other change — the same one-variable
+  reversal `OPS-009` built for Windows.
+
+---
+
+## OPS-011 — A prose-only push runs no CI, and the one gate that read prose moved rather than died
+
+**Status:** **Accepted** (2026-08-05) — maintainer ruling
+**Date:** 2026-08-05
+**Widens:** `OPS-009`'s `paths-ignore`. **Does not amend** `OPS-010` — Windows still runs on
+`STARBASE`, on every push that touches anything a test reads, and still answers asynchronously.
+
+### Context
+
+`OPS-009` exempted four prose paths from CI. The list was too narrow, and the cost is measured
+rather than argued. On 2026-08-05, four consecutive pushes to `main` produced **three
+cancellations and no Windows evidence**:
+
+| Run | Head | What it carried | Outcome |
+|---|---|---|---|
+| `30971854157` | `1d87929` | roadmap prose | success, 17m50s |
+| `30973364969` | `a884035` | **the only source change** | cancelled at 8m56s |
+| `30973765745` | `6b354f0` | roadmap prose | cancelled at 14m46s — `windows desktop` had passed |
+| `30974489596` | `a89ace2` | `ai/TASKS.md` — `T-144` filed | cancelled at 2m27s |
+| `30974585294` | `d6f50a9` | `ai/TASKS.md` — `T-145` filed | superseded in turn |
+
+**Not one of the cancelled runs carried a source change.** `a884035`'s tree stayed byte-identical
+to `main` across `src/`, `tests/`, `packaging/`, `tools/` and `.github/` throughout — every one of
+those runs was rebuilding the same code, and each was killed by a commit that only added text.
+
+The arithmetic is the whole argument. `OPS-010` puts three Windows jobs on the one `STARBASE`
+slot, so Windows needs **~19 uninterrupted minutes**; task filings were landing every **~2
+minutes**. Under `cancel-in-progress`, Windows evidence for the source could not complete at all,
+and criterion 8 stayed unevidenced for reasons that had nothing to do with the code.
+
+Two of the offending paths — `ai/roadmap-phase-2.html` and `ai/TASKS.md` — were outside
+`OPS-009`'s list. The roadmap by oversight. **`ai/TASKS.md` deliberately**, because
+`tests/unit/test_task_placement.py` (`T-096`) reads it.
+
+### Decision
+
+1. **Every prose file in the repository is exempt from `ci.yml`**, enumerated in its
+   `paths-ignore` anchor: the eight `ai/*.md` documents, `ai/*.html`, `ai/evidence/**`,
+   `ai/handoffs/**`, `docs/**`, `AGENTS.md`, `README.md` and `LICENSE`. Enumerated rather than
+   globbed as `ai/**`, so that adding a file is a deliberate act.
+2. **`ai/TASKS.md` is exempt too, and its gate moved to `.github/workflows/prose.yml`** — a job
+   that runs `tests/unit/test_task_placement.py` and nothing else. **The coverage is unchanged;
+   only its cost is.** The test imports `re`, `pathlib` and `pytest` — verified, not assumed — so
+   it needs no package install, no Qt and no Windows, and it completes in seconds against ~19
+   minutes.
+3. **The exemption is symmetric across platforms**, per the ruling: a prose push runs neither the
+   Linux gate nor the Windows one. There is no argument for Linux that does not also hold for
+   Windows, and an asymmetric rule would be one more thing to remember wrongly.
+4. **`prose.yml` takes its own concurrency group.** Sharing `ci.yml`'s would reintroduce exactly
+   the collision this entry exists to remove.
+
+### Why this is not the coverage loss `P2EXIT-R4` reversed
+
+That finding was a durable coverage change made for wall-clock and then defended with an argument
+about money that did not apply. The distinction here is that **nothing stops being checked.**
+Every test that ran before still runs, on both platforms, on every commit that changes anything a
+test reads. What changes is that a commit which cannot affect any test no longer pretends to be
+evidence — and no longer destroys somebody else's.
+
+The `T-096` placement gate is the case that proves it: the cheap move was to add `ai/TASKS.md` to
+`paths-ignore` and stop, which would have silently deleted a gate as a side effect of a speed
+change. That is the `P2EXIT-R4` shape, and it was refused.
+
+### What is surrendered, in writing
+
+- **A prose commit is no longer a green tick.** A documentation-only head will show no CI run at
+  all, and *"the last green run"* now means the last run over source. Anyone reading the board for
+  a phase gate must cite a run against a head that changed code — which is what the citation was
+  always supposed to mean, and `P2EXIT-R8` is the finding where it did not.
+- **A malformed workflow file in a prose-only push is caught by `prose.yml` only if it touches
+  that file.** `.github/**` is not exempt, so `ci.yml` changes still run the matrix.
+
+### Consequences
+
+- `ai/TESTING.md` §10 is canonical for what runs when and follows this entry.
+- The three cancelled runs above need no re-run *as such*: the next push that touches source will
+  carry the evidence, and until then `a884035`'s source is unchanged from `main`.
+
+---
+
 ## OPS-010 — Windows runs on `STARBASE`, on every push, and asynchronously
 
 **Status:** **Accepted** (2026-08-03) — maintainer ruling on `P2EXIT-R4`

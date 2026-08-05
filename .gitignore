@@ -10,6 +10,7 @@ dist/
 
 # Environments
 .venv/
+.venv-prose/
 venv/
 env/
 .python-version

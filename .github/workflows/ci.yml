@@ -25,17 +25,47 @@ name: CI
 on:
   push:
     paths-ignore: &prose
-      # **Prose that no test reads** (`OPS-009`). Every push here used to run the full matrix,
-      # including two Windows jobs at 2x, for files nothing asserts on. It also meant a
-      # documentation push cancelled whatever run was in flight — which happened twice in one
-      # night, discarding a Windows job each time.
+      # **Prose that no test reads** (`OPS-011`, widening `OPS-009`). Every push here used to run
+      # the full matrix, including two Windows jobs at 2x, for files nothing asserts on. It also
+      # meant a documentation push cancelled whatever run was in flight.
       #
-      # Deliberately **not** all of `ai/`: `tests/unit/test_task_placement.py` reads
-      # `ai/TASKS.md`, so a filter written against "docs" as a category would skip a gate. These
-      # four are read by nothing.
+      # **The narrow version of this list did not work**, and the failure is measured: on
+      # 2026-08-05 four consecutive pushes produced three cancellations and no Windows evidence,
+      # because Windows needs ~19 uninterrupted minutes on the one `STARBASE` slot while prose
+      # commits were landing every ~2 minutes. Not one of the cancelled runs carried a source
+      # change — `a884035`'s tree was byte-identical to `main` across `src/`, `tests/`,
+      # `packaging/`, `tools/` and `.github/` throughout. The gate was rebuilding the same code
+      # and being killed by commits that only added text.
+      #
+      # **`ai/TASKS.md` is in this list, and its gate did not go with it.**
+      # `tests/unit/test_task_placement.py` reads that file — it is the *only* prose file any test
+      # opens, verified by grepping every `read_text`/`open`/`Path` call under `tests/`; every
+      # other `ai/` mention in the suite is a citation in a docstring. `OPS-009` therefore kept it
+      # out of this list, which is why the two pushes that cancelled runs on 2026-08-05 (`T-144`
+      # and `T-145`, both `ai/TASKS.md` alone) still ran the full matrix.
+      #
+      # Exempting it here would have been the silent-coverage-loss `P2EXIT-R4` found once already.
+      # Instead the gate **moved to `.github/workflows/prose.yml`**, which runs that one test and
+      # nothing else: no Qt, no package install, no Windows, seconds rather than 19 minutes. The
+      # coverage is unchanged; only its cost is.
+      #
+      # Adding a file here is a coverage decision, not tidying: check first that no test reads it.
+      - "ai/ARCHITECTURE.md"
+      - "ai/DECISIONS.md"
+      - "ai/IMPLEMENTATION_PLAN.md"
+      - "ai/PROMPTS.md"
+      - "ai/REQUIREMENTS.md"
       - "ai/REVIEWS.md"
+      - "ai/STATUS.md"
+      - "ai/TASKS.md"
+      - "ai/TESTING.md"
+      - "ai/*.html"
+      - "ai/evidence/**"
       - "ai/handoffs/**"
       - "docs/**"
+      - "AGENTS.md"
+      - "README.md"
+      - "LICENSE"
       - "**/*.md.orig"
   pull_request:
     paths-ignore: *prose
@@ -77,7 +107,16 @@ jobs:
     # Unset means `windows-latest`, which is the ruling's default: hosted, for clean-machine
     # evidence. If the hosted allowance runs out, set it to `["self-hosted","windows","desktop"]`
     # and every Windows job is on `STARBASE` with no push required.
-    runs-on: ${{ matrix.os == 'windows-latest' && fromJSON(vars.WINDOWS_RUNNER || '"windows-latest"') || matrix.os }}
+    #
+    # **`LINUX_RUNNER` does the same for Linux** (`OPS-012`). Unset means `ubuntu-latest`, so the
+    # default behaviour of this file is unchanged and a fresh clone still runs hosted. Set it to
+    # `["self-hosted","Linux","fedora"]` and Linux runs on the maintainer's machines, which are
+    # **faster than the hosted image, not merely cheaper**: the full suite is 4m29s on the desktop
+    # against 7m36s for this whole job hosted, measured 2026-08-05.
+    runs-on: >-
+      ${{ matrix.os == 'windows-latest'
+          && fromJSON(vars.WINDOWS_RUNNER || '"windows-latest"')
+          || fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
     timeout-minutes: 15
 
     strategy:
@@ -135,10 +174,37 @@ jobs:
         # The offscreen platform plugin still links EGL/GL and xkbcommon; without these the
         # Qt import succeeds and QApplication construction fails, which is a confusing way to
         # discover a missing system package.
+        #
+        # **Installed on hosted runners, verified on self-hosted ones** (`OPS-012`), the same
+        # position the ffmpeg step below already takes. Two reasons, and the second is the real
+        # one: `apt-get` does not exist on Fedora, and a job must not install system packages on
+        # a machine somebody uses — that is the `setup-python` incident at run `30823595744`.
+        #
+        # Verified rather than merely skipped: a missing library here surfaces as a puzzling
+        # `QApplication` failure hundreds of lines later, so this fails immediately and says which
+        # library and how to install it. Silence would be the weakening; this is not silent.
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+          if [ "${{ runner.environment }}" = "github-hosted" ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+          else
+            echo "self-hosted: not installing system packages; verifying what is present"
+            missing=""
+            for lib in libEGL.so.1 libGL.so.1 libxkbcommon.so.0 libdbus-1.so.3 libfontconfig.so.1; do
+              if ldconfig -p | grep -q "$lib"; then
+                echo "  $lib: present"
+              else
+                echo "  $lib: MISSING"
+                missing="$missing $lib"
+              fi
+            done
+            if [ -n "$missing" ]; then
+              echo "::error::Missing Qt runtime libraries:$missing"
+              echo "::error::On Fedora: sudo dnf install -y mesa-libEGL mesa-libGL libxkbcommon dbus-libs fontconfig"
+              exit 1
+            fi
+          fi
 
       - name: Install ffmpeg
         # T-062. This project is a front end for a tool that shells out to ffmpeg, so a runner
@@ -323,6 +389,18 @@ jobs:
               echo "::notice::WINDOWS_RUNNER is set, so the hosted Windows leg of check did NOT run"
               echo "::notice::and offscreen-on-Windows is not covered (OPS-010, surrendered)."
             fi
+          fi
+
+          # **This job stays hosted deliberately** (`OPS-012`), and it is now the only one that is.
+          # It reports when self-hosted work did not happen; running it on a self-hosted machine
+          # would mean the report disappears in exactly the case it exists to announce. It costs
+          # seconds, and one billed minute is the price of the guarantee.
+          if [ -n "${{ vars.LINUX_RUNNER }}" ]; then
+            echo "::notice::LINUX_RUNNER is set, so Linux ran on the maintainer's machines, not on"
+            echo "::notice::a hosted image. Ubuntu is not covered by this run and the frozen Linux"
+            echo "::notice::artifact was built against Fedora's glibc (OPS-012, surrendered)."
+          else
+            echo "::notice::LINUX_RUNNER is unset; Linux ran hosted on ubuntu-latest."
           fi
 
   windows-desktop:
@@ -626,8 +704,14 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # `name` stays `ubuntu-latest` even when `LINUX_RUNNER` sends this to Fedora, because it
+          # is the job's identity in the checks list and renaming it per-machine would break every
+          # citation in `ai/` that names a job. **What the job now measures is in `OPS-012`**: a
+          # Fedora-built artifact links Fedora's glibc, so this stops being evidence that the
+          # frozen build runs on an older distro. `REL-001`'s release build is Phase 5 and must
+          # revisit where Linux artifacts are produced.
           - name: ubuntu-latest
-            runner: ubuntu-latest
+            runner: ${{ fromJSON(vars.LINUX_RUNNER || '"ubuntu-latest"') }}
           - name: windows
             runner: [self-hosted, windows, desktop]
 
@@ -658,12 +742,28 @@ jobs:
           python --version
           python -c "import sys; assert sys.version_info[:2] == (3, 14), sys.version"
 
+      # Same position as the `check` job's copy (`OPS-012`): installed on a hosted image, verified
+      # on a machine somebody uses. PyInstaller imports Qt to collect it, so a missing library here
+      # fails the *build* rather than a test, which is an even worse place to discover it.
       - name: Install Qt runtime libraries
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+          if [ "${{ runner.environment }}" = "github-hosted" ]; then
+            sudo apt-get update
+            sudo apt-get install -y --no-install-recommends \
+              libegl1 libgl1 libxkbcommon0 libdbus-1-3 libfontconfig1
+          else
+            echo "self-hosted: not installing system packages; verifying what is present"
+            missing=""
+            for lib in libEGL.so.1 libGL.so.1 libxkbcommon.so.0 libdbus-1.so.3 libfontconfig.so.1; do
+              ldconfig -p | grep -q "$lib" && echo "  $lib: present" || { echo "  $lib: MISSING"; missing="$missing $lib"; }
+            done
+            if [ -n "$missing" ]; then
+              echo "::error::Missing Qt runtime libraries:$missing"
+              echo "::error::On Fedora: sudo dnf install -y mesa-libEGL mesa-libGL libxkbcommon dbus-libs fontconfig"
+              exit 1
+            fi
+          fi
 
       # T-066: the suite runs in a virtualenv, because `docs/DEVELOPMENT.md` tells developers
       # to use one and a gate that measures a different environment is measuring the wrong

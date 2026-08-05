@@ -33,6 +33,143 @@ Worth reading before trusting any Windows result: the runners are elevated, have
 enabled, and until `T-066` installed without a virtualenv. Every one of those differences was a
 test that passed on CI and failed on a desk.
 
+## Registering a Linux CI runner (`OPS-012`)
+
+Linux CI runs on the maintainer's Fedora machines rather than on hosted images — **faster** as
+well as free: 4m29s for the full suite on the desktop against 7m36s for the whole hosted `check`
+job. `vars.LINUX_RUNNER` selects it; unset the variable and everything returns to `ubuntu-latest`.
+
+Do this once per machine. Both the desktop and the laptop get **the same labels**, so a job lands
+on whichever is free and one machine being asleep does not stop CI.
+
+Prerequisites, checked rather than assumed — on Fedora 44 these are typically already present:
+
+```bash
+python3 --version                       # must be 3.14.x
+ffmpeg -version | head -1
+for lib in libEGL.so.1 libGL.so.1 libxkbcommon.so.0 libdbus-1.so.3 libfontconfig.so.1; do
+    ldconfig -p | grep -q "$lib" && echo "$lib ok" || echo "$lib MISSING"
+done
+# If any are missing:
+# sudo dnf install -y mesa-libEGL mesa-libGL libxkbcommon dbus-libs fontconfig
+```
+
+Then register. The token comes from **Settings → Actions → Runners → New self-hosted runner** and
+expires in an hour:
+
+```bash
+mkdir -p ~/actions-runner && cd ~/actions-runner
+
+# The asset name carries the version — there is no version-less "latest/download" file, and
+# requesting one returns a 9-byte "Not Found" page that tar then rejects as "not in gzip format".
+# `-f` is what makes that a failed command rather than a corrupt download.
+# No `${}` braces anywhere below, deliberately: a paste that percent-encodes them sends curl a
+# literal `$%7BRUNNER_VERSION%7D` and it 404s, while the *next* line expands correctly and names
+# a file that was never downloaded. Observed 2026-08-05 on one machine and not the other.
+RUNNER_VERSION=$(curl -fsSL https://api.github.com/repos/actions/runner/releases/latest \
+                 | grep -oP '"tag_name": "v\K[^"]+')
+echo "runner $RUNNER_VERSION"
+curl -fLO https://github.com/actions/runner/releases/download/v$RUNNER_VERSION/actions-runner-linux-x64-$RUNNER_VERSION.tar.gz
+
+# Verify before extracting. The expected digest is published in the release notes.
+sha256sum actions-runner-linux-x64-$RUNNER_VERSION.tar.gz
+
+tar xzf actions-runner-linux-x64-$RUNNER_VERSION.tar.gz
+```
+
+Then configure. **Mint the registration token inline rather than pasting one.** Registration
+tokens expire in an hour and are single-use, so a copied one is usually dead by the second
+machine; `gh` needs only the `repo` scope to issue a fresh one:
+
+```bash
+./config.sh --url https://github.com/kottmans/tracks-and-trails \
+  --token "$(gh api -X POST repos/kottmans/tracks-and-trails/actions/runners/registration-token --jq .token)" \
+  --labels self-hosted,linux,fedora \
+  --name "$(hostname)" --unattended
+sudo ./svc.sh install && sudo ./svc.sh start     # survives reboot
+sudo ./svc.sh status
+```
+
+Expect `√ Runner successfully added` and `√ Runner connection is good`. The web route —
+**Settings → Actions → Runners → New self-hosted runner** — shows the same token inside a
+prefilled `./config.sh` line, but hand-copying it is where the expiry and placeholder mistakes
+come from.
+
+### Install it under `/opt`, not `/home` — SELinux will refuse otherwise
+
+**Do this before configuring**, or redo it afterwards as below. On Fedora with SELinux enforcing,
+a service started from `/home` fails instantly with `status=203/EXEC` and an audit denial:
+
+```
+avc: denied { execute } for comm="(runsvc.sh)" name="runsvc.sh"
+scontext=system_u:system_r:init_t:s0  tcontext=unconfined_u:object_r:user_home_t:s0
+```
+
+The file is executable — `-rwxr-xr-x` — and that is the trap. The permission bits are fine; the
+*label* is not. `/home` is `user_home_t`, which systemd is not permitted to execute, by design, so
+that a compromised home directory cannot inject service binaries. Both machines hit this on
+2026-08-05 and `config.sh` had succeeded on both, so the runners were registered and dead: they
+appear in the API as `status=offline`, which reads like a network problem rather than a policy one.
+
+Recovering an already-configured runner, without re-registering — the move does not touch
+`.runner` or `.credentials`, so no new token is needed:
+
+```bash
+cd ~/actions-runner && sudo ./svc.sh uninstall
+sudo mv ~/actions-runner /opt/actions-runner
+sudo chown -R "$USER:$USER" /opt/actions-runner
+
+sudo dnf install -y policycoreutils-python-utils            # provides semanage
+sudo semanage fcontext -a -t bin_t "/opt/actions-runner(/.*)?"
+sudo restorecon -Rv /opt/actions-runner
+
+cd /opt/actions-runner
+sudo ./svc.sh install "$USER" && sudo ./svc.sh start && sudo ./svc.sh status
+```
+
+**Use `semanage`, not `chcon`.** `chcon -R -t bin_t` fixes it now and is silently reverted by the
+next filesystem relabel — CI that breaks months later for no visible reason. `semanage` records
+the rule so `restorecon` reapplies it.
+
+Confirm from the API rather than from the local service, since a running service that cannot reach
+GitHub still reports `active`:
+
+```bash
+gh api repos/kottmans/tracks-and-trails/actions/runners \
+  --jq '.runners[] | "\(.name) \(.status)"'
+```
+
+**`svc.sh` does not ship in the tarball** — the layout contains `config.sh`, `run.sh` and `env.sh`
+only, and `svc.sh` is generated from `systemd.svc.sh.template` by `config.sh`. So `./svc.sh:
+command not found` before configuring is expected, and after configuring means `config.sh` did not
+complete. Do not go looking for it in the archive.
+
+**The labels are part of the contract**, because `LINUX_RUNNER` names them — and **GitHub rewrites
+what you asked for**. It adds `self-hosted`, `X64` and `Linux` itself, folding a requested `linux`
+into its own capitalised `Linux`, so both machines above report
+`self-hosted,X64,Linux,fedora`. Set the variable from what the API says the runner *has*, not from
+what `--labels` requested:
+
+```bash
+gh api repos/kottmans/tracks-and-trails/actions/runners \
+  --jq '.runners[] | "\(.name) \([.labels[].name]|join(","))"'
+```
+
+Finally, point CI at them:
+
+```bash
+gh variable set LINUX_RUNNER --body '["self-hosted","Linux","fedora"]'
+```
+
+**Do not install the runner into this checkout.** It keeps its own workspace under
+`~/actions-runner/_work`; a runner sharing your working tree would check out over your edits.
+
+Two things to know once it is live. A self-hosted job with **no online runner queues for up to 24
+hours** before GitHub discards it — `timeout-minutes` does not bound that, so both machines asleep
+makes CI look hung rather than failed. And no CI job now runs on a machine nobody uses, on either
+platform, so `T-066`'s class of finding — CI installing the project differently from the way this
+file documents — no longer has anywhere to be caught. `OPS-012` records what that surrenders.
+
 ## Setup
 
 ```bash
