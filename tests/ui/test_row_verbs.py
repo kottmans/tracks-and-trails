@@ -14,7 +14,13 @@ literal without the entry, this file fails.
 import pytest
 
 from tracks_and_trails.core.job_state import JobStatus
-from tracks_and_trails.ui.row_verbs import LABELS, MORE_LABEL, Verb, verbs_for
+from tracks_and_trails.ui.row_verbs import (
+    LABELS,
+    MORE_LABEL,
+    Verb,
+    history_group_verbs,
+    verbs_for,
+)
 
 #: `UX-005` §4, quoted: "Running — *Cancel*. Queued — *↑*, *↓*, *Cancel*. Failed — *Retry*,
 #: *Remove*. Done — *Open*, *Show in folder*."
@@ -111,3 +117,41 @@ def test_every_verb_has_a_label() -> None:
     for verb in Verb:
         assert LABELS.get(verb), f"{verb.value} has no label, so it would draw as a blank button"
     assert MORE_LABEL, "the overflow has no label, so the keyboard route has nothing to point at"
+
+
+def test_a_terminal_history_group_offers_only_what_it_can_perform() -> None:
+    """`T-142`, transcribed from `UX-005` §3 and row 9, `REQ-021` and `DAT-005`.
+
+    **Written out by hand rather than derived from `group_verbs`**, which is this file's whole
+    method: the queue's list and History's are independent readings of the same decisions, and a
+    test that computed one from the other would pass while they said the same wrong thing.
+
+    Every member of a History group is terminal, so `Cancel all` has nothing to stop and
+    `Retry failed` has no job to retry — a record is not a download (`DAT-005`). `Open` is out
+    because a group has no single file. What is left is the folder they share (`UX-005` row 10) and
+    a removal that never touches one (`DAT-005` §2).
+    """
+    assert history_group_verbs([True, True]) == (Verb.REVEAL, Verb.REMOVE)
+    assert history_group_verbs([False, True]) == (Verb.REVEAL, Verb.REMOVE), (
+        "one member naming a file is enough: the entries share a folder, so any of them reveals it"
+    )
+    assert history_group_verbs([False, False]) == (Verb.REMOVE,), (
+        "a group whose records name no file offered to show one, which FileActions would refuse "
+        "for a reason the user cannot act on"
+    )
+    assert history_group_verbs([]) == (Verb.REMOVE,), (
+        "a group the user no longer wants is always removable, so the header is never left with "
+        "nothing at all"
+    )
+
+
+def test_a_history_group_never_offers_a_queue_verb() -> None:
+    """The trap `T-142` names: assuming History's verbs are the queue's.
+
+    Asserted over the whole of `Verb` rather than a list of the four that matter, so a verb added
+    to the queue's vocabulary later cannot quietly appear on a terminal group.
+    """
+    for offer in ([True, True], [False, False]):
+        assert set(history_group_verbs(offer)) <= {Verb.REVEAL, Verb.REMOVE}, (
+            f"history_group_verbs({offer}) offers something outside what a record supports"
+        )

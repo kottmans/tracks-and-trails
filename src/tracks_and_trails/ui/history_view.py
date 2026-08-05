@@ -104,7 +104,7 @@ from tracks_and_trails.ui.row_delegate import (
     VERBS_ROLE,
     RowDelegate,
 )
-from tracks_and_trails.ui.row_verbs import Verb
+from tracks_and_trails.ui.row_verbs import Verb, history_group_verbs
 from tracks_and_trails.ui.staging import placeholder_hue
 from tracks_and_trails.ui.thumbnails import ThumbnailLoader, ThumbnailStore
 
@@ -228,6 +228,23 @@ class HistoryModel(QAbstractTableModel):
         if isinstance(entry, Group):
             return tuple(member.id for member in entry.members)
         return (self._entries[entry].id,)
+
+    def records_for(self, row_id: str) -> tuple[str, ...]:
+        """`records_at`, by id rather than by row — which records `row_id` stands for (`T-142`).
+
+        A verb arrives naming the row it was drawn on, and that id is a *playlist* id for a header
+        and a record id otherwise. The two spaces are not distinguishable by inspection, so this
+        asks the visible groups — `QueueView._on_verb`'s authority, for the reason it records:
+        routing on the verb alone is wrong, because `Show in folder` and `Remove` are offered by
+        ordinary rows too.
+
+        Empty for an id this model does not hold, so a verb routed against a group that was
+        dissolved between the paint and the click acts on nothing.
+        """
+        members = self.group_entries(row_id)
+        if members:
+            return tuple(member.id for member in members)
+        return (row_id,) if row_id in self.entry_ids() else ()
 
     def row_of(self, entry_id: str) -> int | None:
         """Where `entry_id` is drawn, or `None` when nothing shows it.
@@ -458,14 +475,11 @@ class HistoryModel(QAbstractTableModel):
             # after the first removal.
             return f"{len(group.members)} items"
         if role == VERBS_ROLE:
-            # **None, and that is this task's stopping line rather than an oversight** (`T-142`).
-            # The queue's `group_verbs()` answers `Cancel all`, `Retry failed` and `Show in folder`
-            # from member statuses, and in History every member is terminal by definition: there is
-            # nothing to cancel and, under `DAT-005`, a record is not a download to retry. What a
-            # terminal group can honestly offer is a **different list**, derived the same way, and
-            # deriving it is `T-142`. An empty tuple is what the row draws until then; borrowing
-            # the queue's list would be the mistake that task exists to avoid.
-            return ()
+            # **Derived from every member, not borrowed from the queue** (`T-142`). A history group
+            # is terminal by definition, so `group_verbs()`'s `Cancel all` and `Retry failed` have
+            # nothing to act on; what is left is `Show in folder` and a removal that names its
+            # count. `history_group_verbs` is where that list is transcribed and why.
+            return history_group_verbs(bool(member.output_path) for member in group.members)
         if role == DETAIL_ROLE:
             # The same two facts an ordinary history row's second line carries, over the group.
             return " — ".join((self._group_size(group), self._group_completed(group)))
@@ -716,16 +730,35 @@ class HistoryView(QWidget):
             # missing rather than a second one beside it.
             self.more_requested.emit(entry_id, self._delegate.overflowing(entry_id))
             return
+        # **What this row stands for, resolved once** (`T-142`). For a group header that is its
+        # members; for an ordinary row it is the one record. Both verbs below act on records, so
+        # neither has to know which kind of row reported it — and a header id, which names nothing
+        # in `history`, never escapes this method.
+        own = self._model.records_for(entry_id)
+        if not own:
+            return
         if verb is Verb.OPEN:
-            self.open_requested.emit(entry_id)
+            # **A header is refused rather than resolved.** A group does not offer this — there is
+            # no one file to open, and picking one would be a decision rather than an
+            # implementation — so this acts only when the row *is* the record.
+            if own == (entry_id,):
+                self.open_requested.emit(entry_id)
         elif verb is Verb.REVEAL:
-            self.reveal_requested.emit(entry_id)
+            # **Re-checked here, not trusted from the offer** (`T140-R6`). The verb the row drew
+            # came from the model a moment ago; what has to hold is that some record still names a
+            # file. For a group that is the first member with a path — the entries share one folder
+            # (`UX-005` row 10), so revealing any of them reveals the playlist.
+            target = next((each for each in own if self._model.path_for(each)), None)
+            if target is not None:
+                self.reveal_requested.emit(target)
         elif verb is Verb.REMOVE:
-            # **The selection, and the row that was clicked if it is not in it.** A user who
-            # clicks Remove on an unselected row means that row; one who has three selected and
-            # clicks Remove on one of them means the three (`DAT-005` §1).
+            # **The selection, and what was clicked if it is not in it.** A user who clicks Remove
+            # on an unselected row means that row; one who has three selected and clicks Remove on
+            # one of them means the three (`DAT-005` §1). A header is "in" the selection when every
+            # record it stands for is, which is the same rule read one level up.
             selected = self.selected_entry_ids()
-            self.removal_requested.emit(list(selected) if entry_id in selected else [entry_id])
+            covered = all(each in selected for each in own)
+            self.removal_requested.emit(list(selected) if covered else list(own))
         else:
             raise AssertionError(f"a history row offered {verb!r} and nothing routes it")
 

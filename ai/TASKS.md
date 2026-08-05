@@ -1749,64 +1749,6 @@ broken down. Phase 1 listed nine deliverables and produced fifty tasks; these ei
 starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
 it.)*
 
-### T-142 — A History playlist has no verbs of its own
-
-**Status:** Proposed — **re-scoped 2026-08-05.** This task was filed to hold `T-140`'s group verbs,
-count-bearing removal and keyboard disclosure. `T140-R5` ruled that arrangement out — a closed
-criterion list cannot make accepted work complete by moving it elsewhere — and all three are now
-**built in `T-140`**. What is left is the surface that was always genuinely later: the same
-argument one tab over.
-**Owner:** Implementer
-**Priority:** Medium — the two tabs draw the same row anatomy and answer different verbs on it
-**Phase:** Phase 3
-**Depends on:** `T-145`, which has to decide what a history group *is* before anything can act on
-one. `T-140` (done) is the queue-side precedent to follow rather than reinvent
-**Relevant context:** `UX-005` §3 and row 9, `DAT-005` §4, `T-140`'s `group_verbs`, `T-145`,
-`ui/history_view.py`, `ui/row_verbs.py`
-**Affected surfaces:** `ui/history_view.py`, `ui/row_verbs.py`, `ui/main_window.py`
-**Risk:** Medium — the verbs differ from the queue's, and assuming they do not is the trap
-
-#### Scope
-
-**The queue's header has verbs; History's does not** — and History's cannot simply borrow them.
-`group_verbs()` answers `Cancel all`, `Retry failed` and `Show in folder` from member statuses,
-and in History every member is terminal by definition: there is nothing to cancel and, under
-`DAT-005`, a record is not a download to retry. What a history group plausibly offers is
-`Show in folder` and a removal that names its count — which is a **different list**, derived the
-same way.
-
-**`T-145` comes first and this is not sequencing pedantry.** A history group's identity is what
-`T-145` decides; a verb cannot act on a group nobody has defined. `T-144`'s bulk clear is the
-neighbouring question of what removal means over many records at once.
-
-**The queue-side answer is the precedent.** `T-140` established that a group's offer is derived
-from its members and re-checked when routed — `T140-R6` is what deriving it from status alone
-cost, a playlist of DRM failures offering a retry `SEC-001` forbids. Whatever History offers is
-derived and re-checked the same way.
-
-#### Acceptance criteria
-
-- A History playlist header offers the verbs a **terminal** group can honestly support, each one
-  transcribed from `UX-005` and `DAT-005` rather than copied from the queue's list
-- Removal names its own count (`DAT-005` §4), reusing the queue's question shape rather than a
-  second wording for the same act
-- A verb on the header does not touch records outside the group, asserted with an unrelated
-  record beside it
-- Entry verbs are unchanged — this adds a level, it does not move one
-- The offer is derived from the members and re-checked when routed, per `T140-R6`
-
-#### Out of scope
-
-- **Everything now built in `T-140`**: the queue header's verbs, its count-bearing removal, and the
-  keyboard disclosure route. Listed because this task previously *was* that work
-- **Selecting several groups and acting on all of them.** One header acting on its own members is
-  this task; multi-group selection is `T-144`'s shape
-- **`Open` on a header.** There is no one file to open, and inventing one would be a decision
-- **Reordering a group as a unit**, or moving entries between groups. `REQ-016`'s reordering
-  predates grouping and does not say what either means
-
----
-
 ### T-143 — A playlist's entries are never probed, so their rows stay bare
 
 **Status:** Proposed — **found by the maintainer, 2026-08-04**, downloading a real 16-item
@@ -2704,6 +2646,65 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-142 — A History playlist has no verbs of its own
+
+**Status:** **Complete — 2026-08-05, awaiting review.** Re-scoped 2026-08-05: this task was
+filed to hold `T-140`'s group verbs, count-bearing removal and keyboard disclosure, `T140-R5`
+ruled that arrangement out, and all three were built in `T-140`. What is left — the same
+argument one tab over — is built here on `T-145`'s groups. A terminal group offers
+`Show in folder` and `Remove` and nothing else: `history_group_verbs()` derives them, and the
+two the queue offers are absent because a record has no download to cancel or retry.
+**Owner:** Implementer
+**Priority:** Medium — the two tabs draw the same row anatomy and answer different verbs on it
+**Phase:** Phase 3
+**Depends on:** `T-145`, which has to decide what a history group *is* before anything can act on
+one. `T-140` (done) is the queue-side precedent to follow rather than reinvent
+**Relevant context:** `UX-005` §3 and row 9, `DAT-005` §4, `T-140`'s `group_verbs`, `T-145`,
+`ui/history_view.py`, `ui/row_verbs.py`
+**Affected surfaces:** `ui/history_view.py`, `ui/row_verbs.py`, `ui/main_window.py`
+**Risk:** Medium — the verbs differ from the queue's, and assuming they do not is the trap
+
+#### Scope
+
+**The queue's header has verbs; History's does not** — and History's cannot simply borrow them.
+`group_verbs()` answers `Cancel all`, `Retry failed` and `Show in folder` from member statuses,
+and in History every member is terminal by definition: there is nothing to cancel and, under
+`DAT-005`, a record is not a download to retry. What a history group plausibly offers is
+`Show in folder` and a removal that names its count — which is a **different list**, derived the
+same way.
+
+**`T-145` comes first and this is not sequencing pedantry.** A history group's identity is what
+`T-145` decides; a verb cannot act on a group nobody has defined. `T-144`'s bulk clear is the
+neighbouring question of what removal means over many records at once.
+
+**The queue-side answer is the precedent.** `T-140` established that a group's offer is derived
+from its members and re-checked when routed — `T140-R6` is what deriving it from status alone
+cost, a playlist of DRM failures offering a retry `SEC-001` forbids. Whatever History offers is
+derived and re-checked the same way.
+
+#### Acceptance criteria
+
+- A History playlist header offers the verbs a **terminal** group can honestly support, each one
+  transcribed from `UX-005` and `DAT-005` rather than copied from the queue's list
+- Removal names its own count (`DAT-005` §4), reusing the queue's question shape rather than a
+  second wording for the same act
+- A verb on the header does not touch records outside the group, asserted with an unrelated
+  record beside it
+- Entry verbs are unchanged — this adds a level, it does not move one
+- The offer is derived from the members and re-checked when routed, per `T140-R6`
+
+#### Out of scope
+
+- **Everything now built in `T-140`**: the queue header's verbs, its count-bearing removal, and the
+  keyboard disclosure route. Listed because this task previously *was* that work
+- **Selecting several groups and acting on all of them.** One header acting on its own members is
+  this task; multi-group selection is `T-144`'s shape
+- **`Open` on a header.** There is no one file to open, and inventing one would be a decision
+- **Reordering a group as a unit**, or moving entries between groups. `REQ-016`'s reordering
+  predates grouping and does not say what either means
+
+---
 
 ### T-145 — History lists a playlist's tracks individually instead of grouping them
 

@@ -663,9 +663,9 @@ def test_a_header_is_not_a_record_and_never_answers_as_one(qapp: QApplication) -
         "row is the unrelated download, and naming a hidden member points every file verb at a "
         "record the user cannot see"
     )
-    assert view.verbs_of("pl-1") == (), (
-        "the header offered a record's verbs, which T-142 owns deriving honestly for a terminal "
-        "group — borrowing the row's list is what that task exists to prevent"
+    assert view.verbs_of("pl-1") == (Verb.REVEAL, Verb.REMOVE), (
+        f"the header offers {view.verbs_of('pl-1')}; a terminal group's list is derived for it "
+        "(T-142) rather than borrowed from the row beneath it"
     )
 
 
@@ -885,3 +885,146 @@ def test_both_tabs_draw_a_playlist_with_the_same_anatomy(
     finally:
         manager.shutdown()
         drain(qapp, [manager])
+
+
+# --- a History playlist's own verbs (`T-142`) --------------------------------------------------
+
+
+def test_a_history_group_offers_what_a_terminal_group_can_support(qapp: QApplication) -> None:
+    """The list, transcribed from `UX-005` and `DAT-005` rather than copied from the queue.
+
+    Every member of a History group is terminal by definition — `DAT-005` admits only completed
+    downloads — so `Cancel all` has nothing to stop and `Retry failed` has no job to retry.
+    Offering either would draw a button with nothing behind it, which is `T-016`'s failure and what
+    `UX-005` §5 forbids. `Open` is out because there is no one file to open.
+    """
+    view = view_over([a_member("m-1", index=0), a_member("m-2", index=1)])
+
+    assert view.verbs_of("pl-1") == (Verb.REVEAL, Verb.REMOVE)
+    for absent in (Verb.CANCEL_ALL, Verb.RETRY_FAILED, Verb.OPEN, Verb.RETRY, Verb.CANCEL):
+        assert absent not in view.verbs_of("pl-1"), (
+            f"a terminal history group offers {absent}, which nothing on this tab can perform"
+        )
+
+
+def test_a_group_of_records_with_no_file_does_not_offer_to_show_one(qapp: QApplication) -> None:
+    """`output_path` is nullable, and a group with no path has no folder to point at.
+
+    `FileActions` would refuse the reveal for a reason the user cannot act on, so the verb is
+    absent rather than offered-and-declined — `T081-R3`'s rule. *Remove* survives, so the header is
+    never left with nothing.
+    """
+    view = view_over(
+        [
+            a_member("m-1", index=0, output_path=None),
+            a_member("m-2", index=1, output_path=None),
+        ]
+    )
+
+    assert view.verbs_of("pl-1") == (Verb.REMOVE,)
+
+
+def test_entry_verbs_are_unchanged_by_the_level_above_them(qapp: QApplication) -> None:
+    """The criterion: this adds a level, it does not move one.
+
+    A record inside a playlist is still a record — `REQ-021`'s two file actions and `DAT-005`'s
+    removal — and a group's shorter list must not have leaked down onto its members.
+    """
+    view = view_over([a_member("m-1", index=0), a_member("m-2", index=1), an_entry("solo")])
+    view.model.toggle_group("pl-1")
+
+    assert view.verbs_of("m-1") == (Verb.OPEN, Verb.REVEAL, Verb.REMOVE)
+    assert view.verbs_of("solo") == (Verb.OPEN, Verb.REVEAL, Verb.REMOVE)
+
+
+def test_removing_a_playlist_names_its_members_and_nothing_beside_them(
+    qapp: QApplication,
+) -> None:
+    """A verb on the header does not touch records outside the group.
+
+    Asserted with an unrelated record beside it, and with **nothing selected**: a header that
+    resolved through the selection alone would report an empty removal, and one that reported its
+    own id would name something `history` has no row for.
+    """
+    view = view_over([a_member("m-1", index=0), a_member("m-2", index=1), an_entry("solo")])
+    removed: list[list[str]] = []
+    view.removal_requested.connect(removed.append)
+
+    view.trigger_verb("pl-1", Verb.REMOVE)
+
+    assert removed == [["m-1", "m-2"]], (
+        f"the header's Remove reported {removed}; it must name the two records it stands for and "
+        "leave the unrelated download alone"
+    )
+
+
+def test_a_playlists_remove_says_how_many_downloads_it_takes(qapp: QApplication) -> None:
+    """`DAT-005` §4, through the shell's existing question rather than a second wording.
+
+    The confirmation counts **downloads**, which is why the header reports its members: a count
+    taken from the row would say 1 for a playlist of two, and a count is decoration if it does not
+    count what is about to go.
+    """
+    from tracks_and_trails.ui.main_window import removal_question
+
+    view = view_over([a_member("m-1", index=0), a_member("m-2", index=1)])
+    removed: list[list[str]] = []
+    view.removal_requested.connect(removed.append)
+
+    view.trigger_verb("pl-1", Verb.REMOVE)
+
+    assert removal_question(len(removed[0])) == "Remove these 2 downloads from history?"
+
+
+def test_showing_a_playlists_folder_points_at_a_record_that_has_one(qapp: QApplication) -> None:
+    """`UX-005` row 10: the entries share one folder, so revealing any member reveals it.
+
+    **Re-checked when routed, not trusted from the offer** (`T140-R6`). The first member here has
+    no path — a completion that recorded none — so a header that revealed `members[0]` would hand
+    `FileActions` a record with no file and report a failure the user did not cause.
+    """
+    view = view_over(
+        [
+            a_member("m-1", index=0, output_path=None),
+            a_member("m-2", index=1, output_path="/downloads/Trail Sounds/02.mp3"),
+        ]
+    )
+    revealed: list[str] = []
+    view.reveal_requested.connect(revealed.append)
+
+    view.trigger_verb("pl-1", Verb.REVEAL)
+
+    assert revealed == ["m-2"], (
+        f"the header revealed {revealed}; it must point at a record that names a file rather than "
+        "at whichever member happens to be first"
+    )
+
+
+def test_a_header_never_routes_a_verb_as_though_it_were_a_record(qapp: QApplication) -> None:
+    """A group id names nothing in `history`, and must not escape the view as one.
+
+    `Open` is the case that would: it is not offered on a header — there is no one file — so
+    triggering it against one is refused rather than resolved to a member nobody chose.
+    """
+    view = view_over([a_member("m-1", index=0), a_member("m-2", index=1)])
+    opened: list[str] = []
+    view.open_requested.connect(opened.append)
+
+    view.trigger_verb("pl-1", Verb.OPEN)
+
+    assert opened == [], f"a group header opened {opened}, choosing one of its files for the user"
+
+
+def test_a_dissolved_group_routes_nothing(qapp: QApplication) -> None:
+    """A group that stopped existing between the paint and the click acts on nothing.
+
+    An ordinary race rather than a programming error, so it is answered with silence rather than
+    an exception — `QueueModel.group_jobs` states the same rule for the same reason.
+    """
+    view = view_over([an_entry("solo")])
+    removed: list[list[str]] = []
+    view.removal_requested.connect(removed.append)
+
+    view.trigger_verb("pl-gone", Verb.REMOVE)
+
+    assert removed == []
