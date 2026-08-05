@@ -34,6 +34,7 @@ from PySide6.QtGui import (
     QKeySequence,
 )
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QLabel,
     QMainWindow,
     QMenu,
@@ -42,6 +43,7 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QTabWidget,
     QToolBar,
+    QToolButton,
     QWidget,
 )
 
@@ -80,6 +82,13 @@ ADD_URLS_BUTTON: Final = "+ Add URLs"
 #: selector would have made a second primary action somewhere else silently draw flat. Named here
 #: rather than written into both the widget and the sheet, because a selector that stops matching
 #: fails silently: the button just goes back to looking like the other three.
+#: What the concurrency control's step buttons read (`T-141`, `UX-005` row 11).
+#:
+#: A true minus sign rather than a hyphen: at this size a hyphen reads as a dash in a sentence,
+#: and the pair has to look like a pair.
+STEP_DOWN_LABEL: Final = "\u2212"
+STEP_UP_LABEL: Final = "+"
+
 PRIMARY_ACTION_PROPERTY: Final = "primaryAction"
 
 #: The dynamic property marking the toolbar's expanding spacer, so the sheet can stop it
@@ -832,8 +841,27 @@ class MainWindow(QMainWindow):
         box.setStatusTip("How many downloads run at once")
         # `valueChanged` rather than `editingFinished`: raising the limit should start waiting work
         # as soon as the user asks, and `editingFinished` would hold that until focus moved.
+        # **The steps are labelled buttons, not native arrows** (`T-141`, `UX-005` row 11). The
+        # arrows were reported missing twice: first drawn as solid blocks by the CSS
+        # border-triangle trick, then drawn correctly as ~10px native wedges in a 23px control and
+        # still unreadable. The two step labels are **text**, and no style sheet can silently
+        # un-draw text — which is the shared cause of `T-129`, `T-133` and `T-139`.
+        box.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
         box.valueChanged.connect(self._concurrency_chosen)
+
+        fewer = self._step_button(bar, STEP_DOWN_LABEL, "Fewer concurrent downloads", box.stepDown)
+        bar.addWidget(fewer)
         bar.addWidget(box)
+        more = self._step_button(bar, STEP_UP_LABEL, "More concurrent downloads", box.stepUp)
+        bar.addWidget(more)
+
+        def _limit_the_steps(value: int) -> None:
+            """Neither button offers a step the range will not take (`UX-005` §5)."""
+            fewer.setEnabled(value > settings.CONCURRENCY_MINIMUM)
+            more.setEnabled(value < settings.CONCURRENCY_MAXIMUM)
+
+        box.valueChanged.connect(_limit_the_steps)
+        _limit_the_steps(box.value())
 
         # **The mockup's `.spacer{{flex:1 1 auto}}`** (`T-132`, `UX-005` row 7). What *adds* work
         # and what *acts on work already queued* are different kinds of verb; packed left, the
@@ -851,6 +879,26 @@ class MainWindow(QMainWindow):
 
         self.addToolBar(bar)
         self._concurrency = box
+
+    def _step_button(
+        self, bar: QToolBar, label: str, announced: str, step: Callable[[], None]
+    ) -> QToolButton:
+        """One of the concurrency control's step buttons (`T-141`).
+
+        **Its accessible name says the direction *and* the setting** (`NFR-005`). "Plus" read on
+        its own says nothing about what it increases, and the visible label is a single character
+        that a screen reader may or may not pronounce usefully.
+        """
+        button = QToolButton(bar)
+        button.setObjectName(
+            f"concurrency{label and 'Step'}{'Up' if label == STEP_UP_LABEL else 'Down'}"
+        )
+        button.setText(label)
+        button.setAccessibleName(announced)
+        button.setStatusTip(announced)
+        button.setAutoRepeat(True)
+        button.clicked.connect(step)
+        return button
 
     def _build_queue_actions(self, bar: QToolBar) -> None:
         """Pause/Resume and Clear finished — the two verbs that act on the **queue** (`UX-001`).

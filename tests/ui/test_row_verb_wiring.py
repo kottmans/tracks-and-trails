@@ -21,6 +21,7 @@ import pytest
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtGui import QAccessible, QContextMenuEvent, QFontMetrics, QImage, QPainter
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QApplication,
     QComboBox,
     QMenu,
@@ -28,9 +29,10 @@ from PySide6.QtWidgets import (
     QSpinBox,
     QStyleOptionViewItem,
     QToolBar,
+    QToolButton,
 )
 
-from tracks_and_trails.core import presets
+from tracks_and_trails.core import presets, settings
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
@@ -39,6 +41,8 @@ from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT
 from tracks_and_trails.ui.main_window import (
     HISTORY_KEEPS_FILES,
+    STEP_DOWN_LABEL,
+    STEP_UP_LABEL,
     MainWindow,
     removal_question,
 )
@@ -1843,3 +1847,70 @@ def test_the_toolbars_own_background_runs_behind_its_buttons(
         f"the toolbar reads #{beside & 0xFFFFFF:06X} beside its buttons and "
         f"#{inside & 0xFFFFFF:06X} behind one, so the buttons paint over its background"
     )
+
+
+def test_the_concurrency_control_steps_with_labelled_buttons(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`UX-005` row 11 (`T-141`): the arrows were reported missing twice.
+
+    Both times it was a rendering question, not a wiring one — first solid blocks from the CSS
+    border-triangle trick, then correct ~10px native wedges in a 23px control and still unreadable.
+    **Text cannot be silently un-drawn by a style sheet**, which is the shared cause of `T-129`,
+    `T-133` and `T-139`, and a label can be asserted by content rather than by wedge geometry.
+
+    Driven through the widgets, so a control that looked right and stepped nothing would fail.
+    """
+    window = _window_over([_job("job-1", 0)], tmp_path)
+    bar = window.findChild(QToolBar, "queueToolBar")
+    assert bar is not None
+    box = bar.findChild(QSpinBox, "concurrencyChoice")
+    fewer = bar.findChild(QToolButton, "concurrencyStepDown")
+    more = bar.findChild(QToolButton, "concurrencyStepUp")
+    assert box is not None and fewer is not None and more is not None, (
+        "the concurrency control has no step buttons"
+    )
+
+    assert (fewer.text(), more.text()) == (STEP_DOWN_LABEL, STEP_UP_LABEL)
+    assert box.buttonSymbols() is QAbstractSpinBox.ButtonSymbols.NoButtons, (
+        "the spin box still draws its own arrows, so the control offers two ways to step and one "
+        "of them is the unreadable one this replaced"
+    )
+
+    started = box.value()
+    more.click()
+    assert box.value() == started + 1, "the + button does not step the value"
+    fewer.click()
+    assert box.value() == started, "the minus button does not step the value"
+
+    # **Each announces the direction *and* the setting** (`NFR-005`): "Plus" alone says nothing
+    # about what it increases, and the visible label is one character.
+    for button in (fewer, more):
+        announced = button.accessibleName()
+        assert "concurrent downloads" in announced.lower(), (
+            f"a step button announces {announced!r}, which does not say what it changes"
+        )
+
+
+def test_a_step_button_is_disabled_at_its_end_of_the_range(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`UX-005` §5: a control must not offer a choice nothing acts on.
+
+    Both ends, because a test at one would pass with the other button permanently enabled.
+    """
+    window = _window_over([_job("job-1", 0)], tmp_path)
+    bar = window.findChild(QToolBar, "queueToolBar")
+    assert bar is not None
+    box = bar.findChild(QSpinBox, "concurrencyChoice")
+    fewer = bar.findChild(QToolButton, "concurrencyStepDown")
+    more = bar.findChild(QToolButton, "concurrencyStepUp")
+    assert box is not None and fewer is not None and more is not None
+
+    box.setValue(settings.CONCURRENCY_MINIMUM)
+    assert not fewer.isEnabled(), "the minus button offers a step below the minimum"
+    assert more.isEnabled(), "the + button is disabled at the minimum, where it can still step"
+
+    box.setValue(settings.CONCURRENCY_MAXIMUM)
+    assert not more.isEnabled(), "the + button offers a step above the maximum"
+    assert fewer.isEnabled(), "the minus button is disabled at the maximum, where it can still step"

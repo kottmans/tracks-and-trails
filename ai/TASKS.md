@@ -2002,6 +2002,76 @@ Assert, on `windows-latest`:
 
 ## Complete
 
+### T-141 — The concurrency control steps with buttons, not native arrows
+
+**Status:** **Complete — 2026-08-04.** `−` and `+` are labelled buttons; the spin box draws no
+arrows of its own.
+
+**Two reports, two different causes, and the second is why this exists.** `T-133` first drew the
+arrows with the CSS border-triangle trick, which Qt renders as a **solid block** — per-scanline ink
+widths `8,8,8,8,8` where a triangle gives `2,4,6`. The correction let the platform draw its own,
+and it does: measured on the maintainer's Wayland session against the **real 58×23 control**, up
+`4,6,8,10` and down `8,6,4`. Drawn, correct, and still unreadable at that size.
+
+*Ruled as `UX-005` row 11.* The control no longer depends on a sub-control being rendered at all.
+
+- Each button is disabled at its end of the range (`UX-005` §5), so it never offers a step the
+  range will not take.
+- Each announces the **direction and the setting** — "Plus" alone says nothing about what it
+  increases, and the visible label is one character (`NFR-005`).
+- `ButtonSymbols.NoButtons`, so the control does not offer two ways to step with one of them the
+  unreadable one this replaced. Asserted, and it is the mutation that would otherwise survive.
+
+**Recorded for the pattern:** `T-129` (hover), `T-133` (arrows), `T-139` (disabled state) and this
+are one cause seen four times — styling a widget switches it to `QStyleSheetStyle`, and whatever
+the platform used to draw is then drawn by the sheet or not at all. Text is the one thing a sheet
+cannot silently un-draw, which is why this ends with words rather than with a better glyph.
+
+**Owner:** Implementer
+**Priority:** Medium — `NFR-005`: the control's only affordance was unreadable
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `T-133` (the same control, twice), `T-129`, `T-139`, `UX-005` row 11,
+`ui/main_window.py`, `ui/theme.py`
+**Affected surfaces:** `ui/main_window.py`, `ui/theme.py`
+**Risk:** Low, with one thing to get right — see the keyboard note
+
+#### Scope
+
+**Two reports, two different causes, and the second is why this exists.** `T-133` first drew the
+arrows with the CSS border-triangle trick, which Qt renders as a **solid block** — measured
+per-scanline ink widths `8,8,8,8,8` where a triangle gives `2,4,6`. The correction let the platform
+draw its own, and it does: measured on the maintainer's Wayland session against the **real 58×23
+control**, up `4,6,8,10` and down `8,6,4`. They are drawn, correct, and still unreadable at that
+size.
+
+So the ruling stops relying on a sub-control being rendered at all. `−` and `+` are **text**: no
+style sheet can silently un-draw them, which is the shared failure mode of `T-129` (hover), `T-133`
+(arrows) and `T-139` (disabled state) — three findings, one cause, four occurrences.
+
+**The keyboard is the thing to get right.** A `QSpinBox` already steps on Up and Down, and two
+buttons add two tab stops in front of the value. `NFR-005` asks that the keyboard reach what the
+pointer reaches — it does not ask for it to be reached three times — so the buttons must not
+displace the spin box's own handling, and each needs an accessible name that says which it is.
+
+#### Acceptance criteria
+
+- The control offers `−` and `+` as **labelled buttons**, asserted by their text
+- Clicking each steps the value, asserted through the widget rather than by calling `stepUp`
+- Each is **disabled at its end of the range**, so the control does not offer a step it will not
+  take (`UX-005` §5)
+- The spin box no longer draws native arrows (`ButtonSymbols.NoButtons`) — otherwise both exist
+- Up and Down still step the value with focus in the spin box
+- Both buttons carry an accessible name naming the direction *and* the setting (`NFR-005`)
+- Contrast on the labels meets the text floor in both themes
+
+#### Out of scope
+
+- Any other spin box. There is one, and a rule for a class of widget that has a single member is a
+  rule with no evidence behind it
+
+---
+
 ### T-139 — The bitrate control stays live when bitrate does not apply
 
 **Status:** **Complete — 2026-08-04, and the premise was wrong.** Measurement moved the finding.

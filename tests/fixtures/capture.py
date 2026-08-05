@@ -173,7 +173,8 @@ def redact_url(value: str) -> str:
 #: "the projection reads `len(entries)` and nothing else" — true until `T-137` made a playlist
 #: expand into one job per entry, which needs each entry's address and name.
 #:
-#: **`SEC-002`, and the reasoning rather than a shrug.** This records more than it did, so it is
+#: **Ruled by the maintainer 2026-08-04, recorded as `SEC-002`'s amendment.** This records
+#: more than it did, so it is
 #: worth being exact about *what*: these are the same four facts the fixture already keeps about
 #: the top-level item — where it is, what it is called, how long, and its picture. Nothing new in
 #: kind is retained; what changed is that a playlist's items now get the same treatment as the

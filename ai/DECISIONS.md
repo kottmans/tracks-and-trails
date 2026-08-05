@@ -1196,6 +1196,38 @@ plus the reviewed provenance and error fields. Every other key is dropped before
 
 ---
 
+
+### Amended 2026-08-04 — a playlist entry is a record, not a count
+
+**Ruled by the maintainer.** A fixture may now keep, **per playlist entry**, the four facts the
+adapter reads off one: its address, its title, its duration and its thumbnail. Everything else
+about an entry is still dropped by the same mechanism as everywhere else.
+
+**The rule did not change; what the projection reads did.** This decision has always said "values
+only for the fields the projection reads", and `capture.py` blanked entries to `{}` because
+`ytdlp_adapter` took `len(entries)` and never looked inside one — `T018-R1` found each entry's
+title and uploader being retained for no reader, and removing them was correct at the time.
+`T-137` makes a playlist expand into one job per entry, so there is now a reader for four of those
+fields and none for the rest.
+
+**The gate is what forced the question rather than letting it drift.**
+`test_the_allowlist_matches_what_the_adapter_actually_reads` walks the adapter's AST and refuses a
+field it reads that fixtures drop, so `T-137` could not be finished without answering this. That
+is the gate working: the coupling between "what the code consumes" and "what the fixtures retain"
+is machine-checked, and a task cannot quietly widen one without the other.
+
+**What is knowingly accepted.** A committed fixture for a playlist now carries every entry's URL
+and title, permanently and in the repository. That is more than a count, and it is the same class
+of data the fixture already keeps about the top-level item — where it is and what it is called. The
+alternative was considered and declined: with entries blank, **no recorded fixture can exercise
+playlist expansion at all**, so `T-137`'s projection tests would be built from literal info dicts
+indefinitely, and the feature with the widest blast radius in Phase 3 would have no recording
+behind it.
+
+**Unchanged:** `uploader`, `description`, cookies and every other key are still dropped from an
+entry, and `test_a_playlist_entry_keeps_only_what_the_adapter_reads` watches the hostile ones fail
+to survive.
+
 ## ARC-004 — A probed job downloads from `READY`; the download re-extracts, it does not re-probe
 
 **Status:** **Accepted**
@@ -3050,6 +3082,8 @@ not react to the pointer). The two below are choices, so they are recorded here.
 | 6 | **`+ Add URLs` is drawn as the mockup's filled brand button** — `primary` fill, `on_primary` text, weight 600 | **Adopted** (`T-132`). The mockup's markup is `<span class="btn primary">`, and the shipped button was a flat toolbar label indistinguishable from `Clear finished`. Amendment 1 put the primary action first and left it looking like one of four equals, which is half a decision. Its **disabled** state is part of the ruling: `T-016` disables it when composition supplied no manager, and a brand fill that stays vivid while inert is worse than the flat label it replaces |
 | 7 | **`Pause queue` and `Clear finished` sit at the right edge**, separated from the left group by an expanding spacer | **Adopted** (`T-132`). The mockup's `.spacer{flex:1 1 auto}`. What adds work and what acts on work already queued are different kinds of verb, and packing them together put `Clear finished` next to the concurrency spinner with nothing between them. **`Concurrent downloads:` stays in the left group** — the mockup never had to place it (row 2 above), so the spacer's position against it is this ruling's own choice, not a transcription |
 | 8 | **The row's `⋯` carries only the verbs the row could not show**, and is absent when it showed them all | **Adopted** (`T-135`). It listed every verb regardless, so a wide row offered the same three actions twice. The layout already drops verbs that will not fit and already places `⋯` first so it survives — only the menu was never told. *Declined in the same breath:* giving `⋯` menu-only actions (*Copy URL*, *Open details*) to justify its permanent presence. None are built, and inventing actions to keep a button is the wrong order |
+
+| 11 | **The concurrency control steps with labelled `−` and `+` buttons**, not native spin arrows | **Adopted** (`T-141`). The arrows were reported missing twice and were, both times, a rendering question rather than a wiring one: first drawn as solid blocks by the CSS border-triangle trick, then drawn correctly as ~10px native wedges in a 23px control and still unreadable. Measured on the maintainer's own session at the real size: up `4,6,8,10`, down `8,6,4`. **Text cannot be silently un-drawn by a style sheet**, which is the failure mode `T-129`, `T-133` and `T-139` all share, and a label can be asserted by content rather than by wedge geometry |
 
 **Row 8 corrects a stated reason, not just a behaviour.** `_verb_rects` says the overflow "is the
 keyboard route, and a route that relocates is not a route" — which was true when it was written and
