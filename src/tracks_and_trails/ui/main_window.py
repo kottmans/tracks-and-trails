@@ -828,13 +828,13 @@ class MainWindow(QMainWindow):
             if rendered is not None:
                 rendered.setObjectName("addUrlsButton")
                 rendered.setProperty(PRIMARY_ACTION_PROPERTY, True)
-                # **A property set after the first polish changes nothing** (`T132-R1`). The
-                # toolbar creates this button and styles it, and only then does the property
-                # arrive — so the sheet had already decided, and the real window's primary action
-                # rendered neutral while an isolated test that set the property *before* styling
-                # its own button reported it filled. Qt re-evaluates the sheet only when asked.
-                rendered.style().unpolish(rendered)
-                rendered.style().polish(rendered)
+                # **Setting the property here is enough; do not add a repolish** (`T132-R2`).
+                # One was added on 2026-08-04 to fix `T132-R1`, which reported the shipped button
+                # rendering neutral. That finding was **withdrawn as reviewer error**: it measured
+                # a window built without a job sink or output directory, so `T-016` had disabled
+                # the action and `UX-005` row 6 correctly paints a disabled primary `sunken`. A
+                # composed window with the action enabled fills it with the brand either way, and
+                # the regression below stays green with the repolish gone — which is why it went.
             bar.addSeparator()
         # Not closable: a control the user can hide and then not find is worse than a control
         # they ignore, and this is the only way to change the limit until Phase 4's dialog.

@@ -1556,13 +1556,18 @@ def test_add_urls_is_the_first_thing_on_the_toolbar(qapp: QApplication, tmp_path
 def test_the_windows_real_add_button_is_filled_after_the_toolbar_builds_it(
     qapp: QApplication, tmp_path: Path
 ) -> None:
-    """`T-132`'s brand fill must survive the order the real window sets its dynamic property.
+    """`T-132`'s brand fill, measured on the window the product actually builds.
 
-    The isolated style test sets ``primaryAction`` before the button meets the application style
-    sheet.  The product takes the opposite route: ``QToolBar`` creates its button first, then the
-    shell marks that existing widget as primary.  Qt does not automatically repolish a widget
-    when a dynamic property changes, so the isolated order can be green while the shipped toolbar
-    remains the same neutral surface as its secondary actions.
+    The isolated style test sets ``primaryAction`` on a bare button of its own.  This one lets
+    ``QToolBar`` create the button and composes a real ``MainWindow`` around it, so the fill is
+    sampled from the route a user gets rather than from a stand-in.
+
+    **It does not guard a repolish, and there is none to guard** (`T132-R2`).  `T132-R1` claimed
+    the shipped button rendered neutral because a dynamic property set after the first polish is
+    ignored; that finding was withdrawn as reviewer error, having measured a *disabled* action
+    that `UX-005` row 6 says is correctly not filled.  What this test still earns its place for
+    is the composition: it is the only assertion that the enabled primary action is brand-filled
+    in a window built the way the application builds one.
     """
     previous_sheet = qapp.styleSheet()
     previous_palette = qapp.palette()
@@ -1574,13 +1579,12 @@ def test_the_windows_real_add_button_is_filled_after_the_toolbar_builds_it(
         # so the action is disabled there and the sheet gives it `sunken` — correctly, because
         # `UX-005` row 6 adopted that a disabled primary is *not* filled.
         #
-        # **Not `setEnabled(True)` on the built button**, which was tried: a state change makes Qt
-        # re-evaluate the sheet by itself, so it repolishes the widget and the test passes with the
-        # product's own repolish deleted. That would have made this regression unable to fail —
-        # the exact defect `T132-R1` is about. Amended on the maintainer's instruction of
-        # 2026-08-04, and measured: property `True`, disabled `#EAEFE9`, enabled `#1E5E47`.
-        # Built directly rather than through `_window_over`, whose own first parameter is called
-        # `jobs` and so cannot pass a job *sink* through to the window.
+        # **Not `setEnabled(True)` on the button the toolbar built.** Forcing the state on a
+        # widget from outside measures a widget nobody ships; composing the window so `T-016`
+        # leaves the action enabled measures the real one. Measured either way: property `True`,
+        # disabled `#EAEFE9`, enabled `#1E5E47` — and that gap is what `T132-R1` mistook for a
+        # styling defect. Built directly rather than through `_window_over`, whose own first
+        # parameter is called `jobs` and so cannot pass a job *sink* through to the window.
         window = MainWindow(
             geometry_file=tmp_path / "window.toml",
             concurrency=1,
@@ -1603,7 +1607,7 @@ def test_the_windows_real_add_button_is_filled_after_the_toolbar_builds_it(
         sampled = f"#{image.pixel(button.width() // 2, 4) & 0xFFFFFF:06X}"
         assert sampled == theme.LIGHT.primary.upper(), (
             f"the real Add URLs button fills with {sampled}, not the brand "
-            f"{theme.LIGHT.primary}; the dynamic property was applied without repolishing"
+            f"{theme.LIGHT.primary}; the enabled primary action is not reading UX-005 row 6"
         )
     finally:
         if window is not None:
