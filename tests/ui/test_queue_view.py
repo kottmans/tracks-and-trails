@@ -1991,6 +1991,45 @@ def test_a_stale_group_action_never_routes_retry_for_drm(
     assert retried == [], f"the group retry route bypassed the DRM boundary for {retried}"
 
 
+def test_group_retry_keeps_eligible_failures_beside_drm(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """The Critical guard filters members; it does not disable a mixed group's valid retry."""
+    jobs = _playlist_jobs(tmp_path, 3)
+    queue.add(
+        replace(
+            jobs[0],
+            status=JobStatus.FAILED,
+            error_kind=ErrorKind.DRM_PROTECTED,
+            error_message="This content is DRM protected.",
+        )
+    )
+    queue.add(
+        replace(
+            jobs[1],
+            status=JobStatus.FAILED,
+            error_kind=ErrorKind.NETWORK,
+            error_message="The connection ended.",
+        )
+    )
+    queue.add(jobs[2])
+    view = views(jobs=queue, manager=managers())
+    header = view.model.index(0, JOB_COLUMN)
+
+    assert Verb.RETRY_FAILED in view.model.data(header, VERBS_ROLE)
+
+    retried: list[str] = []
+    view.retry_requested.connect(retried.append)
+    view._on_verb("pl-1", Verb.RETRY_FAILED)
+
+    assert retried == ["entry-1"], (
+        f"mixed group retried {retried}; the NETWORK failure is eligible and DRM is permanent"
+    )
+
+
 def test_a_group_verb_acts_on_the_members_it_applies_to(
     queue: FakeQueue,
     managers: Callable[..., DownloadManager],

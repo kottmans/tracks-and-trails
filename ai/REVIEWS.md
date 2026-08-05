@@ -9863,3 +9863,56 @@ This review added two failing DRM regressions to `tests/ui/test_queue_view.py`, 
 regression to `tests/integration/test_composition.py`, and appended this record. The temporary
 manager mutation was fully reverted. No submitted source, submitted test meaning, decision, task
 state, commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — criterion 8 blockers focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `191292c`
+**Correction head:** `083fbe4` (`aa372e4` is the source/test correction;
+`083fbe4` adds the maintainer amendment and current-truth edits)
+**Verdict:** **Changes requested for the records; the four correction findings are resolved.**
+The DRM boundary, restart probe route and clean manager teardown are independently verified, and
+the maintainer's `Pause all` deferral validly amends the criterion. `P2EXIT-R10` cannot close yet:
+the plan's live outstanding-work table and both task introductions still describe the superseded
+pre-correction scope.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `T140-R6` | Critical | No | The model pairs every member's status with retryability from the same `is_retryable()` authority ordinary rows use. The router checks again against the current job, so a stale header cannot cross SEC-001. Both DRM regressions pass; disabling the presentation and routing checks makes them fail independently. A new mixed-group regression proves one DRM failure does not suppress a valid network retry and that only the network member is emitted. | **Resolved** |
+| `T137-R2` | High | No | `waiting_jobs()` preserves each durable row's status for composition. Startup admits `QUEUED` as `PROBE` and `READY` as `DOWNLOAD`, matching the add-dialog rule without inferring from playlist shape. The reviewer crash-window regression now reaches `RUNNING` with the probed title persisted. | **Resolved** |
+| `T137-R3` | Medium | No | Both new manager tests now drive asynchronous shutdown through `drain()`. The complete manager file reports **143 passed** and exits **0**, independently reproduced outside the socket sandbox; the former QThread abort is gone. | **Resolved** |
+| `T140-R5` | High | No | The maintainer explicitly amended UX-005 and T-140 to defer `Pause all` to REQ-017, the accepted reopening condition for paused-state semantics. That resolves the conflict without inventing a group hold or leaving an unimplemented accepted action. The other group verbs, count-bearing removal and keyboard disclosure were already verified in the prior pass. | **Resolved** |
+| `P2EXIT-R10` | High | **Yes — Phase 2 exit truth** | The criterion 8 row now removes the false “nine findings remain” claim and accurately says the corrections await re-review. The rewrite stops one seam short elsewhere. `IMPLEMENTATION_PLAN.md`'s current **“Three items”** table still says “nine open,” says T-140 is reopened for the now-built verbs/removal/keyboard work, and says the implementation does not stand. T-140's opening still says **“What remains here”** is those three now-built items. T-142 says it is narrowed chiefly to the History header, while its title, priority, affected surfaces, Scope and acceptance criteria still specify the queue verbs, and its own Out of scope assigns the History header to T-145. These are current-truth documents, not preserved historical quotations, and give contradictory actionable scope. | **Open — partially corrected** |
+
+### Record correction required
+
+Update the outstanding-work row at `ai/IMPLEMENTATION_PLAN.md` criterion-8 item 0 rather than only
+the criterion row above it. Rewrite T-140's opening/current status after this approval so its
+“What remains” statement agrees with the later “Built” paragraph. Rewrite T-142 end to end around
+the scope it actually owns: if it implements History-header verbs after T-145 defines a history
+group, make T-145 its dependency and remove History from Out of scope; if T-145 owns that work,
+close or supersede T-142 instead. Striking the old queue verb table while retaining its title,
+scope and acceptance criteria is not a narrowed task.
+
+`P2EXIT-R10` remains a documentation/phase-truth blocker only. No further correction to the
+reviewed T-137 or T-140 source is requested, and the accepted `Pause all` amendment stands.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check 191292c..083fbe4`: **pass**. The range is three commits and ten files; `0f38891` carries the prior review record/regressions, `aa372e4` corrects source/tests, and `083fbe4` changes decisions/plan/tasks only. |
+| Focused reviewer regressions | **5 passed** together: two DRM, startup restart probe, durable continuation and staged-probe guard. |
+| Critical sibling audit | New mixed DRM/network regression: **pass**; Retry failed remains offered and emits only the network member. |
+| DRM negative proof | Replaced both retryability answers with `True`: **2 failed**, one at presentation and one at stale routing. `queue_view.py` was byte-identical to HEAD after restoration. |
+| Queue/startup neighborhood | `test_queue_view.py` plus `test_interrupted_offer.py`: **71 passed** before adding the mixed positive regression; the three Critical regressions then pass together. |
+| Manager lifecycle | Full `test_manager.py` outside the socket sandbox: **143 passed**, exit **0** in 96.80 s. |
+| Lint / format | `ruff check .`: **pass**. `ruff format --check .`: **pass**, 163 files. |
+| Types | `python -m mypy src`: **pass**, 44 files; bare mypy and win32 mypy: **pass**, 107 files each. |
+| Submitted broader suite | Implementer reports unit + UI **1856 passed**. The reviewer did not rerun that complete union or an exact-head Windows job. |
+
+This review adds one passing mixed-safety regression to `tests/ui/test_queue_view.py` and appends
+this record. The temporary DRM mutation was fully reverted. No submitted source, decision, task
+state, commit, remote ref or CI state was changed by the reviewer.
