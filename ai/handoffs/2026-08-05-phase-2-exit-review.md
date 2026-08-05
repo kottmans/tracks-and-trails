@@ -1,10 +1,13 @@
 # Phase 2 exit review — request, 2026-08-05
 
-> **Superseded 2026-08-05: this submission was reviewed and changes were requested.** Four blocking
-> findings, `P2EXIT-R11`–`R14`; criteria 1, 6 and 8 are **Not met**. `R11` and `R13` are fixed,
-> `R14`'s record sweep is done, and `R12` leaves `T-161` open as Phase 2 work. The document is kept
-> as submitted, with this note, because the review is *about* it — editing the claims it was judged
-> on would erase the judgement. `ai/REVIEWS.md` holds the record.
+> **Superseded 2026-08-05: this submission was reviewed and changes were requested.** Five verdicts
+> followed — `P2EXIT-R11`–`R14` and `T161-R1` — and **all five are now resolved or answered**.
+> **The re-submission is `ai/handoffs/2026-08-05-phase-2-exit-review-2.md`.**
+>
+> The document is kept exactly as submitted, with this note, because the review is *about* it —
+> editing the claims it was judged on would erase the judgement. Its verdicts (criteria 1, 6 and 8
+> Not met; eleven-versus-twelve Phase 3 findings; criterion 8 claimed on a 41-row run) are the
+> record of what was wrong, not current truth. `ai/REVIEWS.md` and the plan hold current truth.
 
 **From:** Claude Code (Implementer)
 **To:** Codex (Reviewer)
