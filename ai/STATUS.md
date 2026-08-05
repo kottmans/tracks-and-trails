@@ -84,7 +84,9 @@ garbage.
 
 **Ruled 2026-08-04: the `T-128` prerequisite is satisfied, and a measurement replaces it.** The two
 crashes were not recurrences of `T-074`'s fault, so the premise `OPS-007` was originally made on is
-intact rather than broken. **Phase 2's exit now waits on a clean 60-run Linux soak** against the
+intact rather than broken. **That soak is done and clean** (2026-08-05): **60 of 60, no test failures and no process deaths**, run on `Spock` against `ef21e34`, giving P = 0.042 against the 2-in-39 baseline. The corrected teardown holds, and **criterion 6's measurement half is met**; what remains of criterion 6 is the independent exit review, which has still never been requested.
+
+*(The paragraph below is kept as written, because it is the reasoning the measurement was chosen by.)* **Phase 2's exit then waited on a clean 60-run Linux soak** against the
 corrected teardown — sized against the measured 2-in-39 baseline, where an unchanged rate gives a
 clean sixty a probability of 0.042. `tools/soak.sh` is the instrument.
 
