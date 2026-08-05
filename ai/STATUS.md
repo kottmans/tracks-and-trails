@@ -121,8 +121,12 @@ on is a re-review rather than unbuilt work. `T-140` was reopened for the accepte
 not build (`T140-R5`); **all three are built** as of 2026-08-05 — group verbs, removal that names
 its own count, and a keyboard-reachable disclosure — with **`Pause all` deferred to `REQ-017`** by
 that day's amendment to `UX-005`, since holding one group has no mechanism once `T-080` deleted
-`JobStatus.PAUSED`. Every finding from the round and its two correction passes is resolved at
-`083fbe4`. *(The measurement `UX-005` said could reopen the playlist shape did come back clear —
+`JobStatus.PAUSED`. The round's **implementation** findings are resolved at `083fbe4` — `T140-R6`, `T137-R2`,
+`T137-R3` and `T140-R5`. **`P2EXIT-R10` is not among them**: it is the record finding, its
+correction is at `c920446`, and it awaits its own resolution. Saying "every finding" here was the
+same overstatement that finding exists to catch. **Criterion 8 also still owes a written checklist
+run against the built application on the exact candidate head** — `P2EXIT-R10` requires it because
+automated checks are not sufficient evidence for a criterion about what the window looks like. *(The measurement `UX-005` said could reopen the playlist shape did come back clear —
 150 entries across ten open playlists cost 0.002 s to open and 0.022 s to paint a viewport, against
 a 0.5 s budget. The shape stands, and so now does its implementation.)*
 
