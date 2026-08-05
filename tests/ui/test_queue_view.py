@@ -19,10 +19,12 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtCore import QRect, Qt
+from PySide6.QtGui import QFontMetrics, QImage, QPainter
+from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
 from tests.qt_lifecycle import drain
+from tests.ui.test_row_delegate import REPAINT_BUDGET_SECONDS, VIEWPORT_ROWS
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
@@ -47,13 +49,18 @@ from tracks_and_trails.ui.queue_view import (
     QueueView,
 )
 from tracks_and_trails.ui.row_delegate import (
+    DEPTH_ROLE,
     DETAIL_ROLE,
+    EXPANDED_ROLE,
     HEADLINE_ROLE,
     HUE_ROLE,
     PROGRESS_ROLE,
+    SEGMENTS_ROLE,
     STATE_CHIP_ROLE,
     STATE_ROLE,
     THUMBNAIL_URL_ROLE,
+    RowDelegate,
+    SegmentState,
 )
 
 # --- a queue the table can read ---------------------------------------------------------------
@@ -1273,4 +1280,271 @@ def test_a_status_change_stays_inside_the_budget_when_enumeration_is_slow(
     assert elapsed < 0.1, (
         f"one status change spent {elapsed * 1000:.1f} ms on the GUI thread against NFR-001's "
         "~100 ms budget, because it read the whole queue to find one job"
+    )
+
+
+# --- T-140: a playlist as a row that opens ----------------------------------------------------
+
+
+def _playlist_jobs(tmp_path: Path, count: int, *, playlist_id: str = "pl-1") -> list[Job]:
+    """`count` entries of one playlist, in the playlist's own order."""
+    return [
+        make_job(
+            f"entry-{index}",
+            tmp_path,
+            status=JobStatus.COMPLETED if index == 0 else JobStatus.QUEUED,
+            queue_position=index,
+            playlist_id=playlist_id,
+            playlist_index=index,
+            playlist_title="Trail Sounds",
+        )
+        for index in range(count)
+    ]
+
+
+def test_a_playlist_is_one_row_until_it_is_opened(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`UX-005` row 9: closed, a playlist costs exactly one row.
+
+    That is the whole reason the shape was chosen over sixteen loose rows — a sixteen-item paste
+    has to survive beside ordinary downloads. Asserted by **row count**, not by pixels: the claim
+    is about what the table holds, and a pixel comparison would pass with sixteen rows drawn
+    identically.
+    """
+    for job in _playlist_jobs(tmp_path, 4):
+        queue.add(job)
+    queue.add(make_job("solo", tmp_path, status=JobStatus.QUEUED, queue_position=9))
+    view = views(jobs=queue, manager=managers())
+
+    assert view.model.rowCount() == 2, (
+        f"a four-entry playlist and one ordinary download show {view.model.rowCount()} rows; "
+        "closed, the playlist must be one of them"
+    )
+
+    header = view.model.index(0, 0)
+    assert view.model.data(header, EXPANDED_ROLE) is False
+    view.model.toggle_group("pl-1")
+
+    assert view.model.rowCount() == 6, (
+        f"opening the playlist showed {view.model.rowCount()} rows; it must be the header, its "
+        "four entries and the unrelated download"
+    )
+    assert view.model.data(view.model.index(0, 0), EXPANDED_ROLE) is True
+    assert view.model.data(view.model.index(1, 0), DEPTH_ROLE) == 1, (
+        "an entry is not nested under its group, so it reads as an unrelated row"
+    )
+
+
+def test_a_groups_chip_counts_and_never_measures(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`UX-005` row 9a: `4 of 16`, not a percentage.
+
+    The entries' byte totals arrive one at a time, so a fraction across them has a denominator
+    that grows while it runs and a bar that goes *backwards*. Every entry here carries **the same
+    bytes** and only the statuses differ, so a chip reading a percentage would be visibly wrong.
+    """
+    for job in _playlist_jobs(tmp_path, 4):
+        queue.add(job)
+    view = views(jobs=queue, manager=managers())
+
+    chip = view.model.data(view.model.index(0, 0), STATE_CHIP_ROLE)
+
+    assert chip == "1 of 4", f"the group's chip reads {chip!r} rather than a count of its members"
+    assert "%" not in str(chip), (
+        "the group's chip measures rather than counts, which UX-005 row 9a refuses because the "
+        "denominator grows while the download runs"
+    )
+
+
+def test_a_groups_segments_come_from_its_members(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`UX-005` row 9b, including the failure the bar exists to show.
+
+    Under one continuous bar a playlist that quietly skipped a track looks exactly like one that
+    got everything, so a **failed** entry must be its own segment rather than folded into "not
+    done yet".
+    """
+    jobs = _playlist_jobs(tmp_path, 3)
+    queue.add(jobs[0])
+    queue.add(
+        make_job(
+            "entry-1",
+            tmp_path,
+            status=JobStatus.FAILED,
+            queue_position=1,
+            playlist_id="pl-1",
+            playlist_index=1,
+            playlist_title="Trail Sounds",
+        )
+    )
+    queue.add(jobs[2])
+    view = views(jobs=queue, manager=managers())
+
+    segments = view.model.data(view.model.index(0, 0), SEGMENTS_ROLE)
+
+    assert segments == [SegmentState.DONE, SegmentState.FAILED, SegmentState.WAITING], (
+        f"the group's segments are {segments}; each block is one member's own state"
+    )
+
+
+def test_an_open_playlist_stays_open_across_a_refresh(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """Expansion is held **by id**, for `T126-R1`'s reason.
+
+    A refresh rebuilds every row and a row number stops naming the same thing; a user who opened a
+    playlist expects it to still be open when a download in it finishes. Progress causes refreshes
+    constantly, so holding this by position would close the group under the user's hands.
+    """
+    for job in _playlist_jobs(tmp_path, 3):
+        queue.add(job)
+    view = views(jobs=queue, manager=managers())
+    view.model.toggle_group("pl-1")
+    assert view.model.rowCount() == 4
+
+    queue.add(make_job("later", tmp_path, status=JobStatus.QUEUED, queue_position=7))
+    view.model.refresh()
+
+    assert view.model.data(view.model.index(0, 0), EXPANDED_ROLE) is True, (
+        "the playlist closed itself when the queue changed"
+    )
+    assert view.model.rowCount() == 5
+
+
+def test_a_hidden_entry_reports_no_row_of_its_own(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """A job inside a closed playlist has a model row and no line on screen.
+
+    `None` is the honest answer: a caller building a `QModelIndex` from a hidden job would select
+    whatever happened to sit at that number, which is `T118-R14`'s defect in a new place.
+    """
+    for job in _playlist_jobs(tmp_path, 3):
+        queue.add(job)
+    view = views(jobs=queue, manager=managers())
+
+    assert view.model.row_of("entry-1") is None, (
+        "a job hidden inside a closed playlist reports a row number, which addresses whatever is "
+        "drawn there instead"
+    )
+    assert view.model.job_for("entry-1") is not None, (
+        "the hidden job vanished from the model as well, so nothing could reopen it"
+    )
+
+    view.model.toggle_group("pl-1")
+    assert view.model.row_of("entry-1") == 2
+
+
+def test_a_paste_of_150_with_every_group_open_stays_within_the_repaint_budget(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+    qapp: QApplication,
+) -> None:
+    """**`T-140`'s own acceptance criterion, and `UX-005` says a bad number reopens the shape.**
+
+    `setUniformItemSizes` came off for row 9c: an entry is two lines against its group's four, so
+    the promise every row is the same height is false the moment a group is open. That promise is
+    what lets a `QListView` compute its visible range arithmetically instead of measuring every
+    row, and `T118-R10` is the record of what per-row cost buys when it goes wrong — a paste of
+    150 cost 0.722 s on hosted Windows and a delegate fixed it.
+
+    So this measures the case the ruling was made against: **150 entries across ten playlists,
+    every one open**, laid out and painted. The budget is `REPAINT_BUDGET_SECONDS`' reasoning —
+    generous by design, distinguishing "cost is proportional to the model" from "cost is
+    proportional to the screen" and nothing finer, because sizing to the fastest machine is what
+    made `T118-R10`'s gate flap between two runs of unchanged code.
+    """
+    for group in range(10):
+        for index in range(15):
+            queue.add(
+                make_job(
+                    f"g{group}-e{index}",
+                    tmp_path,
+                    status=JobStatus.QUEUED,
+                    queue_position=group * 15 + index,
+                    playlist_id=f"pl-{group}",
+                    playlist_index=index,
+                    playlist_title=f"Playlist {group}",
+                )
+            )
+    view = views(jobs=queue, manager=managers())
+
+    started = time.perf_counter()
+    for group in range(10):
+        view.model.toggle_group(f"pl-{group}")
+    opened = time.perf_counter() - started
+
+    assert view.model.rowCount() == 160, (
+        f"ten open playlists of fifteen show {view.model.rowCount()} rows, not 160"
+    )
+
+    # **`sizeHint` per row is exactly what the dropped promise costs**, so that is what is
+    # measured. An earlier version timed `repaint()` on an offscreen widget and reported 0.000s —
+    # a number that cannot fail, from a call that may not have painted at all.
+    delegate = view.table.itemDelegate()
+    assert isinstance(delegate, RowDelegate)
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, 900, 90)
+    option.font = view.table.font()
+    option.fontMetrics = QFontMetrics(option.font)
+
+    started = time.perf_counter()
+    heights = [
+        delegate.sizeHint(option, view.model.index(row, 0)).height()
+        for row in range(view.model.rowCount())
+    ]
+    measured = time.perf_counter() - started
+
+    image = QImage(900, 90 * VIEWPORT_ROWS, QImage.Format.Format_ARGB32)
+    image.fill(0)
+    painter = QPainter(image)
+    started = time.perf_counter()
+    try:
+        for slot in range(VIEWPORT_ROWS):
+            option.rect = QRect(0, slot * 90, 900, 90)
+            delegate.paint(painter, option, view.model.index(slot, 0))
+    finally:
+        painter.end()
+    painted = time.perf_counter() - started
+
+    print(
+        f"\npaste of 150, all groups open — open {opened:.3f}s, "
+        f"size {len(heights)} rows {measured:.3f}s, paint {VIEWPORT_ROWS} rows {painted:.3f}s"
+    )
+    assert len(set(heights)) > 1, (
+        "every row measured the same height, so this is not exercising the non-uniform case the "
+        "budget is about"
+    )
+    assert opened < REPAINT_BUDGET_SECONDS, (
+        f"opening ten playlists of a 150-entry queue took {opened:.3f}s, over the "
+        f"{REPAINT_BUDGET_SECONDS}s budget; the flattening is proportional to the model"
+    )
+    assert measured < REPAINT_BUDGET_SECONDS, (
+        f"measuring {len(heights)} rows took {measured:.3f}s, over the "
+        f"{REPAINT_BUDGET_SECONDS}s budget. This is the cost setUniformItemSizes was buying, and "
+        "UX-005 row 9 says a bad number here justifies reopening the shape"
+    )
+    assert painted < REPAINT_BUDGET_SECONDS, (
+        f"painting {VIEWPORT_ROWS} rows of a 160-row table took {painted:.3f}s, over the "
+        f"{REPAINT_BUDGET_SECONDS}s budget"
     )

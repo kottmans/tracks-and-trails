@@ -61,6 +61,7 @@ no position sorts last on its id, which is what the scheduler does with one.
 **Reordering is `T-081`**, and it will change `queue_position` rather than this sort.
 """
 
+from collections import Counter
 from collections.abc import Callable
 from contextlib import suppress
 from pathlib import Path
@@ -95,19 +96,23 @@ from tracks_and_trails.ui.job_detail import (
     totals_for_ending,
 )
 from tracks_and_trails.ui.row_delegate import (
+    DEPTH_ROLE,
     DETAIL_ROLE,
+    EXPANDED_ROLE,
     HEADLINE_ROLE,
     HUE_ROLE,
     JOB_ID_ROLE,
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
     PROGRESS_ROLE,
+    SEGMENTS_ROLE,
     SELECTOR_ROLE,
     STATE_CHIP_ROLE,
     STATE_ROLE,
     THUMBNAIL_URL_ROLE,
     VERBS_ROLE,
     RowDelegate,
+    SegmentState,
 )
 from tracks_and_trails.ui.row_verbs import Verb, verbs_for
 from tracks_and_trails.ui.staging import placeholder_hue
@@ -237,6 +242,32 @@ class _Row:
         )
 
 
+class _Group:
+    """A playlist's rows, gathered under one header (`T-140`, `UX-005` row 9).
+
+    **Synthesised per refresh, never stored.** A group has no state of its own — its chip is a
+    count of its members and its bar is their states — so there is nothing to keep in sync and
+    nothing to go stale. `T-137` records the same reasoning from the schema side, which is why
+    there is no `playlists` table for this to mirror.
+    """
+
+    __slots__ = ("members", "playlist_id", "title")
+
+    def __init__(self, playlist_id: str, title: str) -> None:
+        self.playlist_id = playlist_id
+        self.title = title
+        self.members: list[_Row] = []
+
+
+#: One line of the table: a playlist's header, or the index of a job row in `_rows` (`T-140`).
+#:
+#: **The tree is flattened here rather than the view becoming a `QTreeView`.** A tree view would
+#: replace the list, the delegate and the geometry `T118-R7`, `T118-R8`, `T118-R12` and `T118-R15`
+#: were each spent on. A flat list of these keeps every one of them, and the delegate's
+#: `DEPTH_ROLE` is the only thing that has to know nesting exists.
+_Visible = _Group | int
+
+
 def _order(job: Job) -> tuple[int, str]:
     """`queue_position` first, id to break ties. See the module docstring."""
     position = job.queue_position
@@ -324,6 +355,15 @@ class QueueModel(QAbstractTableModel):
         self._manager = manager
         self._rows: list[_Row] = []
         self._index_of: dict[str, int] = {}
+        #: What the table actually shows: group headers and the job rows not hidden under a
+        #: collapsed one (`T-140`).
+        self._visible: list[_Visible] = []
+        #: Where each id sits in `_visible` — a job id, or a playlist id for a header.
+        self._visible_of: dict[str, int] = {}
+        #: Which playlists are open, **by id** (`T-140`). By id rather than by row for
+        #: `T126-R1`'s reason: a refresh rebuilds every row and a row number stops naming the
+        #: same thing, while a user who opened a playlist expects it to stay open.
+        self._expanded: set[str] = set()
         #: Newest undrawn message per job. One entry per job, not a queue of them: an intermediate
         #: byte count nobody drew is not information anyone lost.
         self._pending: dict[str, Progress] = {}
@@ -372,7 +412,13 @@ class QueueModel(QAbstractTableModel):
         return tuple(row.job.id for row in self._rows)
 
     def row_of(self, job_id: str) -> int | None:
-        return self._index_of.get(job_id)
+        """Where `job_id` sits **in the table**, or `None` when nothing shows it.
+
+        A job inside a collapsed playlist has a row in the model and no line on screen, and
+        `None` is the honest answer for it — a caller building a `QModelIndex` from a hidden job
+        would select whatever happened to be at that number (`T-140`).
+        """
+        return self._visible_of.get(job_id)
 
     def job_for(self, job_id: str) -> Job | None:
         """The job behind a row, as the table currently holds it (`T-081`).
@@ -410,7 +456,7 @@ class QueueModel(QAbstractTableModel):
     def rowCount(self, parent: QModelIndex | _PersistentIndex = _ROOT) -> int:
         # A table model has no children under a valid index; saying so is what stops a tree view
         # from asking for rows beneath every cell.
-        return 0 if parent.isValid() else len(self._rows)
+        return 0 if parent.isValid() else len(self._visible)
 
     def columnCount(self, parent: QModelIndex | _PersistentIndex = _ROOT) -> int:
         return 0 if parent.isValid() else len(COLUMN_HEADERS)
@@ -428,9 +474,21 @@ class QueueModel(QAbstractTableModel):
     def data(
         self, index: QModelIndex | _PersistentIndex, role: int = Qt.ItemDataRole.DisplayRole
     ) -> Any:
-        if not index.isValid() or not 0 <= index.row() < len(self._rows):
+        if not index.isValid() or not 0 <= index.row() < len(self._visible):
             return None
-        row = self._rows[index.row()]
+        entry = self._visible[index.row()]
+        if isinstance(entry, _Group):
+            # **A playlist's header answers for itself** (`T-140`). It has no job behind it, so
+            # everything below — which reads `row.job` — would be answering about a job that does
+            # not exist.
+            return self._group_data(entry, role)
+        row = self._rows[entry]
+        if role == DEPTH_ROLE:
+            # **One level, and only under a group that is actually drawn** (`T-140`). A member
+            # whose group was dropped for having one entry is an ordinary row, and indenting it
+            # would leave it stepped in under nothing.
+            playlist_id = row.job.playlist_id
+            return 1 if playlist_id is not None and playlist_id in self._visible_of else 0
 
         # **The delegate's roles, composed from the very cells `_text` answers** (`T-119`). Not a
         # second rendering of the same facts: each branch below is the column it names, so a
@@ -554,12 +612,18 @@ class QueueModel(QAbstractTableModel):
         """
         if role != PRESET_ROLE or not index.isValid():
             return False
-        if not 0 <= index.row() < len(self._rows):
+        if not 0 <= index.row() < len(self._visible):
+            return False
+        entry = self._visible[index.row()]
+        if isinstance(entry, _Group):
+            # A header has no request to retarget; `T126-R3`'s guard lives below and needs a job.
+            return False
+        if not 0 <= entry < len(self._rows):
             return False
         name = value if isinstance(value, str) else None
         if name is None:
             return False
-        job = self._rows[index.row()].job
+        job = self._rows[entry].job
         if name == _preset_name_for(job):
             return False
         self.preset_chosen.emit(job.id, name)
@@ -693,6 +757,113 @@ class QueueModel(QAbstractTableModel):
             return format_speed(row.displayed.speed_bytes_per_second)
         return format_eta(row.displayed.eta_seconds)
 
+    def _rebuild_visible(self) -> None:
+        """Flatten the rows into what the table shows: headers, and the rows not hidden (`T-140`).
+
+        **Order is the jobs' order, not the groups'.** A playlist's header takes the position of
+        its first member, so a queue the user reordered keeps reading the way they left it — the
+        alternative, hoisting every group to the top, would move rows nobody touched.
+        """
+        self._visible = []
+        groups: dict[str, _Group] = {}
+        for position, row in enumerate(self._rows):
+            playlist_id = row.job.playlist_id
+            if playlist_id is None:
+                self._visible.append(position)
+                continue
+            group = groups.get(playlist_id)
+            if group is None:
+                group = _Group(playlist_id, row.job.playlist_title or playlist_id)
+                groups[playlist_id] = group
+                self._visible.append(group)
+            group.members.append(row)
+            if playlist_id in self._expanded:
+                self._visible.append(position)
+
+        # **A group of one is not a group.** A playlist whose other entries were removed would
+        # otherwise leave a header with a single row under it, which is a heading over nothing.
+        if any(len(group.members) == 1 for group in groups.values()):
+            lonely = {group.playlist_id for group in groups.values() if len(group.members) == 1}
+            self._visible = [
+                entry
+                for entry in self._visible
+                if not (isinstance(entry, _Group) and entry.playlist_id in lonely)
+            ]
+            for playlist_id in lonely:
+                group = groups.pop(playlist_id)
+                if playlist_id not in self._expanded:
+                    # Its one member was hidden under a header that is now gone.
+                    position = self._rows.index(group.members[0])
+                    self._visible.insert(min(position, len(self._visible)), position)
+
+        self._visible_of = {}
+        for line, entry in enumerate(self._visible):
+            key = entry.playlist_id if isinstance(entry, _Group) else self._rows[entry].job.id
+            self._visible_of[key] = line
+
+    def toggle_group(self, playlist_id: str) -> None:
+        """Open or close a playlist (`T-140`). Called by the delegate's disclosure."""
+        if playlist_id in self._expanded:
+            self._expanded.discard(playlist_id)
+        else:
+            self._expanded.add(playlist_id)
+        self.beginResetModel()
+        self._rebuild_visible()
+        self.endResetModel()
+
+    def _group_segments(self, group: _Group) -> list[SegmentState]:
+        """One block per entry, from each member's own status (`UX-005` row 9b)."""
+        states: list[SegmentState] = []
+        for row in group.members:
+            status = row.job.status
+            if status is JobStatus.COMPLETED:
+                states.append(SegmentState.DONE)
+            elif status in (JobStatus.RUNNING, JobStatus.POST_PROCESSING):
+                states.append(SegmentState.RUNNING)
+            elif status in (JobStatus.FAILED, JobStatus.CANCELLED):
+                states.append(SegmentState.FAILED)
+            else:
+                states.append(SegmentState.WAITING)
+        return states
+
+    def _group_data(self, group: _Group, role: int) -> Any:
+        """What a playlist's header row answers (`T-140`, `UX-005` rows 9a-9c)."""
+        segments = self._group_segments(group)
+        if role == HEADLINE_ROLE:
+            return group.title
+        if role == JOB_ID_ROLE:
+            return group.playlist_id
+        if role == EXPANDED_ROLE:
+            return group.playlist_id in self._expanded
+        if role == SEGMENTS_ROLE:
+            return segments
+        if role == STATE_CHIP_ROLE:
+            # **A count, never a percentage** (`UX-005` row 9a). The entries' totals arrive one
+            # at a time, so a fraction across them has a denominator that grows while it runs.
+            done = sum(1 for state in segments if state is SegmentState.DONE)
+            return f"{done} of {len(segments)}"
+        if role == DETAIL_ROLE:
+            counted = Counter(segments)
+            parts = [f"{len(segments)} items"]
+            for state, word in (
+                (SegmentState.DONE, "done"),
+                (SegmentState.RUNNING, "running"),
+                (SegmentState.FAILED, "failed"),
+                (SegmentState.WAITING, "queued"),
+            ):
+                if counted[state]:
+                    parts.append(f"{counted[state]} {word}")
+            return " · ".join(parts)
+        if role == HUE_ROLE:
+            return placeholder_hue(group.members[0].job.url if group.members else group.title)
+        if role == THUMBNAIL_URL_ROLE:
+            return next(
+                (row.job.thumbnail_url for row in group.members if row.job.thumbnail_url), None
+            )
+        if role == Qt.ItemDataRole.AccessibleTextRole:
+            return f"{group.title}. Playlist, {self._group_data(group, STATE_CHIP_ROLE)}"
+        return None
+
     def _status_text(self, row: _Row) -> str:
         """The stage a worker reported, or the status when no worker is reporting one.
 
@@ -751,6 +922,7 @@ class QueueModel(QAbstractTableModel):
                 row.totals = previous.totals
             self._rows.append(row)
         self._index_of = {row.job.id: index for index, row in enumerate(self._rows)}
+        self._rebuild_visible()
         self._pending = {
             job_id: message for job_id, message in self._pending.items() if job_id in self._index_of
         }
@@ -957,8 +1129,18 @@ class QueueView(QWidget):
         # default: a viewport's mouse tracking is off, so without this Qt reports the
         # pointer only while a button is held.
         self._delegate.watch_hover(self._list)
+        # **Opening a playlist is the model's to decide** (`T-140`). The delegate reports the
+        # click; which rows exist is not its answer to give.
+        self._delegate.disclosure_toggled.connect(self._model.toggle_group)
         self._delegate.verb_triggered.connect(self._on_verb)
-        self._list.setUniformItemSizes(True)
+        # **Rows are no longer uniform, and that is spent deliberately** (`T-140`, `UX-005`
+        # row 9c). `setUniformItemSizes` lets the view compute the visible range arithmetically
+        # instead of measuring every row, and `T118-R10` is the record of what per-row cost buys
+        # when it goes wrong — a paste of 150 cost 0.722 s on hosted Windows. A playlist entry is
+        # two lines against its group's four, so the promise is already false the moment a group
+        # is open; keeping it would mean drawing entries at full height and wasting a third of
+        # the list on blank space in exactly the case with least room to waste.
+        self._list.setUniformItemSizes(False)
         self._list.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         # **`EDIT_KEY` is the declared keyboard route to the row's format control** (`T118-R9`,
         # `T124-R1`, `UX-005` §6). `EditKeyPressed` *is* `row_delegate.EDIT_KEY`, and it is stated
