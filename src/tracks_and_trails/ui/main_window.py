@@ -116,6 +116,20 @@ def _verbs(carried: object) -> tuple[Verb, ...]:
     return tuple(verb for verb in carried if isinstance(verb, Verb))
 
 
+def group_removal_question(count: int) -> str:
+    """The queue's group confirmation, naming its own count (`DAT-005` §4, `UX-005` row 9).
+
+    Separate wording from `removal_question`, which says *from history*: removing a playlist from
+    the **queue** stops downloads that have not finished, and telling a user they are clearing a
+    record would understate it. Singular is written out for the same reason as its sibling.
+    """
+    return (
+        "Remove this download from the queue?"
+        if count == 1
+        else f"Remove these {count} downloads from the queue?"
+    )
+
+
 def removal_question(count: int) -> str:
     """The confirmation's question, naming its own count (`DAT-005` §4, `UX-005` §9).
 
@@ -451,6 +465,7 @@ class MainWindow(QMainWindow):
         """
         view.retry_requested.connect(self._retry_each_of)
         view.remove_requested.connect(self._remove_job)
+        view.group_remove_requested.connect(self._remove_group)
         view.move_requested.connect(self._move_job)
         view.open_requested.connect(lambda job_id: self._file_verb(job_id, reveal=False))
         view.reveal_requested.connect(lambda job_id: self._file_verb(job_id, reveal=True))
@@ -994,6 +1009,42 @@ class MainWindow(QMainWindow):
         row's *Remove* and its `⋯` menu — cannot drift apart."""
         if self._on_remove_requested is not None:
             self._on_remove_requested(job_id)
+
+    def _remove_group(self, playlist_id: str, job_ids: object) -> QMessageBox | None:
+        """Remove a whole playlist, after a confirmation that names its count (`DAT-005` §4).
+
+        **The count is why this is not `_remove_job` in a loop.** A bare *Remove* on a row covering
+        sixteen files does not say how much is about to go, and a user who clicked the header
+        meaning to click an entry has nothing to notice it by. One question, one count, then every
+        member through the single removal implementation so the two routes cannot drift.
+
+        Returned rather than only shown, and `open()` rather than `exec()`, so a test can drive it
+        without a nested event loop.
+        """
+        # Qt carries the list as `object`; narrowing here is where the contract is checked
+        # rather than assumed, exactly as `_on_verb` narrows its own `Verb`.
+        if not isinstance(job_ids, list):
+            return None
+        ids = [job_id for job_id in job_ids if isinstance(job_id, str)]
+        if not ids or self._on_remove_requested is None:
+            return None
+        confirm = QMessageBox(self)
+        confirm.setObjectName("groupRemovalConfirm")
+        confirm.setIcon(QMessageBox.Icon.Question)
+        confirm.setWindowTitle("Remove from queue")
+        confirm.setText(group_removal_question(len(ids)))
+        confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        # The safe button is the default, for `_confirm_history_removal`'s reason.
+        confirm.setDefaultButton(QMessageBox.StandardButton.No)
+
+        def act(button: object) -> None:
+            if confirm.standardButton(button) == QMessageBox.StandardButton.Yes:  # type: ignore[arg-type]
+                for job_id in ids:
+                    self._remove_job(job_id)
+
+        confirm.buttonClicked.connect(act)
+        confirm.open()
+        return confirm
 
     def _move_job(self, job_id: str, offset: int) -> None:
         """Move one named job `offset` places, and hand the whole new order over (`T-081`).

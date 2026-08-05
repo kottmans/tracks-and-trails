@@ -123,7 +123,7 @@ from tracks_and_trails.ui.row_delegate import (
     RowDelegate,
     SegmentState,
 )
-from tracks_and_trails.ui.row_verbs import Verb, verbs_for
+from tracks_and_trails.ui.row_verbs import Verb, group_verbs, verbs_for
 from tracks_and_trails.ui.staging import placeholder_hue
 from tracks_and_trails.ui.thumbnails import ThumbnailLoader, ThumbnailStore
 
@@ -873,6 +873,19 @@ class QueueModel(QAbstractTableModel):
             key = entry.playlist_id if isinstance(entry, _Group) else self._rows[entry].job.id
             self._visible_of[key] = line
 
+    def group_jobs(self, playlist_id: str) -> list[Job]:
+        """Every job in `playlist_id`, in playlist order, or empty when it names no group.
+
+        **Empty rather than raising**, because the caller is a verb router acting on an id the
+        view drew a moment ago: a group that was dissolved between the paint and the click is an
+        ordinary race, not a programming error. The verbs then act on nothing, which is what a
+        group that no longer exists deserves.
+        """
+        for entry in self._visible:
+            if isinstance(entry, _Group) and entry.playlist_id == playlist_id:
+                return [row.job for row in group_members(entry)]
+        return []
+
     def toggle_group(self, playlist_id: str) -> None:
         """Open or close a playlist (`T-140`). Called by the delegate's disclosure."""
         if playlist_id in self._expanded:
@@ -905,6 +918,11 @@ class QueueModel(QAbstractTableModel):
             return group.title
         if role == JOB_ID_ROLE:
             return group.playlist_id
+        if role == VERBS_ROLE:
+            # **Derived from every member, not from one that speaks for them** (`T-140`,
+            # `UX-005` row 9). A playlist mid-run holds a completed track, a running one and
+            # fourteen queued, so there is no member whose status is the group's.
+            return group_verbs(row.job.status for row in group.members)
         if role == EXPANDED_ROLE:
             return group.playlist_id in self._expanded
         if role == SEGMENTS_ROLE:
@@ -1155,6 +1173,18 @@ class QueueModel(QAbstractTableModel):
         self._repaint.stop()
 
 
+#: Members worth cancelling. A terminal member is already where cancelling would put it.
+_CANCELLABLE: Final = frozenset(
+    {
+        JobStatus.QUEUED,
+        JobStatus.READY,
+        JobStatus.PROBING,
+        JobStatus.RUNNING,
+        JobStatus.POST_PROCESSING,
+    }
+)
+
+
 class QueueView(QWidget):
     """The queue table and its empty state (`REQ-012`, `REQ-014`)."""
 
@@ -1170,6 +1200,10 @@ class QueueView(QWidget):
 
     #: `(job_id)` — a row's **Remove** was activated. A write for the same reason.
     remove_requested = Signal(str)
+    #: **A group removal carries its members** (`T-140`, `DAT-005` §4). Separate from
+    #: `remove_requested` because the confirmation has to name a count, and a shell receiving one
+    #: id at a time cannot say "these 16" — it would ask sixteen times or not at all.
+    group_remove_requested = Signal(str, object)
 
     #: `(job_id, delta)` — a row asked to move, `-1` up and `+1` down. Reordering is durable
     #: (`T-081`), so it is composition's to perform.
@@ -1338,6 +1372,17 @@ class QueueView(QWidget):
         # programming error as an unrouted one, and raises for the same reason.
         if not isinstance(verb, Verb):
             raise TypeError(f"a row reported {verb!r}, which is not one of its verbs")
+
+        # **A group's verbs are routed first, and the model is what says the id is a group.**
+        # `job_id` is a *playlist* id when a header reported it, and the two spaces are not
+        # distinguishable by inspection. Routing on the verb alone is wrong and was tried:
+        # `Show in folder` and `Remove` are offered by ordinary rows as well, so every row's
+        # *Remove* would have gone down the group path. `group_jobs` searches the visible groups
+        # for that id and answers empty for anything else, which is the authority — a job id
+        # cannot name a group unless a group has it, and both are uuid4.
+        if self._model.group_jobs(job_id):
+            self._on_group_verb(job_id, verb)
+            return
         if verb is Verb.CANCEL:
             self._manager.cancel(job_id)
         elif verb is Verb.RETRY:
@@ -1354,6 +1399,34 @@ class QueueView(QWidget):
             self.reveal_requested.emit(job_id)
         else:
             raise AssertionError(f"the row offered {verb.value} and nothing routes it")
+
+    def _on_group_verb(self, playlist_id: str, verb: Verb) -> None:
+        """Act on every member the verb applies to (`T-140`, `UX-005` row 9).
+
+        **Filtered per verb, not applied to all.** `Retry failed` on a group of sixteen with two
+        failures must retry two, and cancelling the fourteen that are merely queued would be a
+        different and destructive reading of the same click.
+
+        **`Remove` goes out as one signal carrying its members**, because `DAT-005` §4 makes the
+        confirmation name its own count and a shell told one id at a time cannot say *these 16*.
+        """
+        jobs = self._model.group_jobs(playlist_id)
+        if verb is Verb.CANCEL_ALL:
+            for job in jobs:
+                if job.status in _CANCELLABLE:
+                    self._manager.cancel(job.id)
+        elif verb is Verb.RETRY_FAILED:
+            for job in jobs:
+                if job.status is JobStatus.FAILED:
+                    self.retry_requested.emit(job.id)
+        elif verb is Verb.REVEAL:
+            # One folder for the whole playlist (`UX-005` row 10), so revealing any member reveals
+            # it. The first *completed* member is the one with a file on disk to point at.
+            done = next((job for job in jobs if job.status is JobStatus.COMPLETED), None)
+            if done is not None:
+                self.reveal_requested.emit(done.id)
+        elif verb is Verb.REMOVE:
+            self.group_remove_requested.emit(playlist_id, [job.id for job in jobs])
 
     def eventFilter(self, watched: QObject, event: QEvent) -> bool:
         """`Right` opens the focused playlist and `Left` closes it (`T140-R5`, `NFR-005`).

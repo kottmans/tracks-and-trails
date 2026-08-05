@@ -2047,3 +2047,55 @@ def test_the_step_buttons_are_a_matched_pair(qapp: QApplication, tmp_path: Path)
     finally:
         qapp.setStyleSheet(was_sheet)
         qapp.setPalette(was_palette)
+
+
+def test_removing_a_playlist_asks_once_and_names_its_count(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`DAT-005` §4 at the group level (`T-140`, `T140-R5`).
+
+    A bare *Remove* on a row that stands for sixteen files does not say how much is about to go,
+    and a user who clicked the header meaning to click an entry has nothing to notice it by. One
+    question carrying the count, then every member through the single removal implementation.
+    """
+    removed: list[str] = []
+    window = _window_over([], tmp_path, on_remove_requested=removed.append)
+
+    confirm = window._remove_group("pl-1", ["entry-0", "entry-1", "entry-2"])
+
+    assert confirm is not None
+    assert confirm.text() == "Remove these 3 downloads from the queue?", (
+        f"the confirmation reads {confirm.text()!r}; DAT-005 section 4 makes it name its own count"
+    )
+    assert removed == [], "nothing may be removed before the user answers"
+
+    confirm.buttonClicked.emit(confirm.button(QMessageBox.StandardButton.Yes))
+    assert removed == ["entry-0", "entry-1", "entry-2"]
+    confirm.close()
+
+
+def test_a_single_member_group_removal_is_written_out_not_assembled(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """ "1 downloads" is the tell that a message was assembled rather than composed."""
+    window = _window_over([], tmp_path, on_remove_requested=lambda _job_id: None)
+
+    confirm = window._remove_group("pl-1", ["entry-0"])
+
+    assert confirm is not None
+    assert confirm.text() == "Remove this download from the queue?"
+    confirm.close()
+
+
+def test_declining_a_group_removal_removes_nothing(qapp: QApplication, tmp_path: Path) -> None:
+    """The safe button is the default, so the accident this guards against is one keypress away."""
+    removed: list[str] = []
+    window = _window_over([], tmp_path, on_remove_requested=removed.append)
+
+    confirm = window._remove_group("pl-1", ["entry-0", "entry-1"])
+    assert confirm is not None
+    assert confirm.defaultButton() == confirm.button(QMessageBox.StandardButton.No)
+
+    confirm.buttonClicked.emit(confirm.button(QMessageBox.StandardButton.No))
+    assert removed == []
+    confirm.close()

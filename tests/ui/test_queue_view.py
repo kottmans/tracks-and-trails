@@ -64,9 +64,11 @@ from tracks_and_trails.ui.row_delegate import (
     STATE_CHIP_ROLE,
     STATE_ROLE,
     THUMBNAIL_URL_ROLE,
+    VERBS_ROLE,
     RowDelegate,
     SegmentState,
 )
+from tracks_and_trails.ui.row_verbs import LABELS, Verb
 
 # --- a queue the table can read ---------------------------------------------------------------
 
@@ -1881,3 +1883,121 @@ def test_the_disclosure_keys_leave_an_ordinary_row_alone(
         )
         is False
     )
+
+
+def test_a_playlist_header_offers_the_mockups_verbs(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`T-140`'s verb criterion, transcribed from `UX-005` row 9 rather than from the code.
+
+    `Retry failed` **only when something failed** is the half stated as a criterion, so it is
+    asserted in both directions. `Open` is absent by design: the entries share one folder and
+    there is no single file to open.
+    """
+    jobs = _playlist_jobs(tmp_path, 3)
+    for job in jobs:
+        queue.add(job)
+    view = views(jobs=queue, manager=managers())
+    header = view.model.index(0, JOB_COLUMN)
+
+    offered = view.model.data(header, VERBS_ROLE)
+    assert Verb.CANCEL_ALL in offered, "a playlist with queued entries offers Cancel all"
+    assert Verb.RETRY_FAILED not in offered, (
+        f"offered {offered}; nothing failed, and a Retry failed that is usually a lie teaches the "
+        "user to ignore it"
+    )
+    assert Verb.REVEAL in offered, "the first entry is COMPLETED, so there is a folder to show"
+    assert Verb.OPEN not in offered, "row 9 gives a group no Open: there is no one file"
+    assert Verb.REMOVE in offered
+
+    assert LABELS[Verb.CANCEL_ALL] == "Cancel all"
+    assert LABELS[Verb.REVEAL] == "Show in folder"
+
+
+def test_a_group_offers_retry_failed_once_an_entry_fails(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """The other direction of the same criterion, with one member failed."""
+    jobs = _playlist_jobs(tmp_path, 3)
+    queue.add(jobs[0])
+    queue.add(replace(jobs[1], status=JobStatus.FAILED))
+    queue.add(jobs[2])
+    view = views(jobs=queue, manager=managers())
+
+    offered = view.model.data(view.model.index(0, JOB_COLUMN), VERBS_ROLE)
+    assert Verb.RETRY_FAILED in offered
+
+
+def test_a_group_verb_acts_on_the_members_it_applies_to(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`Retry failed` retries the failed ones and nothing else.
+
+    The filtering is the behaviour: retrying all three would be a different and destructive
+    reading of the same click, and a test that only counted signals would agree with both.
+    """
+    jobs = _playlist_jobs(tmp_path, 3)
+    queue.add(jobs[0])
+    queue.add(replace(jobs[1], status=JobStatus.FAILED))
+    queue.add(jobs[2])
+    view = views(jobs=queue, manager=managers())
+
+    retried: list[str] = []
+    view.retry_requested.connect(retried.append)
+    view._on_verb("pl-1", Verb.RETRY_FAILED)
+
+    assert retried == ["entry-1"], (
+        f"retried {retried}; Retry failed must reach the failed members and only those"
+    )
+
+
+def test_removing_a_group_reports_every_member_for_one_confirmation(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`DAT-005` §4: the shell is told the whole group so the question can name its count."""
+    for job in _playlist_jobs(tmp_path, 3):
+        queue.add(job)
+    view = views(jobs=queue, manager=managers())
+
+    asked: list[tuple[str, object]] = []
+    view.group_remove_requested.connect(lambda pl, ids: asked.append((pl, ids)))
+    view._on_verb("pl-1", Verb.REMOVE)
+
+    assert asked == [("pl-1", ["entry-0", "entry-1", "entry-2"])]
+
+
+def test_an_ordinary_rows_remove_is_not_routed_as_a_group(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`Remove` and `Show in folder` are offered by ordinary rows too.
+
+    Routing a group verb by the *verb* was tried and is wrong: it sends every row's Remove down
+    the group path. The model deciding whether the id names a group is what makes the two id
+    spaces separable, and this is the regression that says so.
+    """
+    queue.add(make_job("solo", tmp_path, queue_position=0, status=JobStatus.FAILED))
+    view = views(jobs=queue, manager=managers())
+
+    removed: list[str] = []
+    grouped: list[str] = []
+    view.remove_requested.connect(removed.append)
+    view.group_remove_requested.connect(lambda pl, _ids: grouped.append(pl))
+    view._on_verb("solo", Verb.REMOVE)
+
+    assert removed == ["solo"], "an ordinary row's Remove must stay on the single-job route"
+    assert grouped == []

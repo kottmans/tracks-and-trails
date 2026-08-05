@@ -24,12 +24,13 @@ honest verb left is the one that removes the row. **This is a reading of `UX-005
 it** — worth an amendment to that entry rather than leaving the reading only here.
 """
 
+from collections.abc import Iterable
 from enum import StrEnum
 from typing import Final
 
 from tracks_and_trails.core.job_state import JobStatus
 
-__all__ = ["LABELS", "MORE_LABEL", "Verb", "verbs_for"]
+__all__ = ["LABELS", "MORE_LABEL", "Verb", "group_verbs", "verbs_for"]
 
 
 class Verb(StrEnum):
@@ -42,6 +43,12 @@ class Verb(StrEnum):
     REMOVE = "remove"
     OPEN = "open"
     REVEAL = "reveal"
+    #: **Group verbs act on many jobs at once, so they are their own values** (`T-140`,
+    #: `UX-005` row 9). Reusing `CANCEL` and `RETRY` on a header would make one signal mean
+    #: "this download" on one row and "sixteen downloads" on another, and the only thing telling
+    #: them apart would be which row happened to be under the pointer.
+    CANCEL_ALL = "cancel_all"
+    RETRY_FAILED = "retry_failed"
 
 
 #: What each verb says on the row. Short because they share a line with the format control and
@@ -54,6 +61,11 @@ LABELS: Final[dict[Verb, str]] = {
     Verb.REMOVE: "Remove",
     Verb.OPEN: "Open",
     Verb.REVEAL: "Show in folder",
+    # **Named differently from `Cancel` on purpose** (`UX-005` row 9, the mockup's verb table). A
+    # button reading *Cancel* on a row that covers sixteen files is the one most likely to be
+    # clicked by mistake, and the cost of that mistake is sixteen downloads rather than one.
+    Verb.CANCEL_ALL: "Cancel all",
+    Verb.RETRY_FAILED: "Retry failed",
 }
 
 #: The overflow, and **the declared keyboard route** (`UX-005` §4, `NFR-005`). Drawn on every row
@@ -83,6 +95,19 @@ _BY_STATUS: Final[dict[JobStatus, tuple[Verb, ...]]] = {
 }
 
 
+#: The states a member can be in and still be worth cancelling. `CANCELLED`, `COMPLETED` and
+#: `FAILED` are terminal, so a group made only of those has nothing left to stop.
+_LIVE: Final[frozenset[JobStatus]] = frozenset(
+    {
+        JobStatus.QUEUED,
+        JobStatus.READY,
+        JobStatus.PROBING,
+        JobStatus.RUNNING,
+        JobStatus.POST_PROCESSING,
+    }
+)
+
+
 def verbs_for(status: JobStatus, *, retryable: bool = True) -> tuple[Verb, ...]:
     """The verbs a row in `status` offers, in the order they are drawn.
 
@@ -99,3 +124,40 @@ def verbs_for(status: JobStatus, *, retryable: bool = True) -> tuple[Verb, ...]:
     if not retryable:
         return tuple(verb for verb in offered if verb is not Verb.RETRY)
     return offered
+
+
+def group_verbs(statuses: Iterable[JobStatus]) -> tuple[Verb, ...]:
+    """What a playlist header offers, given the statuses of its members (`T-140`, `UX-005` row 9).
+
+    **Not `verbs_for` with a status picked from the members.** A group has no single status — a
+    playlist mid-run holds a completed track, a running one and fourteen queued — so asking "which
+    member speaks for the group" is the wrong question. What each verb needs is whether *any*
+    member is in a state it applies to.
+
+    - **`Cancel all`** while anything is still live. Named apart from `Cancel` deliberately; see
+      `LABELS`.
+    - **`Retry failed` only when something failed**, which is the criterion stated as a criterion.
+      A group of sixteen with none failed must not offer it, or the user learns the button is
+      usually a lie.
+    - **`Show in folder` and no `Open`.** The entries share one folder (`UX-005` row 10), and there
+      is no single file to open — inventing one would be a decision rather than an implementation.
+    - **`Remove`** always, because a group the user no longer wants is always removable, and
+      `DAT-005` §4 makes the confirmation name its own count.
+
+    **`Pause all` is absent, and that is not an oversight.** The mockup names it; `UX-001` and
+    `T-080` removed per-job pause and deleted `JobStatus.PAUSED`, leaving pause a queue-level
+    drain with no mechanism for holding one group. Building it means reopening an accepted
+    decision, which is a maintainer's call — `REQ-017` is the named reopening condition. Offering a
+    button with nothing behind it would be the `T-016` failure this module's own docstring warns
+    about, so it is left out and reported.
+    """
+    seen = tuple(statuses)
+    offered: list[Verb] = []
+    if any(status in _LIVE for status in seen):
+        offered.append(Verb.CANCEL_ALL)
+    if any(status is JobStatus.FAILED for status in seen):
+        offered.append(Verb.RETRY_FAILED)
+    if any(status is JobStatus.COMPLETED for status in seen):
+        offered.append(Verb.REVEAL)
+    offered.append(Verb.REMOVE)
+    return tuple(offered)
