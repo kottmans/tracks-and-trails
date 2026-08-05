@@ -35,7 +35,7 @@ CREATE TABLE jobs (
     queue_position INTEGER,
     created_at     TEXT,
     started_at     TEXT,
-    finished_at    TEXT, thumbnail_url TEXT, uploader TEXT, duration_seconds REAL,
+    finished_at    TEXT, thumbnail_url TEXT, uploader TEXT, duration_seconds REAL, playlist_id TEXT, playlist_index INTEGER, playlist_title TEXT,
 
     -- The queue is ordered by this and it must survive a restart (`REQ-012`). Rows with a NULL
     -- position are not queued; the partial index keeps uniqueness without forbidding that.

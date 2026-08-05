@@ -879,3 +879,120 @@ def test_verbose_is_never_enabled() -> None:
         assert not options.get("verbose"), (
             "verbose dumps params and the proxy map — values this application supplied"
         )
+
+
+# --- T-137: a playlist's entries -------------------------------------------------------------
+
+
+def test_a_playlist_projects_its_entries_in_order() -> None:
+    """`T-137`: the projection used to read `len(entries)` and nothing else.
+
+    Built from a literal info dict rather than a recorded fixture **because no recorded fixture
+    can exercise this yet**: `tests/fixtures/capture.py` blanks every entry to `{}` on the stated
+    premise that the projection reads only the count, and lifting that premise means recording
+    every entry's URL and title — a `SEC-002` question this task did not decide on its own.
+    """
+    info = {
+        "_type": "playlist",
+        "title": "Trail Sounds",
+        "webpage_url": "https://example.invalid/list",
+        "playlist_count": 3,
+        "entries": [
+            {"url": "https://example.invalid/a", "title": "One", "duration": 61.5},
+            {"url": "https://example.invalid/b", "title": "Two"},
+            {"webpage_url": "https://example.invalid/c", "title": "Three"},
+        ],
+    }
+
+    media = adapter.project_media(info)
+
+    assert [entry.title for entry in media.entries] == ["One", "Two", "Three"], (
+        "the entries are not projected in the order the playlist gave them, so a queue built "
+        "from them would not be in the playlist's order"
+    )
+    assert media.entries[0].duration_seconds == 61.5
+    assert media.entries[2].url == "https://example.invalid/c", (
+        "an entry naming itself with `webpage_url` rather than `url` was dropped"
+    )
+
+
+def test_an_unreadable_entry_is_dropped_but_still_counted() -> None:
+    """A deleted or private item keeps its slot in yt-dlp's list, as `None`.
+
+    **Dropped from `entries`, kept in `entry_count`.** A job pointing at nothing fails at download
+    time with nothing useful to say; a count that shrank would tell the user the playlist was
+    smaller than it is. The two fields answer different questions and this is the case that
+    separates them.
+    """
+    info = {
+        "_type": "playlist",
+        "title": "Partly gone",
+        "webpage_url": "https://example.invalid/list",
+        "playlist_count": 3,
+        "entries": [{"url": "https://example.invalid/a", "title": "One"}, None, {}],
+    }
+
+    media = adapter.project_media(info)
+
+    assert len(media.entries) == 1, f"an unreadable entry became a job: {media.entries}"
+    assert media.entry_count == 3, (
+        "the count shrank to what could be read, so the playlist reports itself smaller than the "
+        "site says it is"
+    )
+
+
+def test_a_lazily_paginated_playlist_is_not_consumed_while_probing() -> None:
+    """A generator of entries is what a paginated playlist supplies.
+
+    Walking it here would fetch the whole playlist during a probe — the cost `project_media` has
+    refused since `T-016`, and `_entry_count` refuses in the same breath for the same reason.
+    """
+    consumed = False
+
+    def entries() -> object:
+        nonlocal consumed
+        consumed = True
+        yield {"url": "https://example.invalid/a", "title": "One"}
+
+    info = {
+        "_type": "playlist",
+        "title": "Lazy",
+        "webpage_url": "https://example.invalid/list",
+        "entries": entries(),
+    }
+
+    media = adapter.project_media(info)
+
+    assert not consumed, "probing walked a lazy playlist, fetching every page of it"
+    assert media.entries == ()
+    assert media.is_playlist, "a playlist that was not enumerated is still a playlist"
+
+
+def test_a_probe_enumerates_a_playlist_flatly_and_a_download_does_not() -> None:
+    """`T-137`: probing a playlist must not cost one full extraction per entry.
+
+    Without `extract_flat`, yt-dlp extracts every entry in full just to answer "what is this URL",
+    so a sixteen-item playlist is sixteen extractions before the user has agreed to anything.
+
+    **Both halves, because the option is wrong on a download.** A download needs its item
+    extracted properly; given a stub it would have no formats to choose from. A test asserting
+    only that the probe sets it would pass with it set on everything.
+    """
+    request = DownloadRequest(
+        url="https://example.invalid/list",
+        output_directory="/downloads",
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+    )
+
+    probe = adapter.build_options(request, "%(title)s.%(ext)s", probe_only=True)
+    download = adapter.build_options(request, "%(title)s.%(ext)s")
+
+    assert probe["extract_flat"] == "in_playlist", (
+        "a probe extracts every playlist entry in full, so reading a long playlist costs one "
+        "extraction per item"
+    )
+    assert "extract_flat" not in download, (
+        "a download was asked for a flat extraction, so it has a stub instead of an item and no "
+        "formats to choose from"
+    )

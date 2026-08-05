@@ -21,6 +21,7 @@ from tracks_and_trails.core.models import (
     Job,
     MediaInfo,
     MediaKind,
+    PlaylistEntry,
     Preset,
 )
 
@@ -198,6 +199,7 @@ def valid_kwargs(request_: DownloadRequest) -> dict[type, dict[str, object]]:
     """Minimal valid constructor arguments for every model in this module."""
     return {
         FormatInfo: {"format_id": "137", "extension": "mp4"},
+        PlaylistEntry: {"url": "https://example.com/e", "title": "E"},
         MediaInfo: {"url": "https://example.com/x", "title": "T"},
         DownloadRequest: {
             "url": "https://example.com/x",

@@ -296,6 +296,32 @@ class FormatInfo:
 
 
 @dataclass(frozen=True, slots=True)
+class PlaylistEntry:
+    """One item of a playlist, as a flat extraction reports it (`T-137`, `REQ-002`).
+
+    **Deliberately not a `MediaInfo`.** An entry carries what `extract_flat` gives cheaply — an
+    address and a name — and nothing that would require extracting the item itself. Projecting a
+    full `MediaInfo` per entry would make probing a playlist cost one extraction per item, which is
+    the cost `project_media` refused to pay when it declined to project entries at all.
+
+    So the fields here are the ones a **queue row** needs before its download starts: what to fetch
+    and what to call it. Everything else — formats, size, the real duration — arrives when the
+    entry is downloaded, exactly as it does for a URL the user pasted directly.
+    """
+
+    url: str
+    title: str
+    duration_seconds: float | None = None
+    thumbnail_url: str | None = None
+
+    def __post_init__(self) -> None:
+        _require_text("PlaylistEntry", "url", self.url)
+        _require_text("PlaylistEntry", "title", self.title)
+        _require_optional_duration("PlaylistEntry", "duration_seconds", self.duration_seconds)
+        _require_optional_text("PlaylistEntry", "thumbnail_url", self.thumbnail_url)
+
+
+@dataclass(frozen=True, slots=True)
 class MediaInfo:
     """What a probe learned about a URL — a projection of yt-dlp's `info_dict`.
 
@@ -326,6 +352,14 @@ class MediaInfo:
     #: for it would be a confident lie of the kind `Job.progress` already refuses to tell.
     entry_count: int | None = None
 
+    #: The playlist's items, when a probe enumerated them (`T-137`).
+    #:
+    #: **Empty is not "none"**: a playlist whose entries were not enumerated and a playlist with no
+    #: items are both `()`, and `entry_count` is what tells them apart — it is what the *site*
+    #: reports, while this is what this extraction materialised. `_entry_count` already keeps that
+    #: distinction and this preserves it rather than collapsing the two into one number.
+    entries: tuple[PlaylistEntry, ...] = ()
+
     def __post_init__(self) -> None:
         _require_text("MediaInfo", "url", self.url, "it is the url this describes")
         _require_text(
@@ -341,12 +375,22 @@ class MediaInfo:
         object.__setattr__(
             self, "formats", _as_tuple_of("MediaInfo", "formats", self.formats, FormatInfo)
         )
+        object.__setattr__(
+            self, "entries", _as_tuple_of("MediaInfo", "entries", self.entries, PlaylistEntry)
+        )
         _require_optional_duration("MediaInfo", "duration_seconds", self.duration_seconds)
         _require_optional_text("MediaInfo", "uploader", self.uploader)
         _require_optional_text("MediaInfo", "thumbnail_url", self.thumbnail_url)
         _require_flag("MediaInfo", "is_live", self.is_live)
         _require_flag("MediaInfo", "is_playlist", self.is_playlist)
         _require_optional_count("MediaInfo", "entry_count", self.entry_count)
+        if self.entries and not self.is_playlist:
+            # Same rule as the count below, for the same reason: entries on something that is one
+            # thing would be read as a playlist by anything that checks the list before the flag.
+            raise ValueError(
+                f"MediaInfo carries {len(self.entries)} entries on something that is not a "
+                "playlist; only a playlist has entries"
+            )
         if self.entry_count is not None and not self.is_playlist:
             # A count on a single item has no meaning, and a UI reading it would render "1 of 7"
             # for something that is one thing. Making the pair unrepresentable is cheaper than
@@ -516,6 +560,20 @@ class Job:
     #: offered no thumbnail. Neither is an error, and neither should be drawn as one.
     thumbnail_url: str | None = None
 
+    #: Which playlist this job came from, and where it sat in it (`T-137`, `UX-005` row 9).
+    #:
+    #: **Denormalised on purpose — there is no playlist table.** A group has no state of its own:
+    #: `UX-005` row 9a makes its chip a count of its members and row 9b makes its bar their
+    #: states, so everything a group row shows is derived from the jobs below it. A table would be
+    #: a second place for a title to live and nothing to keep in it, and the group would then need
+    #: its own lifecycle — created before its entries, deleted after the last one, wrong in
+    #: between. Three columns on the job say the same thing and cannot drift from it.
+    #:
+    #: All three are `None` together for a job the user pasted directly, which is the common case.
+    playlist_id: str | None = None
+    playlist_index: int | None = None
+    playlist_title: str | None = None
+
     #: Who published it, and how long it is (`UX-005` §3, `T124-R4`, `REQ-002`).
     #:
     #: **The same shape and the same reasoning as `thumbnail_url`**, and they were left out of the
@@ -557,6 +615,20 @@ class Job:
         _require_optional_text("Job", "thumbnail_url", self.thumbnail_url)
         _require_optional_text("Job", "uploader", self.uploader)
         _require_optional_duration("Job", "duration_seconds", self.duration_seconds)
+        _require_optional_text("Job", "playlist_id", self.playlist_id)
+        _require_optional_text("Job", "playlist_title", self.playlist_title)
+        _require_optional_count("Job", "playlist_index", self.playlist_index)
+        membership = (self.playlist_id, self.playlist_index, self.playlist_title)
+        if any(part is not None for part in membership) and None in membership:
+            # **All three or none.** A job with an id and no index cannot be ordered within its
+            # group, and one with an index and no id belongs to no group at all — both would draw
+            # a group row that is missing a member or claims one it has not got. Unrepresentable
+            # is cheaper than every reader checking the other two first (`T-014`'s lesson, and
+            # `MediaInfo.entry_count` above is the same rule).
+            raise ValueError(
+                "Job carries part of a playlist membership: playlist_id, playlist_index and "
+                f"playlist_title must be set together or not at all, got {membership!r}"
+            )
         _require_optional_text("Job", "output_path", self.output_path)
         _require_optional_text("Job", "error_message", self.error_message)
         _require_optional_count("Job", "queue_position", self.queue_position)

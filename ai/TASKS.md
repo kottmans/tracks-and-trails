@@ -1212,99 +1212,6 @@ proposes; `T118-R15` sized `SELECTOR_LINES` and should be re-read first.
 
 ---
 
-### T-137 — A playlist downloads one item, silently, and reports nothing about it
-
-**Status:** Proposed — **found by the maintainer, 2026-08-04**, downloading a real 16-item
-playlist. **The shape is ruled** (below); the work is not started.
-**Owner:** Implementer
-**Priority:** **High** — the row says *Playlist (16 items)* and then does not download 16 items
-**Phase:** Phase 3
-**Depends on:** a maintainer ruling; overlaps `T-110` and `T-112`
-**Relevant context:** `T-110` (probe the entries, choose which to enqueue), `T-112` (output
-template), `REQ-002`, `downloader/ytdlp_adapter.py` `build_options`, `core/models.py` `MediaInfo`
-**Affected surfaces:** `downloader/`, `core/models.py`, `ui/`, probably `persistence/`
-**Risk:** High — this is the first feature where one queue row stops meaning one file
-
-#### Scope
-
-**`build_options` sets `"noplaylist": True`** (`ytdlp_adapter.py`). The probe reports
-`is_playlist=True, entry_count=16` and the staged row says so — and then the download takes the
-single entry the URL resolves to. One row, one file, no statement anywhere that the other fifteen
-were never attempted. A separate report from the same sitting says the download then failed
-outright; **that is not yet diagnosed and may or may not be the same defect.**
-
-`MULTI_ITEM_TYPES` and `_entry_count` already exist and say in as many words that projecting the
-entries "is Phase 3's" — so the *probe* half was deliberately deferred, and `noplaylist` is the
-matching deferral on the download side. What was not decided is that the UI would keep announcing
-a playlist it does not download.
-
-**Three things the maintainer asked for**, recorded here as requirements to rule on rather than as
-a design:
-
-1. **An overall progress bar** for the playlist as a whole.
-2. **More information** while it runs — which entry, how many are left.
-3. **Its own folder** at the download location, so the items stay together.
-
-Under the ruling below, 1 and 2 are largely answered by the row-per-entry shape — sixteen rows each
-with their own bar *is* the information — but "how many are left" is a claim about the **group**,
-and nothing in the queue currently knows that a group exists. That is the part the ruling does not
-hand to you for free, and the part to design.
-
-**Ruled by the maintainer, 2026-08-04, twice — and the second ruling stands.** A playlist is
-**one queue row that opens into its entries**, drawn exactly as
-`docs/mockups/2026-08-04-playlist-rows.html` shows (published:
-https://claude.ai/code/artifact/dc4a35f3-28c5-4b36-95a3-5a4cad47ecfc): the segmented bar, the
-`4 of 16` count, and the shorter child row. `UX-005` rows 9–9d carry it. The folder rule, row 10,
-was never in question.
-
-**Decomposed, because it is three changes that fail differently.** This task keeps the part that
-made it *High* — a playlist downloading one file and saying nothing — and the queue's shape is
-`T-140`:
-
-| | | |
-|---|---|---|
-| `T-137` | A playlist enumerates its entries, they all download, and they land in one folder | this task |
-| `T-140` | The queue draws a group row that opens, per the mockup | filed |
-
-They are separable because the model contract between them is a role, not a call: `T-140` draws
-whatever answers the group roles, and `T-137` is what makes anything answer them. Either can be
-reviewed without the other in the tree.
-
-*The superseded-but-not-deleted first ruling follows, because the argument against the alternatives
-is the record:*
-
-Probing a playlist expands it into one job per entry. Every row then gets a real progress bar, the
-concurrency limit and the existing verbs **for free** — there is no second progress model, and
-`UX-005`'s row anatomy is drawn once rather than twice. The cost is accepted deliberately: one
-paste becomes sixteen rows, and *Clear finished*, *Remove* and the tab count all have to mean
-something sensible across a group that arrived together.
-
-Files land in `<download directory>/<playlist title>/` as a **fixed rule**, not a setting. The
-alternative was to expose it through `T-112`'s output template; declined for now, because a rule
-the template editor must later be able to express is a smaller commitment than a setting shipped
-before the editor that would own it.
-
-*(The competing shape — one row for the playlist, reporting "item 4 of 16" — was rejected. It
-keeps the row count honest and needs a second progress model underneath the row, and per-item
-retry and cancel have nowhere obvious to live.)*
-
-#### Acceptance criteria
-
-- Sixteen items enqueued from a sixteen-item playlist **actually download**, asserted against a
-  recorded fixture rather than a network
-- Whatever the row means, **the row does not claim more than it does** — the failure this task
-  exists for
-- Progress is reported for the whole, with the per-item detail the ruling settles on
-- Files land together in a folder named from the playlist, asserted on the produced paths
-- A playlist that cannot be enumerated still behaves — `_entry_count` already returns `None` for
-  that case and the UI must not read it as zero
-
-#### Out of scope
-
-- Choosing *which* entries to enqueue, which is `T-110`'s own scope
-
----
-
 ### T-138 — History rows lose the thumbnail the queue row had
 
 **Status:** Proposed — **found by the maintainer, 2026-08-04.** The same download shows a picture
@@ -2217,6 +2124,142 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-137 — A playlist downloads one item, silently, and reports nothing about it
+
+**Status:** **Complete — 2026-08-04.** A playlist now enumerates, every entry becomes a queue job,
+and they land together in a folder named for the playlist.
+
+**What it was.** `build_options` set `noplaylist`, so the download took whichever single entry the
+URL resolved to while the staged row said *Playlist (16 items)*. The row told the truth and the
+queue did not.
+
+**What was built.**
+
+- `PlaylistEntry`, and `MediaInfo.entries`. Deliberately **not** a nested `MediaInfo`: an entry
+  carries an address, a name, a duration and a thumbnail, and nothing that needs the item itself
+  extracting.
+- **`extract_flat: "in_playlist"` on the probe only.** Without it yt-dlp extracts every entry in
+  full to answer "what is this URL", making a sixteen-item playlist sixteen extractions — the
+  exact cost `project_media` refused to pay when it declined to project entries at all. A
+  *download* must not have it: it would get a stub with no formats to choose from. Both halves are
+  asserted, because a test pinning only the probe passes with the option set on everything.
+- **Migration `0004`** adds `playlist_id`, `playlist_index`, `playlist_title` to `jobs`, with
+  `v4.sql` frozen from a live v4 database (`T014-R4`). **No `playlists` table**, and the migration
+  says why at length: a group has no state of its own, so a table would be a second home for a
+  title with nothing else in it and a lifecycle nothing needs.
+- The dialog expands a probed playlist into one job per entry, sharing a `playlist_id`, indexed in
+  the playlist's own order, into `sanitize_component(title)` under the download directory.
+
+**What it deliberately does not do.**
+
+- **Entries are `QUEUED`, not `READY`.** `UX-003` makes a pasted URL a probed one; a flat entry is
+  named but not extracted, so calling it ready would claim a probe nobody ran.
+- **A playlist that enumerated nothing stays one job.** `entries` is what *this* extraction
+  materialised — a paginated playlist yields a generator, which is deliberately not consumed. It
+  downloads as the pasted URL, as before; what changed is that it no longer claims sixteen items
+  while doing it.
+- **The group row is `T-140`.** Nothing draws these columns yet.
+
+**Flagged, not decided — `tests/fixtures/capture.py` blanks every playlist entry to `{}`.** Its
+stated premise is that "the projection reads `len(entries)` and nothing else", which this task has
+just made false. Recording entries would mean capturing every entry's URL and title, which is a
+`SEC-002` question about retention and not one to answer inside a task about downloading. **The
+consequence is real and should not be lost:** no recorded fixture can exercise enumeration, so the
+three projection tests are built from literal info dicts and say so in their docstrings. A
+maintainer ruling either extends the allowlist or accepts that this stays synthetic.
+
+**The reported outright failure is still undiagnosed.** `noplaylist` explains one file instead of
+sixteen; it does not explain none. Deferred by the maintainer on 2026-08-04.
+
+**Owner:** Implementer
+**Priority:** **High** — the row says *Playlist (16 items)* and then does not download 16 items
+**Phase:** Phase 3
+**Depends on:** a maintainer ruling; overlaps `T-110` and `T-112`
+**Relevant context:** `T-110` (probe the entries, choose which to enqueue), `T-112` (output
+template), `REQ-002`, `downloader/ytdlp_adapter.py` `build_options`, `core/models.py` `MediaInfo`
+**Affected surfaces:** `downloader/`, `core/models.py`, `ui/`, probably `persistence/`
+**Risk:** High — this is the first feature where one queue row stops meaning one file
+
+#### Scope
+
+**`build_options` sets `"noplaylist": True`** (`ytdlp_adapter.py`). The probe reports
+`is_playlist=True, entry_count=16` and the staged row says so — and then the download takes the
+single entry the URL resolves to. One row, one file, no statement anywhere that the other fifteen
+were never attempted. A separate report from the same sitting says the download then failed
+outright; **that is not yet diagnosed and may or may not be the same defect.**
+
+`MULTI_ITEM_TYPES` and `_entry_count` already exist and say in as many words that projecting the
+entries "is Phase 3's" — so the *probe* half was deliberately deferred, and `noplaylist` is the
+matching deferral on the download side. What was not decided is that the UI would keep announcing
+a playlist it does not download.
+
+**Three things the maintainer asked for**, recorded here as requirements to rule on rather than as
+a design:
+
+1. **An overall progress bar** for the playlist as a whole.
+2. **More information** while it runs — which entry, how many are left.
+3. **Its own folder** at the download location, so the items stay together.
+
+Under the ruling below, 1 and 2 are largely answered by the row-per-entry shape — sixteen rows each
+with their own bar *is* the information — but "how many are left" is a claim about the **group**,
+and nothing in the queue currently knows that a group exists. That is the part the ruling does not
+hand to you for free, and the part to design.
+
+**Ruled by the maintainer, 2026-08-04, twice — and the second ruling stands.** A playlist is
+**one queue row that opens into its entries**, drawn exactly as
+`docs/mockups/2026-08-04-playlist-rows.html` shows (published:
+https://claude.ai/code/artifact/dc4a35f3-28c5-4b36-95a3-5a4cad47ecfc): the segmented bar, the
+`4 of 16` count, and the shorter child row. `UX-005` rows 9–9d carry it. The folder rule, row 10,
+was never in question.
+
+**Decomposed, because it is three changes that fail differently.** This task keeps the part that
+made it *High* — a playlist downloading one file and saying nothing — and the queue's shape is
+`T-140`:
+
+| | | |
+|---|---|---|
+| `T-137` | A playlist enumerates its entries, they all download, and they land in one folder | this task |
+| `T-140` | The queue draws a group row that opens, per the mockup | filed |
+
+They are separable because the model contract between them is a role, not a call: `T-140` draws
+whatever answers the group roles, and `T-137` is what makes anything answer them. Either can be
+reviewed without the other in the tree.
+
+*The superseded-but-not-deleted first ruling follows, because the argument against the alternatives
+is the record:*
+
+Probing a playlist expands it into one job per entry. Every row then gets a real progress bar, the
+concurrency limit and the existing verbs **for free** — there is no second progress model, and
+`UX-005`'s row anatomy is drawn once rather than twice. The cost is accepted deliberately: one
+paste becomes sixteen rows, and *Clear finished*, *Remove* and the tab count all have to mean
+something sensible across a group that arrived together.
+
+Files land in `<download directory>/<playlist title>/` as a **fixed rule**, not a setting. The
+alternative was to expose it through `T-112`'s output template; declined for now, because a rule
+the template editor must later be able to express is a smaller commitment than a setting shipped
+before the editor that would own it.
+
+*(The competing shape — one row for the playlist, reporting "item 4 of 16" — was rejected. It
+keeps the row count honest and needs a second progress model underneath the row, and per-item
+retry and cancel have nowhere obvious to live.)*
+
+#### Acceptance criteria
+
+- Sixteen items enqueued from a sixteen-item playlist **actually download**, asserted against a
+  recorded fixture rather than a network
+- Whatever the row means, **the row does not claim more than it does** — the failure this task
+  exists for
+- Progress is reported for the whole, with the per-item detail the ruling settles on
+- Files land together in a folder named from the playlist, asserted on the produced paths
+- A playlist that cannot be enumerated still behaves — `_entry_count` already returns `None` for
+  that case and the UI must not read it as zero
+
+#### Out of scope
+
+- Choosing *which* entries to enqueue, which is `T-110`'s own scope
+
+---
 
 ### T-132 — The toolbar is not the mockup's toolbar: no primary button, no alignment
 

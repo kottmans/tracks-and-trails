@@ -41,7 +41,13 @@ from yt_dlp.utils import (
 )
 
 from tracks_and_trails.core.errors import ErrorKind, FailureDetail
-from tracks_and_trails.core.models import DownloadRequest, FormatInfo, MediaInfo, MediaKind
+from tracks_and_trails.core.models import (
+    DownloadRequest,
+    FormatInfo,
+    MediaInfo,
+    MediaKind,
+    PlaylistEntry,
+)
 
 
 class UnsupportedPostProcessorError(ValueError):
@@ -280,10 +286,16 @@ def project_media(info: Mapping[str, Any]) -> MediaInfo:
     inventing a third state the requirement does not name would push the choice onto every
     reader.
 
-    The **entries themselves are not projected**. Phase 1 downloads one item, `REQ-002` asks
-    only whether the URL is a playlist, and projecting every entry would make a probe's cost
-    proportional to a list that can hold thousands. `T-016` shows the distinction and the count;
-    expanding a playlist into jobs is Phase 3's.
+    **The entries are projected flatly** (`T-137`). This used to project none of them, and said
+    why: Phase 1 downloaded one item and projecting every entry would make a probe cost one
+    extraction per item. Phase 3 needs them, so `probe_options` asks yt-dlp for a *flat* playlist
+    — an address and a name per entry, no extraction — and `PlaylistEntry` is deliberately shaped
+    to hold exactly that much. The cost the old comment refused to pay is still refused; what
+    changed is that yt-dlp can be asked not to charge it.
+
+    **`entries` and `entry_count` remain different facts.** The count is what the site reports;
+    this is what this extraction materialised. A paginated playlist can give fewer entries than
+    its count, and `_entry_count` already keeps them apart — see its own note.
     """
     url = str(info.get("webpage_url") or info.get("original_url") or info.get("url") or "")
     title = str(info.get("title") or "").strip() or url
@@ -301,7 +313,46 @@ def project_media(info: Mapping[str, Any]) -> MediaInfo:
         is_live=bool(info.get("is_live")),
         is_playlist=is_playlist,
         entry_count=_entry_count(info) if is_playlist else None,
+        entries=_entries(info) if is_playlist else (),
     )
+
+
+def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
+    """The playlist's items, projected flatly and in order (`T-137`).
+
+    **A generator is not consumed.** A lazily paginated playlist supplies one, and walking it here
+    would fetch the whole playlist during a probe — the cost `project_media` has always refused.
+    `_entry_count` makes the same refusal for the same reason; this is the pair of it.
+
+    An entry with no usable address is **dropped rather than carried**: yt-dlp emits `None`
+    placeholders for items it could not read — a deleted or private video keeps its slot in the
+    list — and a job pointing at nothing would fail at download time with nothing useful to say.
+    The count still reports the full playlist, so the group knows it is short.
+    """
+    entries = info.get("entries")
+    if isinstance(entries, str | bytes) or not isinstance(entries, Sequence):
+        return ()
+    projected: list[PlaylistEntry] = []
+    # **`item`, not `entry`.** `tests/unit/test_fixtures.py` derives what this module reads by
+    # walking its AST for `<name>.get("key")`, and `entry` is its name for a *format* — so reading
+    # a playlist entry through a variable called `entry` reported these keys as ones the adapter
+    # reads off a format, which is a different allowlist and a different fixture shape.
+    for item in entries:
+        if not isinstance(item, Mapping):
+            continue
+        url = str(item.get("url") or item.get("webpage_url") or item.get("original_url") or "")
+        if not url:
+            continue
+        title = str(item.get("title") or "").strip() or url
+        projected.append(
+            PlaylistEntry(
+                url=url,
+                title=title,
+                duration_seconds=_as_optional_float(item.get("duration")),
+                thumbnail_url=_as_optional_str(item.get("thumbnail")),
+            )
+        )
+    return tuple(projected)
 
 
 def _entry_count(info: Mapping[str, Any]) -> int | None:
@@ -396,6 +447,15 @@ def build_options(
 
     if probe_only:
         options["skip_download"] = True
+        # **A playlist is enumerated flatly** (`T-137`). Without this yt-dlp extracts every entry
+        # in full to answer "what is this URL", which makes probing a sixteen-item playlist
+        # sixteen extractions — the cost `project_media` refused to pay when it declined to
+        # project entries at all. `in_playlist` gives each entry an address, a title and a
+        # duration and stops there, which is exactly what `PlaylistEntry` is shaped to hold.
+        #
+        # **Probe only.** A download must extract its item properly; this would leave it with a
+        # stub and no formats to choose from.
+        options["extract_flat"] = "in_playlist"
         return options
 
     if request.subtitle_languages:

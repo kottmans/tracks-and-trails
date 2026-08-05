@@ -169,9 +169,25 @@ def redact_url(value: str) -> str:
     return urlunsplit(parts._replace(netloc=netloc, query=urlencode(kept), fragment=""))
 
 
-#: What an entry of a playlist becomes. The projection reads `len(entries)` and nothing else
-#: (`ytdlp_adapter._entry_count`), so an entry is a **count**, not a record.
-ENTRY_PLACEHOLDER: Final[dict[str, Any]] = {}
+#: What a playlist entry carries (`T-137`). **This used to be `{}`**, on the recorded premise that
+#: "the projection reads `len(entries)` and nothing else" — true until `T-137` made a playlist
+#: expand into one job per entry, which needs each entry's address and name.
+#:
+#: **`SEC-002`, and the reasoning rather than a shrug.** This records more than it did, so it is
+#: worth being exact about *what*: these are the same four facts the fixture already keeps about
+#: the top-level item — where it is, what it is called, how long, and its picture. Nothing new in
+#: kind is retained; what changed is that a playlist's items now get the same treatment as the
+#: playlist. The rule the allowlist has always followed is unchanged: a field is kept if and only
+#: if `ytdlp_adapter` reads it, and `test_the_allowlist_matches_what_the_adapter_actually_reads`
+#: derives that from the source rather than trusting this list.
+CONSUMED_ENTRY: Final[tuple[str, ...]] = (
+    "url",
+    "webpage_url",
+    "original_url",
+    "title",
+    "duration",
+    "thumbnail",
+)
 
 
 def keep_consumed(info: Mapping[str, Any]) -> dict[str, Any]:
@@ -191,10 +207,12 @@ def keep_consumed(info: Mapping[str, Any]) -> dict[str, Any]:
         if key == "formats" and isinstance(value, list | tuple):
             kept[key] = [_keep_format(entry) for entry in value]
         elif key == "entries" and isinstance(value, list | tuple):
-            # **Cardinality, not content** (`T018-R1`). Recursing here kept each entry's title
-            # and uploader, and the projection never reads either: it takes `len(entries)`. Data
-            # retained for no reader is a leak waiting for a shape nobody predicted.
-            kept[key] = [dict(ENTRY_PLACEHOLDER) for _ in value]
+            # **Content now, because there is a reader** (`T-137`). This kept cardinality only,
+            # and said why: `T018-R1` found each entry's title and uploader retained for nothing.
+            # The rule was never "entries are special" — it was "kept only if read" — and a
+            # playlist that expands into jobs reads four fields per entry. Everything else about
+            # an entry is still dropped, by the same allowlist mechanism as everywhere else.
+            kept[key] = [_keep_entry(item) for item in value]
         else:
             kept[key] = clean_scalar(value)
     return kept
@@ -204,6 +222,13 @@ def _keep_format(entry: Any) -> dict[str, Any]:
     if not isinstance(entry, Mapping):
         return {}
     return {key: clean_scalar(entry[key]) for key in CONSUMED_FORMAT if key in entry}
+
+
+def _keep_entry(item: Any) -> dict[str, Any]:
+    """One playlist entry, allowlisted (`T-137`). Same shape and rule as `_keep_format`."""
+    if not isinstance(item, Mapping):
+        return {}
+    return {key: clean_scalar(item[key]) for key in CONSUMED_ENTRY if key in item}
 
 
 def _policy_record() -> str:

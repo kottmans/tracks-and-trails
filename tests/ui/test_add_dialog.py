@@ -61,6 +61,7 @@ from tracks_and_trails.core.models import (
     Job,
     MediaInfo,
     MediaKind,
+    PlaylistEntry,
     Preset,
 )
 from tracks_and_trails.downloader.manager import (
@@ -2331,4 +2332,140 @@ def test_an_unprobed_row_carries_neither_rather_than_a_guess(
     assert stored.duration_seconds is None, (
         f"an unprobed duration was stored as {stored.duration_seconds!r}, which the row would "
         "draw as a real length"
+    )
+
+
+# --- T-137: a playlist becomes one job per entry ----------------------------------------------
+
+
+def _probed_playlist(dialog: AddUrlDialog, *, title: str, count: int) -> None:
+    """Hand the dialog a probe result that enumerated `count` entries."""
+    row = dialog.rows[0]
+    assert row.job_id is not None
+    dialog._on_media_probed(
+        row.job_id,
+        MediaInfo(
+            url=row.url,
+            title=title,
+            is_playlist=True,
+            entry_count=count,
+            entries=tuple(
+                PlaylistEntry(
+                    url=f"https://example.invalid/entry-{index}",
+                    title=f"Track {index:02d}",
+                    duration_seconds=float(60 + index),
+                )
+                for index in range(count)
+            ),
+        ),
+    )
+
+
+def test_a_playlist_is_added_as_one_job_per_entry(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    sink: FakeSink,
+    spin: Callable[..., bool],
+) -> None:
+    """`T-137`: the defect was that a sixteen-item playlist added **one** job and downloaded it.
+
+    `build_options` sets `noplaylist`, so the single job took whichever entry the URL resolved to
+    while the staged row said *Playlist (16 items)*. The row told the truth and the queue did not.
+
+    Asserted on what reaches the sink, because that is what becomes durable — `REQ-012` persists
+    before anything starts, so a job that is not submitted here never exists.
+    """
+    dialog = dialogs(managers())
+    type_urls(dialog, "https://example.invalid/list")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and dialog.rows[0].job_id is not None)
+    _probed_playlist(dialog, title="Trail Sounds", count=4)
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions)), "nothing was submitted"
+    submitted = sink.submissions[-1]
+
+    assert len(submitted) == 4, (
+        f"a four-entry playlist added {len(submitted)} job(s); the queue does not hold what the "
+        "row said the playlist contains"
+    )
+    assert [job.playlist_index for job in submitted] == [0, 1, 2, 3], (
+        "the entries are not indexed in the playlist's own order"
+    )
+    assert len({job.playlist_id for job in submitted}) == 1, (
+        "the entries do not share one playlist id, so nothing groups them"
+    )
+    assert {job.playlist_title for job in submitted} == {"Trail Sounds"}
+    assert [job.url for job in submitted] == [
+        f"https://example.invalid/entry-{index}" for index in range(4)
+    ], "the jobs point at the playlist URL rather than at its entries"
+
+
+def test_a_playlists_entries_land_together_in_one_folder(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    sink: FakeSink,
+    tmp_path: Path,
+    spin: Callable[..., bool],
+) -> None:
+    """`UX-005` row 10: items that arrived together stay together.
+
+    The title is deliberately hostile — a slash in it would escape the download directory if the
+    folder name were interpolated raw, which is the whole reason `sanitize_component` exists.
+    """
+    dialog = dialogs(managers())
+    # The fixture puts every dialog under `tmp_path / "downloads"`; the claim is
+    # about where the entries land *relative to it*, so it is read rather than set.
+    downloads = tmp_path / "downloads"
+    type_urls(dialog, "https://example.invalid/list")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and dialog.rows[0].job_id is not None)
+    _probed_playlist(dialog, title="Hill / Bothy: best of", count=2)
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+    directories = {Path(job.request.output_directory) for job in sink.submissions[-1]}
+
+    assert len(directories) == 1, f"the entries were scattered across {directories}"
+    folder = directories.pop()
+    assert folder.parent == downloads, (
+        f"the playlist folder {folder} is not inside the download directory; a title with a "
+        "separator in it escaped"
+    )
+    assert folder != downloads, "the entries went straight into the download directory, unfoldered"
+
+
+def test_a_playlist_nothing_could_enumerate_stays_a_single_job(
+    qapp: QApplication,
+    managers: Callable[..., DownloadManager],
+    dialogs: Callable[..., AddUrlDialog],
+    sink: FakeSink,
+    spin: Callable[..., bool],
+) -> None:
+    """`entries` is what *this* extraction materialised, and it can be empty.
+
+    A paginated or partly-unreadable playlist enumerates nothing, and there is then nothing to
+    expand into. It downloads as the URL the user pasted — which is what it did before `T-137`.
+    """
+    dialog = dialogs(managers())
+    type_urls(dialog, "https://example.invalid/list")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows) and dialog.rows[0].job_id is not None)
+    row = dialog.rows[0]
+    assert row.job_id is not None
+    dialog._on_media_probed(
+        row.job_id,
+        MediaInfo(url=row.url, title="Unenumerable", is_playlist=True, entry_count=9),
+    )
+
+    dialog.add_to_queue()
+    assert spin(lambda: bool(sink.submissions))
+    submitted = sink.submissions[-1]
+
+    assert len(submitted) == 1, f"a playlist with no readable entries added {len(submitted)} jobs"
+    assert submitted[0].playlist_id is None, (
+        "a job that is not one of several was given a playlist membership, so the queue would "
+        "draw a group of one"
     )

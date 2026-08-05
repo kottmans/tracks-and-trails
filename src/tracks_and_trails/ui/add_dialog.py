@@ -110,6 +110,7 @@ from tracks_and_trails.core.models import (
     MediaInfo,
     Preset,
 )
+from tracks_and_trails.core.paths import sanitize_component
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.row_delegate import (
     DETAIL_ROLE,
@@ -1053,7 +1054,10 @@ class AddUrlDialog(QDialog):
         # Entry order, which becomes `queue_position` order: the repository allocates `MAX + 1`
         # inside the insert transaction, so submitting in this order is what the pool will start
         # in (`T115-R1`).
-        fresh = [(row, self._durable_job(row)) for row in committable]
+        # **A playlist becomes one job per entry** (`T-137`, `UX-005` row 9). One staged row can
+        # therefore produce many queue rows, which is why this flattens rather than maps: the
+        # pairing is kept so `_on_committed` can still report per staged row.
+        fresh = [(row, job) for row in committable for job in self._durable_jobs(row)]
         self._saving = True
         self._status.setText(f"Adding {len(fresh)} to the queue …")
         self._refresh()
@@ -1096,6 +1100,51 @@ class AddUrlDialog(QDialog):
             self._refresh()
             return
         self.accept()
+
+    def _durable_jobs(self, row: Row) -> list[Job]:
+        """The queue jobs for a resolved row: one, or one per playlist entry (`T-137`).
+
+        **A playlist that enumerated is expanded here rather than by the downloader.** Every entry
+        becomes an ordinary job — its own progress, its own verbs, its own row — which is exactly
+        what `UX-005` row 9 buys by grouping them in the *view* instead of in the queue. The
+        downloader is untouched: it still sees single downloads and has never heard of a playlist.
+
+        **A playlist that did not enumerate stays one job**, and that is not a fallback so much as
+        the honest answer: `entries` is what this extraction materialised, and with none of them
+        there is nothing to expand into. It downloads as the user's URL, which is what it did
+        before `T-137` — the difference is that it no longer *claims* sixteen items while doing it.
+        """
+        media = row.media
+        probed = media if isinstance(media, MediaInfo) else None
+        if probed is None or not probed.entries:
+            return [self._durable_job(row)]
+
+        playlist_id = str(uuid.uuid4())
+        # **Into a folder named for the playlist** (`UX-005` row 10). Sanitised through the same
+        # function the output path uses, so a title with a slash in it cannot escape the download
+        # directory — the entries land together or they do not land at all.
+        folder = sanitize_component(probed.title)
+        directory = self._output_directory / folder if folder else self._output_directory
+        return [
+            Job(
+                id=str(uuid.uuid4()),
+                url=entry.url,
+                request=preset_registry.to_request(
+                    self.preset_for(row), url=entry.url, output_directory=str(directory)
+                ),
+                # **Queued, not ready.** `UX-003` makes a pasted URL a probed one; a flat entry is
+                # named but not extracted, so calling it `READY` would claim a probe nobody ran.
+                status=JobStatus.QUEUED,
+                title=entry.title,
+                thumbnail_url=entry.thumbnail_url,
+                duration_seconds=entry.duration_seconds,
+                playlist_id=playlist_id,
+                playlist_index=index,
+                playlist_title=probed.title,
+                created_at=datetime.now().astimezone(),
+            )
+            for index, entry in enumerate(probed.entries)
+        ]
 
     def _durable_job(self, row: Row) -> Job:
         """The queue job for a resolved row, carrying everything the probe learned.

@@ -132,6 +132,13 @@ ALLOWED_INFO_KEYS = frozenset(
         "webpage_url",
     }
 )
+#: What a playlist entry may carry (`T-137`). Kept in step with `capture.CONSUMED_ENTRY` by
+#: `test_the_allowlist_matches_what_the_adapter_actually_reads`, which derives the truth from the
+#: adapter's own source rather than trusting either list.
+ALLOWED_ENTRY_KEYS = frozenset(
+    {"url", "webpage_url", "original_url", "title", "duration", "thumbnail"}
+)
+
 ALLOWED_FORMAT_KEYS = frozenset(
     {
         "acodec",
@@ -233,12 +240,18 @@ def unexpected_keys(payload: dict[str, Any]) -> list[str]:
                         if name not in ALLOWED_FORMAT_KEYS
                     )
             elif key == "entries" and isinstance(value, list):
-                # An entry is a count, not a record (`T018-R1`): the projection reads
-                # `len(entries)` and never looks inside one. Anything in there is data kept for
-                # no reader, so *every* key is unexpected rather than every unlisted key.
+                # **An entry is now a record, and an allowlisted one** (`T-137`). This read
+                # "every key is unexpected rather than every unlisted key", because the projection
+                # took `len(entries)` and never looked inside one (`T018-R1`). A playlist that
+                # expands into one job per entry reads four fields off each, so entries are held
+                # to the same rule as formats — unlisted keys are leaks, listed ones are not.
                 for index, entry in enumerate(value):
                     if isinstance(entry, dict):
-                        found.extend(f"{path}.entries[{index}].{name}" for name in entry)
+                        found.extend(
+                            f"{path}.entries[{index}].{name}"
+                            for name in entry
+                            if name not in ALLOWED_ENTRY_KEYS
+                        )
                     elif entry is not None:
                         found.append(f"{path}.entries[{index}] = {type(entry).__name__}")
 
@@ -304,7 +317,7 @@ def test_the_allowlist_matches_what_the_adapter_actually_reads() -> None:
         Path(__file__).resolve().parents[2] / "src/tracks_and_trails/downloader/ytdlp_adapter.py"
     ).read_text(encoding="utf-8")
 
-    reads: dict[str, set[str]] = {"info": set(), "entry": set()}
+    reads: dict[str, set[str]] = {"info": set(), "entry": set(), "item": set()}
     for node in ast.walk(ast.parse(source)):
         if not (isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute)):
             continue
@@ -321,6 +334,12 @@ def test_the_allowlist_matches_what_the_adapter_actually_reads() -> None:
     )
     assert reads["entry"] <= ALLOWED_FORMAT_KEYS, (
         f"the adapter reads {sorted(reads['entry'] - ALLOWED_FORMAT_KEYS)} off a format"
+    )
+    # `item` is the adapter's name for a playlist entry, kept distinct from `entry` — a format —
+    # precisely so this derivation can tell the two allowlists apart (`T-137`).
+    assert reads["item"] <= ALLOWED_ENTRY_KEYS, (
+        f"the adapter reads {sorted(reads['item'] - ALLOWED_ENTRY_KEYS)} off a playlist entry, "
+        "which fixtures drop"
     )
 
 
@@ -418,11 +437,17 @@ def test_the_writer_ignores_anything_the_caller_supplies_beside_the_known_blocks
     assert payload["info_dict"]["title"] == "kept"
 
 
-def test_a_playlist_entry_is_a_count_and_never_a_record(tmp_path: Path) -> None:
-    """`ytdlp_adapter` reads `len(entries)`. Everything else about an entry was kept for nobody.
+def test_a_playlist_entry_keeps_only_what_the_adapter_reads(tmp_path: Path) -> None:
+    """`T-137` changed what this asserts, and the rule it asserts *under* did not change.
 
-    Each entry is a whole info dict, so recursing into them was the largest single body of
-    retained data in the fixture set — and the projection has never looked inside one.
+    This used to require every entry to be `{}`, and said why: the projection read `len(entries)`
+    and each entry was a whole info dict, so recursing into them was the largest single body of
+    retained data in the fixture set. A playlist that expands into one job per entry now reads
+    four fields off each one, so the same rule — **kept if and only if the adapter reads it** —
+    now keeps four fields and drops the rest.
+
+    The hostile values below are the point: `uploader` and `cookies` are exactly the shape
+    `T018-R1` found being retained for nobody, and they must still not survive.
     """
     from tests.fixtures import capture
 
@@ -435,7 +460,13 @@ def test_a_playlist_entry_is_a_count_and_never_a_record(tmp_path: Path) -> None:
                 "_type": "playlist",
                 "title": "kept",
                 "entries": [
-                    {"title": "chapter one", "uploader": "a person", "cookies": "SID=secret"},
+                    {
+                        "title": "chapter one",
+                        "url": "https://example.invalid/one",
+                        "duration": 61,
+                        "uploader": "a person",
+                        "cookies": "SID=secret",
+                    },
                     {"title": "chapter two", "uploader": "a person"},
                 ],
             },
@@ -443,9 +474,21 @@ def test_a_playlist_entry_is_a_count_and_never_a_record(tmp_path: Path) -> None:
     )
     payload = load(written)
 
-    assert payload["info_dict"]["entries"] == [{}, {}], "an entry carried something"
+    entries = payload["info_dict"]["entries"]
+    assert entries[0] == {
+        "title": "chapter one",
+        "url": "https://example.invalid/one",
+        "duration": 61,
+    }, (
+        "an entry kept something outside the allowlist, or dropped something inside it: "
+        f"{entries[0]}"
+    )
+    assert entries[1] == {"title": "chapter two"}, (
+        "an entry that named fewer fields gained ones it never had"
+    )
+
     text = written.read_text(encoding="utf-8")
-    for value in ("chapter one", "a person", "SID=secret"):
+    for value in ("a person", "SID=secret"):
         assert value not in text, f"{value!r} survived inside an entry"
     assert not unexpected_keys(payload)
 
@@ -460,7 +503,9 @@ def test_the_gate_refuses_a_shape_record_and_a_populated_entry(tmp_path: Path) -
         "_fixture": {"captured": "2026-07-27"},
         "info_dict": {
             "title": "fine",
-            "entries": [{"title": "chapter one"}, {}],
+            # `title` is allowlisted for an entry since `T-137`; `uploader` never was, and it is
+            # the field `T018-R1` actually found being retained for no reader.
+            "entries": [{"title": "chapter one", "uploader": "a person"}, {}],
         },
         "_schema": {"unknown_map": {"credential-value-as-key-7c6c": "str"}},
     }
@@ -470,7 +515,12 @@ def test_the_gate_refuses_a_shape_record_and_a_populated_entry(tmp_path: Path) -
     found = unexpected_keys(load(written))
 
     assert "_schema" in found, "a restored fingerprint was accepted"
-    assert "info_dict.entries[0].title" in found, "an entry's contents were accepted"
+    assert "info_dict.entries[0].uploader" in found, (
+        "an unlisted field inside an entry was accepted; entries are allowlisted now, not empty"
+    )
+    assert "info_dict.entries[0].title" not in found, (
+        "an entry's title was refused, though the adapter reads one for every queued entry"
+    )
     assert not any(item.endswith(".title") and "entries" not in item for item in found), (
         "a consumed field was refused"
     )
