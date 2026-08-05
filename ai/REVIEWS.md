@@ -9993,3 +9993,57 @@ record only. The next coordination update may mark T-140 Complete at its reviewe
 “awaits re-review” with this approval; criterion 8 remains Not met until its checklist and
 exact-head Windows/Fedora evidence pass. No source, test, decision, task state, commit, remote ref
 or CI state was changed by the reviewer.
+
+## 2026-08-05 — Phase 2 exit review, second submission
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `431bb47`
+**Implementation head:** `541b484`
+**Submission head:** `5ccf2bc` (`bf264e5` adds the second-run evidence and `5ccf2bc` adds the
+handoff/current plan claim)
+**Verdict:** **Changes requested.** Criteria 1, 6 and 8 are not met. The second checklist record
+cannot support its “all 41 rows” result while it also records failures of those rows, and a later
+probe-continuation change regressed the accurate per-job progress criterion. The focused T-152
+correction also steals focus on unrelated model resets.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `P2EXIT-R11` | **High** | **Yes — criterion 1 / REQ-014** | Accurate per-job progress | A durable playlist probe reaches `READY` while retaining its last drawn `Stage.PROBING`. `_status_text()` gives any non-terminal row's drawn stage precedence, so the row says **Probing** beside a **Ready** chip indefinitely. The candidate already files this exact behavior as High in `T-162`, and the reviewer regression reproduces it. The criterion-8 closed-list rule cannot defer a failure of the independent Phase 2 criterion that each job show accurate progress, or REQ-014's current-stage promise. | Retire a completed probe's live state, or otherwise make stage precedence conditional on a stage that can still be active in the current status. Prove the probe → ready → download sequence while retaining `Probing` during a live probe and download-stage detail during a live download. | **Open** |
+| `P2EXIT-R12` | **High** | **Yes — criterion 8 / accepted T-153 criterion** | Built-window evidence | The second-run artifact reports **“pass, all 41 rows”** while its own known-open section says the candidate fails checklist row 3.15: every playlist on the primary site still draws a blank parent picture because the selected URL returns 404 (`T-161`). T-153 is Phase 2 work whose acceptance criterion is that the staged playlist row **shows** its own picture; its unit regression proves only that an address string is selected and cannot prove that address yields a picture. The same artifact calls row 2.7 passed while T-160 says the format control overlaps the thumbnail at the dialog's default size. Whether T-160 remains Phase 3 does not make a checklist row it directly fails a pass. | Mark criterion 8 Not met. Correct the T-153 continuation (or obtain an explicit amendment to what “shows a picture” means), then rerun the written checklist and record results that distinguish passed rows from accepted later defects. Keep the closed-list ruling, but do not use it to rewrite an observed row failure as a pass. | **Open** |
+| `P2EXIT-R13` | **Medium** | **Yes — NFR-005 / T-152 correction** | Keyboard focus | Both queue and History `modelReset` signals call `_give_the_rows_the_keyboard()`, which focuses whichever tab is currently visible without checking which model reset or whether focus is intentionally on a toolbar control. A hidden History refresh therefore takes focus from `concurrencyChoice` and moves it into the queue. The source disclosure limits this cost to the instant a first row arrives, but the connection runs on every structural reset from either model. That makes the keyboard route reachable by interrupting unrelated keyboard work, contrary to T-152's stated “initial focus, not the ability to have it” trade. | Restrict automatic focus placement to initial construction and the empty → first-row transition of the relevant visible view. Preserve deliberate focus elsewhere, and cover a hidden-tab reset plus a repeated nonempty queue refresh. | **Open** |
+| `P2EXIT-R14` | **High** | **Yes — Phase 2 exit truth** | Current-truth records | The canonical plan contains incompatible live verdicts: exit row 8 claims criterion 8 met from the second 41-row run, while its outstanding-work row still says the checklist rerun—including rows 3.6 and §5—has never happened. STATUS likewise says criterion 8 is Not met and the rerun is owed, then later describes it as waiting on that same evidence. This is the P2EXIT-R10/COORD-R5 class once more: one current-truth occurrence was updated while the sibling claims were left behind. The handoff also says eleven Phase 3 findings and lists twelve. | Reconcile every live criterion-8 occurrence in plan and status in one sweep after the evidence is corrected. Until the other findings close, state that criteria 1, 6 and 8 are Not met and this review requested changes. Correct the handoff/task count when carrying the review. | **Open** |
+
+### Exit-criterion reconstruction
+
+| Criterion | Review result |
+|---|---|
+| 1 | **Not met.** `P2EXIT-R11` is a deterministic inaccurate-stage case on the durable playlist route added after the earlier criterion proof. |
+| 2 | **Met on the submitted evidence.** The candidate does not change persistence, recovery, composition recovery ordering or the phase restart gate. |
+| 3 | **Met on the submitted evidence.** Pool limits, lowering and pause mechanics are outside the candidate's changed source. |
+| 4 | **Met on the submitted evidence.** The single-instance implementation and its approved Windows evidence are unchanged. |
+| 5 | **Met at the last corrected Linux/Windows evidence head.** No worker/watchdog/process-lifecycle source changed in this submission. The newly dispatched candidate CI was not awaited or used as evidence in this review. |
+| 6 | **Not met.** This independent review requests changes, so there is no phase sign-off. The 60-run Linux soak remains accepted as the measurement half. |
+| 7 | **Met on the submitted evidence.** The Add/admission/restart routes remain covered; the candidate's `main_window.py` change is focus placement, not admission. |
+| 8 | **Not met.** The claimed pass contradicts rows 2.7 and 3.15 and the accepted T-153 property remains false in the built window. |
+
+All thirteen deliverable approval records were found. Those approvals do not override a later
+regression of deliverable 2's per-job status/progress surface, which is the same current candidate
+criterion 1 asks this review to judge.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `431bb47..541b484` changes five source files and their tests plus current-truth/evidence records. `541b484..5ccf2bc` changes only plan/status/evidence/handoff files. `git diff --check 431bb47..5ccf2bc` reports one submitted whitespace error: an extra blank line at the end of `ai/STATUS.md`. |
+| Candidate-range identity | `git diff --stat 6bae7ec..541b484` confirms only `ai/TASKS.md` differs, so the Fedora second run does describe one application build despite its unrecorded exact commit. |
+| Reviewer criterion-1 regression | `test_a_finished_probe_does_not_outlive_the_ready_status`: **failed** — actual state `Probing`, expected `Ready to download`; the chip is `Ready`. |
+| Reviewer focus regression | `test_a_hidden_history_refresh_does_not_take_focus_from_the_toolbar`: **failed** — refreshing hidden History moves focus off `concurrencyChoice`. |
+| Submitted correction neighborhood | **9 passed**: the five T-152 keyboard cases, T-165 cancelled summary and enum coverage, the corrected finished-segment palette case, and T-153's adapter projection case. These prove the submitted local mechanisms but do not reach the two reviewer failures or a thumbnail fetch. |
+| Reviewer-test lint / format | `ruff check` on both changed reviewer test files: **pass**. `ruff format --check`: **pass**, 2 files. |
+| Submitted broader checks | The handoff reports unit/UI **1875 passed, 11 skipped**, integration **307 passed**, ruff, format and mypy. They were not rerun wholesale; run `31045159414` was intentionally not awaited at the maintainer's direction and has no bearing on the deterministic blockers above. |
+
+This review adds two failing regressions, one each to `tests/ui/test_queue_view.py` and
+`tests/ui/test_row_verb_wiring.py`, and appends this record. No submitted source, decision, task
+state, commit, remote ref or CI state was changed by the reviewer.

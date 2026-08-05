@@ -1355,3 +1355,17 @@ rows nobody has run rather than the rows that are easy.
 exit review needs: one platform (Fedora, not Windows), one runner who is also the person who
 accepted the mockups, and four known defects present during the run (`T-161`–`T-164`).
 
+## CI on the exit candidate — 2026-08-05
+
+**Green on `541b484`, all five jobs**, run `31045159414`: `STARBASE coverage`, `frozen windows`,
+`linux`, `frozen linux`, `windows desktop`.
+
+**Dispatched rather than reused, and that is the point.** The last push-triggered run was on
+`6bae7ec`; the two commits after it are prose and were correctly skipped by `paths-ignore`, so the
+candidate head had no run of its own. Citing a neighbour's run and reasoning that the diff is
+harmless is `P2EXIT-R8` exactly — the remedy is a run whose head *is* the head. Self-hosted
+runners, so it cost no quota.
+
+**Every Phase 2 exit criterion is now claimed met except 6(a)**, the independent exit review,
+requested in `ai/handoffs/2026-08-05-phase-2-exit-review.md`.
+

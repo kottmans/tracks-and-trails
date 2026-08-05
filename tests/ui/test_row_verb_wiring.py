@@ -2297,6 +2297,36 @@ def test_the_first_rows_of_a_first_run_take_the_keyboard(
         window.close()
 
 
+def test_a_hidden_history_refresh_does_not_take_focus_from_the_toolbar(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """A correction for the row shortcut must not hijack unrelated keyboard work."""
+    window = _window_over(
+        [_job("job-1", 0, JobStatus.RUNNING)],
+        tmp_path,
+        history=_OneRecordHistory(),
+    )
+    window.show()
+    QApplication.processEvents()
+    spinner = window.findChild(QSpinBox, "concurrencyChoice")
+    assert spinner is not None
+
+    try:
+        spinner.setFocus()
+        QApplication.processEvents()
+        assert spinner.hasFocus(), "the test did not arrange keyboard work on the toolbar"
+
+        window.refresh_history()
+        QApplication.processEvents()
+
+        assert spinner.hasFocus(), (
+            "refreshing the hidden History tab moved focus into the visible queue, interrupting "
+            "the toolbar control even though the user did not change tabs or ask for a row"
+        )
+    finally:
+        window.close()
+
+
 def test_an_empty_queue_claims_no_keyboard_it_cannot_use(
     qapp: QApplication, tmp_path: Path
 ) -> None:

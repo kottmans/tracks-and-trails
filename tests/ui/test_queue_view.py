@@ -325,6 +325,28 @@ def test_each_row_reports_its_own_job_while_all_three_are_running(
         assert view.model.text_at(job_id, PROGRESS_COLUMN) == f"{index * 10}%"
 
 
+def test_a_finished_probe_does_not_outlive_the_ready_status(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """Phase 2 criterion 1: a row's visible state must be accurate."""
+    queue.add(make_job("job-1", tmp_path, status=JobStatus.PROBING))
+    view = views(jobs=queue, manager=managers())
+    view.model._on_progress(Progress(job_id="job-1", stage=Stage.PROBING))
+    view.model._draw_pending()
+
+    queue.update(replace(queue.jobs["job-1"], status=JobStatus.READY))
+    view.model._on_job_changed("job-1", JobStatus.READY.value)
+    index = view.model.index(0, 0)
+
+    assert view.model.data(index, STATE_ROLE) == "Ready to download"
+    assert view.model.data(index, STATE_CHIP_ROLE) == "Ready", (
+        "the row's state and chip contradict one another after its probe finishes"
+    )
+
+
 # --- 2. a row opened onto a job that already ended (`T-059`) -----------------------------------
 
 

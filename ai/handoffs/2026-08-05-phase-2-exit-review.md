@@ -113,7 +113,10 @@ describe the symptom rather than request the other option.
 | `ruff check .` | All checks passed |
 | `ruff format --check .` | 165 files already formatted |
 | `mypy` | Success, 107 source files |
-| CI on the candidate head | **Run `31045159414`, dispatched on `541b484`** — see below |
+| CI on the candidate head | **Green, all five jobs.** Run `31045159414` on `541b484`: `STARBASE coverage`, `frozen windows`, `linux`, `frozen linux`, `windows desktop` |
+
+**`windows desktop` is the job criterion 5 rests on** — the N-worker orphan test as `T-127`
+rebuilt it. It passed on the candidate head, not on a neighbour of it.
 
 **CI was dispatched rather than reused.** The last push-triggered run was on `6bae7ec`; the two
 commits after it are prose and were correctly skipped by `paths-ignore`, so the candidate head had
