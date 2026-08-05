@@ -391,14 +391,14 @@
     <div class="titles">
       <p class="eyebrow">Tracks &amp; Trails · implementation plan</p>
       <h1>Phase 2 — Queue and concurrency</h1>
-      <p class="lede">Turn one download into a managed queue. The board changed shape on 2026-08-04: the maintainer ran the application, it produced <strong>ten tasks in an afternoon</strong>, and rather than carry them into Phase 3 they were <strong>ruled into the exit as criterion 8</strong> — the window has to match the features behind it. <strong>All ten are done.</strong> What is left is what was always left: a soak nobody has to watch, and a signature from someone who did not write the code.</p>
+      <p class="lede">Turn one download into a managed queue. The board changed shape on 2026-08-04: the maintainer ran the application, it produced <strong>ten tasks in an afternoon</strong>, and rather than carry them into Phase 3 they were <strong>ruled into the exit as criterion 8</strong> — the window has to match the features behind it. <strong>All ten are done</strong> — and then running the finished feature produced five more corrections, which is the part worth reading. What is left is what was always left: a soak nobody has to watch, and a signature from someone who did not write the code.</p>
       <p class="phase-line">
         <span><strong>Phase 1</strong> exited 2026-07-29</span>
         <span><strong>Phase 0</strong> exited 2026-07-26</span>
-        <span>head <code>006b152</code>, pushed</span>
-        <span>Windows <strong>green</strong> through <code>d54db67</code></span>
+        <span>head <code>a884035</code>, pushed</span>
+        <span>Windows <strong>green</strong> through <code>1d87929</code></span>
         <span>Linux gate <strong>~5 min</strong></span>
-        <span><strong>2129</strong> tests</span>
+        <span><strong>2132</strong> tests</span>
         <span>updated <strong>2026-08-04</strong></span>
       </p>
     </div>
@@ -410,8 +410,9 @@
       <li style="--chip: var(--st-approved)"><span class="n">10</span><span class="k">Criterion 8 tasks, all done</span></li>
       <li style="--chip: var(--st-approved)"><span class="n">7</span><span class="k">Criteria met, of 8</span></li>
       <li style="--chip: var(--st-review)"><span class="n">2</span><span class="k">Gates left to exit</span></li>
+      <li style="--chip: var(--st-idle)"><span class="n">2</span><span class="k">Phase 3 follow-ons filed</span></li>
       <li style="--chip: var(--st-approved)"><span class="n">0</span><span class="k">Open blocking findings</span></li>
-      <li style="--chip: var(--st-block)"><span class="n">9</span><span class="k">Assertions that measured a proxy</span></li>
+      <li style="--chip: var(--st-block)"><span class="n">10</span><span class="k">Tests that asserted the wrong thing</span></li>
     </ul>
   </header>
 
@@ -443,9 +444,9 @@ flowchart TB
     T131["T-131 launch test isolation"]:::done
     T130["T-130 mockup gaps - approved"]:::done
 
-    COMMIT["Committed and pushed - 006b152"]:::head
+    COMMIT["Committed and pushed - a884035"]:::head
 
-    WIN["Windows green through d54db67"]:::done
+    WIN["Windows green through 1d87929"]:::done
     SOAK["60 clean Linux soak runs - not started"]:::gate
     REVIEW["Criterion 6 - independent exit review"]:::gate
     EXIT(["PHASE 2 EXIT"]):::exit
@@ -453,7 +454,7 @@ flowchart TB
     T074["T-074 - Windows watch, not a gate"]:::watch
     UXSPEC["T-105 UX_SPEC - a Phase 3 entry gate"]:::watch
     FOUND["Criterion 8 - the window catches up"]:::done
-    OPEN["T-142 group verbs - Phase 3, not a criterion"]:::watch
+    OPEN["T-142 group verbs, T-143 entry probes - Phase 3"]:::watch
 
     DELIV --> COMMIT
     UX --> COMMIT
@@ -536,7 +537,7 @@ flowchart TB
 
     <div class="table-card">
       <table>
-        <caption>All ten complete. Windows-green through <code>d54db67</code></caption>
+        <caption>All ten complete. Windows-green through <code>1d87929</code></caption>
         <thead><tr><th>Task</th><th>What it was</th><th>State</th></tr></thead>
         <tbody>
           <tr><td><code>T-137</code></td><td><strong>A playlist downloaded one file of sixteen, silently</strong>, while the row read <em>Playlist (16 items)</em>. Migration <code>0004</code></td><td><span class="state met">Done</span></td></tr>
@@ -576,7 +577,7 @@ flowchart TB
     </div>
 
     <div class="callout" style="--accent:var(--st-block)">
-      <h3>Nine assertions measured a proxy rather than the property</h3>
+      <h3>Ten tests asserted the wrong thing</h3>
       <ul>
         <li>A hover test drew through <code>QApplication.style()</code> with no widget, so it measured the <em>platform</em> style.</li>
         <li>A palette test asserted the <em>global</em> palette held the row tint — it encoded the defect it was written for.</li>
@@ -587,14 +588,50 @@ flowchart TB
         <li>Its ink probe used <code>QColor(pixel).alpha()</code>, which is 255 for every pixel whatever the image holds.</li>
         <li>A cost test timed <code>repaint()</code> on an offscreen widget: <code>0.000s</code>.</li>
         <li>A stepper test compared a pixel inside a button against the toolbar <em>at a different height</em>, across a gradient.</li>
+        <li>A toolbar test asserted that its buttons were <em>indistinguishable from the bar</em> — which is what the maintainer then reported as broken.</li>
       </ul>
       <p class="note" style="border:none;padding:0">Most were mine, and several <strong>passed while
-        the defect was on screen</strong>. The shape is consistent enough to name: <strong>two things
-        are compared that differ for a reason other than the one being claimed.</strong>
+        the defect was on screen</strong>. There are two shapes here, and they are worth separating.
+        Eight <strong>measured a proxy</strong>: two things were compared that differ for a reason
+        other than the one being claimed. Two <strong>encoded the defect</strong> — the palette test
+        and the toolbar test each asserted, correctly and precisely, a property that was itself the
+        wrong choice. A mutation catches the first kind. Only running the application catches the
+        second.
         <code>ai/TESTING.md</code> §13 already forbids a test that passes for the wrong reason; what
         these add is that a mutation is the only thing that reliably tells them apart. The last two
         were caught before shipping rather than after.</p>
     </div>
+  </section>
+
+
+  <section>
+    <div class="section-head">
+      <h2>Then it was run, and the playlist worked</h2>
+      <p class="lede">Sixteen of sixteen, grouped, with the disclosure and the count. <strong>Every
+        correction below is something running it exposed</strong> — the sixth sitting at the window
+        to out-perform the gates, and the first where the feature under test was itself fine.</p>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <caption>Corrections at <code>a884035</code>, after criterion 8 was called met</caption>
+        <thead><tr><th>Reported as</th><th>What it actually was</th></tr></thead>
+        <tbody>
+          <tr><td><em>Pause queue and Clear finished are no longer buttons</em></td><td><strong>Mine, and my test asserted it.</strong> Making tool buttons transparent fixed a flat patch over the toolbar's gradient and destroyed the buttons. The mockup says they are bordered buttons on <code>surface</code> — a deliberate shape does not have the original problem, because it is not pretending to be the bar</td></tr>
+          <tr><td><em>The progress bar didn't update — I'd expect green</em></td><td>It did. Every segment drew in <code>muted</code>, so sixteen done looked exactly like sixteen waiting: <strong>the bar reported nothing while appearing to report something</strong></td></tr>
+          <tr><td><em>The data under each video is cut off</em></td><td><code>UX-005</code> row 9c says a child row drops the format line. It was <em>sized</em> for two lines and the painter still drew three, so the third was clipped</td></tr>
+          <tr><td><em>The queue shows 17 for a 16-video playlist</em></td><td>The tab counted <strong>rows</strong>: 17 open, 2 closed — the number moved when a group was opened, without the queue changing. It counts downloads now</td></tr>
+          <tr><td><em>No thumbnails for any of the playlist</em></td><td>A <strong>flat extraction carries <code>thumbnails</code>, a list — not <code>thumbnail</code></strong>. Reading only the singular is why a pasted URL showed its picture and none of the entries did</td></tr>
+          <tr><td><em>A paused queue should still probe</em></td><td><strong>It already does</strong> — <code>T080-R1</code>, and the manager says so outright. The real gap is that a playlist's entries are <em>never probed at all</em>: <code>T-137</code> builds them from a flat extraction. Filed as <code>T-143</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p class="note"><strong>Two follow-ons are filed and deliberately outside criterion 8</strong>:
+      <code>T-142</code>, the playlist header's own verbs, and <code>T-143</code>, probing the
+      entries. The list closed on 2026-08-04 precisely so that finding more work does not reopen
+      the phase — but it does mean <strong>the criterion was called met and then corrected five
+      times</strong>, which is worth a reviewer's attention rather than a footnote.</p>
   </section>
 
   <section>
@@ -751,7 +788,7 @@ P(0 crashes | unchanged)   39 runs   0.128
           <tr>
             <td class="n">8</td>
             <td><strong>The window matches the features behind it</strong> — added 2026-08-04 by maintainer ruling</td>
-            <td><span class="state met">Met</span><span class="state-note"><code>T-132</code>–<code>T-141</code>, all complete and Windows-green through <code>d54db67</code>. <strong>Recorded as an amendment rather than left to inference</strong>: <code>COORD-R13</code> corrected exactly that shape once, when a Phase 3 task was <em>described</em> as what criterion 6 waited on with no ruling behind it. The list is closed at 2026-08-04, because "the UI is caught up" is unfalsifiable and a tenth sitting would find an eleventh task</span></td>
+            <td><span class="state met">Met</span><span class="state-note"><code>T-132</code>–<code>T-141</code>, all complete and Windows-green through <code>1d87929</code>. <strong>Called met and then corrected five times</strong>, after the maintainer ran the finished playlist — see the section above. <strong>Recorded as an amendment rather than left to inference</strong>: <code>COORD-R13</code> corrected exactly that shape once, when a Phase 3 task was <em>described</em> as what criterion 6 waited on with no ruling behind it. The list is closed at 2026-08-04, because "the UI is caught up" is unfalsifiable and a tenth sitting would find an eleventh task</span></td>
           </tr>
           <tr>
             <td class="n">7</td>
@@ -780,8 +817,8 @@ P(0 crashes | unchanged)   39 runs   0.128
   <footer>
     <span>Transcribed from ai/IMPLEMENTATION_PLAN.md, ai/TASKS.md, ai/DECISIONS.md, ai/REVIEWS.md</span>
     <span>Counts read from the tables, not written beside them</span>
-    <span>Head 006b152 · suite 2129 passed, 11 skipped, 2 deselected</span>
-    <span>CI green on all five jobs through d54db67</span>
+    <span>Head a884035 · suite 2132 passed, 11 skipped, 2 deselected</span>
+    <span>CI green on all five jobs through 1d87929; a884035 owes its run</span>
     <span>2026-08-04</span>
   </footer>
 
