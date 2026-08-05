@@ -22,6 +22,19 @@ premise was wrong, and only measurement at the window found that out.
 through `T-141` are named by id and the list is closed at 2026-08-04. Anything new you notice is
 Phase 3 work unless you rule otherwise; write it down separately rather than folding it in here.
 
+### The drift this document is vulnerable to, stated so a reader can watch for it
+
+Eight rows here exist because a defect was found, not because somebody reasoned about what the
+window ought to do. That is how a checklist quietly stops being an independent check and becomes a
+regression suite with a person as the runner — it would then only ever find what has already been
+found once.
+
+**The guard is that every row says what a user should see, never which commit changed it.** A row
+reading *"check `T-165`'s fix"* has already failed; the same row reading *"a cancelled download
+must not be reported as a failed one"* stands on its own and would have caught the defect before it
+existed. Rows added after a finding are held to that shape, and the task id in the last column is a
+back-reference, not the row's content.
+
 ## Running it
 
 ```bash
@@ -60,7 +73,8 @@ checks, which need one real playlist URL.
 | 2.2 | **The list must never scroll sideways.** A long title elides; it does not widen the row. *(Added 2026-08-05: `T-151`. If a horizontal scrollbar appears, the verbs are off screen and rows 2.1–2.4 cannot be checked at all.)* | `T-151` |
 | 2.3 | A **wide** window draws no `⋯` on a row whose verbs all fit | `T-135` |
 | 2.4 | **Narrow the window** until verbs drop. `⋯` appears, and its menu holds **exactly the dropped ones** — not a repeat of what is still on the row | `T-135` |
-| 2.5 | **Shift+F10** opens the full menu at both widths — **try it before clicking any row**, which is the case that fails today (`T-152`), then again after clicking one | `T-135`, `T-152`, `NFR-005` |
+| 2.5 | **Shift+F10** opens the full menu at both widths. **Press it before touching anything at all** — not merely before clicking a *row*. `T-152` failed twice for two different reasons: first the list had no current row, then the key was going to the toolbar's concurrency stepper instead of the list. Only an untouched window asks both questions at once. Then again after clicking a row | `T-135`, `T-152`, `NFR-005` |
+| 2.5a | **Start with an empty queue**, add one download, and press **Shift+F10** without clicking anything. An empty list is hidden and cannot hold the keyboard, so this is the state a *first run* is in — and the one where a route that works on a restored queue can still be dead | `T-152`, `NFR-005` |
 | 2.6 | In the add dialog, a staged row's **format line does not run underneath its format control** — check with a long selector that wraps | `T-136` |
 | 2.7 | **At the dialog's default size**, the format control must not be drawn over the row's thumbnail (`T-160`). Narrow the dialog further and it must still not | `T-160` |
 
@@ -100,6 +114,8 @@ same moment. A bar with nothing failed cannot answer the question row 9b exists 
 | 3.14 | Every entry shows **its own thumbnail**, not a derived placeholder tile | `T-137` |
 | 3.15 | **The playlist's own staged row shows a picture too**, in the add dialog — not just its entries. *(Added 2026-08-05: `T-153`. The flat-extraction fix reached the children and not the parent.)* | `T-153` |
 | 3.16 | `Clear finished` on a **part-done** playlist leaves the group intact rather than dissolving it | `T-140` |
+| 3.17 | **Cancel a playlist part-way through**, then read the header. The second line must count what actually happened — `16 items · 3 done · 13 cancelled` — and must **not** call a cancelled download a failed one. A user who stopped something on purpose being told it failed goes looking for an error that does not exist | `T-165` |
+| 3.18 | With everything cancelled, the bar must **not look as full as a finished one**. Compare it against a playlist that completed: those are the two states a user most needs to tell apart, and both used to draw a solid dark bar. Check in **both** themes — the colours are semantic, so a fix that separates them in one can collapse them in the other | `T-165`, §5 |
 
 ## 4 · History and the add dialog (`T-138`, `T-139`)
 
@@ -116,6 +132,27 @@ same moment. A bar with nothing failed cannot answer the question row 9b exists 
 | # | What to look for |
 |---|---|
 | 5.1 | Switch to dark and repeat 1.1, 1.5, 1.6, 3.6 and 3.8. Contrast is gated automatically, but *"is that button obviously the primary one"* is not |
+
+---
+
+## Known open — found, filed, and **not** to be re-filed
+
+The second pass of 2026-08-05 found five defects. One (`T-165`) is fixed and has rows above. **The
+other four are real, recorded, and still present**, so a run will meet them. They are listed here
+so the same findings are not discovered a third time — by you, or by an exit reviewer who was not
+in the room when they were filed.
+
+| Id | What you will see | Where it goes |
+|---|---|---|
+| `T-161` | A playlist's own picture is still blank. The right field is read; the URL it yields — a `maxresdefault` yt-dlp lists without verifying — returns **404**, and `T-119`'s give-up rule makes the blank permanent | Phase 3 |
+| `T-162` | A probed entry's detail line says **`Probing`** beside a chip saying **`Ready`**. A finished probe's last message outlives it, because the row yields to its status only once it is *terminal* and `READY` is not | Phase 3 |
+| `T-163` | Narrow the window and `Open` / `Show in folder` keep their full width while the **progress bar is squeezed to a stub**. What decides whether a verb fits never counted the bar | Phase 3 |
+| `T-164` | Sixteen blocks in a narrow bar read as noise. **Ruled, not yet built**: `UX-005` row 9b-i merges them to a fixed count below a stated width | Phase 3, ready |
+
+**A paused queue that probes is not one of these.** Paste a playlist while paused and every entry
+probes, reports `Ready`, and starts nothing. That is `ARC-009` and `UX-001` working as decided —
+probes are exempt from pause, downloads park until *Resume*. Only the stale `Probing` **word** is
+wrong, and that is `T-162` above.
 
 ---
 
