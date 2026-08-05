@@ -15,7 +15,7 @@ CREATE TABLE history (
     output_path  TEXT,
     format_used  TEXT,
     bytes_total  INTEGER,
-    completed_at TEXT NOT NULL, thumbnail_url TEXT,
+    completed_at TEXT NOT NULL, thumbnail_url TEXT, playlist_id TEXT, playlist_index INTEGER, playlist_title TEXT,
 
     CHECK (bytes_total IS NULL OR bytes_total >= 0)
 );

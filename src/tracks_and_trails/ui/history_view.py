@@ -41,13 +41,37 @@ second. A history row is written once, by the completion transaction (`T050-R1`)
 again — so this reads on construction and on an explicit `refresh()`, and has no timer, no
 subscription and nothing to detach. Composition refreshes it when a job completes and when the queue
 is cleared, which are the only two moments the set of rows can differ.
+
+## A finished playlist is one row that opens
+
+`T-145`, and `UX-005`'s 2026-08-05 amendment is where the rulings are. A sixteen-item playlist used
+to land here as sixteen unrelated rows: the queue took trouble to show that they arrived together
+and History dropped it at the point it became the only record of them.
+
+**The flattening is `ui/grouping.py`'s, shared with `QueueModel`** — `UX-005` §3 makes both tabs one
+row anatomy, and a second copy of the rules is how the two come to disagree. What stays here is
+everything a *history* group says, which is not what a queue group says:
+
+- **The chip is a count — `16 items`.** The 2026-08-04 amendment excluded History from the *state*
+  chip because a `Done` on every row is noise; a count is not a state, so this is a different chip
+  rather than a reversal of that ruling.
+- **There is no segmented bar.** Every member succeeded by `DAT-005`'s definition of what reaches
+  this list, so row 9b's bar would be sixteen identical blocks.
+- **The count is of the members present — `14 items`, never `14 of 16`.** A denominator would
+  describe two downloads History does not hold, and would be wrong about both numbers the moment a
+  user removed one member.
+
+**Membership is carried, never inferred.** Migration `0006` gives a record the three columns and the
+completion transaction copies them from the job; a record written before that renders ungrouped, and
+nothing tries to re-group it from titles or paths.
 """
 
-from pathlib import Path
+from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
 from PySide6.QtCore import (
     QAbstractTableModel,
+    QEvent,
     QItemSelectionModel,
     QModelIndex,
     QObject,
@@ -64,13 +88,17 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from tracks_and_trails.ui.grouping import Group, Visible, flatten
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT, format_bytes
 from tracks_and_trails.ui.row_delegate import (
+    DEPTH_ROLE,
     DETAIL_ROLE,
+    EXPANDED_ROLE,
     HEADLINE_ROLE,
     HUE_ROLE,
     JOB_ID_ROLE,
     SELECTOR_ROLE,
+    STATE_CHIP_ROLE,
     STATE_ROLE,
     THUMBNAIL_URL_ROLE,
     VERBS_ROLE,
@@ -135,17 +163,101 @@ class HistoryModel(QAbstractTableModel):
         super().__init__(parent)
         self._history = history
         self._entries: list[HistoryEntry] = []
+        #: Which playlists are open. **Ids, not rows**, so it survives a refresh that reorders or
+        #: removes: a group the user opened stays open when a new download lands above it.
+        self._expanded: set[str] = set()
+        self._visible: list[Visible[HistoryEntry]] = []
+        self._visible_of: dict[str, int] = {}
         self.refresh()
 
     # --- the promises tests read -----------------------------------------------------------
 
     def download_count(self) -> int:
-        """How many records History holds. One per row here — it has no groups (`T-140`)."""
+        """How many **downloads** History holds, which is not how many rows it shows (`T-145`).
+
+        `QueueModel.download_count`'s ruling, one tab over: count the work, not the lines. A
+        collapsed playlist of sixteen is one row and expanded it is seventeen, and neither is the
+        answer to "how much is in here" — a tab count reading `rowCount()` would move when a user
+        opened a group without History having changed.
+        """
         return len(self._entries)
 
     def entry_ids(self) -> tuple[str, ...]:
-        """The rows, in the order they are shown."""
+        """Every record, in the durable order the repository gave them.
+
+        **Not the visible rows, and the two diverge the moment a playlist is collapsed** — see
+        `entry_id_at`, which is what a *row number* must be resolved through. This is the order
+        History is written in, which is what `text_at` and the ordering criterion are about.
+        """
         return tuple(entry.id for entry in self._entries)
+
+    def entry_id_at(self, row: int) -> str | None:
+        """The record a **visible row** is about, or `None` for a group header (`T-145`).
+
+        `QueueModel.job_id_at`'s reasoning verbatim, and the defect it records is one this view
+        would otherwise have acquired the day it grew groups: `entry_ids()` is every record, hidden
+        or not, and the view's row numbers count only what is drawn. Indexing the first with the
+        second resolves a visible row to a hidden member, and every file action then targets a
+        record the user cannot see.
+
+        `None` for a header rather than the group's id, because a caller asking "which record is
+        this row" must not be handed a playlist id that never had a file.
+        """
+        if not 0 <= row < len(self._visible):
+            return None
+        entry = self._visible[row]
+        if isinstance(entry, Group):
+            return None
+        return self._entries[entry].id
+
+    def records_at(self, row: int) -> tuple[str, ...]:
+        """Which records a visible row stands for: one, or a whole playlist (`T-145`).
+
+        **This is where "removing a group removes its members" actually lives.** A header is not a
+        record — it has no id in `history` and nothing to delete — so a removal that took row ids
+        would either fail silently on the header or, worse, delete nothing while telling the user
+        it had. Answering with the members means the existing selection-scoped route
+        (`DAT-005` §1) removes a playlist correctly without a second removal path beside it, and
+        the confirmation counts downloads rather than lines.
+
+        Empty for a row this model does not have.
+        """
+        if not 0 <= row < len(self._visible):
+            return ()
+        entry = self._visible[row]
+        if isinstance(entry, Group):
+            return tuple(member.id for member in entry.members)
+        return (self._entries[entry].id,)
+
+    def row_of(self, entry_id: str) -> int | None:
+        """Where `entry_id` is drawn, or `None` when nothing shows it.
+
+        A record inside a collapsed playlist has no line on screen, and `None` is the honest answer
+        for it — building a `QModelIndex` from a hidden record selects whatever is at that number.
+        """
+        return self._visible_of.get(entry_id)
+
+    def group_entries(self, playlist_id: str) -> list[HistoryEntry]:
+        """Every record in `playlist_id`, in the playlist's own order, or empty for a non-group.
+
+        **Empty rather than raising**, for `QueueModel.group_jobs`'s reason: the caller is acting on
+        an id the view drew a moment ago, and a group dissolved between the paint and the click is
+        an ordinary race rather than a programming error.
+        """
+        for entry in self._visible:
+            if isinstance(entry, Group) and entry.group_id == playlist_id:
+                return list(entry.members)
+        return []
+
+    def toggle_group(self, playlist_id: str) -> None:
+        """Open or close a playlist. Called by the delegate's disclosure and by the arrow keys."""
+        if playlist_id in self._expanded:
+            self._expanded.discard(playlist_id)
+        else:
+            self._expanded.add(playlist_id)
+        self.beginResetModel()
+        self._rebuild_visible()
+        self.endResetModel()
 
     def text_at(self, entry_id: str, column: int) -> str | None:
         """What one cell says, by entry rather than by row index.
@@ -161,7 +273,8 @@ class HistoryModel(QAbstractTableModel):
     # --- Qt's model interface ---------------------------------------------------------------
 
     def rowCount(self, parent: QModelIndex | _PersistentIndex = _ROOT) -> int:
-        return 0 if parent.isValid() else len(self._entries)
+        """The **drawn** lines: headers, standalone records, and the members of open groups."""
+        return 0 if parent.isValid() else len(self._visible)
 
     def columnCount(self, parent: QModelIndex | _PersistentIndex = _ROOT) -> int:
         """**One**, since `UX-005` (`T-124`).
@@ -187,9 +300,18 @@ class HistoryModel(QAbstractTableModel):
         index: QModelIndex | _PersistentIndex,
         role: int = Qt.ItemDataRole.DisplayRole,
     ) -> Any:
-        if not index.isValid() or not 0 <= index.row() < len(self._entries):
+        if not index.isValid() or not 0 <= index.row() < len(self._visible):
             return None
-        entry = self._entries[index.row()]
+        line = self._visible[index.row()]
+        if isinstance(line, Group):
+            return self._group_data(line, role)
+        entry = self._entries[line]
+
+        if role == DEPTH_ROLE:
+            # **One level, and only for a member that is actually drawn under a header** (`T-140`).
+            # A record whose playlist was dissolved to a single member is a top-level row and must
+            # not be indented under a heading that is not there.
+            return 1 if self._in_a_drawn_group(entry) else 0
 
         # **The delegate's roles, composed from the very cells `_text` answers** (`UX-005` §3,
         # `T-124`). History changes what the fields *say*, not what they are: where the queue row
@@ -278,6 +400,133 @@ class HistoryModel(QAbstractTableModel):
             return entry.completed_at.strftime(COMPLETED_FORMAT)
         return ""
 
+    def _in_a_drawn_group(self, entry: HistoryEntry) -> bool:
+        """Whether this record is a member of a playlist the list is actually drawing as a group."""
+        return entry.playlist_id is not None and entry.playlist_id in self._visible_of
+
+    def _group_size(self, group: Group[HistoryEntry]) -> str:
+        """A playlist's total size, or `UNKNOWN_TEXT` when it is not knowable.
+
+        **All or nothing, and the alternative is worse than it looks.** `bytes_total` is nullable —
+        it means "the download reported none" — so summing the members that have one produces a
+        number that is confidently too small, with nothing on the row to say so. A group of sixteen
+        missing one entry's size would read as fifteen entries' worth and look exactly like a
+        correct total. `UNKNOWN_TEXT` is what an ordinary row already shows for the same absence.
+        """
+        totals = [member.bytes_total for member in group.members]
+        if any(total is None for total in totals):
+            return UNKNOWN_TEXT
+        return format_bytes(sum(total for total in totals if total is not None))
+
+    def _group_folder(self, group: Group[HistoryEntry]) -> str:
+        """The folder a playlist's entries share, or `UNKNOWN_TEXT` when they do not.
+
+        `UX-005` row 10 has a playlist's entries share one folder, which is what makes a single
+        line meaningful here at all — but it is where they *were written*, and a user who changed
+        the download folder mid-playlist has records that disagree. Disagreement is reported rather
+        than papered over with the first member's answer, which is `T140-R3`'s rule for the queue
+        header's format line.
+
+        `PurePath` rather than `Path`: these are recorded strings, possibly written on the other
+        platform, and nothing here should touch a filesystem to render a row.
+        """
+        folders = {
+            str(PurePath(member.output_path).parent)
+            for member in group.members
+            if member.output_path
+        }
+        return folders.pop() if len(folders) == 1 else UNKNOWN_TEXT
+
+    def _group_data(self, group: Group[HistoryEntry], role: int) -> Any:
+        """What a playlist's header row answers (`T-145`, `UX-005` amended 2026-08-05).
+
+        The roles a *queue* header answers and this one does not are as much the decision as the
+        ones it does: no `SEGMENTS_ROLE`, because every member succeeded and sixteen identical
+        blocks is furniture; no `PRESET_CHOICES_ROLE`, because a record is not a download to
+        retarget.
+        """
+        if role == HEADLINE_ROLE:
+            return group.title
+        if role == JOB_ID_ROLE:
+            return group.group_id
+        if role == EXPANDED_ROLE:
+            return group.group_id in self._expanded
+        if role == STATE_CHIP_ROLE:
+            # **A count of the members present** — `14 items`, never `14 of 16`. History holds only
+            # completed downloads, so a denominator counts rows it cannot describe; and records are
+            # removable one at a time, so a stored original count would be wrong about both numbers
+            # after the first removal.
+            return f"{len(group.members)} items"
+        if role == VERBS_ROLE:
+            # **None, and that is this task's stopping line rather than an oversight** (`T-142`).
+            # The queue's `group_verbs()` answers `Cancel all`, `Retry failed` and `Show in folder`
+            # from member statuses, and in History every member is terminal by definition: there is
+            # nothing to cancel and, under `DAT-005`, a record is not a download to retry. What a
+            # terminal group can honestly offer is a **different list**, derived the same way, and
+            # deriving it is `T-142`. An empty tuple is what the row draws until then; borrowing
+            # the queue's list would be the mistake that task exists to avoid.
+            return ()
+        if role == DETAIL_ROLE:
+            # The same two facts an ordinary history row's second line carries, over the group.
+            return " — ".join((self._group_size(group), self._group_completed(group)))
+        if role == STATE_ROLE:
+            # The one format its members share, or nothing when they do not. Where an ordinary row
+            # says what it got, a header can only speak for the group when the group agrees.
+            formats = {self._text(member, FORMAT_COLUMN) for member in group.members}
+            return formats.pop() if len(formats) == 1 else ""
+        if role == SELECTOR_ROLE:
+            return self._group_folder(group)
+        if role == THUMBNAIL_URL_ROLE:
+            return next(
+                (member.thumbnail_url for member in group.members if member.thumbnail_url), None
+            )
+        if role == HUE_ROLE:
+            return placeholder_hue(group.members[0].url if group.members else group.title)
+        if role in (Qt.ItemDataRole.AccessibleTextRole, Qt.ItemDataRole.DisplayRole):
+            # **Spoken as a playlist, then as the row it is.** `DisplayRole` answers the same text
+            # for `T-151`'s reason: `QListView` sizes its content from it and the delegate draws
+            # something else, elided to the rect it is given.
+            return (
+                f"{group.title}. Playlist, {len(group.members)} items, "
+                f"{self._group_size(group)}, completed {self._group_completed(group)}"
+            )
+        return None
+
+    def _group_completed(self, group: Group[HistoryEntry]) -> str:
+        """When a playlist finished: its **most recent** member.
+
+        Explicitly a maximum rather than the first member's time. The header sits where its newest
+        member sits, because History is newest-first, but the members are ordered by
+        `playlist_index` — so `members[0]` is track 01, which is very often the oldest of them.
+        """
+        latest = max(member.completed_at for member in group.members)
+        return latest.strftime(COMPLETED_FORMAT)
+
+    def ensure_visible(self, entry_id: str) -> int | None:
+        """The row `entry_id` is drawn on, **opening its playlist if that is what it takes**.
+
+        `select()` is how a named record is reached before a file verb acts on it (`T-086`), and a
+        record inside a collapsed group has no row for that to land on. Silently failing would make
+        *Open* do nothing for exactly the downloads a playlist contributed; selecting row `None`
+        would act on whatever is at that number, which is worse.
+
+        `None` only for a record this view does not hold at all.
+        """
+        row = self._visible_of.get(entry_id)
+        if row is not None:
+            return row
+        for entry in self._entries:
+            if entry.id != entry_id:
+                continue
+            # Reached only when the record is hidden, so its group is closed and this opens it —
+            # `toggle_group` cannot close one here, because an open group's members have rows.
+            playlist_id = entry.playlist_id
+            if playlist_id is not None and playlist_id in self._visible_of:
+                self.toggle_group(playlist_id)
+                return self._visible_of.get(entry_id)
+            return None
+        return None
+
     def path_for(self, entry_id: str) -> str | None:
         """Where the file was written, or `None`. **Not `text_at(PATH_COLUMN)`** (`T-086`).
 
@@ -303,7 +552,35 @@ class HistoryModel(QAbstractTableModel):
         """
         self.beginResetModel()
         self._entries = list(self._history.all_entries())
+        self._rebuild_visible()
         self.endResetModel()
+
+    def _rebuild_visible(self) -> None:
+        """Flatten the records into headers and the rows not hidden (`T-145`).
+
+        **The rules are `ui/grouping.flatten`'s**, shared with `QueueModel` so the two tabs cannot
+        drift: the header at its first member's position, its members contiguous under it, a group
+        of one dissolved.
+
+        The two arguments that are History's own:
+
+        - **`membership` reads the record, never the job.** The columns migration `0006` added are
+          the record's own copy; a record written before it answers `None` and is drawn ungrouped.
+        - **`order` is the playlist's index**, because this list is newest-completed-first and a
+          playlist is not read in that order. Sixteen tracks that finished out of order still open
+          as 01, 02, 03 — which is what `0006` carried `playlist_index` across for.
+        """
+        self._visible, self._visible_of = flatten(
+            self._entries,
+            membership=lambda entry: (
+                None
+                if entry.playlist_id is None
+                else (entry.playlist_id, entry.playlist_title or entry.playlist_id)
+            ),
+            identity=lambda entry: entry.id,
+            expanded=self._expanded,
+            order=lambda entry: entry.playlist_index,
+        )
 
 
 class HistoryView(QWidget):
@@ -382,6 +659,12 @@ class HistoryView(QWidget):
         # pointer only while a button is held.
         self._delegate.watch_hover(self._table)
         self._delegate.verb_triggered.connect(self._on_verb)
+        # **A playlist opens and closes here too** (`T-145`, `UX-005` §3). The same delegate draws
+        # the same disclosure on both tabs, so the same two routes have to exist on both: the
+        # triangle, and the arrow keys below. A group that only a pointer can open is the defect
+        # `T140-R5` fixed one tab over.
+        self._delegate.disclosure_toggled.connect(self._model.toggle_group)
+        self._table.installEventFilter(self)
         layout.addWidget(self._table)
 
         # **The paint-time overflow record does not survive a reset** (`T-135`). A job that
@@ -450,17 +733,46 @@ class HistoryView(QWidget):
         """Activate a verb from the overflow or a key, by the route a click takes."""
         self._on_verb(entry_id, verb)
 
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """`Right` opens the focused playlist and `Left` closes it (`T-145`, `NFR-005`).
+
+        `QueueView.eventFilter` is the same filter for the same reasons, and both are one sentence:
+        `EXPANDED_ROLE` answers `None` for an ordinary row, so a record that is not a header sees
+        these keys exactly as it did before, and the two keys are directional rather than a toggle
+        because `Right` on an open group should leave it open.
+        """
+        if watched is self._table and event.type() == QEvent.Type.KeyPress:
+            key = event.key()  # type: ignore[attr-defined]
+            if key in (Qt.Key.Key_Right, Qt.Key.Key_Left):
+                index = self._table.currentIndex()
+                expanded = self._model.data(index, EXPANDED_ROLE)
+                playlist_id = self._model.data(index, JOB_ID_ROLE)
+                if isinstance(expanded, bool) and isinstance(playlist_id, str) and playlist_id:
+                    wants_open = key == Qt.Key.Key_Right
+                    if wants_open != expanded:
+                        self._model.toggle_group(playlist_id)
+                    # Consumed either way: `Right` on an open group is a no-op the user asked for.
+                    return True
+        return bool(super().eventFilter(watched, event))
+
     def verbs_of(self, entry_id: str) -> tuple[Verb, ...]:
         """What the row for `entry_id` offers, asked of the model the delegate asks (`T124-R1`).
 
         **Read through the role rather than recomputed**, for `QueueView.verbs_of`'s reason: the
         overflow exists to hold what the row could not fit, so a menu that disagreed with the row
-        would be worse than no menu. Empty for a record this view does not hold.
+        would be worse than no menu.
+
+        **Resolved through `row_of`, not through `entry_ids()`** (`T-145`). Those were the same
+        number until History grew groups and are not now: `entry_ids()` counts every record and a
+        row number counts only what is drawn, so indexing one with the other read the verbs of a
+        different row the moment a playlist was collapsed above it. Empty for anything this view is
+        not drawing — including a record hidden inside a closed group, which has no row to offer
+        verbs on.
         """
-        ids = self._model.entry_ids()
-        if entry_id not in ids:
+        row = self._model.row_of(entry_id)
+        if row is None:
             return ()
-        offered = self._model.data(self._model.index(ids.index(entry_id), 0), VERBS_ROLE)
+        offered = self._model.data(self._model.index(row, 0), VERBS_ROLE)
         return tuple(offered or ())
 
     def _on_thumbnail_ready(self, _url: str) -> None:
@@ -518,7 +830,9 @@ class HistoryView(QWidget):
         indexes = self._table.selectionModel().selectedIndexes()
         if not indexes:
             return None
-        return self._model.entry_ids()[indexes[0].row()]
+        # `entry_id_at`, never `entry_ids()[row]` (`T-145`): a row number counts drawn lines and
+        # `entry_ids()` counts records. `None` for a group header, which has no file to act on.
+        return self._model.entry_id_at(indexes[0].row())
 
     def selected_entry_ids(self) -> tuple[str, ...]:
         """Every selected record, in the order the list shows them.
@@ -526,17 +840,36 @@ class HistoryView(QWidget):
         `DAT-005` §1 scopes removal to the selection, so this is what the verb acts on and what
         its count counts. Ordered by row rather than by click, because a confirmation naming three
         downloads should list them the way they are on screen.
+
+        **A selected group header contributes its members** (`T-145`). A header is not a record and
+        has no id of its own to remove; what a user selecting the line for a sixteen-item playlist
+        has selected is the sixteen. That is also what makes the confirmation say *these 16* rather
+        than counting a line — and what keeps `DAT-005` §4's count honest now that one line can
+        stand for many records.
+
+        Deduplicated, because selecting a header *and* one of its open members is one gesture a
+        user can make and two paths to the same id — and a count that said 17 for sixteen downloads
+        would be exactly the decoration `DAT-005` §4 forbids.
         """
-        ids = self._model.entry_ids()
-        rows = sorted(index.row() for index in self._table.selectionModel().selectedIndexes())
-        return tuple(ids[row] for row in rows if 0 <= row < len(ids))
+        chosen: list[str] = []
+        seen: set[str] = set()
+        for row in sorted(index.row() for index in self._table.selectionModel().selectedIndexes()):
+            for entry_id in self._model.records_at(row):
+                if entry_id not in seen:
+                    seen.add(entry_id)
+                    chosen.append(entry_id)
+        return tuple(chosen)
 
     def select(self, entry_id: str) -> bool:
-        """Select the row for `entry_id`, so a named verb can act through the selection."""
-        ids = self._model.entry_ids()
-        if entry_id not in ids:
+        """Select the row for `entry_id`, so a named verb can act through the selection.
+
+        Opens the record's playlist when it is closed (`ensure_visible`), because otherwise *Open*
+        and *Show in folder* would silently do nothing for any download that arrived in one.
+        """
+        row = self._model.ensure_visible(entry_id)
+        if row is None:
             return False
-        self._table.setCurrentIndex(self._model.index(ids.index(entry_id), 0))
+        self._table.setCurrentIndex(self._model.index(row, 0))
         return True
 
     def selected_path(self) -> str | None:

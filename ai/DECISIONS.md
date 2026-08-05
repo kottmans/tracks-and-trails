@@ -2978,6 +2978,48 @@ behind a document would leave known-broken behaviour on `main` for longer.
 
 ## UX-005 — The main window: two tabs, no detail pane, and the verbs on the row
 
+### Amended 2026-08-05 — a finished playlist is one History row
+
+**Raised by:** `T-145`, found by the maintainer after a sixteen-item playlist finished and landed in
+History as sixteen unrelated rows. **Maintainer ruling, 2026-08-05.**
+
+§3 gives both tabs the same row anatomy, and a playlist is the largest place they differ: the queue
+took trouble to show that sixteen tracks arrived together, and History dropped it at exactly the
+point it became the only record. **A finished playlist is one History row that opens**, matching row
+9's anatomy. Three things follow, and `T-145` is required to have them ruled on rather than decided
+in an implementation.
+
+**1. A History group's chip is a count of its members — `16 items`.** The 2026-08-04 amendment
+excluded History from the **state** chip, because *"every history row is finished, so a chip reading
+Done on all of them is noise"*. That reasoning is about a state, and it stands: an ordinary History
+row still carries no chip. A group's count is not a state — it is the one fact about a group that is
+not visible until it is opened — so this is a **different** chip rather than a reversal.
+
+**2. A History group has no segmented bar.** Row 9b's bar exists to show a failed entry among
+running ones. Every member of a History group succeeded, by `DAT-005`'s definition of what reaches
+the list, so the bar would be sixteen identical blocks — the furniture the chip ruling above
+rejects, drawn wider.
+
+**3. A partly-failed playlist is a group of what History holds — `14 items`, never `14 of 16`.**
+Two reasons, and the second is the one that decides it:
+
+- History is a record of **completed** downloads (`REQ-020`, `DAT-005`). A denominator of 16 is a
+  claim about two downloads History does not hold and cannot describe.
+- **A stored original count goes stale on the first removal.** `DAT-005` makes records removable
+  one at a time; a user who removes one member of a fourteen-member group would be shown
+  `13 of 16`, which is now wrong about both numbers. A count derived from the members present
+  cannot drift from them, which is `T-137`'s reason for having no `playlists` table.
+
+This also settles the column question `T-145` raises: **no original-count column**, because nothing
+would keep it true.
+
+**Membership is carried at completion, not reconstructed.** The three columns `0004` put on `jobs`
+are copied onto the history record by the completion transaction. A record written before that
+migration has no membership, renders **ungrouped**, and is not re-grouped by guessing from titles or
+paths — inventing it would be presenting a guess as a record.
+
+**Recorded before implementation**, per `T126-R4` and the amendment above it.
+
 ### Amended 2026-08-05 — a divergent playlist says which row got which
 
 **Raised by:** `T-157`, found by running the built window. **Maintainer ruling, 2026-08-05.**

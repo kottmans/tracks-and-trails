@@ -519,6 +519,9 @@ _HISTORY_COLUMNS: Final = (
     "format_used",
     "bytes_total",
     "thumbnail_url",
+    "playlist_id",
+    "playlist_index",
+    "playlist_title",
     "completed_at",
 )
 
@@ -561,7 +564,36 @@ class HistoryEntry:
     #: existed, so the absent case is the old behaviour rather than a degraded one.
     thumbnail_url: str | None = None
 
+    #: Which playlist this download came from, and where it sat in it (`T-145`, `UX-005` amended
+    #: 2026-08-05).
+    #:
+    #: **Its own copy, for `thumbnail_url`'s reason, one field further on.** `0004` put the same
+    #: three columns on `jobs`, where they die with the job — `T-081`'s *Clear finished* is enough
+    #: to take them — so a playlist that finished would be sixteen unrelated history rows at
+    #: exactly the point History became the only record of it.
+    #:
+    #: `None` for all three means "pasted directly" or "recorded before migration `0006`". Both
+    #: render ungrouped, and neither is re-grouped by guessing from titles or paths.
+    #:
+    #: `playlist_index` is the position **the playlist reported**, not the order the downloads
+    #: finished in, so a group opens with track 03 above track 04 however they interleaved.
+    playlist_id: str | None = None
+    playlist_index: int | None = None
+    playlist_title: str | None = None
+
     def __post_init__(self) -> None:
+        membership = (self.playlist_id, self.playlist_index, self.playlist_title)
+        if any(part is not None for part in membership) and None in membership:
+            # **All three or none**, which is `Job.__post_init__`'s rule and is here for the same
+            # reason: a record with an id and no index cannot be ordered within its group, and one
+            # with an index and no id belongs to no group at all. Unrepresentable is cheaper than
+            # every reader checking the other two first.
+            raise ValueError(
+                "HistoryEntry carries part of a playlist membership: playlist_id, playlist_index "
+                f"and playlist_title must be set together or not at all, got {membership!r}"
+            )
+        if self.playlist_index is not None and self.playlist_index < 0:
+            raise ValueError("HistoryEntry.playlist_index cannot be negative")
         if not self.url:
             raise ValueError(
                 "HistoryEntry requires the source URL; `REQ-020` names it and a retry cannot "
@@ -582,6 +614,9 @@ def _history_to_values(entry: HistoryEntry) -> dict[str, Any]:
         "format_used": entry.format_used,
         "bytes_total": entry.bytes_total,
         "thumbnail_url": entry.thumbnail_url,
+        "playlist_id": entry.playlist_id,
+        "playlist_index": entry.playlist_index,
+        "playlist_title": entry.playlist_title,
         "completed_at": entry.completed_at.isoformat(),
     }
 
@@ -595,6 +630,9 @@ def _row_to_history(row: sqlite3.Row) -> HistoryEntry:
         format_used=row["format_used"],
         bytes_total=row["bytes_total"],
         thumbnail_url=row["thumbnail_url"],
+        playlist_id=row["playlist_id"],
+        playlist_index=row["playlist_index"],
+        playlist_title=row["playlist_title"],
         completed_at=datetime.fromisoformat(row["completed_at"]),
     )
 

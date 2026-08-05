@@ -7,11 +7,14 @@ every criterion asserts a rendered string rather than the record behind it.
 
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 import pytest
-from PySide6.QtCore import QItemSelectionModel, Qt
+from PySide6.QtCore import QEvent, QItemSelectionModel, Qt
+from PySide6.QtGui import QKeyEvent
 from PySide6.QtWidgets import QApplication
 
+from tests.qt_lifecycle import drain
 from tracks_and_trails.persistence import db
 from tracks_and_trails.persistence.repositories import HistoryEntry, HistoryRepository
 from tracks_and_trails.ui.history_view import (
@@ -29,10 +32,15 @@ from tracks_and_trails.ui.history_view import (
 )
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT, format_bytes
 from tracks_and_trails.ui.row_delegate import (
+    DEPTH_ROLE,
     DETAIL_ROLE,
+    EXPANDED_ROLE,
     HEADLINE_ROLE,
+    JOB_ID_ROLE,
     PROGRESS_ROLE,
+    SEGMENTS_ROLE,
     SELECTOR_ROLE,
+    STATE_CHIP_ROLE,
     THUMBNAIL_URL_ROLE,
     VERBS_ROLE,
     RowDelegate,
@@ -451,3 +459,429 @@ def test_the_history_view_can_fetch_a_picture_at_all(qapp: QApplication) -> None
         "the history view's delegate has no thumbnail store, so no history row can ever draw a "
         "picture whatever the model answers"
     )
+
+
+# --- a finished playlist is one row (`T-145`, `UX-005` amended 2026-08-05) --------------------
+
+
+def a_member(
+    entry_id: str,
+    *,
+    index: int,
+    playlist_id: str = "pl-1",
+    title: str = "Trail Sounds",
+    **overrides: object,
+) -> HistoryEntry:
+    """A record that belongs to a playlist. The three columns travel together or not at all."""
+    return an_entry(
+        entry_id,
+        playlist_id=playlist_id,
+        playlist_index=index,
+        playlist_title=title,
+        **overrides,
+    )
+
+
+def test_a_finished_playlist_is_one_row_that_opens(qapp: QApplication) -> None:
+    """The first criterion, and the report: sixteen tracks landed here as sixteen unrelated rows.
+
+    Asserted by **row count and roles**, not by pixels: the claim is about what the list holds, and
+    a pixel comparison would pass with three rows drawn identically. `UX-005` §3 makes this the
+    queue's anatomy, so the roles asserted are the ones a queue header answers.
+    """
+    view = view_over(
+        [
+            a_member("m-1", index=0),
+            a_member("m-2", index=1),
+            a_member("m-3", index=2),
+            an_entry("solo"),
+        ]
+    )
+    model = view.model
+
+    assert model.rowCount() == 2, (
+        f"a three-entry playlist and one ordinary download show {model.rowCount()} rows; closed, "
+        "the playlist must be one of them"
+    )
+    header = model.index(0, 0)
+    assert model.data(header, HEADLINE_ROLE) == "Trail Sounds"
+    assert model.data(header, JOB_ID_ROLE) == "pl-1"
+    assert model.data(header, EXPANDED_ROLE) is False
+
+    model.toggle_group("pl-1")
+
+    assert model.rowCount() == 5, (
+        f"opening the playlist showed {model.rowCount()} rows; it must be the header, its three "
+        "entries and the unrelated download"
+    )
+    assert model.data(model.index(0, 0), EXPANDED_ROLE) is True
+    assert model.data(model.index(1, 0), DEPTH_ROLE) == 1, (
+        "an entry is not nested under its group, so it reads as an unrelated row"
+    )
+    assert model.data(model.index(4, 0), DEPTH_ROLE) == 0, (
+        "the unrelated download was indented as though it belonged to the playlist"
+    )
+
+
+def test_a_history_group_counts_its_members_and_never_measures(qapp: QApplication) -> None:
+    """Decision 1 of the amendment: the chip is `3 items`.
+
+    The 2026-08-04 amendment excluded History from the **state** chip — a `Done` on every row is
+    noise. A count is not a state, which is why this is a different chip rather than a reversal:
+    the ordinary rows beside it still carry none.
+    """
+    view = view_over([a_member("m-1", index=0), a_member("m-2", index=1), an_entry("solo")])
+    model = view.model
+
+    chip = model.data(model.index(0, 0), STATE_CHIP_ROLE)
+    assert chip == "2 items", f"the group's chip reads {chip!r} rather than a count of its members"
+    assert "%" not in str(chip)
+
+    assert model.data(model.index(1, 0), STATE_CHIP_ROLE) is None, (
+        "an ordinary history row grew a chip, which the 2026-08-04 amendment excluded because "
+        "every history row is finished and a chip saying so on all of them is noise"
+    )
+
+
+def test_a_history_group_draws_no_segmented_bar(qapp: QApplication) -> None:
+    """Decision 2: every member succeeded, so row 9b's bar would be N identical blocks.
+
+    Asserted as the role answering nothing rather than as an empty list — the delegate draws a bar
+    for any sequence it is given, and `[]` would be a bar of no blocks rather than no bar.
+    """
+    view = view_over([a_member("m-1", index=0), a_member("m-2", index=1)])
+    model = view.model
+
+    assert model.data(model.index(0, 0), SEGMENTS_ROLE) is None, (
+        "a history group answers the segmented bar, which UX-005's amendment refuses: every "
+        "member is finished, so the bar is furniture rather than information"
+    )
+
+
+def test_a_partly_failed_playlist_counts_what_history_holds(qapp: QApplication) -> None:
+    """Decision 3: `2 items`, never `2 of 3`.
+
+    A sixteen-item playlist with failures reaches History as fewer records — only completed
+    downloads arrive (`DAT-005`). The denominator is refused twice over: it describes downloads
+    History does not hold, and `DAT-005` makes records removable, so a stored original count is
+    wrong about *both* numbers after the first removal. Here the third entry never arrived, and
+    nothing on the header may claim it did.
+    """
+    view = view_over([a_member("m-1", index=0), a_member("m-3", index=2)])
+    model = view.model
+    header = model.index(0, 0)
+
+    assert model.data(header, STATE_CHIP_ROLE) == "2 items"
+    spoken = str(model.data(header, Qt.ItemDataRole.AccessibleTextRole))
+    assert "of 3" not in spoken and "of 2" not in spoken, (
+        f"the header speaks {spoken!r}, which claims a denominator History cannot describe — the "
+        "entries that failed are not records and were never counted"
+    )
+
+
+def test_a_group_opens_in_the_playlists_order_not_the_order_they_finished(
+    qapp: QApplication,
+) -> None:
+    """`playlist_index` is what `0006` carried across, and this is what for.
+
+    History is newest-completed-first and a playlist is not read that way. Track 03 finishing
+    first — a smaller file, or a retry — must not put it above track 01 inside the group.
+    """
+    view = view_over(
+        [
+            a_member("third", index=2, completed_at=datetime(2026, 7, 30, 16, 0, tzinfo=UTC)),
+            a_member("first", index=0, completed_at=datetime(2026, 7, 30, 15, 0, tzinfo=UTC)),
+            a_member("second", index=1, completed_at=datetime(2026, 7, 30, 14, 0, tzinfo=UTC)),
+        ]
+    )
+    model = view.model
+    model.toggle_group("pl-1")
+
+    opened = tuple(model.entry_id_at(row) for row in range(1, model.rowCount()))
+    assert opened == ("first", "second", "third"), (
+        f"the playlist opened as {opened}; it must read in the order the site reported, not the "
+        "order the downloads happened to finish"
+    )
+
+
+def test_a_record_written_before_the_migration_renders_ungrouped(qapp: QApplication) -> None:
+    """The criterion, and the one thing this task refuses to do.
+
+    Every record in a database that predates `0006` has no membership. They render as they always
+    did — and **no membership is invented** for them from their titles or their paths, which would
+    present a guess as a record.
+    """
+    older = [
+        an_entry("old-1", title="Trail Sounds — 01", output_path="/downloads/Trail Sounds/01.mp3"),
+        an_entry("old-2", title="Trail Sounds — 02", output_path="/downloads/Trail Sounds/02.mp3"),
+    ]
+    view = view_over(older)
+    model = view.model
+
+    assert model.rowCount() == 2, (
+        "two records sharing a folder and a title prefix were grouped, which is membership "
+        "inferred rather than recorded"
+    )
+    for row in range(2):
+        assert model.data(model.index(row, 0), EXPANDED_ROLE) is None, (
+            "a record with no membership drew a disclosure triangle"
+        )
+        assert model.data(model.index(row, 0), DEPTH_ROLE) == 0
+
+
+def test_a_playlist_that_left_one_record_is_not_a_group(qapp: QApplication) -> None:
+    """A heading over a single row is a heading over nothing (`ui/grouping.flatten`, rule 3).
+
+    Reachable in History for a reason the queue does not have: a sixteen-item playlist where
+    fifteen failed leaves exactly one record, and `DAT-005` removal can leave one behind too.
+    """
+    view = view_over([a_member("only", index=0), an_entry("solo")])
+    model = view.model
+
+    assert model.rowCount() == 2
+    assert model.data(model.index(0, 0), EXPANDED_ROLE) is None
+    assert model.entry_id_at(0) == "only", (
+        "the lone survivor of a playlist is drawn under a header, so a user must open a group to "
+        "reach a single download"
+    )
+
+
+def test_a_header_is_not_a_record_and_never_answers_as_one(qapp: QApplication) -> None:
+    """`T140-R1`'s defect, in the tab that had not grown groups yet.
+
+    `entry_ids()` is every record and a row number counts drawn lines; the two diverge the moment a
+    playlist is collapsed. Indexing the first with the second resolves a visible row to a hidden
+    member, and every file action then targets a record the user cannot see.
+    """
+    view = view_over([a_member("m-1", index=0), a_member("m-2", index=1), an_entry("solo")])
+    model = view.model
+
+    assert model.entry_ids() == ("m-1", "m-2", "solo"), "the durable order is the repository's"
+    assert model.entry_id_at(0) is None, "the group header answered as though it were a record"
+    assert model.entry_id_at(1) == "solo", (
+        f"row 1 resolved to {model.entry_id_at(1)!r}; with the playlist closed the second drawn "
+        "row is the unrelated download, and naming a hidden member points every file verb at a "
+        "record the user cannot see"
+    )
+    assert view.verbs_of("pl-1") == (), (
+        "the header offered a record's verbs, which T-142 owns deriving honestly for a terminal "
+        "group — borrowing the row's list is what that task exists to prevent"
+    )
+
+
+def test_selecting_a_playlist_selects_the_downloads_it_stands_for(qapp: QApplication) -> None:
+    """Removing a group removes its **members** — the criterion, and where it actually lives.
+
+    A header has no id in `history` and nothing to delete, so a removal that took row ids would
+    delete nothing while telling the user it had. Answering with the members is what lets
+    `DAT-005` §1's existing selection-scoped route remove a playlist, and what makes the
+    confirmation count downloads rather than lines.
+    """
+    view = view_over([a_member("m-1", index=0), a_member("m-2", index=1), an_entry("solo")])
+    view.table.selectionModel().select(
+        view.model.index(0, 0), QItemSelectionModel.SelectionFlag.Select
+    )
+
+    assert view.selected_entry_ids() == ("m-1", "m-2"), (
+        f"selecting the playlist selected {view.selected_entry_ids()}; the confirmation counts "
+        "what it is about to remove, so a header that stands for two downloads must name two"
+    )
+
+    # And with the unrelated download selected beside it, `DAT-005` §1's "the whole selection"
+    # covers the playlist's members rather than a header id nothing can delete.
+    view.table.selectionModel().select(
+        view.model.index(1, 0), QItemSelectionModel.SelectionFlag.Select
+    )
+    removed: list[list[str]] = []
+    view.removal_requested.connect(removed.append)
+    view.trigger_verb("solo", Verb.REMOVE)
+
+    assert removed == [["m-1", "m-2", "solo"]], (
+        f"removal reported {removed}; a selection holding a playlist and an unrelated download "
+        "must remove all three records, not the header's id"
+    )
+
+
+def test_a_playlist_and_one_of_its_members_count_as_the_downloads_once(
+    qapp: QApplication,
+) -> None:
+    """One gesture, two paths to the same id (`DAT-005` §4).
+
+    Selecting a header and then ctrl-clicking one of its open entries is ordinary. A count that
+    said 3 for two downloads would be exactly the decoration a count naming itself exists to
+    prevent.
+    """
+    view = view_over([a_member("m-1", index=0), a_member("m-2", index=1)])
+    view.model.toggle_group("pl-1")
+    for row in (0, 1):
+        view.table.selectionModel().select(
+            view.model.index(row, 0), QItemSelectionModel.SelectionFlag.Select
+        )
+
+    assert view.selected_entry_ids() == ("m-1", "m-2")
+
+
+def test_a_group_never_claims_a_size_it_cannot_add_up(qapp: QApplication) -> None:
+    """`bytes_total` is nullable and means "the download reported none".
+
+    Summing the members that have one produces a number that is confidently too small with nothing
+    on the row to say so — a group of three missing one size reads as a correct total for two.
+    """
+    view = view_over(
+        [
+            a_member("m-1", index=0, bytes_total=1_048_576),
+            a_member("m-2", index=1, bytes_total=None),
+        ]
+    )
+    detail = str(view.model.data(view.model.index(0, 0), DETAIL_ROLE))
+
+    assert detail.startswith(UNKNOWN_TEXT), (
+        f"the group's detail line reads {detail!r}, which states a total that is missing one "
+        "member's size and looks exactly like a correct one"
+    )
+
+
+def test_a_groups_folder_is_the_one_its_entries_share(qapp: QApplication) -> None:
+    """`UX-005` row 10, and the case where it stops being true.
+
+    A playlist's entries share a folder, which is what makes one line meaningful on the header —
+    but a user who changed the download folder mid-playlist has records that disagree, and the
+    header says so rather than picking the first member's answer.
+    """
+    together = view_over(
+        [
+            a_member("m-1", index=0, output_path="/downloads/Trail Sounds/01.mp3"),
+            a_member("m-2", index=1, output_path="/downloads/Trail Sounds/02.mp3"),
+        ]
+    )
+    assert together.model.data(together.model.index(0, 0), SELECTOR_ROLE) == (
+        "/downloads/Trail Sounds"
+    )
+
+    apart = view_over(
+        [
+            a_member("m-1", index=0, output_path="/downloads/Trail Sounds/01.mp3"),
+            a_member("m-2", index=1, output_path="/elsewhere/02.mp3"),
+        ]
+    )
+    assert apart.model.data(apart.model.index(0, 0), SELECTOR_ROLE) == UNKNOWN_TEXT, (
+        "the header claimed one folder for entries written to two"
+    )
+
+
+def test_a_hidden_member_is_reached_by_opening_its_playlist(qapp: QApplication) -> None:
+    """`T-086`'s route, which a closed group would otherwise break silently.
+
+    `select()` is how a named record is reached before *Open* or *Show in folder* acts on it. A
+    member of a closed playlist has no row for that to land on, so the verb would do nothing for
+    exactly the downloads a playlist contributed.
+    """
+    view = view_over([a_member("m-1", index=0), a_member("m-2", index=1)])
+
+    assert view.select("m-2") is True
+    assert view.selected_entry_id() == "m-2", (
+        "selecting a record inside a closed playlist selected nothing, so its file verbs act on "
+        "no record at all"
+    )
+    assert view.select("never-recorded") is False
+
+
+def test_a_playlist_opens_and_closes_from_the_keyboard(qapp: QApplication) -> None:
+    """`NFR-005`: a group only a pointer can open is `T140-R5`'s defect, one tab over."""
+    view = view_over([a_member("m-1", index=0), a_member("m-2", index=1)])
+    view.table.setCurrentIndex(view.model.index(0, 0))
+
+    def press(key: Qt.Key) -> None:
+        view.eventFilter(
+            view.table, QKeyEvent(QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier)
+        )
+
+    press(Qt.Key.Key_Right)
+    assert view.model.rowCount() == 3, "Right did not open the focused playlist"
+    press(Qt.Key.Key_Right)
+    assert view.model.rowCount() == 3, "a second Right closed the group it had just opened"
+    press(Qt.Key.Key_Left)
+    assert view.model.rowCount() == 1, "Left did not close the focused playlist"
+
+
+def test_the_tab_count_counts_downloads_rather_than_lines(qapp: QApplication) -> None:
+    """`QueueModel.download_count`'s ruling, one tab over: count the work, not the lines.
+
+    A count reading `rowCount()` moves when a user opens a group, without History having changed.
+    """
+    view = view_over([a_member("m-1", index=0), a_member("m-2", index=1), an_entry("solo")])
+
+    assert view.model.download_count() == 3
+    view.model.toggle_group("pl-1")
+    assert view.model.download_count() == 3, (
+        "opening a playlist changed how many downloads History says it holds"
+    )
+
+
+def test_both_tabs_draw_a_playlist_with_the_same_anatomy(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """The criterion that the two tabs are asserted **together**, not each alone (`UX-005` §3).
+
+    `T-145`'s real design work was the shared-code question: `QueueModel` held the grouping, and
+    duplicating it here means the two tabs drift in exactly the way §3 exists to prevent. What is
+    shared is `ui/grouping.flatten` — the flattening and the expansion — and what is not is the
+    data, because the queue groups `Job`s and this groups records.
+
+    So the assertion is over both models at once. Each half asserted in its own file would pass
+    while the two disagreed, which is the whole failure mode.
+    """
+    from tests.ui.test_queue_view import FakeQueue, make_job
+    from tracks_and_trails.downloader.manager import DownloadManager
+    from tracks_and_trails.ui.queue_view import QueueModel
+
+    queue = FakeQueue()
+    for index in range(3):
+        queue.add(
+            make_job(
+                f"m-{index}",
+                tmp_path,
+                queue_position=index,
+                playlist_id="pl-1",
+                playlist_index=index,
+                playlist_title="Trail Sounds",
+            )
+        )
+    queue.add(make_job("solo", tmp_path, queue_position=9))
+    manager = DownloadManager(queue)
+    # Held in a name, not reached through `.model`: the view owns the model, and letting it fall
+    # out of scope takes the C++ object with it.
+    history = view_over(
+        [
+            a_member("m-0", index=0),
+            a_member("m-1", index=1),
+            a_member("m-2", index=2),
+            an_entry("solo"),
+        ]
+    )
+    try:
+        # `Any`, because the point is that two *unrelated* models answer the same roles: their
+        # only common base is `QAbstractTableModel`, which knows nothing about groups.
+        tabs: dict[str, Any] = {
+            "queue": QueueModel(jobs=queue, manager=manager),
+            "history": history.model,
+        }
+
+        for name, model in tabs.items():
+            header = model.index(0, 0)
+            assert model.rowCount() == 2, f"{name}: a closed playlist is not one row"
+            assert model.data(header, HEADLINE_ROLE) == "Trail Sounds", f"{name}: header title"
+            assert model.data(header, JOB_ID_ROLE) == "pl-1", f"{name}: header id"
+            assert model.data(header, EXPANDED_ROLE) is False, f"{name}: closed"
+            assert model.data(model.index(1, 0), EXPANDED_ROLE) is None, (
+                f"{name}: an ordinary row drew a disclosure triangle"
+            )
+
+            model.toggle_group("pl-1")
+            assert model.rowCount() == 5, f"{name}: opening did not reveal three entries"
+            assert model.data(model.index(0, 0), EXPANDED_ROLE) is True, f"{name}: open"
+            assert model.data(model.index(1, 0), DEPTH_ROLE) == 1, f"{name}: entry not nested"
+            assert model.data(model.index(4, 0), DEPTH_ROLE) == 0, f"{name}: unrelated row nested"
+    finally:
+        manager.shutdown()
+        drain(qapp, [manager])

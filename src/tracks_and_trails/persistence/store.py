@@ -196,6 +196,14 @@ class PersistentJobStore(QObject):
                 # **Carried across at the moment it stops being reachable** (`T-138`). The queue's
                 # copy dies with the job; this is the record's own.
                 thumbnail_url=job.thumbnail_url,
+                # **The same move, for the membership** (`T-145`, `UX-005` amended 2026-08-05).
+                # Copied here rather than reconstructed later: once the job is gone there is
+                # nothing left to reconstruct it from, which is why a playlist that finished
+                # became sixteen unrelated rows. The three travel together or not at all, and
+                # `HistoryEntry.__post_init__` refuses a partial set.
+                playlist_id=job.playlist_id,
+                playlist_index=job.playlist_index,
+                playlist_title=job.playlist_title,
                 completed_at=job.finished_at if job.finished_at is not None else _now(),
             ),
             settle,

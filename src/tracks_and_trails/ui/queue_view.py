@@ -93,6 +93,7 @@ from tracks_and_trails.core.models import Job
 from tracks_and_trails.core.presets import BUILT_IN_PRESETS, PRESET_OWNED_FIELDS
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import Progress, Stage
+from tracks_and_trails.ui.grouping import Group, Visible, flatten
 from tracks_and_trails.ui.job_detail import (
     REPAINT_INTERVAL_MS,
     STAGE_TEXT,
@@ -296,30 +297,17 @@ class _Row:
         )
 
 
-class _Group:
-    """A playlist's rows, gathered under one header (`T-140`, `UX-005` row 9).
-
-    **Synthesised per refresh, never stored.** A group has no state of its own — its chip is a
-    count of its members and its bar is their states — so there is nothing to keep in sync and
-    nothing to go stale. `T-137` records the same reasoning from the schema side, which is why
-    there is no `playlists` table for this to mirror.
-    """
-
-    __slots__ = ("members", "playlist_id", "title")
-
-    def __init__(self, playlist_id: str, title: str) -> None:
-        self.playlist_id = playlist_id
-        self.title = title
-        self.members: list[_Row] = []
-
-
-#: One line of the table: a playlist's header, or the index of a job row in `_rows` (`T-140`).
+#: A playlist's rows, gathered under one header (`T-140`, `UX-005` row 9).
 #:
-#: **The tree is flattened here rather than the view becoming a `QTreeView`.** A tree view would
-#: replace the list, the delegate and the geometry `T118-R7`, `T118-R8`, `T118-R12` and `T118-R15`
-#: were each spent on. A flat list of these keeps every one of them, and the delegate's
-#: `DEPTH_ROLE` is the only thing that has to know nesting exists.
-_Visible = _Group | int
+#: **Shared with History since `T-145`** (`ui/grouping.py`). The class this replaced held exactly
+#: what `Group` holds, and the flattening below was the hundred lines History would otherwise have
+#: copied — which is how two tabs that `UX-005` §3 requires to read as one shape start to drift.
+#: What stayed here is everything that knows about a `Job`: the header's roles, its verbs and its
+#: bar. What moved is the part that does not.
+_Group = Group[_Row]
+
+#: One line of the table: a playlist's header, or the index of a job row in `_rows`.
+_Visible = Visible[_Row]
 
 
 def group_members(group: _Group) -> list[_Row]:
@@ -490,7 +478,7 @@ class QueueModel(QAbstractTableModel):
         if not 0 <= row < len(self._visible):
             return None
         entry = self._visible[row]
-        if isinstance(entry, _Group):
+        if isinstance(entry, Group):
             return None
         return self._rows[entry].job.id
 
@@ -573,7 +561,7 @@ class QueueModel(QAbstractTableModel):
         if not index.isValid() or not 0 <= index.row() < len(self._visible):
             return None
         entry = self._visible[index.row()]
-        if isinstance(entry, _Group):
+        if isinstance(entry, Group):
             # **A playlist's header answers for itself** (`T-140`). It has no job behind it, so
             # everything below — which reads `row.job` — would be answering about a job that does
             # not exist.
@@ -727,7 +715,7 @@ class QueueModel(QAbstractTableModel):
         if name is None:
             return False
         entry = self._visible[index.row()]
-        if isinstance(entry, _Group):
+        if isinstance(entry, Group):
             # **One choice, applied to every member** (`UX-005` row 13, `T140-R3`). The group owns
             # the format, so retargeting it is retargeting all of them — emitted per job because
             # `preset_chosen` is the route a click already takes and the manager is what decides
@@ -880,51 +868,25 @@ class QueueModel(QAbstractTableModel):
     def _rebuild_visible(self) -> None:
         """Flatten the rows into what the table shows: headers, and the rows not hidden (`T-140`).
 
-        **Order is the jobs' order, and a group's members are contiguous** (`T140-R4`). A header
-        takes the position of its first member, so a queue the user reordered keeps reading the way
-        they left it — but the members then follow it *together*, whatever their own positions are.
-        Placing each member at its own durable position let an unrelated standalone row land
-        between a header and its children, which draws a row as belonging to a playlist it has
-        nothing to do with. The durable order still decides where the *group* sits; it no longer
-        decides whether the group is a group.
+        **The rules live in `ui/grouping.flatten` since `T-145`**, because History now flattens the
+        same way and `UX-005` §3 makes the two tabs one shape. `T140-R4`'s rulings — the header at
+        its first member's position, the members contiguous under it, a group of one dissolved —
+        are stated there once rather than in each tab.
 
-        A group of one is dissolved: a heading over a single row is a heading over nothing.
+        What is passed in is the only part that is the queue's: a job's membership, and the order
+        the list is already in. No `order` argument, because `self._rows` is in queue order and that
+        is what the user arranged.
         """
-        groups: dict[str, _Group] = {}
-        for row in self._rows:
-            playlist_id = row.job.playlist_id
-            if playlist_id is None:
-                continue
-            group = groups.get(playlist_id)
-            if group is None:
-                group = _Group(playlist_id, row.job.playlist_title or playlist_id)
-                groups[playlist_id] = group
-            group.members.append(row)
-        grouped = {
-            playlist_id: group for playlist_id, group in groups.items() if len(group.members) > 1
-        }
-
-        index_of = {id(row): number for number, row in enumerate(self._rows)}
-        self._visible = []
-        emitted: set[str] = set()
-        for position, row in enumerate(self._rows):
-            playlist_id = row.job.playlist_id
-            group = grouped.get(playlist_id) if playlist_id is not None else None
-            if group is None or playlist_id is None:
-                self._visible.append(position)
-                continue
-            if playlist_id in emitted:
-                # Already drawn, with its siblings, where its header sits.
-                continue
-            emitted.add(playlist_id)
-            self._visible.append(group)
-            if playlist_id in self._expanded:
-                self._visible.extend(index_of[id(member)] for member in group.members)
-
-        self._visible_of = {}
-        for line, entry in enumerate(self._visible):
-            key = entry.playlist_id if isinstance(entry, _Group) else self._rows[entry].job.id
-            self._visible_of[key] = line
+        self._visible, self._visible_of = flatten(
+            self._rows,
+            membership=lambda row: (
+                None
+                if row.job.playlist_id is None
+                else (row.job.playlist_id, row.job.playlist_title or row.job.playlist_id)
+            ),
+            identity=lambda row: row.job.id,
+            expanded=self._expanded,
+        )
 
     def _group_text_for(self, playlist_id: str) -> str | None:
         """The one format text a playlist's members share, or `None` when they do not.
@@ -933,7 +895,7 @@ class QueueModel(QAbstractTableModel):
         which is the defect `T-157` is, one level up.
         """
         for entry in self._visible:
-            if isinstance(entry, _Group) and entry.playlist_id == playlist_id:
+            if isinstance(entry, Group) and entry.group_id == playlist_id:
                 texts = {_effective_format_text(row.job) for row in group_members(entry)}
                 return texts.pop() if len(texts) == 1 else None
         return None
@@ -947,7 +909,7 @@ class QueueModel(QAbstractTableModel):
         group that no longer exists deserves.
         """
         for entry in self._visible:
-            if isinstance(entry, _Group) and entry.playlist_id == playlist_id:
+            if isinstance(entry, Group) and entry.group_id == playlist_id:
                 return [row.job for row in group_members(entry)]
         return []
 
@@ -971,7 +933,7 @@ class QueueModel(QAbstractTableModel):
         if role == HEADLINE_ROLE:
             return group.title
         if role == JOB_ID_ROLE:
-            return group.playlist_id
+            return group.group_id
         if role == VERBS_ROLE:
             # **Derived from every member, not from one that speaks for them** (`T-140`,
             # `UX-005` row 9). A playlist mid-run holds a completed track, a running one and
@@ -981,7 +943,7 @@ class QueueModel(QAbstractTableModel):
                 for row in group.members
             )
         if role == EXPANDED_ROLE:
-            return group.playlist_id in self._expanded
+            return group.group_id in self._expanded
         if role == SEGMENTS_ROLE:
             return segments
         if role == STATE_CHIP_ROLE:

@@ -3949,6 +3949,50 @@ def test_a_completion_records_every_field_req_020_names(tmp_path: Path) -> None:
     ), "the projection dropped or altered a field REQ-020 names"
 
 
+def test_a_completion_carries_the_playlist_membership_across(tmp_path: Path) -> None:
+    """`T-145`, `UX-005` amended 2026-08-05: the membership is copied, never reconstructed.
+
+    **This is the moment it stops being reachable.** `0004` put the three columns on `jobs`, where
+    they die with the job — `T-081`'s *Clear finished* is enough to take them — so a playlist that
+    finished became sixteen unrelated history rows at exactly the point History became the only
+    record of it. Once the job is gone there is nothing left to reconstruct membership *from*, which
+    is why this is asserted at the projection rather than in the view.
+
+    Asserted as a whole object for the reason the test above gives: a per-field list is written from
+    the same understanding that would forget a field.
+    """
+    from dataclasses import replace
+
+    from tracks_and_trails.persistence.repositories import HistoryEntry
+    from tracks_and_trails.persistence.store import PersistentJobStore
+
+    writer = _CapturingWriter()
+    store = PersistentJobStore(sqlite3.connect(":memory:"), writer)  # type: ignore[arg-type]
+    job = replace(
+        _job_with_every_field(tmp_path),
+        playlist_id="pl-1",
+        playlist_index=3,
+        playlist_title="Trail Sounds",
+    )
+
+    store.complete(job, "137+140", lambda _error: None)
+
+    _, entry = writer.completions[0]
+    assert entry == HistoryEntry(
+        id="job-full",
+        url="https://example.com/watch?v=abc",
+        thumbnail_url="https://img.example.com/abc.jpg",
+        title="A Clip With A Title",
+        output_path=str(tmp_path / "A Clip With A Title.mp4"),
+        format_used="137+140",
+        bytes_total=4096,
+        playlist_id="pl-1",
+        playlist_index=3,
+        playlist_title="Trail Sounds",
+        completed_at=datetime(2026, 7, 30, 9, 0, tzinfo=UTC),
+    ), "the completed record does not say which playlist it came from, so History cannot group it"
+
+
 def test_history_outlives_the_job_row_it_describes(tmp_path: Path) -> None:
     """`T-085`: history survives the queue being cleared, and the relationship is stated.
 
