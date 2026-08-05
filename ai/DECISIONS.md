@@ -2379,6 +2379,72 @@ set that follows from the gaps' own definitions, rather than for bindings.
 
 ---
 
+## ARC-009 — A durable probe continues into its download; a staging probe does not
+
+**Status:** **Accepted** (2026-08-05) — maintainer ruling on `T137-R2`
+**Date:** 2026-08-05
+**Extends:** `admit()`'s contract from `T-115`. **Does not amend** `UX-003`, which this exists to
+honour rather than to weaken, nor `UX-001`'s pause semantics.
+
+### Context
+
+`admit(job_id, kind)` schedules **one** session and has never chained. That was complete while the
+only probe in the system was a *staging* probe, whose entire purpose is to stop and let the user
+look at what they pasted before anything is committed.
+
+`T-137` then introduced a second kind of probe subject. A playlist is expanded in the add dialog
+into one durable job per entry, built from a **flat** extraction — an address and a name, with no
+duration, no size and no format list, because resolving sixteen entries during an add is the cost
+`project_media` has refused since `T-016`. Those rows are honestly created `QUEUED` rather than
+`READY`, and the code says so.
+
+**They were then admitted straight to `DOWNLOAD`.** So every entry of every playlist downloaded
+without ever being probed, and `UX-003`'s rule — a queued job is a probed one — was broken for the
+majority of rows a real playlist produces. `T137-R2` found it, and correctly refused to let filing
+`T-143` defer a violation already in shipped behaviour.
+
+**Admitting them as probes alone would have traded one broken promise for another**, because
+nothing carries a finished probe into a download. Every entry would be probed and then parked for
+ever.
+
+### Decision
+
+1. **When a probe settles for a job the manager is not staging, that job is admitted for
+   download.** The continuation lives in `DownloadManager`, beside the outcome it follows.
+2. **A staged row is excluded**, and that is the whole discriminator. Continuing a staging probe
+   would start the very download the dialog is still asking the user about.
+3. **The add dialog admits by status, not by shape.** An unprobed row — `QUEUED` — is admitted as
+   a `PROBE`; anything already resolved is admitted as a `DOWNLOAD`. The rule is *unprobed things
+   get probed*, so the dialog does not become a second place that has to know what a playlist is.
+
+### Why the manager rather than composition
+
+The alternative was for `app.py` to listen to `media_probed` and admit the download. It was
+rejected: pause semantics, per-entry failure reporting and lane accounting are the manager's, and
+`T036-R1` is what it cost the last time queue policy was written outside the object that owns the
+queue — a retry that announced nothing and was attempted exactly once.
+
+The add dialog could not host it either. It closes on `accept()`, so the object that admitted the
+probes is gone before the first one lands.
+
+### Consequences
+
+- **Pause is preserved without special handling** (`UX-001`, `T080-R1`). The probe half runs while
+  paused because probes are exempt; the continuation is an ordinary `DOWNLOAD` admission, so
+  `_start_when_free` parks it and `resume()` drains it. A paused queue probes a playlist's entries
+  and starts none of them.
+- **A failed probe is not carried anywhere.** `Failed` is a different outcome branch, so an entry
+  that cannot be resolved is reported per entry rather than downloaded blind.
+- **The staged guard is load-bearing and its failure mode is deferred.** Without it the
+  continuation admits a staged id; `admit()` does not refuse outright, it *parks*, and `start()`'s
+  `ValueError` then arrives on drain from a timer's thread of control. A test that expected an
+  immediate raise would pass against the broken version, so the regression asserts the queue state
+  instead.
+- Entries now cost one extraction each, at a moment nobody is waiting. `T-143` keeps what remains:
+  what those probes should populate on the row.
+
+---
+
 ## ARC-008 — A settings file that exists and cannot be used says so; a missing one does not
 
 **Status:** **Accepted** (2026-07-31) — maintainer decision

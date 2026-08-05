@@ -6305,3 +6305,81 @@ def test_a_probe_that_found_no_thumbnail_stores_null(
     finally:
         download.shutdown()
         assert spin(lambda: download.is_idle, timeout=60)
+
+
+def test_a_durable_probe_carries_the_job_on_into_its_download(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """`T137-R2` / `ARC-009`: probing a durable row is not the end of that row's journey.
+
+    `admit()` schedules one session and has never chained, which was complete while the only probe
+    in the system was a staging probe. `T-137`'s playlist entries are durable `QUEUED` rows, so
+    admitting them as probes without a continuation would leave every entry of a playlist probed
+    and then permanently parked — trading one broken promise for another.
+    """
+    repository = FakeRepository()
+    queued(repository, "job-1", directory=tmp_path)
+    download = DownloadManager(
+        repository, concurrency=1, entry_point=child_probe_reporting_then_lingering
+    )
+    try:
+        download.admit("job-1", SessionKind.PROBE)
+
+        def status_of(job_id: str) -> JobStatus | None:
+            job = repository.get(job_id)
+            return job.status if job is not None else None
+
+        assert spin(lambda: status_of("job-1") is JobStatus.RUNNING), (
+            f"job-1 settled at {status_of('job-1')}; a probed durable row must go on to download, "
+            "or UX-003's probe-first rule simply strands it"
+        )
+    finally:
+        download.shutdown()
+
+
+def test_a_staged_probe_does_not_start_a_download(
+    tmp_path: Path, spin: Callable[..., bool]
+) -> None:
+    """The discriminator `ARC-009` turns on, asserted rather than assumed.
+
+    A staging probe exists so the add dialog can show the user what they pasted **before** anything
+    is committed. Continuing it into a download would start the very thing the dialog is asking
+    about — and would do it while the user is still looking at the row.
+    """
+    repository = FakeRepository()
+    download = DownloadManager(
+        repository, concurrency=1, entry_point=child_probe_reporting_then_lingering
+    )
+    try:
+        probed: list[str] = []
+        download.media_probed.connect(lambda job_id, _media: probed.append(job_id))
+
+        staged_id = download.stage(
+            make_job("unused", "https://example.invalid/clip", tmp_path).request
+        )
+
+        assert spin(lambda: probed == [staged_id]), "the staging probe never reported"
+
+        # The continuation runs inside the same `then` as that signal, so by the time it has
+        # fired the decision not to download has already been taken or missed.
+        assert repository.get(staged_id) is None, (
+            "a staged row reached the durable store; staging is deliberately not persistence"
+        )
+        kinds = [session.kind for session in download._sessions.values()]
+        assert SessionKind.DOWNLOAD not in kinds, (
+            f"sessions {kinds}; a staging probe started a download, so the add dialog began "
+            "fetching the very thing it was still asking the user about"
+        )
+
+        # **Why the guard is a guard and not decoration.** Without it the continuation admits a
+        # staged id, and `admit()` does not refuse that outright -- `_start_when_free` *parks* it
+        # while the probe still holds the job. The refusal (`start()`'s `ValueError`) then arrives
+        # later, on drain, from a timer's thread of control. So the damage is a deferred exception
+        # rather than a visible one, which is precisely why the queue state is asserted here
+        # rather than the call being expected to throw.
+        assert staged_id not in download._waiting, (
+            f"waiting {download._waiting}; a staging probe parked a download for a row that has "
+            "no queue position and no recovery, and start() will raise for it on drain"
+        )
+    finally:
+        download.shutdown()

@@ -112,6 +112,7 @@ from tracks_and_trails.core.models import (
 )
 from tracks_and_trails.core.paths import sanitize_component
 from tracks_and_trails.downloader.manager import DownloadManager
+from tracks_and_trails.downloader.protocol import SessionKind
 from tracks_and_trails.ui.row_delegate import (
     DETAIL_ROLE,
     EDIT_HINT,
@@ -1087,8 +1088,20 @@ class AddUrlDialog(QDialog):
         self._committed = tuple(job.id for _, job in fresh)
         refusal: str | None = None
         try:
-            for job_id in self._committed:
-                self._manager.admit(job_id)
+            for _, job in fresh:
+                # **An unprobed row is admitted as a probe, not a download** (`T137-R2`,
+                # `UX-003`). A pasted URL arrives here already `READY` — the staging list probed
+                # it, which is the whole of `UX-003` — and downloads from there. A playlist's
+                # entries arrive `QUEUED`, because `T-137` builds them from a *flat* extraction
+                # that names them without resolving them; admitting those as `DOWNLOAD` is what
+                # made every entry of a playlist download unprobed.
+                #
+                # Read from the job's own status rather than from whether the row was a playlist,
+                # so the rule is "unprobed things get probed" rather than a second place that has
+                # to know what a playlist is. `ARC-009` carries each one into its download once
+                # the probe lands.
+                kind = SessionKind.PROBE if job.status is JobStatus.QUEUED else SessionKind.DOWNLOAD
+                self._manager.admit(job.id, kind)
         except (RuntimeError, ValueError) as start_error:
             refusal = str(start_error)
 

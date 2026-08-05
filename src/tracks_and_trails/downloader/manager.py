@@ -2145,6 +2145,36 @@ class DownloadManager(QObject):
 
     # --- slots: everything below runs on the GUI thread ---------------------------------
 
+    def _probe_settled(self, job_id: str, media: object) -> None:
+        """Announce a finished probe, and carry a **durable** job on into its download (`ARC-009`).
+
+        `admit()` schedules one session; it has never chained. That was complete while the only
+        probe in the system was a staging probe, whose whole point is to stop and wait for the
+        user. `T-137` then created playlist entries as durable `QUEUED` rows — honestly, because a
+        flat entry is named and not extracted — and admitted them straight to `DOWNLOAD`, so every
+        entry of a playlist downloaded without ever being probed. `UX-003` says a queued job is a
+        probed one, and `T137-R2` is that promise being broken for the majority of rows a real
+        playlist produces.
+
+        **Staged rows are excluded, and that is the whole discriminator.** A staging probe exists
+        so the add dialog can show the user what they pasted *before* anything is committed;
+        continuing it into a download would start the very thing the dialog is asking about.
+        `is_staged()` already distinguishes them and is checked at claim time, before `_release`
+        clears it.
+
+        **Pause is preserved for free** (`T080-R1`, `UX-001`). The probe half runs while paused
+        because probes are exempt; this admission is an ordinary `DOWNLOAD`, so `_start_when_free`
+        parks it and `resume()` drains it. A paused queue therefore probes a playlist's entries and
+        starts none of them, which is exactly what pausing is for.
+
+        **A failed probe never reaches here.** `Failed` is a different outcome branch, so an entry
+        whose extraction fails is reported per entry and is not carried into a download of
+        something that could not be resolved.
+        """
+        self.media_probed.emit(job_id, media)
+        if not self.is_staged(job_id):
+            self.admit(job_id)
+
     def _on_probed(self, message: Probed) -> None:
         self._claim_outcome(message)
 
@@ -2319,7 +2349,7 @@ class DownloadManager(QObject):
                         thumbnail_url=outcome.media.thumbnail_url,
                     ),
                 ),
-                then=lambda: self.media_probed.emit(job_id, outcome.media),
+                then=lambda: self._probe_settled(job_id, outcome.media),
             )
         elif outcome.kind is ErrorKind.CANCELLED:
             # Not a failure: the user asked for it, and `CANCELLED` is terminal, so presenting
