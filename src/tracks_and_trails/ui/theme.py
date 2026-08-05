@@ -355,6 +355,36 @@ QToolBar QToolButton {{
        the one button that *should* be a shape rather than a label. */
     background: transparent;
 }}
+QToolBar QToolButton[stepButton="true"] {{
+    /* **A pair has to look like a pair** (`T-141`, corrected). Left bare, these were transparent
+       text on the toolbar — and the global `*:focus` rule then drew an accent border on whichever
+       one had focus, so the minus appeared boxed and the plus did not. Two controls doing the
+       same kind of thing in opposite directions must not differ in whether they look like
+       controls at all.
+       Given a border of their own, focus deepens an edge that is already there instead of
+       inventing one on one of them. */
+    background-color: {theme.surface};
+    border: 1px solid {theme.border};
+    border-radius: 4px;
+    min-width: 15px;
+    max-width: 15px;
+    padding: 1px 0 2px 0;
+    font-weight: 600;
+}}
+QToolBar QToolButton[stepButton="true"]:hover {{
+    background-color: {theme.sunken};
+    border-color: {theme.primary};
+}}
+QToolBar QToolButton[stepButton="true"]:pressed {{
+    background-color: {theme.rule};
+}}
+QToolBar QToolButton[stepButton="true"]:disabled {{
+    /* At the range's end. Quieter, still a shape — a control that vanished at the limit would
+       read as the application breaking rather than the limit being reached. */
+    background-color: {theme.window};
+    color: {theme.muted};
+    border-color: {theme.rule};
+}}
 QToolBar QWidget[toolbarSpacer="true"] {{
     /* **The spacer is furniture and must not be seen** (`T-132`, corrected). `QWidget` above sets
        a `window` background, and the toolbar's own is `surface` — so the widget that pushes the

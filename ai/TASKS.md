@@ -2068,6 +2068,18 @@ and it does: measured on the maintainer's Wayland session against the **real 58�
 - `ButtonSymbols.NoButtons`, so the control does not offer two ways to step with one of them the
   unreadable one this replaced. Asserted, and it is the mutation that would otherwise survive.
 
+*Corrected the same day, reported by the maintainer.* Left bare, both buttons were transparent
+text on the toolbar, and the sheet's global `*:focus` rule then drew an accent border on whichever
+had focus — so the minus appeared boxed and the plus did not, depending on what had last been
+clicked. **Two controls doing the same thing in opposite directions must not differ in whether they
+look like controls at all.** Both now carry a border, a hover, a pressed and a disabled state of
+their own, and neither takes focus: `Up` and `Down` already reach the setting from the spin box, so
+three tab stops for one setting would be the keyboard reaching it three times rather than once.
+
+*My first test for this compared a pixel inside the button against the toolbar at a **different
+height**. The toolbar paints a vertical gradient, so the two differ whatever the button looks
+like — it passed with the styling removed.* Sampled at the same `y` now.
+
 **Recorded for the pattern:** `T-129` (hover), `T-133` (arrows), `T-139` (disabled state) and this
 are one cause seen four times — styling a widget switches it to `QStyleSheetStyle`, and whatever
 the platform used to draw is then drawn by the sheet or not at all. Text is the one thing a sheet

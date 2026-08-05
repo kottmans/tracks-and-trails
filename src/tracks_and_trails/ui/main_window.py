@@ -89,6 +89,10 @@ ADD_URLS_BUTTON: Final = "+ Add URLs"
 STEP_DOWN_LABEL: Final = "\u2212"
 STEP_UP_LABEL: Final = "+"
 
+#: The dynamic property the sheet styles the concurrency step buttons against (`T-141`).
+#: A role, not a name, for the reason `PRIMARY_ACTION_PROPERTY` gives.
+STEP_BUTTON_PROPERTY: Final = "stepButton"
+
 PRIMARY_ACTION_PROPERTY: Final = "primaryAction"
 
 #: The dynamic property marking the toolbar's expanding spacer, so the sheet can stop it
@@ -896,7 +900,13 @@ class MainWindow(QMainWindow):
         button.setText(label)
         button.setAccessibleName(announced)
         button.setStatusTip(announced)
+        button.setProperty(STEP_BUTTON_PROPERTY, True)
         button.setAutoRepeat(True)
+        # **Focus stays on the value, not on the steppers.** A user tabbing to the concurrency
+        # control wants the number, and `NFR-005` asks the keyboard to reach what the pointer
+        # reaches — Up and Down already do, from the spin box itself, so three tab stops for one
+        # setting would be the keyboard reaching it three times rather than once.
+        button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         button.clicked.connect(step)
         return button
 

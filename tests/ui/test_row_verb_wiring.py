@@ -1914,3 +1914,55 @@ def test_a_step_button_is_disabled_at_its_end_of_the_range(
     box.setValue(settings.CONCURRENCY_MAXIMUM)
     assert not more.isEnabled(), "the + button offers a step above the maximum"
     assert fewer.isEnabled(), "the minus button is disabled at the maximum, where it can still step"
+
+
+def test_the_step_buttons_are_a_matched_pair(qapp: QApplication, tmp_path: Path) -> None:
+    """`T-141`, corrected: the minus looked boxed and the plus did not.
+
+    Left bare, both were transparent text on the toolbar — and the sheet's global `*:focus` rule
+    then drew an accent border on whichever one had focus, so the pair was asymmetric depending on
+    what the user had last clicked. **Two controls doing the same thing in opposite directions
+    must not differ in whether they look like controls at all.**
+
+    Asserted as *sameness*, which is the property, rather than as a particular size or colour —
+    pinning either would pin a styling choice instead.
+    """
+    was_sheet, was_palette = qapp.styleSheet(), qapp.palette()
+    try:
+        theme.apply(qapp, theme.LIGHT)
+        window = _window_over([_job("job-1", 0)], tmp_path)
+        window.resize(900, 500)
+        window.show()
+        qapp.processEvents()
+        bar = window.findChild(QToolBar, "queueToolBar")
+        assert bar is not None
+        fewer = bar.findChild(QToolButton, "concurrencyStepDown")
+        more = bar.findChild(QToolButton, "concurrencyStepUp")
+        assert fewer is not None and more is not None
+
+        assert fewer.size() == more.size(), (
+            f"the step buttons are {fewer.size()} and {more.size()}; a pair that does the same "
+            "thing in two directions must be one shape"
+        )
+        # Neither takes focus, so neither can acquire the accent border the other lacks.
+        assert fewer.focusPolicy() is Qt.FocusPolicy.NoFocus, "the minus button takes focus"
+        assert more.focusPolicy() is Qt.FocusPolicy.NoFocus, "the plus button takes focus"
+
+        # Both are drawn as shapes: a bordered button differs from the toolbar beside it.
+        #
+        # **Sampled at the same `y`.** The toolbar paints a vertical gradient, so comparing a
+        # pixel inside the button against one at a different height differs whatever the button
+        # looks like — which is how the first version of this passed with the styling removed.
+        image = bar.grab().toImage()
+        for button, name in ((fewer, "minus"), (more, "plus")):
+            box = button.geometry()
+            row = box.top() + 2
+            inside = image.pixel(box.center().x(), row)
+            beside = image.pixel(bar.width() - 3, row)
+            assert inside != beside, (
+                f"the {name} button is indistinguishable from the toolbar beside it at the same "
+                "height, so it reads as text rather than as something to press"
+            )
+    finally:
+        qapp.setStyleSheet(was_sheet)
+        qapp.setPalette(was_palette)
