@@ -66,8 +66,10 @@ feeding. What follows is the reasoning the round produced, which does not expire
   removed. `IMPLEMENTATION_PLAN.md` and `T-127` now cite the corrected gate's Linux and Windows
   executions at `8d1b01c`.
 
-**Phase 2 stays blocked**, and now on two things rather than on the corrections: the re-review of
-this batch, and `T-128`'s diagnosis.
+**Phase 2 stays blocked**, and at the time of writing on two things rather than on the
+corrections: the re-review of this batch, and `T-128`'s diagnosis. *(Both are since closed —
+`T-128` is diagnosed in the very next paragraph, which is the conflict `P2EXIT-R14` names. What
+blocks Phase 2 now is criterion 6, in review, and criterion 8, awaiting the 40-row run.)*
 
 **`T-128` is diagnosed, and it was the harness** (2026-08-04). A fixture teardown dropped a
 `QObject` that still owned a running `QTimer`; the dispatcher followed the pointer into freed

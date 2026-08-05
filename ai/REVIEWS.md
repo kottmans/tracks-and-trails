@@ -10208,3 +10208,52 @@ rows that remain.
 
 No source or test correction was needed. The reviewer appends this record only; no submitted
 document, task state, commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — P2EXIT-R14 criterion-claims re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `8d7c88d`
+**Correction head:** `9fe5e37`
+**Verdict:** **Changes requested.** The three criterion-level claims named by the preceding pass
+are corrected, and the new shared verdict is accurate: criteria 1–5 and 7 met; criteria 6 and 8
+Not met. P2EXIT-R14 remains open because two older plan summaries still say criterion 6 alone
+stands between the project and exit, while STATUS still names the already-completed T-128 diagnosis
+as a current blocker. Those are whole-phase siblings of the same verdict, not row-level history.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `P2EXIT-R14` | High | **Yes — Phase 2 exit truth** | STATUS now marks the candidate-era “all except 6(a)” claim superseded and places the current verdict directly below it. Its findings introduction correctly distinguishes the submission-time 1/6/8 result from today's 6/8 result. Plan criterion 6 and STATUS correctly say the review was requested and is in progress. However, plan lines 183–185 still call criterion 6 “the only thing left,” and line 240 says criterion 6 alone stands between the project and exit, despite the same plan's criterion 8 being Not met. STATUS lines 69–70 still say Phase 2 is blocked on T-128's diagnosis immediately before lines 72 and 88 say it is diagnosed and its prerequisite satisfied. | **Open — the requested criterion claims are repaired; the phase-level siblings are not** |
+| `P2EXIT-R12` | High | **Yes — criterion 8 evidence** | Unchanged. The current verdict correctly identifies the unperformed 40-row built-window run as criterion 8's remaining evidence. | **Open — run and record the 40 rows** |
+
+### Required correction
+
+Rewrite or explicitly mark superseded the two pre-criterion-8 plan summaries. They may accurately
+say that criterion 6 was the only remaining item **at that earlier date**, but cannot state it as
+what stands between the current project and exit. Prefer linking them to the canonical exit table
+instead of creating another live verdict copy.
+
+Rewrite STATUS's T-128 blocker sentence as historical or remove it. The diagnosis and replacement
+60-run measurement are complete; current Phase 2 blockers are criteria 6 and 8, exactly as the
+correct current-truth block at lines 1380–1382 now says. The Phase 1 criterion-7 statement at
+STATUS line 1113 is correctly scoped to Phase 1 and requires no change.
+
+The repeated correction pattern now spans row claims, criterion claims and phase summaries. A
+reliable repair is to leave one live verdict table/block per canonical document and mark earlier
+narrative snapshots explicitly historical, rather than continuing to synchronize multiple copies.
+This is a record-structure recommendation, not a new product or architecture decision.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check 8d7c88d..9fe5e37`: **pass**. One commit changes plan and STATUS and carries the preceding review record; no source, tests, checklist or evidence artifact changed. |
+| Requested three claims | **Corrected.** The old candidate verdict is superseded; criterion 1 is met; the exit review is requested and in progress in both canonical records. |
+| Canonical current verdict | Plan's exit table and STATUS lines 1380–1382 agree: criteria 1–5 and 7 met; criteria 6 and 8 Not met. |
+| Remaining sibling sweep | Plan lines 185 and 240 still say criterion 6 alone remains. STATUS lines 69–70 still name T-128 diagnosis as a current blocker, contradicted by lines 72 and 88. |
+| Phase 1 boundary | STATUS line 1113 occurs in Phase 1's historical gate account and refers to that phase's criterion 7; correctly untouched. |
+| Placement gate | `tests/unit/test_task_placement.py`: **14 passed**. |
+
+No source or test correction was needed. The reviewer appends this record only; no submitted
+document, task state, commit, remote ref or CI state was changed by the reviewer.
