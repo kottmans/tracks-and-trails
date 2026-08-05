@@ -1402,6 +1402,13 @@ it for anyone who narrows the window, which is exactly what the checklist asks a
 
 #### Acceptance criteria
 
+- **Checklist row 2.7's property, inherited 2026-08-05.** That row asked that the format
+  control not be drawn over a row's thumbnail. It was authored after the closed list to
+  describe *this defect*, so it could not pass while this lived, and keeping it made a Phase 3
+  task a Phase 2 exit gate (`T161-R1`). The row is gone from the checklist and **the behaviour
+  it asked for is not weakened** — it is asserted here instead, at the dialog's default size
+  and narrower.
+
 - The control's rect and the tile's rect **do not intersect**, asserted as geometry across a swept
   range of widths — one width is what let `T-155` through
 - Where there is not room for both, the row degrades deliberately rather than by clamping:
@@ -2774,7 +2781,7 @@ Assert, on `windows-latest`:
 **Status:** **Complete — 2026-08-05.** The candidates are walked best-first and the first that answers is taken, in the worker process where network calls already live. **The maintainer chose *try candidates until one loads*** over a likelier-looking guess or an amendment to what `T-153` promises. They were told it would cost a schema change, because `thumbnail_url` is a persisted column in two tables — **it did not**: asking at probe time, where one address is chosen once, delivers the same guarantee without the candidate list ever needing to survive persistence. Reported rather than quietly banked, since the cost was part of what they were deciding on.
 **Owner:** Implementer
 **Priority:** Medium-High — every playlist on the site the project exists for draws a placeholder
-**Phase:** Phase 3
+**Phase:** **Phase 2**, reclassified by `P2EXIT-R12` as `T-153`'s unfinished half
 **Depends on:** nothing
 **Relevant context:** `T-153`, `T-137`, `T-119`, `UX-003`, `downloader/ytdlp_adapter.py`
 (`_entry_thumbnail`), `ui/thumbnails.py` (`ThumbnailStore`)
@@ -2871,7 +2878,7 @@ pasting a playlist. **Introduced by `ARC-009`**, which is mine: it created the s
 **Owner:** Implementer
 **Priority:** **High** — every entry of every playlist misreports itself, and the row contradicts
 its own chip while doing it
-**Phase:** Phase 3
+**Phase:** **Phase 2**, reclassified by `P2EXIT-R11`: a stale stage defeats criterion 1
 **Depends on:** nothing
 **Relevant context:** `ARC-009`, `T017-R3`, `UX-003`, `ui/queue_view.py` (`_status_text`,
 `_Row.displayed`)

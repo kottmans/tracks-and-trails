@@ -10047,3 +10047,62 @@ criterion 1 asks this review to judge.
 This review adds two failing regressions, one each to `tests/ui/test_queue_view.py` and
 `tests/ui/test_row_verb_wiring.py`, and appends this record. No submitted source, decision, task
 state, commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — Phase 2 exit findings focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `5ccf2bc`
+**Correction head:** `e4b2208` (`5de6ddb` carries the preceding review record/regressions and
+candidate CI result; `83f3aa2` corrects P2EXIT-R11/R13 and the first record sweep; `e4b2208`
+implements T-161)
+**Verdict:** **Changes requested.** P2EXIT-R11 and P2EXIT-R13 are resolved. P2EXIT-R12's false
+pass record is corrected, but its T-161 continuation contains a new High regression and row 3.15
+is deliberately unrun. P2EXIT-R14 remains open because the later T-161 commit advanced one set of
+current-truth claims and left the plan, checklist and task fields behind.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `P2EXIT-R11` | High | No | `_status_text()` now accepts a drawn stage only when `_STAGES_STILL_LIVE_IN` says that stage can still be active in the durable status. The reviewer probe now reports `Ready to download` beside the `Ready` chip after PROBING → READY, while existing live-download coverage still reports `Downloading video`. The closed-list misclassification is corrected in current status. | **Resolved** |
+| `P2EXIT-R12` | High | **Yes — criterion 8 / T-153** | The historical evidence now honestly records 39 passed and failures at rows 2.7 and 3.15; it does not promote a fix into an observation, and says row 3.15 must be rerun. T-161 adds a parent-thumbnail candidate walk, but `T161-R1` below means that implementation is not approved. Row 2.7 still needs the disposition recorded below. | **Open — evidence corrected; implementation and rerun remain** |
+| `P2EXIT-R13` | Medium | No | Focus placement now records row counts per view and runs only on that view's empty → nonempty transition while it is visible. The original hidden-History reviewer regression passes, and the strengthened version also proves refreshing an already-populated queue preserves toolbar focus. First rows still take focus and startup rows still hold it. | **Resolved** |
+| `P2EXIT-R14` | High | **Yes — Phase 2 exit truth** | `83f3aa2` correctly reset the 41/41 claim and reconciled plan/status at that head. `e4b2208` then declared T-161 fixed only in later STATUS/evidence/task prose. The plan still says T-161 correction is owed and two rows currently fail; the live checklist still says T-161 and T-162 are present Phase 3 defects; and T-161's own task says it was reclassified Phase 2 while its `Phase:` field remains Phase 3. This is the same sibling-update failure the finding names, reproduced by its correction sequence. | **Open — initial sweep correct, later head drifted again** |
+
+### New correction finding
+
+| ID | Severity | Blocks approval | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T161-R1` | **High** | **Yes — T-161 acceptance / playlist probe usability** | The reachability callback is passed to `_entries()`, so projection performs a HEAD walk for every playlist member carrying multiple thumbnails, not only for the playlist parent's picture T-161 owns. A two-entry reviewer fixture makes three requests: parent, entry A and entry B. The task explicitly requires **“No probe-time network request per entry”** and leaves entry thumbnails out of scope. With a four-second timeout for each candidate, the worst case grows with entries × candidates and can hold a large playlist probe for minutes with no user workaround. The submitted tests also stop one seam short in the other direction: all four inject `reachable`, so replacing the production `_url_answers()` implementation with `False` leaves all four green. They prove the chooser given an oracle, not the default boundary that must supply it. | Apply reachability only to the playlist parent's candidates. Keep entries on their existing best-candidate projection without network I/O. Add a default-boundary test—without injecting `reachable`—that makes the best address refuse and the next answer, so `_url_answers = False` fails; retain the reviewer no-per-entry regression. Then run row 3.15 in the built dialog. | **Open** |
+
+### Row 2.7 disposition
+
+**Remove row 2.7 from the Phase 2 criterion-8 checklist and keep T-160 in Phase 3.** Do not amend
+the row to tolerate the overlap, and do not call its historical failure a pass. The row already
+states the correct product behavior; its author now establishes that it was added after the closed
+list specifically to describe a known Phase 3 defect. Keeping it as a Phase 2 gate silently expands
+the closed list, while weakening it to match the defect repeats P2EXIT-R12. Move the property to
+T-160/Phase 3's acceptance evidence and preserve the second-run record as the historical 39/41
+result it actually was.
+
+Fixing T-160 is valid Phase 3 work and the maintainer may deliberately sequence it before exit. It
+is not required by this review unless the maintainer explicitly reclassifies it into Phase 2; the
+closed-list rule otherwise decides that boundary exactly as written.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `5ccf2bc..e4b2208` is three commits and twelve files. `git diff --check`: **pass**. |
+| Original reviewer probes | P2EXIT-R11 ready-state and P2EXIT-R13 hidden-refresh tests: **pass**. The focus test was extended to an already-populated queue refresh and still passes. |
+| Correction neighborhood | **23 passed** across the two original reviewer probes, live-stage/retry behavior, focus first-row/startup behavior, four submitted T-161 cases and the placement gate. |
+| Adapter file with reviewer regression | **106 passed, 1 failed**. The sole failure records parent plus both entry reachability calls where the accepted bound permits the parent call only. |
+| Production-boundary mutation | Replaced `_url_answers()` with `return False`: the four submitted T-161 tests still report **4 passed**. The source was restored byte-for-byte afterward. |
+| Reviewer-test lint / format | `ruff check`: **pass**. `ruff format --check`: **pass**, 2 files. |
+| Test-inclusive types | Bare mypy and `mypy --platform win32`: **pass**, 107 files each. |
+| Submitted broad gates | Implementer reports unit/UI **1881 passed, 11 skipped**, integration **307 passed**, ruff and mypy clean. Candidate run `31045159414` is recorded green on all five jobs at `541b484`; it predates these source corrections and is not exact-head evidence for `e4b2208`. |
+
+This review adds one failing T-161 regression to `tests/unit/test_ytdlp_adapter.py`, strengthens the
+passing P2EXIT-R13 reviewer regression in `tests/ui/test_row_verb_wiring.py`, and appends this
+record. The temporary `_url_answers` mutation was fully restored. No submitted source, decision,
+task state, commit, remote ref or CI state was changed by the reviewer.

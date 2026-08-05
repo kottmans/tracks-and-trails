@@ -76,7 +76,6 @@ checks, which need one real playlist URL.
 | 2.5 | **Shift+F10** opens the full menu at both widths. **Press it before touching anything at all** — not merely before clicking a *row*. `T-152` failed twice for two different reasons: first the list had no current row, then the key was going to the toolbar's concurrency stepper instead of the list. Only an untouched window asks both questions at once. Then again after clicking a row | `T-135`, `T-152`, `NFR-005` |
 | 2.5a | **Start with an empty queue**, add one download, and press **Shift+F10** without clicking anything. An empty list is hidden and cannot hold the keyboard, so this is the state a *first run* is in — and the one where a route that works on a restored queue can still be dead | `T-152`, `NFR-005` |
 | 2.6 | In the add dialog, a staged row's **format line does not run underneath its format control** — check with a long selector that wraps | `T-136` |
-| 2.7 | **At the dialog's default size**, the format control must not be drawn over the row's thumbnail (`T-160`). Narrow the dialog further and it must still not | `T-160` |
 
 ## 3 · A playlist (`T-137`, `T-140`)
 
@@ -135,6 +134,19 @@ same moment. A bar with nothing failed cannot answer the question row 9b exists 
 
 ---
 
+## Row 2.7 was removed on 2026-08-05, and removing it is not the same as passing it
+
+**`T161-R1`'s review directed this, and the reasoning is the part to keep.** Row 2.7 asked that the
+format control not be drawn over a row's thumbnail. It was added on 2026-08-05 **after the list was
+closed, specifically to describe `T-160`** — a known Phase 3 defect. A row authored to describe a
+defect cannot pass while the defect lives, so keeping it here made a Phase 3 task into a Phase 2
+exit gate and silently widened the closed list.
+
+**The property is not weakened and the failure is not rewritten.** The behaviour row 2.7 asked for
+is correct and now lives in `T-160`'s acceptance evidence. The 2026-08-05 run stands in the record
+as **39 of 41** — what it actually observed — rather than being recomputed to flatter the removal.
+Later runs measure the 40 rows that remain.
+
 ## Known open — found, filed, and **not** to be re-filed
 
 The second pass of 2026-08-05 found five defects. One (`T-165`) is fixed and has rows above. **The
@@ -144,10 +156,16 @@ in the room when they were filed.
 
 | Id | What you will see | Where it goes |
 |---|---|---|
-| `T-161` | A playlist's own picture is still blank. The right field is read; the URL it yields — a `maxresdefault` yt-dlp lists without verifying — returns **404**, and `T-119`'s give-up rule makes the blank permanent | Phase 3 |
-| `T-162` | A probed entry's detail line says **`Probing`** beside a chip saying **`Ready`**. A finished probe's last message outlives it, because the row yields to its status only once it is *terminal* and `READY` is not | Phase 3 |
 | `T-163` | Narrow the window and `Open` / `Show in folder` keep their full width while the **progress bar is squeezed to a stub**. What decides whether a verb fits never counted the bar | Phase 3 |
 | `T-164` | Sixteen blocks in a narrow bar read as noise. **Ruled, not yet built**: `UX-005` row 9b-i merges them to a fixed count below a stated width | Phase 3, ready |
+
+*(`T-161` and `T-162` were on this list and are **not** any more: both were reclassified Phase 2
+by the exit review — `T-161` because `T-153`'s accepted criterion is that the row *shows* a
+picture, `T-162` because a stale stage defeats criterion 1 — and both are fixed. `T-160` stays
+Phase 3 and no longer has a row here; see above.)*
+
+| `T-166` | The group's verbs advance across the `Download as:` line until it is a stump | Phase 3 |
+| `T-167` | The bar changes shape twice as one window edge is dragged | Phase 3 |
 
 **A paused queue that probes is not one of these.** Paste a playlist while paused and every entry
 probes, reports `Ready`, and starts nothing. That is `ARC-009` and `UX-001` working as decided —

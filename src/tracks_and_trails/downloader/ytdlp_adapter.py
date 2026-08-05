@@ -296,14 +296,21 @@ def _url_answers(url: str) -> bool:
 
     Short timeout on purpose: this runs inside a probe the user is waiting on, and a slow answer is
     worth less than the next candidate.
+
+    **Reaching the body means success, so there is no status arithmetic here.** This first
+    read `200 <= answer.status < 300`, and a mutation to `return True` survived: `urlopen`
+    raises `HTTPError` — a subclass of `URLError` — for every 4xx and 5xx, and it follows
+    redirects, so a 404 is caught below and the comparison could never see one. It was a
+    condition that could not fail, which reads as a check and is not one. Deleted rather than
+    left as reassurance.
     """
     import urllib.error
     import urllib.request
 
     request = urllib.request.Request(url, method="HEAD")  # noqa: S310 — http(s) from yt-dlp
     try:
-        with urllib.request.urlopen(request, timeout=_THUMBNAIL_PROBE_SECONDS) as answer:  # noqa: S310
-            return bool(200 <= answer.status < 300)
+        with urllib.request.urlopen(request, timeout=_THUMBNAIL_PROBE_SECONDS):  # noqa: S310
+            return True
     except urllib.error.URLError, OSError, ValueError:
         return False
 
@@ -371,13 +378,11 @@ def project_media(
         is_live=bool(info.get("is_live")),
         is_playlist=is_playlist,
         entry_count=_entry_count(info) if is_playlist else None,
-        entries=_entries(info, reachable=reachable) if is_playlist else (),
+        entries=_entries(info) if is_playlist else (),
     )
 
 
-def _entries(
-    info: Mapping[str, Any], *, reachable: Callable[[str], bool] = _url_answers
-) -> tuple[PlaylistEntry, ...]:
+def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
     """The playlist's items, projected flatly and in order (`T-137`).
 
     **A generator is not consumed.** A lazily paginated playlist supplies one, and walking it here
@@ -415,7 +420,7 @@ def _entries(
                 url=url,
                 title=title,
                 duration_seconds=_as_optional_float(item.get("duration")),
-                thumbnail_url=_entry_thumbnail(item, reachable=reachable),
+                thumbnail_url=_entry_thumbnail(item),
             )
         )
     return tuple(projected)
@@ -443,7 +448,7 @@ def _entry_count(info: Mapping[str, Any]) -> int | None:
 
 
 def _entry_thumbnail(
-    item: Mapping[str, Any], *, reachable: Callable[[str], bool] = _url_answers
+    item: Mapping[str, Any], *, reachable: Callable[[str], bool] | None = None
 ) -> str | None:
     """A picture from either shape yt-dlp uses (`T-137`, corrected; `T-153`, widened).
 
@@ -485,12 +490,22 @@ def _entry_thumbnail(
     A single candidate is returned unasked — there is nothing to choose between, and a probe could
     only turn a picture that might work into no picture at all. If nothing answers, the best guess
     is returned anyway, so this is never worse than what it replaced.
+
+    **`reachable` is `None` by default, and only the playlist *parent* passes one** (`T161-R1`).
+    This first defaulted to the live probe and was threaded through `_entries`, so projecting a
+    sixteen-entry playlist made a HEAD walk **per entry** — against this task's own criterion
+    *"no probe-time network request per entry"*, and against its rejected-options list, which
+    already recorded per-entry verification as *"correct and unacceptable"*. At four seconds a
+    candidate the worst case grows with entries times candidates and can hold an add dialog for
+    minutes with nothing the user can do about it. **An entry's picture is projected exactly as it
+    was before `T-161`:** best candidate, no request. `T-153`'s criterion is about the parent, and
+    that is the only row this may spend a request on.
     """
     single = _as_optional_str(item.get("thumbnail"))
     if single:
         return single
     candidates = _thumbnail_candidates(item)
-    if len(candidates) <= 1:
+    if reachable is None or len(candidates) <= 1:
         return candidates[0] if candidates else None
     for url in candidates:
         if reachable(url):

@@ -1091,6 +1091,112 @@ def test_a_flat_entry_keeps_an_address_a_new_extraction_can_open() -> None:
     )
 
 
+def test_the_default_probe_really_asks_and_really_skips_a_refusal() -> None:
+    """`T161-R1`: the four tests below inject `reachable` and never reach what supplies it.
+
+    **Replacing `_url_answers` with `lambda _: False` left all of them green.** They prove the
+    chooser given an oracle; nothing proved the oracle. That is this project's recurring shape
+    once more — a test arranging the condition the defect would be about — and it is the third
+    instance in this round.
+
+    **A real server on loopback, not the network.** Hermetic and offline: one address answers 404
+    and the next answers 200, and the *default* path has to tell them apart. `_url_answers`
+    returning a constant fails this in either direction — always-`False` picks the refusal,
+    always-`True` picks it too.
+    """
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class _Handler(BaseHTTPRequestHandler):
+        def do_HEAD(self) -> None:
+            self.send_response(404 if self.path == "/best.jpg" else 200)
+            self.end_headers()
+
+        def log_message(self, *_args: object) -> None:
+            """Silence. The test asserts on the choice, not on a server's console."""
+
+    server = HTTPServer(("127.0.0.1", 0), _Handler)
+    port = server.server_port
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        answers = f"http://127.0.0.1:{port}/next.jpg"
+        flat = {
+            "_type": "playlist",
+            "id": "pl-1",
+            "title": "Trail Sounds",
+            "webpage_url": "https://example.invalid/list",
+            "thumbnails": [
+                {"url": answers},
+                {"url": f"http://127.0.0.1:{port}/best.jpg"},
+            ],
+            "entries": [],
+        }
+
+        media = adapter.project_media(flat)
+
+        assert media.thumbnail_url == answers, (
+            f"the default probe chose {media.thumbnail_url!r}. The best address answers 404 and "
+            "the next answers 200, so a chooser actually asking must take the second — this is "
+            "the only test that touches `_url_answers` rather than a substitute for it"
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def test_a_playlists_entries_are_never_probed() -> None:
+    """`T161-R1`: `T-161`'s own criterion is **no probe-time network request per entry**.
+
+    The first correction threaded the probe through `_entries`, so a sixteen-entry playlist made a
+    HEAD walk per entry — the very thing this task's rejected-options list already recorded as
+    *"correct and unacceptable"*. At four seconds a candidate the worst case grows with
+    entries times candidates and can hold an add dialog for minutes with no user workaround.
+
+    Counted rather than timed: a duration assertion would be flaky and would not say *why* it was
+    slow.
+    """
+    asked: list[str] = []
+    flat = {
+        "_type": "playlist",
+        "id": "pl-1",
+        "title": "Trail Sounds",
+        "webpage_url": "https://example.invalid/list",
+        "thumbnails": [
+            {"url": "https://img.invalid/parent-small.jpg"},
+            {"url": "https://img.invalid/parent-large.jpg"},
+        ],
+        "entries": [
+            {
+                "url": f"https://example.invalid/{name}",
+                "title": name,
+                "thumbnails": [
+                    {"url": f"https://img.invalid/{name}-small.jpg"},
+                    {"url": f"https://img.invalid/{name}-large.jpg"},
+                ],
+            }
+            for name in ("a", "b", "c")
+        ],
+    }
+
+    def _record(url: str) -> bool:
+        asked.append(url)
+        return True
+
+    media = adapter.project_media(flat, reachable=_record)
+
+    assert asked == ["https://img.invalid/parent-large.jpg"], (
+        f"projection asked about {asked}; only the playlist's own picture may cost a request, and "
+        "three entries turned one probe into four"
+    )
+    assert [entry.thumbnail_url for entry in media.entries] == [
+        "https://img.invalid/a-large.jpg",
+        "https://img.invalid/b-large.jpg",
+        "https://img.invalid/c-large.jpg",
+    ], "an entry still takes its best candidate, exactly as it did before `T-161`"
+
+
 def test_a_playlist_skips_a_thumbnail_address_that_does_not_answer() -> None:
     """`T-161`, `P2EXIT-R12`: `T-153`'s criterion is that the row **shows** a picture.
 
@@ -1202,6 +1308,51 @@ def test_nothing_answering_still_yields_the_best_guess() -> None:
     assert media.thumbnail_url == "https://img.invalid/large.jpg", (
         f"nothing answered and the playlist chose {media.thumbnail_url!r}; the best guess is still "
         "better than no picture at all"
+    )
+
+
+def test_thumbnail_reachability_is_not_probed_per_playlist_entry() -> None:
+    """T-161 explicitly keeps per-entry network requests out of playlist projection."""
+    asked: list[str] = []
+
+    def answers(url: str) -> bool:
+        asked.append(url)
+        return True
+
+    flat = {
+        "_type": "playlist",
+        "title": "Trail Sounds",
+        "webpage_url": "https://example.invalid/list",
+        "thumbnails": [
+            {"url": "https://img.invalid/list-small.jpg"},
+            {"url": "https://img.invalid/list-large.jpg"},
+        ],
+        "entries": [
+            {
+                "url": "https://example.invalid/a",
+                "title": "A",
+                "thumbnails": [
+                    {"url": "https://img.invalid/a-small.jpg"},
+                    {"url": "https://img.invalid/a-large.jpg"},
+                ],
+            },
+            {
+                "url": "https://example.invalid/b",
+                "title": "B",
+                "thumbnails": [
+                    {"url": "https://img.invalid/b-small.jpg"},
+                    {"url": "https://img.invalid/b-large.jpg"},
+                ],
+            },
+        ],
+    }
+
+    adapter.project_media(flat, reachable=answers)
+
+    assert asked == ["https://img.invalid/list-large.jpg"], (
+        f"projecting one playlist made reachability requests for {asked}; T-161 permits choosing "
+        "the playlist parent's picture at probe time, but explicitly forbids a network request "
+        "per entry because a large playlist would multiply the four-second timeout by its size"
     )
 
 

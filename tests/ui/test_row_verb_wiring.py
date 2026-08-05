@@ -2323,6 +2323,14 @@ def test_a_hidden_history_refresh_does_not_take_focus_from_the_toolbar(
             "refreshing the hidden History tab moved focus into the visible queue, interrupting "
             "the toolbar control even though the user did not change tabs or ask for a row"
         )
+
+        window.refresh_queue()
+        QApplication.processEvents()
+
+        assert spinner.hasFocus(), (
+            "refreshing an already-populated queue treated ordinary structural work like the "
+            "empty-to-first-row transition and took focus from the toolbar"
+        )
     finally:
         window.close()
 

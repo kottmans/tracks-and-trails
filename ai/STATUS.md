@@ -1397,11 +1397,13 @@ the second exit submission it has blocked.
 
 ### What criterion 8 still needs
 
-**Row 2.7 cannot pass while `T-160` is open**, and the reviewer is explicit that a Phase 3 owner
-does not turn a failing row into a passing one. **That row was added on 2026-08-05 to describe a
-known Phase 3 defect** — authoring a row that cannot pass while its defect lives is an error in the
-checklist, and it is mine. Two ways out, and both are the maintainer's: fix `T-160`, or amend
-row 2.7 to describe what the window should do rather than the defect it currently has.
+**Row 2.7 has been removed from the checklist**, by the reviewer's direction in `T161-R1`. It was
+authored on 2026-08-05, after the closed list, to describe `T-160` — so it could never pass while
+that defect lived, and keeping it made a Phase 3 task into a Phase 2 exit gate. **Neither of the
+two ways out I offered was taken, and both were worse:** amending the row to tolerate the overlap
+repeats `P2EXIT-R12`, and requiring `T-160` for exit expands the closed list. The property is
+unweakened — it now lives in `T-160`'s acceptance evidence — and the 39/41 record stands as what
+was observed rather than being recomputed. Forty rows remain.
 
 **Row 3.15's defect is fixed and the row is unrun.** A fix is not an observation. Criterion 8 is
 Not met until the checklist is re-run and records passed rows separately from failed ones.
