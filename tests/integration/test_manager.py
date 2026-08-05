@@ -6308,7 +6308,7 @@ def test_a_probe_that_found_no_thumbnail_stores_null(
 
 
 def test_a_durable_probe_carries_the_job_on_into_its_download(
-    tmp_path: Path, spin: Callable[..., bool]
+    app: QCoreApplication, tmp_path: Path, spin: Callable[..., bool]
 ) -> None:
     """`T137-R2` / `ARC-009`: probing a durable row is not the end of that row's journey.
 
@@ -6334,11 +6334,18 @@ def test_a_durable_probe_carries_the_job_on_into_its_download(
             "or UX-003's probe-first rule simply strands it"
         )
     finally:
+        # **`drain`, not `shutdown()` alone** (`T-128`, `T137-R3`). This test runs *two* sessions
+        # in sequence — the probe, then the download the continuation admits — and returning while
+        # the second pump was still live had Qt destroy a running `QThread`, aborting the
+        # interpreter: 143 passed, exit 134. `is_idle` is not enough either; it answers a question
+        # about the queue and goes true up to one poll interval before the tick that stops the
+        # manager's own timer, which is the whole of `T-128`.
         download.shutdown()
+        drain(app, [download])
 
 
 def test_a_staged_probe_does_not_start_a_download(
-    tmp_path: Path, spin: Callable[..., bool]
+    app: QCoreApplication, tmp_path: Path, spin: Callable[..., bool]
 ) -> None:
     """The discriminator `ARC-009` turns on, asserted rather than assumed.
 
@@ -6383,3 +6390,4 @@ def test_a_staged_probe_does_not_start_a_download(
         )
     finally:
         download.shutdown()
+        drain(app, [download])

@@ -922,7 +922,10 @@ class QueueModel(QAbstractTableModel):
             # **Derived from every member, not from one that speaks for them** (`T-140`,
             # `UX-005` row 9). A playlist mid-run holds a completed track, a running one and
             # fourteen queued, so there is no member whose status is the group's.
-            return group_verbs(row.job.status for row in group.members)
+            return group_verbs(
+                (row.job.status, row.job.error_kind is None or is_retryable(row.job.error_kind))
+                for row in group.members
+            )
         if role == EXPANDED_ROLE:
             return group.playlist_id in self._expanded
         if role == SEGMENTS_ROLE:
@@ -1417,7 +1420,13 @@ class QueueView(QWidget):
                     self._manager.cancel(job.id)
         elif verb is Verb.RETRY_FAILED:
             for job in jobs:
-                if job.status is JobStatus.FAILED:
+                # **Asked again here, not trusted from the offer** (`T140-R6`, `SEC-001`). The
+                # verb the row drew came from the model a moment ago; what actually has to hold is
+                # this. A stale header — drawn before a member failed on DRM, clicked after — must
+                # not route a retry that `SEC-001` says can never happen, and the offer alone
+                # cannot promise that.
+                retryable = job.error_kind is None or is_retryable(job.error_kind)
+                if job.status is JobStatus.FAILED and retryable:
                     self.retry_requested.emit(job.id)
         elif verb is Verb.REVEAL:
             # One folder for the whole playlist (`UX-005` row 10), so revealing any member reveals

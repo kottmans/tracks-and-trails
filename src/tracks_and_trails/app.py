@@ -52,6 +52,7 @@ if TYPE_CHECKING:
     from PySide6.QtWidgets import QApplication
 
     from tracks_and_trails.core.instance_lock import InstanceLock
+    from tracks_and_trails.core.job_state import JobStatus
     from tracks_and_trails.downloader.environment import FfmpegReport
     from tracks_and_trails.downloader.manager import DownloadManager
     from tracks_and_trails.persistence.repositories import JobRepository
@@ -189,10 +190,26 @@ def queued_job_ids(repository: JobRepository) -> list[str]:
 
     Read **after** `recover_interrupted()`, so nothing that was in flight is in this list.
     """
+    return [job_id for job_id, _ in waiting_jobs(repository)]
+
+
+def waiting_jobs(repository: JobRepository) -> list[tuple[str, JobStatus]]:
+    """`queued_job_ids` with each id's status kept, because startup has to admit them differently.
+
+    **`QUEUED` means unprobed and `READY` means probed** (`UX-003`, `ARC-009`), and `T137-R2` is
+    what conflating them cost twice. The add dialog was corrected first: an entry built from a flat
+    extraction is `QUEUED`, and admitting it as a download skipped the probe `UX-003` promises.
+    This path had the same defect one seam over — the durable write and the callback that admits
+    its probe are separate operations, so an application that exits between them leaves a flat
+    entry `QUEUED` on disk, and the next start downloaded it unprobed.
+
+    Kept as a pair rather than two queries so both come from one read of the table, and so a
+    caller cannot ask for one and forget the other.
+    """
     from tracks_and_trails.core.job_state import JobStatus
 
     waiting = (JobStatus.QUEUED, JobStatus.READY)
-    return [job.id for job in repository.all_jobs() if job.status in waiting]
+    return [(job.id, job.status) for job in repository.all_jobs() if job.status in waiting]
 
 
 def default_output_directory() -> Path:
@@ -302,7 +319,8 @@ def compose(
     # An enumeration on the GUI thread, which `ARC-005` allows only because this is startup: it
     # runs before the writer, the store or the window exist, and `recover_interrupted` has just
     # walked the same table for the same reason.
-    durable_queued = queued_job_ids(JobRepository(connection))
+    durable_waiting = waiting_jobs(JobRepository(connection))
+    durable_queued = [job_id for job_id, _ in durable_waiting]
     writer = QueueWriter(open_connection_factory(database_path))
     store = PersistentJobStore(connection, writer)
 
@@ -463,8 +481,16 @@ def compose(
     # **Nothing recovered is admitted.** `durable_queued` was read after `recover_interrupted`, so
     # it holds no row that was in flight — starting those unattended is exactly the defect
     # `T081-R4` filed, and `T-082`'s offer is how a user asks for them instead.
-    for job_id in durable_queued:
-        manager.admit(job_id)
+    from tracks_and_trails.core.job_state import JobStatus
+    from tracks_and_trails.downloader.protocol import SessionKind
+
+    # **Admitted by status, exactly as the add dialog does** (`ARC-009`, `T137-R2`). Unprobed
+    # things get probed; the continuation then carries each one into its download. Writing the
+    # rule twice is the risk here, and it is why `waiting_jobs` hands the status over rather than
+    # letting this loop guess from the id.
+    for job_id, status in durable_waiting:
+        kind = SessionKind.PROBE if status is JobStatus.QUEUED else SessionKind.DOWNLOAD
+        manager.admit(job_id, kind)
     if durable_queued:
         logging.getLogger("tracksandtrails.app").info(
             "admitted %d job(s) left queued by a previous run", len(durable_queued)

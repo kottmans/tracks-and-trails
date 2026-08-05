@@ -126,7 +126,7 @@ def verbs_for(status: JobStatus, *, retryable: bool = True) -> tuple[Verb, ...]:
     return offered
 
 
-def group_verbs(statuses: Iterable[JobStatus]) -> tuple[Verb, ...]:
+def group_verbs(members: Iterable[tuple[JobStatus, bool]]) -> tuple[Verb, ...]:
     """What a playlist header offers, given the statuses of its members (`T-140`, `UX-005` row 9).
 
     **Not `verbs_for` with a status picked from the members.** A group has no single status — a
@@ -136,9 +136,14 @@ def group_verbs(statuses: Iterable[JobStatus]) -> tuple[Verb, ...]:
 
     - **`Cancel all`** while anything is still live. Named apart from `Cancel` deliberately; see
       `LABELS`.
-    - **`Retry failed` only when something failed**, which is the criterion stated as a criterion.
-      A group of sixteen with none failed must not offer it, or the user learns the button is
-      usually a lie.
+    - **`Retry failed` only when something failed *and can be retried*** (`T140-R6`, `SEC-001`).
+      Each member arrives as its status **paired with its retryability**, because status alone is
+      not enough and taking it alone was a Critical: a playlist of `DRM_PROTECTED` failures offered
+      the verb and routed it, crossing a boundary `SEC-001` states as permanent — DRM is never
+      retried. An ordinary row has always asked `is_retryable`; the group asks the same question
+      through the same authority, which is what keeps one surface from being safer than the other.
+      A group of sixteen with none failed must not offer it either, or the user learns the button
+      is usually a lie.
     - **`Show in folder` and no `Open`.** The entries share one folder (`UX-005` row 10), and there
       is no single file to open — inventing one would be a decision rather than an implementation.
     - **`Remove`** always, because a group the user no longer wants is always removable, and
@@ -151,13 +156,13 @@ def group_verbs(statuses: Iterable[JobStatus]) -> tuple[Verb, ...]:
     button with nothing behind it would be the `T-016` failure this module's own docstring warns
     about, so it is left out and reported.
     """
-    seen = tuple(statuses)
+    seen = tuple(members)
     offered: list[Verb] = []
-    if any(status in _LIVE for status in seen):
+    if any(status in _LIVE for status, _ in seen):
         offered.append(Verb.CANCEL_ALL)
-    if any(status is JobStatus.FAILED for status in seen):
+    if any(status is JobStatus.FAILED and retryable for status, retryable in seen):
         offered.append(Verb.RETRY_FAILED)
-    if any(status is JobStatus.COMPLETED for status in seen):
+    if any(status is JobStatus.COMPLETED for status, _ in seen):
         offered.append(Verb.REVEAL)
     offered.append(Verb.REMOVE)
     return tuple(offered)
