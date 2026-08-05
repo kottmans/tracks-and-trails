@@ -10421,3 +10421,56 @@ third at 40/40, and the Linux-only ruling unchanged.
 No new test was needed for this records-only correction. The reviewer appends this record only; no
 submitted document, source, test, task state, commit, remote ref or CI state was changed by the
 reviewer.
+
+## 2026-08-05 — P2EXIT-R15 final re-review and Phase 2 sign-off
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `9ff3693`
+**Approved at:** `8de5a72`
+**Verdict:** **Approved. Phase 2 may exit.** P2EXIT-R15 is resolved, all thirteen deliverables are
+approved, and all eight exit criteria are met. The Linux-only human inspection limit for criterion
+8 remains an explicit maintainer ruling and accepted residual, not missing evidence silently read
+as a pass.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `P2EXIT-R15` | High | No | All four surviving STATUS siblings now agree with the completed 40-row event. The T-128-era paragraph names criterion 6 alone as the then-current blocker and criterion 8 met. The main criterion-8 account carries the second run forward to the 40/40 third run and the recorded platform ruling. The review introduction says “6 alone,” and the disposition heading is past tense. The deliberately retained row-3.15 sentence is explicitly superseded; P2EXIT-R15's Open row correctly awaited this independent resolution. | **Resolved at `8de5a72`** |
+
+P2EXIT-R11 through P2EXIT-R15 and T161-R1 are resolved. P2EXIT-R12's historical evidence remains
+39/41 for the second run and 40/40 for the third; row 2.7 remains removed without weakening T-160.
+
+### Final exit reconstruction
+
+| Criterion | Final result |
+|---|---|
+| 1 | **Met.** Three concurrent jobs, independent accurate progress and an interactive UI; P2EXIT-R11's stale-stage regression is resolved. |
+| 2 | **Met.** Hard-kill/restart recovery proof accepted and unchanged. |
+| 3 | **Met.** Exact pool limit, clean lowering and queue-level pause behavior accepted and unchanged. |
+| 4 | **Met.** Single-instance behavior accepted on both platforms. |
+| 5 | **Met.** Corrected N-worker orphan gate accepted; candidate CI is green including `windows desktop`. |
+| 6 | **Met by this sign-off.** Thirteen deliverables are approved, the 60-run soak passed, and no blocking review finding remains. |
+| 7 | **Met.** The user-visible Add/admission/restart queue route is accepted and unchanged. |
+| 8 | **Met.** The maintainer recorded 40/40 live checklist rows passed, including direct observation of row 3.15. Linux-only human inspection is accepted by maintainer ruling; Windows automation is green and the unevidenced Windows visual residual is disclosed. |
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check 9ff3693..8de5a72`: **pass**. The correction changes STATUS and carries the preceding review record only. |
+| Evidence preservation | No checklist or evidence artifact changes in the correction. The second run remains 39/41, the third 40/40, and the Linux-only ruling unchanged. |
+| Unfiltered criterion-8 audit | Read all sixteen `criterion 8` occurrences across plan and STATUS. Current claims say met; the remaining non-met/awaiting wording is explicitly dated, quoted, descriptive or attached to P2EXIT-R15's pre-resolution process state. |
+| Candidate identity | `git diff 376407f..8de5a72 -- src tests pyproject.toml .github`: **empty**. No later record commit changes the application, tests, build inputs or CI workflow verified for the candidate. |
+| CI | GitHub Actions run `31051896815` at `165b6e4`: **success**, all five jobs including `windows desktop`. No further docs-only dispatch is required. |
+| Placement gate | `tests/unit/test_task_placement.py`: **14 passed**. |
+
+Known residuals remain visible and non-blocking: no person inspected criterion 8 on Windows; four
+known Phase 3 window defects were present during the checklist run; T-151 and T-154's regressions
+are guarded on all platforms but reproduce their visual defects on none; and OPS-007's T-074 risk
+remains accepted rather than resolved.
+
+This approval covers exact head `8de5a72`. A subsequent review-only commit may carry this record
+without changing that boundary. The next coordination update may mark P2EXIT-R15 Resolved,
+criterion 6 Met, and Phase 2 exited, then advance current work to Phase 3. No source, test, evidence,
+task state, commit, remote ref or CI state was changed by the reviewer.

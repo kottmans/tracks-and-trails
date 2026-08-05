@@ -68,9 +68,9 @@ feeding. What follows is the reasoning the round produced, which does not expire
 
 **Phase 2 stays blocked**, and at the time of writing on two things rather than on the
 corrections: the re-review of this batch, and `T-128`'s diagnosis. *(Both are since closed —
-`T-128` is diagnosed in the very next paragraph, which is the conflict `P2EXIT-R14` names. What
-blocks Phase 2 now is **criterion 6 alone**, in review — criterion 8 is met on the
-maintainer's evidence since the 40-row run of 2026-08-05.)*
+`T-128` is diagnosed in the very next paragraph, which is the conflict `P2EXIT-R14` names. Nothing blocks
+Phase 2 now: criterion 8 was met on the maintainer's evidence at the 40-row run, and criterion 6
+was signed off on 2026-08-05. **The phase is exited.**)*
 
 **`T-128` is diagnosed, and it was the harness** (2026-08-04). A fixture teardown dropped a
 `QObject` that still owned a running `QTimer`; the dispatcher followed the pointer into freed
@@ -90,7 +90,7 @@ garbage.
 
 **Ruled 2026-08-04: the `T-128` prerequisite is satisfied, and a measurement replaces it.** The two
 crashes were not recurrences of `T-074`'s fault, so the premise `OPS-007` was originally made on is
-intact rather than broken. **That soak is done and clean** (2026-08-05): **60 of 60, no test failures and no process deaths**, run on `Spock` against `ef21e34`, giving P = 0.042 against the 2-in-39 baseline. The corrected teardown holds, and **criterion 6's measurement half is met**; what remains of criterion 6 is the independent exit review, **which is in progress**: requested 2026-08-05 in `ai/handoffs/2026-08-05-phase-2-exit-review.md`. `ai/REVIEWS.md` holds every verdict, and **no tally is kept here** — a count beside the record is a second copy of it, and it drifts the moment another verdict lands. It read *"three times"* against five.
+intact rather than broken. **That soak is done and clean** (2026-08-05): **60 of 60, no test failures and no process deaths**, run on `Spock` against `ef21e34`, giving P = 0.042 against the 2-in-39 baseline. The corrected teardown holds, and **criterion 6's measurement half is met**; the other half — the independent exit review — was requested 2026-08-05 in `ai/handoffs/2026-08-05-phase-2-exit-review.md` and **signed the phase off at `8de5a72`**. `ai/REVIEWS.md` holds every verdict, and **no tally is kept here** — a count beside the record is a second copy of it, and it drifts the moment another verdict lands. It read *"three times"* against five.
 
 *(The paragraph below is kept as written, because it is the reasoning the measurement was chosen by.)* **Phase 2's exit then waited on a clean 60-run Linux soak** against the
 corrected teardown — sized against the measured 2-in-39 baseline, where an unchanged rate gives a
@@ -116,11 +116,11 @@ an afternoon on a machine Windows verification does not depend on. The reasoning
 same fault.
 
 **Thirteen of thirteen Phase 2 deliverables are approved**, `T-115` included — approved at
-`f6dd691` on 2026-08-02, though this line said otherwise until 2026-08-03. **Exit criterion 6 is
-not met.** It asks for *"reviewed and signed off"*, and what it needs is the **independent phase
-exit review** that Phase 0 and Phase 1 each required (`AGENTS.md` §3) — not a deliverable review.
-**It is no longer absent: requested 2026-08-05 and in progress**, having returned verdicts
-`P2EXIT-R11`–`R15` and `T161-R1`. **It is the only live gate.**
+`f6dd691` on 2026-08-02, though this line said otherwise until 2026-08-03. **Exit criterion 6 is met**, 2026-08-05.
+It asks for *"reviewed and signed off"*, and what it needed was the **independent phase exit
+review** that Phase 0 and Phase 1 each required (`AGENTS.md` §3) — not a deliverable review. That
+review was requested on 2026-08-05, returned six verdicts (`P2EXIT-R11`–`R15`, `T161-R1`), and
+**signed Phase 2 off at `8de5a72`**. *(This read "not met" until then.)*
 
 **Criterion 8 was added on 2026-08-04: the window must catch up with the features behind it.**
 The maintainer ruled it after running the application and producing ten tasks in one afternoon,
@@ -235,7 +235,7 @@ against the widget-per-row approach would be fixing what the review already said
 Neither was in `T-116` or `T-118`. **Both corrections were reviewed and approved** at `6c38d5f` —
 `T-083`'s implementation and prior approval are unchanged, and `T-116` retains its approval, the
 review having independently ruled out its barrier as the cause. **`T-118` is the only thing still
-red.**
+red.** *(True when written. `T-118` was approved with follow-ups at `53b07ec`, and CI is green on the Phase 2 exit candidate: run `31051896815`, all five jobs.)*
 *(`COORD-R17`: this read "neither correction has been reviewed", which was true when written and
 had stopped being true by the review recorded at this same head.)*
 
@@ -1139,7 +1139,7 @@ reproduced every asset byte-for-byte from the script — and filed Complete. See
 
 ## Next
 
-**Current, 2026-08-02.** `T-115`'s re-verdict is the only thing between here and Phase 2's exit.
+**Written 2026-08-02.** `T-115`'s re-verdict was then the only thing between here and Phase 2's exit. *(Superseded many times over — criterion 8 was added on 2026-08-04 and the phase exited on 2026-08-05 at `8de5a72`.)*
 After it: the **UI rework**, `T-116` through `T-120`, filed from mockups the maintainer reviewed
 and chose between. It precedes `T-107` deliberately — Phase 3 and 4 add a format table, a stream
 chooser, a playlist picker and a preset editor **to the queue that already exists**, so what a row
@@ -1389,10 +1389,11 @@ runners, so it cost no quota.
 before the review answered, and `P2EXIT-R11` then found criterion 1 broken by a change made after
 its proof. Superseded — the current verdict is directly below.)*
 
-**Current truth, 2026-08-05.** Criteria **1–5, 7 and 8 are met**. **Criterion 6 is Not met**: the
-independent exit review is in progress. Criterion 8's evidence is the **40-row run**, a pass on
-`kirk`, recorded in `ai/evidence/2026-08-05-criterion-8-third-run.md` — *met on the maintainer's
-evidence, with the exit review to judge whether that evidence carries it.* This row has been claimed
+**Current truth, 2026-08-05.** **All eight exit criteria are met and Phase 2 is exited**, signed
+off at `8de5a72`. Criterion 6's review returned six verdicts before approving. Criterion 8's
+evidence is the **40-row run**, a pass on
+`kirk`, recorded in `ai/evidence/2026-08-05-criterion-8-third-run.md` — offered as *met on the
+maintainer's evidence* and **accepted by the review**. This row has been claimed
 met twice and reset twice, so its limits sit inside the claim: one platform, one runner who also
 accepted the mockups, and four known Phase 3 defects present during the run.
 
@@ -1411,7 +1412,7 @@ line said *"criteria 1, 6 and 8 are Not met"* after that, which is the finding i
 | `P2EXIT-R12` | High. The second-run record said *"pass, all 41 rows"* while listing failures of rows 2.7 and 3.15 | **Answered.** Record corrected, `T-161` fixed and approved, row 2.7 removed by `T161-R1`, and **the 40-row run is a pass** — row 3.15 is observed rather than inferred, which was the finding's whole point |
 | `P2EXIT-R13` | Medium. The `T-152` focus correction fired on every model reset from either view, taking the keyboard off toolbar controls | **Fixed.** First rows only, in the visible view |
 | `P2EXIT-R14` | High. Plan and status carried incompatible live criterion-8 verdicts | **Resolved at `e94b412`**, after five sweeps. Each earlier one corrected the occurrence it was looking at and left siblings behind — the finding, reproduced by its own corrections |
-| `P2EXIT-R15` | High. Passages written before the 40-row run still said criterion 8 awaited it, `P2EXIT-R14` was open, and row 3.15 was unrun | **Open — this sweep.** The same shape a sixth time, and the first five were about *stale* claims while this one is about claims that were **true when written** and were overtaken |
+| `P2EXIT-R15` | High. Passages written before the 40-row run still said criterion 8 awaited it, `P2EXIT-R14` was open, and row 3.15 was unrun | **Resolved at `8de5a72`.** The same shape a sixth time, and the first five were about *stale* claims while this one is about claims that were **true when written** and were overtaken |
 
 **The pattern in three of the four is mine and it is one pattern.** `P2EXIT-R11` and `P2EXIT-R12`
 are both a claim stated over the top of contradicting evidence I had already written down —
@@ -1456,7 +1457,7 @@ that catches, so the residual is accepted rather than argued away.
 **CI is green on the candidate**: run `31051896815` on `165b6e4`, all five jobs — `STARBASE
 coverage`, `linux`, `frozen linux`, `windows desktop`, `frozen windows`.
 
-**Criterion 6 is the last one open, and it is not the implementer's to close.**
+**Criterion 6 was the last one open, and it was not the implementer's to close. It closed on 2026-08-05 at `8de5a72`.**
 
 **`P2EXIT-R15` is a different failure from the five before it, and the difference is the lesson.**
 `P2EXIT-R14` was about claims that had gone *stale* — corrected, then found again one scope out,
@@ -1473,3 +1474,39 @@ ways a claim can be stale is the same error one level up from enumerating the st
 set of wordings is unbounded and the set of mentions is not.** The sweep that finally worked listed
 every occurrence of *"criterion 8"* in both records — sixteen of them — with no filter at all, and
 read each one.
+
+---
+
+# Phase 2 exited — 2026-08-05
+
+**Signed off at `8de5a72`** by the independent exit review. **All thirteen deliverables approved,
+all eight exit criteria met.**
+
+| Evidence | |
+|---|---|
+| Suites | 1884 passed / 11 skipped, 307 integration; ruff and mypy clean |
+| CI | Run `31051896815` on `165b6e4`, all five jobs including `windows desktop` |
+| Built window | **40 of 40** checklist rows, `kirk`, Fedora |
+| Soak | **60 of 60**, `Spock`, `ef21e34`, P = 0.042 against the 2-in-39 baseline |
+
+**The review returned six verdicts before approving**, and what they caught is worth carrying into
+Phase 3 more than the approval is:
+
+- **`P2EXIT-R11`** — criterion 1 **silently broken by a change made after its proof**. A finished
+  probe's stage outlived it. It had been filed as a Phase 3 task while the criterion was called
+  met; the closed-list rule decides which task *owns* a defect, not whether a criterion holds.
+- **`P2EXIT-R12`** — a checklist record reading *"pass, all 41 rows"* while listing failures of two
+  of those rows. **A fix is not an observation.**
+- **`P2EXIT-R13`** — a correction that seized the keyboard on every model reset, far wider than the
+  seam its own source disclosed.
+- **`T161-R1`** — an implementation of the option the task had explicitly ruled out, in a task
+  whose own acceptance criteria forbade it.
+- **`P2EXIT-R14` and `R15`** — records disagreeing with each other, six sweeps between them.
+
+**Not one of the six was a defect a gate could have caught, and four were the same shape: a claim
+stated over the top of evidence already written down.** That is the thing to watch in Phase 3, and
+it is recorded here rather than in a commit message because it outlives the commit.
+
+**The one-platform residual stands as a maintainer ruling**: criterion 8 rests on Fedora, CI covers
+the suite on Windows, and no person has looked at the window there.
+
