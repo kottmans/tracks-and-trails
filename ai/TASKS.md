@@ -94,6 +94,111 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ## Ready
 
+### T-152 — The declared keyboard route needs a mouse click before it works
+
+**Status:** Ready — **reopened 2026-08-05** by the maintainer at the window: `Shift+F10` still
+does nothing. The first round was correct and incomplete — see *Second round* below. It stays
+**Phase 2, inside criterion 8**, because that is where the 2026-08-05 ruling put it.
+**First round, complete:** both views take a current row on reset and at construction, through the
+selection model with `NoUpdate` so it is current without being selected.
+**Owner:** Implementer
+**Priority:** **High** — `NFR-005` is a non-functional requirement, and this is the route it names
+**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
+**Depends on:** nothing
+**Relevant context:** `NFR-005`, `UX-005` §4, `T124-R1`, `T-135`, `ui/queue_view.py`
+(`_row_menu_asked_for`), `ui/history_view.py`, `tests/ui/test_row_verb_wiring.py`
+**Affected surfaces:** `ui/queue_view.py`, `ui/history_view.py`
+**Risk:** Low
+
+#### Scope
+
+**`Shift+F10` does nothing on a freshly opened window.** The handler is correct and its fallback is
+deliberate — `_row_menu_asked_for` resolves `indexAt(position)` and falls back to `currentIndex()`,
+which is `T124-R1`'s own fix for a route that *"silently did nothing"* when Qt derived the position
+from the widget rather than from a row.
+
+**But it ends `if not index.isValid(): return`, and nothing gives the list a current row.** Neither
+view calls `setCurrentIndex` on load; the two existing calls are in selection-restore paths that a
+user reaches only by having selected something. So the current index is invalid until the user
+**clicks a row** — and the declared keyboard route is unreachable until a *pointer* has been used.
+
+That is the opposite of what `NFR-005` asks. A keyboard route that requires a mouse first is not a
+keyboard route; it is a mouse route with a keyboard shortcut.
+
+#### Why no test caught it, which is the part worth keeping
+
+`tests/ui/test_row_verb_wiring.py` covers this route carefully — it synthesises the context-menu
+event because the `offscreen` plugin does not translate `Shift+F10`, and it deliberately aims the
+position **off every row** so a handler resolving through `indexAt` alone would fail. All good.
+
+**And its helper calls `body.setCurrentIndex(index)` first.** So the test establishes the exact
+state whose absence is the defect. It proves the fallback works *given* a current row and cannot
+say anything about a window where none was ever set — which is every window a user opens.
+
+This is the project's recurring shape stated once more: **a test that arranges the condition the
+defect is about**. `T126-R3` and `T140-R1` are the same lesson at other layers.
+
+#### Acceptance criteria
+
+- On a view with rows and **nothing ever clicked**, the keyboard route opens the menu for a
+  defensible row — asserted **without** the test setting a current index first, which is the whole
+  point
+- Whatever establishes that row is visible to a screen reader as the focused item, so the menu that
+  opens matches what the user was told they are on (`NFR-005`)
+- An **empty** view still does nothing, quietly and without raising
+- The behaviour holds for **History** as well as the queue — both declare the same route
+- The existing off-row regression stays, since `T124-R1`'s defect is a different one and both must
+  hold at once
+
+#### Out of scope
+
+- Whether the current row should also be *selected*. Focus and selection are different, and
+  `UX-005` does not rule on it
+- The `⋯` button's pointer route, which works
+- Making the platform plugin's `Shift+F10` translation testable. `ai/TESTING.md` records why it is
+  not, and this task needs a current row rather than a synthetic keypress
+
+#### Second round — the key never reaches the list
+
+**A current row was necessary and is not sufficient.** `Shift+F10` is delivered to the **focused
+widget**, and on a freshly opened window the focused widget is not the list. Measured rather than
+reasoned:
+
+```
+focusWidget at open: QSpinBox  objectName=concurrencyChoice
+```
+
+Nothing calls `setFocus()` on either view and no tab order is declared, so Qt picks the first
+focusable widget it finds — the concurrency spin box in the toolbar. `Shift+F10` therefore raises a
+context-menu event on **the spin box**, which has the default policy and answers with its own
+edit menu. `self._list.customContextMenuRequested` is never emitted, so the row menu cannot open
+however valid its current index is.
+
+**The first round fixed the fallback's precondition and not the delivery.** Both are required and
+only one was diagnosed, which is why the maintainer sees no change.
+
+##### Why the test still cannot see it, which is the same lesson one layer out
+
+`tests/ui/test_row_verb_wiring.py` synthesises the context-menu event **on the list**, because the
+`offscreen` plugin does not translate `Shift+F10`. That synthesis presumes the delivery that is
+failing. So the suite proves the handler is right given the event, and has never been able to say
+whether the event arrives — exactly the shape recorded in this task's own *"why no test caught it"*
+section, now repeated one layer further out by the fix for it.
+
+##### Second-round acceptance criteria
+
+- **One of the two views holds focus when the window opens**, asserted by querying the focused
+  widget rather than by arranging it — the queue, since it is the tab shown first
+- Focus follows the visible tab, so switching to History and pressing the key reaches History
+- The toolbar's focusable controls are still reachable by `Tab`; this takes initial focus, not the
+  ability to have it (`NFR-005`)
+- **A test that fails against the current head**, which the existing synthesis cannot do. If the
+  key itself remains untranslatable offscreen, the assertion is about which widget would receive
+  it, stated as such and disclosed rather than dressed up as an end-to-end proof
+
+---
+
+
 ### T-033 — Bundle the pinned yt-dlp baseline into the frozen artifact
 
 **Status:** **Ready — the decision landed as `REL-002` (2026-08-04), so the blocker is gone.**
@@ -2985,110 +3090,6 @@ Whatever the fix, it must not silently remove the tooltip or the accessible text
 - The add dialog's opening width, which is `T-150`
 - Wrapping the title over two lines instead of eliding. `UX-005` fixes the row's anatomy, and
   changing it is that decision's to make
-
----
-
-### T-152 — The declared keyboard route needs a mouse click before it works
-
-**Status:** Ready — **reopened 2026-08-05** by the maintainer at the window: `Shift+F10` still
-does nothing. The first round was correct and incomplete — see *Second round* below. It stays
-**Phase 2, inside criterion 8**, because that is where the 2026-08-05 ruling put it.
-**First round, complete:** both views take a current row on reset and at construction, through the
-selection model with `NoUpdate` so it is current without being selected.
-**Owner:** Implementer
-**Priority:** **High** — `NFR-005` is a non-functional requirement, and this is the route it names
-**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
-**Depends on:** nothing
-**Relevant context:** `NFR-005`, `UX-005` §4, `T124-R1`, `T-135`, `ui/queue_view.py`
-(`_row_menu_asked_for`), `ui/history_view.py`, `tests/ui/test_row_verb_wiring.py`
-**Affected surfaces:** `ui/queue_view.py`, `ui/history_view.py`
-**Risk:** Low
-
-#### Scope
-
-**`Shift+F10` does nothing on a freshly opened window.** The handler is correct and its fallback is
-deliberate — `_row_menu_asked_for` resolves `indexAt(position)` and falls back to `currentIndex()`,
-which is `T124-R1`'s own fix for a route that *"silently did nothing"* when Qt derived the position
-from the widget rather than from a row.
-
-**But it ends `if not index.isValid(): return`, and nothing gives the list a current row.** Neither
-view calls `setCurrentIndex` on load; the two existing calls are in selection-restore paths that a
-user reaches only by having selected something. So the current index is invalid until the user
-**clicks a row** — and the declared keyboard route is unreachable until a *pointer* has been used.
-
-That is the opposite of what `NFR-005` asks. A keyboard route that requires a mouse first is not a
-keyboard route; it is a mouse route with a keyboard shortcut.
-
-#### Why no test caught it, which is the part worth keeping
-
-`tests/ui/test_row_verb_wiring.py` covers this route carefully — it synthesises the context-menu
-event because the `offscreen` plugin does not translate `Shift+F10`, and it deliberately aims the
-position **off every row** so a handler resolving through `indexAt` alone would fail. All good.
-
-**And its helper calls `body.setCurrentIndex(index)` first.** So the test establishes the exact
-state whose absence is the defect. It proves the fallback works *given* a current row and cannot
-say anything about a window where none was ever set — which is every window a user opens.
-
-This is the project's recurring shape stated once more: **a test that arranges the condition the
-defect is about**. `T126-R3` and `T140-R1` are the same lesson at other layers.
-
-#### Acceptance criteria
-
-- On a view with rows and **nothing ever clicked**, the keyboard route opens the menu for a
-  defensible row — asserted **without** the test setting a current index first, which is the whole
-  point
-- Whatever establishes that row is visible to a screen reader as the focused item, so the menu that
-  opens matches what the user was told they are on (`NFR-005`)
-- An **empty** view still does nothing, quietly and without raising
-- The behaviour holds for **History** as well as the queue — both declare the same route
-- The existing off-row regression stays, since `T124-R1`'s defect is a different one and both must
-  hold at once
-
-#### Out of scope
-
-- Whether the current row should also be *selected*. Focus and selection are different, and
-  `UX-005` does not rule on it
-- The `⋯` button's pointer route, which works
-- Making the platform plugin's `Shift+F10` translation testable. `ai/TESTING.md` records why it is
-  not, and this task needs a current row rather than a synthetic keypress
-
-#### Second round — the key never reaches the list
-
-**A current row was necessary and is not sufficient.** `Shift+F10` is delivered to the **focused
-widget**, and on a freshly opened window the focused widget is not the list. Measured rather than
-reasoned:
-
-```
-focusWidget at open: QSpinBox  objectName=concurrencyChoice
-```
-
-Nothing calls `setFocus()` on either view and no tab order is declared, so Qt picks the first
-focusable widget it finds — the concurrency spin box in the toolbar. `Shift+F10` therefore raises a
-context-menu event on **the spin box**, which has the default policy and answers with its own
-edit menu. `self._list.customContextMenuRequested` is never emitted, so the row menu cannot open
-however valid its current index is.
-
-**The first round fixed the fallback's precondition and not the delivery.** Both are required and
-only one was diagnosed, which is why the maintainer sees no change.
-
-##### Why the test still cannot see it, which is the same lesson one layer out
-
-`tests/ui/test_row_verb_wiring.py` synthesises the context-menu event **on the list**, because the
-`offscreen` plugin does not translate `Shift+F10`. That synthesis presumes the delivery that is
-failing. So the suite proves the handler is right given the event, and has never been able to say
-whether the event arrives — exactly the shape recorded in this task's own *"why no test caught it"*
-section, now repeated one layer further out by the fix for it.
-
-##### Second-round acceptance criteria
-
-- **One of the two views holds focus when the window opens**, asserted by querying the focused
-  widget rather than by arranging it — the queue, since it is the tab shown first
-- Focus follows the visible tab, so switching to History and pressing the key reaches History
-- The toolbar's focusable controls are still reachable by `Tab`; this takes initial focus, not the
-  ability to have it (`NFR-005`)
-- **A test that fails against the current head**, which the existing synthesis cannot do. If the
-  key itself remains untranslatable offscreen, the assertion is about which widget would receive
-  it, stated as such and disclosed rather than dressed up as an end-to-end proof
 
 ---
 
