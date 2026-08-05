@@ -67,6 +67,19 @@ checks, which need one real playlist URL.
 
 Paste one real playlist URL. This is the sequence that produced criterion 8 in the first place.
 
+**To check 3.6 you need something to fail**, and a working setup does not provide one. *(Added
+2026-08-05: the row was written without saying how, which made it uncheckable.)* Two ways, cheapest
+first:
+
+- **Make the download directory unwritable** — `chmod a-w <download dir>` — then paste the
+  playlist. With concurrency 3, the first few fail while the rest sit queued, which is exactly the
+  side-by-side state 3.6 asks about. `chmod u+w` afterwards.
+- **Use a playlist containing a private or deleted entry.** More realistic, less reliable to
+  arrange on demand.
+
+Either way the point is one **failed** block beside one **waiting** block, in the same bar, at the
+same moment. A bar with nothing failed cannot answer the question row 9b exists to ask.
+
 | # | What to look for | Task |
 |---|---|---|
 | 3.1 | **Every entry downloads**, not one. Sixteen items means sixteen files | `T-137` |

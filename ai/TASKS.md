@@ -1142,6 +1142,68 @@ beats designing it against an imagined one.
 
 ---
 
+### T-156 — The MP3 preset does not say which bitrate it means
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, reading the queue row's format
+dropdown. **New scope: Phase 3**, and not a criterion 8 defect — nothing in `T-132`–`T-141` or the
+mockups covers what a preset's name discloses.
+**Owner:** Implementer
+**Priority:** Medium — the disclosure half is small; the control half is a product question
+**Phase:** Phase 3
+**Depends on:** nothing for the disclosure. The control half is adjacent to `T-111` (user presets)
+and `REQ-010`
+**Relevant context:** `REQ-006`, `REQ-009`, `REQ-010`, `T-076`, `T-139`, `core/presets.py`
+(`MP3_QUALITY`, `MP3_BITRATES`), `ui/add_dialog.py`, `ui/queue_view.py`
+**Affected surfaces:** `core/presets.py` or `ui/`, depending on the ruling below
+**Risk:** Low
+
+#### Scope
+
+**`Audio only (MP3)` converts at 192 kbps and never says so.** `MP3_QUALITY` is `"192"`, chosen
+deliberately — *"over VBR 0 because a preset named for a codec should be predictable in size, and
+over 128 because the difference is audible on music"* — and its own comment already says the right
+thing: *"the preset states a default, it does not decide policy for anyone."*
+
+**The two surfaces disagree about how much of that a user sees.** The add dialog offers the whole
+`MP3_BITRATES` range — `320` down to `128` — as a control. The **queue row's** dropdown offers
+preset *names* only, from `BUILT_IN_PRESETS`. So a download's bitrate is choosable before it is
+queued and invisible afterwards, and the queue row is where a user looks when deciding whether to
+retarget.
+
+Two separable answers, and they are not alternatives:
+
+- **Disclose it.** The name reads `Audio only (MP3)`; it could read the bitrate. `REQ-009`'s
+  principle is that the row says what the download actually is, and `_effective_format_text`
+  already prefers a preset's name over raw syntax for exactly that reason — a name that omits the
+  one number a user cares about is the same gap one step smaller.
+- **Offer it on the row.** A second control, or a bitrate-bearing entry in the same one. This is
+  the larger question: it multiplies the dropdown, it interacts with `T-111`'s user presets, and
+  `T-139` already found the bitrate control needs to *disable* where bitrate does not apply.
+
+**Recommendation: disclose first, and decide the control with `T-111`.** The disclosure is cheap
+and strictly improves what the row says; the control is a design question that user presets may
+answer better than a second dropdown would.
+
+#### Acceptance criteria
+
+- The MP3 preset's user-visible name states its bitrate, derived from `MP3_QUALITY` rather than
+  typed — a literal in the name and a constant in the code are two sources that will drift
+- The queue row, the add dialog and History all show the same text for the same request, asserted
+  together rather than one at a time
+- Presets with **no** bitrate say nothing about one: `Audio only (original)` converts nothing, and
+  a name implying otherwise is worse than the omission this fixes
+- If a per-row control lands, `T-139`'s rule holds — it disables where bitrate does not apply, and
+  is not merely hidden
+
+#### Out of scope
+
+- Which bitrates are offered. `T-076` settled `MP3_BITRATES` and why it stops at 128
+- Bitrate for codecs other than MP3. `presets.py` already refuses a kbps for `FLAC`, `WAV` and
+  `ALAC`, and that reasoning stands
+- Changing the default away from 192
+
+---
+
 ### T-154 — A child row's picture is drawn at full size and covers its own text
 
 **Status:** Proposed — **found by the maintainer, 2026-08-05**, opening a sixteen-item playlist.
