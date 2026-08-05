@@ -1142,6 +1142,78 @@ beats designing it against an imagined one.
 
 ---
 
+### T-165 — A cancelled playlist reports itself as failed, and draws a full bar
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, after cancelling a sixteen-entry
+playlist. **Needs a ruling on scope** — the wording half may belong inside criterion 8; see below.
+**Owner:** Implementer
+**Priority:** Medium — the words are wrong, which is worse than the colour being unclear
+**Phase:** Phase 3 by the closed-list rule, pending the ruling
+**Depends on:** nothing. `T-164` is adjacent — that one is the bar at narrow widths, this is what
+the bar and the line say at any width
+**Relevant context:** `UX-005` rows 9a-9b, `NFR-005`, `T-140` and its colour correction, `T130-R1`,
+`ui/queue_view.py` (`_group_segments`, `DETAIL_ROLE`), `ui/row_delegate.py` (`SegmentState`)
+**Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`
+**Risk:** Low to fix, Medium to rule — a fifth `SegmentState` touches the accessible text too
+
+#### Scope
+
+`_group_segments` collapses two statuses into one block state:
+
+```python
+elif status in (JobStatus.FAILED, JobStatus.CANCELLED):
+    states.append(SegmentState.FAILED)
+```
+
+`SegmentState` is deliberately the single source for **both** the drawing and the words
+(`NFR-005`), so collapsing them makes the collapse visible twice:
+
+- **The header says `16 items · 16 failed` about sixteen downloads the user cancelled.** Nothing
+  failed. The user stopped it, and the application reports its own queue as broken — a statement
+  that would send somebody looking for an error that does not exist. `row_verbs`' own rule is that
+  a row must not say a wronger thing than nothing; this says one.
+- **The block colour cannot separate abandoned from finished.** Measured on the light theme:
+
+  | Block | Colour |
+  |---|---|
+  | Done | `#1e5e47` — the brand |
+  | Failed / cancelled | `#101a14` at alpha 170, over white ≈ `#606662` |
+
+  Two dark, desaturated, greenish fills. **A wholly cancelled playlist therefore draws a wholly
+  filled bar**, and filled is the shape the eye reads as finished. Row 3.6 asks that failed differ
+  from *queued*, and those do differ — by opacity. It never asked that failed differ from **done**,
+  and done-versus-abandoned is the pair a user actually confuses, because both are solid.
+
+The chip reading `0 of 16` is the only thing saying otherwise, against a bar and a line that both
+say the run was worse than it was.
+
+#### The ruling this needs
+
+The wording defect is arguably **inside criterion 8** — it is `T-140`'s group summary telling the
+user something untrue, which is what criterion 8 asserts about. It is filed as Phase 3 by the
+closed-list rule of 2026-08-04, and the maintainer may move it as they did `T-149` and `T-152`.
+The colour question is Phase 3 either way.
+
+#### Acceptance criteria
+
+- **Cancelled is its own state.** A fifth `SegmentState`, so the words and the drawing separate
+  together rather than one being special-cased at the paint step
+- `16 items · 16 cancelled` for a cancelled playlist; a mixed one counts each kind separately
+- A wholly cancelled or wholly failed bar is **distinguishable from a wholly done one** at a
+  glance, not only on inspection — the block is the row's summary of the whole run
+- Distinguishable in the **dark** theme too, where `#101a14`-derived reasoning does not carry
+- The accessible text moves with the drawing, from the one enum (`NFR-005`)
+- Asserted as a **table** over statuses, per `row_verbs`' rule: an unmapped status must be a
+  programming error rather than a silent fall-through to *waiting*
+
+#### Out of scope
+
+- Whether a cancelled entry should stay in the group at all. `UX-005` §8 keeps rows until
+  *Clear finished*, and reopening that is not this task
+- The bar's behaviour at narrow widths, which is `T-164`
+
+---
+
 ### T-163 — The verbs hold their ground until the progress bar has none
 
 **Status:** Proposed — **found by the maintainer, 2026-08-05**, narrowing the window.
@@ -2918,7 +2990,11 @@ Whatever the fix, it must not silently remove the tooltip or the accessible text
 
 ### T-152 — The declared keyboard route needs a mouse click before it works
 
-**Status:** **Complete — 2026-08-05.** Both views take a current row on reset and at construction, through the selection model with `NoUpdate` so it is current without being selected.
+**Status:** Ready — **reopened 2026-08-05** by the maintainer at the window: `Shift+F10` still
+does nothing. The first round was correct and incomplete — see *Second round* below. It stays
+**Phase 2, inside criterion 8**, because that is where the 2026-08-05 ruling put it.
+**First round, complete:** both views take a current row on reset and at construction, through the
+selection model with `NoUpdate` so it is current without being selected.
 **Owner:** Implementer
 **Priority:** **High** — `NFR-005` is a non-functional requirement, and this is the route it names
 **Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
@@ -2975,6 +3051,44 @@ defect is about**. `T126-R3` and `T140-R1` are the same lesson at other layers.
 - The `⋯` button's pointer route, which works
 - Making the platform plugin's `Shift+F10` translation testable. `ai/TESTING.md` records why it is
   not, and this task needs a current row rather than a synthetic keypress
+
+#### Second round — the key never reaches the list
+
+**A current row was necessary and is not sufficient.** `Shift+F10` is delivered to the **focused
+widget**, and on a freshly opened window the focused widget is not the list. Measured rather than
+reasoned:
+
+```
+focusWidget at open: QSpinBox  objectName=concurrencyChoice
+```
+
+Nothing calls `setFocus()` on either view and no tab order is declared, so Qt picks the first
+focusable widget it finds — the concurrency spin box in the toolbar. `Shift+F10` therefore raises a
+context-menu event on **the spin box**, which has the default policy and answers with its own
+edit menu. `self._list.customContextMenuRequested` is never emitted, so the row menu cannot open
+however valid its current index is.
+
+**The first round fixed the fallback's precondition and not the delivery.** Both are required and
+only one was diagnosed, which is why the maintainer sees no change.
+
+##### Why the test still cannot see it, which is the same lesson one layer out
+
+`tests/ui/test_row_verb_wiring.py` synthesises the context-menu event **on the list**, because the
+`offscreen` plugin does not translate `Shift+F10`. That synthesis presumes the delivery that is
+failing. So the suite proves the handler is right given the event, and has never been able to say
+whether the event arrives — exactly the shape recorded in this task's own *"why no test caught it"*
+section, now repeated one layer further out by the fix for it.
+
+##### Second-round acceptance criteria
+
+- **One of the two views holds focus when the window opens**, asserted by querying the focused
+  widget rather than by arranging it — the queue, since it is the tab shown first
+- Focus follows the visible tab, so switching to History and pressing the key reaches History
+- The toolbar's focusable controls are still reachable by `Tab`; this takes initial focus, not the
+  ability to have it (`NFR-005`)
+- **A test that fails against the current head**, which the existing synthesis cannot do. If the
+  key itself remains untranslatable offscreen, the assertion is about which widget would receive
+  it, stated as such and disclosed rather than dressed up as an end-to-end proof
 
 ---
 
