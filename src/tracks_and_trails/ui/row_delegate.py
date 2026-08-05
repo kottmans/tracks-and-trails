@@ -697,9 +697,16 @@ class RowDelegate(QStyledItemDelegate):
         }
         painter.save()
         painter.setPen(Qt.PenStyle.NoPen)
+        # **Each block ends where the next begins** (`T155-fix`). Taking the left from a rounded
+        # cumulative position and the width from a separately rounded span is two arithmetics for
+        # one geometry, and wherever `round(span)` exceeded the real step a block ran into its
+        # neighbour and the gap vanished. Measured for sixteen entries before the fix: 7 of 15 gaps
+        # lost at 600 px, 6 at 617, 2 at 733, none at 800 — deterministic per width, which is why
+        # it looked intermittent to somebody resizing a window.
         for position, state in enumerate(states):
             left = area.left() + round(position * (span + gap))
-            block = QRect(left, area.top(), max(round(span), 1), area.height())
+            right = area.left() + round((position + 1) * (span + gap)) - gap
+            block = QRect(left, area.top(), max(right - left, 1), area.height())
             painter.setBrush(QColor(colours[state]))
             painter.drawRect(block)
         painter.restore()
@@ -829,10 +836,18 @@ class RowDelegate(QStyledItemDelegate):
             pixmap = self._thumbnails.pixmap(url if isinstance(url, str) else None)
 
         if pixmap is not None and not pixmap.isNull():
-            # Centred inside the fixed box: the picture keeps its aspect ratio, so a square
-            # thumbnail does not stretch to 16:9 and a wide one does not overflow the row.
+            # **Fitted to the box, then centred in it** (`T-154`). This took the *pixmap's* size and
+            # centred that on the tile, which overflows whenever the picture is bigger than the
+            # slot. That never showed on a parent row, because `ThumbnailStore` caches at
+            # `THUMBNAIL_SIZE` and the two agree — and it showed on every child row, whose
+            # `CHILD_THUMBNAIL` slot is smaller, as a full-size picture drawn over its own title.
+            #
+            # The aspect ratio the old comment was reaching for is kept, by scaling rather than by
+            # hoping: `KeepAspectRatio` fits the longer edge, so a square picture does not stretch
+            # to 16:9 and a wide one no longer leaves the box.
+            drawn = pixmap.size().scaled(tile.size(), Qt.AspectRatioMode.KeepAspectRatio)
             target = QRect(tile)
-            target.setSize(pixmap.size())
+            target.setSize(drawn)
             target.moveCenter(tile.center())
             painter.drawPixmap(target, pixmap)
             return

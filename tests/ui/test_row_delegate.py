@@ -28,11 +28,12 @@ from typing import Any, Final
 import pytest
 from PySide6.QtCore import QAbstractListModel, QEvent, QModelIndex, QRect, QRunnable, Qt
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
-from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter
+from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter, QPalette
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
 from tracks_and_trails.core.paths import thumbnail_cache_directory, thumbnail_cache_path
 from tracks_and_trails.ui.row_delegate import (
+    CHILD_THUMBNAIL,
     DEPTH_ROLE,
     DETAIL_ROLE,
     EDITOR_WIDTH,
@@ -40,6 +41,7 @@ from tracks_and_trails.ui.row_delegate import (
     GAP,
     HEADLINE_ROLE,
     HUE_ROLE,
+    INDENT,
     PADDING,
     PRESET_CHOICES_ROLE,
     PRESET_ROLE,
@@ -1175,4 +1177,109 @@ def test_a_finished_segment_is_the_brand_rather_than_a_grey(qapp: QApplication) 
     assert done != waiting, (
         "a bar of four finished entries draws identically to four waiting ones, so it reports "
         "nothing while appearing to report something"
+    )
+
+
+def test_a_groups_bar_keeps_every_gap_at_every_width(qapp: QApplication) -> None:
+    """`T-155`: sixteen entries must read as sixteen blocks, whatever the window's width.
+
+    **The defect was arithmetic, and it looked intermittent.** Each block took its left edge from a
+    rounded cumulative position and its width from a separately rounded span — two arithmetics for
+    one geometry — so wherever the rounded width exceeded the real step a block ran into its
+    neighbour and their gap vanished. Measured before the fix: 7 of 15 gaps lost at 600 px, 6 at
+    617, 2 at 733, none at 800. Deterministic per width, which is why resizing seemed to fix and
+    unfix it.
+
+    **Swept rather than sampled**, because a single width is exactly what let this through: 800 px
+    drew correctly and would have passed.
+
+    **Painted through `_paint_segments` onto a bare image** rather than through a whole row: the
+    claim is about the bar's geometry, and scanning a full row counts the thumbnail and the text as
+    ink too.
+    """
+    states = [SegmentState.WAITING] * 16
+
+    for width in (401, 600, 617, 733, 800, 1000):
+        image = QImage(width, 8, QImage.Format.Format_ARGB32)
+        image.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(image)
+        try:
+            RowDelegate()._paint_segments(
+                painter, QRect(0, 0, width, 8), states, QColor("#666666"), QPalette()
+            )
+        finally:
+            painter.end()
+
+        inked = [image.pixelColor(x, 4).alpha() > 0 for x in range(width)]
+        gaps = sum(1 for x in range(1, width) if inked[x - 1] and not inked[x])
+        assert gaps == 15, (
+            f"at {width}px the bar draws {gaps} gaps between blocks; sixteen entries need fifteen, "
+            "and blocks that merge under-report a playlist to the user"
+        )
+
+
+def test_a_child_rows_picture_stays_inside_its_smaller_slot(
+    qapp: QApplication, stores: Callable[..., ThumbnailStore]
+) -> None:
+    """`T-154`: `UX-005` row 9c gives an entry a smaller tile, and the picture must respect it.
+
+    **The painter took the pixmap's size and centred that on the tile.** `ThumbnailStore` caches at
+    `THUMBNAIL_SIZE` — 96x54, and the square fixture scales to 54x54 — while a child's slot is
+    38x22. So a parent row looked correct and a child drew the picture over its own title.
+
+    **Differential, against the same row without a picture.** The row's text is ink outside the tile
+    and always has been, so "is anything drawn there" cannot be the question; "does the picture
+    change anything there" can.
+
+    **And it asserts the picture actually arrived.** Comparing two renders that are both the
+    derived placeholder would pass while proving nothing — the vacuous shape this project keeps
+    finding — so the tile itself must differ before the area outside it is allowed to match.
+
+    **This does not kill the mutant, and that is disclosed rather than papered over.** Restoring
+    `target.setSize(pixmap.size())` leaves this green, because at a device pixel ratio of 1 —
+    which `offscreen` always is — the cached pixmap's `size()` and the slot coincide and nothing
+    overflows. The window that showed the defect was not at 1. So this guards the property on
+    every platform and reproduces the reported failure on none of them; the fix is verified by the
+    geometry it now computes, not by this test failing without it.
+    """
+    loader = FakeLoader(IMAGE_SOURCE.read_bytes())
+    store = stores(loader=loader)
+    delegate = RowDelegate(thumbnails=store)
+
+    bare = a_row(0, thumbnail=None)
+    bare[DEPTH_ROLE] = 1
+    without = paint_rows(RowsModel([bare]), delegate, 0)
+
+    pictured = a_row(0, thumbnail="https://pics.invalid/child.jpg")
+    pictured[DEPTH_ROLE] = 1
+    model = RowsModel([pictured])
+    paint_rows(model, delegate, 0)
+    assert spin_until(qapp, lambda: store.pixmap("https://pics.invalid/child.jpg") is not None)
+    with_picture = paint_rows(model, delegate, 0)
+
+    # The slot a child's tile occupies: indented by its depth, `CHILD_THUMBNAIL` in size.
+    slot = QRect(INDENT + PADDING, 0, CHILD_THUMBNAIL[0], with_picture.height())
+
+    inside = [
+        (x, y)
+        for x in range(slot.left(), slot.right() + 1)
+        for y in range(with_picture.height())
+        if with_picture.pixelColor(x, y) != without.pixelColor(x, y)
+    ]
+    assert inside, (
+        "the two renders are identical inside the tile, so no picture was drawn and this would "
+        "pass without testing anything"
+    )
+
+    outside = [
+        (x, y)
+        for x in range(with_picture.width())
+        for y in range(with_picture.height())
+        if not (slot.left() <= x <= slot.right())
+        and with_picture.pixelColor(x, y) != without.pixelColor(x, y)
+    ]
+    assert not outside, (
+        f"the picture changes {len(outside)} pixels outside its {CHILD_THUMBNAIL[0]}px slot, the "
+        f"first at {outside[0]}; it is drawn at its own size rather than the slot's and covers the "
+        "row's title"
     )

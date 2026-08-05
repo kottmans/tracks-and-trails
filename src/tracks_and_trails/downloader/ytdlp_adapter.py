@@ -309,7 +309,12 @@ def project_media(info: Mapping[str, Any]) -> MediaInfo:
         formats=formats,
         duration_seconds=_as_optional_float(info.get("duration")),
         uploader=_as_optional_str(info.get("uploader")),
-        thumbnail_url=_as_optional_str(info.get("thumbnail")),
+        # **Both shapes, through the same helper the entries use** (`T-153`). A playlist is
+        # probed with `extract_flat`, so its *top level* is the same flat dict its entries are:
+        # `thumbnails`, a list, and no singular `thumbnail`. Reading only the singular here is why
+        # a playlist drew the derived tile while every one of its entries drew a picture — the
+        # `T-137` correction reached the children and not the parent.
+        thumbnail_url=_entry_thumbnail(info),
         is_live=bool(info.get("is_live")),
         is_playlist=is_playlist,
         entry_count=_entry_count(info) if is_playlist else None,
@@ -383,7 +388,11 @@ def _entry_count(info: Mapping[str, Any]) -> int | None:
 
 
 def _entry_thumbnail(item: Mapping[str, Any]) -> str | None:
-    """A flat playlist entry's picture, from either shape yt-dlp uses (`T-137`, corrected).
+    """A picture from either shape yt-dlp uses (`T-137`, corrected; `T-153`, widened).
+
+    **Named for entries and used by the playlist too.** The name is kept because that is where the
+    shape was found, and the reasoning below is about flat extractions rather than about children:
+    a playlist probed with `extract_flat` carries `thumbnails` at its own level as well.
 
     **A flat extraction rarely carries `thumbnail`.** It carries `thumbnails` — a list, worst
     first — and reading only the singular is why every entry of the maintainer's playlist drew the

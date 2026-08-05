@@ -2099,3 +2099,50 @@ def test_declining_a_group_removal_removes_nothing(qapp: QApplication, tmp_path:
     confirm.buttonClicked.emit(confirm.button(QMessageBox.StandardButton.No))
     assert removed == []
     confirm.close()
+
+
+def test_a_paused_queue_looks_different_from_a_running_one(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T-149`: pressing `Pause queue` must change something a person can see.
+
+    **The state was always there and always invisible.** `Pause queue` is one checkable `QAction` —
+    pause and resume are the same control — so Qt announced the toggled state to a screen reader
+    and drew a checked tool button sunken, until `T-132`'s style sheet replaced its rendering
+    without saying what checked means. `T-129` restored hover, pressed and disabled and missed
+    this one, because pause is the only checkable control on the toolbar.
+
+    Rendered rather than asserted against the style sheet's text: a rule that exists and does not
+    reach this button would pass a `grep` and fail a user, which is `T132-R1`'s whole lesson.
+    """
+    previous_sheet = qapp.styleSheet()
+    previous_palette = qapp.palette()
+    window: MainWindow | None = None
+    try:
+        theme.apply(qapp, theme.LIGHT)
+        window = _window_over([_job("job-1", 0, JobStatus.RUNNING)], tmp_path)
+        window.resize(900, 620)
+        window.show()
+        qapp.processEvents()
+
+        button = window.findChild(QToolButton, "pauseQueueButton") or next(
+            child
+            for child in window.findChildren(QToolButton)
+            if child.text().replace("&", "") == "Pause queue"
+        )
+        running = button.grab().toImage()
+
+        assert window._pause is not None
+        window._pause.setChecked(True)
+        qapp.processEvents()
+        paused = button.grab().toImage()
+
+        assert paused != running, (
+            "the toolbar draws a paused queue exactly like a running one, so pressing Pause queue "
+            "changes nothing the user can see"
+        )
+    finally:
+        if window is not None:
+            window.close()
+        qapp.setPalette(previous_palette)
+        qapp.setStyleSheet(previous_sheet)

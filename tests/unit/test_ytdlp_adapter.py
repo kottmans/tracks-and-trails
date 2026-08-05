@@ -1072,3 +1072,43 @@ def test_a_flat_entry_keeps_an_address_a_new_extraction_can_open() -> None:
         "the durable job kept yt-dlp's extractor-local value and discarded the public URL; "
         "the later worker no longer has ie_key='Youtube' and cannot route that value"
     )
+
+
+def test_a_playlist_takes_its_own_picture_from_the_thumbnails_list() -> None:
+    """`T-153`: the `T-137` correction reached the entries and not the playlist itself.
+
+    **A playlist is probed with `extract_flat`, so its own top level is the flat shape too** — it
+    carries `thumbnails` and no singular `thumbnail`. `_media_from` read only the singular, so the
+    staged row for a playlist drew the derived tile while every one of its entries drew a picture,
+    which looks like a different defect and is the same one a level up.
+
+    The singular still works, because a single video's full extraction supplies it and that route
+    must not break to fix this one.
+    """
+    flat = {
+        "_type": "playlist",
+        "title": "Trail Sounds",
+        "webpage_url": "https://example.invalid/list",
+        "thumbnails": [
+            {"url": "https://img.invalid/list-small.jpg"},
+            {"url": "https://img.invalid/list-large.jpg"},
+        ],
+        "entries": [{"url": "https://example.invalid/a", "title": "Listed"}],
+    }
+
+    assert adapter.project_media(flat).thumbnail_url == "https://img.invalid/list-large.jpg", (
+        "the playlist itself got no picture, so its staged row draws the derived tile while its "
+        "entries draw theirs — the correction reached the children and not the parent"
+    )
+
+    singular = {**flat, "thumbnail": "https://img.invalid/one.jpg"}
+    del singular["thumbnails"]
+    assert adapter.project_media(singular).thumbnail_url == "https://img.invalid/one.jpg", (
+        "the singular shape stopped being read, which is what a single video's full extraction "
+        "supplies"
+    )
+
+    bare = {k: v for k, v in flat.items() if k != "thumbnails"}
+    assert adapter.project_media(bare).thumbnail_url is None, (
+        "a playlist with no picture invented one"
+    )

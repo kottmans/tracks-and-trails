@@ -388,6 +388,25 @@ QToolBar QToolButton:disabled {{
     color: {theme.muted};
     border-color: {theme.rule};
 }}
+QToolBar QToolButton:checked {{
+    /* **A paused queue has to look paused** (`T-149`, `NFR-005`). `Pause queue` is one checkable
+       action on purpose — pause and resume are the same control — and Qt draws a checked tool
+       button sunken until a style sheet replaces its rendering, which the rule above does. So the
+       state existed, was announced to a screen reader, and was invisible: pressing the button
+       changed nothing anybody could see.
+       `T-129` restored hover, pressed and disabled for exactly this reason and missed this one,
+       because pause is the only checkable control on the bar and nothing else could have shown it.
+       **Not colour alone**: the border thickens as well as darkening, so the state survives a
+       greyscale reading. */
+    background-color: {theme.rule};
+    border: 2px solid {theme.primary};
+    padding: 2px 8px;
+}}
+QToolBar QToolButton:checked:hover {{
+    background-color: {theme.sunken};
+    border: 2px solid {theme.primary};
+    padding: 2px 8px;
+}}
 QToolBar QToolButton[stepButton="true"] {{
     /* **A pair has to look like a pair** (`T-141`, corrected). Left bare, these were transparent
        text on the toolbar — and the global `*:focus` rule then drew an accent border on whichever

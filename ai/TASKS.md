@@ -1112,9 +1112,9 @@ single video supplies. `_entry_thumbnail()` was written to read both shapes, and
 states the reasoning. **`_media_from` was not changed:**
 
 ```python
-thumbnail_url=_as_optional_str(info.get("thumbnail")),   # the parent, singular only
+thumbnail_url = (_as_optional_str(info.get("thumbnail")),)  # the parent, singular only
 ...
-thumbnail_url=_entry_thumbnail(item),                    # each child, both shapes
+thumbnail_url = (_entry_thumbnail(item),)  # each child, both shapes
 ```
 
 A playlist is probed with `extract_flat`, so the **top-level** dict is the same flat shape as its
@@ -1166,7 +1166,7 @@ parent's full tile — and then draws the picture at the **pixmap's** size rathe
 
 ```python
 target = QRect(tile)
-target.setSize(pixmap.size())    # the picture's size, not the box's
+target.setSize(pixmap.size())  # the picture's size, not the box's
 target.moveCenter(tile.center())
 painter.drawPixmap(target, pixmap)
 ```
@@ -1217,8 +1217,8 @@ times they appear mashed together."* **Recommended as a finding against `T-140`*
 from a rounded running position and its width from a separately rounded span:
 
 ```python
-span  = (area.width() - gap * (n - 1)) / n     # fractional
-left  = area.left() + round(position * (span + gap))
+span = (area.width() - gap * (n - 1)) / n  # fractional
+left = area.left() + round(position * (span + gap))
 block = QRect(left, area.top(), max(round(span), 1), area.height())
 ```
 
