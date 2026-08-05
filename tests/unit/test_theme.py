@@ -39,6 +39,11 @@ TEXT_PAIRS = (
     ("muted", "surface"),
     ("muted", "sunken"),
     ("on_primary", "primary"),
+    # **The primary under the pointer** (`T-146`). A hover that lightens the fill moves the text's
+    # background, and lightening it far enough to be *felt* is exactly far enough to drop white
+    # text below the floor — measured, +25% put it at 4.15:1. The pair is asserted so the next
+    # person who wants a more obvious hover finds out here rather than on screen.
+    ("on_primary", "primary_hover"),
     # A selected row, since `T-130` made it a tint rather than the brand fill. The pair has to be
     # here for the same reason every other one is: the fill it replaced passed at 7.64:1, and a
     # lighter background is exactly where a text colour quietly stops clearing the floor.

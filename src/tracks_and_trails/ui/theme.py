@@ -100,6 +100,19 @@ class Theme:
     #: The brand accent. Used sparingly and never as the only signal.
     accent: str
 
+    #: `primary` **under the pointer** (`T-146`).
+    #:
+    #: **A lighter fill, not a coloured ring.** A filled button hovered used to keep its fill and
+    #: take an `accent` border, which measured **1.42:1 against the fill in light and 1.25:1 in
+    #: dark** — too low to read as gold, so it read as a smudge. Brightening the accent instead
+    #: would have fixed one theme and not the other: `#D9A24C` is 3.36:1 on the light theme's
+    #: forest and 1.25:1 on the dark theme's already-light green, which is `T130-R1`'s shape
+    #: exactly — a change that looks right in the context it was chosen in.
+    #:
+    #: Lightening the fill works in both, because it moves *with* whichever primary it is given.
+    #: `on_primary` stays legible on it, and that pair is in the contrast gate.
+    primary_hover: str
+
     #: A selected row (`T-130`, `UX-005`'s 2026-08-04 amendment).
     #:
     #: **A tint of `primary` over `surface`, not `primary` itself.** Filling the whole row with the
@@ -132,6 +145,7 @@ LIGHT: Final = Theme(
     selection="#EBF1EE",
     on_selection="#101A14",
     accent="#8A6412",
+    primary_hover="#467B68",
     ok="#14503C",
     warn="#7A5410",
     stop="#8C3D29",
@@ -159,6 +173,7 @@ DARK: Final = Theme(
     selection="#1D382E",
     on_selection="#E7EFE9",
     accent=GOLD,
+    primary_hover="#75B89D",
     ok="#7FC7A6",
     warn=GOLD,
     stop="#E09480",
@@ -283,10 +298,10 @@ QPushButton:pressed {{
     background-color: {theme.rule};
 }}
 QPushButton:default:hover {{
-    /* The primary keeps its fill and deepens its edge, rather than falling back to the neutral
-       hover above and appearing to lose its emphasis on contact. */
-    background-color: {theme.primary};
-    border-color: {theme.accent};
+    /* **The same lift as the toolbar's primary** (`T-146`), and it had the same defect: an
+       `accent` ring at 1.42:1 against its own fill. One hover for one kind of button. */
+    background-color: {theme.primary_hover};
+    border-color: {theme.primary_hover};
 }}
 QPushButton:disabled {{
     color: {theme.muted};
@@ -449,9 +464,11 @@ QToolBar QToolButton[primaryAction="true"] {{
     font-weight: 600;
 }}
 QToolBar QToolButton[primaryAction="true"]:hover {{
-    /* Keeps its fill and deepens its edge, exactly as `QPushButton:default:hover` does — falling
-       back to a neutral hover would make the primary appear to lose emphasis on contact. */
-    border-color: {theme.accent};
+    /* **The fill lifts; there is no ring** (`T-146`). It took an `accent` border, at 1.42:1
+       against its own fill in light and 1.25:1 in dark — too low to read as gold and reported as
+       a red smudge. See `Theme.primary_hover` for why brightening the accent was not the fix. */
+    background-color: {theme.primary_hover};
+    border-color: {theme.primary_hover};
 }}
 QToolBar QToolButton[primaryAction="true"]:pressed {{
     border-color: {theme.accent};

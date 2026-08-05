@@ -18,7 +18,7 @@ from collections import Counter
 from collections.abc import Iterator
 
 import pytest
-from PySide6.QtCore import QRect
+from PySide6.QtCore import QRect, Qt
 from PySide6.QtGui import QColor, QImage, QPainter
 from PySide6.QtWidgets import (
     QApplication,
@@ -474,4 +474,42 @@ def test_a_disabled_control_does_not_look_like_a_settable_one(
     assert enabled != disabled, (
         "a disabled combo box draws exactly like a settable one, so a control that does nothing "
         "still invites a choice"
+    )
+
+
+def test_hovering_the_primary_action_lifts_its_fill_rather_than_ringing_it(
+    themed: QApplication, chosen: theme.Theme
+) -> None:
+    """`T-146`: the hover drew an `accent` ring the maintainer read as red.
+
+    It measured **1.42:1 against its own fill in light and 1.25:1 in dark** — too low to read as
+    gold, so it read as a smudge. Brightening the accent would have fixed one theme only:
+    `#D9A24C` is 3.36:1 on the light theme's forest and 1.25:1 on the dark theme's already-light
+    green, which is `T130-R1`'s shape — a change that looks right in the context it was chosen in.
+
+    So the claim is that the **fill** changes, sampled clear of the label, and that it changes in
+    *both* themes.
+    """
+    theme.apply(themed, chosen)
+    bar = QToolBar()
+    button = QToolButton(bar)
+    button.setProperty(main_window.PRIMARY_ACTION_PROPERTY, True)
+    button.setText(main_window.ADD_URLS_BUTTON)
+    button.resize(120, 30)
+    bar.resize(200, 34)
+    themed.processEvents()
+
+    resting = _sampled(button)
+    button.setAttribute(Qt.WidgetAttribute.WA_UnderMouse, True)
+    button.style().unpolish(button)
+    button.style().polish(button)
+    themed.processEvents()
+    hovered = _sampled(button)
+
+    assert hovered != resting, (
+        f"the primary action fills with {hovered} both at rest and under the pointer, so hovering "
+        "it says nothing"
+    )
+    assert hovered == chosen.primary_hover.upper(), (
+        f"hovering fills with {hovered} rather than the theme's {chosen.primary_hover}"
     )
