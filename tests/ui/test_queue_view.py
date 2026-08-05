@@ -26,6 +26,7 @@ from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
 from tests.qt_lifecycle import drain
 from tests.ui.test_row_delegate import REPAINT_BUDGET_SECONDS, VIEWPORT_ROWS
+from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.core.presets import BEST_VIDEO, to_request
@@ -1932,6 +1933,62 @@ def test_a_group_offers_retry_failed_once_an_entry_fails(
 
     offered = view.model.data(view.model.index(0, JOB_COLUMN), VERBS_ROLE)
     assert Verb.RETRY_FAILED in offered
+
+
+def test_a_group_never_offers_retry_for_drm(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """The group route must preserve the taxonomy's non-retryable safety boundary.
+
+    Ordinary failed rows ask `is_retryable()` before offering Retry.  A playlist header is not a
+    route around `REQ-EXCL-001`: DRM-protected members offer no retry and cannot be sent down the
+    retry signal by a stale group action.
+    """
+    for job in _playlist_jobs(tmp_path, 2):
+        queue.add(
+            replace(
+                job,
+                status=JobStatus.FAILED,
+                error_kind=ErrorKind.DRM_PROTECTED,
+                error_message="This content is DRM protected.",
+            )
+        )
+    view = views(jobs=queue, manager=managers())
+    header = view.model.index(0, JOB_COLUMN)
+
+    offered = view.model.data(header, VERBS_ROLE)
+    assert Verb.RETRY_FAILED not in offered, (
+        f"the DRM-only playlist offers {offered}; the ordinary row suppresses Retry because "
+        "the product has no DRM workaround"
+    )
+
+
+def test_a_stale_group_action_never_routes_retry_for_drm(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """Hiding a group verb is not authority for its route to cross the DRM boundary."""
+    for job in _playlist_jobs(tmp_path, 2):
+        queue.add(
+            replace(
+                job,
+                status=JobStatus.FAILED,
+                error_kind=ErrorKind.DRM_PROTECTED,
+                error_message="This content is DRM protected.",
+            )
+        )
+    view = views(jobs=queue, manager=managers())
+    retried: list[str] = []
+    view.retry_requested.connect(retried.append)
+
+    view._on_verb("pl-1", Verb.RETRY_FAILED)
+
+    assert retried == [], f"the group retry route bypassed the DRM boundary for {retried}"
 
 
 def test_a_group_verb_acts_on_the_members_it_applies_to(

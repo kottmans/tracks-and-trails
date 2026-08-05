@@ -39,7 +39,7 @@ from tracks_and_trails import app as application
 from tracks_and_trails.core import presets
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
-from tracks_and_trails.core.models import DownloadRequest, MediaInfo
+from tracks_and_trails.core.models import DownloadRequest, Job, MediaInfo
 from tracks_and_trails.downloader.protocol import (
     Failed,
     Probed,
@@ -209,6 +209,57 @@ def shown_status(composition: application.Composition, job_id: str) -> JobStatus
         return None
     job = view.model.job_for(job_id)
     return job.status if job is not None else None
+
+
+def test_a_queued_playlist_entry_left_on_disk_is_probed_after_restart(
+    composed: Callable[..., application.Composition],
+    spin: Callable[..., bool],
+    tmp_path: Path,
+) -> None:
+    """`T137-R2` at the startup seam, not only the add-dialog callback.
+
+    The durable write and the callback that admits its probe are separate operations.  If the
+    application exits between them, a flat playlist entry remains `QUEUED` and unprobed on disk.
+    Startup must preserve `ARC-009` rather than admitting that row directly as a download.
+    """
+    database = tmp_path / "queued-playlist.sqlite3"
+    connection = db.connect(database)
+    repository = JobRepository(connection)
+    request = DownloadRequest(
+        url="https://example.invalid/playlist-entry",
+        output_directory=str(tmp_path / "downloads"),
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+    )
+    repository.append(
+        [
+            Job(
+                id="entry-1",
+                url=request.url,
+                request=request,
+                playlist_id="playlist-1",
+                playlist_index=1,
+                playlist_title="Trail Sounds",
+                queue_position=0,
+            )
+        ]
+    )
+    connection.close()
+
+    composition = composed(
+        database=database,
+        entry_point=child_probing_then_waiting,
+    )
+
+    assert spin(lambda: shown_status(composition, "entry-1") is JobStatus.RUNNING, timeout=60), (
+        "the playlist entry left queued on disk never reached its download"
+    )
+    stored = composition.store.get("entry-1")
+    assert stored is not None
+    assert stored.title == "A video that exists", (
+        "startup downloaded a flat playlist entry without first probing it; the live add-dialog "
+        "path honours ARC-009, but the durable restart path still admits QUEUED as DOWNLOAD"
+    )
 
 
 def connection_count(sender: QObject, signal_name: str) -> int:

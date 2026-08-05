@@ -9794,3 +9794,72 @@ preset name offered by that header's editor. `T137-R2` and `T140-R5` remain outs
 This review added one failing regression to `tests/ui/test_queue_view.py` and appended this record.
 The temporary source mutation was fully reverted. No submitted source, submitted test meaning,
 decision, task state, commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — criterion 8 remaining findings focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `965a336`
+**Implementation head:** `405139f` (`191292c` adds the committed handoff)
+**Verdict:** **Changes requested.** `T140-R3` and `COORD-R22` are resolved, and the implemented
+parts of `T137-R2` and `T140-R5` are real. A restart path still bypasses the new probe session,
+however, group retry defeats the permanent DRM non-retry boundary, and the durable-continuation
+regression leaves a live Qt thread. `Pause all` also remains blocked on the maintainer ruling the
+handoff correctly requests.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `T140-R3` | High | No | A common built-in is now rendered through `_effective_format_text()`, so the header says `Download as: Best video available`, matching its editor. The group remains editable, a choice reaches every retargetable member and excludes the completed member, re-choosing the current preset emits nothing, and a different choice still emits. | **Resolved** |
+| `T137-R2` | High | **Yes — T-137 / UX-003 / ARC-009** | The live add-dialog route now admits `QUEUED` entries as `PROBE`, and the manager correctly continues a durable successful probe into `DOWNLOAD` while excluding staging probes. Startup does not preserve that distinction: `queued_job_ids()` returns bare ids for both `QUEUED` and `READY`, and composition admits every id with the default `DOWNLOAD`. If the process exits after the durable playlist rows land but before the add callback admits their probes, restart takes the new `QUEUED` rows directly down the download route. The reviewer restart regression reaches `RUNNING` with the title still `None`; a probe-first restart would persist `A video that exists`. | **Open — partially corrected** |
+| `T140-R5` | High | **Yes — accepted T-140 criterion** | Right/Left disclosure, group Cancel all / conditional Retry failed / Show in folder / Remove, ordinary-row routing, and one count-bearing removal confirmation are implemented and their submitted regressions pass. `Pause all` remains absent. The handoff correctly establishes a conflict with accepted `UX-001`, which removed per-job pause and `JobStatus.PAUSED`; neither implementer nor reviewer may silently choose among waiting for REQ-017, amending UX-005/T-140, or reopening UX-001. | **Blocked — maintainer disposition required** |
+| `COORD-R22` | Medium | No | The hidden hover work was separated, retrospectively filed as T-147 after its id collision was disclosed, and the reviewer record was separated from source. This submitted range names every commit and file in its range table, keeps `ai/REVIEWS.md` out of the implementation, and identifies `191292c` as handoff-only. The header's “seven files” count is a non-blocking arithmetic error—the table names all nine implementation files and the exact SHAs leave the boundary unambiguous. | **Resolved** |
+
+### New correction-round findings
+
+| ID | Severity | Blocks approval | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|
+| `T140-R6` | **Critical** | **Yes — SEC-001 / REQ-EXCL-001** | Group retry is derived from `JobStatus` alone. A playlist containing only `FAILED` / `DRM_PROTECTED` jobs offers `Retry failed`, and `_on_group_verb()` emits retry for both. Ordinary rows call `is_retryable(error_kind)`; the group route bypasses that guard even though SEC-001 says DRM is permanent and **never retried**. Two reviewer regressions fail independently: one on the offered verb and one on a stale/direct group action, which emits `entry-0` and `entry-1`. This defeats a documented non-negotiable safety boundary, so AGENTS.md §10 makes it Critical. | Derive the group offer from the member jobs and `is_retryable()`, not statuses alone. Apply the same failed-and-retryable filter in the route so a stale menu action cannot bypass the hidden verb. Audit mixed retryable/non-retryable failures and retry only the eligible members. | **Open** |
+| `T137-R3` | **Medium** | **Yes — required relevant test** | `test_a_durable_probe_carries_the_job_on_into_its_download` stops at `RUNNING` and calls asynchronous `shutdown()` without driving the manager to idle. In isolation it prints `1 passed` and exits **134** with `QThread: Destroyed while thread '' is still running`; outside the sandbox the complete manager file likewise prints `143 passed` and exits 134. A later integration test can pump the leaked lifecycle and conceal it in the reported full-suite result, so this regression is not isolated and its own file is not a passing command. | Use the manager fixture that drains shutdown, or explicitly spin through `download.is_idle` after `shutdown()`. Re-run the manager file as its own process and require exit zero. | **Open** |
+
+### Submitted uncertainties and maintainer ruling
+
+- **Staged-guard uncertainty resolved.** The submitted test passes normally. Temporarily deleting
+  only `if not self.is_staged(job_id)` makes it fail on the queued staged id exactly as described;
+  the manager source was restored byte-for-byte afterward.
+- **`Pause all` conflict upheld.** The omission cannot be approved against the current T-140
+  criterion, but implementing it without a ruling would reopen accepted queue semantics. The
+  maintainer must select and record one of the handoff's three dispositions.
+- **ARC-009 is coherent but incompletely applied.** The manager is the right owner for the
+  continuation. Composition still owns startup admission and must retain enough status/kind
+  information to enter that same contract after a restart.
+- **`P2EXIT-R10` remains outside this correction range.** Criterion 8 cannot be marked met while
+  these blockers remain; the document/evidence finding is not otherwise re-reviewed here.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check 965a336..191292c`: **pass**. Four implementation commits change nine files; `191292c` adds the tenth, the handoff. The handoff's range table is complete despite its incorrect “seven files” header count. |
+| Submitted T140 routes | **13 passed** across group format, retargeting, keyboard disclosure, group verbs, group removal and ordinary-row routing. |
+| Queue-view file with reviewer DRM regressions | **58 passed, 2 failed**. The failures independently prove the forbidden offer and route. |
+| T137 staged guard | **1 passed** normally; deleting the guard produces the expected **1 failed** on `_waiting`. The mutation was fully restored. |
+| T137 durable continuation test | Assertion reports **1 passed**, but the command exits **134** because its QThread is still running. Full `test_manager.py` outside the socket sandbox reports **143 passed** and also exits 134. |
+| Reviewer restart regression | **1 failed**: the restarted playlist entry reaches `RUNNING` with `title=None` instead of the probed title. |
+| Lint / format | `ruff check .`: **pass**. `ruff format --check .`: **pass**, 163 files. |
+| Types | `python -m mypy src`: **pass**, 44 files; bare mypy and win32 mypy: **pass**, 107 files each. |
+| Environment disclosure | Confirmed again: `.venv/bin/mypy` has a dead shebang one directory above the checkout. `python -m mypy` succeeds. This is machine state, not a repository finding. |
+| Submitted full suites | Implementer reports unit + UI **1854 passed / 11 skipped** and integration **306 passed**. The reviewer did not reproduce the whole union; the manager-file exit defect explains how later integration tests can mask the leaked thread. |
+
+### Disposition
+
+Return one correction batch that preserves status when admitting the startup queue, applies
+`is_retryable()` to both group-verb presentation and routing, and makes the new manager regression
+terminate cleanly. Separately, the maintainer must rule on `Pause all`; until then `T140-R5` and
+criterion 8 remain open. Because a Critical and a High defect remain, focused correction and
+independent verification continue under AGENTS.md §10 despite the ordinary two-pass budget.
+
+This review added two failing DRM regressions to `tests/ui/test_queue_view.py`, one failing restart
+regression to `tests/integration/test_composition.py`, and appended this record. The temporary
+manager mutation was fully reverted. No submitted source, submitted test meaning, decision, task
+state, commit, remote ref or CI state was changed by the reviewer.
