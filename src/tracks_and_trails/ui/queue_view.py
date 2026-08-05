@@ -113,6 +113,7 @@ from tracks_and_trails.ui.row_delegate import (
     HUE_ROLE,
     JOB_ID_ROLE,
     PRESET_CHOICES_ROLE,
+    PRESET_PLACEHOLDER_ROLE,
     PRESET_ROLE,
     PROGRESS_ROLE,
     SEGMENTS_ROLE,
@@ -603,6 +604,14 @@ class QueueModel(QAbstractTableModel):
             # not have. With that gone the row would have said nothing at all about its format
             # while still being retargetable, which is `T126-R2`'s defect arriving from the other
             # side. So the line speaks exactly when the control is silent.
+            # **A group's member speaks only when it differs from the group** (`T-157`,
+            # `UX-005` amended). Row 9c's silence was bought with an assumption of uniformity that
+            # `T140-R3`'s group retarget breaks: it moves every member that *can* move, so a
+            # part-done playlist ends with two formats and, until this, nothing able to say which
+            # row has which. Judged on the rendered text, for the same reason the header is.
+            if row.job.playlist_id is not None:
+                own = _effective_format_text(row.job)
+                return "" if own == self._group_text_for(row.job.playlist_id) else own
             if row.job.status in Job.RETARGETABLE and _preset_name_for(row.job) is not None:
                 return ""
             return _effective_format_text(row.job)
@@ -874,6 +883,18 @@ class QueueModel(QAbstractTableModel):
             key = entry.playlist_id if isinstance(entry, _Group) else self._rows[entry].job.id
             self._visible_of[key] = line
 
+    def _group_text_for(self, playlist_id: str) -> str | None:
+        """The one format text a playlist's members share, or `None` when they do not.
+
+        Shared by the header and its children so the two cannot disagree about whether they agree —
+        which is the defect `T-157` is, one level up.
+        """
+        for entry in self._visible:
+            if isinstance(entry, _Group) and entry.playlist_id == playlist_id:
+                texts = {_effective_format_text(row.job) for row in group_members(entry)}
+                return texts.pop() if len(texts) == 1 else None
+        return None
+
     def group_jobs(self, playlist_id: str) -> list[Job]:
         """Every job in `playlist_id`, in playlist order, or empty when it names no group.
 
@@ -990,6 +1011,13 @@ class QueueModel(QAbstractTableModel):
             # `SELECTOR_ROLE` already says out loud as *mixed across N formats*.
             names = {_preset_name_for(row.job) for row in group.members}
             return names.pop() if len(names) == 1 else None
+        if role == PRESET_PLACEHOLDER_ROLE:
+            # **What the control says when there is no single value** (`T-157`, `UX-005` amended
+            # 2026-08-05). Retargeting a part-done playlist splits its formats by design, because a
+            # finished track cannot take a new one — so `PRESET_ROLE` answers `None` and the combo
+            # drew empty, which reads as *unset* rather than as *they differ*.
+            texts = {_effective_format_text(row.job) for row in group.members}
+            return f"Mixed — {len(texts)} formats" if len(texts) > 1 else None
         if role == HUE_ROLE:
             return placeholder_hue(group.members[0].job.url if group.members else group.title)
         if role == THUMBNAIL_URL_ROLE:

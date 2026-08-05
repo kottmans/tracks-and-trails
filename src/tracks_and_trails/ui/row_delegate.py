@@ -154,6 +154,11 @@ DEPTH_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 14
 #: draws none. The same three-valued shape `PRESET_INHERITABLE_ROLE` established at `T126-R4`.
 EXPANDED_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 15
 
+#: What the format control says when the row has no single value — a group whose members
+#: disagree (`T-157`, `UX-005` amended 2026-08-05). Only the group answers it; a blank
+#: control reads as *unset*, which is a different and wronger statement than *they differ*.
+PRESET_PLACEHOLDER_ROLE: Final = int(Qt.ItemDataRole.UserRole) + 17
+
 #: One entry of `SegmentState` per playlist entry, for the group's segmented bar (`T-140`,
 #: `UX-005` row 9b).
 #:
@@ -361,7 +366,13 @@ class RowDelegate(QStyledItemDelegate):
         `T-140`'s own acceptance criterion**, not an assumption made here.
         """
         if _depth(index) > 0:
-            text = CHILD_TEXT_LINES * option.fontMetrics.height() + 2 * PADDING
+            # **Three lines when the entry has a format of its own to state** (`T-157`), two
+            # otherwise. `UX-005`'s amendment spends the line exactly where there is something to
+            # say, so a uniform playlist — every playlist until somebody retargets a part-done one
+            # — is drawn at the height row 9c bought.
+            speaks = bool(_text(index, SELECTOR_ROLE))
+            lines = CHILD_TEXT_LINES + (1 if speaks else 0)
+            text = lines * option.fontMetrics.height() + 2 * PADDING
             return QSize(option.rect.width(), max(CHILD_THUMBNAIL[1] + 2 * PADDING, text))
         text = TEXT_LINES * option.fontMetrics.height() + 2 * PADDING
         return QSize(option.rect.width(), max(ROW_HEIGHT, text))
@@ -793,9 +804,16 @@ class RowDelegate(QStyledItemDelegate):
         that does not exist. The row still says what it is: `QueueModel` answers `SELECTOR_ROLE`
         with the literal selector exactly when the control cannot name it.
         """
+        # **Never blank while the row has a value to describe** (`T-157`). A group whose
+        # members disagree answers `PRESET_ROLE` with `None`, and an empty combo reads as
+        # *unset* or *broken* rather than as *they differ*. `PRESET_PLACEHOLDER_ROLE` is
+        # what to say instead, and only the group answers it.
         chosen = index.data(PRESET_ROLE)
+        placeholder = index.data(PRESET_PLACEHOLDER_ROLE)
         if isinstance(chosen, str):
             label = chosen
+        elif isinstance(placeholder, str) and placeholder:
+            label = placeholder
         else:
             label = INHERITED_TEXT if index.data(PRESET_INHERITABLE_ROLE) else ""
 
@@ -928,6 +946,19 @@ class RowDelegate(QStyledItemDelegate):
         # a half line of text under every entry. An entry inherits its group's format, so the third
         # line has nothing to say; not drawing it is the promise, and sizing for it was only half.
         if _depth(index) > 0:
+            # **A child speaks only when it differs from its group** (`UX-005`, amended
+            # 2026-08-05; `T-157`). Row 9c gives an entry no format line because it inherits the
+            # group's — and retargeting a part-done playlist breaks that premise, since a finished
+            # track keeps the old format while the queued ones take the new. The model answers an
+            # empty string when they agree, so the economy is kept for every uniform playlist and
+            # a line is spent only where there is something to say.
+            own = _text(index, SELECTOR_ROLE)
+            if own:
+                painter.drawText(
+                    QRect(area.left(), area.top() + 2 * line, area.width(), line),
+                    int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop),
+                    metrics.elidedText(own, Qt.TextElideMode.ElideRight, area.width()),
+                )
             return
 
         selector = _text(index, SELECTOR_ROLE)

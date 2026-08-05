@@ -29,7 +29,7 @@ from tests.ui.test_row_delegate import REPAINT_BUDGET_SECONDS, VIEWPORT_ROWS
 from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
-from tracks_and_trails.core.presets import BEST_VIDEO, to_request
+from tracks_and_trails.core.presets import AUDIO_MP3, BEST_VIDEO, to_request
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import (
     Progress,
@@ -58,6 +58,7 @@ from tracks_and_trails.ui.row_delegate import (
     HEADLINE_ROLE,
     HUE_ROLE,
     PRESET_CHOICES_ROLE,
+    PRESET_PLACEHOLDER_ROLE,
     PRESET_ROLE,
     PROGRESS_ROLE,
     SEGMENTS_ROLE,
@@ -2097,3 +2098,83 @@ def test_an_ordinary_rows_remove_is_not_routed_as_a_group(
 
     assert removed == ["solo"], "an ordinary row's Remove must stay on the single-job route"
     assert grouped == []
+
+
+def test_a_retargeted_playlist_says_which_entries_got_which_format(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`T-157` / `UX-005` amended 2026-08-05: divergence must be reportable, not merely honest.
+
+    **Retargeting a part-done playlist splits its formats by design.** `T140-R3` moves every member
+    that can still move, and a finished track cannot — so four completed entries keep the old
+    format while twelve queued ones take the new. Before this the header said *mixed across 2
+    formats*, its control drew blank, and no child said anything, so sixteen rows carried two
+    formats and nothing named which was which.
+    """
+    jobs = _playlist_jobs(tmp_path, 3)
+    queue.add(
+        replace(
+            jobs[0],
+            status=JobStatus.COMPLETED,
+            request=to_request(BEST_VIDEO, url=jobs[0].url, output_directory=str(tmp_path)),
+        )
+    )
+    for job in jobs[1:]:
+        queue.add(
+            replace(job, request=to_request(AUDIO_MP3, url=job.url, output_directory=str(tmp_path)))
+        )
+    view = views(jobs=queue, manager=managers())
+    view.model.toggle_group("pl-1")
+
+    header = view.model.index(0, JOB_COLUMN)
+    assert view.model.data(header, PRESET_ROLE) is None, (
+        "the members disagree, so there is no one value"
+    )
+    assert view.model.data(header, PRESET_PLACEHOLDER_ROLE) == "Mixed — 2 formats", (
+        f"the header's control says {view.model.data(header, PRESET_PLACEHOLDER_ROLE)!r}; a blank "
+        "control reads as unset rather than as they differ"
+    )
+
+    entries = [
+        view.model.data(view.model.index(row, JOB_COLUMN), SELECTOR_ROLE) for row in (1, 2, 3)
+    ]
+    assert entries[0] == f"Download as: {BEST_VIDEO.name}", (
+        f"the completed entry says {entries[0]!r}; it kept the old format and must say so, or "
+        "nothing in the window names which row got which"
+    )
+    assert entries[1] == entries[2] == f"Download as: {AUDIO_MP3.name}"
+
+
+def test_a_uniform_playlists_entries_stay_silent(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """The other half of the amendment, and the one that keeps row 9c's economy.
+
+    Every playlist is uniform until somebody retargets a part-done one, so this is the common case:
+    an entry that agrees with its group spends no line saying so, and the header carries the format
+    exactly as row 9c intended.
+    """
+    for job in _playlist_jobs(tmp_path, 3):
+        queue.add(
+            replace(job, request=to_request(AUDIO_MP3, url=job.url, output_directory=str(tmp_path)))
+        )
+    view = views(jobs=queue, manager=managers())
+    view.model.toggle_group("pl-1")
+
+    header = view.model.index(0, JOB_COLUMN)
+    assert view.model.data(header, PRESET_PLACEHOLDER_ROLE) is None, (
+        "a playlist whose members agree offered a Mixed placeholder"
+    )
+    assert view.model.data(header, SELECTOR_ROLE) == f"Download as: {AUDIO_MP3.name}"
+
+    for row in (1, 2, 3):
+        assert view.model.data(view.model.index(row, JOB_COLUMN), SELECTOR_ROLE) == "", (
+            "an entry that agrees with its group spent a line saying so, which is the economy "
+            "row 9c bought"
+        )

@@ -32,6 +32,7 @@ from PySide6.QtGui import QColor, QFontMetrics, QImage, QPainter, QPalette
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
 from tracks_and_trails.core.paths import thumbnail_cache_directory, thumbnail_cache_path
+from tracks_and_trails.ui import row_delegate
 from tracks_and_trails.ui.row_delegate import (
     CHILD_THUMBNAIL,
     DEPTH_ROLE,
@@ -1117,14 +1118,20 @@ def test_the_format_control_never_covers_the_selector_line(
 def test_a_child_row_draws_two_lines_rather_than_being_sized_for_two(
     qapp: QApplication,
 ) -> None:
-    """`UX-005` row 9c, corrected: sizing for two lines is only half the promise.
+    """`UX-005` row 9c: an entry that has nothing to say draws two lines and is not clipped.
 
     `sizeHint` was shortened for an entry and the painter was not, so the selector line and the
     progress bar were drawn into space the row does not have and were **clipped** — the maintainer
     saw half a line of text under every entry of a playlist.
 
-    Asserted as *the third line makes no difference*, which is the property. Comparing heights
-    would pass against the clipped version, because the height was already right.
+    Asserted as *the bar makes no difference*, which is the property. Comparing heights would pass
+    against the clipped version, because the height was already right.
+
+    **This used to assert that a format line made no difference either**, which was row 9c's
+    unconditional form. `UX-005`'s 2026-08-05 amendment replaced it: an entry stays silent while it
+    agrees with its group and speaks when it differs, because `T140-R3`'s group retarget makes
+    divergence the guaranteed outcome on a part-done playlist. The silent case is still this one —
+    the model answers an empty string — and the speaking case is asserted below.
     """
     common: dict[int, Any] = {
         HEADLINE_ROLE: "01 Prelude of Light",
@@ -1134,15 +1141,48 @@ def test_a_child_row_draws_two_lines_rather_than_being_sized_for_two(
         DEPTH_ROLE: 1,
     }
     without = paint_rows(RowsModel([common]), RowDelegate(), 0)
-    with_selector = paint_rows(
-        RowsModel([{**common, SELECTOR_ROLE: "Format selector: bestaudio/best"}]),
-        RowDelegate(),
-        0,
+    silent = paint_rows(RowsModel([{**common, SELECTOR_ROLE: ""}]), RowDelegate(), 0)
+
+    assert without == silent, (
+        "an entry that agrees with its group drew something for its format anyway, which does not "
+        "fit in the two lines row 9c gives it — so it is drawn clipped"
     )
 
-    assert without == with_selector, (
-        "a playlist entry drew its format line, which does not fit in the two lines row 9c gives "
-        "it — so it is drawn clipped"
+
+def test_a_child_row_states_a_format_that_differs_from_its_group(qapp: QApplication) -> None:
+    """`UX-005` amended 2026-08-05 (`T-157`): silence is conditional now, not unconditional.
+
+    Retargeting a part-done playlist splits its formats by design — `T140-R3` moves every member
+    that *can* move, and a finished track cannot — so the entries diverge and row 9c's premise,
+    that an entry inherits its group's format, stops holding. An entry that differs says so.
+
+    **The model decides whether there is something to say; the delegate decides how to draw it.**
+    Here the model's answer is given directly, which is what makes this a test of the drawing.
+    """
+    common: dict[int, Any] = {
+        HEADLINE_ROLE: "01 Prelude of Light",
+        DETAIL_ROLE: "4:12 · 100% · 9.8 MB",
+        HUE_ROLE: 0,
+        DEPTH_ROLE: 1,
+    }
+    silent = RowsModel([{**common, SELECTOR_ROLE: ""}])
+    speaking = RowsModel([{**common, SELECTOR_ROLE: "Download as: Audio only (original)"}])
+    delegate = RowDelegate()
+
+    assert paint_rows(silent, delegate, 0) != paint_rows(speaking, delegate, 0), (
+        "an entry whose format differs from its group's drew nothing about it, so a retargeted "
+        "playlist cannot say which row got which"
+    )
+
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, RENDER_WIDTH, ROW_HEIGHT)
+    option.fontMetrics = QFontMetrics(option.font)
+    quiet = delegate.sizeHint(option, silent.index(0, 0))
+    loud = delegate.sizeHint(option, speaking.index(0, 0))
+    assert loud.height() > quiet.height(), (
+        f"a speaking entry is {loud.height()}px and a silent one {quiet.height()}px, so the line "
+        "is drawn into space the row does not have and is clipped — the defect row 9c's own "
+        "correction was about"
     )
 
     # And a top-level row still draws it, so this is not "the selector was removed for everyone".
@@ -1282,4 +1322,33 @@ def test_a_child_rows_picture_stays_inside_its_smaller_slot(
         f"the picture changes {len(outside)} pixels outside its {CHILD_THUMBNAIL[0]}px slot, the "
         f"first at {outside[0]}; it is drawn at its own size rather than the slot's and covers the "
         "row's title"
+    )
+
+
+def test_every_role_has_its_own_number() -> None:
+    """Two roles sharing an offset is silent until something reads the wrong data.
+
+    **Found by doing it.** `PRESET_PLACEHOLDER_ROLE` was added at `UserRole + 16`, which
+    `SEGMENTS_ROLE` already held, so the group's format control asked for its placeholder and was
+    handed a list of segment states. Nothing raised: `data()` answers whatever the first matching
+    branch returns, and both are `Any`.
+
+    Derived from the module rather than listed here, so a role added tomorrow is covered the day it
+    appears — `ai/TESTING.md` §13's rule about a test that transcribes rather than re-derives does
+    not apply, because the property *is* "no two of them agree" rather than a specification the
+    test should hold independently.
+    """
+    roles = {
+        name: value
+        for name, value in vars(row_delegate).items()
+        if name.endswith("_ROLE") and isinstance(value, int)
+    }
+    by_number: dict[int, list[str]] = {}
+    for name, value in roles.items():
+        by_number.setdefault(value, []).append(name)
+
+    collisions = {value: names for value, names in by_number.items() if len(names) > 1}
+    assert not collisions, (
+        f"roles sharing a number: {collisions}. Whichever branch of `data()` is tested first wins, "
+        "so the loser silently returns the other's value"
     )
