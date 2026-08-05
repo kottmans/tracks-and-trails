@@ -47,9 +47,10 @@ checks, which need one real playlist URL.
 | 1.2 | `Pause queue` and `Clear finished` are **bordered buttons on the surface** — still buttons, not bare text | `T-132` |
 | 1.3 | Those two **end to the right of** the concurrency control, not floating mid-bar | `T-132` |
 | 1.4 | Hovering and pressing each toolbar button visibly changes it | `T-132`, `T-129` |
-| 1.5 | The concurrency control shows **labelled `−` and `+` buttons**, and no native spin arrows beside them | `T-141`, `T-133` |
-| 1.6 | Each stepper **disables at its end of the range** — `−` at 1, `+` at 16 | `T-141` |
-| 1.7 | With focus in the spin box, **Up and Down still step** the value | `T-141` |
+| 1.5 | **Press `Pause queue`. The control must look different paused than running** — it is a checkable action, so it has a state to show. *(Added 2026-08-05 after the maintainer found it missing from this list and from the window: `T-149`. The style sheet declares `:hover`, `:pressed` and `:disabled` and not `:checked`.)* | `T-149` |
+| 1.6 | The concurrency control shows **labelled `−` and `+` buttons**, and no native spin arrows beside them | `T-141`, `T-133` |
+| 1.7 | Each stepper **disables at its end of the range** — `−` at 1, `+` at 16 | `T-141` |
+| 1.8 | With focus in the spin box, **Up and Down still step** the value | `T-141` |
 
 ## 2 · A queue row (`T-134`, `T-135`, `T-136`)
 
@@ -97,7 +98,7 @@ Paste one real playlist URL. This is the sequence that produced criterion 8 in t
 
 | # | What to look for |
 |---|---|
-| 5.1 | Switch to dark and repeat 1.1, 1.5, 3.6 and 3.8. Contrast is gated automatically, but *"is that button obviously the primary one"* is not |
+| 5.1 | Switch to dark and repeat 1.1, 1.5, 1.6, 3.6 and 3.8. Contrast is gated automatically, but *"is that button obviously the primary one"* is not |
 
 ---
 

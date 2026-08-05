@@ -1140,6 +1140,75 @@ beats designing it against an imagined one.
 
 ## Proposed — Phase 3
 
+---
+
+### T-149 — A paused queue looks exactly like a running one
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, running the built application
+against `docs/CRITERION_8_CHECKLIST.md`. **Its classification needs a ruling — see below.**
+**Owner:** Implementer
+**Priority:** **High** — `UX-001` makes pause the only queue-wide control there is, and a control
+that cannot be read is one a user presses twice
+**Phase:** **Undecided.** Phase 3 by the closed-list rule; arguably `T-132`'s, because it is a
+regression that work introduced. The ruling is the maintainer's
+**Depends on:** nothing
+**Relevant context:** `UX-001`, `T-129`, `T-132`, `NFR-005`, `ui/theme.py` (the `QToolBar
+QToolButton` rules), `ui/main_window.py` (`_pause_action`)
+**Affected surfaces:** `ui/theme.py`, possibly `ui/main_window.py`
+**Risk:** Low to fix, and the diagnosis is already done
+
+#### Scope
+
+**Pressing `Pause queue` changes nothing visible.** The queue stops starting downloads — the
+behaviour is correct and `T-080` proved it — but nothing on screen says so. A user who pressed it
+has no way to tell whether they did, and `UX-001` made this the *only* queue-wide control, so it
+is the one place that most needs to read back.
+
+**The state exists; the styling hides it.** `main_window._pause_action` builds one **checkable**
+`QAction`, deliberately — *"Pause and Resume are the same control"*. Qt's native style draws a
+checked tool button sunken. `ui/theme.py` then restyles `QToolBar QToolButton` and declares
+`:hover`, `:pressed` and `:disabled` — **and not `:checked`**. A stylesheet that sets `background`
+replaces the native rendering wholesale, so the checked state stops being drawn at all.
+
+**This is `T-129`'s finding, one state further on.** That task is titled *"The style sheet took the
+native style's metrics and states away"* and restored three states. `checked` was missed for a
+reason worth writing down: **pause is the only checkable control on the toolbar**, so no other
+widget would have shown the gap. `T-132`'s own acceptance criteria state the principle —
+*"styling the button at all takes both away"* — and name hover and pressed, because those were the
+two anybody had noticed.
+
+#### The classification question
+
+`docs/CRITERION_8_CHECKLIST.md` says a row that fails is a finding against the closed list and
+anything new is Phase 3. **This is neither cleanly.** It was not on the checklist — that is an
+omission in the checklist, not evidence the defect is new — and it is a regression *introduced by*
+`T-132`, of the class `T-132`'s criteria name.
+
+- **As `T-132`'s**, criterion 8 gains a finding and `T-132` reopens. Consistent with `T140-R5`,
+  which refused to let accepted work be completed by moving it elsewhere.
+- **As Phase 3**, the closed list stays closed, which is what keeps criterion 8 falsifiable at all.
+
+**Recommendation: `T-132`'s.** The window does not match the mockup's toolbar, which is exactly
+what criterion 8 asserts, and the styling that broke it is that task's.
+
+#### Acceptance criteria
+
+- With the queue paused, the control is **visibly distinct** from unpaused, asserted by rendering
+  the real toolbar rather than a stand-in — `T132-R1` is what a stand-in costs
+- Asserted in **both themes**, and the distinction meets `NFR-005`'s contrast floor
+- **Not by colour alone** (`NFR-005`): whatever carries the state must survive a greyscale reading
+- A screen reader announces the toggled state — `QAction` is checkable, so this is Qt's to give,
+  and asserting it is how we know the styling did not take that away too
+- The check runs against the **application's own style sheet**, so a future rule that overrides the
+  state again fails here
+
+#### Out of scope
+
+- Any change to what pause *does*. `UX-001` and `T-080` settle that, and this is about reading it
+- A separate `Resume` button. The control is one checkable action on purpose
+- Auditing every other Qt state the style sheet may have taken. Worth doing and its own task; this
+  one is the state a user is looking at right now
+
 *(**UI rework filed 2026-08-02** — `T-116` through `T-120`, from mockups the maintainer reviewed
 and chose between. They precede `T-107`: Phase 3 and 4 add a format table, a stream chooser, a
 playlist picker and a preset editor **to the queue that exists**, so settling what a row is first
