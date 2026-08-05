@@ -10163,3 +10163,48 @@ evidence follows on that same candidate. Until those observations pass, criterio
 No new test was needed: both reviewer regressions were carried into `376407f` and now pass. The
 reviewer appended this record only. Temporary source mutations were fully restored; no submitted
 source, test, task state, commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — P2EXIT-R14 records focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `376407f`
+**Correction head:** `8d7c88d`
+**Verdict:** **Changes requested.** The submitted correction repairs the named criterion-8
+siblings, preserves the historical 39/41 observation, and restores the four-row known-open table.
+P2EXIT-R14 remains open because STATUS still contains incompatible live exit verdicts immediately
+above the corrected finding table, and both plan and STATUS still say this already-requested exit
+review has never been requested.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `P2EXIT-R14` | High | **Yes — Phase 2 exit truth** | The criterion-8 plan row and outstanding-work heading now agree: the earlier run observed 39/41, both failed rows were later dispositioned, and the unperformed 40-row run is why criterion 8 remains Not met. STATUS's main criterion-8 account and finding rows now say the same. The second-run annex no longer asks for a row 2.7 decision, and T-166/T-167 are inside the checklist table. However, STATUS lines 1376–1384 still first claim every criterion except 6(a) met and then call criteria 1, 6 and 8 Not met. Criterion 1 is resolved; criterion 8 remains open. Plan line 424 and STATUS line 90 also still say the independent exit review has never been requested, although this review has been in progress since `5ccf2bc`. | **Open — the criterion-8 repair is correct; the live exit-state sweep is still incomplete** |
+| `P2EXIT-R12` | High | **Yes — criterion 8 evidence** | Unchanged by this docs correction. T-161 remains approved, row 2.7 remains outside the closed list without weakening T-160, and no 40-row built-window observation has been submitted. | **Open — run and record the 40 rows** |
+
+### Required correction
+
+Reconcile the two adjacent STATUS verdicts to the current state: criteria 1–5 and 7 are met;
+criteria 6 and 8 are Not met. Criterion 6 is not a separate implementation or evidence task: its
+independent review is **in progress** and cannot be signed off while P2EXIT-R12/P2EXIT-R14 remain
+open. Replace the two “never requested” claims in the plan and STATUS with that fact. If the
+candidate-era sentence at STATUS line 1376 is retained as history, put it explicitly in the past
+and state that P2EXIT-R12 reset its criterion-8 claim; do not leave “now claimed met” as live prose.
+
+Do not change the second run's 39/41 result. It is a historical observation over the then-current
+41 rows, not arithmetic to recompute after row 2.7's later removal. The next run measures the 40
+rows that remain.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check 376407f..8d7c88d`: **pass**. One commit changes the four plan/status/checklist/evidence documents and carries the preceding review record; no source or test file changes. |
+| Named sibling audit | No live “two rows fail,” present-tense row 2.7/3.15 failure, T-161-correction-owed, row-2.7-decision-owed, or R14-fixed claim remains in the four corrected documents. |
+| Historical evidence | The second-run result remains **39 of 41** and explicitly says it is not recomputed. Its annex now records T-161 corrected/approved, row 2.7 removed with its property intact in T-160, and future runs covering 40 rows. |
+| Checklist rendering | T-163, T-164, T-166 and T-167 now occupy one contiguous Markdown table. |
+| Remaining contradiction | STATUS lines 1376–1384 make mutually exclusive current claims; plan line 424 and STATUS line 90 falsely say this review was never requested. |
+| Placement gate | `tests/unit/test_task_placement.py`: **14 passed**. |
+
+No source or test correction was needed. The reviewer appends this record only; no submitted
+document, task state, commit, remote ref or CI state was changed by the reviewer.

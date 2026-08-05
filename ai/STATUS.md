@@ -87,7 +87,7 @@ garbage.
 
 **Ruled 2026-08-04: the `T-128` prerequisite is satisfied, and a measurement replaces it.** The two
 crashes were not recurrences of `T-074`'s fault, so the premise `OPS-007` was originally made on is
-intact rather than broken. **That soak is done and clean** (2026-08-05): **60 of 60, no test failures and no process deaths**, run on `Spock` against `ef21e34`, giving P = 0.042 against the 2-in-39 baseline. The corrected teardown holds, and **criterion 6's measurement half is met**; what remains of criterion 6 is the independent exit review, which has still never been requested.
+intact rather than broken. **That soak is done and clean** (2026-08-05): **60 of 60, no test failures and no process deaths**, run on `Spock` against `ef21e34`, giving P = 0.042 against the 2-in-39 baseline. The corrected teardown holds, and **criterion 6's measurement half is met**; what remains of criterion 6 is the independent exit review, **which is in progress**: requested 2026-08-05 in `ai/handoffs/2026-08-05-phase-2-exit-review.md`, and it has requested changes three times (`P2EXIT-R11`–`R14`, `T161-R1`).
 
 *(The paragraph below is kept as written, because it is the reasoning the measurement was chosen by.)* **Phase 2's exit then waited on a clean 60-run Linux soak** against the
 corrected teardown — sized against the measured 2-in-39 baseline, where an unchanged rate gives a
@@ -1373,15 +1373,22 @@ candidate head had no run of its own. Citing a neighbour's run and reasoning tha
 harmless is `P2EXIT-R8` exactly — the remedy is a run whose head *is* the head. Self-hosted
 runners, so it cost no quota.
 
-**Every Phase 2 exit criterion is now claimed met except 6(a)**, the independent exit review,
-requested in `ai/handoffs/2026-08-05-phase-2-exit-review.md`.
+*(This said **"every Phase 2 exit criterion is now claimed met except 6(a)"**. It was written
+before the review answered, and `P2EXIT-R11` then found criterion 1 broken by a change made after
+its proof. Superseded — the current verdict is directly below.)*
+
+**Current truth, 2026-08-05.** Criteria **1–5 and 7 are met**. **Criterion 6 is Not met**: the
+independent exit review is in progress and has requested changes. **Criterion 8 is Not met**: it
+awaits the 40-row built-window run.
 
 ---
 
 ## Phase 2 exit review — changes requested, 2026-08-05
 
-**Four blocking findings** (`ai/REVIEWS.md`, 2026-08-05 second submission). **Criteria 1, 6 and 8
-are Not met.**
+**Four blocking findings** (`ai/REVIEWS.md`, 2026-08-05 second submission). At submission,
+criteria 1, 6 and 8 were Not met. **`P2EXIT-R11` is since resolved, so criterion 1 is met** — this
+line said *"criteria 1, 6 and 8 are Not met"* after that, which is the finding it sits under.
+**Now: 6 and 8.**
 
 | Finding | What | State |
 |---|---|---|
