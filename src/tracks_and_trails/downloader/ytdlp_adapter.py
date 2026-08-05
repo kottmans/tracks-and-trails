@@ -349,7 +349,7 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
                 url=url,
                 title=title,
                 duration_seconds=_as_optional_float(item.get("duration")),
-                thumbnail_url=_as_optional_str(item.get("thumbnail")),
+                thumbnail_url=_entry_thumbnail(item),
             )
         )
     return tuple(projected)
@@ -374,6 +374,32 @@ def _entry_count(info: Mapping[str, Any]) -> int | None:
     if isinstance(entries, str | bytes) or not isinstance(entries, Sequence):
         return None
     return len(entries)
+
+
+def _entry_thumbnail(item: Mapping[str, Any]) -> str | None:
+    """A flat playlist entry's picture, from either shape yt-dlp uses (`T-137`, corrected).
+
+    **A flat extraction rarely carries `thumbnail`.** It carries `thumbnails` — a list, worst
+    first — and reading only the singular is why every entry of the maintainer's playlist drew the
+    derived tile while a directly pasted URL drew its picture. The full extraction a single video
+    gets does supply `thumbnail`, which is why this looked like it worked.
+
+    The **last** entry of the list, because yt-dlp orders thumbnails by increasing preference; a
+    row is 38px wide at most and the store scales, so the better source costs nothing to prefer.
+    """
+    single = _as_optional_str(item.get("thumbnail"))
+    if single:
+        return single
+    listed = item.get("thumbnails")
+    if isinstance(listed, str | bytes) or not isinstance(listed, Sequence):
+        return None
+    for candidate in reversed(listed):
+        if not isinstance(candidate, Mapping):
+            continue
+        url = _as_optional_str(candidate.get("url"))
+        if url:
+            return url
+    return None
 
 
 def build_options(

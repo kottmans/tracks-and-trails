@@ -1805,48 +1805,55 @@ def test_the_overflow_menu_holds_what_the_row_dropped_and_not_what_it_showed(
     )
 
 
-def test_the_toolbars_own_background_runs_behind_its_buttons(
-    qapp: QApplication, tmp_path: Path
-) -> None:
-    """`T-132`, corrected: the tint must not stop where the buttons start.
+def test_the_toolbars_verbs_are_drawn_as_buttons(qapp: QApplication, tmp_path: Path) -> None:
+    """`T-132`, corrected twice — and **this test asserted the defect** in between.
 
-    The platform toolbar paints a **vertical gradient** — measured `#FEFFFD` at the top through
-    `#F9FBF9` at mid-height — and the sheet's `QWidget` rule gives every widget a flat `window`
-    fill. So each tool button stamped a flat `#F5F7F4` rectangle across the gradient and the tint
-    appeared to end before `Pause queue`.
+    The first fault was that every tool button stamped a flat `window` fill over the toolbar's own
+    vertical gradient, so the tint appeared to stop where the buttons began. I corrected it by
+    making them **transparent**, and wrote a test asserting exactly that: *the toolbar's background
+    runs behind its buttons*. It did. `Pause queue` and `Clear finished` became text on a toolbar —
+    no border, no fill, nothing to press — and the maintainer reported them as no longer buttons.
 
-    **Measured on the real window, at one y, across the bar.** My first attempt at this built a
-    bare `QToolBar` and compared the spacer against the bar — both `window`, since a standalone
-    toolbar paints no gradient — so it passed with the fix removed and proved nothing. The gradient
-    only exists on a toolbar the platform is actually drawing.
+    **The mockup says what they are**: `border: 1px solid var(--b); border-radius: 4px;
+    background: var(--s)`. A deliberate shape does not have the original problem, because it is not
+    pretending to be the bar.
+
+    So the claim is inverted, and sampled **at the same `y`** — the toolbar's gradient means a
+    pixel inside a button and one at a different height differ whatever the button looks like.
     """
-    theme.apply(qapp, theme.LIGHT)
-    window = _window_over([_job("job-1", 0)], tmp_path)
-    window.resize(900, 500)
-    window.show()
-    qapp.processEvents()
-    bar = window.findChild(QToolBar, "queueToolBar")
-    assert bar is not None
+    was_sheet, was_palette = qapp.styleSheet(), qapp.palette()
+    try:
+        theme.apply(qapp, theme.LIGHT)
+        window = _window_over([_job("job-1", 0)], tmp_path)
+        window.resize(900, 500)
+        window.show()
+        qapp.processEvents()
+        bar = window.findChild(QToolBar, "queueToolBar")
+        assert bar is not None
+        verbs = [
+            widget
+            for action in bar.actions()
+            if action.objectName() in {"pauseQueueAction", "clearCompletedAction"}
+            and (widget := bar.widgetForAction(action)) is not None
+        ]
+        assert len(verbs) == 2, "the toolbar no longer holds both queue verbs"
 
-    image = bar.grab().toImage()
-    y = bar.height() // 2
-    spinner = bar.findChild(QSpinBox, "concurrencyChoice")
-    assert spinner is not None
-    verbs = [
-        widget
-        for action in bar.actions()
-        if action.objectName() in {"pauseQueueAction", "clearCompletedAction"}
-        and (widget := bar.widgetForAction(action)) is not None
-    ]
-    assert verbs, "the toolbar holds no queue verbs, so this samples nothing"
-
-    # Just inside a verb button's left edge, clear of its label, against the bar past the last one.
-    inside = image.pixel(verbs[0].x() + 2, y)
-    beside = image.pixel(bar.width() - 3, y)
-    assert inside == beside, (
-        f"the toolbar reads #{beside & 0xFFFFFF:06X} beside its buttons and "
-        f"#{inside & 0xFFFFFF:06X} behind one, so the buttons paint over its background"
-    )
+        image = bar.grab().toImage()
+        for button in verbs:
+            # A toolbar renders an action as a `QToolButton`; narrowing is what lets the failure
+            # message name the button rather than describe a `QWidget`.
+            assert isinstance(button, QToolButton)
+            box = button.geometry()
+            row = box.top() + 2
+            inside = image.pixel(box.center().x(), row)
+            beside = image.pixel(bar.width() - 3, row)
+            assert inside != beside, (
+                f"{button.text()!r} is indistinguishable from the toolbar beside it at the same "
+                "height, so it reads as text rather than as something to press"
+            )
+    finally:
+        qapp.setStyleSheet(was_sheet)
+        qapp.setPalette(was_palette)
 
 
 def test_the_concurrency_control_steps_with_labelled_buttons(

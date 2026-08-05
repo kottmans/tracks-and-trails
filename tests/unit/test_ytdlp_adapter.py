@@ -996,3 +996,48 @@ def test_a_probe_enumerates_a_playlist_flatly_and_a_download_does_not() -> None:
         "a download was asked for a flat extraction, so it has a stub instead of an item and no "
         "formats to choose from"
     )
+
+
+def test_a_flat_entry_takes_its_picture_from_the_thumbnails_list() -> None:
+    """`T-137`, corrected: every entry of a real playlist drew the derived tile.
+
+    **A flat extraction rarely carries `thumbnail`.** It carries `thumbnails`, a list ordered
+    worst-first, and reading only the singular is why a directly pasted URL showed its picture —
+    the full extraction a single video gets *does* supply `thumbnail` — while none of a playlist's
+    sixteen entries did. The defect looked like "thumbnails are broken" and was "one of the two
+    shapes yt-dlp uses was never read".
+
+    Both shapes, and the ordering, because taking the first of the list would prefer the worst.
+    """
+    info = {
+        "_type": "playlist",
+        "title": "Trail Sounds",
+        "webpage_url": "https://example.invalid/list",
+        "entries": [
+            {
+                "url": "https://example.invalid/a",
+                "title": "Listed",
+                "thumbnails": [
+                    {"url": "https://img.invalid/small.jpg"},
+                    {"url": "https://img.invalid/large.jpg"},
+                ],
+            },
+            {
+                "url": "https://example.invalid/b",
+                "title": "Singular",
+                "thumbnail": "https://img.invalid/one.jpg",
+            },
+            {"url": "https://example.invalid/c", "title": "None at all"},
+        ],
+    }
+
+    entries = adapter.project_media(info).entries
+
+    assert entries[0].thumbnail_url == "https://img.invalid/large.jpg", (
+        "an entry carrying `thumbnails` got no picture, so every row of a playlist draws the "
+        "derived tile; and the *last* is the best, since yt-dlp orders them worst-first"
+    )
+    assert entries[1].thumbnail_url == "https://img.invalid/one.jpg", (
+        "the singular shape stopped being read"
+    )
+    assert entries[2].thumbnail_url is None, "an entry with no picture invented one"

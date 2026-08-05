@@ -45,7 +45,7 @@ from PySide6.QtCore import (
     Signal,
 )
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
-from PySide6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPixmap
+from PySide6.QtGui import QColor, QFontMetrics, QMouseEvent, QPainter, QPalette, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemDelegate,
     QAbstractItemView,
@@ -449,7 +449,9 @@ class RowDelegate(QStyledItemDelegate):
                 self._paint_control(painter, body, option, index)
 
         verbs_left = self._paint_verbs(painter, text_area, body, option, index)
-        self._paint_text(painter, text_area, body, index, primary, muted, verbs_left)
+        self._paint_text(
+            painter, text_area, body, index, primary, muted, verbs_left, option.palette
+        )
         painter.restore()
 
     def _control_rect(self, body: QRect, line: int = 0) -> QRect:
@@ -653,7 +655,12 @@ class RowDelegate(QStyledItemDelegate):
         painter.restore()
 
     def _paint_segments(
-        self, painter: QPainter, area: QRect, states: Sequence[SegmentState], muted: QColor
+        self,
+        painter: QPainter,
+        area: QRect,
+        states: Sequence[SegmentState],
+        muted: QColor,
+        palette: QPalette,
     ) -> None:
         """One block per entry, filled by what that entry has done (`UX-005` row 9b, `T-140`).
 
@@ -669,11 +676,22 @@ class RowDelegate(QStyledItemDelegate):
         span = (area.width() - gap * (len(states) - 1)) / len(states)
         if span < 1:
             return
+        # **A finished entry is the brand** (`T-140`, corrected). Every segment was drawn in
+        # `muted`, so sixteen completed downloads looked exactly like sixteen waiting ones — the
+        # bar reported nothing while reporting something. `Highlight` is the theme's `primary`
+        # (`T130-R1` kept it there deliberately), which is the colour the mockup fills a done
+        # block with.
+        #
+        # **Colour is never the only signal** (`NFR-005`): the chip beside this says `16 of 16`
+        # and the second line says `16 done`, in words. This reinforces them.
+        done = palette.highlight().color()
+        running = QColor(done)
+        running.setAlpha(140)
         waiting = QColor(muted)
         waiting.setAlpha(60)
         colours = {
-            SegmentState.DONE: muted,
-            SegmentState.RUNNING: muted,
+            SegmentState.DONE: done,
+            SegmentState.RUNNING: running,
             SegmentState.FAILED: muted,
             SegmentState.WAITING: waiting,
         }
@@ -682,10 +700,7 @@ class RowDelegate(QStyledItemDelegate):
         for position, state in enumerate(states):
             left = area.left() + round(position * (span + gap))
             block = QRect(left, area.top(), max(round(span), 1), area.height())
-            colour = QColor(colours[state])
-            if state is SegmentState.RUNNING:
-                colour.setAlpha(150)
-            painter.setBrush(colour)
+            painter.setBrush(QColor(colours[state]))
             painter.drawRect(block)
         painter.restore()
 
@@ -837,6 +852,7 @@ class RowDelegate(QStyledItemDelegate):
         primary: QColor,
         muted: QColor,
         verbs_left: int | None,
+        palette: QPalette,
     ) -> None:
         if area.width() <= 0:
             return
@@ -890,6 +906,14 @@ class RowDelegate(QStyledItemDelegate):
             int(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter),
             metrics.elidedText(second, Qt.TextElideMode.ElideRight, area.width()),
         )
+
+        # **A child row draws two lines, not four** (`UX-005` row 9c, `T-140` corrected).
+        # `sizeHint` was shortened for an entry and the painter was not, so the selector and the
+        # bar were drawn into space the row does not have and were **clipped** — the maintainer saw
+        # a half line of text under every entry. An entry inherits its group's format, so the third
+        # line has nothing to say; not drawing it is the promise, and sizing for it was only half.
+        if _depth(index) > 0:
+            return
 
         selector = _text(index, SELECTOR_ROLE)
         selector_lines = 0
@@ -955,7 +979,7 @@ class RowDelegate(QStyledItemDelegate):
         if bar.bottom() > area.bottom():
             return
         if segments:
-            self._paint_segments(painter, bar, segments, muted)
+            self._paint_segments(painter, bar, segments, muted, palette)
             return
         track = QColor(muted)
         track.setAlpha(60)

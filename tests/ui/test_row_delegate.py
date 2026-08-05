@@ -47,6 +47,7 @@ from tracks_and_trails.ui.row_delegate import (
     ROW_HEIGHT,
     SEGMENTS_ROLE,
     SELECTOR_LINES,
+    SELECTOR_ROLE,
     STATE_CHIP_ROLE,
     STATE_ROLE,
     TEXT_LINES,
@@ -1109,3 +1110,69 @@ def test_the_format_control_never_covers_the_selector_line(
     )
     assert control.top() >= body.top(), "the control was pushed above the row"
     assert control.bottom() <= body.bottom(), "the control was pushed below the row"
+
+
+def test_a_child_row_draws_two_lines_rather_than_being_sized_for_two(
+    qapp: QApplication,
+) -> None:
+    """`UX-005` row 9c, corrected: sizing for two lines is only half the promise.
+
+    `sizeHint` was shortened for an entry and the painter was not, so the selector line and the
+    progress bar were drawn into space the row does not have and were **clipped** — the maintainer
+    saw half a line of text under every entry of a playlist.
+
+    Asserted as *the third line makes no difference*, which is the property. Comparing heights
+    would pass against the clipped version, because the height was already right.
+    """
+    common: dict[int, Any] = {
+        HEADLINE_ROLE: "01 Prelude of Light",
+        DETAIL_ROLE: "4:12 · 100% · 9.8 MB",
+        PROGRESS_ROLE: 1.0,
+        HUE_ROLE: 0,
+        DEPTH_ROLE: 1,
+    }
+    without = paint_rows(RowsModel([common]), RowDelegate(), 0)
+    with_selector = paint_rows(
+        RowsModel([{**common, SELECTOR_ROLE: "Format selector: bestaudio/best"}]),
+        RowDelegate(),
+        0,
+    )
+
+    assert without == with_selector, (
+        "a playlist entry drew its format line, which does not fit in the two lines row 9c gives "
+        "it — so it is drawn clipped"
+    )
+
+    # And a top-level row still draws it, so this is not "the selector was removed for everyone".
+    top = paint_rows(RowsModel([{**common, DEPTH_ROLE: 0}]), RowDelegate(), 0)
+    top_with = paint_rows(
+        RowsModel([{**common, DEPTH_ROLE: 0, SELECTOR_ROLE: "Format selector: bestaudio/best"}]),
+        RowDelegate(),
+        0,
+    )
+    assert top != top_with, "a top-level row stopped drawing its selector line as well"
+
+
+def test_a_finished_segment_is_the_brand_rather_than_a_grey(qapp: QApplication) -> None:
+    """`T-140`, corrected: sixteen done looked exactly like sixteen waiting.
+
+    Every segment was drawn in `muted`, so the bar reported nothing while appearing to report
+    something — the maintainer expected finished downloads to show as green and saw an empty
+    track. `Highlight` is the theme's `primary`, which `T130-R1` deliberately kept there.
+
+    **Colour is not the only signal** (`NFR-005`): the chip says `16 of 16` and the second line
+    says `16 done`. This reinforces them, and the test asserts the *difference* rather than a
+    particular colour, which would pin a palette choice.
+    """
+    common: dict[int, Any] = {HEADLINE_ROLE: "Trail Sounds", EXPANDED_ROLE: False, HUE_ROLE: 0}
+    done = paint_rows(
+        RowsModel([{**common, SEGMENTS_ROLE: [SegmentState.DONE] * 4}]), RowDelegate(), 0
+    )
+    waiting = paint_rows(
+        RowsModel([{**common, SEGMENTS_ROLE: [SegmentState.WAITING] * 4}]), RowDelegate(), 0
+    )
+
+    assert done != waiting, (
+        "a bar of four finished entries draws identically to four waiting ones, so it reports "
+        "nothing while appearing to report something"
+    )

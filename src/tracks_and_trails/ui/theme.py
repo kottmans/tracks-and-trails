@@ -347,13 +347,31 @@ QTabBar::tab:hover {{
    through the frozen artifact for the sake of a triangle. Letting the platform draw its own
    control costs this one widget a themed border and is the smaller commitment by far. */
 QToolBar QToolButton {{
-    /* **A toolbar paints its own background and its buttons must let it through** (`T-132`,
-       corrected). `QWidget` above sets a flat `window` fill, and the platform toolbar draws a
-       subtle vertical gradient — measured `#FEFFFD` at the top through `#F9FBF9` at mid-height —
-       so every tool button stamped a flat `#F5F7F4` rectangle across it and the tint appeared to
-       stop where the buttons began. The primary action below deliberately overrides this: it is
-       the one button that *should* be a shape rather than a label. */
-    background: transparent;
+    /* **The mockup's `.btn`, and they are buttons** (`T-132`, corrected twice).
+       First they stamped a flat `window` fill over the toolbar's own vertical gradient, so the
+       tint appeared to stop where the buttons began — measured `#F9FBF9` on the bar against
+       `#F5F7F4` inside one. I corrected that by making them **transparent**, which fixed the
+       band and destroyed the buttons: `Pause queue` and `Clear finished` became text on a
+       toolbar, with no border, no fill and nothing to press.
+       The mockup says what they are — `border: 1px solid var(--b); border-radius: 4px;
+       background: var(--s)` — and a deliberate shape does not have the first problem, because
+       it is not pretending to be the bar. */
+    background-color: {theme.surface};
+    border: 1px solid {theme.border};
+    border-radius: 4px;
+    padding: 3px 9px;
+}}
+QToolBar QToolButton:hover {{
+    background-color: {theme.sunken};
+    border-color: {theme.primary};
+}}
+QToolBar QToolButton:pressed {{
+    background-color: {theme.rule};
+}}
+QToolBar QToolButton:disabled {{
+    background-color: {theme.window};
+    color: {theme.muted};
+    border-color: {theme.rule};
 }}
 QToolBar QToolButton[stepButton="true"] {{
     /* **A pair has to look like a pair** (`T-141`, corrected). Left bare, these were transparent

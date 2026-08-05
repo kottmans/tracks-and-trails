@@ -3085,6 +3085,8 @@ not react to the pointer). The two below are choices, so they are recorded here.
 
 | 11 | **The concurrency control steps with labelled `−` and `+` buttons**, not native spin arrows | **Adopted** (`T-141`). The arrows were reported missing twice and were, both times, a rendering question rather than a wiring one: first drawn as solid blocks by the CSS border-triangle trick, then drawn correctly as ~10px native wedges in a 23px control and still unreadable. Measured on the maintainer's own session at the real size: up `4,6,8,10`, down `8,6,4`. **Text cannot be silently un-drawn by a style sheet**, which is the failure mode `T-129`, `T-133` and `T-139` all share, and a label can be asserted by content rather than by wedge geometry |
 
+| 12 | **The tab's count is of downloads, not of lines** | **Adopted 2026-08-04** (`T-140`). This was left *proposed* by the first amendment — "count rows as shown" — and running it settled it: a sixteen-item playlist beside one download read `Queue (17)` open and `Queue (2)` closed, so **the number moved when a user opened a group without the queue changing**. It counts jobs now, so a paste of sixteen reads sixteen at either state |
+
 **Row 8 corrects a stated reason, not just a behaviour.** `_verb_rects` says the overflow "is the
 keyboard route, and a route that relocates is not a route" — which was true when it was written and
 stopped being true at `T124-R1`, when both lists took `CustomContextMenu`. Qt raises

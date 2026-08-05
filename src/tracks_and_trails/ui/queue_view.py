@@ -411,6 +411,19 @@ class QueueModel(QAbstractTableModel):
         """The rows, in the order they are shown."""
         return tuple(row.job.id for row in self._rows)
 
+    def download_count(self) -> int:
+        """How many **downloads** the queue holds, which is not how many rows it shows (`T-140`).
+
+        A collapsed playlist of sixteen is one row; expanded it is seventeen, counting its header.
+        Neither is the answer to "how much is in the queue", and the tab count was reading
+        `rowCount()` — so a sixteen-item playlist beside one download read *(17)* open and *(2)*
+        closed, and the number moved when the user opened a group without the queue changing.
+
+        `UX-005` left the tab count *proposed* rather than ruled, and this is the maintainer's
+        answer of 2026-08-04: **count the work, not the lines.**
+        """
+        return len(self._rows)
+
     def row_of(self, job_id: str) -> int | None:
         """Where `job_id` sits **in the table**, or `None` when nothing shows it.
 

@@ -1192,6 +1192,61 @@ rather than a bare *Remove*.
 
 ---
 
+### T-143 — A playlist's entries are never probed, so their rows stay bare
+
+**Status:** Proposed — **found by the maintainer, 2026-08-04**, downloading a real 16-item
+playlist. Reported as two things; they are one.
+**Owner:** Implementer
+**Priority:** Medium-High — `UX-003` promises a queued job is a probed one, and these are not
+**Phase:** Phase 3
+**Depends on:** `T-137` (done)
+**Relevant context:** `UX-003`, `T080-R1`, `UX-001`, `ARC-004`, `downloader/manager.py`,
+`ui/add_dialog.py`
+**Affected surfaces:** `downloader/manager.py` or `ui/`, depending on the ruling below
+**Risk:** Medium — it adds N extractions per playlist, at a time the user is not waiting
+
+#### Scope
+
+Reported as *"no thumbnails were downloaded for any of the playlist"* and *"even if the queue is
+paused it should still probe each of the tracks"*. **Both are the same gap**, and neither is what
+it looks like:
+
+- **Pause already exempts probes.** `T080-R1` records it and the manager says so in as many words:
+  *"a paused queue admits a probe and parks a download."* Nothing needs changing there.
+- **The entries are never probed at all.** `T-137` builds them from a *flat* extraction — an
+  address and a name — and marks them `QUEUED` rather than `READY` precisely because no probe ran.
+  Nothing then probes a queued job before it downloads, so an entry has no duration, no size, and
+  (until this task) no picture, however long it sits there.
+
+*The thumbnail half is separately fixed*: a flat entry carries `thumbnails`, not `thumbnail`, and
+reading only the singular is why every entry drew the derived tile. That is corrected under `T-137`
+and does **not** close this — an entry still has no duration or size until it runs.
+
+**`UX-003` is the requirement in tension.** It makes every queued job a probed one, which is why a
+pasted URL resolves before it is added. A playlist deliberately skipped that to avoid one
+extraction per item during the add — the cost `project_media` has refused since `T-016`. Doing it
+*after* admission moves the cost to a moment nobody is waiting, which is the shape this task
+proposes.
+
+#### Acceptance criteria
+
+- A playlist's entries acquire title, duration, size and picture **without being downloaded**,
+  asserted against a recorded fixture
+- It happens **while the queue is paused**, since that is when a user is most likely to be looking
+- The probes are **bounded** — a 200-item playlist must not open 200 extractions at once; the
+  concurrency limit or a smaller one governs them
+- A probe failure marks that entry and does not stop the others, nor the playlist
+- Cancelling or removing an entry cancels its probe (`T118-R1`'s lesson: a probe outliving the row
+  that asked for it)
+- `ARC-004`'s state machine is respected: there is no `READY → PROBING` edge, so this decides what
+  an entry's status is while its probe runs
+
+#### Out of scope
+
+- Changing what pause does. It already admits probes
+
+---
+
 ### T-107 — The format table: every stream a probe found
 
 **Status:** Proposed — **Phase 3 decomposition, 2026-08-01.** Blocked on Phase 2's exit and on

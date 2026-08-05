@@ -640,7 +640,13 @@ class MainWindow(QMainWindow):
             index = self._body.indexOf(view)
             if index < 0:  # never added, because composition gave it nothing to read
                 continue
-            self._body.setTabText(index, f"{label} ({view.table.model().rowCount()})")
+            # **The count is of downloads, not of lines** (`T-140`, ruled 2026-08-04). This read
+            # `rowCount()`, and a playlist is one row closed and seventeen open — so the number
+            # moved when a user opened a group, without the queue having changed.
+            model = view.table.model()
+            counted = getattr(model, "download_count", None)
+            total = counted() if callable(counted) else model.rowCount()
+            self._body.setTabText(index, f"{label} ({total})")
 
     def _attach_file_actions(self) -> None:
         """Open and Show-in-folder on both tables (`T-086`, `REQ-021`).

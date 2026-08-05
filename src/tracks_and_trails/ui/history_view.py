@@ -131,6 +131,10 @@ class HistoryModel(QAbstractTableModel):
 
     # --- the promises tests read -----------------------------------------------------------
 
+    def download_count(self) -> int:
+        """How many records History holds. One per row here — it has no groups (`T-140`)."""
+        return len(self._entries)
+
     def entry_ids(self) -> tuple[str, ...]:
         """The rows, in the order they are shown."""
         return tuple(entry.id for entry in self._entries)

@@ -136,7 +136,7 @@ ALLOWED_INFO_KEYS = frozenset(
 #: `test_the_allowlist_matches_what_the_adapter_actually_reads`, which derives the truth from the
 #: adapter's own source rather than trusting either list.
 ALLOWED_ENTRY_KEYS = frozenset(
-    {"url", "webpage_url", "original_url", "title", "duration", "thumbnail"}
+    {"url", "webpage_url", "original_url", "title", "duration", "thumbnail", "thumbnails"}
 )
 
 ALLOWED_FORMAT_KEYS = frozenset(
