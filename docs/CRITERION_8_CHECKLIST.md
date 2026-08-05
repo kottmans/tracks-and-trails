@@ -57,10 +57,11 @@ checks, which need one real playlist URL.
 | # | What to look for | Task |
 |---|---|---|
 | 2.1 | **Moving the pointer over a row's verb highlights it**, and moving off clears it. Leaving the window entirely also clears it | `T-134` |
-| 2.2 | A **wide** window draws no `⋯` on a row whose verbs all fit | `T-135` |
-| 2.3 | **Narrow the window** until verbs drop. `⋯` appears, and its menu holds **exactly the dropped ones** — not a repeat of what is still on the row | `T-135` |
-| 2.4 | **Shift+F10** opens the full menu at both widths | `T-135`, `NFR-005` |
-| 2.5 | In the add dialog, a staged row's **format line does not run underneath its format control** — check with a long selector that wraps | `T-136` |
+| 2.2 | **The list must never scroll sideways.** A long title elides; it does not widen the row. *(Added 2026-08-05: `T-151`. If a horizontal scrollbar appears, the verbs are off screen and rows 2.1–2.4 cannot be checked at all.)* | `T-151` |
+| 2.3 | A **wide** window draws no `⋯` on a row whose verbs all fit | `T-135` |
+| 2.4 | **Narrow the window** until verbs drop. `⋯` appears, and its menu holds **exactly the dropped ones** — not a repeat of what is still on the row | `T-135` |
+| 2.5 | **Shift+F10** opens the full menu at both widths | `T-135`, `NFR-005` |
+| 2.6 | In the add dialog, a staged row's **format line does not run underneath its format control** — check with a long selector that wraps | `T-136` |
 
 ## 3 · A playlist (`T-137`, `T-140`)
 

@@ -1142,6 +1142,75 @@ beats designing it against an imagined one.
 
 ---
 
+### T-151 — The queue scrolls sideways, so a row's verbs are off screen and `⋯` never appears
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, running the built application.
+**Recommended as a finding against `T-135` rather than new scope — see below.**
+**Owner:** Implementer
+**Priority:** **High** — it makes two of criterion 8's own tasks unreachable in the shipped window
+**Phase:** **Undecided.** Criterion 8 by the argument below; Phase 3 if the maintainer prefers the
+closed list held strictly
+**Depends on:** nothing
+**Relevant context:** `T-134`, `T-135`, `UX-005` §4, `NFR-005`, `ui/queue_view.py` (`data`,
+`DisplayRole`), `ui/row_delegate.py` (`sizeHint`, `_verb_rects`), `ui/history_view.py`
+**Affected surfaces:** `ui/queue_view.py`, `ui/history_view.py`, possibly `ui/row_delegate.py`
+**Risk:** Low to fix; the diagnosis is done and the failure is entirely visible
+
+#### Scope
+
+**A long title makes the list scroll sideways instead of eliding.** With one completed download
+whose title runs long, the queue grows a horizontal scrollbar, the row's text is cut by the window
+edge, and **the verbs and `⋯` are drawn beyond the viewport** — reachable only by scrolling to
+them, which nothing tells the user to do.
+
+**The cause is a string nobody draws.** `QueueModel.data` answers `Qt.DisplayRole` with
+`self._text(row, column)` — the whole row's text — and `QListView` measures that to compute its
+content width. `RowDelegate` never renders it: it draws `HEADLINE_ROLE`, `DETAIL_ROLE` and the rest,
+elided to the rect it is given. So **the view sizes itself from one string and paints another**,
+and the painted one is the only one that respects the viewport.
+
+`sizeHint` returns `QSize(option.rect.width(), …)` — it already intends to take the width it is
+given rather than ask for more. The display text overrides that intent from outside.
+
+**Two of criterion 8's ten tasks are unreachable because of it:**
+
+- **`T-135`** — the `⋯` overflow. `_verb_rects` drops verbs only when the row *runs out of room*,
+  and a row that widens never does. So `⋯` never appears, and the finding `T-135` fixed —
+  *"the menu repeats the buttons already on the row"* — is replaced by a worse one: **there is no
+  menu and there are no buttons**, because both are off screen.
+- **`T-134`** — hover on a verb. A verb outside the viewport cannot be hovered, so the affordance
+  that task added is unreachable for exactly the rows that need it.
+
+**Why this reads as a `T-135` finding rather than new scope.** Criterion 8 asserts the window
+matches the features behind it. `T-135`'s feature is *present in code and absent from the window*,
+which is the same shape as `T140-R5` — accepted work that the built application does not offer.
+The closed list exists so that *new* observations do not reopen the phase; this is not a new
+feature request but the non-delivery of one already in the list. **The maintainer decides**, and
+`T-149` raises the same question independently.
+
+*(`DisplayRole` is not spurious: `ToolTipRole` shares it, and `test_queue_view` reads `text_at`.
+Whatever the fix, it must not silently remove the tooltip or the accessible text — `NFR-005`.)*
+
+#### Acceptance criteria
+
+- With a title long enough to overflow, the list shows **no horizontal scrollbar** and the row
+  elides instead, asserted by rendering rather than by reading a policy flag
+- At that width the row's verbs are **inside the viewport**, and `⋯` appears holding exactly the
+  dropped ones — `T-135`'s behaviour, reachable
+- The same holds for **History**, which draws the same anatomy through the same delegate
+- `ToolTipRole` still returns the full text, and `AccessibleTextRole` still returns the whole row —
+  the fix must not buy layout by taking away what a screen reader hears (`NFR-005`)
+- A test fails if the view is ever able to scroll horizontally again, so the fix cannot regress
+  quietly the way this defect arrived
+
+#### Out of scope
+
+- The add dialog's opening width, which is `T-150`
+- Wrapping the title over two lines instead of eliding. `UX-005` fixes the row's anatomy, and
+  changing it is that decision's to make
+
+---
+
 ### T-150 — The add dialog opens narrower than the rows it holds
 
 **Status:** Proposed — **found by the maintainer, 2026-08-05**, running the built application.
