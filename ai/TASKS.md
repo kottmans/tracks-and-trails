@@ -1247,6 +1247,78 @@ proposes.
 
 ---
 
+### T-144 — History can only be cleared one record at a time
+
+**Status:** Proposed — **found by the maintainer, 2026-08-04**, with a history large enough for it
+to matter.
+**Owner:** Implementer
+**Priority:** Medium — `REQ-020` makes History accumulate forever by design, so this gets worse
+with use rather than better
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `DAT-005` (history removal and its confirmation), `REQ-020`, `NFR-003`,
+`ui/history_view.py`, `ui/main_window.py`, `persistence/repositories.py`
+**Affected surfaces:** `ui/history_view.py`, `ui/main_window.py`, `persistence/repositories.py`
+**Risk:** Medium — it is a destructive action over an unbounded set
+
+#### Scope
+
+**Bulk removal already exists and is not discoverable.** The table is `ExtendedSelection`,
+`removal_requested` emits *the whole selection* when the clicked row is part of it, and
+`removal_question` already names the count. What is missing is any way to reach that without
+dragging: **there is no `Clear history`, and nothing anywhere calls `selectAll`.** Qt gives
+`Ctrl+A` to an `ExtendedSelection` view by default, so a keyboard user may already have a route —
+untested, unlabelled, and not something a user is told about.
+
+**The repository cannot do it as one call today, and this is the part to get right.**
+`HistoryRepository.remove_many` builds one placeholder per id:
+
+```sql
+DELETE FROM history WHERE id IN (?, ?, ?, …)
+```
+
+Measured on this build — `sqlite3` 3.51.2, `SQLITE_LIMIT_VARIABLE_NUMBER` = 32766:
+
+| Placeholders | Result |
+|---|---|
+| 999 | ok |
+| 32766 | ok |
+| 32767 | `OperationalError: too many SQL variables` |
+
+So "select everything and remove it" **fails outright** on a history past ~32k records, and does so
+with a database error rather than a message. That is unreachable today for most users and is
+exactly the kind of limit that is discovered by the person who has used the application longest.
+
+**`remove_many` must not simply grow a `DELETE FROM history`.** Its docstring is explicit that the
+empty-sequence guard exists so an empty selection "does not become an accidental
+`DELETE FROM history` — the failure this signature exists to make impossible". A wholesale clear is
+therefore a **separate, explicitly-named operation**, not a special case of removal — and the
+narrow signature stays narrow.
+
+#### Acceptance criteria
+
+- A visible route clears the whole history in one action, reachable by pointer **and** keyboard
+- Its confirmation **names its own count** (`DAT-005` §4) and still says that files are never
+  deleted (`HISTORY_KEEPS_FILES`) — clearing a record is not deleting a download, and that is the
+  sentence most worth keeping at the moment a user empties the list
+- Clearing many is **one transaction** (`NFR-003`): no half-emptied history, and nothing that
+  survives only until the process exits
+- **Asserted past the placeholder ceiling** — a history of more than 32766 records clears without
+  a database error. That number is measured on this build and belongs in the test's reasoning, not
+  in an assertion that would silently pass on a build with a different limit
+- `remove_many`'s empty guard is untouched, and a wholesale clear is its own method with its own
+  name
+- Removing a selection still works exactly as it does now
+
+#### Out of scope
+
+- Deleting the files themselves. `DAT-005` and `HISTORY_KEEPS_FILES` both say History is a record,
+  not the downloads, and nothing here changes that
+- Any automatic pruning by age or size. That is a policy decision nobody has made, and inventing
+  one inside a task about a button would be `UX-005` §5's shape in the data layer
+
+---
+
 ### T-107 — The format table: every stream a probe found
 
 **Status:** Proposed — **Phase 3 decomposition, 2026-08-01.** Blocked on Phase 2's exit and on
