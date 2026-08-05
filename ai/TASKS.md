@@ -880,449 +880,6 @@ agreement on the reduced form before implementation.
 
 ## Proposed — Phase 2
 
-### T-149 — A paused queue looks exactly like a running one
-
-**Status:** Proposed — **found by the maintainer, 2026-08-05**, running the built application
-against `docs/CRITERION_8_CHECKLIST.md`. **Its classification needs a ruling — see below.**
-**Owner:** Implementer
-**Priority:** **High** — `UX-001` makes pause the only queue-wide control there is, and a control
-that cannot be read is one a user presses twice
-**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
-regression that work introduced. The ruling is the maintainer's
-**Depends on:** nothing
-**Relevant context:** `UX-001`, `T-129`, `T-132`, `NFR-005`, `ui/theme.py` (the `QToolBar
-QToolButton` rules), `ui/main_window.py` (`_pause_action`)
-**Affected surfaces:** `ui/theme.py`, possibly `ui/main_window.py`
-**Risk:** Low to fix, and the diagnosis is already done
-
-#### Scope
-
-**Pressing `Pause queue` changes nothing visible.** The queue stops starting downloads — the
-behaviour is correct and `T-080` proved it — but nothing on screen says so. A user who pressed it
-has no way to tell whether they did, and `UX-001` made this the *only* queue-wide control, so it
-is the one place that most needs to read back.
-
-**The state exists; the styling hides it.** `main_window._pause_action` builds one **checkable**
-`QAction`, deliberately — *"Pause and Resume are the same control"*. Qt's native style draws a
-checked tool button sunken. `ui/theme.py` then restyles `QToolBar QToolButton` and declares
-`:hover`, `:pressed` and `:disabled` — **and not `:checked`**. A stylesheet that sets `background`
-replaces the native rendering wholesale, so the checked state stops being drawn at all.
-
-**This is `T-129`'s finding, one state further on.** That task is titled *"The style sheet took the
-native style's metrics and states away"* and restored three states. `checked` was missed for a
-reason worth writing down: **pause is the only checkable control on the toolbar**, so no other
-widget would have shown the gap. `T-132`'s own acceptance criteria state the principle —
-*"styling the button at all takes both away"* — and name hover and pressed, because those were the
-two anybody had noticed.
-
-#### The classification question
-
-`docs/CRITERION_8_CHECKLIST.md` says a row that fails is a finding against the closed list and
-anything new is Phase 3. **This is neither cleanly.** It was not on the checklist — that is an
-omission in the checklist, not evidence the defect is new — and it is a regression *introduced by*
-`T-132`, of the class `T-132`'s criteria name.
-
-- **As `T-132`'s**, criterion 8 gains a finding and `T-132` reopens. Consistent with `T140-R5`,
-  which refused to let accepted work be completed by moving it elsewhere.
-- **As Phase 3**, the closed list stays closed, which is what keeps criterion 8 falsifiable at all.
-
-**Recommendation: `T-132`'s.** The window does not match the mockup's toolbar, which is exactly
-what criterion 8 asserts, and the styling that broke it is that task's.
-
-#### Acceptance criteria
-
-- With the queue paused, the control is **visibly distinct** from unpaused, asserted by rendering
-  the real toolbar rather than a stand-in — `T132-R1` is what a stand-in costs
-- Asserted in **both themes**, and the distinction meets `NFR-005`'s contrast floor
-- **Not by colour alone** (`NFR-005`): whatever carries the state must survive a greyscale reading
-- A screen reader announces the toggled state — `QAction` is checkable, so this is Qt's to give,
-  and asserting it is how we know the styling did not take that away too
-- The check runs against the **application's own style sheet**, so a future rule that overrides the
-  state again fails here
-
-#### Out of scope
-
-- Any change to what pause *does*. `UX-001` and `T-080` settle that, and this is about reading it
-- A separate `Resume` button. The control is one checkable action on purpose
-- Auditing every other Qt state the style sheet may have taken. Worth doing and its own task; this
-  one is the state a user is looking at right now
-
-*(**UI rework filed 2026-08-02** — `T-116` through `T-120`, from mockups the maintainer reviewed
-and chose between. They precede `T-107`: Phase 3 and 4 add a format table, a stream chooser, a
-playlist picker and a preset editor **to the queue that exists**, so settling what a row is first
-means the anatomy is decided once rather than renegotiated by each feature. `T-105`'s
-`docs/UX_SPEC.md` should absorb the chosen design; `UX-003` records the rule the add flow now
-follows.)*
-
----
-
-### T-151 — The queue scrolls sideways, so a row's verbs are off screen and `⋯` never appears
-
-**Status:** Proposed — **found by the maintainer, 2026-08-05**, running the built application.
-**Recommended as a finding against `T-135` rather than new scope — see below.**
-**Owner:** Implementer
-**Priority:** **High** — it makes two of criterion 8's own tasks unreachable in the shipped window
-**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
-closed list held strictly
-**Depends on:** nothing
-**Relevant context:** `T-134`, `T-135`, `UX-005` §4, `NFR-005`, `ui/queue_view.py` (`data`,
-`DisplayRole`), `ui/row_delegate.py` (`sizeHint`, `_verb_rects`), `ui/history_view.py`
-**Affected surfaces:** `ui/queue_view.py`, `ui/history_view.py`, possibly `ui/row_delegate.py`
-**Risk:** Low to fix; the diagnosis is done and the failure is entirely visible
-
-#### Scope
-
-**A long title makes the list scroll sideways instead of eliding.** With one completed download
-whose title runs long, the queue grows a horizontal scrollbar, the row's text is cut by the window
-edge, and **the verbs and `⋯` are drawn beyond the viewport** — reachable only by scrolling to
-them, which nothing tells the user to do.
-
-**The cause is a string nobody draws.** `QueueModel.data` answers `Qt.DisplayRole` with
-`self._text(row, column)` — the whole row's text — and `QListView` measures that to compute its
-content width. `RowDelegate` never renders it: it draws `HEADLINE_ROLE`, `DETAIL_ROLE` and the rest,
-elided to the rect it is given. So **the view sizes itself from one string and paints another**,
-and the painted one is the only one that respects the viewport.
-
-`sizeHint` returns `QSize(option.rect.width(), …)` — it already intends to take the width it is
-given rather than ask for more. The display text overrides that intent from outside.
-
-**Two of criterion 8's ten tasks are unreachable because of it:**
-
-- **`T-135`** — the `⋯` overflow. `_verb_rects` drops verbs only when the row *runs out of room*,
-  and a row that widens never does. So `⋯` never appears, and the finding `T-135` fixed —
-  *"the menu repeats the buttons already on the row"* — is replaced by a worse one: **there is no
-  menu and there are no buttons**, because both are off screen.
-- **`T-134`** — hover on a verb. A verb outside the viewport cannot be hovered, so the affordance
-  that task added is unreachable for exactly the rows that need it.
-
-**Why this reads as a `T-135` finding rather than new scope.** Criterion 8 asserts the window
-matches the features behind it. `T-135`'s feature is *present in code and absent from the window*,
-which is the same shape as `T140-R5` — accepted work that the built application does not offer.
-The closed list exists so that *new* observations do not reopen the phase; this is not a new
-feature request but the non-delivery of one already in the list. **The maintainer decides**, and
-`T-149` raises the same question independently.
-
-*(`DisplayRole` is not spurious: `ToolTipRole` shares it, and `test_queue_view` reads `text_at`.
-Whatever the fix, it must not silently remove the tooltip or the accessible text — `NFR-005`.)*
-
-#### Acceptance criteria
-
-- With a title long enough to overflow, the list shows **no horizontal scrollbar** and the row
-  elides instead, asserted by rendering rather than by reading a policy flag
-- At that width the row's verbs are **inside the viewport**, and `⋯` appears holding exactly the
-  dropped ones — `T-135`'s behaviour, reachable
-- The same holds for **History**, which draws the same anatomy through the same delegate
-- `ToolTipRole` still returns the full text, and `AccessibleTextRole` still returns the whole row —
-  the fix must not buy layout by taking away what a screen reader hears (`NFR-005`)
-- A test fails if the view is ever able to scroll horizontally again, so the fix cannot regress
-  quietly the way this defect arrived
-
-#### Out of scope
-
-- The add dialog's opening width, which is `T-150`
-- Wrapping the title over two lines instead of eliding. `UX-005` fixes the row's anatomy, and
-  changing it is that decision's to make
-
----
-
-### T-152 — The declared keyboard route needs a mouse click before it works
-
-**Status:** Proposed — **found by the maintainer, 2026-08-05**, pressing `Shift+F10` at the built
-window and getting nothing. **Recommended as a finding against `T-135` / `T124-R1`.**
-**Owner:** Implementer
-**Priority:** **High** — `NFR-005` is a non-functional requirement, and this is the route it names
-**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
-**Depends on:** nothing
-**Relevant context:** `NFR-005`, `UX-005` §4, `T124-R1`, `T-135`, `ui/queue_view.py`
-(`_row_menu_asked_for`), `ui/history_view.py`, `tests/ui/test_row_verb_wiring.py`
-**Affected surfaces:** `ui/queue_view.py`, `ui/history_view.py`
-**Risk:** Low
-
-#### Scope
-
-**`Shift+F10` does nothing on a freshly opened window.** The handler is correct and its fallback is
-deliberate — `_row_menu_asked_for` resolves `indexAt(position)` and falls back to `currentIndex()`,
-which is `T124-R1`'s own fix for a route that *"silently did nothing"* when Qt derived the position
-from the widget rather than from a row.
-
-**But it ends `if not index.isValid(): return`, and nothing gives the list a current row.** Neither
-view calls `setCurrentIndex` on load; the two existing calls are in selection-restore paths that a
-user reaches only by having selected something. So the current index is invalid until the user
-**clicks a row** — and the declared keyboard route is unreachable until a *pointer* has been used.
-
-That is the opposite of what `NFR-005` asks. A keyboard route that requires a mouse first is not a
-keyboard route; it is a mouse route with a keyboard shortcut.
-
-#### Why no test caught it, which is the part worth keeping
-
-`tests/ui/test_row_verb_wiring.py` covers this route carefully — it synthesises the context-menu
-event because the `offscreen` plugin does not translate `Shift+F10`, and it deliberately aims the
-position **off every row** so a handler resolving through `indexAt` alone would fail. All good.
-
-**And its helper calls `body.setCurrentIndex(index)` first.** So the test establishes the exact
-state whose absence is the defect. It proves the fallback works *given* a current row and cannot
-say anything about a window where none was ever set — which is every window a user opens.
-
-This is the project's recurring shape stated once more: **a test that arranges the condition the
-defect is about**. `T126-R3` and `T140-R1` are the same lesson at other layers.
-
-#### Acceptance criteria
-
-- On a view with rows and **nothing ever clicked**, the keyboard route opens the menu for a
-  defensible row — asserted **without** the test setting a current index first, which is the whole
-  point
-- Whatever establishes that row is visible to a screen reader as the focused item, so the menu that
-  opens matches what the user was told they are on (`NFR-005`)
-- An **empty** view still does nothing, quietly and without raising
-- The behaviour holds for **History** as well as the queue — both declare the same route
-- The existing off-row regression stays, since `T124-R1`'s defect is a different one and both must
-  hold at once
-
-#### Out of scope
-
-- Whether the current row should also be *selected*. Focus and selection are different, and
-  `UX-005` does not rule on it
-- The `⋯` button's pointer route, which works
-- Making the platform plugin's `Shift+F10` translation testable. `ai/TESTING.md` records why it is
-  not, and this task needs a current row rather than a synthetic keypress
-
----
-
-### T-153 — A playlist's own picture is never read, only its entries'
-
-**Status:** Proposed — **found by the maintainer, 2026-08-05**, pasting a playlist and seeing the
-staged row draw a placeholder tile. **Recommended as a finding against `T-137`.**
-**Owner:** Implementer
-**Priority:** Medium — cosmetic in the queue, but it is the first thing a user sees after pasting
-**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
-**Depends on:** nothing
-**Relevant context:** `T-137` and its 2026-08-04 correction, `UX-003`, `REQ-002`,
-`downloader/ytdlp_adapter.py` (`_media_from`, `_entry_thumbnail`)
-**Affected surfaces:** `downloader/ytdlp_adapter.py`
-**Risk:** Low — the helper it needs already exists and is already tested
-
-#### Scope
-
-**The staged row for a playlist draws the derived placeholder, never a picture.** Its entries draw
-theirs correctly, which is what makes this look like a different defect from the one already fixed.
-
-**It is the same defect, one level up.** `T-137`'s correction found that a *flat* extraction carries
-`thumbnails` — a list, worst first — and not the singular `thumbnail` the full extraction of a
-single video supplies. `_entry_thumbnail()` was written to read both shapes, and its docstring
-states the reasoning. **`_media_from` was not changed:**
-
-```python
-thumbnail_url = (_as_optional_str(info.get("thumbnail")),)  # the parent, singular only
-...
-thumbnail_url = (_entry_thumbnail(item),)  # each child, both shapes
-```
-
-A playlist is probed with `extract_flat`, so the **top-level** dict is the same flat shape as its
-entries. The parent therefore has no `thumbnail` key, and the row falls back to the tile.
-
-**The correction fixed the children and not the parent**, which is a recognisable shape: a fix
-applied where the symptom was observed rather than everywhere the cause reaches. The `T-137`
-correction was reviewed and approved with the entry half tested, because the entry half was what
-had been reported.
-
-#### Acceptance criteria
-
-- A staged playlist row shows the playlist's own picture, asserted against a **recorded flat
-  fixture** whose top level carries `thumbnails` and no `thumbnail` — the shape that made this fail
-- A single video still shows its picture, so the change cannot pass by preferring the list blindly
-- A playlist whose top level carries **neither** shape still draws the placeholder without error
-- `_entry_thumbnail` is **reused rather than reimplemented**; two functions choosing a picture is
-  how the two levels came to disagree in the first place. Rename it if it is no longer entry-only
-
-#### Out of scope
-
-- **The `Unknown · Unknown` on that row.** A playlist has no single duration, so *Unknown* is
-  honest there; whether the uploader should read the channel is `REQ-002`'s question and a separate
-  observation, not this one
-- Fetching a picture for a playlist that has none of its own, by falling back to its first entry's.
-  That is a product decision about what the row *means*, not a extraction fix
-
----
-
-### T-154 — A child row's picture is drawn at full size and covers its own text
-
-**Status:** Proposed — **found by the maintainer, 2026-08-05**, opening a sixteen-item playlist.
-**Recommended as a finding against `T-140`** (`UX-005` row 9c).
-**Owner:** Implementer
-**Priority:** **High** — it makes an opened playlist's entries hard to read, which is the shape's
-whole purpose
-**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
-**Depends on:** nothing
-**Relevant context:** `UX-005` row 9c, `T-140`, `T-119`, `ui/row_delegate.py` (`_paint_tile`),
-`ui/thumbnails.py` (`ThumbnailStore`)
-**Affected surfaces:** `ui/row_delegate.py`, possibly `ui/thumbnails.py`
-**Risk:** Low
-
-#### Scope
-
-**An entry's thumbnail spills out of its slot and over the row's text.** The delegate already sizes
-the slot by depth — `tile = CHILD_THUMBNAIL if depth else THUMBNAIL_SIZE`, 38x22 against the
-parent's full tile — and then draws the picture at the **pixmap's** size rather than the slot's:
-
-```python
-target = QRect(tile)
-target.setSize(pixmap.size())  # the picture's size, not the box's
-target.moveCenter(tile.center())
-painter.drawPixmap(target, pixmap)
-```
-
-`ThumbnailStore` caches one pixmap per URL at `THUMBNAIL_SIZE`, so a child asking for the small
-slot is handed the large picture and draws it centred on a 38x22 box — overflowing in every
-direction, including over the headline.
-
-**The comment above that code says the opposite of what it does**: *"Centred inside the fixed box:
-the picture keeps its aspect ratio, so … a wide one does not overflow the row."* That is true only
-while the pixmap is no larger than the tile, which holds for every parent row and no child row.
-`T-140` introduced the smaller child tile; nothing then checked what the painter did with it.
-
-#### Acceptance criteria
-
-- A child row's picture is **inside** its slot, asserted as geometry — the drawn rect against the
-  tile rect — rather than by eye
-- Aspect ratio is still preserved: a square picture does not stretch, which is what the current
-  code was reaching for and should keep
-- A **parent** row is unchanged, so the fix cannot pass by shrinking everything
-- Asserted with a pixmap **larger than the child slot**, which is the only case that fails today and
-  the case the store always produces
-- Whether the store gains a second cached size or the painter scales on draw is the implementer's,
-  but `T-119`'s cache-cost reasoning applies to the first option
-
-#### Out of scope
-
-- The child tile's dimensions. `UX-005` row 9c settles that a child's picture is smaller
-- Any change to `ThumbnailStore`'s eviction or disk cache (`T-119`)
-
----
-
-### T-155 — The playlist bar's blocks merge at most widths
-
-**Status:** Proposed — **found by the maintainer, 2026-08-05**: *"sometimes render correctly, other
-times they appear mashed together."* **Recommended as a finding against `T-140`** (`UX-005` row 9b).
-**Owner:** Implementer
-**Priority:** Medium — the bar is the group's only per-entry progress, and merged blocks under-report
-**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
-**Depends on:** nothing
-**Relevant context:** `UX-005` row 9b, `T-140`, `ui/row_delegate.py` (`_paint_segments`)
-**Affected surfaces:** `ui/row_delegate.py`
-**Risk:** Low
-
-#### Scope
-
-**It is cumulative rounding, which is why it looks intermittent.** Each block takes its left edge
-from a rounded running position and its width from a separately rounded span:
-
-```python
-span = (area.width() - gap * (n - 1)) / n  # fractional
-left = area.left() + round(position * (span + gap))
-block = QRect(left, area.top(), max(round(span), 1), area.height())
-```
-
-`round(span)` is the same for every block while the step between blocks is not, so wherever the
-rounded width exceeds the real step the block runs into its neighbour and the 1px gap disappears.
-Which gaps survive depends on the fractional part, so it changes with the bar's width — measured
-for sixteen entries:
-
-| Bar width | Span | Gaps lost, of 15 |
-|---|---|---|
-| 600 px | 36.56 | **7** |
-| 617 px | 37.63 | 6 |
-| 733 px | 44.88 | 2 |
-| 800 px | 49.06 | 0 |
-
-So it is deterministic per width and looks random to a user resizing a window. **It under-reports**:
-sixteen entries can read as nine blocks, and `UX-005` row 9b exists precisely so a skipped track has
-somewhere to be seen.
-
-#### Acceptance criteria
-
-- Every block's right edge is derived from the **next** block's left edge, so cumulative rounding
-  cannot accumulate — one arithmetic, not two
-- For a group of sixteen, **fifteen gaps are present at every width** across a swept range, asserted
-  by measuring the drawn rects rather than by rendering one width and looking
-- A group whose entries cannot each get a pixel still degrades honestly — `span < 1` returns today,
-  and whatever replaces it must not draw a lie
-- The `FAILED` block stays visually distinct, which is the row's whole reason (`UX-005` row 9b)
-
-#### Out of scope
-
-- The colours, settled by `T-140`'s correction and `T130-R1`
-- Showing per-entry progress *within* a block. The ruling is one block per entry, not a fraction
-
----
-
-### T-157 — A part-done playlist that is retargeted can no longer say what anything is
-
-**Status:** Proposed — **found by the maintainer, 2026-08-05**, retargeting a playlist with four
-entries already downloaded. **Recommended as a finding against `T-140` / `T140-R3`**, because the
-correction that made group retargeting work is what makes this state reachable.
-**Owner:** Implementer
-**Priority:** **High** — the download is correct; what the window says about it is not, and
-`REQ-009` is about exactly that
-**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
-**Depends on:** nothing
-**Relevant context:** `UX-005` rows 9c and 13, `T140-R3`, `REQ-009`, `Job.RETARGETABLE`,
-`ui/queue_view.py` (`_group_data`), `ui/row_delegate.py` (`CHILD_TEXT_LINES`)
-**Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, possibly `UX-005`
-**Risk:** Medium — the fix is presentational, but which presentation is a `UX-005` question
-
-#### Scope
-
-**Retargeting a part-done playlist necessarily splits its formats, and nothing can then report
-them.** `T140-R3` made one choice on the header move *"every member that can still take one"* —
-correctly, because a finished track cannot be un-downloaded. So four completed entries keep the old
-format and twelve queued ones take the new. **Divergence is not an edge case here; it is the
-guaranteed outcome of using the control on a playlist that has started.**
-
-Three surfaces then disagree or go silent, all at once:
-
-1. **The header's format line** reads `Download as: mixed across 2 formats`. Honest, and useless —
-   it names neither format.
-2. **The header's control is blank.** `_group_data` answers `PRESET_ROLE` with
-   `names.pop() if len(names) == 1 else None`, so a divergent group has no current value and the
-   dropdown draws empty. A blank control reads as *unset* or *broken*, not as *they differ*.
-3. **No child says anything.** `UX-005` row 9c gives an entry two lines and no format line, on the
-   stated reasoning that *"an entry inherits its group's format, so its third and fourth lines have
-   nothing to say."* **That premise is now false** for exactly the playlists a user has touched.
-
-So a user who retargets mid-flight — which the control invites — ends with sixteen rows, two
-formats, and no way to learn which row got which. The downloads are right; the report is not.
-
-#### The tension to resolve, which is `UX-005`'s
-
-Row 9c's economy was bought with an assumption of uniformity, and row 13's retarget breaks it.
-Whichever way it goes should be recorded there rather than decided here:
-
-- **A child says its format when it differs from the group's**, and stays silent when it agrees.
-  Keeps row 9c's economy for the common case and spends a line only where there is something to
-  say. Costs a variable row height, which `T-140` already spends deliberately.
-- **The header names both** — *"12 as Audio only (MP3), 4 as Audio only (original)"* — and children
-  stay silent. Cheaper, and stops scaling once a playlist has three formats.
-- **The control shows the majority value** rather than blank, with the divergence in the text.
-  Solves symptom 2 alone and leaves a user unable to act on one entry.
-
-#### Acceptance criteria
-
-- With a part-done playlist retargeted, **the window states both formats and which rows have
-  which**, by whichever route `UX-005` rules — asserted end to end, not per widget
-- The header's control is **never blank while the group has members**; whatever it shows, a user
-  can tell the difference between *they differ* and *nothing is set*
-- A **uniform** playlist is unchanged — row 9c's economy is not spent on the common case
-- The chosen behaviour is recorded in `UX-005` **before** it is implemented, per `T126-R4`'s
-  lesson: the same role meaning two things on two surfaces is what that finding was
-
-#### Out of scope
-
-- Changing which members a group retarget reaches. `T140-R3` settled that, and a finished track
-  cannot be re-downloaded by changing a dropdown
-- Per-entry retargeting from a child row. `T140-R3` deliberately took the child editors away
-
----
-
 ### T-121 — The phase-exit clip server aborts connections on hosted Windows
 
 **Status:** **Proposed — narrowed 2026-08-03, and still open.** Two of its three parts are struck
@@ -2929,6 +2486,443 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-149 — A paused queue looks exactly like a running one
+
+**Status:** **Complete — 2026-08-05.** The style sheet declares `:checked`, so a paused queue is visibly paused. The border thickens as well as darkening, per `NFR-005`.
+**Owner:** Implementer
+**Priority:** **High** — `UX-001` makes pause the only queue-wide control there is, and a control
+that cannot be read is one a user presses twice
+**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
+regression that work introduced. The ruling is the maintainer's
+**Depends on:** nothing
+**Relevant context:** `UX-001`, `T-129`, `T-132`, `NFR-005`, `ui/theme.py` (the `QToolBar
+QToolButton` rules), `ui/main_window.py` (`_pause_action`)
+**Affected surfaces:** `ui/theme.py`, possibly `ui/main_window.py`
+**Risk:** Low to fix, and the diagnosis is already done
+
+#### Scope
+
+**Pressing `Pause queue` changes nothing visible.** The queue stops starting downloads — the
+behaviour is correct and `T-080` proved it — but nothing on screen says so. A user who pressed it
+has no way to tell whether they did, and `UX-001` made this the *only* queue-wide control, so it
+is the one place that most needs to read back.
+
+**The state exists; the styling hides it.** `main_window._pause_action` builds one **checkable**
+`QAction`, deliberately — *"Pause and Resume are the same control"*. Qt's native style draws a
+checked tool button sunken. `ui/theme.py` then restyles `QToolBar QToolButton` and declares
+`:hover`, `:pressed` and `:disabled` — **and not `:checked`**. A stylesheet that sets `background`
+replaces the native rendering wholesale, so the checked state stops being drawn at all.
+
+**This is `T-129`'s finding, one state further on.** That task is titled *"The style sheet took the
+native style's metrics and states away"* and restored three states. `checked` was missed for a
+reason worth writing down: **pause is the only checkable control on the toolbar**, so no other
+widget would have shown the gap. `T-132`'s own acceptance criteria state the principle —
+*"styling the button at all takes both away"* — and name hover and pressed, because those were the
+two anybody had noticed.
+
+#### The classification question
+
+`docs/CRITERION_8_CHECKLIST.md` says a row that fails is a finding against the closed list and
+anything new is Phase 3. **This is neither cleanly.** It was not on the checklist — that is an
+omission in the checklist, not evidence the defect is new — and it is a regression *introduced by*
+`T-132`, of the class `T-132`'s criteria name.
+
+- **As `T-132`'s**, criterion 8 gains a finding and `T-132` reopens. Consistent with `T140-R5`,
+  which refused to let accepted work be completed by moving it elsewhere.
+- **As Phase 3**, the closed list stays closed, which is what keeps criterion 8 falsifiable at all.
+
+**Recommendation: `T-132`'s.** The window does not match the mockup's toolbar, which is exactly
+what criterion 8 asserts, and the styling that broke it is that task's.
+
+#### Acceptance criteria
+
+- With the queue paused, the control is **visibly distinct** from unpaused, asserted by rendering
+  the real toolbar rather than a stand-in — `T132-R1` is what a stand-in costs
+- Asserted in **both themes**, and the distinction meets `NFR-005`'s contrast floor
+- **Not by colour alone** (`NFR-005`): whatever carries the state must survive a greyscale reading
+- A screen reader announces the toggled state — `QAction` is checkable, so this is Qt's to give,
+  and asserting it is how we know the styling did not take that away too
+- The check runs against the **application's own style sheet**, so a future rule that overrides the
+  state again fails here
+
+#### Out of scope
+
+- Any change to what pause *does*. `UX-001` and `T-080` settle that, and this is about reading it
+- A separate `Resume` button. The control is one checkable action on purpose
+- Auditing every other Qt state the style sheet may have taken. Worth doing and its own task; this
+  one is the state a user is looking at right now
+
+*(**UI rework filed 2026-08-02** — `T-116` through `T-120`, from mockups the maintainer reviewed
+and chose between. They precede `T-107`: Phase 3 and 4 add a format table, a stream chooser, a
+playlist picker and a preset editor **to the queue that exists**, so settling what a row is first
+means the anatomy is decided once rather than renegotiated by each feature. `T-105`'s
+`docs/UX_SPEC.md` should absorb the chosen design; `UX-003` records the rule the add flow now
+follows.)*
+
+---
+
+### T-151 — The queue scrolls sideways, so a row's verbs are off screen and `⋯` never appears
+
+**Status:** **Complete — 2026-08-05.** Both lists keep a row inside the viewport. Stated as a constraint rather than a diagnosis: `offscreen` never reproduced the scrollbar, so the mechanism is not asserted.
+**Recommended as a finding against `T-135` rather than new scope — see below.**
+**Owner:** Implementer
+**Priority:** **High** — it makes two of criterion 8's own tasks unreachable in the shipped window
+**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
+closed list held strictly
+**Depends on:** nothing
+**Relevant context:** `T-134`, `T-135`, `UX-005` §4, `NFR-005`, `ui/queue_view.py` (`data`,
+`DisplayRole`), `ui/row_delegate.py` (`sizeHint`, `_verb_rects`), `ui/history_view.py`
+**Affected surfaces:** `ui/queue_view.py`, `ui/history_view.py`, possibly `ui/row_delegate.py`
+**Risk:** Low to fix; the diagnosis is done and the failure is entirely visible
+
+#### Scope
+
+**A long title makes the list scroll sideways instead of eliding.** With one completed download
+whose title runs long, the queue grows a horizontal scrollbar, the row's text is cut by the window
+edge, and **the verbs and `⋯` are drawn beyond the viewport** — reachable only by scrolling to
+them, which nothing tells the user to do.
+
+**The cause is a string nobody draws.** `QueueModel.data` answers `Qt.DisplayRole` with
+`self._text(row, column)` — the whole row's text — and `QListView` measures that to compute its
+content width. `RowDelegate` never renders it: it draws `HEADLINE_ROLE`, `DETAIL_ROLE` and the rest,
+elided to the rect it is given. So **the view sizes itself from one string and paints another**,
+and the painted one is the only one that respects the viewport.
+
+`sizeHint` returns `QSize(option.rect.width(), …)` — it already intends to take the width it is
+given rather than ask for more. The display text overrides that intent from outside.
+
+**Two of criterion 8's ten tasks are unreachable because of it:**
+
+- **`T-135`** — the `⋯` overflow. `_verb_rects` drops verbs only when the row *runs out of room*,
+  and a row that widens never does. So `⋯` never appears, and the finding `T-135` fixed —
+  *"the menu repeats the buttons already on the row"* — is replaced by a worse one: **there is no
+  menu and there are no buttons**, because both are off screen.
+- **`T-134`** — hover on a verb. A verb outside the viewport cannot be hovered, so the affordance
+  that task added is unreachable for exactly the rows that need it.
+
+**Why this reads as a `T-135` finding rather than new scope.** Criterion 8 asserts the window
+matches the features behind it. `T-135`'s feature is *present in code and absent from the window*,
+which is the same shape as `T140-R5` — accepted work that the built application does not offer.
+The closed list exists so that *new* observations do not reopen the phase; this is not a new
+feature request but the non-delivery of one already in the list. **The maintainer decides**, and
+`T-149` raises the same question independently.
+
+*(`DisplayRole` is not spurious: `ToolTipRole` shares it, and `test_queue_view` reads `text_at`.
+Whatever the fix, it must not silently remove the tooltip or the accessible text — `NFR-005`.)*
+
+#### Acceptance criteria
+
+- With a title long enough to overflow, the list shows **no horizontal scrollbar** and the row
+  elides instead, asserted by rendering rather than by reading a policy flag
+- At that width the row's verbs are **inside the viewport**, and `⋯` appears holding exactly the
+  dropped ones — `T-135`'s behaviour, reachable
+- The same holds for **History**, which draws the same anatomy through the same delegate
+- `ToolTipRole` still returns the full text, and `AccessibleTextRole` still returns the whole row —
+  the fix must not buy layout by taking away what a screen reader hears (`NFR-005`)
+- A test fails if the view is ever able to scroll horizontally again, so the fix cannot regress
+  quietly the way this defect arrived
+
+#### Out of scope
+
+- The add dialog's opening width, which is `T-150`
+- Wrapping the title over two lines instead of eliding. `UX-005` fixes the row's anatomy, and
+  changing it is that decision's to make
+
+---
+
+### T-152 — The declared keyboard route needs a mouse click before it works
+
+**Status:** **Complete — 2026-08-05.** Both views take a current row on reset and at construction, through the selection model with `NoUpdate` so it is current without being selected.
+**Owner:** Implementer
+**Priority:** **High** — `NFR-005` is a non-functional requirement, and this is the route it names
+**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
+**Depends on:** nothing
+**Relevant context:** `NFR-005`, `UX-005` §4, `T124-R1`, `T-135`, `ui/queue_view.py`
+(`_row_menu_asked_for`), `ui/history_view.py`, `tests/ui/test_row_verb_wiring.py`
+**Affected surfaces:** `ui/queue_view.py`, `ui/history_view.py`
+**Risk:** Low
+
+#### Scope
+
+**`Shift+F10` does nothing on a freshly opened window.** The handler is correct and its fallback is
+deliberate — `_row_menu_asked_for` resolves `indexAt(position)` and falls back to `currentIndex()`,
+which is `T124-R1`'s own fix for a route that *"silently did nothing"* when Qt derived the position
+from the widget rather than from a row.
+
+**But it ends `if not index.isValid(): return`, and nothing gives the list a current row.** Neither
+view calls `setCurrentIndex` on load; the two existing calls are in selection-restore paths that a
+user reaches only by having selected something. So the current index is invalid until the user
+**clicks a row** — and the declared keyboard route is unreachable until a *pointer* has been used.
+
+That is the opposite of what `NFR-005` asks. A keyboard route that requires a mouse first is not a
+keyboard route; it is a mouse route with a keyboard shortcut.
+
+#### Why no test caught it, which is the part worth keeping
+
+`tests/ui/test_row_verb_wiring.py` covers this route carefully — it synthesises the context-menu
+event because the `offscreen` plugin does not translate `Shift+F10`, and it deliberately aims the
+position **off every row** so a handler resolving through `indexAt` alone would fail. All good.
+
+**And its helper calls `body.setCurrentIndex(index)` first.** So the test establishes the exact
+state whose absence is the defect. It proves the fallback works *given* a current row and cannot
+say anything about a window where none was ever set — which is every window a user opens.
+
+This is the project's recurring shape stated once more: **a test that arranges the condition the
+defect is about**. `T126-R3` and `T140-R1` are the same lesson at other layers.
+
+#### Acceptance criteria
+
+- On a view with rows and **nothing ever clicked**, the keyboard route opens the menu for a
+  defensible row — asserted **without** the test setting a current index first, which is the whole
+  point
+- Whatever establishes that row is visible to a screen reader as the focused item, so the menu that
+  opens matches what the user was told they are on (`NFR-005`)
+- An **empty** view still does nothing, quietly and without raising
+- The behaviour holds for **History** as well as the queue — both declare the same route
+- The existing off-row regression stays, since `T124-R1`'s defect is a different one and both must
+  hold at once
+
+#### Out of scope
+
+- Whether the current row should also be *selected*. Focus and selection are different, and
+  `UX-005` does not rule on it
+- The `⋯` button's pointer route, which works
+- Making the platform plugin's `Shift+F10` translation testable. `ai/TESTING.md` records why it is
+  not, and this task needs a current row rather than a synthetic keypress
+
+---
+
+### T-153 — A playlist's own picture is never read, only its entries'
+
+**Status:** **Complete — 2026-08-05.** A playlist reads its own picture through `_entry_thumbnail`, the helper its entries already use.
+**Owner:** Implementer
+**Priority:** Medium — cosmetic in the queue, but it is the first thing a user sees after pasting
+**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
+**Depends on:** nothing
+**Relevant context:** `T-137` and its 2026-08-04 correction, `UX-003`, `REQ-002`,
+`downloader/ytdlp_adapter.py` (`_media_from`, `_entry_thumbnail`)
+**Affected surfaces:** `downloader/ytdlp_adapter.py`
+**Risk:** Low — the helper it needs already exists and is already tested
+
+#### Scope
+
+**The staged row for a playlist draws the derived placeholder, never a picture.** Its entries draw
+theirs correctly, which is what makes this look like a different defect from the one already fixed.
+
+**It is the same defect, one level up.** `T-137`'s correction found that a *flat* extraction carries
+`thumbnails` — a list, worst first — and not the singular `thumbnail` the full extraction of a
+single video supplies. `_entry_thumbnail()` was written to read both shapes, and its docstring
+states the reasoning. **`_media_from` was not changed:**
+
+```python
+thumbnail_url = (_as_optional_str(info.get("thumbnail")),)  # the parent, singular only
+...
+thumbnail_url = (_entry_thumbnail(item),)  # each child, both shapes
+```
+
+A playlist is probed with `extract_flat`, so the **top-level** dict is the same flat shape as its
+entries. The parent therefore has no `thumbnail` key, and the row falls back to the tile.
+
+**The correction fixed the children and not the parent**, which is a recognisable shape: a fix
+applied where the symptom was observed rather than everywhere the cause reaches. The `T-137`
+correction was reviewed and approved with the entry half tested, because the entry half was what
+had been reported.
+
+#### Acceptance criteria
+
+- A staged playlist row shows the playlist's own picture, asserted against a **recorded flat
+  fixture** whose top level carries `thumbnails` and no `thumbnail` — the shape that made this fail
+- A single video still shows its picture, so the change cannot pass by preferring the list blindly
+- A playlist whose top level carries **neither** shape still draws the placeholder without error
+- `_entry_thumbnail` is **reused rather than reimplemented**; two functions choosing a picture is
+  how the two levels came to disagree in the first place. Rename it if it is no longer entry-only
+
+#### Out of scope
+
+- **The `Unknown · Unknown` on that row.** A playlist has no single duration, so *Unknown* is
+  honest there; whether the uploader should read the channel is `REQ-002`'s question and a separate
+  observation, not this one
+- Fetching a picture for a playlist that has none of its own, by falling back to its first entry's.
+  That is a product decision about what the row *means*, not a extraction fix
+
+---
+
+### T-154 — A child row's picture is drawn at full size and covers its own text
+
+**Status:** **Complete — 2026-08-05.** A picture is fitted to its slot before centring. Its regression does not kill the mutant at a device pixel ratio of 1, and says so.
+**Recommended as a finding against `T-140`** (`UX-005` row 9c).
+**Owner:** Implementer
+**Priority:** **High** — it makes an opened playlist's entries hard to read, which is the shape's
+whole purpose
+**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
+**Depends on:** nothing
+**Relevant context:** `UX-005` row 9c, `T-140`, `T-119`, `ui/row_delegate.py` (`_paint_tile`),
+`ui/thumbnails.py` (`ThumbnailStore`)
+**Affected surfaces:** `ui/row_delegate.py`, possibly `ui/thumbnails.py`
+**Risk:** Low
+
+#### Scope
+
+**An entry's thumbnail spills out of its slot and over the row's text.** The delegate already sizes
+the slot by depth — `tile = CHILD_THUMBNAIL if depth else THUMBNAIL_SIZE`, 38x22 against the
+parent's full tile — and then draws the picture at the **pixmap's** size rather than the slot's:
+
+```python
+target = QRect(tile)
+target.setSize(pixmap.size())  # the picture's size, not the box's
+target.moveCenter(tile.center())
+painter.drawPixmap(target, pixmap)
+```
+
+`ThumbnailStore` caches one pixmap per URL at `THUMBNAIL_SIZE`, so a child asking for the small
+slot is handed the large picture and draws it centred on a 38x22 box — overflowing in every
+direction, including over the headline.
+
+**The comment above that code says the opposite of what it does**: *"Centred inside the fixed box:
+the picture keeps its aspect ratio, so … a wide one does not overflow the row."* That is true only
+while the pixmap is no larger than the tile, which holds for every parent row and no child row.
+`T-140` introduced the smaller child tile; nothing then checked what the painter did with it.
+
+#### Acceptance criteria
+
+- A child row's picture is **inside** its slot, asserted as geometry — the drawn rect against the
+  tile rect — rather than by eye
+- Aspect ratio is still preserved: a square picture does not stretch, which is what the current
+  code was reaching for and should keep
+- A **parent** row is unchanged, so the fix cannot pass by shrinking everything
+- Asserted with a pixmap **larger than the child slot**, which is the only case that fails today and
+  the case the store always produces
+- Whether the store gains a second cached size or the painter scales on draw is the implementer's,
+  but `T-119`'s cache-cost reasoning applies to the first option
+
+#### Out of scope
+
+- The child tile's dimensions. `UX-005` row 9c settles that a child's picture is smaller
+- Any change to `ThumbnailStore`'s eviction or disk cache (`T-119`)
+
+---
+
+### T-155 — The playlist bar's blocks merge at most widths
+
+**Status:** **Complete — 2026-08-05.** Each block's right edge comes from the next block's left, so cumulative rounding cannot merge them. Swept across six widths.
+**Owner:** Implementer
+**Priority:** Medium — the bar is the group's only per-entry progress, and merged blocks under-report
+**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
+**Depends on:** nothing
+**Relevant context:** `UX-005` row 9b, `T-140`, `ui/row_delegate.py` (`_paint_segments`)
+**Affected surfaces:** `ui/row_delegate.py`
+**Risk:** Low
+
+#### Scope
+
+**It is cumulative rounding, which is why it looks intermittent.** Each block takes its left edge
+from a rounded running position and its width from a separately rounded span:
+
+```python
+span = (area.width() - gap * (n - 1)) / n  # fractional
+left = area.left() + round(position * (span + gap))
+block = QRect(left, area.top(), max(round(span), 1), area.height())
+```
+
+`round(span)` is the same for every block while the step between blocks is not, so wherever the
+rounded width exceeds the real step the block runs into its neighbour and the 1px gap disappears.
+Which gaps survive depends on the fractional part, so it changes with the bar's width — measured
+for sixteen entries:
+
+| Bar width | Span | Gaps lost, of 15 |
+|---|---|---|
+| 600 px | 36.56 | **7** |
+| 617 px | 37.63 | 6 |
+| 733 px | 44.88 | 2 |
+| 800 px | 49.06 | 0 |
+
+So it is deterministic per width and looks random to a user resizing a window. **It under-reports**:
+sixteen entries can read as nine blocks, and `UX-005` row 9b exists precisely so a skipped track has
+somewhere to be seen.
+
+#### Acceptance criteria
+
+- Every block's right edge is derived from the **next** block's left edge, so cumulative rounding
+  cannot accumulate — one arithmetic, not two
+- For a group of sixteen, **fifteen gaps are present at every width** across a swept range, asserted
+  by measuring the drawn rects rather than by rendering one width and looking
+- A group whose entries cannot each get a pixel still degrades honestly — `span < 1` returns today,
+  and whatever replaces it must not draw a lie
+- The `FAILED` block stays visually distinct, which is the row's whole reason (`UX-005` row 9b)
+
+#### Out of scope
+
+- The colours, settled by `T-140`'s correction and `T130-R1`
+- Showing per-entry progress *within* a block. The ruling is one block per entry, not a fraction
+
+---
+
+### T-157 — A part-done playlist that is retargeted can no longer say what anything is
+
+**Status:** **Complete — 2026-08-05.** A child states its format when it differs; the group's control reads `Mixed — N formats`. Built against `UX-005`'s amendment, recorded first.
+**Owner:** Implementer
+**Priority:** **High** — the download is correct; what the window says about it is not, and
+`REQ-009` is about exactly that
+**Phase:** **Phase 2 — inside criterion 8**, by the maintainer's ruling of 2026-08-05. Accepted work that the built window does not deliver, which is what criterion 8 asserts
+**Depends on:** nothing
+**Relevant context:** `UX-005` rows 9c and 13, `T140-R3`, `REQ-009`, `Job.RETARGETABLE`,
+`ui/queue_view.py` (`_group_data`), `ui/row_delegate.py` (`CHILD_TEXT_LINES`)
+**Affected surfaces:** `ui/queue_view.py`, `ui/row_delegate.py`, possibly `UX-005`
+**Risk:** Medium — the fix is presentational, but which presentation is a `UX-005` question
+
+#### Scope
+
+**Retargeting a part-done playlist necessarily splits its formats, and nothing can then report
+them.** `T140-R3` made one choice on the header move *"every member that can still take one"* —
+correctly, because a finished track cannot be un-downloaded. So four completed entries keep the old
+format and twelve queued ones take the new. **Divergence is not an edge case here; it is the
+guaranteed outcome of using the control on a playlist that has started.**
+
+Three surfaces then disagree or go silent, all at once:
+
+1. **The header's format line** reads `Download as: mixed across 2 formats`. Honest, and useless —
+   it names neither format.
+2. **The header's control is blank.** `_group_data` answers `PRESET_ROLE` with
+   `names.pop() if len(names) == 1 else None`, so a divergent group has no current value and the
+   dropdown draws empty. A blank control reads as *unset* or *broken*, not as *they differ*.
+3. **No child says anything.** `UX-005` row 9c gives an entry two lines and no format line, on the
+   stated reasoning that *"an entry inherits its group's format, so its third and fourth lines have
+   nothing to say."* **That premise is now false** for exactly the playlists a user has touched.
+
+So a user who retargets mid-flight — which the control invites — ends with sixteen rows, two
+formats, and no way to learn which row got which. The downloads are right; the report is not.
+
+#### The tension to resolve, which is `UX-005`'s
+
+Row 9c's economy was bought with an assumption of uniformity, and row 13's retarget breaks it.
+Whichever way it goes should be recorded there rather than decided here:
+
+- **A child says its format when it differs from the group's**, and stays silent when it agrees.
+  Keeps row 9c's economy for the common case and spends a line only where there is something to
+  say. Costs a variable row height, which `T-140` already spends deliberately.
+- **The header names both** — *"12 as Audio only (MP3), 4 as Audio only (original)"* — and children
+  stay silent. Cheaper, and stops scaling once a playlist has three formats.
+- **The control shows the majority value** rather than blank, with the divergence in the text.
+  Solves symptom 2 alone and leaves a user unable to act on one entry.
+
+#### Acceptance criteria
+
+- With a part-done playlist retargeted, **the window states both formats and which rows have
+  which**, by whichever route `UX-005` rules — asserted end to end, not per widget
+- The header's control is **never blank while the group has members**; whatever it shows, a user
+  can tell the difference between *they differ* and *nothing is set*
+- A **uniform** playlist is unchanged — row 9c's economy is not spent on the common case
+- The chosen behaviour is recorded in `UX-005` **before** it is implemented, per `T126-R4`'s
+  lesson: the same role meaning two things on two surfaces is what that finding was
+
+#### Out of scope
+
+- Changing which members a group retarget reaches. `T140-R3` settled that, and a finished track
+  cannot be re-downloaded by changing a dropdown
+- Per-entry retargeting from a child row. `T140-R3` deliberately took the child editors away
+
+---
 
 ### T-140 — The queue draws a playlist as a row that opens
 
