@@ -1319,6 +1319,77 @@ narrow signature stays narrow.
 
 ---
 
+### T-145 — History lists a playlist's tracks individually instead of grouping them
+
+**Status:** Proposed — **found by the maintainer, 2026-08-04**, after a sixteen-item playlist
+finished and landed in History as sixteen unrelated rows.
+**Owner:** Implementer
+**Priority:** Medium — `UX-005` §3 gives both tabs the same row anatomy, and this is the largest
+place they now differ
+**Phase:** Phase 3
+**Depends on:** `T-140` (done — the queue's grouping), and it shapes `T-144`
+**Relevant context:** `UX-005` §3 and rows 9–9d, `T-140`, `T-137`, `DAT-005`, `T014-R4`,
+`persistence/repositories.py`, `ui/history_view.py`, `ui/queue_view.py`
+**Affected surfaces:** `persistence/` (a migration), `ui/history_view.py`, probably
+`ui/queue_view.py` — see the shared-code question
+**Risk:** Medium-High — a schema change *and* the first real pressure to share the grouping
+
+#### Scope
+
+A playlist downloads as one queue row that opens into its entries (`UX-005` row 9). When it
+finishes it becomes **sixteen unrelated rows in History**, and the fact that they arrived together
+— which the queue took trouble to show — is gone at exactly the point it becomes the only record.
+
+**History has no notion of a playlist at all.** Migration `0004` put `playlist_id`,
+`playlist_index` and `playlist_title` on `jobs`; the `history` table has `id`, `url`, `title`,
+`output_path`, `format_used`, `bytes_total`, `thumbnail_url`, `completed_at` and nothing else, and
+`history_view.py` contains no occurrence of the word. So this is `T-138`'s shape for the third
+time: the data was known while the job existed and had nowhere to live afterwards.
+
+**Three things to decide, and the task should not assume any of them.**
+
+1. **What a history group's chip says.** `UX-005` row 3 excluded History from the state chip
+   because *"every history row is finished, so a chip reading Done on all of them is noise"*. A
+   *group* is different — `16 items` is information rather than furniture — but that is an
+   argument for a **different** chip, not for reversing row 3.
+2. **What the segmented bar becomes.** Row 9b's bar exists to show a failed entry among running
+   ones. In History every member succeeded, so a bar of sixteen identical blocks is the furniture
+   row 3 rejected. Probably absent; that is a ruling, not a detail.
+3. **Whether a partly-failed playlist is one group.** Only completed downloads reach History
+   (`DAT-005`), so a sixteen-item playlist with two failures becomes a group of fourteen. Does the
+   header say `14 items` or `14 of 16`? The second needs the original count carried across, which
+   is another column.
+
+**The shared-code question, which is the real design work.** `QueueModel` holds `_Group`,
+`_rebuild_visible`, the expansion set and the header's roles — about a hundred lines that
+`HistoryModel` would otherwise duplicate, and duplication here means the two tabs drift in exactly
+the way `UX-005` §3 exists to prevent. Extracting it is the obvious move and is **not free**: the
+queue's grouping reads `Job` and its statuses, and History's would read `HistoryEntry`, so the
+shared part is the flattening and the expansion, not the data. Decide deliberately rather than by
+copy-paste.
+
+**It changes `T-144`.** Clearing history one group at a time is a different gesture from clearing
+sixteen rows, and a group's *Remove* must name what it takes — `DAT-005` §4's rule that the
+confirmation names its own count already applies and would now mean sixteen.
+
+#### Acceptance criteria
+
+- A finished playlist is **one history row that opens**, matching the queue's anatomy
+- Membership is durable — migration with a frozen fixture (`T014-R4`), and the columns carried
+  across at completion rather than reconstructed
+- A record written before the migration still renders, ungrouped, with no invented membership
+- Removing a group removes its members, with a confirmation naming its own count (`DAT-005` §4)
+- Whatever is shared with `QueueModel` is shared **once**, and the two tabs are asserted to agree
+  on the anatomy rather than each asserted alone
+- The three decisions above are recorded in `UX-005` before they are implemented, not after
+
+#### Out of scope
+
+- Re-grouping records that predate the migration. Their membership was never written down and
+  inventing it from titles or paths would be a guess presented as a record
+
+---
+
 ### T-107 — The format table: every stream a probe found
 
 **Status:** Proposed — **Phase 3 decomposition, 2026-08-01.** Blocked on Phase 2's exit and on
