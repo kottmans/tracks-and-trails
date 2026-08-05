@@ -55,6 +55,7 @@ from tracks_and_trails.ui.row_delegate import (
     HEADLINE_ROLE,
     HUE_ROLE,
     PRESET_CHOICES_ROLE,
+    PRESET_ROLE,
     PROGRESS_ROLE,
     SEGMENTS_ROLE,
     SELECTOR_ROLE,
@@ -1414,6 +1415,84 @@ def test_a_playlists_one_format_can_be_changed_on_the_group_that_owns_it(
         "moves to the group rather than disappearing with the per-entry controls"
     )
     assert view.model.flags(header) & Qt.ItemFlag.ItemIsEditable
+
+
+def test_choosing_on_the_group_retargets_every_member_that_can_still_move(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`UX-005` row 13's *effect*, which the control's presence does not establish.
+
+    The reviewer regression above proves a playlist offers an editor and that the header is
+    editable.  Both would still hold if choosing did nothing at all — and `T140-R3` asked for
+    retargeting to *honour group inheritance*, which is a claim about what happens to the members.
+
+    `_playlist_jobs` makes the first entry `COMPLETED` and the rest `QUEUED`, so the exclusion is
+    exercised rather than assumed: a finished track cannot be un-downloaded by changing a dropdown.
+    """
+    for job in _playlist_jobs(tmp_path, 3):
+        queue.add(job)
+    view = views(jobs=queue, manager=managers())
+    header = view.model.index(0, JOB_COLUMN)
+
+    chosen: list[tuple[str, str]] = []
+    view.model.preset_chosen.connect(lambda job_id, name: chosen.append((job_id, name)))
+
+    choices = view.model.data(header, PRESET_CHOICES_ROLE)
+    target = next(name for name in choices if name != view.model.data(header, PRESET_ROLE))
+
+    assert view.model.setData(header, target, PRESET_ROLE) is True
+
+    assert [job_id for job_id, _ in chosen] == ["entry-1", "entry-2"], (
+        f"the group retargeted {[j for j, _ in chosen]}; UX-005 row 13 moves every member that "
+        "can still take a format, and entry-0 is COMPLETED so it cannot"
+    )
+    assert {name for _, name in chosen} == {target}, (
+        "one choice on the group must reach the members as that same choice"
+    )
+
+
+def test_a_finished_playlist_refuses_a_group_retarget(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """The `not movable` half of `setData`'s group guard, which the header no longer offers.
+
+    `PRESET_CHOICES_ROLE` already returns `None` once no member is retargetable, so the control is
+    gone — but a model that answers a write it should refuse is one reset away from re-entering
+    itself (`T126-R3`), and the delegate is not the only caller.
+
+    The **same-value** half of that guard is deliberately not asserted here: `FakeQueue` does not
+    apply a retarget, so the members keep their original request and re-sending a name is a genuine
+    second change. Testing it against this fixture would measure the fixture, which is the shape
+    `T126-R3` was.
+    """
+    for index in range(3):
+        queue.add(
+            make_job(
+                f"entry-{index}",
+                tmp_path,
+                status=JobStatus.COMPLETED,
+                queue_position=index,
+                playlist_id="pl-1",
+                playlist_index=index,
+                playlist_title="Trail Sounds",
+            )
+        )
+    view = views(jobs=queue, manager=managers())
+    header = view.model.index(0, JOB_COLUMN)
+
+    chosen: list[str] = []
+    view.model.preset_chosen.connect(lambda job_id, _name: chosen.append(job_id))
+
+    assert view.model.data(header, PRESET_CHOICES_ROLE) is None
+    assert not view.model.flags(header) & Qt.ItemFlag.ItemIsEditable
+    assert view.model.setData(header, "Audio only (MP3)", PRESET_ROLE) is False
+    assert chosen == [], "a playlist with nothing left to move still emitted a retarget"
 
 
 def test_a_groups_segments_come_from_its_members(
