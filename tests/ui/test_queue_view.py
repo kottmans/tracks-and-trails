@@ -19,8 +19,9 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from PySide6.QtCore import QRect, Qt
-from PySide6.QtGui import QFontMetrics, QImage, QPainter
+from PySide6.QtCore import QEvent, QRect, Qt
+from PySide6.QtGui import QFontMetrics, QImage, QKeyEvent, QPainter
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QStyleOptionViewItem
 
 from tests.qt_lifecycle import drain
@@ -1813,4 +1814,70 @@ def test_a_paste_of_150_with_every_group_open_stays_within_the_repaint_budget(
     assert painted < REPAINT_BUDGET_SECONDS, (
         f"painting {VIEWPORT_ROWS} rows of a 160-row table took {painted:.3f}s, over the "
         f"{REPAINT_BUDGET_SECONDS}s budget"
+    )
+
+
+def test_a_playlist_opens_and_closes_from_the_keyboard(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """`T-140`'s accepted keyboard criterion, which `T140-R5` found accepted and unbuilt.
+
+    The only disclosure route in source was a left-button release inside the twisty's rectangle.
+    A keyboard user could reach the header, hear it announced as a playlist, and have no way to
+    see inside it — `NFR-005`'s parity failing on the one row that hides other rows.
+
+    Directional, not a toggle: `Right` on an already open group must leave it open. A toggle makes
+    the outcome depend on state the user cannot see, and a screen-reader user is exactly who
+    cannot.
+    """
+    for job in _playlist_jobs(tmp_path, 3):
+        queue.add(job)
+    view = views(jobs=queue, manager=managers())
+    header = view.model.index(0, JOB_COLUMN)
+    view._list.setCurrentIndex(header)
+
+    assert view.model.data(header, EXPANDED_ROLE) is False
+    assert view.model.rowCount() == 1, "a closed playlist is one row"
+
+    QTest.keyClick(view._list, Qt.Key.Key_Right)
+    assert view.model.data(view.model.index(0, JOB_COLUMN), EXPANDED_ROLE) is True
+    assert view.model.rowCount() == 4, "opening a three-entry playlist shows its header and three"
+
+    QTest.keyClick(view._list, Qt.Key.Key_Right)
+    assert view.model.data(view.model.index(0, JOB_COLUMN), EXPANDED_ROLE) is True, (
+        "Right closed an already open playlist; the keys are directional, not a toggle"
+    )
+
+    QTest.keyClick(view._list, Qt.Key.Key_Left)
+    assert view.model.data(view.model.index(0, JOB_COLUMN), EXPANDED_ROLE) is False
+    assert view.model.rowCount() == 1
+
+
+def test_the_disclosure_keys_leave_an_ordinary_row_alone(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """The filter must not swallow `Left`/`Right` for a row that has nothing to disclose.
+
+    `EXPANDED_ROLE` answers `None` off a group, and that is the whole guard. Asserted because a
+    filter that consumed these keys everywhere would take them away from the list for ever, and
+    nothing else would notice until something wanted them.
+    """
+    queue.add(make_job("solo", tmp_path, queue_position=0))
+    view = views(jobs=queue, manager=managers())
+    row = view.model.index(0, JOB_COLUMN)
+    view._list.setCurrentIndex(row)
+
+    assert view.model.data(row, EXPANDED_ROLE) is None
+    assert (
+        view.eventFilter(
+            view._list,
+            QKeyEvent(QEvent.Type.KeyPress, Qt.Key.Key_Right, Qt.KeyboardModifier.NoModifier),
+        )
+        is False
     )

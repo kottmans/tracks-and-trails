@@ -67,7 +67,16 @@ from contextlib import suppress
 from pathlib import Path
 from typing import Any, Final, Protocol
 
-from PySide6.QtCore import QAbstractTableModel, QModelIndex, QObject, QPoint, Qt, QTimer, Signal
+from PySide6.QtCore import (
+    QAbstractTableModel,
+    QEvent,
+    QModelIndex,
+    QObject,
+    QPoint,
+    Qt,
+    QTimer,
+    Signal,
+)
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -1237,6 +1246,17 @@ class QueueView(QWidget):
         # **Opening a playlist is the model's to decide** (`T-140`). The delegate reports the
         # click; which rows exist is not its answer to give.
         self._delegate.disclosure_toggled.connect(self._model.toggle_group)
+        # **The disclosure's keyboard route** (`T140-R5`, `NFR-005`). Until this the only way to
+        # open a playlist was a left-button release inside the twisty's rectangle, so a keyboard
+        # user could reach a group header, hear it announced as a playlist, and have no way to see
+        # what was inside it. `T-140`'s own acceptance criteria call expanding and collapsing
+        # keyboard reachable; the review found the criterion accepted and unbuilt.
+        #
+        # `Right`/`Left` rather than `Space` or `Return`: they are what a tree does everywhere, and
+        # both are unbound on a flat `QListView`, so nothing is taken away from an ordinary row.
+        # Installed on the *list* rather than the viewport because key events go to the focused
+        # widget, and the delegate's own filter watches the viewport for pointer events.
+        self._list.installEventFilter(self)
         self._delegate.verb_triggered.connect(self._on_verb)
         # **Rows are no longer uniform, and that is spent deliberately** (`T-140`, `UX-005`
         # row 9c). `setUniformItemSizes` lets the view compute the visible range arithmetically
@@ -1334,6 +1354,33 @@ class QueueView(QWidget):
             self.reveal_requested.emit(job_id)
         else:
             raise AssertionError(f"the row offered {verb.value} and nothing routes it")
+
+    def eventFilter(self, watched: QObject, event: QEvent) -> bool:
+        """`Right` opens the focused playlist and `Left` closes it (`T140-R5`, `NFR-005`).
+
+        **Only ever on a group header.** `EXPANDED_ROLE` answers `None` for an ordinary row, so an
+        entry or a standalone download sees these keys exactly as it did before — which is what
+        keeps this from stealing a key the list may want later.
+
+        **Directional rather than a toggle**, because the two keys already mean something to
+        anyone who has used a tree: pressing `Right` on an open group should leave it open, not
+        close it. A single toggle key would make the outcome depend on state the user cannot see
+        without looking, and a screen-reader user is exactly who cannot.
+        """
+        if watched is self._list and event.type() == QEvent.Type.KeyPress:
+            key = event.key()  # type: ignore[attr-defined]
+            if key in (Qt.Key.Key_Right, Qt.Key.Key_Left):
+                index = self._list.currentIndex()
+                expanded = self._model.data(index, EXPANDED_ROLE)
+                playlist_id = self._model.data(index, JOB_ID_ROLE)
+                if isinstance(expanded, bool) and isinstance(playlist_id, str) and playlist_id:
+                    wants_open = key == Qt.Key.Key_Right
+                    if wants_open != expanded:
+                        self._model.toggle_group(playlist_id)
+                    # Consumed either way: `Right` on an already open group is a no-op the user
+                    # asked for, not a request for the list's default horizontal scroll.
+                    return True
+        return bool(super().eventFilter(watched, event))
 
     def _row_menu_asked_for(self, position: QPoint) -> None:
         """The Menu key, Shift+F10 or a right-click asked for a row's overflow (`T124-R1`).
