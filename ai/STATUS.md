@@ -69,7 +69,8 @@ feeding. What follows is the reasoning the round produced, which does not expire
 **Phase 2 stays blocked**, and at the time of writing on two things rather than on the
 corrections: the re-review of this batch, and `T-128`'s diagnosis. *(Both are since closed —
 `T-128` is diagnosed in the very next paragraph, which is the conflict `P2EXIT-R14` names. What
-blocks Phase 2 now is criterion 6, in review, and criterion 8, awaiting the 40-row run.)*
+blocks Phase 2 now is **criterion 6 alone**, in review — criterion 8 is met on the
+maintainer's evidence since the 40-row run of 2026-08-05.)*
 
 **`T-128` is diagnosed, and it was the harness** (2026-08-04). A fixture teardown dropped a
 `QObject` that still owned a running `QTimer`; the dispatcher followed the pointer into freed
@@ -141,8 +142,9 @@ Complete**, `T-157` against a `UX-005` amendment recorded before it was built. *
 completed playlist drawing blank blocks, fixed at `6bae7ec`. That run recorded **39 of 41** — the historical result, kept as
 observed: **row 2.7** failed (`T-160`) and **row 3.15** failed (`T-161`). **Both are now
 dispositioned.** `T-161` is corrected; row 2.7 is removed from the checklist by `T161-R1`, its
-property moved to `T-160` unweakened. What criterion 8 owes is **a re-run over the remaining 40
-rows**, recording passed rows separately from failed ones, then Windows and Fedora evidence. The ruling's line was: a defect where accepted work
+property moved to `T-160` unweakened. **That re-run has since happened and passed** — 40 of 40 on `kirk`,
+`ai/evidence/2026-08-05-criterion-8-third-run.md`, with CI green on the candidate and the
+one-platform residual a recorded maintainer ruling. The ruling's line was: a defect where accepted work
 is *unreachable or drawn wrong* contradicts what the criterion asserts, while one asking for
 something *new* does not. The closed list stays closed — `T-149`, `T-151`, `T-152`, `T-153`,
 `T-154`, `T-155` and `T-157` are **findings against** `T-132`–`T-141`, not additions to it.
@@ -1401,7 +1403,7 @@ accepted the mockups, and four known Phase 3 defects present during the run.
 **Four blocking findings** (`ai/REVIEWS.md`, 2026-08-05 second submission). At submission,
 criteria 1, 6 and 8 were Not met. **`P2EXIT-R11` is since resolved, so criterion 1 is met** — this
 line said *"criteria 1, 6 and 8 are Not met"* after that, which is the finding it sits under.
-**Now: 6 and 8.**
+**Now: 6 alone** — `P2EXIT-R12` was answered by the 40-row run and criterion 8 is met.
 
 | Finding | What | State |
 |---|---|---|
@@ -1418,7 +1420,7 @@ listed its own failures underneath a *pass*. `P2EXIT-R14` is the third instance:
 updated and the siblings left behind. `P2EXIT-R10` and `COORD-R5` are the same class, and this is
 the second exit submission it has blocked.
 
-### What criterion 8 still needs
+### What criterion 8 needed, and how it was met
 
 **Row 2.7 has been removed from the checklist**, by the reviewer's direction in `T161-R1`. It was
 authored on 2026-08-05, after the closed list, to describe `T-160` — so it could never pass while
@@ -1463,3 +1465,11 @@ the 40-row run turned *"criterion 8 awaits the run"* from accurate into false in
 every passage that said it. **Searching for wrong-looking sentences cannot find these**, because
 they were not wrong. The check that works is the opposite direction: after an event changes a
 criterion's state, sweep every passage that *mentions that criterion*, whatever it says.
+
+**That rule was written here and then not followed, which is how `R15` survived its own
+correction.** The next sweep grepped a *vocabulary of staleness* — `awaits`, `owed`, `Not met` —
+and missed `awaiting`, `owes`, `needs`, and one line reading only *"Now: 6 and 8."* Enumerating the
+ways a claim can be stale is the same error one level up from enumerating the stale claims: **the
+set of wordings is unbounded and the set of mentions is not.** The sweep that finally worked listed
+every occurrence of *"criterion 8"* in both records — sixteen of them — with no filter at all, and
+read each one.

@@ -10373,3 +10373,51 @@ test, checklist run or CI dispatch is requested. Run `31051896815` is sufficient
 No new test was needed for this records-only finding. The reviewer appends this record only; no
 submitted document, source, test, task state, commit, remote ref or CI state was changed by the
 reviewer.
+
+## 2026-08-05 — P2EXIT-R15 focused re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `b4aae67`
+**Correction head:** `9ff3693`
+**Verdict:** **Changes requested.** The plan summary, absent-review claim, main criterion-8 verdict,
+P2EXIT-R14 row and row-3.15 sentence are corrected. P2EXIT-R15 remains open because four other live
+STATUS siblings still say criterion 8 awaits evidence or remains open while the same document
+records it met on the 40/40 run.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `P2EXIT-R15` | High | **Yes — Phase 2 exit truth / criterion 6** | Plan's Phase 2 summary now records criterion 8 met on the third-run evidence and criterion 6 as the only live gate. STATUS correctly says the exit review is in progress, advances its main criterion-8 paragraph through 40/40, marks P2EXIT-R14 resolved, and preserves the old row-3.15 verdict as explicitly superseded history. However, STATUS line 72 still says criterion 8 is a current blocker awaiting the 40-row run; lines 144–145 still say that run plus Windows/Fedora evidence are owed; line 1404 still says “Now: 6 and 8”; and the live heading at line 1421 remains “What criterion 8 still needs.” These are operative claims, not the deliberately quoted historical sentence. | **Open** |
+
+P2EXIT-R12 and P2EXIT-R14 remain resolved. Criterion 8 remains substantively met on the accepted
+evidence; no new checklist run, platform evidence, source correction or CI dispatch is required.
+
+### Required correction
+
+Update the four remaining STATUS siblings to the already-canonical state:
+
+- At the T-128 historical paragraph, say the current blocker is criterion 6 alone; criterion 8's
+  40-row run is complete.
+- In the main criterion-8 account, change the second-run “owes a re-run” sentence into past tense
+  and carry it through the third run and Linux-only ruling already stated above and below.
+- Change the review introduction's “Now: 6 and 8” to criterion 6 alone.
+- Retitle “What criterion 8 still needs” as a historical disposition section, or otherwise state
+  that it needs nothing further and the following text explains how the earlier failures closed.
+
+The P2EXIT-R15 table row may remain Open/awaiting re-review until the reviewer resolves it; that is
+an accurate process state, not a criterion-8 evidence claim. Preserve the second run at 39/41, the
+third at 40/40, and the Linux-only ruling unchanged.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check b4aae67..9ff3693`: **pass**. One commit changes plan and STATUS and carries the preceding review record. Checklist and evidence files are byte-unchanged. |
+| Accepted corrections | Plan summary: criterion 8 met / criterion 6 only live gate. STATUS: review in progress; main criterion-8 verdict 40/40; P2EXIT-R14 resolved; row 3.15's prior unrun claim explicitly superseded. |
+| Negative claim-shape audit | Live hits remain at STATUS lines 72, 144–145, 1404 and 1421. The R15 row is intentionally open pending this review; the Phase 1 and explicitly historical plan hits remain correctly scoped. |
+| Placement gate | `tests/unit/test_task_placement.py`: **14 passed**. |
+
+No new test was needed for this records-only correction. The reviewer appends this record only; no
+submitted document, source, test, task state, commit, remote ref or CI state was changed by the
+reviewer.
