@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Any, Final
 
 import pytest
-from PySide6.QtCore import QEvent, QModelIndex, QPoint, QRect, Qt
+from PySide6.QtCore import QEvent, QModelIndex, QRect, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QImage, QPainter
 from PySide6.QtTest import QTest
 from PySide6.QtWidgets import (
@@ -87,7 +87,6 @@ from tracks_and_trails.ui.add_dialog import (
 )
 from tracks_and_trails.ui.row_delegate import (
     EDIT_HINT,
-    EDITOR_WIDTH,
     GAP,
     HEADLINE_ROLE,
     INHERITED_TEXT,
@@ -98,6 +97,7 @@ from tracks_and_trails.ui.row_delegate import (
     ROW_PRESET_NAME,
     SELECTOR_LINES,
     SELECTOR_ROLE,
+    RowDelegate,
 )
 from tracks_and_trails.ui.staging import SETTLED, Row, RowState
 from tracks_and_trails.ui.thumbnails import THUMBNAIL_SIZE
@@ -1789,7 +1789,15 @@ def test_clicking_a_rows_control_opens_it_without_selecting_first(
 
         target = listing.model().index(1, 0)
         rect = listing.visualRect(target)
-        control = QPoint(rect.right() - EDITOR_WIDTH // 2, rect.center().y())
+        # **Aimed from the delegate's own rectangle, not from the row's centre** (`T-136`). This
+        # used `rect.center().y()`, which was inside the control only while it was centred in the
+        # whole row — and `T-136` moved it up beside the first two lines, because centred meant
+        # "across the selector line". A test that aims at a coordinate the delegate does not
+        # publish is a test that pins the layout it happened to be written against.
+        delegate = listing.itemDelegate()
+        assert isinstance(delegate, RowDelegate)
+        body = rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
+        control = delegate._control_rect(body, QFontMetrics(listing.font()).height()).center()
         QTest.mouseClick(listing.viewport(), Qt.MouseButton.LeftButton, pos=control)
         qapp.processEvents()
 

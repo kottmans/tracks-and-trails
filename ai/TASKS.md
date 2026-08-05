@@ -1153,65 +1153,6 @@ broken down. Phase 1 listed nine deliverables and produced fifty tasks; these ei
 starting point, not the total. `T-105` writes `docs/UX_SPEC.md` and every one of them depends on
 it.)*
 
-### T-136 — The staged row's format line runs underneath its format control
-
-**Status:** Proposed — **found by the maintainer in the running Add URLs dialog, 2026-08-04**, with
-a screenshot. Measured before filing.
-**Owner:** Implementer
-**Priority:** Medium — `REQ-009`'s promise is that the selector can be read and copied off the row
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `T118-R8`, `T118-R15`, `UX-004`, `REQ-009`, `ui/row_delegate.py`
-(`_control_rect`, `_paint_text`)
-**Affected surfaces:** `ui/row_delegate.py`
-**Risk:** Medium — the two claims in conflict were each made deliberately, so one has to give
-
-#### Scope
-
-The third line — `Download as: … · Format selector: bestaudio/best · 320 kbps MP3` — is drawn
-**under** the *Same as all* combo, and the tail of it is unreadable.
-
-**Two deliberate decisions collided.** `_paint_text` runs the selector at the *full* body width, and
-says why: *"the control sits beside the first two lines, and nothing needs the third line's
-right-hand end."* `_control_rect` places the control **vertically centred in the body** —
-`body.top() + (body.height() - height) // 2`. On a three-line row, centred is not beside lines one
-and two; it is across line three. Neither comment is wrong about its own half, and the premise the
-first one rests on was never asserted.
-
-Measured on a 96px row at the default font:
-
-| | |
-|---|---|
-| control | `QRect(563, 35, 190, 26)` |
-| selector | `QRect(112, 57, 642, 34)` — full body width |
-| intersection | `QRect(563, 57, 190, 4)`, **not empty** |
-
-The screenshot is worse than 4px because the real row is taller and the selector wraps to a second
-line, so more of it passes behind the control.
-
-**Which one gives is the question this task has to answer, not assume.** Narrowing the selector
-line restores `T118-R8` exactly — the defect where `REQ-009`'s selector was elided into
-uselessness by the control's slot — so it cannot simply be re-narrowed. Moving the control to sit
-beside the first two lines makes the existing comment true, and is the direction this task
-proposes; `T118-R15` sized `SELECTOR_LINES` and should be re-read first.
-
-#### Acceptance criteria
-
-- **The control's rect and the selector's rect do not intersect**, asserted as geometry at more
-  than one row height and font size — the collision is height-dependent, which is why one width
-  and one font would have missed it
-- The selector still runs the full width where the control does not reach it (`T118-R8`), and is
-  still not elided (`REQ-009`)
-- The comment in `_paint_text` and the behaviour of `_control_rect` agree afterwards, whichever
-  way the conflict is resolved
-- Asserted on a real staged row with a **wrapping** selector, since that is the case in the report
-
-#### Out of scope
-
-- The control's width or the choice to reuse one editor (`T118-R10`)
-
----
-
 ### T-139 — The bitrate control stays live when bitrate does not apply
 
 **Status:** Proposed — **found by the maintainer, 2026-08-04**, with *Best video up to 1080p (MP4)*
@@ -2099,6 +2040,85 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-136 — The staged row's format line runs underneath its format control
+
+**Status:** **Complete — 2026-08-04.** The control moved; the selector kept its width.
+
+**Two deliberate decisions collided, and neither was wrong about its own half.** `_paint_text`
+runs the selector at the *full* body width and says why — *"the control sits beside the first two
+lines, and nothing needs the third line's right-hand end"* — while `_control_rect` centred the
+control in the **whole body**. On a four-line row centred is across line three. The premise the
+first comment rested on was never asserted.
+
+*Which half gave was the decision this task had to make, and it made it:* the control moved to sit
+beside the first two lines, which is what the older comment already claimed. **The selector could
+not give** — narrowing it back to the leftover width beside the control is `T118-R8` exactly, the
+finding where `REQ-009`'s selector was elided into uselessness by that very slot.
+
+Measured on a 96px row: control `QRect(563, 35, 190, 26)` against selector `QRect(112, 57, 642,
+34)`, intersecting; after, `QRect(563, 10, 190, 26)` and no intersection. Asserted at **four row
+heights**, because the overlap is height-dependent and one height is how it shipped.
+
+**A pre-existing test aimed its click at `rect.center().y()`**, which was inside the control only
+while the control was centred in the row. Rewritten to aim from `_control_rect` itself — a test
+that aims at a coordinate the delegate does not publish is pinning the layout it happened to be
+written against.
+
+**Owner:** Implementer
+**Priority:** Medium — `REQ-009`'s promise is that the selector can be read and copied off the row
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `T118-R8`, `T118-R15`, `UX-004`, `REQ-009`, `ui/row_delegate.py`
+(`_control_rect`, `_paint_text`)
+**Affected surfaces:** `ui/row_delegate.py`
+**Risk:** Medium — the two claims in conflict were each made deliberately, so one has to give
+
+#### Scope
+
+The third line — `Download as: … · Format selector: bestaudio/best · 320 kbps MP3` — is drawn
+**under** the *Same as all* combo, and the tail of it is unreadable.
+
+**Two deliberate decisions collided.** `_paint_text` runs the selector at the *full* body width, and
+says why: *"the control sits beside the first two lines, and nothing needs the third line's
+right-hand end."* `_control_rect` places the control **vertically centred in the body** —
+`body.top() + (body.height() - height) // 2`. On a three-line row, centred is not beside lines one
+and two; it is across line three. Neither comment is wrong about its own half, and the premise the
+first one rests on was never asserted.
+
+Measured on a 96px row at the default font:
+
+| | |
+|---|---|
+| control | `QRect(563, 35, 190, 26)` |
+| selector | `QRect(112, 57, 642, 34)` — full body width |
+| intersection | `QRect(563, 57, 190, 4)`, **not empty** |
+
+The screenshot is worse than 4px because the real row is taller and the selector wraps to a second
+line, so more of it passes behind the control.
+
+**Which one gives is the question this task has to answer, not assume.** Narrowing the selector
+line restores `T118-R8` exactly — the defect where `REQ-009`'s selector was elided into
+uselessness by the control's slot — so it cannot simply be re-narrowed. Moving the control to sit
+beside the first two lines makes the existing comment true, and is the direction this task
+proposes; `T118-R15` sized `SELECTOR_LINES` and should be re-read first.
+
+#### Acceptance criteria
+
+- **The control's rect and the selector's rect do not intersect**, asserted as geometry at more
+  than one row height and font size — the collision is height-dependent, which is why one width
+  and one font would have missed it
+- The selector still runs the full width where the control does not reach it (`T118-R8`), and is
+  still not elided (`REQ-009`)
+- The comment in `_paint_text` and the behaviour of `_control_rect` agree afterwards, whichever
+  way the conflict is resolved
+- Asserted on a real staged row with a **wrapping** selector, since that is the case in the report
+
+#### Out of scope
+
+- The control's width or the choice to reuse one editor (`T118-R10`)
+
+---
 
 ### T-138 — History rows lose the thumbnail the queue row had
 

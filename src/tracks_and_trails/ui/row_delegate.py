@@ -452,13 +452,31 @@ class RowDelegate(QStyledItemDelegate):
         self._paint_text(painter, text_area, body, index, primary, muted, verbs_left)
         painter.restore()
 
-    def _control_rect(self, body: QRect) -> QRect:
+    def _control_rect(self, body: QRect, line: int = 0) -> QRect:
         """Where the row's format control sits. One definition, so the painted affordance, the
-        live editor and the click target cannot disagree about where it is."""
+        live editor and the click target cannot disagree about where it is.
+
+        **Beside the first two lines, not centred in the row** (`T-136`). It was centred in the
+        whole body, and `_paint_text` runs the selector at the *full* body width on the stated
+        reasoning that "the control sits beside the first two lines, and nothing needs the third
+        line's right-hand end". On a four-line row, centred is not beside lines one and two — it
+        is across line three, and the format selector `REQ-009` promises the user can read ran
+        underneath it. Measured before the fix: control `QRect(563, 35, 190, 26)` against selector
+        `QRect(112, 57, 642, 34)`, intersecting.
+
+        **The selector is the half that could not give.** Narrowing it back to the leftover width
+        beside the control is `T118-R8` exactly — the defect where `REQ-009`'s selector was elided
+        into uselessness — so the control moved instead, which also makes the older comment true
+        rather than leaving two correct halves that contradict each other.
+
+        `line` is the font's line height; `0` keeps the old centring for a caller that has no
+        metrics to hand, and every caller in this module has them.
+        """
         height = min(CONTROL_HEIGHT, body.height())
+        band = min(2 * line, body.height()) if line else body.height()
         return QRect(
             max(body.right() - EDITOR_WIDTH, body.left()),
-            body.top() + (body.height() - height) // 2,
+            body.top() + max(band - height, 0) // 2,
             min(EDITOR_WIDTH, body.width()),
             height,
         )
@@ -760,7 +778,7 @@ class RowDelegate(QStyledItemDelegate):
             label = INHERITED_TEXT if index.data(PRESET_INHERITABLE_ROLE) else ""
 
         box = QStyleOptionComboBox()
-        box.rect = self._control_rect(body)
+        box.rect = self._control_rect(body, option.fontMetrics.height())
         box.palette = option.palette
         box.currentText = label
         box.state = QStyle.StateFlag.State_Enabled
@@ -1076,7 +1094,7 @@ class RowDelegate(QStyledItemDelegate):
 
         if not self._editable(index):
             return False
-        if not self._control_rect(body).contains(where):
+        if not self._control_rect(body, QFontMetrics(option.font).height()).contains(where):
             return False
         view = cast("QAbstractItemView | None", self.parent())
         if view is None:
@@ -1212,7 +1230,7 @@ class RowDelegate(QStyledItemDelegate):
         body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
         # **The same rectangle the affordance was painted in** (`T118-R12`). One definition, so the
         # control does not move at the moment the user clicks it.
-        editor.setGeometry(self._control_rect(body))
+        editor.setGeometry(self._control_rect(body, option.fontMetrics.height()))
 
 
 def _text(index: QModelIndex | _PersistentIndex, role: int) -> str:

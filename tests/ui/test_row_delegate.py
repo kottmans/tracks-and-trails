@@ -46,6 +46,7 @@ from tracks_and_trails.ui.row_delegate import (
     PROGRESS_ROLE,
     ROW_HEIGHT,
     SEGMENTS_ROLE,
+    SELECTOR_LINES,
     STATE_CHIP_ROLE,
     STATE_ROLE,
     TEXT_LINES,
@@ -1067,3 +1068,44 @@ def test_a_group_needs_no_fraction_to_draw_its_progress(qapp: QApplication) -> N
         "the segmented bar was not drawn without a PROGRESS_ROLE, so a group can only show "
         "progress by inventing the fraction row 9a refuses"
     )
+
+
+@pytest.mark.parametrize("row_height", [88, 96, 120, 160])
+def test_the_format_control_never_covers_the_selector_line(
+    qapp: QApplication, row_height: int
+) -> None:
+    """`T-136`: the third line ran underneath the control that sits beside it.
+
+    **Two deliberate decisions collided**, and neither was wrong about its own half. `_paint_text`
+    runs the selector at the *full* body width and says why — *"the control sits beside the first
+    two lines, and nothing needs the third line's right-hand end"* — while `_control_rect` centred
+    the control in the whole body. On a four-line row, centred is across line three. Measured on a
+    96px row before the fix: `QRect(563, 35, 190, 26)` against `QRect(112, 57, 642, 34)`.
+
+    **Several heights, because the collision is height-dependent.** One height and one font would
+    have missed it, which is how it shipped: the overlap on a 96px row is 4px, and the maintainer
+    saw it because a real row is taller and the selector wraps.
+
+    The selector could not be the half that gave: narrowing it back to the leftover width beside
+    the control is `T118-R8`, the defect where `REQ-009`'s selector was elided into uselessness.
+    """
+    delegate = RowDelegate()
+    metrics = QFontMetrics(qapp.font())
+    line = metrics.height()
+    body = QRect(0, 0, RENDER_WIDTH, row_height).adjusted(PADDING, PADDING, -PADDING, -PADDING)
+
+    control = delegate._control_rect(body, line)
+    # Where `_paint_text` puts the selector: the last text line, at the full body width.
+    selector = QRect(
+        body.left() + THUMBNAIL_SIZE[0] + GAP,
+        body.top() + (TEXT_LINES - 1) * line,
+        max(body.right() - (body.left() + THUMBNAIL_SIZE[0] + GAP), 0),
+        line * SELECTOR_LINES,
+    )
+
+    assert control.intersected(selector).isEmpty(), (
+        f"on a {row_height}px row the control {control} covers the selector {selector}; the "
+        "format selector REQ-009 promises the user can read is drawn underneath a combo box"
+    )
+    assert control.top() >= body.top(), "the control was pushed above the row"
+    assert control.bottom() <= body.bottom(), "the control was pushed below the row"
