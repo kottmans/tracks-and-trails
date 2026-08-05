@@ -94,6 +94,17 @@ def _job(job_id: str, position: int, status: JobStatus = JobStatus.QUEUED) -> Jo
     return Job(id=job_id, url=request.url, request=request, status=status, queue_position=position)
 
 
+class _RecordingSink:
+    """A `JobSink` that accepts and remembers, so `T-016` leaves Add URLs enabled."""
+
+    def __init__(self) -> None:
+        self.submitted: list[Any] = []
+
+    def submit(self, jobs: Any, done: Any) -> None:
+        self.submitted.extend(jobs)
+        done(None)
+
+
 def _window_over(jobs: list[Job], tmp_path: Path, **handlers: Any) -> MainWindow:
     manager = DownloadManager(_EmptyJobStore(), concurrency=1)  # type: ignore[arg-type]
     return MainWindow(
@@ -1540,6 +1551,65 @@ def test_add_urls_is_the_first_thing_on_the_toolbar(qapp: QApplication, tmp_path
         "`NFR-005` exists to prevent"
     )
     assert window.add_urls_action is not None
+
+
+def test_the_windows_real_add_button_is_filled_after_the_toolbar_builds_it(
+    qapp: QApplication, tmp_path: Path
+) -> None:
+    """`T-132`'s brand fill must survive the order the real window sets its dynamic property.
+
+    The isolated style test sets ``primaryAction`` before the button meets the application style
+    sheet.  The product takes the opposite route: ``QToolBar`` creates its button first, then the
+    shell marks that existing widget as primary.  Qt does not automatically repolish a widget
+    when a dynamic property changes, so the isolated order can be green while the shipped toolbar
+    remains the same neutral surface as its secondary actions.
+    """
+    previous_sheet = qapp.styleSheet()
+    previous_palette = qapp.palette()
+    window: MainWindow | None = None
+    try:
+        theme.apply(qapp, theme.LIGHT)
+        # **Composed so `T-016` leaves the action enabled**, which needs a manager, a job sink and
+        # an output directory (`MainWindow.can_add_urls`). `_window_over` supplies only the first,
+        # so the action is disabled there and the sheet gives it `sunken` — correctly, because
+        # `UX-005` row 6 adopted that a disabled primary is *not* filled.
+        #
+        # **Not `setEnabled(True)` on the built button**, which was tried: a state change makes Qt
+        # re-evaluate the sheet by itself, so it repolishes the widget and the test passes with the
+        # product's own repolish deleted. That would have made this regression unable to fail —
+        # the exact defect `T132-R1` is about. Amended on the maintainer's instruction of
+        # 2026-08-04, and measured: property `True`, disabled `#EAEFE9`, enabled `#1E5E47`.
+        # Built directly rather than through `_window_over`, whose own first parameter is called
+        # `jobs` and so cannot pass a job *sink* through to the window.
+        window = MainWindow(
+            geometry_file=tmp_path / "window.toml",
+            concurrency=1,
+            manager=DownloadManager(_EmptyJobStore(), concurrency=1),  # type: ignore[arg-type]
+            queue=_FakeQueue([_job("job-1", 0)]),
+            jobs=_RecordingSink(),
+            output_directory=tmp_path / "downloads",
+        )
+        window.resize(900, 620)
+        window.show()
+        qapp.processEvents()
+
+        button = window.findChild(QToolButton, "addUrlsButton")
+        assert button is not None
+        assert button.isEnabled(), (
+            "the composed window still disables Add URLs, so this measures the disabled fill"
+        )
+
+        image = button.grab().toImage()
+        sampled = f"#{image.pixel(button.width() // 2, 4) & 0xFFFFFF:06X}"
+        assert sampled == theme.LIGHT.primary.upper(), (
+            f"the real Add URLs button fills with {sampled}, not the brand "
+            f"{theme.LIGHT.primary}; the dynamic property was applied without repolishing"
+        )
+    finally:
+        if window is not None:
+            window.close()
+        qapp.setPalette(previous_palette)
+        qapp.setStyleSheet(previous_sheet)
 
 
 def test_the_toolbar_and_the_menu_share_one_add_action(qapp: QApplication, tmp_path: Path) -> None:

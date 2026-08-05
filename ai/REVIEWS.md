@@ -9572,3 +9572,71 @@ widen T-130 into changing an established requirement solely to match mockup whit
 No further source or test correction is requested. This re-review changed only this review record;
 no submitted source, submitted test, coordination document, decision, task state, commit, remote
 ref or CI state was changed by the reviewer.
+
+## 2026-08-04 — criterion 8 UI batch initial review
+
+**Reviewer:** Codex (Reviewer)
+**Base:** `bd4dde8`
+**Submitted source head:** `768937c` (the later `36df043` changes only the handoff header)
+**Overall verdict:** **Changes requested.** The criterion amendment is recorded as an amendment,
+not inferred from the former Phase 3 sequencing rule, and the performance measurement is a
+reasonable structural guard. The closed list is not complete as implemented, however. Seven
+reviewer regressions fail, two accepted T-140 surfaces have no implementation at all, and the
+phase record calls the criterion met while exact-head Windows evidence is explicitly owed.
+
+### Findings
+
+| ID | Severity | Blocks approval | Area | Finding | Recommendation | Status |
+|---|---|---:|---|---|---|---|
+| `T137-R1` | **High** | **Yes — T-137 correctness** | Playlist entry routing | `_entries()` prefers a flat entry's `url` and discards `ie_key`. yt-dlp itself resolves that shape as the pair `url + ie_key`; a number of extractors put only an extractor-local id in `url`. T-137 then persists that value as a new standalone job and launches a fresh yt-dlp invocation with neither the extractor key nor a necessarily routable URL. Literal full-URL fixtures cannot expose this. The reviewer case supplies `url="abc123"`, `ie_key="Youtube"` and a public `webpage_url`; the durable entry is incorrectly `abc123`. | Persist enough routing information to reproduce yt-dlp's entry route, or select a public/original URL when one is available and prove it can be opened by a fresh extraction. Add an extractor-directed flat-entry fixture; do not assume every `url` is an absolute URL. | **Open** |
+| `T137-R2` | **High** | **Yes — UX-003 / T-137** | Playlist admission | The code correctly observes that a flat entry is not probed and therefore creates it as `QUEUED`, but `_on_committed()` immediately calls `admit(job_id)` with the default `DOWNLOAD` kind. The state word and comment do not create the missing probe: every entry bypasses UX-003's queued-job probe and goes directly to download. Filing T-143 outside criterion 8 cannot defer a violation in T-137's submitted behavior. | Route each new entry through a real probe before its download is admitted, preserving pause/probe semantics and per-entry failure reporting; alternatively obtain a maintainer amendment to UX-003 that explicitly accepts direct flat-entry downloads and their information loss. | **Open** |
+| `T132-R1` | **High** | **Yes — accepted UX-005 row 6** | Real toolbar styling | The isolated style test sets `primaryAction` before styling a bare button. The product lets `QToolBar` create the button and sets the dynamic property afterwards without repolishing it. In the shown real window the Add action therefore remains a neutral bordered button rather than the mock's filled brand primary. The reviewer sample is `#EAEFE9` against required `#1E5E47`; the screenshot agrees. | Exercise the actual `MainWindow` construction order and repolish the rendered button (or establish the property before its first style polish). Keep the real-window regression; the bare-button test is not evidence for this route. | **Open** |
+| `T134-R1` | **Medium** | **Yes — T-134** | History row hover | Queue installs `RowDelegate.watch_hover()`; History carries the same painted Open/Show-in-folder controls and even says the pointer is watched, but never calls it. Its viewport has mouse tracking disabled, so pointer-move hover feedback is absent unless a button is held. | Install the delegate's hover route on the History list and retain the viewport-level regression. | **Open** |
+| `T140-R1` | **High** | **Yes — wrong-target risk** | Visible selection mapping | `QueueView.selected_job_id()` applies a visible row number to `QueueModel.job_ids()`, which is the underlying durable order. A collapsed three-entry playlist followed by `solo` has two visible rows; selecting visible row 1 returns hidden `entry-1`, not `solo`. Open/reveal and any selection-scoped action can therefore target a different job than the one drawn as selected. | Resolve selection through the selected model index's `JOB_ID_ROLE`. Give group headers an explicit non-job/group selection path rather than treating their playlist id as a job id. Keep the collapsed-group reviewer regression. | **Open** |
+| `T140-R2` | **High** | **Yes — accepted UX-005 row 9d** | Clear finished | The accepted rule and T-140's own acceptance criteria say a partly finished group stays intact. `JobRepository.clear_completed()` still deletes every completed/cancelled row independently. The reviewer case removes the completed child beside a running sibling, shrinking or dissolving the group underneath the user. | Make clear-finished choose terminal playlist members only when every surviving member of that playlist is terminal, in the same transaction; retain ordinary standalone behavior and test the partly finished and all-finished cases. | **Open** |
+| `T140-R3` | **High** | **Yes — adopted mock / UX-005 row 9c** | Playlist format contract | The adopted mock puts the common `Download as` value on the group because short children drop their format line. `_group_data()` answers neither `SELECTOR_ROLE` nor a preset role, so a closed playlist shows no effective format anywhere. The implementation also continues to offer each retargetable child its own editor, which can make members differ; that contradicts the stated premise that every entry inherits the group's format. | Obtain one coherent ruling and implement it end to end. Under the adopted mock, persist/derive a common group format, display it on the header, and make retargeting honor group inheritance. If independent child formats are intended instead, amend row 9c/mockup and give every child an honest visible control/value without restoring the clipping defect. | **Open; maintainer disposition required** |
+| `T140-R4` | **Medium** | **Yes — T-140 grouping** | Flattened order | `_rebuild_visible()` inserts each expanded member at its durable queue position. Moving one member can place an unrelated standalone row between the header's children; the reviewer reproduction draws depths `[group, 1, 0, 1]`. One opened playlist is no longer one contiguous branch and the connecting rail visually claims the unrelated row's placement. | Either render a group's members contiguously beneath its first position regardless of member positions, or make reorder operations group-aware so the durable order cannot split a group. Pin the chosen ordering semantics with the interleaving regression. | **Open** |
+| `T140-R5` | **High** | **Yes — accepted T-140 criteria / NFR-005** | Scope completion | T-140 is marked Complete while its own acceptance criteria require group verbs, count-bearing group removal, and keyboard-reachable disclosure. The task explicitly says group verbs are “not done” and moves them to T-142; the only disclosure route in source is a left-button release from the delegate, with no key route. A closed criterion list may exclude genuinely later work, but it cannot make accepted work complete by moving that work outside the list without a maintainer amendment. | Implement the accepted criteria in T-140, including an explicit tested keyboard disclosure route, or obtain a maintainer ruling that amends UX-005/T-140 and criterion 8 together. Keep T-142 outside criterion 8 only for scope that was not already part of the adopted row and acceptance criteria. | **Open; maintainer disposition required** |
+| `P2EXIT-R10` | **High** | **Yes — Phase 2 exit truth** | Criterion 8 evidence | The plan calls criterion 8 **Met** while its own row says T-140's exact-head Windows run is owed, the handoff says the corrected UI has not run on Windows, and this review finds visible and behavioral failures. The plan/status also alternate between “nine tasks” and the ten ids T-132–T-141. Because five earlier visible defects escaped the gates and the real window exposes `T132-R1` immediately, automated checks alone are not sufficient evidence for this explicitly visual criterion. | Mark criterion 8 Not met. Correct and re-review the closed list, obtain exact-head Windows evidence, and run the built application against a written checklist derived from T-132–T-141 and the adopted mockups on the exact candidate head. This checklist is evidence for the existing closed list, not an invitation to add unrelated tasks. Correct the task count to ten. The 60-run OPS-007 soak remains separately owed. | **Open** |
+
+### Submitted uncertainties resolved
+
+- **Criterion amendment form: upheld.** `IMPLEMENTATION_PLAN.md` and `STATUS.md` identify the
+  maintainer's 2026-08-04 amendment rather than pretending these Phase 3 tasks were implied by an
+  older exit criterion. The problem is the premature **Met** verdict, not the authority or form of
+  the amendment.
+- **Closed edge: not upheld as currently drawn.** It is reasonable to close the list at T-141 so
+  later observations do not make “the UI is caught up” unfalsifiable. It is not reasonable to put
+  T-140's already accepted verbs, removal and keyboard criteria into T-142 outside that edge.
+- **Repaint/layout budget: upheld.** The test separately measures opening, every `sizeHint`, and a
+  real delegate paint, proves row heights differ, and keeps the 0.5 s threshold as a broad
+  structural alarm rather than a runner-speed claim. No defect was found in that instrument.
+- **Monochrome chips: upheld.** UX-005 requires words and forbids colour as the only signal; it
+  does not require semantic fill colours. The segmented group bar already distinguishes its
+  states visually and the text/count carries the accessible meaning.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | Reviewed `bd4dde8..768937c`. The checkout later advanced through docs/task-only T-144/T-145 commits; no committed `src/` delta exists after the submitted source head. Concurrent uncommitted T-146 theme work was excluded. |
+| Reviewer regressions | **7 failed**, each at its stated property: extractor-directed URL, part-finished group clearing, visible selection identity, contiguous group order, group format visibility, History hover tracking, and real-window primary fill. |
+| Real window | Shown offscreen at 900×620 using the product composition and light theme. The primary button remained neutral; its sampled fill was `#EAEFE9`, not brand `#1E5E47`. The playlist format was absent from its header, agreeing with the model regression. |
+| Reviewer test hygiene | `ruff check`, `ruff format --check`, `git diff --check`, bare `mypy --no-incremental`, and bare `mypy --platform win32 --no-incremental`: **pass** for the working tree containing the reviewer tests. |
+| Submitted Linux evidence | Implementer reports **2132 passed / 11 skipped / 2 deselected** at the corrected source head before these reviewer regressions. |
+| Windows | **Not run on `a884035`/`768937c`.** Last evidence is `1d87929`, before the correction source. |
+| Required soak | **Not run.** OPS-007's 60 clean full-suite Linux runs remain an independent Phase 2 evidence gate. |
+
+### Disposition
+
+Correct the seven reproduced source defects and reconcile T-140's missing accepted scope before
+spending the exact-head Windows run. Reset criterion 8 to Not met, then use a written built-window
+checklist on the reviewed candidate rather than deriving visual completion from unit gates. After
+focused re-review, exact-head Windows and the 60-run soak can supply the remaining platform and
+stability evidence.
+
+This review added failing regressions to `tests/unit/test_ytdlp_adapter.py`,
+`tests/unit/test_persistence.py`, `tests/ui/test_queue_view.py`,
+`tests/ui/test_history_view.py`, and `tests/ui/test_row_verb_wiring.py`, and appended this record.
+No submitted source, submitted test meaning, decision, task state, commit, remote ref or CI state
+was changed by the reviewer.

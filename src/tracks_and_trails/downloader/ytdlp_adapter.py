@@ -340,7 +340,13 @@ def _entries(info: Mapping[str, Any]) -> tuple[PlaylistEntry, ...]:
     for item in entries:
         if not isinstance(item, Mapping):
             continue
-        url = str(item.get("url") or item.get("webpage_url") or item.get("original_url") or "")
+        # **A public URL first, and `url` last** (`T137-R1`). yt-dlp resolves a flat entry
+        # internally as the pair `url` + `ie_key`, and a number of extractors put only an
+        # extractor-local id in `url` — `abc123`, not an address. A durable job carries neither the
+        # key nor yt-dlp's routing table, so a later worker handed that id has nothing to open. The
+        # order was the other way round, which worked on every literal fixture and would have
+        # failed on the extractors that need it most.
+        url = str(item.get("webpage_url") or item.get("original_url") or item.get("url") or "")
         if not url:
             continue
         title = str(item.get("title") or "").strip() or url

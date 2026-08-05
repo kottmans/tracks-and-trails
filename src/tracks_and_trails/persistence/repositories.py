@@ -409,14 +409,31 @@ class JobRepository:
         placeholders = ", ".join("?" for _ in statuses)
         with self._connection:
             # S608: `placeholders` is generated `?` marks; the status values are parameterised.
+            #
+            # **A playlist clears as a unit, or not at all** (`UX-005` row 9d, `T140-R2`). This
+            # deleted every terminal row independently, so a sixteen-track playlist with three
+            # done and thirteen running lost those three from underneath the group the user had
+            # opened specifically to watch — the exact thing row 9d was adopted to prevent, and
+            # `T-140` claimed as an acceptance criterion without implementing it.
+            #
+            # `NOT EXISTS` rather than two round trips: the survivors have to be judged inside the
+            # same transaction, or a member finishing between the read and the delete would let a
+            # group be cleared that was no longer wholly terminal.
+            sibling = "EXISTS (SELECT 1 FROM jobs AS sibling WHERE "
+            sibling += "sibling.playlist_id = jobs.playlist_id AND sibling.status NOT IN "
+            unfinished_member = f"{sibling}({placeholders}))"
+            clause = (
+                f"status IN ({placeholders}) "
+                f"AND (jobs.playlist_id IS NULL OR NOT {unfinished_member})"
+            )
             rows = self._connection.execute(
-                f"SELECT id FROM jobs WHERE status IN ({placeholders})",  # noqa: S608
-                tuple(statuses),
+                f"SELECT id FROM jobs WHERE {clause}",  # noqa: S608
+                (*statuses, *statuses),
             ).fetchall()
             cleared = [row["id"] for row in rows]
             self._connection.execute(
-                f"DELETE FROM jobs WHERE status IN ({placeholders})",  # noqa: S608
-                tuple(statuses),
+                f"DELETE FROM jobs WHERE {clause}",  # noqa: S608
+                (*statuses, *statuses),
             )
         return cleared
 

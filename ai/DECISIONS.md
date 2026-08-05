@@ -3087,6 +3087,8 @@ not react to the pointer). The two below are choices, so they are recorded here.
 
 | 12 | **The tab's count is of downloads, not of lines** | **Adopted 2026-08-04** (`T-140`). This was left *proposed* by the first amendment — "count rows as shown" — and running it settled it: a sixteen-item playlist beside one download read `Queue (17)` open and `Queue (2)` closed, so **the number moved when a user opened a group without the queue changing**. It counts jobs now, so a paste of sixteen reads sixteen at either state |
 
+| 13 | **A playlist has one format, and it lives on the group** | **Adopted 2026-08-04** (`T140-R3`). The mock puts `Download as` on the header *because* the short child rows drop their format line — and the implementation answered no format role on the header at all, so a **collapsed playlist showed its format nowhere**, while each child still offered an editor that could make members differ. The premise and the controls contradicted each other. Entries **inherit**: the header shows the value, retargeting happens on the group, and the per-entry editors go. *Declined:* independent per-entry formats, which would need an honest control on a two-line child and so would reintroduce the clipping `T-136` had just fixed |
+
 **Row 8 corrects a stated reason, not just a behaviour.** `_verb_rects` says the overflow "is the
 keyboard route, and a route that relocates is not a route" — which was true when it was written and
 stopped being true at `T124-R1`, when both lists took `CustomContextMenu`. Qt raises

@@ -73,6 +73,16 @@ def view_over(entries: list[HistoryEntry]) -> HistoryView:
     return build_history_view(FakeHistory(entries))
 
 
+def test_history_installs_the_hover_route_its_delegate_requires(qapp: QApplication) -> None:
+    """Reviewer regression for `T-134`: History uses the shared painted verb controls too."""
+    view = view_over([an_entry()])
+
+    assert view.table.viewport().hasMouseTracking(), (
+        "History never installed RowDelegate.watch_hover(); its painted Open and Show-in-folder "
+        "buttons cannot receive pointer-move events unless a mouse button is already held"
+    )
+
+
 def test_every_field_req_020_names_is_on_screen(qapp: QApplication) -> None:
     """The first criterion, asserted against a row whose fields are **all** populated.
 
