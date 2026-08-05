@@ -1334,3 +1334,24 @@ why "DRM is uncovered" outlived being true by four tasks. `T-058` recounted the 
 then found that the correction had *restated* the new number here three times while claiming this
 very sentence was true. Pointing at a number and repeating it are not the same act, and only the
 first one keeps.
+
+---
+
+## Criterion 8, second run — 2026-08-05
+
+**Passed, 41 rows, on `kirk`.** The record is
+`ai/evidence/2026-08-05-criterion-8-second-run.md`, which states the head as the range
+`6bae7ec..541b484` rather than a single sha: the maintainer did not record which was checked out,
+and `git diff --stat` across it is `ai/TASKS.md` alone. A range a reader can verify is worth more
+than a sha chosen for tidiness — `P2EXIT-R8` was evidence about a head that moved.
+
+**Rows 3.6 and §5 were run for the first time**, and 3.6 immediately failed: a completed playlist
+drew blank blocks, because `T-140`'s colour fix read `palette.highlight()` on a widget whose
+palette carries the selection tint by `T130-R1`'s design. Fixed at `6bae7ec`. The row that caught
+it had existed, unrun, since the checklist was written — which is the argument for running the
+rows nobody has run rather than the rows that are easy.
+
+**What the pass does not cover** is stated in the evidence and repeated here because it is what an
+exit review needs: one platform (Fedora, not Windows), one runner who is also the person who
+accepted the mockups, and four known defects present during the run (`T-161`–`T-164`).
+
