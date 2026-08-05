@@ -1238,6 +1238,44 @@ def test_clear_completed_removes_finished_rows_and_keeps_the_rest(
     assert repository.get("busy") is not None
 
 
+def test_clear_completed_keeps_a_partly_finished_playlist_as_one_unit(
+    repository: JobRepository,
+) -> None:
+    """Reviewer regression for `UX-005` row 9d and `T-140`'s accepted contract.
+
+    A completed child remains while any sibling is unfinished.  Otherwise one click silently
+    changes the group underneath the user, and can dissolve its header when only one child is
+    left.  Once every member is terminal, the existing clear operation may remove the group.
+    """
+    repository.append(
+        [
+            a_job(
+                "playlist-done",
+                status=JobStatus.COMPLETED,
+                playlist_id="playlist-1",
+                playlist_index=0,
+                playlist_title="Trail Sounds",
+            ),
+            a_job(
+                "playlist-running",
+                status=JobStatus.RUNNING,
+                playlist_id="playlist-1",
+                playlist_index=1,
+                playlist_title="Trail Sounds",
+            ),
+        ]
+    )
+
+    cleared = repository.clear_completed()
+
+    assert cleared == [], (
+        "Clear finished removed the completed member of a partly running playlist; UX-005 row "
+        "9d requires the group to remain intact until all of it is done"
+    )
+    assert repository.get("playlist-done") is not None
+    assert repository.get("playlist-running") is not None
+
+
 def test_clear_completed_leaves_history_alone(tmp_path: Path) -> None:
     """`T-085`, `P2PLAN-R8`: the queue forgets, and history is how the user still finds the file.
 

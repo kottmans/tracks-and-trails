@@ -268,6 +268,11 @@ class _Group:
 _Visible = _Group | int
 
 
+def group_members(group: _Group) -> list[_Row]:
+    """A group's rows, in the playlist's own order (`T140-R3`)."""
+    return list(group.members)
+
+
 def _order(job: Job) -> tuple[int, str]:
     """`queue_position` first, id to break ties. See the module docstring."""
     position = job.queue_position
@@ -411,6 +416,30 @@ class QueueModel(QAbstractTableModel):
         """The rows, in the order they are shown."""
         return tuple(row.job.id for row in self._rows)
 
+    def _in_a_drawn_group(self, row: _Row) -> bool:
+        """Whether this job is a member of a playlist the table is actually drawing as a group."""
+        playlist_id = row.job.playlist_id
+        return playlist_id is not None and playlist_id in self._visible_of
+
+    def job_id_at(self, row: int) -> str | None:
+        """The job a **visible row** is about, or `None` for a group header (`T140-R1`).
+
+        **Two index spaces, and they diverge the moment a playlist is collapsed.** `job_ids()` is
+        the durable order — every job, hidden or not — and the view's row numbers count only what
+        is drawn. `selected_job_id` indexed the first with the second, so with a three-entry
+        playlist closed above an ordinary download, selecting the visible row resolved to a hidden
+        member and every file action targeted a job the user could not see.
+
+        `None` for a header is not a gap: a group's id is a *playlist* id, and returning it as a
+        job id would hand `Open` and `Show in folder` something that never had a file.
+        """
+        if not 0 <= row < len(self._visible):
+            return None
+        entry = self._visible[row]
+        if isinstance(entry, _Group):
+            return None
+        return self._rows[entry].job.id
+
     def download_count(self) -> int:
         """How many **downloads** the queue holds, which is not how many rows it shows (`T-140`).
 
@@ -496,6 +525,11 @@ class QueueModel(QAbstractTableModel):
             # not exist.
             return self._group_data(entry, role)
         row = self._rows[entry]
+        if role == PRESET_CHOICES_ROLE and self._in_a_drawn_group(row):
+            # **Entries inherit; they do not each choose** (`UX-005` row 13, `T140-R3`). Offering
+            # each child its own editor let members of one playlist end up with different formats,
+            # which contradicts the premise the header's single `Download as` rests on.
+            return None
         if role == DEPTH_ROLE:
             # **One level, and only under a group that is actually drawn** (`T-140`). A member
             # whose group was dropped for having one entry is an ordinary row, and indenting it
@@ -627,14 +661,25 @@ class QueueModel(QAbstractTableModel):
             return False
         if not 0 <= index.row() < len(self._visible):
             return False
-        entry = self._visible[index.row()]
-        if isinstance(entry, _Group):
-            # A header has no request to retarget; `T126-R3`'s guard lives below and needs a job.
-            return False
-        if not 0 <= entry < len(self._rows):
-            return False
         name = value if isinstance(value, str) else None
         if name is None:
+            return False
+        entry = self._visible[index.row()]
+        if isinstance(entry, _Group):
+            # **One choice, applied to every member** (`UX-005` row 13, `T140-R3`). The group owns
+            # the format, so retargeting it is retargeting all of them — emitted per job because
+            # `preset_chosen` is the route a click already takes and the manager is what decides
+            # whether each is still retargetable.
+            #
+            # `T126-R3`'s guard applies here too: a lifecycle commit that re-selects the value the
+            # group already has must emit nothing, or the reset it causes re-enters this method.
+            movable = [row for row in group_members(entry) if row.job.status in Job.RETARGETABLE]
+            if not movable or all(name == _preset_name_for(row.job) for row in movable):
+                return False
+            for row in movable:
+                self.preset_chosen.emit(row.job.id, name)
+            return True
+        if not 0 <= entry < len(self._rows):
             return False
         job = self._rows[entry].job
         if name == _preset_name_for(job):
@@ -773,41 +818,46 @@ class QueueModel(QAbstractTableModel):
     def _rebuild_visible(self) -> None:
         """Flatten the rows into what the table shows: headers, and the rows not hidden (`T-140`).
 
-        **Order is the jobs' order, not the groups'.** A playlist's header takes the position of
-        its first member, so a queue the user reordered keeps reading the way they left it — the
-        alternative, hoisting every group to the top, would move rows nobody touched.
+        **Order is the jobs' order, and a group's members are contiguous** (`T140-R4`). A header
+        takes the position of its first member, so a queue the user reordered keeps reading the way
+        they left it — but the members then follow it *together*, whatever their own positions are.
+        Placing each member at its own durable position let an unrelated standalone row land
+        between a header and its children, which draws a row as belonging to a playlist it has
+        nothing to do with. The durable order still decides where the *group* sits; it no longer
+        decides whether the group is a group.
+
+        A group of one is dissolved: a heading over a single row is a heading over nothing.
         """
-        self._visible = []
         groups: dict[str, _Group] = {}
-        for position, row in enumerate(self._rows):
+        for row in self._rows:
             playlist_id = row.job.playlist_id
             if playlist_id is None:
-                self._visible.append(position)
                 continue
             group = groups.get(playlist_id)
             if group is None:
                 group = _Group(playlist_id, row.job.playlist_title or playlist_id)
                 groups[playlist_id] = group
-                self._visible.append(group)
             group.members.append(row)
-            if playlist_id in self._expanded:
-                self._visible.append(position)
+        grouped = {
+            playlist_id: group for playlist_id, group in groups.items() if len(group.members) > 1
+        }
 
-        # **A group of one is not a group.** A playlist whose other entries were removed would
-        # otherwise leave a header with a single row under it, which is a heading over nothing.
-        if any(len(group.members) == 1 for group in groups.values()):
-            lonely = {group.playlist_id for group in groups.values() if len(group.members) == 1}
-            self._visible = [
-                entry
-                for entry in self._visible
-                if not (isinstance(entry, _Group) and entry.playlist_id in lonely)
-            ]
-            for playlist_id in lonely:
-                group = groups.pop(playlist_id)
-                if playlist_id not in self._expanded:
-                    # Its one member was hidden under a header that is now gone.
-                    position = self._rows.index(group.members[0])
-                    self._visible.insert(min(position, len(self._visible)), position)
+        index_of = {id(row): number for number, row in enumerate(self._rows)}
+        self._visible = []
+        emitted: set[str] = set()
+        for position, row in enumerate(self._rows):
+            playlist_id = row.job.playlist_id
+            group = grouped.get(playlist_id) if playlist_id is not None else None
+            if group is None or playlist_id is None:
+                self._visible.append(position)
+                continue
+            if playlist_id in emitted:
+                # Already drawn, with its siblings, where its header sits.
+                continue
+            emitted.add(playlist_id)
+            self._visible.append(group)
+            if playlist_id in self._expanded:
+                self._visible.extend(index_of[id(member)] for member in group.members)
 
         self._visible_of = {}
         for line, entry in enumerate(self._visible):
@@ -867,6 +917,36 @@ class QueueModel(QAbstractTableModel):
                 if counted[state]:
                     parts.append(f"{counted[state]} {word}")
             return " · ".join(parts)
+        if role == SELECTOR_ROLE:
+            # **The group carries the format its entries inherit** (`UX-005` row 13, `T140-R3`).
+            # The mock puts `Download as` on the header precisely because the short child rows drop
+            # their format line — and this answered nothing, so a *closed* playlist showed its
+            # format nowhere at all. Derived from the members rather than stored: they are built
+            # from one preset, so agreement is the normal case and disagreement is worth saying
+            # out loud rather than hiding behind the first member's answer.
+            selectors = {row.job.request.format_selector for row in group.members}
+            if len(selectors) == 1:
+                return f"{FORMAT_PREFIX}{selectors.pop()}"
+            return f"{FORMAT_PREFIX}mixed across {len(selectors)} formats"
+        if role == PRESET_CHOICES_ROLE:
+            # **Retargeting moves to the group** (`UX-005` row 13, `T140-R3`). Taking the child
+            # editors away established only that members cannot diverge; a read-only header then
+            # left no route to change a playlist's format at all.
+            #
+            # Offered while **any** member would still accept it, not while all of them would. A
+            # track that has already downloaded cannot be re-downloaded by changing a dropdown —
+            # that is the physics of it, not a silent refusal — so a playlist with one finished
+            # entry and fifteen queued must still be retargetable. Requiring all of them would
+            # make the control vanish the moment the first track completed, which is when a user
+            # is most likely to be looking at it.
+            if not any(row.job.status in Job.RETARGETABLE for row in group.members):
+                return None
+            return tuple(preset.name for preset in BUILT_IN_PRESETS)
+        if role == PRESET_ROLE:
+            # The one preset the members share, or `None` when they do not — which the header's
+            # `SELECTOR_ROLE` already says out loud as *mixed across N formats*.
+            names = {_preset_name_for(row.job) for row in group.members}
+            return names.pop() if len(names) == 1 else None
         if role == HUE_ROLE:
             return placeholder_hue(group.members[0].job.url if group.members else group.title)
         if role == THUMBNAIL_URL_ROLE:
@@ -1364,7 +1444,9 @@ class QueueView(QWidget):
         selected = self._list.selectionModel().selectedIndexes()
         if not selected:
             return None
-        return self._model.job_ids()[selected[0].row()]
+        # **Through the model's own mapping** (`T140-R1`). This indexed `job_ids()` — the durable
+        # order — with a *visible* row number, which agree only while nothing is collapsed.
+        return self._model.job_id_at(selected[0].row())
 
     def selected_path(self) -> str | None:
         """The selected job's written file, or `None`. **`T-086`'s one question of this view.**

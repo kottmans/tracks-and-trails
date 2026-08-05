@@ -1041,3 +1041,34 @@ def test_a_flat_entry_takes_its_picture_from_the_thumbnails_list() -> None:
         "the singular shape stopped being read"
     )
     assert entries[2].thumbnail_url is None, "an entry with no picture invented one"
+
+
+def test_a_flat_entry_keeps_an_address_a_new_extraction_can_open() -> None:
+    """Reviewer regression for `T-137`: a flat entry can require its extractor key.
+
+    yt-dlp resolves a playlist entry internally as ``url`` plus ``ie_key``. Some extractors put
+    only an id in that first field; it is not a URL that a fresh yt-dlp invocation can route on
+    its own. When the processed entry also supplies its public ``webpage_url``, that is the value
+    a durable standalone job has to keep. Literal full-URL fixtures cannot expose the distinction.
+    """
+    media = adapter.project_media(
+        {
+            "_type": "playlist",
+            "title": "Extractor-directed entries",
+            "webpage_url": "https://example.invalid/list",
+            "entries": [
+                {
+                    "_type": "url",
+                    "url": "abc123",
+                    "ie_key": "Youtube",
+                    "webpage_url": "https://www.youtube.com/watch?v=abc123",
+                    "title": "One",
+                }
+            ],
+        }
+    )
+
+    assert media.entries[0].url == "https://www.youtube.com/watch?v=abc123", (
+        "the durable job kept yt-dlp's extractor-local value and discarded the public URL; "
+        "the later worker no longer has ie_key='Youtube' and cannot route that value"
+    )

@@ -54,8 +54,10 @@ from tracks_and_trails.ui.row_delegate import (
     EXPANDED_ROLE,
     HEADLINE_ROLE,
     HUE_ROLE,
+    PRESET_CHOICES_ROLE,
     PROGRESS_ROLE,
     SEGMENTS_ROLE,
+    SELECTOR_ROLE,
     STATE_CHIP_ROLE,
     STATE_ROLE,
     THUMBNAIL_URL_ROLE,
@@ -1364,6 +1366,56 @@ def test_a_groups_chip_counts_and_never_measures(
     )
 
 
+def test_a_closed_playlist_says_which_format_its_entries_inherit(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """Reviewer regression for `UX-005` row 9c and the adopted playlist mock.
+
+    The short children deliberately drop their format line because the group is meant to carry
+    the common value.  If the header answers no selector either, closing the group removes the
+    effective download format from every visible row.
+    """
+    for job in _playlist_jobs(tmp_path, 3):
+        queue.add(job)
+    view = views(jobs=queue, manager=managers())
+
+    shown = view.model.data(view.model.index(0, 0), SELECTOR_ROLE)
+
+    assert isinstance(shown, str) and shown, (
+        "the closed playlist says no format while every hidden child drops its own format line; "
+        "the adopted mock puts 'Download as' on the group precisely because children inherit it"
+    )
+
+
+def test_a_playlists_one_format_can_be_changed_on_the_group_that_owns_it(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """Reviewer regression for `UX-005` row 13's group-retargeting half.
+
+    Removing every child editor establishes only that children cannot diverge in the UI.  The
+    ruling also moves the one format control to the group; a read-only header leaves no route to
+    change the playlist format at all.
+    """
+    for job in _playlist_jobs(tmp_path, 3):
+        queue.add(job)
+    view = views(jobs=queue, manager=managers())
+    header = view.model.index(0, JOB_COLUMN)
+
+    choices = view.model.data(header, PRESET_CHOICES_ROLE)
+
+    assert choices, (
+        "the group displays its format but offers no editor; UX-005 row 13 says retargeting "
+        "moves to the group rather than disappearing with the per-entry controls"
+    )
+    assert view.model.flags(header) & Qt.ItemFlag.ItemIsEditable
+
+
 def test_a_groups_segments_come_from_its_members(
     queue: FakeQueue,
     managers: Callable[..., DownloadManager],
@@ -1451,6 +1503,61 @@ def test_a_hidden_entry_reports_no_row_of_its_own(
 
     view.model.toggle_group("pl-1")
     assert view.model.row_of("entry-1") == 2
+
+
+def test_selection_after_a_closed_playlist_names_the_row_that_is_visible(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """Reviewer regression for `T-140`: visible and durable row numbers are different.
+
+    A closed playlist occupies one visible line while retaining all of its jobs underneath. The
+    ordinary row after it must therefore resolve through the visible model role, not by applying
+    its visible row number to the underlying job list.
+    """
+    for job in _playlist_jobs(tmp_path, 3):
+        queue.add(job)
+    queue.add(make_job("solo", tmp_path, queue_position=9))
+    view = views(jobs=queue, manager=managers())
+
+    assert view.model.rowCount() == 2, "the playlist is not collapsed, so the index spaces agree"
+    view.table.setCurrentIndex(view.model.index(1, JOB_COLUMN))
+
+    assert view.selected_job_id() == "solo", (
+        "selecting the visible ordinary row resolved to a hidden playlist member; file and "
+        "selection actions would target a job other than the one the user selected"
+    )
+
+
+def test_an_open_playlists_members_stay_beneath_its_header_after_reordering(
+    queue: FakeQueue,
+    managers: Callable[..., DownloadManager],
+    views: Callable[..., QueueView],
+    tmp_path: Path,
+) -> None:
+    """Reviewer regression for `T-140`: moving a child must not tear its group in two."""
+    first, second = _playlist_jobs(tmp_path, 2)
+    queue.add(first)
+    queue.add(make_job("solo", tmp_path, queue_position=1))
+    queue.add(replace(second, queue_position=2))
+    view = views(jobs=queue, manager=managers())
+
+    view.model.toggle_group("pl-1")
+    visible = [
+        (
+            view.model.data(view.model.index(row, 0), HEADLINE_ROLE),
+            view.model.data(view.model.index(row, 0), DEPTH_ROLE),
+        )
+        for row in range(view.model.rowCount())
+    ]
+
+    assert visible[0][0] == "Trail Sounds"
+    assert [depth for _, depth in visible[1:3]] == [1, 1], (
+        f"the playlist's children are split by another download: {visible!r}; opening one row "
+        "must reveal one contiguous set beneath it"
+    )
 
 
 def test_a_paste_of_150_with_every_group_open_stays_within_the_repaint_budget(

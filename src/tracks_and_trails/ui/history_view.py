@@ -366,6 +366,7 @@ class HistoryView(QWidget):
         # **The pointer is watched so the row's verbs can react to it** (`T-134`). Not a
         # default: a viewport's mouse tracking is off, so without this Qt reports the
         # pointer only while a button is held.
+        self._delegate.watch_hover(self._table)
         self._delegate.verb_triggered.connect(self._on_verb)
         layout.addWidget(self._table)
 
