@@ -42,7 +42,10 @@ surfaces — *follows the batch* on one, *no built-in describes this* on the oth
 entry naively would have made a custom-selector row open its control reading the first built-in.
 The role is now surface-declared and the row speaks whenever the control cannot.
 
-**Twelve findings are corrected and awaiting re-review.**
+**Twelve findings were corrected in this round.** *(Their state is `ai/REVIEWS.md`'s, not this
+line's — it read "awaiting re-review" for days after they had been reviewed. A count restated
+here is a second copy that only ever drifts, which is the `COORD-R5` family this file keeps
+feeding. What follows is the reasoning the round produced, which does not expire.)*
 
 - **`T126-R1` was the Critical**, and it is the class this project keeps finding: `T118-R14` gave
   the add dialog a commit-before-reset lifecycle for its shared row editor, and the queue was given
@@ -117,16 +120,19 @@ exit review** that Phase 0 and Phase 1 each required (`AGENTS.md` §3) — not a
 **Criterion 8 was added on 2026-08-04: the window must catch up with the features behind it.**
 The maintainer ruled it after running the application and producing ten tasks in one afternoon,
 `T-132` through `T-141`. **Not met** — reset on 2026-08-04 by `P2EXIT-R10`, and what it now waits
-on is a re-review rather than unbuilt work. `T-140` was reopened for the accepted criteria it did
-not build (`T140-R5`); **all three are built** as of 2026-08-05 — group verbs, removal that names
+on is *evidence* rather than work or a verdict. `T-140` was reopened for the accepted criteria it
+did not build (`T140-R5`); **all three are built** as of 2026-08-05, and the task is
+**Complete** — group verbs, removal that names
 its own count, and a keyboard-reachable disclosure — with **`Pause all` deferred to `REQ-017`** by
 that day's amendment to `UX-005`, since holding one group has no mechanism once `T-080` deleted
-`JobStatus.PAUSED`. The round's **implementation** findings are resolved at `083fbe4` — `T140-R6`, `T137-R2`,
-`T137-R3` and `T140-R5`. **`P2EXIT-R10` is not among them**: it is the record finding, its
-correction is at `c920446`, and it awaits its own resolution. Saying "every finding" here was the
-same overstatement that finding exists to catch. **Criterion 8 also still owes a written checklist
-run against the built application on the exact candidate head** — `P2EXIT-R10` requires it because
-automated checks are not sufficient evidence for a criterion about what the window looks like. *(The measurement `UX-005` said could reopen the playlist shape did come back clear —
+`JobStatus.PAUSED`. **Every finding is now resolved.** The implementation findings — `T140-R6`, `T137-R2`, `T137-R3`
+and `T140-R5` — closed at `083fbe4`; `P2EXIT-R10`, the record finding, closed at `431bb47`, and
+`T-140` moved to **Complete** on that approval. **The criterion is still Not met**, and what it
+waits on is evidence rather than work: the built application run against a **written checklist**
+derived from `T-132`–`T-141` and the adopted mockups **on the exact candidate head**, then
+Windows and Fedora evidence on that same candidate. `P2EXIT-R10` requires the checklist because
+automated checks are not sufficient evidence for a criterion about what the window looks like, and
+that automation does not replace it. *(The measurement `UX-005` said could reopen the playlist shape did come back clear —
 150 entries across ten open playlists cost 0.002 s to open and 0.022 s to paint a viewport, against
 a 0.5 s budget. The shape stands, and so now does its implementation.)*
 
