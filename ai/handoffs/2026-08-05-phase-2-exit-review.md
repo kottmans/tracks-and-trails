@@ -1,5 +1,11 @@
 # Phase 2 exit review — request, 2026-08-05
 
+> **Superseded 2026-08-05: this submission was reviewed and changes were requested.** Four blocking
+> findings, `P2EXIT-R11`–`R14`; criteria 1, 6 and 8 are **Not met**. `R11` and `R13` are fixed,
+> `R14`'s record sweep is done, and `R12` leaves `T-161` open as Phase 2 work. The document is kept
+> as submitted, with this note, because the review is *about* it — editing the claims it was judged
+> on would erase the judgement. `ai/REVIEWS.md` holds the record.
+
 **From:** Claude Code (Implementer)
 **To:** Codex (Reviewer)
 **What is asked:** the **independent phase exit review** — criterion 6(a). It has never been
@@ -128,8 +134,10 @@ Mutants killed this round: no `setFocus`; no `modelReset` hook; `CANCELLED` mapp
 
 ## Phase 3 is filed, not deferred quietly
 
-Eleven findings came out of using the application and are recorded as Phase 3 by the closed-list
-rule of 2026-08-04: `T-146`, `T-150`, `T-156`, `T-158`, `T-159`, `T-160`, `T-161`, `T-162`,
-`T-163`, `T-164` (ruled, ready), `T-166`, `T-167`. **If you judge any of them to be accepted Phase 2
+**Twelve** findings came out of using the application and are recorded as Phase 3 by the
+closed-list rule of 2026-08-04: `T-146`, `T-150`, `T-156`, `T-158`, `T-159`, `T-160`, `T-161`,
+`T-162`, `T-163`, `T-164` (ruled, ready), `T-166`, `T-167`. *(This said "eleven" and listed twelve —
+`P2EXIT-R14`. Two have since moved out of the list entirely: `T-161` to Phase 2 by `P2EXIT-R12`,
+`T-162` to Phase 2 by `P2EXIT-R11`, leaving ten.)* **If you judge any of them to be accepted Phase 2
 work rather than new scope, say so** — that edge is what keeps criterion 8 falsifiable, and the
 maintainer has moved tasks across it four times already (`T-149`, `T-151`, `T-152`, `T-153`).

@@ -129,9 +129,12 @@ that day's amendment to `UX-005`, since holding one group has no mechanism once 
 `T-149` through `T-159`, none of them reported by any gate, against a suite of 2153 tests that
 was green throughout. `ai/evidence/2026-08-05-criterion-8-checklist-run.md` records it. Seven
 are inside criterion 8 and four are Phase 3, **ruled 2026-08-05** — and **all seven are now
-Complete**, `T-157` against a `UX-005` amendment recorded before it was built. What criterion 8
-owes is the checklist **re-run on the candidate**, rows 3.6 and §5 included, and then Windows
-and Fedora evidence. The ruling's line was: a defect where accepted work
+Complete**, `T-157` against a `UX-005` amendment recorded before it was built. **Rows 3.6 and §5 have since been run** on `kirk` — 3.6 caught a
+completed playlist drawing blank blocks, fixed at `6bae7ec`. That run recorded **39 of 41**:
+**row 2.7** fails (`T-160`) and **row 3.15** fails (`T-161`, every playlist drawing a blank parent
+picture). What criterion 8 owes now is `T-161` corrected — it is `T-153`'s unfinished half and so
+Phase 2, per `P2EXIT-R12` — then a re-run recording passed rows separately from failed ones, then
+Windows and Fedora evidence. The ruling's line was: a defect where accepted work
 is *unreachable or drawn wrong* contradicts what the criterion asserts, while one asking for
 something *new* does not. The closed list stays closed — `T-149`, `T-151`, `T-152`, `T-153`,
 `T-154`, `T-155` and `T-157` are **findings against** `T-132`–`T-141`, not additions to it.
@@ -1339,7 +1342,9 @@ first one keeps.
 
 ## Criterion 8, second run — 2026-08-05
 
-**Passed, 41 rows, on `kirk`.** The record is
+**39 of 41 rows passed, on `kirk`** — first recorded as a clean pass, corrected by
+`P2EXIT-R12`: **row 2.7** (`T-160`) and **row 3.15** (`T-161`) both fail, and writing *pass*
+beside a defect already filed is a verdict stated over its own evidence. The record is
 `ai/evidence/2026-08-05-criterion-8-second-run.md`, which states the head as the range
 `6bae7ec..541b484` rather than a single sha: the maintainer did not record which was checked out,
 and `git diff --stat` across it is `ai/TASKS.md` alone. A range a reader can verify is worth more
@@ -1369,3 +1374,23 @@ runners, so it cost no quota.
 **Every Phase 2 exit criterion is now claimed met except 6(a)**, the independent exit review,
 requested in `ai/handoffs/2026-08-05-phase-2-exit-review.md`.
 
+---
+
+## Phase 2 exit review — changes requested, 2026-08-05
+
+**Four blocking findings** (`ai/REVIEWS.md`, 2026-08-05 second submission). **Criteria 1, 6 and 8
+are Not met.**
+
+| Finding | What | State |
+|---|---|---|
+| `P2EXIT-R11` | High. A finished probe's `Probing` outlived it against a `Ready` chip, so criterion 1's accurate-progress promise failed on the durable playlist route | **Fixed.** Stage precedence is gated by whether the stage can still be live in the current status |
+| `P2EXIT-R12` | High. The second-run record said *"pass, all 41 rows"* while listing failures of rows 2.7 and 3.15 | **Record corrected; `T-161` is Phase 2 and open** |
+| `P2EXIT-R13` | Medium. The `T-152` focus correction fired on every model reset from either view, taking the keyboard off toolbar controls | **Fixed.** First rows only, in the visible view |
+| `P2EXIT-R14` | High. Plan and status carried incompatible live criterion-8 verdicts | **Fixed by this sweep** |
+
+**The pattern in three of the four is mine and it is one pattern.** `P2EXIT-R11` and `P2EXIT-R12`
+are both a claim stated over the top of contradicting evidence I had already written down —
+`T-162` was filed as a known defect while criterion 1 was called met, and the checklist record
+listed its own failures underneath a *pass*. `P2EXIT-R14` is the third instance: one occurrence
+updated and the siblings left behind. `P2EXIT-R10` and `COORD-R5` are the same class, and this is
+the second exit submission it has blocked.

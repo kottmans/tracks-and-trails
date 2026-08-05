@@ -334,6 +334,7 @@ class MainWindow(QMainWindow):
         self._geometry_file = geometry_file
         self._job_reader = job_reader
         self._retry = retry
+        self._row_counts: dict[int, int] = {}
         self._queue: QueueView | None = None
         self._history_view: HistoryView | None = None
         #: `T-086`'s open/reveal, one set per table. Held so they outlive `_build_body` — a
@@ -464,13 +465,48 @@ class MainWindow(QMainWindow):
         # so it is left out rather than kept as code that looks like it does something.
         for view in (self._queue, self._history_view):
             if view is not None:
-                # **Rows arriving is the other moment the key can be placed.** An empty view hides
-                # its list, so it cannot hold focus at construction; a first run therefore starts
-                # with no view focusable at all. Disclosed rather than hidden: this can move focus
-                # off a toolbar control somebody was using at the instant a first row lands. The
-                # alternative is a route `NFR-005` declares and a first-run window does not have.
-                view.table.model().modelReset.connect(self._give_the_rows_the_keyboard)
+                # **Rows arriving is the other moment the key can be placed** — but only the
+                # *first* rows, and only in the view the user is looking at (`P2EXIT-R13`). An
+                # empty view hides its list and cannot hold focus at construction, so a first run
+                # would otherwise start with no view focusable at all.
+                #
+                # This first ran on **every** structural reset from **either** model, which is far
+                # wider than the seam I disclosed: a background History refresh took the keyboard
+                # off `concurrencyChoice` while somebody was using it, and every ordinary queue
+                # refresh did the same. `T-152`'s trade was *initial* focus, not the ability to
+                # seize it later, and the connection did not implement the trade it claimed.
+                view.table.model().modelReset.connect(
+                    lambda view=view: self._first_rows_arrived(view)
+                )
+        self._row_counts = {
+            id(view): view.table.model().rowCount()
+            for view in (self._queue, self._history_view)
+            if view is not None
+        }
         self._give_the_rows_the_keyboard()
+
+    def _first_rows_arrived(self, view: QueueView | HistoryView) -> None:
+        """Place the keyboard when `view` gains its first rows, and at no other reset.
+
+        **Three conditions, and all of them are load-bearing** (`P2EXIT-R13`):
+
+        - the view **was empty** and is not any more — a refresh of an already-populated list is
+          not a moment anything needs to be focused,
+        - the view is the **visible** one — a hidden tab's refresh must not reach across to the
+          tab the user is on, which is the specific way this stole focus,
+        - and `_give_the_rows_the_keyboard` still declines when something in the view already
+          holds the keyboard.
+
+        The count is remembered per view rather than read from a signal, because `modelReset`
+        carries nothing and *"the list is not empty"* is not the question — *"the list just stopped
+        being empty"* is.
+        """
+        key = id(view)
+        was_empty = self._row_counts.get(key, 0) == 0
+        now = view.table.model().rowCount()
+        self._row_counts[key] = now
+        if was_empty and now and view is self._body.currentWidget():
+            self._give_the_rows_the_keyboard()
 
     def _give_the_rows_the_keyboard(self, *_ignored: object) -> None:
         """Focus the visible tab's rows, so the keyboard route reaches them (`T-152`, `NFR-005`).

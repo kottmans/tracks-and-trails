@@ -92,7 +92,7 @@ from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import Job
 from tracks_and_trails.core.presets import BUILT_IN_PRESETS, PRESET_OWNED_FIELDS
 from tracks_and_trails.downloader.manager import DownloadManager
-from tracks_and_trails.downloader.protocol import Progress
+from tracks_and_trails.downloader.protocol import Progress, Stage
 from tracks_and_trails.ui.job_detail import (
     REPAINT_INTERVAL_MS,
     STAGE_TEXT,
@@ -182,6 +182,31 @@ _SEGMENT_BY_STATUS: Final[dict[JobStatus, SegmentState]] = {
     JobStatus.FAILED: SegmentState.FAILED,
     JobStatus.CANCELLED: SegmentState.CANCELLED,
     JobStatus.COMPLETED: SegmentState.DONE,
+}
+
+#: Which stages a status can still be in the middle of (`P2EXIT-R11`, `REQ-014`).
+#:
+#: **A drawn stage is a claim about now, and it stops being true the moment the job leaves the
+#: status that stage belongs to.** Keyed by status rather than by "has it ended", because ending is
+#: not the only way a stage stops: a probe finishes into `READY`, which is not terminal and has no
+#: worker, and its last message described work that is over.
+#:
+#: A status absent from this table has **no** live stage — `QUEUED`, `READY` and the three endings
+#: are all states in which nothing is being worked on, so the status speaks for itself.
+_STAGES_STILL_LIVE_IN: Final[dict[JobStatus, frozenset[Stage]]] = {
+    JobStatus.PROBING: frozenset({Stage.PROBING}),
+    JobStatus.RUNNING: frozenset(
+        {
+            Stage.DOWNLOADING_VIDEO,
+            Stage.DOWNLOADING_AUDIO,
+            Stage.MERGING,
+            Stage.POST_PROCESSING,
+        }
+    ),
+    # `MERGING` and `POST_PROCESSING` are both reported around this status: yt-dlp merges as the
+    # download session ends, and the manager flips the status when the post-processing message
+    # arrives, so which side of the flip a message lands on is a race rather than a meaning.
+    JobStatus.POST_PROCESSING: frozenset({Stage.MERGING, Stage.POST_PROCESSING}),
 }
 
 #: What an empty queue says. A blank table and a table that failed to load look identical, and
@@ -1042,8 +1067,18 @@ class QueueModel(QAbstractTableModel):
         Same precedence as the detail view (`T017-R3`): while a job runs, "Downloading video" is
         better information than "Downloading". At an ending the status wins outright, because
         nothing a worker said before the end can still be true afterwards.
+
+        **The stage must also be one that could still be happening** (`P2EXIT-R11`, `T-162`). This
+        read `row.is_terminal` alone, which asks a different question: whether the job has stopped
+        for good. A **probe** ends without the job ending — it leaves `READY`, which is not
+        terminal — so a finished probe's last `Probing` outlived it and won for ever, against a
+        chip reading *Ready*. The comment above already stated the correct rule; the code
+        implemented a narrower one, and nothing could reach the gap until `ARC-009` routed durable
+        playlist entries through the probe lane and put sixteen such rows on screen at once.
         """
-        if row.is_terminal or row.displayed is None:
+        if row.displayed is None:
+            return STATUS_TEXT[row.job.status]
+        if row.displayed.stage not in _STAGES_STILL_LIVE_IN.get(row.job.status, frozenset()):
             return STATUS_TEXT[row.job.status]
         return STAGE_TEXT.get(row.displayed.stage, STATUS_TEXT[row.job.status])
 

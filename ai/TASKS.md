@@ -94,6 +94,100 @@ whose stale status agreed with their stale section passed it. All three are now 
 
 ## Ready
 
+### T-161 — The best thumbnail yt-dlp offers is sometimes one that does not exist
+
+**Status:** Ready — **reclassified Phase 2 on 2026-08-05 by `P2EXIT-R12`**, as `T-153`'s unfinished half rather than new scope. `T-153`'s accepted criterion is that the staged playlist row **shows** its own picture; its regression proves an address is *selected* and cannot prove the address yields an image, and in the built window it does not. **Checklist row 3.15 fails, and criterion 8 is Not met until this is corrected.** **Carries a design choice for the maintainer — see below.**
+**Owner:** Implementer
+**Priority:** Medium-High — every playlist on the site the project exists for draws a placeholder
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `T-153`, `T-137`, `T-119`, `UX-003`, `downloader/ytdlp_adapter.py`
+(`_entry_thumbnail`), `ui/thumbnails.py` (`ThumbnailStore`)
+**Affected surfaces:** `downloader/ytdlp_adapter.py`, `core/models.py` and `ui/thumbnails.py` if a
+fallback needs more than one candidate carried
+**Risk:** Medium — the honest fix changes what a `MediaInfo` carries
+
+#### Scope
+
+**`_entry_thumbnail` takes the last of `thumbnails` because yt-dlp orders them worst-first.** That
+reasoning is sound and the outcome is not: yt-dlp lists a `maxresdefault` candidate it has never
+verified. Measured against a real playlist on 2026-08-05:
+
+| # | Size | Result | URL |
+|---|---|---|---|
+| 0 | 180x180 | **200** | `…/mqdefault.jpg?sqp=…` |
+| 1 | 640x640 | **200** | `…/sddefault.jpg?sqp=…` |
+| 2 | 1200x1200 | **404** | `…/maxresdefault.jpg` — **no query signature at all** |
+
+So the row asks for the one picture in the list that does not exist, the fetch fails, and
+`ThumbnailStore` correctly gives up — `T-119`'s *"a thumbnail that will not fetch is never asked
+for again"* is working exactly as designed and makes the failure permanent for that row.
+
+**The tell is in the data**: the two that work carry a `sqp` signature and the one that fails does
+not. Whether that is a reliable signal or a coincidence of this extractor is the question this task
+has to answer rather than assume — `NFR-008` keeps yt-dlp's shape behind the adapter, and a rule
+inferred from one playlist is exactly the kind of thing that belongs in a recorded fixture first.
+
+**A single `thumbnail_url` may be the wrong shape.** `MediaInfo` carries one, so there is nothing to
+fall back to. The alternatives, none free:
+
+- **Choose better** — prefer the largest candidate that carries a signature, or the largest that is
+  not `maxresdefault`. Cheapest, and it encodes a guess about one site inside the adapter.
+- **Carry the candidates** and let `ThumbnailStore` try the next on a 404. Honest and general, and
+  it changes a model type plus the store's fetch loop.
+- **Verify at probe time.** Correct and unacceptable: a HEAD request per entry during an add is the
+  cost `project_media` has refused since `T-016`.
+
+#### The choice this needs, because one option changes the schema
+
+The measured cause: yt-dlp lists thumbnails worst-first and `_entry_thumbnail` takes the **last**
+as *best*. For this playlist the last is a `maxresdefault` yt-dlp never verified.
+
+```
+180x180    200   mqdefault.jpg?sqp=...      <- signed, resolved
+640x640    200   sddefault.jpg?sqp=...      <- signed, resolved
+1200x1200  404   maxresdefault.jpg          <- bare path, does not exist
+```
+
+**a. Try the candidates in order until one loads.** The only option that makes *"shows a picture"*
+true rather than *"selected an address"* — which is precisely what `P2EXIT-R12` says the current
+regression cannot prove. It also retires `T-119`'s give-up-permanently rule for the multi-candidate
+case. **Cost: `thumbnail_url` is a single persisted column in two tables**, so the candidate list
+has to survive to the store, and that is a schema change at an exit gate.
+
+**b. Choose a candidate more likely to resolve.** No schema change. Every rule available is a
+heuristic — *prefer the largest whose URL carries a query*, say — and it encodes one site's
+behaviour in a generic adapter. It would fix this playlist without establishing that any playlist
+shows a picture, which leaves row 3.15 passing by luck.
+
+**c. Amend what `T-153` promises**, to selecting an address rather than showing a picture. The
+reviewer named this as a legitimate route. It makes the criterion honest and gives the user
+nothing.
+
+**Not chosen by the implementer.** (a) is the right engineering answer and (b) is the cheap one;
+the difference between them is a persisted schema, and `AGENTS.md` §7 makes that a maintainer's
+call rather than an implementation detail.
+
+#### Acceptance criteria
+
+- A playlist whose best-listed thumbnail 404s **still shows a picture**, asserted against a recorded
+  fixture carrying the measured shape above — three candidates, the largest unusable
+- A playlist whose largest candidate *does* work still uses it, so the fix is not "always take a
+  small one"
+- Whatever rule is chosen is **stated in the adapter and transcribed into a fixture**, not inferred
+  at runtime from a pattern in a URL nobody wrote down
+- No probe-time network request per entry (`T-016`, `NFR-001`)
+- `T-119`'s give-up-on-failure behaviour is unchanged for a URL that genuinely cannot be fetched
+
+#### Out of scope
+
+- The derived placeholder tile, which is correct and is what a row with no picture should show
+- Entry thumbnails, which do resolve today — though the same rule governs them, so a fix here
+  should make both true rather than one
+
+---
+
+
 ### T-164 — A sixteen-block bar is unreadable in a narrow window
 
 **Status:** Ready — **ruled 2026-08-05**. The maintainer chose **merge to a fixed block count,
@@ -1359,131 +1453,6 @@ dropping one sooner. A squeezed bar has no equivalent: there is no overflow menu
 - The format control's collision with the tile, which is `T-160`
 - Hiding the bar entirely at some width. It is the row's only progress answer; if it cannot be
   drawn honestly that is `T-164`'s question, not a licence to omit it
-
----
-
-### T-162 — A probed entry keeps saying "Probing" after its probe has finished
-
-**Status:** Proposed — **found by the maintainer, 2026-08-05**, watching a paused queue after
-pasting a playlist. **Introduced by `ARC-009`**, which is mine: it created the state this exposes.
-**Owner:** Implementer
-**Priority:** **High** — every entry of every playlist misreports itself, and the row contradicts
-its own chip while doing it
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `ARC-009`, `T017-R3`, `UX-003`, `ui/queue_view.py` (`_status_text`,
-`_Row.displayed`)
-**Affected surfaces:** `ui/queue_view.py`
-**Risk:** Low
-
-#### Scope
-
-**The row says `Probing` and its chip says `Ready`, at the same time, about the same job.**
-
-`_status_text` prefers the stage a worker reported over the job's status, on `T017-R3`'s reasoning
-that *"while a job runs, 'Downloading video' is better information than 'Downloading'"* — and it
-gives the status precedence only when the row `is_terminal`:
-
-```python
-if row.is_terminal or row.displayed is None:
-    return STATUS_TEXT[row.job.status]
-return STAGE_TEXT.get(row.displayed.stage, STATUS_TEXT[row.job.status])
-```
-
-A finished probe leaves its last `Stage.PROBING` message in `row.displayed`, and `READY` is not
-terminal — so the stale stage keeps winning over the true status for as long as the row exists.
-
-**Nothing could hit this before `ARC-009`.** The only probes were *staging* probes, on rows that
-vanish when the dialog closes, so no durable row had ever sat at `READY` carrying a finished
-probe's last message. Routing playlist entries through the probe lane created exactly that state,
-and sixteen rows show it at once.
-
-**The comment already contains the right rule and the code implements a narrower one.** *"At an
-ending the status wins outright, because nothing a worker said before the end can still be true
-afterwards"* — a probe ending is an ending. `is_terminal` asks whether the *job* is finished, which
-is a different question.
-
-#### Acceptance criteria
-
-- A job whose probe has finished reports `Ready`, in the detail line and the chip alike, asserted
-  **together** — the two disagreeing is the symptom and either alone would miss it
-- A job that is *actually* probing still says `Probing`, so the fix is not "always prefer the
-  status" and `T017-R3`'s stage precedence survives for a running session
-- A download reports its stage while running, unchanged — `Downloading video` is still better than
-  `Downloading`
-- Asserted over the **probe → ready → download** sequence a playlist entry now takes, rather than
-  at one moment in it
-
-#### Out of scope
-
-- Whether a paused queue should start these downloads. It should not, and does not: `ARC-009` parks
-  them and `resume()` drains, which is `UX-001` working
-- The `0 of 16` chip on the group, which is correct — nothing has downloaded yet
-
----
-
-### T-161 — The best thumbnail yt-dlp offers is sometimes one that does not exist
-
-**Status:** Proposed — **found by the maintainer, 2026-08-05**, reporting that a playlist still drew
-the placeholder after `T-153` landed. **`T-153` is not wrong and is not the fix**: it reads the
-right field, and the URL that field yields returns 404.
-**Owner:** Implementer
-**Priority:** Medium-High — every playlist on the site the project exists for draws a placeholder
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `T-153`, `T-137`, `T-119`, `UX-003`, `downloader/ytdlp_adapter.py`
-(`_entry_thumbnail`), `ui/thumbnails.py` (`ThumbnailStore`)
-**Affected surfaces:** `downloader/ytdlp_adapter.py`, `core/models.py` and `ui/thumbnails.py` if a
-fallback needs more than one candidate carried
-**Risk:** Medium — the honest fix changes what a `MediaInfo` carries
-
-#### Scope
-
-**`_entry_thumbnail` takes the last of `thumbnails` because yt-dlp orders them worst-first.** That
-reasoning is sound and the outcome is not: yt-dlp lists a `maxresdefault` candidate it has never
-verified. Measured against a real playlist on 2026-08-05:
-
-| # | Size | Result | URL |
-|---|---|---|---|
-| 0 | 180x180 | **200** | `…/mqdefault.jpg?sqp=…` |
-| 1 | 640x640 | **200** | `…/sddefault.jpg?sqp=…` |
-| 2 | 1200x1200 | **404** | `…/maxresdefault.jpg` — **no query signature at all** |
-
-So the row asks for the one picture in the list that does not exist, the fetch fails, and
-`ThumbnailStore` correctly gives up — `T-119`'s *"a thumbnail that will not fetch is never asked
-for again"* is working exactly as designed and makes the failure permanent for that row.
-
-**The tell is in the data**: the two that work carry a `sqp` signature and the one that fails does
-not. Whether that is a reliable signal or a coincidence of this extractor is the question this task
-has to answer rather than assume — `NFR-008` keeps yt-dlp's shape behind the adapter, and a rule
-inferred from one playlist is exactly the kind of thing that belongs in a recorded fixture first.
-
-**A single `thumbnail_url` may be the wrong shape.** `MediaInfo` carries one, so there is nothing to
-fall back to. The alternatives, none free:
-
-- **Choose better** — prefer the largest candidate that carries a signature, or the largest that is
-  not `maxresdefault`. Cheapest, and it encodes a guess about one site inside the adapter.
-- **Carry the candidates** and let `ThumbnailStore` try the next on a 404. Honest and general, and
-  it changes a model type plus the store's fetch loop.
-- **Verify at probe time.** Correct and unacceptable: a HEAD request per entry during an add is the
-  cost `project_media` has refused since `T-016`.
-
-#### Acceptance criteria
-
-- A playlist whose best-listed thumbnail 404s **still shows a picture**, asserted against a recorded
-  fixture carrying the measured shape above — three candidates, the largest unusable
-- A playlist whose largest candidate *does* work still uses it, so the fix is not "always take a
-  small one"
-- Whatever rule is chosen is **stated in the adapter and transcribed into a fixture**, not inferred
-  at runtime from a pattern in a URL nobody wrote down
-- No probe-time network request per entry (`T-016`, `NFR-001`)
-- `T-119`'s give-up-on-failure behaviour is unchanged for a URL that genuinely cannot be fetched
-
-#### Out of scope
-
-- The derived placeholder tile, which is correct and is what a row with no picture should show
-- Entry thumbnails, which do resolve today — though the same rule governs them, so a fix here
-  should make both true rather than one
 
 ---
 
@@ -2893,6 +2862,67 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-162 — A probed entry keeps saying "Probing" after its probe has finished
+
+**Status:** **Complete — 2026-08-05.** A drawn stage now wins only when it could still be happening in the current status, from a table keyed by status. **Reclassified Phase 2 by `P2EXIT-R11`**, and the reviewer's reasoning is worth keeping: the closed-list rule governs which task owns a defect found by running the window, and cannot defer a failure of an *independent* Phase 2 criterion. This broke criterion 1's accurate-per-job-progress promise and `REQ-014`'s current-stage promise, so filing it as Phase 3 while calling criterion 1 met was a claim stated over the top of evidence already written down.
+pasting a playlist. **Introduced by `ARC-009`**, which is mine: it created the state this exposes.
+**Owner:** Implementer
+**Priority:** **High** — every entry of every playlist misreports itself, and the row contradicts
+its own chip while doing it
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `ARC-009`, `T017-R3`, `UX-003`, `ui/queue_view.py` (`_status_text`,
+`_Row.displayed`)
+**Affected surfaces:** `ui/queue_view.py`
+**Risk:** Low
+
+#### Scope
+
+**The row says `Probing` and its chip says `Ready`, at the same time, about the same job.**
+
+`_status_text` prefers the stage a worker reported over the job's status, on `T017-R3`'s reasoning
+that *"while a job runs, 'Downloading video' is better information than 'Downloading'"* — and it
+gives the status precedence only when the row `is_terminal`:
+
+```python
+if row.is_terminal or row.displayed is None:
+    return STATUS_TEXT[row.job.status]
+return STAGE_TEXT.get(row.displayed.stage, STATUS_TEXT[row.job.status])
+```
+
+A finished probe leaves its last `Stage.PROBING` message in `row.displayed`, and `READY` is not
+terminal — so the stale stage keeps winning over the true status for as long as the row exists.
+
+**Nothing could hit this before `ARC-009`.** The only probes were *staging* probes, on rows that
+vanish when the dialog closes, so no durable row had ever sat at `READY` carrying a finished
+probe's last message. Routing playlist entries through the probe lane created exactly that state,
+and sixteen rows show it at once.
+
+**The comment already contains the right rule and the code implements a narrower one.** *"At an
+ending the status wins outright, because nothing a worker said before the end can still be true
+afterwards"* — a probe ending is an ending. `is_terminal` asks whether the *job* is finished, which
+is a different question.
+
+#### Acceptance criteria
+
+- A job whose probe has finished reports `Ready`, in the detail line and the chip alike, asserted
+  **together** — the two disagreeing is the symptom and either alone would miss it
+- A job that is *actually* probing still says `Probing`, so the fix is not "always prefer the
+  status" and `T017-R3`'s stage precedence survives for a running session
+- A download reports its stage while running, unchanged — `Downloading video` is still better than
+  `Downloading`
+- Asserted over the **probe → ready → download** sequence a playlist entry now takes, rather than
+  at one moment in it
+
+#### Out of scope
+
+- Whether a paused queue should start these downloads. It should not, and does not: `ARC-009` parks
+  them and `resume()` drains, which is `UX-001` working
+- The `0 of 16` chip on the group, which is correct — nothing has downloaded yet
+
+---
+
 
 ### T-165 — A cancelled playlist reports itself as failed, and draws a full bar
 
