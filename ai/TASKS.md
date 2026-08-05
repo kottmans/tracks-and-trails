@@ -1142,6 +1142,104 @@ beats designing it against an imagined one.
 
 ---
 
+### T-163 — The verbs hold their ground until the progress bar has none
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, narrowing the window.
+**Owner:** Implementer
+**Priority:** Medium — the bar is the row's only answer to *how far along is this*
+**Phase:** Phase 3
+**Depends on:** nothing. Related to `T-160`, which is the control colliding on the same line
+**Relevant context:** `T-135`, `UX-005` §4, `T126-R2`, `ui/row_delegate.py` (`_verb_rects`,
+`_paint_verbs`, `_paint_progress`)
+**Affected surfaces:** `ui/row_delegate.py`
+**Risk:** Low
+
+#### Scope
+
+**`Open` and `Show in folder` keep their full width while the progress bar is squeezed to nothing.**
+`T-135` gave the row an overflow: verbs drop into `⋯` when they do not fit. What decides "fit" is
+the verbs' own width against the space left over — and the **bar is not in that calculation**, so
+the verbs take what they need and the bar takes what remains, which at a narrow window is a stub.
+
+The row already knows the bar matters: `T126-R2` put it *under* the selector rather than instead of
+it, on the reasoning that a row must not stop saying one true thing to say another. The same
+reasoning applies here and is not applied.
+
+**The verbs are the half that can give**, and `T-135` already built the mechanism for it — a
+dropped verb is still reachable through `⋯` and through the keyboard, so nothing is lost by
+dropping one sooner. A squeezed bar has no equivalent: there is no overflow menu for *progress*.
+
+#### Acceptance criteria
+
+- At a width where both cannot fit, verbs drop into `⋯` **before** the bar falls below a stated
+  minimum — the minimum is named in the source rather than tuned by eye
+- The bar's minimum is derived from what it has to show: a segmented bar for sixteen entries needs
+  more than a single fraction does (`T-155`)
+- Asserted across a **swept** range of widths, per `T-155`'s lesson that one width proves nothing
+- `⋯` still holds exactly what was dropped (`T-135`), and the keyboard route still reaches
+  everything (`T-152`, `NFR-005`)
+
+#### Out of scope
+
+- The format control's collision with the tile, which is `T-160`
+- Hiding the bar entirely at some width. It is the row's only progress answer; if it cannot be
+  drawn honestly that is `T-164`'s question, not a licence to omit it
+
+---
+
+### T-164 — A sixteen-block bar is unreadable in a narrow window
+
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, with a proposed answer: *"at a
+certain size it should become a single solid progress bar based on the number of videos downloaded
+out of the total."* **Needs a `UX-005` ruling before it is built**, for the reason below.
+**Owner:** Implementer
+**Priority:** Medium
+**Phase:** Phase 3
+**Depends on:** a `UX-005` amendment. `T-163` is adjacent — that one is about the bar having *room*,
+this is about what to draw once it does
+**Relevant context:** `UX-005` row 9b, `T-140`, `T-155`, `ui/row_delegate.py` (`_paint_segments`)
+**Affected surfaces:** `ui/row_delegate.py`, `UX-005`
+**Risk:** Medium — the obvious fix removes the thing row 9b exists for
+
+#### Scope
+
+**Sixteen blocks in a 200px bar are twelve pixels each**, and at that size the segmentation reads as
+noise rather than as information. The maintainer's suggestion — collapse to one solid bar showing
+*done out of total* — is the natural answer and **loses exactly what row 9b was written for**:
+
+> Under one continuous bar a playlist that quietly skipped a track looks exactly like one that got
+> everything.
+
+A solid `4 of 16` bar cannot show that one of the four failed. So the choice is not *segmented
+versus solid*; it is **what a narrow bar must still be able to say**, and the options differ in what
+they give up:
+
+- **Solid, plus the failure in words.** The chip already reads `4 of 16` and the second line already
+  counts; a failed entry could be named there instead of drawn. Keeps row 9b's *guarantee* while
+  dropping its *mechanism*.
+- **Merge to a fixed number of blocks** — say eight — each standing for two entries, coloured by the
+  worst state within it. Keeps a failure visible and stops the width from deciding legibility.
+- **A minimum block width, and scroll or truncate past it.** Honest and probably unusable.
+
+`T-155` is the reason to decide rather than tune: that defect was blocks merging by accident, and a
+fix here that merges them *on purpose* must be distinguishable from it, in the source and to a user.
+
+#### Acceptance criteria
+
+- The rule that decides the narrow rendering is **recorded in `UX-005` before it is implemented**,
+  per `T126-R4`
+- At every width, a playlist with a failed entry is **distinguishable** from one without — whichever
+  way the ruling goes, this is row 9b's guarantee and does not bend
+- The transition between renderings is asserted at its own boundary, not sampled either side of it
+- Deliberate merging is visibly different from `T-155`'s accidental kind: gaps stay uniform
+
+#### Out of scope
+
+- The bar's colours, settled by `T-140`'s correction and `T130-R1`
+- Per-entry progress inside a block. The ruling is one block per entry, not a fraction
+
+---
+
 ### T-162 — A probed entry keeps saying "Probing" after its probe has finished
 
 **Status:** Proposed — **found by the maintainer, 2026-08-05**, watching a paused queue after
@@ -1269,9 +1367,11 @@ fall back to. The alternatives, none free:
 
 ### T-160 — The format control is drawn over the thumbnail on a narrow row
 
-**Status:** Proposed — **found by the maintainer, 2026-08-05**, at the add dialog's default size.
+**Status:** Proposed — **found by the maintainer, 2026-08-05**, at the add dialog's default size,
+and **confirmed on the queue row** the same day at a narrow window. `_control_rect` is shared, so
+this is one defect on both surfaces rather than two.
 **Phase 3**, and the sibling of `T-150`: that one is about the size the dialog *opens* at, this is
-about what the row does at any narrow width, including one a user chooses.
+about what any row does at any narrow width, including one a user chooses.
 **Owner:** Implementer
 **Priority:** Medium-High — it is visible at the size the dialog opens at today, so every user sees
 it before they see anything else
@@ -1314,7 +1414,8 @@ it for anyone who narrows the window, which is exactly what the checklist asks a
 - The selector line still does not run under the control (`T-136`), so fixing one collision does
   not reopen the other
 - Asserted on the **staging row**, which is where the tile, the control and the selector are all
-  present at once
+  present at once, **and on the queue row**, which shares `_control_rect` and shows the same
+  collision
 
 #### Out of scope
 
