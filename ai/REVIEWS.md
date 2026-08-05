@@ -10257,3 +10257,49 @@ This is a record-structure recommendation, not a new product or architecture dec
 
 No source or test correction was needed. The reviewer appends this record only; no submitted
 document, task state, commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — P2EXIT-R14 phase-claims final re-review
+
+**Reviewer:** Codex (Reviewer)
+**Correction base:** `9fe5e37`
+**Approved at:** `e94b412`
+**Verdict:** **P2EXIT-R14 is resolved.** The phase-level siblings now agree with the canonical exit
+table, and earlier claims are explicitly dated or superseded rather than presented as current.
+This does **not** approve the Phase 2 exit: P2EXIT-R12 remains open until the 40-row built-window
+run supplies criterion-8 evidence, so criterion 6 cannot yet receive sign-off.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `P2EXIT-R14` | High | No | Both plan summaries now account for criterion 8: the live status says it is Not met awaiting the 40-row run, and the 2026-08-03 “criterion 6 alone” statement is explicitly past-tense history. STATUS marks the T-128 blocker statement as true only when written and names its diagnosis complete; its current block identifies criteria 6 and 8. The outstanding-work row now records the exit review requested and in progress, including which findings are resolved. Plan's exit table and STATUS's current verdict agree that criteria 1–5 and 7 are met and 6 and 8 are Not met. | **Resolved at `e94b412`** |
+| `P2EXIT-R12` | High | **Yes — criterion 8 evidence** | No new built-window observation is in this docs-only correction. T-161 remains approved and row 2.7 remains correctly outside the live checklist without altering the historical 39/41 result. | **Open — run and record all 40 current rows** |
+
+### Non-blocking observation
+
+The plan and STATUS say this review has “requested changes three times,” while the appended review
+history contains five Changes requested verdicts from the second submission through the
+criterion-claims pass. That count is not used to establish a criterion and does not misstate phase
+readiness, so it does not keep P2EXIT-R14 open. Omitting the count on the next record touch would
+avoid creating another synchronized fact; the linked findings already say what matters.
+
+### Remaining exit path
+
+Run the built application on kirk against all 40 current checklist rows on one exact candidate
+head, recording passed rows separately from failed rows and observing row 3.15 in particular. If
+that evidence passes, obtain fresh exact-head CI/platform evidence and return the resulting head for
+P2EXIT-R12 verification and the criterion-6 sign-off. The historical second run remains 39/41.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check 9fe5e37..e94b412`: **pass**. One commit changes plan and STATUS and carries the preceding review record; no source, tests, checklist or evidence artifact changed. |
+| Phase-level sweep | No live plan/STATUS statement says criterion 6 alone remains or names T-128 diagnosis as a current blocker. The corrected summaries point to criteria 6 and 8. |
+| Outstanding-work row | The exit review is recorded as requested 2026-08-05 and in progress; R11, R13 and T161-R1 are correctly named resolved. |
+| Canonical verdict | Plan and STATUS agree: criteria 1–5 and 7 met; criterion 6 Not met pending approval; criterion 8 Not met pending the 40-row run. |
+| Historical boundaries | The earlier criterion-6-only plan claim and T-128 blocker claim are explicitly past-tense. STATUS's Phase 1 criterion-7 account remains correctly untouched. |
+| Placement gate | `tests/unit/test_task_placement.py`: **14 passed**. |
+
+No source or test correction was needed. The reviewer appends this record only; no submitted
+document, task state, commit, remote ref or CI state was changed by the reviewer.
