@@ -31,6 +31,7 @@ from tracks_and_trails.core.errors import ErrorKind
 from tracks_and_trails.core.job_state import REORDERABLE, TERMINAL, JobStatus
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.core.models import Job as JobModel
+from tracks_and_trails.core.presets import FormatChoice
 
 #: Statuses that cannot still be true at startup (`ARCHITECTURE.md` §5).
 #:
@@ -112,6 +113,39 @@ def _deserialize_request(raw: str) -> DownloadRequest:
     payload["media_kind"] = MediaKind(payload["media_kind"])
     payload["audio_codec"] = AudioCodec(payload["audio_codec"])
     return DownloadRequest(**{name: payload[name] for name in _REQUEST_FIELDS})
+
+
+#: The fields a stored `FormatChoice` holds, derived from the dataclass for `_REQUEST_FIELDS`'
+#: reason — and, here, so that a field **outside** `PRESET_OWNED_FIELDS` cannot be added by hand.
+_FORMAT_CHOICE_FIELDS: Final = tuple(field.name for field in fields(FormatChoice))
+
+
+def _serialize_format_choice(choice: FormatChoice) -> str:
+    """Serialize what describes a download. **Never a whole request** (`T159-R1`, `REQ-026`).
+
+    Its own serializer rather than `_serialize_request` narrowed at the call site: the narrowing is
+    the safety property, and a shared function with a field list passed in would put that property
+    in whichever caller was written next. `FormatChoice` cannot hold a credential, so this cannot
+    write one.
+    """
+    return json.dumps(
+        {name: getattr(choice, name) for name in _FORMAT_CHOICE_FIELDS}, sort_keys=True
+    )
+
+
+def _deserialize_format_choice(raw: str) -> FormatChoice:
+    """Rebuild a `FormatChoice`, restoring the tuple and enum types the model requires.
+
+    `_deserialize_request`'s reasoning: JSON has no tuples and no enums, so a naive round-trip
+    hands the dataclass lists and bare strings — the kind of near-miss that passes a shallow test
+    and fails a whole-object comparison.
+    """
+    payload: dict[str, Any] = json.loads(raw)
+    payload["post_processors"] = tuple(payload.get("post_processors", ()))
+    payload["subtitle_languages"] = tuple(payload.get("subtitle_languages", ()))
+    payload["media_kind"] = MediaKind(payload["media_kind"])
+    payload["audio_codec"] = AudioCodec(payload["audio_codec"])
+    return FormatChoice(**{name: payload[name] for name in _FORMAT_CHOICE_FIELDS})
 
 
 def _to_iso(moment: datetime | None) -> str | None:
@@ -522,7 +556,7 @@ _HISTORY_COLUMNS: Final = (
     "playlist_id",
     "playlist_index",
     "playlist_title",
-    "request",
+    "format_choice",
     "completed_at",
 )
 
@@ -582,20 +616,25 @@ class HistoryEntry:
     playlist_index: int | None = None
     playlist_title: str | None = None
 
-    #: What the user asked for, as the worker was given it (`T-159`, `REQ-009`, `REQ-020`).
+    #: What was asked for, narrowed to what describes the download (`T-159`, `T159-R1`, `REQ-026`).
     #:
-    #: **The request, not a rendered name.** `format_used` is yt-dlp's answer — `251`, or `399+140`
-    #: for a merge — and naming that in words needs the thing that was asked for, which no other
-    #: field carries: `audio_quality` is preset-owned, so a download converted at 320 kbps cannot
-    #: be matched to a preset without it. `ui/format_text.py` holds the one naming rule all three
-    #: surfaces use, and it reads a request exactly as the queue's does.
+    #: **A `FormatChoice`, never a `DownloadRequest`, and that is a boundary rather than economy.**
+    #: Naming a download in words needs what was asked for — `format_used` is yt-dlp's answer, and
+    #: `audio_quality` is preset-owned, so a download converted at 320 kbps cannot be matched to a
+    #: preset without it. But a *request* also carries `cookies_from_browser`, `proxy`,
+    #: `output_directory` and `url`, and `REQ-026` says a cookie path this application supplies is
+    #: never written to History. `T159-R1` is what storing the whole object cost: a record outlives
+    #: the job row, so History would have been the last place a credential survived.
     #:
-    #: Storing the resolved *name* was rejected: a preset renamed in a later build would leave old
-    #: records asserting a name this application no longer has.
+    #: `FormatChoice` is exactly `PRESET_OWNED_FIELDS`. Everything outside that set is a credential,
+    #: a network setting or a location, and none of it says what a download is.
+    #:
+    #: Storing the resolved *name* was rejected separately: a preset renamed in a later build would
+    #: leave old records asserting a name this application no longer has.
     #:
     #: `None` means "recorded before migration `0007`". Those rows still say what yt-dlp reported,
     #: which is honest about being an id rather than dressed up as a name nobody wrote down.
-    request: DownloadRequest | None = None
+    format_choice: FormatChoice | None = None
 
     def __post_init__(self) -> None:
         membership = (self.playlist_id, self.playlist_index, self.playlist_title)
@@ -633,7 +672,9 @@ def _history_to_values(entry: HistoryEntry) -> dict[str, Any]:
         "playlist_id": entry.playlist_id,
         "playlist_index": entry.playlist_index,
         "playlist_title": entry.playlist_title,
-        "request": None if entry.request is None else _serialize_request(entry.request),
+        "format_choice": (
+            None if entry.format_choice is None else _serialize_format_choice(entry.format_choice)
+        ),
         "completed_at": entry.completed_at.isoformat(),
     }
 
@@ -650,7 +691,11 @@ def _row_to_history(row: sqlite3.Row) -> HistoryEntry:
         playlist_id=row["playlist_id"],
         playlist_index=row["playlist_index"],
         playlist_title=row["playlist_title"],
-        request=None if row["request"] is None else _deserialize_request(row["request"]),
+        format_choice=(
+            None
+            if row["format_choice"] is None
+            else _deserialize_format_choice(row["format_choice"])
+        ),
         completed_at=datetime.fromisoformat(row["completed_at"]),
     )
 

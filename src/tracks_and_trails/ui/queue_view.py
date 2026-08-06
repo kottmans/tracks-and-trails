@@ -90,7 +90,7 @@ from PySide6.QtWidgets import (
 from tracks_and_trails.core.errors import is_retryable
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import Job
-from tracks_and_trails.core.presets import BUILT_IN_PRESETS
+from tracks_and_trails.core.presets import BUILT_IN_PRESETS, format_choice_of
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.downloader.protocol import Progress, Stage
 from tracks_and_trails.ui.format_text import (
@@ -333,7 +333,7 @@ def _preset_name_for(job: Job) -> str | None:
     a job, and the project had already written this rule three times — `T126-R2`, `T140-R3` and
     the one History was still shipping. Kept as a name here because the model asks it of a *job*.
     """
-    return preset_name_for(job.request)
+    return preset_name_for(format_choice_of(job.request))
 
 
 def _duration_text(seconds: float | None) -> str:
@@ -360,7 +360,7 @@ def _effective_format_text(job: Job) -> str:
     the request and never from a preset held elsewhere. History names the same download with the
     same function, so the two surfaces cannot drift.
     """
-    return effective_format_text(job.request)
+    return effective_format_text(format_choice_of(job.request))
 
 
 class QueueModel(QAbstractTableModel):

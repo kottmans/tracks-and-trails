@@ -66,6 +66,7 @@ completion transaction copies them from the job; a record written before that re
 nothing tries to re-group it from titles or paths.
 """
 
+from collections.abc import Sequence
 from pathlib import Path, PurePath
 from typing import TYPE_CHECKING, Any, Final, Protocol
 
@@ -236,6 +237,24 @@ class HistoryModel(QAbstractTableModel):
             return tuple(member.id for member in entry.members)
         return (self._entries[entry].id,)
 
+    def reveal_target(self, row_id: str) -> str | None:
+        """Which record's folder *Show in folder* should open for `row_id`, or `None` (`T142-R1`).
+
+        **One place, asked by both the offer and the route.** For an ordinary row it is the record
+        itself, when it names a file. For a group it is a member of the folder the group actually
+        shares — and `None` the moment the members disagree, because then there is no folder that
+        is the group's and choosing one would be choosing for the user.
+
+        `None` is also the answer for a group whose records name no file at all, and for an id this
+        model does not hold.
+        """
+        members = self.group_entries(row_id)
+        if members:
+            if self._common_folder(members) == UNKNOWN_TEXT:
+                return None
+            return next((member.id for member in members if member.output_path), None)
+        return row_id if self.path_for(row_id) else None
+
     def records_for(self, row_id: str) -> tuple[str, ...]:
         """`records_at`, by id rather than by row — which records `row_id` stands for (`T-142`).
 
@@ -357,7 +376,15 @@ class HistoryModel(QAbstractTableModel):
             # the recorded premise that "a history record carries no thumbnail URL" — true until
             # migration `0005` gave it one, and the reason the same download drew a picture in the
             # queue and a derived tile here the moment it finished.
-            return self._entries[index.row()].thumbnail_url
+            #
+            # **From `entry`, never `self._entries[index.row()]`** (`T145-R2`). This method resolves
+            # the visible row once, at the top; re-indexing the durable tuple with a row number is
+            # the two-index-space defect one line deep. A closed two-member playlist compresses two
+            # records into one line, so the ordinary row after it drew the *hidden* second member's
+            # picture — and opening a group shifts every row after it, which can index past the
+            # tuple entirely. The audit this task claims for `entry_id_at` and `verbs_of` missed it
+            # because the expression reads like the line above it.
+            return entry.thumbnail_url
         if role == HUE_ROLE:
             return placeholder_hue(entry.url)
         if role == JOB_ID_ROLE:
@@ -439,8 +466,8 @@ class HistoryModel(QAbstractTableModel):
             # `_text_or_absent`'s existing rule: there is nothing to reconstruct a request from,
             # and an id labelled honestly is better than a name nobody wrote down. The raw value
             # stays reachable for every row either way — see the tooltip (`REQ-020`).
-            if entry.request is not None:
-                return format_name(entry.request)
+            if entry.format_choice is not None:
+                return format_name(entry.format_choice)
             return _text_or_absent(entry.format_used)
         if column == SIZE_COLUMN:
             # The same function the queue and the detail view use, so one download is described
@@ -468,8 +495,12 @@ class HistoryModel(QAbstractTableModel):
             return UNKNOWN_TEXT
         return format_bytes(sum(total for total in totals if total is not None))
 
-    def _group_folder(self, group: Group[HistoryEntry]) -> str:
-        """The folder a playlist's entries share, or `UNKNOWN_TEXT` when they do not.
+    def _common_folder(self, members: Sequence[HistoryEntry]) -> str:
+        """The folder these records share, or `UNKNOWN_TEXT` when they do not.
+
+        **Takes the members rather than a group**, because `T142-R1` made three callers of it: the
+        header's folder line, the offer of *Show in folder*, and the route that performs it. All
+        three must answer from one computation, which is what stopped the row contradicting itself.
 
         `UX-005` row 10 has a playlist's entries share one folder, which is what makes a single
         line meaningful here at all — but it is where they *were written*, and a user who changed
@@ -481,9 +512,7 @@ class HistoryModel(QAbstractTableModel):
         platform, and nothing here should touch a filesystem to render a row.
         """
         folders = {
-            str(PurePath(member.output_path).parent)
-            for member in group.members
-            if member.output_path
+            str(PurePath(member.output_path).parent) for member in members if member.output_path
         }
         return folders.pop() if len(folders) == 1 else UNKNOWN_TEXT
 
@@ -512,7 +541,14 @@ class HistoryModel(QAbstractTableModel):
             # is terminal by definition, so `group_verbs()`'s `Cancel all` and `Retry failed` have
             # nothing to act on; what is left is `Show in folder` and a removal that names its
             # count. `history_group_verbs` is where that list is transcribed and why.
-            return history_group_verbs(bool(member.output_path) for member in group.members)
+            #
+            # **The offer is asked of the very function that draws the folder line** (`T142-R1`).
+            # It was `any member has a path`, which offered *Show in folder* on a group whose own
+            # line said it had no common folder — the row contradicting itself, and then routing to
+            # whichever member came first.
+            return history_group_verbs(
+                has_one_common_folder=self._common_folder(group.members) != UNKNOWN_TEXT
+            )
         if role == DETAIL_ROLE:
             # The same two facts an ordinary history row's second line carries, over the group.
             return " — ".join((self._group_size(group), self._group_completed(group)))
@@ -522,7 +558,7 @@ class HistoryModel(QAbstractTableModel):
             formats = {self._text(member, FORMAT_COLUMN) for member in group.members}
             return formats.pop() if len(formats) == 1 else ""
         if role == SELECTOR_ROLE:
-            return self._group_folder(group)
+            return self._common_folder(group.members)
         if role == THUMBNAIL_URL_ROLE:
             return next(
                 (member.thumbnail_url for member in group.members if member.thumbnail_url), None
@@ -530,13 +566,39 @@ class HistoryModel(QAbstractTableModel):
         if role == HUE_ROLE:
             return placeholder_hue(group.members[0].url if group.members else group.title)
         if role in (Qt.ItemDataRole.AccessibleTextRole, Qt.ItemDataRole.DisplayRole):
-            # **Spoken as a playlist, then as the row it is.** `DisplayRole` answers the same text
-            # for `T-151`'s reason: `QListView` sizes its content from it and the delegate draws
-            # something else, elided to the rect it is given.
-            return (
-                f"{group.title}. Playlist, {len(group.members)} items, "
-                f"{self._group_size(group)}, completed {self._group_completed(group)}"
-            )
+            # **Spoken as a playlist, then every fact the header draws** (`T145-R3`, `NFR-005`).
+            # `DisplayRole` answers the same text for `T-151`'s reason: `QListView` sizes its
+            # content from it and the delegate draws something else, elided to the rect it is
+            # given.
+            #
+            # **Composed from the same roles the header draws, not from a second list.** This said
+            # only title, count, size and time — while the header visibly drew its common format
+            # (`STATE_ROLE`) and its common folder (`SELECTOR_ROLE`), so a screen-reader user was
+            # told less about the same downloads than a sighted one. That is `T017-R2`'s
+            # two-vocabularies failure, and an ordinary History row already avoids it by building
+            # `_whole_row` from the very cells it draws. Asking the roles is what keeps a fact
+            # added to the header from having to be remembered here.
+            spoken = [
+                f"{group.title}. Playlist",
+                f"{len(group.members)} items",
+                self._group_size(group),
+                f"completed {self._group_completed(group)}",
+            ]
+            # **Labelled from `COLUMN_HEADERS`**, as `_whole_row` labels an ordinary row's fields:
+            # a bare path at the end of a sentence is a string a listener has to identify, and the
+            # sighted reader has the row's layout to do that for them.
+            #
+            # Spoken **exactly when drawn**, which is what parity means. A group whose members
+            # disagree about the format draws nothing for it, so nothing is said; one whose members
+            # were written to different folders draws `UNKNOWN_TEXT`, which *is* on screen and so
+            # is spoken.
+            for column, drawn in (
+                (FORMAT_COLUMN, self._group_data(group, STATE_ROLE)),
+                (PATH_COLUMN, self._group_data(group, SELECTOR_ROLE)),
+            ):
+                if drawn:
+                    spoken.append(f"{COLUMN_HEADERS[column]}: {drawn}")
+            return ", ".join(spoken)
         return None
 
     def _group_completed(self, group: Group[HistoryEntry]) -> str:
@@ -777,11 +839,12 @@ class HistoryView(QWidget):
             if own == (entry_id,):
                 self.open_requested.emit(entry_id)
         elif verb is Verb.REVEAL:
-            # **Re-checked here, not trusted from the offer** (`T140-R6`). The verb the row drew
-            # came from the model a moment ago; what has to hold is that some record still names a
-            # file. For a group that is the first member with a path — the entries share one folder
-            # (`UX-005` row 10), so revealing any of them reveals the playlist.
-            target = next((each for each in own if self._model.path_for(each)), None)
+            # **Re-checked here, not trusted from the offer** (`T140-R6`, `T142-R1`). The verb the
+            # row drew came from the model a moment ago; what has to hold at routing time is that
+            # the records still name **one** folder. For a group that is `reveal_target`, which
+            # answers `None` the moment the members disagree — so a header drawn before a record
+            # was removed, and clicked after, cannot reveal a folder that is no longer the group's.
+            target = self._model.reveal_target(entry_id)
             if target is not None:
                 self.reveal_requested.emit(target)
         elif verb is Verb.REMOVE:

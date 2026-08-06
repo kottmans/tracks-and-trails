@@ -44,7 +44,7 @@ already made it unrepresentable everywhere, and re-opening an approved model to 
 selector would trade a clear error for a silent substitution.
 """
 
-from dataclasses import fields, replace
+from dataclasses import dataclass, fields, replace
 from typing import Any, Final
 
 from tracks_and_trails.core.models import (
@@ -295,6 +295,48 @@ def custom_preset(selector: str, *, name: str = "Custom selector") -> Preset:
 PRESET_OWNED_FIELDS: Final[frozenset[str]] = frozenset(
     {field.name for field in fields(Preset)} & {field.name for field in fields(DownloadRequest)}
 )
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class FormatChoice:
+    """What a download **is**, with nothing about how it was fetched (`T159-R1`, `REQ-026`).
+
+    **This exists because History must not hold a request.** `T-159` needed a completed record to
+    name its format in words, and the first implementation stored the whole `DownloadRequest` — the
+    same object `jobs.request` holds. `T159-R1` is what that cost: a request carries
+    `cookies_from_browser`, `proxy`, `output_directory` and `url`, and `DAT-003` records that the
+    cookie field is a browser *name* only by caller convention — the model accepts a literal path.
+    `REQ-026` says a cookie path this application supplies is **never written to History**, and a
+    history record outlives the job row, so the queue's settings-freeze reason for keeping a whole
+    request does not reach a terminal record.
+
+    **The fields are exactly `PRESET_OWNED_FIELDS`, and that is the boundary rather than a
+    coincidence.** Everything a request holds that is *not* preset-owned is either a credential, a
+    network setting or a location — `cookies_from_browser`, `proxy`, `rate_limit_bytes`,
+    `output_directory`, `url` — and none of them helps say what a download is. So the naming rule
+    cannot read a credential because it is never handed one. `test_presets.py` asserts this field
+    set **equals** `PRESET_OWNED_FIELDS`, so a preset-owned field added later fails the suite here
+    rather than silently going unrecorded (`T015-R1`'s rule, applied to the narrowing).
+    """
+
+    media_kind: MediaKind
+    format_selector: str
+    output_template: str
+    audio_codec: AudioCodec
+    audio_quality: str | None
+    subtitle_languages: tuple[str, ...]
+    embed_subtitles: bool
+    post_processors: tuple[str, ...]
+
+
+def format_choice_of(request: DownloadRequest) -> FormatChoice:
+    """Narrow a request to what describes the download (`T159-R1`).
+
+    Built by name from `PRESET_OWNED_FIELDS` rather than field by field, so a field that joins the
+    intersection is carried the day it appears — and, more to the point, so no field outside it can
+    be added here by hand.
+    """
+    return FormatChoice(**{name: getattr(request, name) for name in PRESET_OWNED_FIELDS})
 
 
 class PresetOverrideError(ValueError):

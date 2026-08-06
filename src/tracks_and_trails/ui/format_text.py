@@ -13,13 +13,20 @@ anywhere in the window.
 So the project had fixed this twice and still shipped it once, and each fix was a copy of the
 rule rather than a use of it. This module is the rule, and the three surfaces call it.
 
-## It reads the **request**, never the chosen preset
+## It reads **what was asked for**, never the chosen preset
 
 `T118-R8` is that mistake in the add dialog. The request is what the worker is given; anything
 derived from a preset object held elsewhere is a second opinion about the download that ran. It is
-also why a history record had to start carrying its request (migration `0007`) rather than a
-rendered name: `audio_quality` is preset-owned, so a download converted at 320 kbps matches no
+also why a history record had to start carrying the asked-for format (migration `0007`) rather than
+a rendered name: `audio_quality` is preset-owned, so a download converted at 320 kbps matches no
 built-in, and there is no way to know that from an id.
+
+**It takes a `FormatChoice`, which is narrower than a request, and that is a boundary rather than a
+convenience** (`T159-R1`, `REQ-026`). A `DownloadRequest` also carries `cookies_from_browser`,
+`proxy`, `output_directory` and `url` — none of which says what a download *is*, and the first of
+which `REQ-026` forbids History to hold. Handing this rule a request would have let History store
+one to feed it. `FormatChoice` is exactly `PRESET_OWNED_FIELDS`, so the rule is given every fact it
+needs and no fact it must not keep.
 
 ## What it does not do yet
 
@@ -33,8 +40,7 @@ ruled on, this function is the one place it changes, and all three surfaces chan
 
 from typing import Final
 
-from tracks_and_trails.core.models import DownloadRequest
-from tracks_and_trails.core.presets import BUILT_IN_PRESETS, PRESET_OWNED_FIELDS
+from tracks_and_trails.core.presets import BUILT_IN_PRESETS, PRESET_OWNED_FIELDS, FormatChoice
 
 __all__ = ["FORMAT_PREFIX", "effective_format_text", "format_name", "preset_name_for"]
 
@@ -46,8 +52,8 @@ __all__ = ["FORMAT_PREFIX", "effective_format_text", "format_name", "preset_name
 FORMAT_PREFIX: Final = "Download as: "
 
 
-def preset_name_for(request: DownloadRequest) -> str | None:
-    """Which built-in preset describes this request, if any.
+def preset_name_for(choice: FormatChoice) -> str | None:
+    """Which built-in preset describes this choice, if any.
 
     Matched on **every field a preset owns**, not on the format selector alone: two presets can
     share a selector and differ in the container or the output template, and naming the wrong one
@@ -55,16 +61,16 @@ def preset_name_for(request: DownloadRequest) -> str | None:
     from the two dataclasses, so a field added to `Preset` is compared the day it appears
     (`T015-R1`).
 
-    `None` for a request no built-in describes — a custom selector (`REQ-009`), or an MP3 download
+    `None` for a choice no built-in describes — a custom selector (`REQ-009`), or an MP3 download
     converted at a bitrate other than the preset's default, since `audio_quality` is preset-owned.
     """
     for preset in BUILT_IN_PRESETS:
-        if all(getattr(preset, field) == getattr(request, field) for field in PRESET_OWNED_FIELDS):
+        if all(getattr(preset, field) == getattr(choice, field) for field in PRESET_OWNED_FIELDS):
             return preset.name
     return None
 
 
-def format_name(request: DownloadRequest) -> str:
+def format_name(choice: FormatChoice) -> str:
     """What this download is, in words where there are any (`T126-R2`, `T140-R3`, `T-159`).
 
     **The built-in's name when one describes the request, and the literal selector otherwise.**
@@ -78,9 +84,9 @@ def format_name(request: DownloadRequest) -> str:
     of them was asked for: `bestaudio/best` is a request a user can recognise and act on, while
     `251` is what yt-dlp resolved it to on one site on one day.
     """
-    return preset_name_for(request) or request.format_selector
+    return preset_name_for(choice) or choice.format_selector
 
 
-def effective_format_text(request: DownloadRequest) -> str:
+def effective_format_text(choice: FormatChoice) -> str:
     """`format_name`, prefixed for the surfaces that are describing something still to happen."""
-    return f"{FORMAT_PREFIX}{format_name(request)}"
+    return f"{FORMAT_PREFIX}{format_name(choice)}"

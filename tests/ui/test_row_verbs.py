@@ -131,15 +131,13 @@ def test_a_terminal_history_group_offers_only_what_it_can_perform() -> None:
     because a group has no single file. What is left is the folder they share (`UX-005` row 10) and
     a removal that never touches one (`DAT-005` §2).
     """
-    assert history_group_verbs([True, True]) == (Verb.REVEAL, Verb.REMOVE)
-    assert history_group_verbs([False, True]) == (Verb.REVEAL, Verb.REMOVE), (
-        "one member naming a file is enough: the entries share a folder, so any of them reveals it"
+    assert history_group_verbs(has_one_common_folder=True) == (Verb.REVEAL, Verb.REMOVE)
+    assert history_group_verbs(has_one_common_folder=False) == (Verb.REMOVE,), (
+        "the header offered to show a folder it does not have — either because its records name no "
+        "file at all, or because they were written to two folders and neither is the group's "
+        "(T142-R1)"
     )
-    assert history_group_verbs([False, False]) == (Verb.REMOVE,), (
-        "a group whose records name no file offered to show one, which FileActions would refuse "
-        "for a reason the user cannot act on"
-    )
-    assert history_group_verbs([]) == (Verb.REMOVE,), (
+    assert Verb.REMOVE in history_group_verbs(has_one_common_folder=False), (
         "a group the user no longer wants is always removable, so the header is never left with "
         "nothing at all"
     )
@@ -151,7 +149,8 @@ def test_a_history_group_never_offers_a_queue_verb() -> None:
     Asserted over the whole of `Verb` rather than a list of the four that matter, so a verb added
     to the queue's vocabulary later cannot quietly appear on a terminal group.
     """
-    for offer in ([True, True], [False, False]):
-        assert set(history_group_verbs(offer)) <= {Verb.REVEAL, Verb.REMOVE}, (
-            f"history_group_verbs({offer}) offers something outside what a record supports"
-        )
+    for shared in (True, False):
+        assert set(history_group_verbs(has_one_common_folder=shared)) <= {
+            Verb.REVEAL,
+            Verb.REMOVE,
+        }, f"a group with has_one_common_folder={shared} offers something a record cannot support"

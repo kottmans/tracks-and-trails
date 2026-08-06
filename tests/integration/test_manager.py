@@ -3924,6 +3924,7 @@ def test_a_completion_records_every_field_req_020_names(tmp_path: Path) -> None:
     file and supplies no title, so a real completion legitimately records `title=None`. That proves
     the pipeline, not the field set. Both tests exist; this one owns the field set.
     """
+    from tracks_and_trails.core.presets import format_choice_of
     from tracks_and_trails.persistence.repositories import HistoryEntry
     from tracks_and_trails.persistence.store import PersistentJobStore
 
@@ -3945,11 +3946,15 @@ def test_a_completion_records_every_field_req_020_names(tmp_path: Path) -> None:
         output_path=str(tmp_path / "A Clip With A Title.mp4"),
         format_used="137+140",
         bytes_total=4096,
-        # **What was asked for, beside what yt-dlp answered** (`T-159`). `format_used` is an id —
-        # `137+140` is two of them joined by yt-dlp's own selector syntax — and naming a download
-        # in the words the rest of the window uses needs the request. This is the last moment it
-        # can be copied: the job row goes when the queue is cleared.
-        request=job.request,
+        # **What was asked for, beside what yt-dlp answered** (`T-159`, `T159-R1`). `format_used`
+        # is an id — `137+140` is two of them joined by yt-dlp's own selector syntax — and naming a
+        # download in words needs what was asked for. This is the last moment it can be copied: the
+        # job row goes when the queue is cleared.
+        #
+        # **Narrowed, not copied whole.** A request also carries a cookie setting, a proxy, a
+        # directory and a URL; `REQ-026` forbids the first to reach History and none of them says
+        # what the download is. `test_persistence.py` proves it at the raw database boundary.
+        format_choice=format_choice_of(job.request),
         completed_at=datetime(2026, 7, 30, 9, 0, tzinfo=UTC),
     ), "the projection dropped or altered a field REQ-020 names"
 
@@ -3968,6 +3973,7 @@ def test_a_completion_carries_the_playlist_membership_across(tmp_path: Path) -> 
     """
     from dataclasses import replace
 
+    from tracks_and_trails.core.presets import format_choice_of
     from tracks_and_trails.persistence.repositories import HistoryEntry
     from tracks_and_trails.persistence.store import PersistentJobStore
 
@@ -3994,7 +4000,7 @@ def test_a_completion_carries_the_playlist_membership_across(tmp_path: Path) -> 
         playlist_id="pl-1",
         playlist_index=3,
         playlist_title="Trail Sounds",
-        request=job.request,
+        format_choice=format_choice_of(job.request),
         completed_at=datetime(2026, 7, 30, 9, 0, tzinfo=UTC),
     ), "the completed record does not say which playlist it came from, so History cannot group it"
 

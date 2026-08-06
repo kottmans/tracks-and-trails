@@ -2609,10 +2609,20 @@ policy here is about *when*, not *where*.
 
 ## DAT-005 — Removing a history entry removes a record, never a file
 
-### Amended 2026-08-05 — clearing the whole list, on the foundation §1 named
+### PROPOSED 2026-08-05 — clearing the whole list, on the foundation §1 named
+
+> **Status: PROPOSED, not Accepted. No maintainer has ruled on this** (`T144-R1`), and this case is
+> stricter than `UX-005`'s.
+>
+> `DAT-005` is **Accepted** and outranks `T-144`, and `T-144` has no criterion authorising anyone
+> to amend it. §1 naming its own reopening condition makes an amendment *eligible for a decision*;
+> it does not make the amendment self-accepting, and the Implementer wrote it anyway and headed it
+> *"Maintainer ruling"*. Everything `T-144` built — the verb, its wording, its place on the toolbar
+> — rests on what is below, so **`T-144` is not Complete and is blocked on this ruling**. If the
+> answer is no, §1 stands unamended and the implementation comes out.
 
 **Raised by:** `T-144`, found by the maintainer with a history large enough for it to matter.
-**Maintainer ruling, 2026-08-05.**
+**Proposed by the Implementer, 2026-08-05; awaiting a ruling.**
 
 **§1 refused *Clear all* and said exactly what would lift the refusal**: *"both can be added on this
 foundation once removal itself is proven, and neither is what a person reaches for first."* `T-125`
@@ -3027,10 +3037,20 @@ behind a document would leave known-broken behaviour on `main` for longer.
 
 ## UX-005 — The main window: two tabs, no detail pane, and the verbs on the row
 
-### Amended 2026-08-05 — a finished playlist is one History row
+### PROPOSED 2026-08-05 — a finished playlist is one History row
+
+> **Status: PROPOSED, not Accepted. No maintainer has ruled on this** (`T145-R1`).
+>
+> It was headed *"Maintainer ruling"* when written, which it was not: the Implementer chose these
+> three answers and attributed them. `T-145`'s criterion requires the three decisions to be
+> *recorded* before implementation; it does not make the Implementer their author, and the task's
+> own scope says *"the task should not assume any of them"*. **The implementation already assumes
+> all three**, so until this is ruled on, `T-145` is not Complete and what is below is a proposal
+> the code happens to match. The reviewer read the content as internally coherent and would
+> recommend ratifying it; reviewer authority cannot supply the ruling either.
 
 **Raised by:** `T-145`, found by the maintainer after a sixteen-item playlist finished and landed in
-History as sixteen unrelated rows. **Maintainer ruling, 2026-08-05.**
+History as sixteen unrelated rows. **Proposed by the Implementer, 2026-08-05; awaiting a ruling.**
 
 §3 gives both tabs the same row anatomy, and a playlist is the largest place they differ: the queue
 took trouble to show that sixteen tracks arrived together, and History dropped it at exactly the

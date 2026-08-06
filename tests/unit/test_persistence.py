@@ -24,6 +24,7 @@ from tracks_and_trails.core.job_state import (
     JobStatus,
 )
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, Job, MediaKind
+from tracks_and_trails.core.presets import format_choice_of
 from tracks_and_trails.persistence import db, repositories
 from tracks_and_trails.persistence.repositories import (
     INTERRUPTED_ON_STARTUP,
@@ -892,6 +893,45 @@ def test_a_history_entry_round_trips_every_field(history: HistoryRepository) -> 
     entry = _entry()
     history.record(entry)
     assert history.get("job-1") == entry
+
+
+def test_history_does_not_persist_an_application_supplied_cookie_path(
+    history: HistoryRepository,
+) -> None:
+    """Reviewer regression for `T-159` and `REQ-026`'s History boundary.
+
+    `DownloadRequest.cookies_from_browser` is a browser name by current caller convention, not by
+    construction: the model accepts any non-empty text.  History needs only the format-defining
+    part of a request, so copying the whole object makes a cookie path durable after the queue row
+    is removed and violates the accepted rule the day a caller supplies one.
+
+    *(Adapted by the Implementer for `T159-R1`'s correction, which is what it asked for: the column
+    is `format_choice` rather than `request`, and the record is built the way production builds it
+    — by narrowing a request through `format_choice_of`, so what is proven is that the **narrowing**
+    protects rather than that a field happened to be dropped. Widened at the same time to scan
+    **every column** rather than one, since a credential reaching any of them is the same failure,
+    and to cover the proxy for the same reason `REQ-026` covers the cookie.)*
+    """
+    cookie_path = "/home/alice/.mozilla/firefox/profile/cookies.sqlite"
+    proxy = "http://proxy.internal.invalid:8080"
+    history.record(
+        _entry(
+            format_choice=format_choice_of(a_request(cookies_from_browser=cookie_path, proxy=proxy))
+        )
+    )
+
+    row = history._connection.execute("SELECT * FROM history WHERE id = ?", ("job-1",)).fetchone()
+    assert row is not None
+    stored = " ".join(str(value) for value in dict(row).values())
+    assert cookie_path not in stored, (
+        "History persisted an application-supplied cookie path even though REQ-026 says that sink "
+        "never does"
+    )
+    assert proxy not in stored, (
+        "History persisted the user's proxy. Not a credential — `DownloadRequest` refuses userinfo "
+        "outright, so one cannot be represented — but it names a private network, it says nothing "
+        "about what was downloaded, and a record outlives the job row that was its only other home"
+    )
 
 
 def test_the_nullable_columns_survive_being_null(history: HistoryRepository) -> None:

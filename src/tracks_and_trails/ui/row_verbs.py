@@ -168,7 +168,7 @@ def group_verbs(members: Iterable[tuple[JobStatus, bool]]) -> tuple[Verb, ...]:
     return tuple(offered)
 
 
-def history_group_verbs(records_naming_a_file: Iterable[bool]) -> tuple[Verb, ...]:
+def history_group_verbs(*, has_one_common_folder: bool) -> tuple[Verb, ...]:
     """What a **History** playlist header offers (`T-142`, `UX-005` §3 and row 9, `DAT-005`).
 
     **Not `group_verbs`, and the difference is the whole task.** That function answers `Cancel all`,
@@ -181,9 +181,14 @@ def history_group_verbs(records_naming_a_file: Iterable[bool]) -> tuple[Verb, ..
     So the list is transcribed from what a terminal group can honestly support:
 
     - **`Show in folder`**, from `REQ-021` and `UX-005` row 10 — the entries share one folder, so
-      revealing any member reveals the playlist. Offered only while **some** member still names a
-      file: a group of records that never recorded an output path has no folder to point at, and
-      `FileActions` would refuse the reveal for a reason the user cannot act on.
+      revealing any member reveals the playlist. Offered only while the members identify **one
+      truthful common folder** (`T142-R1`). Two cases fail that and both used to be offered
+      anyway: a group whose records never recorded an output path has no folder to point at, and
+      `FileActions` would refuse for a reason the user cannot act on; and a group written to *two*
+      folders has no folder that is the group's. The second was the worse half — the header already
+      renders the folder as unknown when members disagree, so the row said *there is no common
+      folder* and offered to show one in the same breath, then routed to whichever member happened
+      to be first. An individual member's own reveal is still there once the group is opened.
     - **`Remove`** always, because a group the user no longer wants is always removable and no file
       is ever touched (`DAT-005` §2). `DAT-005` §4 makes the confirmation name its own count, which
       the *view* supplies by reporting the members rather than the header.
@@ -195,13 +200,14 @@ def history_group_verbs(records_naming_a_file: Iterable[bool]) -> tuple[Verb, ..
     `UX-005` §5 and `T081-R3`'s rule is that a row offers what it permits and says nothing about
     the rest.
 
-    Each member arrives as **whether it names a file**, not as a record, for the reason
-    `group_verbs` takes statuses paired with retryability: what the verb needs is one fact per
-    member, and passing the record would invite this module to start reading the persistence layer.
+    The caller answers **whether the members share one folder**, rather than passing records, for
+    the reason `group_verbs` takes statuses paired with retryability: what the verb needs is the
+    one fact it turns on, and passing the records would invite this module to start reading the
+    persistence layer. It is deliberately the same question the header's own folder line answers,
+    so the offer and the line cannot disagree — the disagreement being exactly what `T142-R1` was.
     """
-    seen = tuple(records_naming_a_file)
     offered: list[Verb] = []
-    if any(seen):
+    if has_one_common_folder:
         offered.append(Verb.REVEAL)
     offered.append(Verb.REMOVE)
     return tuple(offered)

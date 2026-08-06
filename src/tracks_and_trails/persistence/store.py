@@ -34,6 +34,7 @@ from datetime import datetime
 from PySide6.QtCore import QObject
 
 from tracks_and_trails.core.models import Job
+from tracks_and_trails.core.presets import format_choice_of
 from tracks_and_trails.persistence.repositories import HistoryEntry, JobRepository
 from tracks_and_trails.persistence.writer import QueueWriter
 
@@ -204,11 +205,16 @@ class PersistentJobStore(QObject):
                 playlist_id=job.playlist_id,
                 playlist_index=job.playlist_index,
                 playlist_title=job.playlist_title,
-                # **What was asked for, beside what was reported** (`T-159`). `format_used` is
-                # yt-dlp's answer — an id — and naming it in the words the rest of the window uses
-                # needs the request. Carried here for the membership's reason: the job's copy dies
-                # with the job, and this is the last moment it can be copied.
-                request=job.request,
+                # **What was asked for, beside what was reported** (`T-159`, `T159-R1`).
+                # `format_used` is yt-dlp's answer — an id — and naming it in the words the rest of
+                # the window uses needs what was asked for. Carried here for the membership's
+                # reason: the job's copy dies with the job, and this is the last moment to copy it.
+                #
+                # **Narrowed on the way, not stored whole.** `format_choice_of` keeps the fields
+                # that describe the download and drops the cookie, proxy, directory and URL a
+                # request also carries — `REQ-026` forbids the first of those to reach History, and
+                # a record outlives the job row that was its only other home.
+                format_choice=format_choice_of(job.request),
                 completed_at=job.finished_at if job.finished_at is not None else _now(),
             ),
             settle,

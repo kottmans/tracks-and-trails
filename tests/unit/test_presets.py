@@ -548,3 +548,52 @@ def test_a_bitrate_outside_the_offered_set_is_refused() -> None:
     """A number the UI cannot produce is still a number a caller can pass."""
     with pytest.raises(ValueError, match="offered bitrates"):
         presets.with_audio_quality(presets.AUDIO_MP3, "999")
+
+
+# --- FormatChoice: the narrowing History depends on (T159-R1, REQ-026) -------------------------
+
+
+def test_a_format_choice_carries_exactly_the_preset_owned_fields() -> None:
+    """**Equality, not containment**, and both directions are a real failure (`T159-R1`).
+
+    A field this *lacks* stops `preset_name_for` distinguishing two presets that differ only in it,
+    so a download would be named as something it is not. A field this *gains* is worse: everything
+    a `DownloadRequest` holds outside `PRESET_OWNED_FIELDS` is a credential, a network setting or a
+    location, and `REQ-026` says the first of those never reaches History. This is the assertion
+    that makes "narrowed" a property rather than a claim in a docstring.
+    """
+    carried = {field.name for field in fields(presets.FormatChoice)}
+
+    assert carried == presets.PRESET_OWNED_FIELDS, (
+        f"FormatChoice carries {sorted(carried)} but presets own "
+        f"{sorted(presets.PRESET_OWNED_FIELDS)}. Extra fields may be credentials History must "
+        "never hold; missing ones make two presets indistinguishable"
+    )
+
+
+def test_narrowing_a_request_drops_every_field_that_is_not_about_the_format() -> None:
+    """The other half, asserted on a request whose private fields are all populated.
+
+    `cookies_from_browser` is the one `REQ-026` names. `proxy` and `output_directory` are not
+    credentials — the model refuses proxy userinfo outright — but they describe the user's network
+    and disk rather than the download, and a history record outlives the job row that held them.
+    """
+    request = DownloadRequest(
+        url="https://example.invalid/watch?v=abc123",
+        output_directory="/home/alice/Private Downloads",
+        format_selector="bestaudio/best",
+        output_template="%(title)s.%(ext)s",
+        cookies_from_browser="/home/alice/.mozilla/firefox/profile/cookies.sqlite",
+        proxy="http://proxy.internal.invalid:8080",
+        rate_limit_bytes=1024,
+    )
+
+    narrowed = repr(presets.format_choice_of(request))
+
+    for private in ("alice", "cookies.sqlite", "proxy.internal.invalid", "1024"):
+        assert private not in narrowed, (
+            f"{private!r} survived the narrowing into {narrowed!r}; History stores this object"
+        )
+    assert presets.format_choice_of(request).format_selector == "bestaudio/best", (
+        "the narrowing dropped the format itself, which is the one thing it exists to keep"
+    )

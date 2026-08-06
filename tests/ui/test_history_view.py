@@ -42,6 +42,7 @@ from tracks_and_trails.ui.row_delegate import (
     SEGMENTS_ROLE,
     SELECTOR_ROLE,
     STATE_CHIP_ROLE,
+    STATE_ROLE,
     THUMBNAIL_URL_ROLE,
     VERBS_ROLE,
     RowDelegate,
@@ -462,6 +463,33 @@ def test_the_history_view_can_fetch_a_picture_at_all(qapp: QApplication) -> None
     )
 
 
+def test_a_visible_row_after_a_closed_playlist_keeps_its_own_thumbnail(
+    qapp: QApplication,
+) -> None:
+    """Reviewer regression for `T-145`: visible rows and durable records are different spaces.
+
+    A closed two-member playlist occupies one visible row while both members remain in the durable
+    tuple.  The ordinary row after it must therefore be resolved through the visible projection;
+    indexing the durable tuple with its visible row number gives it the hidden second member's
+    picture.
+    """
+    view = view_over(
+        [
+            a_member("m-1", index=0, thumbnail_url="https://img.invalid/member-1.jpg"),
+            a_member("m-2", index=1, thumbnail_url="https://img.invalid/member-2.jpg"),
+            an_entry("solo", thumbnail_url="https://img.invalid/solo.jpg"),
+        ]
+    )
+
+    assert view.model.rowCount() == 2, (
+        "the playlist is not closed, so the index spaces did not diverge"
+    )
+    assert (
+        view.model.data(view.model.index(1, 0), THUMBNAIL_URL_ROLE)
+        == "https://img.invalid/solo.jpg"
+    ), "the visible solo row borrowed a hidden playlist member's thumbnail"
+
+
 # --- a finished playlist is one row (`T-145`, `UX-005` amended 2026-08-05) --------------------
 
 
@@ -577,6 +605,32 @@ def test_a_partly_failed_playlist_counts_what_history_holds(qapp: QApplication) 
     assert "of 3" not in spoken and "of 2" not in spoken, (
         f"the header speaks {spoken!r}, which claims a denominator History cannot describe — the "
         "entries that failed are not records and were never counted"
+    )
+
+
+def test_a_history_group_speaks_the_format_and_folder_it_draws(qapp: QApplication) -> None:
+    """Reviewer regression for `T-145` and `NFR-005`: both readers get the same row.
+
+    The playlist header draws a common format and its common folder through the same delegate roles
+    an ordinary row uses.  Leaving those facts out of AccessibleTextRole tells a screen-reader user
+    less than a sighted user about the same completed downloads.
+    """
+    view = view_over(
+        [
+            a_member("m-1", index=0, output_path="/downloads/Trail Sounds/01.mp3"),
+            a_member("m-2", index=1, output_path="/downloads/Trail Sounds/02.mp3"),
+        ]
+    )
+    header = view.model.index(0, 0)
+    drawn = (
+        str(view.model.data(header, STATE_ROLE)),
+        str(view.model.data(header, SELECTOR_ROLE)),
+    )
+    spoken = str(view.model.data(header, Qt.ItemDataRole.AccessibleTextRole))
+
+    assert all(value in spoken for value in drawn), (
+        f"the header draws format/folder {drawn!r} but speaks {spoken!r}; the two users are told "
+        "different things"
     )
 
 
@@ -925,6 +979,32 @@ def test_a_group_of_records_with_no_file_does_not_offer_to_show_one(qapp: QAppli
     assert view.verbs_of("pl-1") == (Verb.REMOVE,)
 
 
+def test_a_group_written_to_two_folders_does_not_choose_one_for_the_user(
+    qapp: QApplication,
+) -> None:
+    """Reviewer regression for `T-142`: `Show in folder` needs one truthful group folder.
+
+    History already renders the folder as unknown when members disagree.  Offering the group verb
+    anyway and routing it to the first member turns that acknowledged disagreement into an
+    arbitrary choice the user did not make.
+    """
+    view = view_over(
+        [
+            a_member("m-1", index=0, output_path="/downloads/one/01.mp3"),
+            a_member("m-2", index=1, output_path="/downloads/two/02.mp3"),
+        ]
+    )
+    revealed: list[str] = []
+    view.reveal_requested.connect(revealed.append)
+
+    assert view.model.data(view.model.index(0, 0), SELECTOR_ROLE) == UNKNOWN_TEXT
+    assert Verb.REVEAL not in view.verbs_of("pl-1"), (
+        "the header says it has no common folder but still offers to show one"
+    )
+    view.trigger_verb("pl-1", Verb.REVEAL)
+    assert revealed == [], f"the ambiguous group arbitrarily revealed {revealed}"
+
+
 def test_entry_verbs_are_unchanged_by_the_level_above_them(qapp: QApplication) -> None:
     """The criterion: this adds a level, it does not move one.
 
@@ -1044,12 +1124,12 @@ def test_a_history_row_names_its_format_instead_of_reporting_a_yt_dlp_id(
     selector syntax — so the field a user reads to answer *what did I get* answered with an
     internal join expression.
     """
-    from tracks_and_trails.core.presets import AUDIO_MP3, to_request
+    from tracks_and_trails.core.presets import AUDIO_MP3, format_choice_of, to_request
 
     request = to_request(
         AUDIO_MP3, url="https://example.invalid/watch?v=abc123", output_directory="/downloads"
     )
-    view = view_over([an_entry("h-1", format_used="251", request=request)])
+    view = view_over([an_entry("h-1", format_used="251", format_choice=format_choice_of(request))])
 
     shown = view.model.text_at("h-1", FORMAT_COLUMN)
     assert shown == AUDIO_MP3.name, (
@@ -1068,7 +1148,7 @@ def test_a_custom_selector_is_shown_as_itself_rather_than_as_an_id(qapp: QApplic
     """
     from dataclasses import replace as replace_field
 
-    from tracks_and_trails.core.presets import AUDIO_MP3, to_request
+    from tracks_and_trails.core.presets import AUDIO_MP3, format_choice_of, to_request
 
     request = replace_field(
         to_request(
@@ -1076,7 +1156,7 @@ def test_a_custom_selector_is_shown_as_itself_rather_than_as_an_id(qapp: QApplic
         ),
         format_selector="bestaudio[abr>128]",
     )
-    view = view_over([an_entry("h-1", format_used="251", request=request)])
+    view = view_over([an_entry("h-1", format_used="251", format_choice=format_choice_of(request))])
 
     assert view.model.text_at("h-1", FORMAT_COLUMN) == "bestaudio[abr>128]"
 
@@ -1092,8 +1172,8 @@ def test_a_record_from_before_the_request_column_still_renders_honestly(
     """
     view = view_over(
         [
-            an_entry("legacy", format_used="137+140", request=None),
-            an_entry("nothing-reported", format_used=None, request=None),
+            an_entry("legacy", format_used="137+140", format_choice=None),
+            an_entry("nothing-reported", format_used=None, format_choice=None),
         ]
     )
 
@@ -1109,12 +1189,14 @@ def test_the_id_yt_dlp_reported_is_still_reachable(qapp: QApplication) -> None:
     question — and it is **labelled**, because a third line reading `399+140` under a URL and a
     path is one more unexplained string rather than a fix for one.
     """
-    from tracks_and_trails.core.presets import AUDIO_MP3, to_request
+    from tracks_and_trails.core.presets import AUDIO_MP3, format_choice_of, to_request
 
     request = to_request(
         AUDIO_MP3, url="https://example.invalid/watch?v=abc123", output_directory="/downloads"
     )
-    view = view_over([an_entry("h-1", format_used="399+140", request=request)])
+    view = view_over(
+        [an_entry("h-1", format_used="399+140", format_choice=format_choice_of(request))]
+    )
     tooltip = view.model.data(view.model.index(0, 0), Qt.ItemDataRole.ToolTipRole)
 
     assert f"{RAW_FORMAT_PREFIX}399+140" in tooltip, (
@@ -1140,7 +1222,7 @@ def test_the_queue_history_and_add_dialog_name_one_download_the_same_way(
     """
     from tests.ui.test_queue_view import FakeQueue, make_job
     from tracks_and_trails.core.job_state import JobStatus
-    from tracks_and_trails.core.presets import AUDIO_MP3, to_request
+    from tracks_and_trails.core.presets import AUDIO_MP3, format_choice_of, to_request
     from tracks_and_trails.downloader.manager import DownloadManager
     from tracks_and_trails.ui.add_dialog import describe_preset
     from tracks_and_trails.ui.queue_view import QueueModel
@@ -1157,7 +1239,9 @@ def test_the_queue_history_and_add_dialog_name_one_download_the_same_way(
     # name in its *control* instead of on the line (`UX-005` §6), which is a different assertion.
     queue.add(make_job("job-1", tmp_path, request=request, url=url, status=JobStatus.COMPLETED))
     manager = DownloadManager(queue)
-    history = view_over([an_entry("job-1", format_used="251", request=request)])
+    history = view_over(
+        [an_entry("job-1", format_used="251", format_choice=format_choice_of(request))]
+    )
     try:
         model = QueueModel(jobs=queue, manager=manager)
         surfaces = {

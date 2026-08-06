@@ -1,0 +1,43 @@
+-- 0007 — what was asked for, narrowed to what describes the download (`T-159`, `T159-R1`).
+--
+-- **A history row said `251`.** That is yt-dlp's format id for YouTube's Opus audio stream, and a
+-- merged download said `399+140` — two ids joined by yt-dlp's own selector syntax. So the field a
+-- user reads to answer *what did I get* answered with an internal join expression, with no
+-- explanation available anywhere in the window.
+--
+-- Naming it in words needs what was **asked for**: `format_used` is yt-dlp's answer, and
+-- `audio_quality` is preset-owned, so an MP3 converted at 320 kbps matches no built-in and cannot
+-- be recognised from an id. `ui/format_text.py` holds that one naming rule for all three surfaces.
+--
+-- **This column is a `FormatChoice`, not a `DownloadRequest`, and `T159-R1` is why.** The first
+-- version of this migration stored the whole request — the same JSON `jobs.request` holds — and a
+-- request carries `cookies_from_browser`, `proxy`, `output_directory` and `url`. `DAT-003` records
+-- that the cookie field is a browser *name* only by caller convention; the model accepts a literal
+-- path. `REQ-026` says a cookie path this application supplies is **never written to History**, and
+-- a history record outlives the job row that was its only other home. The queue's settings-freeze
+-- reason for keeping a whole request does not reach a terminal record: nothing here is ever
+-- replayed, so nothing here needs the parts that say *how* to fetch.
+--
+-- So the stored object is exactly `PRESET_OWNED_FIELDS` — selector, template, media kind, audio
+-- codec and quality, subtitles, post-processors. Everything a request holds outside that set is a
+-- credential, a network setting or a location, and none of it helps say what a download is. The
+-- naming rule cannot leak a credential because it is never handed one.
+--
+-- **Rewritten in place rather than corrected by an `0008`.** `0007` was never pushed and no
+-- database has ever run it, so no row anywhere holds the wide value. Landing the wide column and
+-- dropping it in a later migration would mean every database that upgraded through this version had
+-- written a cookie path to disk first — the opposite of what the correction is for. Forward-only
+-- still holds for every version that has actually shipped.
+--
+-- Storing the resolved preset *name* instead was rejected separately: it is a derived value with a
+-- lifetime, and a preset renamed in a later build would leave old records asserting a name this
+-- application no longer has.
+--
+-- Nullable, no default, no backfill, for `0002` through `0006`'s reason: a record written before
+-- this ran never had one stored, and there is nothing to reconstruct it from. Those rows keep
+-- saying what yt-dlp reported, through `_text_or_absent`'s existing rule — honest about being an id
+-- rather than dressed up as a name that was never recorded.
+--
+-- Forward-only. One `ALTER TABLE ... ADD COLUMN`, which SQLite applies without rewriting.
+
+ALTER TABLE history ADD COLUMN format_choice TEXT;

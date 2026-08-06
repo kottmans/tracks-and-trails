@@ -10474,3 +10474,62 @@ This approval covers exact head `8de5a72`. A subsequent review-only commit may c
 without changing that boundary. The next coordination update may mark P2EXIT-R15 Resolved,
 criterion 6 Met, and Phase 2 exited, then advance current work to Phase 3. No source, test, evidence,
 task state, commit, remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — Phase 3 History batch initial review
+
+**Reviewer:** Codex (Reviewer)
+**Review base:** `38504b3`
+**Implementation head:** `9edf7b6`
+**Submission head:** `79d225c` (handoff only)
+**Tasks:** `T-145`, `T-142`, `T-144`, `T-159`
+**Verdict:** **Changes requested.** The shared grouping extraction, frozen migration fixtures and
+clear-history transaction are sound in the paths reviewed, but the batch is not approvable. It
+persists a complete `DownloadRequest` into History and thereby admits an application-supplied
+cookie path at a sink `REQ-026` says must never contain one; T-159 also declares Complete while an
+acceptance criterion is expressly unbuilt. Grouping introduces a visible/durable-index thumbnail
+mix-up and an accessibility split, and a History group with no common folder still routes an
+arbitrary member's folder. Finally, both accepted-decision amendments are unratified proposals
+recorded as maintainer rulings; the task layer cannot grant that authority to itself.
+
+### Findings
+
+| ID | Severity | Blocks approval | Finding | Required correction |
+|---|---|---:|---|---|
+| `T159-R1` | **Critical** | **Yes** | Migration `0007` stores the entire `DownloadRequest` in append-mostly History. That object contains output and network settings, including `cookies_from_browser`; the accepted DAT-003 measurement says this field is a browser name only by current caller convention and accepts a literal cookie path. `REQ-026` is explicit that a cookie path the application supplies is **never written to History**. The queue's settings-freeze reason for storing a complete request does not apply to a terminal record, and T-159 needs only a credential-free format description. The reviewer regression writes an accepted cookie-path value through `HistoryRepository.record` and finds it verbatim in `history.request`. This defeats a documented safety boundary even though today's settings UI supplies browser names. | Do not persist the complete request in History. Persist only the narrow, credential-free facts the shared format-naming rule needs (or an equivalently bounded descriptor), and prove at the raw database boundary that cookie paths and other network credentials cannot enter the History representation. Reconcile the migration, schema snapshot, frozen fixture and completion projection together. |
+| `T145-R1` | **High** | **Yes** | The UX-005 amendment is headed **“Maintainer ruling, 2026-08-05”**, while the handoff states that no maintainer ratified it. T-145's criterion requires the three decisions to be recorded before implementation; it does not authorize the Implementer to choose and accept product decisions or to attribute them to the maintainer. The task itself says these points must not be assumed. All group presentation below depends on that proposed ruling. | Obtain and record the maintainer's actual disposition of all three choices. If accepted, accurately record that ratification; if changed, update the implementation and tests. Until then the amendment is proposed, not Accepted, and T-145 is not Complete. |
+| `T144-R1` | **High** | **Yes** | The DAT-005 amendment is likewise labelled **“Maintainer ruling”** without one. This case is stricter: DAT-005 is Accepted and outranks T-144, and the task has no criterion authorizing the Implementer to amend it. Its reopening condition being satisfied makes an amendment eligible for a decision; it does not make the amendment self-accepting. Clear History, its wording and its toolbar placement all rely on the proposed content. | Obtain a maintainer ruling on whether to reopen DAT-005 and on the proposed semantics. Ratify it accurately or revert the Accepted decision and leave T-144 blocked/filed until a different ruling is made. |
+| `T145-R2` | **High** | **Yes** | `HistoryModel.data()` resolves the visible row to `entry`, but `THUMBNAIL_URL_ROLE` then indexes `_entries[index.row()]` again. Once a closed playlist compresses two durable members into one visible header, the ordinary row after it receives the hidden second member's image. Opening the group shifts every member too and can take the last visible row beyond the durable tuple. This is the exact visible-index/durable-index class the task says it audited. | Answer the thumbnail from the already-resolved `entry`, and keep the reviewer regression with distinct member and solo URLs so a coincidental shared/absent image cannot hide the mismatch. |
+| `T145-R3` | **High** | **Yes** | A History group visibly draws its common format (`STATE_ROLE`) and common folder (`SELECTOR_ROLE`), but its `AccessibleTextRole` says only title, count, size and completion time. An ordinary History row speaks all displayed REQ-020 fields; the new header tells a screen-reader user less than a sighted user about the same downloads, violating NFR-005 and reproducing T017-R2's two-vocabularies failure. | Compose the group accessible text from the same role-backed facts the row draws, including the format/folder when present, and retain the cross-surface reviewer assertion. |
+| `T159-R2` | **High** | **Yes** | T-159 is filed **Complete** while its second acceptance criterion—conversion output including MP3 bitrate—is explicitly “not built” and assigned to T-156. The current implementation can label the built-in default, but a non-default MP3 conversion falls back to its input selector and does not say what it converted to. A task cannot delegate its unmet acceptance criterion to a later task without a maintainer scope amendment and still receive approval. | Either implement the conversion/bitrate criterion across the shared naming surface and its control vocabulary, or obtain a maintainer amendment that narrows T-159 and moves the criterion to T-156. Record T-159 as incomplete/blocked until one of those paths is chosen. |
+| `T142-R1` | **Medium** | **Yes** | `_group_folder()` deliberately reports `UNKNOWN_TEXT` when completed members name different folders, but `history_group_verbs()` offers Reveal when **any** member has a path and `_on_verb()` silently chooses the first such member. Thus the same header says there is no common folder and offers “Show in folder” anyway, selecting a folder the user did not choose. This is a narrow trigger with the workaround of opening the group, hence Medium, but it is observable action-target correctness. | Offer and route the group Reveal verb only when the members identify one truthful common folder (with a route-time recheck). Otherwise omit it; individual member reveals remain available after expansion. |
+
+### Conditional dispositions and non-findings
+
+- **T014-R4 is satisfied.** The v6/v7 fixtures contain frozen schema text and hand-authored literal
+  rows; generating the DDL by applying migrations while that version was current is not seeding
+  fixture data through today's repository or model.
+- **The shared extraction is appropriate.** `ui/grouping.py` owns only flattening, expansion and
+  identity mapping; queue- and History-specific role data remain in their models. The unchanged
+  queue tests pass on the extracted implementation.
+- **`records_at` and `records_for` are justified rather than accidental duplication.** One resolves
+  a visible selection row and the other a delegate-emitted identity; combining them would either
+  reintroduce the two index spaces or force callers to manufacture the other vocabulary.
+- **T-144's implementation is conditionally sound.** Subject to the maintainer's product ruling,
+  `HistoryRepository.clear()` is a separate committed `DELETE`, remains ordered on the writer
+  thread, preserves selection removal, avoids SQLite's parameter ceiling, and never touches files.
+- The submitted absence of `tests/network` is proportionate to this diff. No approval conclusion
+  depends on network behavior. Exact-head Windows evidence was not independently obtained; the
+  source findings block before that residual needs disposition.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check 38504b3..9edf7b6`: **pass**. Four implementation commits, one task each; `79d225c` adds the handoff only. |
+| Existing focused coverage | Queue/grouping, row-verbs, History and persistence selection: **218 passed** apart from the added reviewer regressions (the combined command also selected the three new failing UI tests). |
+| Reviewer regressions | **4 failed as expected**: visible thumbnail identity; group accessible format/folder; divergent-folder Reveal; raw History cookie-path exclusion. |
+| Reviewer test static gates | `ruff check` and `ruff format --check`: **pass**. `mypy --no-incremental` and `mypy --platform win32 --no-incremental`: **success, 109 files**. |
+| Submitted broader evidence | Implementer reports unit/UI/integration **2242 passed, 11 skipped**, ruff and mypy clean. Network and Windows runtime tests were not run. |
+
+The reviewer changed only `ai/REVIEWS.md` and the two test files containing the four regressions.
+No reviewed source, decision, task state, commit, remote ref or CI state was changed.

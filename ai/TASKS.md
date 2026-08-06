@@ -2092,6 +2092,280 @@ because the file was deleted, is an ordinary thing to want.
 
 ## Blocked
 
+### T-159 — History reports the format as a yt-dlp id
+
+**Status:** **Blocked — 2026-08-05, on a scope ruling** (`T159-R2`). `T159-R1` (**Critical**) is
+corrected: History stored the whole `DownloadRequest`, which carries `cookies_from_browser` —
+`DAT-003` records that field as a browser name only by caller convention — and `REQ-026` forbids a
+cookie path this application supplies from ever reaching History. It now stores a `FormatChoice`,
+exactly `PRESET_OWNED_FIELDS`, and the type system refuses a request at that boundary.
+
+**What blocks it:** the second acceptance criterion — a conversion says what it converted to,
+including the MP3 bitrate — is **not built**, and a task cannot move its own unmet criterion to a
+later one. Disclosing the bitrate means ruling on what the format *control* says, which is
+`T-156`'s product half. Either that ruling is made and this is built, or the maintainer narrows
+this task and moves the criterion to `T-156`.
+**Owner:** Implementer
+**Priority:** Medium — it is the third surface to make the same mistake, and the first two are fixed
+**Phase:** Phase 3
+**Depends on:** nothing. Overlaps `T-156`, which asks the MP3 preset to state its bitrate
+**Relevant context:** `REQ-009`, `REQ-020`, `T140-R3`, `T126-R2`, `ui/history_view.py`
+(`FORMAT_COLUMN`), `ui/queue_view.py` (`_effective_format_text`)
+**Affected surfaces:** `ui/history_view.py`, possibly `core/models.py`
+**Risk:** Low to display; medium if the record has to carry more than it does
+
+#### Scope
+
+**History prints `entry.format_used` verbatim**, and that field means *"what yt-dlp reported"* — an
+id like `251`, not a description. **A merged download is worse: `399+140`**, which is two ids joined
+by yt-dlp's own selector syntax — video 399 with audio 140. So the field a user reads to answer
+*what did I get* answers with an internal join expression. A user reading their own download history is told a number with
+no explanation available anywhere in the window.
+
+**This is `T140-R3` on a third surface.** That finding was the queue header showing
+`bestvideo+bestaudio/best` where its own control offered *Best video available*; the fix routed it
+through `_effective_format_text`, which prefers a preset's name and falls back to the literal.
+`T126-R2` did the same for an ordinary row. **History was not changed**, so the project has now
+fixed this defect twice and still ships it once.
+
+**What a user actually wants is not the id.** The maintainer named it: **the file type and the
+bitrate** — `MP3, 192 kbps` — which is what they chose in the first place. The extension is
+inferable from the path shown beside it, and inference is not a field.
+
+**The record may not carry enough**, and that is the part to establish first. `format_used` is what
+the worker reported. Whether the *request* is recoverable from the history row — and so whether the
+preset name can be recovered rather than re-derived — is a `T-085` question this task must answer
+before it decides what to display.
+
+#### Acceptance criteria
+
+- A history row states the format in the same vocabulary the rest of the window uses — the preset's
+  name where one describes the download, per `_effective_format_text`'s rule, not a yt-dlp id
+- Where the download was a conversion, the row says **what it converted to**, including the bitrate
+  for MP3 — the pairing `T-156` asks for on the queue side, so the two surfaces agree
+- The raw `format_used` is still **available** — a tooltip, the detail view, somewhere — because
+  `REQ-020` records what happened and an id is what happened
+- A record that predates whatever field this needs still renders honestly, per `_text_or_absent`'s
+  existing rule
+- The queue, History and the add dialog are asserted **together** for one download, as `T140-R3`
+  required, so a fourth surface cannot drift
+
+#### Out of scope
+
+- Changing what the worker reports. `format_used` is yt-dlp's answer and stays that
+- A migration, unless the answer to the question above needs one — decide, then file it
+
+---
+
+### T-144 — History can only be cleared one record at a time
+
+**Status:** **Blocked — 2026-08-05, on a maintainer ruling** (`T144-R1`), and more strictly than
+`T-145`. `DAT-005` is Accepted and outranks this task, which has **no criterion authorising an
+amendment**; §1 naming its own reopening condition made one eligible for a decision, not
+self-accepting. The reviewer found the implementation conditionally sound — separate committed
+`DELETE`, ordered on the writer thread, selection removal preserved, past the parameter ceiling,
+no file touched — so what is missing is the ruling, not the work. If the answer is no, this comes
+out.
+**Owner:** Implementer
+**Priority:** Medium — `REQ-020` makes History accumulate forever by design, so this gets worse
+with use rather than better
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `DAT-005` (history removal and its confirmation), `REQ-020`, `NFR-003`,
+`ui/history_view.py`, `ui/main_window.py`, `persistence/repositories.py`
+**Affected surfaces:** `ui/history_view.py`, `ui/main_window.py`, `persistence/repositories.py`
+**Risk:** Medium — it is a destructive action over an unbounded set
+
+#### Scope
+
+**Bulk removal already exists and is not discoverable.** The table is `ExtendedSelection`,
+`removal_requested` emits *the whole selection* when the clicked row is part of it, and
+`removal_question` already names the count. What is missing is any way to reach that without
+dragging: **there is no `Clear history`, and nothing anywhere calls `selectAll`.** Qt gives
+`Ctrl+A` to an `ExtendedSelection` view by default, so a keyboard user may already have a route —
+untested, unlabelled, and not something a user is told about.
+
+**The repository cannot do it as one call today, and this is the part to get right.**
+`HistoryRepository.remove_many` builds one placeholder per id:
+
+```sql
+DELETE FROM history WHERE id IN (?, ?, ?, …)
+```
+
+Measured on this build — `sqlite3` 3.51.2, `SQLITE_LIMIT_VARIABLE_NUMBER` = 32766:
+
+| Placeholders | Result |
+|---|---|
+| 999 | ok |
+| 32766 | ok |
+| 32767 | `OperationalError: too many SQL variables` |
+
+So "select everything and remove it" **fails outright** on a history past ~32k records, and does so
+with a database error rather than a message. That is unreachable today for most users and is
+exactly the kind of limit that is discovered by the person who has used the application longest.
+
+**`remove_many` must not simply grow a `DELETE FROM history`.** Its docstring is explicit that the
+empty-sequence guard exists so an empty selection "does not become an accidental
+`DELETE FROM history` — the failure this signature exists to make impossible". A wholesale clear is
+therefore a **separate, explicitly-named operation**, not a special case of removal — and the
+narrow signature stays narrow.
+
+#### Acceptance criteria
+
+- A visible route clears the whole history in one action, reachable by pointer **and** keyboard
+- Its confirmation **names its own count** (`DAT-005` §4) and still says that files are never
+  deleted (`HISTORY_KEEPS_FILES`) — clearing a record is not deleting a download, and that is the
+  sentence most worth keeping at the moment a user empties the list
+- Clearing many is **one transaction** (`NFR-003`): no half-emptied history, and nothing that
+  survives only until the process exits
+- **Asserted past the placeholder ceiling** — a history of more than 32766 records clears without
+  a database error. That number is measured on this build and belongs in the test's reasoning, not
+  in an assertion that would silently pass on a build with a different limit
+- `remove_many`'s empty guard is untouched, and a wholesale clear is its own method with its own
+  name
+- Removing a selection still works exactly as it does now
+
+#### Out of scope
+
+- Deleting the files themselves. `DAT-005` and `HISTORY_KEEPS_FILES` both say History is a record,
+  not the downloads, and nothing here changes that
+- Any automatic pruning by age or size. That is a policy decision nobody has made, and inventing
+  one inside a task about a button would be `UX-005` §5's shape in the data layer
+
+---
+
+### T-142 — A History playlist has no verbs of its own
+
+**Status:** **Blocked — 2026-08-05**, transitively: its verbs act on the History groups `T-145`
+introduces, and that task is blocked on the `UX-005` ruling. Implemented and reviewed; `T142-R1`
+is corrected — the header offered *Show in folder* while its own line said it had no common
+folder, and then routed to whichever member came first. Offer and route now ask one function.
+**Owner:** Implementer
+**Priority:** Medium — the two tabs draw the same row anatomy and answer different verbs on it
+**Phase:** Phase 3
+**Depends on:** `T-145`, which has to decide what a history group *is* before anything can act on
+one. `T-140` (done) is the queue-side precedent to follow rather than reinvent
+**Relevant context:** `UX-005` §3 and row 9, `DAT-005` §4, `T-140`'s `group_verbs`, `T-145`,
+`ui/history_view.py`, `ui/row_verbs.py`
+**Affected surfaces:** `ui/history_view.py`, `ui/row_verbs.py`, `ui/main_window.py`
+**Risk:** Medium — the verbs differ from the queue's, and assuming they do not is the trap
+
+#### Scope
+
+**The queue's header has verbs; History's does not** — and History's cannot simply borrow them.
+`group_verbs()` answers `Cancel all`, `Retry failed` and `Show in folder` from member statuses,
+and in History every member is terminal by definition: there is nothing to cancel and, under
+`DAT-005`, a record is not a download to retry. What a history group plausibly offers is
+`Show in folder` and a removal that names its count — which is a **different list**, derived the
+same way.
+
+**`T-145` comes first and this is not sequencing pedantry.** A history group's identity is what
+`T-145` decides; a verb cannot act on a group nobody has defined. `T-144`'s bulk clear is the
+neighbouring question of what removal means over many records at once.
+
+**The queue-side answer is the precedent.** `T-140` established that a group's offer is derived
+from its members and re-checked when routed — `T140-R6` is what deriving it from status alone
+cost, a playlist of DRM failures offering a retry `SEC-001` forbids. Whatever History offers is
+derived and re-checked the same way.
+
+#### Acceptance criteria
+
+- A History playlist header offers the verbs a **terminal** group can honestly support, each one
+  transcribed from `UX-005` and `DAT-005` rather than copied from the queue's list
+- Removal names its own count (`DAT-005` §4), reusing the queue's question shape rather than a
+  second wording for the same act
+- A verb on the header does not touch records outside the group, asserted with an unrelated
+  record beside it
+- Entry verbs are unchanged — this adds a level, it does not move one
+- The offer is derived from the members and re-checked when routed, per `T140-R6`
+
+#### Out of scope
+
+- **Everything now built in `T-140`**: the queue header's verbs, its count-bearing removal, and the
+  keyboard disclosure route. Listed because this task previously *was* that work
+- **Selecting several groups and acting on all of them.** One header acting on its own members is
+  this task; multi-group selection is `T-144`'s shape
+- **`Open` on a header.** There is no one file to open, and inventing one would be a decision
+- **Reordering a group as a unit**, or moving entries between groups. `REQ-016`'s reordering
+  predates grouping and does not say what either means
+
+---
+
+### T-145 — History lists a playlist's tracks individually instead of grouping them
+
+**Status:** **Blocked — 2026-08-05, on a maintainer ruling** (`T145-R1`). Implemented and
+reviewed; `T145-R2` (a hidden member's thumbnail on the row after a closed playlist) and `T145-R3`
+(the header spoke less than it drew) are corrected. **What blocks it is not code:** `UX-005`'s
+three decisions were written by the Implementer and headed *"Maintainer ruling"* without one, and
+this task's own scope says it must not assume any of them. The entry is relabelled **PROPOSED**;
+until it is ruled on, the implementation matches a proposal rather than a decision.
+**Owner:** Implementer
+**Priority:** Medium — `UX-005` §3 gives both tabs the same row anatomy, and this is the largest
+place they now differ
+**Phase:** Phase 3
+**Depends on:** `T-140` (done — the queue's grouping), and it shapes `T-144`
+**Relevant context:** `UX-005` §3 and rows 9–9d, `T-140`, `T-137`, `DAT-005`, `T014-R4`,
+`persistence/repositories.py`, `ui/history_view.py`, `ui/queue_view.py`
+**Affected surfaces:** `persistence/` (a migration), `ui/history_view.py`, probably
+`ui/queue_view.py` — see the shared-code question
+**Risk:** Medium-High — a schema change *and* the first real pressure to share the grouping
+
+#### Scope
+
+A playlist downloads as one queue row that opens into its entries (`UX-005` row 9). When it
+finishes it becomes **sixteen unrelated rows in History**, and the fact that they arrived together
+— which the queue took trouble to show — is gone at exactly the point it becomes the only record.
+
+**History has no notion of a playlist at all.** Migration `0004` put `playlist_id`,
+`playlist_index` and `playlist_title` on `jobs`; the `history` table has `id`, `url`, `title`,
+`output_path`, `format_used`, `bytes_total`, `thumbnail_url`, `completed_at` and nothing else, and
+`history_view.py` contains no occurrence of the word. So this is `T-138`'s shape for the third
+time: the data was known while the job existed and had nowhere to live afterwards.
+
+**Three things to decide, and the task should not assume any of them.**
+
+1. **What a history group's chip says.** `UX-005` row 3 excluded History from the state chip
+   because *"every history row is finished, so a chip reading Done on all of them is noise"*. A
+   *group* is different — `16 items` is information rather than furniture — but that is an
+   argument for a **different** chip, not for reversing row 3.
+2. **What the segmented bar becomes.** Row 9b's bar exists to show a failed entry among running
+   ones. In History every member succeeded, so a bar of sixteen identical blocks is the furniture
+   row 3 rejected. Probably absent; that is a ruling, not a detail.
+3. **Whether a partly-failed playlist is one group.** Only completed downloads reach History
+   (`DAT-005`), so a sixteen-item playlist with two failures becomes a group of fourteen. Does the
+   header say `14 items` or `14 of 16`? The second needs the original count carried across, which
+   is another column.
+
+**The shared-code question, which is the real design work.** `QueueModel` holds `_Group`,
+`_rebuild_visible`, the expansion set and the header's roles — about a hundred lines that
+`HistoryModel` would otherwise duplicate, and duplication here means the two tabs drift in exactly
+the way `UX-005` §3 exists to prevent. Extracting it is the obvious move and is **not free**: the
+queue's grouping reads `Job` and its statuses, and History's would read `HistoryEntry`, so the
+shared part is the flattening and the expansion, not the data. Decide deliberately rather than by
+copy-paste.
+
+**It changes `T-144`.** Clearing history one group at a time is a different gesture from clearing
+sixteen rows, and a group's *Remove* must name what it takes — `DAT-005` §4's rule that the
+confirmation names its own count already applies and would now mean sixteen.
+
+#### Acceptance criteria
+
+- A finished playlist is **one history row that opens**, matching the queue's anatomy
+- Membership is durable — migration with a frozen fixture (`T014-R4`), and the columns carried
+  across at completion rather than reconstructed
+- A record written before the migration still renders, ungrouped, with no invented membership
+- Removing a group removes its members, with a confirmation naming its own count (`DAT-005` §4)
+- Whatever is shared with `QueueModel` is shared **once**, and the two tabs are asserted to agree
+  on the anatomy rather than each asserted alone
+- The three decisions above are recorded in `UX-005` before they are implemented, not after
+
+#### Out of scope
+
+- Re-grouping records that predate the migration. Their membership was never written down and
+  inventing it from titles or paths would be a guess presented as a record
+
+---
+
 ### T-092 — Arm `STARBASE` so the next access violation leaves a cause, not a stack
 
 **Status:** **Blocked — prepared 2026-08-01, on *somebody at* `STARBASE`.**
@@ -2524,289 +2798,6 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
-
-### T-159 — History reports the format as a yt-dlp id
-
-**Status:** **Complete — 2026-08-05, awaiting review**, with **one criterion deliberately left
-to `T-156`** — see below. Found by the maintainer, 2026-08-05: *"the (251) here is useless to a
-regular user."* The question the scope required answering first — whether the request is
-recoverable from a history row — is **no**: `audio_quality` is preset-owned, so an MP3
-converted at 320 kbps matches no built-in and cannot be named from an id. So it needed a
-migration, and `0007` carries the request itself rather than a rendered name, which would be a
-derived value with a lifetime — a preset renamed later would leave old records asserting a name
-this build no longer has. The naming rule now lives in `ui/format_text.py` and all three
-surfaces call it instead of holding a copy.
-
-**Criterion 2 — the bitrate for a conversion — is not built, and that is a ruling rather than
-an omission.** The queue's format dropdown offers `preset.name`, so a row reading *Audio only
-(MP3), 192 kbps* beside a control reading *Audio only (MP3)* would be `T140-R3`'s own defect one
-field over: a download named two ways, one row apart. Disclosing the bitrate means deciding what
-the **control** says too, which is the product half `T-156` holds. `format_text.format_name` is
-the single place it changes, and all three surfaces change with it — which is what criterion 5
-asks for. Reported rather than banked as met.
-**Owner:** Implementer
-**Priority:** Medium — it is the third surface to make the same mistake, and the first two are fixed
-**Phase:** Phase 3
-**Depends on:** nothing. Overlaps `T-156`, which asks the MP3 preset to state its bitrate
-**Relevant context:** `REQ-009`, `REQ-020`, `T140-R3`, `T126-R2`, `ui/history_view.py`
-(`FORMAT_COLUMN`), `ui/queue_view.py` (`_effective_format_text`)
-**Affected surfaces:** `ui/history_view.py`, possibly `core/models.py`
-**Risk:** Low to display; medium if the record has to carry more than it does
-
-#### Scope
-
-**History prints `entry.format_used` verbatim**, and that field means *"what yt-dlp reported"* — an
-id like `251`, not a description. **A merged download is worse: `399+140`**, which is two ids joined
-by yt-dlp's own selector syntax — video 399 with audio 140. So the field a user reads to answer
-*what did I get* answers with an internal join expression. A user reading their own download history is told a number with
-no explanation available anywhere in the window.
-
-**This is `T140-R3` on a third surface.** That finding was the queue header showing
-`bestvideo+bestaudio/best` where its own control offered *Best video available*; the fix routed it
-through `_effective_format_text`, which prefers a preset's name and falls back to the literal.
-`T126-R2` did the same for an ordinary row. **History was not changed**, so the project has now
-fixed this defect twice and still ships it once.
-
-**What a user actually wants is not the id.** The maintainer named it: **the file type and the
-bitrate** — `MP3, 192 kbps` — which is what they chose in the first place. The extension is
-inferable from the path shown beside it, and inference is not a field.
-
-**The record may not carry enough**, and that is the part to establish first. `format_used` is what
-the worker reported. Whether the *request* is recoverable from the history row — and so whether the
-preset name can be recovered rather than re-derived — is a `T-085` question this task must answer
-before it decides what to display.
-
-#### Acceptance criteria
-
-- A history row states the format in the same vocabulary the rest of the window uses — the preset's
-  name where one describes the download, per `_effective_format_text`'s rule, not a yt-dlp id
-- Where the download was a conversion, the row says **what it converted to**, including the bitrate
-  for MP3 — the pairing `T-156` asks for on the queue side, so the two surfaces agree
-- The raw `format_used` is still **available** — a tooltip, the detail view, somewhere — because
-  `REQ-020` records what happened and an id is what happened
-- A record that predates whatever field this needs still renders honestly, per `_text_or_absent`'s
-  existing rule
-- The queue, History and the add dialog are asserted **together** for one download, as `T140-R3`
-  required, so a fourth surface cannot drift
-
-#### Out of scope
-
-- Changing what the worker reports. `format_used` is yt-dlp's answer and stays that
-- A migration, unless the answer to the question above needs one — decide, then file it
-
----
-
-### T-144 — History can only be cleared one record at a time
-
-**Status:** **Complete — 2026-08-05, awaiting review.** Found by the maintainer, 2026-08-04,
-with a history large enough for it to matter. `DAT-005` §1 refused *Clear all* **and named the
-condition that would lift the refusal** — *"once removal itself is proven"* — so it was amended
-before this was built rather than after. The verb is `Clear history`, which keeps §1's other
-objection: *all* has no object, so a user supplies one, and the one they have in mind is their
-files. `remove`'s empty guard is untouched and `HistoryRepository.clear()` is its own method.
-**Owner:** Implementer
-**Priority:** Medium — `REQ-020` makes History accumulate forever by design, so this gets worse
-with use rather than better
-**Phase:** Phase 3
-**Depends on:** nothing
-**Relevant context:** `DAT-005` (history removal and its confirmation), `REQ-020`, `NFR-003`,
-`ui/history_view.py`, `ui/main_window.py`, `persistence/repositories.py`
-**Affected surfaces:** `ui/history_view.py`, `ui/main_window.py`, `persistence/repositories.py`
-**Risk:** Medium — it is a destructive action over an unbounded set
-
-#### Scope
-
-**Bulk removal already exists and is not discoverable.** The table is `ExtendedSelection`,
-`removal_requested` emits *the whole selection* when the clicked row is part of it, and
-`removal_question` already names the count. What is missing is any way to reach that without
-dragging: **there is no `Clear history`, and nothing anywhere calls `selectAll`.** Qt gives
-`Ctrl+A` to an `ExtendedSelection` view by default, so a keyboard user may already have a route —
-untested, unlabelled, and not something a user is told about.
-
-**The repository cannot do it as one call today, and this is the part to get right.**
-`HistoryRepository.remove_many` builds one placeholder per id:
-
-```sql
-DELETE FROM history WHERE id IN (?, ?, ?, …)
-```
-
-Measured on this build — `sqlite3` 3.51.2, `SQLITE_LIMIT_VARIABLE_NUMBER` = 32766:
-
-| Placeholders | Result |
-|---|---|
-| 999 | ok |
-| 32766 | ok |
-| 32767 | `OperationalError: too many SQL variables` |
-
-So "select everything and remove it" **fails outright** on a history past ~32k records, and does so
-with a database error rather than a message. That is unreachable today for most users and is
-exactly the kind of limit that is discovered by the person who has used the application longest.
-
-**`remove_many` must not simply grow a `DELETE FROM history`.** Its docstring is explicit that the
-empty-sequence guard exists so an empty selection "does not become an accidental
-`DELETE FROM history` — the failure this signature exists to make impossible". A wholesale clear is
-therefore a **separate, explicitly-named operation**, not a special case of removal — and the
-narrow signature stays narrow.
-
-#### Acceptance criteria
-
-- A visible route clears the whole history in one action, reachable by pointer **and** keyboard
-- Its confirmation **names its own count** (`DAT-005` §4) and still says that files are never
-  deleted (`HISTORY_KEEPS_FILES`) — clearing a record is not deleting a download, and that is the
-  sentence most worth keeping at the moment a user empties the list
-- Clearing many is **one transaction** (`NFR-003`): no half-emptied history, and nothing that
-  survives only until the process exits
-- **Asserted past the placeholder ceiling** — a history of more than 32766 records clears without
-  a database error. That number is measured on this build and belongs in the test's reasoning, not
-  in an assertion that would silently pass on a build with a different limit
-- `remove_many`'s empty guard is untouched, and a wholesale clear is its own method with its own
-  name
-- Removing a selection still works exactly as it does now
-
-#### Out of scope
-
-- Deleting the files themselves. `DAT-005` and `HISTORY_KEEPS_FILES` both say History is a record,
-  not the downloads, and nothing here changes that
-- Any automatic pruning by age or size. That is a policy decision nobody has made, and inventing
-  one inside a task about a button would be `UX-005` §5's shape in the data layer
-
----
-
-### T-142 — A History playlist has no verbs of its own
-
-**Status:** **Complete — 2026-08-05, awaiting review.** Re-scoped 2026-08-05: this task was
-filed to hold `T-140`'s group verbs, count-bearing removal and keyboard disclosure, `T140-R5`
-ruled that arrangement out, and all three were built in `T-140`. What is left — the same
-argument one tab over — is built here on `T-145`'s groups. A terminal group offers
-`Show in folder` and `Remove` and nothing else: `history_group_verbs()` derives them, and the
-two the queue offers are absent because a record has no download to cancel or retry.
-**Owner:** Implementer
-**Priority:** Medium — the two tabs draw the same row anatomy and answer different verbs on it
-**Phase:** Phase 3
-**Depends on:** `T-145`, which has to decide what a history group *is* before anything can act on
-one. `T-140` (done) is the queue-side precedent to follow rather than reinvent
-**Relevant context:** `UX-005` §3 and row 9, `DAT-005` §4, `T-140`'s `group_verbs`, `T-145`,
-`ui/history_view.py`, `ui/row_verbs.py`
-**Affected surfaces:** `ui/history_view.py`, `ui/row_verbs.py`, `ui/main_window.py`
-**Risk:** Medium — the verbs differ from the queue's, and assuming they do not is the trap
-
-#### Scope
-
-**The queue's header has verbs; History's does not** — and History's cannot simply borrow them.
-`group_verbs()` answers `Cancel all`, `Retry failed` and `Show in folder` from member statuses,
-and in History every member is terminal by definition: there is nothing to cancel and, under
-`DAT-005`, a record is not a download to retry. What a history group plausibly offers is
-`Show in folder` and a removal that names its count — which is a **different list**, derived the
-same way.
-
-**`T-145` comes first and this is not sequencing pedantry.** A history group's identity is what
-`T-145` decides; a verb cannot act on a group nobody has defined. `T-144`'s bulk clear is the
-neighbouring question of what removal means over many records at once.
-
-**The queue-side answer is the precedent.** `T-140` established that a group's offer is derived
-from its members and re-checked when routed — `T140-R6` is what deriving it from status alone
-cost, a playlist of DRM failures offering a retry `SEC-001` forbids. Whatever History offers is
-derived and re-checked the same way.
-
-#### Acceptance criteria
-
-- A History playlist header offers the verbs a **terminal** group can honestly support, each one
-  transcribed from `UX-005` and `DAT-005` rather than copied from the queue's list
-- Removal names its own count (`DAT-005` §4), reusing the queue's question shape rather than a
-  second wording for the same act
-- A verb on the header does not touch records outside the group, asserted with an unrelated
-  record beside it
-- Entry verbs are unchanged — this adds a level, it does not move one
-- The offer is derived from the members and re-checked when routed, per `T140-R6`
-
-#### Out of scope
-
-- **Everything now built in `T-140`**: the queue header's verbs, its count-bearing removal, and the
-  keyboard disclosure route. Listed because this task previously *was* that work
-- **Selecting several groups and acting on all of them.** One header acting on its own members is
-  this task; multi-group selection is `T-144`'s shape
-- **`Open` on a header.** There is no one file to open, and inventing one would be a decision
-- **Reordering a group as a unit**, or moving entries between groups. `REQ-016`'s reordering
-  predates grouping and does not say what either means
-
----
-
-### T-145 — History lists a playlist's tracks individually instead of grouping them
-
-**Status:** **Complete — 2026-08-05, awaiting review.** Found by the maintainer, 2026-08-04, after
-a sixteen-item playlist finished and landed in History as sixteen unrelated rows. The three
-decisions the scope refuses to assume were ruled on in `UX-005` **before** implementation, per the
-last criterion: the chip is a count, there is no segmented bar, and a partly-failed playlist counts
-the members present. The shared-code question was answered by extracting the flattening and the
-expansion to `ui/grouping.py` — **not** the data, which the queue reads from `Job` and History from
-`HistoryEntry` — and `QueueModel` was moved onto it in the same commit, so there is one copy rather
-than two from the start.
-**Owner:** Implementer
-**Priority:** Medium — `UX-005` §3 gives both tabs the same row anatomy, and this is the largest
-place they now differ
-**Phase:** Phase 3
-**Depends on:** `T-140` (done — the queue's grouping), and it shapes `T-144`
-**Relevant context:** `UX-005` §3 and rows 9–9d, `T-140`, `T-137`, `DAT-005`, `T014-R4`,
-`persistence/repositories.py`, `ui/history_view.py`, `ui/queue_view.py`
-**Affected surfaces:** `persistence/` (a migration), `ui/history_view.py`, probably
-`ui/queue_view.py` — see the shared-code question
-**Risk:** Medium-High — a schema change *and* the first real pressure to share the grouping
-
-#### Scope
-
-A playlist downloads as one queue row that opens into its entries (`UX-005` row 9). When it
-finishes it becomes **sixteen unrelated rows in History**, and the fact that they arrived together
-— which the queue took trouble to show — is gone at exactly the point it becomes the only record.
-
-**History has no notion of a playlist at all.** Migration `0004` put `playlist_id`,
-`playlist_index` and `playlist_title` on `jobs`; the `history` table has `id`, `url`, `title`,
-`output_path`, `format_used`, `bytes_total`, `thumbnail_url`, `completed_at` and nothing else, and
-`history_view.py` contains no occurrence of the word. So this is `T-138`'s shape for the third
-time: the data was known while the job existed and had nowhere to live afterwards.
-
-**Three things to decide, and the task should not assume any of them.**
-
-1. **What a history group's chip says.** `UX-005` row 3 excluded History from the state chip
-   because *"every history row is finished, so a chip reading Done on all of them is noise"*. A
-   *group* is different — `16 items` is information rather than furniture — but that is an
-   argument for a **different** chip, not for reversing row 3.
-2. **What the segmented bar becomes.** Row 9b's bar exists to show a failed entry among running
-   ones. In History every member succeeded, so a bar of sixteen identical blocks is the furniture
-   row 3 rejected. Probably absent; that is a ruling, not a detail.
-3. **Whether a partly-failed playlist is one group.** Only completed downloads reach History
-   (`DAT-005`), so a sixteen-item playlist with two failures becomes a group of fourteen. Does the
-   header say `14 items` or `14 of 16`? The second needs the original count carried across, which
-   is another column.
-
-**The shared-code question, which is the real design work.** `QueueModel` holds `_Group`,
-`_rebuild_visible`, the expansion set and the header's roles — about a hundred lines that
-`HistoryModel` would otherwise duplicate, and duplication here means the two tabs drift in exactly
-the way `UX-005` §3 exists to prevent. Extracting it is the obvious move and is **not free**: the
-queue's grouping reads `Job` and its statuses, and History's would read `HistoryEntry`, so the
-shared part is the flattening and the expansion, not the data. Decide deliberately rather than by
-copy-paste.
-
-**It changes `T-144`.** Clearing history one group at a time is a different gesture from clearing
-sixteen rows, and a group's *Remove* must name what it takes — `DAT-005` §4's rule that the
-confirmation names its own count already applies and would now mean sixteen.
-
-#### Acceptance criteria
-
-- A finished playlist is **one history row that opens**, matching the queue's anatomy
-- Membership is durable — migration with a frozen fixture (`T014-R4`), and the columns carried
-  across at completion rather than reconstructed
-- A record written before the migration still renders, ungrouped, with no invented membership
-- Removing a group removes its members, with a confirmation naming its own count (`DAT-005` §4)
-- Whatever is shared with `QueueModel` is shared **once**, and the two tabs are asserted to agree
-  on the anatomy rather than each asserted alone
-- The three decisions above are recorded in `UX-005` before they are implemented, not after
-
-#### Out of scope
-
-- Re-grouping records that predate the migration. Their membership was never written down and
-  inventing it from titles or paths would be a guess presented as a record
-
----
 
 ### T-161 — The best thumbnail yt-dlp offers is sometimes one that does not exist
 
