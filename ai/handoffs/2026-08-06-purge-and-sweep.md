@@ -164,10 +164,15 @@ ledger left to rename them after.
 | Fresh database | schema **v9**, tables `jobs` only |
 | Legacy upgrade | v7 fixture through `connect()`: **3 history rows before; afterwards schema v9 and one table, `jobs`.** All three purged URLs absent. `example.invalid` and `Track one` *do* still appear — as the surviving job rows' own URL and title, which is `REQ-012` working, and is why the regression excludes text the queue also held |
 
-**CI was still running when this was written.** The last full green was `6c90cf7`. Everything since
-is either documentation or this range, and this range is the first source change since — so
-`windows desktop` has not seen the purge. It should be indifferent to it, which is exactly the sort
-of expectation that was wrong last time.
+**CI is green on the purge: all five jobs**, run `31122446758` at `9378ae4` — the head carrying
+every source and test change in this range. `windows desktop` passed, which is the job that caught
+the `Settings` menu last time, and `frozen linux`/`frozen windows` passed, which is what actually
+proves `0009` reaches a bundled build: the spec collects migrations by glob
+(`packaging/tracks-and-trails.spec`), and a missed `.sql` would surface only there, as
+`available_migrations()` refusing to start.
+
+*(Three jobs on the preceding run show **cancelled**. That was me: I pushed twice more while it sat
+queued, and each push superseded it through the concurrency group. Nothing failed.)*
 
 ## What I did not do
 
