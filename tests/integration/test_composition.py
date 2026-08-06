@@ -456,17 +456,19 @@ def test_every_manager_signal_the_ui_needs_has_exactly_one_connection(
         assert connection_count(manager, name) == 1, (
             f"{name} should have exactly the queue UI listener that reflects the durable change"
         )
-    # **Two, and each is named**, on `job_changed`'s pattern. The queue model rebuilds its rows;
-    # the history view re-reads, because clear-finished is precisely the moment history stops
-    # agreeing with the queue and starts being the only record of what was downloaded (`T-100`,
-    # `P2PLAN-R8`). A third is still a failure.
-    assert connection_count(manager, "queue_cleared") == 2, (
-        "queue_cleared should have the queue model's listener and the history view's refresh"
+    # **One, and it is named.** The queue model rebuilds its rows. This was **two** until `T-170`:
+    # the History view re-read as well, because clear-finished was the moment history stopped
+    # agreeing with the queue and became the only record of what had been downloaded. There is no
+    # view over the ledger now, so nothing re-reads it — `T-170`'s criterion that an invisible
+    # ledger performs no view refresh is asserted here, as the absence of a listener.
+    assert connection_count(manager, "queue_cleared") == 1, (
+        "queue_cleared should have exactly the queue model's listener"
     )
-    # `T-100`: a completion writes a history row in the same transaction (`T050-R1`), so the view
-    # has to re-read. Nothing else listens to this signal in composition.
-    assert connection_count(manager, "job_succeeded") == 1, (
-        "job_succeeded should have exactly the history refresh"
+    # **Nothing at all**, for the same reason. A completion writes its ledger row in the same
+    # transaction (`T050-R1`), and no surface shows it.
+    assert connection_count(manager, "job_succeeded") == 0, (
+        "job_succeeded gained a listener; the ledger is invisible and nothing should re-read it "
+        "when a download completes (T-170)"
     )
 
     dialog = composition.window.open_add_dialog()

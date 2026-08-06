@@ -320,7 +320,6 @@ def test_the_toolbar_holds_nothing_that_acts_on_a_selection(qapp: QApplication) 
         "actionAddUrls",
         "pauseQueueAction",
         "clearCompletedAction",
-        "clearHistoryAction",
     }, (
         f"the toolbar holds {sorted(names)}; UX-005 §4 leaves it queue-wide Pause and "
         "Clear-finished, its 2026-08-04 amendment adds Add URLs as the primary action, DAT-005's "

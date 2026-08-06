@@ -1654,68 +1654,6 @@ because the file was deleted, is an ordinary thing to want.
 
 ---
 
-### T-170 — Replace the History tab with a small ledger
-
-**Status:** Proposed — **maintainer direction, 2026-08-06.** This is the implementation slice
-after `T-169` makes the product contract say what is now intended.
-**Owner:** Implementer
-**Priority:** Medium-High — it removes a substantial UI and runtime surface while preserving the
-one durable behaviour that still earns its cost
-**Phase:** Phase 3
-**Depends on:** `T-169`. This task supplies the minimal Settings shell; `T-146` extends it later
-with the persisted settings already assigned there
-**Relevant context:** `T-169`, `T-114`, `T-146`, `T-085`, `T-100`, `T-124`, `T-138`, `T-142`,
-`T-144`, `T-145`, `REQ-022`, `ui/history_view.py`, `ui/main_window.py`,
-`persistence/repositories.py`
-**Affected surfaces:** `persistence/`, `ui/main_window.py`, `ui/history_view.py`,
-`ui/row_verbs.py`, `app.py`, History-specific tests and the Settings screen from `T-146`
-**Risk:** Medium-High — the visible deletion is easy; preserving upgrade data, duplicate
-detection and the never-delete-files boundary is the real work
-
-#### Scope
-
-Remove the full History product surface and the machinery that exists only to feed it. The main
-window becomes a Queue, not a one-tab tab widget. History thumbnails, grouping, row formatting,
-selection removal, refresh subscriptions and file-location checks leave the runtime path.
-
-Keep a minimal completion ledger behind the UI. A successful completion still updates the job and
-ledger atomically, and an existing installation retains enough old data for `T-114` after upgrade.
-Do not keep obsolete presentation fields or abstractions merely because the old table was named
-`history`; equally, do not force a destructive schema rewrite without the migration decision from
-`T-169`.
-
-Move the one remaining user action to Settings as **Clear download records**. Introduce only the
-smallest Settings shell needed to hold that data/privacy control; `T-146` extends the same screen
-with ordinary settings later. The action is not a list-management verb and clears only the ledger.
-
-#### Acceptance criteria
-
-- The main window contains one Queue surface and no History tab, History count, history list,
-  history empty state, history group or history-row context menu
-- Open and Show in folder still work on a completed Queue row until that row is cleared; a moved or
-  missing file still reports honestly while the row exists
-- Completing a job writes the ledger record atomically with the completed job, and an upgraded
-  database preserves the identity needed by `T-114`
-- New completions persist only the fields `T-169` kept. No thumbnail fetch, filesystem probe or
-  view refresh is performed for an invisible ledger
-- A keyboard-reachable `Settings` menu opens one screen with a data section. It offers **Clear
-  download records** by pointer and keyboard; the confirmation names the exact count and says that
-  downloaded files are not deleted, and the empty action is disabled or asks no question
-- Clearing records is one transaction and works above SQLite's placeholder ceiling. Clearing
-  finished Queue rows does not clear records; clearing records makes `T-114` stop warning
-- History-only source and tests are removed or narrowed. Tests remain for completion atomicity,
-  database upgrade, indexed duplicate lookup, record clearing and the never-delete-files boundary
-- The application starts against both a fresh database and the last released History schema
-
-#### Out of scope
-
-- Deleting, moving, indexing or watching downloaded files
-- A per-record browser, recovery screen, search box or hidden route back to History
-- Writing provenance into files (`T-171`)
-- The other settings in `T-146`
-
----
-
 ### T-171 — Decide whether files carry provenance
 
 **Status:** Proposed — **maintainer direction, 2026-08-06.** File details are a better candidate
@@ -2204,6 +2142,90 @@ Assert, on `windows-latest`:
 ---
 
 ## Complete
+
+### T-170 — Replace the History tab with a small ledger
+
+**Status:** **Complete — 2026-08-06.** The History view, its tab and the tab widget are gone; the
+window is the Queue. The ledger `T-169` specified is behind it, and `Clear download records` is in a
+minimal Settings shell reached from a `Settings` menu.
+
+**Landed in two commits, both green**, because the halves decompose and one of them is additive:
+the ledger (migration `0008`, `core/urls.py`, `last_completed`, `count`, the identity collapse) went
+first with the view still working, and the removal followed. A half-finished single commit here
+would have been a window that does not start.
+
+**Three things the implementation found:**
+
+1. **`DAT-006` §4's one-row-per-identity is a delete, not a `UNIQUE` index.** The constraint would
+   need a migration that first deletes rows a user already has — two completions of one URL from
+   before the ledger existed. Collapsing lazily, as each identity is next completed, reaches the
+   same state without deleting anybody's records to install a constraint.
+2. **Two test factories gave every record the same URL.** Under the collapse a test seeding three
+   rows asserted against one. Both now vary the URL with the id, which is also more realistic.
+3. **`test_file_actions.py` was hosted on the History view** — convenient rather than meaningful,
+   and `T-086`'s containment tests nearly went with the view. They now run against a minimal list;
+   hosting them on the queue would only move the coupling to the next surface that might go.
+
+*(Was: Proposed — **maintainer direction, 2026-08-06.** This is the implementation slice after
+`T-169` makes the product contract say what is now intended.)*
+**Owner:** Implementer
+**Priority:** Medium-High — it removes a substantial UI and runtime surface while preserving the
+one durable behaviour that still earns its cost
+**Phase:** Phase 3
+**Depends on:** `T-169`. This task supplies the minimal Settings shell; `T-146` extends it later
+with the persisted settings already assigned there
+**Relevant context:** `T-169`, `T-114`, `T-146`, `T-085`, `T-100`, `T-124`, `T-138`, `T-142`,
+`T-144`, `T-145`, `REQ-022`, `ui/history_view.py`, `ui/main_window.py`,
+`persistence/repositories.py`
+**Affected surfaces:** `persistence/`, `ui/main_window.py`, `ui/history_view.py`,
+`ui/row_verbs.py`, `app.py`, History-specific tests and the Settings screen from `T-146`
+**Risk:** Medium-High — the visible deletion is easy; preserving upgrade data, duplicate
+detection and the never-delete-files boundary is the real work
+
+#### Scope
+
+Remove the full History product surface and the machinery that exists only to feed it. The main
+window becomes a Queue, not a one-tab tab widget. History thumbnails, grouping, row formatting,
+selection removal, refresh subscriptions and file-location checks leave the runtime path.
+
+Keep a minimal completion ledger behind the UI. A successful completion still updates the job and
+ledger atomically, and an existing installation retains enough old data for `T-114` after upgrade.
+Do not keep obsolete presentation fields or abstractions merely because the old table was named
+`history`; equally, do not force a destructive schema rewrite without the migration decision from
+`T-169`.
+
+Move the one remaining user action to Settings as **Clear download records**. Introduce only the
+smallest Settings shell needed to hold that data/privacy control; `T-146` extends the same screen
+with ordinary settings later. The action is not a list-management verb and clears only the ledger.
+
+#### Acceptance criteria
+
+- The main window contains one Queue surface and no History tab, History count, history list,
+  history empty state, history group or history-row context menu
+- Open and Show in folder still work on a completed Queue row until that row is cleared; a moved or
+  missing file still reports honestly while the row exists
+- Completing a job writes the ledger record atomically with the completed job, and an upgraded
+  database preserves the identity needed by `T-114`
+- New completions persist only the fields `T-169` kept. No thumbnail fetch, filesystem probe or
+  view refresh is performed for an invisible ledger
+- A keyboard-reachable `Settings` menu opens one screen with a data section. It offers **Clear
+  download records** by pointer and keyboard; the confirmation names the exact count and says that
+  downloaded files are not deleted, and the empty action is disabled or asks no question
+- Clearing records is one transaction and works above SQLite's placeholder ceiling. Clearing
+  finished Queue rows does not clear records; clearing records makes `T-114` stop warning
+- History-only source and tests are removed or narrowed. Tests remain for completion atomicity,
+  database upgrade, indexed duplicate lookup, record clearing and the never-delete-files boundary
+- The application starts against both a fresh database and the last released History schema
+
+#### Out of scope
+
+- Deleting, moving, indexing or watching downloaded files
+- A per-record browser, recovery screen, search box or hidden route back to History
+- Writing provenance into files (`T-171`)
+- The other settings in `T-146`
+
+---
+
 
 ### T-169 — Make completion history an internal ledger
 

@@ -21,17 +21,32 @@ from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.persistence.repositories import HistoryEntry
 from tracks_and_trails.ui.file_actions import OPEN_TEXT, REVEAL_TEXT, FileActions
-from tracks_and_trails.ui.history_view import build_history_view
 from tracks_and_trails.ui.queue_view import QueueView
 from tracks_and_trails.ui.reveal import open_command, reveal_command
 
 
-class FakeHistory:
-    def __init__(self, entries: list[HistoryEntry]) -> None:
-        self._entries = entries
+class PathList:
+    """A list of rows carrying paths, and nothing else `FileActions` asks of a host.
 
-    def all_entries(self) -> list[HistoryEntry]:
-        return list(self._entries)
+    **`FileActions` is a component, and this is what it actually needs**: an item view to attach
+    to, and a callable saying which path is selected. These tests used to host it on the History
+    view, which was convenient rather than meaningful — and when `T-170` deleted that view the
+    tests for `T-086`'s containment nearly went with it. Hosting them on the queue instead would
+    only move the coupling to the next surface that might be removed.
+    """
+
+    def __init__(self, entries: list[HistoryEntry]) -> None:
+        from PySide6.QtCore import QStringListModel
+        from PySide6.QtWidgets import QListView
+
+        self._paths = [entry.output_path for entry in entries]
+        self.model = QStringListModel([entry.id for entry in entries])
+        self.table = QListView()
+        self.table.setModel(self.model)
+
+    def selected_path(self) -> str | None:
+        index = self.table.currentIndex()
+        return self._paths[index.row()] if index.isValid() else None
 
 
 def an_entry(entry_id: str = "job-1", output_path: str | None = None) -> HistoryEntry:
@@ -54,12 +69,12 @@ def downloads(tmp_path: Path) -> Path:
 
 
 class Attached:
-    """A history view with `FileActions` on it, plus everything a test needs to inspect."""
+    """A host with `FileActions` on it, plus everything a test needs to inspect."""
 
     def __init__(
         self, *, entries: list[HistoryEntry], downloads: Path, platform: str = sys.platform
     ) -> None:
-        self.view = build_history_view(FakeHistory(entries))
+        self.view = PathList(entries)
         self.spawner = RecordingSpawner()
         #: Windows Open takes no argv (`T086-R1`), so the route has its own recorder. Without it
         #: the Windows CI job would launch a real media player on a build agent.
@@ -93,8 +108,8 @@ class Attached:
     def select_row(self, row: int) -> None:
         """Select by index rather than by row.
 
-        `selectRow` is a `QTableView` method, and `UX-005` §3 made history a `QListView` behind
-        the shared row delegate — one column, so "select the row" is "make its index current".
+        `selectRow` is a `QTableView` method and the host is a `QListView` — one column, so
+        "select the row" is "make its index current".
         """
         self.view.table.setCurrentIndex(self.view.model.index(row, 0))
 
@@ -245,7 +260,7 @@ def test_the_output_directory_is_read_at_the_moment_of_use(
     written.write_bytes(b"")
 
     current = old
-    view = build_history_view(FakeHistory([an_entry("a", str(written))]))
+    view = PathList([an_entry("a", str(written))])
     reported: list[str] = []
     spawner = RecordingSpawner()
     actions = FileActions(
@@ -349,19 +364,35 @@ def test_the_queue_view_offers_the_actions_for_a_finished_job_and_not_a_running_
         manager.shutdown()
 
 
-def test_the_history_view_reports_a_missing_path_as_absent_not_as_the_placeholder(
-    qapp: QApplication,
+def test_a_row_with_no_written_file_answers_absent_rather_than_a_placeholder(
+    qapp: QApplication, downloads: Path
 ) -> None:
-    """`path_for` must not be `text_at(PATH_COLUMN)`.
+    """A view's `selected_path` must answer `None`, never the text its column renders.
 
-    That renders the em-dash placeholder for a null path, and handing it to `open_file` would
-    report that a file named "—" is missing — a true sentence about the wrong thing.
+    **This was History's test and it moved to the queue with the question** (`T-170`). There, the
+    hazard was `path_for` being written as `text_at(PATH_COLUMN)`, which renders an em-dash for a
+    null path — handing that to `open_file` reports that a file named "—" is missing, which is a
+    true sentence about the wrong thing. The queue draws a path too, and can answer the same way.
     """
-    view = build_history_view(FakeHistory([an_entry("a", None)]))
-    view.table.setCurrentIndex(view.model.index(0, 0))
-
-    assert view.selected_path() is None
-    assert view.model.path_for("a") is None
+    request = DownloadRequest(
+        url="https://example.invalid/clip",
+        output_directory=str(downloads),
+        format_selector="best",
+        output_template="%(title)s.%(ext)s",
+    )
+    queue = FakeQueue()
+    queue.add(Job(id="running", url=request.url, request=request))
+    manager = DownloadManager(queue)
+    view = QueueView(jobs=queue, manager=manager)
+    try:
+        assert view.select("running")
+        assert view.selected_path() is None, (
+            f"the view answered {view.selected_path()!r} for a job with no written file; anything "
+            "but None becomes a refusal naming a file that was never asked for"
+        )
+    finally:
+        view.detach()
+        manager.shutdown()
 
 
 def test_the_windows_open_route_is_reached_through_the_actions(

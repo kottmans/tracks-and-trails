@@ -13,7 +13,6 @@ below asserts the destination, not the signal.
 import sys
 from collections.abc import Callable
 from dataclasses import replace
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -36,17 +35,13 @@ from tracks_and_trails.core import presets, settings
 from tracks_and_trails.core.job_state import JobStatus
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
-from tracks_and_trails.persistence.repositories import HistoryEntry
 from tracks_and_trails.ui import theme
 from tracks_and_trails.ui.format_text import FORMAT_PREFIX
 from tracks_and_trails.ui.job_detail import UNKNOWN_TEXT
 from tracks_and_trails.ui.main_window import (
-    HISTORY_KEEPS_FILES,
     STEP_DOWN_LABEL,
     STEP_UP_LABEL,
     MainWindow,
-    clear_question,
-    removal_question,
 )
 from tracks_and_trails.ui.queue_view import PROGRESS_COLUMN
 from tracks_and_trails.ui.row_delegate import (
@@ -399,64 +394,6 @@ def test_the_verbs_leave_the_message_its_width(qapp: QApplication, tmp_path: Pat
 # --- the window itself (`UX-005` §1 and §2) -------------------------------------------------
 
 
-def test_the_window_is_two_tabs_and_no_splitter(qapp: QApplication, tmp_path: Path) -> None:
-    """`UX-005` §1: `Queue` and `History` are tabs, not panes in a splitter.
-
-    **Asserted by there being no `QSplitter` anywhere in the window**, not merely by a tab widget
-    existing. A tab widget added *beside* a surviving splitter would satisfy "there is a tab
-    widget" and leave the layout the entry rejected — and the layout is what a user sees. The
-    splitter is what `UX-005` was written to remove, so its absence is the claim.
-    """
-    from PySide6.QtWidgets import QSplitter, QTabWidget
-
-    window = _window_over([_job("job-1", 0)], tmp_path)
-    body = window.centralWidget()
-    assert isinstance(body, QTabWidget), f"the window's body is a {type(body).__name__}"
-    assert body.objectName() == "shellTabs"
-    assert window.findChildren(QSplitter) == [], (
-        "a QSplitter survives in the window; UX-005 replaced the splitter with tabs, and a tab "
-        "widget added beside one leaves the layout the decision rejected"
-    )
-
-
-def test_each_tab_carries_its_count(qapp: QApplication, tmp_path: Path) -> None:
-    """`UX-005` §1: a tab with a count is not a hiding place.
-
-    This is the entire answer to the objection the splitter was built on — the source comment
-    argued a tab would hide history. Asserted by **value**, so a label that stopped counting
-    fails rather than merely looking plausible.
-    """
-    from PySide6.QtWidgets import QTabWidget
-
-    window = _window_over([_job("job-1", 0), _job("job-2", 1)], tmp_path)
-    body = window.centralWidget()
-    assert isinstance(body, QTabWidget)
-    assert body.tabText(0) == "Queue (2)", f"the Queue tab reads {body.tabText(0)!r}"
-
-
-def test_the_count_follows_the_queue(qapp: QApplication, tmp_path: Path) -> None:
-    """A count is only useful while it is true.
-
-    Rebuilt from the model on every refresh rather than tracked beside it: a hand-maintained
-    count drifts from the list it describes, reliably and in the direction that flatters
-    (`ai/TESTING.md` §13's summary rule, applied to a label).
-    """
-    from PySide6.QtWidgets import QTabWidget
-
-    jobs = [_job("job-1", 0)]
-    window = _window_over(jobs, tmp_path)
-    body = window.centralWidget()
-    assert isinstance(body, QTabWidget)
-    assert body.tabText(0) == "Queue (1)"
-
-    jobs.append(_job("job-2", 1))
-    window.refresh_queue()
-
-    assert body.tabText(0) == "Queue (2)", (
-        f"the queue gained a row and the tab still reads {body.tabText(0)!r}"
-    )
-
-
 def test_selecting_a_row_opens_nothing(qapp: QApplication, tmp_path: Path) -> None:
     """`UX-005` §2: there is no detail pane, and selecting a row does not produce one.
 
@@ -601,95 +538,6 @@ def test_a_custom_selector_claims_to_be_no_preset(qapp: QApplication, tmp_path: 
 
 
 # --- DAT-005 / T-125: the confirmation, and the promise it carries ---------------------------
-
-
-def test_the_confirmation_names_its_own_count(qapp: QApplication, tmp_path: Path) -> None:
-    """`DAT-005` §4: the count and the file guarantee in one breath.
-
-    "Remove" does not say how much is about to go, and a user who selected more than they meant to
-    has nothing to notice it by. Singular is written separately because "1 downloads" is the tell
-    that a message was assembled rather than composed.
-    """
-    assert removal_question(1) == "Remove this download from history?"
-    assert removal_question(3) == "Remove these 3 downloads from history?"
-    assert "downloads" not in removal_question(1), (
-        "the singular case reads as a plural, which is how a user learns the message is generated "
-        "and stops reading it"
-    )
-
-
-def test_confirming_removes_and_refusing_does_not(qapp: QApplication, tmp_path: Path) -> None:
-    """The confirmation is not decoration: **No must do nothing** (`DAT-005` §4).
-
-    Removal is irreversible — there is no soft delete — so the half worth testing is the half that
-    protects the user. A dialog whose No branch removed anyway is worse than no dialog, because it
-    taught them the click was safe.
-    """
-    asked: list[list[str]] = []
-    window = _window_over([], tmp_path, on_history_removal_requested=asked.append)
-
-    for button, expected in (
-        (QMessageBox.StandardButton.No, []),
-        (QMessageBox.StandardButton.Yes, [["job-1", "job-2"]]),
-    ):
-        confirm = window._remove_history(["job-1", "job-2"])
-        assert isinstance(confirm, QMessageBox)
-        try:
-            assert "2 downloads" in confirm.text(), f"the question reads {confirm.text()!r}"
-            assert confirm.informativeText() == HISTORY_KEEPS_FILES, (
-                "the confirmation does not say the files are safe, which is the one thing a user "
-                "about to remove a download needs to know"
-            )
-            assert confirm.defaultButton() == confirm.button(QMessageBox.StandardButton.No), (
-                "the default button removes; an irreversible action's default should be the one "
-                "that does nothing"
-            )
-            confirm.button(button).click()
-        finally:
-            confirm.close()
-        assert asked == expected, f"{button} produced {asked}"
-
-
-def test_history_says_the_files_are_safe_while_it_is_showing(
-    qapp: QApplication, tmp_path: Path
-) -> None:
-    """`DAT-005` §3: carried permanently, not only in the confirmation.
-
-    A promise that appears in a dialog is a promise only the people who read dialogs have, and
-    this one is about somebody's files. Asserted on the *status bar* while the History tab is in
-    front, and asserted absent on Queue — a message that never changes is wallpaper.
-    """
-    from PySide6.QtWidgets import QTabWidget
-
-    window = _window_over([_job("job-1", 0)], tmp_path, history=_FakeHistory())
-    body = window.centralWidget()
-    assert isinstance(body, QTabWidget)
-    history = window.history_view
-    assert history is not None, "the window was given a history reader and built no History tab"
-    history_tab = body.indexOf(history)
-    assert history_tab >= 0, "the window has no History tab to show the promise on"
-
-    body.setCurrentIndex(history_tab)
-    assert window.statusBar().currentMessage() == HISTORY_KEEPS_FILES, (
-        f"the History tab says {window.statusBar().currentMessage()!r}"
-    )
-
-    queue = window.queue_view
-    assert queue is not None
-    body.setCurrentIndex(body.indexOf(queue))
-    assert window.statusBar().currentMessage() != HISTORY_KEEPS_FILES, (
-        "the queue carries history's promise too, so it says nothing about history"
-    )
-
-
-class _FakeHistory:
-    """A `HistoryReader` over nothing. The promise does not depend on there being records."""
-
-    def all_entries(self) -> list[object]:
-        return []
-
-
-# --- the corrections this file's review asked for (T124, T126) --------------------------------
 
 
 class _MutableQueue:
@@ -961,14 +809,13 @@ def test_a_custom_selector_is_spelled_out_rather_than_left_blank(
 
 
 def _bring_to_front(window: MainWindow, view: Any) -> None:
-    """Show `view`'s tab, so the list is laid out and its rows have real rectangles."""
-    from PySide6.QtWidgets import QTabWidget
+    """Let `view` lay out, so its rows have real rectangles.
 
-    body = window.centralWidget()
-    assert isinstance(body, QTabWidget)
-    index = body.indexOf(view)
-    assert index >= 0, "the window never added a tab for this view"
-    body.setCurrentIndex(index)
+    *(This selected `view`'s tab. `T-169` left one surface, so the window's central widget **is**
+    the view and there is nothing to bring forward — what the helper still buys is the event turn
+    that makes the list lay out, which every caller here depends on.)*
+    """
+    assert window.centralWidget() is view, "the window's central widget is not this view"
     QApplication.processEvents()
 
 
@@ -1009,11 +856,11 @@ def _press_the_menu_key(table: Any) -> None:
     QApplication.processEvents()
 
 
-@pytest.mark.parametrize("route", ["queue", "history"])
-def test_the_menu_key_raises_the_rows_overflow(
-    qapp: QApplication, tmp_path: Path, route: str
-) -> None:
-    """`UX-005` §4 declares `⋯` the keyboard route, and neither list had one (`T124-R1`).
+def test_the_menu_key_raises_the_rows_overflow(qapp: QApplication, tmp_path: Path) -> None:
+    """`UX-005` §4 declares `⋯` the keyboard route, and the list did not have one (`T124-R1`).
+
+    *(This ran for both lists until `T-169` left one. What it asserts about the queue's row is
+    unchanged.)*
 
     `RowDelegate.editorEvent` answers **left-button mouse events only**, and nothing installed a
     keyboard or context-menu route on either view — so the declared no-pointer route did not
@@ -1023,10 +870,10 @@ def test_the_menu_key_raises_the_rows_overflow(
     see `_press_the_menu_key` for why the literal key press cannot be sent under `offscreen`.
     """
     queue = _MutableQueue([_job("job-1", 0, JobStatus.FAILED)])
-    window = _shown_window(queue, tmp_path, retry=lambda _: None, history=_OneRecordHistory())
-    view = window.queue_view if route == "queue" else window.history_view
+    window = _shown_window(queue, tmp_path, retry=lambda _: None)
+    view = window.queue_view
     assert view is not None
-    row_id = "job-1" if route == "queue" else "entry-1"
+    row_id = "job-1"
     _bring_to_front(window, view)
     assert view.select(row_id)
     view.table.setFocus()
@@ -1042,7 +889,7 @@ def test_the_menu_key_raises_the_rows_overflow(
         None,
     )
     assert menu is not None, (
-        f"the Menu key on the {route} list raised no overflow menu, so every verb the row could "
+        "the Menu key on the queue list raised no overflow menu, so every verb the row could "
         "not fit is unreachable without a pointer"
     )
     try:
@@ -1051,111 +898,6 @@ def test_the_menu_key_raises_the_rows_overflow(
         ], "the menu the keyboard raised does not hold what the row offers"
     finally:
         menu.close()
-
-
-def test_history_removal_has_a_keyboard_route(qapp: QApplication, tmp_path: Path) -> None:
-    """The half `T124-R1` calls worse: History's drawn `⋯` emitted `None` and was ignored.
-
-    `HistoryView._on_verb` tested `verb is not None` last, so the one control every history row
-    draws did nothing at all — with a pointer as well as without one — and `DAT-005`'s removal
-    had no keyboard route whatsoever. Driven end to end: the key, the menu, the verb, and the
-    selection-scoped request `DAT-005` §1 defines.
-    """
-    asked: list[list[str]] = []
-    window = _shown_window(
-        _MutableQueue([]),
-        tmp_path,
-        history=_OneRecordHistory(),
-        on_history_removal_requested=asked.append,
-    )
-    history = window.history_view
-    assert history is not None
-    _bring_to_front(window, history)
-    assert history.select("entry-1")
-    history.table.setFocus()
-
-    _press_the_menu_key(history.table)
-    menu = next(
-        (child for child in window.findChildren(QMenu) if child.objectName() == "rowVerbsMenu"),
-        None,
-    )
-    assert menu is not None, "History's rows have no keyboard route to their verbs"
-    remove = next(
-        (action for action in menu.actions() if action.objectName() == "rowVerb_remove"), None
-    )
-    assert remove is not None, f"the menu offers {[a.text() for a in menu.actions()]}, not Remove"
-
-    confirm = None
-    try:
-        remove.trigger()
-        QApplication.processEvents()
-        confirm = window.findChild(QMessageBox, "historyRemovalConfirm")
-        assert confirm is not None, "removing from the keyboard skipped DAT-005's confirmation"
-        confirm.button(QMessageBox.StandardButton.Yes).click()
-    finally:
-        menu.close()
-        if confirm is not None:
-            confirm.close()
-
-    assert asked == [["entry-1"]], (
-        f"the keyboard route asked for {asked}; DAT-005 §1 scopes removal to the selection, and "
-        "this is the route a user without a pointer has to it"
-    )
-
-
-def test_the_tab_counts_follow_a_manager_driven_change(qapp: QApplication, tmp_path: Path) -> None:
-    """`T124-R2`: the count is what makes a tab not a hiding place, so it must not go stale.
-
-    Labels were rebuilt only from `refresh_queue()`/`refresh_history()`, which composition calls
-    for the changes *it* makes. `QueueModel` resets itself on `job_removed`, `queue_reordered` and
-    `queue_cleared` — so a removal driven by the manager left the list one row shorter under a tab
-    still reading `Queue (2)`. Driven through the manager's own signal, which is what the
-    committed test bypassed by calling `window.refresh_queue()` directly.
-    """
-    from PySide6.QtWidgets import QTabWidget
-
-    queue = _MutableQueue([_job("job-1", 0), _job("job-2", 1)])
-    window = _shown_window(queue, tmp_path)
-    body = window.centralWidget()
-    assert isinstance(body, QTabWidget)
-    view = window.queue_view
-    assert view is not None
-    assert body.tabText(body.indexOf(view)) == "Queue (2)"
-
-    queue.jobs = [job for job in queue.jobs if job.id != "job-1"]
-    assert window._manager is not None
-    window._manager.job_removed.emit("job-1")
-    QApplication.processEvents()
-
-    assert view.model.rowCount() == 1, "the model did not follow the removal, so nothing is proven"
-    assert body.tabText(body.indexOf(view)) == "Queue (1)", (
-        f"the tab reads {body.tabText(body.indexOf(view))!r} over a list of one row"
-    )
-
-    queue.jobs = []
-    window._manager.queue_cleared.emit()
-    QApplication.processEvents()
-
-    assert body.tabText(body.indexOf(view)) == "Queue (0)", (
-        f"clearing left the tab reading {body.tabText(body.indexOf(view))!r}"
-    )
-
-
-class _OneRecordHistory:
-    """A `HistoryReader` holding one real record, so its row has verbs to offer."""
-
-    def all_entries(self) -> list[HistoryEntry]:
-        return [
-            HistoryEntry(
-                id="entry-1",
-                url="https://example.invalid/clip",
-                completed_at=datetime(2026, 8, 4, 12, 0, tzinfo=UTC),
-                title="A finished download",
-                output_path="/downloads/clip.mp4",
-                format_used="best",
-                bytes_total=1024,
-            )
-        ]
 
 
 def test_a_queue_row_draws_the_uploader_and_the_duration(
@@ -1637,33 +1379,6 @@ def test_the_toolbar_and_the_menu_share_one_add_action(qapp: QApplication, tmp_p
     assert window.add_urls_action is menu_actions[0]
 
 
-def test_a_queue_row_asks_for_a_state_chip_and_a_history_row_does_not(
-    qapp: QApplication, tmp_path: Path
-) -> None:
-    """`UX-005`'s 2026-08-04 amendment, row 3 (`T-130`) — adopted for the Queue tab **only**.
-
-    A queue is a list of rows in different states, and the state is what the eye hunts for. Every
-    history row is finished, so the same chip there would read *Done* on all of them and become
-    furniture. That asymmetry is the ruling, so it is asserted on both surfaces rather than one.
-
-    Through the role the shared delegate reads, because that is what decides the drawing — and
-    `HistoryModel` answers nothing at all, which is how a model gets the right answer without
-    knowing the role exists.
-    """
-    window = _window_over([_job("job-1", 0)], tmp_path, history=_OneRecordHistory())
-    queue = window.queue_view
-    history = window.history_view
-    assert queue is not None and history is not None
-
-    chip = queue.model.data(queue.model.index(0, 0), STATE_CHIP_ROLE)
-    assert isinstance(chip, str) and chip, (
-        f"the queue does not ask for a state chip; it answered {chip!r}"
-    )
-    assert not history.model.data(history.model.index(0, 0), STATE_CHIP_ROLE), (
-        "History asks for a state chip; every one of its rows is Done, so the chip is furniture"
-    )
-
-
 def test_the_chip_takes_width_from_the_title_rather_than_overlapping_it(
     qapp: QApplication, tmp_path: Path
 ) -> None:
@@ -1744,10 +1459,12 @@ def test_the_queue_verbs_sit_at_the_far_end_of_the_toolbar(
     list_verbs = [
         widget
         for action in bar.actions()
-        if action.objectName() in {"pauseQueueAction", "clearCompletedAction", "clearHistoryAction"}
+        if action.objectName() in {"pauseQueueAction", "clearCompletedAction"}
         and (widget := bar.widgetForAction(action)) is not None
     ]
-    assert len(list_verbs) == 3, "the toolbar no longer holds all three whole-list verbs"
+    # Two, not three: `Clear history` left the toolbar with the list it emptied (`T-169`), and the
+    # ledger's one control is in Settings.
+    assert len(list_verbs) == 2, "the toolbar no longer holds both whole-list verbs"
 
     gap = min(widget.x() for widget in list_verbs) - (spinner.x() + spinner.width())
     trailing = bar.width() - max(widget.x() + widget.width() for widget in list_verbs)
@@ -2234,38 +1951,6 @@ def test_the_rows_hold_the_keyboard_when_the_window_opens(
         window.close()
 
 
-def test_the_keyboard_follows_the_tab_the_user_switched_to(
-    qapp: QApplication, tmp_path: Path
-) -> None:
-    """`T-152`, second round. Both tabs declare the route, so both must receive the key.
-
-    **Qt provides this one, and the test is kept anyway.** Measured: removing the
-    `currentChanged` connection changed nothing, because Qt moves focus off a widget it hides and
-    the list is what it lands on. So the connection was dropped as code that looked like it did
-    something — and this stayed, because the *guarantee* is ours even when the mechanism is not.
-    It is a characterisation test and says so, rather than claiming to prove production code it
-    cannot fail against.
-    """
-    window = _window_over(
-        [_job("job-1", 0, JobStatus.RUNNING)],
-        tmp_path,
-        history=_OneRecordHistory(),
-    )
-    window.show()
-    QApplication.processEvents()
-    history = window.history_view
-    assert history is not None
-
-    try:
-        _bring_to_front(window, history)
-        assert history.table.hasFocus(), (
-            "switching to History left the keyboard on the queue's list, so the route History "
-            "declares reaches nothing"
-        )
-    finally:
-        window.close()
-
-
 def test_the_first_rows_of_a_first_run_take_the_keyboard(
     qapp: QApplication, tmp_path: Path
 ) -> None:
@@ -2307,44 +1992,6 @@ def test_the_first_rows_of_a_first_run_take_the_keyboard(
         window.close()
 
 
-def test_a_hidden_history_refresh_does_not_take_focus_from_the_toolbar(
-    qapp: QApplication, tmp_path: Path
-) -> None:
-    """A correction for the row shortcut must not hijack unrelated keyboard work."""
-    window = _window_over(
-        [_job("job-1", 0, JobStatus.RUNNING)],
-        tmp_path,
-        history=_OneRecordHistory(),
-    )
-    window.show()
-    QApplication.processEvents()
-    spinner = window.findChild(QSpinBox, "concurrencyChoice")
-    assert spinner is not None
-
-    try:
-        spinner.setFocus()
-        QApplication.processEvents()
-        assert spinner.hasFocus(), "the test did not arrange keyboard work on the toolbar"
-
-        window.refresh_history()
-        QApplication.processEvents()
-
-        assert spinner.hasFocus(), (
-            "refreshing the hidden History tab moved focus into the visible queue, interrupting "
-            "the toolbar control even though the user did not change tabs or ask for a row"
-        )
-
-        window.refresh_queue()
-        QApplication.processEvents()
-
-        assert spinner.hasFocus(), (
-            "refreshing an already-populated queue treated ordinary structural work like the "
-            "empty-to-first-row transition and took focus from the toolbar"
-        )
-    finally:
-        window.close()
-
-
 def test_an_empty_queue_claims_no_keyboard_it_cannot_use(
     qapp: QApplication, tmp_path: Path
 ) -> None:
@@ -2368,198 +2015,3 @@ def test_an_empty_queue_claims_no_keyboard_it_cannot_use(
         )
     finally:
         window.close()
-
-
-@pytest.mark.parametrize("route", ["queue", "history"])
-def test_a_long_title_elides_rather_than_widening_the_list(
-    qapp: QApplication, tmp_path: Path, route: str
-) -> None:
-    """`T-151`: a row must never be wider than the viewport, or its verbs leave the window.
-
-    A long title grew a horizontal scrollbar in the built window, pushing the verbs and `⋯` outside
-    the viewport — where no pointer can reach them, and where `T-135`'s overflow never fires because
-    a row that widens never runs out of room.
-
-    Asserted on the **scrollbar's range**, which is what "the content is wider than the viewport"
-    means to Qt, rather than on the policy flag — a flag says what was asked for and a range says
-    what happened.
-
-    **This does not kill its mutant, and says so.** Removing both view settings leaves it green:
-    `offscreen`, which every test here runs on, never produces the scrollbar — tried with 40 rows,
-    a visible vertical scrollbar and a shown window, where `sizeHintForColumn` answers 0. So this
-    guards the property on every platform and reproduces the reported failure on none of them. The
-    same limitation as `T-154`, and for the same reason: a defect visible on a real desktop and
-    invisible to a headless one.
-    """
-    long_title = "Snezhnaya Live Symphony Performance | Genshin Impact " * 4
-    job = replace(_job("job-1", 0, JobStatus.COMPLETED), title=long_title)
-
-    class _OneLongRow:
-        """A `HistoryReader` holding one record with the same over-long title."""
-
-        def all_entries(self) -> list[HistoryEntry]:
-            return [
-                HistoryEntry(
-                    id="job-1",
-                    url="https://example.invalid/clip",
-                    title=long_title,
-                    output_path=str(tmp_path / "clip.mp3"),
-                    format_used="251",
-                    bytes_total=1024,
-                    completed_at=datetime.now(UTC),
-                )
-            ]
-
-    window = _window_over([job], tmp_path, history=_OneLongRow())
-    view = window.queue_view if route == "queue" else window.history_view
-    assert view is not None, (
-        f"the window built no {route} view, so this asserts nothing — a skip here would read as a "
-        "pass"
-    )
-    _bring_to_front(window, view)
-    window.resize(700, 500)
-    qapp.processEvents()
-
-    bar = view.table.horizontalScrollBar()
-    assert bar.maximum() == 0, (
-        f"the {route} list scrolls {bar.maximum()}px sideways for a long title, so the row's verbs "
-        "are drawn outside the viewport and the overflow menu never appears"
-    )
-    window.close()
-
-
-# --- T-144 / DAT-005 amended 2026-08-05: clearing the whole list ------------------------------
-
-
-class _HistoryOver:
-    """A `HistoryReader` over as many records as a test needs."""
-
-    def __init__(self, count: int) -> None:
-        self.entries = [
-            HistoryEntry(
-                id=f"h-{number}",
-                url="https://example.invalid/watch?v=abc",
-                completed_at=datetime(2026, 8, 5, 12, 0, tzinfo=UTC),
-            )
-            for number in range(count)
-        ]
-
-    def all_entries(self) -> list[HistoryEntry]:
-        return list(self.entries)
-
-
-def test_the_clear_question_names_its_count_and_never_says_all_alone(
-    qapp: QApplication, tmp_path: Path
-) -> None:
-    """`DAT-005` §4, and the wording its amendment ruled on.
-
-    That entry refused *Clear all* partly because the phrase *"is the phrasing most likely to be
-    read as deleting downloads"* — *all* has no object, so the user supplies one, and the one they
-    have in mind is their files. The question names **downloads** and **history**, so there is no
-    gap for them to fill.
-
-    The count is grouped because this is the number a user has not been keeping: `1,284` is a
-    quantity to feel where `1284` is a number to read.
-    """
-    assert clear_question(1) == "Clear the one download in your history?"
-    assert clear_question(1284) == "Clear all 1,284 downloads from your history?"
-    assert "downloads" not in clear_question(1), (
-        "the singular case reads as a plural, which is how a user learns the message is generated"
-    )
-
-
-def test_clearing_the_history_is_confirmed_with_its_count_and_the_file_promise(
-    qapp: QApplication, tmp_path: Path
-) -> None:
-    """The criterion: the confirmation names its own count **and** says the files are kept.
-
-    `HISTORY_KEEPS_FILES` is the same sentence the status bar carries (`DAT-005` §3), from the same
-    constant, so the two cannot come to disagree — and this is the moment it matters most, because
-    it is the moment the list becomes empty.
-    """
-    cleared: list[bool] = []
-    window = _window_over(
-        [],
-        tmp_path,
-        history=_HistoryOver(3),
-        on_history_clear_requested=lambda: cleared.append(True),
-    )
-
-    for button, expected in (
-        (QMessageBox.StandardButton.No, []),
-        (QMessageBox.StandardButton.Yes, [True]),
-    ):
-        confirm = window._clear_history_asked_for()
-        assert isinstance(confirm, QMessageBox)
-        try:
-            assert "3 downloads" in confirm.text(), f"the question reads {confirm.text()!r}"
-            assert confirm.informativeText() == HISTORY_KEEPS_FILES, (
-                "clearing the whole list does not say the files are safe, which is the one thing a "
-                "user emptying their history needs to know"
-            )
-            assert confirm.defaultButton() == confirm.button(QMessageBox.StandardButton.No), (
-                "the default button clears; an irreversible action's default should do nothing"
-            )
-            confirm.button(button).click()
-        finally:
-            confirm.close()
-        assert cleared == expected, f"{button} produced {cleared}"
-
-
-def test_the_clear_route_is_visible_and_reachable_without_a_pointer(
-    qapp: QApplication, tmp_path: Path
-) -> None:
-    """The criterion: a **visible** route, by pointer and by keyboard.
-
-    Bulk removal already existed before `T-144` — the list is `ExtendedSelection` and the
-    confirmation already counted — and there was no way to reach it except by dragging. A route
-    nobody can find is the same as no route.
-
-    The keyboard half is the mnemonic and the toolbar's own focus order; asserted as the action
-    being enabled, visible and carrying a mnemonic rather than by synthesising a key press, which
-    would test Qt rather than this window.
-    """
-    window = _window_over([], tmp_path, history=_HistoryOver(2), on_history_clear_requested=None)
-    action = window.clear_history_action
-
-    assert action is not None, "the window offers no route to clear the history at all"
-    assert action.isVisible() and action.isEnabled()
-    assert "&" in action.text(), (
-        "the action has no mnemonic, so the only way to reach it is with a pointer"
-    )
-    assert "history" in action.text().lower(), (
-        f"the action reads {action.text()!r}; DAT-005's amendment rules that the verb names the "
-        "list it empties, because 'Clear all' has no object and the user supplies one"
-    )
-    assert "file" in (action.toolTip() or "").lower(), (
-        "the tooltip does not mention the files, which is what tells a hesitating user that this "
-        "is about records"
-    )
-
-
-def test_clearing_an_empty_history_asks_nothing(qapp: QApplication, tmp_path: Path) -> None:
-    """`UX-005` §5: nothing is offered that would be refused.
-
-    *Clear 0 downloads from your history?* is a question with no answer worth giving, and a
-    confirmation that appears for it teaches the user that the dialog is noise.
-    """
-    cleared: list[bool] = []
-    window = _window_over(
-        [],
-        tmp_path,
-        history=_HistoryOver(0),
-        on_history_clear_requested=lambda: cleared.append(True),
-    )
-
-    assert window._clear_history_asked_for() is None
-    assert cleared == []
-
-
-def test_a_window_with_no_clear_handler_asks_nothing(qapp: QApplication, tmp_path: Path) -> None:
-    """Composition owns the write (`ARCHITECTURE.md` §7), so a window given none performs none.
-
-    The same shape as `_remove_history`: the window reports, it does not delete.
-    """
-    window = _window_over([], tmp_path, history=_HistoryOver(3))
-
-    assert window._clear_history_asked_for() is None

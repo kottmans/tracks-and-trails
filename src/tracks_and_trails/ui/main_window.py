@@ -41,7 +41,6 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QSizePolicy,
     QSpinBox,
-    QTabWidget,
     QToolBar,
     QToolButton,
     QWidget,
@@ -54,10 +53,10 @@ from tracks_and_trails.core.settings import SettingsProblem
 from tracks_and_trails.downloader.manager import DownloadManager
 from tracks_and_trails.ui.add_dialog import AddUrlDialog, JobSink
 from tracks_and_trails.ui.file_actions import MESSAGE_TIMEOUT_MS, FileActions
-from tracks_and_trails.ui.history_view import HistoryReader, HistoryView, build_history_view
 from tracks_and_trails.ui.job_detail import JobReader
 from tracks_and_trails.ui.queue_view import QueueReader, QueueView, build_queue_view
 from tracks_and_trails.ui.row_verbs import LABELS, Verb
+from tracks_and_trails.ui.settings_dialog import RecordsReader, SettingsDialog
 
 APP_NAME: Final = "Tracks & Trails"
 
@@ -66,8 +65,6 @@ APP_SLUG: Final = "tracksandtrails"
 
 #: The two tabs `UX-005` names. The count is appended at runtime, so these are the stems rather
 #: than what is displayed — a test asserting on the visible text must expect "Queue (3)".
-QUEUE_TAB: Final = "Queue"
-HISTORY_TAB: Final = "History"
 
 #: What the toolbar's primary action reads (`UX-005`'s 2026-08-04 amendment, `T-130`).
 #:
@@ -99,9 +96,6 @@ PRIMARY_ACTION_PROPERTY: Final = "primaryAction"
 #: painting over the toolbar (`T-132`). A role, not a name — same reason as above.
 TOOLBAR_SPACER_PROPERTY: Final = "toolbarSpacer"
 
-#: `DAT-005` §3, in one place so the status bar and the confirmation cannot come to disagree.
-HISTORY_KEEPS_FILES: Final = "Files are never deleted — this list is a record, not your downloads."
-
 
 def _verbs(carried: object) -> tuple[Verb, ...]:
     """Narrow a `more_requested` payload to verbs (`T-135`).
@@ -119,47 +113,18 @@ def _verbs(carried: object) -> tuple[Verb, ...]:
 def group_removal_question(count: int) -> str:
     """The queue's group confirmation, naming its own count (`DAT-005` §4, `UX-005` row 9).
 
-    Separate wording from `removal_question`, which says *from history*: removing a playlist from
-    the **queue** stops downloads that have not finished, and telling a user they are clearing a
-    record would understate it. Singular is written out for the same reason as its sibling.
+    Removing a playlist from the queue stops downloads that have not finished, so the wording says
+    *from the queue* rather than anything about records. Singular is written out: "1 downloads" is
+    the tell that a message was assembled rather than composed.
+
+    *(It had a sibling, `removal_question`, which said *from history*. That went with the History
+    list at `T-169`; the contrast it was written against is why this one names the queue.)*
     """
     return (
         "Remove this download from the queue?"
         if count == 1
         else f"Remove these {count} downloads from the queue?"
     )
-
-
-def removal_question(count: int) -> str:
-    """The confirmation's question, naming its own count (`DAT-005` §4, `UX-005` §9).
-
-    A bare *Remove* does not say how much is about to go, and a user who selected more than they
-    meant to has nothing to notice it by. Singular and plural are both written out: "1 downloads"
-    is the tell that a message was assembled rather than composed.
-    """
-    return (
-        "Remove this download from history?"
-        if count == 1
-        else f"Remove these {count} downloads from history?"
-    )
-
-
-def clear_question(count: int) -> str:
-    """The confirmation for emptying the whole list (`T-144`, `DAT-005` amended 2026-08-05).
-
-    **Separate wording from `removal_question`, and the difference is the point.** That one says
-    *remove these 3*, which describes a selection; this empties everything, and a user who reaches
-    it has usually not counted what they have. So the count is the sentence's news — it is how much
-    they are about to lose — and it is grouped, because `1284` is a number to read and `1,284` is a
-    quantity to feel.
-
-    Singular is written out for its sibling's reason: "1 downloads" is the tell that a message was
-    assembled rather than composed. The empty case has its own line because *"Clear 0 downloads"* is
-    a question with no answer worth giving — the verb is not offered then.
-    """
-    if count == 1:
-        return "Clear the one download in your history?"
-    return f"Clear all {count:,} downloads from your history?"
 
 
 #: Used when no geometry has been stored yet, and when what was stored is unusable.
@@ -344,10 +309,9 @@ class MainWindow(QMainWindow):
         on_remove_requested: Callable[[str], None] | None = None,
         on_reorder_requested: Callable[[list[str]], None] | None = None,
         on_clear_requested: Callable[[], None] | None = None,
-        on_history_removal_requested: Callable[[list[str]], None] | None = None,
-        on_history_clear_requested: Callable[[], None] | None = None,
+        on_clear_records_requested: Callable[[], None] | None = None,
         queue: QueueReader | None = None,
-        history: HistoryReader | None = None,
+        records: RecordsReader | None = None,
     ) -> None:
         super().__init__()
         self._geometry_file = geometry_file
@@ -355,7 +319,6 @@ class MainWindow(QMainWindow):
         self._retry = retry
         self._row_counts: dict[int, int] = {}
         self._queue: QueueView | None = None
-        self._history_view: HistoryView | None = None
         #: `T-086`'s open/reveal, one set per table. Held so they outlive `_build_body` — a
         #: `QObject` whose only reference was a local is collected, taking its connections.
         self._file_actions: list[FileActions] = []
@@ -372,8 +335,12 @@ class MainWindow(QMainWindow):
         self._on_remove_requested = on_remove_requested
         self._on_reorder_requested = on_reorder_requested
         self._on_clear_requested = on_clear_requested
-        self._on_history_removal_requested = on_history_removal_requested
-        self._on_history_clear_requested = on_history_clear_requested
+        #: The ledger, for the Settings screen's one control (`T-170`). A count and a clear;
+        #: there is no list, so the window holds no view over it.
+        self._records = records
+        self._on_clear_records_requested = on_clear_records_requested
+        #: Built after the ledger is held: the Settings action is enabled only when there is one.
+        self._settings_action: QAction | None = None
         self._build_menus()
         self._concurrency: QSpinBox | None = None
         #: `T-080`'s queue actions. Built with the control bar, so a window given no `concurrency`
@@ -388,7 +355,6 @@ class MainWindow(QMainWindow):
         #: What is left is queue-*wide* and unambiguous whichever tab is showing.
         self._pause: QAction | None = None
         self._clear: QAction | None = None
-        self._clear_history: QAction | None = None
         #: The toolbar's copy of File → Add URLs…, or `None` on a window with no control bar.
         self._add_urls_button: QAction | None = None
         if concurrency is not None:
@@ -398,34 +364,26 @@ class MainWindow(QMainWindow):
         self._environment.setAccessibleName("Environment")
         self._environment.setTextFormat(Qt.TextFormat.PlainText)
         self.statusBar().addPermanentWidget(self._environment)
-        self._build_body(queue, history)
+        self._build_body(queue)
         self._restore_geometry()
 
-    def _build_body(self, queue: QueueReader | None, history: HistoryReader | None = None) -> None:
-        """`Queue` and `History` as tabs, each with a count, and nothing else (`UX-005`).
+    def _build_body(self, queue: QueueReader | None) -> None:
+        """The Queue, as the whole of the window (`UX-005`, amended 2026-08-06 by `T-169`).
 
-        **Tabs, not a splitter, and no detail pane.** What this replaced put the history table
-        below the queue and the selected job's detail below that, and argued for it *in a source
-        comment* — reasoning from `P2PLAN-R8`, which is about which task owns the history view and
-        says nothing about where it goes. That comment was the only record of the layout, it was
-        never ratified, and it contradicted the approved design. `UX-005` records the design and
-        deletes the comment rather than correcting it: a source comment was never the right place
-        for the decision, which is the part worth keeping.
+        **One surface, and no tab widget.** This was `Queue` and `History` as tabs, each with a
+        count — the design `UX-005` chose over a splitter, and the counts were what answered the
+        objection that a tab hides a list. `T-169` removed History as a product: `REQ-020` is now a
+        private ledger with nothing to browse, so the second tab has no contents rather than fewer
+        of them.
 
-        The tab's own argument was that a tab would hide history. A tab **with a count on it** is
-        not hidden, and three panes competing for vertical space in a window wider than it is tall
-        is a real cost — worse since `T-119` made rows ~66 px.
+        **A tab strip holding one tab was rejected rather than overlooked.** It offers a choice the
+        user does not have, which is the same objection `UX-005` §5 makes to drawing a verb that
+        would be refused. The queue is the central widget directly.
 
-        Each view is built only when composition supplies something for it to read, exactly as the
-        add action is enabled only when it has all three of its collaborators. `T-007`'s tests
-        construct this window with no arguments at all, so an empty tab widget is a valid window.
+        Built only when composition supplies something to read, exactly as the add action is
+        enabled only when it has all three of its collaborators. `T-007`'s tests construct this
+        window with no arguments at all, so no central widget is a valid window.
         """
-        self._body = QTabWidget(self)
-        self._body.setObjectName("shellTabs")
-        # `NFR-005`: the tab bar is the only route between the two lists, so it has to answer to a
-        # screen reader as something other than "tab widget".
-        self._body.setAccessibleName("Queue and history")
-        self.setCentralWidget(self._body)
         if queue is None or self._manager is None:
             return
         # **No selection callback.** Selecting a row opened the detail pane; `UX-005` removes the
@@ -435,102 +393,49 @@ class MainWindow(QMainWindow):
         # deletes its collaborators.
         self._queue = build_queue_view(queue, self._manager, None)
         self._connect_row_verbs(self._queue)
-        self._body.addTab(self._queue, QUEUE_TAB)
-
-        if history is not None:
-            self._history_view = build_history_view(history)
-            # The history row's two verbs, through the same `FileActions` route the queue's use —
-            # `SEC-001`'s containment lives there and is not reimplemented per surface.
-            self._history_view.open_requested.connect(
-                lambda entry_id: self._history_file_verb(entry_id, reveal=False)
-            )
-            self._history_view.reveal_requested.connect(
-                lambda entry_id: self._history_file_verb(entry_id, reveal=True)
-            )
-            self._history_view.removal_requested.connect(self._remove_history)
-            self._history_view.more_requested.connect(self._show_history_row_menu)
-            self._body.addTab(self._history_view, HISTORY_TAB)
-            # **The guarantee is carried while the tab is showing**, not only in the confirmation
-            # (`DAT-005` §3). A promise that appears in a dialog is a promise only the people who
-            # read dialogs have, and this one is about somebody's files.
-            self._body.currentChanged.connect(self._say_what_history_does_not_do)
-
-        # **The counts follow the models, not the refresh helpers** (`T124-R2`, `UX-005` §1).
-        #
-        # They were rebuilt only from `refresh_queue()` and `refresh_history()`, which composition
-        # calls for the changes *it* makes. Every other structural change reaches the model
-        # directly — `QueueModel` resets itself on `job_removed`, `queue_reordered` and
-        # `queue_cleared`, which is `T080-R2`'s correction — so a job removed through the row's own
-        # verb left the list one row shorter under a tab still reading `Queue (2)`. A count that is
-        # wrong is worse than no count, because `UX-005` §1 is what makes a tab not a hiding place.
-        #
-        # `modelReset` is the one signal both models emit for every structural change, and it is
-        # emitted after the rebuild, so reading `rowCount()` from it reads the new set.
-        for view in (self._queue, self._history_view):
-            if view is not None:
-                view.table.model().modelReset.connect(self._refresh_tab_labels)
-
-        self._refresh_tab_labels()
+        self.setCentralWidget(self._queue)
         self._attach_file_actions()
 
         # **The declared keyboard route needs the key, not only a row** (`T-152`, second round,
-        # `NFR-005`). The first fix gave both views a current index, which is what
+        # `NFR-005`). The first fix gave the view a current index, which is what
         # `_row_menu_asked_for` falls back to — and `Shift+F10` still did nothing, because Qt
         # delivers it to the *focused* widget and nothing here ever focused a view. Measured on a
-        # freshly opened window: `QSpinBox concurrencyChoice`, the toolbar's stepper. The list's
-        # `customContextMenuRequested` cannot fire for a key the list never receives.
+        # freshly opened window: `QSpinBox concurrencyChoice`, the toolbar's stepper.
         #
-        # **Nothing is connected to `currentChanged`.** Switching tabs was measured first: Qt
-        # hides the old page, and focus on a hidden widget moves to the next focusable one in the
-        # new page, which is the list. A connection here changed no outcome in either direction,
-        # so it is left out rather than kept as code that looks like it does something.
-        for view in (self._queue, self._history_view):
-            if view is not None:
-                # **Rows arriving is the other moment the key can be placed** — but only the
-                # *first* rows, and only in the view the user is looking at (`P2EXIT-R13`). An
-                # empty view hides its list and cannot hold focus at construction, so a first run
-                # would otherwise start with no view focusable at all.
-                #
-                # This first ran on **every** structural reset from **either** model, which is far
-                # wider than the seam I disclosed: a background History refresh took the keyboard
-                # off `concurrencyChoice` while somebody was using it, and every ordinary queue
-                # refresh did the same. `T-152`'s trade was *initial* focus, not the ability to
-                # seize it later, and the connection did not implement the trade it claimed.
-                view.table.model().modelReset.connect(
-                    lambda view=view: self._first_rows_arrived(view)
-                )
-        self._row_counts = {
-            id(view): view.table.model().rowCount()
-            for view in (self._queue, self._history_view)
-            if view is not None
-        }
+        # **Rows arriving is the other moment the key can be placed** — but only the *first* rows
+        # (`P2EXIT-R13`). An empty view hides its list and cannot hold focus at construction, so a
+        # first run would otherwise start with no view focusable at all.
+        self._queue.table.model().modelReset.connect(self._first_rows_arrived)
+        self._row_counts = {id(self._queue): self._queue.table.model().rowCount()}
         self._give_the_rows_the_keyboard()
 
-    def _first_rows_arrived(self, view: QueueView | HistoryView) -> None:
-        """Place the keyboard when `view` gains its first rows, and at no other reset.
+    def _first_rows_arrived(self, *_ignored: object) -> None:
+        """Place the keyboard when the queue gains its first rows, and at no other reset.
 
-        **Three conditions, and all of them are load-bearing** (`P2EXIT-R13`):
+        **Two conditions, and both are load-bearing** (`P2EXIT-R13`): the view **was empty** and is
+        not any more — a refresh of an already-populated list is not a moment anything needs to be
+        focused — and `_give_the_rows_the_keyboard` still declines when something in the view
+        already holds the keyboard.
 
-        - the view **was empty** and is not any more — a refresh of an already-populated list is
-          not a moment anything needs to be focused,
-        - the view is the **visible** one — a hidden tab's refresh must not reach across to the
-          tab the user is on, which is the specific way this stole focus,
-        - and `_give_the_rows_the_keyboard` still declines when something in the view already
-          holds the keyboard.
+        *(The third condition was "the view is the visible one", which stopped a hidden History
+        refresh reaching across to the tab the user was on. There is one view now, so the check has
+        nothing left to distinguish; the seam it closed is gone with the tab widget.)*
 
-        The count is remembered per view rather than read from a signal, because `modelReset`
-        carries nothing and *"the list is not empty"* is not the question — *"the list just stopped
-        being empty"* is.
+        The count is remembered rather than read from a signal, because `modelReset` carries
+        nothing and *"the list is not empty"* is not the question — *"the list just stopped being
+        empty"* is.
         """
-        key = id(view)
+        if self._queue is None:
+            return
+        key = id(self._queue)
         was_empty = self._row_counts.get(key, 0) == 0
-        now = view.table.model().rowCount()
+        now = self._queue.table.model().rowCount()
         self._row_counts[key] = now
-        if was_empty and now and view is self._body.currentWidget():
+        if was_empty and now:
             self._give_the_rows_the_keyboard()
 
     def _give_the_rows_the_keyboard(self, *_ignored: object) -> None:
-        """Focus the visible tab's rows, so the keyboard route reaches them (`T-152`, `NFR-005`).
+        """Focus the queue's rows, so the keyboard route reaches them (`T-152`, `NFR-005`).
 
         **Through `focus_chain()` rather than at the list directly.** That method is already the
         views' declaration of what is focusable in the state they are in, and it answers empty
@@ -542,8 +447,8 @@ class MainWindow(QMainWindow):
         It **can** take focus from a toolbar control at the moment a first row arrives; that seam
         is stated at the connection above rather than papered over here.
         """
-        view = self._body.currentWidget()
-        if not isinstance(view, QueueView | HistoryView):
+        view = self._queue
+        if view is None:
             return
         chain = view.focus_chain()
         if not chain or any(each.hasFocus() for each in chain):
@@ -634,111 +539,6 @@ class MainWindow(QMainWindow):
             otherwise=self._report_transiently,
         )
 
-    def _history_file_verb(self, entry_id: str, *, reveal: bool) -> None:
-        """`_file_verb`, for the other tab. Same route, different table (`REQ-021`, `T-086`)."""
-        if self._history_view is None:
-            return
-        actions = next(
-            (each for each in self._file_actions if each.table is self._history_view.table), None
-        )
-        if actions is None:
-            return
-        self._history_view.select(entry_id)
-        if reveal:
-            actions.reveal_selected()
-        else:
-            actions.open_selected()
-
-    def _say_what_history_does_not_do(self, index: int) -> None:
-        """Put `DAT-005`'s promise in the status bar while History is in front (`UX-005` §9)."""
-        if self._history_view is None:
-            return
-        if self._body.widget(index) is self._history_view:
-            self.statusBar().showMessage(HISTORY_KEEPS_FILES)
-        else:
-            self.statusBar().clearMessage()
-
-    def _remove_history(self, entry_ids: list[str]) -> QMessageBox | None:
-        """Confirm, then ask composition to remove the selected records (`DAT-005`, `T-125`).
-
-        **The count and the file guarantee in one breath**, which is `DAT-005` §4: a user reading
-        "Remove 3 downloads from history?" needs to know in the same sentence that the files are
-        not going anywhere, because "remove download" is ambiguous in exactly the way that loses
-        somebody's files.
-
-        Returned rather than only shown, and `open()` rather than `exec()`, for
-        `open_add_dialog`'s reason: `exec` starts a nested event loop a test cannot leave.
-        """
-        if not entry_ids or self._on_history_removal_requested is None:
-            return None
-        confirm = QMessageBox(self)
-        confirm.setObjectName("historyRemovalConfirm")
-        confirm.setIcon(QMessageBox.Icon.Question)
-        confirm.setWindowTitle("Remove from history")
-        confirm.setText(removal_question(len(entry_ids)))
-        confirm.setInformativeText(HISTORY_KEEPS_FILES)
-        confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        confirm.setDefaultButton(QMessageBox.StandardButton.No)
-        # **Irreversible, so the safe button is the default** (`DAT-005` §4). There is no undo:
-        # a soft delete would change every history query to protect a record whose loss costs
-        # little, given the files are untouched.
-        chosen = self._on_history_removal_requested
-
-        def act(button: object) -> None:
-            if confirm.standardButton(button) == QMessageBox.StandardButton.Yes:  # type: ignore[arg-type]
-                chosen(list(entry_ids))
-
-        confirm.buttonClicked.connect(act)
-        confirm.open()
-        return confirm
-
-    def _clear_history_asked_for(self) -> QMessageBox | None:
-        """Confirm, then ask composition to empty the list (`T-144`, `DAT-005` amended 2026-08-05).
-
-        **The count and the file guarantee in one breath**, which is `DAT-005` §4 and §3 together.
-        A user clearing a selection knows what they selected; a user clearing everything usually
-        does not know how much *everything* is, so the count is the news — and this is the moment
-        §3's promise matters most, because it is the moment the list becomes empty.
-
-        **Nothing is asked when there is nothing to clear.** A confirmation reading *Clear 0
-        downloads* is a question with no answer worth giving, and `UX-005` §5's rule is that nothing
-        is offered that would be refused.
-
-        Returned rather than only shown, and `open()` rather than `exec()`, for `_remove_history`'s
-        reason: `exec` starts a nested event loop a test cannot leave.
-        """
-        if self._on_history_clear_requested is None or self._history_view is None:
-            return None
-        count = self._history_view.model.download_count()
-        if not count:
-            self._report_transiently("There is nothing in your history to clear.")
-            return None
-
-        confirm = QMessageBox(self)
-        confirm.setObjectName("historyClearConfirm")
-        confirm.setIcon(QMessageBox.Icon.Question)
-        confirm.setWindowTitle("Clear history")
-        confirm.setText(clear_question(count))
-        confirm.setInformativeText(HISTORY_KEEPS_FILES)
-        confirm.setStandardButtons(QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
-        # **Irreversible, so the safe button is the default** (`DAT-005` §4), and more so here than
-        # for a selection: this is every record the user has.
-        confirm.setDefaultButton(QMessageBox.StandardButton.No)
-        chosen = self._on_history_clear_requested
-
-        def act(button: object) -> None:
-            if confirm.standardButton(button) == QMessageBox.StandardButton.Yes:  # type: ignore[arg-type]
-                chosen()
-
-        confirm.buttonClicked.connect(act)
-        confirm.open()
-        return confirm
-
-    @property
-    def clear_history_action(self) -> QAction | None:
-        """The toolbar's `Clear history`, so a test can drive the route a user takes."""
-        return self._clear_history
-
     def _show_row_menu(self, job_id: str, verbs: object) -> QMenu | None:
         """The queue row's menu, holding whatever the view said to hold.
 
@@ -754,22 +554,7 @@ class MainWindow(QMainWindow):
             return None
         return self._row_menu(self._queue, job_id, _verbs(verbs))
 
-    def _show_history_row_menu(self, entry_id: str, verbs: object) -> QMenu | None:
-        """The history row's `⋯`, and its keyboard route (`T124-R1`, `UX-005` §4, `DAT-005`).
-
-        **The same menu the queue gets**, built by the same function from the row's own verbs — so
-        *Remove* reaches `HistoryView.trigger_verb` and therefore `_on_verb`, which is where
-        `DAT-005` §1's selection scoping lives. A menu that emitted `removal_requested` itself
-        would have been a second implementation of that scoping, and the count in the confirmation
-        would have been the thing to go wrong.
-        """
-        if self._history_view is None:
-            return None
-        return self._row_menu(self._history_view, entry_id, _verbs(verbs))
-
-    def _row_menu(
-        self, view: QueueView | HistoryView, row_id: str, offered: Sequence[Verb]
-    ) -> QMenu | None:
+    def _row_menu(self, view: QueueView, row_id: str, offered: Sequence[Verb]) -> QMenu | None:
         """One overflow menu, for whichever list asked (`T124-R1`).
 
         Both tabs draw the same row anatomy (`UX-005` §3), so they get the same overflow rather
@@ -787,44 +572,24 @@ class MainWindow(QMainWindow):
         menu.popup(QCursor.pos())
         return menu
 
-    def _refresh_tab_labels(self) -> None:
-        """Put each tab's row count on its tab (`UX-005`).
-
-        **The count is what makes a tab not a hiding place**, which is the whole answer to the
-        objection the splitter was built on — so it is not decoration and it is rebuilt from the
-        model rather than tracked alongside it. A hand-maintained count drifts from the list it
-        describes, reliably and in the direction that flatters.
-        """
-        for view, label in ((self._queue, QUEUE_TAB), (self._history_view, HISTORY_TAB)):
-            if view is None:
-                continue
-            index = self._body.indexOf(view)
-            if index < 0:  # never added, because composition gave it nothing to read
-                continue
-            # **The count is of downloads, not of lines** (`T-140`, ruled 2026-08-04). This read
-            # `rowCount()`, and a playlist is one row closed and seventeen open — so the number
-            # moved when a user opened a group, without the queue having changed.
-            model = view.table.model()
-            counted = getattr(model, "download_count", None)
-            total = counted() if callable(counted) else model.rowCount()
-            self._body.setTabText(index, f"{label} ({total})")
-
     def _attach_file_actions(self) -> None:
-        """Open and Show-in-folder on both tables (`T-086`, `REQ-021`).
+        """Open and Show-in-folder on the queue's table (`T-086`, `REQ-021`).
 
-        **On each table rather than on the toolbar.** `REQ-021` names *the history and queue views*
-        and both are on screen at once, so a single toolbar Open would have to guess which selection
-        it meant. `FileActions` explains the rest of the reasoning.
+        **On the table rather than on the toolbar.** A toolbar Open would act on a selection, and
+        `UX-005` §4 chose row verbs over a toolbar acting on one. `FileActions` explains the rest.
+
+        *(`REQ-021` named "the history and queue views" and both were on screen at once, which was
+        the original reason a single toolbar Open could not work. Since 2026-08-06 it names the
+        queue row alone, and the reasoning above is the one that survives.)*
 
         Attached only when composition supplied an `output_directory`: containment is what makes
         this safe (`SEC-001`), and a window that does not know where downloads go cannot check it —
         so it offers no way to open anything rather than an unchecked one.
         """
-        if self._output_directory is None:
+        if self._output_directory is None or self._queue is None:
             return
-        for view in (self._queue, self._history_view):
-            if view is None:
-                continue
+        view = self._queue
+        if True:
             self._file_actions.append(
                 FileActions(
                     table=view.table,
@@ -867,22 +632,6 @@ class MainWindow(QMainWindow):
         return list(self._file_actions)
 
     @property
-    def history_view(self) -> HistoryView | None:
-        """The history table, if this window was given something to read history from."""
-        return self._history_view
-
-    def refresh_history(self) -> None:
-        """Re-read the history table. Composition calls this when the set of records can differ.
-
-        A history row is written once and never changes, so there is nothing to subscribe to — the
-        two moments the *set* can differ are a completion and a clear-finished, and composition
-        knows about both.
-        """
-        if self._history_view is not None:
-            self._history_view.refresh()
-            self._refresh_tab_labels()
-
-    @property
     def queue_view(self) -> QueueView | None:
         """The queue table, if this window was given something to read jobs from."""
         return self._queue
@@ -891,7 +640,6 @@ class MainWindow(QMainWindow):
         """Re-read the queue. Called when jobs are added, which no manager signal announces."""
         if self._queue is not None:
             self._queue.refresh()
-            self._refresh_tab_labels()
 
     def report_environment(self, summary: str) -> None:
         """State what this installation can and cannot do, on screen (`REQ-024`).
@@ -944,6 +692,28 @@ class MainWindow(QMainWindow):
         dialog.finished.connect(self.refresh_queue)
         dialog.open()
         return dialog
+
+    def open_settings(self) -> SettingsDialog | None:
+        """Open the Settings screen (`REQ-023`, `T-170`).
+
+        Returns it so a test drives the same route the user takes, which is how `open_add_dialog`
+        is asserted. `None` when composition supplied no ledger — the action is disabled then, and
+        this is the second half of that rather than a trust in the first.
+        """
+        if self._records is None or self._on_clear_records_requested is None:
+            return None
+        dialog = SettingsDialog(
+            records=self._records,
+            on_clear_records=self._on_clear_records_requested,
+            parent=self,
+        )
+        dialog.open()
+        return dialog
+
+    @property
+    def settings_action(self) -> QAction | None:
+        """The `Settings` menu item, so a test can drive the route a user takes."""
+        return self._settings_action
 
     def _build_concurrency_control(self, initial: int) -> None:
         """One control for `REQ-013`'s limit, in this window rather than a dialog (`ARC-007`).
@@ -1134,36 +904,17 @@ class MainWindow(QMainWindow):
 
         clear = QAction("&Clear finished", self)
         clear.setObjectName("clearCompletedAction")
-        clear.setStatusTip("Remove finished downloads from the queue; files and history are kept")
-        # The history half is the sentence that stops this looking destructive. `P2PLAN-R8` filed
-        # `T-100` precisely because clearing the queue without a history view would leave somebody
+        clear.setStatusTip("Remove finished downloads from the queue; your files are kept")
+        # The files half is the sentence that stops this looking destructive. `UX-001` promises
+        # nothing here deletes a download, and a user reading a verb called *Clear*
         # unable to find what they had downloaded.
         clear.setToolTip(
-            "Remove completed and cancelled downloads from the queue. Files stay on disk and the "
-            "history of what was downloaded is kept; failed downloads stay so you can retry them."
+            "Remove completed and cancelled downloads from the queue. Files stay on disk; failed "
+            "downloads stay so you can retry them."
         )
         clear.triggered.connect(self._clear_finished)
         bar.addAction(clear)
         self._clear = clear
-
-        # **`Clear history`, not `Clear all`** (`T-144`, `DAT-005` amended 2026-08-05). That entry
-        # refused *Clear all* partly on the wording: *all* has no object, so the user supplies one,
-        # and the one they have in mind is their files. This names the list it empties, which is the
-        # distinction the whole entry exists to draw.
-        #
-        # **On the toolbar because discoverability is the defect.** Bulk removal already existed —
-        # the list is `ExtendedSelection` and the confirmation already counted — and there was no
-        # way to reach it without dragging. A route nobody can find is the same as no route.
-        clear_history = QAction("Clear &history", self)
-        clear_history.setObjectName("clearHistoryAction")
-        clear_history.setStatusTip("Empty the list of past downloads; the files are kept")
-        clear_history.setToolTip(
-            "Empty the list of what you have downloaded. This removes records only — every file "
-            "stays exactly where it was saved."
-        )
-        clear_history.triggered.connect(self._clear_history_asked_for)
-        bar.addAction(clear_history)
-        self._clear_history = clear_history
 
     def _pause_toggled(self, paused: bool) -> None:
         """Hand the queue's pause state to whoever composition said owns it.
@@ -1356,6 +1107,19 @@ class MainWindow(QMainWindow):
         quit_action.setObjectName("actionQuit")
         quit_action.triggered.connect(self.close)
         file_menu.addAction(quit_action)
+
+        # **`Settings` is its own menu, between File and Help** (`T-146`'s ruling, built here by
+        # `T-170` because the ledger's one control had nowhere else to go). `T-146` fills the same
+        # screen with the settings `REQ-023` names; this opens it with a data section in it.
+        settings_menu = menu_bar.addMenu("&Settings")
+        settings_action = QAction("&Settings...", self)
+        settings_action.setMenuRole(QAction.MenuRole.NoRole)
+        settings_action.setObjectName("actionSettings")
+        settings_action.setStatusTip("Preferences, and the records Tracks & Trails keeps")
+        settings_action.setEnabled(self._records is not None)
+        settings_action.triggered.connect(self.open_settings)
+        settings_menu.addAction(settings_action)
+        self._settings_action = settings_action
 
         help_menu = menu_bar.addMenu("&Help")
         about_action = QAction(f"&About {APP_NAME}", self)

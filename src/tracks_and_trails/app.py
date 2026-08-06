@@ -409,42 +409,25 @@ def compose(
         """Route a clear-finished to the manager (`REQ-016`, `T-081`)."""
         manager.clear_completed()
 
-    def remove_history(entry_ids: list[str]) -> None:
-        """Delete history records the user selected (`DAT-005`, `T-125`, `REQ-020`).
+    def clear_records() -> None:
+        """Empty the completion ledger (`REQ-020`, `DAT-005` amended 2026-08-06, `T-170`).
 
-        **Through the store rather than the manager**, which is the opposite of `remove_job` and
-        for that entry's own reason: removing a *job* can mean stopping a session, so the manager
-        has to own it. A history record is a record of something already finished — there is no
-        session, nothing to cancel, and nothing for the manager to know. Routing it through the
-        manager would be asking an object about a thing it has no relationship with.
+        **Through the store rather than the manager.** Removing a *job* can mean stopping a
+        session, so the manager owns that; a completion record is a record of something already
+        finished — there is no session, nothing to cancel, and nothing for the manager to know.
 
-        The view refreshes from the callback rather than optimistically, which is `T-013`'s
-        persist-then-announce rule: a row removed on screen before the delete landed is a row that
-        comes back on the next refresh if the write failed.
+        **Its own call rather than `remove([])`.** That method's empty guard exists so an empty
+        selection cannot become an accidental `DELETE FROM history`, and routing a deliberate clear
+        through the one method whose job is to refuse it would delete the guard and the reasoning
+        together (`DAT-005` §2).
+
+        Nothing refreshes afterwards: there is no list to redraw. The Settings screen re-reads its
+        count when it is next opened, which is the only place the number is shown.
         """
 
         def settle(error: str | None) -> None:
             if error is not None:
-                window.report_transiently(f"the history records were not removed: {error}")
-                return
-            window.refresh_history()
-
-        store.remove_history(entry_ids, settle)
-
-    def clear_history() -> None:
-        """Empty the whole list (`T-144`, `DAT-005` amended 2026-08-05).
-
-        Through the store for `remove_history`'s reason, and **its own call rather than
-        `remove_history([])`**: that method's empty guard exists so an empty selection cannot become
-        an accidental `DELETE FROM history`, and routing a deliberate clear through it would be
-        asking the one method whose job is to refuse this.
-        """
-
-        def settle(error: str | None) -> None:
-            if error is not None:
-                window.report_transiently(f"the history was not cleared: {error}")
-                return
-            window.refresh_history()
+                window.report_transiently(f"the download records were not cleared: {error}")
 
         store.clear_history(settle)
 
@@ -461,8 +444,7 @@ def compose(
         on_remove_requested=remove_job,
         on_reorder_requested=reorder_queue,
         on_clear_requested=clear_finished,
-        on_history_removal_requested=remove_history,
-        on_history_clear_requested=clear_history,
+        on_clear_records_requested=clear_records,
         # The same store, through a second protocol: `JobReader` is one job, `QueueReader` is all
         # of them (`T-079`). Two narrow protocols rather than one wide one, so a widget that needs
         # a single row cannot accidentally enumerate the queue.
@@ -470,7 +452,7 @@ def compose(
         # `T-100`: read-only over the table `T-085` writes. A third narrow protocol rather than
         # widening `QueueReader` — the history view enumerates records and nothing else, and a
         # reader that could also reach jobs would let it.
-        history=HistoryRepository(connection),
+        records=HistoryRepository(connection),
     )
     # The control follows the queue, not only the other way round: anything that pauses the pool
     # without going through the toolbar still leaves the toggle telling the truth (`T-080`).
@@ -515,18 +497,10 @@ def compose(
         )
     logging.getLogger("tracksandtrails.app").info("environment: %s", ffmpeg.summary())
 
-    def refresh_history_if_the_set_changed(*_: object) -> None:
-        """Re-read history when a completion or a clear can have changed which records exist.
-
-        `T-100`'s view has no live subscription because a history row is written once and never
-        changes. These are the only two moments the *set* differs: a job completing writes a row in
-        the same transaction (`T050-R1`), and clear-finished deletes queue rows while deliberately
-        leaving history alone — which is exactly the state the view exists to make visible.
-        """
-        window.refresh_history()
-
-    manager.job_succeeded.connect(refresh_history_if_the_set_changed)
-    manager.queue_cleared.connect(refresh_history_if_the_set_changed)
+    # **Nothing re-reads the ledger when a download completes** (`T-170`). There was a refresh
+    # here, for a view that listed records; the ledger has no view, and the only number taken from
+    # it is the Settings count, which is read when that screen is opened. `T-170`'s criterion that
+    # an invisible ledger performs no view refresh is this absence.
 
     # **Nothing follows `job_changed` into a detail pane any more** (`UX-005`). There was a rule
     # here — claim the pane for the first watchable transition and then leave it to the user, so
