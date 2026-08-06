@@ -116,6 +116,11 @@ application is **not**, and the heading was the first place that read otherwise.
   Trails keeps **no record of what has been downloaded** — not a browseable list, and not a private
   ledger behind one. A completed download is visible on its queue row until the user clears it, and
   after that the application knows nothing about it.
+  **This is true of an upgraded installation and not only a fresh one.** Migration `0009` drops the
+  table that held the record, on the maintainer's ruling of 2026-08-06 (`T169-R3`, `DAT-006`'s
+  legacy-data note). Until it ran, someone who had been using an earlier build still held every row
+  they had accumulated, with nothing in the application able to reach or remove it — the contract
+  was true of the code and false of the disk.
   *(This was narrowed to a private ledger earlier the same day and withdrawn once the ledger's cost
   was visible: five review findings, two of them High, none about the feature and all about keeping
   the data. A downloader that cannot say what you downloaded last month is the product; keeping a

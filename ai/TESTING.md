@@ -136,8 +136,19 @@ failure mode is silent, destructive, or both.
 | Path safety | No rendered output template escapes the output directory; Windows-illegal names are sanitized on both platforms |
 | Log redaction | Cookie paths/contents, proxy credentials, and URL query parameters never reach any log — asserted on what a **handler emitted**, not on a redaction function (`NFR-007`, `T-038`) |
 | DRM | `DRM_PROTECTED` is never auto-retried and has no bypass path (`REQ-EXCL-001`, `SEC-001`) |
-| Migrations | Every migration runs forward from every prior schema version with data intact |
+| Migrations | Every migration runs forward from every prior schema version with data intact — **except data a maintainer has ruled must be removed**, which is proven gone from every table instead (see below) |
 | Settings freeze | A settings change mid-flight does not alter a running job's `DownloadRequest` |
+
+**The migrations rule gained its first exception on 2026-08-06**, and the shape of the exception is
+the part to copy. `0009` deletes a user's completion records on an explicit maintainer ruling
+(`DAT-006`'s legacy-data note), so "data intact" is exactly what it must not satisfy. The rule was
+not loosened to accommodate it: the preservation test now names the tables it covers, and the
+removal has its own regression asserting the stronger property — that the purged plaintext is
+absent from **every** table afterwards, not merely from the one that was dropped. A migration that
+answered the ruling by relocating the record would pass a weakened rule and fails this one. Two
+conditions travel with the exception: a ruling recorded before the migration is written, never
+inferred from a feature removal, and a companion test proving the destruction was *narrow* — that
+the migration took what it was told to and left the rest.
 
 **Every mandatory area above is back in the default run as of `T-019`** (2026-07-27).
 Cancellation and Worker

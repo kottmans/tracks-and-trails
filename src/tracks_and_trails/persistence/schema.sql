@@ -8,18 +8,6 @@
 --
 -- Generated, never hand-written. `tests/unit/test_persistence.py` documents the command.
 
-CREATE TABLE history (
-    id           TEXT PRIMARY KEY NOT NULL,
-    url          TEXT NOT NULL,
-    title        TEXT,
-    output_path  TEXT,
-    format_used  TEXT,
-    bytes_total  INTEGER,
-    completed_at TEXT NOT NULL, thumbnail_url TEXT, playlist_id TEXT, playlist_index INTEGER, playlist_title TEXT, format_choice TEXT, normalised_url TEXT,
-
-    CHECK (bytes_total IS NULL OR bytes_total >= 0)
-);
-
 CREATE TABLE jobs (
     id             TEXT    PRIMARY KEY NOT NULL,
     url            TEXT    NOT NULL,
@@ -44,10 +32,6 @@ CREATE TABLE jobs (
     CHECK (attempts >= 0),
     CHECK (queue_position IS NULL OR queue_position >= 0)
 );
-
-CREATE INDEX history_completed_at ON history (completed_at);
-
-CREATE INDEX history_normalised_url ON history (normalised_url);
 
 CREATE UNIQUE INDEX jobs_queue_position ON jobs (queue_position)
     WHERE queue_position IS NOT NULL;

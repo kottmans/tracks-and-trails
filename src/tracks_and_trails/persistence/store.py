@@ -137,16 +137,12 @@ class PersistentJobStore(QObject):
         self._writer.revise(job, settle)
 
     def complete(self, job: Job, done: Callable[[str | None], None]) -> None:
-        """Persist `job` as complete **and** its history record, in one transaction (`T050-R1`).
+        """Persist `job` as complete, in one transaction (`T050-R1`).
 
-        This replaces a `record_completion` that wrote only history and relied on the job row having
-        been written by an earlier, separate transaction. A hard exit between the two left a durably
-        completed job with `history=None` and nothing able to reconstruct it.
-
-        Because the two rows now settle together, `done` reporting an error means **the completion
-        did not happen** — so the caller can treat it as an ordinary failed transition rather than
-        as a success with a missing record. That is what removed the silent-failure path
-        (`T050-R2`): there is no longer a state to report quietly.
+        Because the write settles before anything is announced, `done` reporting an error means
+        **the completion did not happen** — so the caller can treat it as an ordinary failed
+        transition rather than as a success with a missing record. That is what removed the
+        silent-failure path (`T050-R2`): there is no longer a state to report quietly.
 
         **Returns immediately** (`ARC-005`).
 

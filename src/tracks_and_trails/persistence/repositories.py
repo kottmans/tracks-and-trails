@@ -13,8 +13,10 @@ a settings change reproduces the *original* request rather than current defaults
 
 **What is deliberately not stored** (`REQ-026`, `NFR-007`, and the `T-014` scope decision of
 2026-07-26): a proxy's embedded credentials are stripped before the request is serialized. The
-job URL is stored verbatim, because it *is* the job — `REQ-012`'s queue and `REQ-020`'s history
-are both unusable without it, and a retry cannot reconstruct it. Cookie file paths and contents
+job URL is stored verbatim, because it *is* the job — `REQ-012`'s queue is unusable without it and
+a retry cannot reconstruct it. **That is now the only place a URL is durable**: the completion
+record that also held one is gone (`REQ-020` withdrawn, migration `0009`), so a URL lives exactly
+as long as its queue row. Cookie file paths and contents
 never reach this layer at all: `DownloadRequest.cookies_from_browser` carries a browser name
 such as `"firefox"`, not a cookie. Log redaction is a different mechanism for a different sink
 and belongs to `T-038`.
@@ -219,10 +221,12 @@ def _job_to_values(job: JobModel) -> dict[str, Any]:
 def _write_job(connection: sqlite3.Connection, job: JobModel) -> None:
     """The `UPDATE jobs` statement, **without owning a transaction** (`T050-R1`).
 
-    Separated from `JobRepository.update` so that `complete_job` can put this statement and the
-    history insert inside **one** commit. A helper that opened its own transaction could not be
-    composed, and composing them is the whole point: a completed job whose history row is in a
-    second transaction can lose that row to a hard exit in between.
+    It stays separated from `JobRepository.update`, and the reason is now historical: `complete_job`
+    once had to put this statement and a completion-record insert inside **one** commit, because a
+    completed job whose second row landed in a second transaction could lose it to a hard exit in
+    between. That second row is gone (`REQ-020` withdrawn). The split is kept because a statement
+    that does not own its transaction is still the composable shape, and re-merging it would be a
+    change with no caller asking for one.
     """
     assignments = ", ".join(f"{name} = :{name}" for name in _JOB_COLUMNS if name != "id")
     # S608: see `JobRepository.add` — literal identifiers interpolated, values parameterised.
@@ -427,12 +431,13 @@ class JobRepository:
         still in the queue offering a retry (`REQ-018`), so clearing it would throw away work the
         user has not decided about. A cancelled one is a decision they already made.
 
-        **History is untouched, and that is the answer to "where did my file go".** `T-085` writes a
-        `history` row inside the completion transaction, in a different table; clearing the queue
-        removes the queue's record and leaves the record of what was obtained. `T-100`'s view is
-        how the user finds it afterwards, which is why `P2PLAN-R8` filed that view:
-        clear-completed plus `UX-001`'s remove-never-deletes would otherwise leave them unable
-        to find their own downloads.
+        **This is the last record of those downloads, and clearing it keeps nothing back.** It used
+        to leave a `history` row behind in another table, and `T-100`'s view was how a user found
+        their file afterwards; both are gone (`REQ-020` withdrawn 2026-08-06, migration `0009`).
+        `REQ-021` is what remains and it is deliberately narrower: a file is reachable *while its
+        queue row exists*. Removing the row does not delete the file — `UX-001` — but it does end
+        the application's ability to point at it, and no other table answers "where did my file
+        go".
 
         **No file is touched**, by this method or anything it calls. Same rule and same
         implementation as `remove`: the absence of any filesystem call is the whole of it.

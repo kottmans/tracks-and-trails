@@ -1,0 +1,41 @@
+-- 0009 — the completion record is purged, not merely orphaned (`T169-R3`, `REQ-020`).
+--
+-- **This is the only destructive migration in the project, and it is destructive on purpose.**
+-- `T-169` and `T-170` withdrew the completion ledger and deleted every path that reads or writes
+-- it, but `0008` left the table populated. `T169-R3` measured what that means for someone who
+-- upgrades rather than installs fresh: opening the frozen v7 database on the withdrawal head kept
+-- all three of its rows — source URLs and output paths included — with no route in the application
+-- to see or clear them. `REQ-020` says the application keeps no record of what has been
+-- downloaded. Those rows are exactly that record, so the contract and the database disagreed, and
+-- the database was the one telling the truth.
+--
+-- **The maintainer ruled to purge**, 2026-08-06, choosing it over keeping a bounded clearing route
+-- and over preserving the rows behind an amended contract. `DAT-006`'s legacy-data note records the
+-- ruling and the two rejected options. **An implementer must not infer a deletion of a user's data
+-- from a UI removal** — that is `T169-R1`'s authority lesson, and it is why this file waited for a
+-- ruling instead of shipping with the withdrawal.
+--
+-- **`DAT-006` §5 does not apply, and the distinction is worth stating.** §5 refused a *column* drop
+-- because SQLite implements one as a table rebuild: a rewrite of every row in order to keep every
+-- row, where an interruption risks the data the rewrite exists to preserve. Nothing here preserves
+-- anything. `DROP TABLE` unlinks the table and its indexes — no row is copied, so there is no
+-- half-copied state to be interrupted in, and the risk §5 weighed against a tidiness benefit is
+-- not present when removal is the benefit.
+--
+-- **What this cannot promise.** The rows become unreachable by every query and the table stops
+-- existing; that is what makes `REQ-020` true. It is *not* a secure erase of the bytes. SQLite puts
+-- the freed pages on the file's freelist without zeroing them by default, and in WAL mode the old
+-- content also sits in the `-wal` file until a checkpoint retires it. Neither can be fixed from
+-- inside a migration: `VACUUM` cannot run in a transaction, and this script runs inside the one
+-- that carries its version bump. A user who needs the bytes gone should delete the database file,
+-- and no prose here should suggest otherwise.
+--
+-- **Irreversible, like every migration here.** Forward-only (`T-014`): there is no down-migration
+-- to restore the table, and restoring a backup is the honest recovery path. Unlike the other eight,
+-- this one has something to recover.
+--
+-- The `history_completed_at` and `history_normalised_url` indexes are not dropped separately —
+-- SQLite drops a table's indexes with it, and naming them would only invite a later reader to
+-- wonder which of the two statements did the work.
+
+DROP TABLE history;

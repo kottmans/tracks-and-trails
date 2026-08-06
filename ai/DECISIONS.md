@@ -3810,11 +3810,59 @@ downloader can decline.
   warning that does not appear; a false one warns about the wrong file. Only the second lies.
 - **§5's reasoning against dropping columns** — SQLite makes a column drop a table rewrite, on a
   table holding a user's own records — still governs migration `0008`'s now-unused
-  `normalised_url`, which stays where it is.
+  `normalised_url`, which stays where it is. — **Superseded 2026-08-06 by the legacy-data ruling
+  below: the whole table is dropped, so there is no column left to keep.** The reasoning itself is
+  still sound and still applies to the next author who wants to tidy a *live* table; it simply has
+  no subject here any more.
 - **`T170-R1`'s lesson outlives its migration**: a Python step that runs after its version bump has
   committed leaves a database that is durably "migrated" with the data half missing, and no later
   run will revisit it. If a data-transforming migration is ever written here, it belongs inside the
   transaction.
+
+### Legacy-data ruling 2026-08-06 — the rows already written are purged on upgrade
+
+**Status:** **Accepted**, by explicit maintainer ruling.
+**Raised by:** `T169-R3`, which found the gap.
+**Implemented by:** migration `0009_drop_history.sql`.
+
+**The question.** Withdrawing the ledger stopped new writes and deleted every reader, but it left
+the table where it was. `T169-R3` measured the consequence for an upgraded installation rather than
+a fresh one: opening the frozen v7 database on the withdrawal head kept all three rows, source URLs
+and output paths included, with no route in the application to see or clear them. So `REQ-020` said
+the application keeps no record of what has been downloaded while the database on disk kept one —
+and of the two, the database was telling the truth.
+
+**Why this needed a ruling and not a judgement.** Deleting a user's own rows is destructive and
+irreversible, and nothing in "remove the History screen" implies it. `T169-R1` had just established
+the same distinction one level up: satisfying a decision's trigger makes it eligible for a ruling,
+not self-ratifying. An implementer who inferred the purge would have been making the larger version
+of that mistake, on data instead of on design.
+
+**The ruling: purge them.** Migration `0009` drops the table. Two alternatives were put alongside it
+and both were declined:
+
+| Considered | Why not |
+|---|---|
+| Keep a bounded clearing route until the rows are gone | Non-destructive, and it puts the choice in the user's hands — but it restores the Settings screen the withdrawal had just removed for having nothing in it, and leaves the contract false until somebody clicks the button. A control whose only purpose is to finish a removal is a removal that has not finished. |
+| Preserve the rows, amend `REQ-020` to admit them | No data loss and no migration risk — but the application would then durably hold download URLs it promises not to keep, unreachable and unclearable. That is the shape of `T169-R2`, which is the finding this whole arc began with. |
+
+**What the purge is, exactly, and what it is not.** The rows become unreachable by every query and
+the table stops existing, which is what makes `REQ-020` true. It is **not** a secure erase: dropped
+pages go to SQLite's freelist unzeroed, and in WAL mode the old content sits in the `-wal` file
+until a checkpoint retires it. Neither is fixable from inside a migration — `VACUUM` cannot run in a
+transaction, and the migration runs inside the one carrying its version bump. A user who needs the
+bytes gone should delete the database file. The migration says this in its own prose so that nobody
+later reads a stronger promise into it.
+
+**One consequence worth naming.** `0009` is the only destructive migration in the project, and it
+inverted a test that had been correct since `T-014`: `ai/TESTING.md` §7's rule that every seeded row
+survives every migration. That rule now covers `jobs` only, and the purge carries its own regression
+proving the opposite for `history` — including that the plaintext is absent from *every* table
+afterwards, so a future migration that "preserved" the record by relocating it fails rather than
+passes. A destructive migration must also be a narrow one: a second test holds v8's job rows and
+their queue positions across the same run.
+
+---
 
 The original entry follows unaltered, as the record of a design that was built, reviewed and
 withdrawn inside one day.

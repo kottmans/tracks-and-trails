@@ -197,8 +197,8 @@ class QueueWriter(QObject):
     #: Internal: carries a single-job revision to the worker.
     _revise = Signal(int, object)
 
-    #: Internal: carries a completed job and its history record to the worker, **together**,
-    #: so they land in one transaction (`T050-R1`).
+    #: Internal: carries a completed job to the worker. It once carried a completion record with
+    #: it, so the two landed in one transaction (`T050-R1`); there is no second row now.
     _complete = Signal(int, object)
 
     #: Internal: carries a manual retry's re-queue to the worker, which allocates its tail

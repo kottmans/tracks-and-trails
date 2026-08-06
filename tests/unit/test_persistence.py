@@ -97,7 +97,24 @@ def test_migrations_are_discovered_from_the_directory_not_a_list() -> None:
 #: These files are historical artefacts. **Never regenerate them from current code.** A new
 #: version adds its own file and leaves the older ones untouched.
 #: Tables the fixtures seed and the migration test compares. Literals, never user input.
-_MIGRATED_TABLES: Final = ("jobs", "history")
+#:
+#: **`history` is deliberately not here, and its absence is a ruling rather than an omission.**
+#: It was in this tuple until `0009`, which drops the table on the maintainer's legacy-data ruling
+#: (`T169-R3`). Keeping it would assert the opposite of that ruling — the preservation rule below
+#: demands every seeded row survive every migration, which is exactly what `0009` must not do.
+#: The purge has its own regression immediately after, so removing `history` from this tuple
+#: weakens nothing: it moves the table from "must be preserved" to "must be gone".
+_MIGRATED_TABLES: Final = ("jobs",)
+
+#: Plaintext a `history` row held that no later schema may still be carrying. Two of the fixtures'
+#: own values, chosen because they are the two kinds `T169-R2` and `T169-R3` were about: a source
+#: URL and a path into a user's filesystem. Asserted absent from **every** table after migration,
+#: not just from `history`, so a future migration that "preserved" the record by copying it
+#: somewhere else fails this rather than passing it.
+_PURGED_PLAINTEXT: Final = (
+    "https://example.invalid/v7-one",
+    "/downloads/Trail Sounds/Track one.mp3",
+)
 
 
 def _rows_by_id(connection: sqlite3.Connection, table: str) -> dict[str, dict[str, Any]]:
@@ -183,6 +200,126 @@ def test_every_migration_runs_forward_from_real_historical_data(
     # actually experiences after upgrading.
     for job in JobRepository(connection).all_jobs():
         assert job.id in before["jobs"]
+    connection.close()
+
+
+def _table_exists(connection: sqlite3.Connection, table: str) -> bool:
+    found = connection.execute(
+        "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?", (table,)
+    ).fetchone()
+    return found is not None
+
+
+def _every_text_value(connection: sqlite3.Connection) -> list[str]:
+    """Every string in every table. Used to prove a purge removed data rather than moved it."""
+    values: list[str] = []
+    tables = [
+        row[0]
+        for row in connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'"
+        )
+    ]
+    for table in tables:
+        for row in connection.execute(f"SELECT * FROM {table}"):  # noqa: S608
+            values.extend(value for value in tuple(row) if isinstance(value, str))
+    return values
+
+
+def _versions_with_a_completion_record() -> list[tuple[int, Path]]:
+    """Frozen fixtures that seed a `history` table — discovered, not listed.
+
+    Reading the fixture text rather than listing versions keeps this from going stale in the
+    direction that matters: a fixture added later with `history` rows in it is covered
+    automatically.
+    """
+    return [
+        (version, path)
+        for version, path in historical_versions()
+        if "CREATE TABLE history" in path.read_text(encoding="utf-8")
+    ]
+
+
+@pytest.mark.parametrize(("version", "fixture"), _versions_with_a_completion_record())
+def test_the_completion_record_is_purged_upgrading_from_every_version_that_kept_one(
+    tmp_path: Path, version: int, fixture: Path
+) -> None:
+    """`T169-R3`: the rows go, and they go from the whole database rather than out of sight.
+
+    This is the defect the withdrawal left behind. `T-169` and `T-170` deleted every path that
+    reads or writes the completion record and `REQ-020` stopped promising one exists — but `0008`
+    left the table populated, so **someone who upgraded still held the record the contract said was
+    kept nowhere**, with no route in the application to reach it. The reviewer's probe opened the
+    frozen v7 database on that head and counted three rows before and three rows after.
+
+    Three separate assertions, because "the feature is gone" and "the data is gone" are different
+    claims and only the second is this one:
+
+    1. The fixture really did hold rows, or the rest of the test proves nothing about a purge.
+    2. The table does not exist afterwards — not empty, gone, so no later code can find it and no
+       reader has to wonder whether something still writes to it.
+    3. **The plaintext is absent from every table**, which is the assertion that would catch a
+       migration that answered `REQ-020` by moving the record somewhere less obvious.
+
+    What this does not assert, because `0009` cannot promise it: that the bytes are unrecoverable
+    from the file. Dropped pages go to SQLite's freelist unzeroed and WAL keeps the old content
+    until a checkpoint. The migration says so in its own prose; a test that claimed otherwise would
+    be transcribing a wish.
+    """
+    database = tmp_path / f"purge_from_v{version}.sqlite3"
+    connection = sqlite3.connect(database)
+    connection.row_factory = sqlite3.Row
+    db.configure(connection)
+    connection.executescript(fixture.read_text(encoding="utf-8"))
+    connection.commit()
+
+    seeded = _rows_by_id(connection, "history")
+    assert seeded, f"v{version}'s fixture seeds no history rows, so this asserts nothing"
+
+    db.migrate(connection)
+
+    assert not _table_exists(connection, "history"), (
+        f"migrating from v{version} left the history table in place. `REQ-020` says the "
+        "application keeps no record of what has been downloaded; a table that still exists is a "
+        "record that still exists, whatever reads it."
+    )
+    surviving = _every_text_value(connection)
+    for plaintext in _PURGED_PLAINTEXT:
+        assert not any(plaintext in value for value in surviving), (
+            f"{plaintext!r} survived the migration from v{version} somewhere in the database. The "
+            "ruling was to purge the completion record, not to relocate it."
+        )
+    connection.close()
+
+
+def test_the_purge_takes_the_completion_record_and_nothing_else(tmp_path: Path) -> None:
+    """A destructive migration has to be *narrow*, and one table's absence does not show that.
+
+    `0009` is the only migration here that removes data. The test above proves it removed the
+    record; this one proves it did not take the queue with it — same database, same run, v8's two
+    job rows still present and readable afterwards, with their queue positions intact because
+    `REQ-012` is what a user notices losing.
+
+    Separate from the preservation test above rather than folded into it: that one is parametrized
+    over every version and would report a v8-specific loss as one failure among nine, at a moment
+    when the question being asked is whether *this* migration was surgical.
+    """
+    fixture = HISTORICAL_FIXTURES / "v8.sql"
+    database = tmp_path / "narrow.sqlite3"
+    connection = sqlite3.connect(database)
+    connection.row_factory = sqlite3.Row
+    db.configure(connection)
+    connection.executescript(fixture.read_text(encoding="utf-8"))
+    connection.commit()
+    before = _rows_by_id(connection, "jobs")
+    assert len(before) == 2
+
+    db.migrate(connection)
+
+    after = _rows_by_id(connection, "jobs")
+    assert set(after) == set(before)
+    for job_id, original in before.items():
+        assert after[job_id]["queue_position"] == original["queue_position"]
+        assert after[job_id]["url"] == original["url"]
     connection.close()
 
 
@@ -820,9 +957,6 @@ def test_the_database_lives_under_platformdirs_and_is_not_doubled() -> None:
     assert Path(__file__).parent not in path.parents
 
 
-# --- history (T-050, REQ-020) --------------------------------------------------------------
-
-
 # --- T-080: re-queuing at the tail, and removal --------------------------------------------
 
 
@@ -1151,9 +1285,3 @@ def test_clear_completed_touches_no_file(repository: JobRepository, tmp_path: Pa
 
 
 # --- DAT-005 / T-125: removal takes ids, and only records ------------------------------------
-
-
-# --- clearing the whole history (T-144, DAT-005 amended 2026-08-05) ---------------------------
-
-
-# --- T-170: the completion ledger behind the removed History view ------------------------------
