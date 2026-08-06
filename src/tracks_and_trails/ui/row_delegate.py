@@ -270,6 +270,9 @@ BAR_HEIGHT: Final = 4
 #: purpose must not be mistakable for that defect returning, so the gap does not vary.
 SEGMENT_GAP: Final = 1
 
+#: A height no wrapped text reaches, for measuring how many lines a string takes at a given width.
+_UNBOUNDED: Final = 1 << 20
+
 #: The narrowest a block may be drawn and still read as an entry rather than as noise (`T-164`).
 #:
 #: **The number is the decision** (`T118-R8`), so it is stated here rather than tuned by eye. It
@@ -290,6 +293,14 @@ MIN_BLOCK_WIDTH: Final = 16
 #: only affordable because the count is carried exactly elsewhere: the chip reads `4 of 16`
 #: (row 9a) and the second line names each ending.
 MERGED_BLOCKS: Final = 8
+
+#: How the selector's line is laid out — **one definition, drawn and measured through the same
+#: value** (`T-150`). `minimum_row_width` asks how wide that line must be for a given selector, and
+#: an answer computed under different wrapping flags than the paint uses would size a window for
+#: text the row lays out some other way.
+SELECTOR_FLAGS: Final = int(
+    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop | Qt.TextFlag.TextWordWrap
+)
 
 #: The narrowest a plain fraction bar may be drawn (`T-163`).
 #:
@@ -379,6 +390,61 @@ def segment_span(blocks: int) -> int:
     drawn in one place and measured in another.
     """
     return max(blocks, 0) * MIN_BLOCK_WIDTH + max(blocks - 1, 0) * SEGMENT_GAP
+
+
+def selector_line_width(metrics: QFontMetrics, text: str) -> int:
+    """The narrowest the selector's line can be and still hold `text` in `SELECTOR_LINES` (`T-150`).
+
+    **Measured through Qt's own wrapping rather than divided out of the string's width.** A
+    selector is one long unbreakable-looking token after a run of ordinary words, so the width it
+    needs is not its total over the number of lines: `bestvideo[height<=1080][ext=mp4]+…` alone
+    measures 489 px at the default font and that, not the arithmetic mean, is what sets the answer.
+
+    Searched rather than solved because `boundingRect` is the only thing that knows where Qt will
+    break a string, and it is the same call the paint's layout comes from.
+    """
+    if not text:
+        return 0
+    room = SELECTOR_LINES * metrics.height()
+    low, high = 1, max(metrics.horizontalAdvance(text), 1)
+    while low < high:
+        middle = (low + high) // 2
+        box = metrics.boundingRect(QRect(0, 0, middle, _UNBOUNDED), SELECTOR_FLAGS, text)
+        if box.height() <= room:
+            high = middle
+        else:
+            low = middle + 1
+    return low
+
+
+def minimum_row_width(
+    metrics: QFontMetrics,
+    selectors: Sequence[str] = (),
+    *,
+    tile: int = THUMBNAIL_SIZE[0],
+) -> int:
+    """The narrowest a row can be drawn with nothing in its anatomy giving way (`T-150`).
+
+    **Derived from the delegate's own metrics, so a surface sized by it cannot fall behind them.**
+    `ROW_HEIGHT` is computed from `THUMBNAIL_SIZE` for the same reason — *"so changing
+    `THUMBNAIL_SIZE` cannot leave a 54 px picture in a 25 px row again"* — and a window with a
+    number typed into it would go stale the first time one of these constants moved.
+
+    Two things set it, and the larger wins:
+
+    - **The first two lines**, where the tile, the text and the format control share the width.
+      This is exactly the point at which `_control_rect` stops giving `EDITOR_WIDTH` and starts
+      narrowing (`T-160`), so the row below it is a row whose control has already begun to give.
+    - **The selector's line**, for the widest string the caller says it can be asked to draw.
+      `SELECTOR_LINES` is sized so two lines hold the longest built-in at the default font, and
+      that promise is about a row with the room to keep it.
+
+    Callers pass the strings *their* surface can produce, rather than this guessing: the staging
+    list's come from the preset catalogue it was given, which is injectable.
+    """
+    anatomy = 2 * PADDING + tile + GAP + MIN_TEXT_WIDTH + GAP + EDITOR_WIDTH + 1
+    widest = max((selector_line_width(metrics, text) for text in selectors), default=0)
+    return max(anatomy, 2 * PADDING + tile + GAP + widest + 1)
 
 
 def segment_blocks(entries: int, line_width: int) -> int:
@@ -1302,11 +1368,7 @@ class RowDelegate(QStyledItemDelegate):
                     max(body.right() - area.left(), 0),
                     selector_lines * line,
                 ),
-                int(
-                    Qt.AlignmentFlag.AlignLeft
-                    | Qt.AlignmentFlag.AlignTop
-                    | Qt.TextFlag.TextWordWrap
-                ),
+                SELECTOR_FLAGS,
                 selector,
             )
 

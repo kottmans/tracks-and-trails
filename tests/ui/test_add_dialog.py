@@ -83,10 +83,12 @@ from tracks_and_trails.ui.add_dialog import (
     describe_kind,
     format_duration,
     row_text,
+    selector_candidates,
     split_urls,
 )
 from tracks_and_trails.ui.row_delegate import (
     EDIT_HINT,
+    EDITOR_WIDTH,
     GAP,
     HEADLINE_ROLE,
     INHERITED_TEXT,
@@ -97,7 +99,9 @@ from tracks_and_trails.ui.row_delegate import (
     ROW_PRESET_NAME,
     SELECTOR_LINES,
     SELECTOR_ROLE,
+    VERBS_ROLE,
     RowDelegate,
+    selector_line_width,
 )
 from tracks_and_trails.ui.staging import SETTLED, Row, RowState
 from tracks_and_trails.ui.thumbnails import THUMBNAIL_SIZE
@@ -2476,4 +2480,131 @@ def test_a_playlist_nothing_could_enumerate_stays_a_single_job(
     assert submitted[0].playlist_id is None, (
         "a job that is not one of several was given a playlist membership, so the queue would "
         "draw a group of one"
+    )
+
+
+# --- T-150: the dialog opens wide enough for the rows it holds ---------------------------------
+
+
+def opened_viewport_width(dialog: AddUrlDialog) -> int:
+    """The viewport width the dialog *asks* to open at.
+
+    **Its `sizeHint`, not its size after `show()`.** The offscreen platform reports an 800 px
+    screen and `QWidget::adjustSize` clamps a window to two thirds of one, so `show()` here yields
+    533 px whatever the dialog requests — a number about the test platform rather than about the
+    dialog. The hint is the dialog's own answer and is what a real screen honours.
+    """
+    dialog.resize(dialog.sizeHint())
+    return staging_list(dialog).viewport().width()
+
+
+def test_the_dialog_opens_wide_enough_for_a_row_to_keep_its_control(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    qapp: QApplication,
+) -> None:
+    """`T-150`: the dialog set no size at all, so Qt gave it whatever its hints added up to.
+
+    **Measured before the fix: it opened at 302 px, with a 254 px viewport** — at which
+    `_control_rect` had already narrowed the format control to `MIN_CONTROL_WIDTH`. The dialog
+    opened with its control at the narrowest it is *allowed* to be, which is what "squeezed by
+    accident" means concretely.
+    """
+    dialog = dialogs(managers())
+    dialog.show()
+    width = opened_viewport_width(dialog)
+
+    option = QStyleOptionViewItem()
+    option.rect = QRect(0, 0, width, ROW_HEIGHT)
+    option.fontMetrics = QFontMetrics(option.font)
+    body = option.rect.adjusted(PADDING, PADDING, -PADDING, -PADDING)
+    control = RowDelegate()._control_rect(body, option.fontMetrics.height())
+
+    assert control.width() == EDITOR_WIDTH, (
+        f"the dialog opens with a {width}px row, where the format control is drawn "
+        f"{control.width()}px wide instead of {EDITOR_WIDTH}; it is already giving way at the "
+        "size the dialog chooses for itself"
+    )
+
+
+def test_the_dialog_opens_wide_enough_for_the_selector_it_can_draw(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    qapp: QApplication,
+) -> None:
+    """`T-150`: `SELECTOR_LINES` holds the longest built-in *given the room to*.
+
+    That constant's promise — "two lines holds the longest built-in at the default 9 pt font" — is
+    about a row with the width to keep it, and at the size this dialog used to open the third line
+    got 136 px against a selector measuring 962. The widest string is taken from the preset
+    catalogue the dialog was actually given, so a dialog built with different presets is sized for
+    those.
+    """
+    dialog = dialogs(managers())
+    dialog.show()
+    width = opened_viewport_width(dialog)
+
+    body = QRect(0, 0, width, ROW_HEIGHT).adjusted(PADDING, PADDING, -PADDING, -PADDING)
+    line = body.right() - (body.left() + THUMBNAIL_SIZE[0] + GAP)
+    metrics = QFontMetrics(qapp.font())
+    candidates = selector_candidates(preset_registry.BUILT_IN_PRESETS)
+
+    assert candidates, "the preset catalogue produced no selector lines to size the dialog by"
+    for text in candidates:
+        needed = selector_line_width(metrics, text)
+        assert needed <= line, (
+            f"the dialog opens with a {line}px format line, and {text!r} needs {needed}px to fit "
+            f"in the {SELECTOR_LINES} lines the row gives it"
+        )
+
+
+def test_the_dialog_can_still_be_made_narrower_than_it_opens(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    qapp: QApplication,
+) -> None:
+    """`T-150`: a **hint**, not a minimum, and the difference is the whole of this test.
+
+    A minimum would open the dialog wide and stop the user narrowing it. Narrow has to keep
+    working: `T-135`'s overflow and `T-160`'s narrowing control are what make it safe, and a floor
+    would put them out of reach rather than honour them.
+    """
+    dialog = dialogs(managers())
+    dialog.show()
+    opens_at = dialog.sizeHint().width()
+
+    dialog.resize(320, dialog.height())
+
+    assert dialog.width() == 320, (
+        f"the dialog refused to narrow past {dialog.width()}px, so the width it opens at has "
+        "become a floor the user cannot get under"
+    )
+    assert dialog.minimumSizeHint().width() < opens_at, (
+        "the dialog's minimum grew to its opening width, which is the same floor by another route"
+    )
+
+
+def test_a_staged_row_offers_no_verbs_to_drop(
+    dialogs: Callable[..., AddUrlDialog],
+    managers: Callable[..., DownloadManager],
+    spin: Callable[..., bool],
+    qapp: QApplication,
+) -> None:
+    """Why `T-150`'s "no verbs into `⋯`" criterion has nothing to assert here.
+
+    `StagingModel` answers no `VERBS_ROLE`, deliberately: a staged row has no job behind it and
+    nothing to act on, and `_verb_rects` documents that drawing a lone `⋯` there would offer a menu
+    of nothing. So no width can drop a verb on this surface. Pinned rather than argued in prose,
+    because the criterion reads as satisfied either way and only one of the two reasons is true.
+    """
+    dialog = dialogs(managers())
+    type_urls(dialog, "https://example.invalid/one")
+    dialog.resolve()
+    assert spin(lambda: bool(dialog.rows))
+
+    model = staging_list(dialog).model()
+    assert model is not None
+    assert model.data(model.index(0, 0), VERBS_ROLE) is None, (
+        "a staged row now offers verbs, so T-150's overflow criterion has become live and needs "
+        "asserting at the opened width rather than explaining away"
     )

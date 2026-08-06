@@ -56,6 +56,7 @@ from tracks_and_trails.ui.row_delegate import (
     PROGRESS_ROLE,
     ROW_HEIGHT,
     SEGMENTS_ROLE,
+    SELECTOR_FLAGS,
     SELECTOR_LINES,
     SELECTOR_ROLE,
     STATE_CHIP_ROLE,
@@ -67,6 +68,7 @@ from tracks_and_trails.ui.row_delegate import (
     RowDelegate,
     SegmentState,
     _merge,
+    minimum_row_width,
     segment_blocks,
     segment_span,
 )
@@ -1816,6 +1818,72 @@ def test_the_thumbnail_is_drawn_the_same_with_a_control_and_without(
             f"at {width}px the row's picture is drawn differently once the row has a format "
             "control, so the control is being painted over the thumbnail"
         )
+
+
+def test_the_minimum_row_width_is_where_the_control_stops_narrowing(
+    qapp: QApplication,
+) -> None:
+    """`T-150`: the derived width and the delegate's own behaviour, pinned to each other.
+
+    **This is the test the criterion asks for when it says one must fail if the two stop
+    agreeing.** `minimum_row_width` states the arithmetic; `_control_rect` runs it. A width derived
+    from constants that no longer describe the drawing is exactly the stale number the criterion
+    rules out, and only asserting the boundary catches it — either side of it, both agree.
+    """
+    delegate = RowDelegate()
+    option = QStyleOptionViewItem()
+    line = QFontMetrics(option.font).height()
+    width = minimum_row_width(QFontMetrics(option.font))
+
+    def control_at(row_width: int) -> int:
+        body = QRect(0, 0, row_width, ROW_HEIGHT).adjusted(PADDING, PADDING, -PADDING, -PADDING)
+        return delegate._control_rect(body, line).width()
+
+    assert control_at(width) == EDITOR_WIDTH, (
+        f"at the derived minimum of {width}px the control is {control_at(width)}px, not the full "
+        f"{EDITOR_WIDTH}; the number and the drawing disagree"
+    )
+    assert control_at(width - 1) < EDITOR_WIDTH, (
+        f"the control is still full width one pixel below the derived minimum, so {width} is not "
+        "the boundary it claims to be and a narrower window would do"
+    )
+
+
+def test_the_minimum_row_width_is_where_the_selector_stops_fitting(
+    qapp: QApplication,
+) -> None:
+    """`T-150`: the same pinning for the half a preset catalogue decides.
+
+    `selector_line_width` searches with `SELECTOR_FLAGS`, which is the value `_paint_text` lays the
+    line out with — measured and drawn through one definition, so the width cannot be computed for
+    a wrapping the row does not use.
+    """
+    # Held, not inlined: a temporary option takes its `font` with it (see `bar_runs`).
+    option = QStyleOptionViewItem()
+    metrics = QFontMetrics(option.font)
+    # Long enough to need both lines and to be the binding constraint, rather than the anatomy.
+    text = (
+        "Download as: Best video up to 1080p (MP4) — this row only · Format selector: "
+        "bestvideo[height<=1080][ext=mp4]+bestaudio[ext=m4a]/best[height<=1080][ext=mp4]"
+    )
+    width = minimum_row_width(metrics, [text])
+
+    def lines_at(row_width: int) -> int:
+        body = QRect(0, 0, row_width, ROW_HEIGHT).adjusted(PADDING, PADDING, -PADDING, -PADDING)
+        available = body.right() - (body.left() + THUMBNAIL_SIZE[0] + GAP)
+        drawn = metrics.boundingRect(QRect(0, 0, available, 1 << 20), SELECTOR_FLAGS, text)
+        return round(drawn.height() / metrics.height())
+
+    assert width > minimum_row_width(metrics), (
+        "this selector is not the binding constraint, so the test is measuring the anatomy again"
+    )
+    assert lines_at(width) <= SELECTOR_LINES, (
+        f"at the derived minimum of {width}px the selector still takes {lines_at(width)} lines, "
+        f"and the row draws {SELECTOR_LINES}"
+    )
+    assert lines_at(width - 1) > SELECTOR_LINES, (
+        f"the selector still fits one pixel below {width}, so that is not the boundary"
+    )
 
 
 def test_a_merged_block_takes_the_worst_state_it_covers() -> None:

@@ -81,9 +81,9 @@ from itertools import pairwise
 from pathlib import Path
 from typing import Any, Final, Protocol
 
-from PySide6.QtCore import QAbstractListModel, QModelIndex, Qt, QTimer
+from PySide6.QtCore import QAbstractListModel, QEvent, QModelIndex, QSize, Qt, QTimer
 from PySide6.QtCore import QPersistentModelIndex as _PersistentIndex
-from PySide6.QtGui import QAction, QPixmap
+from PySide6.QtGui import QAction, QFontMetrics, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QComboBox,
@@ -96,6 +96,7 @@ from PySide6.QtWidgets import (
     QMenu,
     QPlainTextEdit,
     QPushButton,
+    QStyle,
     QVBoxLayout,
     QWidget,
 )
@@ -127,6 +128,7 @@ from tracks_and_trails.ui.row_delegate import (
     STATE_ROLE,
     THUMBNAIL_URL_ROLE,
     RowDelegate,
+    minimum_row_width,
 )
 from tracks_and_trails.ui.staging import Row, RowState, Staging, placeholder_hue, summarise
 from tracks_and_trails.ui.thumbnails import (
@@ -286,11 +288,34 @@ def detail_text(row: Row) -> str:
     )
 
 
+#: The third line's opening words. A constant because `selector_candidates` builds the same string
+#: to measure the width this dialog opens at (`T-150`), and two copies of it would drift.
+FORMAT_PREFIX: Final = "Download as: "
+
+
 def selector_text(row: Row, effective: Preset | None) -> str:
     """The row's third line: what it will be downloaded as, spelled out (`T118-R8`, `REQ-009`)."""
     if effective is None or not isinstance(row.media, MediaInfo):
         return ""
-    return f"Download as: {describe_preset(row, effective)}"
+    return f"{FORMAT_PREFIX}{describe_preset(row, effective)}"
+
+
+def selector_candidates(presets: Sequence[Preset]) -> tuple[str, ...]:
+    """Every third line these presets can produce, for the width the list asks for (`T-150`).
+
+    **Built through `describe_preset`, not beside it.** A separately written worst case would
+    measure a string the row does not draw, and the first change to the wording would leave the
+    dialog sized for the old one. Both halves of its *"whose choice is this"* phrase are included
+    because the row's own choice and the batch's differ in length.
+
+    A `Row` is cheap and carries nothing here but its preset, which is the only field
+    `describe_preset` reads.
+    """
+    return tuple(
+        f"{FORMAT_PREFIX}{describe_preset(Row(url='', generation=0, preset=owner), preset)}"
+        for preset in presets
+        for owner in (None, preset)
+    )
 
 
 def row_text(row: Row, effective: Preset | None = None) -> str:
@@ -307,6 +332,58 @@ def row_text(row: Row, effective: Preset | None = None) -> str:
     second = " — ".join(part for part in (detail_text(row), STATE_TEXT[row.state]) if part)
     tail = selector_text(row, effective)
     return f"{headline_text(row)}\n{second}" + (f"\n{tail}" if tail else "")
+
+
+class StagingList(QListView):
+    """The staged rows, asking for the width the row anatomy was designed for (`T-150`).
+
+    **The dialog set no size at all** — no `resize`, no minimum, no size hint — so Qt gave it
+    whatever its layout's hints added up to, which was 302 px. Measured there, the list's viewport
+    was 254 px and `_control_rect` had already narrowed the format control to
+    `MIN_CONTROL_WIDTH`: the dialog opened with the control at the narrowest it is *allowed* to be.
+    That was not a decision anybody took; `MainWindow` declares `DEFAULT_SIZE` and this did not.
+
+    **A hint, not a minimum, and that is the difference that matters.** A minimum would open the
+    dialog wide *and stop the user narrowing it*, and narrow has to keep working — `T-135`'s
+    overflow and `T-160`'s narrowing control are the behaviours that make it safe, and a floor
+    would put them out of reach rather than honour them. A hint sizes the first paint and leaves
+    the drag alone. It is set on the list rather than on the dialog so that Qt's layout adds the
+    frame, the group box and the margins, instead of this counting them and getting it wrong.
+    """
+
+    def __init__(self, parent: QWidget | None, *, selectors: Sequence[str]) -> None:
+        super().__init__(parent)
+        #: What the third line may have to hold, from the catalogue the dialog was given.
+        self._selectors = tuple(selectors)
+        #: Cached because `sizeHint` is called on every layout pass and the answer searches for a
+        #: wrap width. Dropped on a font or style change, which is exactly when it stops being
+        #: true — `T118-R15` is this project's record of a width promise that held at one font.
+        self._wanted: int | None = None
+
+    # Qt's override names, hence the camelCase.
+    def sizeHint(self) -> QSize:
+        hint = super().sizeHint()
+        return QSize(max(hint.width(), self._row_width()), hint.height())
+
+    def changeEvent(self, event: QEvent) -> None:
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.StyleChange):
+            self._wanted = None
+            self.updateGeometry()
+        super().changeEvent(event)
+
+    def _row_width(self) -> int:
+        """What a row needs, plus the chrome between this widget's edge and its viewport."""
+        if self._wanted is None:
+            bar = self.style().pixelMetric(QStyle.PixelMetric.PM_ScrollBarExtent, None, self)
+            # The scrollbar is counted even though an empty list has none: a paste is what this
+            # dialog is *for*, and a row must keep its anatomy once the list is long enough to
+            # scroll rather than lose it at the moment the bar appears.
+            self._wanted = (
+                minimum_row_width(QFontMetrics(self.font()), self._selectors)
+                + 2 * self.frameWidth()
+                + bar
+            )
+        return self._wanted
 
 
 class StagingModel(QAbstractListModel):
@@ -580,7 +657,7 @@ class AddUrlDialog(QDialog):
         header.addStretch(1)
         layout.addLayout(header)
 
-        self._list = QListView(box)
+        self._list = StagingList(box, selectors=selector_candidates(self._presets))
         self._list.setObjectName("stagingList")
         self._list.setAccessibleName("The URLs you pasted, and what each one is")
         self._list.setAccessibleDescription(
