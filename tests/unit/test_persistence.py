@@ -872,9 +872,16 @@ def history(tmp_path: Path) -> HistoryRepository:
 
 
 def _entry(entry_id: str = "job-1", **overrides: Any) -> HistoryEntry:
+    """One completion record. **The URL varies with the id**, which is not incidental (`T-170`).
+
+    The ledger keeps one row per *identity* (`DAT-006` §4), so a factory handing every entry the
+    same URL would have every seeded row collapse onto the last one — and a test that meant to seed
+    three records would silently assert against one. Tests that care about the same URL twice pass
+    it explicitly, which is also how they read as being about that.
+    """
     fields: dict[str, Any] = {
         "id": entry_id,
-        "url": "https://example.com/watch?v=abc",
+        "url": f"https://example.com/watch?v={entry_id}",
         "title": "A Clip",
         "output_path": "/downloads/A Clip.mp4",
         "format_used": "137+140",
@@ -1614,3 +1621,116 @@ def test_removing_a_selection_still_works_beside_clear(history: HistoryRepositor
 
     assert history.remove(["a", "c"]) == 2
     assert [entry.id for entry in history.all_entries()] == ["b"]
+
+
+# --- T-170: the completion ledger behind the removed History view ------------------------------
+
+
+def test_the_ledger_answers_when_a_url_was_last_downloaded(history: HistoryRepository) -> None:
+    """`REQ-022`'s question, which is the one thing `T-169` kept History's records for.
+
+    Everything else about History was a product surface; this is what a downloader has a real
+    reason to store. `T-114` asks it before enqueueing.
+    """
+    history.record(_entry("job-1", url="https://example.com/watch?v=kept"))
+
+    assert history.last_completed("https://example.com/watch?v=kept") == datetime(
+        2026, 7, 29, 12, 0, tzinfo=UTC
+    )
+    assert history.last_completed("https://example.com/watch?v=never") is None
+
+
+def test_the_ledger_matches_a_url_across_the_differences_it_normalises(
+    history: HistoryRepository,
+) -> None:
+    """`DAT-006` §2: scheme and host case, and the fragment, are not identity.
+
+    A user who pastes the same link from two places should be warned both times. What is *not*
+    normalised matters as much and is asserted below.
+    """
+    history.record(_entry("job-1", url="https://Example.com/watch?v=abc#t=30"))
+
+    for pasted in (
+        "https://example.com/watch?v=abc",
+        "https://EXAMPLE.com/watch?v=abc",
+        "HTTPS://example.com/watch?v=abc#t=99",
+    ):
+        assert history.last_completed(pasted) is not None, (
+            f"{pasted!r} was not recognised as the URL already downloaded, so the user is warned "
+            "about it only when they paste it in exactly the form they used last time"
+        )
+
+
+def test_the_ledger_does_not_treat_a_different_query_as_the_same_download(
+    history: HistoryRepository,
+) -> None:
+    """`DAT-006` §2's other half, and the one that decides the rule.
+
+    The identity of a video lives in the query on the largest site this serves, so a normaliser
+    clever enough to strip tracking parameters is one that will eventually collapse two different
+    downloads. **A missed duplicate costs a warning that does not appear; a false one warns about
+    the wrong file** — only the second lies, so the rule stays conservative.
+    """
+    history.record(_entry("job-1", url="https://example.com/watch?v=abc"))
+
+    assert history.last_completed("https://example.com/watch?v=different") is None, (
+        "two different videos on one host were treated as the same download"
+    )
+    assert history.last_completed("https://example.com/watch?v=abc&t=30") is None, (
+        "an extra query parameter was stripped, which is the per-site cleverness DAT-006 refuses"
+    )
+
+
+def test_a_url_the_ledger_cannot_key_is_never_matched(history: HistoryRepository) -> None:
+    """`core/urls.py`: no key rather than a guessed one.
+
+    A stored fallback would match some *other* unparseable string, which is the false positive the
+    whole rule is shaped to avoid.
+    """
+    history.record(_entry("job-1", url="not a url at all"))
+
+    assert history.last_completed("not a url at all") is None
+    assert history.last_completed("also not a url") is None
+
+
+def test_downloading_one_url_twice_keeps_one_record(history: HistoryRepository) -> None:
+    """`DAT-006` §4: one row per identity, updated in place.
+
+    The question is *"have I downloaded this, and when last"*. A row per attempt answers a question
+    nobody asked and grows without a retention policy to bound it — and `REQ-020` now promises no
+    automatic expiry, so nothing would ever bound it.
+    """
+    url = "https://example.com/watch?v=twice"
+    history.record(_entry("job-1", url=url, completed_at=datetime(2026, 7, 1, tzinfo=UTC)))
+    history.record(_entry("job-2", url=url, completed_at=datetime(2026, 8, 1, tzinfo=UTC)))
+
+    assert history.count() == 1, (
+        f"the ledger holds {history.count()} rows for one URL; DAT-006 keeps one per identity"
+    )
+    assert history.last_completed(url) == datetime(2026, 8, 1, tzinfo=UTC), (
+        "the older completion won, so the warning would name the wrong date"
+    )
+
+
+def test_two_unkeyable_urls_are_not_collapsed_into_one(history: HistoryRepository) -> None:
+    """The identity collapse must not treat "no key" as a key.
+
+    `normalised_url IS NULL` means the URL could not be parsed, and every unparseable URL would
+    otherwise be the same identity — one row swallowing unrelated downloads.
+    """
+    history.record(_entry("job-1", url="not a url"))
+    history.record(_entry("job-2", url="also not a url"))
+
+    assert history.count() == 2, "unparseable URLs were collapsed onto one another"
+
+
+def test_the_ledger_counts_what_the_settings_confirmation_names(
+    history: HistoryRepository,
+) -> None:
+    """`T-170`: the confirmation names the exact count, so the count has to be exact."""
+    assert history.count() == 0
+    for entry_id in ("a", "b", "c"):
+        history.record(_entry(entry_id))
+    assert history.count() == 3
+    assert history.clear() == 3
+    assert history.count() == 0

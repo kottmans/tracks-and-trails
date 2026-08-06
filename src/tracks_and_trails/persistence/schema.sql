@@ -15,7 +15,7 @@ CREATE TABLE history (
     output_path  TEXT,
     format_used  TEXT,
     bytes_total  INTEGER,
-    completed_at TEXT NOT NULL, thumbnail_url TEXT, playlist_id TEXT, playlist_index INTEGER, playlist_title TEXT, format_choice TEXT,
+    completed_at TEXT NOT NULL, thumbnail_url TEXT, playlist_id TEXT, playlist_index INTEGER, playlist_title TEXT, format_choice TEXT, normalised_url TEXT,
 
     CHECK (bytes_total IS NULL OR bytes_total >= 0)
 );
@@ -46,6 +46,8 @@ CREATE TABLE jobs (
 );
 
 CREATE INDEX history_completed_at ON history (completed_at);
+
+CREATE INDEX history_normalised_url ON history (normalised_url);
 
 CREATE UNIQUE INDEX jobs_queue_position ON jobs (queue_position)
     WHERE queue_position IS NOT NULL;

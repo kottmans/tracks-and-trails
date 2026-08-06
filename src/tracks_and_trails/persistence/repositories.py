@@ -32,6 +32,7 @@ from tracks_and_trails.core.job_state import REORDERABLE, TERMINAL, JobStatus
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, MediaKind
 from tracks_and_trails.core.models import Job as JobModel
 from tracks_and_trails.core.presets import FormatChoice
+from tracks_and_trails.core.urls import normalise_url
 
 #: Statuses that cannot still be true at startup (`ARCHITECTURE.md` §5).
 #:
@@ -548,6 +549,9 @@ class JobRepository:
 _HISTORY_COLUMNS: Final = (
     "id",
     "url",
+    #: The ledger's lookup key (`DAT-006`, `T-170`). Derived from `url` on write rather than stored
+    #: by the caller: a key the caller could pass is a key that can disagree with the URL beside it.
+    "normalised_url",
     "title",
     "output_path",
     "format_used",
@@ -664,6 +668,7 @@ def _history_to_values(entry: HistoryEntry) -> dict[str, Any]:
     return {
         "id": entry.id,
         "url": entry.url,
+        "normalised_url": normalise_url(entry.url),
         "title": entry.title,
         "output_path": entry.output_path,
         "format_used": entry.format_used,
@@ -701,7 +706,27 @@ def _row_to_history(row: sqlite3.Row) -> HistoryEntry:
 
 
 def _write_history(connection: sqlite3.Connection, entry: HistoryEntry) -> None:
-    """The history upsert, **without owning a transaction** (`T050-R1`). See `_write_job`."""
+    """The ledger upsert, **without owning a transaction** (`T050-R1`). See `_write_job`.
+
+    **One row per identity** (`DAT-006` §4). The table's primary key is the job id, so two
+    downloads of the same URL are two rows unless something says otherwise; this is that. The
+    question the ledger answers is *"have I downloaded this, and when last"*, and a row per attempt
+    answers a question nobody asked while growing without a retention policy to bound it.
+
+    **A delete rather than a unique index**, and the reason is upgrade data. A `UNIQUE` constraint
+    on the key would have to be added by a migration that first deletes whatever already violates
+    it — real rows, from before the ledger existed, belonging to a user who downloaded something
+    twice. Collapsing them lazily, as each identity is next completed, reaches the same state
+    without a migration that deletes anybody's records to install a constraint.
+
+    Rows with no key are left alone: `normalised_url IS NULL` means the URL could not be parsed
+    (`core/urls.py`), and treating all of them as one identity would collapse unrelated downloads.
+    """
+    key = normalise_url(entry.url)
+    if key is not None:
+        connection.execute(
+            "DELETE FROM history WHERE normalised_url = ? AND id <> ?", (key, entry.id)
+        )
     columns = ", ".join(_HISTORY_COLUMNS)
     placeholders = ", ".join(f":{name}" for name in _HISTORY_COLUMNS)
     assignments = ", ".join(
@@ -785,6 +810,42 @@ class HistoryRepository:
     def get(self, entry_id: str) -> HistoryEntry | None:
         row = self._connection.execute("SELECT * FROM history WHERE id = ?", (entry_id,)).fetchone()
         return _row_to_history(row) if row is not None else None
+
+    def last_completed(self, url: str) -> datetime | None:
+        """When `url` was last downloaded, or `None` if it has not been (`REQ-022`, `DAT-006`).
+
+        **The whole reason the ledger survives `T-169`.** Everything else about History was a
+        product; this is the question a downloader has a real reason to answer, and `T-114` asks it
+        before enqueueing.
+
+        **Indexed, not scanned.** The key is stored by `_write_history` and indexed by migration
+        `0008`, so a paste of thirty URLs is thirty index probes rather than thirty table scans
+        through a Python normaliser — which is `NFR-001`'s budget spent on a warning.
+
+        `MAX` rather than a plain read, even though `_write_history` keeps one row per identity:
+        rows written before the ledger existed were not collapsed by anything, and the *latest*
+        completion is the one the warning should name. A URL that cannot be keyed
+        (`core/urls.normalise_url` answers `None`) is never matched — the missed-duplicate side of
+        that module's trade, and it fails towards no warning rather than a wrong one.
+        """
+        key = normalise_url(url)
+        if key is None:
+            return None
+        row = self._connection.execute(
+            "SELECT MAX(completed_at) AS latest FROM history WHERE normalised_url = ?", (key,)
+        ).fetchone()
+        latest = row["latest"] if row is not None else None
+        # `MAX` over no rows is a row holding `NULL`, not an empty result.
+        return datetime.fromisoformat(str(latest)) if latest is not None else None
+
+    def count(self) -> int:
+        """How many records the ledger holds — what the Settings confirmation names (`T-170`).
+
+        A count rather than a list, which is the whole of what a screen with no list can ask. It is
+        also what disables the verb when there is nothing to clear (`UX-005` §5).
+        """
+        row = self._connection.execute("SELECT COUNT(*) AS held FROM history").fetchone()
+        return int(row["held"]) if row is not None else 0
 
     def remove(self, entry_ids: Sequence[str]) -> int:
         """Delete the named records, and **only** records (`DAT-005`, `REQ-020`, `T-125`).

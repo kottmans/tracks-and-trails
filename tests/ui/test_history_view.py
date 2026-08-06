@@ -78,10 +78,16 @@ class FakeHistory:
 
 
 def an_entry(entry_id: str = "job-1", **overrides: object) -> HistoryEntry:
-    """A fully populated record. Overrides let a test empty exactly the field it is about."""
+    """A fully populated record. Overrides let a test empty exactly the field it is about.
+
+    **The URL varies with the id** (`T-170`). The ledger keeps one row per identity (`DAT-006` §4),
+    so a factory handing every record the same URL makes a test that seeds three rows assert
+    against one. A test that wants the same URL twice passes it, which is also how it reads as
+    being about that.
+    """
     base: dict[str, object] = {
         "id": entry_id,
-        "url": "https://example.invalid/watch?v=abc123",
+        "url": f"https://example.invalid/watch?v={entry_id}",
         "title": "A clip about trails",
         "output_path": "/home/sean/Downloads/A clip about trails.mp4",
         "format_used": "137+140",
@@ -116,7 +122,7 @@ def test_every_field_req_020_names_is_on_screen(qapp: QApplication) -> None:
     model = view.model
 
     assert model.text_at(entry.id, TITLE_COLUMN) == "A clip about trails"
-    assert model.text_at(entry.id, URL_COLUMN) == "https://example.invalid/watch?v=abc123"
+    assert model.text_at(entry.id, URL_COLUMN) == entry.url
     assert model.text_at(entry.id, PATH_COLUMN) == "/home/sean/Downloads/A clip about trails.mp4"
     assert model.text_at(entry.id, FORMAT_COLUMN) == "137+140"
     assert model.text_at(entry.id, SIZE_COLUMN) == "15.0 MB"
