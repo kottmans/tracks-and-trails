@@ -10546,3 +10546,39 @@ review or full-suite rerun if it remains byte-identical.
 
 The reviewer appended this record only. No submitted source, test, task state, handoff, commit,
 remote ref or CI state was changed by the reviewer.
+
+## 2026-08-05 — Row-layout focused correction re-review
+
+**Reviewer:** Codex (Reviewer)
+**Previous submission:** `9a2bf16`
+**Correction head:** `4799136`
+**Approved implementation:** `fd15ade`
+**Verdict:** **Approved.** `ROWLAYOUT-R1` and `T166-R1` are resolved. The correction is documents
+only; source, tests, build inputs and workflows remain byte-identical to the reviewed implementation.
+
+### Finding dispositions
+
+| ID | Severity | Blocks approval | Re-review result | Status |
+|---|---|---:|---|---|
+| `ROWLAYOUT-R1` | Medium | No | The two Python-fence comments in the original handoff now carry Ruff's required spacing. On exact submission head `4799136`, the canonical `ruff format --check .` command succeeds across all 171 files; the narrower pre-handoff result is no longer presented as the exact-head gate. | **Resolved at `4799136`** |
+| `T166-R1` | Medium | No | T-166 now describes the geometry it actually has: selector and verbs occupy different lines, and the defect was `_paint_text` clipping the selector's width to a rectangle from the line below. The Scope supplies the two line offsets and the observed widths. The acceptance criteria require pixel-identical format-line rendering with and without verbs across the swept group-header case; they no longer require yielding or a nonexistent shared-line minimum. T-163 exclusively retains verb/bar yielding and overflow reachability. | **Resolved at `1d9022e`** |
+
+### Focused verification
+
+| Check | Result |
+|---|---|
+| Correction boundary | `9a2bf16..4799136` contains **three** commits: `8e3f4cd` records the prior review, `1d9022e` applies both corrections, and `4799136` adds the correction handoff. The conversational report said four; the handoff's own two-correction-commit boundary plus submission commit is accurate. |
+| Review-record integrity | `8e3f4cd` changes only `ai/REVIEWS.md`, **72 additions / 0 deletions**. The appended prior review is unmodified. Committing that reviewer-authored record is accepted. |
+| Executable-tree identity | `git diff --exit-code fd15ade..4799136 -- src tests pyproject.toml .github`: **empty**. No full-suite rerun is required; the accepted 2204-pass evidence remains about the same executable and tests. |
+| Task-sibling audit | Parsing every `T-###` block at `9a2bf16` and `4799136` finds exactly one changed task body: **T-166**. Status, disposition, thresholds and every sibling task entry are unchanged. |
+| Diff hygiene | `git diff --check 9a2bf16..4799136`: **pass**. |
+| Canonical format gate | `.venv/bin/python -m ruff format --check .`: **pass — 171 files already formatted**. |
+| Lint | `.venv/bin/python -m ruff check .`: **pass**. |
+| Focused tests and placement | `QT_QPA_PLATFORM=offscreen .venv/bin/python -m pytest -q tests/unit/test_task_placement.py tests/ui/test_row_delegate.py`: **66 passed** in 5.03 s. |
+| Types, host | `.venv/bin/python -m mypy`: **pass**, 107 files. |
+| Types, Windows branches | `.venv/bin/python -m mypy --platform win32`: **pass**, 107 files. |
+
+No follow-up is required from this review. T-160, T-163, T-164, T-166 and T-167 are approved at
+the source/test implementation head `fd15ade`, with the corrected current-truth record approved at
+`4799136`. The range remains unpushed. The reviewer appended this disposition only; no submitted
+task, handoff, source, test, commit or remote ref was changed.
