@@ -21,7 +21,6 @@ the instant it is signalled, and a process inside yt-dlp's download loop does no
 import contextlib
 import multiprocessing as mp
 import os
-import sqlite3
 import subprocess
 import sys
 import threading
@@ -3637,18 +3636,21 @@ def test_a_completed_download_writes_exactly_one_history_row(
     assert len(rows) == 1
     entry = rows[0]
     assert entry.id == "job-history"
-    assert entry.url == url, "`REQ-020` names the source URL"
-    assert entry.output_path is not None and Path(entry.output_path).exists(), (
-        "history recorded a path that is not on disk"
-    )
+    assert entry.url == url, "the ledger is keyed on the source URL (`REQ-022`, `DAT-006`)"
     assert entry.completed_at is not None
 
     stored = None
     with db.open_database(path) as connection:
         stored = JobRepository(connection).get("job-history")
     assert stored is not None
+    # *(The ledger row also carried an `output_path` and this asserted the file was on disk.
+    # `T-170` took the path off the record — a path is a claim about where a file is, and
+    # `REQ-021` stopped making it — so the job's own path is what names the file now.)*
+    assert stored.output_path is not None and Path(stored.output_path).exists(), (
+        "the download did not leave the file it reported"
+    )
     assert entry.completed_at == stored.finished_at, (
-        "history stamped its own time instead of the job's completion"
+        "the ledger stamped its own time instead of the job's completion"
     )
 
 
@@ -3862,8 +3864,8 @@ def test_a_hard_exit_after_a_completion_settles_keeps_both_rows(tmp_path: Path) 
 
     assert stored is not None
     assert stored.status is JobStatus.COMPLETED
-    assert entry is not None, "a settled completion lost its history row to the exit"
-    assert entry.format_used == "137+140"
+    assert entry is not None, "a settled completion lost its ledger row to the exit"
+    assert entry.completed_at is not None
 
 
 # --- T-085: the record REQ-020 names ------------------------------------------------------
@@ -3912,97 +3914,39 @@ def _job_with_every_field(tmp_path: Path) -> Job:
     )
 
 
-def test_a_completion_records_every_field_req_020_names(tmp_path: Path) -> None:
-    """`T-085`, `REQ-020`: source URL, title, output path, format used, size, completion time.
+def test_a_completion_records_exactly_what_the_ledger_keeps(tmp_path: Path) -> None:
+    """`DAT-006` §3, through the real completion path.
 
-    **Asserted as a whole object, not field by field.** A per-field assertion list is written from
-    the same understanding that would forget a field, so it passes while a column goes unwritten —
-    `T-014`'s round-trip test exists for the same reason. Comparing the projection against a fully
-    specified expectation makes an omission a failure.
+    **This asserted six fields until `T-170`**, because `REQ-020` promised a browseable record and
+    the projection had to carry everything a history row drew — title, path, format, size,
+    thumbnail address and playlist membership. `T-169` narrowed the requirement to a private ledger
+    and the projection narrowed with it. What is left answers the duplicate warning and nothing
+    else.
 
-    **Why the projection and not a live download:** the local `http.server` fixture serves a bare
-    file and supplies no title, so a real completion legitimately records `title=None`. That proves
-    the pipeline, not the field set. Both tests exist; this one owns the field set.
+    Driven through `_CapturingWriter` so the assertion is on what the completion **projected**,
+    not on what a test constructed and handed back to itself.
     """
-    from tracks_and_trails.core.presets import format_choice_of
     from tracks_and_trails.persistence.repositories import HistoryEntry
     from tracks_and_trails.persistence.store import PersistentJobStore
 
     writer = _CapturingWriter()
-    store = PersistentJobStore(sqlite3.connect(":memory:"), writer)  # type: ignore[arg-type]
+    connection = db.connect(tmp_path / "library.sqlite3")
+    store = PersistentJobStore(connection, writer)  # type: ignore[arg-type]
     job = _job_with_every_field(tmp_path)
-
-    settled: list[str | None] = []
-    store.complete(job, "137+140", settled.append)
-
-    assert settled == [None]
-    assert len(writer.completions) == 1
-    _, entry = writer.completions[0]
-    assert entry == HistoryEntry(
-        id="job-full",
-        url="https://example.com/watch?v=abc",
-        thumbnail_url="https://img.example.com/abc.jpg",
-        title="A Clip With A Title",
-        output_path=str(tmp_path / "A Clip With A Title.mp4"),
-        format_used="137+140",
-        bytes_total=4096,
-        # **What was asked for, beside what yt-dlp answered** (`T-159`, `T159-R1`). `format_used`
-        # is an id — `137+140` is two of them joined by yt-dlp's own selector syntax — and naming a
-        # download in words needs what was asked for. This is the last moment it can be copied: the
-        # job row goes when the queue is cleared.
-        #
-        # **Narrowed, not copied whole.** A request also carries a cookie setting, a proxy, a
-        # directory and a URL; `REQ-026` forbids the first to reach History and none of them says
-        # what the download is. `test_persistence.py` proves it at the raw database boundary.
-        format_choice=format_choice_of(job.request),
-        completed_at=datetime(2026, 7, 30, 9, 0, tzinfo=UTC),
-    ), "the projection dropped or altered a field REQ-020 names"
-
-
-def test_a_completion_carries_the_playlist_membership_across(tmp_path: Path) -> None:
-    """`T-145`, `UX-005` amended 2026-08-05: the membership is copied, never reconstructed.
-
-    **This is the moment it stops being reachable.** `0004` put the three columns on `jobs`, where
-    they die with the job — `T-081`'s *Clear finished* is enough to take them — so a playlist that
-    finished became sixteen unrelated history rows at exactly the point History became the only
-    record of it. Once the job is gone there is nothing left to reconstruct membership *from*, which
-    is why this is asserted at the projection rather than in the view.
-
-    Asserted as a whole object for the reason the test above gives: a per-field list is written from
-    the same understanding that would forget a field.
-    """
-    from dataclasses import replace
-
-    from tracks_and_trails.core.presets import format_choice_of
-    from tracks_and_trails.persistence.repositories import HistoryEntry
-    from tracks_and_trails.persistence.store import PersistentJobStore
-
-    writer = _CapturingWriter()
-    store = PersistentJobStore(sqlite3.connect(":memory:"), writer)  # type: ignore[arg-type]
-    job = replace(
-        _job_with_every_field(tmp_path),
-        playlist_id="pl-1",
-        playlist_index=3,
-        playlist_title="Trail Sounds",
-    )
-
     store.complete(job, "137+140", lambda _error: None)
 
+    assert len(writer.completions) == 1, "the completion projected no ledger row"
     _, entry = writer.completions[0]
+
     assert entry == HistoryEntry(
-        id="job-full",
-        url="https://example.com/watch?v=abc",
-        thumbnail_url="https://img.example.com/abc.jpg",
-        title="A Clip With A Title",
-        output_path=str(tmp_path / "A Clip With A Title.mp4"),
-        format_used="137+140",
-        bytes_total=4096,
-        playlist_id="pl-1",
-        playlist_index=3,
-        playlist_title="Trail Sounds",
-        format_choice=format_choice_of(job.request),
-        completed_at=datetime(2026, 7, 30, 9, 0, tzinfo=UTC),
-    ), "the completed record does not say which playlist it came from, so History cannot group it"
+        id=entry.id,
+        url=entry.url,
+        completed_at=entry.completed_at,
+    ), (
+        "a completion projected more than the ledger keeps; every field beyond these three existed "
+        "to draw a history row, and DAT-006 §5 leaves their columns NULL rather than dropping them"
+    )
+    assert entry.url, "the ledger cannot answer REQ-022 without the URL it keys on"
 
 
 def test_history_outlives_the_job_row_it_describes(tmp_path: Path) -> None:
@@ -4036,10 +3980,6 @@ def test_history_outlives_the_job_row_it_describes(tmp_path: Path) -> None:
             HistoryEntry(
                 id=job.id,
                 url=job.url,
-                title=job.title,
-                output_path=job.output_path,
-                format_used="137+140",
-                bytes_total=job.bytes_total,
                 completed_at=job.finished_at or datetime.now(UTC),
             ),
         )
@@ -4052,9 +3992,10 @@ def test_history_outlives_the_job_row_it_describes(tmp_path: Path) -> None:
         entry = HistoryRepository(connection).get("job-full")
 
     assert entry is not None, (
-        "deleting the job took its history with it — REQ-020's record must outlive the queue row"
+        "deleting the job took its ledger row with it — the record must outlive the queue row, or "
+        "T-114's duplicate warning stops working the moment a user clears finished downloads"
     )
-    assert entry.output_path == job.output_path, "the surviving record lost what it recorded"
+    assert entry.url == job.url, "the surviving record lost the URL it is keyed on"
 
 
 def test_the_history_table_declares_no_dependency_on_jobs(tmp_path: Path) -> None:

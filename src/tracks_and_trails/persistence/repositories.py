@@ -546,21 +546,20 @@ class JobRepository:
 
 #: `history`'s columns, in the order the insert names them. Same reasoning as `_JOB_COLUMNS`:
 #: derived once, so a column cannot be silently dropped between the insert and the update.
+#: Every column a completion writes (`DAT-006` §3).
+#:
+#: **Three facts and the job's id, where there were twelve.** `title`, `output_path`,
+#: `format_used`, `bytes_total`, `thumbnail_url`, the playlist triple and `format_choice` all
+#: existed to draw a history row, and there is no row to draw. They are **not dropped from the
+#: table** — `DAT-006` §5 refuses that, because SQLite makes a column drop a table rewrite and the
+#: rows belong to a user — so old records keep what they were written with and new ones leave those
+#: columns `NULL`.
 _HISTORY_COLUMNS: Final = (
     "id",
     "url",
-    #: The ledger's lookup key (`DAT-006`, `T-170`). Derived from `url` on write rather than stored
-    #: by the caller: a key the caller could pass is a key that can disagree with the URL beside it.
+    #: The lookup key (`DAT-006`, `T-170`). Derived from `url` on write rather than passed by the
+    #: caller: a key the caller could pass is a key that can disagree with the URL beside it.
     "normalised_url",
-    "title",
-    "output_path",
-    "format_used",
-    "bytes_total",
-    "thumbnail_url",
-    "playlist_id",
-    "playlist_index",
-    "playlist_title",
-    "format_choice",
     "completed_at",
 )
 
@@ -587,81 +586,13 @@ class HistoryEntry:
     id: str
     url: str
     completed_at: datetime
-    title: str | None = None
-    output_path: str | None = None
-    format_used: str | None = None
-    bytes_total: int | None = None
-
-    #: Where the site said the picture was (`T-138`, `UX-005` §3).
-    #:
-    #: **Its own copy, not the job's.** `jobs.thumbnail_url` holds the same address while the job
-    #: exists, and removing the job takes it — so a history row reading through to the queue would
-    #: lose its picture exactly when History becomes the only place the download is recorded.
-    #:
-    #: `None` means "recorded before this column existed" or "the extractor named no picture", and
-    #: the row draws the derived tile for either. That is what every history row did until this
-    #: existed, so the absent case is the old behaviour rather than a degraded one.
-    thumbnail_url: str | None = None
-
-    #: Which playlist this download came from, and where it sat in it (`T-145`, `UX-005` amended
-    #: 2026-08-05).
-    #:
-    #: **Its own copy, for `thumbnail_url`'s reason, one field further on.** `0004` put the same
-    #: three columns on `jobs`, where they die with the job — `T-081`'s *Clear finished* is enough
-    #: to take them — so a playlist that finished would be sixteen unrelated history rows at
-    #: exactly the point History became the only record of it.
-    #:
-    #: `None` for all three means "pasted directly" or "recorded before migration `0006`". Both
-    #: render ungrouped, and neither is re-grouped by guessing from titles or paths.
-    #:
-    #: `playlist_index` is the position **the playlist reported**, not the order the downloads
-    #: finished in, so a group opens with track 03 above track 04 however they interleaved.
-    playlist_id: str | None = None
-    playlist_index: int | None = None
-    playlist_title: str | None = None
-
-    #: What was asked for, narrowed to what describes the download (`T-159`, `T159-R1`, `REQ-026`).
-    #:
-    #: **A `FormatChoice`, never a `DownloadRequest`, and that is a boundary rather than economy.**
-    #: Naming a download in words needs what was asked for — `format_used` is yt-dlp's answer, and
-    #: `audio_quality` is preset-owned, so a download converted at 320 kbps cannot be matched to a
-    #: preset without it. But a *request* also carries `cookies_from_browser`, `proxy`,
-    #: `output_directory` and `url`, and `REQ-026` says a cookie path this application supplies is
-    #: never written to History. `T159-R1` is what storing the whole object cost: a record outlives
-    #: the job row, so History would have been the last place a credential survived.
-    #:
-    #: `FormatChoice` is exactly `PRESET_OWNED_FIELDS`. Everything outside that set is a credential,
-    #: a network setting or a location, and none of it says what a download is.
-    #:
-    #: Storing the resolved *name* was rejected separately: a preset renamed in a later build would
-    #: leave old records asserting a name this application no longer has.
-    #:
-    #: `None` means "recorded before migration `0007`". Those rows still say what yt-dlp reported,
-    #: which is honest about being an id rather than dressed up as a name nobody wrote down.
-    format_choice: FormatChoice | None = None
 
     def __post_init__(self) -> None:
-        membership = (self.playlist_id, self.playlist_index, self.playlist_title)
-        if any(part is not None for part in membership) and None in membership:
-            # **All three or none**, which is `Job.__post_init__`'s rule and is here for the same
-            # reason: a record with an id and no index cannot be ordered within its group, and one
-            # with an index and no id belongs to no group at all. Unrepresentable is cheaper than
-            # every reader checking the other two first.
-            raise ValueError(
-                "HistoryEntry carries part of a playlist membership: playlist_id, playlist_index "
-                f"and playlist_title must be set together or not at all, got {membership!r}"
-            )
-        if self.playlist_index is not None and self.playlist_index < 0:
-            raise ValueError("HistoryEntry.playlist_index cannot be negative")
         if not self.url:
             raise ValueError(
                 "HistoryEntry requires the source URL; `REQ-020` names it and a retry cannot "
                 "reconstruct it"
             )
-        if self.bytes_total is not None and self.bytes_total < 0:
-            # The table's own CHECK says the same thing. Saying it here too means a bad value
-            # fails where it was constructed rather than as an opaque IntegrityError one layer on.
-            raise ValueError("HistoryEntry.bytes_total cannot be negative")
 
 
 def _history_to_values(entry: HistoryEntry) -> dict[str, Any]:
@@ -669,38 +600,20 @@ def _history_to_values(entry: HistoryEntry) -> dict[str, Any]:
         "id": entry.id,
         "url": entry.url,
         "normalised_url": normalise_url(entry.url),
-        "title": entry.title,
-        "output_path": entry.output_path,
-        "format_used": entry.format_used,
-        "bytes_total": entry.bytes_total,
-        "thumbnail_url": entry.thumbnail_url,
-        "playlist_id": entry.playlist_id,
-        "playlist_index": entry.playlist_index,
-        "playlist_title": entry.playlist_title,
-        "format_choice": (
-            None if entry.format_choice is None else _serialize_format_choice(entry.format_choice)
-        ),
         "completed_at": entry.completed_at.isoformat(),
     }
 
 
 def _row_to_history(row: sqlite3.Row) -> HistoryEntry:
+    """A ledger row, reading only what `DAT-006` §3 keeps.
+
+    A row written before `T-170` still holds a title, a path and the rest in its columns; nothing
+    reads them, because nothing displays them. They stay on disk rather than being migrated away
+    (`DAT-006` §5) and are simply not modelled here.
+    """
     return HistoryEntry(
         id=row["id"],
         url=row["url"],
-        title=row["title"],
-        output_path=row["output_path"],
-        format_used=row["format_used"],
-        bytes_total=row["bytes_total"],
-        thumbnail_url=row["thumbnail_url"],
-        playlist_id=row["playlist_id"],
-        playlist_index=row["playlist_index"],
-        playlist_title=row["playlist_title"],
-        format_choice=(
-            None
-            if row["format_choice"] is None
-            else _deserialize_format_choice(row["format_choice"])
-        ),
         completed_at=datetime.fromisoformat(row["completed_at"]),
     )
 

@@ -34,7 +34,6 @@ from datetime import datetime
 from PySide6.QtCore import QObject
 
 from tracks_and_trails.core.models import Job
-from tracks_and_trails.core.presets import format_choice_of
 from tracks_and_trails.persistence.repositories import HistoryEntry, JobRepository
 from tracks_and_trails.persistence.writer import QueueWriter
 
@@ -187,35 +186,15 @@ class PersistentJobStore(QObject):
 
         self._writer.complete(
             job,
+            # **Three fields, and each answers a question the duplicate warning asks**
+            # (`DAT-006` §3, `T-170`). This carried a title, a path, a format, a size, a thumbnail
+            # address and a playlist membership — every one of them to draw a history row, and
+            # there is no row to draw. A path in particular is a claim about where a file is that
+            # `REQ-021` has just stopped making.
             HistoryEntry(
                 id=job.id,
                 url=job.url,
-                title=job.title,
-                output_path=job.output_path,
-                format_used=format_used,
-                bytes_total=job.bytes_total,
-                # **Carried across at the moment it stops being reachable** (`T-138`). The queue's
-                # copy dies with the job; this is the record's own.
-                thumbnail_url=job.thumbnail_url,
-                # **The same move, for the membership** (`T-145`, `UX-005` amended 2026-08-05).
-                # Copied here rather than reconstructed later: once the job is gone there is
-                # nothing left to reconstruct it from, which is why a playlist that finished
-                # became sixteen unrelated rows. The three travel together or not at all, and
-                # `HistoryEntry.__post_init__` refuses a partial set.
-                playlist_id=job.playlist_id,
-                playlist_index=job.playlist_index,
-                playlist_title=job.playlist_title,
-                # **What was asked for, beside what was reported** (`T-159`, `T159-R1`).
-                # `format_used` is yt-dlp's answer — an id — and naming it in the words the rest of
-                # the window uses needs what was asked for. Carried here for the membership's
-                # reason: the job's copy dies with the job, and this is the last moment to copy it.
-                #
-                # **Narrowed on the way, not stored whole.** `format_choice_of` keeps the fields
-                # that describe the download and drops the cookie, proxy, directory and URL a
-                # request also carries — `REQ-026` forbids the first of those to reach History, and
-                # a record outlives the job row that was its only other home.
-                format_choice=format_choice_of(job.request),
-                completed_at=job.finished_at if job.finished_at is not None else _now(),
+                completed_at=job.finished_at or _now(),
             ),
             settle,
         )

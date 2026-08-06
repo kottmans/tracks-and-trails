@@ -8,7 +8,7 @@ user selected, and that a refusal reaches the user rather than the console.
 from __future__ import annotations
 
 import sys
-from datetime import UTC, datetime
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -19,7 +19,6 @@ from tests.ui.test_queue_view import FakeQueue
 from tests.ui.test_reveal import RecordingSpawner
 from tracks_and_trails.core.models import DownloadRequest, Job
 from tracks_and_trails.downloader.manager import DownloadManager
-from tracks_and_trails.persistence.repositories import HistoryEntry
 from tracks_and_trails.ui.file_actions import OPEN_TEXT, REVEAL_TEXT, FileActions
 from tracks_and_trails.ui.queue_view import QueueView
 from tracks_and_trails.ui.reveal import open_command, reveal_command
@@ -35,7 +34,7 @@ class PathList:
     only move the coupling to the next surface that might be removed.
     """
 
-    def __init__(self, entries: list[HistoryEntry]) -> None:
+    def __init__(self, entries: list[Row]) -> None:
         from PySide6.QtCore import QStringListModel
         from PySide6.QtWidgets import QListView
 
@@ -49,16 +48,21 @@ class PathList:
         return self._paths[index.row()] if index.isValid() else None
 
 
-def an_entry(entry_id: str = "job-1", output_path: str | None = None) -> HistoryEntry:
-    return HistoryEntry(
-        id=entry_id,
-        url="https://example.invalid/clip",
-        title="A clip",
-        output_path=output_path,
-        format_used="137+140",
-        bytes_total=1024,
-        completed_at=datetime(2026, 7, 30, 14, 5, tzinfo=UTC),
-    )
+@dataclass(frozen=True)
+class Row:
+    """A row with a path, which is all `FileActions` reads through `selected_path`.
+
+    *(This was a `HistoryEntry`. `T-170` narrowed that record to three fields and took the path
+    off it — a path is a claim about where a file is, and `REQ-021` stopped making it. What these
+    tests need is a row that has one, so they carry their own.)*
+    """
+
+    id: str
+    output_path: str | None
+
+
+def an_entry(entry_id: str = "job-1", output_path: str | None = None) -> Row:
+    return Row(id=entry_id, output_path=output_path)
 
 
 @pytest.fixture
@@ -72,7 +76,7 @@ class Attached:
     """A host with `FileActions` on it, plus everything a test needs to inspect."""
 
     def __init__(
-        self, *, entries: list[HistoryEntry], downloads: Path, platform: str = sys.platform
+        self, *, entries: list[Row], downloads: Path, platform: str = sys.platform
     ) -> None:
         self.view = PathList(entries)
         self.spawner = RecordingSpawner()

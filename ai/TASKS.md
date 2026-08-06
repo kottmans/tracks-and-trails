@@ -1733,6 +1733,151 @@ must not be treated as the same option.
 
 ---
 
+### T-172 — Delete the ledger's removal API, which nothing calls
+
+**Status:** Proposed — **found by the Implementer, 2026-08-06**, sweeping for what `T-170` left
+behind. **Simplification only: no behaviour changes.**
+**Owner:** Implementer
+**Priority:** Low
+**Phase:** Phase 3
+**Depends on:** `T-170`, complete
+**Relevant context:** `DAT-005`, `DAT-006`, `T-125`, `T-144`, `persistence/repositories.py`
+(`HistoryRepository`), `persistence/store.py`, `persistence/writer.py`
+**Affected surfaces:** `persistence/`, `tests/unit/test_persistence.py`
+**Risk:** Low — it is deletion, and the gate is that the suite still passes without the tests that
+only exercised the deleted code
+
+#### Scope
+
+**Selected-record removal went with the list it selected from**, and its plumbing did not. `T-125`
+built it through three layers and every one of them is now unreachable from the application:
+
+| Dead | Layer |
+|---|---|
+| `HistoryRepository.remove(entry_ids)` | repository |
+| `HistoryRepository.get(entry_id)` | repository |
+| `HistoryRepository.all_entries()` | repository — the History view was its only caller |
+| `PersistentJobStore.remove_history(...)` | store |
+| `QueueWriter.remove_history(...)` and its token handler | writer |
+
+Each is still covered by tests, which is why nothing reports them: **a test is a caller**, and a
+suite is not a check that production uses what it holds.
+
+**`clear()` stays** — it is what *Clear download records* calls, and `DAT-005` §2's reasoning for
+keeping it a separate, explicitly named method is untouched.
+
+#### Acceptance criteria
+
+- The five entries above are gone, along with the tests whose only subject was them
+- **`DAT-005` §2's guarantee keeps a test.** `test_clearing_touches_no_file` already asserts it
+  against `clear()`; removal's version of it must not be deleted without checking that one covers
+  the same promise
+- `HistoryEntry` is constructed in exactly one production place after this, and read in one
+- The full suite passes, and `mypy` finds no now-unused imports
+
+#### Out of scope
+
+- Dropping the table's unused columns. `DAT-006` §5 refuses that and the reasoning is unchanged
+- `HistoryRepository`'s name. It is the ledger now; renaming it is `T-174`
+
+---
+
+### T-173 — One `_now()`, not one per module that needs the same clock
+
+**Status:** Proposed — **found by the Implementer, 2026-08-06.** **Simplification only.**
+**Owner:** Implementer
+**Priority:** Low — the smallest item filed today
+**Phase:** Phase 3
+**Depends on:** nothing
+**Relevant context:** `persistence/store.py` (`_now`), `downloader/manager.py` (`_now`), `T-014`
+**Affected surfaces:** `core/`, `persistence/store.py`, `downloader/manager.py`
+**Risk:** Low
+
+#### Scope
+
+Two modules define the same three-line function, and **each documents that it must agree with the
+other**:
+
+```python
+# persistence/store.py
+def _now() -> datetime:
+    """Timezone-aware, matching what the manager stamps onto `finished_at`."""
+    return datetime.now().astimezone()
+
+# downloader/manager.py
+def _now() -> datetime:
+    """Timezone-aware local time, matching what `persistence` stores (`T-014`)."""
+    return datetime.now().astimezone()
+```
+
+A comment saying *"this matches the other one"* is the shape that survives right up until somebody
+changes one of them. The agreement is a real requirement — a completion's `finished_at` and the
+ledger's `completed_at` are compared in `test_a_completed_download_writes_exactly_one_history_row`
+— so it should be a shared function rather than a promise maintained by reading.
+
+**`core/` is the home.** Both callers may import from it, neither may import the other, and the
+layering test already forbids Qt there.
+
+#### Acceptance criteria
+
+- One definition, in `core/`, with the reasoning the two docstrings currently split between them
+- Both call sites use it; neither keeps a local copy
+- The layering test still passes — this must not give `core/` a new dependency
+
+#### Out of scope
+
+- Injecting a clock for testability. Nothing here is asking for that, and it is a larger change
+  than the duplication it would fix
+
+---
+
+### T-174 — Say "ledger" where the code still says "history"
+
+**Status:** Proposed — **found by the Implementer, 2026-08-06.** **Naming only, no behaviour.**
+**Owner:** Implementer
+**Priority:** Low, and **deliberately not urgent** — see the caution below
+**Phase:** Phase 3
+**Depends on:** `T-172`, so the rename is not applied to code about to be deleted
+**Relevant context:** `T-169`, `T-170`, `DAT-006`, `persistence/repositories.py`,
+`persistence/schema.sql`, `persistence/store.py`, `persistence/writer.py`
+**Affected surfaces:** `persistence/`, its tests
+**Risk:** Low to do, Medium to do *badly* — see below
+
+#### Scope
+
+`REQ-020` is a completion ledger and the code still calls it history: `HistoryRepository`,
+`HistoryEntry`, `complete_job`'s parameter, `store.clear_history`, `writer.clear_history`, and the
+`history` table itself.
+
+**The table keeps its name.** Renaming it is a rewrite, which `DAT-006` §5 refuses for the same
+reason it refuses dropping columns — and a migration that renames a table to improve a word is the
+clearest possible case of risk without benefit. This task is about the **Python** names.
+
+#### The caution, which is why this is filed rather than done
+
+A rename touches every line that mentions the old word, and this repository's source carries a
+great deal of reasoning in prose beside the code. **A mechanical find-and-replace would rewrite
+history in both senses** — comments explaining what History *was*, review findings quoting it, and
+docstrings whose subject is the removed feature are all correct as they stand. Several of them are
+the record of why the feature went.
+
+So: rename identifiers, leave prose that is *about* the old feature alone, and read every hunk.
+
+#### Acceptance criteria
+
+- The Python identifiers name what they are; the `history` table and its columns are untouched
+- No comment or docstring describing the former History feature is altered to pretend it was
+  always a ledger
+- `git diff` reviewed hunk by hunk rather than by trusting the replacement
+- The full suite passes and both `mypy` scopes are clean
+
+#### Out of scope
+
+- The table, its columns and its indexes (`DAT-006` §5)
+- `ai/` documents. `DECISIONS.md` and `REVIEWS.md` are historical record and are append-only
+
+---
+
 ## Blocked
 
 ### T-092 — Arm `STARBASE` so the next access violation leaves a cause, not a stack

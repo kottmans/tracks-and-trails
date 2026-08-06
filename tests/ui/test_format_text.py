@@ -11,7 +11,6 @@ One surface fewer is asserted than before, because there is one fewer surface. W
 one is asked has not changed.
 """
 
-from datetime import UTC, datetime
 from pathlib import Path
 from typing import Final
 
@@ -184,13 +183,9 @@ def test_the_ledger_keeps_no_opinion_about_naming() -> None:
     """
     from tracks_and_trails.persistence.repositories import HistoryEntry
 
-    entry = HistoryEntry(
-        id="job-1",
-        url="https://example.invalid/watch?v=abc",
-        completed_at=datetime(2026, 8, 6, tzinfo=UTC),
-    )
+    modelled = set(HistoryEntry.__dataclass_fields__)
 
-    assert entry.format_used is None and entry.format_choice is None, (
-        "a ledger record carries a format again, which is a presentation field for a surface that "
-        "no longer exists (DAT-006 §3)"
+    assert modelled == {"id", "url", "completed_at"}, (
+        f"the ledger models {sorted(modelled)}; DAT-006 §3 keeps three fields, and a format among "
+        "them would be a presentation field for a surface that no longer exists"
     )

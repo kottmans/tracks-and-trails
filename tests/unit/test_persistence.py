@@ -24,7 +24,6 @@ from tracks_and_trails.core.job_state import (
     JobStatus,
 )
 from tracks_and_trails.core.models import AudioCodec, DownloadRequest, Job, MediaKind
-from tracks_and_trails.core.presets import format_choice_of
 from tracks_and_trails.persistence import db, repositories
 from tracks_and_trails.persistence.repositories import (
     INTERRUPTED_ON_STARTUP,
@@ -882,10 +881,6 @@ def _entry(entry_id: str = "job-1", **overrides: Any) -> HistoryEntry:
     fields: dict[str, Any] = {
         "id": entry_id,
         "url": f"https://example.com/watch?v={entry_id}",
-        "title": "A Clip",
-        "output_path": "/downloads/A Clip.mp4",
-        "format_used": "137+140",
-        "bytes_total": 4096,
         "completed_at": datetime(2026, 7, 29, 12, 0, tzinfo=UTC),
     }
     return HistoryEntry(**{**fields, **overrides})
@@ -902,50 +897,29 @@ def test_a_history_entry_round_trips_every_field(history: HistoryRepository) -> 
     assert history.get("job-1") == entry
 
 
-def test_history_does_not_persist_an_application_supplied_cookie_path(
+def test_the_ledger_cannot_hold_a_cookie_path_because_it_holds_almost_nothing(
     history: HistoryRepository,
 ) -> None:
-    """Reviewer regression for `T-159` and `REQ-026`'s History boundary.
+    """`REQ-026`'s History boundary, which `T-170` made structural.
 
-    `DownloadRequest.cookies_from_browser` is a browser name by current caller convention, not by
-    construction: the model accepts any non-empty text.  History needs only the format-defining
-    part of a request, so copying the whole object makes a cookie path durable after the queue row
-    is removed and violates the accepted rule the day a caller supplies one.
+    **This used to be a narrowing and is now an absence.** `T159-R1` found the whole
+    `DownloadRequest` being stored — cookie path, proxy, output directory and all — and narrowed it
+    to a `FormatChoice`. The ledger keeps neither: three fields, none of which can carry a
+    credential, so the boundary holds because there is nowhere for one to go rather than because
+    something strips it.
 
-    *(Adapted by the Implementer for `T159-R1`'s correction, which is what it asked for: the column
-    is `format_choice` rather than `request`, and the record is built the way production builds it
-    — by narrowing a request through `format_choice_of`, so what is proven is that the **narrowing**
-    protects rather than that a field happened to be dropped. Widened at the same time to scan
-    **every column** rather than one, since a credential reaching any of them is the same failure,
-    and to cover the proxy for the same reason `REQ-026` covers the cookie.)*
+    Asserted against the **stored columns** rather than the model, because the model is the thing
+    that changed and a test reading it back would only be asking the narrowing about itself.
     """
-    cookie_path = "/home/alice/.mozilla/firefox/profile/cookies.sqlite"
-    proxy = "http://proxy.internal.invalid:8080"
-    history.record(
-        _entry(
-            format_choice=format_choice_of(a_request(cookies_from_browser=cookie_path, proxy=proxy))
-        )
-    )
+    history.record(_entry("job-1"))
 
-    row = history._connection.execute("SELECT * FROM history WHERE id = ?", ("job-1",)).fetchone()
-    assert row is not None
-    stored = " ".join(str(value) for value in dict(row).values())
-    assert cookie_path not in stored, (
-        "History persisted an application-supplied cookie path even though REQ-026 says that sink "
-        "never does"
-    )
-    assert proxy not in stored, (
-        "History persisted the user's proxy. Not a credential — `DownloadRequest` refuses userinfo "
-        "outright, so one cannot be represented — but it names a private network, it says nothing "
-        "about what was downloaded, and a record outlives the job row that was its only other home"
-    )
+    row = dict(history._connection.execute("SELECT * FROM history WHERE id = 'job-1'").fetchone())
+    written = {column: value for column, value in row.items() if value is not None}
 
-
-def test_the_nullable_columns_survive_being_null(history: HistoryRepository) -> None:
-    """`REQ-020` names six facts; only the URL and the completion time are always knowable."""
-    entry = _entry(title=None, output_path=None, format_used=None, bytes_total=None)
-    history.record(entry)
-    assert history.get("job-1") == entry
+    assert set(written) == {"id", "url", "normalised_url", "completed_at"}, (
+        f"a completion wrote {sorted(written)}; DAT-006 §3 keeps three fields and the job's id, "
+        "and every column beyond them existed to draw a history row"
+    )
 
 
 def test_recording_the_same_job_twice_updates_rather_than_duplicating(
@@ -960,35 +934,14 @@ def test_recording_the_same_job_twice_updates_rather_than_duplicating(
     that succeeded, and that the newer row wins when it does. Phase 2's retry paths (`T-082`,
     `T-083`) are where that could start mattering.
     """
+    later = datetime(2026, 7, 29, 13, 0, tzinfo=UTC)
     history.record(_entry())
-    history.record(
-        _entry(
-            output_path="/downloads/A Clip (1).mp4",
-            format_used="18",
-            bytes_total=8192,
-            completed_at=datetime(2026, 7, 29, 13, 0, tzinfo=UTC),
-        )
+    history.record(_entry(completed_at=later))
+
+    assert history.count() == 1, "the retry duplicated the row"
+    assert history.last_completed(_entry().url) == later, (
+        "the stale completion won, so the duplicate warning would name the earlier date"
     )
-
-    stored = history.all_entries()
-    assert len(stored) == 1, "the retry duplicated the row"
-    assert stored[0].output_path == "/downloads/A Clip (1).mp4", "the stale completion won"
-    assert stored[0].format_used == "18"
-    assert stored[0].bytes_total == 8192
-
-
-def test_the_newest_completion_wins_even_when_it_is_smaller(history: HistoryRepository) -> None:
-    """The tie-break is recency, not magnitude — `INSERT OR IGNORE` would keep the stale row.
-
-    Written because the mutation that matters here is not "does it overwrite" but "does it
-    overwrite with the *new* values": a policy that kept the first completion would pass the count
-    assertion above and still lose the retry's result.
-    """
-    history.record(_entry(bytes_total=99999, format_used="401"))
-    history.record(_entry(bytes_total=1, format_used="18"))
-    stored = history.get("job-1")
-    assert stored is not None
-    assert (stored.bytes_total, stored.format_used) == (1, "18")
 
 
 def test_entries_come_back_newest_first(history: HistoryRepository) -> None:
@@ -1006,12 +959,6 @@ def test_a_history_entry_requires_its_url() -> None:
     """`REQ-020` names the source URL and a retry cannot reconstruct it."""
     with pytest.raises(ValueError, match="requires the source URL"):
         _entry(url="")
-
-
-def test_a_history_entry_refuses_negative_bytes() -> None:
-    """The table's CHECK says the same; saying it at construction names the field."""
-    with pytest.raises(ValueError, match="cannot be negative"):
-        _entry(bytes_total=-1)
 
 
 # --- T-080: re-queuing at the tail, and removal --------------------------------------------
@@ -1344,10 +1291,6 @@ def test_clear_completed_leaves_history_alone(tmp_path: Path) -> None:
         HistoryEntry(
             id="done",
             url=completed.url,
-            title="A clip",
-            output_path=completed.output_path,
-            format_used="mp4",
-            bytes_total=1024,
             completed_at=datetime(2026, 7, 31, 12, 0, tzinfo=UTC),
         ),
     )
@@ -1355,12 +1298,10 @@ def test_clear_completed_leaves_history_alone(tmp_path: Path) -> None:
     assert jobs.clear_completed() == ["done"]
 
     assert jobs.get("done") is None
-    kept = history.get("done")
-    assert kept is not None, (
-        "clearing the queue deleted the history record; T-100's view would then have nothing to "
-        "show and the user could not find what they downloaded"
+    assert history.last_completed(completed.url) is not None, (
+        "clearing the queue deleted the completion record; T-114's duplicate warning would then "
+        "stop working the moment a user tidied their queue, which is the ordinary thing to do"
     )
-    assert kept.output_path == completed.output_path
 
 
 def test_clear_completed_touches_no_file(repository: JobRepository, tmp_path: Path) -> None:
@@ -1429,27 +1370,36 @@ def test_removing_a_record_that_is_already_gone_is_not_an_error(
     assert history.all_entries() == []
 
 
-def test_removal_touches_no_file(history: HistoryRepository, tmp_path: Path) -> None:
+def test_clearing_touches_no_file(history: HistoryRepository, tmp_path: Path) -> None:
     """**`DAT-005` §2, which is the entire reason this needed a decision.**
 
-    A history entry names a file on disk, and `UX-001` promises this application never deletes the
-    user's files. So: a real file at the recorded path, removed from history, and **still there**.
+    `UX-001` promises this application never deletes the user's files, and clearing records is the
+    action most likely to be read as doing so. A real file, a cleared ledger, and the file still
+    there.
 
     The file is real rather than a mock. A test asserting that no `os.remove` was called would
     pass against a deletion performed some other way — through `Path.unlink`, through `shutil`,
     through a subprocess — and the claim is about the file, not about which API was avoided.
+
+    **`T-170` made this structurally true as well**, and the second assertion says so: the ledger
+    holds no path, so there is nothing for a deletion to be aimed at. The first assertion is kept
+    anyway — the promise is about the file, and a later column could reintroduce the means.
     """
     downloaded = tmp_path / "a real download.mp4"
     downloaded.write_bytes(b"bytes the user asked for")
-    history.record(_entry("job-1", output_path=str(downloaded)))
+    history.record(_entry("job-1", url=f"file://{downloaded}"))
 
-    history.remove(["job-1"])
+    history.clear()
 
     assert downloaded.exists(), (
-        "removing a history record deleted the user's file — UX-001 promises this application "
-        "never does that, and DAT-005 refuses even an opt-in for it"
+        "clearing the records deleted the user's file — UX-001 promises this application never "
+        "does that, and DAT-005 refuses even an opt-in for it"
     )
     assert downloaded.read_bytes() == b"bytes the user asked for", "the file was modified"
+    assert "output_path" not in _entry("x").__dataclass_fields__, (
+        "the ledger models a file path again; DAT-006 §3 dropped it because a path is a claim "
+        "about where a file is that REQ-021 stopped making"
+    )
 
 
 def test_a_removal_is_committed_and_survives_the_writer_closing(tmp_path: Path) -> None:
