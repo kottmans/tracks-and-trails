@@ -392,12 +392,12 @@ Recorded here because each one changed what a deliverable *is*, not merely how i
 | 4 | Reordering and clear-completed (`REQ-016`) | `T-081` | **Approved** 2026-08-01 (`eb1bd70`) |
 | 5 | Output-path collision policy against the filesystem (`DAT-002`, `REQ-011`) | `T-046` | **Approved** 2026-08-01 (`9c5745a`). `T046-R1` was **Critical**: a converted download overwrote the user's file |
 | 6 | Bounded retry with backoff for `NETWORK` failures only (`REQ-018`) | `T-083` | **Approved** 2026-08-01 (`97f96c0`). `UX-002` ratifies 3 attempts at 2s/4s/8s |
-| 7 | History persistence and completed-download records (`REQ-020`) | `T-085`, `T-050`, `T-093` | **Approved** 2026-07-30 |
+| 7 | History persistence and completed-download records (`REQ-020`) | `T-085`, `T-050`, `T-093` | **Approved** 2026-07-30. **Narrowed to a private ledger by `T-169`, 2026-08-06** — the records survive as infrastructure for `REQ-022`; the browseable contract does not |
 | 8 | A corrupt `settings.toml` reports rather than reverting silently (`ARC-008`) | `T-102` | **Approved** 2026-08-01 (`97f96c0`) |
 | 9 | Crash recovery — interrupted jobs detected at startup and offered for retry (`REQ-012`) | `T-082` | **Approved** 2026-08-01 (`b1b7cd6`), without follow-up. The recovery always worked; composition threw the recovered ids away, so nobody was ever told |
 | 10 | Per-job log capture and log view (`REQ-019`) | `T-084` | **Approved** 2026-08-01, implemented at `75f1c32` and **approved at `2a41c5f`**, after `T084-R1` (Critical) and `T084-R2` (High). `T-053`, which gated its approval, is **Approved**. Found that yt-dlp's diagnostics were never captured at all |
-| 11 | History view over those records | `T-100` | **Approved** 2026-08-01 (`c242dd3`), without follow-up |
-| 12 | Open file / reveal in file manager (`REQ-021`), from both views | `T-086` | **Approved** 2026-08-01, implemented at `233c5fd` and **approved at `2a41c5f`**, after `T086-R1` (High). Windows Open takes the associated-application route rather than the file manager |
+| 11 | History view over those records | `T-100` | **Approved** 2026-08-01 (`c242dd3`), without follow-up. **Removed as a product surface by `T-169`/`T-170`, 2026-08-06.** It was built, approved and shipped; the maintainer's direction is that a downloader should not carry a library, not that this was done badly |
+| 12 | Open file / reveal in file manager (`REQ-021`), from both views — **from the queue row alone since `T-169`** | `T-086` | **Approved** 2026-08-01, implemented at `233c5fd` and **approved at `2a41c5f`**, after `T086-R1` (High). Windows Open takes the associated-application route rather than the file manager |
 | 13 | Single-instance guard (`A-004`, `ARC-006`) | `T-087` | **Approved** 2026-08-01 (`ea9d752`). Linux and hosted Windows both green, including racing starts |
 
 *(Deliverable 5 was **added 2026-07-31**. `DAT-002` filed `T-046` as a Phase 2 task and this list
@@ -565,6 +565,15 @@ work depended on itself. One task is now filed and the other is a tombstone poin
 | Output template editor with live preview (`REQ-011`) | `T-112` | Medium — preview and real path must be one function |
 | Cross-restart resume of partial downloads (`REQ-017`) | `T-113` | **High** — reopens `UX-001` and `T-080`'s `PAUSED` removal |
 | Duplicate-URL detection and warning (`REQ-022`) | `T-114` | Low |
+| **Reconcile the product contract to a private completion ledger** (`REQ-020`, `REQ-021`) | `T-169` | **High** — five accepted entries currently require the opposite product |
+| **Replace the History tab with that ledger** (`REQ-020`, `DAT-006`) | `T-170` | Medium-High — the deletion is easy; upgrade data and the never-delete-files boundary are the work |
+
+**Two Phase 3 deliverables *remove* a Phase 2 deliverable, and that is deliberate** (maintainer
+direction, 2026-08-06). Phase 2's items 7 and 11 built history persistence and a history view, and
+both were approved; `T-169` and `T-170` narrow the first to infrastructure and delete the second.
+**Their Phase 2 rows stay marked Approved** — they were, and the work happened. A plan that rewrote
+them would be claiming the project never built the thing it is now removing, which is the one fact
+a reader of this file most needs.
 
 **Every one of them depends on `T-105`**, which writes `docs/UX_SPEC.md` — the trigger this phase
 already carried and which had no task behind it until 2026-08-01.

@@ -107,11 +107,23 @@ residue and blocks the first public release.
     stores the extractor's message verbatim. **What is copied is the file exactly** — the
     view is capped for the GUI thread's sake and Copy re-reads the artifact (`T084-R2`).
 
-### Library and results
+### Completion records
 
-- **REQ-020** — Maintain a history of completed downloads with source URL, title, resolved output path, format used, size, and completion time. A user may **remove records they have selected**; removing a record never deletes the file it names (`DAT-005`).
-- **REQ-021** — Open a completed file, or reveal it in the system file manager, from the history and queue views.
-- **REQ-022** — Detect that a URL has been downloaded before and warn before re-downloading, with an override.
+*(Was **Library and results**. Renamed 2026-08-06 by `T-169`: "library" is the product this
+application is **not**, and the heading was the first place that read otherwise.)*
+
+- **REQ-020** — Keep a **private completion ledger**: the minimum record needed to tell that a URL
+  has been downloaded before, and when. It is infrastructure for `REQ-022`, **not a browseable
+  catalogue** — there is no history list, no per-record view and no selected-record removal. It is
+  kept until the user clears it, with no automatic expiry, and **Clear download records** in
+  Settings is the one action that empties it. Clearing records never deletes a downloaded file
+  (`DAT-005`), and the ledger never becomes a second home for credentials (`DAT-006`).
+- **REQ-021** — Open a completed file, or reveal it in the system file manager, **from its queue
+  row, for as long as that row exists**. Once the row is cleared the application does not claim to
+  know where the file is: it does not follow files a user moves, renames or processes, and offers
+  no route to a file it is no longer showing.
+- **REQ-022** — Detect that a URL has been downloaded before and warn before re-downloading, with
+  an override.
 
 ### Configuration and environment
 

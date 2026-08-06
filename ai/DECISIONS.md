@@ -284,6 +284,18 @@ instead of Windows-only bugs surfacing late.
 
 ## DAT-001 — SQLite for queue and history; TOML for settings
 
+### Amended 2026-08-06 — "history" is a private ledger, and the storage choice is unchanged
+
+**Status:** **Accepted**, on maintainer direction of 2026-08-06 recorded at `T-169`.
+
+**The word *history* in this entry's title and body now means the completion ledger `DAT-006`
+describes**, not a browseable list. **Nothing about the storage choice changes**: SQLite in WAL mode
+still holds jobs, queue order and completion records, and TOML still holds settings. This note
+exists because the title says *history* and a reader arriving from `REQ-020` would otherwise take
+it as evidence that the browseable feature is still current truth.
+
+The original entry follows unaltered.
+
 **Status:** Accepted
 **Date:** 2026-07-25
 
@@ -2609,6 +2621,33 @@ policy here is about *when*, not *where*.
 
 ## DAT-005 — Removing a history entry removes a record, never a file
 
+### Amended 2026-08-06 — one action, renamed, and the boundary this entry exists for is untouched
+
+**Status:** **Accepted**, on maintainer direction of 2026-08-06 recorded at `T-169`.
+
+**The boundary is the part that does not move.** A record is not a file, and emptying records never
+deletes downloads — that is why this entry exists and `T-169` does not touch it.
+
+**What changes is that there is one action instead of two, and it lives in Settings.** Selected-record
+removal goes with the list it selected from: `REQ-020` no longer promises a browseable history, so
+there is no selection to scope a removal to. `Clear history` from the 2026-08-05 amendment below
+becomes **`Clear download records`** in a Settings data section.
+
+**The rename is the same ruling as that amendment's §1, applied to a new noun.** It argued that
+*Clear all* is "the phrasing most likely to be read as deleting downloads" because *all* has no
+object and the user supplies one — their files. *History* named the thing it emptied and was the
+right word for a visible list. With the list gone, *history* is a word for a feature the user can no
+longer see, and **records** names what is actually emptied. The distinction this entry draws is
+carried by the noun in both cases.
+
+**§2 stands and is now load-bearing in a second way.** A wholesale clear remains its own explicitly
+named method rather than removal with the ids left out; with per-record removal gone it is the only
+delete, and the narrow-signature guard it describes has nothing left to protect it from except
+itself.
+
+The 2026-08-05 amendment and the original entry follow unaltered; both are historically true of the
+feature as it stood.
+
 ### Amended 2026-08-05 — clearing the whole list, on the foundation §1 named
 
 **Status:** **Accepted.** **Proposed by the Implementer** and **ratified by the maintainer on
@@ -3034,6 +3073,32 @@ behind a document would leave known-broken behaviour on `main` for longer.
 ---
 
 ## UX-005 — The main window: two tabs, no detail pane, and the verbs on the row
+
+### Amended 2026-08-06 — one tab, because the second one's contents are no longer a product
+
+**Status:** **Accepted**, on maintainer direction of 2026-08-06 recorded at `T-169`.
+
+**The main window shows one surface: the Queue.** There is no History tab, no History count, no
+history rows, no history groups and no history-row verbs. `REQ-020` now keeps a private ledger
+(`DAT-006`) with nothing to browse, so the tab has no contents rather than a smaller version of the
+old ones.
+
+**What survives is everything this entry decided that was never about *which* tab.** The row anatomy
+of §3, the verbs-on-the-row ruling of §4 and §5, the state chip, the playlist group with its
+segmented bar, and the rejection of a detail pane all stand — they describe **a row**, and the
+Queue still has rows. The 2026-08-05 group amendment stays historically true of History and remains
+current truth for the queue's own groups.
+
+**Two tabs becomes no tab widget at all**, not one tab in a tab bar. A tab strip with a single tab
+is a control that offers a choice the user does not have, which is the same objection §5 makes to
+drawing a verb that would be refused.
+
+**`Clear history` leaves the toolbar** with the list it emptied; the one remaining action is
+`Clear download records` in Settings (`DAT-005`, amended the same day). `Clear finished` stays: it
+clears completed **queue rows**, which is a different thing from clearing records, and `T-170` must
+keep them distinguishable.
+
+The original entry and its 2026-08-05 amendment follow unaltered.
 
 ### Amended 2026-08-05 — a finished playlist is one History row
 
@@ -3721,3 +3786,106 @@ silent — the run simply reports `cancelled`, which reads as nothing having hap
 
 Whether to install PowerShell 7 on `STARBASE`. The two steps that needed it now run on Windows
 PowerShell 5.1 (`bff9713`), so it is no longer a prerequisite for anything.
+
+---
+
+## DAT-006 — The completion ledger: what it stores, and what it deliberately does not
+
+**Status:** Accepted
+**Date:** 2026-08-06
+**Raised by:** `T-169`, on maintainer direction of the same day.
+**Amends:** `DAT-001`, `DAT-005`, `UX-005` — see the three amendment notes below, appended to those
+entries rather than written over them.
+**Unblocks:** `T-170` (the implementation) and `T-114` (duplicate warning).
+
+### Context
+
+Tracks & Trails is a lightweight downloader, not a media-library tracker. `REQ-020` promised the
+opposite product — a browseable history of completed downloads with title, path, format, size and
+per-record removal — and Phase 2 built it. Removing the tab alone would leave an accepted contract
+requiring its return, or break `REQ-022`'s duplicate warning, which is the one durable behaviour
+that still earns its cost. `T-169` reconciles the contract; this entry decides the data.
+
+### Decision
+
+**1. The identity is the URL the user entered, normalised, and nothing else is the key.**
+
+Not the resolved media URL. That distinction is the whole of this entry's privacy story: what
+yt-dlp resolves is a signed, expiring CDN address, and storing one would make transient
+authorisation material durable to answer a question the entered URL already answers. The user
+pastes the entered URL again — that is the thing a duplicate check must recognise.
+
+**2. Normalisation is minimal, and the reason is false positives, not purity.**
+
+Lower-case the scheme and host; drop the fragment. **Nothing else** — in particular no
+query-parameter stripping, because the identity of a video lives in the query on the largest site
+this application serves (`?v=…`), and a rule clever enough to strip tracking parameters per site is
+a rule that will one day treat two different downloads as one. A missed duplicate costs a warning
+that does not appear; a false one costs a warning about the wrong file, and only the second is a
+lie.
+
+**3. Three fields, and each answers a question the warning asks.**
+
+| Field | Why it is kept |
+|---|---|
+| the normalised key | what `REQ-022` looks up, and what the index is on |
+| the URL as entered | what the warning shows the user, since a normalised key is not what they typed |
+| the completion time | `docs/UX_SPEC.md` `P-11`: the warning names **when** |
+
+**Title, output path, format used, size, thumbnail URL and playlist membership are not kept.** Each
+existed to draw a history row. No row remains to draw, and a path in particular is a claim about
+where a file is that this application has just stopped making (`REQ-021`).
+
+**4. One row per identity, updated in place.**
+
+A repeat download after an override updates the completion time rather than appending a second row.
+The question is *"have I downloaded this, and when last"*; a list of every attempt answers a
+question nobody asked and grows without a retention policy to bound it.
+
+**5. Obsolete columns stop being written. They are not dropped.**
+
+The existing `history` table becomes the ledger. New completions write the three fields above and
+leave the rest `NULL`; no migration rewrites or drops a column.
+
+Two reasons, and the first is the operative one. **A destructive schema rewrite is the one change
+in this task that can lose a user's data**, and SQLite's column drop is a table rebuild — the
+riskiest possible way to end a task whose whole purpose is to remove a feature. Second, the old
+rows are the upgrade data `T-114` needs: an installation that has been downloading for months
+already knows what it has fetched, and dropping the table to tidy it would throw that away to save
+bytes nobody is short of.
+
+The rows that already exist keep the fields they were written with. Clearing the ledger removes
+them, which is the user's control over data this decision no longer collects.
+
+**6. The ledger never becomes a second home for credentials.**
+
+Cookies, authorization material and proxy credentials are request fields and are not part of the
+identity; `REQ-026` already forbids a cookie path reaching a durable record, and this entry does not
+widen what is stored. The entered URL may itself contain a token a user pasted — that is the user's
+own input, retained because they will paste it again, and removed when they clear their records.
+
+### Alternatives considered
+
+**Drop the obsolete columns in a migration.** Rejected under §5. The tidiness is real and the risk
+is a table rebuild on every user's database to reclaim space that costs nothing.
+
+**Keep a row per download rather than per identity.** Rejected: it needs a retention policy, and
+`REQ-020` now promises no automatic expiry.
+
+**Hash the URL rather than storing it.** Rejected. The warning has to show the user *which* URL,
+and a hash cannot; it also buys nothing, since the plaintext URL is what the user typed and will
+type again.
+
+### Consequences
+
+- `T-170` deletes the History view, its thumbnails, grouping, refresh subscriptions and filesystem
+  probes, and narrows `HistoryRepository` to the ledger's three fields plus the clear.
+- The duplicate lookup needs an index on the normalised key. Without one it is a table scan on
+  every paste, which is `NFR-001`'s budget spent on a warning.
+- Old rows have no normalised key. The upgrade computes it for existing rows once, which is the
+  only migration this decision authorises, and it is additive.
+
+### Not decided here
+
+Whether a downloaded **file** should carry provenance — `T-171` owns that and it is not a
+prerequisite for any of the above.

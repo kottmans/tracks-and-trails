@@ -1654,67 +1654,6 @@ because the file was deleted, is an ordinary thing to want.
 
 ---
 
-### T-169 — Make completion history an internal ledger
-
-**Status:** Proposed — **maintainer direction, 2026-08-06.** Tracks & Trails is a lightweight
-downloader, not a media-library tracker. Reconcile the product contract before deleting a widget,
-so the old feature is not recreated by a still-live requirement.
-**Owner:** Planner
-**Priority:** High — `REQ-020`, `REQ-021`, `DAT-005`, `UX-005` and the plan currently require the
-opposite product
-**Phase:** Phase 3, before any remaining History work or `T-170`
-**Depends on:** nothing
-**Relevant context:** `REQ-020`, `REQ-021`, `REQ-022`, `DAT-001`, `DAT-005`, `UX-005`,
-`IMPLEMENTATION_PLAN.md` Phase 2 and Phase 3, `T-085`, `T-100`, `T-114`, `T-144`
-**Affected surfaces:** `ai/REQUIREMENTS.md`, `ai/DECISIONS.md`, `ai/IMPLEMENTATION_PLAN.md`,
-`ai/TASKS.md`, `ai/STATUS.md`, `docs/UX_SPEC.md`
-**Risk:** High — removing only the tab either breaks duplicate detection or leaves an accepted
-contract that requires the tab to return
-
-#### Scope
-
-Separate two ideas that the current word *History* conflates:
-
-- The application keeps a **small internal completion ledger** so `REQ-022` can warn before a
-  repeat download. It is infrastructure, not a browseable catalogue of files.
-- The **Queue is the only visible download list**. A completed row can still open or reveal its
-  file until the user clears that row. After the row is cleared, or the file is moved elsewhere,
-  the application does not claim to know the file's current location.
-- Clearing the ledger is a single data-management action in Settings. It never deletes media.
-- Provenance written into a downloaded file is a separate, optional question owned by `T-171`.
-  It is not a prerequisite for removing History.
-
-This is an amendment, not an erasure. The Phase 2 records that say History was implemented and
-approved remain historically true. Append amendments to accepted decisions and rewrite only the
-current-truth documents.
-
-#### Acceptance criteria
-
-- `REQ-020` specifies the private ledger and its purpose, retention and user-controlled clearing;
-  it no longer promises a browseable list or selected-record removal
-- `REQ-021` promises Open and Show in folder only where the application still has a live queue
-  row; it does not imply that Tracks & Trails follows files after users move or process them
-- `DAT-001`, `DAT-005` and `UX-005` are amended explicitly: one Queue surface, no History tab,
-  History count, history rows, history groups or history-row verbs, and one Settings action named
-  **Clear download records**
-- The ledger's minimum identity and fields are decided before implementation. The decision covers
-  repeated overrides, URL normalization, upgrade of existing databases and whether obsolete
-  path, format, size, thumbnail and playlist fields are migrated away or merely stop being written
-- The retained identity does not broaden secret storage: cookies, authorization material, proxy
-  credentials and transient signed query data are not made durable merely to detect duplicates
-- `IMPLEMENTATION_PLAN.md`, `STATUS.md`, `docs/UX_SPEC.md` and every open task agree with the new
-  contract. Completed History tasks remain completed historical work, not silently relabelled
-- `T-114` depends on the ledger rather than the view, and no open task still proposes new History
-  grouping, thumbnails, row formatting or verbs
-
-#### Out of scope
-
-- Source or schema changes. `T-170` implements the reconciled contract
-- File metadata or sidecars. `T-171` decides whether either is useful and safe
-- Search, filters, favourites, watched folders or any replacement library surface
-
----
-
 ### T-170 — Replace the History tab with a small ledger
 
 **Status:** Proposed — **maintainer direction, 2026-08-06.** This is the implementation slice
@@ -2266,6 +2205,74 @@ Assert, on `windows-latest`:
 
 ## Complete
 
+### T-169 — Make completion history an internal ledger
+
+**Status:** **Complete — 2026-08-06.** The contract now says what is intended: `REQ-020` is a
+private ledger, `REQ-021` reaches only a live queue row, and `DAT-001`, `DAT-005` and `UX-005` carry
+appended amendments rather than rewrites. **`DAT-006` is the new decision** this task's fourth
+criterion required — the ledger's identity, its three fields, one row per identity, and the ruling
+that obsolete columns **stop being written rather than being dropped**, because a table rebuild is
+the one change here that can lose a user's data. *(Was: Proposed — **maintainer direction,
+2026-08-06.** Tracks & Trails is a lightweight downloader, not a media-library tracker. Reconcile
+the product contract before deleting a widget, so the old feature is not recreated by a still-live
+requirement.)*
+**Owner:** Planner
+**Priority:** High — `REQ-020`, `REQ-021`, `DAT-005`, `UX-005` and the plan currently require the
+opposite product
+**Phase:** Phase 3, before any remaining History work or `T-170`
+**Depends on:** nothing
+**Relevant context:** `REQ-020`, `REQ-021`, `REQ-022`, `DAT-001`, `DAT-005`, `UX-005`,
+`IMPLEMENTATION_PLAN.md` Phase 2 and Phase 3, `T-085`, `T-100`, `T-114`, `T-144`
+**Affected surfaces:** `ai/REQUIREMENTS.md`, `ai/DECISIONS.md`, `ai/IMPLEMENTATION_PLAN.md`,
+`ai/TASKS.md`, `ai/STATUS.md`, `docs/UX_SPEC.md`
+**Risk:** High — removing only the tab either breaks duplicate detection or leaves an accepted
+contract that requires the tab to return
+
+#### Scope
+
+Separate two ideas that the current word *History* conflates:
+
+- The application keeps a **small internal completion ledger** so `REQ-022` can warn before a
+  repeat download. It is infrastructure, not a browseable catalogue of files.
+- The **Queue is the only visible download list**. A completed row can still open or reveal its
+  file until the user clears that row. After the row is cleared, or the file is moved elsewhere,
+  the application does not claim to know the file's current location.
+- Clearing the ledger is a single data-management action in Settings. It never deletes media.
+- Provenance written into a downloaded file is a separate, optional question owned by `T-171`.
+  It is not a prerequisite for removing History.
+
+This is an amendment, not an erasure. The Phase 2 records that say History was implemented and
+approved remain historically true. Append amendments to accepted decisions and rewrite only the
+current-truth documents.
+
+#### Acceptance criteria
+
+- `REQ-020` specifies the private ledger and its purpose, retention and user-controlled clearing;
+  it no longer promises a browseable list or selected-record removal
+- `REQ-021` promises Open and Show in folder only where the application still has a live queue
+  row; it does not imply that Tracks & Trails follows files after users move or process them
+- `DAT-001`, `DAT-005` and `UX-005` are amended explicitly: one Queue surface, no History tab,
+  History count, history rows, history groups or history-row verbs, and one Settings action named
+  **Clear download records**
+- The ledger's minimum identity and fields are decided before implementation. The decision covers
+  repeated overrides, URL normalization, upgrade of existing databases and whether obsolete
+  path, format, size, thumbnail and playlist fields are migrated away or merely stop being written
+- The retained identity does not broaden secret storage: cookies, authorization material, proxy
+  credentials and transient signed query data are not made durable merely to detect duplicates
+- `IMPLEMENTATION_PLAN.md`, `STATUS.md`, `docs/UX_SPEC.md` and every open task agree with the new
+  contract. Completed History tasks remain completed historical work, not silently relabelled
+- `T-114` depends on the ledger rather than the view, and no open task still proposes new History
+  grouping, thumbnails, row formatting or verbs
+
+#### Out of scope
+
+- Source or schema changes. `T-170` implements the reconciled contract
+- File metadata or sidecars. `T-171` decides whether either is useful and safe
+- Search, filters, favourites, watched folders or any replacement library surface
+
+---
+
+
 ### T-156 — The MP3 preset does not say which bitrate it means
 
 **Status:** **Complete — 2026-08-06, the disclosure half only**, which is what this entry's own
@@ -2666,6 +2673,8 @@ before it decides what to display.
 outranks this task and named its own reopening condition, but that made an amendment eligible for
 a decision rather than self-accepting. The implementation is unchanged — the reviewer found it
 conditionally sound — and what changed is that the decision it rests on now exists.
+
+**Removed as a product surface 2026-08-06** (`T-169`, implemented by `T-170`). **This task stays Complete and its approval stands**: the work was done, reviewed and shipped, and the maintainer's later direction is that a downloader should not carry a library — not that this was built badly. Left here as the record of what the application used to do.
 **Owner:** Implementer
 **Priority:** Medium — `REQ-020` makes History accumulate forever by design, so this gets worse
 with use rather than better
@@ -2800,6 +2809,8 @@ partly-failed playlist counts the members present. Two review findings are corre
 `T145-R2`, a hidden member's thumbnail reaching the row after a closed playlist, which is the
 two-index-space defect this task claimed to have audited; and `T145-R3`, a header that drew its
 format and folder but did not speak them.
+
+**Removed as a product surface 2026-08-06** (`T-169`, implemented by `T-170`). **This task stays Complete and its approval stands**: the work was done, reviewed and shipped, and the maintainer's later direction is that a downloader should not carry a library — not that this was built badly. Left here as the record of what the application used to do.
 **Owner:** Implementer
 **Priority:** Medium — `UX-005` §3 gives both tabs the same row anatomy, and this is the largest
 place they now differ
@@ -7076,6 +7087,8 @@ persistence.
 *(This read "In Review — complete 2026-08-01".)* Seven mutations run; all seven killed, including
 the two this task names. **It releases `T-086`**, the last Phase 2 deliverable that had not started.
 *(This read "Ready — nothing blocks it; `T-085` wrote the table it reads".)*
+
+**Removed as a product surface 2026-08-06** (`T-169`, implemented by `T-170`). **This task stays Complete and its approval stands**: the work was done, reviewed and shipped, and the maintainer's later direction is that a downloader should not carry a library — not that this was built badly. Left here as the record of what the application used to do.
 **Owner:** Implementer
 **Priority:** Medium — `REQ-021` is a Phase 2 deliverable and cannot be met without it
 **Phase:** Phase 2

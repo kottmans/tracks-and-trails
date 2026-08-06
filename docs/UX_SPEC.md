@@ -48,14 +48,21 @@ recorded as maintainer rulings that no maintainer had made.
 
 ## 2 · The window, as built
 
-**[T]** `UX-005`. Two tabs over one list, no detail pane, every verb on the row.
+**[T]** `UX-005`, **amended 2026-08-06** (`T-169`). One list, no detail pane, every verb on the row.
 
-1. **`Queue` and `History` are tabs**, each showing a count. Not a splitter, not one above the other.
+> **The History tab is gone, and so is the tab widget.** `REQ-020` now keeps a private completion
+> ledger (`DAT-006`) with nothing to browse, so the second tab has no contents rather than fewer of
+> them — and a tab strip holding one tab offers a choice the user does not have. Everything below
+> that describes **a row** still stands; the Queue still has rows. The struck items are kept
+> visible rather than deleted, because this section is what a reader checks the window against.
+
+1. ~~**`Queue` and `History` are tabs**, each showing a count.~~ **The window is the Queue**
+   (2026-08-06). No tab bar, no History count.
 2. **There is no detail pane.** Selecting a row opens nothing. A row shows what a user needs to know
    about that job.
-3. **Both tabs draw the same row anatomy** — thumbnail, title, uploader and duration, progress and
-   state. History changes what the fields *say*, not what they are: where the queue shows progress
-   and speed, History shows the saved path, the size and when.
+3. **The row anatomy** — thumbnail, title, uploader and duration, progress and state. *(This read
+   "both tabs draw the same row anatomy" and described what History changed about the fields; the
+   anatomy is unchanged and now has one surface drawing it.)*
 4. **Every verb the row's state permits is on its last line**, right-aligned, sharing that line with
    the format control, plus `⋯` for the rest — which is also the keyboard route.
 5. **Nothing is drawn disabled and nothing is drawn that would be refused.** A row offers what its
@@ -66,26 +73,35 @@ recorded as maintainer rulings that no maintainer had made.
    row reads **Held**, never *Paused*.
 8. **A finished download stays in the Queue tab** with *Open* and *Show in folder* until
    *Clear finished* moves it on.
-9. **History removal is selection-scoped**, its verb names its own count, and *"files are never
-   deleted"* sits in the status bar while History is showing.
+9. ~~**History removal is selection-scoped**, its verb names its own count, and *"files are never
+   deleted"* sits in the status bar while History is showing.~~ **Withdrawn 2026-08-06**: there is
+   no list to select from. The one remaining action is **Clear download records** in Settings, and
+   it carries the same promise — `DAT-005` is unamended on the point that matters, that emptying
+   records never deletes a file.
 
 ### 2.1 The toolbar
 
 **[T]** `UX-005` (2026-08-04 amendment) and `DAT-005` (2026-08-05 amendment).
-`+ Add URLs` first, as the primary action; `Pause queue`; `Clear finished`; `Clear history`; and the
+`+ Add URLs` first, as the primary action; `Pause queue`; `Clear finished`; and the
 `Concurrent downloads` control that `ARC-007` put there until Phase 4's settings dialog replaces it.
 
+**`Clear history` left the toolbar with the list it emptied** (2026-08-06, `T-169`). `Clear finished`
+stayed, and the two were never the same action: it clears completed **queue rows**, while
+**Clear download records** in Settings empties the ledger. A row leaving the queue does not forget
+that the URL was downloaded.
+
 **The rule the toolbar keeps:** nothing on it acts on a *selection*, and every verb on it names the
-list it empties. That is what makes each unambiguous with two tabs in the window.
+list it empties.
 
 ### 2.2 The state chip
 
 **[T]** `UX-005` (2026-08-04). A chip on the title line carrying **words**, never colour alone
-(`NFR-005`): `Done`, `Queued`, `62%`, `Failed`. **Queue tab only** — every History row is finished,
-so a chip reading *Done* on all of them is noise.
+(`NFR-005`): `Done`, `Queued`, `62%`, `Failed`. *(This read "Queue tab only", against a History tab
+whose every row was finished. There is one surface now and the rule is unchanged.)*
 
-**[T]** A History *group* header is the exception (`UX-005`, 2026-08-05): its chip is a **count** of
-the members present — `16 items` — because a count is not a state. Never `14 of 16`.
+**[T]** A *group* header is the exception (`UX-005`, 2026-08-05): its chip is a **count** of the
+members present — `16 items` — because a count is not a state. Never `14 of 16`. This was written
+for History's groups and holds for the queue's, which are the ones that remain.
 
 ---
 
@@ -426,8 +442,10 @@ silent on the rest, so these are scope choices.
   conveyed by colour alone, and a warning only sighted users receive is that rule broken.
   **[D]** It therefore joins the row's accessible text, which is where the row's other facts already
   are. **[D]** It needs no keyboard route of its own, because a row state is not a control.
-- **[P-11]** The warning names **when** the URL was last downloaded and links to the History record,
-  because *"you have had this before"* without a date is not enough to act on.
+- **[P-11]** The warning names **when** the URL was last downloaded, because *"you have had this
+  before"* without a date is not enough to act on. It is why the ledger keeps a completion time at
+  all (`DAT-006` §3). ~~and links to the History record~~ — **the link half is withdrawn**
+  (2026-08-06, `T-169`): there is no record to open.
 
 ### Deliberately not offered
 
@@ -459,7 +477,7 @@ one pass rather than eleven, and so a task cannot mistake a proposal for a decis
 | ~~P-8~~ | ~~Where do user presets persist?~~ **Withdrawn — already decided** (`T105-R1`). `DAT-001` and `ARCHITECTURE.md` §5 fix it: TOML, at `user_config_dir/tracksandtrails/settings.toml`. Transcribed in §8; the number is kept so the withdrawal is legible rather than silent | §8 | — |
 | P-9 | Does the template editor list supported fields inline? | §9.1 | Scope of `T-112` |
 | P-10 | **Does `REQ-017` reopen per-job pause?** `UX-001` names this as its reopening condition | §9.2 | **Reopens `UX-001` and `T-080`.** Also decides `Pause all` on a group, deferred by `T140-R5` |
-| P-11 | Does the duplicate warning name the date and link to the History record? | §9.3 | Small; `T-114` is the smallest item in the phase |
+| P-11 | Does the duplicate warning name the date? *(The History link half is withdrawn — `T-169`, 2026-08-06.)* | §9.3 | Small; `T-114` is the smallest item in the phase |
 | P-12 | **Do remux, recode, embed-thumbnail, embed-metadata and embed-chapters get typed fields on `Preset`**, or stay strings in `post_processors`? | §6 | **Widens a Phase 1 model.** Five checkboxes and one free-text list are different screens, so `T-109` cannot be specified past it |
 | P-13 | When ffmpeg is absent, is the merge mode hidden, shown-and-refused, or the table drawn without it? | §5 | `UX-005` §5 requires *some* treatment, not this one |
 | P-14 | Does the format table refuse re-probe, download-from-table, and filtering? | §4, §12 | Scope of `T-107` |
@@ -533,13 +551,15 @@ oversight.
 
 | Not offered | Where it is decided |
 |---|---|
-| **[T]** Delete a file from disk | `UX-001`, `DAT-005` §2. Not as an option, not behind a checkbox. History is a record, not the downloads |
+| **[T]** Delete a file from disk | `UX-001`, `DAT-005` §2. Not as an option, not behind a checkbox. A record is not the downloads — and since 2026-08-06 the record is not visible either |
 | **[T]** Per-job pause | `UX-001`, `T-080`. Queue-level drain only — reopening condition is `REQ-017`, which is `P-10` |
 | **[T]** A detail pane, window or docked panel | `UX-005` §2. The row carries what a user needs |
 | **[T]** A disabled control | `UX-005` §5, `T081-R3`. Absent instead, so the application never reports that it considered and declined |
 | **[T]** Colour as the only carrier of state | `NFR-005`. The chip carries words |
 | **[T]** A soft delete of history | `DAT-005` §4. No `deleted_at` column to protect a record whose loss costs little |
-| **[T]** Automatic pruning of history by age or size | `DAT-005` (2026-08-05). A policy nobody has decided |
+| **[T]** A History tab, list, group or row verb | `REQ-020`, `UX-005` and `DAT-005`, all amended 2026-08-06 (`T-169`). The ledger is infrastructure for `REQ-022`; a downloader is not a media library |
+| **[T]** Following a file after its queue row is cleared | `REQ-021`, amended 2026-08-06. The application does not claim to know where a file went |
+| **[T]** Automatic pruning of records by age or size | `DAT-005` (2026-08-05), and `REQ-020` (2026-08-06) now states no automatic expiry outright |
 | **[T]** Re-grouping history records that predate migration `0006` | `T-145`, approved |
 | **[T]** A cookie path in History | `REQ-026`, `T159-R1`. History stores a `FormatChoice`, which cannot carry one |
 | **[T]** A second persistence store for presets | `DAT-001`, `ARCHITECTURE.md` §5. TOML at `settings.toml` — see §8 |

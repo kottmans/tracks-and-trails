@@ -12,9 +12,31 @@
 
 ---
 
-**Current phase:** **Phase 2 — Queue and concurrency.** **Phase 1 formally exited 2026-07-29**;
-Phase 0 exited 2026-07-26. All three Phase 2 planning gates are clear — `P2PLAN-R2` at `f858da9`,
-`P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
+**Current phase:** **Phase 3 — Format and content depth.** **Phase 2 exited 2026-08-05** (commit
+`38504b3`); Phase 1 exited 2026-07-29 and Phase 0 on 2026-07-26. All three Phase 2 planning gates
+were clear — `P2PLAN-R2` at `f858da9`, `P2PLAN-R1` and `P2PLAN-R3` at `8306378`.
+
+## The direction that changed on 2026-08-06: History becomes a private ledger
+
+**Maintainer direction: Tracks & Trails is a lightweight downloader, not a media-library tracker.**
+`REQ-020` promised the opposite product and Phase 2 built it — records, a view, groups, removal.
+The contract is now reconciled (`T-169`) and the surface comes out next (`T-170`).
+
+- **What survives:** a private completion ledger — normalised URL, the URL as entered, and the
+  completion time — so `REQ-022` can warn before a repeat download. `DAT-006` decides the fields
+  and, importantly, decides **not** to drop the obsolete columns: a table rebuild is the one change
+  in this work that could lose a user's data, and the old rows are the upgrade data `T-114` needs.
+- **What goes:** the History tab, the tab widget itself, history rows, groups, thumbnails and
+  row verbs. `Clear history` leaves the toolbar and becomes **Clear download records** in a minimal
+  Settings shell.
+- **What is unchanged:** a record is not a file. `DAT-005`'s boundary is the part `T-169` does not
+  touch, and *Open* and *Show in folder* still work on a completed queue row until it is cleared.
+- **The Phase 2 records stay true.** `T-085`, `T-100`, `T-144` and `T-145` remain Complete and
+  approved. The plan's Phase 2 rows are annotated as narrowed or removed rather than rewritten —
+  a file that erased them would be claiming the project never built what it is now removing.
+
+**Phase 3 work completed since the exit:** `T-167`, `T-164`, `T-163`, `T-166`, `T-160` (the row
+layout range, approved at `fd15ade`/`4799136`), `T-150` and `T-156`.
 
 ## The 2026-08-04 review, and where its findings stand
 
