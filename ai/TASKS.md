@@ -383,6 +383,7 @@ xdist worker is its own process, so a `QApplication` per worker is not a problem
 ---
 
 
+
 *(`T-078`…`T-088` are the phase's own deliverables, written 2026-07-29 from
 `ai/IMPLEMENTATION_PLAN.md` §Phase 2. `T-097` is a planning-review follow-up; the entries after the
 deliverables — `T-050`, `T-053`, `T-046`, `T-047`, `T-048`, `T-049` — are follow-ups carried out
@@ -2897,6 +2898,7 @@ call rather than an implementation detail.
 ---
 
 
+
 ### T-162 — A probed entry keeps saying "Probing" after its probe has finished
 
 **Status:** **Complete — 2026-08-05.** A drawn stage now wins only when it could still be happening in the current status, from a table keyed by status. **Reclassified Phase 2 by `P2EXIT-R11`**, and the reviewer's reasoning is worth keeping: the closed-list rule governs which task owns a defect found by running the window, and cannot defer a failure of an *independent* Phase 2 criterion. This broke criterion 1's accurate-per-job-progress promise and `REQ-014`'s current-stage promise, so filing it as Phase 3 while calling criterion 1 met was a claim stated over the top of evidence already written down.
@@ -3137,6 +3139,7 @@ section, now repeated one layer further out by the fix for it.
   it, stated as such and disclosed rather than dressed up as an end-to-end proof
 
 ---
+
 
 
 ### T-149 — A paused queue looks exactly like a running one
@@ -5922,6 +5925,7 @@ effective request**. A delegate is what supplies the first and third, and `T118-
 is only removable by drawing one reusable editor instead of a widget per row. Delivering `T-118`
 first and this second would mean correcting a row anatomy against findings that the correction
 itself replaces.
+
 
 
 ### T-115 — Nothing drains the queue: jobs beyond the limit never start
