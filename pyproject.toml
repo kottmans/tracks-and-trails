@@ -100,6 +100,9 @@ ignore = [
 # type to a spawned worker, so T-010 requires it asserted per type. The data is constructed in
 # the test one line above; there is no untrusted input anywhere near it.
 "tests/*" = ["S301", "S603", "S607"]
+# Evidence scripts shell out to the tools they are measuring; the argv is literal, a few lines
+# above the call, and the whole point of the file is to run ffmpeg and read what it produced.
+"ai/evidence/*" = ["S603", "S607"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["tracks_and_trails"]

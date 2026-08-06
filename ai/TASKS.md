@@ -1656,9 +1656,34 @@ because the file was deleted, is an ordinary thing to want.
 
 ### T-171 — Decide whether files carry provenance
 
-**Status:** Proposed — **maintainer direction, 2026-08-06.** File details are a better candidate
-for answering *what settings produced this file* than a permanent in-app library, but this is not
-yet permission to write private download context into every output.
+**Status:** **Proposed — the measurement is done, the decision is not, and the decision is the
+maintainer's.** *(Evidence added 2026-08-06 by the Implementer; no criterion is claimed met.)*
+
+**The first criterion has its matrix**: `ai/evidence/2026-08-06-provenance-survival.md`, with a
+script beside it that regenerates it from synthetic media in a temporary directory — no network, no
+real download, nothing written near anybody's library. Three findings worth reading before the
+decision:
+
+1. **Nothing writes provenance today.** `build_postprocessors` never configures `FFmpegMetadata`
+   and the presets pass no `--embed-metadata`, so the honest baseline is *add something*, not
+   *replace something*.
+2. **Standard tags survive every path this application takes**, including the MP3 transcode.
+3. **A custom key is dropped silently by MP4 and M4A** — two of the five built-in presets produce
+   exactly those containers — while surviving MKV and MP3. No error, no warning at the default log
+   level. That turns this task's "metadata failure semantics" criterion around: the risk is not
+   only a download failing because a tag could not be written, but a tag quietly not being written
+   at all.
+
+**What is still open, and why the Implementer did not close it:** every remaining criterion is a
+product judgement about writing private download context into a user's files — opt-in versus
+opt-out, global versus per-download, the privacy allowlist, what a container that cannot carry a
+field should do, and whether the feature is adopted at all. `AGENTS.md` §5 keeps that with the
+maintainer. **Survival through tools this application does not run is also unmeasured** and this
+task's sixth criterion forbids claiming it.
+
+*(Was: Proposed — **maintainer direction, 2026-08-06.** File details are a better candidate for
+answering *what settings produced this file* than a permanent in-app library, but this is not yet
+permission to write private download context into every output.)*
 **Owner:** Planner
 **Priority:** Low — useful if it survives the user's later processing, and unnecessary for the
 History removal
