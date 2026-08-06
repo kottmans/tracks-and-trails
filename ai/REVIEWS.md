@@ -11046,3 +11046,45 @@ its migration evidence, or the corrected T-114/T-146 contracts and are carried f
 
 The reviewer appended this record only. No source, test, requirement, decision, task state, commit,
 remote ref, migration, user database or CI state was changed.
+
+## 2026-08-06 — Completion-ledger purge follow-up verification
+
+**Reviewer:** Codex (Reviewer)
+**Prior review commit:** `ca2ca5c`
+**Correction head:** `e70d615`
+**Tasks:** `T-048`, `T-169`, `T-173`, `T-175`
+**Verdict:** **Approved at `e70d615`.** Both non-blocking follow-ups from the focused re-review are
+resolved. The prior approval no longer carries open review work.
+
+### Finding status
+
+| ID | Severity | Blocks approval | Verification | Status |
+|---|---|---:|---|---|
+| `T169-R5` | Low | No | T-048 now distinguishes a future value transformation from 0009's explicitly ruled destruction and keeps strict equality on the surviving `jobs` table. T-173 is cancelled rather than promoting a dead clock into `core/`; T-175 owns deletion of `store._now` and its sole import while preserving the live manager clock. The dispositions match the current call graph: seven manager callers, zero store callers. | **Resolved at `f2f190d`** |
+| `T169-R6` | Low | No | Migration 0009 explicitly enables `secure_delete` before dropping `history`; its regression first forces the connection to `OFF`, checkpoints the fixture into the main database, and then proves the traced URL is absent from the raw file. Removing the pragma independently leaves the URL present. DAT-006 and the migration also name WAL as a residue path and direct manual erasure to the database plus both sidecars. The later `e70d615` caveat correctly limits an edited migration to databases that have not already reached v9 and says a released correction would require 0010. | **Resolved at `e70d615`** |
+
+### Reviewer dispositions
+
+- **Editing 0009 is accepted only at this unreleased boundary.** There is no tag or installer and
+  the correction records that already-upgraded developer databases do not rerun it. Once a
+  migration has reached users, this exact correction belongs in a new numbered migration.
+- **Leaving `secure_delete` enabled is accepted.** Pure SQL cannot restore an unknown prior value;
+  forcing it off could weaken a connection whose build defaulted on. The writer opens an independent
+  connection, so this setting is not inherited by normal queue writes.
+- **Note — “the cost of leaving it on is bounded to nothing” is stronger than the evidence.** The
+  pragma remains enabled on the migrated connection, which immediately performs startup recovery
+  and then serves reads for the application's lifetime. Any recovery update can therefore see the
+  setting. That bounded effect is harmless and requires no follow-up, but the fact that the
+  migration script runs once does not by itself mean the connection setting has no later effect.
+
+### Independent verification
+
+| Check | Result |
+|---|---|
+| Boundary | `git diff --check ca2ca5c..e70d615`: **pass**; four files changed. |
+| Focused tests | Raw-byte purge, every historical upgrade that carried History, narrow queue preservation and task placement: **24 passed**. |
+| Forced-default-off mutation | Without `PRAGMA secure_delete = ON`, the traced v7 URL remained **1 before / 1 after**; with the pragma it was **1 before / 0 after**. |
+| Call-path audit | `persistence/store._now`: **0 callers**; `downloader/manager._now`: **7 callers**. The application migrates its read connection, performs startup recovery on it, and gives the writer a separate connection factory. |
+
+The reviewer appended this record only. No source, test, requirement, decision, task state, commit,
+remote ref, migration, user database or CI state was changed.
